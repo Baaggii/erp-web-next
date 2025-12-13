@@ -3333,7 +3333,12 @@ export default function PosApiAdmin() {
 
   useEffect(() => {
     if (!selectedVariationKey) return;
-    const variationPayload = getVariationExamplePayload(selectedVariationKey);
+    const variationDefinition = activeVariations.find(
+      (entry) => (entry.key || entry.name) === selectedVariationKey,
+    );
+    const variationPayload = variationDefinition
+      ? parseExamplePayload(variationDefinition.requestExampleText || variationDefinition.requestExample || {})
+      : getVariationExamplePayload(selectedVariationKey);
     if (variationPayload && typeof variationPayload === 'object') {
       try {
         const pretty = JSON.stringify(variationPayload, null, 2);
@@ -5430,7 +5435,7 @@ export default function PosApiAdmin() {
     const requestSample = parseJsonInput(
       'Base request sample',
       formState.requestSampleText,
-      BASE_COMPLEX_REQUEST_SCHEMA,
+      {},
     );
     const responseSchema = parseJsonInput(
       'Response body schema',
@@ -6164,6 +6169,72 @@ export default function PosApiAdmin() {
     return source;
   }
 
+  function parsePathSegments(path) {
+    return String(path || '')
+      .split('.')
+      .map((segment) => segment.trim())
+      .filter(Boolean)
+      .map((segment) => ({ key: segment.replace(/\[\]/g, ''), isArray: segment.endsWith('[]') }));
+  }
+
+  function getNestedValue(source, segments) {
+    let current = source;
+    for (let i = 0; i < segments.length; i += 1) {
+      const { key, isArray } = segments[i];
+      if (!current || typeof current !== 'object') return undefined;
+      current = current[key];
+      if (isArray) {
+        if (!Array.isArray(current) || current.length === 0) return undefined;
+        current = current[0];
+      }
+    }
+    return current;
+  }
+
+  function setNestedValue(target, segments, value) {
+    let current = target;
+    segments.forEach((segment, index) => {
+      const isLast = index === segments.length - 1;
+      if (segment.isArray) {
+        if (!Array.isArray(current[segment.key])) {
+          current[segment.key] = [{}];
+        } else if (current[segment.key].length === 0) {
+          current[segment.key].push({});
+        }
+        if (isLast) {
+          current[segment.key][0] = value;
+        } else {
+          if (!current[segment.key][0] || typeof current[segment.key][0] !== 'object') {
+            current[segment.key][0] = {};
+          }
+          current = current[segment.key][0];
+        }
+      } else {
+        if (isLast) {
+          current[segment.key] = value;
+        } else {
+          if (!current[segment.key] || typeof current[segment.key] !== 'object') {
+            current[segment.key] = {};
+          }
+          current = current[segment.key];
+        }
+      }
+    });
+  }
+
+  function pickPayloadFields(payload, fieldPaths = []) {
+    if (!payload || typeof payload !== 'object' || fieldPaths.length === 0) return payload;
+    const picked = {};
+    fieldPaths.forEach((path) => {
+      const segments = parsePathSegments(path);
+      if (segments.length === 0) return;
+      const value = getNestedValue(payload, segments);
+      if (value === undefined) return;
+      setNestedValue(picked, segments, value);
+    });
+    return picked;
+  }
+
   function parseExamplePayload(raw) {
     if (!raw && raw !== 0) return {};
     if (typeof raw === 'object') return raw;
@@ -6177,36 +6248,65 @@ export default function PosApiAdmin() {
     return {};
   }
 
+  function getAllowedFieldsForVariation(key) {
+    const variationFieldSet = variationFieldSets.get(key);
+    if (variationFieldSet && variationFieldSet.size > 0) {
+      return Array.from(variationFieldSet);
+    }
+    const variationMeta = requestFieldVariationMap.get(key);
+    if (variationMeta) {
+      const combined = new Set([
+        ...Object.keys(variationMeta.requiredFields || {}),
+        ...Object.keys(variationMeta.defaultValues || {}),
+      ]);
+      return Array.from(combined);
+    }
+    return [];
+  }
+
   function buildCombinationPayload(baseKey = combinationBaseKey, modifierKeys = combinationModifierKeys) {
     if (!baseKey) {
       throw new Error('Select a base variation to build a combination.');
     }
-    const basePayload = getVariationExamplePayload(baseKey);
+    const basePayload = getVariationExamplePayload(baseKey, true);
     let mergedPayload = { ...basePayload };
     modifierKeys.forEach((key) => {
-      const modifierPayload = getVariationExamplePayload(key);
+      const modifierPayload = getVariationExamplePayload(key, false, true);
       mergedPayload = mergePayloads(mergedPayload, modifierPayload);
     });
     return mergedPayload;
   }
 
-  function getVariationExamplePayload(key) {
+  function getVariationExamplePayload(key, skipFieldFilter = false, isModifier = false) {
+    let payloadCandidate = {};
+    let allowedFields = [];
     if (key === BASE_COMBINATION_KEY) {
-      return parseExamplePayload(formState.requestSampleText || formState.requestSchemaText || {});
+      payloadCandidate = parseExamplePayload(formState.requestSampleText || formState.requestSchemaText || {});
+    } else {
+      const baseVariation = activeVariations.find((entry) => (entry.key || entry.name) === key);
+      if (baseVariation) {
+        payloadCandidate = parseExamplePayload(baseVariation.requestExampleText || baseVariation.requestExample || {});
+        allowedFields = getAllowedFieldsForVariation(key);
+      } else {
+        const exampleEntry = exampleVariationMap.get(key);
+        if (exampleEntry) {
+          payloadCandidate = parseExamplePayload(
+            exampleEntry.requestExample ?? exampleEntry.request?.body ?? exampleEntry.body ?? exampleEntry,
+          );
+        }
+      }
     }
-    const baseVariation = activeVariations.find((entry) => (entry.key || entry.name) === key);
-    if (baseVariation) {
-      return parseExamplePayload(baseVariation.requestExampleText || baseVariation.requestExample || {});
+    if (skipFieldFilter || (!isModifier && !allowedFields.length)) {
+      return payloadCandidate;
     }
-    const exampleEntry = exampleVariationMap.get(key);
-    if (exampleEntry) {
-      const payloadCandidate = exampleEntry.requestExample
-        ?? exampleEntry.request?.body
-        ?? exampleEntry.body
-        ?? exampleEntry;
-      return parseExamplePayload(payloadCandidate);
+    if (isModifier) {
+      return allowedFields.length ? pickPayloadFields(payloadCandidate, allowedFields) : {};
     }
-    return {};
+    const fallbackFields = flattenExampleFields(payloadCandidate)
+      .map((entry) => entry.field)
+      .filter(Boolean);
+    const effectiveFields = allowedFields.length ? allowedFields : fallbackFields;
+    return pickPayloadFields(payloadCandidate, effectiveFields);
   }
 
   function handleRequestFieldValueChange(fieldPath, updates) {
@@ -6541,17 +6641,22 @@ export default function PosApiAdmin() {
     }
 
     let builtPayload = null;
-    try {
-      builtPayload = buildCombinationPayload();
-    } catch (err) {
-      builtPayload = null;
-      if (combinationError && !payloadOverride) {
-        setCombinationError(err.message || 'Unable to build test payload from modifiers.');
+    if (!payloadOverride) {
+      try {
+        builtPayload = buildCombinationPayload();
+      } catch (err) {
+        builtPayload = null;
+        if (combinationError) {
+          setCombinationError(err.message || 'Unable to build test payload from modifiers.');
+        }
       }
     }
 
+    const confirmPayloadLabel = payloadOverride
+      ? 'the combination payload you provided'
+      : 'the base sample and selected modifiers';
     const confirmed = window.confirm(
-      `Run a test request against ${selectedTestUrl || activeTestSelection.display || 'the configured server'}? This will use the base sample and selected modifiers.`,
+      `Run a test request against ${selectedTestUrl || activeTestSelection.display || 'the configured server'}? This will use ${confirmPayloadLabel}.`,
     );
     if (!confirmed) return;
 
@@ -6581,11 +6686,9 @@ export default function PosApiAdmin() {
           environment: testEnvironment,
           authEndpointId: formState.authEndpointId || '',
           useCachedToken: effectiveUseCachedToken,
-          ...(payloadOverride
-            ? { payloadOverride }
-            : builtPayload
-              ? { payloadOverride: builtPayload }
-              : {}),
+          ...((payloadOverride || builtPayload)
+            ? { payloadOverride: payloadOverride || builtPayload }
+            : {}),
         }),
       });
       if (!res.ok) {
@@ -7371,362 +7474,13 @@ export default function PosApiAdmin() {
               )}
             </span>
           </label>
-          {!isTransactionUsage ? (
-            <label style={styles.label}>
-              POSAPI type
-              <select
-                value={formState.posApiType}
-                onChange={(e) => handleTypeChange(e.target.value)}
-                style={styles.input}
-              >
-                <option value="">Select a type…</option>
-                {(USAGE_TYPE_OPTIONS[formState.usage] || POSAPI_TRANSACTION_TYPES).map((type) => (
-                  <option key={type.value} value={type.value}>
-                    {type.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-          ) : (
-            <div style={styles.label}>
-              <div style={{ fontWeight: 600, marginBottom: '0.25rem' }}>POSAPI type</div>
-              <div style={styles.toggleStateHelper}>
-                Transaction endpoints rely on enabled variations instead of a POSAPI type.
-              </div>
+          <div style={styles.label}>
+            <div style={{ fontWeight: 600, marginBottom: '0.25rem' }}>POSAPI type</div>
+            <div style={styles.toggleStateHelper}>
+              POSAPI type and request variations are derived from the enabled base request and modifiers.
+              Use variations to toggle receipt, tax, and payment behaviour instead of hard-coded switches.
             </div>
-          )}
-          {isTransactionUsage && supportsItems && (
-            <div style={styles.labelFull}>
-              <div style={styles.featureToggleRow}>
-                <label style={styles.checkboxLabel}>
-                  <input
-                    type="checkbox"
-                    checked={receiptTypesEnabled}
-                    onChange={(e) => handleChange('enableReceiptTypes', e.target.checked)}
-                  />
-                  <span>Enable receipt types</span>
-                </label>
-                <span style={styles.toggleStateBadge}>
-                  {formState.allowMultipleReceiptTypes !== false ? 'Multiple allowed' : 'Single value'}
-                </span>
-              </div>
-              {receiptTypesEnabled ? (
-                <>
-                  <label style={{ ...styles.checkboxLabel, marginBottom: '0.5rem' }}>
-                    <input
-                      type="checkbox"
-                      checked={Boolean(formState.allowMultipleReceiptTypes)}
-                      onChange={(e) => handleChange('allowMultipleReceiptTypes', e.target.checked)}
-                    />
-                    <span>Allow selecting more than one receipt type</span>
-                  </label>
-                  <span style={styles.multiSelectTitle}>Receipt types</span>
-                  <span style={styles.multiSelectHint}>
-                    Choose the transaction types this endpoint accepts at runtime.
-                  </span>
-                  <div style={styles.multiSelectOptions}>
-                    {POSAPI_TRANSACTION_TYPES.map((type) => {
-                      const checked = Array.isArray(formState.receiptTypes)
-                        ? formState.receiptTypes.includes(type.value)
-                        : false;
-                      return (
-                        <label key={type.value} style={styles.multiSelectOption}>
-                          <input
-                            type="checkbox"
-                            checked={checked}
-                            onChange={() => toggleReceiptType(type.value)}
-                          />
-                          <span>{type.label}</span>
-                        </label>
-                      );
-                    })}
-                  </div>
-                  {selectedReceiptTypes.length > 0 ? (
-                    <div style={styles.templateList}>
-                      <span style={styles.multiSelectTitle}>Receipt-type JSON templates</span>
-                      <span style={styles.multiSelectHint}>
-                        Paste formatted JSON that will be stored with this definition for each type.
-                      </span>
-                      {selectedReceiptTypes.map((code) => (
-                        <div key={`receipt-template-${code}`} style={styles.templateBox}>
-                          <div style={styles.templateHeader}>
-                            <strong>{formatTypeLabel(code) || code}</strong>
-                            <span style={styles.templatePill}>
-                              {formState.allowMultipleReceiptTypes !== false ? 'Multi' : 'Single'}
-                            </span>
-                          </div>
-                          <textarea
-                            style={styles.templateTextarea}
-                            rows={4}
-                            value={receiptTypeTemplates[code] || ''}
-                            onChange={(e) =>
-                              handleTemplateTextChange('receiptTypeTemplates', code, e.target.value)
-                            }
-                            placeholder="{\n  &quot;type&quot;: &quot;B2C&quot;,\n  &quot;totalAmount&quot;: 0\n}"
-                          />
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div style={styles.toggleStateHelper}>Select at least one receipt type to attach JSON.</div>
-                  )}
-                </>
-              ) : (
-                <div style={styles.toggleStateHelper}>
-                  Receipt type metadata is disabled for this endpoint.
-                </div>
-              )}
-            </div>
-          )}
-          {isTransactionUsage && supportsItems && (
-            <div style={styles.labelFull}>
-              <div style={styles.featureToggleRow}>
-                <label style={styles.checkboxLabel}>
-                  <input
-                    type="checkbox"
-                    checked={receiptItemsEnabled}
-                    onChange={(e) => handleChange('enableReceiptItems', e.target.checked)}
-                  />
-                  <span>Enable receipt items</span>
-                </label>
-                <span style={styles.toggleStateBadge}>
-                  {formState.allowMultipleReceiptItems !== false ? 'Multiple allowed' : 'Single value'}
-                </span>
-              </div>
-              {receiptItemsEnabled ? (
-                <>
-                  <label style={{ ...styles.checkboxLabel, marginBottom: '0.5rem' }}>
-                    <input
-                      type="checkbox"
-                      checked={Boolean(formState.allowMultipleReceiptItems)}
-                      onChange={(e) => handleChange('allowMultipleReceiptItems', e.target.checked)}
-                    />
-                    <span>Allow more than one receipt item template</span>
-                  </label>
-                  <span style={styles.multiSelectTitle}>Receipt item templates</span>
-                  <span style={styles.multiSelectHint}>
-                    Store JSON snippets that describe individual item rows (used when previewing the payload).
-                  </span>
-                  <div style={styles.templateList}>
-                    {receiptItemTemplates.map((template, index) => (
-                      <div key={`receipt-item-template-${index}`} style={styles.templateBox}>
-                        <div style={styles.templateHeader}>
-                          <strong>Item template {index + 1}</strong>
-                          {receiptItemTemplates.length > 1 && (
-                            <button
-                              type="button"
-                              style={styles.templateRemoveButton}
-                              onClick={() => removeReceiptItemTemplate(index)}
-                            >
-                              Remove
-                            </button>
-                          )}
-                        </div>
-                        <textarea
-                          style={styles.templateTextarea}
-                          rows={4}
-                          value={template || ''}
-                          onChange={(e) => handleReceiptItemTemplateChange(index, e.target.value)}
-                          placeholder="{\n  &quot;name&quot;: &quot;Sample item&quot;,\n  &quot;qty&quot;: 1\n}"
-                        />
-                      </div>
-                    ))}
-                  </div>
-                  {formState.allowMultipleReceiptItems !== false && (
-                    <button type="button" style={styles.smallButton} onClick={addReceiptItemTemplate}>
-                      Add another item template
-                    </button>
-                  )}
-                </>
-              ) : (
-                <div style={styles.toggleStateHelper}>Receipt item templates are disabled for this endpoint.</div>
-              )}
-            </div>
-          )}
-          {isTransactionUsage && supportsItems && (
-            <div style={styles.labelFull}>
-              <div style={styles.featureToggleRow}>
-                <label style={styles.checkboxLabel}>
-                  <input
-                    type="checkbox"
-                    checked={receiptTaxTypesEnabled}
-                    onChange={(e) => handleChange('enableReceiptTaxTypes', e.target.checked)}
-                  />
-                  <span>Enable receipt tax types</span>
-                </label>
-                <span style={styles.toggleStateBadge}>
-                  {formState.allowMultipleReceiptTaxTypes !== false ? 'Multiple allowed' : 'Single value'}
-                </span>
-              </div>
-              {receiptTaxTypesEnabled ? (
-                <>
-                  <label style={{ ...styles.checkboxLabel, marginBottom: '0.5rem' }}>
-                    <input
-                      type="checkbox"
-                      checked={Boolean(formState.allowMultipleReceiptTaxTypes)}
-                      onChange={(e) => handleChange('allowMultipleReceiptTaxTypes', e.target.checked)}
-                    />
-                    <span>Allow selecting more than one receipt tax type</span>
-                  </label>
-                  <span style={styles.multiSelectTitle}>Receipt tax types</span>
-                  <span style={styles.multiSelectHint}>
-                    Limit the tax type choices when building receipts and mapping fields.
-                  </span>
-                  <div style={styles.multiSelectOptions}>
-                    {TAX_TYPES.map((tax) => {
-                      const checked = Array.isArray(formState.taxTypes)
-                        ? formState.taxTypes.includes(tax.value)
-                        : false;
-                      return (
-                        <label key={tax.value} style={styles.multiSelectOption}>
-                          <input
-                            type="checkbox"
-                            checked={checked}
-                            onChange={() => toggleTaxType(tax.value)}
-                          />
-                          <span>{tax.label}</span>
-                        </label>
-                      );
-                    })}
-                  </div>
-                  <div style={styles.multiSelectImport}>
-                    <span style={styles.multiSelectTitle}>Paste tax-type codes</span>
-                    <span style={styles.multiSelectHint}>
-                      Paste comma- or newline-separated values (VAT_ABLE, VAT_FREE, VAT_ZERO, NO_VAT).
-                    </span>
-                    <textarea
-                      value={taxTypeListText}
-                      onChange={(e) => handleTaxTypeListChange(e.target.value)}
-                      onFocus={handleTaxTypeListFocus}
-                      onBlur={handleTaxTypeListBlur}
-                      style={styles.inlineTextarea}
-                      rows={3}
-                      placeholder="VAT_ABLE, VAT_FREE"
-                    />
-                    <div style={styles.inlineActionRow}>
-                      <button type="button" style={styles.applyButton} onClick={handleTaxTypeListApplyClick}>
-                        Apply pasted values
-                      </button>
-                      <span style={styles.inlineActionHint}>Values outside the supported list are ignored.</span>
-                    </div>
-                    {taxTypeListError && <div style={styles.inputError}>{taxTypeListError}</div>}
-                  </div>
-                  {selectedTaxTypes.length > 0 ? (
-                    <div style={styles.templateList}>
-                      <span style={styles.multiSelectTitle}>Tax-type JSON templates</span>
-                      <span style={styles.multiSelectHint}>
-                        Store additional JSON payloads per tax type (e.g., special totals or product codes).
-                      </span>
-                      {selectedTaxTypes.map((code) => (
-                        <div key={`tax-template-${code}`} style={styles.templateBox}>
-                          <div style={styles.templateHeader}>
-                            <strong>{code}</strong>
-                            <span style={styles.templatePill}>
-                              {formState.allowMultipleReceiptTaxTypes !== false ? 'Multi' : 'Single'}
-                            </span>
-                          </div>
-                          <textarea
-                            style={styles.templateTextarea}
-                            rows={4}
-                            value={taxTypeTemplates[code] || ''}
-                            onChange={(e) =>
-                              handleTemplateTextChange('taxTypeTemplates', code, e.target.value)
-                            }
-                            placeholder="{\n  &quot;taxType&quot;: &quot;VAT_ABLE&quot;\n}"
-                          />
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div style={styles.toggleStateHelper}>Select a tax type to attach JSON details.</div>
-                  )}
-                </>
-              ) : (
-                <div style={styles.toggleStateHelper}>Tax type metadata is disabled for this endpoint.</div>
-              )}
-            </div>
-          )}
-          {isTransactionUsage && supportsMultiplePayments && (
-            <div style={styles.labelFull}>
-              <div style={styles.featureToggleRow}>
-                <label style={styles.checkboxLabel}>
-                  <input
-                    type="checkbox"
-                    checked={paymentMethodsEnabled}
-                    onChange={(e) => handleChange('enablePaymentMethods', e.target.checked)}
-                  />
-                  <span>Enable payment methods</span>
-                </label>
-                <span style={styles.toggleStateBadge}>
-                  {formState.allowMultiplePaymentMethods !== false ? 'Multiple allowed' : 'Single value'}
-                </span>
-              </div>
-              {paymentMethodsEnabled ? (
-                <>
-                  <label style={{ ...styles.checkboxLabel, marginBottom: '0.5rem' }}>
-                    <input
-                      type="checkbox"
-                      checked={Boolean(formState.allowMultiplePaymentMethods)}
-                      onChange={(e) => handleChange('allowMultiplePaymentMethods', e.target.checked)}
-                    />
-                    <span>Allow selecting more than one payment method</span>
-                  </label>
-                  <span style={styles.multiSelectTitle}>Payment methods</span>
-                  <span style={styles.multiSelectHint}>
-                    Choose the payment methods offered in the request builder UI.
-                  </span>
-                  <div style={styles.multiSelectOptions}>
-                    {PAYMENT_TYPES.map((payment) => {
-                      const checked = Array.isArray(formState.paymentMethods)
-                        ? formState.paymentMethods.includes(payment.value)
-                        : false;
-                      return (
-                        <label key={payment.value} style={styles.multiSelectOption}>
-                          <input
-                            type="checkbox"
-                            checked={checked}
-                            onChange={() => togglePaymentMethod(payment.value)}
-                          />
-                          <span>{payment.label}</span>
-                        </label>
-                      );
-                    })}
-                  </div>
-                  {selectedPaymentMethods.length > 0 ? (
-                    <div style={styles.templateList}>
-                      <span style={styles.multiSelectTitle}>Payment-method JSON templates</span>
-                      <span style={styles.multiSelectHint}>
-                        Provide per-method JSON (e.g., gateway metadata or default payload fragments).
-                      </span>
-                      {selectedPaymentMethods.map((code) => (
-                        <div key={`payment-template-${code}`} style={styles.templateBox}>
-                          <div style={styles.templateHeader}>
-                            <strong>{code.replace(/_/g, ' ')}</strong>
-                            <span style={styles.templatePill}>
-                              {formState.allowMultiplePaymentMethods !== false ? 'Multi' : 'Single'}
-                            </span>
-                          </div>
-                          <textarea
-                            style={styles.templateTextarea}
-                            rows={4}
-                            value={paymentMethodTemplates[code] || ''}
-                            onChange={(e) =>
-                              handleTemplateTextChange('paymentMethodTemplates', code, e.target.value)
-                            }
-                            placeholder="{\n  &quot;type&quot;: &quot;CASH&quot;,\n  &quot;amount&quot;: 0\n}"
-                          />
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div style={styles.toggleStateHelper}>Select a payment method to attach JSON.</div>
-                  )}
-                </>
-              ) : (
-                <div style={styles.toggleStateHelper}>Payment method metadata is disabled for this endpoint.</div>
-              )}
-            </div>
-          )}
+          </div>
           <label style={styles.label}>
             Path
             <input
