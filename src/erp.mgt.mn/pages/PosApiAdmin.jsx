@@ -2748,6 +2748,7 @@ export default function PosApiAdmin() {
   const [adminUseCachedToken, setAdminUseCachedToken] = useState(true);
   const [adminAuthEndpointId, setAdminAuthEndpointId] = useState('');
   const builderSyncRef = useRef(false);
+  const requestSampleSyncRef = useRef(false);
   const refreshInfoSyncLogsRef = useRef(() => Promise.resolve());
 
   function showToast(message, type = 'info') {
@@ -3419,6 +3420,10 @@ export default function PosApiAdmin() {
       });
 
       if (changed) {
+        if (requestSampleSyncRef.current) {
+          requestSampleSyncRef.current = false;
+          return next;
+        }
         syncRequestSampleFromSelections(next);
         return next;
       }
@@ -3438,6 +3443,7 @@ export default function PosApiAdmin() {
     const variationPayload = resolveVariationRequestExample(selectedVariationKey)
       || cleanSampleText(baseRequestJson || '{}');
     const formattedSample = JSON.stringify(variationPayload || {}, null, 2);
+    requestSampleSyncRef.current = true;
     setRequestSampleText(formattedSample);
     const selectionsFromSample = deriveRequestFieldSelections({
       requestSampleText: formattedSample,
@@ -3473,7 +3479,7 @@ export default function PosApiAdmin() {
     } catch (err) {
       setCombinationError(err.message || 'Failed to build combination payload.');
     }
-  }, [combinationBaseKey, combinationModifierKeys, activeVariations, exampleVariationMap]);
+  }, [combinationBaseKey, combinationModifierKeys, activeVariations, exampleVariationMap, baseRequestJson]);
 
   const selectedReceiptTypes = receiptTypesEnabled && Array.isArray(formState.receiptTypes)
     ? formState.receiptTypes
