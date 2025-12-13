@@ -378,6 +378,9 @@ test('promoteTemporarySubmission prevents concurrent promotions and respects row
       if (sql.startsWith('SELECT * FROM `transaction_temporaries` WHERE id = ?')) {
         return [[{ ...temporaryRow, status }]];
       }
+      if (sql.includes("WHERE chain_uuid = ? AND status = 'pending' AND id <> ?")) {
+        return [[]];
+      }
       if (sql.startsWith('SET @skip_triggers')) return [[], []];
       if (sql.startsWith('UPDATE `transaction_temporaries`')) {
         status = params[0] || status;
@@ -418,4 +421,65 @@ test('promoteTemporarySubmission prevents concurrent promotions and respects row
   );
 
   assert.ok(queries.some(({ sql }) => sql.includes('FOR UPDATE')));
+});
+
+test('promoteTemporarySubmission blocks when another pending temporary exists in the chain', async () => {
+  const temporaryRow = {
+    id: 15,
+    company_id: 1,
+    chain_uuid: 'chain-conflict-1',
+    table_name: 'transactions_test',
+    form_name: null,
+    config_name: null,
+    module_key: null,
+    payload_json: '{}',
+    cleaned_values_json: '{}',
+    raw_values_json: '{}',
+    created_by: 'EMP150',
+    plan_senior_empid: 'EMP200',
+    branch_id: null,
+    department_id: null,
+    status: 'pending',
+  };
+
+  const queries = [];
+  const conn = {
+    released: false,
+    async query(sql, params = []) {
+      queries.push({ sql, params });
+      if (sql.startsWith('CREATE TABLE IF NOT EXISTS')) return [[], []];
+      if (sql === 'BEGIN' || sql === 'COMMIT' || sql === 'ROLLBACK') return [[], []];
+      if (sql.startsWith('SELECT * FROM `transaction_temporaries` WHERE id = ?')) {
+        return [[temporaryRow]];
+      }
+      if (sql.includes("WHERE chain_uuid = ? AND status = 'pending' AND id <> ?")) {
+        return [[{ id: 42 }]];
+      }
+      if (sql.startsWith('SET @skip_triggers')) return [[], []];
+      throw new Error(`Unexpected SQL: ${sql}`);
+    },
+    release() {
+      this.released = true;
+    },
+  };
+
+  const runtimeDeps = {
+    connectionFactory: async () => conn,
+    columnLister: async () => [{ name: 'amount', type: 'int', maxLength: null }],
+    notificationInserter: async () => {},
+    activityLogger: async () => {},
+  };
+
+  await assert.rejects(
+    () =>
+      promoteTemporarySubmission(
+        15,
+        { reviewerEmpId: 'EMP200', cleanedValues: { amount: 99 } },
+        runtimeDeps,
+      ),
+    (err) => err && err.status === 409,
+  );
+
+  assert.ok(queries.some(({ sql }) => sql.includes('status = \'pending\'')));
+  assert.ok(conn.released);
 });
