@@ -30,7 +30,7 @@ function createStubConnection({ temporaryRow, chainIds = [] } = {}) {
         return [[], []];
       }
       if (sql.includes('INFORMATION_SCHEMA.COLUMNS')) {
-        return [[{ COLUMN_NAME: 'chain_id' }, { COLUMN_NAME: 'chain_uuid' }, { COLUMN_NAME: 'is_pending' }]];
+        return [[{ COLUMN_NAME: 'chain_id' }, { COLUMN_NAME: 'is_pending' }]];
       }
       if (sql.includes('idx_temp_chain_pending')) {
         return [[{ INDEX_NAME: 'idx_temp_chain_pending' }]];
@@ -94,7 +94,7 @@ test('getTemporarySummary marks reviewers even without pending temporaries', asy
         return [[], []];
       }
       if (sql.includes('INFORMATION_SCHEMA.COLUMNS')) {
-        return [[{ COLUMN_NAME: 'chain_id' }, { COLUMN_NAME: 'chain_uuid' }, { COLUMN_NAME: 'is_pending' }]];
+        return [[{ COLUMN_NAME: 'chain_id' }, { COLUMN_NAME: 'is_pending' }]];
       }
       if (sql.includes('idx_temp_chain_pending')) {
         return [[{ INDEX_NAME: 'idx_temp_chain_pending' }]];
@@ -114,7 +114,7 @@ test('getTemporarySummary marks reviewers even without pending temporaries', asy
     if (sql.startsWith('CREATE TABLE IF NOT EXISTS `transaction_temporary_review_history`')) {
       return [[], []];
     }
-    if (sql.startsWith('SELECT t.*')) {
+    if (sql.startsWith('SELECT filtered.*')) {
       const now = new Date().toISOString();
       if (sql.includes('plan_senior_empid = ?')) {
         return [
@@ -237,7 +237,6 @@ test('listTemporarySubmissions filters before grouping by chain', async () => {
       reviewed_at: null,
       promoted_record_id: null,
       chain_id: 101,
-      chain_uuid: null,
       created_at: now,
       updated_at: '2024-01-02T00:00:00.000Z',
     },
@@ -261,7 +260,6 @@ test('listTemporarySubmissions filters before grouping by chain', async () => {
       reviewed_at: '2024-01-03T00:00:00.000Z',
       promoted_record_id: 'PR-1',
       chain_id: 101,
-      chain_uuid: null,
       created_at: now,
       updated_at: '2024-01-03T00:00:00.000Z',
     },
@@ -285,7 +283,6 @@ test('listTemporarySubmissions filters before grouping by chain', async () => {
       reviewed_at: null,
       promoted_record_id: null,
       chain_id: 201,
-      chain_uuid: null,
       created_at: now,
       updated_at: '2024-01-04T00:00:00.000Z',
     },
@@ -298,7 +295,7 @@ test('listTemporarySubmissions filters before grouping by chain', async () => {
       return [[], []];
     }
     if (sql.includes('INFORMATION_SCHEMA.COLUMNS')) {
-      return [[{ COLUMN_NAME: 'chain_id' }, { COLUMN_NAME: 'chain_uuid' }, { COLUMN_NAME: 'is_pending' }]];
+      return [[{ COLUMN_NAME: 'chain_id' }, { COLUMN_NAME: 'is_pending' }]];
     }
     if (sql.includes('INFORMATION_SCHEMA.TABLE_CONSTRAINTS')) {
       return [[{ CONSTRAINT_NAME: 'chk_temp_pending_reviewer' }]];
@@ -318,20 +315,19 @@ test('listTemporarySubmissions filters before grouping by chain', async () => {
     if (sql.startsWith('UPDATE `transaction_temporaries` SET chain_id = id WHERE chain_id IS NULL')) {
       return [[], []];
     }
-    if (sql.startsWith('SELECT t.*')) {
+    if (sql.startsWith('SELECT filtered.*')) {
+      const statusParam = params[0];
       if (sql.includes('plan_senior_empid = ?')) {
-        const statusParam = params[0];
         const reviewer = params[params.length - 1];
-        const pendingRows = temporaries.filter(
-          (row) => row.plan_senior_empid === reviewer && row.status === statusParam,
-        );
-        return [pendingRows];
-      }
-      const creator = params[params.length - 1];
-      const grouped = new Map();
-      temporaries
-        .filter((row) => row.created_by === creator)
-        .forEach((row) => {
+        const pendingRows = temporaries.filter((row) => {
+          const matchesReviewer = row.plan_senior_empid === reviewer;
+          if (!matchesReviewer) return false;
+          if (!statusParam || statusParam === 'any') return true;
+          if (statusParam === 'processed') return row.status !== 'pending';
+          return row.status === statusParam;
+        });
+        const grouped = new Map();
+        pendingRows.forEach((row) => {
           const key = row.chain_id || row.id;
           const existing = grouped.get(key);
           const existingDate = existing ? new Date(existing.updated_at) : null;
@@ -340,6 +336,20 @@ test('listTemporarySubmissions filters before grouping by chain', async () => {
             grouped.set(key, row);
           }
         });
+        return [Array.from(grouped.values())];
+      }
+      const creator = params[params.length - 1];
+      const filteredRows = temporaries.filter((row) => row.created_by === creator);
+      const grouped = new Map();
+      filteredRows.forEach((row) => {
+        const key = row.chain_id || row.id;
+        const existing = grouped.get(key);
+        const existingDate = existing ? new Date(existing.updated_at) : null;
+        const nextDate = new Date(row.updated_at);
+        if (!existing || nextDate > existingDate) {
+          grouped.set(key, row);
+        }
+      });
       return [Array.from(grouped.values())];
     }
     throw new Error(`Unexpected SQL: ${sql}`);
@@ -420,7 +430,6 @@ test('promoteTemporarySubmission forwards chain with normalized metadata and cle
     id: 3,
     company_id: 1,
     chain_id: 1,
-    chain_uuid: 'chain-forward-1',
     table_name: 'transactions_test',
     form_name: null,
     config_name: null,
@@ -464,8 +473,8 @@ test('promoteTemporarySubmission forwards chain with normalized metadata and cle
     sql.includes('INSERT INTO `transaction_temporary_review_history`'),
   );
   assert.ok(historyInsert);
-  assert.equal(historyInsert.params[3], 'forwarded');
-  assert.equal(historyInsert.params[5], 'EMP300');
+  assert.equal(historyInsert.params[2], 'forwarded');
+  assert.equal(historyInsert.params[4], 'EMP300');
   assert.ok(conn.released);
 });
 
@@ -474,7 +483,6 @@ test('promoteTemporarySubmission promotes chain and records promotedRecordId', a
     id: 7,
     company_id: 1,
     chain_id: 6,
-    chain_uuid: 'chain-promote-1',
     table_name: 'transactions_test',
     form_name: null,
     config_name: null,
@@ -517,8 +525,8 @@ test('promoteTemporarySubmission promotes chain and records promotedRecordId', a
     sql.includes('INSERT INTO `transaction_temporary_review_history`'),
   );
   assert.ok(historyInsert);
-  assert.equal(historyInsert.params[3], 'promoted');
-  assert.equal(historyInsert.params[6], '909');
+  assert.equal(historyInsert.params[2], 'promoted');
+  assert.equal(historyInsert.params[5], '909');
   assert.ok(conn.released);
 });
 
@@ -528,7 +536,6 @@ test('promoteTemporarySubmission prevents concurrent promotions and respects row
     id: 11,
     company_id: 1,
     chain_id: 11,
-    chain_uuid: 'chain-promote-2',
     table_name: 'transactions_test',
     form_name: null,
     config_name: null,
@@ -608,7 +615,6 @@ test('promoteTemporarySubmission blocks when another pending temporary exists in
     id: 15,
     company_id: 1,
     chain_id: 15,
-    chain_uuid: 'chain-conflict-1',
     table_name: 'transactions_test',
     form_name: null,
     config_name: null,
@@ -672,7 +678,6 @@ test('getTemporaryChainHistory returns chainId and history rows', async () => {
     {
       id: 501,
       chain_id: 501,
-      chain_uuid: 'uuid-501',
       status: 'pending',
       plan_senior_empid: 'J6',
       reviewed_by: null,
@@ -686,7 +691,6 @@ test('getTemporaryChainHistory returns chainId and history rows', async () => {
     {
       id: 502,
       chain_id: 501,
-      chain_uuid: 'uuid-501',
       status: 'promoted',
       plan_senior_empid: null,
       reviewed_by: 'J6',
@@ -703,7 +707,6 @@ test('getTemporaryChainHistory returns chainId and history rows', async () => {
       id: 701,
       temporary_id: 501,
       chain_id: 501,
-      chain_uuid: 'uuid-501',
       action: 'promoted',
       reviewer_empid: 'J6',
       forwarded_to_empid: null,
@@ -720,7 +723,7 @@ test('getTemporaryChainHistory returns chainId and history rows', async () => {
       queries.push({ sql, params });
       if (sql.startsWith('CREATE TABLE IF NOT EXISTS')) return [[], []];
       if (sql.includes('INFORMATION_SCHEMA.COLUMNS')) {
-        return [[{ COLUMN_NAME: 'chain_id' }, { COLUMN_NAME: 'chain_uuid' }, { COLUMN_NAME: 'is_pending' }]];
+        return [[{ COLUMN_NAME: 'chain_id' }, { COLUMN_NAME: 'is_pending' }]];
       }
       if (sql.includes('INFORMATION_SCHEMA.STATISTICS')) {
         return [[{ INDEX_NAME: 'idx_temp_chain_pending' }]];
@@ -741,7 +744,7 @@ test('getTemporaryChainHistory returns chainId and history rows', async () => {
       if (sql.startsWith('SELECT * FROM `transaction_temporaries` WHERE id = ?')) {
         return [[chainRows[0]]];
       }
-      if (sql.startsWith('SELECT id, chain_id, chain_uuid, status')) {
+      if (sql.startsWith('SELECT id, chain_id AS chainId')) {
         return [chainRows];
       }
       if (sql.startsWith('SELECT id, temporary_id, chain_id')) {
