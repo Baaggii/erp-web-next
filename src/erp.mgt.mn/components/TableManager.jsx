@@ -4076,17 +4076,15 @@ const TableManager = forwardRef(function TableManager({
 
   const refreshTemporaryQueuesAfterDecision = useCallback(
     async ({ focusId = null } = {}) => {
-      const originalScope = temporaryScope;
       await refreshTemporarySummary();
-      await fetchTemporaryList('review', {
-        focusId: focusId || undefined,
-        preserveScope: originalScope !== 'review',
-      });
-      if (
-        originalScope !== 'review' &&
-        availableTemporaryScopes.includes(originalScope)
-      ) {
-        await fetchTemporaryList(originalScope, { preserveScope: false });
+      const scopesToRefresh = new Set(['review', 'created']);
+      if (temporaryScope) scopesToRefresh.add(temporaryScope);
+      for (const scope of scopesToRefresh) {
+        if (!availableTemporaryScopes.includes(scope)) continue;
+        await fetchTemporaryList(scope, {
+          focusId: focusId || undefined,
+          preserveScope: scope === temporaryScope,
+        });
       }
     },
     [
@@ -5198,20 +5196,6 @@ const TableManager = forwardRef(function TableManager({
 
   const uploadCfg = uploadRow ? getConfigForRow(uploadRow) : {};
 
-  const temporaryBadgeCount = useMemo(() => {
-    if (!temporarySummary) return 0;
-    if (
-      availableTemporaryScopes.includes('review') &&
-      Number(temporarySummary.reviewPending) > 0
-    ) {
-      return temporarySummary.reviewPending;
-    }
-    if (availableTemporaryScopes.includes('created')) {
-      return temporarySummary.createdPending ?? 0;
-    }
-    return 0;
-  }, [temporarySummary, availableTemporaryScopes]);
-
   const reviewPendingCount = supportsTemporary &&
     availableTemporaryScopes.includes('review')
       ? Number(temporarySummary?.reviewPending || 0)
@@ -5323,18 +5307,41 @@ const TableManager = forwardRef(function TableManager({
               style={{ marginRight: '0.5rem', position: 'relative' }}
             >
               {t('temporaries', 'Temporaries')}
-              {temporaryBadgeCount > 0 && (
+              {(reviewPendingCount > 0 || createdPendingCount > 0) && (
                 <span
                   style={{
                     marginLeft: '0.5rem',
-                    background: '#2563eb',
-                    color: '#fff',
-                    borderRadius: '999px',
-                    padding: '0 0.5rem',
-                    fontSize: '0.75rem',
+                    display: 'inline-flex',
+                    gap: '0.35rem',
+                    alignItems: 'center',
                   }}
                 >
-                  {temporaryBadgeCount}
+                  {availableTemporaryScopes.includes('review') && (
+                    <span
+                      style={{
+                        background: '#2563eb',
+                        color: '#fff',
+                        borderRadius: '999px',
+                        padding: '0 0.45rem',
+                        fontSize: '0.7rem',
+                      }}
+                    >
+                      R: {reviewPendingCount}
+                    </span>
+                  )}
+                  {availableTemporaryScopes.includes('created') && (
+                    <span
+                      style={{
+                        background: '#334155',
+                        color: '#fff',
+                        borderRadius: '999px',
+                        padding: '0 0.45rem',
+                        fontSize: '0.7rem',
+                      }}
+                    >
+                      C: {createdPendingCount}
+                    </span>
+                  )}
                 </span>
               )}
             </button>

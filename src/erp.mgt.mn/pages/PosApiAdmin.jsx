@@ -6299,9 +6299,6 @@ export default function PosApiAdmin() {
     if (skipFieldFilter || (!isModifier && !allowedFields.length)) {
       return payloadCandidate;
     }
-    if (isModifier) {
-      return allowedFields.length ? pickPayloadFields(payloadCandidate, allowedFields) : {};
-    }
     const fallbackFields = flattenExampleFields(payloadCandidate)
       .map((entry) => entry.field)
       .filter(Boolean);
