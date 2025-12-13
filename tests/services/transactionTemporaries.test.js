@@ -6,6 +6,8 @@ import {
   buildChainIdsForUpdate,
   getTemporarySummary,
   sanitizeCleanedValuesForInsert,
+  resolveChainIdsForUpdate,
+  promoteTemporarySubmission,
 } from '../../api-server/services/transactionTemporaries.js';
 
 function mockQuery(handler) {
@@ -16,9 +18,62 @@ function mockQuery(handler) {
   };
 }
 
+function createStubConnection({ temporaryRow, chainIds = [] } = {}) {
+  const queries = [];
+  const conn = {
+    released: false,
+    async query(sql, params = []) {
+      queries.push({ sql, params });
+      if (sql.startsWith('CREATE TABLE IF NOT EXISTS')) {
+        return [[], []];
+      }
+      if (sql.includes('INFORMATION_SCHEMA.TABLE_CONSTRAINTS')) {
+        return [[{ CONSTRAINT_NAME: 'chk_temp_pending_reviewer' }]];
+      }
+      if (sql.startsWith('ALTER TABLE `transaction_temporaries`')) {
+        return [[], []];
+      }
+      if (sql === 'BEGIN' || sql === 'COMMIT' || sql === 'ROLLBACK') {
+        return [[], []];
+      }
+      if (sql.startsWith('SELECT * FROM `transaction_temporaries` WHERE id = ?')) {
+        return [[temporaryRow]];
+      }
+      if (sql.includes('SELECT id FROM `transaction_temporaries` WHERE id IN')) {
+        const rows = chainIds
+          .filter((id) => params.includes(id))
+          .map((id) => ({ id }));
+        return [rows];
+      }
+      if (sql.startsWith('INSERT INTO `transaction_temporaries`')) {
+        return [[{ insertId: 202 }]];
+      }
+      if (sql.startsWith('UPDATE `transaction_temporaries`')) {
+        return [[{ affectedRows: 1 }]];
+      }
+      if (sql.startsWith('SET @skip_triggers')) {
+        return [[], []];
+      }
+      throw new Error(`Unexpected SQL: ${sql}`);
+    },
+    release() {
+      this.released = true;
+    },
+  };
+  return { conn, queries };
+}
+
 test('getTemporarySummary marks reviewers even without pending temporaries', async () => {
+  const queries = [];
   const restore = mockQuery(async (sql) => {
+    queries.push(sql);
     if (sql.startsWith('CREATE TABLE IF NOT EXISTS')) {
+      return [[], []];
+    }
+    if (sql.includes('INFORMATION_SCHEMA.TABLE_CONSTRAINTS')) {
+      return [[{ CONSTRAINT_NAME: 'missing' }]];
+    }
+    if (sql.startsWith('ALTER TABLE `transaction_temporaries`')) {
       return [[], []];
     }
     if (sql.startsWith('SELECT * FROM `transaction_temporaries`')) {
@@ -67,6 +122,10 @@ test('getTemporarySummary marks reviewers even without pending temporaries', asy
     assert.equal(summary.createdPending, 0);
     assert.equal(summary.reviewPending, 0);
     assert.equal(summary.isReviewer, true);
+    assert.ok(
+      queries.some((sql) => sql.includes('INFORMATION_SCHEMA.TABLE_CONSTRAINTS')),
+    );
+    assert.ok(queries.some((sql) => sql.startsWith('ALTER TABLE `transaction_temporaries`')));
   } finally {
     restore();
   }
@@ -125,4 +184,257 @@ test('expandForwardMeta preserves existing chain metadata while normalizing curr
   assert.equal(updated.parentTemporaryId, 3);
   assert.equal(updated.originCreator, 'EMP123');
   assert.deepEqual(updated.chainIds.sort((a, b) => a - b), [1, 2, 3, 10]);
+});
+
+test('resolveChainIdsForUpdate filters missing temporaries and locks rows', async () => {
+  const seen = [];
+  const conn = {
+    async query(sql, params = []) {
+      seen.push(sql);
+      if (sql.includes('SELECT id FROM')) {
+        return [[{ id: 1 }, { id: 3 }]];
+      }
+      return [[], []];
+    },
+  };
+
+  const chain = await resolveChainIdsForUpdate(
+    conn,
+    { chainIds: [1, 2, 3], parentTemporaryId: 1 },
+    3,
+  );
+
+  assert.deepEqual(chain, [1, 3]);
+  assert.ok(seen.some((sql) => sql.includes('FOR UPDATE')));
+});
+
+test('promoteTemporarySubmission forwards chain with normalized metadata and clears reviewers', async () => {
+  const temporaryRow = {
+    id: 3,
+    company_id: 1,
+    table_name: 'transactions_test',
+    form_name: null,
+    config_name: null,
+    module_key: null,
+    payload_json: JSON.stringify({ forwardMeta: { chainIds: [5], rootTemporaryId: 1, parentTemporaryId: 2 } }),
+    cleaned_values_json: '{}',
+    raw_values_json: '{}',
+    created_by: 'EMP150',
+    plan_senior_empid: 'EMP100',
+    branch_id: null,
+    department_id: null,
+    status: 'pending',
+  };
+  const chainUpdates = [];
+  const notifications = [];
+  const { conn, queries } = createStubConnection({
+    temporaryRow,
+    chainIds: [1, 2, 3, 5],
+  });
+
+  const result = await promoteTemporarySubmission(
+    3,
+    { reviewerEmpId: 'EMP100', cleanedValues: { amount: 10 }, promoteAsTemporary: true },
+    {
+      connectionFactory: async () => conn,
+      columnLister: async () => [{ name: 'amount', type: 'int', maxLength: null }],
+      employmentSessionFetcher: async () => ({ senior_empid: 'EMP300' }),
+      chainStatusUpdater: async (_c, ids, payload) => chainUpdates.push({ ids, payload }),
+      notificationInserter: async (_c, payload) => notifications.push(payload),
+      activityLogger: async () => {},
+    },
+  );
+
+  assert.equal(result.forwardedTo, 'EMP300');
+  assert.ok(chainUpdates.length > 0);
+  assert.deepEqual(chainUpdates[0].ids.sort((a, b) => a - b), [1, 2, 3, 5]);
+  assert.equal(chainUpdates[0].payload.clearReviewerAssignment, true);
+  assert.equal(chainUpdates[0].payload.status, 'promoted');
+  assert.ok(queries.some(({ sql }) => sql.includes('INSERT INTO `transaction_temporaries`')));
+  assert.ok(conn.released);
+});
+
+test('promoteTemporarySubmission promotes chain and records promotedRecordId', async () => {
+  const temporaryRow = {
+    id: 7,
+    company_id: 1,
+    table_name: 'transactions_test',
+    form_name: null,
+    config_name: null,
+    module_key: null,
+    payload_json: JSON.stringify({ forwardMeta: { chainIds: [8], rootTemporaryId: 6 } }),
+    cleaned_values_json: '{}',
+    raw_values_json: '{}',
+    created_by: 'EMP150',
+    plan_senior_empid: 'EMP100',
+    branch_id: null,
+    department_id: null,
+    status: 'pending',
+  };
+  const chainUpdates = [];
+  const notifications = [];
+  const { conn, queries } = createStubConnection({
+    temporaryRow,
+    chainIds: [6, 7, 8],
+  });
+
+  const result = await promoteTemporarySubmission(
+    7,
+    { reviewerEmpId: 'EMP100', cleanedValues: { amount: 25 } },
+    {
+      connectionFactory: async () => conn,
+      columnLister: async () => [{ name: 'amount', type: 'int', maxLength: null }],
+      tableInserter: async () => ({ id: 909 }),
+      chainStatusUpdater: async (_c, ids, payload) => chainUpdates.push({ ids, payload }),
+      notificationInserter: async (_c, payload) => notifications.push(payload),
+      activityLogger: async () => {},
+    },
+  );
+
+  assert.equal(result.promotedRecordId, '909');
+  assert.ok(chainUpdates.length > 0);
+  assert.deepEqual(chainUpdates[0].ids.sort((a, b) => a - b), [6, 7, 8]);
+  assert.equal(chainUpdates[0].payload.promotedRecordId, '909');
+  assert.equal(chainUpdates[0].payload.clearReviewerAssignment, true);
+  assert.ok(queries.some(({ sql }) => sql.includes('UPDATE `transaction_temporaries`')));
+  assert.ok(conn.released);
+});
+
+function createSharedLock(log = []) {
+  let locked = false;
+  const waiters = [];
+  const acquire = async (tag) => {
+    if (locked) {
+      await new Promise((resolve) => waiters.push(resolve));
+    }
+    locked = true;
+    log.push(`acquired:${tag}`);
+  };
+  const release = (tag) => {
+    log.push(`released:${tag}`);
+    const next = waiters.shift();
+    if (next) {
+      next();
+    } else {
+      locked = false;
+    }
+  };
+  return { acquire, release };
+}
+
+function createLockingConnection({ temporaryRow, chainIds = [], lock, tag, log }) {
+  const queries = [];
+  const rowRef = temporaryRow;
+  const conn = {
+    released: false,
+    async query(sql, params = []) {
+      queries.push({ sql, params });
+      if (sql.startsWith('CREATE TABLE IF NOT EXISTS')) return [[], []];
+      if (sql.includes('INFORMATION_SCHEMA.TABLE_CONSTRAINTS')) {
+        return [[{ CONSTRAINT_NAME: 'chk_temp_pending_reviewer' }]];
+      }
+      if (sql.startsWith('ALTER TABLE `transaction_temporaries`')) return [[], []];
+      if (sql === 'BEGIN' || sql === 'ROLLBACK') return [[], []];
+      if (sql === 'COMMIT') {
+        if (lock) lock.release(tag, log);
+        return [[], []];
+      }
+      if (sql.startsWith('SELECT * FROM `transaction_temporaries` WHERE id = ?')) {
+        if (lock) await lock.acquire(tag, log);
+        return [[{ ...rowRef }]];
+      }
+      if (sql.includes('SELECT id FROM `transaction_temporaries` WHERE id IN')) {
+        const rows = chainIds
+          .filter((id) => params.includes(id))
+          .map((id) => ({ id }));
+        return [rows];
+      }
+      if (sql.startsWith('UPDATE `transaction_temporaries`')) {
+        rowRef.status = 'promoted';
+        return [[{ affectedRows: 1 }]];
+      }
+      if (sql.startsWith('INSERT INTO `transaction_temporaries`')) {
+        return [[{ insertId: 999 }]];
+      }
+      if (sql.startsWith('SET @skip_triggers')) return [[], []];
+      throw new Error(`Unexpected SQL: ${sql}`);
+    },
+    release() {
+      this.released = true;
+    },
+  };
+  return { conn, queries };
+}
+
+test('concurrent promotions serialize on row lock and prevent duplicate reviews', async () => {
+  const chainUpdates = [];
+  const notifications = [];
+  const lockLog = [];
+  const sharedLock = createSharedLock(lockLog);
+  const sharedRow = {
+    id: 10,
+    company_id: 1,
+    table_name: 'transactions_test',
+    form_name: null,
+    config_name: null,
+    module_key: null,
+    payload_json: JSON.stringify({ forwardMeta: { chainIds: [10] } }),
+    cleaned_values_json: '{}',
+    raw_values_json: '{}',
+    created_by: 'EMP150',
+    plan_senior_empid: 'EMP100',
+    branch_id: null,
+    department_id: null,
+    status: 'pending',
+  };
+  let connectionCounter = 0;
+  const connectionFactory = async () => {
+    connectionCounter += 1;
+    return createLockingConnection({
+      temporaryRow: sharedRow,
+      chainIds: [10],
+      lock: sharedLock,
+      tag: connectionCounter,
+      log: lockLog,
+    }).conn;
+  };
+
+  const firstPromotion = promoteTemporarySubmission(
+    10,
+    { reviewerEmpId: 'EMP100', cleanedValues: { amount: 5 } },
+    {
+      connectionFactory,
+      columnLister: async () => [{ name: 'amount', type: 'int', maxLength: null }],
+      tableInserter: async () => ({ id: 555 }),
+      chainStatusUpdater: async (_c, ids, payload) => chainUpdates.push({ ids, payload }),
+      notificationInserter: async (_c, payload) => notifications.push(payload),
+      activityLogger: async () => {},
+      chainIdResolver: async () => [10],
+    },
+  );
+
+  const secondPromotion = promoteTemporarySubmission(
+    10,
+    { reviewerEmpId: 'EMP100', cleanedValues: { amount: 7 } },
+    {
+      connectionFactory,
+      columnLister: async () => [{ name: 'amount', type: 'int', maxLength: null }],
+      tableInserter: async () => ({ id: 777 }),
+      chainStatusUpdater: async (_c, ids, payload) => chainUpdates.push({ ids, payload }),
+      notificationInserter: async (_c, payload) => notifications.push(payload),
+      activityLogger: async () => {},
+      chainIdResolver: async () => [10],
+    },
+  );
+
+  const [firstResult, secondResult] = await Promise.allSettled([
+    firstPromotion,
+    secondPromotion,
+  ]);
+
+  assert.equal(firstResult.status, 'fulfilled');
+  assert.equal(secondResult.status, 'rejected');
+  assert.equal(secondResult.reason?.status, 409);
+  assert.ok(lockLog.indexOf('released:1') < lockLog.indexOf('acquired:2'));
+  assert.ok(chainUpdates.some((update) => update.payload.clearReviewerAssignment));
 });
