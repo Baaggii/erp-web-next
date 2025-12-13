@@ -3430,8 +3430,8 @@ export default function PosApiAdmin() {
       (entry) => (entry.key || entry.name) === selectedVariationKey,
     );
     const variationPayload = variationDefinition
-      ? sanitizeRequestExampleForSample(variationDefinition.requestExample || {})
-      : {};
+      ? toSamplePayload(variationDefinition.requestExample ?? (variationDefinition.requestExampleText || {}))
+      : getVariationExamplePayload(selectedVariationKey);
     const prettyPayload = variationPayload && typeof variationPayload === 'object'
       ? JSON.stringify(variationPayload, null, 2)
       : '';

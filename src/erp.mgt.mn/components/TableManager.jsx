@@ -483,6 +483,12 @@ const TableManager = forwardRef(function TableManager({
   const [queuedTemporaryTrigger, setQueuedTemporaryTrigger] = useState(null);
   const lastExternalTriggerRef = useRef(null);
   const [temporaryLoading, setTemporaryLoading] = useState(false);
+  const [temporaryChainModalVisible, setTemporaryChainModalVisible] =
+    useState(false);
+  const [temporaryChainModalData, setTemporaryChainModalData] = useState(null);
+  const [temporaryChainModalError, setTemporaryChainModalError] = useState('');
+  const [temporaryChainModalLoading, setTemporaryChainModalLoading] =
+    useState(false);
   const setTemporaryRowRef = useCallback((id, node) => {
     if (id == null) return;
     const key = String(id);
@@ -4095,6 +4101,72 @@ const TableManager = forwardRef(function TableManager({
     ],
   );
 
+  const closeTemporaryChainModal = useCallback(() => {
+    setTemporaryChainModalVisible(false);
+    setTemporaryChainModalData(null);
+    setTemporaryChainModalError('');
+  }, []);
+
+  const openTemporaryChainModal = useCallback(
+    async (entry) => {
+      const id = getTemporaryId(entry);
+      if (!id) {
+        addToast(
+          t(
+            'temporary_chain_missing_id',
+            'Unable to load review chain for this temporary record.',
+          ),
+          'error',
+        );
+        return;
+      }
+      setTemporaryChainModalVisible(true);
+      setTemporaryChainModalLoading(true);
+      setTemporaryChainModalError('');
+      setTemporaryChainModalData(null);
+      try {
+        const res = await fetch(
+          `${API_BASE}/transaction_temporaries/${encodeURIComponent(id)}/chain`,
+          { credentials: 'include' },
+        );
+        if (!res.ok) {
+          let message = t(
+            'temporary_chain_load_failed',
+            'Failed to load review chain',
+          );
+          try {
+            const data = await res.json();
+            if (data?.message) message += `: ${data.message}`;
+          } catch {
+            // ignore
+          }
+          setTemporaryChainModalError(message);
+          return;
+        }
+        const data = await res.json().catch(() => ({}));
+        const chain = Array.isArray(data.chain) ? data.chain : [];
+        const reviewHistory = Array.isArray(data.reviewHistory)
+          ? data.reviewHistory
+          : [];
+        setTemporaryChainModalData({
+          chain,
+          reviewHistory,
+          entryId: id,
+          formLabel: entry?.formLabel || entry?.formName || '',
+        });
+      } catch (err) {
+        console.error('Failed to load temporary chain', err);
+        setTemporaryChainModalError(
+          err?.message ||
+            t('temporary_chain_load_failed', 'Failed to load review chain'),
+        );
+      } finally {
+        setTemporaryChainModalLoading(false);
+      }
+    },
+    [addToast, t],
+  );
+
   async function cleanupActiveTemporaryDraft({ refreshList = true } = {}) {
     if (!activeTemporaryDraftId) return;
     const targetId = activeTemporaryDraftId;
@@ -4546,6 +4618,32 @@ const TableManager = forwardRef(function TableManager({
     pendingReviewIds.length > 0 &&
     pendingReviewIds.every((id) => temporarySelection.has(id));
   const hasReviewSelection = canSelectTemporaries && temporarySelection.size > 0;
+
+  const temporaryChainStats = useMemo(() => {
+    const chain = Array.isArray(temporaryChainModalData?.chain)
+      ? temporaryChainModalData.chain
+      : [];
+    if (chain.length === 0) {
+      return {
+        length: 0,
+        pendingCount: 0,
+        completedCount: 0,
+        currentReviewer: null,
+        lastUpdated: null,
+      };
+    }
+    const pendingRows = chain.filter(
+      (item) => (item?.status || '').toString().trim().toLowerCase() === 'pending',
+    );
+    const currentReviewerEntry = pendingRows[0] || null;
+    return {
+      length: chain.length,
+      pendingCount: pendingRows.length,
+      completedCount: chain.length - pendingRows.length,
+      currentReviewer: currentReviewerEntry?.planSeniorEmpId || null,
+      lastUpdated: chain[chain.length - 1]?.updatedAt || null,
+    };
+  }, [temporaryChainModalData]);
 
   const toggleTemporarySelection = useCallback(
     (id) => {
@@ -6793,6 +6891,35 @@ const TableManager = forwardRef(function TableManager({
                               >
                                 {statusLabel}
                               </div>
+                              <div style={{ marginTop: '0.35rem' }}>
+                                {entryId ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => openTemporaryChainModal(entry)}
+                                    style={{
+                                      padding: '0.25rem 0.55rem',
+                                      backgroundColor: '#f3f4f6',
+                                      color: '#1f2937',
+                                      border: '1px solid #d1d5db',
+                                      borderRadius: '6px',
+                                      cursor: 'pointer',
+                                      fontSize: '0.8rem',
+                                    }}
+                                  >
+                                    {t(
+                                      'temporary_view_chain',
+                                      'View review chain & timeline',
+                                    )}
+                                  </button>
+                                ) : (
+                                  <span style={{ fontSize: '0.75rem', color: '#6b7280' }}>
+                                    {t(
+                                      'temporary_view_chain_unavailable',
+                                      'Chain details unavailable for this row.',
+                                    )}
+                                  </span>
+                                )}
+                              </div>
                               {!isPendingStatus && reviewedAt && (
                                 <div style={{ fontSize: '0.75rem', color: '#4b5563' }}>
                                   {t('temporary_reviewed_at', 'Reviewed')}: {formatTimestamp(reviewedAt)}
@@ -6966,6 +7093,244 @@ const TableManager = forwardRef(function TableManager({
               </div>
             )}
           </div>
+        )}
+      </Modal>
+      <Modal
+        visible={temporaryChainModalVisible}
+        onClose={closeTemporaryChainModal}
+        title={
+          temporaryChainModalData?.formLabel
+            ? t('temporary_chain_modal_title', 'Review chain: {{form}}', {
+                form: temporaryChainModalData.formLabel,
+              })
+            : t('temporary_chain_modal_generic', 'Review chain')
+        }
+        width="70vw"
+      >
+        {temporaryChainModalLoading ? (
+          <p style={{ fontSize: '0.9rem', color: '#4b5563' }}>
+            {t('temporary_chain_loading', 'Loading review chain…')}
+          </p>
+        ) : temporaryChainModalError ? (
+          <p style={{ fontSize: '0.9rem', color: '#b91c1c' }}>
+            {temporaryChainModalError}
+          </p>
+        ) : temporaryChainModalData ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+            <div
+              style={{
+                display: 'flex',
+                gap: '0.75rem',
+                flexWrap: 'wrap',
+              }}
+            >
+              <div
+                style={{
+                  background: '#f3f4f6',
+                  padding: '0.75rem 1rem',
+                  borderRadius: '0.75rem',
+                  minWidth: '12rem',
+                }}
+              >
+                <div style={{ color: '#6b7280', fontSize: '0.8rem' }}>
+                  {t('temporary_chain_length', 'Total reviewers')}
+                </div>
+                <div style={{ fontWeight: 700, fontSize: '1.1rem' }}>
+                  {temporaryChainStats.length}
+                </div>
+              </div>
+              <div
+                style={{
+                  background: '#ecfdf3',
+                  padding: '0.75rem 1rem',
+                  borderRadius: '0.75rem',
+                  minWidth: '12rem',
+                }}
+              >
+                <div style={{ color: '#047857', fontSize: '0.8rem' }}>
+                  {t('temporary_chain_completed', 'Completed')}
+                </div>
+                <div style={{ fontWeight: 700, fontSize: '1.1rem', color: '#065f46' }}>
+                  {temporaryChainStats.completedCount}
+                </div>
+              </div>
+              <div
+                style={{
+                  background: '#fff7ed',
+                  padding: '0.75rem 1rem',
+                  borderRadius: '0.75rem',
+                  minWidth: '12rem',
+                }}
+              >
+                <div style={{ color: '#b45309', fontSize: '0.8rem' }}>
+                  {t('temporary_chain_pending', 'Pending reviewers')}
+                </div>
+                <div style={{ fontWeight: 700, fontSize: '1.1rem', color: '#b45309' }}>
+                  {temporaryChainStats.pendingCount}
+                </div>
+                {temporaryChainStats.currentReviewer && (
+                  <div style={{ fontSize: '0.8rem', color: '#92400e' }}>
+                    {t('temporary_chain_current_reviewer', 'Current reviewer')}: {temporaryChainStats.currentReviewer}
+                  </div>
+                )}
+              </div>
+            </div>
+            <div>
+              <h4 style={{ marginBottom: '0.5rem' }}>
+                {t('temporary_chain_steps', 'Review steps')}
+              </h4>
+              <div style={{ overflowX: 'auto' }}>
+                <table
+                  style={{
+                    width: '100%',
+                    borderCollapse: 'collapse',
+                    minWidth: '600px',
+                  }}
+                >
+                  <thead>
+                    <tr>
+                      <th style={{ textAlign: 'left', borderBottom: '1px solid #e5e7eb', padding: '0.5rem' }}>
+                        {t('temporary_step', 'Step')}
+                      </th>
+                      <th style={{ textAlign: 'left', borderBottom: '1px solid #e5e7eb', padding: '0.5rem' }}>
+                        {t('temporary_reviewer', 'Reviewer')}
+                      </th>
+                      <th style={{ textAlign: 'left', borderBottom: '1px solid #e5e7eb', padding: '0.5rem' }}>
+                        {t('status', 'Status')}
+                      </th>
+                      <th style={{ textAlign: 'left', borderBottom: '1px solid #e5e7eb', padding: '0.5rem' }}>
+                        {t('temporary_reviewed_by', 'Reviewed by')}
+                      </th>
+                      <th style={{ textAlign: 'left', borderBottom: '1px solid #e5e7eb', padding: '0.5rem' }}>
+                        {t('temporary_reviewed_at', 'Reviewed')}
+                      </th>
+                      <th style={{ textAlign: 'left', borderBottom: '1px solid #e5e7eb', padding: '0.5rem' }}>
+                        {t('temporary_review_notes', 'Review notes')}
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {temporaryChainModalData.chain.length === 0 ? (
+                      <tr>
+                        <td colSpan="6" style={{ padding: '0.75rem', color: '#6b7280' }}>
+                          {t('temporary_chain_empty', 'No review chain information available.')}
+                        </td>
+                      </tr>
+                    ) : (
+                      temporaryChainModalData.chain.map((row, idx) => {
+                        const normalizedStatus = (row?.status || '')
+                          .toString()
+                          .trim()
+                          .toLowerCase();
+                        const statusLabel =
+                          normalizedStatus === 'pending'
+                            ? t('temporary_pending_status', 'Pending')
+                            : normalizedStatus === 'promoted'
+                            ? t('temporary_promoted_short', 'Promoted')
+                            : normalizedStatus === 'rejected'
+                            ? t('temporary_rejected_short', 'Rejected')
+                            : row?.status || '-';
+                        const rowKey = row?.id || idx;
+                        return (
+                          <tr key={`chain-${rowKey}`}>
+                            <td style={{ padding: '0.5rem', borderBottom: '1px solid #f3f4f6' }}>
+                              {idx + 1}
+                            </td>
+                            <td style={{ padding: '0.5rem', borderBottom: '1px solid #f3f4f6' }}>
+                              {row?.planSeniorEmpId || row?.createdBy || '—'}
+                            </td>
+                            <td style={{ padding: '0.5rem', borderBottom: '1px solid #f3f4f6' }}>
+                              {statusLabel}
+                            </td>
+                            <td style={{ padding: '0.5rem', borderBottom: '1px solid #f3f4f6' }}>
+                              {row?.reviewedBy || '—'}
+                            </td>
+                            <td style={{ padding: '0.5rem', borderBottom: '1px solid #f3f4f6' }}>
+                              {row?.reviewedAt ? formatTimestamp(row.reviewedAt) : '—'}
+                            </td>
+                            <td style={{ padding: '0.5rem', borderBottom: '1px solid #f3f4f6' }}>
+                              {row?.reviewNotes ? (
+                                <span style={{ whiteSpace: 'pre-wrap' }}>{row.reviewNotes}</span>
+                              ) : (
+                                '—'
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+            <div>
+              <h4 style={{ marginBottom: '0.5rem' }}>
+                {t('temporary_chain_history', 'Action timeline')}
+              </h4>
+              {temporaryChainModalData.reviewHistory.length === 0 ? (
+                <p style={{ fontSize: '0.85rem', color: '#6b7280' }}>
+                  {t('temporary_chain_history_empty', 'No actions have been recorded yet.')}
+                </p>
+              ) : (
+                <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+                  {temporaryChainModalData.reviewHistory.map((item) => (
+                    <li
+                      key={`history-${item.id || `${item.temporaryId}-${item.createdAt}`}`}
+                      style={{
+                        padding: '0.75rem',
+                        border: '1px solid #e5e7eb',
+                        borderRadius: '0.75rem',
+                        marginBottom: '0.5rem',
+                        background: '#f9fafb',
+                      }}
+                    >
+                      <div style={{ fontWeight: 600, marginBottom: '0.25rem' }}>
+                        {item.action ? item.action.toUpperCase() : t('temporary_action', 'Action')}
+                      </div>
+                      <div style={{ fontSize: '0.85rem', color: '#374151' }}>
+                        {t('temporary_reviewer', 'Reviewer')}: {item.reviewerEmpId || '—'}
+                      </div>
+                      {item.forwardedToEmpId && (
+                        <div style={{ fontSize: '0.85rem', color: '#374151' }}>
+                          {t('temporary_forward_to', 'Forwarded to')}: {item.forwardedToEmpId}
+                        </div>
+                      )}
+                      {item.promotedRecordId && (
+                        <div style={{ fontSize: '0.85rem', color: '#374151' }}>
+                          {t('temporary_promoted_record', 'Promoted record ID')}: {item.promotedRecordId}
+                        </div>
+                      )}
+                      <div style={{ fontSize: '0.8rem', color: '#6b7280' }}>
+                        {item.createdAt ? formatTimestamp(item.createdAt) : '—'}
+                      </div>
+                      {item.notes && (
+                        <div style={{
+                          marginTop: '0.35rem',
+                          padding: '0.5rem',
+                          background: '#fff',
+                          borderRadius: '0.5rem',
+                          color: '#1f2937',
+                          whiteSpace: 'pre-wrap',
+                          border: '1px solid #e5e7eb',
+                        }}>
+                          {item.notes}
+                        </div>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+            {temporaryChainStats.lastUpdated && (
+              <div style={{ fontSize: '0.8rem', color: '#6b7280' }}>
+                {t('temporary_chain_last_updated', 'Last updated')}: {formatTimestamp(temporaryChainStats.lastUpdated)}
+              </div>
+            )}
+          </div>
+        ) : (
+          <p style={{ fontSize: '0.9rem', color: '#4b5563' }}>
+            {t('temporary_chain_empty', 'No review chain information available.')}
+          </p>
         )}
       </Modal>
       <Modal
