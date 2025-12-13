@@ -6736,7 +6736,7 @@ export default function PosApiAdmin() {
     const trimmed = (text || '').trim();
     if (!trimmed) return {};
     try {
-      return JSON.parse(trimmed);
+      return JSON.parse(text);
     } catch (err) {
       const message = err?.message || `${label} must be valid JSON.`;
       const setErrorState = options.setErrorState;
@@ -6812,8 +6812,12 @@ export default function PosApiAdmin() {
     } else if (payloadOverride !== undefined && payloadOverride !== null) {
       if (typeof payloadOverride === 'string') {
         try {
-          payloadForTest = parseOverrideText(payloadOverride, payloadLabel || 'Payload override');
-        } catch {
+          payloadForTest = JSON.parse(payloadOverride);
+        } catch (err) {
+          const message = err?.message || 'Payload override must be valid JSON.';
+          setCombinationError(message);
+          setTestState({ running: false, error: message, result: null });
+          showToast(message, 'error');
           return;
         }
       } else {
