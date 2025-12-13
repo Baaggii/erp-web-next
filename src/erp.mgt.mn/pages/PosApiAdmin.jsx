@@ -1430,15 +1430,6 @@ function cleanSampleText(text) {
   }
 }
 
-function parseJsonText(text) {
-  if (!text) return {};
-  try {
-    return JSON.parse(text);
-  } catch {
-    return {};
-  }
-}
-
 function buildVariationsFromExamples(examples = []) {
   return examples
     .map((example, index) => {
@@ -3449,8 +3440,8 @@ export default function PosApiAdmin() {
 
   useEffect(() => {
     if (!selectedVariationKey) return;
-    const variationPayload = resolveVariationExampleForTesting(selectedVariationKey)
-      || parseJsonText(baseRequestJson || '{}');
+    const variationPayload = resolveVariationRequestExample(selectedVariationKey)
+      || cleanSampleText(baseRequestJson || '{}');
     const formattedSample = JSON.stringify(variationPayload || {}, null, 2);
     requestSampleSyncRef.current = true;
     setRequestSampleText(formattedSample);
@@ -6401,11 +6392,11 @@ export default function PosApiAdmin() {
     if (!key) return null;
     const variation = activeVariations.find((entry) => (entry.key || entry.name) === key);
     if (variation) {
-      return parseExamplePayload(variation.requestExample ?? variation.requestExampleText ?? {});
+      return toSamplePayload(variation.requestExample ?? variation.requestExampleText ?? {});
     }
     const exampleEntry = exampleVariationMap.get(key);
     if (exampleEntry) {
-      return parseExamplePayload(
+      return toSamplePayload(
         exampleEntry.requestExample ?? exampleEntry.request?.body ?? exampleEntry.body ?? exampleEntry,
       );
     }
@@ -6414,25 +6405,20 @@ export default function PosApiAdmin() {
 
   function resolveVariationExampleForTesting(key) {
     if (!key) return null;
-    return resolveVariationRequestExample(key);
+    const variationExample = resolveVariationRequestExample(key);
+    if (variationExample) return sanitizeRequestExampleForSample(variationExample);
+    return null;
   }
 
   function buildCombinationPayload(baseKey = combinationBaseKey, modifierKeys = combinationModifierKeys) {
     if (!baseKey) {
       throw new Error('Select a base variation to build a combination.');
     }
-    let mergedPayload;
-    if (baseKey === BASE_COMBINATION_KEY) {
-      mergedPayload = parseJsonText(baseRequestJson);
-    } else {
-      const baseExample = resolveVariationExampleForTesting(baseKey)
-        || parseJsonText(baseRequestJson)
-        || {};
-      mergedPayload = deepClone(baseExample);
-    }
-    if (!mergedPayload || typeof mergedPayload !== 'object') {
-      mergedPayload = {};
-    }
+    const baseFromText = cleanSampleText(baseRequestJson);
+    const variationBase = baseKey && baseKey !== BASE_COMBINATION_KEY
+      ? resolveVariationRequestExample(baseKey)
+      : null;
+    let mergedPayload = deepClone(variationBase || baseFromText || {});
     modifierKeys.forEach((key) => {
       const modifierPayload = getVariationExamplePayload(key, false, true);
       if (!modifierPayload || Object.keys(modifierPayload).length === 0) return;
@@ -6445,7 +6431,7 @@ export default function PosApiAdmin() {
     let payloadCandidate = {};
     let allowedFields = [];
     if (key === BASE_COMBINATION_KEY) {
-      payloadCandidate = parseJsonText(baseRequestJson);
+      payloadCandidate = cleanSampleText(baseRequestJson);
     } else {
       const variationExample = resolveVariationRequestExample(key);
       if (variationExample) {
