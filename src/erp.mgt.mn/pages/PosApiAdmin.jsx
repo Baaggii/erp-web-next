@@ -6712,7 +6712,15 @@ export default function PosApiAdmin() {
 
   function parseJsonPayloadFromText(label, text, options = {}) {
     const trimmed = (text || '').trim();
-    if (!trimmed) return {};
+    if (!trimmed) {
+      const message = `${label} cannot be empty.`;
+      const setErrorState = options.setErrorState;
+      if (typeof setErrorState === 'function') {
+        setErrorState(message);
+      }
+      showToast(message, 'error');
+      throw new Error(message);
+    }
     try {
       return JSON.parse(text);
     } catch (err) {
@@ -6775,6 +6783,8 @@ export default function PosApiAdmin() {
       return;
     }
 
+    const payloadTextForTest = payloadTextOverride ?? (typeof payloadOverride === 'string' ? payloadOverride : null)
+      ?? requestSampleText;
     let payloadForTest = null;
     const parseOverrideText = (text, label) =>
       parseJsonPayloadFromText(label, text, {
@@ -6810,9 +6820,9 @@ export default function PosApiAdmin() {
     }
     const hasPayloadOverride = payloadForTest !== undefined && payloadForTest !== null;
 
-    const confirmPayloadLabel = payloadOverride !== undefined && payloadOverride !== null
-      ? 'the combination payload you provided'
-      : 'the request sample payload';
+    const confirmPayloadLabel = payloadTextOverride !== undefined && payloadTextOverride !== null
+      ? 'the built combination JSON box'
+      : 'the request sample JSON box';
     const confirmed = window.confirm(
       `Run a test request against ${selectedTestUrl || activeTestSelection.display || 'the configured server'}? This will use ${confirmPayloadLabel}.`,
     );
@@ -6844,7 +6854,9 @@ export default function PosApiAdmin() {
           environment: testEnvironment,
           authEndpointId: formState.authEndpointId || '',
           useCachedToken: effectiveUseCachedToken,
-          ...(hasPayloadOverride ? { payloadOverride: payloadForTest } : {}),
+          ...(hasPayloadOverride
+            ? { payloadOverride: payloadForTest, payloadOverrideText: payloadTextForTest?.trim() || '' }
+            : {}),
         }),
       });
       const responseText = await res.text();
