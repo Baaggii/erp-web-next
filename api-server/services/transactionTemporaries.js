@@ -731,6 +731,69 @@ async function ensureTemporaryTable(conn = pool) {
         KEY idx_temp_history_action (action)
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;`
     );
+
+    try {
+      const [historyColumns] = await conn.query(
+        `SELECT COLUMN_NAME
+           FROM INFORMATION_SCHEMA.COLUMNS
+          WHERE TABLE_SCHEMA = DATABASE()
+            AND TABLE_NAME = ?`,
+        [TEMP_REVIEW_HISTORY_TABLE],
+      );
+      const historyColumnLookup = new Set(
+        Array.isArray(historyColumns)
+          ? historyColumns
+              .map((row) =>
+                row && typeof row.COLUMN_NAME === 'string'
+                  ? row.COLUMN_NAME.toLowerCase()
+                  : null,
+              )
+              .filter(Boolean)
+          : [],
+      );
+      if (!historyColumnLookup.has('chain_id')) {
+        await conn.query(
+          `ALTER TABLE \`${TEMP_REVIEW_HISTORY_TABLE}\`
+             ADD COLUMN chain_id BIGINT UNSIGNED DEFAULT NULL AFTER temporary_id`,
+        );
+        await conn.query(
+          `UPDATE \`${TEMP_REVIEW_HISTORY_TABLE}\`
+              SET chain_id = temporary_id
+            WHERE chain_id IS NULL`,
+        );
+      }
+
+      const [historyIndexes] = await conn.query(
+        `SELECT INDEX_NAME
+           FROM INFORMATION_SCHEMA.STATISTICS
+          WHERE TABLE_SCHEMA = DATABASE()
+            AND TABLE_NAME = ?`,
+        [TEMP_REVIEW_HISTORY_TABLE],
+      );
+      const historyIndexLookup = new Set(
+        Array.isArray(historyIndexes)
+          ? historyIndexes
+              .map((row) =>
+                row && typeof row.INDEX_NAME === 'string'
+                  ? row.INDEX_NAME.toLowerCase()
+                  : null,
+              )
+              .filter(Boolean)
+          : [],
+      );
+      const ensureHistoryIndex = async (name, definition) => {
+        if (!historyIndexLookup.has(name.toLowerCase())) {
+          await conn.query(
+            `ALTER TABLE \`${TEMP_REVIEW_HISTORY_TABLE}\` ADD ${definition}`,
+          );
+        }
+      };
+      await ensureHistoryIndex('idx_temp_history_temp', 'KEY idx_temp_history_temp (temporary_id)');
+      await ensureHistoryIndex('idx_temp_history_chain', 'KEY idx_temp_history_chain (chain_id)');
+      await ensureHistoryIndex('idx_temp_history_action', 'KEY idx_temp_history_action (action)');
+    } catch (historyErr) {
+      console.error('Failed to ensure temporary review history metadata', historyErr);
+    }
   })()
     .catch((err) => {
       ensurePromise = null;

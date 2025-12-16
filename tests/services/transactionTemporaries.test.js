@@ -111,6 +111,16 @@ test('getTemporarySummary marks reviewers even without pending temporaries', asy
     if (sql.startsWith('ALTER TABLE `transaction_temporaries`')) {
       return [[], []];
     }
+    if (sql.startsWith('ALTER TABLE `transaction_temporary_review_history`')) {
+      return [[], []];
+    }
+    if (
+      sql.startsWith(
+        'UPDATE `transaction_temporary_review_history` SET chain_id = temporary_id WHERE chain_id IS NULL',
+      )
+    ) {
+      return [[], []];
+    }
     if (sql.startsWith('CREATE TABLE IF NOT EXISTS `transaction_temporary_review_history`')) {
       return [[], []];
     }
@@ -777,6 +787,14 @@ test('getTemporaryChainHistory returns chainId and history rows', async () => {
       }
       if (sql.startsWith('ALTER TABLE `transaction_temporaries`')) return [[], []];
       if (sql.startsWith('UPDATE `transaction_temporaries` SET chain_id = id WHERE chain_id IS NULL')) {
+        return [[], []];
+      }
+      if (sql.startsWith('ALTER TABLE `transaction_temporary_review_history`')) return [[], []];
+      if (
+        sql.startsWith(
+          'UPDATE `transaction_temporary_review_history` SET chain_id = temporary_id WHERE chain_id IS NULL',
+        )
+      ) {
         return [[], []];
       }
       if (sql.startsWith('CREATE TABLE IF NOT EXISTS `transaction_temporary_review_history`')) {
