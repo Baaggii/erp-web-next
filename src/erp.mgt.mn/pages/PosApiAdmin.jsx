@@ -1897,18 +1897,6 @@ function createFormState(definition) {
   const hasRequestSchema = hasObjectEntries(definition.requestBody?.schema);
   const requestSchema = hasRequestSchema ? definition.requestBody.schema : {};
   const requestSchemaFallback = '{}';
-  const rawRequestSample = parseExamplePayload(
-    definition.requestSample
-      || definition.requestBody?.example
-      || definition.requestExample
-      || definition.requestBody?.schema,
-  );
-
-  const sanitizedRequestSample = sanitizeRequestExampleForSample(rawRequestSample);
-  const requestSamplePayload =
-    sanitizedRequestSample && Object.keys(sanitizedRequestSample).length > 0
-      ? sanitizedRequestSample
-      : stripRequestDecorations(rawRequestSample);
 
   const buildUrlFieldState = (key) => {
     const literalCandidate = definition[key];
@@ -1936,9 +1924,11 @@ function createFormState(definition) {
     parametersText: toPrettyJson(definition.parameters, '[]'),
     requestDescription: definition.requestBody?.description || '',
     requestSampleText: toPrettyJson(
-      requestSamplePayload && Object.keys(requestSamplePayload).length > 0
-        ? requestSamplePayload
-        : BASE_COMPLEX_REQUEST_SCHEMA,
+      sanitizeRequestExampleForSample(
+        definition.requestSample
+          || definition.requestBody?.example
+          || definition.requestExample,
+      ) || BASE_COMPLEX_REQUEST_SCHEMA,
       JSON.stringify(BASE_COMPLEX_REQUEST_SCHEMA, null, 2),
     ),
     requestSampleNotes: definition.requestSampleNotes || '',
