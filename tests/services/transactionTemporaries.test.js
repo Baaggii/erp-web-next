@@ -315,17 +315,12 @@ test('listTemporarySubmissions filters before grouping by chain', async () => {
     if (sql.startsWith('UPDATE `transaction_temporaries` SET chain_id = id WHERE chain_id IS NULL')) {
       return [[], []];
     }
-    if (sql.includes('FROM filtered')) {
-      const statusParam = params[0];
+    if (sql.includes('WITH filtered AS')) {
       if (sql.includes('plan_senior_empid = ?')) {
         const reviewer = params[params.length - 1];
-        const pendingRows = temporaries.filter((row) => {
-          const matchesReviewer = row.plan_senior_empid === reviewer;
-          if (!matchesReviewer) return false;
-          if (!statusParam || statusParam === 'any') return true;
-          if (statusParam === 'processed') return row.status !== 'pending';
-          return row.status === statusParam;
-        });
+        const pendingRows = temporaries.filter(
+          (row) => row.plan_senior_empid === reviewer && row.status === 'pending',
+        );
         const grouped = new Map();
         pendingRows.forEach((row) => {
           const key = row.chain_id || row.id;
@@ -478,7 +473,7 @@ test('promoteTemporarySubmission forwards chain with normalized metadata and cle
   assert.ok(conn.released);
 });
 
-test('promoteTemporarySubmission seeds chain_id from current record when forwarding to another senior', async () => {
+test('promoteTemporarySubmission blocks forwarding when chain_id is missing', async () => {
   const temporaryRow = {
     id: 25,
     company_id: 1,
@@ -510,26 +505,18 @@ test('promoteTemporarySubmission seeds chain_id from current record when forward
     activityLogger: async () => {},
   };
 
-  const result = await promoteTemporarySubmission(
-    25,
-    { reviewerEmpId: 'EMP100', cleanedValues: { amount: 10 }, promoteAsTemporary: true },
-    runtimeDeps,
+  await assert.rejects(
+    () =>
+      promoteTemporarySubmission(
+        25,
+        { reviewerEmpId: 'EMP100', cleanedValues: { amount: 10 }, promoteAsTemporary: true },
+        runtimeDeps,
+      ),
+    (err) => err && err.status === 409,
   );
-
-  assert.equal(result.forwardedTo, 'EMP500');
-  const chainUpdate = chainUpdates[0];
-  assert.equal(chainUpdate.chainId, 25);
-  const updateQuery = queries.find(({ sql }) =>
-    sql.startsWith('UPDATE `transaction_temporaries` SET chain_id = ? WHERE id = ?'),
-  );
-  assert.ok(updateQuery);
-  assert.equal(updateQuery.params[0], 25);
-  assert.equal(updateQuery.params[1], 25);
-  const forwardInsert = queries.find(({ sql }) =>
-    sql.startsWith('INSERT INTO `transaction_temporaries`') && sql.includes('chain_id') && !sql.includes('chain_uuid'),
-  );
-  assert.ok(forwardInsert);
-  assert.equal(forwardInsert.params[12], 25);
+  assert.equal(chainUpdates.length, 0);
+  assert.ok(!queries.some(({ sql }) => sql.includes('INSERT INTO `transaction_temporaries`') && sql.includes('chain_id')));
+  assert.ok(conn.released);
 });
 
 test('promoteTemporarySubmission promotes chain and records promotedRecordId', async () => {
