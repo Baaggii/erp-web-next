@@ -1394,21 +1394,7 @@ export async function promoteTemporarySubmission(
     if (resolvedChainId) {
       updatedForwardMeta.rootTemporaryId = resolvedChainId;
     }
-    const effectiveChainId = resolvedChainId || null;
-    if (effectiveChainId) {
-      const [pendingRows] = await conn.query(
-        `SELECT id FROM \`${TEMP_TABLE}\` WHERE chain_id = ? AND status = 'pending' LIMIT 1 FOR UPDATE`,
-        [effectiveChainId],
-      );
-      if (Array.isArray(pendingRows) && pendingRows.length > 0) {
-        const pendingId = normalizeTemporaryId(pendingRows[0]?.id);
-        if (pendingId && pendingId !== row.id) {
-          const err = new Error('A pending temporary already exists for this transaction');
-          err.status = 409;
-          throw err;
-        }
-      }
-    }
+    let effectiveChainId = resolvedChainId || null;
     const candidateSources = [];
     const pushCandidate = (source) => {
       if (!source) return;
@@ -1578,10 +1564,42 @@ export async function promoteTemporarySubmission(
       payloadJson?.skipTriggerOnPromote === true ||
       errorRevokedFields.length > 0;
     const skipTriggers = shouldSkipTriggers;
+    const reviewerHasSenior = Boolean(forwardReviewerEmpId);
     const shouldForwardTemporary =
       promoteAsTemporary === true &&
-      forwardReviewerEmpId &&
+      reviewerHasSenior &&
       forwardReviewerEmpId !== normalizedReviewer;
+    const creatorIsReviewer =
+      normalizeEmpId(row.created_by) === normalizedReviewer;
+    const currentChainId = normalizeTemporaryId(row.chain_id);
+    const currentChainMissing = !currentChainId;
+    if (!effectiveChainId && currentChainId) {
+      effectiveChainId = currentChainId;
+    }
+    const shouldSeedChainFromCurrent =
+      shouldForwardTemporary && reviewerHasSenior && !creatorIsReviewer && currentChainMissing;
+    if (shouldSeedChainFromCurrent) {
+      effectiveChainId = effectiveChainId || row.id;
+      updatedForwardMeta.rootTemporaryId = effectiveChainId;
+      await conn.query(
+        `UPDATE \`${TEMP_TABLE}\` SET chain_id = ? WHERE id = ?`,
+        [effectiveChainId, row.id],
+      );
+    }
+    if (effectiveChainId) {
+      const [pendingRows] = await conn.query(
+        `SELECT id FROM \`${TEMP_TABLE}\` WHERE chain_id = ? AND status = 'pending' LIMIT 1 FOR UPDATE`,
+        [effectiveChainId],
+      );
+      if (Array.isArray(pendingRows) && pendingRows.length > 0) {
+        const pendingId = normalizeTemporaryId(pendingRows[0]?.id);
+        if (pendingId && pendingId !== row.id) {
+          const err = new Error('A pending temporary already exists for this transaction');
+          err.status = 409;
+          throw err;
+        }
+      }
+    }
     const trimmedNotes =
       typeof notes === 'string' && notes.trim() ? notes.trim() : '';
     const baseReviewNotes = trimmedNotes ? trimmedNotes : null;
