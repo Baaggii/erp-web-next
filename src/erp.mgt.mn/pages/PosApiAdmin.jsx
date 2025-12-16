@@ -6269,19 +6269,15 @@ export default function PosApiAdmin() {
   }
 
   function applyPayloadOverlay(base, modifier) {
-    const source = base && typeof base === 'object' ? deepClone(base) : {};
-    if (!modifier || typeof modifier !== 'object') return source;
-    Object.entries(modifier).forEach(([key, value]) => {
-      if (Array.isArray(value)) {
-        source[key] = deepClone(value);
-      } else if (value && typeof value === 'object') {
-        const existing = source[key] && typeof source[key] === 'object' ? source[key] : {};
-        source[key] = applyPayloadOverlay(existing, value);
-      } else {
-        source[key] = value;
-      }
-    });
-    return source;
+    const baseClone = deepClone(base);
+    const normalizedBase =
+      baseClone && typeof baseClone === 'object'
+        ? baseClone
+        : Array.isArray(modifier)
+          ? []
+          : {};
+    if (!modifier || typeof modifier !== 'object') return normalizedBase;
+    return mergePayloads(normalizedBase, modifier);
   }
 
   function parsePathSegments(path) {
