@@ -857,7 +857,21 @@ export async function createTemporarySubmission({
       : fallbackDepartment ?? null;
     const cleanedWithCalculated = mergeCalculatedValues(cleanedValues, payload);
     const forwardMeta = resolveForwardMeta(payload, normalizedCreator, null);
-    let chainId = normalizeTemporaryId(forwardMeta?.rootTemporaryId) || null;
+    const parentTemporaryId = normalizeTemporaryId(forwardMeta?.parentTemporaryId);
+    let chainId =
+      normalizeTemporaryId(forwardMeta?.rootTemporaryId) ||
+      normalizeTemporaryId(forwardMeta?.chainId) ||
+      null;
+    if (!chainId && parentTemporaryId) {
+      const [parentRows] = await conn.query(
+        `SELECT chain_id FROM \`${TEMP_TABLE}\` WHERE id = ? LIMIT 1 FOR UPDATE`,
+        [parentTemporaryId],
+      );
+      const parentChainId = normalizeTemporaryId(parentRows?.[0]?.chain_id);
+      if (parentChainId) {
+        chainId = parentChainId;
+      }
+    }
     let chainShouldExist = false;
     if (!chainId && reviewerEmpId) {
       try {
@@ -1103,7 +1117,7 @@ export async function listTemporarySubmissions({
   const conditions = [];
   const params = [];
   let normalizedStatus = typeof status === 'string' ? status.trim().toLowerCase() : null;
-  if (!normalizedStatus && scope === 'review') {
+  if (scope === 'review') {
     normalizedStatus = 'pending';
   }
   if (normalizedStatus && normalizedStatus !== 'all' && normalizedStatus !== 'any') {
@@ -1141,13 +1155,13 @@ export async function listTemporarySubmissions({
   const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
   const chainKey = (alias = '') =>
     `COALESCE(${alias ? `${alias}.` : ''}chain_id, ${alias ? `${alias}.` : ''}id)`;
-  const baseSelect = `SELECT * FROM \`${TEMP_TABLE}\` ${where}`;
+  const filteredQuery = `SELECT * FROM \`${TEMP_TABLE}\` ${where}`;
   const [rows] = await pool.query(
     `SELECT filtered.*
-       FROM (${baseSelect}) filtered
+       FROM (${filteredQuery}) filtered
        JOIN (
              SELECT ${chainKey('f')} AS chain_key, MAX(f.updated_at) AS max_updated_at
-               FROM (${baseSelect}) f
+               FROM (${filteredQuery}) f
               GROUP BY ${chainKey('f')}
             ) latest
          ON ${chainKey('filtered')} = latest.chain_key
@@ -1259,7 +1273,7 @@ export async function getTemporaryChainHistory(id) {
     let chainRows = [];
     if (chainId) {
       const [rowsByChain] = await conn.query(
-        `SELECT id, chain_id AS chainId, chain_uuid, status, plan_senior_empid, reviewed_by, reviewed_at, review_notes, promoted_record_id, created_by, created_at, updated_at
+        `SELECT id, chain_id AS chainId, status, plan_senior_empid, reviewed_by, reviewed_at, review_notes, promoted_record_id, created_by, created_at, updated_at
            FROM \`${TEMP_TABLE}\`
           WHERE chain_id = ?
           ORDER BY created_at ASC, id ASC`,
@@ -1280,7 +1294,7 @@ export async function getTemporaryChainHistory(id) {
     let reviewHistory = [];
     if (chainId) {
       const [historyRows] = await conn.query(
-        `SELECT id, temporary_id, chain_id AS chainId, chain_uuid, action, reviewer_empid, forwarded_to_empid, promoted_record_id, notes, created_at
+        `SELECT id, temporary_id, chain_id AS chainId, action, reviewer_empid, forwarded_to_empid, promoted_record_id, notes, created_at
            FROM \`${TEMP_REVIEW_HISTORY_TABLE}\`
           WHERE chain_id = ?
           ORDER BY created_at ASC, id ASC`,
@@ -1366,6 +1380,21 @@ export async function promoteTemporarySubmission(
     const resolvedChainId = normalizeTemporaryId(chainId) || normalizeTemporaryId(updatedForwardMeta.rootTemporaryId);
     if (resolvedChainId) {
       updatedForwardMeta.rootTemporaryId = resolvedChainId;
+    }
+    const effectiveChainId = resolvedChainId || null;
+    if (effectiveChainId) {
+      const [pendingRows] = await conn.query(
+        `SELECT id FROM \`${TEMP_TABLE}\` WHERE chain_id = ? AND status = 'pending' LIMIT 1 FOR UPDATE`,
+        [effectiveChainId],
+      );
+      if (Array.isArray(pendingRows) && pendingRows.length > 0) {
+        const pendingId = normalizeTemporaryId(pendingRows[0]?.id);
+        if (pendingId && pendingId !== row.id) {
+          const err = new Error('A pending temporary already exists for this transaction');
+          err.status = 409;
+          throw err;
+        }
+      }
     }
     const candidateSources = [];
     const pushCandidate = (source) => {
@@ -1893,7 +1922,7 @@ export async function promoteTemporarySubmission(
       notes: reviewNotesValue ?? null,
       promotedRecordId: promotedId,
       clearReviewerAssignment: true,
-      pendingOnly: true,
+      pendingOnly: false,
       temporaryId: id,
     });
     await recordTemporaryReviewHistory(conn, {
