@@ -410,6 +410,17 @@ async function updateTemporaryChainStatus(
   const normalizedChain = normalizeTemporaryId(chainId);
   const normalizedTemporaryId = normalizeTemporaryId(temporaryId);
   if (!conn || (!normalizedChain && !normalizedTemporaryId)) return;
+  let targetChainId = normalizedChain;
+  if (!targetChainId && normalizedTemporaryId) {
+    const [chainRows] = await conn.query(
+      `SELECT chain_id FROM \`${TEMP_TABLE}\` WHERE id = ? LIMIT 1`,
+      [normalizedTemporaryId],
+    );
+    const resolvedChain = normalizeTemporaryId(chainRows?.[0]?.chain_id);
+    if (resolvedChain) {
+      targetChainId = resolvedChain;
+    }
+  }
   const columns = ['status = ?', 'reviewed_by = ?', 'reviewed_at = NOW()', 'review_notes = ?'];
   const params = [status ?? null, reviewerEmpId ?? null, notes ?? null];
   if (promotedRecordId !== undefined) {
@@ -419,14 +430,14 @@ async function updateTemporaryChainStatus(
   if (clearReviewerAssignment || (status && status !== 'pending')) {
     columns.push('plan_senior_empid = NULL');
   }
-  const whereClause = normalizedChain
+  const whereClause = targetChainId
     ? pendingOnly
       ? 'chain_id = ? AND status = "pending"'
       : 'chain_id = ?'
     : pendingOnly
     ? 'id = ? AND status = "pending"'
     : 'id = ?';
-  params.push(normalizedChain || normalizedTemporaryId);
+  params.push(targetChainId || normalizedTemporaryId);
   await conn.query(
     `UPDATE \`${TEMP_TABLE}\` SET ${columns.join(', ')} WHERE ${whereClause}`,
     params,
@@ -582,12 +593,6 @@ async function ensureTemporaryTable(conn = pool) {
         await conn.query(
           `ALTER TABLE \`${TEMP_TABLE}\`
              ADD COLUMN chain_id BIGINT UNSIGNED DEFAULT NULL`,
-        );
-      }
-      if (!columnLookup.has('chain_uuid')) {
-        await conn.query(
-          `ALTER TABLE \`${TEMP_TABLE}\`
-             ADD COLUMN chain_uuid CHAR(36) NOT NULL DEFAULT (UUID())`,
         );
       }
       if (!columnLookup.has('is_pending')) {
@@ -1015,7 +1020,7 @@ function mapTemporaryRow(row) {
     {};
   return {
     id: row.id,
-    chainId: row.chain_id || row.id || null,
+    chainId: row.chainId || row.chain_id || row.id || null,
     companyId: row.company_id,
     tableName: row.table_name,
     formName: row.form_name,
@@ -1166,20 +1171,20 @@ export async function listTemporarySubmissions({
   const chainKey = (alias = '') =>
     `COALESCE(${alias ? `${alias}.` : ''}chain_id, ${alias ? `${alias}.` : ''}id)`;
   const filteredQuery = `SELECT * FROM \`${TEMP_TABLE}\` ${where}`;
-  const [rows] = await pool.query(
-    `SELECT filtered.*
-       FROM (${filteredQuery}) filtered
-       JOIN (
-             SELECT ${chainKey('f')} AS chain_key, MAX(f.updated_at) AS max_updated_at
-               FROM (${filteredQuery}) f
-              GROUP BY ${chainKey('f')}
-            ) latest
-         ON ${chainKey('filtered')} = latest.chain_key
-        AND filtered.updated_at = latest.max_updated_at
-      ORDER BY filtered.updated_at DESC, filtered.created_at DESC
-      LIMIT 200`,
-    [...params, ...params],
-  );
+  const groupingQuery = `
+    WITH filtered AS (${filteredQuery})
+    SELECT filtered.*
+      FROM filtered
+      JOIN (
+            SELECT ${chainKey('f')} AS chain_key, MAX(f.updated_at) AS max_updated_at
+              FROM filtered f
+             GROUP BY ${chainKey('f')}
+           ) latest
+        ON ${chainKey('filtered')} = latest.chain_key
+       AND filtered.updated_at = latest.max_updated_at
+     ORDER BY filtered.updated_at DESC, filtered.created_at DESC
+     LIMIT 200`;
+  const [rows] = await pool.query(groupingQuery, params);
   const mapped = rows.map(mapTemporaryRow);
   const filtered = filterRowsByTransactionType(
     mapped,
@@ -1234,7 +1239,6 @@ function formatChainHistoryRow(row) {
   return {
     id: row.id,
     chainId: row.chainId || row.chain_id || null,
-    chainUuid: row.chain_uuid || null,
     status: row.status,
     planSeniorEmpId: row.plan_senior_empid || null,
     reviewedBy: row.reviewed_by || null,
@@ -1253,7 +1257,6 @@ function formatReviewHistoryRow(row) {
     id: row.id,
     temporaryId: row.temporary_id,
     chainId: row.chainId || row.chain_id || row.temporary_id || null,
-    chainUuid: row.chain_uuid || null,
     action: row.action,
     reviewerEmpId: row.reviewer_empid || null,
     forwardedToEmpId: row.forwarded_to_empid || null,
@@ -1270,7 +1273,7 @@ export async function getTemporaryChainHistory(id) {
   try {
     await ensureTemporaryTable(conn);
     const [rows] = await conn.query(
-      `SELECT id, chain_id AS chainId, status, plan_senior_empid, reviewed_by, reviewed_at, review_notes, promoted_record_id, created_by, created_at, updated_at
+      `SELECT id, chain_id AS chainId, chain_id, status, plan_senior_empid, reviewed_by, reviewed_at, review_notes, promoted_record_id, created_by, created_at, updated_at
          FROM \`${TEMP_TABLE}\`
         WHERE id = ?
         LIMIT 1`,
@@ -1278,12 +1281,11 @@ export async function getTemporaryChainHistory(id) {
     );
     const row = rows[0];
     if (!row) return [];
-    const chainId = normalizeTemporaryId(row.chain_id) || null;
-    const chainUuid = row.chain_uuid || null;
+    const chainId = normalizeTemporaryId(row.chain_id ?? row.chainId) || null;
     let chainRows = [];
     if (chainId) {
       const [rowsByChain] = await conn.query(
-        `SELECT id, chain_id AS chainId, status, plan_senior_empid, reviewed_by, reviewed_at, review_notes, promoted_record_id, created_by, created_at, updated_at
+        `SELECT id, chain_id AS chainId, chain_id, status, plan_senior_empid, reviewed_by, reviewed_at, review_notes, promoted_record_id, created_by, created_at, updated_at
            FROM \`${TEMP_TABLE}\`
           WHERE chain_id = ?
           ORDER BY created_at ASC, id ASC`,
@@ -1296,7 +1298,6 @@ export async function getTemporaryChainHistory(id) {
         {
           ...row,
           chainId,
-          chain_uuid: chainUuid,
         },
       ];
     }
@@ -1304,7 +1305,7 @@ export async function getTemporaryChainHistory(id) {
     let reviewHistory = [];
     if (chainId) {
       const [historyRows] = await conn.query(
-        `SELECT id, temporary_id, chain_id AS chainId, action, reviewer_empid, forwarded_to_empid, promoted_record_id, notes, created_at
+        `SELECT id, temporary_id, chain_id AS chainId, chain_id, action, reviewer_empid, forwarded_to_empid, promoted_record_id, notes, created_at
            FROM \`${TEMP_REVIEW_HISTORY_TABLE}\`
           WHERE chain_id = ?
           ORDER BY created_at ASC, id ASC`,
@@ -1381,7 +1382,6 @@ export async function promoteTemporarySubmission(
     const columns = await columnLister(row.table_name);
     const payloadJson = safeJsonParse(row.payload_json, {});
     const chainId = normalizeTemporaryId(row.chain_id) || null;
-    const chainUuid = row.chain_uuid || null;
     const forwardMeta = resolveForwardMeta(payloadJson, row.created_by, row.id);
     const updatedForwardMeta = expandForwardMeta(forwardMeta, {
       currentId: row.id,
@@ -1724,14 +1724,13 @@ export async function promoteTemporarySubmission(
       mergedPayload.forwardMeta = {
         ...updatedForwardMeta,
         chainId: effectiveChainId,
-        ...(chainUuid ? { chainUuid } : {}),
       };
       const [forwardResult] = await conn.query(
         `INSERT INTO \`${TEMP_TABLE}\`
          (company_id, table_name, form_name, config_name, module_key, payload_json,
           raw_values_json, cleaned_values_json, created_by, plan_senior_empid,
-          branch_id, department_id, chain_id, chain_uuid)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          branch_id, department_id, chain_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           row.company_id ?? null,
           row.table_name,
@@ -1746,7 +1745,6 @@ export async function promoteTemporarySubmission(
           row.branch_id ?? null,
           row.department_id ?? null,
           effectiveChainId,
-          chainUuid,
         ],
       );
       const forwardTemporaryId = forwardResult?.insertId || null;
@@ -1755,7 +1753,6 @@ export async function promoteTemporarySubmission(
         forwardMeta,
         updatedForwardMeta,
         effectiveChainId,
-        chainUuid,
       });
       await recordTemporaryReviewHistory(conn, {
         temporaryId: id,
@@ -1764,7 +1761,6 @@ export async function promoteTemporarySubmission(
         forwardedToEmpId: forwardReviewerEmpId,
         notes: reviewNotesValue ?? null,
         chainId: effectiveChainId,
-        chainUuid,
       });
       await activityLogger(
         {
@@ -1939,7 +1935,6 @@ export async function promoteTemporarySubmission(
       forwardMeta,
       updatedForwardMeta,
       chainId: effectiveChainId,
-      chainUuid,
     });
     await chainStatusUpdater(conn, effectiveChainId, {
       status: 'promoted',
@@ -1957,7 +1952,6 @@ export async function promoteTemporarySubmission(
       promotedRecordId: promotedId,
       notes: reviewNotesValue ?? null,
       chainId: effectiveChainId,
-      chainUuid,
     });
     await activityLogger(
       {
@@ -2096,7 +2090,6 @@ export async function rejectTemporarySubmission(
       createdBy: row.created_by,
     });
     const chainId = normalizeTemporaryId(row.chain_id) || null;
-    const chainUuid = row.chain_uuid || null;
     const resolvedChainId =
       chainId ||
       resolveRootChainId(updatedForwardMeta) ||
@@ -2111,7 +2104,6 @@ export async function rejectTemporarySubmission(
       forwardMeta,
       updatedForwardMeta,
       chainId: effectiveChainId,
-      chainUuid,
     });
     await chainStatusUpdater(conn, effectiveChainId, {
       status: 'rejected',
@@ -2128,7 +2120,6 @@ export async function rejectTemporarySubmission(
       reviewerEmpId: normalizedReviewer,
       notes: notes ?? null,
       chainId: effectiveChainId,
-      chainUuid,
     });
     await activityLogger(
       {

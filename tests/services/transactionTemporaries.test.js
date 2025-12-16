@@ -114,7 +114,7 @@ test('getTemporarySummary marks reviewers even without pending temporaries', asy
     if (sql.startsWith('CREATE TABLE IF NOT EXISTS `transaction_temporary_review_history`')) {
       return [[], []];
     }
-    if (sql.startsWith('SELECT filtered.*')) {
+    if (sql.includes('FROM filtered')) {
       const now = new Date().toISOString();
       if (sql.includes('plan_senior_empid = ?')) {
         return [
@@ -315,7 +315,7 @@ test('listTemporarySubmissions filters before grouping by chain', async () => {
     if (sql.startsWith('UPDATE `transaction_temporaries` SET chain_id = id WHERE chain_id IS NULL')) {
       return [[], []];
     }
-    if (sql.startsWith('SELECT filtered.*')) {
+    if (sql.includes('FROM filtered')) {
       const statusParam = params[0];
       if (sql.includes('plan_senior_empid = ?')) {
         const reviewer = params[params.length - 1];
@@ -526,7 +526,7 @@ test('promoteTemporarySubmission seeds chain_id from current record when forward
   assert.equal(updateQuery.params[0], 25);
   assert.equal(updateQuery.params[1], 25);
   const forwardInsert = queries.find(({ sql }) =>
-    sql.startsWith('INSERT INTO `transaction_temporaries`') && sql.includes('chain_uuid'),
+    sql.startsWith('INSERT INTO `transaction_temporaries`') && sql.includes('chain_id') && !sql.includes('chain_uuid'),
   );
   assert.ok(forwardInsert);
   assert.equal(forwardInsert.params[12], 25);
