@@ -5378,8 +5378,23 @@ export default function PosApiAdmin() {
 
     const nextState = createFormState(draftDefinition);
 
+    let nextBaseSample = JSON.stringify(BASE_COMPLEX_REQUEST_SCHEMA, null, 2);
+    try {
+      const parsedSample = parseExamplePayload(nextState.requestSampleText || BASE_COMPLEX_REQUEST_SCHEMA);
+      const sanitizedSample = sanitizeRequestExampleForSample(parsedSample);
+      nextBaseSample = JSON.stringify(sanitizedSample, null, 2);
+    } catch (err) {
+      console.error('Failed to build base request sample from imported draft', err);
+    }
+
     setSelectedId('');
     setRequestFieldValues({});
+    setBaseRequestJson(nextBaseSample);
+    setRequestSampleText(nextBaseSample);
+    setCombinationBaseKey(BASE_COMBINATION_KEY);
+    setCombinationModifierKeys([]);
+    setCombinationPayloadText('');
+    setCombinationError('Select a base variation to build a combination.');
     setFormState(nextState);
     setStatus('Loaded the imported draft into the editor. Add details and save to finalize.');
     setActiveTab('endpoints');
