@@ -468,8 +468,30 @@ function normalizeFieldList(payload) {
   return [];
 }
 
+function deriveEndpointId(endpoint) {
+  if (!endpoint || typeof endpoint !== 'object') return '';
+  const candidates = [endpoint.id, endpoint.name, endpoint.path, endpoint.url, endpoint.endpoint];
+  const raw = candidates
+    .map((value) => (value === undefined || value === null ? '' : `${value}`))
+    .find((value) => value.trim());
+  if (raw) {
+    return raw
+      .trim()
+      .replace(/\s+/g, '-')
+      .replace(/[^a-zA-Z0-9-_./]+/g, '-');
+  }
+  if (endpoint.method && endpoint.path) {
+    return `${endpoint.method}-${endpoint.path}`
+      .replace(/\s+/g, '-')
+      .replace(/[^a-zA-Z0-9-_./]+/g, '-');
+  }
+  return '';
+}
+
 function withEndpointMetadata(endpoint) {
   if (!endpoint || typeof endpoint !== 'object') return endpoint;
+  const normalizedId = deriveEndpointId(endpoint)
+    || (endpoint.id === undefined || endpoint.id === null ? '' : `${endpoint.id}`);
   const normalizeUrlSelection = (literal, envVar, mode) => {
     const trimmedLiteral = typeof literal === 'string' ? literal.trim() : '';
     const trimmedEnv = typeof envVar === 'string' ? envVar.trim() : '';
@@ -542,6 +564,7 @@ function withEndpointMetadata(endpoint) {
   }
   return {
     ...endpoint,
+    id: normalizedId,
     usage,
     defaultForForm: isTransaction ? Boolean(endpoint.defaultForForm) : false,
     supportsMultipleReceipts: isTransaction ? Boolean(endpoint.supportsMultipleReceipts) : false,
@@ -620,6 +643,24 @@ function withEndpointMetadata(endpoint) {
   };
 }
 
+function normalizeEndpointList(list = []) {
+  const seen = new Set();
+  return list.map((endpoint, index) => {
+    if (!endpoint || typeof endpoint !== 'object') return endpoint;
+    const baseId = (endpoint.id === undefined || endpoint.id === null ? '' : `${endpoint.id}`)
+      || deriveEndpointId(endpoint)
+      || `endpoint-${index + 1}`;
+    let id = baseId;
+    let counter = 2;
+    while (seen.has(id)) {
+      id = `${baseId}-${counter}`;
+      counter += 1;
+    }
+    seen.add(id);
+    return { ...endpoint, id };
+  });
+}
+
 function badgeStyle(color) {
   return {
     background: color,
@@ -642,11 +683,11 @@ const EMPTY_ENDPOINT = {
   parametersText: '[]',
   requestDescription: '',
   requestSchemaText: '{}',
-  requestSampleText: JSON.stringify(BASE_COMPLEX_REQUEST_SCHEMA, null, 2),
+  requestSampleText: '{}',
   requestSampleNotes: '',
   responseDescription: '',
-  responseSchemaText: '{}',
-  fieldDescriptionsText: '{}',
+  responseSchemaText: '',
+  fieldDescriptionsText: '',
   requestFieldsText: '[]',
   responseFieldsText: '[]',
   examplesText: '[]',
@@ -1856,6 +1897,18 @@ function createFormState(definition) {
   const hasRequestSchema = hasObjectEntries(definition.requestBody?.schema);
   const requestSchema = hasRequestSchema ? definition.requestBody.schema : {};
   const requestSchemaFallback = '{}';
+  const rawRequestSample = parseExamplePayload(
+    definition.requestSample
+      || definition.requestBody?.example
+      || definition.requestExample
+      || definition.requestBody?.schema,
+  );
+
+  const sanitizedRequestSample = sanitizeRequestExampleForSample(rawRequestSample);
+  const requestSamplePayload =
+    sanitizedRequestSample && Object.keys(sanitizedRequestSample).length > 0
+      ? sanitizedRequestSample
+      : stripRequestDecorations(rawRequestSample);
 
   const buildUrlFieldState = (key) => {
     const literalCandidate = definition[key];
@@ -1883,12 +1936,10 @@ function createFormState(definition) {
     parametersText: toPrettyJson(definition.parameters, '[]'),
     requestDescription: definition.requestBody?.description || '',
     requestSampleText: toPrettyJson(
-      sanitizeRequestExampleForSample(
-        definition.requestSample
-          || definition.requestBody?.example
-          || definition.requestExample,
-      ) || BASE_COMPLEX_REQUEST_SCHEMA,
-      JSON.stringify(BASE_COMPLEX_REQUEST_SCHEMA, null, 2),
+      requestSamplePayload && Object.keys(requestSamplePayload).length > 0
+        ? requestSamplePayload
+        : requestSchema,
+      requestSchemaFallback,
     ),
     requestSampleNotes: definition.requestSampleNotes || '',
     requestSchemaText: toPrettyJson(requestSchema, requestSchemaFallback),
@@ -1973,6 +2024,40 @@ function createFormState(definition) {
       [],
     ),
   };
+}
+
+function pruneUnavailableControls(endpointState) {
+  const next = { ...endpointState };
+  const isTransaction = next.usage === 'transaction';
+
+  if (!isTransaction) {
+    next.supportsMultipleReceipts = false;
+    next.supportsMultiplePayments = false;
+    next.supportsItems = false;
+  }
+
+  if (!isTransaction || !next.supportsItems) {
+    next.enableReceiptTypes = false;
+    next.allowMultipleReceiptTypes = false;
+    next.receiptTypes = [];
+    next.receiptTypeTemplates = {};
+    next.enableReceiptTaxTypes = false;
+    next.allowMultipleReceiptTaxTypes = false;
+    next.taxTypes = [];
+    next.taxTypeTemplates = {};
+    next.enableReceiptItems = false;
+    next.allowMultipleReceiptItems = false;
+    next.receiptItemTemplates = [];
+  }
+
+  if (!isTransaction || !next.supportsMultiplePayments) {
+    next.enablePaymentMethods = false;
+    next.allowMultiplePaymentMethods = false;
+    next.paymentMethods = [];
+    next.paymentMethodTemplates = {};
+  }
+
+  return next;
 }
 
 function parseJsonInput(label, text, defaultValue) {
@@ -2666,12 +2751,8 @@ export default function PosApiAdmin() {
   const [endpoints, setEndpoints] = useState([]);
   const [selectedId, setSelectedId] = useState('');
   const [formState, setFormState] = useState({ ...EMPTY_ENDPOINT });
-  const [baseRequestJson, setBaseRequestJson] = useState(
-    JSON.stringify(BASE_COMPLEX_REQUEST_SCHEMA, null, 2),
-  );
-  const [requestSampleText, setRequestSampleText] = useState(
-    JSON.stringify(BASE_COMPLEX_REQUEST_SCHEMA, null, 2),
-  );
+  const [baseRequestJson, setBaseRequestJson] = useState('');
+  const [requestSampleText, setRequestSampleText] = useState('');
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [fetchingDoc, setFetchingDoc] = useState(false);
@@ -4642,11 +4723,10 @@ export default function PosApiAdmin() {
         const data = await res.json();
         if (cancelled) return;
         const list = Array.isArray(data) ? data : [];
-        const normalized = list.map(withEndpointMetadata);
+        const normalized = normalizeEndpointList(list.map(withEndpointMetadata));
         setEndpoints(normalized);
         if (normalized.length > 0) {
-          setSelectedId(normalized[0].id);
-          setFormState(createFormState(normalized[0]));
+          handleSelect(normalized[0].id, normalized[0]);
           setTestEnvironment('staging');
           setImportAuthEndpointId(normalized[0].authEndpointId || '');
         }
@@ -4787,7 +4867,7 @@ export default function PosApiAdmin() {
     };
   }, [activeTab]);
 
-  function handleSelect(id) {
+  function handleSelect(id, explicitDefinition = null) {
     if (!id) {
       return;
     }
@@ -4799,14 +4879,14 @@ export default function PosApiAdmin() {
 
     let nextFormState = { ...EMPTY_ENDPOINT };
     let nextRequestFieldValues = {};
-    let formattedSample = JSON.stringify(BASE_COMPLEX_REQUEST_SCHEMA, null, 2);
+    let formattedSample = '';
 
     try {
-      nextFormState = createFormState(definition);
+      nextFormState = pruneUnavailableControls(createFormState(definition));
     } catch (err) {
       console.error('Failed to prepare form state for selected endpoint', err);
       setError('Failed to load the selected endpoint. Please review its configuration.');
-      nextFormState = { ...EMPTY_ENDPOINT, ...(definition || {}) };
+      nextFormState = pruneUnavailableControls({ ...EMPTY_ENDPOINT, ...(definition || {}) });
     }
 
     try {
@@ -4824,19 +4904,21 @@ export default function PosApiAdmin() {
     } catch (err) {
       console.error('Failed to select endpoint', err);
       setError('Failed to load the selected endpoint. Please review its configuration.');
-      nextFormState = { ...EMPTY_ENDPOINT, ...(definition || {}) };
+      nextFormState = pruneUnavailableControls({ ...EMPTY_ENDPOINT, ...(definition || {}) });
       nextRequestFieldValues = {};
     }
 
     try {
       const resolvedSample = sanitizeRequestExampleForSample(
-        parseExamplePayload(nextFormState.requestSampleText || BASE_COMPLEX_REQUEST_SCHEMA),
+        parseExamplePayload(nextFormState.requestSampleText),
       );
-      formattedSample = JSON.stringify(resolvedSample, null, 2);
+      formattedSample = Object.keys(resolvedSample).length > 0
+        ? JSON.stringify(resolvedSample, null, 2)
+        : (nextFormState.requestSampleText || '');
     } catch (err) {
       console.error('Failed to parse request sample for selected endpoint', err);
-      setError('Unable to load the selected endpoint request sample. A default sample has been applied.');
-      formattedSample = JSON.stringify(BASE_COMPLEX_REQUEST_SCHEMA, null, 2);
+      setError('Unable to load the selected endpoint request sample.');
+      formattedSample = nextFormState.requestSampleText || '';
     }
     setBaseRequestJson(formattedSample);
     setRequestSampleText(formattedSample);
@@ -4844,6 +4926,7 @@ export default function PosApiAdmin() {
     setCombinationModifierKeys([]);
     setCombinationPayloadText('');
     setCombinationError(selectedVariationKey ? '' : 'Select a base variation to build a combination.');
+    setSelectedVariationKey('');
 
     setStatus('');
     resetTestState();
@@ -6019,11 +6102,13 @@ export default function PosApiAdmin() {
         ));
       }
 
+      const normalizedWithIds = normalizeEndpointList(normalized);
+
       const res = await fetch(`${API_BASE}/posapi/endpoints`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ endpoints: normalized }),
+        body: JSON.stringify({ endpoints: normalizedWithIds }),
         skipLoader: true,
       });
       if (!res.ok) {
@@ -6041,12 +6126,11 @@ export default function PosApiAdmin() {
         throw new Error(message);
       }
       const saved = await res.json();
-      const nextRaw = Array.isArray(saved) ? saved : normalized;
-      const next = nextRaw.map(withEndpointMetadata);
+      const nextRaw = Array.isArray(saved) ? saved : normalizedWithIds;
+      const next = normalizeEndpointList(nextRaw.map(withEndpointMetadata));
       setEndpoints(next);
       const selected = next.find((ep) => ep.id === preparedDefinition.id) || preparedDefinition;
-      setSelectedId(selected.id);
-      setFormState(createFormState(selected));
+      handleSelect(selected.id, selected);
       setStatus('Changes saved');
     } catch (err) {
       console.error(err);
@@ -6089,7 +6173,7 @@ export default function PosApiAdmin() {
       }
       const saved = await res.json();
       const nextRaw = Array.isArray(saved) ? saved : updated;
-      const nextEndpoints = nextRaw.map(withEndpointMetadata);
+      const nextEndpoints = normalizeEndpointList(nextRaw.map(withEndpointMetadata));
       setEndpoints(nextEndpoints);
       if (nextEndpoints.length > 0) {
         setSelectedId(nextEndpoints[0].id);
@@ -6684,9 +6768,8 @@ export default function PosApiAdmin() {
     setImportBaseUrl('');
     setImportBaseUrlEnvVar('');
     setImportBaseUrlMode('literal');
-    const cleanBase = JSON.stringify(sanitizeRequestExampleForSample(BASE_COMPLEX_REQUEST_SCHEMA), null, 2);
-    setBaseRequestJson(cleanBase);
-    setRequestSampleText(cleanBase);
+    setBaseRequestJson('');
+    setRequestSampleText('');
     setCombinationBaseKey(BASE_COMBINATION_KEY);
     setCombinationModifierKeys([]);
     setCombinationPayloadText('');
@@ -6696,6 +6779,7 @@ export default function PosApiAdmin() {
     setUseCachedToken(true);
     setImportUseCachedToken(true);
     setRequestFieldValues({});
+    setRequestFieldMeta({});
     setTokenMeta({ lastFetchedAt: null, expiresAt: null });
   }
 
@@ -7023,7 +7107,7 @@ export default function PosApiAdmin() {
                     <li key={ep.id}>
                       <button
                         type="button"
-                        onClick={() => handleSelect(ep.id)}
+                        onClick={() => handleSelect(ep.id, ep)}
                         style={{
                           ...styles.listButton,
                           ...(selectedId === ep.id ? styles.listButtonActive : {}),

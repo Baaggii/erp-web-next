@@ -483,7 +483,7 @@ test('promoteTemporarySubmission forwards chain with normalized metadata and cle
   assert.ok(conn.released);
 });
 
-test('promoteTemporarySubmission backfills chain when forwarding without chain_id', async () => {
+test('promoteTemporarySubmission blocks forwarding when chain_id is missing', async () => {
   const temporaryRow = {
     id: 25,
     company_id: 1,
@@ -515,28 +515,17 @@ test('promoteTemporarySubmission backfills chain when forwarding without chain_i
     activityLogger: async () => {},
   };
 
-  const result = await promoteTemporarySubmission(
-    25,
-    { reviewerEmpId: 'EMP100', cleanedValues: { amount: 10 }, promoteAsTemporary: true },
-    runtimeDeps,
+  await assert.rejects(
+    () =>
+      promoteTemporarySubmission(
+        25,
+        { reviewerEmpId: 'EMP100', cleanedValues: { amount: 10 }, promoteAsTemporary: true },
+        runtimeDeps,
+      ),
+    (err) => err && err.status === 409,
   );
-
-  assert.equal(result.forwardedTo, 'EMP500');
-  assert.ok(chainUpdates.length > 0);
-  assert.equal(chainUpdates[0].chainId, 25);
-  assert.equal(chainUpdates[0].payload.status, 'promoted');
-  assert.ok(
-    queries.some(
-      ({ sql, params }) =>
-        sql.startsWith('UPDATE `transaction_temporaries` SET chain_id = ?') && params[0] === 25,
-    ),
-  );
-  assert.ok(
-    queries.some(
-      ({ sql, params }) =>
-        sql.startsWith('INSERT INTO `transaction_temporaries`') && params.includes(25),
-    ),
-  );
+  assert.equal(chainUpdates.length, 0);
+  assert.ok(!queries.some(({ sql }) => sql.includes('INSERT INTO `transaction_temporaries`') && sql.includes('chain_id')));
   assert.ok(conn.released);
 });
 
