@@ -1564,9 +1564,10 @@ export async function promoteTemporarySubmission(
       payloadJson?.skipTriggerOnPromote === true ||
       errorRevokedFields.length > 0;
     const skipTriggers = shouldSkipTriggers;
+    const reviewerHasSenior = Boolean(forwardReviewerEmpId);
     const shouldForwardTemporary =
       promoteAsTemporary === true &&
-      forwardReviewerEmpId &&
+      reviewerHasSenior &&
       forwardReviewerEmpId !== normalizedReviewer;
     const creatorIsReviewer =
       normalizeEmpId(row.created_by) === normalizedReviewer;
