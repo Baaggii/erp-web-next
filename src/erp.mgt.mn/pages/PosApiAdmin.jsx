@@ -468,8 +468,30 @@ function normalizeFieldList(payload) {
   return [];
 }
 
+function deriveEndpointId(endpoint) {
+  if (!endpoint || typeof endpoint !== 'object') return '';
+  const candidates = [endpoint.id, endpoint.name, endpoint.path, endpoint.url, endpoint.endpoint];
+  const raw = candidates
+    .map((value) => (value === undefined || value === null ? '' : `${value}`))
+    .find((value) => value.trim());
+  if (raw) {
+    return raw
+      .trim()
+      .replace(/\s+/g, '-')
+      .replace(/[^a-zA-Z0-9-_./]+/g, '-');
+  }
+  if (endpoint.method && endpoint.path) {
+    return `${endpoint.method}-${endpoint.path}`
+      .replace(/\s+/g, '-')
+      .replace(/[^a-zA-Z0-9-_./]+/g, '-');
+  }
+  return '';
+}
+
 function withEndpointMetadata(endpoint) {
   if (!endpoint || typeof endpoint !== 'object') return endpoint;
+  const normalizedId = deriveEndpointId(endpoint)
+    || (endpoint.id === undefined || endpoint.id === null ? '' : `${endpoint.id}`);
   const normalizeUrlSelection = (literal, envVar, mode) => {
     const trimmedLiteral = typeof literal === 'string' ? literal.trim() : '';
     const trimmedEnv = typeof envVar === 'string' ? envVar.trim() : '';
@@ -542,6 +564,7 @@ function withEndpointMetadata(endpoint) {
   }
   return {
     ...endpoint,
+    id: normalizedId,
     usage,
     defaultForForm: isTransaction ? Boolean(endpoint.defaultForForm) : false,
     supportsMultipleReceipts: isTransaction ? Boolean(endpoint.supportsMultipleReceipts) : false,
