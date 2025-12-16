@@ -302,6 +302,19 @@ function resolveRootChainId(forwardMeta) {
   return Math.min(...candidates);
 }
 
+function resolveExternalChainId(forwardMeta, currentId) {
+  const normalizedCurrent = normalizeTemporaryId(currentId);
+  const chainId = resolveRootChainId(forwardMeta);
+  if (chainId && chainId !== normalizedCurrent) {
+    return chainId;
+  }
+  const rootId = normalizeTemporaryId(forwardMeta?.rootTemporaryId);
+  if (rootId && rootId !== normalizedCurrent) {
+    return rootId;
+  }
+  return null;
+}
+
 export function expandForwardMeta(forwardMeta, { currentId, createdBy }) {
   const normalizedCurrentId = normalizeTemporaryId(currentId);
   const normalizedRootId =
@@ -1020,7 +1033,7 @@ function mapTemporaryRow(row) {
     {};
   return {
     id: row.id,
-    chainId: row.chainId || row.chain_id || row.id || null,
+    chainId: row.chainId || row.chain_id || null,
     companyId: row.company_id,
     tableName: row.table_name,
     formName: row.form_name,
@@ -1131,11 +1144,11 @@ export async function listTemporarySubmissions({
   const normalizedEmp = normalizeEmpId(empId);
   const conditions = [];
   const params = [];
-  let normalizedStatus = typeof status === 'string' ? status.trim().toLowerCase() : null;
-  if (scope === 'review') {
-    normalizedStatus = 'pending';
-  }
-  if (normalizedStatus && normalizedStatus !== 'all' && normalizedStatus !== 'any') {
+  const normalizedStatus = typeof status === 'string' ? status.trim().toLowerCase() : null;
+  const enforcePendingScope = scope === 'review';
+  if (enforcePendingScope) {
+    conditions.push("status = 'pending'");
+  } else if (normalizedStatus && normalizedStatus !== 'all' && normalizedStatus !== 'any') {
     if (normalizedStatus === 'processed') {
       conditions.push("status <> 'pending'");
     } else {
@@ -1168,7 +1181,7 @@ export async function listTemporarySubmissions({
     params.push(normalizedEmp);
   }
   const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
-  const chainKey = (alias = '') =>
+  const chainGroupKey = (alias = '') =>
     `COALESCE(${alias ? `${alias}.` : ''}chain_id, ${alias ? `${alias}.` : ''}id)`;
   const filteredQuery = `SELECT * FROM \`${TEMP_TABLE}\` ${where}`;
   const groupingQuery = `
@@ -1176,11 +1189,11 @@ export async function listTemporarySubmissions({
     SELECT filtered.*
       FROM filtered
       JOIN (
-            SELECT ${chainKey('f')} AS chain_key, MAX(f.updated_at) AS max_updated_at
+            SELECT ${chainGroupKey('f')} AS chain_group_id, MAX(f.updated_at) AS max_updated_at
               FROM filtered f
-             GROUP BY ${chainKey('f')}
+             GROUP BY ${chainGroupKey('f')}
            ) latest
-        ON ${chainKey('filtered')} = latest.chain_key
+        ON ${chainGroupKey('filtered')} = latest.chain_group_id
        AND filtered.updated_at = latest.max_updated_at
      ORDER BY filtered.updated_at DESC, filtered.created_at DESC
      LIMIT 200`;
@@ -1387,10 +1400,8 @@ export async function promoteTemporarySubmission(
       currentId: row.id,
       createdBy: row.created_by,
     });
-    const resolvedChainId =
-      normalizeTemporaryId(chainId) ||
-      resolveRootChainId(updatedForwardMeta) ||
-      normalizeTemporaryId(updatedForwardMeta.rootTemporaryId);
+    const metaChainId = resolveExternalChainId(updatedForwardMeta, row.id);
+    const resolvedChainId = normalizeTemporaryId(chainId) || metaChainId;
     if (resolvedChainId) {
       updatedForwardMeta.rootTemporaryId = resolvedChainId;
     }
@@ -1571,14 +1582,10 @@ export async function promoteTemporarySubmission(
       forwardReviewerEmpId !== normalizedReviewer;
     const creatorIsReviewer =
       normalizeEmpId(row.created_by) === normalizedReviewer;
-    const currentChainMissing = !normalizeTemporaryId(row.chain_id);
-    if (shouldForwardTemporary && !creatorIsReviewer && currentChainMissing) {
-      effectiveChainId = effectiveChainId || row.id;
-      updatedForwardMeta.rootTemporaryId = effectiveChainId;
-      await conn.query(
-        `UPDATE \`${TEMP_TABLE}\` SET chain_id = ? WHERE id = ?`,
-        [effectiveChainId, row.id],
-      );
+    if (shouldForwardTemporary && !effectiveChainId) {
+      const err = new Error('Missing chain identifier for forwarded transaction');
+      err.status = 409;
+      throw err;
     }
     if (effectiveChainId) {
       const [pendingRows] = await conn.query(
@@ -2090,11 +2097,8 @@ export async function rejectTemporarySubmission(
       createdBy: row.created_by,
     });
     const chainId = normalizeTemporaryId(row.chain_id) || null;
-    const resolvedChainId =
-      chainId ||
-      resolveRootChainId(updatedForwardMeta) ||
-      normalizeTemporaryId(updatedForwardMeta.rootTemporaryId) ||
-      null;
+    const metaChainId = resolveExternalChainId(updatedForwardMeta, row.id);
+    const resolvedChainId = chainId || metaChainId || null;
     const effectiveChainId = resolvedChainId || null;
     if (effectiveChainId) {
       updatedForwardMeta.rootTemporaryId = effectiveChainId;
