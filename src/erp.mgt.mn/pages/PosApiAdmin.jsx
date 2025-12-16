@@ -7021,7 +7021,7 @@ export default function PosApiAdmin() {
                     <li key={ep.id}>
                       <button
                         type="button"
-                        onClick={() => handleSelect(ep.id)}
+                        onClick={() => handleSelect(ep.id, ep)}
                         style={{
                           ...styles.listButton,
                           ...(selectedId === ep.id ? styles.listButtonActive : {}),
