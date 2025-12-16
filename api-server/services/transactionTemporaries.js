@@ -292,6 +292,16 @@ function resolveForwardMeta(payload, fallbackCreator, currentId) {
   };
 }
 
+function resolveRootChainId(forwardMeta) {
+  const candidates = [
+    ...normalizeTemporaryIdList(forwardMeta?.chainIds),
+    normalizeTemporaryId(forwardMeta?.rootTemporaryId),
+    normalizeTemporaryId(forwardMeta?.parentTemporaryId),
+  ].filter((value) => Number.isFinite(value) && value > 0);
+  if (candidates.length === 0) return null;
+  return Math.min(...candidates);
+}
+
 export function expandForwardMeta(forwardMeta, { currentId, createdBy }) {
   const normalizedCurrentId = normalizeTemporaryId(currentId);
   const normalizedRootId =
@@ -1377,7 +1387,10 @@ export async function promoteTemporarySubmission(
       currentId: row.id,
       createdBy: row.created_by,
     });
-    const resolvedChainId = normalizeTemporaryId(chainId) || normalizeTemporaryId(updatedForwardMeta.rootTemporaryId);
+    const resolvedChainId =
+      normalizeTemporaryId(chainId) ||
+      resolveRootChainId(updatedForwardMeta) ||
+      normalizeTemporaryId(updatedForwardMeta.rootTemporaryId);
     if (resolvedChainId) {
       updatedForwardMeta.rootTemporaryId = resolvedChainId;
     }
@@ -2073,7 +2086,10 @@ export async function rejectTemporarySubmission(
     const chainId = normalizeTemporaryId(row.chain_id) || null;
     const chainUuid = row.chain_uuid || null;
     const resolvedChainId =
-      chainIdFromRow || normalizeTemporaryId(updatedForwardMeta.rootTemporaryId) || null;
+      chainId ||
+      resolveRootChainId(updatedForwardMeta) ||
+      normalizeTemporaryId(updatedForwardMeta.rootTemporaryId) ||
+      null;
     const effectiveChainId = resolvedChainId || null;
     if (effectiveChainId) {
       updatedForwardMeta.rootTemporaryId = effectiveChainId;
