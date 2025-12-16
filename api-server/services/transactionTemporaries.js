@@ -949,10 +949,7 @@ export async function createTemporarySubmission({
     const cleanedWithCalculated = mergeCalculatedValues(cleanedValues, payload);
     const forwardMeta = resolveForwardMeta(payload, normalizedCreator, null);
     const parentTemporaryId = normalizeTemporaryId(forwardMeta?.parentTemporaryId);
-    let chainId =
-      normalizeTemporaryId(forwardMeta?.rootTemporaryId) ||
-      normalizeTemporaryId(forwardMeta?.chainId) ||
-      null;
+    let chainId = resolveExternalChainId(forwardMeta, null);
     if (!chainId && parentTemporaryId) {
       const [parentRows] = await conn.query(
         `SELECT chain_id FROM \`${TEMP_TABLE}\` WHERE id = ? LIMIT 1 FOR UPDATE`,
@@ -1646,8 +1643,7 @@ export async function promoteTemporarySubmission(
     if (shouldForwardTemporary && !effectiveChainId) {
       const fallbackChainId =
         normalizeTemporaryId(row.chain_id) ||
-        normalizeTemporaryId(updatedForwardMeta?.rootTemporaryId) ||
-        normalizeTemporaryId(row.id) ||
+        resolveExternalChainId(updatedForwardMeta, row.id) ||
         null;
       if (fallbackChainId) {
         effectiveChainId = fallbackChainId;
