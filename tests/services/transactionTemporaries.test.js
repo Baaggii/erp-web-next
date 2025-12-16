@@ -526,7 +526,7 @@ test('promoteTemporarySubmission seeds chain_id from current record when forward
   assert.equal(updateQuery.params[0], 25);
   assert.equal(updateQuery.params[1], 25);
   const forwardInsert = queries.find(({ sql }) =>
-    sql.startsWith('INSERT INTO `transaction_temporaries`') && sql.includes('chain_uuid'),
+    sql.startsWith('INSERT INTO `transaction_temporaries`') && sql.includes('chain_id') && !sql.includes('chain_uuid'),
   );
   assert.ok(forwardInsert);
   assert.equal(forwardInsert.params[12], 25);
