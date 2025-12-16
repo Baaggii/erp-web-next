@@ -683,7 +683,7 @@ const EMPTY_ENDPOINT = {
   parametersText: '[]',
   requestDescription: '',
   requestSchemaText: '{}',
-  requestSampleText: JSON.stringify(BASE_COMPLEX_REQUEST_SCHEMA, null, 2),
+  requestSampleText: '{}',
   requestSampleNotes: '',
   responseDescription: '',
   responseSchemaText: '{}',
@@ -1897,6 +1897,18 @@ function createFormState(definition) {
   const hasRequestSchema = hasObjectEntries(definition.requestBody?.schema);
   const requestSchema = hasRequestSchema ? definition.requestBody.schema : {};
   const requestSchemaFallback = '{}';
+  const rawRequestSample = parseExamplePayload(
+    definition.requestSample
+      || definition.requestBody?.example
+      || definition.requestExample
+      || definition.requestBody?.schema,
+  );
+
+  const sanitizedRequestSample = sanitizeRequestExampleForSample(rawRequestSample);
+  const requestSamplePayload =
+    sanitizedRequestSample && Object.keys(sanitizedRequestSample).length > 0
+      ? sanitizedRequestSample
+      : stripRequestDecorations(rawRequestSample);
 
   const buildUrlFieldState = (key) => {
     const literalCandidate = definition[key];
@@ -1924,12 +1936,10 @@ function createFormState(definition) {
     parametersText: toPrettyJson(definition.parameters, '[]'),
     requestDescription: definition.requestBody?.description || '',
     requestSampleText: toPrettyJson(
-      sanitizeRequestExampleForSample(
-        definition.requestSample
-          || definition.requestBody?.example
-          || definition.requestExample,
-      ) || BASE_COMPLEX_REQUEST_SCHEMA,
-      JSON.stringify(BASE_COMPLEX_REQUEST_SCHEMA, null, 2),
+      requestSamplePayload && Object.keys(requestSamplePayload).length > 0
+        ? requestSamplePayload
+        : requestSchema,
+      requestSchemaFallback,
     ),
     requestSampleNotes: definition.requestSampleNotes || '',
     requestSchemaText: toPrettyJson(requestSchema, requestSchemaFallback),
@@ -2741,12 +2751,8 @@ export default function PosApiAdmin() {
   const [endpoints, setEndpoints] = useState([]);
   const [selectedId, setSelectedId] = useState('');
   const [formState, setFormState] = useState({ ...EMPTY_ENDPOINT });
-  const [baseRequestJson, setBaseRequestJson] = useState(
-    JSON.stringify(BASE_COMPLEX_REQUEST_SCHEMA, null, 2),
-  );
-  const [requestSampleText, setRequestSampleText] = useState(
-    JSON.stringify(BASE_COMPLEX_REQUEST_SCHEMA, null, 2),
-  );
+  const [baseRequestJson, setBaseRequestJson] = useState('');
+  const [requestSampleText, setRequestSampleText] = useState('');
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [fetchingDoc, setFetchingDoc] = useState(false);
@@ -4873,7 +4879,7 @@ export default function PosApiAdmin() {
 
     let nextFormState = { ...EMPTY_ENDPOINT };
     let nextRequestFieldValues = {};
-    let formattedSample = JSON.stringify(BASE_COMPLEX_REQUEST_SCHEMA, null, 2);
+    let formattedSample = '';
 
     try {
       nextFormState = pruneUnavailableControls(createFormState(definition));
@@ -4904,13 +4910,15 @@ export default function PosApiAdmin() {
 
     try {
       const resolvedSample = sanitizeRequestExampleForSample(
-        parseExamplePayload(nextFormState.requestSampleText || BASE_COMPLEX_REQUEST_SCHEMA),
+        parseExamplePayload(nextFormState.requestSampleText),
       );
-      formattedSample = JSON.stringify(resolvedSample, null, 2);
+      formattedSample = Object.keys(resolvedSample).length > 0
+        ? JSON.stringify(resolvedSample, null, 2)
+        : (nextFormState.requestSampleText || '');
     } catch (err) {
       console.error('Failed to parse request sample for selected endpoint', err);
-      setError('Unable to load the selected endpoint request sample. A default sample has been applied.');
-      formattedSample = JSON.stringify(BASE_COMPLEX_REQUEST_SCHEMA, null, 2);
+      setError('Unable to load the selected endpoint request sample.');
+      formattedSample = nextFormState.requestSampleText || '';
     }
     setBaseRequestJson(formattedSample);
     setRequestSampleText(formattedSample);
@@ -6760,9 +6768,8 @@ export default function PosApiAdmin() {
     setImportBaseUrl('');
     setImportBaseUrlEnvVar('');
     setImportBaseUrlMode('literal');
-    const cleanBase = JSON.stringify(sanitizeRequestExampleForSample(BASE_COMPLEX_REQUEST_SCHEMA), null, 2);
-    setBaseRequestJson(cleanBase);
-    setRequestSampleText(cleanBase);
+    setBaseRequestJson('');
+    setRequestSampleText('');
     setCombinationBaseKey(BASE_COMBINATION_KEY);
     setCombinationModifierKeys([]);
     setCombinationPayloadText('');
