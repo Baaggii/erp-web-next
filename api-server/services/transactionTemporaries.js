@@ -1281,7 +1281,7 @@ export async function getTemporaryChainHistory(id) {
     );
     const row = rows[0];
     if (!row) return [];
-    const chainId = normalizeTemporaryId(row.chain_id ?? row.chainId) || null;
+    const chainId = normalizeTemporaryId(row.chain_id) || null;
     let chainRows = [];
     if (chainId) {
       const [rowsByChain] = await conn.query(
