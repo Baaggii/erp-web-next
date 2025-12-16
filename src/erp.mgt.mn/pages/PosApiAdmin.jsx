@@ -643,6 +643,24 @@ function withEndpointMetadata(endpoint) {
   };
 }
 
+function normalizeEndpointList(list = []) {
+  const seen = new Set();
+  return list.map((endpoint, index) => {
+    if (!endpoint || typeof endpoint !== 'object') return endpoint;
+    const baseId = (endpoint.id === undefined || endpoint.id === null ? '' : `${endpoint.id}`)
+      || deriveEndpointId(endpoint)
+      || `endpoint-${index + 1}`;
+    let id = baseId;
+    let counter = 2;
+    while (seen.has(id)) {
+      id = `${baseId}-${counter}`;
+      counter += 1;
+    }
+    seen.add(id);
+    return { ...endpoint, id };
+  });
+}
+
 function badgeStyle(color) {
   return {
     background: color,
@@ -4665,7 +4683,7 @@ export default function PosApiAdmin() {
         const data = await res.json();
         if (cancelled) return;
         const list = Array.isArray(data) ? data : [];
-        const normalized = list.map(withEndpointMetadata);
+        const normalized = normalizeEndpointList(list.map(withEndpointMetadata));
         setEndpoints(normalized);
         if (normalized.length > 0) {
           handleSelect(normalized[0].id, normalized[0]);
@@ -6041,11 +6059,13 @@ export default function PosApiAdmin() {
         ));
       }
 
+      const normalizedWithIds = normalizeEndpointList(normalized);
+
       const res = await fetch(`${API_BASE}/posapi/endpoints`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ endpoints: normalized }),
+        body: JSON.stringify({ endpoints: normalizedWithIds }),
         skipLoader: true,
       });
       if (!res.ok) {
@@ -6063,8 +6083,8 @@ export default function PosApiAdmin() {
         throw new Error(message);
       }
       const saved = await res.json();
-      const nextRaw = Array.isArray(saved) ? saved : normalized;
-      const next = nextRaw.map(withEndpointMetadata);
+      const nextRaw = Array.isArray(saved) ? saved : normalizedWithIds;
+      const next = normalizeEndpointList(nextRaw.map(withEndpointMetadata));
       setEndpoints(next);
       const selected = next.find((ep) => ep.id === preparedDefinition.id) || preparedDefinition;
       handleSelect(selected.id, selected);
@@ -6110,7 +6130,7 @@ export default function PosApiAdmin() {
       }
       const saved = await res.json();
       const nextRaw = Array.isArray(saved) ? saved : updated;
-      const nextEndpoints = nextRaw.map(withEndpointMetadata);
+      const nextEndpoints = normalizeEndpointList(nextRaw.map(withEndpointMetadata));
       setEndpoints(nextEndpoints);
       if (nextEndpoints.length > 0) {
         setSelectedId(nextEndpoints[0].id);
