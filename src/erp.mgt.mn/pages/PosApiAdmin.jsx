@@ -4645,8 +4645,7 @@ export default function PosApiAdmin() {
         const normalized = list.map(withEndpointMetadata);
         setEndpoints(normalized);
         if (normalized.length > 0) {
-          setSelectedId(normalized[0].id);
-          setFormState(createFormState(normalized[0]));
+          handleSelect(normalized[0].id, normalized[0]);
           setTestEnvironment('staging');
           setImportAuthEndpointId(normalized[0].authEndpointId || '');
         }
@@ -4787,7 +4786,7 @@ export default function PosApiAdmin() {
     };
   }, [activeTab]);
 
-  function handleSelect(id) {
+  function handleSelect(id, explicitDefinition = null) {
     if (!id) {
       return;
     }
@@ -6045,8 +6044,7 @@ export default function PosApiAdmin() {
       const next = nextRaw.map(withEndpointMetadata);
       setEndpoints(next);
       const selected = next.find((ep) => ep.id === preparedDefinition.id) || preparedDefinition;
-      setSelectedId(selected.id);
-      setFormState(createFormState(selected));
+      handleSelect(selected.id, selected);
       setStatus('Changes saved');
     } catch (err) {
       console.error(err);
