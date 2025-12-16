@@ -4791,7 +4791,7 @@ export default function PosApiAdmin() {
       return;
     }
 
-    const definition = explicitDefinition || endpoints.find((ep) => ep.id === id);
+    const definition = endpoints.find((ep) => ep.id === id);
     if (!definition) {
       return;
     }
