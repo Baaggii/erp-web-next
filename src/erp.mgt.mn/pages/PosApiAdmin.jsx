@@ -4809,19 +4809,16 @@ export default function PosApiAdmin() {
     };
   }, [activeTab]);
 
-  useEffect(() => {
-    if (!Array.isArray(endpoints) || endpoints.length === 0) return;
-    if (selectedId && endpoints.some((endpoint) => endpoint.id === selectedId)) return;
-    handleSelect(endpoints[0].id, endpoints[0]);
-  }, [endpoints, selectedId]);
-
   function handleSelect(id, explicitDefinition = null) {
-    const definition = explicitDefinition || endpoints.find((ep) => ep.id === id) || null;
-    const resolvedId = deriveEndpointId(definition) || id;
-    if (!definition || !resolvedId) return;
+    if (!id) {
+      return;
+    }
 
-    setError('');
-    setStatus('');
+    const definition = endpoints.find((ep) => ep.id === id);
+    if (!definition) {
+      return;
+    }
+
     let nextFormState = { ...EMPTY_ENDPOINT };
     let nextRequestFieldValues = {};
     let formattedSample = JSON.stringify(BASE_COMPLEX_REQUEST_SCHEMA, null, 2);
@@ -4899,7 +4896,7 @@ export default function PosApiAdmin() {
     setFormState(nextFormState);
     setTestEnvironment('staging');
     setImportAuthEndpointId(definition?.authEndpointId || '');
-    setSelectedId(resolvedId);
+    setSelectedId(definition.id);
   }
 
   function handleChange(field, value) {
