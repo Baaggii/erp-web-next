@@ -4934,8 +4934,6 @@ export default function PosApiAdmin() {
     setSelectedDocBlock('');
     setDocMetadata({});
     setDocFieldDescriptions({});
-    setSampleImportText('');
-    setSampleImportError('');
     setImportStatus('');
     setImportError('');
     setImportDrafts([]);
@@ -6763,8 +6761,6 @@ export default function PosApiAdmin() {
     setSelectedDocBlock('');
     setDocMetadata({});
     setDocFieldDescriptions({});
-    setSampleImportText('');
-    setSampleImportError('');
     setImportBaseUrl('');
     setImportBaseUrlEnvVar('');
     setImportBaseUrlMode('literal');
