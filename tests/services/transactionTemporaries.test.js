@@ -478,6 +478,60 @@ test('promoteTemporarySubmission forwards chain with normalized metadata and cle
   assert.ok(conn.released);
 });
 
+test('promoteTemporarySubmission seeds chain_id from current record when forwarding to another senior', async () => {
+  const temporaryRow = {
+    id: 25,
+    company_id: 1,
+    chain_id: null,
+    table_name: 'transactions_test',
+    form_name: null,
+    config_name: null,
+    module_key: null,
+    payload_json: '{}',
+    cleaned_values_json: '{}',
+    raw_values_json: '{}',
+    created_by: 'EMP200',
+    plan_senior_empid: 'EMP100',
+    branch_id: null,
+    department_id: null,
+    status: 'pending',
+  };
+  const chainUpdates = [];
+  const { conn, queries } = createStubConnection({ temporaryRow });
+
+  const runtimeDeps = {
+    connectionFactory: async () => conn,
+    columnLister: async () => [{ name: 'amount', type: 'int', maxLength: null }],
+    employmentSessionFetcher: async (empid) =>
+      empid === 'EMP100' ? { senior_empid: 'EMP500' } : {},
+    chainStatusUpdater: async (_c, chainId, payload) =>
+      chainUpdates.push({ chainId, payload }),
+    notificationInserter: async () => {},
+    activityLogger: async () => {},
+  };
+
+  const result = await promoteTemporarySubmission(
+    25,
+    { reviewerEmpId: 'EMP100', cleanedValues: { amount: 10 }, promoteAsTemporary: true },
+    runtimeDeps,
+  );
+
+  assert.equal(result.forwardedTo, 'EMP500');
+  const chainUpdate = chainUpdates[0];
+  assert.equal(chainUpdate.chainId, 25);
+  const updateQuery = queries.find(({ sql }) =>
+    sql.startsWith('UPDATE `transaction_temporaries` SET chain_id = ? WHERE id = ?'),
+  );
+  assert.ok(updateQuery);
+  assert.equal(updateQuery.params[0], 25);
+  assert.equal(updateQuery.params[1], 25);
+  const forwardInsert = queries.find(({ sql }) =>
+    sql.startsWith('INSERT INTO `transaction_temporaries`') && sql.includes('chain_uuid'),
+  );
+  assert.ok(forwardInsert);
+  assert.equal(forwardInsert.params[12], 25);
+});
+
 test('promoteTemporarySubmission promotes chain and records promotedRecordId', async () => {
   const temporaryRow = {
     id: 7,
