@@ -4793,6 +4793,10 @@ export default function PosApiAdmin() {
     }
 
     const definition = endpoints.find((ep) => ep.id === id);
+    if (!definition) {
+      return;
+    }
+
     let nextFormState = { ...EMPTY_ENDPOINT };
     let nextRequestFieldValues = {};
 
@@ -4858,13 +4862,12 @@ export default function PosApiAdmin() {
     setSelectedImportId('');
     setRequestBuilder(null);
     setRequestBuilderError('');
-    setRequestFieldValues({});
     setRequestFieldRequirements({});
-    setFormState({ ...EMPTY_ENDPOINT });
     setRequestFieldValues(nextRequestFieldValues);
     setFormState(nextFormState);
     setTestEnvironment('staging');
     setImportAuthEndpointId(definition?.authEndpointId || '');
+    setSelectedId(definition.id);
   }
 
   function handleChange(field, value) {
@@ -9256,6 +9259,7 @@ const styles = {
   listButtonActive: {
     borderColor: '#2563eb',
     background: '#dbeafe',
+    color: '#2563eb',
   },
   listButtonHeader: {
     display: 'flex',
