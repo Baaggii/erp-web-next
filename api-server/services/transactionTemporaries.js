@@ -1643,6 +1643,20 @@ export async function promoteTemporarySubmission(
       promoteAsTemporary === true &&
       reviewerHasSenior &&
       forwardReviewerEmpId !== normalizedReviewer;
+    if (shouldForwardTemporary && !effectiveChainId) {
+      const fallbackChainId =
+        normalizeTemporaryId(row.chain_id) ||
+        normalizeTemporaryId(updatedForwardMeta?.rootTemporaryId) ||
+        normalizeTemporaryId(row.id) ||
+        null;
+      if (fallbackChainId) {
+        effectiveChainId = fallbackChainId;
+        updatedForwardMeta.rootTemporaryId = fallbackChainId;
+        if (!row.chain_id) {
+          await conn.query(`UPDATE \`${TEMP_TABLE}\` SET chain_id = ? WHERE id = ?`, [fallbackChainId, row.id]);
+        }
+      }
+    }
     const creatorIsReviewer =
       normalizeEmpId(row.created_by) === normalizedReviewer;
     if (shouldForwardTemporary && !effectiveChainId) {
