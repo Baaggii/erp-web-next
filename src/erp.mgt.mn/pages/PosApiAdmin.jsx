@@ -4842,11 +4842,11 @@ export default function PosApiAdmin() {
     let formattedSample = JSON.stringify(BASE_COMPLEX_REQUEST_SCHEMA, null, 2);
 
     try {
-      nextFormState = createFormState(definition);
+      nextFormState = pruneUnavailableControls(createFormState(definition));
     } catch (err) {
       console.error('Failed to prepare form state for selected endpoint', err);
       setError('Failed to load the selected endpoint. Please review its configuration.');
-      nextFormState = { ...EMPTY_ENDPOINT, ...(definition || {}) };
+      nextFormState = pruneUnavailableControls({ ...EMPTY_ENDPOINT, ...(definition || {}) });
     }
 
     try {
@@ -4864,7 +4864,7 @@ export default function PosApiAdmin() {
     } catch (err) {
       console.error('Failed to select endpoint', err);
       setError('Failed to load the selected endpoint. Please review its configuration.');
-      nextFormState = { ...EMPTY_ENDPOINT, ...(definition || {}) };
+      nextFormState = pruneUnavailableControls({ ...EMPTY_ENDPOINT, ...(definition || {}) });
       nextRequestFieldValues = {};
     }
 
@@ -4884,6 +4884,7 @@ export default function PosApiAdmin() {
     setCombinationModifierKeys([]);
     setCombinationPayloadText('');
     setCombinationError(selectedVariationKey ? '' : 'Select a base variation to build a combination.');
+    setSelectedVariationKey('');
 
     setStatus('');
     resetTestState();
