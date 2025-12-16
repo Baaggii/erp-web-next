@@ -490,8 +490,8 @@ function deriveEndpointId(endpoint) {
 
 function withEndpointMetadata(endpoint) {
   if (!endpoint || typeof endpoint !== 'object') return endpoint;
-  const normalizedId = (endpoint.id === undefined || endpoint.id === null ? '' : `${endpoint.id}`)
-    || deriveEndpointId(endpoint);
+  const normalizedId = deriveEndpointId(endpoint)
+    || (endpoint.id === undefined || endpoint.id === null ? '' : `${endpoint.id}`);
   const normalizeUrlSelection = (literal, envVar, mode) => {
     const trimmedLiteral = typeof literal === 'string' ? literal.trim() : '';
     const trimmedEnv = typeof envVar === 'string' ? envVar.trim() : '';
@@ -659,51 +659,6 @@ function normalizeEndpointList(list = []) {
     seen.add(id);
     return { ...endpoint, id };
   });
-}
-
-function pruneUnavailableControls(state) {
-  if (!state) return { ...EMPTY_ENDPOINT };
-  const usage = state.usage && VALID_USAGE_VALUES.has(state.usage) ? state.usage : 'transaction';
-  const isTransaction = usage === 'transaction';
-  const supportsItems = isTransaction && state.supportsItems !== false;
-  const supportsMultipleReceipts = isTransaction && state.supportsMultipleReceipts === true;
-  const supportsMultiplePayments = isTransaction && state.supportsMultiplePayments === true;
-
-  const receiptTypesEnabled = supportsItems && state.enableReceiptTypes === true;
-  const receiptTaxTypesEnabled = supportsItems && state.enableReceiptTaxTypes === true;
-  const paymentMethodsEnabled = supportsMultiplePayments && state.enablePaymentMethods === true;
-  const receiptItemsEnabled = supportsItems && state.enableReceiptItems === true;
-
-  const sanitizeList = (list, defaultValues, allowed) =>
-    sanitizeCodeList(Array.isArray(list) ? list : [], defaultValues, allowed);
-
-  return {
-    ...state,
-    usage,
-    supportsItems,
-    supportsMultipleReceipts,
-    supportsMultiplePayments,
-    enableReceiptTypes: receiptTypesEnabled,
-    allowMultipleReceiptTypes: receiptTypesEnabled && state.allowMultipleReceiptTypes !== false,
-    receiptTypes: receiptTypesEnabled
-      ? sanitizeList(state.receiptTypes, DEFAULT_RECEIPT_TYPES, VALID_RECEIPT_TYPES)
-      : [],
-    enableReceiptTaxTypes: receiptTaxTypesEnabled,
-    allowMultipleReceiptTaxTypes: receiptTaxTypesEnabled && state.allowMultipleReceiptTaxTypes !== false,
-    taxTypes: receiptTaxTypesEnabled
-      ? sanitizeList(state.taxTypes, DEFAULT_TAX_TYPES, VALID_TAX_TYPES)
-      : [],
-    enablePaymentMethods: paymentMethodsEnabled,
-    allowMultiplePaymentMethods: paymentMethodsEnabled && state.allowMultiplePaymentMethods !== false,
-    paymentMethods: paymentMethodsEnabled
-      ? sanitizeList(state.paymentMethods, DEFAULT_PAYMENT_METHODS, VALID_PAYMENT_METHODS)
-      : [],
-    enableReceiptItems: receiptItemsEnabled,
-    allowMultipleReceiptItems: receiptItemsEnabled && state.allowMultipleReceiptItems !== false,
-    receiptItemTemplates: receiptItemsEnabled
-      ? buildTemplateList(state.receiptItemTemplates, state.allowMultipleReceiptItems !== false)
-      : [],
-  };
 }
 
 function badgeStyle(color) {
@@ -4872,22 +4827,16 @@ export default function PosApiAdmin() {
     };
   }, [activeTab]);
 
-  useEffect(() => {
-    if (!Array.isArray(endpoints) || endpoints.length === 0) return;
-    if (selectedId && endpoints.some((endpoint) => endpoint.id === selectedId)) return;
-    handleSelect(endpoints[0].id, endpoints[0]);
-  }, [endpoints, selectedId]);
-
   function handleSelect(id, explicitDefinition = null) {
-    const baseDefinition = explicitDefinition || endpoints.find((ep) => ep.id === id) || null;
-    const definition = baseDefinition ? withEndpointMetadata(baseDefinition) : null;
-    const resolvedId = (definition?.id && `${definition.id}`.trim())
-      || deriveEndpointId(definition)
-      || id;
-    if (!definition || !resolvedId) return;
+    if (!id) {
+      return;
+    }
 
-    setError('');
-    setStatus('');
+    const definition = endpoints.find((ep) => ep.id === id);
+    if (!definition) {
+      return;
+    }
+
     let nextFormState = { ...EMPTY_ENDPOINT };
     let nextRequestFieldValues = {};
     let formattedSample = JSON.stringify(BASE_COMPLEX_REQUEST_SCHEMA, null, 2);
@@ -4966,7 +4915,7 @@ export default function PosApiAdmin() {
     setFormState(nextFormState);
     setTestEnvironment('staging');
     setImportAuthEndpointId(definition?.authEndpointId || '');
-    setSelectedId(`${resolvedId}`);
+    setSelectedId(definition.id);
   }
 
   function handleChange(field, value) {
@@ -6138,8 +6087,7 @@ export default function PosApiAdmin() {
       const nextRaw = Array.isArray(saved) ? saved : normalizedWithIds;
       const next = normalizeEndpointList(nextRaw.map(withEndpointMetadata));
       setEndpoints(next);
-      const targetIndex = replacementIndex >= 0 ? replacementIndex : next.length - 1;
-      const selected = next[targetIndex] || next[0] || preparedDefinition;
+      const selected = next.find((ep) => ep.id === preparedDefinition.id) || preparedDefinition;
       handleSelect(selected.id, selected);
       setStatus('Changes saved');
     } catch (err) {
