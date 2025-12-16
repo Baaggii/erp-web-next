@@ -410,6 +410,17 @@ async function updateTemporaryChainStatus(
   const normalizedChain = normalizeTemporaryId(chainId);
   const normalizedTemporaryId = normalizeTemporaryId(temporaryId);
   if (!conn || (!normalizedChain && !normalizedTemporaryId)) return;
+  let targetChainId = normalizedChain;
+  if (!targetChainId && normalizedTemporaryId) {
+    const [chainRows] = await conn.query(
+      `SELECT chain_id FROM \`${TEMP_TABLE}\` WHERE id = ? LIMIT 1`,
+      [normalizedTemporaryId],
+    );
+    const resolvedChain = normalizeTemporaryId(chainRows?.[0]?.chain_id);
+    if (resolvedChain) {
+      targetChainId = resolvedChain;
+    }
+  }
   const columns = ['status = ?', 'reviewed_by = ?', 'reviewed_at = NOW()', 'review_notes = ?'];
   const params = [status ?? null, reviewerEmpId ?? null, notes ?? null];
   if (promotedRecordId !== undefined) {
@@ -419,14 +430,14 @@ async function updateTemporaryChainStatus(
   if (clearReviewerAssignment || (status && status !== 'pending')) {
     columns.push('plan_senior_empid = NULL');
   }
-  const whereClause = normalizedChain
+  const whereClause = targetChainId
     ? pendingOnly
       ? 'chain_id = ? AND status = "pending"'
       : 'chain_id = ?'
     : pendingOnly
     ? 'id = ? AND status = "pending"'
     : 'id = ?';
-  params.push(normalizedChain || normalizedTemporaryId);
+  params.push(targetChainId || normalizedTemporaryId);
   await conn.query(
     `UPDATE \`${TEMP_TABLE}\` SET ${columns.join(', ')} WHERE ${whereClause}`,
     params,
@@ -1009,7 +1020,7 @@ function mapTemporaryRow(row) {
     {};
   return {
     id: row.id,
-    chainId: row.chain_id || row.id || null,
+    chainId: row.chainId || row.chain_id || row.id || null,
     companyId: row.company_id,
     tableName: row.table_name,
     formName: row.form_name,
@@ -1160,20 +1171,20 @@ export async function listTemporarySubmissions({
   const chainKey = (alias = '') =>
     `COALESCE(${alias ? `${alias}.` : ''}chain_id, ${alias ? `${alias}.` : ''}id)`;
   const filteredQuery = `SELECT * FROM \`${TEMP_TABLE}\` ${where}`;
-  const [rows] = await pool.query(
-    `SELECT filtered.*
-       FROM (${filteredQuery}) filtered
-       JOIN (
-             SELECT ${chainKey('f')} AS chain_key, MAX(f.updated_at) AS max_updated_at
-               FROM (${filteredQuery}) f
-              GROUP BY ${chainKey('f')}
-            ) latest
-         ON ${chainKey('filtered')} = latest.chain_key
-        AND filtered.updated_at = latest.max_updated_at
-      ORDER BY filtered.updated_at DESC, filtered.created_at DESC
-      LIMIT 200`,
-    [...params, ...params],
-  );
+  const groupingQuery = `
+    WITH filtered AS (${filteredQuery})
+    SELECT filtered.*
+      FROM filtered
+      JOIN (
+            SELECT ${chainKey('f')} AS chain_key, MAX(f.updated_at) AS max_updated_at
+              FROM filtered f
+             GROUP BY ${chainKey('f')}
+           ) latest
+        ON ${chainKey('filtered')} = latest.chain_key
+       AND filtered.updated_at = latest.max_updated_at
+     ORDER BY filtered.updated_at DESC, filtered.created_at DESC
+     LIMIT 200`;
+  const [rows] = await pool.query(groupingQuery, params);
   const mapped = rows.map(mapTemporaryRow);
   const filtered = filterRowsByTransactionType(
     mapped,
@@ -1262,7 +1273,7 @@ export async function getTemporaryChainHistory(id) {
   try {
     await ensureTemporaryTable(conn);
     const [rows] = await conn.query(
-      `SELECT id, chain_id AS chainId, status, plan_senior_empid, reviewed_by, reviewed_at, review_notes, promoted_record_id, created_by, created_at, updated_at
+      `SELECT id, chain_id AS chainId, chain_id, status, plan_senior_empid, reviewed_by, reviewed_at, review_notes, promoted_record_id, created_by, created_at, updated_at
          FROM \`${TEMP_TABLE}\`
         WHERE id = ?
         LIMIT 1`,
@@ -1274,7 +1285,7 @@ export async function getTemporaryChainHistory(id) {
     let chainRows = [];
     if (chainId) {
       const [rowsByChain] = await conn.query(
-        `SELECT id, chain_id AS chainId, status, plan_senior_empid, reviewed_by, reviewed_at, review_notes, promoted_record_id, created_by, created_at, updated_at
+        `SELECT id, chain_id AS chainId, chain_id, status, plan_senior_empid, reviewed_by, reviewed_at, review_notes, promoted_record_id, created_by, created_at, updated_at
            FROM \`${TEMP_TABLE}\`
           WHERE chain_id = ?
           ORDER BY created_at ASC, id ASC`,
@@ -1294,7 +1305,7 @@ export async function getTemporaryChainHistory(id) {
     let reviewHistory = [];
     if (chainId) {
       const [historyRows] = await conn.query(
-        `SELECT id, temporary_id, chain_id AS chainId, action, reviewer_empid, forwarded_to_empid, promoted_record_id, notes, created_at
+        `SELECT id, temporary_id, chain_id AS chainId, chain_id, action, reviewer_empid, forwarded_to_empid, promoted_record_id, notes, created_at
            FROM \`${TEMP_REVIEW_HISTORY_TABLE}\`
           WHERE chain_id = ?
           ORDER BY created_at ASC, id ASC`,

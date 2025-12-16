@@ -4786,24 +4786,16 @@ export default function PosApiAdmin() {
     };
   }, [activeTab]);
 
-  useEffect(() => {
-    if (!Array.isArray(endpoints) || endpoints.length === 0) return;
-    if (selectedId && endpoints.some((endpoint) => endpoint.id === selectedId)) return;
-    handleSelect(endpoints[0].id, endpoints[0]);
-  }, [endpoints, selectedId]);
-
   function handleSelect(id, explicitDefinition = null) {
     if (!id) {
       return;
     }
 
-    const definition = explicitDefinition || endpoints.find((ep) => ep.id === id);
+    const definition = endpoints.find((ep) => ep.id === id);
     if (!definition) {
       return;
     }
 
-    setError('');
-    setStatus('');
     let nextFormState = { ...EMPTY_ENDPOINT };
     let nextRequestFieldValues = {};
     let formattedSample = JSON.stringify(BASE_COMPLEX_REQUEST_SCHEMA, null, 2);
