@@ -1571,14 +1571,8 @@ export async function promoteTemporarySubmission(
       forwardReviewerEmpId !== normalizedReviewer;
     const creatorIsReviewer =
       normalizeEmpId(row.created_by) === normalizedReviewer;
-    const currentChainId = normalizeTemporaryId(row.chain_id);
-    const currentChainMissing = !currentChainId;
-    if (!effectiveChainId && currentChainId) {
-      effectiveChainId = currentChainId;
-    }
-    const shouldSeedChainFromCurrent =
-      shouldForwardTemporary && reviewerHasSenior && !creatorIsReviewer && currentChainMissing;
-    if (shouldSeedChainFromCurrent) {
+    const currentChainMissing = !normalizeTemporaryId(row.chain_id);
+    if (shouldForwardTemporary && !creatorIsReviewer && currentChainMissing) {
       effectiveChainId = effectiveChainId || row.id;
       updatedForwardMeta.rootTemporaryId = effectiveChainId;
       await conn.query(

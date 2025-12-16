@@ -532,58 +532,6 @@ test('promoteTemporarySubmission seeds chain_id from current record when forward
   assert.equal(forwardInsert.params[12], 25);
 });
 
-test('promoteTemporarySubmission preserves existing chain_id when forwarding multi-senior', async () => {
-  const temporaryRow = {
-    id: 30,
-    company_id: 1,
-    chain_id: 11,
-    table_name: 'transactions_test',
-    form_name: null,
-    config_name: null,
-    module_key: null,
-    payload_json: '{}',
-    cleaned_values_json: '{}',
-    raw_values_json: '{}',
-    created_by: 'EMP210',
-    plan_senior_empid: 'EMP110',
-    branch_id: null,
-    department_id: null,
-    status: 'pending',
-  };
-  const chainUpdates = [];
-  const { conn, queries } = createStubConnection({ temporaryRow });
-
-  const runtimeDeps = {
-    connectionFactory: async () => conn,
-    columnLister: async () => [{ name: 'amount', type: 'int', maxLength: null }],
-    employmentSessionFetcher: async (empid) =>
-      empid === 'EMP110' ? { senior_empid: 'EMP510' } : {},
-    chainStatusUpdater: async (_c, chainId, payload) =>
-      chainUpdates.push({ chainId, payload }),
-    notificationInserter: async () => {},
-    activityLogger: async () => {},
-  };
-
-  const result = await promoteTemporarySubmission(
-    30,
-    { reviewerEmpId: 'EMP110', cleanedValues: { amount: 10 }, promoteAsTemporary: true },
-    runtimeDeps,
-  );
-
-  assert.equal(result.forwardedTo, 'EMP510');
-  const chainUpdate = chainUpdates[0];
-  assert.equal(chainUpdate.chainId, 11);
-  const chainUpdateQuery = queries.find(({ sql }) =>
-    sql.startsWith('UPDATE `transaction_temporaries` SET chain_id = ? WHERE id = ?'),
-  );
-  assert.ok(!chainUpdateQuery);
-  const forwardInsert = queries.find(({ sql }) =>
-    sql.startsWith('INSERT INTO `transaction_temporaries`') && sql.includes('chain_uuid'),
-  );
-  assert.ok(forwardInsert);
-  assert.equal(forwardInsert.params[12], 11);
-});
-
 test('promoteTemporarySubmission promotes chain and records promotedRecordId', async () => {
   const temporaryRow = {
     id: 7,
