@@ -468,8 +468,30 @@ function normalizeFieldList(payload) {
   return [];
 }
 
+function deriveEndpointId(endpoint) {
+  if (!endpoint || typeof endpoint !== 'object') return '';
+  const candidates = [endpoint.id, endpoint.name, endpoint.path, endpoint.url, endpoint.endpoint];
+  const raw = candidates
+    .map((value) => (value === undefined || value === null ? '' : `${value}`))
+    .find((value) => value.trim());
+  if (raw) {
+    return raw
+      .trim()
+      .replace(/\s+/g, '-')
+      .replace(/[^a-zA-Z0-9-_./]+/g, '-');
+  }
+  if (endpoint.method && endpoint.path) {
+    return `${endpoint.method}-${endpoint.path}`
+      .replace(/\s+/g, '-')
+      .replace(/[^a-zA-Z0-9-_./]+/g, '-');
+  }
+  return '';
+}
+
 function withEndpointMetadata(endpoint) {
   if (!endpoint || typeof endpoint !== 'object') return endpoint;
+  const normalizedId = deriveEndpointId(endpoint)
+    || (endpoint.id === undefined || endpoint.id === null ? '' : `${endpoint.id}`);
   const normalizeUrlSelection = (literal, envVar, mode) => {
     const trimmedLiteral = typeof literal === 'string' ? literal.trim() : '';
     const trimmedEnv = typeof envVar === 'string' ? envVar.trim() : '';
@@ -542,6 +564,7 @@ function withEndpointMetadata(endpoint) {
   }
   return {
     ...endpoint,
+    id: normalizedId,
     usage,
     defaultForForm: isTransaction ? Boolean(endpoint.defaultForForm) : false,
     supportsMultipleReceipts: isTransaction ? Boolean(endpoint.supportsMultipleReceipts) : false,
@@ -4645,8 +4668,7 @@ export default function PosApiAdmin() {
         const normalized = list.map(withEndpointMetadata);
         setEndpoints(normalized);
         if (normalized.length > 0) {
-          setSelectedId(normalized[0].id);
-          setFormState(createFormState(normalized[0]));
+          handleSelect(normalized[0].id, normalized[0]);
           setTestEnvironment('staging');
           setImportAuthEndpointId(normalized[0].authEndpointId || '');
         }
@@ -4787,14 +4809,22 @@ export default function PosApiAdmin() {
     };
   }, [activeTab]);
 
-  function handleSelect(id) {
-    if (!id) {
-      return;
-    }
+  useEffect(() => {
+    if (!Array.isArray(endpoints) || endpoints.length === 0) return;
+    if (selectedId && endpoints.some((endpoint) => endpoint.id === selectedId)) return;
+    handleSelect(endpoints[0].id, endpoints[0]);
+  }, [endpoints, selectedId]);
 
-    const definition = endpoints.find((ep) => ep.id === id);
+  function handleSelect(id, explicitDefinition = null) {
+    const definition = explicitDefinition || endpoints.find((ep) => ep.id === id) || null;
+    const resolvedId = deriveEndpointId(definition) || id;
+    if (!definition || !resolvedId) return;
+
+    setError('');
+    setStatus('');
     let nextFormState = { ...EMPTY_ENDPOINT };
     let nextRequestFieldValues = {};
+    let formattedSample = JSON.stringify(BASE_COMPLEX_REQUEST_SCHEMA, null, 2);
 
     try {
       nextFormState = createFormState(definition);
@@ -4823,10 +4853,16 @@ export default function PosApiAdmin() {
       nextRequestFieldValues = {};
     }
 
-    const resolvedSample = sanitizeRequestExampleForSample(
-      parseExamplePayload(nextFormState.requestSampleText || BASE_COMPLEX_REQUEST_SCHEMA),
-    );
-    const formattedSample = JSON.stringify(resolvedSample, null, 2);
+    try {
+      const resolvedSample = sanitizeRequestExampleForSample(
+        parseExamplePayload(nextFormState.requestSampleText || BASE_COMPLEX_REQUEST_SCHEMA),
+      );
+      formattedSample = JSON.stringify(resolvedSample, null, 2);
+    } catch (err) {
+      console.error('Failed to parse request sample for selected endpoint', err);
+      setError('Unable to load the selected endpoint request sample. A default sample has been applied.');
+      formattedSample = JSON.stringify(BASE_COMPLEX_REQUEST_SCHEMA, null, 2);
+    }
     setBaseRequestJson(formattedSample);
     setRequestSampleText(formattedSample);
     setCombinationBaseKey(BASE_COMBINATION_KEY);
@@ -4858,13 +4894,12 @@ export default function PosApiAdmin() {
     setSelectedImportId('');
     setRequestBuilder(null);
     setRequestBuilderError('');
-    setRequestFieldValues({});
     setRequestFieldRequirements({});
-    setFormState({ ...EMPTY_ENDPOINT });
     setRequestFieldValues(nextRequestFieldValues);
     setFormState(nextFormState);
     setTestEnvironment('staging');
     setImportAuthEndpointId(definition?.authEndpointId || '');
+    setSelectedId(resolvedId);
   }
 
   function handleChange(field, value) {
@@ -6035,8 +6070,7 @@ export default function PosApiAdmin() {
       const next = nextRaw.map(withEndpointMetadata);
       setEndpoints(next);
       const selected = next.find((ep) => ep.id === preparedDefinition.id) || preparedDefinition;
-      setSelectedId(selected.id);
-      setFormState(createFormState(selected));
+      handleSelect(selected.id, selected);
       setStatus('Changes saved');
     } catch (err) {
       console.error(err);
@@ -7013,7 +7047,7 @@ export default function PosApiAdmin() {
                     <li key={ep.id}>
                       <button
                         type="button"
-                        onClick={() => handleSelect(ep.id)}
+                        onClick={() => handleSelect(ep.id, ep)}
                         style={{
                           ...styles.listButton,
                           ...(selectedId === ep.id ? styles.listButtonActive : {}),
@@ -9256,6 +9290,7 @@ const styles = {
   listButtonActive: {
     borderColor: '#2563eb',
     background: '#dbeafe',
+    color: '#2563eb',
   },
   listButtonHeader: {
     display: 'flex',
