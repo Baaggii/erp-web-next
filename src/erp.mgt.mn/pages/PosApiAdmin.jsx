@@ -4799,6 +4799,7 @@ export default function PosApiAdmin() {
 
     let nextFormState = { ...EMPTY_ENDPOINT };
     let nextRequestFieldValues = {};
+    let formattedSample = JSON.stringify(BASE_COMPLEX_REQUEST_SCHEMA, null, 2);
 
     try {
       nextFormState = createFormState(definition);
@@ -4827,10 +4828,16 @@ export default function PosApiAdmin() {
       nextRequestFieldValues = {};
     }
 
-    const resolvedSample = sanitizeRequestExampleForSample(
-      parseExamplePayload(nextFormState.requestSampleText || BASE_COMPLEX_REQUEST_SCHEMA),
-    );
-    const formattedSample = JSON.stringify(resolvedSample, null, 2);
+    try {
+      const resolvedSample = sanitizeRequestExampleForSample(
+        parseExamplePayload(nextFormState.requestSampleText || BASE_COMPLEX_REQUEST_SCHEMA),
+      );
+      formattedSample = JSON.stringify(resolvedSample, null, 2);
+    } catch (err) {
+      console.error('Failed to parse request sample for selected endpoint', err);
+      setError('Unable to load the selected endpoint request sample. A default sample has been applied.');
+      formattedSample = JSON.stringify(BASE_COMPLEX_REQUEST_SCHEMA, null, 2);
+    }
     setBaseRequestJson(formattedSample);
     setRequestSampleText(formattedSample);
     setCombinationBaseKey(BASE_COMBINATION_KEY);
