@@ -868,11 +868,9 @@ export async function createTemporarySubmission({
     const cleanedWithCalculated = mergeCalculatedValues(cleanedValues, payload);
     const forwardMeta = resolveForwardMeta(payload, normalizedCreator, null);
     const parentTemporaryId = normalizeTemporaryId(forwardMeta?.parentTemporaryId);
-    const rootChainId = resolveRootChainId(forwardMeta);
     let chainId =
       normalizeTemporaryId(forwardMeta?.rootTemporaryId) ||
       normalizeTemporaryId(forwardMeta?.chainId) ||
-      rootChainId ||
       null;
     if (!chainId && parentTemporaryId) {
       const [parentRows] = await conn.query(
