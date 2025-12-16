@@ -6850,6 +6850,7 @@ export default function PosApiAdmin() {
           environment: testEnvironment,
           authEndpointId: formState.authEndpointId || '',
           useCachedToken: effectiveUseCachedToken,
+          ...(payloadForTest !== undefined ? { body: payloadForTest } : {}),
           ...(hasPayloadOverride
             ? { payloadOverride: payloadForTest, payloadOverrideText: payloadTextForTest?.trim() || '' }
             : {}),
