@@ -490,8 +490,8 @@ function deriveEndpointId(endpoint) {
 
 function withEndpointMetadata(endpoint) {
   if (!endpoint || typeof endpoint !== 'object') return endpoint;
-  const normalizedId = (endpoint.id === undefined || endpoint.id === null ? '' : `${endpoint.id}`)
-    || deriveEndpointId(endpoint);
+  const normalizedId = deriveEndpointId(endpoint)
+    || (endpoint.id === undefined || endpoint.id === null ? '' : `${endpoint.id}`);
   const normalizeUrlSelection = (literal, envVar, mode) => {
     const trimmedLiteral = typeof literal === 'string' ? literal.trim() : '';
     const trimmedEnv = typeof envVar === 'string' ? envVar.trim() : '';
@@ -4827,21 +4827,16 @@ export default function PosApiAdmin() {
     };
   }, [activeTab]);
 
-  useEffect(() => {
-    if (!Array.isArray(endpoints) || endpoints.length === 0) return;
-    if (selectedId && endpoints.some((endpoint) => endpoint.id === selectedId)) return;
-    handleSelect(endpoints[0].id, endpoints[0]);
-  }, [endpoints, selectedId]);
-
   function handleSelect(id, explicitDefinition = null) {
-    const definition = explicitDefinition || endpoints.find((ep) => ep.id === id) || null;
-    const resolvedId = (definition?.id && `${definition.id}`.trim())
-      || deriveEndpointId(definition)
-      || id;
-    if (!definition || !resolvedId) return;
+    if (!id) {
+      return;
+    }
 
-    setError('');
-    setStatus('');
+    const definition = endpoints.find((ep) => ep.id === id);
+    if (!definition) {
+      return;
+    }
+
     let nextFormState = { ...EMPTY_ENDPOINT };
     let nextRequestFieldValues = {};
     let formattedSample = JSON.stringify(BASE_COMPLEX_REQUEST_SCHEMA, null, 2);
@@ -4919,7 +4914,7 @@ export default function PosApiAdmin() {
     setFormState(nextFormState);
     setTestEnvironment('staging');
     setImportAuthEndpointId(definition?.authEndpointId || '');
-    setSelectedId(resolvedId);
+    setSelectedId(definition.id);
   }
 
   function handleChange(field, value) {
@@ -6091,8 +6086,7 @@ export default function PosApiAdmin() {
       const nextRaw = Array.isArray(saved) ? saved : normalizedWithIds;
       const next = normalizeEndpointList(nextRaw.map(withEndpointMetadata));
       setEndpoints(next);
-      const targetIndex = replacementIndex >= 0 ? replacementIndex : next.length - 1;
-      const selected = next[targetIndex] || next[0] || preparedDefinition;
+      const selected = next.find((ep) => ep.id === preparedDefinition.id) || preparedDefinition;
       handleSelect(selected.id, selected);
       setStatus('Changes saved');
     } catch (err) {
