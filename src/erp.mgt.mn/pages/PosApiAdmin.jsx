@@ -2016,6 +2016,40 @@ function createFormState(definition) {
   };
 }
 
+function pruneUnavailableControls(endpointState) {
+  const next = { ...endpointState };
+  const isTransaction = next.usage === 'transaction';
+
+  if (!isTransaction) {
+    next.supportsMultipleReceipts = false;
+    next.supportsMultiplePayments = false;
+    next.supportsItems = false;
+  }
+
+  if (!isTransaction || !next.supportsItems) {
+    next.enableReceiptTypes = false;
+    next.allowMultipleReceiptTypes = false;
+    next.receiptTypes = [];
+    next.receiptTypeTemplates = {};
+    next.enableReceiptTaxTypes = false;
+    next.allowMultipleReceiptTaxTypes = false;
+    next.taxTypes = [];
+    next.taxTypeTemplates = {};
+    next.enableReceiptItems = false;
+    next.allowMultipleReceiptItems = false;
+    next.receiptItemTemplates = [];
+  }
+
+  if (!isTransaction || !next.supportsMultiplePayments) {
+    next.enablePaymentMethods = false;
+    next.allowMultiplePaymentMethods = false;
+    next.paymentMethods = [];
+    next.paymentMethodTemplates = {};
+  }
+
+  return next;
+}
+
 function parseJsonInput(label, text, defaultValue) {
   const trimmed = (text || '').trim();
   if (!trimmed) return defaultValue;
@@ -5344,8 +5378,23 @@ export default function PosApiAdmin() {
 
     const nextState = createFormState(draftDefinition);
 
+    let nextBaseSample = JSON.stringify(BASE_COMPLEX_REQUEST_SCHEMA, null, 2);
+    try {
+      const parsedSample = parseExamplePayload(nextState.requestSampleText || BASE_COMPLEX_REQUEST_SCHEMA);
+      const sanitizedSample = sanitizeRequestExampleForSample(parsedSample);
+      nextBaseSample = JSON.stringify(sanitizedSample, null, 2);
+    } catch (err) {
+      console.error('Failed to build base request sample from imported draft', err);
+    }
+
     setSelectedId('');
     setRequestFieldValues({});
+    setBaseRequestJson(nextBaseSample);
+    setRequestSampleText(nextBaseSample);
+    setCombinationBaseKey(BASE_COMBINATION_KEY);
+    setCombinationModifierKeys([]);
+    setCombinationPayloadText('');
+    setCombinationError('Select a base variation to build a combination.');
     setFormState(nextState);
     setStatus('Loaded the imported draft into the editor. Add details and save to finalize.');
     setActiveTab('endpoints');
