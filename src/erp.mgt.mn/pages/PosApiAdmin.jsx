@@ -686,8 +686,8 @@ const EMPTY_ENDPOINT = {
   requestSampleText: '{}',
   requestSampleNotes: '',
   responseDescription: '',
-  responseSchemaText: '{}',
-  fieldDescriptionsText: '{}',
+  responseSchemaText: '',
+  fieldDescriptionsText: '',
   requestFieldsText: '[]',
   responseFieldsText: '[]',
   examplesText: '[]',
@@ -6779,6 +6779,7 @@ export default function PosApiAdmin() {
     setUseCachedToken(true);
     setImportUseCachedToken(true);
     setRequestFieldValues({});
+    setRequestFieldMeta({});
     setTokenMeta({ lastFetchedAt: null, expiresAt: null });
   }
 
