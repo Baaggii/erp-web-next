@@ -4340,65 +4340,6 @@ export default function PosApiAdmin() {
     });
   };
 
-  const ensureVariationFieldSelection = (variationKey, fieldPath) => {
-    if (!variationKey || !fieldPath) return;
-
-    setFormState((prev) => {
-      let changed = false;
-      const variations = Array.isArray(prev.variations) ? prev.variations.slice() : [];
-      const variationIndex = variations.findIndex((entry) => (entry.key || entry.name) === variationKey);
-
-      if (variationIndex >= 0) {
-        const variation = variations[variationIndex];
-        const requestFields = Array.isArray(variation.requestFields)
-          ? variation.requestFields.slice()
-          : [];
-        const requiredFields = variation.requiredFields ? { ...variation.requiredFields } : {};
-        const existingIndex = requestFields.findIndex(
-          (entry) => normalizeHintEntry(entry).field === fieldPath,
-        );
-
-        if (existingIndex >= 0) {
-          const current = requestFields[existingIndex];
-          const normalized = normalizeHintEntry(current);
-          if (normalized.required === false || normalized.required === undefined) {
-            requestFields[existingIndex] = { ...current, required: true };
-            changed = true;
-          }
-        } else {
-          requestFields.push({ field: fieldPath, required: true });
-          changed = true;
-        }
-
-        if (requiredFields[fieldPath] !== true) {
-          requiredFields[fieldPath] = true;
-          changed = true;
-        }
-
-        if (changed) {
-          variations[variationIndex] = { ...variation, requestFields, requiredFields };
-        }
-      }
-
-      const requestFieldVariations = Array.isArray(prev.requestFieldVariations)
-        ? prev.requestFieldVariations.slice()
-        : [];
-      const variationMetaIndex = requestFieldVariations.findIndex((entry) => entry.key === variationKey);
-      if (variationMetaIndex >= 0) {
-        const meta = requestFieldVariations[variationMetaIndex];
-        const requiredFields = { ...(meta.requiredFields || {}) };
-        if (requiredFields[fieldPath] !== true) {
-          requiredFields[fieldPath] = true;
-          requestFieldVariations[variationMetaIndex] = { ...meta, requiredFields };
-          changed = true;
-        }
-      }
-
-      if (!changed) return prev;
-      return { ...prev, variations, requestFieldVariations };
-    });
-  };
-
   const handleVariationToggle = (index, enabled) => {
     setFormState((prev) => {
       const list = Array.isArray(prev.variations) ? prev.variations.slice() : [];
