@@ -24,6 +24,8 @@ import { getMerchantById } from './merchantService.js';
 const TEMP_TABLE = 'transaction_temporaries';
 const TEMP_REVIEW_HISTORY_TABLE = 'transaction_temporary_review_history';
 let ensurePromise = null;
+const DEFAULT_TEMPORARY_LIMIT = 50;
+const MAX_TEMPORARY_LIMIT = 100;
 
 const RESERVED_TEMPORARY_COLUMNS = new Set(['rows']);
 const STRING_COLUMN_TYPES = new Set([
@@ -1199,6 +1201,9 @@ export async function listTemporarySubmissions({
   status,
   transactionTypeField,
   transactionTypeValue,
+  limit = DEFAULT_TEMPORARY_LIMIT,
+  offset = 0,
+  includeHasMore = false,
 }) {
   await ensureTemporaryTable();
   const normalizedEmp = normalizeEmpId(empId);
@@ -1244,6 +1249,14 @@ export async function listTemporarySubmissions({
   const chainGroupKey = (alias = '') =>
     `COALESCE(${alias ? `${alias}.` : ''}chain_id, ${alias ? `${alias}.` : ''}id)`;
   const filteredQuery = `SELECT * FROM \`${TEMP_TABLE}\` ${where}`;
+  const requestedLimit = Number(limit);
+  const normalizedLimit =
+    Number.isFinite(requestedLimit) && requestedLimit > 0
+      ? Math.min(requestedLimit, MAX_TEMPORARY_LIMIT)
+      : DEFAULT_TEMPORARY_LIMIT;
+  const requestedOffset = Number(offset);
+  const normalizedOffset = Number.isFinite(requestedOffset) && requestedOffset > 0 ? requestedOffset : 0;
+  const effectiveLimit = includeHasMore ? normalizedLimit + 1 : normalizedLimit;
   const groupingQuery = `
     WITH filtered AS (${filteredQuery})
     SELECT filtered.*
@@ -1256,16 +1269,23 @@ export async function listTemporarySubmissions({
         ON ${chainGroupKey('filtered')} = latest.chain_group_id
        AND filtered.updated_at = latest.max_updated_at
      ORDER BY filtered.updated_at DESC, filtered.created_at DESC
-     LIMIT 200`;
-  const [rows] = await pool.query(groupingQuery, params);
-  const mapped = rows.map(mapTemporaryRow);
+     LIMIT ? OFFSET ?`;
+  const [rows] = await pool.query(groupingQuery, [...params, effectiveLimit, normalizedOffset]);
+  const hasMore = includeHasMore ? rows.length > normalizedLimit : false;
+  const limitedRows = includeHasMore ? rows.slice(0, normalizedLimit) : rows;
+  const mapped = limitedRows.map(mapTemporaryRow);
   const filtered = filterRowsByTransactionType(
     mapped,
     transactionTypeField,
     transactionTypeValue,
   );
   const grouped = groupTemporaryRowsByChain(filtered);
-  return enrichTemporaryMetadata(grouped, companyId);
+  const enriched = await enrichTemporaryMetadata(grouped, companyId);
+  return {
+    rows: enriched,
+    hasMore,
+    nextOffset: hasMore ? normalizedOffset + normalizedLimit : null,
+  };
 }
 
 export async function getTemporarySummary(
@@ -1280,6 +1300,7 @@ export async function getTemporarySummary(
     empId,
     companyId,
     status: 'any',
+    limit: MAX_TEMPORARY_LIMIT,
     transactionTypeField,
     transactionTypeValue,
   });
@@ -1289,21 +1310,22 @@ export async function getTemporarySummary(
     empId,
     companyId,
     status: 'any',
+    limit: MAX_TEMPORARY_LIMIT,
     transactionTypeField,
     transactionTypeValue,
   });
-  const createdPending = createdRows.filter((row) => row.status === 'pending').length;
-  const reviewPending = reviewRows.filter((row) => row.status === 'pending').length;
+  const createdPending = createdRows.rows.filter((row) => row.status === 'pending').length;
+  const reviewPending = reviewRows.rows.filter((row) => row.status === 'pending').length;
   return {
     createdPending,
     reviewPending,
-    createdReviewed: createdRows.filter((row) => row.status !== 'pending').length,
-    reviewReviewed: reviewRows.filter((row) => row.status !== 'pending').length,
-    createdTotal: createdRows.length,
-    reviewTotal: reviewRows.length,
-    createdLatestUpdate: createdRows[0]?.updatedAt || null,
-    reviewLatestUpdate: reviewRows[0]?.updatedAt || null,
-    isReviewer: reviewRows.length > 0,
+    createdReviewed: createdRows.rows.filter((row) => row.status !== 'pending').length,
+    reviewReviewed: reviewRows.rows.filter((row) => row.status !== 'pending').length,
+    createdTotal: createdRows.rows.length,
+    reviewTotal: reviewRows.rows.length,
+    createdLatestUpdate: createdRows.rows[0]?.updatedAt || null,
+    reviewLatestUpdate: reviewRows.rows[0]?.updatedAt || null,
+    isReviewer: reviewRows.rows.length > 0,
   };
 }
 

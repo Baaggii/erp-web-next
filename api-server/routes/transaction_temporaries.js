@@ -44,6 +44,8 @@ router.get('/', requireAuth, async (req, res, next) => {
       scope = 'created',
       table,
       status,
+      limit,
+      offset,
       transactionTypeField = null,
       transactionTypeValue = null,
     } = req.query;
@@ -61,10 +63,13 @@ router.get('/', requireAuth, async (req, res, next) => {
       empId: req.user.empid,
       companyId: req.user.companyId,
       status: normalizedStatus,
+      limit,
+      offset,
       transactionTypeField,
       transactionTypeValue,
+      includeHasMore: true,
     });
-    res.json({ rows: list });
+    res.json({ rows: list.rows, hasMore: list.hasMore, nextOffset: list.nextOffset });
   } catch (err) {
     next(err);
   }

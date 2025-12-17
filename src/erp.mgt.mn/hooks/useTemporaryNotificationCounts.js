@@ -237,11 +237,19 @@ export default function useTemporaryNotificationCounts(empid) {
   }, [markScopeSeen]);
 
   const fetchScopeEntries = useCallback(async (scope, options = {}) => {
-    const { limit = 5, status = 'pending' } = options || {};
-    if (!SCOPES.includes(scope)) return [];
+    const { limit = 50, status = 'pending', cursor = 0 } = options || {};
+    if (!SCOPES.includes(scope)) return { rows: [], hasMore: false, nextCursor: null };
     const params = new URLSearchParams({ scope });
     if (status && typeof status === 'string') {
       params.set('status', status);
+    }
+    const normalizedLimit = Number(limit);
+    if (Number.isFinite(normalizedLimit) && normalizedLimit > 0) {
+      params.set('limit', String(normalizedLimit));
+    }
+    const normalizedCursor = Number(cursor);
+    if (Number.isFinite(normalizedCursor) && normalizedCursor >= 0) {
+      params.set('offset', String(normalizedCursor));
     }
     const cachedFilter = readCachedTemporaryFilter();
     const hasCachedValue =
@@ -258,12 +266,14 @@ export default function useTemporaryNotificationCounts(empid) {
       if (!res.ok) throw new Error('Failed');
       const data = await res.json().catch(() => ({}));
       const rows = Array.isArray(data?.rows) ? data.rows : [];
+      const hasMore = Boolean(data?.hasMore);
+      const nextCursor = Number.isFinite(Number(data?.nextOffset)) ? Number(data.nextOffset) : null;
       if (limit && Number.isFinite(limit)) {
-        return rows.slice(0, limit);
+        return { rows: rows.slice(0, limit), hasMore, nextCursor };
       }
-      return rows;
+      return { rows, hasMore, nextCursor };
     } catch {
-      return [];
+      return { rows: [], hasMore: false, nextCursor: null };
     }
   }, []);
 
