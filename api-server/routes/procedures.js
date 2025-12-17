@@ -1,4 +1,5 @@
 import express from 'express';
+import rateLimit from 'express-rate-limit';
 import { requireAuth } from '../middlewares/auth.js';
 import {
   callStoredProcedure,
