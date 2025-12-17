@@ -3102,20 +3102,8 @@ export default function PosApiAdmin() {
     if (loading) return 'POSAPI endpoints are still loading.';
     if (loadError) return loadError;
     if (error) return error;
-    return 'No endpoints are available for the selected usage.';
+    return 'No GET endpoints available for the selected usage.';
   }, [error, infoSyncEndpointOptions.length, infoSyncUsage, loadError, loading]);
-
-  const infoSyncSelectionBlockers = useMemo(() => {
-    const blockers = [];
-    if (loading) blockers.push('Endpoints are loading.');
-    if (infoSyncLoading) blockers.push('Synchronization settings are being saved or refreshed.');
-    if (loadError) blockers.push(loadError);
-    if (error) blockers.push(error);
-    if (!loading && infoSyncEndpointOptions.length === 0) {
-      blockers.push('No endpoints match the current usage filter.');
-    }
-    return blockers;
-  }, [error, infoSyncEndpointOptions.length, infoSyncLoading, infoSyncUsage, loadError, loading]);
 
   useEffect(() => {
     setInfoSyncEndpointIds((prev) => {
