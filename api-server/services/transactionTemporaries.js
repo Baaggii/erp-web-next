@@ -1282,7 +1282,7 @@ export async function listTemporarySubmissions({
   const hasMore = rawRows.length > cappedLimit;
   const nextOffset = safeOffset + Math.min(rawRows.length, cappedLimit);
   return {
-    rows: await enrichTemporaryMetadata(limitedGrouped, companyId),
+    rows: enrichTemporaryMetadata(limitedGrouped, companyId),
     hasMore,
     nextOffset,
   };
@@ -1294,10 +1294,6 @@ export async function getTemporarySummary(
   { tableName = null, transactionTypeField = null, transactionTypeValue = null } = {},
 ) {
   await ensureTemporaryTable();
-  const resolveRows = async (rows) => {
-    const resolved = await Promise.resolve(rows ?? []);
-    return Array.isArray(resolved) ? resolved : [];
-  };
   const createdRowsResult = await listTemporarySubmissions({
     scope: 'created',
     tableName,
@@ -1318,8 +1314,8 @@ export async function getTemporarySummary(
     transactionTypeValue,
     limit: TEMPORARY_MAX_LIMIT,
   });
-  const createdRows = await resolveRows(createdRowsResult.rows);
-  const reviewRows = await resolveRows(reviewRowsResult.rows);
+  const createdRows = createdRowsResult.rows;
+  const reviewRows = reviewRowsResult.rows;
   const createdPending = createdRows.filter((row) => row.status === 'pending').length;
   const reviewPending = reviewRows.filter((row) => row.status === 'pending').length;
   return {
