@@ -2995,15 +2995,7 @@ export default function PosApiAdmin() {
   const infoSyncEndpointOptions = useMemo(() => {
     const normalized = endpoints.map(withEndpointMetadata);
     const selectedEndpointIds = new Set(infoSyncEndpointIds.filter(Boolean));
-    const fallbackSelected = (infoSyncSettings?.endpointIds || []).filter(Boolean);
-    const merged = [...normalized];
-
-    fallbackSelected.forEach((id) => {
-      if (merged.some((endpoint) => endpoint.id === id)) return;
-      merged.push({ id, name: id, method: 'GET', path: id, usage: infoSyncUsage });
-    });
-
-    return merged
+    return normalized
       .filter((endpoint) => {
         const matchesUsage = infoSyncUsage === 'all' || !infoSyncUsage || endpoint.usage === infoSyncUsage;
         return matchesUsage || selectedEndpointIds.has(endpoint.id);
@@ -3015,7 +3007,7 @@ export default function PosApiAdmin() {
         path: endpoint.path,
         usage: endpoint.usage,
       }));
-  }, [endpoints, infoSyncEndpointIds, infoSyncSettings?.endpointIds, infoSyncUsage]);
+  }, [endpoints, infoSyncEndpointIds, infoSyncUsage]);
 
   const infoSyncTableOptions = useMemo(() => {
     const seen = new Set();
@@ -9660,6 +9652,7 @@ export default function PosApiAdmin() {
                     value={infoSyncEndpointIds}
                     onChange={handleInfoEndpointSelection}
                     style={{ ...styles.input, minHeight: '140px' }}
+                    disabled={infoSyncLoading}
                   >
                     {infoSyncEndpointOptions.length === 0 && (
                       <option value="" disabled>
