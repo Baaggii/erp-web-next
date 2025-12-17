@@ -48,7 +48,7 @@ export const PendingRequestContext = createContext({
     hasNew: false,
     markScopeSeen: () => {},
     markAllSeen: () => {},
-    fetchScopeEntries: () => Promise.resolve([]),
+    fetchScopeEntries: () => Promise.resolve({ rows: [], hasMore: false, nextCursor: null }),
   },
   notificationColors: [],
   notificationStatusTotals: { pending: 0, accepted: 0, declined: 0 },
