@@ -1282,7 +1282,7 @@ export async function listTemporarySubmissions({
   const hasMore = rawRows.length > cappedLimit;
   const nextOffset = safeOffset + Math.min(rawRows.length, cappedLimit);
   return {
-    rows: await enrichTemporaryMetadata(limitedGrouped, companyId),
+    rows: enrichTemporaryMetadata(limitedGrouped, companyId),
     hasMore,
     nextOffset,
   };

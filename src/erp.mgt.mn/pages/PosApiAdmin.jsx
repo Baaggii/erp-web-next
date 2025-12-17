@@ -5047,11 +5047,12 @@ export default function PosApiAdmin() {
   }, [activeTab]);
 
   function handleSelect(id, explicitDefinition = null) {
-    if (!id) {
+    const targetId = id || explicitDefinition?.id;
+    if (!targetId && !explicitDefinition) {
       return;
     }
 
-    const definition = endpoints.find((ep) => ep.id === id);
+    const definition = explicitDefinition || endpoints.find((ep) => ep.id === targetId);
     if (!definition) {
       return;
     }
@@ -6786,6 +6787,10 @@ export default function PosApiAdmin() {
 
   function handleVariationRequirementChange(fieldPath, variationKey, value) {
     if (!fieldPath || !variationKey) return;
+    if (!value) {
+      clearVariationFieldSelection(variationKey, fieldPath);
+      return;
+    }
     setRequestFieldMeta((prev) => {
       const current = prev[fieldPath] || { requiredByVariation: {}, defaultByVariation: {} };
       return {
@@ -6796,6 +6801,8 @@ export default function PosApiAdmin() {
         },
       };
     });
+
+    ensureVariationFieldSelection(variationKey, fieldPath);
   }
 
   function handleVariationDefaultUpdate(fieldPath, variationKey, value) {
