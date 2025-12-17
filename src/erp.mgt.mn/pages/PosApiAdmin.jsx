@@ -6286,7 +6286,6 @@ export default function PosApiAdmin() {
     try {
       const formatted = JSON.stringify(updated, null, 2);
       setRequestSampleText(formatted);
-      setBaseRequestJson(formatted);
     } catch {
       // ignore formatting errors
     }
