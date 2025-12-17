@@ -3043,6 +3043,15 @@ export default function PosApiAdmin() {
     return 'No database tables were loaded. Verify access permissions or try again later.';
   }, [responseTableOptions.length, tableOptionsError]);
 
+  const responseTableSelectionBlockers = useMemo(() => {
+    const blockers = [];
+    if (tableOptionsLoading) blockers.push('Tables are still loading.');
+    if (tableOptionsError) blockers.push(tableOptionsError);
+    if (!tableOptionsLoading && tableOptions.length === 0)
+      blockers.push('No database tables were returned from the server.');
+    return blockers;
+  }, [tableOptions, tableOptionsError, tableOptionsLoading]);
+
   const responseFieldOptions = useMemo(() => {
     const options = [];
     formState.responseTables.forEach((table) => {
@@ -3098,7 +3107,7 @@ export default function PosApiAdmin() {
 
   useEffect(() => {
     setInfoSyncEndpointIds((prev) => {
-      if (loading) return prev;
+      if (loading || infoSyncEndpointOptions.length === 0) return prev;
       const filtered = prev.filter((id) => infoSyncEndpointOptions.some((ep) => ep.id === id));
       if (filtered.length !== prev.length) {
         setInfoSyncSettings((settings) => ({ ...settings, endpointIds: filtered }));
@@ -8803,6 +8812,13 @@ export default function PosApiAdmin() {
               {responseTablesUnavailableReason && (
                 <div style={styles.hintError}>{responseTablesUnavailableReason}</div>
               )}
+              {responseTableSelectionBlockers.length > 0 && (
+                <ul style={{ ...styles.hintError, marginTop: '0.2rem' }}>
+                  {responseTableSelectionBlockers.map((blocker, index) => (
+                    <li key={`response-blocker-${index}`}>{blocker}</li>
+                  ))}
+                </ul>
+              )}
             </label>
             {responseFieldHints.state === 'empty' && (
               <p style={styles.hintEmpty}>Add response field hints in the JSON textarea above.</p>
@@ -9608,6 +9624,13 @@ export default function PosApiAdmin() {
                   </span>
                   {infoSyncEndpointUnavailableReason && (
                     <div style={styles.hintError}>{infoSyncEndpointUnavailableReason}</div>
+                  )}
+                  {infoSyncSelectionBlockers.length > 0 && (
+                    <ul style={{ ...styles.hintError, marginTop: '0.2rem' }}>
+                      {infoSyncSelectionBlockers.map((blocker, index) => (
+                        <li key={`info-blocker-${index}`}>{blocker}</li>
+                      ))}
+                    </ul>
                   )}
                   </label>
               </div>
