@@ -3039,17 +3039,9 @@ export default function PosApiAdmin() {
 
   const responseTablesUnavailableReason = useMemo(() => {
     if (responseTableOptions.length > 0) return '';
-    if (tableOptionsLoading) return 'Loading database tables…';
     if (tableOptionsError) return tableOptionsError;
     return 'No database tables were loaded. Verify access permissions or try again later.';
-  }, [responseTableOptions.length, tableOptionsError, tableOptionsLoading]);
-
-  const endpointListUnavailableReason = useMemo(() => {
-    if (loading) return 'Loading POSAPI endpoints…';
-    if (error) return error;
-    if (groupedEndpoints.length === 0) return 'No endpoints were loaded. Add an endpoint or try again.';
-    return '';
-  }, [error, groupedEndpoints.length, loading]);
+  }, [responseTableOptions.length, tableOptionsError]);
 
   const responseFieldOptions = useMemo(() => {
     const options = [];
@@ -3100,11 +3092,9 @@ export default function PosApiAdmin() {
   const infoSyncEndpointUnavailableReason = useMemo(() => {
     if (infoSyncEndpointOptions.length > 0) return '';
     if (loading) return 'POSAPI endpoints are still loading.';
-    if (infoSyncLoading) return 'POSAPI information settings are still loading.';
-    if (infoSyncError) return infoSyncError;
     if (error) return error;
     return 'No GET endpoints available for the selected usage.';
-  }, [error, infoSyncEndpointOptions.length, infoSyncError, infoSyncLoading, infoSyncUsage, loading]);
+  }, [error, infoSyncEndpointOptions.length, infoSyncUsage, loading]);
 
   useEffect(() => {
     setInfoSyncEndpointIds((prev) => {
