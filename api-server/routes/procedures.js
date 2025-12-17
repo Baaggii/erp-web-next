@@ -6,6 +6,7 @@ import {
   getProcedureParams,
   getProcedureRawRows,
   getProcedureLockCandidates,
+  getCompanyIdForGid,
 } from '../../db/index.js';
 import { listPermittedProcedures } from '../utils/reportProcedures.js';
 
@@ -89,10 +90,34 @@ router.post('/', requireAuth, async (req, res, next) => {
     const allowed = new Set(procedures.map((p) => p.name));
     if (!allowed.has(name))
       return res.status(403).json({ message: 'Procedure not allowed' });
+    const paramNames = await getProcedureParams(name);
+    const normalizedParams = Array.isArray(params) ? params : [];
+    const normalizedAliases = Array.isArray(aliases) ? aliases : [];
+    const gIdIndex = Array.isArray(paramNames)
+      ? paramNames.findIndex((paramName) => {
+          const normalized = String(paramName || '').toLowerCase();
+          const trimmed = normalized.startsWith('p_')
+            ? normalized.slice(2)
+            : normalized;
+          return /(^|_)g_id$/.test(trimmed);
+        })
+      : -1;
+    if (gIdIndex >= 0) {
+      const gIdValue = normalizedParams[gIdIndex];
+      const resolvedCompanyId = await getCompanyIdForGid(gIdValue);
+      if (!resolvedCompanyId)
+        return res
+          .status(400)
+          .json({ message: 'Invalid g_id: company_id not found' });
+      if (Number.isFinite(companyId) && resolvedCompanyId !== companyId)
+        return res
+          .status(400)
+          .json({ message: 'Invalid g_id: company mismatch' });
+    }
     const row = await callStoredProcedure(
       name,
-      Array.isArray(params) ? params : [],
-      Array.isArray(aliases) ? aliases : [],
+      normalizedParams,
+      normalizedAliases,
     );
     res.json({ row });
   } catch (err) {

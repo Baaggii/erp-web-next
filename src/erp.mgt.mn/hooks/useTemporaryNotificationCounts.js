@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import useGeneralConfig from './useGeneralConfig.js';
 import { API_BASE } from '../utils/apiBase.js';
 
@@ -47,6 +47,7 @@ function createInitialCounts() {
 export default function useTemporaryNotificationCounts(empid) {
   const [counts, setCounts] = useState(() => createInitialCounts());
   const cfg = useGeneralConfig();
+  const inFlightRef = useRef(false);
   const intervalSeconds =
     Number(
       cfg?.general?.temporaryPollingIntervalSeconds ||
@@ -127,6 +128,10 @@ export default function useTemporaryNotificationCounts(empid) {
   );
 
   const refresh = useCallback(async () => {
+    if (typeof document !== 'undefined' && document.visibilityState === 'hidden')
+      return;
+    if (inFlightRef.current) return;
+    inFlightRef.current = true;
     try {
       const params = new URLSearchParams();
       const cachedFilter = readCachedTemporaryFilter();
@@ -147,6 +152,8 @@ export default function useTemporaryNotificationCounts(empid) {
       evaluateCounts(data);
     } catch {
       // Ignore errors but keep previous counts
+    } finally {
+      inFlightRef.current = false;
     }
   }, [evaluateCounts]);
 
@@ -172,6 +179,19 @@ export default function useTemporaryNotificationCounts(empid) {
       clearInterval(timer);
     };
   }, [intervalSeconds, refresh]);
+
+  useEffect(() => {
+    if (typeof document === 'undefined') return undefined;
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        refresh();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
+  }, [refresh]);
 
   const markScopeSeen = useCallback(
     (scope) => {
