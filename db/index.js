@@ -6767,17 +6767,6 @@ export async function callStoredProcedure(name, params = [], aliases = []) {
   }
 }
 
-export async function getCompanyIdForGid(gId) {
-  if (gId === undefined || gId === null || gId === '') return null;
-  const [rows] = await pool.query(
-    'SELECT company_id FROM transactions_contract WHERE g_id = ? LIMIT 1',
-    [gId],
-  );
-  if (!rows || !rows[0] || rows[0].company_id === undefined) return null;
-  const companyId = Number(rows[0].company_id);
-  return Number.isFinite(companyId) ? companyId : null;
-}
-
 export async function getProcedureLockCandidates(
   name,
   params = [],
