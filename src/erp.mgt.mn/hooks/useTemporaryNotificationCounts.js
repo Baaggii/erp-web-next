@@ -236,10 +236,29 @@ export default function useTemporaryNotificationCounts(empid) {
     SCOPES.forEach((scope) => markScopeSeen(scope));
   }, [markScopeSeen]);
 
+  const DEFAULT_PAGE_SIZE = 50;
+  const MAX_PAGE_SIZE = 100;
+
   const fetchScopeEntries = useCallback(async (scope, options = {}) => {
-    const { limit = 5, status = 'pending' } = options || {};
-    if (!SCOPES.includes(scope)) return [];
-    const params = new URLSearchParams({ scope });
+    const {
+      limit = DEFAULT_PAGE_SIZE,
+      offset = 0,
+      status = 'pending',
+    } = options || {};
+    if (!SCOPES.includes(scope))
+      return { entries: [], hasMore: false, nextOffset: Math.max(Number(offset) || 0, 0) };
+    const parsedLimit = Number(limit);
+    const cappedLimit = Math.min(
+      Math.max(Number.isFinite(parsedLimit) ? parsedLimit : DEFAULT_PAGE_SIZE, 1),
+      MAX_PAGE_SIZE,
+    );
+    const parsedOffset = Number(offset);
+    const safeOffset = Math.max(Number.isFinite(parsedOffset) ? parsedOffset : 0, 0);
+    const params = new URLSearchParams({
+      scope,
+      limit: String(cappedLimit),
+      offset: String(safeOffset),
+    });
     if (status && typeof status === 'string') {
       params.set('status', status);
     }
@@ -258,12 +277,14 @@ export default function useTemporaryNotificationCounts(empid) {
       if (!res.ok) throw new Error('Failed');
       const data = await res.json().catch(() => ({}));
       const rows = Array.isArray(data?.rows) ? data.rows : [];
-      if (limit && Number.isFinite(limit)) {
-        return rows.slice(0, limit);
-      }
-      return rows;
+      const hasMore = Boolean(data?.hasMore);
+      const nextOffset = Number.isFinite(data?.nextOffset)
+        ? data.nextOffset
+        : safeOffset + rows.length;
+      const entries = rows.slice(0, cappedLimit);
+      return { entries, hasMore, nextOffset };
     } catch {
-      return [];
+      return { entries: [], hasMore: false, nextOffset: safeOffset };
     }
   }, []);
 
