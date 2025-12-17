@@ -4654,7 +4654,6 @@ const TableManager = forwardRef(function TableManager({
         reviewer:
           item?.reviewerEmpId || item?.reviewer_emp_id || item?.reviewer || '',
         createdAt: createdAtRaw,
-        notes: item?.notes || '',
         order: orderValue,
       });
     });
@@ -7246,20 +7245,18 @@ const TableManager = forwardRef(function TableManager({
                         const temporaryId =
                           row?.temporaryId || row?.temporary_id || row?.temporaryid || row?.id;
                         const creator = row?.createdBy || row?.created_by || '—';
-                        const latestReview =
-                          temporaryId && latestTemporaryReviewById.get(temporaryId);
-                        const reviewerDisplay =
-                          latestReview?.reviewer ||
+                        const reviewer =
                           row?.planSeniorEmpId ||
                           row?.reviewerEmpId ||
                           row?.reviewer_emp_id ||
                           row?.reviewer ||
                           '—';
+                        const latestReview =
+                          temporaryId && latestTemporaryReviewById.get(temporaryId);
                         const actionLabel = latestReview?.action
                           ? latestReview.action
                           : statusLabel;
-                        const actionNotes =
-                          latestReview?.notes || row?.reviewNotes || row?.review_notes;
+                        const actionNotes = row?.reviewNotes || row?.review_notes;
                         const actionTimestamp =
                           latestReview?.createdAt ||
                           row?.reviewedAt ||
@@ -7269,7 +7266,7 @@ const TableManager = forwardRef(function TableManager({
                           latestReview?.reviewer ||
                           row?.reviewedBy ||
                           row?.reviewed_by ||
-                          reviewerDisplay;
+                          reviewer;
                         const rowKey = row?.id || idx;
                         return (
                           <tr key={`chain-${rowKey}`}>
@@ -7280,7 +7277,7 @@ const TableManager = forwardRef(function TableManager({
                               {creator}
                             </td>
                             <td style={{ padding: '0.5rem', borderBottom: '1px solid #f3f4f6' }}>
-                              {reviewerDisplay}
+                              {reviewer}
                             </td>
                             <td style={{ padding: '0.5rem', borderBottom: '1px solid #f3f4f6' }}>
                               <div style={{ fontWeight: 600 }}>{actionLabel || '—'}</div>

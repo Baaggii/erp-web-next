@@ -3297,6 +3297,35 @@ export default function PosApiAdmin() {
     () => new Map(enabledRequestFieldVariations.map((entry) => [entry.key, entry])),
     [enabledRequestFieldVariations],
   );
+  useEffect(() => {
+    const variationSnapshot = Array.isArray(formState.variations) ? formState.variations : [];
+    setFormState((prev) => {
+      const existingMeta = Array.isArray(prev.requestFieldVariations)
+        ? prev.requestFieldVariations
+        : [];
+      const nextMeta = variationSnapshot.map((variation, index) => {
+        const key = variation.key || variation.name || `variation-${index + 1}`;
+        const existing = existingMeta.find((entry) => entry.key === key) || {};
+        return {
+          ...existing,
+          key,
+          label: variation.name || variation.label || key,
+          enabled: variation.enabled !== false,
+          requiredFields: {
+            ...normalizeFieldRequirementMap(existing.requiredFields),
+            ...normalizeFieldRequirementMap(variation.requiredFields),
+          },
+          defaultValues: {
+            ...normalizeFieldValueMap(existing.defaultValues),
+            ...normalizeFieldValueMap(variation.defaultValues),
+          },
+        };
+      });
+
+      if (JSON.stringify(nextMeta) === JSON.stringify(existingMeta)) return prev;
+      return { ...prev, requestFieldVariations: nextMeta };
+    });
+  }, [formState.variations]);
   const variationColumns = useMemo(
     () =>
       activeVariations.map((variation, index) => ({
@@ -3440,6 +3469,116 @@ export default function PosApiAdmin() {
       return next;
     });
   }, [requestFieldDisplay.state, variationColumns, visibleRequestFieldItems, requestFieldVariationMap]);
+
+  useEffect(() => {
+    const variationKeys = new Set(
+      variations.map((variation, index) => variation.key || variation.name || `variation-${index + 1}`),
+    );
+    const variationMetaByField = new Map();
+
+    variations.forEach((variation, index) => {
+      const variationKey = variation.key || variation.name || `variation-${index + 1}`;
+      if (!variationKey) return;
+
+      const requiredMap = normalizeFieldRequirementMap(variation.requiredFields);
+      Object.entries(requiredMap).forEach(([fieldPath, required]) => {
+        if (!fieldPath) return;
+        const existing = variationMetaByField.get(fieldPath) || { requiredByVariation: {}, defaultByVariation: {} };
+        existing.requiredByVariation[variationKey] = required !== false;
+        variationMetaByField.set(fieldPath, existing);
+      });
+
+      const defaultMap = normalizeFieldValueMap(variation.defaultValues);
+      Object.entries(defaultMap).forEach(([fieldPath, defaultValue]) => {
+        if (!fieldPath) return;
+        const existing = variationMetaByField.get(fieldPath) || { requiredByVariation: {}, defaultByVariation: {} };
+        existing.defaultByVariation[variationKey] = defaultValue;
+        variationMetaByField.set(fieldPath, existing);
+      });
+
+      (variation.requestFields || []).forEach((field) => {
+        const normalized = normalizeHintEntry(field);
+        const fieldPath = normalized.field;
+        if (!fieldPath) return;
+        const existing = variationMetaByField.get(fieldPath) || { requiredByVariation: {}, defaultByVariation: {} };
+        existing.requiredByVariation[variationKey] = normalized.required !== false;
+        variationMetaByField.set(fieldPath, existing);
+      });
+    });
+
+    setRequestFieldMeta((prev) => {
+      let changed = false;
+      const next = { ...prev };
+
+      Object.entries(next).forEach(([fieldPath, entry]) => {
+        const requiredByVariation = { ...(entry.requiredByVariation || {}) };
+        const defaultByVariation = { ...(entry.defaultByVariation || {}) };
+        let entryChanged = false;
+
+        Object.keys(requiredByVariation).forEach((key) => {
+          if (!variationKeys.has(key)) {
+            delete requiredByVariation[key];
+            entryChanged = true;
+          }
+        });
+
+        Object.keys(defaultByVariation).forEach((key) => {
+          if (!variationKeys.has(key)) {
+            delete defaultByVariation[key];
+            entryChanged = true;
+          }
+        });
+
+        if (entryChanged) {
+          next[fieldPath] = { ...entry, requiredByVariation, defaultByVariation };
+          changed = true;
+        }
+      });
+
+      variationMetaByField.forEach((updates, fieldPath) => {
+        const existing = next[fieldPath] || {};
+        const requiredByVariation = { ...(existing.requiredByVariation || {}) };
+        const defaultByVariation = { ...(existing.defaultByVariation || {}) };
+        let entryChanged = false;
+
+        Object.keys(requiredByVariation).forEach((key) => {
+          if (!(key in updates.requiredByVariation)) {
+            delete requiredByVariation[key];
+            entryChanged = true;
+          }
+        });
+
+        Object.keys(defaultByVariation).forEach((key) => {
+          if (!(key in updates.defaultByVariation)) {
+            delete defaultByVariation[key];
+            entryChanged = true;
+          }
+        });
+
+        Object.entries(updates.requiredByVariation).forEach(([key, value]) => {
+          if (requiredByVariation[key] !== value) {
+            requiredByVariation[key] = value;
+            entryChanged = true;
+          }
+        });
+
+        Object.entries(updates.defaultByVariation).forEach(([key, value]) => {
+          if (defaultByVariation[key] !== value) {
+            defaultByVariation[key] = value;
+            entryChanged = true;
+          }
+        });
+
+        if (entryChanged) {
+          next[fieldPath] = { ...existing, requiredByVariation, defaultByVariation };
+          changed = true;
+        }
+      });
+
+      if (!changed) return prev;
+      return next;
+    });
+  }, [variations]);
 
   useEffect(() => {
     const derivedSelections = deriveRequestFieldSelections({
@@ -4158,7 +4297,7 @@ export default function PosApiAdmin() {
       const updated = current.map((entry) => {
         if (entry.key !== key) return entry;
         const defaultValues = { ...(entry.defaultValues || {}) };
-        if (value) {
+        if (value !== '' && value !== undefined && value !== null) {
           defaultValues[fieldPath] = value;
         } else {
           delete defaultValues[fieldPath];
@@ -4166,6 +4305,214 @@ export default function PosApiAdmin() {
         return { ...entry, defaultValues };
       });
       return { ...prev, requestFieldVariations: updated };
+    });
+  };
+
+  function ensureVariationFieldSelection(variationKey, fieldPath) {
+    if (!variationKey || !fieldPath) return;
+
+    setFormState((prev) => {
+      let changed = false;
+      const variations = Array.isArray(prev.variations) ? prev.variations.slice() : [];
+      const variationIndex = variations.findIndex((entry) => (entry.key || entry.name) === variationKey);
+
+      if (variationIndex >= 0) {
+        const variation = variations[variationIndex];
+        const requiredFields = variation.requiredFields ? { ...variation.requiredFields } : {};
+        if (!requiredFields[fieldPath]) {
+          requiredFields[fieldPath] = true;
+          variations[variationIndex] = { ...variation, requiredFields };
+          changed = true;
+        }
+      }
+
+      const requestFieldVariations = Array.isArray(prev.requestFieldVariations)
+        ? prev.requestFieldVariations.slice()
+        : [];
+      const variationMetaIndex = requestFieldVariations.findIndex((entry) => entry.key === variationKey);
+      if (variationMetaIndex >= 0) {
+        const meta = requestFieldVariations[variationMetaIndex];
+        const requiredFields = meta.requiredFields ? { ...meta.requiredFields } : {};
+        if (!requiredFields[fieldPath]) {
+          requiredFields[fieldPath] = true;
+          requestFieldVariations[variationMetaIndex] = { ...meta, requiredFields };
+          changed = true;
+        }
+      }
+
+      if (!changed) return prev;
+      return { ...prev, variations, requestFieldVariations };
+    });
+  }
+
+  const syncVariationDefaultChange = (variationKey, fieldPath, value) => {
+    if (!variationKey || !fieldPath) return;
+    const segments = parsePathSegments(fieldPath);
+    if (segments.length === 0) return;
+
+    setFormState((prev) => {
+      let changed = false;
+      const variations = Array.isArray(prev.variations) ? prev.variations.slice() : [];
+      const variationIndex = variations.findIndex(
+        (entry) => (entry.key || entry.name) === variationKey,
+      );
+
+      if (variationIndex >= 0) {
+        const variation = variations[variationIndex];
+        const defaultValues = variation.defaultValues ? { ...variation.defaultValues } : {};
+        const examplePayload = cleanSampleText(
+          variation.requestExampleText || variation.requestExample || {},
+        );
+        const beforeState = JSON.stringify(examplePayload);
+        const beforeDefaults = JSON.stringify(defaultValues);
+        if (value !== '' && value !== undefined && value !== null) {
+          setNestedValue(examplePayload, segments, value);
+          defaultValues[fieldPath] = value;
+        } else {
+          removeNestedValue(examplePayload, segments);
+          delete defaultValues[fieldPath];
+        }
+        const afterState = JSON.stringify(examplePayload);
+        const afterDefaults = JSON.stringify(defaultValues);
+        if (beforeState !== afterState || beforeDefaults !== afterDefaults) {
+          variations[variationIndex] = {
+            ...variation,
+            defaultValues,
+            requestExample: examplePayload,
+            requestExampleText: JSON.stringify(examplePayload, null, 2),
+          };
+          changed = true;
+        }
+      }
+
+      const requestFieldVariations = Array.isArray(prev.requestFieldVariations)
+        ? prev.requestFieldVariations.slice()
+        : [];
+      const variationMetaIndex = requestFieldVariations.findIndex((entry) => entry.key === variationKey);
+      if (variationMetaIndex >= 0) {
+        const meta = requestFieldVariations[variationMetaIndex];
+        const defaultValues = { ...(meta.defaultValues || {}) };
+        const requiredFields = { ...(meta.requiredFields || {}) };
+        const defaultExists = Object.prototype.hasOwnProperty.call(defaultValues, fieldPath);
+        const requiredExists = Object.prototype.hasOwnProperty.call(requiredFields, fieldPath);
+
+        if (value !== '' && value !== undefined && value !== null) {
+          defaultValues[fieldPath] = value;
+        } else {
+          delete defaultValues[fieldPath];
+        }
+        if (requiredExists && !value) {
+          delete requiredFields[fieldPath];
+        }
+
+        if (
+          defaultExists !== Object.prototype.hasOwnProperty.call(defaultValues, fieldPath)
+          || requiredExists !== Object.prototype.hasOwnProperty.call(requiredFields, fieldPath)
+          || (value && defaultValues[fieldPath] !== meta.defaultValues?.[fieldPath])
+        ) {
+          requestFieldVariations[variationMetaIndex] = {
+            ...meta,
+            defaultValues,
+            requiredFields,
+          };
+          changed = true;
+        }
+      }
+
+      if (!changed) return prev;
+      return { ...prev, variations, requestFieldVariations };
+    });
+  };
+
+  const clearVariationFieldSelection = (variationKey, fieldPath) => {
+    if (!variationKey || !fieldPath) return;
+
+    setRequestFieldMeta((prev) => {
+      const existing = prev[fieldPath];
+      if (!existing) return prev;
+      const requiredByVariation = { ...(existing.requiredByVariation || {}) };
+      const defaultByVariation = { ...(existing.defaultByVariation || {}) };
+      let changed = false;
+
+      if (requiredByVariation[variationKey]) {
+        delete requiredByVariation[variationKey];
+        changed = true;
+      }
+      if (Object.prototype.hasOwnProperty.call(defaultByVariation, variationKey)) {
+        delete defaultByVariation[variationKey];
+        changed = true;
+      }
+
+      if (!changed) return prev;
+      return { ...prev, [fieldPath]: { ...existing, requiredByVariation, defaultByVariation } };
+    });
+
+    setFormState((prev) => {
+      let changed = false;
+      const variations = Array.isArray(prev.variations) ? prev.variations.slice() : [];
+      const variationIndex = variations.findIndex(
+        (entry) => (entry.key || entry.name) === variationKey,
+      );
+
+      if (variationIndex >= 0) {
+        const variation = variations[variationIndex];
+        const requiredFields = variation.requiredFields ? { ...variation.requiredFields } : {};
+        const defaultValues = variation.defaultValues ? { ...variation.defaultValues } : {};
+        const examplePayload = cleanSampleText(
+          variation.requestExampleText || variation.requestExample || {},
+        );
+        const beforeExample = JSON.stringify(examplePayload);
+        const beforeDefaults = JSON.stringify(defaultValues);
+        const beforeRequired = JSON.stringify(requiredFields);
+
+        delete requiredFields[fieldPath];
+        delete defaultValues[fieldPath];
+        removeNestedValue(examplePayload, parsePathSegments(fieldPath));
+
+        const afterExample = JSON.stringify(examplePayload);
+        const variationChanged =
+          beforeExample !== afterExample
+          || beforeDefaults !== JSON.stringify(defaultValues)
+          || beforeRequired !== JSON.stringify(requiredFields);
+
+        if (variationChanged) {
+          variations[variationIndex] = {
+            ...variation,
+            requiredFields,
+            defaultValues,
+            requestExample: examplePayload,
+            requestExampleText: JSON.stringify(examplePayload, null, 2),
+          };
+          changed = true;
+        }
+      }
+
+      const requestFieldVariations = Array.isArray(prev.requestFieldVariations)
+        ? prev.requestFieldVariations.slice()
+        : [];
+      const variationMetaIndex = requestFieldVariations.findIndex((entry) => entry.key === variationKey);
+      if (variationMetaIndex >= 0) {
+        const meta = requestFieldVariations[variationMetaIndex];
+        const defaultValues = { ...(meta.defaultValues || {}) };
+        const requiredFields = { ...(meta.requiredFields || {}) };
+        const defaultHad = Object.prototype.hasOwnProperty.call(defaultValues, fieldPath);
+        const requiredHad = Object.prototype.hasOwnProperty.call(requiredFields, fieldPath);
+
+        delete defaultValues[fieldPath];
+        delete requiredFields[fieldPath];
+
+        if (defaultHad || requiredHad) {
+          requestFieldVariations[variationMetaIndex] = {
+            ...meta,
+            defaultValues,
+            requiredFields,
+          };
+          changed = true;
+        }
+      }
+
+      if (!changed) return prev;
+      return { ...prev, variations, requestFieldVariations };
     });
   };
 
@@ -4217,16 +4564,24 @@ export default function PosApiAdmin() {
   };
 
   const handleRemoveVariationField = (variationIndex, fieldIndex) => {
+    let removedFieldPath = '';
+    let variationKey = '';
     setFormState((prev) => {
       const list = Array.isArray(prev.variations) ? prev.variations.slice() : [];
       const variation = list[variationIndex];
       if (!variation) return prev;
+      variationKey = variation.key || variation.name;
       const fields = Array.isArray(variation.requestFields) ? variation.requestFields.slice() : [];
       if (fieldIndex < 0 || fieldIndex >= fields.length) return prev;
+      removedFieldPath = normalizeHintEntry(fields[fieldIndex]).field || '';
       fields.splice(fieldIndex, 1);
       list[variationIndex] = { ...variation, requestFields: fields };
       return { ...prev, variations: list };
     });
+
+    if (removedFieldPath && variationKey) {
+      clearVariationFieldSelection(variationKey, removedFieldPath);
+    }
   };
 
   const handleAddVariation = () => {
@@ -4868,11 +5223,12 @@ export default function PosApiAdmin() {
   }, [activeTab]);
 
   function handleSelect(id, explicitDefinition = null) {
-    if (!id) {
+    const targetId = id || explicitDefinition?.id;
+    if (!targetId && !explicitDefinition) {
       return;
     }
 
-    const definition = endpoints.find((ep) => ep.id === id);
+    const definition = explicitDefinition || endpoints.find((ep) => ep.id === targetId);
     if (!definition) {
       return;
     }
@@ -5086,25 +5442,47 @@ export default function PosApiAdmin() {
     setImportSelectedExampleKey(example.key || example.name || '');
     const baseDefaults = buildDraftParameterDefaults(targetDraft?.parameters || []);
     const nextValues = { ...baseDefaults };
-    (example.request?.queryParams || []).forEach((param) => {
-      if (!param?.name) return;
-      nextValues[param.name] = param.value ?? param.example ?? '';
+    const request = example.request || {};
+    const queryParams = request.queryParams || request.query || example.queryParams || [];
+    const pathParams = request.pathParams || request.pathParameters || example.pathParams || [];
+    const headers = request.headers || request.header || example.headers || {};
+
+    const assignParamValue = (name, value) => {
+      if (!name) return;
+      nextValues[name] = value ?? '';
+    };
+
+    const normalizeParamList = (params) => {
+      if (!params) return [];
+      if (Array.isArray(params)) return params;
+      if (typeof params === 'object') {
+        return Object.entries(params).map(([name, value]) => ({ name, value }));
+      }
+      return [];
+    };
+
+    normalizeParamList(queryParams).forEach((param) => {
+      assignParamValue(param?.name ?? param?.key ?? param?.param ?? param, param?.value ?? param?.example);
     });
-    if (example.request?.headers) {
-      Object.entries(example.request.headers).forEach(([name, value]) => {
-        nextValues[name] = value ?? '';
-      });
+
+    normalizeParamList(pathParams).forEach((param) => {
+      assignParamValue(param?.name ?? param?.key ?? param?.param ?? param, param?.value ?? param?.example);
+    });
+
+    if (headers && typeof headers === 'object') {
+      Object.entries(headers).forEach(([name, value]) => assignParamValue(name, value));
     }
     setImportTestValues(nextValues);
-    if (example.request?.body !== undefined) {
+    const bodyCandidate = request.body ?? example.body ?? example.requestBody;
+    if (bodyCandidate !== undefined) {
       try {
         setImportRequestBody(
-          typeof example.request.body === 'string'
-            ? example.request.body
-            : JSON.stringify(example.request.body, null, 2),
+          typeof bodyCandidate === 'string'
+            ? bodyCandidate
+            : JSON.stringify(bodyCandidate, null, 2),
         );
       } catch {
-        setImportRequestBody(String(example.request.body));
+        setImportRequestBody(String(bodyCandidate));
       }
     }
     setImportExampleResponse(example.response || null);
@@ -5383,9 +5761,7 @@ export default function PosApiAdmin() {
 
     const nextState = createFormState(draftDefinition);
 
-    setSelectedId('');
-    setRequestFieldValues({});
-    setFormState(nextState);
+    resetEditorState(nextState);
     setStatus('Loaded the imported draft into the editor. Add details and save to finalize.');
     setActiveTab('endpoints');
   }
@@ -6425,6 +6801,42 @@ export default function PosApiAdmin() {
     });
   }
 
+  function removeNestedValue(target, segments) {
+    const stack = [];
+    let current = target;
+
+    for (let i = 0; i < segments.length; i += 1) {
+      const segment = segments[i];
+      if (!current || typeof current !== 'object') return;
+      stack.push({ parent: current, segment });
+      current = current[segment.key];
+      if (segment.isArray) {
+        if (!Array.isArray(current) || current.length === 0) return;
+        current = current[0];
+      }
+    }
+
+    while (stack.length > 0) {
+      const { parent, segment } = stack.pop();
+      if (!parent || typeof parent !== 'object') continue;
+
+      if (segment.isArray) {
+        if (Array.isArray(parent[segment.key])) {
+          parent[segment.key].splice(0, 1);
+          if (parent[segment.key].length === 0) {
+            delete parent[segment.key];
+          }
+        }
+      } else if (Object.prototype.hasOwnProperty.call(parent, segment.key)) {
+        delete parent[segment.key];
+      }
+
+      if (Object.keys(parent).length > 0) {
+        break;
+      }
+    }
+  }
+
   function pickPayloadFields(payload, fieldPaths = []) {
     if (!payload || typeof payload !== 'object' || fieldPaths.length === 0) return payload;
     const picked = {};
@@ -6573,6 +6985,10 @@ export default function PosApiAdmin() {
 
   function handleVariationRequirementChange(fieldPath, variationKey, value) {
     if (!fieldPath || !variationKey) return;
+    if (!value) {
+      clearVariationFieldSelection(variationKey, fieldPath);
+      return;
+    }
     setRequestFieldMeta((prev) => {
       const current = prev[fieldPath] || { requiredByVariation: {}, defaultByVariation: {} };
       return {
@@ -6583,6 +6999,8 @@ export default function PosApiAdmin() {
         },
       };
     });
+
+    ensureVariationFieldSelection(variationKey, fieldPath);
   }
 
   function handleVariationDefaultUpdate(fieldPath, variationKey, value) {
@@ -6590,13 +7008,14 @@ export default function PosApiAdmin() {
     setRequestFieldMeta((prev) => {
       const current = prev[fieldPath] || { requiredByVariation: {}, defaultByVariation: {} };
       const defaultByVariation = { ...current.defaultByVariation };
-      if (value) {
+      if (value !== '' && value !== undefined && value !== null) {
         defaultByVariation[variationKey] = value;
       } else {
         delete defaultByVariation[variationKey];
       }
       return { ...prev, [fieldPath]: { ...current, defaultByVariation } };
     });
+    syncVariationDefaultChange(variationKey, fieldPath, value);
   }
 
   function handleAdminParamChange(name, value) {
@@ -6751,16 +7170,29 @@ export default function PosApiAdmin() {
     setTokenMeta({ lastFetchedAt: null, expiresAt: null });
   }
 
-  function handleNew() {
+  function resetEditorState(nextFormState = { ...EMPTY_ENDPOINT }) {
     setSelectedId('');
-    setFormState({ ...EMPTY_ENDPOINT });
     setStatus('');
     setError('');
     resetTestState();
+    setRequestBuilder(null);
+    setRequestBuilderError('');
     setDocExamples([]);
     setSelectedDocBlock('');
     setDocMetadata({});
     setDocFieldDescriptions({});
+    setImportSpecText('');
+    setImportDrafts([]);
+    setImportError('');
+    setImportStatus('');
+    setSelectedImportId('');
+    setImportTestValues({});
+    setImportRequestBody('');
+    setImportTestResult(null);
+    setImportTestRunning(false);
+    setImportTestError('');
+    setImportSelectedExampleKey('');
+    setImportExampleResponse(null);
     setImportBaseUrl('');
     setImportBaseUrlEnvVar('');
     setImportBaseUrlMode('literal');
@@ -6777,6 +7209,25 @@ export default function PosApiAdmin() {
     setRequestFieldValues({});
     setRequestFieldMeta({});
     setTokenMeta({ lastFetchedAt: null, expiresAt: null });
+    setSelectedVariationKey('');
+    setPaymentDataDrafts({});
+    setPaymentDataErrors({});
+    setTaxTypeListText(DEFAULT_TAX_TYPES.join(', '));
+    setTaxTypeListError('');
+    setAdminSelectionId('');
+    setAdminParamValues({});
+    setAdminRequestBody('');
+    setAdminResult(null);
+    setAdminError('');
+    setAdminRunning(false);
+    setAdminHistory([]);
+    setAdminUseCachedToken(true);
+    setAdminAuthEndpointId('');
+    setFormState(nextFormState);
+  }
+
+  function handleNew() {
+    resetEditorState({ ...EMPTY_ENDPOINT });
   }
 
   async function handleTestCombination() {
@@ -9154,6 +9605,7 @@ const styles = {
   container: {
     display: 'flex',
     gap: '1.5rem',
+    width: '100%',
     alignItems: 'flex-start',
   },
   infoContainer: {
@@ -9407,11 +9859,12 @@ const styles = {
   },
   formContainer: {
     flex: 1,
+    width: '100%',
     background: '#fff',
     border: '1px solid #e2e8f0',
     borderRadius: '8px',
     padding: '1.5rem',
-    maxWidth: '1200px',
+    maxWidth: '100%',
     position: 'relative',
     overflow: 'visible',
   },
@@ -9826,8 +10279,8 @@ const styles = {
     fontSize: '0.9rem',
   },
   hintGrid: {
-    display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
+    display: 'flex',
+    flexDirection: 'column',
     gap: '1rem',
     marginTop: '0.75rem',
   },
@@ -9934,10 +10387,9 @@ const styles = {
     border: '1px solid #e2e8eb',
     borderRadius: '10px',
     padding: '0.75rem',
-    display: 'grid',
-    gridTemplateColumns: '1.4fr 1fr 1.6fr',
+    display: 'flex',
+    flexDirection: 'column',
     gap: '0.75rem',
-    alignItems: 'flex-start',
   },
   requestValueFieldMeta: {
     display: 'flex',
