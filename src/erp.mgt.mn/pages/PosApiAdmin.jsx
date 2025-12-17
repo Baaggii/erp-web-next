@@ -2817,6 +2817,7 @@ export default function PosApiAdmin() {
   const [infoSyncTableOptionsBase, setInfoSyncTableOptionsBase] = useState([]);
   const [tableOptions, setTableOptions] = useState([]);
   const [tableOptionsError, setTableOptionsError] = useState('');
+  const [tableOptionsLoading, setTableOptionsLoading] = useState(false);
   const [tableFields, setTableFields] = useState({});
   const [tableFieldLoading, setTableFieldLoading] = useState({});
   const [infoUploadCodeType, setInfoUploadCodeType] = useState('classification');
@@ -3097,13 +3098,14 @@ export default function PosApiAdmin() {
 
   useEffect(() => {
     setInfoSyncEndpointIds((prev) => {
+      if (loading) return prev;
       const filtered = prev.filter((id) => infoSyncEndpointOptions.some((ep) => ep.id === id));
       if (filtered.length !== prev.length) {
         setInfoSyncSettings((settings) => ({ ...settings, endpointIds: filtered }));
       }
       return filtered;
     });
-  }, [infoSyncEndpointOptions]);
+  }, [infoSyncEndpointOptions, loading]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -3111,6 +3113,7 @@ export default function PosApiAdmin() {
 
     async function loadResponseTables() {
       try {
+        setTableOptionsLoading(true);
         setTableOptionsError('');
         const res = await fetch(`${API_BASE}/report_builder/tables`, {
           credentials: 'include',
@@ -3148,6 +3151,10 @@ export default function PosApiAdmin() {
           setTableOptionsError(err?.message || 'Unable to load POSAPI response tables.');
           setTableOptions([]);
           console.warn('Unable to load POSAPI response tables', err);
+        }
+      } finally {
+        if (!cancelled) {
+          setTableOptionsLoading(false);
         }
       }
     }
