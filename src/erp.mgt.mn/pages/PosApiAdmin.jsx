@@ -1161,6 +1161,17 @@ function setValueAtPath(target, path, value) {
   return current !== null;
 }
 
+function parseExamplePayload(exampleText, fallback = {}) {
+  if (exampleText && typeof exampleText === 'string' && exampleText.trim()) {
+    try {
+      return JSON.parse(exampleText);
+    } catch {
+      // Ignore parse errors and fall back to provided value
+    }
+  }
+  return deepClone(fallback) || {};
+}
+
 function buildRequestSampleFromSelections(
   baseSample,
   selections,
@@ -3410,6 +3421,13 @@ export default function PosApiAdmin() {
         variationColumns.forEach((variation) => {
           const key = variation.key;
           if (!key) return;
+          const allowedFields = variationFieldSets.get(key);
+          const fieldAllowed = !allowedFields || allowedFields.has(fieldLabel);
+          if (!fieldAllowed) {
+            requiredByVariation[key] = false;
+            delete defaultByVariation[key];
+            return;
+          }
           if (!(key in requiredByVariation)) {
             requiredByVariation[key] = requiredCommon;
           }
@@ -3439,7 +3457,13 @@ export default function PosApiAdmin() {
       });
       return next;
     });
-  }, [requestFieldDisplay.state, variationColumns, visibleRequestFieldItems, requestFieldVariationMap]);
+  }, [
+    requestFieldDisplay.state,
+    variationColumns,
+    variationFieldSets,
+    visibleRequestFieldItems,
+    requestFieldVariationMap,
+  ]);
 
   useEffect(() => {
     const derivedSelections = deriveRequestFieldSelections({
@@ -4226,6 +4250,30 @@ export default function PosApiAdmin() {
       fields.splice(fieldIndex, 1);
       list[variationIndex] = { ...variation, requestFields: fields };
       return { ...prev, variations: list };
+    });
+
+    setRequestFieldMeta((prev) => {
+      const list = Array.isArray(formState.variations) ? formState.variations : [];
+      const variation = list[variationIndex];
+      if (!variation) return prev;
+      const field = variation.requestFields?.[fieldIndex];
+      const normalizedField = normalizeHintEntry(field).field;
+      if (!normalizedField) return prev;
+      const key = variation.key || variation.name || `variation-${variationIndex + 1}`;
+      const existing = prev[normalizedField];
+      if (!existing) return prev;
+      const requiredByVariation = { ...(existing.requiredByVariation || {}) };
+      const defaultByVariation = { ...(existing.defaultByVariation || {}) };
+      delete requiredByVariation[key];
+      delete defaultByVariation[key];
+      return {
+        ...prev,
+        [normalizedField]: {
+          ...existing,
+          requiredByVariation,
+          defaultByVariation,
+        },
+      };
     });
   };
 
@@ -6595,6 +6643,34 @@ export default function PosApiAdmin() {
       }
       return { ...prev, [fieldPath]: { ...current, defaultByVariation } };
     });
+
+    setFormState((prev) => {
+      const list = Array.isArray(prev.variations) ? prev.variations.slice() : [];
+      let changed = false;
+      const updatedVariations = list.map((variation, index) => {
+        const key = variation.key || variation.name || `variation-${index + 1}`;
+        if (key !== variationKey) return variation;
+        const allowedFields = variation.requestFields
+          ? new Set(
+            variation.requestFields
+              .map((field) => normalizeHintEntry(field).field)
+              .filter(Boolean),
+          )
+          : null;
+        if (allowedFields && !allowedFields.has(fieldPath)) return variation;
+
+        const payload = parseExamplePayload(variation.requestExampleText, variation.requestExample);
+        const clonedPayload = payload && typeof payload === 'object' && !Array.isArray(payload)
+          ? payload
+          : {};
+        if (!setValueAtPath(clonedPayload, fieldPath, value)) return variation;
+        changed = true;
+        const requestExampleText = JSON.stringify(clonedPayload, null, 2);
+        return { ...variation, requestExample: clonedPayload, requestExampleText };
+      });
+
+      return changed ? { ...prev, variations: updatedVariations } : prev;
+    });
   }
 
   function handleAdminParamChange(name, value) {
@@ -8054,15 +8130,20 @@ export default function PosApiAdmin() {
                         </div>
                         {variationColumns.map((variation) => {
                           const variationKey = variation.key;
-                          const required = commonRequired
-                            ? true
-                            : meta.requiredByVariation?.[variationKey]
-                              ?? normalized.requiredByVariation?.[variationKey]
-                              ?? false;
-                          const defaultValue =
-                            meta.defaultByVariation?.[variationKey]
-                            ?? normalized.defaultByVariation?.[variationKey]
-                            ?? '';
+                          const allowedFields = variationFieldSets.get(variationKey);
+                          const fieldAllowed = !allowedFields || allowedFields.has(fieldLabel);
+                          const required = !fieldAllowed
+                            ? false
+                            : commonRequired
+                              ? true
+                              : meta.requiredByVariation?.[variationKey]
+                                ?? normalized.requiredByVariation?.[variationKey]
+                                ?? false;
+                          const defaultValue = fieldAllowed
+                            ? meta.defaultByVariation?.[variationKey]
+                              ?? normalized.defaultByVariation?.[variationKey]
+                              ?? ''
+                            : '';
                           return (
                             <div
                               key={`variation-toggle-${variationKey}-${fieldLabel}`}
@@ -8072,7 +8153,7 @@ export default function PosApiAdmin() {
                                 <input
                                   type="checkbox"
                                   checked={required}
-                                  disabled={commonRequired}
+                                  disabled={commonRequired || !fieldAllowed}
                                   onChange={(e) =>
                                     handleVariationRequirementChange(
                                       fieldLabel,
@@ -8086,6 +8167,7 @@ export default function PosApiAdmin() {
                               <input
                                 type="text"
                                 value={defaultValue}
+                                disabled={!fieldAllowed}
                                 onChange={(e) =>
                                   handleVariationDefaultUpdate(fieldLabel, variationKey, e.target.value)
                                 }
