@@ -5383,9 +5383,7 @@ export default function PosApiAdmin() {
 
     const nextState = createFormState(draftDefinition);
 
-    setSelectedId('');
-    setRequestFieldValues({});
-    setFormState(nextState);
+    resetEditorState(nextState);
     setStatus('Loaded the imported draft into the editor. Add details and save to finalize.');
     setActiveTab('endpoints');
   }
@@ -6751,9 +6749,8 @@ export default function PosApiAdmin() {
     setTokenMeta({ lastFetchedAt: null, expiresAt: null });
   }
 
-  function handleNew() {
+  function resetEditorState(nextFormState = { ...EMPTY_ENDPOINT }) {
     setSelectedId('');
-    setFormState({ ...EMPTY_ENDPOINT });
     setStatus('');
     setError('');
     resetTestState();
@@ -6777,6 +6774,11 @@ export default function PosApiAdmin() {
     setRequestFieldValues({});
     setRequestFieldMeta({});
     setTokenMeta({ lastFetchedAt: null, expiresAt: null });
+    setFormState(nextFormState);
+  }
+
+  function handleNew() {
+    resetEditorState({ ...EMPTY_ENDPOINT });
   }
 
   async function handleTestCombination() {
@@ -9154,6 +9156,7 @@ const styles = {
   container: {
     display: 'flex',
     gap: '1.5rem',
+    width: '100%',
     alignItems: 'flex-start',
   },
   infoContainer: {
@@ -9407,11 +9410,12 @@ const styles = {
   },
   formContainer: {
     flex: 1,
+    width: '100%',
     background: '#fff',
     border: '1px solid #e2e8f0',
     borderRadius: '8px',
     padding: '1.5rem',
-    maxWidth: '1200px',
+    maxWidth: '100%',
     position: 'relative',
     overflow: 'visible',
   },
