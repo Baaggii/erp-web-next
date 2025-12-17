@@ -12,15 +12,6 @@ import { listPermittedProcedures } from '../utils/reportProcedures.js';
 
 const router = express.Router();
 
-const procedureLimiter = rateLimit({
-  windowMs: 60 * 1000,
-  max: 30,
-  legacyHeaders: false,
-  message: { message: 'Too many procedure calls, please retry later' },
-});
-
-router.use(procedureLimiter);
-
 function resolveCompanyId(req) {
   const rawCompanyId = req.query?.companyId ?? req.user?.companyId;
   const companyId = Number(rawCompanyId);

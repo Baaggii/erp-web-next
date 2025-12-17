@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useTemporarySummary } from '../context/TemporarySummaryContext.jsx';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import useGeneralConfig from './useGeneralConfig.js';
+import { API_BASE } from '../utils/apiBase.js';
 
 const SCOPES = ['created', 'review'];
 const TEMPORARY_FILTER_CACHE_KEY = 'temporary-transaction-filter';
@@ -57,6 +58,9 @@ export default function useTemporaryNotificationCounts(empid) {
       transactionTypeValue: cachedFilter.value,
     }));
   }, [setParams]);
+
+  const refreshInFlight = useRef(false);
+  const pendingRefresh = useRef(false);
 
   const storageBase = useMemo(() => {
     const id = empid != null && empid !== '' ? String(empid).trim() : 'anonymous';
@@ -129,6 +133,41 @@ export default function useTemporaryNotificationCounts(empid) {
     },
     [getSeenValue],
   );
+
+  const refresh = useCallback(async () => {
+    if (refreshInFlight.current) {
+      pendingRefresh.current = true;
+      return;
+    }
+    refreshInFlight.current = true;
+    try {
+      const params = new URLSearchParams();
+      const cachedFilter = readCachedTemporaryFilter();
+      const hasCachedValue =
+        cachedFilter?.value !== undefined && cachedFilter?.value !== null && cachedFilter?.value !== '';
+      if (cachedFilter?.field && hasCachedValue) {
+        params.set('transactionTypeField', cachedFilter.field);
+        params.set('transactionTypeValue', cachedFilter.value);
+      }
+      const res = await fetch(`${API_BASE}/transaction_temporaries/summary${
+        params.size > 0 ? `?${params.toString()}` : ''
+      }`, {
+        credentials: 'include',
+        skipLoader: true,
+      });
+      if (!res.ok) throw new Error('Failed to load summary');
+      const data = await res.json().catch(() => ({}));
+      evaluateCounts(data);
+    } catch {
+      // Ignore errors but keep previous counts
+    } finally {
+      refreshInFlight.current = false;
+      if (pendingRefresh.current) {
+        pendingRefresh.current = false;
+        refresh();
+      }
+    }
+  }, [evaluateCounts]);
 
   useEffect(() => {
     if (summary) evaluateCounts(summary);

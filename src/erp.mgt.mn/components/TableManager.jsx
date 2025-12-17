@@ -752,6 +752,74 @@ const TableManager = forwardRef(function TableManager({
     setQueuedTemporaryTrigger(externalTemporaryTrigger);
   }, [externalTemporaryTrigger]);
 
+  const refreshTemporarySummary = useCallback(async () => {
+    if (!formSupportsTemporary) {
+      setTemporarySummary(null);
+      return;
+    }
+    try {
+      const params = new URLSearchParams();
+      if (table) {
+        params.set('table', table);
+      }
+      const transactionTypeField = formConfig?.transactionTypeField || '';
+      const normalizedTypeFilter = typeof typeFilter === 'string' ? typeFilter.trim() : typeFilter;
+      if (transactionTypeField && normalizedTypeFilter) {
+        params.set('transactionTypeField', transactionTypeField);
+        params.set('transactionTypeValue', normalizedTypeFilter);
+      }
+
+      const res = await fetch(
+        `${API_BASE}/transaction_temporaries/summary${
+          params.size > 0 ? `?${params.toString()}` : ''
+        }`,
+        {
+          credentials: 'include',
+        },
+      );
+      if (!res.ok) throw new Error('failed');
+      const data = await res.json();
+      setTemporarySummary(data);
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(
+          new CustomEvent('transaction-temporary-refresh', {
+            detail: { source: 'forms', table },
+          }),
+        );
+      }
+      const reviewPending = Number(data?.reviewPending) || 0;
+      const preferredScope =
+        availableTemporaryScopes.includes('review') && reviewPending > 0
+          ? 'review'
+          : defaultTemporaryScope;
+      setTemporaryScope((prev) => {
+        if (!availableTemporaryScopes.includes(prev)) return preferredScope;
+        if (
+          preferredScope === 'review' &&
+          prev !== 'review' &&
+          availableTemporaryScopes.includes('review')
+        ) {
+          return 'review';
+        }
+        return prev;
+      });
+    } catch {
+      setTemporarySummary((prev) => prev || { createdPending: 0, reviewPending: 0 });
+      setTemporaryScope((prev) =>
+        availableTemporaryScopes.includes(prev)
+          ? prev
+          : defaultTemporaryScope,
+      );
+    }
+  }, [
+    formSupportsTemporary,
+    availableTemporaryScopes,
+    defaultTemporaryScope,
+    table,
+    formConfig?.transactionTypeField,
+    typeFilter,
+  ]);
+
   const validCols = useMemo(() => new Set(columnMeta.map((c) => c.name)), [columnMeta]);
   const columnCaseMap = useMemo(
     () => buildColumnCaseMap(columnMeta),
