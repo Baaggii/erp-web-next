@@ -2757,6 +2757,7 @@ export default function PosApiAdmin() {
   const [saving, setSaving] = useState(false);
   const [fetchingDoc, setFetchingDoc] = useState(false);
   const [error, setError] = useState('');
+  const [loadError, setLoadError] = useState('');
   const [status, setStatus] = useState('');
   const [usageFilter, setUsageFilter] = useState('all');
   const [testState, setTestState] = useState({ running: false, error: '', result: null });
@@ -2992,7 +2993,6 @@ export default function PosApiAdmin() {
   const infoSyncEndpointOptions = useMemo(() => {
     const normalized = endpoints.map(withEndpointMetadata);
     return normalized
-      .filter((endpoint) => String(endpoint.method || '').toUpperCase() === 'GET')
       .filter((endpoint) => infoSyncUsage === 'all' || !infoSyncUsage || endpoint.usage === infoSyncUsage)
       .map((endpoint) => ({
         id: endpoint.id,
@@ -3084,7 +3084,6 @@ export default function PosApiAdmin() {
     const desiredUsage = infoSyncUsage === 'all' ? null : infoSyncUsage;
     return endpoints
       .map(withEndpointMetadata)
-      .filter((endpoint) => String(endpoint.method || '').toUpperCase() === 'GET')
       .filter((endpoint) => !desiredUsage || endpoint.usage === desiredUsage)
       .filter((endpoint) => selected.size === 0 || selected.has(endpoint.id));
   }, [endpoints, infoSyncEndpointIds, infoSyncUsage]);
@@ -3092,9 +3091,10 @@ export default function PosApiAdmin() {
   const infoSyncEndpointUnavailableReason = useMemo(() => {
     if (infoSyncEndpointOptions.length > 0) return '';
     if (loading) return 'POSAPI endpoints are still loading.';
+    if (loadError) return loadError;
     if (error) return error;
     return 'No GET endpoints available for the selected usage.';
-  }, [error, infoSyncEndpointOptions.length, infoSyncUsage, loading]);
+  }, [error, infoSyncEndpointOptions.length, infoSyncUsage, loadError, loading]);
 
   useEffect(() => {
     setInfoSyncEndpointIds((prev) => {
@@ -3142,10 +3142,13 @@ export default function PosApiAdmin() {
         // Allow selecting from all available tables so response mappings can be configured even when
         // POSAPI-specific prefixes are absent. Prefer prefixed tables when they exist, but fall back
         // to the full list to avoid presenting an empty, unusable selector.
-        const prefixed = options.filter((option) =>
-          normalizeTableValue(option?.value || '').startsWith('ebarimt_'),
-        );
-        setTableOptions(prefixed.length > 0 ? prefixed : options);
+          const prefixed = options.filter((option) =>
+            normalizeTableValue(option?.value || '').startsWith('ebarimt_'),
+          );
+          const remainder = options.filter((option) =>
+            !normalizeTableValue(option?.value || '').startsWith('ebarimt_'),
+          );
+          setTableOptions(prefixed.length > 0 ? [...prefixed, ...remainder] : options);
       } catch (err) {
         if (!cancelled && err?.name !== 'AbortError') {
           setTableOptionsError(err?.message || 'Unable to load POSAPI response tables.');
@@ -5139,6 +5142,7 @@ export default function PosApiAdmin() {
     async function fetchEndpoints() {
       try {
         setLoading(true);
+        setLoadError('');
         setError('');
         const res = await fetch(`${API_BASE}/posapi/endpoints`, {
           credentials: 'include',
@@ -5170,6 +5174,7 @@ export default function PosApiAdmin() {
       } catch (err) {
         if (controller.signal.aborted) return;
         console.error(err);
+        setLoadError(err.message || 'Failed to load endpoints');
         setError(err.message || 'Failed to load endpoints');
       } finally {
         if (!cancelled) {
@@ -7626,6 +7631,7 @@ export default function PosApiAdmin() {
               value={usageFilter}
               onChange={(e) => setUsageFilter(e.target.value)}
               style={styles.filterSelect}
+              disabled={loading}
             >
               <option value="all">Show all usages</option>
               {USAGE_OPTIONS.map((option) => (
@@ -7641,6 +7647,9 @@ export default function PosApiAdmin() {
               : `${groupedEndpoints.reduce((total, group) => total + group.endpoints.length, 0)} shown`}
           </div>
         </div>
+        {loadError && (
+          <div style={styles.hintError}>{loadError}</div>
+        )}
         <div style={styles.list}>
           {groupedEndpoints.map((group) => (
             <div key={group.usage} style={styles.listGroup}>
@@ -9523,6 +9532,7 @@ export default function PosApiAdmin() {
             Configure automated synchronization of POSAPI reference data and manually refresh or
             upload static CSV lists such as classification and VAT exemption reasons.
           </p>
+          {loadError && <div style={styles.error}>{loadError}</div>}
           {infoSyncError && <div style={styles.error}>{infoSyncError}</div>}
           {infoSyncStatus && <div style={styles.status}>{infoSyncStatus}</div>}
           <div style={styles.infoGrid}>
@@ -9568,6 +9578,7 @@ export default function PosApiAdmin() {
                       updateInfoSetting('usage', e.target.value);
                     }}
                     style={styles.input}
+                    disabled={loading}
                   >
                     <option value="all">All usages</option>
                     {USAGE_OPTIONS.map((option) => (
@@ -9584,6 +9595,7 @@ export default function PosApiAdmin() {
                     value={infoSyncEndpointIds}
                     onChange={handleInfoEndpointSelection}
                     style={{ ...styles.input, minHeight: '140px' }}
+                    disabled={infoSyncLoading || loading}
                   >
                     {infoSyncEndpointOptions.map((endpoint) => (
                       <option key={endpoint.id} value={endpoint.id}>
