@@ -3103,10 +3103,13 @@ export default function PosApiAdmin() {
         const data = await res.json();
         if (cancelled) return;
         const options = buildTableOptions(Array.isArray(data.tables) ? data.tables : []);
-        const ebarimtTables = options.filter((option) =>
+        // Allow selecting from all available tables so response mappings can be configured even when
+        // POSAPI-specific prefixes are absent. Prefer prefixed tables when they exist, but fall back
+        // to the full list to avoid presenting an empty, unusable selector.
+        const prefixed = options.filter((option) =>
           normalizeTableValue(option?.value || '').startsWith('ebarimt_'),
         );
-        setTableOptions(ebarimtTables);
+        setTableOptions(prefixed.length > 0 ? prefixed : options);
       } catch (err) {
         if (!cancelled && err?.name !== 'AbortError') {
           console.warn('Unable to load POSAPI response tables', err);
