@@ -5082,7 +5082,20 @@ export default function PosApiAdmin() {
             signal: controller.signal,
           }),
         ]);
-        if (!settingsRes.ok || !tablesRes.ok) return;
+        if (!settingsRes.ok || !tablesRes.ok) {
+          const detail = !settingsRes.ok ? settingsRes : tablesRes;
+          let reason = 'Failed to preload POSAPI information sync settings.';
+          if (detail.status === 401 || detail.status === 403) {
+            reason = 'You do not have permission to view POSAPI information sync settings.';
+          }
+          try {
+            const body = await detail.json();
+            const message = body?.message || body?.error || '';
+            if (message) reason += ` Details: ${message}`;
+          } catch {}
+          setInfoSyncError(reason);
+          return;
+        }
         const [settingsData, tableData] = await Promise.all([settingsRes.json(), tablesRes.json()]);
         if (cancelled) return;
         const tableOptions = buildTableOptions(Array.isArray(tableData.tables) ? tableData.tables : []);
@@ -5110,7 +5123,10 @@ export default function PosApiAdmin() {
         setInfoSyncLogs(Array.isArray(settingsData.logs) ? settingsData.logs : []);
         infoSyncPreloadedRef.current = true;
       } catch (err) {
-        if (!cancelled) console.warn('Unable to preload POSAPI information sync settings', err);
+        if (!cancelled) {
+          setInfoSyncError(err?.message || 'Unable to preload POSAPI information sync settings');
+          console.warn('Unable to preload POSAPI information sync settings', err);
+        }
       } finally {
         if (!cancelled) setInfoSyncLoading(false);
       }
@@ -5130,7 +5146,16 @@ export default function PosApiAdmin() {
           skipLoader: true,
         });
         if (!res.ok) {
-          throw new Error('Failed to load POSAPI endpoints');
+          let details = '';
+          try {
+            const body = await res.json();
+            details = body?.message || body?.error || '';
+          } catch {}
+          const prefix = res.status === 401 || res.status === 403
+            ? 'You do not have permission to view POSAPI endpoints.'
+            : 'Failed to load POSAPI endpoints.';
+          const message = details ? `${prefix} Details: ${details}` : prefix;
+          throw new Error(message);
         }
         const data = await res.json();
         if (cancelled) return;
@@ -5209,6 +5234,7 @@ export default function PosApiAdmin() {
         }
       } catch (err) {
         if (cancelled || err?.name === 'AbortError') return;
+        setInfoSyncError(err?.message || 'Failed to refresh POSAPI information logs');
         console.warn('Failed to refresh POSAPI info sync logs', err);
       }
     }
@@ -5230,10 +5256,28 @@ export default function PosApiAdmin() {
           }),
         ]);
         if (!settingsRes.ok) {
-          throw new Error('Failed to load sync settings');
+          let details = '';
+          try {
+            const body = await settingsRes.json();
+            details = body?.message || body?.error || '';
+          } catch {}
+          const prefix = settingsRes.status === 401 || settingsRes.status === 403
+            ? 'You do not have permission to view POSAPI information settings.'
+            : 'Failed to load POSAPI information settings.';
+          const message = details ? `${prefix} Details: ${details}` : prefix;
+          throw new Error(message);
         }
         if (!tablesRes.ok) {
-          throw new Error('Failed to load database tables');
+          let details = '';
+          try {
+            const body = await tablesRes.json();
+            details = body?.message || body?.error || '';
+          } catch {}
+          const prefix = tablesRes.status === 401 || tablesRes.status === 403
+            ? 'You do not have permission to view database tables for POSAPI information sync.'
+            : 'Failed to load database tables.';
+          const message = details ? `${prefix} Details: ${details}` : prefix;
+          throw new Error(message);
         }
         const [settingsData, tableData] = await Promise.all([settingsRes.json(), tablesRes.json()]);
         if (cancelled) return;
