@@ -9830,8 +9830,8 @@ const styles = {
     fontSize: '0.9rem',
   },
   hintGrid: {
-    display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
+    display: 'flex',
+    flexDirection: 'column',
     gap: '1rem',
     marginTop: '0.75rem',
   },
@@ -9938,10 +9938,9 @@ const styles = {
     border: '1px solid #e2e8eb',
     borderRadius: '10px',
     padding: '0.75rem',
-    display: 'grid',
-    gridTemplateColumns: '1.4fr 1fr 1.6fr',
+    display: 'flex',
+    flexDirection: 'column',
     gap: '0.75rem',
-    alignItems: 'flex-start',
   },
   requestValueFieldMeta: {
     display: 'flex',
