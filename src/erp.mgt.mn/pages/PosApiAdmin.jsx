@@ -3499,22 +3499,18 @@ export default function PosApiAdmin() {
 
   useEffect(() => {
     if (!selectedVariationKey) return;
-    const baseSample = resolveVariationRequestExample(selectedVariationKey)
+    const variationPayload = resolveVariationRequestExample(selectedVariationKey)
       || cleanSampleText(baseRequestJson || '{}');
+    const formattedSample = JSON.stringify(variationPayload || {}, null, 2);
+    requestSampleSyncRef.current = true;
+    setRequestSampleText(formattedSample);
     const selectionsFromSample = deriveRequestFieldSelections({
-      requestSampleText: JSON.stringify(baseSample || {}, null, 2),
+      requestSampleText: formattedSample,
       requestEnvMap: formState.requestEnvMap,
       displayItems: requestFieldDisplay.items,
     });
     const variationSelections = buildSelectionsForVariation(selectedVariationKey);
     const mergedSelections = { ...selectionsFromSample, ...variationSelections };
-    const updatedSample = buildRequestSampleFromSelections(baseSample || {}, mergedSelections, {
-      resolveEnv: false,
-      useEnvPlaceholders: false,
-    });
-    const formattedSample = JSON.stringify(updatedSample || {}, null, 2);
-    requestSampleSyncRef.current = true;
-    setRequestSampleText(formattedSample);
     setRequestFieldValues(mergedSelections);
     setFormState((prev) => ({
       ...prev,
@@ -4173,28 +4169,6 @@ export default function PosApiAdmin() {
     });
   };
 
-  const ensureVariationFieldSelection = (variationKey, fieldPath) => {
-    if (!variationKey || !fieldPath) return;
-
-    setFormState((prev) => {
-      const variations = Array.isArray(prev.variations) ? prev.variations.slice() : [];
-      const variationIndex = variations.findIndex((entry) => (entry.key || entry.name) === variationKey);
-      if (variationIndex < 0) return prev;
-
-      const variation = variations[variationIndex];
-      const requestFields = Array.isArray(variation.requestFields)
-        ? variation.requestFields.slice()
-        : [];
-
-      const exists = requestFields.some((entry) => normalizeHintEntry(entry).field === fieldPath);
-      if (exists) return prev;
-
-      requestFields.push({ field: fieldPath, required: true });
-      variations[variationIndex] = { ...variation, requestFields };
-      return { ...prev, variations };
-    });
-  };
-
   const syncVariationDefaultChange = (variationKey, fieldPath, value) => {
     if (!variationKey || !fieldPath) return;
     const segments = parsePathSegments(fieldPath);
@@ -4306,10 +4280,6 @@ export default function PosApiAdmin() {
 
       if (variationIndex >= 0) {
         const variation = variations[variationIndex];
-        const beforeRequestFields = JSON.stringify(variation.requestFields || []);
-        const requestFields = Array.isArray(variation.requestFields)
-          ? variation.requestFields.filter((entry) => normalizeHintEntry(entry).field !== fieldPath)
-          : [];
         const requiredFields = variation.requiredFields ? { ...variation.requiredFields } : {};
         const defaultValues = variation.defaultValues ? { ...variation.defaultValues } : {};
         const examplePayload = cleanSampleText(
@@ -4327,13 +4297,11 @@ export default function PosApiAdmin() {
         const variationChanged =
           beforeExample !== afterExample
           || beforeDefaults !== JSON.stringify(defaultValues)
-          || beforeRequired !== JSON.stringify(requiredFields)
-          || beforeRequestFields !== JSON.stringify(requestFields);
+          || beforeRequired !== JSON.stringify(requiredFields);
 
         if (variationChanged) {
           variations[variationIndex] = {
             ...variation,
-            requestFields,
             requiredFields,
             defaultValues,
             requestExample: examplePayload,
@@ -6849,9 +6817,6 @@ export default function PosApiAdmin() {
       }
       return { ...prev, [fieldPath]: { ...current, defaultByVariation } };
     });
-    if (value) {
-      ensureVariationFieldSelection(variationKey, fieldPath);
-    }
     syncVariationDefaultChange(variationKey, fieldPath, value);
   }
 
