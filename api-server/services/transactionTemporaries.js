@@ -1646,8 +1646,7 @@ export async function promoteTemporarySubmission(
     if (shouldForwardTemporary && !effectiveChainId) {
       const fallbackChainId =
         normalizeTemporaryId(row.chain_id) ||
-        normalizeTemporaryId(updatedForwardMeta?.rootTemporaryId) ||
-        normalizeTemporaryId(row.id) ||
+        resolveExternalChainId(updatedForwardMeta, row.id) ||
         null;
       if (fallbackChainId) {
         effectiveChainId = fallbackChainId;
