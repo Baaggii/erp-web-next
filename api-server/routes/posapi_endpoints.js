@@ -57,9 +57,6 @@ function validateEndpointDefinition(endpoint, index = 0) {
   const requestFields = Array.isArray(endpoint?.requestFields)
     ? endpoint.requestFields.filter((entry) => entry && typeof entry.field === 'string' && entry.field.trim())
     : [];
-  if (!requestFields.length) {
-    issues.push(`${label} has no request fields defined for mapping.`);
-  }
   const variations = Array.isArray(endpoint?.variations) ? endpoint.variations : [];
   variations.forEach((variation, idx) => {
     const variationLabel = variation?.name || `variation ${idx + 1}`;
@@ -1209,6 +1206,10 @@ function extractOperationsFromOpenApi(spec, meta = {}, metaLookup = {}) {
         ...(Array.isArray(requestDetails.warnings) ? requestDetails.warnings : []),
         ...(Array.isArray(responseDetails.warnings) ? responseDetails.warnings : []),
       ];
+      if (!requestFields.length) {
+        parseWarnings.push('Added placeholder request field because no request parameters were defined.');
+        requestFields.push({ field: 'request', required: false });
+      }
       const posHints = requestSchema ? analysePosApiRequest(requestSchema, requestExample) : {};
       const idSource = op.operationId || `${method}-${path}`;
       const id = idSource.replace(/[^a-zA-Z0-9-_]+/g, '-');
@@ -1218,9 +1219,6 @@ function extractOperationsFromOpenApi(spec, meta = {}, metaLookup = {}) {
       const validationIssues = [];
       if (!inferredPosApiType) {
         validationIssues.push('POSAPI type could not be determined automatically.');
-      }
-      if (requestFields.length === 0 && !requestSchema) {
-        validationIssues.push('Request schema missing – please review required fields.');
       }
       const serverSelection = pickTestServers(op, specServers);
       const hasPartialSchema = requestDetails.hasComplexity || responseDetails.hasComplexity;

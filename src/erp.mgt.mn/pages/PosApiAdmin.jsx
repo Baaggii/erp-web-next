@@ -2522,6 +2522,7 @@ export default function PosApiAdmin() {
   const [infoSyncEndpointIds, setInfoSyncEndpointIds] = useState([]);
   const [infoSyncTableOptionsBase, setInfoSyncTableOptionsBase] = useState([]);
   const [tableOptions, setTableOptions] = useState([]);
+  const [tableOptionsError, setTableOptionsError] = useState('');
   const [tableFields, setTableFields] = useState({});
   const [tableFieldLoading, setTableFieldLoading] = useState({});
   const [infoUploadCodeType, setInfoUploadCodeType] = useState('classification');
@@ -2725,7 +2726,12 @@ export default function PosApiAdmin() {
 
   const responseTableOptions = useMemo(() => {
     const seen = new Set();
-    return tableOptions
+    const merged = [
+      ...tableOptions,
+      ...buildTableOptions(formState.responseTables),
+    ];
+
+    return merged
       .map((option) => {
         const value = option?.value;
         if (!value || seen.has(value)) return null;
@@ -2733,7 +2739,7 @@ export default function PosApiAdmin() {
         return { value, label: formatTableDisplay(value, option.label) };
       })
       .filter(Boolean);
-  }, [tableOptions]);
+  }, [formState.responseTables, tableOptions]);
 
   const responseFieldOptions = useMemo(() => {
     const options = [];
@@ -2797,23 +2803,46 @@ export default function PosApiAdmin() {
 
     async function loadResponseTables() {
       try {
+        setTableOptionsError('');
         const res = await fetch(`${API_BASE}/report_builder/tables`, {
           credentials: 'include',
           skipLoader: true,
           signal: controller.signal,
         });
         if (!res.ok) {
-          throw new Error('Failed to load database tables');
+          let details = '';
+          try {
+            const body = await res.json();
+            details = body?.message || body?.error || '';
+          } catch {}
+          const reason =
+            res.status === 401 || res.status === 403
+              ? 'You do not have permission to view database tables for response mappings.'
+              : 'Failed to load database tables.';
+          const suffix = details ? ` Details: ${details}` : '';
+          const errorMessage = `${reason}${suffix}`;
+          setTableOptions([]);
+          setTableOptionsError(errorMessage);
+          return;
         }
         const data = await res.json();
         if (cancelled) return;
-        const options = buildTableOptions(Array.isArray(data.tables) ? data.tables : []);
-        const ebarimtTables = options.filter((option) =>
+        const rawTables = Array.isArray(data.tables) ? data.tables : [];
+        const options = buildTableOptions(rawTables);
+        if (!options.length) {
+          setTableOptionsError('No database tables are available for response mappings.');
+        }
+        // Allow selecting from all available tables so response mappings can be configured even when
+        // POSAPI-specific prefixes are absent. Prefer prefixed tables when they exist, but fall back
+        // to the full list to avoid presenting an empty, unusable selector.
+        const prefixed = options.filter((option) =>
           normalizeTableValue(option?.value || '').startsWith('ebarimt_'),
         );
-        setTableOptions(ebarimtTables);
+        setTableOptions(prefixed.length > 0 ? prefixed : options);
       } catch (err) {
         if (!cancelled && err?.name !== 'AbortError') {
+          setTableOptionsError(err?.message || 'Unable to load POSAPI response tables.');
+          setTableOptions([]);
           console.warn('Unable to load POSAPI response tables', err);
         }
       }
@@ -7885,6 +7914,7 @@ export default function PosApiAdmin() {
                 value={formState.responseTables}
                 onChange={handleResponseTableSelection}
                 style={{ ...styles.input, minHeight: '120px' }}
+                disabled={responseTableOptions.length === 0}
               >
                 {responseTableOptions.map((table) => (
                   <option key={`response-table-${table.value}`} value={table.value}>
@@ -7895,6 +7925,7 @@ export default function PosApiAdmin() {
               <span style={styles.checkboxHint}>
                 Select one or more tables to load columns for response field mappings.
               </span>
+              {tableOptionsError && <div style={styles.hintError}>{tableOptionsError}</div>}
             </label>
             {responseFieldHints.state === 'empty' && (
               <p style={styles.hintEmpty}>Add response field hints in the JSON textarea above.</p>
