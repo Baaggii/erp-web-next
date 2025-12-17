@@ -49,6 +49,7 @@ import UserSettingsPage from './pages/UserSettings.jsx';
 import AllowedReportsConfigPage from './pages/AllowedReportsConfig.jsx';
 import NotificationsPage from './pages/Notifications.jsx';
 import PosApiAdminPage from './pages/PosApiAdmin.jsx';
+import { TemporarySummaryProvider } from './context/TemporarySummaryContext.jsx';
 
 export default function App() {
   useEffect(() => {
@@ -195,7 +196,14 @@ function AuthedApp() {
   return (
     <ErrorBoundary>
       <Routes>
-        <Route path="/" element={<ERPLayout />}>
+        <Route
+          path="/"
+          element={(
+            <TemporarySummaryProvider>
+              <ERPLayout />
+            </TemporarySummaryProvider>
+          )}
+        >
           <Route path="notifications" element={<NotificationsPage />} />
           <Route path="requests" element={<RequestsPage />} />
           <Route element={<RequireAdmin />}>
