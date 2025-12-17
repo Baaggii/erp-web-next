@@ -708,11 +708,6 @@ const TableManager = forwardRef(function TableManager({
     setQueuedTemporaryTrigger(externalTemporaryTrigger);
   }, [externalTemporaryTrigger]);
 
-  useEffect(() => {
-    if (!externalTemporaryTrigger) return;
-    setQueuedTemporaryTrigger(externalTemporaryTrigger);
-  }, [externalTemporaryTrigger]);
-
   const refreshTemporarySummary = useCallback(async () => {
     if (!formSupportsTemporary) {
       setTemporarySummary(null);
