@@ -5442,25 +5442,47 @@ export default function PosApiAdmin() {
     setImportSelectedExampleKey(example.key || example.name || '');
     const baseDefaults = buildDraftParameterDefaults(targetDraft?.parameters || []);
     const nextValues = { ...baseDefaults };
-    (example.request?.queryParams || []).forEach((param) => {
-      if (!param?.name) return;
-      nextValues[param.name] = param.value ?? param.example ?? '';
+    const request = example.request || {};
+    const queryParams = request.queryParams || request.query || example.queryParams || [];
+    const pathParams = request.pathParams || request.pathParameters || example.pathParams || [];
+    const headers = request.headers || request.header || example.headers || {};
+
+    const assignParamValue = (name, value) => {
+      if (!name) return;
+      nextValues[name] = value ?? '';
+    };
+
+    const normalizeParamList = (params) => {
+      if (!params) return [];
+      if (Array.isArray(params)) return params;
+      if (typeof params === 'object') {
+        return Object.entries(params).map(([name, value]) => ({ name, value }));
+      }
+      return [];
+    };
+
+    normalizeParamList(queryParams).forEach((param) => {
+      assignParamValue(param?.name ?? param?.key ?? param?.param ?? param, param?.value ?? param?.example);
     });
-    if (example.request?.headers) {
-      Object.entries(example.request.headers).forEach(([name, value]) => {
-        nextValues[name] = value ?? '';
-      });
+
+    normalizeParamList(pathParams).forEach((param) => {
+      assignParamValue(param?.name ?? param?.key ?? param?.param ?? param, param?.value ?? param?.example);
+    });
+
+    if (headers && typeof headers === 'object') {
+      Object.entries(headers).forEach(([name, value]) => assignParamValue(name, value));
     }
     setImportTestValues(nextValues);
-    if (example.request?.body !== undefined) {
+    const bodyCandidate = request.body ?? example.body ?? example.requestBody;
+    if (bodyCandidate !== undefined) {
       try {
         setImportRequestBody(
-          typeof example.request.body === 'string'
-            ? example.request.body
-            : JSON.stringify(example.request.body, null, 2),
+          typeof bodyCandidate === 'string'
+            ? bodyCandidate
+            : JSON.stringify(bodyCandidate, null, 2),
         );
       } catch {
-        setImportRequestBody(String(example.request.body));
+        setImportRequestBody(String(bodyCandidate));
       }
     }
     setImportExampleResponse(example.response || null);
@@ -6187,9 +6209,11 @@ export default function PosApiAdmin() {
 
     const sanitizedVariations = (variations || []).map((variation, index) => {
       const variationKey = variation.key || variation.name || `variation-${index + 1}`;
+      const requestExampleText = variation.requestExampleText
+        || toPrettyJson(variation.requestExample || {}, '{}');
       const requestExample = parseJsonInput(
         `Request example for variation ${variation.name || index + 1}`,
-        variation.requestExampleText || '{}',
+        requestExampleText,
         {},
       );
       const requestFields = Array.isArray(variation.requestFields)
@@ -6233,6 +6257,7 @@ export default function PosApiAdmin() {
         description: variation.description || '',
         enabled: variation.enabled !== false,
         requestExample,
+        requestExampleText: toPrettyJson(requestExample, '{}'),
         requestFields,
         requiredFields: {
           ...(variationRequirementByKey[variationKey] || {}),
