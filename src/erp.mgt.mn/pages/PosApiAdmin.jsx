@@ -2817,6 +2817,7 @@ export default function PosApiAdmin() {
   const [infoSyncTableOptionsBase, setInfoSyncTableOptionsBase] = useState([]);
   const [tableOptions, setTableOptions] = useState([]);
   const [tableOptionsError, setTableOptionsError] = useState('');
+  const [tableOptionsLoading, setTableOptionsLoading] = useState(false);
   const [tableFields, setTableFields] = useState({});
   const [tableFieldLoading, setTableFieldLoading] = useState({});
   const [infoUploadCodeType, setInfoUploadCodeType] = useState('classification');
@@ -3036,6 +3037,13 @@ export default function PosApiAdmin() {
       .filter(Boolean);
   }, [formState.responseTables, tableOptions]);
 
+  const responseTablesUnavailableReason = useMemo(() => {
+    if (responseTableOptions.length > 0) return '';
+    if (tableOptionsLoading) return 'Loading database tables…';
+    if (tableOptionsError) return tableOptionsError;
+    return 'No database tables were loaded. Verify access permissions or try again later.';
+  }, [responseTableOptions.length, tableOptionsError, tableOptionsLoading]);
+
   const responseFieldOptions = useMemo(() => {
     const options = [];
     formState.responseTables.forEach((table) => {
@@ -3082,15 +3090,23 @@ export default function PosApiAdmin() {
       .filter((endpoint) => selected.size === 0 || selected.has(endpoint.id));
   }, [endpoints, infoSyncEndpointIds, infoSyncUsage]);
 
+  const infoSyncEndpointUnavailableReason = useMemo(() => {
+    if (infoSyncEndpointOptions.length > 0) return '';
+    if (loading) return 'POSAPI endpoints are still loading.';
+    if (error) return error;
+    return 'No GET endpoints available for the selected usage.';
+  }, [error, infoSyncEndpointOptions.length, infoSyncUsage, loading]);
+
   useEffect(() => {
     setInfoSyncEndpointIds((prev) => {
+      if (loading) return prev;
       const filtered = prev.filter((id) => infoSyncEndpointOptions.some((ep) => ep.id === id));
       if (filtered.length !== prev.length) {
         setInfoSyncSettings((settings) => ({ ...settings, endpointIds: filtered }));
       }
       return filtered;
     });
-  }, [infoSyncEndpointOptions]);
+  }, [infoSyncEndpointOptions, loading]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -3098,6 +3114,7 @@ export default function PosApiAdmin() {
 
     async function loadResponseTables() {
       try {
+        setTableOptionsLoading(true);
         setTableOptionsError('');
         const res = await fetch(`${API_BASE}/report_builder/tables`, {
           credentials: 'include',
@@ -3135,6 +3152,10 @@ export default function PosApiAdmin() {
           setTableOptionsError(err?.message || 'Unable to load POSAPI response tables.');
           setTableOptions([]);
           console.warn('Unable to load POSAPI response tables', err);
+        }
+      } finally {
+        if (!cancelled) {
+          setTableOptionsLoading(false);
         }
       }
     }
@@ -5062,7 +5083,20 @@ export default function PosApiAdmin() {
             signal: controller.signal,
           }),
         ]);
-        if (!settingsRes.ok || !tablesRes.ok) return;
+        if (!settingsRes.ok || !tablesRes.ok) {
+          const detail = !settingsRes.ok ? settingsRes : tablesRes;
+          let reason = 'Failed to preload POSAPI information sync settings.';
+          if (detail.status === 401 || detail.status === 403) {
+            reason = 'You do not have permission to view POSAPI information sync settings.';
+          }
+          try {
+            const body = await detail.json();
+            const message = body?.message || body?.error || '';
+            if (message) reason += ` Details: ${message}`;
+          } catch {}
+          setInfoSyncError(reason);
+          return;
+        }
         const [settingsData, tableData] = await Promise.all([settingsRes.json(), tablesRes.json()]);
         if (cancelled) return;
         const tableOptions = buildTableOptions(Array.isArray(tableData.tables) ? tableData.tables : []);
@@ -5090,7 +5124,10 @@ export default function PosApiAdmin() {
         setInfoSyncLogs(Array.isArray(settingsData.logs) ? settingsData.logs : []);
         infoSyncPreloadedRef.current = true;
       } catch (err) {
-        if (!cancelled) console.warn('Unable to preload POSAPI information sync settings', err);
+        if (!cancelled) {
+          setInfoSyncError(err?.message || 'Unable to preload POSAPI information sync settings');
+          console.warn('Unable to preload POSAPI information sync settings', err);
+        }
       } finally {
         if (!cancelled) setInfoSyncLoading(false);
       }
@@ -5110,7 +5147,16 @@ export default function PosApiAdmin() {
           skipLoader: true,
         });
         if (!res.ok) {
-          throw new Error('Failed to load POSAPI endpoints');
+          let details = '';
+          try {
+            const body = await res.json();
+            details = body?.message || body?.error || '';
+          } catch {}
+          const prefix = res.status === 401 || res.status === 403
+            ? 'You do not have permission to view POSAPI endpoints.'
+            : 'Failed to load POSAPI endpoints.';
+          const message = details ? `${prefix} Details: ${details}` : prefix;
+          throw new Error(message);
         }
         const data = await res.json();
         if (cancelled) return;
@@ -5189,6 +5235,7 @@ export default function PosApiAdmin() {
         }
       } catch (err) {
         if (cancelled || err?.name === 'AbortError') return;
+        setInfoSyncError(err?.message || 'Failed to refresh POSAPI information logs');
         console.warn('Failed to refresh POSAPI info sync logs', err);
       }
     }
@@ -5210,10 +5257,28 @@ export default function PosApiAdmin() {
           }),
         ]);
         if (!settingsRes.ok) {
-          throw new Error('Failed to load sync settings');
+          let details = '';
+          try {
+            const body = await settingsRes.json();
+            details = body?.message || body?.error || '';
+          } catch {}
+          const prefix = settingsRes.status === 401 || settingsRes.status === 403
+            ? 'You do not have permission to view POSAPI information settings.'
+            : 'Failed to load POSAPI information settings.';
+          const message = details ? `${prefix} Details: ${details}` : prefix;
+          throw new Error(message);
         }
         if (!tablesRes.ok) {
-          throw new Error('Failed to load database tables');
+          let details = '';
+          try {
+            const body = await tablesRes.json();
+            details = body?.message || body?.error || '';
+          } catch {}
+          const prefix = tablesRes.status === 401 || tablesRes.status === 403
+            ? 'You do not have permission to view database tables for POSAPI information sync.'
+            : 'Failed to load database tables.';
+          const message = details ? `${prefix} Details: ${details}` : prefix;
+          throw new Error(message);
         }
         const [settingsData, tableData] = await Promise.all([settingsRes.json(), tablesRes.json()]);
         if (cancelled) return;
@@ -8727,7 +8792,9 @@ export default function PosApiAdmin() {
               <span style={styles.checkboxHint}>
                 Select one or more tables to load columns for response field mappings.
               </span>
-              {tableOptionsError && <div style={styles.hintError}>{tableOptionsError}</div>}
+              {responseTablesUnavailableReason && (
+                <div style={styles.hintError}>{responseTablesUnavailableReason}</div>
+              )}
             </label>
             {responseFieldHints.state === 'empty' && (
               <p style={styles.hintEmpty}>Add response field hints in the JSON textarea above.</p>
@@ -9525,9 +9592,12 @@ export default function PosApiAdmin() {
                       </option>
                     ))}
                   </select>
-                    <span style={styles.checkboxHint}>
-                      Leave empty to include all endpoints in the selected usage.
-                    </span>
+                  <span style={styles.checkboxHint}>
+                    Leave empty to include all endpoints in the selected usage.
+                  </span>
+                  {infoSyncEndpointUnavailableReason && (
+                    <div style={styles.hintError}>{infoSyncEndpointUnavailableReason}</div>
+                  )}
                   </label>
               </div>
               <button
