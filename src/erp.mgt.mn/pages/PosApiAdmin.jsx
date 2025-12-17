@@ -2992,8 +2992,20 @@ export default function PosApiAdmin() {
 
   const infoSyncEndpointOptions = useMemo(() => {
     const normalized = endpoints.map(withEndpointMetadata);
-    return normalized
-      .filter((endpoint) => infoSyncUsage === 'all' || !infoSyncUsage || endpoint.usage === infoSyncUsage)
+    const selectedEndpointIds = new Set(infoSyncEndpointIds.filter(Boolean));
+    const fallbackSelected = (infoSyncSettings?.endpointIds || []).filter(Boolean);
+    const merged = [...normalized];
+
+    fallbackSelected.forEach((id) => {
+      if (merged.some((endpoint) => endpoint.id === id)) return;
+      merged.push({ id, name: id, method: 'GET', path: id, usage: infoSyncUsage });
+    });
+
+    return merged
+      .filter((endpoint) => {
+        const matchesUsage = infoSyncUsage === 'all' || !infoSyncUsage || endpoint.usage === infoSyncUsage;
+        return matchesUsage || selectedEndpointIds.has(endpoint.id);
+      })
       .map((endpoint) => ({
         id: endpoint.id,
         name: endpoint.name || endpoint.id,
@@ -3001,7 +3013,7 @@ export default function PosApiAdmin() {
         path: endpoint.path,
         usage: endpoint.usage,
       }));
-  }, [endpoints, infoSyncUsage]);
+  }, [endpoints, infoSyncEndpointIds, infoSyncSettings?.endpointIds, infoSyncUsage]);
 
   const infoSyncTableOptions = useMemo(() => {
     const seen = new Set();
@@ -3098,7 +3110,7 @@ export default function PosApiAdmin() {
 
   useEffect(() => {
     setInfoSyncEndpointIds((prev) => {
-      if (loading) return prev;
+      if (loading || infoSyncEndpointOptions.length === 0) return prev;
       const filtered = prev.filter((id) => infoSyncEndpointOptions.some((ep) => ep.id === id));
       if (filtered.length !== prev.length) {
         setInfoSyncSettings((settings) => ({ ...settings, endpointIds: filtered }));
@@ -3132,7 +3144,6 @@ export default function PosApiAdmin() {
               : 'Failed to load database tables.';
           const suffix = details ? ` Details: ${details}` : '';
           const errorMessage = `${reason}${suffix}`;
-          setTableOptions([]);
           setTableOptionsError(errorMessage);
           return;
         }
@@ -3152,7 +3163,6 @@ export default function PosApiAdmin() {
       } catch (err) {
         if (!cancelled && err?.name !== 'AbortError') {
           setTableOptionsError(err?.message || 'Unable to load POSAPI response tables.');
-          setTableOptions([]);
           console.warn('Unable to load POSAPI response tables', err);
         }
       } finally {
@@ -8789,8 +8799,14 @@ export default function PosApiAdmin() {
                 value={formState.responseTables}
                 onChange={handleResponseTableSelection}
                 style={{ ...styles.input, minHeight: '120px' }}
-                disabled={responseTableOptions.length === 0}
               >
+                {responseTableOptions.length === 0 && (
+                  <option value="" disabled>
+                    {tableOptionsLoading
+                      ? 'Loading tables…'
+                      : 'No database tables available yet. Please retry.'}
+                  </option>
+                )}
                 {responseTableOptions.map((table) => (
                   <option key={`response-table-${table.value}`} value={table.value}>
                     {table.label}
@@ -9595,8 +9611,14 @@ export default function PosApiAdmin() {
                     value={infoSyncEndpointIds}
                     onChange={handleInfoEndpointSelection}
                     style={{ ...styles.input, minHeight: '140px' }}
-                    disabled={infoSyncLoading || loading}
                   >
+                    {infoSyncEndpointOptions.length === 0 && (
+                      <option value="" disabled>
+                        {loading
+                          ? 'Loading endpoints…'
+                          : 'No endpoints available for the selected usage yet.'}
+                      </option>
+                    )}
                     {infoSyncEndpointOptions.map((endpoint) => (
                       <option key={endpoint.id} value={endpoint.id}>
                         {endpoint.name} – {endpoint.method} {endpoint.path} ({formatUsageLabel(endpoint.usage)})
