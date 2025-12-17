@@ -54,17 +54,11 @@ function validateEndpointDefinition(endpoint, index = 0) {
   if (!hasBaseUrl) {
     issues.push(`${label} is missing a base URL (staging or production).`);
   }
-  const requestFields = Array.isArray(endpoint?.requestFields)
-    ? endpoint.requestFields.filter((entry) => entry && typeof entry.field === 'string' && entry.field.trim())
-    : [];
   const variations = Array.isArray(endpoint?.variations) ? endpoint.variations : [];
   variations.forEach((variation, idx) => {
     const variationLabel = variation?.name || `variation ${idx + 1}`;
-    if (!variation?.request) {
+    if (!variation?.request && !variation?.requestExample) {
       issues.push(`${label} - ${variationLabel} is missing a request definition.`);
-    }
-    if (!variation?.response) {
-      issues.push(`${label} - ${variationLabel} is missing a response definition.`);
     }
   });
   return issues;
@@ -491,36 +485,59 @@ function mergeOpenApiSpecs(specEntries) {
   };
 }
 
+function mergeParameterEntries(existing, incoming) {
+  if (!existing) return incoming;
+  const hasRequiredFlag = existing.required !== undefined || incoming.required !== undefined;
+  return {
+    ...existing,
+    description: existing.description || incoming.description || '',
+    example: existing.example ?? incoming.example,
+    default: existing.default ?? incoming.default,
+    testValue: existing.testValue ?? incoming.testValue,
+    sample: existing.sample ?? incoming.sample,
+    ...(hasRequiredFlag ? { required: Boolean(existing.required || incoming.required) } : {}),
+  };
+}
+
 function normalizeParametersFromSpec(params) {
   const list = Array.isArray(params) ? params : [];
-  const deduped = [];
-  const seen = new Set();
+  const merged = new Map();
   list.forEach((param) => {
     if (!param || typeof param !== 'object') return;
     const name = typeof param.name === 'string' ? param.name.trim() : '';
     const loc = typeof param.in === 'string' ? param.in.trim() : '';
     if (!name || !loc) return;
     const key = `${name}:${loc}`;
-    if (seen.has(key)) return;
-    seen.add(key);
-    deduped.push({
+    const normalized = {
       name,
       in: loc,
-      required: Boolean(param.required),
+      required: param.required ?? loc === 'path',
       description: param.description || '',
       example: param.example ?? param.default ?? param.testValue
         ?? param.sample ?? (param.examples && Object.values(param.examples)[0]?.value),
       ...(param.default !== undefined ? { default: param.default } : {}),
       ...(param.testValue !== undefined ? { testValue: param.testValue } : {}),
       ...(param.sample !== undefined ? { sample: param.sample } : {}),
-    });
+    };
+    merged.set(key, mergeParameterEntries(merged.get(key), normalized));
   });
-  return deduped;
+  return Array.from(merged.values());
+}
+
+function mergeTemplatePathParameters(path, parameters = []) {
+  const detectedParams = typeof path === 'string'
+    ? Array.from(new Set((path.match(/{([^}]+)}/g) || []).map((segment) => segment.replace(/^{|}$/g, ''))))
+    : [];
+  const seen = new Set(parameters.map((param) => `${param?.name}:${param?.in}`));
+  const templateParams = detectedParams
+    .filter(Boolean)
+    .filter((name) => !seen.has(`${name}:path`))
+    .map((name) => ({ name, in: 'path', required: true, description: 'Path parameter' }));
+  return [...parameters, ...templateParams];
 }
 
 function mergePathParameters(...paramGroups) {
-  const merged = [];
-  const seen = new Set();
+  const merged = new Map();
   paramGroups
     .flat()
     .filter(Boolean)
@@ -529,11 +546,9 @@ function mergePathParameters(...paramGroups) {
       const loc = typeof param?.in === 'string' ? param.in.trim() : '';
       if (!name || !loc) return;
       const key = `${name}:${loc}`;
-      if (seen.has(key)) return;
-      seen.add(key);
-      merged.push(param);
+      merged.set(key, mergeParameterEntries(merged.get(key), param));
     });
-  return merged;
+  return Array.from(merged.values());
 }
 
 function extractRequestExample(requestBody) {
@@ -768,11 +783,11 @@ function hasComplexComposition(node, depth = 0) {
 function buildRequestDetails(schema, contentType, exampleBodies = []) {
   if (!schema || typeof schema !== 'object') {
     return {
-      requestFields: [{ field: 'request', required: false }],
+      requestFields: [],
       flags: {},
       enums: {},
       hasComplexity: false,
-      warnings: ['Request schema missing; added generic request field.'],
+      warnings: [],
     };
   }
   const fields = [];
@@ -787,9 +802,9 @@ function buildRequestDetails(schema, contentType, exampleBodies = []) {
     fields.push(entry);
   };
 
-  const walk = (node, pathPrefix, requiredSet = new Set()) => {
+  const walk = (node, pathPrefix, isRequired = false) => {
     if (!node || typeof node !== 'object') {
-      if (pathPrefix) pushField(pathPrefix, node, requiredSet.size > 0);
+      if (pathPrefix) pushField(pathPrefix, node, isRequired);
       return;
     }
     const nodeType = node.type || (node.properties ? 'object' : node.items ? 'array' : undefined);
@@ -797,15 +812,18 @@ function buildRequestDetails(schema, contentType, exampleBodies = []) {
       const props = node.properties && typeof node.properties === 'object' ? node.properties : {};
       const requiredForNode = new Set(Array.isArray(node.required) ? node.required : []);
       if (!Object.keys(props).length && pathPrefix) {
-        pushField(pathPrefix, node, requiredSet.size > 0 || requiredForNode.size > 0);
+        pushField(pathPrefix, node, isRequired || requiredForNode.size > 0);
       }
       Object.entries(props).forEach(([key, child]) => {
         const childPath = pathPrefix ? `${pathPrefix}.${key}` : key;
-        const isRequired = requiredForNode.has(key) || requiredSet.has(key);
-        walk(child, childPath, requiredForNode);
+        const childIsRequired = requiredForNode.has(key);
         const childType = child?.type || (child?.properties ? 'object' : child?.items ? 'array' : undefined);
+        if (childType === 'array') {
+          pushField(childPath, child, childIsRequired);
+        }
+        walk(child, childPath, childIsRequired);
         if (childType !== 'object' && childType !== 'array') {
-          pushField(childPath, child, isRequired);
+          pushField(childPath, child, childIsRequired);
         }
         const enumsForChild = pickEnumValues(child);
         if (enumsForChild.length && /tax/.test(key)) enums.taxTypes.push(...enumsForChild);
@@ -816,6 +834,9 @@ function buildRequestDetails(schema, contentType, exampleBodies = []) {
       return;
     }
     if (nodeType === 'array') {
+      if (pathPrefix) {
+        pushField(pathPrefix, node, isRequired);
+      }
       const arrayPath = pathPrefix ? `${pathPrefix}[]` : '[]';
       if (/receipts?$/i.test(pathPrefix)) {
         flags.supportsMultipleReceipts = true;
@@ -826,31 +847,26 @@ function buildRequestDetails(schema, contentType, exampleBodies = []) {
       if (/items$/i.test(pathPrefix)) {
         flags.supportsItems = true;
       }
-      pushField(arrayPath, node, requiredSet.size > 0);
-      walk(node.items, arrayPath, new Set(Array.isArray(node.items?.required) ? node.items.required : []));
+      pushField(arrayPath, node, isRequired);
+      walk(node.items, arrayPath, false);
       return;
     }
     if (pathPrefix) {
-      pushField(pathPrefix, node, requiredSet.size > 0);
+      pushField(pathPrefix, node, isRequired);
     }
   };
 
-  const rootRequired = new Set(Array.isArray(schema.required) ? schema.required : []);
-  walk(schema, '', rootRequired);
+  walk(schema, '', false);
 
   const exampleFields = (exampleBodies || [])
     .filter((body) => body !== undefined)
     .flatMap((body) => flattenFieldsFromExample(body));
 
   const requestFields = dedupeFieldEntries([...fields, ...exampleFields]);
-  enums.receiptTypes = sanitizeCodes(enums.receiptTypes, DEFAULT_RECEIPT_TYPES);
-  enums.taxTypes = sanitizeCodes(enums.taxTypes, DEFAULT_TAX_TYPES);
+  enums.receiptTypes = sanitizeCodes(enums.receiptTypes);
+  enums.taxTypes = sanitizeCodes(enums.taxTypes);
 
   const hasComplexity = hasComplexComposition(schema);
-  if (!requestFields.length) {
-    warnings.push('Request fields could not be derived; added a generic request field.');
-    requestFields.push({ field: 'request', required: false });
-  }
   if (hasComplexity) {
     warnings.push('Some request schema elements could not be expanded automatically.');
   }
@@ -865,6 +881,7 @@ function buildParameterFieldHints(parameters = []) {
       required: Boolean(param.required),
       description: param.description || `${param.in} parameter`,
       location: param.in,
+      in: param.in,
       defaultValue:
         param.testValue ?? param.example ?? param.default ?? param.sample ?? param.value ?? undefined,
     }));
@@ -883,6 +900,7 @@ function flattenFieldsFromExample(example, prefix = '') {
       return;
     }
     if (Array.isArray(value)) {
+      if (currentPath) addField(currentPath);
       const arrayPath = currentPath ? `${currentPath}[]` : '[]';
       addField(arrayPath);
       const first = value.length ? value[0] : undefined;
@@ -906,6 +924,232 @@ function flattenFieldsFromExample(example, prefix = '') {
 
   walk(example, prefix);
   return fields;
+}
+
+function flattenFieldsWithValues(example, prefix = '') {
+  const fields = [];
+
+  const addField = (path, value) => {
+    if (!path) return;
+    fields.push({ field: path, value });
+  };
+
+  const walk = (value, currentPath) => {
+    if (value === undefined || value === null) {
+      addField(currentPath, value);
+      return;
+    }
+    if (Array.isArray(value)) {
+      const arrayPath = currentPath ? `${currentPath}[]` : '[]';
+      addField(arrayPath, value);
+      if (value.length > 0) {
+        walk(value[0], arrayPath);
+      }
+      return;
+    }
+    if (typeof value === 'object') {
+      const entries = Object.entries(value);
+      if (!entries.length) {
+        addField(currentPath, value);
+        return;
+      }
+      entries.forEach(([key, child]) => {
+        const childPath = currentPath ? `${currentPath}.${key}` : key;
+        walk(child, childPath);
+      });
+      return;
+    }
+    addField(currentPath, value);
+  };
+
+  walk(example, prefix);
+  return fields;
+}
+
+function parseTabbedRequestVariations(markdown, flags = {}) {
+  const variations = [];
+  const warnings = [];
+  if (typeof markdown !== 'string' || !markdown.includes('type: tab')) {
+    return { variations, warnings };
+  }
+
+  const tabPatterns = [
+    { regex: /<!--([\s\S]*?)-->/g, extract: (block) => block || '' },
+    {
+      regex: /@--([\s\S]*?)--/g,
+      extract: (block) => (block || '').replace(/^\s*@--\s*/, ''),
+    },
+  ];
+
+  try {
+    const matches = [];
+
+    tabPatterns.forEach(({ regex, extract }) => {
+      let match;
+      while ((match = regex.exec(markdown))) {
+        const block = extract(match[1]);
+        if (!/type:\s*tab/i.test(block)) continue;
+        const titleMatch = /title:\s*([^\n]+)/i.exec(block);
+        const title = titleMatch ? titleMatch[1].trim() : '';
+        matches.push({ title, start: match.index, end: regex.lastIndex });
+      }
+    });
+
+    matches
+      .sort((a, b) => a.start - b.start)
+      .forEach((entry, index) => {
+        const sliceEnd = matches[index + 1]?.start ?? markdown.length;
+        const slice = markdown.slice(entry.end, sliceEnd);
+        const codeMatch = /```(?:json|js)?\s*([\s\S]*?)```/i.exec(slice);
+        const codeText = codeMatch ? codeMatch[1].trim() : '';
+        const description = (codeMatch ? slice.slice(0, codeMatch.index) : slice).trim();
+
+        if (!codeText) {
+          warnings.push(`Tabbed example for ${entry.title || 'variation'} is missing a code block.`);
+          return;
+        }
+
+        try {
+          const requestExample = JSON.parse(codeText);
+          const exampleFields = flattenFieldsWithValues(requestExample);
+          const variationKey = entry.title || `variation-${index + 1}`;
+          const requestFields = flattenFieldsFromExample(requestExample).map((field) => {
+            const valueEntry = exampleFields.find((item) => item.field === field.field);
+            return {
+              ...field,
+              required: true,
+              requiredCommon: false,
+              requiredVariations: { [variationKey]: true },
+              defaultVariations: valueEntry?.field ? { [variationKey]: valueEntry.value } : {},
+            };
+          });
+
+          variations.push({
+            key: variationKey,
+            name: entry.title || `Variation ${index + 1}`,
+            description,
+            requestExample,
+            requestExampleText: codeText,
+            requestFields,
+            flags,
+            request: { body: requestExample },
+          });
+        } catch (err) {
+          warnings.push(
+            `Failed to parse tabbed example ${entry.title || index + 1}: ${err.message}. Skipping this tab.`,
+          );
+        }
+      });
+  } catch (err) {
+    warnings.push(`Tabbed example parsing failed: ${err.message}`);
+  }
+
+  return { variations, warnings };
+}
+
+function collectTabbedRequestVariationsFromSchema(schema, flags = {}) {
+  const variations = [];
+  const warnings = [];
+
+  const visit = (node) => {
+    if (!node || typeof node !== 'object') return;
+    if (typeof node.description === 'string' && node.description.includes('type: tab')) {
+      const parsed = parseTabbedRequestVariations(node.description, flags);
+      variations.push(...parsed.variations);
+      warnings.push(...parsed.warnings);
+    }
+    if (node.properties && typeof node.properties === 'object') {
+      Object.values(node.properties).forEach((child) => visit(child));
+    }
+    if (node.items) {
+      visit(node.items);
+    }
+    ['oneOf', 'anyOf', 'allOf'].forEach((key) => {
+      if (Array.isArray(node[key])) {
+        node[key].forEach((child) => visit(child));
+      }
+    });
+  };
+
+  visit(schema);
+  return { variations, warnings };
+}
+
+function buildVariationFieldMetadata(variations = []) {
+  const variationNames = variations
+    .map((variation, index) => variation?.name || variation?.key || `variation-${index + 1}`)
+    .filter(Boolean);
+  const lookup = new Map();
+
+  variations.forEach((variation, index) => {
+    const variationName = variation?.name || variation?.key || `variation-${index + 1}`;
+    const fields = Array.isArray(variation?.requestFields) ? variation.requestFields : [];
+    fields.forEach((field) => {
+      const fieldPath = typeof field?.field === 'string' ? field.field.trim() : '';
+      if (!fieldPath) return;
+      const meta = lookup.get(fieldPath) || {
+        requiredCount: 0,
+        descriptions: new Set(),
+        required: {},
+        defaults: {},
+      };
+      if (typeof field.description === 'string' && field.description.trim()) {
+        meta.descriptions.add(field.description.trim());
+      }
+      const isRequired = field.required !== false;
+      meta.required[variationName] = isRequired;
+      if (isRequired) meta.requiredCount += 1;
+      const defaultMap = field?.defaultVariations || {};
+      if (Object.prototype.hasOwnProperty.call(defaultMap, variationName)) {
+        meta.defaults[variationName] = defaultMap[variationName];
+      }
+      lookup.set(fieldPath, meta);
+    });
+  });
+
+  return { variationNames, lookup };
+}
+
+function applyVariationFieldMetadata(variations = []) {
+  if (!Array.isArray(variations) || !variations.length) return variations;
+  const { lookup, variationNames } = buildVariationFieldMetadata(variations);
+  const totalVariations = variationNames.length || 1;
+
+  const normalized = variations.map((variation, index) => {
+    const variationName = variation?.name || variation?.key || `variation-${index + 1}`;
+    const fields = Array.isArray(variation?.requestFields) ? variation.requestFields : [];
+    const existingMap = new Map();
+    fields.forEach((field) => {
+      const fieldPath = typeof field?.field === 'string' ? field.field.trim() : '';
+      if (!fieldPath) return;
+      existingMap.set(fieldPath, field);
+    });
+
+    const normalizedFields = [];
+    lookup.forEach((meta, fieldPath) => {
+      const current = existingMap.get(fieldPath) || { field: fieldPath, required: false };
+      const requiredMap = { ...(current.requiredVariations || {}) };
+      const defaultMap = { ...(current.defaultVariations || {}) };
+
+      requiredMap[variationName] = Boolean(meta.required?.[variationName]);
+      if (Object.prototype.hasOwnProperty.call(meta.defaults, variationName)) {
+        defaultMap[variationName] = meta.defaults[variationName];
+      }
+
+      normalizedFields.push({
+        ...current,
+        description: current.description || Array.from(meta.descriptions || [])[0] || '',
+        required: meta.required?.[variationName] ?? current.required ?? false,
+        requiredCommon: meta.requiredCount === totalVariations,
+        requiredVariations: requiredMap,
+        defaultVariations: defaultMap,
+      });
+    });
+
+    return { ...variation, requestFields: normalizedFields, name: variationName };
+  });
+
+  return normalized;
 }
 
 function buildResponseDetails(schema, exampleBodies = []) {
@@ -983,18 +1227,19 @@ function dedupeFieldEntries(fields) {
     const location = typeof entry?.location === 'string' ? entry.location.trim() : '';
     const field = typeof entry?.field === 'string' ? entry.field.trim() : '';
     if (!field) return null;
-    const normalizedField = field.replace(/\[\]$/, '');
-    return `${location || 'body'}:${normalizedField}`;
+    return `${location || 'body'}:${field}`;
   };
   fields.forEach((entry) => {
     const key = dedupeKey(entry);
     if (!key) return;
     const current = seen.get(key);
+    if (!current) {
+      seen.set(key, entry);
+      return;
+    }
     const candidateScore = entry.field.split('.').length + (entry.field.endsWith('[]') ? 0.5 : 0);
-    const currentScore = current
-      ? current.field.split('.').length + (current.field.endsWith('[]') ? 0.5 : 0)
-      : -1;
-    if (!current || candidateScore >= currentScore) {
+    const currentScore = current.field.split('.').length + (current.field.endsWith('[]') ? 0.5 : 0);
+    if (candidateScore > currentScore) {
       seen.set(key, entry);
     }
   });
@@ -1047,11 +1292,25 @@ function sanitizeCodes(values, allowed = []) {
   return Array.from(new Set(cleaned));
 }
 
+function resolveServerUrl(server) {
+  const rawUrl = typeof server?.url === 'string' ? server.url.trim() : '';
+  if (!rawUrl) return '';
+  const variables = server?.variables && typeof server.variables === 'object' ? server.variables : {};
+  let resolved = rawUrl;
+  Object.entries(variables).forEach(([name, def]) => {
+    const replacement = def?.default ?? (Array.isArray(def?.enum) ? def.enum[0] : undefined);
+    if (replacement !== undefined) {
+      resolved = resolved.replace(new RegExp(`{${name}}`, 'g'), replacement);
+    }
+  });
+  return resolved;
+}
+
 function pickTestServers(operation, specServers) {
   const opServers = Array.isArray(operation?.servers) ? operation.servers : [];
-  const servers = [...opServers, ...(Array.isArray(specServers) ? specServers : [])].filter(
-    (server) => typeof server?.url === 'string' && server.url.trim(),
-  );
+  const servers = [...opServers, ...(Array.isArray(specServers) ? specServers : [])]
+    .map((server) => ({ ...server, url: resolveServerUrl(server) || server?.url || '' }))
+    .filter((server) => typeof server?.url === 'string' && server.url.trim());
   const staging = servers.find((server) => /staging|dev|test/i.test(server.url));
   const productionCandidate = servers.find((server) => server !== staging);
   const fallback = servers[0];
@@ -1071,7 +1330,7 @@ function deriveReceiptTypes(requestSchema, example) {
   const fromExamples = [typeNode?.example, typeNode?.default, example?.type]
     .flat()
     .filter((value) => value !== undefined && value !== null);
-  const candidates = sanitizeCodes(fromEnum.length ? fromEnum : fromExamples, DEFAULT_RECEIPT_TYPES);
+  const candidates = sanitizeCodes(fromEnum.length ? fromEnum : fromExamples);
   return candidates;
 }
 
@@ -1081,7 +1340,7 @@ function deriveTaxTypes(requestSchema, example) {
   const fromExamples = [taxNode?.example, taxNode?.default, example?.taxType]
     .flat()
     .filter((value) => value !== undefined && value !== null);
-  const candidates = sanitizeCodes(fromEnum.length ? fromEnum : fromExamples, DEFAULT_TAX_TYPES);
+  const candidates = sanitizeCodes(fromEnum.length ? fromEnum : fromExamples);
   return candidates;
 }
 
@@ -1091,7 +1350,7 @@ function derivePaymentMethods(requestSchema, example) {
   const fromExampleArray = Array.isArray(example?.payments)
     ? example.payments.map((payment) => payment?.code)
     : [];
-  const candidates = sanitizeCodes(fromEnum.length ? fromEnum : fromExampleArray, DEFAULT_PAYMENT_METHODS);
+  const candidates = sanitizeCodes(fromEnum.length ? fromEnum : fromExampleArray);
   return candidates;
 }
 
@@ -1113,13 +1372,9 @@ function analysePosApiRequest(requestSchema, example) {
   );
   const supportsMultiplePayments = paymentsNode ? paymentsFromExample.length > 1 : false;
 
-  const resolvedReceiptTypes = receiptTypes.length ? receiptTypes : receiptsNode ? DEFAULT_RECEIPT_TYPES : [];
-  const resolvedTaxTypes = taxTypes.length ? taxTypes : receiptsNode ? DEFAULT_TAX_TYPES : [];
-  const resolvedPaymentMethods = paymentMethods.length
-    ? paymentMethods
-    : paymentsNode
-      ? DEFAULT_PAYMENT_METHODS
-      : [];
+  const resolvedReceiptTypes = receiptTypes.length ? receiptTypes : [];
+  const resolvedTaxTypes = taxTypes.length ? taxTypes : [];
+  const resolvedPaymentMethods = paymentMethods.length ? paymentMethods : [];
 
   return {
     receiptTypes: resolvedReceiptTypes,
@@ -1177,6 +1432,7 @@ function extractOperationsFromOpenApi(spec, meta = {}, metaLookup = {}) {
       if (!['GET', 'POST', 'PUT', 'DELETE', 'PATCH'].includes(method)) return;
       const op = operation && typeof operation === 'object' ? operation : {};
       const opParams = normalizeParametersFromSpec([...(op.parameters || []), ...sharedParams]);
+      const parametersWithTemplates = mergeTemplatePathParameters(path, opParams);
       const requestExamples = extractRequestExamples(op.requestBody);
       const example = requestExamples[0]?.body ?? extractRequestExample(op.requestBody);
       const { schema: requestSchema, description: requestDescription, contentType } =
@@ -1196,7 +1452,7 @@ function extractOperationsFromOpenApi(spec, meta = {}, metaLookup = {}) {
         responseSchema,
         responseExampleEntries.map((entry) => entry.body),
       );
-      const parameterFields = buildParameterFieldHints(opParams);
+      const parameterFields = buildParameterFieldHints(parametersWithTemplates);
       const requestFields = dedupeFieldEntries([
         ...(isFormUrlEncoded ? formFields : requestDetails.requestFields),
         ...parameterFields,
@@ -1234,22 +1490,59 @@ function extractOperationsFromOpenApi(spec, meta = {}, metaLookup = {}) {
         : requestDetails.enums.taxTypes)
         || [];
       const variationWarnings = [];
+      const tabbedVariations = collectTabbedRequestVariationsFromSchema(requestSchema, {
+        posApiType: inferredPosApiType,
+        supportsItems: requestDetails.flags.supportsItems,
+        supportsMultiplePayments: requestDetails.flags.supportsMultiplePayments,
+        supportsMultipleReceipts: requestDetails.flags.supportsMultipleReceipts,
+      });
+      variationWarnings.push(...(tabbedVariations.warnings || []));
       const variationKeys = new Set([
         ...requestExamples.map((ex) => ex.key || ex.name || ''),
         ...responseExampleEntries.map((ex) => ex.key || ex.name || ''),
       ]);
-      const variations = Array.from(variationKeys).map((key, index) => {
+      const hasRequestPayload = Boolean(
+        requestSchema || requestExample !== undefined || (requestExamples && requestExamples.length),
+      );
+      const variationsFromExamples = Array.from(variationKeys).map((key, index) => {
         const req = requestExamples.find((ex) => (ex.key || ex.name) === key) || requestExamples[index];
         const resp = responseExampleEntries.find((ex) => (ex.key || ex.name) === key) || responseExampleEntries[index];
+        const variationName = req?.name || resp?.name || key || `Variation ${index + 1}`;
+        const exampleValueMap = Object.fromEntries(
+          flattenFieldsWithValues(req?.body || {}).map(({ field, value }) => [field, value]),
+        );
         const variationRequestFields = dedupeFieldEntries([
           ...requestFields,
           ...flattenFieldsFromExample(req?.body || {}),
-        ]);
+        ]).map((field) => {
+          const required = field?.required !== false;
+          const value = exampleValueMap[field.field];
+          const defaultMap =
+            field && typeof field.defaultVariations === 'object' && field.defaultVariations !== null
+              ? field.defaultVariations
+              : {};
+          const requiredMap =
+            field && typeof field.requiredVariations === 'object' && field.requiredVariations !== null
+              ? field.requiredVariations
+              : {};
+          return {
+            ...field,
+            required,
+            requiredCommon: Boolean(field.requiredCommon),
+            requiredVariations: { ...requiredMap, [variationName]: required },
+            defaultVariations:
+              value !== undefined
+                ? { ...defaultMap, [variationName]: value }
+                : Object.keys(defaultMap).length
+                  ? defaultMap
+                  : {},
+          };
+        });
         const variationResponseFields = dedupeFieldEntries([
           ...responseFields,
           ...flattenFieldsFromExample(resp?.body || {}),
         ]);
-        if (!variationRequestFields.length) {
+        if (!variationRequestFields.length && hasRequestPayload) {
           variationWarnings.push('Added placeholder request field because a variation had no request schema.');
           variationRequestFields.push({ field: 'request', required: false });
         }
@@ -1261,8 +1554,10 @@ function extractOperationsFromOpenApi(spec, meta = {}, metaLookup = {}) {
           ? { body: req.body }
           : requestExample !== undefined
             ? { body: requestExample }
-            : { body: {} };
-        if (!req && requestExample === undefined) {
+            : hasRequestPayload
+              ? { body: {} }
+              : undefined;
+        if (!req && requestExample === undefined && hasRequestPayload) {
           variationWarnings.push('Variation missing explicit request example; inserted generic placeholder.');
         }
         let resolvedResponse;
@@ -1281,13 +1576,18 @@ function extractOperationsFromOpenApi(spec, meta = {}, metaLookup = {}) {
         }
         return {
           key: key || `variation-${index + 1}`,
-          name: req?.name || resp?.name || key || `Variation ${index + 1}`,
+          name: variationName,
           request: resolvedRequest,
+          requestExample: resolvedRequest?.body,
           response: resolvedResponse,
           requestFields: variationRequestFields,
           responseFields: variationResponseFields,
         };
       });
+      const variations = applyVariationFieldMetadata([
+        ...variationsFromExamples,
+        ...tabbedVariations.variations,
+      ]);
 
       const fieldDefaults = collectFieldDefaults(requestFields);
       const mappingHints = deriveMappingHintsFromFields(requestFields);
@@ -1298,7 +1598,7 @@ function extractOperationsFromOpenApi(spec, meta = {}, metaLookup = {}) {
         method,
         path,
         summary: op.summary || op.description || '',
-        parameters: opParams,
+        parameters: parametersWithTemplates,
         requestExample,
         posApiType: inferredPosApiType,
         posApiCategory: inferredCategory || inferredPosApiType,
@@ -1673,6 +1973,9 @@ function extractOperationsFromPostman(spec, meta = {}) {
         ...parameterFields,
       ]);
       const variationWarnings = [];
+      const hasRequestPayload = Boolean(
+        requestSchema || requestExample !== undefined || (examples && examples.length),
+      );
       const variations = Array.isArray(examples)
         ? examples.map((example) => {
           const exampleRequestFields = flattenFieldsFromExample(example?.request?.body || example?.request || {});
@@ -1686,7 +1989,7 @@ function extractOperationsFromPostman(spec, meta = {}) {
             ...responseDetails.responseFields,
             ...exampleResponseFields,
           ]);
-          if (!requestFields.length) {
+          if (!requestFields.length && hasRequestPayload) {
             variationWarnings.push('Added placeholder request field because a variation had no request schema.');
             requestFields.push({ field: 'request', required: false });
           }
@@ -1696,7 +1999,7 @@ function extractOperationsFromPostman(spec, meta = {}) {
           }
           const resolvedRequest = example.request && Object.keys(example.request).length
             ? example.request
-            : example.request || { body: requestExample ?? {} };
+            : example.request || (hasRequestPayload ? { body: requestExample ?? {} } : undefined);
           const resolvedResponse = example.response
             ? example.response
             : responseExamples[0]

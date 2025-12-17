@@ -9,7 +9,7 @@ set -e  # stop on error
 
 echo "Building frontends…"
 rm -rf node_modules
-npm install -g npm@11.6.2
+npm install -g npm@11.7.0
 npm run build:homepage
 npm run build:erp
 

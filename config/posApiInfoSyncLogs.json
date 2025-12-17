@@ -1,0 +1,910 @@
+[
+  {
+    "timestamp": "2025-11-16T11:38:07.978Z",
+    "durationMs": 4212,
+    "added": 0,
+    "updated": 0,
+    "deactivated": 0,
+    "totalTypes": 0,
+    "errors": [
+      {
+        "endpoint": "verifyCustomerTin",
+        "message": "fetch failed"
+      },
+      {
+        "endpoint": "getInformation",
+        "message": "fetch failed"
+      },
+      {
+        "endpoint": "getDistrictCodes",
+        "message": "fetch failed"
+      },
+      {
+        "endpoint": "getVatTaxTypes",
+        "message": "fetch failed"
+      }
+    ],
+    "trigger": "manual"
+  },
+  {
+    "timestamp": "2025-11-16T11:40:48.490Z",
+    "durationMs": 4132,
+    "added": 0,
+    "updated": 0,
+    "deactivated": 0,
+    "totalTypes": 0,
+    "errors": [
+      {
+        "endpoint": "verifyCustomerTin",
+        "message": "fetch failed"
+      },
+      {
+        "endpoint": "getInformation",
+        "message": "fetch failed"
+      },
+      {
+        "endpoint": "getDistrictCodes",
+        "message": "fetch failed"
+      },
+      {
+        "endpoint": "getVatTaxTypes",
+        "message": "fetch failed"
+      }
+    ],
+    "trigger": "manual"
+  },
+  {
+    "timestamp": "2025-11-16T11:46:50.073Z",
+    "durationMs": 4295,
+    "added": 0,
+    "updated": 0,
+    "deactivated": 0,
+    "totalTypes": 0,
+    "errors": [
+      {
+        "endpoint": "verifyCustomerTin",
+        "message": "fetch failed"
+      },
+      {
+        "endpoint": "getInformation",
+        "message": "fetch failed"
+      },
+      {
+        "endpoint": "getDistrictCodes",
+        "message": "fetch failed"
+      },
+      {
+        "endpoint": "getVatTaxTypes",
+        "message": "fetch failed"
+      }
+    ],
+    "trigger": "manual"
+  },
+  {
+    "timestamp": "2025-11-16T11:49:17.993Z",
+    "durationMs": 4132,
+    "added": 0,
+    "updated": 0,
+    "deactivated": 0,
+    "totalTypes": 0,
+    "errors": [
+      {
+        "endpoint": "verifyCustomerTin",
+        "message": "fetch failed"
+      },
+      {
+        "endpoint": "getInformation",
+        "message": "fetch failed"
+      },
+      {
+        "endpoint": "getDistrictCodes",
+        "message": "fetch failed"
+      },
+      {
+        "endpoint": "getVatTaxTypes",
+        "message": "fetch failed"
+      }
+    ],
+    "trigger": "auto"
+  },
+  {
+    "timestamp": "2025-11-16T11:55:32.400Z",
+    "durationMs": 4223,
+    "added": 0,
+    "updated": 0,
+    "deactivated": 0,
+    "totalTypes": 0,
+    "attempted": 4,
+    "successful": 0,
+    "errors": [
+      {
+        "endpoint": "verifyCustomerTin",
+        "message": "fetch failed"
+      },
+      {
+        "endpoint": "getInformation",
+        "message": "fetch failed"
+      },
+      {
+        "endpoint": "getDistrictCodes",
+        "message": "fetch failed"
+      },
+      {
+        "endpoint": "getVatTaxTypes",
+        "message": "fetch failed"
+      }
+    ],
+    "trigger": "manual"
+  },
+  {
+    "timestamp": "2025-11-16T11:59:21.386Z",
+    "durationMs": 4147,
+    "added": 0,
+    "updated": 0,
+    "deactivated": 0,
+    "totalTypes": 0,
+    "attempted": 4,
+    "successful": 0,
+    "errors": [
+      {
+        "endpoint": "verifyCustomerTin",
+        "message": "fetch failed"
+      },
+      {
+        "endpoint": "getInformation",
+        "message": "fetch failed"
+      },
+      {
+        "endpoint": "getDistrictCodes",
+        "message": "fetch failed"
+      },
+      {
+        "endpoint": "getVatTaxTypes",
+        "message": "fetch failed"
+      }
+    ],
+    "trigger": "auto"
+  },
+  {
+    "timestamp": "2025-11-16T12:04:21.418Z",
+    "durationMs": 4178,
+    "added": 0,
+    "updated": 0,
+    "deactivated": 0,
+    "totalTypes": 0,
+    "attempted": 4,
+    "successful": 0,
+    "errors": [
+      {
+        "endpoint": "verifyCustomerTin",
+        "message": "fetch failed"
+      },
+      {
+        "endpoint": "getInformation",
+        "message": "fetch failed"
+      },
+      {
+        "endpoint": "getDistrictCodes",
+        "message": "fetch failed"
+      },
+      {
+        "endpoint": "getVatTaxTypes",
+        "message": "fetch failed"
+      }
+    ],
+    "trigger": "auto"
+  },
+  {
+    "timestamp": "2025-11-16T13:04:26.028Z",
+    "durationMs": 2144,
+    "added": 0,
+    "updated": 0,
+    "deactivated": 0,
+    "totalTypes": 0,
+    "attempted": 2,
+    "successful": 0,
+    "errors": [
+      {
+        "endpoint": "getDistrictCodes",
+        "message": "fetch failed"
+      },
+      {
+        "endpoint": "getVatTaxTypes",
+        "message": "fetch failed"
+      }
+    ],
+    "trigger": "manual"
+  },
+  {
+    "timestamp": "2025-11-16T13:10:21.462Z",
+    "durationMs": 2178,
+    "added": 0,
+    "updated": 0,
+    "deactivated": 0,
+    "totalTypes": 0,
+    "attempted": 2,
+    "successful": 0,
+    "errors": [
+      {
+        "endpoint": "getDistrictCodes",
+        "message": "fetch failed"
+      },
+      {
+        "endpoint": "getVatTaxTypes",
+        "message": "fetch failed"
+      }
+    ],
+    "trigger": "manual"
+  },
+  {
+    "timestamp": "2025-11-16T13:15:33.464Z",
+    "durationMs": 2195,
+    "added": 0,
+    "updated": 0,
+    "deactivated": 0,
+    "totalTypes": 0,
+    "attempted": 2,
+    "successful": 0,
+    "errors": [
+      {
+        "endpoint": "getDistrictCodes",
+        "message": "fetch failed"
+      },
+      {
+        "endpoint": "getVatTaxTypes",
+        "message": "fetch failed"
+      }
+    ],
+    "trigger": "auto"
+  },
+  {
+    "timestamp": "2025-11-16T13:43:17.527Z",
+    "durationMs": 2191,
+    "added": 0,
+    "updated": 0,
+    "deactivated": 0,
+    "totalTypes": 0,
+    "attempted": 2,
+    "successful": 0,
+    "errors": [
+      {
+        "endpoint": "getDistrictCodes",
+        "message": "fetch failed"
+      },
+      {
+        "endpoint": "getVatTaxTypes",
+        "message": "fetch failed"
+      }
+    ],
+    "trigger": "manual"
+  },
+  {
+    "timestamp": "2025-11-16T13:49:15.097Z",
+    "durationMs": 4166,
+    "added": 0,
+    "updated": 0,
+    "deactivated": 0,
+    "totalTypes": 0,
+    "attempted": 4,
+    "successful": 0,
+    "errors": [
+      {
+        "endpoint": "verifyCustomerTin",
+        "message": "fetch failed"
+      },
+      {
+        "endpoint": "getInformation",
+        "message": "fetch failed"
+      },
+      {
+        "endpoint": "getDistrictCodes",
+        "message": "fetch failed"
+      },
+      {
+        "endpoint": "getVatTaxTypes",
+        "message": "fetch failed"
+      }
+    ],
+    "trigger": "auto"
+  },
+  {
+    "timestamp": "2025-11-16T14:00:36.055Z",
+    "durationMs": 2329,
+    "added": 0,
+    "updated": 0,
+    "deactivated": 0,
+    "totalTypes": 0,
+    "attempted": 2,
+    "successful": 0,
+    "errors": [
+      {
+        "endpoint": "getDistrictCodes",
+        "message": "fetch failed"
+      },
+      {
+        "endpoint": "getVatTaxTypes",
+        "message": "fetch failed"
+      }
+    ],
+    "trigger": "manual"
+  },
+  {
+    "timestamp": "2025-11-16T14:05:16.886Z",
+    "durationMs": 2106,
+    "added": 0,
+    "updated": 0,
+    "deactivated": 0,
+    "totalTypes": 0,
+    "attempted": 2,
+    "successful": 0,
+    "errors": [
+      {
+        "endpoint": "getDistrictCodes",
+        "message": "fetch failed"
+      },
+      {
+        "endpoint": "getVatTaxTypes",
+        "message": "fetch failed"
+      }
+    ],
+    "trigger": "manual"
+  },
+  {
+    "timestamp": "2025-11-16T14:06:49.302Z",
+    "durationMs": 2107,
+    "added": 0,
+    "updated": 0,
+    "deactivated": 0,
+    "totalTypes": 0,
+    "attempted": 2,
+    "successful": 0,
+    "errors": [
+      {
+        "endpoint": "getDistrictCodes",
+        "message": "fetch failed"
+      },
+      {
+        "endpoint": "getVatTaxTypes",
+        "message": "fetch failed"
+      }
+    ],
+    "trigger": "auto"
+  },
+  {
+    "timestamp": "2025-11-16T14:09:47.479Z",
+    "durationMs": 2161,
+    "added": 0,
+    "updated": 0,
+    "deactivated": 0,
+    "totalTypes": 0,
+    "attempted": 2,
+    "successful": 0,
+    "errors": [
+      {
+        "endpoint": "getDistrictCodes",
+        "message": "fetch failed"
+      },
+      {
+        "endpoint": "getVatTaxTypes",
+        "message": "fetch failed"
+      }
+    ],
+    "trigger": "manual"
+  },
+  {
+    "timestamp": "2025-11-16T14:10:09.366Z",
+    "durationMs": 2068,
+    "added": 0,
+    "updated": 0,
+    "deactivated": 0,
+    "totalTypes": 0,
+    "attempted": 2,
+    "successful": 0,
+    "errors": [
+      {
+        "endpoint": "getDistrictCodes",
+        "message": "fetch failed"
+      },
+      {
+        "endpoint": "getVatTaxTypes",
+        "message": "fetch failed"
+      }
+    ],
+    "trigger": "manual"
+  },
+  {
+    "timestamp": "2025-11-16T14:10:40.278Z",
+    "durationMs": 2071,
+    "added": 0,
+    "updated": 0,
+    "deactivated": 0,
+    "totalTypes": 0,
+    "attempted": 2,
+    "successful": 0,
+    "errors": [
+      {
+        "endpoint": "getDistrictCodes",
+        "message": "fetch failed"
+      },
+      {
+        "endpoint": "getVatTaxTypes",
+        "message": "fetch failed"
+      }
+    ],
+    "trigger": "manual"
+  },
+  {
+    "timestamp": "2025-11-16T14:19:01.527Z",
+    "durationMs": 2194,
+    "added": 0,
+    "updated": 0,
+    "deactivated": 0,
+    "totalTypes": 0,
+    "attempted": 2,
+    "successful": 0,
+    "errors": [
+      {
+        "endpoint": "getDistrictCodes",
+        "message": "fetch failed"
+      },
+      {
+        "endpoint": "getVatTaxTypes",
+        "message": "fetch failed"
+      }
+    ],
+    "trigger": "auto"
+  },
+  {
+    "timestamp": "2025-11-16T14:24:01.430Z",
+    "durationMs": 2099,
+    "added": 0,
+    "updated": 0,
+    "deactivated": 0,
+    "totalTypes": 0,
+    "attempted": 2,
+    "successful": 0,
+    "errors": [
+      {
+        "endpoint": "getDistrictCodes",
+        "message": "fetch failed"
+      },
+      {
+        "endpoint": "getVatTaxTypes",
+        "message": "fetch failed"
+      }
+    ],
+    "trigger": "auto"
+  },
+  {
+    "timestamp": "2025-11-16T14:29:25.078Z",
+    "durationMs": 2200,
+    "added": 0,
+    "updated": 0,
+    "deactivated": 0,
+    "totalTypes": 0,
+    "attempted": 2,
+    "successful": 0,
+    "errors": [
+      {
+        "endpoint": "getDistrictCodes",
+        "message": "fetch failed"
+      },
+      {
+        "endpoint": "getVatTaxTypes",
+        "message": "fetch failed"
+      }
+    ],
+    "trigger": "manual"
+  },
+  {
+    "timestamp": "2025-11-16T14:37:42.553Z",
+    "durationMs": 2129,
+    "added": 0,
+    "updated": 0,
+    "deactivated": 0,
+    "totalTypes": 0,
+    "attempted": 2,
+    "successful": 0,
+    "errors": [
+      {
+        "endpoint": "getDistrictCodes",
+        "message": "fetch failed"
+      },
+      {
+        "endpoint": "getVatTaxTypes",
+        "message": "fetch failed"
+      }
+    ],
+    "trigger": "manual"
+  },
+  {
+    "timestamp": "2025-11-16T14:42:08.022Z",
+    "durationMs": 2060,
+    "added": 0,
+    "updated": 0,
+    "deactivated": 0,
+    "totalTypes": 0,
+    "attempted": 2,
+    "successful": 0,
+    "errors": [
+      {
+        "endpoint": "getDistrictCodes",
+        "message": "fetch failed"
+      },
+      {
+        "endpoint": "getVatTaxTypes",
+        "message": "fetch failed"
+      }
+    ],
+    "trigger": "auto"
+  },
+  {
+    "timestamp": "2025-11-16T14:46:56.407Z",
+    "durationMs": 2138,
+    "added": 0,
+    "updated": 0,
+    "deactivated": 0,
+    "totalTypes": 0,
+    "attempted": 2,
+    "successful": 0,
+    "errors": [
+      {
+        "endpoint": "getDistrictCodes",
+        "message": "fetch failed"
+      },
+      {
+        "endpoint": "getVatTaxTypes",
+        "message": "fetch failed"
+      }
+    ],
+    "trigger": "manual"
+  },
+  {
+    "timestamp": "2025-11-16T14:56:05.975Z",
+    "durationMs": 2150,
+    "added": 0,
+    "updated": 0,
+    "deactivated": 0,
+    "totalTypes": 0,
+    "attempted": 2,
+    "successful": 0,
+    "errors": [
+      {
+        "endpoint": "getDistrictCodes",
+        "message": "fetch failed"
+      },
+      {
+        "endpoint": "getVatTaxTypes",
+        "message": "fetch failed"
+      }
+    ],
+    "trigger": "manual"
+  },
+  {
+    "timestamp": "2025-11-17T03:04:29.206Z",
+    "durationMs": 2125,
+    "added": 0,
+    "updated": 0,
+    "deactivated": 0,
+    "totalTypes": 0,
+    "attempted": 2,
+    "successful": 0,
+    "errors": [
+      {
+        "endpoint": "getDistrictCodes",
+        "message": "fetch failed"
+      },
+      {
+        "endpoint": "getVatTaxTypes",
+        "message": "fetch failed"
+      }
+    ],
+    "trigger": "auto"
+  },
+  {
+    "timestamp": "2025-11-17T15:04:28.913Z",
+    "durationMs": 2125,
+    "added": 0,
+    "updated": 0,
+    "deactivated": 0,
+    "totalTypes": 0,
+    "attempted": 2,
+    "successful": 0,
+    "errors": [
+      {
+        "endpoint": "getDistrictCodes",
+        "message": "fetch failed"
+      },
+      {
+        "endpoint": "getVatTaxTypes",
+        "message": "fetch failed"
+      }
+    ],
+    "trigger": "auto"
+  },
+  {
+    "timestamp": "2025-11-18T03:04:28.942Z",
+    "durationMs": 2154,
+    "added": 0,
+    "updated": 0,
+    "deactivated": 0,
+    "totalTypes": 0,
+    "attempted": 2,
+    "successful": 0,
+    "errors": [
+      {
+        "endpoint": "getDistrictCodes",
+        "message": "fetch failed"
+      },
+      {
+        "endpoint": "getVatTaxTypes",
+        "message": "fetch failed"
+      }
+    ],
+    "trigger": "auto"
+  },
+  {
+    "timestamp": "2025-11-18T18:21:36.645Z",
+    "durationMs": 2191,
+    "added": 0,
+    "updated": 0,
+    "deactivated": 0,
+    "totalTypes": 0,
+    "attempted": 2,
+    "successful": 0,
+    "errors": [
+      {
+        "endpoint": "getDistrictCodes",
+        "message": "fetch failed"
+      },
+      {
+        "endpoint": "getVatTaxTypes",
+        "message": "fetch failed"
+      }
+    ],
+    "trigger": "auto"
+  },
+  {
+    "timestamp": "2025-11-19T23:48:54.604Z",
+    "durationMs": 2093,
+    "added": 0,
+    "updated": 0,
+    "deactivated": 0,
+    "totalTypes": 0,
+    "attempted": 2,
+    "successful": 0,
+    "errors": [
+      {
+        "endpoint": "getDistrictCodes",
+        "message": "fetch failed"
+      },
+      {
+        "endpoint": "getVatTaxTypes",
+        "message": "fetch failed"
+      }
+    ],
+    "trigger": "auto"
+  },
+  {
+    "timestamp": "2025-11-20T16:29:11.547Z",
+    "durationMs": 2919,
+    "added": 0,
+    "updated": 0,
+    "deactivated": 0,
+    "totalTypes": 0,
+    "attempted": 2,
+    "successful": 0,
+    "errors": [
+      {
+        "endpoint": "getDistrictCodes",
+        "message": "fetch failed"
+      },
+      {
+        "endpoint": "getVatTaxTypes",
+        "message": "fetch failed"
+      }
+    ],
+    "trigger": "auto"
+  },
+  {
+    "timestamp": "2025-11-21T04:29:10.810Z",
+    "durationMs": 2183,
+    "added": 0,
+    "updated": 0,
+    "deactivated": 0,
+    "totalTypes": 0,
+    "attempted": 2,
+    "successful": 0,
+    "errors": [
+      {
+        "endpoint": "getDistrictCodes",
+        "message": "fetch failed"
+      },
+      {
+        "endpoint": "getVatTaxTypes",
+        "message": "fetch failed"
+      }
+    ],
+    "trigger": "auto"
+  },
+  {
+    "timestamp": "2025-11-21T16:29:10.298Z",
+    "durationMs": 2086,
+    "added": 0,
+    "updated": 0,
+    "deactivated": 0,
+    "totalTypes": 0,
+    "attempted": 2,
+    "successful": 0,
+    "errors": [
+      {
+        "endpoint": "getDistrictCodes",
+        "message": "fetch failed"
+      },
+      {
+        "endpoint": "getVatTaxTypes",
+        "message": "fetch failed"
+      }
+    ],
+    "trigger": "auto"
+  },
+  {
+    "timestamp": "2025-11-22T04:29:10.301Z",
+    "durationMs": 2089,
+    "added": 0,
+    "updated": 0,
+    "deactivated": 0,
+    "totalTypes": 0,
+    "attempted": 2,
+    "successful": 0,
+    "errors": [
+      {
+        "endpoint": "getDistrictCodes",
+        "message": "fetch failed"
+      },
+      {
+        "endpoint": "getVatTaxTypes",
+        "message": "fetch failed"
+      }
+    ],
+    "trigger": "auto"
+  },
+  {
+    "timestamp": "2025-11-22T16:42:26.926Z",
+    "durationMs": 2123,
+    "added": 0,
+    "updated": 0,
+    "deactivated": 0,
+    "totalTypes": 0,
+    "attempted": 2,
+    "successful": 0,
+    "errors": [
+      {
+        "endpoint": "getDistrictCodes",
+        "message": "fetch failed"
+      },
+      {
+        "endpoint": "getVatTaxTypes",
+        "message": "fetch failed"
+      }
+    ],
+    "trigger": "auto"
+  },
+  {
+    "timestamp": "2025-12-13T02:16:29.810Z",
+    "durationMs": 2133,
+    "added": 0,
+    "updated": 0,
+    "deactivated": 0,
+    "totalTypes": 0,
+    "attempted": 2,
+    "successful": 0,
+    "errors": [
+      {
+        "endpoint": "getDistrictCodes",
+        "message": "fetch failed"
+      },
+      {
+        "endpoint": "getVatTaxTypes",
+        "message": "fetch failed"
+      }
+    ],
+    "trigger": "auto"
+  },
+  {
+    "timestamp": "2025-12-14T11:09:50.152Z",
+    "durationMs": 2159,
+    "added": 0,
+    "updated": 0,
+    "deactivated": 0,
+    "totalTypes": 0,
+    "attempted": 2,
+    "successful": 0,
+    "errors": [
+      {
+        "endpoint": "getDistrictCodes",
+        "message": "fetch failed"
+      },
+      {
+        "endpoint": "getVatTaxTypes",
+        "message": "fetch failed"
+      }
+    ],
+    "trigger": "auto"
+  },
+  {
+    "timestamp": "2025-12-14T23:09:49.655Z",
+    "durationMs": 2095,
+    "added": 0,
+    "updated": 0,
+    "deactivated": 0,
+    "totalTypes": 0,
+    "attempted": 2,
+    "successful": 0,
+    "errors": [
+      {
+        "endpoint": "getDistrictCodes",
+        "message": "fetch failed"
+      },
+      {
+        "endpoint": "getVatTaxTypes",
+        "message": "fetch failed"
+      }
+    ],
+    "trigger": "auto"
+  },
+  {
+    "timestamp": "2025-12-15T11:09:50.766Z",
+    "durationMs": 3206,
+    "added": 0,
+    "updated": 0,
+    "deactivated": 0,
+    "totalTypes": 0,
+    "attempted": 2,
+    "successful": 0,
+    "errors": [
+      {
+        "endpoint": "getDistrictCodes",
+        "message": "fetch failed"
+      },
+      {
+        "endpoint": "getVatTaxTypes",
+        "message": "fetch failed"
+      }
+    ],
+    "trigger": "auto"
+  },
+  {
+    "timestamp": "2025-12-15T23:09:48.248Z",
+    "durationMs": 2094,
+    "added": 0,
+    "updated": 0,
+    "deactivated": 0,
+    "totalTypes": 0,
+    "attempted": 2,
+    "successful": 0,
+    "errors": [
+      {
+        "endpoint": "getDistrictCodes",
+        "message": "fetch failed"
+      },
+      {
+        "endpoint": "getVatTaxTypes",
+        "message": "fetch failed"
+      }
+    ],
+    "trigger": "auto"
+  },
+  {
+    "timestamp": "2025-12-16T23:30:14.986Z",
+    "durationMs": 72,
+    "added": 0,
+    "updated": 0,
+    "deactivated": 0,
+    "totalTypes": 0,
+    "attempted": 0,
+    "successful": 0,
+    "errors": [],
+    "trigger": "auto"
+  }
+]

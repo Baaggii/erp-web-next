@@ -1,0 +1,12 @@
+{
+  "autoSyncEnabled": true,
+  "intervalMinutes": 720,
+  "usage": "info",
+  "endpointIds": [
+    "getDistrictCodes",
+    "getVatTaxTypes"
+  ],
+  "tables": [
+    "ebarimt_reference_code"
+  ]
+}

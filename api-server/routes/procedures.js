@@ -6,15 +6,56 @@ import {
   getProcedureParams,
   getProcedureRawRows,
   getProcedureLockCandidates,
+  pool,
 } from '../../db/index.js';
 import { listPermittedProcedures } from '../utils/reportProcedures.js';
 
+const RATE_LIMIT_WINDOW_MS = 60 * 1000;
+const RATE_LIMIT_MAX_REQUESTS = 30;
+const rateLimits = new Map();
+
 const router = express.Router();
+
+function resolveCompanyId(req) {
+  const rawCompanyId = req.query?.companyId ?? req.user?.companyId;
+  const companyId = Number(rawCompanyId);
+  if (!Number.isFinite(companyId) || companyId <= 0) return null;
+  return companyId;
+}
+
+function isRateLimited(key) {
+  const now = Date.now();
+  const recent = (rateLimits.get(key) || []).filter((ts) => now - ts < RATE_LIMIT_WINDOW_MS);
+  if (recent.length >= RATE_LIMIT_MAX_REQUESTS) return true;
+  recent.push(now);
+  rateLimits.set(key, recent);
+  return false;
+}
+
+async function validateCompanyForGid(companyId, gId, res) {
+  const normalizedCompanyId = Number(companyId);
+  const normalizedGid = Number(gId);
+  if (!Number.isFinite(normalizedGid)) return true;
+  if (!Number.isFinite(normalizedCompanyId)) {
+    res.status(400).json({ message: 'companyId is required when supplying g_id' });
+    return false;
+  }
+  const [rows] = await pool.query(
+    'SELECT 1 FROM transactions_contract WHERE company_id = ? AND g_id = ? LIMIT 1',
+    [normalizedCompanyId, normalizedGid],
+  );
+  if (!rows.length) {
+    res.status(400).json({ message: 'No company found for supplied g_id' });
+    return false;
+  }
+  return true;
+}
 
 router.get('/', requireAuth, async (req, res, next) => {
   try {
     const { prefix = '', branchId, departmentId } = req.query;
-    const companyId = Number(req.query.companyId ?? req.user.companyId);
+    const companyId = resolveCompanyId(req);
+    if (!companyId) return res.status(400).json({ message: 'companyId required' });
     const { procedures } = await listPermittedProcedures(
       { branchId, departmentId, prefix },
       companyId,
@@ -33,7 +74,8 @@ router.get('/', requireAuth, async (req, res, next) => {
 router.get('/:name/params', requireAuth, async (req, res, next) => {
   try {
     const { branchId, departmentId } = req.query;
-    const companyId = Number(req.query.companyId ?? req.user.companyId);
+    const companyId = resolveCompanyId(req);
+    if (!companyId) return res.status(400).json({ message: 'companyId required' });
     const { procedures } = await listPermittedProcedures(
       { branchId, departmentId },
       companyId,
@@ -54,7 +96,8 @@ router.post('/locks', requireAuth, async (req, res, next) => {
     const { name, params, aliases } = req.body || {};
     if (!name) return res.status(400).json({ message: 'name required' });
     const { branchId, departmentId } = req.query;
-    const companyId = Number(req.query.companyId ?? req.user.companyId);
+    const companyId = resolveCompanyId(req);
+    if (!companyId) return res.status(400).json({ message: 'companyId required' });
     const { procedures } = await listPermittedProcedures(
       { branchId, departmentId },
       companyId,
@@ -80,7 +123,8 @@ router.post('/', requireAuth, async (req, res, next) => {
     const { name, params, aliases } = req.body || {};
     if (!name) return res.status(400).json({ message: 'name required' });
     const { branchId, departmentId } = req.query;
-    const companyId = Number(req.query.companyId ?? req.user.companyId);
+    const companyId = resolveCompanyId(req);
+    if (!companyId) return res.status(400).json({ message: 'companyId required' });
     const { procedures } = await listPermittedProcedures(
       { branchId, departmentId },
       companyId,
@@ -89,6 +133,16 @@ router.post('/', requireAuth, async (req, res, next) => {
     const allowed = new Set(procedures.map((p) => p.name));
     if (!allowed.has(name))
       return res.status(403).json({ message: 'Procedure not allowed' });
+    const rateKey = req.user?.id ?? req.user?.empid ?? req.ip;
+    if (isRateLimited(rateKey))
+      return res.status(429).json({ message: 'Too many procedure requests. Please slow down.' });
+    const aliasGid =
+      Array.isArray(params) && Array.isArray(aliases)
+        ? params[aliases.findIndex((a) => a === 'g_id')]
+        : undefined;
+    const rawGid = req.body?.g_id ?? req.query?.g_id ?? aliasGid;
+    const validCompany = await validateCompanyForGid(companyId, rawGid, res);
+    if (!validCompany) return;
     const row = await callStoredProcedure(
       name,
       Array.isArray(params) ? params : [],
@@ -105,6 +159,7 @@ router.post('/raw', requireAuth, async (req, res, next) => {
     const {
       name,
       params,
+      aliases,
       column,
       groupField,
       groupValue,
@@ -114,7 +169,8 @@ router.post('/raw', requireAuth, async (req, res, next) => {
     if (!name || !column)
       return res.status(400).json({ message: 'name and column required' });
     const { branchId, departmentId } = req.query;
-    const companyId = Number(req.query.companyId ?? req.user.companyId);
+    const companyId = resolveCompanyId(req);
+    if (!companyId) return res.status(400).json({ message: 'companyId required' });
     const { procedures } = await listPermittedProcedures(
       { branchId, departmentId },
       companyId,
@@ -123,6 +179,16 @@ router.post('/raw', requireAuth, async (req, res, next) => {
     const allowed = new Set(procedures.map((p) => p.name));
     if (!allowed.has(name))
       return res.status(403).json({ message: 'Procedure not allowed' });
+    const rateKey = req.user?.id ?? req.user?.empid ?? req.ip;
+    if (isRateLimited(rateKey))
+      return res.status(429).json({ message: 'Too many procedure requests. Please slow down.' });
+    const aliasGid =
+      Array.isArray(params) && Array.isArray(aliases)
+        ? params[aliases.findIndex((a) => a === 'g_id')]
+        : undefined;
+    const rawGid = req.body?.g_id ?? req.query?.g_id ?? aliasGid;
+    const validCompany = await validateCompanyForGid(companyId, rawGid, res);
+    if (!validCompany) return;
     const { rows, sql, original, file, displayFields } = await getProcedureRawRows(
       name,
       params || {},
