@@ -3,9 +3,11 @@ import { requireAuth } from '../middlewares/auth.js';
 import {
   createTemporarySubmission,
   listTemporarySubmissions,
+  listTemporarySubmissionGroups,
   getTemporarySummary,
   promoteTemporarySubmission,
   rejectTemporarySubmission,
+  getTemporaryChainHistory,
   deleteTemporarySubmission,
 } from '../services/transactionTemporaries.js';
 
@@ -24,12 +26,27 @@ router.get('/summary', requireAuth, async (req, res, next) => {
   }
 });
 
+router.get('/:id/chain', requireAuth, async (req, res, next) => {
+  try {
+    const chain = await getTemporaryChainHistory(req.params.id);
+    res.json({
+      chainId: chain.chainId || null,
+      chain: chain.chain || chain,
+      reviewHistory: chain.reviewHistory || [],
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
 router.get('/', requireAuth, async (req, res, next) => {
   try {
     const {
       scope = 'created',
       table,
       status,
+      limit,
+      offset,
       transactionTypeField = null,
       transactionTypeValue = null,
     } = req.query;
@@ -47,10 +64,54 @@ router.get('/', requireAuth, async (req, res, next) => {
       empId: req.user.empid,
       companyId: req.user.companyId,
       status: normalizedStatus,
+      limit,
+      offset,
+      transactionTypeField,
+      transactionTypeValue,
+      includeHasMore: true,
+    });
+    res.json({ rows: list.rows, hasMore: list.hasMore, nextOffset: list.nextOffset });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get('/grouped', requireAuth, async (req, res, next) => {
+  try {
+    const {
+      scope = 'created',
+      table,
+      status,
+      limit,
+      offset,
+      transactionTypeField = null,
+      transactionTypeValue = null,
+    } = req.query;
+    const scopeParam = typeof scope === 'string' ? scope.trim().toLowerCase() : '';
+    const normalizedScope = scopeParam === 'review' ? 'review' : 'created';
+    const statusParam = typeof status === 'string' ? status.trim().toLowerCase() : '';
+    const normalizedStatus = statusParam
+      ? statusParam
+      : normalizedScope === 'review'
+      ? 'pending'
+      : null;
+    const list = await listTemporarySubmissionGroups({
+      scope: normalizedScope,
+      tableName: table || null,
+      empId: req.user.empid,
+      companyId: req.user.companyId,
+      status: normalizedStatus,
+      limit,
+      offset,
       transactionTypeField,
       transactionTypeValue,
     });
-    res.json({ rows: list });
+    res.json({
+      rows: list.rows,
+      groups: list.groups,
+      hasMore: list.hasMore,
+      nextOffset: list.nextOffset,
+    });
   } catch (err) {
     next(err);
   }

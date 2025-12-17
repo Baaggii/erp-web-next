@@ -4759,14 +4759,35 @@ CREATE TABLE `transaction_temporaries` (
   `branch_id` bigint DEFAULT NULL,
   `department_id` bigint DEFAULT NULL,
   `status` enum('pending','promoted','rejected') COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'pending',
+  `chain_id` bigint UNSIGNED DEFAULT NULL,
+  `is_pending` tinyint(1) GENERATED ALWAYS AS (if((`status` = 'pending'),1,NULL)) STORED,
   `review_notes` text COLLATE utf8mb4_unicode_ci,
   `reviewed_by` varchar(64) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   `reviewed_at` datetime DEFAULT NULL,
   `promoted_record_id` varchar(64) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  CONSTRAINT `chk_temp_pending_reviewer` CHECK (`status` = 'pending' OR `plan_senior_empid` IS NULL),
   `updated_by` varchar(50) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   `deleted_at` timestamp NULL DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `transaction_temporary_review_history`
+--
+
+CREATE TABLE `transaction_temporary_review_history` (
+  `id` bigint UNSIGNED NOT NULL,
+  `temporary_id` bigint UNSIGNED NOT NULL,
+  `chain_id` bigint UNSIGNED NOT NULL,
+  `action` enum('forwarded','promoted','rejected') COLLATE utf8mb4_unicode_ci NOT NULL,
+  `reviewer_empid` varchar(64) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `forwarded_to_empid` varchar(64) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `promoted_record_id` varchar(64) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `notes` text COLLATE utf8mb4_unicode_ci,
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- --------------------------------------------------------
@@ -5823,7 +5844,25 @@ ALTER TABLE `transaction_temporaries`
   ADD KEY `idx_temp_status` (`status`),
   ADD KEY `idx_temp_table` (`table_name`),
   ADD KEY `idx_temp_plan_senior` (`plan_senior_empid`),
+  ADD KEY `idx_temp_status_plan_senior` (`status`,`plan_senior_empid`),
+  ADD UNIQUE KEY `idx_temp_chain_pending` (`chain_id`,`is_pending`),
   ADD KEY `idx_temp_creator` (`created_by`);
+
+--
+-- Indexes for table `transaction_temporary_review_history`
+--
+ALTER TABLE `transaction_temporary_review_history`
+  ADD PRIMARY KEY (`id`),
+  ADD KEY `idx_temp_history_temp` (`temporary_id`),
+  ADD KEY `idx_temp_history_chain` (`chain_id`),
+  ADD KEY `idx_temp_history_action` (`action`);
+
+--
+-- Triggers `transaction_temporaries`
+--
+DELIMITER $$
+CREATE TRIGGER `trg_temp_clear_reviewer` BEFORE UPDATE ON `transaction_temporaries` FOR EACH ROW SET NEW.plan_senior_empid = IF(NEW.status = 'pending', NEW.plan_senior_empid, NULL)$$
+DELIMITER ;
 
 --
 -- Indexes for table `transaction_vat_summary`
