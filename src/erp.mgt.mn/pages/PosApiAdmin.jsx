@@ -3289,6 +3289,12 @@ export default function PosApiAdmin() {
     : [];
   const variations = Array.isArray(formState.variations) ? formState.variations : [];
   const activeVariations = variations.filter((entry) => entry.enabled !== false);
+  useEffect(() => {
+    setCombinationBaseKey(BASE_COMBINATION_KEY);
+    setCombinationModifierKeys([]);
+    setCombinationPayloadText('');
+    setCombinationError('Select a base variation to build a combination.');
+  }, [formState.id]);
   const enabledRequestFieldVariations = useMemo(
     () => requestFieldVariations.filter((entry) => entry?.key && entry.enabled !== false),
     [requestFieldVariations],
