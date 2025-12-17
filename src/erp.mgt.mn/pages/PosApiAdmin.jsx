@@ -2816,11 +2816,13 @@ export default function PosApiAdmin() {
   const [infoSyncUsage, setInfoSyncUsage] = useState('all');
   const [infoSyncEndpointIds, setInfoSyncEndpointIds] = useState([]);
   const [infoSyncTableOptionsBase, setInfoSyncTableOptionsBase] = useState([]);
+  const [infoSyncSelectionError, setInfoSyncSelectionError] = useState('');
   const [tableOptions, setTableOptions] = useState([]);
   const [tableOptionsError, setTableOptionsError] = useState('');
   const [tableOptionsLoading, setTableOptionsLoading] = useState(false);
   const [tableFields, setTableFields] = useState({});
   const [tableFieldLoading, setTableFieldLoading] = useState({});
+  const [responseTableSelectionError, setResponseTableSelectionError] = useState('');
   const [infoUploadCodeType, setInfoUploadCodeType] = useState('classification');
   const [adminSelectionId, setAdminSelectionId] = useState('');
   const [adminParamValues, setAdminParamValues] = useState({});
@@ -3078,6 +3080,7 @@ export default function PosApiAdmin() {
       const tablesChanged = JSON.stringify(sanitizedTables) !== JSON.stringify(prev.responseTables || []);
       const mappingsChanged =
         JSON.stringify(filteredMappings) !== JSON.stringify(prev.responseFieldMappings || {});
+      setResponseTableSelectionError('');
       if (!tablesChanged && !mappingsChanged) return prev;
       return { ...prev, responseTables: sanitizedTables, responseFieldMappings: filteredMappings };
     });
@@ -3101,15 +3104,30 @@ export default function PosApiAdmin() {
   }, [error, infoSyncEndpointOptions.length, infoSyncUsage, loadError, loading]);
 
   useEffect(() => {
+    if (infoSyncEndpointOptions.length > 0 && !loading) {
+      setInfoSyncSelectionError('');
+    }
+  }, [infoSyncEndpointOptions.length, loading]);
+
+  useEffect(() => {
     setInfoSyncEndpointIds((prev) => {
       if (loading || infoSyncEndpointOptions.length === 0) return prev;
       const filtered = prev.filter((id) => infoSyncEndpointOptions.some((ep) => ep.id === id));
       if (filtered.length !== prev.length) {
         setInfoSyncSettings((settings) => ({ ...settings, endpointIds: filtered }));
       }
+      if (filtered.length > 0) {
+        setInfoSyncSelectionError('');
+      }
       return filtered;
     });
   }, [infoSyncEndpointOptions, loading]);
+
+  useEffect(() => {
+    if (responseTableOptions.length > 0 && !tableOptionsLoading) {
+      setResponseTableSelectionError('');
+    }
+  }, [responseTableOptions.length, tableOptionsLoading]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -3145,13 +3163,13 @@ export default function PosApiAdmin() {
         // Allow selecting from all available tables so response mappings can be configured even when
         // POSAPI-specific prefixes are absent. Prefer prefixed tables when they exist, but fall back
         // to the full list to avoid presenting an empty, unusable selector.
-          const prefixed = options.filter((option) =>
-            normalizeTableValue(option?.value || '').startsWith('ebarimt_'),
-          );
-          const remainder = options.filter((option) =>
-            !normalizeTableValue(option?.value || '').startsWith('ebarimt_'),
-          );
-          setTableOptions(prefixed.length > 0 ? [...prefixed, ...remainder] : options);
+        const prefixed = options.filter((option) =>
+          normalizeTableValue(option?.value || '').startsWith('ebarimt_'),
+        );
+        const remainder = options.filter((option) =>
+          !normalizeTableValue(option?.value || '').startsWith('ebarimt_'),
+        );
+        setTableOptions(prefixed.length > 0 ? [...prefixed, ...remainder] : options);
       } catch (err) {
         if (!cancelled && err?.name !== 'AbortError') {
           setTableOptionsError(err?.message || 'Unable to load POSAPI response tables.');
@@ -5508,6 +5526,18 @@ export default function PosApiAdmin() {
   function handleResponseTableSelection(event) {
     const values = Array.from(event.target.selectedOptions || []).map((opt) => opt.value);
     const sanitized = sanitizeTableSelection(values, responseTableOptions);
+    if (sanitized.length === 0 && values.length > 0) {
+      setResponseTableSelectionError(
+        responseTablesUnavailableReason
+          || 'The selected tables are not available. Please reload the table list.',
+      );
+    } else if (values.length > sanitized.length) {
+      setResponseTableSelectionError(
+        'Some selected tables were removed because they are not available in the current list.',
+      );
+    } else {
+      setResponseTableSelectionError('');
+    }
     setFormState((prev) => {
       const allowedTables = new Set(sanitized.map((table) => normalizeTableValue(table)));
       const currentMappings = sanitizeResponseFieldMappings(prev.responseFieldMappings);
@@ -5884,8 +5914,24 @@ export default function PosApiAdmin() {
 
   function handleInfoEndpointSelection(event) {
     const selected = Array.from(event.target.selectedOptions || []).map((option) => option.value);
-    setInfoSyncEndpointIds(selected);
-    updateInfoSetting('endpointIds', selected);
+    const allowed = new Set(infoSyncEndpointOptions.map((endpoint) => endpoint.id));
+    const sanitized = selected.filter((id) => allowed.has(id));
+
+    if (sanitized.length === 0 && selected.length > 0) {
+      setInfoSyncSelectionError(
+        infoSyncEndpointUnavailableReason
+          || 'The selected endpoints are not available. Verify the usage filter or reload.',
+      );
+    } else if (selected.length > sanitized.length) {
+      setInfoSyncSelectionError(
+        'Some selected endpoints were removed because they are not available in the current list.',
+      );
+    } else {
+      setInfoSyncSelectionError('');
+    }
+
+    setInfoSyncEndpointIds(sanitized);
+    updateInfoSetting('endpointIds', sanitized);
   }
 
   async function saveInfoSettings() {
@@ -8811,6 +8857,9 @@ export default function PosApiAdmin() {
               {responseTablesUnavailableReason && (
                 <div style={styles.hintError}>{responseTablesUnavailableReason}</div>
               )}
+              {responseTableSelectionError && (
+                <div style={styles.hintError}>{responseTableSelectionError}</div>
+              )}
             </label>
             {responseFieldHints.state === 'empty' && (
               <p style={styles.hintEmpty}>Add response field hints in the JSON textarea above.</p>
@@ -9624,6 +9673,7 @@ export default function PosApiAdmin() {
                   {infoSyncEndpointUnavailableReason && (
                     <div style={styles.hintError}>{infoSyncEndpointUnavailableReason}</div>
                   )}
+                  {infoSyncSelectionError && <div style={styles.hintError}>{infoSyncSelectionError}</div>}
                   </label>
               </div>
               <button
