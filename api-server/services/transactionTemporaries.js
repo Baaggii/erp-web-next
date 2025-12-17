@@ -1751,7 +1751,8 @@ export async function promoteTemporarySubmission(
     const skipTriggers = shouldSkipTriggers;
     const reviewerHasSenior = Boolean(forwardReviewerEmpId);
     const explicitForwardRequest = promoteAsTemporary === true;
-    const inferredForwardIntent = reviewerHasSenior;
+    const inferredForwardIntent =
+      promoteAsTemporary !== false && reviewerHasSenior;
     if (!effectiveChainId) {
       const fallbackChainId =
         normalizeTemporaryId(row.chain_id) ||
@@ -1762,9 +1763,6 @@ export async function promoteTemporarySubmission(
         effectiveChainId = fallbackChainId;
         updatedForwardMeta.rootTemporaryId = fallbackChainId;
       }
-    }
-    if (effectiveChainId && !row.chain_id) {
-      await conn.query(`UPDATE \`${TEMP_TABLE}\` SET chain_id = ? WHERE id = ?`, [effectiveChainId, row.id]);
     }
     const shouldForwardTemporary = explicitForwardRequest || inferredForwardIntent;
     const creatorIsReviewer =
