@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import useGeneralConfig from './useGeneralConfig.js';
 import { API_BASE } from '../utils/apiBase.js';
 
@@ -53,6 +53,9 @@ export default function useTemporaryNotificationCounts(empid) {
         cfg?.temporaries?.pollingIntervalSeconds ||
         cfg?.general?.requestPollingIntervalSeconds,
     ) || DEFAULT_POLL_INTERVAL_SECONDS;
+
+  const refreshInFlight = useRef(false);
+  const pendingRefresh = useRef(false);
 
   const storageBase = useMemo(() => {
     const id = empid != null && empid !== '' ? String(empid).trim() : 'anonymous';
@@ -127,6 +130,11 @@ export default function useTemporaryNotificationCounts(empid) {
   );
 
   const refresh = useCallback(async () => {
+    if (refreshInFlight.current) {
+      pendingRefresh.current = true;
+      return;
+    }
+    refreshInFlight.current = true;
     try {
       const params = new URLSearchParams();
       const cachedFilter = readCachedTemporaryFilter();
@@ -147,6 +155,12 @@ export default function useTemporaryNotificationCounts(empid) {
       evaluateCounts(data);
     } catch {
       // Ignore errors but keep previous counts
+    } finally {
+      refreshInFlight.current = false;
+      if (pendingRefresh.current) {
+        pendingRefresh.current = false;
+        refresh();
+      }
     }
   }, [evaluateCounts]);
 
