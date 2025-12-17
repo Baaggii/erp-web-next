@@ -14,6 +14,27 @@ const SOUND_PRESETS = {
 };
 
 let cachedContext = null;
+let hasUserInteracted = false;
+let interactionPromise = null;
+
+function waitForFirstInteraction() {
+  if (hasUserInteracted || typeof window === 'undefined') {
+    hasUserInteracted = true;
+    return Promise.resolve();
+  }
+  if (!interactionPromise) {
+    interactionPromise = new Promise((resolve) => {
+      const events = ['pointerdown', 'keydown', 'touchstart'];
+      const markInteracted = () => {
+        hasUserInteracted = true;
+        events.forEach((evt) => window.removeEventListener(evt, markInteracted));
+        resolve();
+      };
+      events.forEach((evt) => window.addEventListener(evt, markInteracted, { once: true }));
+    });
+  }
+  return interactionPromise;
+}
 
 function getAudioContext() {
   if (cachedContext) return cachedContext;
@@ -24,6 +45,26 @@ function getAudioContext() {
   if (!AudioCtx) return null;
   cachedContext = new AudioCtx();
   return cachedContext;
+}
+
+async function ensureContextReady(ctx) {
+  if (!ctx) return false;
+  if (ctx.state === 'running') return true;
+
+  try {
+    await ctx.resume();
+    if (ctx.state === 'running') return true;
+  } catch (err) {
+    // ignore and fall back to waiting for a gesture
+  }
+
+  await waitForFirstInteraction();
+  try {
+    await ctx.resume();
+  } catch (err) {
+    return false;
+  }
+  return ctx.state === 'running';
 }
 
 function scheduleTone(ctx, startTime, { type, frequency, duration, gain }) {
@@ -40,10 +81,13 @@ function scheduleTone(ctx, startTime, { type, frequency, duration, gain }) {
   return startTime + duration + 0.04;
 }
 
-export function playNotificationSound(preset = 'chime') {
+export async function playNotificationSound(preset = 'chime') {
   if (preset === 'off') return;
   const ctx = getAudioContext();
   if (!ctx) return;
+  const isReady = await ensureContextReady(ctx);
+  if (!isReady) return;
+
   const steps = SOUND_PRESETS[preset] || SOUND_PRESETS.chime;
   if (!Array.isArray(steps) || steps.length === 0) return;
 

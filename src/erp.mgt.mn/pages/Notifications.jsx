@@ -6,6 +6,7 @@ import LangContext from '../context/I18nContext.jsx';
 import formatTimestamp from '../utils/formatTimestamp.js';
 
 const SECTION_LIMIT = 5;
+const TEMPORARY_PAGE_SIZE = 10;
 
 function dedupeRequests(list) {
   const map = new Map();
@@ -41,8 +42,41 @@ function dedupeTemporaryEntries(list) {
   return Array.from(map.values());
 }
 
+function getTemporaryEntryKey(entry) {
+  return String(
+    entry?.id ??
+      entry?.temporary_id ??
+      entry?.temporaryId ??
+      entry?.temporaryID ??
+      '',
+  ).trim();
+}
+
+function getTemporaryEntryTimestamp(entry) {
+  const reviewedAt = entry?.reviewed_at || entry?.reviewedAt || entry?.updated_at || entry?.updatedAt;
+  const createdAt = entry?.created_at || entry?.createdAt || 0;
+  const raw = reviewedAt || createdAt || 0;
+  const ts = new Date(raw).getTime();
+  return Number.isFinite(ts) ? ts : 0;
+}
+
+function areTemporaryListsEqual(previous = [], next = []) {
+  if (previous === next) return true;
+  if (!Array.isArray(previous) || !Array.isArray(next)) return false;
+  if (previous.length !== next.length) return false;
+  for (let i = 0; i < previous.length; i += 1) {
+    if (getTemporaryEntryKey(previous[i]) !== getTemporaryEntryKey(next[i])) return false;
+    if (getTemporaryEntryTimestamp(previous[i]) !== getTemporaryEntryTimestamp(next[i])) return false;
+  }
+  return true;
+}
+
 function createEmptyResponses() {
   return { accepted: [], declined: [] };
+}
+
+function createEmptyTemporaryScope() {
+  return { entries: [], groups: [], hasMore: false, cursor: 0, loading: false };
 }
 
 export default function NotificationsPage() {
@@ -67,8 +101,8 @@ export default function NotificationsPage() {
   const [temporaryState, setTemporaryState] = useState({
     loading: true,
     error: '',
-    review: [],
-    created: [],
+    review: createEmptyTemporaryScope(),
+    created: createEmptyTemporaryScope(),
   });
 
   const hasSupervisor =
@@ -132,43 +166,39 @@ export default function NotificationsPage() {
             );
           }
 
-          await Promise.all(
-            normalizedStatuses.map(async (status) => {
-              try {
-                const params = new URLSearchParams({
-                  status,
-                  request_type: type,
-                  per_page: String(SECTION_LIMIT),
-                  page: '1',
-                });
-                const res = await fetch(
-                  `/api/pending_request/outgoing?${params.toString()}`,
-                  {
-                    credentials: 'include',
-                    skipLoader: true,
-                  },
-                );
-                if (res.ok) {
-                  const data = await res.json().catch(() => ({}));
-                  const rows = Array.isArray(data?.rows) ? data.rows : [];
-                  const withMeta = rows.map((row) => {
-                    const resolvedStatus = row.status || row.response_status || status;
-                    return {
-                      ...row,
-                      request_type: row.request_type || type,
-                      status: resolvedStatus
-                        ? String(resolvedStatus).trim().toLowerCase()
-                        : status,
-                    };
-                  });
-                  const prev = outgoingStatusLists.get(status) || [];
-                  outgoingStatusLists.set(status, prev.concat(withMeta));
-                }
-              } catch {
-                // ignore
-              }
-            }),
-          );
+          try {
+            const params = new URLSearchParams({
+              status: normalizedStatuses.join(','),
+              request_type: type,
+              per_page: String(SECTION_LIMIT),
+              page: '1',
+            });
+            const res = await fetch(
+              `/api/pending_request/outgoing?${params.toString()}`,
+              {
+                credentials: 'include',
+                skipLoader: true,
+              },
+            );
+            if (res.ok) {
+              const data = await res.json().catch(() => ({}));
+              const rows = Array.isArray(data?.rows) ? data.rows : [];
+              rows.forEach((row) => {
+                const resolvedStatus = row.status || row.response_status || 'pending';
+                const normalizedStatus = resolvedStatus
+                  ? String(resolvedStatus).trim().toLowerCase()
+                  : 'pending';
+                const prev = outgoingStatusLists.get(normalizedStatus) || [];
+                outgoingStatusLists.set(normalizedStatus, prev.concat({
+                  ...row,
+                  request_type: row.request_type || type,
+                  status: normalizedStatus,
+                }));
+              });
+            }
+          } catch {
+            // ignore
+          }
         }),
       );
 
@@ -334,19 +364,8 @@ export default function NotificationsPage() {
   const temporaryFetchScopeEntries = temporary?.fetchScopeEntries;
   const sortTemporaryEntries = useCallback((entries, scope) => {
     if (!Array.isArray(entries)) return [];
-    const list = [...entries];
     const getStatus = (entry) => String(entry?.status || '').trim().toLowerCase();
-    const getTime = (entry, status) => {
-      if (!entry) return 0;
-      const reviewedAt = entry.reviewed_at || entry.reviewedAt || entry.updated_at || entry.updatedAt;
-      const createdAt = entry.created_at || entry.createdAt;
-      if (scope === 'created' && status && status !== 'pending') {
-        return new Date(reviewedAt || createdAt || 0).getTime();
-      }
-      return new Date(reviewedAt || createdAt || 0).getTime();
-    };
-
-    list.sort((a, b) => {
+    const compare = (a, b) => {
       const statusA = getStatus(a);
       const statusB = getStatus(b);
       const processedA = scope === 'created' && statusA && statusA !== 'pending';
@@ -354,57 +373,143 @@ export default function NotificationsPage() {
       if (processedA !== processedB) {
         return processedA ? -1 : 1;
       }
-      const diff = getTime(b, statusB) - getTime(a, statusA);
+      const diff = getTemporaryEntryTimestamp(b) - getTemporaryEntryTimestamp(a);
       if (diff !== 0) return diff;
-      return String(b?.id || '').localeCompare(String(a?.id || ''));
-    });
+      return getTemporaryEntryKey(b).localeCompare(getTemporaryEntryKey(a));
+    };
+
+    let alreadySorted = true;
+    for (let i = 1; i < entries.length; i += 1) {
+      if (compare(entries[i - 1], entries[i]) > 0) {
+        alreadySorted = false;
+        break;
+      }
+    }
+    if (alreadySorted) return entries;
+    const list = [...entries];
+    list.sort(compare);
     return list;
   }, []);
 
+  const mergeTemporaryEntries = useCallback(
+    (previousEntries, nextEntries, scope) => {
+      const combined = dedupeTemporaryEntries([...(previousEntries || []), ...(nextEntries || [])]);
+      return sortTemporaryEntries(combined, scope);
+    },
+    [sortTemporaryEntries],
+  );
+
+  const mergeTemporaryGroups = useCallback((previousGroups = [], nextGroups = []) => {
+    const map = new Map();
+    [...previousGroups, ...nextGroups].forEach((group) => {
+      if (!group) return;
+      const key =
+        group.key ||
+        `${group.user || 'unknown'}|${group.transactionType || 'unknown'}|${group.dateKey || ''}|${
+          group.status || 'pending'
+        }`;
+      if (!map.has(key)) {
+        map.set(key, group);
+      }
+    });
+    return Array.from(map.values());
+  }, []);
+
+  const fetchTemporaryPage = useCallback(
+    async (scope, { cursor = 0, append = false, status = 'pending', isCancelled } = {}) => {
+      if (typeof temporaryFetchScopeEntries !== 'function') return;
+      if (isCancelled?.()) return;
+      setTemporaryState((prev) => {
+        if (isCancelled?.()) return prev;
+        return {
+          ...prev,
+          loading: prev.loading || !append,
+          error: '',
+          [scope]: { ...(prev[scope] || createEmptyTemporaryScope()), loading: true },
+        };
+      });
+      try {
+        const result = await temporaryFetchScopeEntries(scope, {
+          limit: TEMPORARY_PAGE_SIZE,
+          status,
+          cursor,
+          grouped: true,
+        });
+        if (isCancelled?.()) return;
+        const rows = Array.isArray(result?.rows)
+          ? result.rows
+          : Array.isArray(result)
+          ? result
+          : [];
+        const groups = Array.isArray(result?.groups)
+          ? result.groups
+          : [];
+        const hasMore = Boolean(result?.hasMore);
+        const nextCursorRaw = result?.nextCursor ?? result?.nextOffset;
+        const nextCursor = Number.isFinite(Number(nextCursorRaw))
+          ? Number(nextCursorRaw)
+          : cursor + TEMPORARY_PAGE_SIZE;
+        setTemporaryState((prev) => {
+          if (isCancelled?.()) return prev;
+          const otherScope = scope === 'review' ? 'created' : 'review';
+          const previousScope = prev[scope] || createEmptyTemporaryScope();
+          const mergedEntries = mergeTemporaryEntries(
+            append ? previousScope.entries : [],
+            rows,
+            scope,
+          );
+          const mergedGroups = mergeTemporaryGroups(
+            append ? previousScope.groups : [],
+            groups,
+          );
+          const updatedScope = {
+            ...previousScope,
+            entries: mergedEntries,
+            groups: mergedGroups,
+            hasMore,
+            cursor: hasMore ? nextCursor : mergedEntries.length,
+            loading: false,
+          };
+          const otherScopeLoading = prev[otherScope]?.loading || false;
+          return {
+            ...prev,
+            loading: otherScopeLoading || updatedScope.loading,
+            error: '',
+            [scope]: updatedScope,
+          };
+        });
+      } catch {
+        if (isCancelled?.()) return;
+        setTemporaryState((prev) => ({
+          ...prev,
+          loading: false,
+          error: t('notifications_temporary_error', 'Failed to load temporary submissions'),
+          [scope]: { ...(prev[scope] || createEmptyTemporaryScope()), loading: false },
+        }));
+      }
+    },
+    [mergeTemporaryEntries, mergeTemporaryGroups, t, temporaryFetchScopeEntries],
+  );
+
   useEffect(() => {
-    if (typeof temporaryFetchScopeEntries !== 'function') return undefined;
     let cancelled = false;
     setTemporaryState((prev) => ({ ...prev, loading: true, error: '' }));
-    const reviewPromise = temporaryFetchScopeEntries('review', {
-      limit: null,
+    fetchTemporaryPage('review', {
+      cursor: 0,
+      append: false,
       status: 'pending',
+      isCancelled: () => cancelled,
     });
-    const createdPromise = temporaryFetchScopeEntries('created', {
-      limit: null,
+    fetchTemporaryPage('created', {
+      cursor: 0,
+      append: false,
       status: 'any',
+      isCancelled: () => cancelled,
     });
-    Promise.all([reviewPromise, createdPromise])
-      .then(([review, created]) => {
-        if (!cancelled) {
-          const uniqueReview = dedupeTemporaryEntries(review);
-          const uniqueCreated = dedupeTemporaryEntries(created);
-          setTemporaryState({
-            loading: false,
-            error: '',
-            review: sortTemporaryEntries(uniqueReview, 'review'),
-            created: sortTemporaryEntries(uniqueCreated, 'created'),
-          });
-        }
-      })
-      .catch(() => {
-        if (!cancelled)
-          setTemporaryState({
-            loading: false,
-            error: t('notifications_temporary_error', 'Failed to load temporary submissions'),
-            review: [],
-            created: [],
-          });
-      });
     return () => {
       cancelled = true;
     };
-  }, [
-    t,
-    temporaryReviewPending,
-    temporaryCreatedPending,
-    temporaryFetchScopeEntries,
-    sortTemporaryEntries,
-  ]);
+  }, [fetchTemporaryPage, temporaryCreatedPending, temporaryReviewPending]);
 
   const reportPending = useMemo(() => {
     const incomingPending = workflows?.reportApproval?.incoming?.pending?.count || 0;
@@ -446,6 +551,19 @@ export default function NotificationsPage() {
       temporary?.markScopeSeen?.(scope);
     },
     [temporary?.markScopeSeen],
+  );
+
+  const handleLoadMoreTemporary = useCallback(
+    (scope) => {
+      const status = scope === 'review' ? 'pending' : 'any';
+      const cursor = temporaryState?.[scope]?.cursor || 0;
+      fetchTemporaryPage(scope, {
+        cursor,
+        append: true,
+        status,
+      });
+    },
+    [fetchTemporaryPage, temporaryState?.created?.cursor, temporaryState?.review?.cursor],
   );
 
   const openRequest = useCallback(
@@ -851,10 +969,17 @@ export default function NotificationsPage() {
     [t],
   );
 
-  const groupTemporaryEntries = useCallback(
-    (entries) => {
+  const groupTemporaryEntries = useMemo(() => {
+    const cache = new WeakMap();
+    const shouldProfile = process.env.NODE_ENV !== 'production';
+    return (entries, scope = 'unknown') => {
       if (!Array.isArray(entries)) return [];
-      const map = new Map();
+      const cached = cache.get(entries);
+      if (cached) return cached;
+      const label = `groupTemporaryEntries:${scope}:${entries.length}`;
+      if (shouldProfile && typeof console?.time === 'function') console.time(label);
+      const buckets = [];
+      const bucketMap = new Map();
       entries.forEach((entry) => {
         const user = getTemporaryUser(entry);
         const type = getTemporaryTransactionType(entry);
@@ -862,32 +987,50 @@ export default function NotificationsPage() {
         const { statusRaw, statusLabel, statusColor } = normalizeTemporaryStatus(entry);
         const statusKey = statusRaw || 'pending';
         const groupKey = `${user}|${type}|${dateInfo.key}|${statusKey}`;
-        const existing = map.get(groupKey) || {
-          user,
-          transactionType: type,
-          dateLabel: dateInfo.label,
-          dateKey: dateInfo.key,
-          statusLabel,
-          statusColor,
-          statusKey,
-          entries: [],
-          latest: dateInfo.value,
-        };
-        existing.entries.push(entry);
-        existing.latest = Math.max(existing.latest, dateInfo.value);
-        map.set(groupKey, existing);
+        let bucket = bucketMap.get(groupKey);
+        if (!bucket) {
+          bucket = {
+            user,
+            transactionType: type,
+            dateLabel: dateInfo.label,
+            dateKey: dateInfo.key,
+            statusLabel,
+            statusColor,
+            statusKey,
+            entries: [],
+            latest: dateInfo.value,
+          };
+          bucketMap.set(groupKey, bucket);
+          buckets.push(bucket);
+        }
+        bucket.entries.push(entry);
+        bucket.latest = Math.max(bucket.latest, dateInfo.value);
       });
-      return Array.from(map.values()).sort((a, b) => b.latest - a.latest);
-    },
-    [getTemporaryDate, getTemporaryTransactionType, getTemporaryUser, normalizeTemporaryStatus],
-  );
+      buckets.sort((a, b) => b.latest - a.latest);
+      cache.set(entries, buckets);
+      if (shouldProfile && typeof console?.timeEnd === 'function') console.timeEnd(label);
+      return buckets;
+    };
+  }, [getTemporaryDate, getTemporaryTransactionType, getTemporaryUser, normalizeTemporaryStatus]);
 
   const groupedTemporary = useMemo(
     () => ({
-      review: groupTemporaryEntries(temporaryState.review),
-      created: groupTemporaryEntries(temporaryState.created),
+      review:
+        temporaryState.review.groups?.length > 0
+          ? temporaryState.review.groups
+          : groupTemporaryEntries(temporaryState.review.entries),
+      created:
+        temporaryState.created.groups?.length > 0
+          ? temporaryState.created.groups
+          : groupTemporaryEntries(temporaryState.created.entries),
     }),
-    [groupTemporaryEntries, temporaryState.created, temporaryState.review],
+    [
+      groupTemporaryEntries,
+      temporaryState.created.entries,
+      temporaryState.created.groups,
+      temporaryState.review.entries,
+      temporaryState.review.groups,
+    ],
   );
 
   const temporaryReviewTotal = temporaryReviewPending;
@@ -903,7 +1046,7 @@ export default function NotificationsPage() {
         <div style={styles.listTitleRow}>
           <span style={styles.listTitle}>{group.transactionType}</span>
           <span style={styles.groupCountBadge}>
-            {t('notifications_group_count', 'Count')}: {group.entries.length}
+            {t('notifications_group_count', 'Count')}: {group.count || group.entries.length}
           </span>
         </div>
         <div style={styles.listMeta}>
@@ -929,7 +1072,10 @@ export default function NotificationsPage() {
           })}
         </div>
       </div>
-      <button style={styles.listAction} onClick={() => openTemporary(scope, group.entries[0])}>
+      <button
+        style={styles.listAction}
+        onClick={() => openTemporary(scope, group.sampleEntry || group.entries?.[0])}
+      >
         {t('notifications_open_group_forms', 'Open forms')}
       </button>
     </li>
@@ -1122,10 +1268,26 @@ export default function NotificationsPage() {
                   {groupedTemporary.review.map((group) => renderTemporaryGroup(group, 'review'))}
                 </ul>
               )}
+              {temporaryState.review.hasMore && (
+                <button
+                  type="button"
+                  style={styles.listAction}
+                  onClick={() => handleLoadMoreTemporary('review')}
+                  disabled={temporaryState.review.loading}
+                >
+                  {temporaryState.review.loading
+                    ? t('loading', 'Loading')
+                    : t('notifications_load_more', 'Load more')}
+                </button>
+              )}
               <button
                 style={styles.listAction}
                 onClick={() =>
-                  openTemporary('review', groupedTemporary.review[0]?.entries?.[0])
+                  openTemporary(
+                    'review',
+                    groupedTemporary.review[0]?.sampleEntry ||
+                      groupedTemporary.review[0]?.entries?.[0],
+                  )
                 }
               >
                 {t('notifications_open_review', 'Open review workspace')}
@@ -1140,10 +1302,26 @@ export default function NotificationsPage() {
                   {groupedTemporary.created.map((group) => renderTemporaryGroup(group, 'created'))}
                 </ul>
               )}
+              {temporaryState.created.hasMore && (
+                <button
+                  type="button"
+                  style={styles.listAction}
+                  onClick={() => handleLoadMoreTemporary('created')}
+                  disabled={temporaryState.created.loading}
+                >
+                  {temporaryState.created.loading
+                    ? t('loading', 'Loading')
+                    : t('notifications_load_more', 'Load more')}
+                </button>
+              )}
               <button
                 style={styles.listAction}
                 onClick={() =>
-                  openTemporary('created', groupedTemporary.created[0]?.entries?.[0])
+                  openTemporary(
+                    'created',
+                    groupedTemporary.created[0]?.sampleEntry ||
+                      groupedTemporary.created[0]?.entries?.[0],
+                  )
                 }
               >
                 {t('notifications_open_drafts', 'Open drafts workspace')}

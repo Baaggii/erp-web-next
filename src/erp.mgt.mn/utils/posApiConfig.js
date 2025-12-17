@@ -117,9 +117,9 @@ export function resolveFeatureToggle(value, supported, fallback = supported) {
 }
 
 export function normaliseEndpointUsage(value) {
-  return typeof value === 'string' && ['transaction', 'info', 'admin'].includes(value)
-    ? value
-    : 'transaction';
+  const normalized = typeof value === 'string' ? value.trim().toLowerCase() : '';
+  if (['transaction', 'info', 'admin'].includes(normalized)) return normalized;
+  return 'other';
 }
 
 export function normaliseEndpointList(list, fallback) {

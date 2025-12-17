@@ -1,8 +1,10 @@
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { connectSocket, disconnectSocket } from '../utils/socket.js';
+import { useSharedPoller } from '../context/PollingContext.jsx';
 import useGeneralConfig from '../hooks/useGeneralConfig.js';
 
 const DEFAULT_POLL_INTERVAL_SECONDS = 30;
+const DISCONNECT_FALLBACK_MS = 5 * 60 * 1000;
 const STATUSES = ['pending', 'accepted', 'declined'];
 
 function normalizeStatuses(statuses) {
@@ -134,173 +136,208 @@ export default function useRequestNotificationCounts(
     return Array.from(new Set(ids.filter(Boolean)));
   }, [seniorEmpId, seniorPlanEmpId]);
 
-  useEffect(() => {
-    let cancelled = false;
+  const [enablePolling, setEnablePolling] = useState(false);
+  const disconnectTimeoutRef = useRef();
 
-    async function fetchCounts() {
-      const newIncoming = createInitial();
-      const newOutgoing = createInitial();
+  const pollKey = useMemo(
+    () => `request-counts:${supervisorIds.join(',')}:${filterKey}:${storageNamespace}`,
+    [filterKey, storageNamespace, supervisorIds],
+  );
 
-      await Promise.all(
-        STATUSES.map(async (status) => {
-          // Incoming requests (for seniors)
-          if (supervisorIds.length) {
-            try {
-              let combined = 0;
-              await Promise.all(
-                supervisorIds.map(async (id) => {
-                  const params = new URLSearchParams({
-                    status,
-                    senior_empid: id,
-                    count_only: '1',
-                  });
-                  Object.entries(memoFilters).forEach(([k, v]) => {
-                    if (Array.isArray(v)) {
-                      v
-                        .filter((value) => value !== undefined && value !== null && value !== '')
-                        .forEach((value) => params.append(k, value));
-                    } else if (v !== undefined && v !== null && v !== '') {
-                      params.append(k, v);
-                    }
-                  });
-                  const res = await fetch(
-                    `/api/pending_request?${params.toString()}`,
-                    { credentials: 'include', skipLoader: true },
-                  );
-                  if (res.ok) {
-                    const data = await res.json().catch(() => 0);
-                    if (typeof data === 'number') combined += data;
-                    else if (Array.isArray(data)) combined += data.length;
-                    else combined += Number(data?.count ?? data?.total) || 0;
-                  }
-                }),
-              );
-              const seenKey = storageKey('incoming', status);
-              if (combined === 0) {
-                localStorage.setItem(seenKey, '0');
-                newIncoming[status] = { count: 0, hasNew: false, newCount: 0 };
-              } else {
-                const storedSeen = localStorage.getItem(seenKey);
-                const seen = storedSeen === null ? combined : Number(storedSeen);
-                if (storedSeen === null) {
-                  localStorage.setItem(seenKey, String(combined));
-                }
-                const delta = Math.max(0, combined - seen);
-                newIncoming[status] = {
-                  count: combined,
-                  hasNew: delta > 0,
-                  newCount: delta,
-                };
-              }
-            } catch {
-              newIncoming[status] = { count: 0, hasNew: false, newCount: 0 };
-            }
-          } else {
-            newIncoming[status] = { count: 0, hasNew: false, newCount: 0 };
-          }
+  const applyCounts = useCallback((data) => {
+    if (!data) return;
+    setIncoming(data.incoming);
+    setOutgoing(data.outgoing);
+  }, []);
 
-          // Outgoing requests (always for current user)
+  const fetchCounts = useCallback(async () => {
+    const newIncoming = createInitial();
+    const newOutgoing = createInitial();
+
+    await Promise.all(
+      STATUSES.map(async (status) => {
+        // Incoming requests (for seniors)
+        if (supervisorIds.length) {
           try {
-            const params = new URLSearchParams({ status });
-            params.append('count_only', '1');
-            Object.entries(memoFilters).forEach(([k, v]) => {
-              if (Array.isArray(v)) {
-                v
-                  .filter((value) => value !== undefined && value !== null && value !== '')
-                  .forEach((value) => params.append(k, value));
-              } else if (v !== undefined && v !== null && v !== '') {
-                params.append(k, v);
-              }
-            });
-            const res = await fetch(`/api/pending_request/outgoing?${params.toString()}`, {
-              credentials: 'include',
-              skipLoader: true,
-            });
-            let c = 0;
-            if (res.ok) {
-              const data = await res.json().catch(() => 0);
-              if (typeof data === 'number') c = data;
-              else if (Array.isArray(data)) c = data.length;
-              else c = Number(data?.count ?? data?.total) || 0;
-            }
-            const seenKey = storageKey('outgoing', status);
-            if (status === 'pending') {
-              // Requesters shouldn't get "new" badges for their own submissions
-              localStorage.setItem(seenKey, String(c));
-              newOutgoing[status] = { count: c, hasNew: false, newCount: 0 };
-            } else if (c === 0) {
+            let combined = 0;
+            await Promise.all(
+              supervisorIds.map(async (id) => {
+                const params = new URLSearchParams({
+                  status,
+                  senior_empid: id,
+                  count_only: '1',
+                });
+                Object.entries(memoFilters).forEach(([k, v]) => {
+                  if (Array.isArray(v)) {
+                    v
+                      .filter((value) => value !== undefined && value !== null && value !== '')
+                      .forEach((value) => params.append(k, value));
+                  } else if (v !== undefined && v !== null && v !== '') {
+                    params.append(k, v);
+                  }
+                });
+                const res = await fetch(`/api/pending_request?${params.toString()}`, {
+                  credentials: 'include',
+                  skipLoader: true,
+                });
+                if (res.ok) {
+                  const data = await res.json().catch(() => 0);
+                  if (typeof data === 'number') combined += data;
+                  else if (Array.isArray(data)) combined += data.length;
+                  else combined += Number(data?.count ?? data?.total) || 0;
+                }
+              }),
+            );
+            const seenKey = storageKey('incoming', status);
+            if (combined === 0) {
               localStorage.setItem(seenKey, '0');
-              newOutgoing[status] = { count: 0, hasNew: false, newCount: 0 };
+              newIncoming[status] = { count: 0, hasNew: false, newCount: 0 };
             } else {
               const storedSeen = localStorage.getItem(seenKey);
-              const seen = storedSeen === null ? c : Number(storedSeen);
+              const seen = storedSeen === null ? combined : Number(storedSeen);
               if (storedSeen === null) {
-                localStorage.setItem(seenKey, String(c));
+                localStorage.setItem(seenKey, String(combined));
               }
-              const delta = Math.max(0, c - seen);
-              newOutgoing[status] = {
-                count: c,
+              const delta = Math.max(0, combined - seen);
+              newIncoming[status] = {
+                count: combined,
                 hasNew: delta > 0,
                 newCount: delta,
               };
             }
           } catch {
-            newOutgoing[status] = { count: 0, hasNew: false, newCount: 0 };
+            newIncoming[status] = { count: 0, hasNew: false, newCount: 0 };
           }
-        }),
-      );
+        } else {
+          newIncoming[status] = { count: 0, hasNew: false, newCount: 0 };
+        }
 
-      if (!cancelled) {
-        setIncoming(newIncoming);
-        setOutgoing(newOutgoing);
-      }
-    }
+        // Outgoing requests (always for current user)
+        try {
+          const params = new URLSearchParams({ status });
+          params.append('count_only', '1');
+          Object.entries(memoFilters).forEach(([k, v]) => {
+            if (Array.isArray(v)) {
+              v
+                .filter((value) => value !== undefined && value !== null && value !== '')
+                .forEach((value) => params.append(k, value));
+            } else if (v !== undefined && v !== null && v !== '') {
+              params.append(k, v);
+            }
+          });
+          const res = await fetch(`/api/pending_request/outgoing?${params.toString()}`, {
+            credentials: 'include',
+            skipLoader: true,
+          });
+          let c = 0;
+          if (res.ok) {
+            const data = await res.json().catch(() => 0);
+            if (typeof data === 'number') c = data;
+            else if (Array.isArray(data)) c = data.length;
+            else c = Number(data?.count ?? data?.total) || 0;
+          }
+          const seenKey = storageKey('outgoing', status);
+          if (status === 'pending') {
+            // Requesters shouldn't get "new" badges for their own submissions
+            localStorage.setItem(seenKey, String(c));
+            newOutgoing[status] = { count: c, hasNew: false, newCount: 0 };
+          } else if (c === 0) {
+            localStorage.setItem(seenKey, '0');
+            newOutgoing[status] = { count: 0, hasNew: false, newCount: 0 };
+          } else {
+            const storedSeen = localStorage.getItem(seenKey);
+            const seen = storedSeen === null ? c : Number(storedSeen);
+            if (storedSeen === null) {
+              localStorage.setItem(seenKey, String(c));
+            }
+            const delta = Math.max(0, c - seen);
+            newOutgoing[status] = {
+              count: c,
+              hasNew: delta > 0,
+              newCount: delta,
+            };
+          }
+        } catch {
+          newOutgoing[status] = { count: 0, hasNew: false, newCount: 0 };
+        }
+      }),
+    );
 
-    fetchCountsRef.current = fetchCounts;
-    fetchCounts();
-    let timer;
+    return { incoming: newIncoming, outgoing: newOutgoing };
+  }, [memoFilters, storageKey, supervisorIds]);
 
-    function startPolling() {
-      if (!timer) timer = setInterval(fetchCounts, intervalSeconds * 1000);
-    }
+  const pollerOptions = useMemo(
+    () => ({
+      intervalMs: intervalSeconds * 1000,
+      enabled: pollingEnabled && enablePolling && supervisorIds.length > 0,
+      pauseWhenHidden: true,
+      pauseWhenSocketActive: true,
+    }),
+    [enablePolling, intervalSeconds, pollingEnabled, supervisorIds.length],
+  );
 
-    function stopPolling() {
-      if (timer) {
-        clearInterval(timer);
-        timer = null;
-      }
-    }
+  const { data: polledCounts } = useSharedPoller(pollKey, fetchCounts, pollerOptions);
 
+  useEffect(() => {
+    if (polledCounts) applyCounts(polledCounts);
+  }, [applyCounts, polledCounts]);
+
+  useEffect(() => {
+    let cancelled = false;
     let socket;
+
+    setEnablePolling(false);
+
+    const applyFromFetch = async () => {
+      const data = await fetchCounts();
+      if (!cancelled) applyCounts(data);
+    };
+
+    fetchCountsRef.current = () => applyFromFetch();
+    applyFromFetch();
+
+    const startFallback = () => {
+      if (!pollingEnabled) return;
+      clearTimeout(disconnectTimeoutRef.current);
+      disconnectTimeoutRef.current = setTimeout(
+        () => setEnablePolling(true),
+        DISCONNECT_FALLBACK_MS,
+      );
+    };
+
+    const stopFallback = () => {
+      clearTimeout(disconnectTimeoutRef.current);
+      setEnablePolling(false);
+    };
+
     try {
       socket = connectSocket();
-      socket.on('newRequest', fetchCounts);
-      socket.on('requestResolved', fetchCounts);
-      if (pollingEnabled) {
-        socket.on('connect_error', startPolling);
-        socket.on('disconnect', startPolling);
-        socket.on('connect', stopPolling);
-      }
+      socket.on('newRequest', applyFromFetch);
+      socket.on('requestResolved', applyFromFetch);
+      socket.on('connect', () => {
+        stopFallback();
+        applyFromFetch();
+      });
+      socket.on('disconnect', startFallback);
+      socket.on('connect_error', startFallback);
     } catch {
-      if (pollingEnabled) startPolling();
+      if (pollingEnabled) setEnablePolling(true);
     }
 
     return () => {
       cancelled = true;
       fetchCountsRef.current = () => Promise.resolve();
+      clearTimeout(disconnectTimeoutRef.current);
       if (socket) {
-        socket.off('newRequest', fetchCounts);
-        socket.off('requestResolved', fetchCounts);
-        if (pollingEnabled) {
-          socket.off('connect_error', startPolling);
-          socket.off('disconnect', startPolling);
-          socket.off('connect', stopPolling);
-        }
+        socket.off('newRequest', applyFromFetch);
+        socket.off('requestResolved', applyFromFetch);
+        socket.off('connect', stopFallback);
+        socket.off('disconnect', startFallback);
+        socket.off('connect_error', startFallback);
         disconnectSocket();
       }
-      stopPolling();
     };
-  }, [supervisorIds, filterKey, pollingEnabled, intervalSeconds, storageKey]);
+  }, [applyCounts, fetchCounts, pollingEnabled]);
 
   const refresh = useCallback(() => {
     try {
