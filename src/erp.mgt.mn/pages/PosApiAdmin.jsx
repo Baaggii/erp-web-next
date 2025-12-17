@@ -3039,10 +3039,9 @@ export default function PosApiAdmin() {
 
   const responseTablesUnavailableReason = useMemo(() => {
     if (responseTableOptions.length > 0) return '';
-    if (tableOptionsLoading) return 'Loading database tables…';
     if (tableOptionsError) return tableOptionsError;
     return 'No database tables were loaded. Verify access permissions or try again later.';
-  }, [responseTableOptions.length, tableOptionsError, tableOptionsLoading]);
+  }, [responseTableOptions.length, tableOptionsError]);
 
   const responseFieldOptions = useMemo(() => {
     const options = [];
