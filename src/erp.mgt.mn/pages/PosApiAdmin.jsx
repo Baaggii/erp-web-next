@@ -115,6 +115,7 @@ const DEFAULT_TOKEN_TTL_MS = 55 * 60 * 1000;
 const DEFAULT_INFO_TABLE_OPTIONS = [
   { value: 'posapi_reference_codes', label: 'POSAPI reference codes' },
 ];
+const BASE_COMBINATION_KEY = '__posapi-base__';
 const BASE_COMPLEX_REQUEST_SCHEMA = createReceiptTemplate('B2C');
 const TRANSACTION_POSAPI_TYPES = new Set(['B2C', 'B2B_SALE', 'B2B_PURCHASE', 'TRANSACTION', 'STOCK_QR']);
 
@@ -467,8 +468,30 @@ function normalizeFieldList(payload) {
   return [];
 }
 
+function deriveEndpointId(endpoint) {
+  if (!endpoint || typeof endpoint !== 'object') return '';
+  const candidates = [endpoint.id, endpoint.name, endpoint.path, endpoint.url, endpoint.endpoint];
+  const raw = candidates
+    .map((value) => (value === undefined || value === null ? '' : `${value}`))
+    .find((value) => value.trim());
+  if (raw) {
+    return raw
+      .trim()
+      .replace(/\s+/g, '-')
+      .replace(/[^a-zA-Z0-9-_./]+/g, '-');
+  }
+  if (endpoint.method && endpoint.path) {
+    return `${endpoint.method}-${endpoint.path}`
+      .replace(/\s+/g, '-')
+      .replace(/[^a-zA-Z0-9-_./]+/g, '-');
+  }
+  return '';
+}
+
 function withEndpointMetadata(endpoint) {
   if (!endpoint || typeof endpoint !== 'object') return endpoint;
+  const normalizedId = deriveEndpointId(endpoint)
+    || (endpoint.id === undefined || endpoint.id === null ? '' : `${endpoint.id}`);
   const normalizeUrlSelection = (literal, envVar, mode) => {
     const trimmedLiteral = typeof literal === 'string' ? literal.trim() : '';
     const trimmedEnv = typeof envVar === 'string' ? envVar.trim() : '';
@@ -541,6 +564,7 @@ function withEndpointMetadata(endpoint) {
   }
   return {
     ...endpoint,
+    id: normalizedId,
     usage,
     defaultForForm: isTransaction ? Boolean(endpoint.defaultForForm) : false,
     supportsMultipleReceipts: isTransaction ? Boolean(endpoint.supportsMultipleReceipts) : false,
@@ -619,6 +643,24 @@ function withEndpointMetadata(endpoint) {
   };
 }
 
+function normalizeEndpointList(list = []) {
+  const seen = new Set();
+  return list.map((endpoint, index) => {
+    if (!endpoint || typeof endpoint !== 'object') return endpoint;
+    const baseId = (endpoint.id === undefined || endpoint.id === null ? '' : `${endpoint.id}`)
+      || deriveEndpointId(endpoint)
+      || `endpoint-${index + 1}`;
+    let id = baseId;
+    let counter = 2;
+    while (seen.has(id)) {
+      id = `${baseId}-${counter}`;
+      counter += 1;
+    }
+    seen.add(id);
+    return { ...endpoint, id };
+  });
+}
+
 function badgeStyle(color) {
   return {
     background: color,
@@ -641,12 +683,16 @@ const EMPTY_ENDPOINT = {
   parametersText: '[]',
   requestDescription: '',
   requestSchemaText: '{}',
+  requestSampleText: '{}',
+  requestSampleNotes: '',
   responseDescription: '',
-  responseSchemaText: '{}',
-  fieldDescriptionsText: '{}',
+  responseSchemaText: '',
+  fieldDescriptionsText: '',
   requestFieldsText: '[]',
   responseFieldsText: '[]',
   examplesText: '[]',
+  variations: [],
+  requestFieldVariations: [],
   preRequestScript: '',
   testScript: '',
   testable: false,
@@ -701,215 +747,14 @@ const PAYMENT_FIELD_DESCRIPTIONS = {
   'payments[].amount': 'Amount paid with the selected payment method.',
 };
 
-const TAX_TYPE_DESCRIPTIONS = {
-  VAT_ABLE: 'Standard VAT rate applies. Include VAT and city tax totals.',
-  VAT_FREE: 'VAT exempt sale. Provide a taxProductCode reference for the exemption reason.',
-  VAT_ZERO: 'Zero-rated VAT sale (for example, exports). Provide a taxProductCode reference.',
-  NO_VAT: 'Sale that falls completely outside the VAT system.',
-};
-
-const RECEIPT_SAMPLE_PAYLOADS = {
-  B2C: createReceiptTemplate('B2C', {
-    branchNo: '001',
-    posNo: 'A01',
-    merchantTin: '12345678901',
-    consumerNo: '99001122',
-    totalAmount: 55000,
-    totalVAT: 5000,
-    totalCityTax: 500,
-    receipts: [
-      {
-        taxType: 'VAT_ABLE',
-        totalAmount: 55000,
-        totalVAT: 5000,
-        totalCityTax: 500,
-        items: [
-          {
-            name: 'Latte (16oz)',
-            barCode: '9770001112233',
-            barCodeType: 'EAN_13',
-            classificationCode: '5610201',
-            measureUnit: 'PCS',
-            qty: 1,
-            price: 50000,
-            vatTaxType: 'VAT_ABLE',
-            cityTax: 500,
-            lotNo: '',
-          },
-          {
-            name: 'Butter croissant',
-            barCode: '9770001112240',
-            barCodeType: 'EAN_13',
-            classificationCode: '1071100',
-            measureUnit: 'PCS',
-            qty: 1,
-            price: 5000,
-            vatTaxType: 'VAT_ABLE',
-            cityTax: 0,
-            lotNo: '',
-          },
-        ],
-      },
-    ],
-    payments: [
-      {
-        type: 'PAYMENT_CARD',
-        amount: 55000,
-        data: {
-          cardIssuer: 'VISA',
-          last4: '1234',
-          transactionId: 'A1B2C3',
-        },
-      },
-    ],
-  }),
-  B2B_PURCHASE: createReceiptTemplate('B2B_PURCHASE', {
-    branchNo: '001',
-    posNo: 'A01',
-    merchantTin: '12345678901',
-    customerTin: '88119922',
-    invoiceNo: 'INV-2024-0152',
-    invoiceDate: '2024-07-01',
-    dueDate: '2024-07-10',
-    totalAmount: 275000,
-    totalVAT: 25000,
-    totalCityTax: 2500,
-    receipts: [
-      {
-        taxType: 'VAT_ABLE',
-        totalAmount: 275000,
-        totalVAT: 25000,
-        totalCityTax: 2500,
-        items: [
-          {
-            name: 'Annual maintenance subscription',
-            barCode: 'SUBSCRIPTION-001',
-            barCodeType: 'EAN_13',
-            classificationCode: '6202000',
-            measureUnit: 'PKG',
-            qty: 1,
-            price: 250000,
-            vatTaxType: 'VAT_ABLE',
-            cityTax: 2500,
-            lotNo: '',
-          },
-          {
-            name: 'On-site installation',
-            barCode: '',
-            barCodeType: 'EAN_13',
-            classificationCode: '6209000',
-            measureUnit: 'HRS',
-            qty: 5,
-            price: 5000,
-            vatTaxType: 'VAT_ABLE',
-            cityTax: 0,
-            lotNo: '',
-          },
-        ],
-      },
-    ],
-    payments: [
-      { type: 'CASH', amount: 50000 },
-      { type: 'PAYMENT_CARD', amount: 225000, data: { cardIssuer: 'Mastercard', last4: '4455' } },
-    ],
-  }),
-  B2B_SALE: createReceiptTemplate('B2B_SALE', {
-    branchNo: '005',
-    posNo: 'INV-01',
-    merchantTin: '12345678901',
-    customerTin: '3021456987',
-    invoiceNo: 'INV-2024-0420',
-    invoiceDate: '2024-07-05',
-    dueDate: '2024-08-05',
-    totalAmount: 1940000,
-    totalVAT: 176000,
-    totalCityTax: 0,
-    receipts: [
-      {
-        taxType: 'VAT_ABLE',
-        totalAmount: 1540000,
-        totalVAT: 176000,
-        totalCityTax: 0,
-        items: [
-          {
-            name: 'Industrial cleaner (20L)',
-            barCode: 'ICLEAN-20L',
-            barCodeType: 'EAN_13',
-            classificationCode: '2815200',
-            measureUnit: 'PCS',
-            qty: 10,
-            price: 154000,
-            vatTaxType: 'VAT_ABLE',
-            cityTax: 0,
-            lotNo: 'CLEAN-LOT-07',
-          },
-        ],
-      },
-      {
-        taxType: 'VAT_ZERO',
-        totalAmount: 400000,
-        taxProductCode: 'EXPORT-001',
-        items: [
-          {
-            name: 'Export logistics service',
-            classificationCode: '5229200',
-            measureUnit: 'SRV',
-            qty: 1,
-            price: 400000,
-            vatTaxType: 'VAT_ZERO',
-            taxProductCode: 'EXPORT-001',
-            lotNo: '',
-          },
-        ],
-      },
-    ],
-    payments: [
-      { type: 'BANK_TRANSFER', amount: 1500000 },
-      {
-        type: 'EASY_BANK_CARD',
-        amount: 440000,
-        data: {
-          rrn: '112233445566',
-          approvalCode: 'AP1234',
-          terminalId: 'TERM-0091',
-        },
-      },
-    ],
-  }),
-  STOCK_QR: {
-    ...createStockQrTemplate(),
-    branchNo: '001',
-    posNo: 'STOCK-QR',
-    merchantTin: '12345678901',
-    stockCodes: [
-      {
-        code: 'STOCK-001',
-        name: 'Finished goods pallet',
-        classificationCode: '2011000',
-        qty: 12,
-        measureUnit: 'PCS',
-        lotNo: 'FG-2024-07',
-      },
-      {
-        code: 'STOCK-RAW-01',
-        name: 'Raw material pack',
-        classificationCode: '0899000',
-        qty: 48,
-        measureUnit: 'PCS',
-        lotNo: 'RM-2024-05',
-      },
-    ],
-  },
-};
-
 function createReceiptTemplate(type, overrides = {}) {
   const isB2B = type.startsWith('B2B');
   const base = {
     type,
     taxType: 'VAT_ABLE',
-    branchNo: '<branch-number>',
-    posNo: '<pos-number>',
-    merchantTin: '<merchant-tin>',
+    branchNo: '101',
+    posNo: 'POS-01',
+    merchantTin: '2099099123',
     totalAmount: 110000,
     totalVAT: 10000,
     totalCityTax: 1000,
@@ -924,14 +769,14 @@ function createReceiptTemplate(type, overrides = {}) {
             name: 'Sample good or service',
             barCode: '1234567890123',
             barCodeType: 'EAN_13',
-            classificationCode: '<product-code>',
+            classificationCode: 'G1234',
             taxProductCode: 'A12345',
             measureUnit: 'PCS',
             qty: 1,
             price: 100000,
             vatTaxType: 'VAT_ABLE',
             cityTax: 1000,
-            lotNo: '',
+            lotNo: 'LOT-01',
           },
         ],
       },
@@ -944,9 +789,9 @@ function createReceiptTemplate(type, overrides = {}) {
     ],
   };
   if (isB2B) {
-    base.customerTin = '<buyer-tin>';
+    base.customerTin = '5012345';
   } else {
-    base.consumerNo = '<consumer-id-or-phone>';
+    base.consumerNo = '99001122';
   }
   return { ...base, ...overrides };
 }
@@ -1427,6 +1272,11 @@ function normalizeHintEntry(entry) {
       description: typeof entry.description === 'string' ? entry.description : '',
       location: typeof entry.location === 'string' ? entry.location : '',
       defaultValue: entry.defaultValue,
+      requiredCommon: typeof entry.requiredCommon === 'boolean' ? entry.requiredCommon : undefined,
+      requiredByVariation: normalizeFieldRequirementMap(
+        entry.requiredByVariation || entry.requiredVariations,
+      ),
+      defaultByVariation: normalizeFieldValueMap(entry.defaultByVariation || entry.defaultVariations),
     };
   }
   return {
@@ -1464,6 +1314,287 @@ function collectEndpointTables(endpoint) {
   const mappings = extractResponseFieldMappings(endpoint);
   Object.values(mappings).forEach(({ table }) => addTable(table));
   return Array.from(tables);
+}
+
+function normalizeFieldRequirementMap(map = {}) {
+  if (!map || typeof map !== 'object') return {};
+  const result = {};
+  Object.entries(map).forEach(([field, required]) => {
+    const normalizedField = typeof field === 'string' ? field.trim() : '';
+    if (!normalizedField) return;
+    if (typeof required === 'boolean') {
+      result[normalizedField] = required;
+    }
+  });
+  return result;
+}
+
+function normalizeFieldValueMap(map = {}) {
+  if (!map || typeof map !== 'object') return {};
+  const result = {};
+  Object.entries(map).forEach(([field, value]) => {
+    const normalizedField = typeof field === 'string' ? field.trim() : '';
+    if (!normalizedField) return;
+    if (value === undefined || value === null) return;
+    result[normalizedField] = value;
+  });
+  return result;
+}
+
+function parseExampleBody(body) {
+  if (body === undefined || body === null) return {};
+  if (typeof body === 'string') {
+    try {
+      return JSON.parse(body);
+    } catch {
+      return { value: body };
+    }
+  }
+  if (typeof body === 'object') return body;
+  return { value: body };
+}
+
+function flattenExampleFields(example, prefix = '') {
+  const fields = [];
+  if (Array.isArray(example)) {
+    const nextPrefix = prefix ? `${prefix}[]` : '[]';
+    if (example.length === 0) {
+      fields.push({ field: nextPrefix, defaultValue: undefined });
+      return fields;
+    }
+    fields.push(...flattenExampleFields(example[0], nextPrefix));
+    return fields;
+  }
+  if (example && typeof example === 'object') {
+    Object.entries(example).forEach(([key, value]) => {
+      const nextPrefix = prefix ? `${prefix}.${key}` : key;
+      fields.push(...flattenExampleFields(value, nextPrefix));
+    });
+    return fields;
+  }
+  if (prefix) {
+    fields.push({ field: prefix, defaultValue: example });
+  }
+  return fields;
+}
+
+function stripRequestDecorations(value, parentIsSchema = false) {
+  if (Array.isArray(value)) {
+    return value.map((entry) => stripRequestDecorations(entry, parentIsSchema));
+  }
+  if (!value || typeof value !== 'object') {
+    if (typeof value === 'string') {
+      return value
+        .replace(/<\/?details[^>]*>/gi, '')
+        .replace(/<\/?summary[^>]*>/gi, '')
+        .trim();
+    }
+    return value;
+  }
+
+  const isSchemaLike =
+    parentIsSchema
+    || Object.prototype.hasOwnProperty.call(value, 'properties')
+    || Object.prototype.hasOwnProperty.call(value, 'required')
+    || Object.prototype.hasOwnProperty.call(value, 'type');
+
+  const keysToOmit = new Set([
+    'description',
+    'properties',
+    'required',
+    'additionalProperties',
+    'example',
+    'examples',
+    'title',
+    'type',
+    'format',
+    'schema',
+    'notes',
+  ]);
+
+  return Object.entries(value).reduce((acc, [key, val]) => {
+    if (keysToOmit.has(key)) {
+      if (isSchemaLike) return acc;
+      if (key === 'description' || key === 'notes') return acc;
+    }
+    acc[key] = stripRequestDecorations(val, isSchemaLike);
+    return acc;
+  }, {});
+}
+
+function sanitizeRequestExampleForSample(example) {
+  if (!example) return {};
+  const isSchemaLike =
+    typeof example === 'object'
+    && !Array.isArray(example)
+    && Object.prototype.hasOwnProperty.call(example, 'type')
+    && (Object.prototype.hasOwnProperty.call(example, 'properties')
+      || Object.prototype.hasOwnProperty.call(example, 'required'));
+  if (!isSchemaLike) return stripRequestDecorations(example);
+
+  if (example.example && typeof example.example === 'object') {
+    return stripRequestDecorations(example.example);
+  }
+  if (example.examples && typeof example.examples === 'object') {
+    const first = Object.values(example.examples)[0];
+    if (first && typeof first === 'object') {
+      if (first.value && typeof first.value === 'object') return stripRequestDecorations(first.value);
+      if (first.example && typeof first.example === 'object') return stripRequestDecorations(first.example);
+    }
+  }
+  return {};
+}
+
+function parseExamplePayload(raw) {
+  if (!raw && raw !== 0) return {};
+  if (typeof raw === 'object') return raw;
+  if (typeof raw === 'string') {
+    try {
+      return JSON.parse(raw);
+    } catch {
+      return {};
+    }
+  }
+  return {};
+}
+
+function toSamplePayload(raw) {
+  return parseExamplePayload(raw);
+}
+
+function cleanSampleText(text) {
+  if (!text) return {};
+  try {
+    return JSON.parse(text);
+  } catch {
+    return {};
+  }
+}
+
+function buildVariationsFromExamples(examples = []) {
+  return examples
+    .map((example, index) => {
+      const key =
+        (example && typeof example.key === 'string' && example.key)
+        || (example && typeof example.name === 'string' && example.name)
+        || (example && typeof example.title === 'string' && example.title)
+        || `example-${index + 1}`;
+      if (!key) return null;
+      const name =
+        (example && typeof example.name === 'string' && example.name)
+        || (example && typeof example.title === 'string' && example.title)
+        || key;
+      const body = parseExampleBody(example?.request?.body ?? example?.request ?? example?.body);
+      const fields = flattenExampleFields(body).map((entry) => ({
+        field: entry.field,
+        requiredCommon: false,
+        requiredByVariation: { [key]: true },
+        defaultByVariation:
+          entry.defaultValue === undefined
+            ? {}
+            : { [key]: entry.defaultValue },
+        description: '',
+      }));
+      return {
+        key,
+        name,
+        enabled: true,
+        requestExample: body,
+        requestFields: fields,
+        description: '',
+      };
+    })
+    .filter(Boolean);
+}
+
+function mergeRequestFieldHints(existing = [], variationFields = []) {
+  const map = new Map();
+
+  const mergeEntry = (entry, variationKey = '') => {
+    const normalized = normalizeHintEntry(entry);
+    const field = normalized.field?.trim();
+    if (!field) return;
+    const current = map.get(field) || {
+      field,
+      description: '',
+      requiredCommon: false,
+      requiredByVariation: {},
+      defaultByVariation: {},
+    };
+    const requiredByVariation = {
+      ...current.requiredByVariation,
+      ...normalized.requiredByVariation,
+    };
+    const defaultByVariation = {
+      ...current.defaultByVariation,
+      ...normalized.defaultByVariation,
+    };
+
+    if (variationKey && normalized.requiredByVariation?.[variationKey] === undefined) {
+      const existingRequired = current.requiredByVariation?.[variationKey];
+      if (typeof existingRequired === 'boolean') {
+        requiredByVariation[variationKey] = existingRequired;
+      } else {
+        requiredByVariation[variationKey] = true;
+      }
+    }
+    if (
+      variationKey
+      && normalized.defaultByVariation?.[variationKey] === undefined
+      && normalized.defaultValue !== undefined
+    ) {
+      defaultByVariation[variationKey] = normalized.defaultValue;
+    }
+
+    const requiredCommon =
+      typeof current.requiredCommon === 'boolean'
+        ? current.requiredCommon
+        : typeof normalized.requiredCommon === 'boolean'
+          ? normalized.requiredCommon
+          : typeof normalized.required === 'boolean'
+            ? normalized.required
+            : false;
+
+    map.set(field, {
+      field,
+      description: normalized.description || current.description,
+      requiredCommon,
+      requiredByVariation,
+      defaultByVariation,
+    });
+  };
+
+  variationFields.forEach((entry) => mergeEntry(entry.entry || entry, entry.variationKey));
+  existing.forEach((entry) => mergeEntry(entry));
+
+  return Array.from(map.values());
+}
+
+function mergeVariationsWithExamples(existing = [], examples = []) {
+  const generated = buildVariationsFromExamples(examples);
+  const map = new Map();
+  generated.forEach((variation) => {
+    if (variation?.key) {
+      map.set(variation.key, variation);
+    }
+  });
+  existing.forEach((variation, index) => {
+    const key = variation?.key || variation?.name || `variation-${index + 1}`;
+    if (!key) return;
+    const base = map.get(key) || {};
+    map.set(key, {
+      ...base,
+      ...variation,
+      key,
+      name: variation.name || base.name || key,
+      requestExample: variation.requestExample || base.requestExample,
+      requestExampleText:
+        variation.requestExampleText
+        || (base.requestExample ? toPrettyJson(base.requestExample, '{}') : undefined),
+      requestFields: mergeRequestFieldHints(base.requestFields || [], variation.requestFields || []),
+    });
+  });
+  return Array.from(map.values());
 }
 
 function extractResponseFieldMappings(definition) {
@@ -1532,11 +1663,11 @@ function buildRequestFieldDisplayFromState(state) {
   return { state: 'ok', items, error: '' };
 }
 
-function deriveRequestFieldSelections({ requestSchemaText, requestEnvMap, displayItems }) {
+function deriveRequestFieldSelections({ requestSampleText, requestEnvMap, displayItems }) {
   const seenFields = new Set();
   let parsedSample = {};
   try {
-    parsedSample = JSON.parse(requestSchemaText || '{}');
+    parsedSample = JSON.parse(requestSampleText || '{}');
   } catch {
     parsedSample = {};
   }
@@ -1583,6 +1714,30 @@ function deriveRequestFieldSelections({ requestSchemaText, requestEnvMap, displa
   return derivedSelections;
 }
 
+function extractExampleFieldPaths(example, prefix = '') {
+  const paths = new Set();
+  if (Array.isArray(example)) {
+    example.forEach((item) => {
+      const childPrefix = prefix ? `${prefix}[]` : '[]';
+      extractExampleFieldPaths(item, childPrefix).forEach((path) => paths.add(path));
+    });
+    return Array.from(paths);
+  }
+  if (!example || typeof example !== 'object') {
+    if (prefix) paths.add(prefix);
+    return Array.from(paths);
+  }
+  Object.entries(example).forEach(([key, value]) => {
+    const nextPrefix = prefix ? `${prefix}.${key}` : key;
+    if (value && typeof value === 'object') {
+      extractExampleFieldPaths(value, nextPrefix).forEach((path) => paths.add(path));
+    } else {
+      paths.add(nextPrefix);
+    }
+  });
+  return Array.from(paths);
+}
+
 function createFormState(definition) {
   if (!definition) return { ...EMPTY_ENDPOINT };
   const declaredUsage = definition.usage && VALID_USAGE_VALUES.has(definition.usage)
@@ -1615,6 +1770,20 @@ function createFormState(definition) {
     : Array.isArray(definition.receiptTaxTypes)
       ? definition.receiptTaxTypes.slice()
       : [];
+  const mergedVariations = mergeVariationsWithExamples(
+    Array.isArray(definition.variations) ? definition.variations : [],
+    Array.isArray(definition.examples) ? definition.examples : [],
+  );
+  const variationFieldHints = mergedVariations.flatMap((variation, index) =>
+    (variation.requestFields || []).map((field) => ({
+      entry: {
+        ...field,
+        requiredByVariation: field?.requiredByVariation || field?.requiredVariations,
+        defaultByVariation: field?.defaultByVariation || field?.defaultVariations,
+      },
+      variationKey: variation?.key || variation?.name || `variation-${index + 1}`,
+    })),
+  );
   const sanitizeRequestHints = (value) => {
     if (!Array.isArray(value)) return [];
     return value.map((entry) => {
@@ -1624,8 +1793,19 @@ function createFormState(definition) {
       }
       const hint = {
         field: normalized.field,
-        required: typeof normalized.required === 'boolean' ? normalized.required : false,
+        requiredCommon:
+          typeof normalized.requiredCommon === 'boolean'
+            ? normalized.requiredCommon
+            : typeof normalized.required === 'boolean'
+              ? normalized.required
+              : false,
         ...(normalized.description ? { description: normalized.description } : {}),
+        ...(normalized.defaultByVariation && Object.keys(normalized.defaultByVariation).length
+          ? { defaultByVariation: normalized.defaultByVariation }
+          : {}),
+        ...(normalized.requiredByVariation && Object.keys(normalized.requiredByVariation).length
+          ? { requiredByVariation: normalized.requiredByVariation }
+          : {}),
       };
       if (normalized.location) {
         hint.location = normalized.location;
@@ -1674,9 +1854,61 @@ function createFormState(definition) {
         return list;
       })()
     : [];
+  const requestFieldVariations = Array.isArray(definition.requestFieldVariations)
+    ? definition.requestFieldVariations.map((entry) => ({
+      key: entry?.key || entry?.label || '',
+      label: entry?.label || entry?.key || '',
+      enabled: entry?.enabled !== false,
+      requiredFields: normalizeFieldRequirementMap(entry?.requiredFields),
+      defaultValues: normalizeFieldValueMap(entry?.defaultValues),
+    })).filter((entry) => entry.key)
+    : [];
+  const variations = mergedVariations.map((variation, index) => {
+    const fields = Array.isArray(variation.requestFields)
+      ? variation.requestFields.map((field) => ({
+        field: field?.field || '',
+        description: field?.description || '',
+        requiredCommon: Boolean(
+          field?.requiredCommon
+          ?? field?.required
+          ?? field?.requiredVariations
+          ?? field?.requiredByVariation,
+        ),
+        requiredByVariation: normalizeFieldRequirementMap(
+          field?.requiredByVariation || field?.requiredVariations,
+        ),
+        defaultByVariation: normalizeFieldValueMap(
+          field?.defaultByVariation || field?.defaultVariations,
+        ),
+      }))
+      : [];
+    const requestExample = variation.requestExample || variation.request?.body || {};
+    const requestExamplePayload = toSamplePayload(requestExample);
+    return {
+      key: variation.key || variation.name || `variation-${index + 1}`,
+      name: variation.name || variation.key || `Variation ${index + 1}`,
+      description: variation.description || '',
+      enabled: variation.enabled !== false,
+      requestExample: requestExamplePayload,
+      requestExampleText: variation.requestExampleText || toPrettyJson(requestExamplePayload, '{}'),
+      requestFields: fields,
+    };
+  });
   const hasRequestSchema = hasObjectEntries(definition.requestBody?.schema);
   const requestSchema = hasRequestSchema ? definition.requestBody.schema : {};
   const requestSchemaFallback = '{}';
+  const rawRequestSample = parseExamplePayload(
+    definition.requestSample
+      || definition.requestBody?.example
+      || definition.requestExample
+      || definition.requestBody?.schema,
+  );
+
+  const sanitizedRequestSample = sanitizeRequestExampleForSample(rawRequestSample);
+  const requestSamplePayload =
+    sanitizedRequestSample && Object.keys(sanitizedRequestSample).length > 0
+      ? sanitizedRequestSample
+      : stripRequestDecorations(rawRequestSample);
 
   const buildUrlFieldState = (key) => {
     const literalCandidate = definition[key];
@@ -1703,13 +1935,26 @@ function createFormState(definition) {
     path: definition.path || '',
     parametersText: toPrettyJson(definition.parameters, '[]'),
     requestDescription: definition.requestBody?.description || '',
+    requestSampleText: toPrettyJson(
+      requestSamplePayload && Object.keys(requestSamplePayload).length > 0
+        ? requestSamplePayload
+        : requestSchema,
+      requestSchemaFallback,
+    ),
+    requestSampleNotes: definition.requestSampleNotes || '',
     requestSchemaText: toPrettyJson(requestSchema, requestSchemaFallback),
     responseDescription: definition.responseBody?.description || '',
     responseSchemaText: toPrettyJson(definition.responseBody?.schema, '{}'),
     fieldDescriptionsText: toPrettyJson(definition.fieldDescriptions, '{}'),
-    requestFieldsText: toPrettyJson(sanitizeRequestHints(definition.requestFields), '[]'),
+    requestFieldsText: toPrettyJson(
+      sanitizeRequestHints(
+        mergeRequestFieldHints(definition.requestFields || [], variationFieldHints),
+      ),
+      '[]',
+    ),
     responseFieldsText: toPrettyJson(definition.responseFields, '[]'),
     examplesText: toPrettyJson(definition.examples, '[]'),
+    variations,
     preRequestScript:
       Array.isArray(definition.scripts?.preRequest)
         ? definition.scripts.preRequest.join('\n\n')
@@ -1770,6 +2015,7 @@ function createFormState(definition) {
     nestedPathsText: toPrettyJson(definition.mappingHints?.nestedPaths, '{}'),
     notes: definition.notes || '',
     requestEnvMap: definition.requestEnvMap || {},
+    requestFieldVariations,
     responseFieldMappings: extractResponseFieldMappings(definition),
     responseTables: sanitizeTableSelection(
       definition.responseTables && definition.responseTables.length > 0
@@ -1778,6 +2024,40 @@ function createFormState(definition) {
       [],
     ),
   };
+}
+
+function pruneUnavailableControls(endpointState) {
+  const next = { ...endpointState };
+  const isTransaction = next.usage === 'transaction';
+
+  if (!isTransaction) {
+    next.supportsMultipleReceipts = false;
+    next.supportsMultiplePayments = false;
+    next.supportsItems = false;
+  }
+
+  if (!isTransaction || !next.supportsItems) {
+    next.enableReceiptTypes = false;
+    next.allowMultipleReceiptTypes = false;
+    next.receiptTypes = [];
+    next.receiptTypeTemplates = {};
+    next.enableReceiptTaxTypes = false;
+    next.allowMultipleReceiptTaxTypes = false;
+    next.taxTypes = [];
+    next.taxTypeTemplates = {};
+    next.enableReceiptItems = false;
+    next.allowMultipleReceiptItems = false;
+    next.receiptItemTemplates = [];
+  }
+
+  if (!isTransaction || !next.supportsMultiplePayments) {
+    next.enablePaymentMethods = false;
+    next.allowMultiplePaymentMethods = false;
+    next.paymentMethods = [];
+    next.paymentMethodTemplates = {};
+  }
+
+  return next;
 }
 
 function parseJsonInput(label, text, defaultValue) {
@@ -1804,6 +2084,12 @@ function validateEndpoint(endpoint, existingIds, originalId) {
   const allowedUsage = new Set(USAGE_OPTIONS.map((opt) => opt.value));
   if (!allowedUsage.has(endpoint.usage)) {
     throw new Error('Usage must be set to a recognised option');
+  }
+  const hasBaseUrl = ['serverUrl', 'testServerUrl', 'productionServerUrl', 'testServerUrlProduction'].some(
+    (key) => typeof endpoint?.[key] === 'string' && endpoint[key].trim(),
+  );
+  if (!hasBaseUrl) {
+    throw new Error('At least one base URL (staging or production) is required');
   }
 }
 
@@ -2465,7 +2751,11 @@ export default function PosApiAdmin() {
   const [endpoints, setEndpoints] = useState([]);
   const [selectedId, setSelectedId] = useState('');
   const [formState, setFormState] = useState({ ...EMPTY_ENDPOINT });
+  const [baseRequestJson, setBaseRequestJson] = useState('');
+  const [requestSampleText, setRequestSampleText] = useState('');
   const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [fetchingDoc, setFetchingDoc] = useState(false);
   const [error, setError] = useState('');
   const [status, setStatus] = useState('');
   const [usageFilter, setUsageFilter] = useState('all');
@@ -2478,8 +2768,6 @@ export default function PosApiAdmin() {
   const [docMetadata, setDocMetadata] = useState({});
   const [requestBuilder, setRequestBuilder] = useState(null);
   const [requestBuilderError, setRequestBuilderError] = useState('');
-  const [sampleImportText, setSampleImportText] = useState('');
-  const [sampleImportError, setSampleImportError] = useState('');
   const [importSpecText, setImportSpecText] = useState('');
   const [importDrafts, setImportDrafts] = useState([]);
   const [importError, setImportError] = useState('');
@@ -2499,6 +2787,12 @@ export default function PosApiAdmin() {
   const [importBaseUrlMode, setImportBaseUrlMode] = useState('literal');
   const infoSyncPreloadedRef = useRef(false);
   const [requestFieldValues, setRequestFieldValues] = useState({});
+  const [requestFieldMeta, setRequestFieldMeta] = useState({});
+  const [selectedVariationKey, setSelectedVariationKey] = useState('');
+  const [combinationBaseKey, setCombinationBaseKey] = useState('');
+  const [combinationModifierKeys, setCombinationModifierKeys] = useState([]);
+  const [combinationPayloadText, setCombinationPayloadText] = useState('');
+  const [combinationError, setCombinationError] = useState('');
   const [tokenMeta, setTokenMeta] = useState({ lastFetchedAt: null, expiresAt: null });
   const [paymentDataDrafts, setPaymentDataDrafts] = useState({});
   const [paymentDataErrors, setPaymentDataErrors] = useState({});
@@ -2535,6 +2829,7 @@ export default function PosApiAdmin() {
   const [adminUseCachedToken, setAdminUseCachedToken] = useState(true);
   const [adminAuthEndpointId, setAdminAuthEndpointId] = useState('');
   const builderSyncRef = useRef(false);
+  const requestSampleSyncRef = useRef(false);
   const refreshInfoSyncLogsRef = useRef(() => Promise.resolve());
 
   function showToast(message, type = 'info') {
@@ -2863,28 +3158,6 @@ export default function PosApiAdmin() {
     };
   }, [formState.responseTables, tableFields, tableFieldLoading]);
 
-  const requestPreview = useMemo(() => {
-    const text = (formState.requestSchemaText || '').trim();
-    if (!text) return { state: 'empty', formatted: '', error: '' };
-    try {
-      const parsed = JSON.parse(text);
-      return { state: 'ok', formatted: JSON.stringify(parsed, null, 2), error: '' };
-    } catch (err) {
-      return { state: 'error', formatted: '', error: err.message || 'Invalid JSON' };
-    }
-  }, [formState.requestSchemaText]);
-
-  const responsePreview = useMemo(() => {
-    const text = (formState.responseSchemaText || '').trim();
-    if (!text) return { state: 'empty', formatted: '', error: '' };
-    try {
-      const parsed = JSON.parse(text);
-      return { state: 'ok', formatted: JSON.stringify(parsed, null, 2), error: '' };
-    } catch (err) {
-      return { state: 'error', formatted: '', error: err.message || 'Invalid JSON' };
-    }
-  }, [formState.responseSchemaText]);
-
   const isTransactionUsage = formState.usage === 'transaction';
   const supportsItems = isTransactionUsage ? formState.supportsItems !== false : false;
   const supportsMultiplePayments = isTransactionUsage && Boolean(formState.supportsMultiplePayments);
@@ -2980,14 +3253,342 @@ export default function PosApiAdmin() {
     [parameterPreview.items],
   );
 
+  const parsedExamples = useMemo(() => {
+    try {
+      const raw = JSON.parse(formState.examplesText || '[]');
+      return Array.isArray(raw) ? raw : [];
+    } catch (err) {
+      console.warn('Unable to parse request examples', err);
+      return [];
+    }
+  }, [formState.examplesText]);
+
+  const exampleVariationChoices = useMemo(
+    () =>
+      parsedExamples.map((example, idx) => {
+        const key =
+          (example && typeof example.key === 'string' && example.key)
+          || (example && typeof example.name === 'string' && example.name)
+          || (example && typeof example.title === 'string' && example.title)
+          || `example-${idx + 1}`;
+        const label =
+          (example && typeof example.name === 'string' && example.name)
+          || (example && typeof example.title === 'string' && example.title)
+          || `Example ${idx + 1}`;
+        return { key, label, example };
+      }),
+    [parsedExamples],
+  );
+  const exampleVariationMap = useMemo(
+    () => new Map(exampleVariationChoices.map((entry) => [entry.key, entry.example])),
+    [exampleVariationChoices],
+  );
+
+  const requestFieldVariations = Array.isArray(formState.requestFieldVariations)
+    ? formState.requestFieldVariations
+    : [];
+  const variations = Array.isArray(formState.variations) ? formState.variations : [];
+  const activeVariations = variations.filter((entry) => entry.enabled !== false);
+  useEffect(() => {
+    setCombinationBaseKey(BASE_COMBINATION_KEY);
+    setCombinationModifierKeys([]);
+    setCombinationPayloadText('');
+    setCombinationError('Select a base variation to build a combination.');
+  }, [formState.id]);
+  const enabledRequestFieldVariations = useMemo(
+    () => requestFieldVariations.filter((entry) => entry?.key && entry.enabled !== false),
+    [requestFieldVariations],
+  );
+  const requestFieldVariationMap = useMemo(
+    () => new Map(enabledRequestFieldVariations.map((entry) => [entry.key, entry])),
+    [enabledRequestFieldVariations],
+  );
+  useEffect(() => {
+    const variationSnapshot = Array.isArray(formState.variations) ? formState.variations : [];
+    setFormState((prev) => {
+      const existingMeta = Array.isArray(prev.requestFieldVariations)
+        ? prev.requestFieldVariations
+        : [];
+      const nextMeta = variationSnapshot.map((variation, index) => {
+        const key = variation.key || variation.name || `variation-${index + 1}`;
+        const existing = existingMeta.find((entry) => entry.key === key) || {};
+        return {
+          ...existing,
+          key,
+          label: variation.name || variation.label || key,
+          enabled: variation.enabled !== false,
+          requiredFields: {
+            ...normalizeFieldRequirementMap(existing.requiredFields),
+            ...normalizeFieldRequirementMap(variation.requiredFields),
+          },
+          defaultValues: {
+            ...normalizeFieldValueMap(existing.defaultValues),
+            ...normalizeFieldValueMap(variation.defaultValues),
+          },
+        };
+      });
+
+      if (JSON.stringify(nextMeta) === JSON.stringify(existingMeta)) return prev;
+      return { ...prev, requestFieldVariations: nextMeta };
+    });
+  }, [formState.variations]);
+  const variationColumns = useMemo(
+    () =>
+      activeVariations.map((variation, index) => ({
+        key: variation.key || variation.name || `variation-${index + 1}`,
+        label: variation.name || variation.label || variation.key,
+        type: 'variation',
+        fieldSet: Array.isArray(variation.requestFields)
+          ? new Set(
+            variation.requestFields
+              .map((field) => normalizeHintEntry(field).field)
+              .filter(Boolean),
+          )
+          : null,
+      })),
+    [activeVariations],
+  );
+  const variationFieldSets = useMemo(() => {
+    const map = new Map();
+    variationColumns.forEach((variation) => {
+      const fields = variation.fieldSet ? Array.from(variation.fieldSet) : [];
+      map.set(variation.key, fields.length > 0 ? new Set(fields) : null);
+    });
+    return map;
+  }, [variationColumns]);
+  useEffect(() => {
+    if (!combinationBaseKey) {
+      setCombinationBaseKey(BASE_COMBINATION_KEY);
+    }
+    setCombinationModifierKeys((prev) =>
+      prev.filter((key) =>
+        variationColumns.some((variation) => variation.key === key)
+        || enabledRequestFieldVariations.some((variation) => variation.key === key),
+      ),
+    );
+  }, [combinationBaseKey, enabledRequestFieldVariations, variationColumns]);
+  const requestFieldColumnTemplate = useMemo(
+    () => {
+      const baseColumns = ['150px', '250px', '80px'];
+      const variationCells = variationColumns.map(() => '200px');
+      return [...baseColumns, ...variationCells].join(' ');
+    },
+    [variationColumns],
+  );
+
+  useEffect(() => {
+    const allowedKeys = new Set(exampleVariationChoices.map((entry) => entry.key));
+    if (allowedKeys.size === 0) return;
+    setFormState((prev) => {
+      const current = Array.isArray(prev.requestFieldVariations)
+        ? prev.requestFieldVariations
+        : [];
+      const filtered = current.filter((entry) => allowedKeys.has(entry.key));
+      if (JSON.stringify(filtered) === JSON.stringify(current)) return prev;
+      return { ...prev, requestFieldVariations: filtered };
+    });
+  }, [exampleVariationChoices]);
+
   const requestFieldDisplay = useMemo(
     () => buildRequestFieldDisplayFromState(formState),
     [formState, parameterDefaults, parameterPreview, requestFieldHints],
   );
 
+  const visibleRequestFieldItems = useMemo(() => {
+    if (requestFieldDisplay.state !== 'ok') return requestFieldDisplay.items || [];
+    if (variationColumns.length === 0) return requestFieldDisplay.items;
+
+    return requestFieldDisplay.items.filter((entry) => {
+      const normalized = normalizeHintEntry(entry);
+      const fieldLabel = normalized.field;
+      if (!fieldLabel) return false;
+
+      return variationColumns.some((variation) => {
+        const key = variation.key;
+        if (!key) return false;
+        const variationFieldSet = variationFieldSets.get(key);
+        return !variationFieldSet || variationFieldSet.has(fieldLabel);
+      });
+    });
+  }, [requestFieldDisplay, variationColumns, variationFieldSets]);
+
+  useEffect(() => {
+    if (requestFieldDisplay.state !== 'ok') {
+      setRequestFieldMeta({});
+      return;
+    }
+
+    setRequestFieldMeta((prev) => {
+      const next = {};
+      visibleRequestFieldItems.forEach((hint) => {
+        const normalized = normalizeHintEntry(hint);
+        const fieldLabel = normalized.field;
+        if (!fieldLabel) return;
+        const existing = prev[fieldLabel] || {};
+        const requiredCommon =
+          typeof existing.requiredCommon === 'boolean'
+            ? existing.requiredCommon
+            : typeof normalized.requiredCommon === 'boolean'
+              ? normalized.requiredCommon
+              : typeof normalized.required === 'boolean'
+                ? normalized.required
+                : false;
+        const requiredByVariation = {
+          ...normalized.requiredByVariation,
+          ...existing.requiredByVariation,
+        };
+        const defaultByVariation = {
+          ...normalized.defaultByVariation,
+          ...existing.defaultByVariation,
+        };
+
+        variationColumns.forEach((variation) => {
+          const key = variation.key;
+          if (!key) return;
+          if (!(key in requiredByVariation)) {
+            requiredByVariation[key] = requiredCommon;
+          }
+          const variationDefaults = normalized.defaultByVariation || {};
+          if (
+            variationDefaults
+            && variationDefaults[key] !== undefined
+            && defaultByVariation[key] === undefined
+          ) {
+            defaultByVariation[key] = variationDefaults[key];
+          }
+          const combination = requestFieldVariationMap.get(key);
+          if (combination?.requiredFields?.[fieldLabel] && !requiredByVariation[key]) {
+            requiredByVariation[key] = true;
+          }
+          if (combination?.defaultValues?.[fieldLabel] !== undefined
+            && defaultByVariation[key] === undefined) {
+            defaultByVariation[key] = combination.defaultValues[fieldLabel];
+          }
+        });
+        next[fieldLabel] = {
+          description: normalized.description || existing.description || '',
+          requiredCommon,
+          requiredByVariation,
+          defaultByVariation,
+        };
+      });
+      return next;
+    });
+  }, [requestFieldDisplay.state, variationColumns, visibleRequestFieldItems, requestFieldVariationMap]);
+
+  useEffect(() => {
+    const variationKeys = new Set(
+      variations.map((variation, index) => variation.key || variation.name || `variation-${index + 1}`),
+    );
+    const variationMetaByField = new Map();
+
+    variations.forEach((variation, index) => {
+      const variationKey = variation.key || variation.name || `variation-${index + 1}`;
+      if (!variationKey) return;
+
+      const requiredMap = normalizeFieldRequirementMap(variation.requiredFields);
+      Object.entries(requiredMap).forEach(([fieldPath, required]) => {
+        if (!fieldPath) return;
+        const existing = variationMetaByField.get(fieldPath) || { requiredByVariation: {}, defaultByVariation: {} };
+        existing.requiredByVariation[variationKey] = required !== false;
+        variationMetaByField.set(fieldPath, existing);
+      });
+
+      const defaultMap = normalizeFieldValueMap(variation.defaultValues);
+      Object.entries(defaultMap).forEach(([fieldPath, defaultValue]) => {
+        if (!fieldPath) return;
+        const existing = variationMetaByField.get(fieldPath) || { requiredByVariation: {}, defaultByVariation: {} };
+        existing.defaultByVariation[variationKey] = defaultValue;
+        variationMetaByField.set(fieldPath, existing);
+      });
+
+      (variation.requestFields || []).forEach((field) => {
+        const normalized = normalizeHintEntry(field);
+        const fieldPath = normalized.field;
+        if (!fieldPath) return;
+        const existing = variationMetaByField.get(fieldPath) || { requiredByVariation: {}, defaultByVariation: {} };
+        existing.requiredByVariation[variationKey] = normalized.required !== false;
+        variationMetaByField.set(fieldPath, existing);
+      });
+    });
+
+    setRequestFieldMeta((prev) => {
+      let changed = false;
+      const next = { ...prev };
+
+      Object.entries(next).forEach(([fieldPath, entry]) => {
+        const requiredByVariation = { ...(entry.requiredByVariation || {}) };
+        const defaultByVariation = { ...(entry.defaultByVariation || {}) };
+        let entryChanged = false;
+
+        Object.keys(requiredByVariation).forEach((key) => {
+          if (!variationKeys.has(key)) {
+            delete requiredByVariation[key];
+            entryChanged = true;
+          }
+        });
+
+        Object.keys(defaultByVariation).forEach((key) => {
+          if (!variationKeys.has(key)) {
+            delete defaultByVariation[key];
+            entryChanged = true;
+          }
+        });
+
+        if (entryChanged) {
+          next[fieldPath] = { ...entry, requiredByVariation, defaultByVariation };
+          changed = true;
+        }
+      });
+
+      variationMetaByField.forEach((updates, fieldPath) => {
+        const existing = next[fieldPath] || {};
+        const requiredByVariation = { ...(existing.requiredByVariation || {}) };
+        const defaultByVariation = { ...(existing.defaultByVariation || {}) };
+        let entryChanged = false;
+
+        Object.keys(requiredByVariation).forEach((key) => {
+          if (!(key in updates.requiredByVariation)) {
+            delete requiredByVariation[key];
+            entryChanged = true;
+          }
+        });
+
+        Object.keys(defaultByVariation).forEach((key) => {
+          if (!(key in updates.defaultByVariation)) {
+            delete defaultByVariation[key];
+            entryChanged = true;
+          }
+        });
+
+        Object.entries(updates.requiredByVariation).forEach(([key, value]) => {
+          if (requiredByVariation[key] !== value) {
+            requiredByVariation[key] = value;
+            entryChanged = true;
+          }
+        });
+
+        Object.entries(updates.defaultByVariation).forEach(([key, value]) => {
+          if (defaultByVariation[key] !== value) {
+            defaultByVariation[key] = value;
+            entryChanged = true;
+          }
+        });
+
+        if (entryChanged) {
+          next[fieldPath] = { ...existing, requiredByVariation, defaultByVariation };
+          changed = true;
+        }
+      });
+
+      if (!changed) return prev;
+      return next;
+    });
+  }, [variations]);
+
   useEffect(() => {
     const derivedSelections = deriveRequestFieldSelections({
-      requestSchemaText: formState.requestSchemaText,
+      requestSampleText,
       requestEnvMap: formState.requestEnvMap,
       displayItems: requestFieldDisplay.items,
     });
@@ -3023,13 +3624,66 @@ export default function PosApiAdmin() {
       });
 
       if (changed) {
+        if (requestSampleSyncRef.current) {
+          requestSampleSyncRef.current = false;
+          return next;
+        }
         syncRequestSampleFromSelections(next);
         return next;
       }
 
       return prev;
     });
-  }, [formState.requestSchemaText, formState.requestEnvMap, requestFieldDisplay.items]);
+  }, [formState.requestSchemaText, formState.requestEnvMap, requestFieldDisplay.items, requestSampleText]);
+
+  useEffect(() => {
+    if (selectedVariationKey && !variationColumns.some((entry) => entry.key === selectedVariationKey)) {
+      setSelectedVariationKey('');
+    }
+  }, [selectedVariationKey, variationColumns]);
+
+  useEffect(() => {
+    if (!selectedVariationKey) return;
+    const variationPayload = resolveVariationRequestExample(selectedVariationKey)
+      || cleanSampleText(baseRequestJson || '{}');
+    const formattedSample = JSON.stringify(variationPayload || {}, null, 2);
+    requestSampleSyncRef.current = true;
+    setRequestSampleText(formattedSample);
+    const selectionsFromSample = deriveRequestFieldSelections({
+      requestSampleText: formattedSample,
+      requestEnvMap: formState.requestEnvMap,
+      displayItems: requestFieldDisplay.items,
+    });
+    const variationSelections = buildSelectionsForVariation(selectedVariationKey);
+    const mergedSelections = { ...selectionsFromSample, ...variationSelections };
+    setRequestFieldValues(mergedSelections);
+    setFormState((prev) => ({
+      ...prev,
+      requestEnvMap: buildRequestEnvMap(mergedSelections),
+    }));
+  }, [
+    selectedVariationKey,
+    activeVariations,
+    requestFieldDisplay.items,
+    formState.requestEnvMap,
+    baseRequestJson,
+    exampleVariationMap,
+  ]);
+
+  useEffect(() => {
+    if (!combinationBaseKey) {
+      setCombinationPayloadText('');
+      setCombinationError('Select a base variation to build a combination.');
+      return;
+    }
+    try {
+      const mergedPayload = buildCombinationPayload(combinationBaseKey, combinationModifierKeys);
+      setCombinationPayloadText(JSON.stringify(mergedPayload, null, 2));
+      setCombinationError('');
+    } catch (err) {
+      setCombinationError(err.message || 'Failed to build combination payload.');
+    }
+  }, [combinationBaseKey, combinationModifierKeys, activeVariations, exampleVariationMap, baseRequestJson]);
 
   const selectedReceiptTypes = receiptTypesEnabled && Array.isArray(formState.receiptTypes)
     ? formState.receiptTypes
@@ -3074,6 +3728,31 @@ export default function PosApiAdmin() {
     const unique = Array.from(new Set(values));
     return PAYMENT_TYPES.filter((payment) => unique.includes(payment.value));
   }, [paymentMethodsEnabled, selectedPaymentMethods]);
+
+  const combinationModifierOptions = useMemo(() => {
+    const seen = new Set();
+    const baseOptions = activeVariations.map((variation, index) => ({
+      key: variation.key || variation.name || `variation-${index + 1}`,
+      label: variation.name || variation.label || variation.key,
+      type: 'variation',
+    }));
+    const requestBased = enabledRequestFieldVariations.map((entry) => ({
+      key: entry.key,
+      label: entry.label || entry.key,
+      type: 'combination',
+    }));
+    return [...baseOptions, ...requestBased].filter((option) => {
+      if (!option?.key) return false;
+      if (seen.has(option.key)) return false;
+      seen.add(option.key);
+      return true;
+    });
+  }, [activeVariations, enabledRequestFieldVariations]);
+
+  const combinationBaseOptions = useMemo(
+    () => [{ key: BASE_COMBINATION_KEY, label: 'Base request', type: 'base' }, ...variationColumns],
+    [variationColumns],
+  );
 
   const authEndpointOptions = useMemo(
     () => endpoints.filter((endpoint) => endpoint?.posApiType === 'AUTH'),
@@ -3266,7 +3945,7 @@ export default function PosApiAdmin() {
       builderSyncRef.current = false;
       return;
     }
-    const text = (formState.requestSchemaText || '').trim();
+    const text = (baseRequestJson || '').trim();
     if (!text) {
       setRequestBuilder(null);
       setRequestBuilderError('');
@@ -3276,14 +3955,11 @@ export default function PosApiAdmin() {
       const parsed = JSON.parse(text);
       setRequestBuilder(parsed);
       setRequestBuilderError('');
-      if (parsed?.type && parsed.type !== formState.posApiType) {
-        setFormState((prev) => ({ ...prev, posApiType: parsed.type }));
-      }
     } catch (err) {
       setRequestBuilder(null);
       setRequestBuilderError(err.message || 'Invalid JSON');
     }
-  }, [formState.requestSchemaText, isTransactionUsage]);
+  }, [baseRequestJson, isTransactionUsage]);
 
   useEffect(() => {
     const payments = Array.isArray(requestBuilder?.payments) ? requestBuilder.payments : [];
@@ -3321,9 +3997,13 @@ export default function PosApiAdmin() {
         return prev;
       }
       builderSyncRef.current = true;
+      try {
+        setBaseRequestJson(JSON.stringify(next, null, 2));
+      } catch {
+        // ignore formatting errors
+      }
       setFormState((prevState) => ({
         ...prevState,
-        requestSchemaText: JSON.stringify(next, null, 2),
         posApiType: next.type || prevState.posApiType,
       }));
       return next;
@@ -3551,6 +4231,383 @@ export default function PosApiAdmin() {
       items.splice(itemIndex, 1);
       receipts[receiptIndex] = { ...receipt, items };
       return { ...prev, receipts };
+    });
+  };
+
+  const handleRequestVariationToggle = (key, enabled) => {
+    const example = exampleVariationChoices.find((entry) => entry.key === key);
+    if (!example) return;
+    const examplePaths = enabled ? extractExampleFieldPaths(example.example) : [];
+    setFormState((prev) => {
+      const current = Array.isArray(prev.requestFieldVariations)
+        ? prev.requestFieldVariations
+        : [];
+      const existing = current.find((entry) => entry.key === key);
+      const nextRequired = existing?.requiredFields ? { ...existing.requiredFields } : {};
+      if (enabled && !existing?.enabled) {
+        examplePaths.forEach((path) => {
+          if (path) nextRequired[path] = true;
+        });
+      }
+      const updatedEntry = {
+        key,
+        label: existing?.label || example.label,
+        enabled,
+        requiredFields: nextRequired,
+        defaultValues: existing?.defaultValues ? { ...existing.defaultValues } : {},
+      };
+      const others = current.filter((entry) => entry.key !== key);
+      return { ...prev, requestFieldVariations: [...others, updatedEntry] };
+    });
+  };
+
+  const handleRequestVariationLabelChange = (key, label) => {
+    setFormState((prev) => {
+      const current = Array.isArray(prev.requestFieldVariations)
+        ? prev.requestFieldVariations
+        : [];
+      const existing = current.find((entry) => entry.key === key);
+      const updatedEntry = existing
+        ? { ...existing, label }
+        : { key, label, enabled: true, requiredFields: {}, defaultValues: {} };
+      const others = current.filter((entry) => entry.key !== key);
+      return { ...prev, requestFieldVariations: [...others, updatedEntry] };
+    });
+  };
+
+  const toggleCombinationModifier = (key) => {
+    setCombinationModifierKeys((prev) => {
+      if (prev.includes(key)) return prev.filter((item) => item !== key);
+      return [...prev, key];
+    });
+  };
+
+  const handleVariationRequiredToggle = (key, fieldPath, value) => {
+    setFormState((prev) => {
+      const current = Array.isArray(prev.requestFieldVariations)
+        ? prev.requestFieldVariations
+        : [];
+      const updated = current.map((entry) => {
+        if (entry.key !== key) return entry;
+        const requiredFields = { ...(entry.requiredFields || {}) };
+        if (value) {
+          requiredFields[fieldPath] = true;
+        } else {
+          delete requiredFields[fieldPath];
+        }
+        return { ...entry, requiredFields };
+      });
+      return { ...prev, requestFieldVariations: updated };
+    });
+  };
+
+  const handleVariationDefaultChange = (key, fieldPath, value) => {
+    setFormState((prev) => {
+      const current = Array.isArray(prev.requestFieldVariations)
+        ? prev.requestFieldVariations
+        : [];
+      const updated = current.map((entry) => {
+        if (entry.key !== key) return entry;
+        const defaultValues = { ...(entry.defaultValues || {}) };
+        if (value !== '' && value !== undefined && value !== null) {
+          defaultValues[fieldPath] = value;
+        } else {
+          delete defaultValues[fieldPath];
+        }
+        return { ...entry, defaultValues };
+      });
+      return { ...prev, requestFieldVariations: updated };
+    });
+  };
+
+  function ensureVariationFieldSelection(variationKey, fieldPath) {
+    if (!variationKey || !fieldPath) return;
+
+    setFormState((prev) => {
+      let changed = false;
+      const variations = Array.isArray(prev.variations) ? prev.variations.slice() : [];
+      const variationIndex = variations.findIndex((entry) => (entry.key || entry.name) === variationKey);
+
+      if (variationIndex >= 0) {
+        const variation = variations[variationIndex];
+        const requiredFields = variation.requiredFields ? { ...variation.requiredFields } : {};
+        if (!requiredFields[fieldPath]) {
+          requiredFields[fieldPath] = true;
+          variations[variationIndex] = { ...variation, requiredFields };
+          changed = true;
+        }
+      }
+
+      const requestFieldVariations = Array.isArray(prev.requestFieldVariations)
+        ? prev.requestFieldVariations.slice()
+        : [];
+      const variationMetaIndex = requestFieldVariations.findIndex((entry) => entry.key === variationKey);
+      if (variationMetaIndex >= 0) {
+        const meta = requestFieldVariations[variationMetaIndex];
+        const requiredFields = meta.requiredFields ? { ...meta.requiredFields } : {};
+        if (!requiredFields[fieldPath]) {
+          requiredFields[fieldPath] = true;
+          requestFieldVariations[variationMetaIndex] = { ...meta, requiredFields };
+          changed = true;
+        }
+      }
+
+      if (!changed) return prev;
+      return { ...prev, variations, requestFieldVariations };
+    });
+  }
+
+  const syncVariationDefaultChange = (variationKey, fieldPath, value) => {
+    if (!variationKey || !fieldPath) return;
+    const segments = parsePathSegments(fieldPath);
+    if (segments.length === 0) return;
+
+    setFormState((prev) => {
+      let changed = false;
+      const variations = Array.isArray(prev.variations) ? prev.variations.slice() : [];
+      const variationIndex = variations.findIndex(
+        (entry) => (entry.key || entry.name) === variationKey,
+      );
+
+      if (variationIndex >= 0) {
+        const variation = variations[variationIndex];
+        const defaultValues = variation.defaultValues ? { ...variation.defaultValues } : {};
+        const examplePayload = cleanSampleText(
+          variation.requestExampleText || variation.requestExample || {},
+        );
+        const beforeState = JSON.stringify(examplePayload);
+        const beforeDefaults = JSON.stringify(defaultValues);
+        if (value !== '' && value !== undefined && value !== null) {
+          setNestedValue(examplePayload, segments, value);
+          defaultValues[fieldPath] = value;
+        } else {
+          removeNestedValue(examplePayload, segments);
+          delete defaultValues[fieldPath];
+        }
+        const afterState = JSON.stringify(examplePayload);
+        const afterDefaults = JSON.stringify(defaultValues);
+        if (beforeState !== afterState || beforeDefaults !== afterDefaults) {
+          variations[variationIndex] = {
+            ...variation,
+            defaultValues,
+            requestExample: examplePayload,
+            requestExampleText: JSON.stringify(examplePayload, null, 2),
+          };
+          changed = true;
+        }
+      }
+
+      const requestFieldVariations = Array.isArray(prev.requestFieldVariations)
+        ? prev.requestFieldVariations.slice()
+        : [];
+      const variationMetaIndex = requestFieldVariations.findIndex((entry) => entry.key === variationKey);
+      if (variationMetaIndex >= 0) {
+        const meta = requestFieldVariations[variationMetaIndex];
+        const defaultValues = { ...(meta.defaultValues || {}) };
+        const requiredFields = { ...(meta.requiredFields || {}) };
+        const defaultExists = Object.prototype.hasOwnProperty.call(defaultValues, fieldPath);
+        const requiredExists = Object.prototype.hasOwnProperty.call(requiredFields, fieldPath);
+
+        if (value !== '' && value !== undefined && value !== null) {
+          defaultValues[fieldPath] = value;
+        } else {
+          delete defaultValues[fieldPath];
+        }
+        if (requiredExists && !value) {
+          delete requiredFields[fieldPath];
+        }
+
+        if (
+          defaultExists !== Object.prototype.hasOwnProperty.call(defaultValues, fieldPath)
+          || requiredExists !== Object.prototype.hasOwnProperty.call(requiredFields, fieldPath)
+          || (value && defaultValues[fieldPath] !== meta.defaultValues?.[fieldPath])
+        ) {
+          requestFieldVariations[variationMetaIndex] = {
+            ...meta,
+            defaultValues,
+            requiredFields,
+          };
+          changed = true;
+        }
+      }
+
+      if (!changed) return prev;
+      return { ...prev, variations, requestFieldVariations };
+    });
+  };
+
+  const clearVariationFieldSelection = (variationKey, fieldPath) => {
+    if (!variationKey || !fieldPath) return;
+
+    setRequestFieldMeta((prev) => {
+      const existing = prev[fieldPath];
+      if (!existing) return prev;
+      const requiredByVariation = { ...(existing.requiredByVariation || {}) };
+      const defaultByVariation = { ...(existing.defaultByVariation || {}) };
+      let changed = false;
+
+      if (requiredByVariation[variationKey]) {
+        delete requiredByVariation[variationKey];
+        changed = true;
+      }
+      if (Object.prototype.hasOwnProperty.call(defaultByVariation, variationKey)) {
+        delete defaultByVariation[variationKey];
+        changed = true;
+      }
+
+      if (!changed) return prev;
+      return { ...prev, [fieldPath]: { ...existing, requiredByVariation, defaultByVariation } };
+    });
+
+    setFormState((prev) => {
+      let changed = false;
+      const variations = Array.isArray(prev.variations) ? prev.variations.slice() : [];
+      const variationIndex = variations.findIndex(
+        (entry) => (entry.key || entry.name) === variationKey,
+      );
+
+      if (variationIndex >= 0) {
+        const variation = variations[variationIndex];
+        const requiredFields = variation.requiredFields ? { ...variation.requiredFields } : {};
+        const defaultValues = variation.defaultValues ? { ...variation.defaultValues } : {};
+        const examplePayload = cleanSampleText(
+          variation.requestExampleText || variation.requestExample || {},
+        );
+        const beforeExample = JSON.stringify(examplePayload);
+        const beforeDefaults = JSON.stringify(defaultValues);
+        const beforeRequired = JSON.stringify(requiredFields);
+
+        delete requiredFields[fieldPath];
+        delete defaultValues[fieldPath];
+        removeNestedValue(examplePayload, parsePathSegments(fieldPath));
+
+        const afterExample = JSON.stringify(examplePayload);
+        const variationChanged =
+          beforeExample !== afterExample
+          || beforeDefaults !== JSON.stringify(defaultValues)
+          || beforeRequired !== JSON.stringify(requiredFields);
+
+        if (variationChanged) {
+          variations[variationIndex] = {
+            ...variation,
+            requiredFields,
+            defaultValues,
+            requestExample: examplePayload,
+            requestExampleText: JSON.stringify(examplePayload, null, 2),
+          };
+          changed = true;
+        }
+      }
+
+      const requestFieldVariations = Array.isArray(prev.requestFieldVariations)
+        ? prev.requestFieldVariations.slice()
+        : [];
+      const variationMetaIndex = requestFieldVariations.findIndex((entry) => entry.key === variationKey);
+      if (variationMetaIndex >= 0) {
+        const meta = requestFieldVariations[variationMetaIndex];
+        const defaultValues = { ...(meta.defaultValues || {}) };
+        const requiredFields = { ...(meta.requiredFields || {}) };
+        const defaultHad = Object.prototype.hasOwnProperty.call(defaultValues, fieldPath);
+        const requiredHad = Object.prototype.hasOwnProperty.call(requiredFields, fieldPath);
+
+        delete defaultValues[fieldPath];
+        delete requiredFields[fieldPath];
+
+        if (defaultHad || requiredHad) {
+          requestFieldVariations[variationMetaIndex] = {
+            ...meta,
+            defaultValues,
+            requiredFields,
+          };
+          changed = true;
+        }
+      }
+
+      if (!changed) return prev;
+      return { ...prev, variations, requestFieldVariations };
+    });
+  };
+
+  const handleVariationToggle = (index, enabled) => {
+    setFormState((prev) => {
+      const list = Array.isArray(prev.variations) ? prev.variations.slice() : [];
+      if (!list[index]) return prev;
+      list[index] = { ...list[index], enabled };
+      return { ...prev, variations: list };
+    });
+  };
+
+  const handleVariationChange = (index, key, value) => {
+    setFormState((prev) => {
+      const list = Array.isArray(prev.variations) ? prev.variations.slice() : [];
+      if (!list[index]) return prev;
+      list[index] = { ...list[index], [key]: value };
+      return { ...prev, variations: list };
+    });
+  };
+
+  const handleVariationExampleChange = (index, text) => {
+    handleVariationChange(index, 'requestExampleText', text);
+  };
+
+  const handleVariationRequestFieldChange = (variationIndex, fieldIndex, updates) => {
+    setFormState((prev) => {
+      const list = Array.isArray(prev.variations) ? prev.variations.slice() : [];
+      const variation = list[variationIndex];
+      if (!variation) return prev;
+      const fields = Array.isArray(variation.requestFields) ? variation.requestFields.slice() : [];
+      if (!fields[fieldIndex]) return prev;
+      fields[fieldIndex] = { ...fields[fieldIndex], ...updates };
+      list[variationIndex] = { ...variation, requestFields: fields };
+      return { ...prev, variations: list };
+    });
+  };
+
+  const handleAddVariationField = (variationIndex) => {
+    setFormState((prev) => {
+      const list = Array.isArray(prev.variations) ? prev.variations.slice() : [];
+      const variation = list[variationIndex];
+      if (!variation) return prev;
+      const fields = Array.isArray(variation.requestFields) ? variation.requestFields.slice() : [];
+      fields.push({ field: '', required: true });
+      list[variationIndex] = { ...variation, requestFields: fields };
+      return { ...prev, variations: list };
+    });
+  };
+
+  const handleRemoveVariationField = (variationIndex, fieldIndex) => {
+    let removedFieldPath = '';
+    let variationKey = '';
+    setFormState((prev) => {
+      const list = Array.isArray(prev.variations) ? prev.variations.slice() : [];
+      const variation = list[variationIndex];
+      if (!variation) return prev;
+      variationKey = variation.key || variation.name;
+      const fields = Array.isArray(variation.requestFields) ? variation.requestFields.slice() : [];
+      if (fieldIndex < 0 || fieldIndex >= fields.length) return prev;
+      removedFieldPath = normalizeHintEntry(fields[fieldIndex]).field || '';
+      fields.splice(fieldIndex, 1);
+      list[variationIndex] = { ...variation, requestFields: fields };
+      return { ...prev, variations: list };
+    });
+
+    if (removedFieldPath && variationKey) {
+      clearVariationFieldSelection(variationKey, removedFieldPath);
+    }
+  };
+
+  const handleAddVariation = () => {
+    setFormState((prev) => {
+      const list = Array.isArray(prev.variations) ? prev.variations.slice() : [];
+      list.push({
+        key: `variation-${list.length + 1}`,
+        name: `Variation ${list.length + 1}`,
+        description: '',
+        enabled: true,
+        requestExampleText: '{}',
+        requestFields: [],
+      });
+      return { ...prev, variations: list };
     });
   };
 
@@ -4033,11 +5090,10 @@ export default function PosApiAdmin() {
         const data = await res.json();
         if (cancelled) return;
         const list = Array.isArray(data) ? data : [];
-        const normalized = list.map(withEndpointMetadata);
+        const normalized = normalizeEndpointList(list.map(withEndpointMetadata));
         setEndpoints(normalized);
         if (normalized.length > 0) {
-          setSelectedId(normalized[0].id);
-          setFormState(createFormState(normalized[0]));
+          handleSelect(normalized[0].id, normalized[0]);
           setTestEnvironment('staging');
           setImportAuthEndpointId(normalized[0].authEndpointId || '');
         }
@@ -4178,34 +5234,95 @@ export default function PosApiAdmin() {
     };
   }, [activeTab]);
 
-  function handleSelect(id) {
+  function handleSelect(id, explicitDefinition = null) {
+    const targetId = id || explicitDefinition?.id;
+    if (!targetId && !explicitDefinition) {
+      return;
+    }
+
+    const definition = explicitDefinition || endpoints.find((ep) => ep.id === targetId);
+    if (!definition) {
+      return;
+    }
+
+    let nextFormState = { ...EMPTY_ENDPOINT };
+    let nextRequestFieldValues = {};
+    let formattedSample = '';
+
+    try {
+      nextFormState = pruneUnavailableControls(createFormState(definition));
+    } catch (err) {
+      console.error('Failed to prepare form state for selected endpoint', err);
+      setError('Failed to load the selected endpoint. Please review its configuration.');
+      nextFormState = pruneUnavailableControls({ ...EMPTY_ENDPOINT, ...(definition || {}) });
+    }
+
+    try {
+      const nextDisplay = buildRequestFieldDisplayFromState(nextFormState);
+      if (nextDisplay.state === 'error') {
+        setError(nextDisplay.error || 'Unable to load endpoint details.');
+      }
+      if (nextDisplay.state === 'ok') {
+        nextRequestFieldValues = deriveRequestFieldSelections({
+          requestSampleText: nextFormState.requestSampleText,
+          requestEnvMap: nextFormState.requestEnvMap,
+          displayItems: nextDisplay.items,
+        });
+      }
+    } catch (err) {
+      console.error('Failed to select endpoint', err);
+      setError('Failed to load the selected endpoint. Please review its configuration.');
+      nextFormState = pruneUnavailableControls({ ...EMPTY_ENDPOINT, ...(definition || {}) });
+      nextRequestFieldValues = {};
+    }
+
+    try {
+      const resolvedSample = sanitizeRequestExampleForSample(
+        parseExamplePayload(nextFormState.requestSampleText),
+      );
+      formattedSample = Object.keys(resolvedSample).length > 0
+        ? JSON.stringify(resolvedSample, null, 2)
+        : (nextFormState.requestSampleText || '');
+    } catch (err) {
+      console.error('Failed to parse request sample for selected endpoint', err);
+      setError('Unable to load the selected endpoint request sample.');
+      formattedSample = nextFormState.requestSampleText || '';
+    }
+    setBaseRequestJson(formattedSample);
+    setRequestSampleText(formattedSample);
+    setCombinationBaseKey(BASE_COMBINATION_KEY);
+    setCombinationModifierKeys([]);
+    setCombinationPayloadText('');
+    setCombinationError(selectedVariationKey ? '' : 'Select a base variation to build a combination.');
+    setSelectedVariationKey('');
+
     setStatus('');
-    setError('');
     resetTestState();
     setDocExamples([]);
     setSelectedDocBlock('');
     setDocMetadata({});
     setDocFieldDescriptions({});
-    setSampleImportText('');
-    setSampleImportError('');
-    setSelectedId(id);
-    const definition = endpoints.find((ep) => ep.id === id);
-    const nextFormState = createFormState(definition);
-    const nextDisplay = buildRequestFieldDisplayFromState(nextFormState);
-    if (nextDisplay.state === 'ok') {
-      setRequestFieldValues(
-        deriveRequestFieldSelections({
-          requestSchemaText: nextFormState.requestSchemaText,
-          requestEnvMap: nextFormState.requestEnvMap,
-          displayItems: nextDisplay.items,
-        }),
-      );
-    } else {
-      setRequestFieldValues({});
-    }
+    setImportStatus('');
+    setImportError('');
+    setImportDrafts([]);
+    setImportTestRunning(false);
+    setImportTestError('');
+    setImportTestResult(null);
+    setImportSelectedExampleKey('');
+    setImportExampleResponse(null);
+    setImportRequestBody('');
+    setImportSpecText('');
+    setImportBaseUrl('');
+    setImportBaseUrlEnvVar('');
+    setImportBaseUrlMode('literal');
+    setSelectedImportId('');
+    setRequestBuilder(null);
+    setRequestBuilderError('');
+    setRequestFieldValues(nextRequestFieldValues);
     setFormState(nextFormState);
     setTestEnvironment('staging');
     setImportAuthEndpointId(definition?.authEndpointId || '');
+    setSelectedId(definition.id);
   }
 
   function handleChange(field, value) {
@@ -4325,87 +5442,6 @@ export default function PosApiAdmin() {
     });
   }
 
-  function handleApplySamplePayload(type) {
-    const sample = RECEIPT_SAMPLE_PAYLOADS[type];
-    if (!sample) return;
-    resetTestState();
-    const cloned = deepClone(sample) || {};
-    const nextReceiptTypes = Array.isArray(formState.receiptTypes)
-      ? Array.from(new Set([...formState.receiptTypes, type]))
-      : [type];
-    setFormState((prev) => ({
-      ...prev,
-      usage: 'transaction',
-      posApiType: type,
-      receiptTypes: nextReceiptTypes,
-    }));
-    updateRequestBuilder(() => normaliseBuilderForType(cloned, type, supportsItems, supportsMultiplePayments));
-    setStatus(`Loaded ${formatTypeLabel(type)} sample payload into the builder.`);
-    setSampleImportError('');
-  }
-
-  async function handleCopySamplePayload(type) {
-    const sample = RECEIPT_SAMPLE_PAYLOADS[type];
-    if (!sample) return;
-    try {
-      if (!navigator?.clipboard) {
-        throw new Error('Clipboard API is not available in this browser.');
-      }
-      await navigator.clipboard.writeText(JSON.stringify(sample, null, 2));
-      setStatus(`Copied ${formatTypeLabel(type)} sample payload to the clipboard.`);
-      setSampleImportError('');
-    } catch (err) {
-      setSampleImportError(err.message || 'Unable to copy the sample payload.');
-    }
-  }
-
-  function handleSampleImport() {
-    const trimmed = sampleImportText.trim();
-    if (!trimmed) {
-      setSampleImportError('Provide JSON to import.');
-      return;
-    }
-    try {
-      const parsed = JSON.parse(trimmed);
-      const targetType = parsed?.type || formState.posApiType || 'B2C';
-      resetTestState();
-      updateRequestBuilder(() => normaliseBuilderForType(
-        parsed,
-        targetType,
-        supportsItems,
-        supportsMultiplePayments,
-      ));
-      const nextReceiptTypes = Array.isArray(formState.receiptTypes)
-        ? Array.from(new Set([...formState.receiptTypes, targetType]))
-        : [targetType];
-      setFormState((prev) => ({
-        ...prev,
-        usage: 'transaction',
-        posApiType: targetType,
-        receiptTypes: nextReceiptTypes,
-      }));
-      setSampleImportError('');
-      setStatus('Imported sample JSON into the request builder.');
-    } catch (err) {
-      setSampleImportError(err.message || 'Invalid JSON.');
-    }
-  }
-
-  function handleSampleFile(event) {
-    const file = event.target.files && event.target.files[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      const text = typeof reader.result === 'string' ? reader.result : '';
-      setSampleImportText(text);
-      setSampleImportError('');
-    };
-    reader.onerror = () => {
-      setSampleImportError('Failed to read the selected file.');
-    };
-    reader.readAsText(file);
-  }
-
   function resetImportTestState() {
     setImportTestResult(null);
     setImportTestError('');
@@ -4418,25 +5454,47 @@ export default function PosApiAdmin() {
     setImportSelectedExampleKey(example.key || example.name || '');
     const baseDefaults = buildDraftParameterDefaults(targetDraft?.parameters || []);
     const nextValues = { ...baseDefaults };
-    (example.request?.queryParams || []).forEach((param) => {
-      if (!param?.name) return;
-      nextValues[param.name] = param.value ?? param.example ?? '';
+    const request = example.request || {};
+    const queryParams = request.queryParams || request.query || example.queryParams || [];
+    const pathParams = request.pathParams || request.pathParameters || example.pathParams || [];
+    const headers = request.headers || request.header || example.headers || {};
+
+    const assignParamValue = (name, value) => {
+      if (!name) return;
+      nextValues[name] = value ?? '';
+    };
+
+    const normalizeParamList = (params) => {
+      if (!params) return [];
+      if (Array.isArray(params)) return params;
+      if (typeof params === 'object') {
+        return Object.entries(params).map(([name, value]) => ({ name, value }));
+      }
+      return [];
+    };
+
+    normalizeParamList(queryParams).forEach((param) => {
+      assignParamValue(param?.name ?? param?.key ?? param?.param ?? param, param?.value ?? param?.example);
     });
-    if (example.request?.headers) {
-      Object.entries(example.request.headers).forEach(([name, value]) => {
-        nextValues[name] = value ?? '';
-      });
+
+    normalizeParamList(pathParams).forEach((param) => {
+      assignParamValue(param?.name ?? param?.key ?? param?.param ?? param, param?.value ?? param?.example);
+    });
+
+    if (headers && typeof headers === 'object') {
+      Object.entries(headers).forEach(([name, value]) => assignParamValue(name, value));
     }
     setImportTestValues(nextValues);
-    if (example.request?.body !== undefined) {
+    const bodyCandidate = request.body ?? example.body ?? example.requestBody;
+    if (bodyCandidate !== undefined) {
       try {
         setImportRequestBody(
-          typeof example.request.body === 'string'
-            ? example.request.body
-            : JSON.stringify(example.request.body, null, 2),
+          typeof bodyCandidate === 'string'
+            ? bodyCandidate
+            : JSON.stringify(bodyCandidate, null, 2),
         );
       } catch {
-        setImportRequestBody(String(example.request.body));
+        setImportRequestBody(String(bodyCandidate));
       }
     }
     setImportExampleResponse(example.response || null);
@@ -4512,10 +5570,27 @@ export default function PosApiAdmin() {
       if (!operations.length) {
         throw new Error('No operations were found in the supplied files.');
       }
-      setImportDrafts(operations);
+      const enhancedOperations = operations.map((operation) => {
+        const merged = mergeVariationsWithExamples(
+          Array.isArray(operation.variations) ? operation.variations : [],
+          Array.isArray(operation.examples) ? operation.examples : [],
+        );
+        const variationFieldHints = merged.flatMap((variation, index) =>
+          (variation.requestFields || []).map((field) => ({
+            entry: field,
+            variationKey: variation?.key || variation?.name || `variation-${index + 1}`,
+          })),
+        );
+        const requestFields = mergeRequestFieldHints(
+          operation.requestFields || [],
+          variationFieldHints,
+        );
+        return { ...operation, variations: merged, requestFields };
+      });
+      setImportDrafts(enhancedOperations);
       const fileCount = normalizedFiles.length + (trimmedText ? 1 : 0);
-      setImportStatus(`Found ${operations.length} operations from ${fileCount} file(s). Select one to test.`);
-      const first = operations[0];
+      setImportStatus(`Found ${enhancedOperations.length} operations from ${fileCount} file(s). Select one to test.`);
+      const first = enhancedOperations[0];
       prepareDraftDefaults(first);
       setImportSpecText(trimmedText);
     } catch (err) {
@@ -4698,9 +5773,7 @@ export default function PosApiAdmin() {
 
     const nextState = createFormState(draftDefinition);
 
-    setSelectedId('');
-    setRequestFieldValues({});
-    setFormState(nextState);
+    resetEditorState(nextState);
     setStatus('Loaded the imported draft into the editor. Add details and save to finalize.');
     setActiveTab('endpoints');
   }
@@ -4940,6 +6013,11 @@ export default function PosApiAdmin() {
       formState.requestSchemaText,
       {},
     );
+    const requestSample = parseJsonInput(
+      'Base request sample',
+      baseRequestJson,
+      {},
+    );
     const responseSchema = parseJsonInput(
       'Response body schema',
       formState.responseSchemaText,
@@ -4991,15 +6069,38 @@ export default function PosApiAdmin() {
       test: splitScriptText(formState.testScript),
     };
 
-    const sanitizedRequestFields = requestFieldsRaw.map((entry) => {
-      const normalized = normalizeHintEntry(entry);
-      if (!normalized.field) {
-        return normalized;
-      }
+    const getFieldMeta = (field) => requestFieldMeta[field] || {};
+
+    const buildFieldWithMeta = (normalized, fallbackRequired) => {
+      const meta = getFieldMeta(normalized.field);
+      const requiredCommon =
+        typeof meta.requiredCommon === 'boolean'
+          ? meta.requiredCommon
+          : typeof normalized.requiredCommon === 'boolean'
+            ? normalized.requiredCommon
+            : typeof fallbackRequired === 'boolean'
+              ? fallbackRequired
+              : typeof normalized.required === 'boolean'
+                ? normalized.required
+                : false;
+      const description = meta.description || normalized.description;
+      const requiredByVariation = normalizeFieldRequirementMap({
+        ...normalized.requiredByVariation,
+        ...meta.requiredByVariation,
+      });
+      const defaultByVariation = normalizeFieldValueMap({
+        ...normalized.defaultByVariation,
+        ...meta.defaultByVariation,
+      });
       const hint = {
         field: normalized.field,
-        required: typeof normalized.required === 'boolean' ? normalized.required : false,
-        ...(normalized.description ? { description: normalized.description } : {}),
+        required: requiredCommon,
+        requiredCommon,
+        requiredByVariation,
+        requiredVariations: requiredByVariation,
+        defaultByVariation,
+        defaultVariations: defaultByVariation,
+        ...(description ? { description } : {}),
       };
       if (normalized.location) {
         hint.location = normalized.location;
@@ -5008,22 +6109,35 @@ export default function PosApiAdmin() {
         hint.defaultValue = normalized.defaultValue;
       }
       return hint;
+    };
+
+    const sanitizedRequestFields = requestFieldsRaw.map((entry) => {
+      const normalized = normalizeHintEntry(entry);
+      if (!normalized.field) {
+        return normalized;
+      }
+      return buildFieldWithMeta(normalized, normalized.required);
     });
 
     const parameterFieldHints = parametersWithValues
       .filter((param) => param?.name && ['query', 'path'].includes(param.in))
-      .map((param) => ({
-        field: param.name,
-        required: Boolean(param.required),
-        description: param.description || `${param.in} parameter`,
-        location: param.in,
-        defaultValue:
-          param.testValue
-          ?? param.example
-          ?? param.default
-          ?? param.sample
-          ?? parameterDefaults[param.name],
-      }));
+      .map((param) =>
+        buildFieldWithMeta(
+          {
+            field: param.name,
+            required: Boolean(param.required),
+            description: param.description || `${param.in} parameter`,
+            location: param.in,
+            defaultValue:
+              param.testValue
+              ?? param.example
+              ?? param.default
+              ?? param.sample
+              ?? parameterDefaults[param.name],
+          },
+          param.required,
+        ),
+      );
 
     const combinedRequestFields = [];
     const seenRequestFields = new Set();
@@ -5034,13 +6148,147 @@ export default function PosApiAdmin() {
       combinedRequestFields.push(normalized);
     });
 
+    const variationRequirementByKey = {};
+    const variationDefaultsByKey = {};
+
+    if (requestFieldDisplay.state === 'ok') {
+      variationColumns.forEach((variation) => {
+        const key = variation.key;
+        if (!key) return;
+        variationRequirementByKey[key] = {};
+        variationDefaultsByKey[key] = {};
+      });
+
+      visibleRequestFieldItems.forEach((entry) => {
+        const normalized = normalizeHintEntry(entry);
+        const fieldLabel = normalized.field;
+        if (!fieldLabel) return;
+        const meta = requestFieldMeta[fieldLabel] || {};
+        const requiredCommon =
+          typeof meta.requiredCommon === 'boolean'
+            ? meta.requiredCommon
+            : typeof normalized.requiredCommon === 'boolean'
+              ? normalized.requiredCommon
+              : typeof normalized.required === 'boolean'
+                ? normalized.required
+                : false;
+
+        variationColumns.forEach((variation) => {
+          const key = variation.key;
+          if (!key) return;
+          const variationFieldSet = variationFieldSets.get(key);
+          const showForVariation = !variationFieldSet || variationFieldSet.has(fieldLabel);
+          if (!showForVariation) return;
+          const required = requiredCommon
+            ? true
+            : meta.requiredByVariation?.[key]
+              ?? normalized.requiredByVariation?.[key]
+              ?? false;
+          const defaultValue =
+            meta.defaultByVariation?.[key]
+            ?? normalized.defaultByVariation?.[key];
+
+          if (required) {
+            variationRequirementByKey[key][fieldLabel] = true;
+          }
+          if (defaultValue !== undefined && defaultValue !== '') {
+            variationDefaultsByKey[key][fieldLabel] = defaultValue;
+          }
+        });
+      });
+    }
+
+    const sanitizedRequestFieldVariations = (requestFieldVariations || [])
+      .filter((entry) => entry && entry.key)
+      .map((entry) => {
+        const variationKey = entry.key;
+        const metaRequired = variationRequirementByKey[variationKey] || {};
+        const metaDefaults = variationDefaultsByKey[variationKey] || {};
+        return {
+          key: variationKey,
+          label: entry.label || entry.key,
+          enabled: Boolean(entry.enabled),
+          requiredFields: {
+            ...normalizeFieldRequirementMap(entry.requiredFields),
+            ...metaRequired,
+          },
+          defaultValues: {
+            ...normalizeFieldValueMap(entry.defaultValues),
+            ...metaDefaults,
+          },
+        };
+      });
+
+    const sanitizedVariations = (variations || []).map((variation, index) => {
+      const variationKey = variation.key || variation.name || `variation-${index + 1}`;
+      const requestExampleText = variation.requestExampleText
+        || toPrettyJson(variation.requestExample || {}, '{}');
+      const requestExample = parseJsonInput(
+        `Request example for variation ${variation.name || index + 1}`,
+        requestExampleText,
+        {},
+      );
+      const requestFields = Array.isArray(variation.requestFields)
+        ? variation.requestFields
+          .map((field) => {
+            const normalized = normalizeHintEntry(field);
+            const meta = normalized.field ? requestFieldMeta[normalized.field] || {} : {};
+            const requiredCommon =
+              typeof meta.requiredCommon === 'boolean'
+                ? meta.requiredCommon
+                : typeof normalized.requiredCommon === 'boolean'
+                  ? normalized.requiredCommon
+                  : typeof normalized.required === 'boolean'
+                    ? normalized.required
+                    : false;
+            const requiredByVariation = normalizeFieldRequirementMap({
+              ...normalized.requiredByVariation,
+              ...meta.requiredByVariation,
+            });
+            const defaultByVariation = normalizeFieldValueMap({
+              ...normalized.defaultByVariation,
+              ...meta.defaultByVariation,
+            });
+
+            return {
+              field: normalized.field || '',
+              description: meta.description || normalized.description || '',
+              requiredCommon,
+              required: requiredCommon,
+              requiredByVariation,
+              requiredVariations: requiredByVariation,
+              defaultByVariation,
+              defaultVariations: defaultByVariation,
+            };
+          })
+          .filter((field) => field.field)
+        : [];
+      return {
+        key: variationKey,
+        name: variation.name || variation.key || `Variation ${index + 1}`,
+        description: variation.description || '',
+        enabled: variation.enabled !== false,
+        requestExample,
+        requestExampleText: toPrettyJson(requestExample, '{}'),
+        requestFields,
+        requiredFields: {
+          ...(variationRequirementByKey[variationKey] || {}),
+          ...normalizeFieldRequirementMap(variation.requiredFields),
+        },
+        defaultValues: {
+          ...(variationDefaultsByKey[variationKey] || {}),
+          ...normalizeFieldValueMap(variation.defaultValues),
+        },
+      };
+    });
+
     const usage = formState.posApiType === 'AUTH'
       ? 'auth'
       : VALID_USAGE_VALUES.has(formState.usage)
         ? formState.usage
         : 'transaction';
-    const resolvedPosApiType = formState.posApiType || USAGE_DEFAULT_TYPE[usage] || '';
     const isTransaction = usage === 'transaction';
+    const resolvedPosApiType = isTransaction ? '' : formState.posApiType || USAGE_DEFAULT_TYPE[usage] || '';
     const supportsItems = isTransaction ? formState.supportsItems !== false : false;
     const supportsMultiplePayments = isTransaction ? Boolean(formState.supportsMultiplePayments) : false;
     const receiptTypesEnabled = isTransaction && supportsItems && formState.enableReceiptTypes !== false;
@@ -5116,13 +6364,22 @@ export default function PosApiAdmin() {
       throw new Error('Provide at least one base URL or environment variable mapping for this endpoint.');
     }
 
+    const hasRequestBodySchema = hasObjectEntries(requestSchema);
+    const hasRequestBodyDescription = Boolean((formState.requestDescription || '').trim());
+    const requestBody = hasRequestBodySchema || hasRequestBodyDescription
+      ? {
+          schema: requestSchema,
+          description: formState.requestDescription || '',
+        }
+      : null;
+
     const endpoint = {
       id: formState.id.trim(),
       name: formState.name.trim(),
       category: formState.category.trim(),
       method: formState.method.trim().toUpperCase(),
       path: formState.path.trim(),
-      posApiType: resolvedPosApiType,
+      ...(resolvedPosApiType ? { posApiType: resolvedPosApiType } : {}),
       usage,
       defaultForForm: isTransaction ? Boolean(formState.defaultForForm) : false,
       ...(settingsId ? { settingsId } : {}),
@@ -5153,10 +6410,7 @@ export default function PosApiAdmin() {
       receiptItemTemplates,
       notes: formState.notes ? formState.notes.trim() : '',
       parameters: parametersWithValues,
-      requestBody: {
-        schema: requestSchema,
-        description: formState.requestDescription || '',
-      },
+      ...(requestBody ? { requestBody } : {}),
       responseBody: {
         schema: responseSchema,
         description: formState.responseDescription || '',
@@ -5164,7 +6418,11 @@ export default function PosApiAdmin() {
       responseTables: sanitizeTableSelection(formState.responseTables, responseTableOptions),
       requestEnvMap: buildRequestEnvMap(requestFieldValues),
       requestFields: combinedRequestFields,
+      requestFieldVariations: sanitizedRequestFieldVariations,
+      variations: sanitizedVariations,
       responseFields: responseFieldsWithMapping,
+      requestSample,
+      requestSampleNotes: formState.requestSampleNotes || '',
       ...(Object.keys(responseFieldMappings).length
         ? { responseFieldMappings }
         : {}),
@@ -5206,7 +6464,7 @@ export default function PosApiAdmin() {
 
   async function handleSave() {
     try {
-      setLoading(true);
+      setSaving(true);
       setError('');
       setStatus('');
       resetTestState();
@@ -5232,29 +6490,41 @@ export default function PosApiAdmin() {
         ));
       }
 
+      const normalizedWithIds = normalizeEndpointList(normalized);
+
       const res = await fetch(`${API_BASE}/posapi/endpoints`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ endpoints: normalized }),
+        body: JSON.stringify({ endpoints: normalizedWithIds }),
         skipLoader: true,
       });
       if (!res.ok) {
-        throw new Error('Failed to save endpoints');
+        let message = 'Failed to save endpoints';
+        try {
+          const errorBody = await res.json();
+          if (Array.isArray(errorBody?.issues) && errorBody.issues.length > 0) {
+            message = `${errorBody.message || message}: ${errorBody.issues.join('; ')}`;
+          } else if (errorBody?.message) {
+            message = errorBody.message;
+          }
+        } catch (err) {
+          // ignore parse errors and fall back to default message
+        }
+        throw new Error(message);
       }
       const saved = await res.json();
-      const nextRaw = Array.isArray(saved) ? saved : normalized;
-      const next = nextRaw.map(withEndpointMetadata);
+      const nextRaw = Array.isArray(saved) ? saved : normalizedWithIds;
+      const next = normalizeEndpointList(nextRaw.map(withEndpointMetadata));
       setEndpoints(next);
       const selected = next.find((ep) => ep.id === preparedDefinition.id) || preparedDefinition;
-      setSelectedId(selected.id);
-      setFormState(createFormState(selected));
+      handleSelect(selected.id, selected);
       setStatus('Changes saved');
     } catch (err) {
       console.error(err);
       setError(err.message || 'Failed to save endpoints');
     } finally {
-      setLoading(false);
+      setSaving(false);
     }
   }
 
@@ -5291,7 +6561,7 @@ export default function PosApiAdmin() {
       }
       const saved = await res.json();
       const nextRaw = Array.isArray(saved) ? saved : updated;
-      const nextEndpoints = nextRaw.map(withEndpointMetadata);
+      const nextEndpoints = normalizeEndpointList(nextRaw.map(withEndpointMetadata));
       setEndpoints(nextEndpoints);
       if (nextEndpoints.length > 0) {
         setSelectedId(nextEndpoints[0].id);
@@ -5315,7 +6585,7 @@ export default function PosApiAdmin() {
       return;
     }
     try {
-      setLoading(true);
+      setFetchingDoc(true);
       setError('');
       setStatus('');
       resetTestState();
@@ -5367,7 +6637,7 @@ export default function PosApiAdmin() {
       console.error(err);
       setError(err.message || 'Failed to fetch documentation');
     } finally {
-      setLoading(false);
+      setFetchingDoc(false);
     }
   }
 
@@ -5392,13 +6662,9 @@ export default function PosApiAdmin() {
     setStatus(`Applied ${selected.label} to ${target} schema`);
   }
 
-  function syncRequestSampleFromSelections(nextSelections) {
-    let baseSample = {};
-    try {
-      baseSample = JSON.parse(formState.requestSchemaText || '{}');
-    } catch {
-      baseSample = {};
-    }
+  function syncRequestSampleFromSelections(nextSelections, baseOverride) {
+    const baseText = baseOverride ?? baseRequestJson ?? '{}';
+    const baseSample = cleanSampleText(baseText);
     const activeSelections = Object.entries(nextSelections || {}).reduce((acc, [path, entry]) => {
       if (entry?.applyToBody === false) return acc;
       acc[path] = entry;
@@ -5410,10 +6676,272 @@ export default function PosApiAdmin() {
     });
     try {
       const formatted = JSON.stringify(updated, null, 2);
-      setFormState((prev) => ({ ...prev, requestSchemaText: formatted }));
+      setRequestSampleText(formatted);
+      setBaseRequestJson(formatted);
     } catch {
       // ignore formatting errors
     }
+    return updated;
+  }
+
+  function buildSelectionsForVariation(variationKey) {
+    if (!variationKey || requestFieldDisplay.state !== 'ok') return {};
+    const selections = {};
+    visibleRequestFieldItems.forEach((entry) => {
+      const normalized = normalizeHintEntry(entry);
+      const fieldPath = normalized.field;
+      if (!fieldPath) return;
+      const meta = requestFieldMeta[fieldPath] || {};
+      const defaultValue = meta.defaultByVariation?.[variationKey]
+        ?? normalized.defaultByVariation?.[variationKey];
+      if (defaultValue === undefined || defaultValue === '') return;
+      selections[fieldPath] = {
+        mode: 'literal',
+        literal: String(defaultValue),
+        envVar: '',
+        applyToBody: entry.source !== 'parameter',
+      };
+    });
+    return selections;
+  }
+
+  function mergeArrays(base, modifier, path) {
+    if (!Array.isArray(base)) return Array.isArray(modifier) ? modifier : base;
+    if (!Array.isArray(modifier) || modifier.length === 0) return base;
+    if (path.endsWith('payments')) {
+      const merged = base.map((entry) => ({ ...entry }));
+      modifier.forEach((payment) => {
+        if (!payment || typeof payment !== 'object') return;
+        const targetIndex = merged.findIndex((item) => item?.type === payment.type);
+        if (targetIndex >= 0) {
+          merged[targetIndex] = mergePayloads(merged[targetIndex], payment, `${path}[${targetIndex}]`);
+        } else {
+          merged.push(payment);
+        }
+      });
+      return merged;
+    }
+    const merged = base.map((entry) => entry);
+    modifier.forEach((value, idx) => {
+      if (idx < merged.length && merged[idx] && typeof merged[idx] === 'object' && typeof value === 'object') {
+        merged[idx] = mergePayloads(merged[idx], value, `${path}[${idx}]`);
+      } else if (idx >= merged.length) {
+        merged.push(value);
+      } else {
+        merged[idx] = value;
+      }
+    });
+    return merged;
+  }
+
+  function mergePayloads(base, modifier, path = '') {
+    if (Array.isArray(base) || Array.isArray(modifier)) {
+      return mergeArrays(Array.isArray(base) ? base : [], Array.isArray(modifier) ? modifier : [], path);
+    }
+    if (!modifier || typeof modifier !== 'object') return base;
+    const source = base && typeof base === 'object' ? { ...base } : {};
+    Object.entries(modifier).forEach(([key, value]) => {
+      const nextPath = path ? `${path}.${key}` : key;
+      if (Array.isArray(value) || typeof value === 'object') {
+        source[key] = mergePayloads(source[key], value, nextPath);
+      } else {
+        source[key] = value;
+      }
+    });
+    return source;
+  }
+
+  function applyPayloadOverlay(base, modifier) {
+    const baseClone = deepClone(base);
+    const normalizedBase =
+      baseClone && typeof baseClone === 'object'
+        ? baseClone
+        : Array.isArray(modifier)
+          ? []
+          : {};
+    if (!modifier || typeof modifier !== 'object') return normalizedBase;
+    return mergePayloads(normalizedBase, modifier);
+  }
+
+  function parsePathSegments(path) {
+    return String(path || '')
+      .split('.')
+      .map((segment) => segment.trim())
+      .filter(Boolean)
+      .map((segment) => ({ key: segment.replace(/\[\]/g, ''), isArray: segment.endsWith('[]') }));
+  }
+
+  function getNestedValue(source, segments) {
+    let current = source;
+    for (let i = 0; i < segments.length; i += 1) {
+      const { key, isArray } = segments[i];
+      if (!current || typeof current !== 'object') return undefined;
+      current = current[key];
+      if (isArray) {
+        if (!Array.isArray(current) || current.length === 0) return undefined;
+        current = current[0];
+      }
+    }
+    return current;
+  }
+
+  function setNestedValue(target, segments, value) {
+    let current = target;
+    segments.forEach((segment, index) => {
+      const isLast = index === segments.length - 1;
+      if (segment.isArray) {
+        if (!Array.isArray(current[segment.key])) {
+          current[segment.key] = [{}];
+        } else if (current[segment.key].length === 0) {
+          current[segment.key].push({});
+        }
+        if (isLast) {
+          current[segment.key][0] = value;
+        } else {
+          if (!current[segment.key][0] || typeof current[segment.key][0] !== 'object') {
+            current[segment.key][0] = {};
+          }
+          current = current[segment.key][0];
+        }
+      } else {
+        if (isLast) {
+          current[segment.key] = value;
+        } else {
+          if (!current[segment.key] || typeof current[segment.key] !== 'object') {
+            current[segment.key] = {};
+          }
+          current = current[segment.key];
+        }
+      }
+    });
+  }
+
+  function removeNestedValue(target, segments) {
+    const stack = [];
+    let current = target;
+
+    for (let i = 0; i < segments.length; i += 1) {
+      const segment = segments[i];
+      if (!current || typeof current !== 'object') return;
+      stack.push({ parent: current, segment });
+      current = current[segment.key];
+      if (segment.isArray) {
+        if (!Array.isArray(current) || current.length === 0) return;
+        current = current[0];
+      }
+    }
+
+    while (stack.length > 0) {
+      const { parent, segment } = stack.pop();
+      if (!parent || typeof parent !== 'object') continue;
+
+      if (segment.isArray) {
+        if (Array.isArray(parent[segment.key])) {
+          parent[segment.key].splice(0, 1);
+          if (parent[segment.key].length === 0) {
+            delete parent[segment.key];
+          }
+        }
+      } else if (Object.prototype.hasOwnProperty.call(parent, segment.key)) {
+        delete parent[segment.key];
+      }
+
+      if (Object.keys(parent).length > 0) {
+        break;
+      }
+    }
+  }
+
+  function pickPayloadFields(payload, fieldPaths = []) {
+    if (!payload || typeof payload !== 'object' || fieldPaths.length === 0) return payload;
+    const picked = {};
+    fieldPaths.forEach((path) => {
+      const segments = parsePathSegments(path);
+      if (segments.length === 0) return;
+      const value = getNestedValue(payload, segments);
+      if (value === undefined) return;
+      setNestedValue(picked, segments, value);
+    });
+    return picked;
+  }
+
+  function getAllowedFieldsForVariation(key) {
+    const variationFieldSet = variationFieldSets.get(key);
+    if (variationFieldSet && variationFieldSet.size > 0) {
+      return Array.from(variationFieldSet);
+    }
+    const variationMeta = requestFieldVariationMap.get(key);
+    if (variationMeta) {
+      const combined = new Set([
+        ...Object.keys(variationMeta.requiredFields || {}),
+        ...Object.keys(variationMeta.defaultValues || {}),
+      ]);
+      return Array.from(combined);
+    }
+    return [];
+  }
+
+  function resolveVariationRequestExample(key) {
+    if (!key) return null;
+    const variation = activeVariations.find((entry) => (entry.key || entry.name) === key);
+    if (variation) {
+      return toSamplePayload(variation.requestExample ?? variation.requestExampleText ?? {});
+    }
+    const exampleEntry = exampleVariationMap.get(key);
+    if (exampleEntry) {
+      return toSamplePayload(
+        exampleEntry.requestExample ?? exampleEntry.request?.body ?? exampleEntry.body ?? exampleEntry,
+      );
+    }
+    return null;
+  }
+
+  function resolveVariationExampleForTesting(key) {
+    if (!key) return null;
+    const variationExample = resolveVariationRequestExample(key);
+    if (variationExample) return variationExample;
+    return null;
+  }
+
+  function buildCombinationPayload(baseKey = combinationBaseKey, modifierKeys = combinationModifierKeys) {
+    if (!baseKey) {
+      throw new Error('Select a base variation to build a combination.');
+    }
+    const baseFromText = cleanSampleText(baseRequestJson);
+    const variationBase = baseKey && baseKey !== BASE_COMBINATION_KEY
+      ? resolveVariationRequestExample(baseKey)
+      : null;
+    let mergedPayload = deepClone(variationBase || baseFromText || {});
+    modifierKeys.forEach((key) => {
+      const modifierPayload = getVariationExamplePayload(key, false, true);
+      if (!modifierPayload || Object.keys(modifierPayload).length === 0) return;
+      mergedPayload = applyPayloadOverlay(mergedPayload, modifierPayload);
+    });
+    return mergedPayload;
+  }
+
+  function getVariationExamplePayload(key, skipFieldFilter = false, isModifier = false) {
+    let payloadCandidate = {};
+    let allowedFields = [];
+    if (key === BASE_COMBINATION_KEY) {
+      payloadCandidate = cleanSampleText(baseRequestJson);
+    } else {
+      const variationExample = resolveVariationRequestExample(key);
+      if (variationExample) {
+        payloadCandidate = variationExample;
+      }
+      allowedFields = getAllowedFieldsForVariation(key);
+    }
+    if (isModifier) {
+      if (allowedFields.length === 0) {
+        return {};
+      }
+      return pickPayloadFields(payloadCandidate, allowedFields);
+    }
+    if (skipFieldFilter || !allowedFields.length) {
+      return payloadCandidate;
+    }
+    return pickPayloadFields(payloadCandidate, allowedFields);
   }
 
   function handleRequestFieldValueChange(fieldPath, updates) {
@@ -5440,6 +6968,69 @@ export default function PosApiAdmin() {
       }));
       return nextSelections;
     });
+  }
+
+  function handleRequestFieldDescriptionChange(fieldPath, value) {
+    if (!fieldPath) return;
+    setRequestFieldMeta((prev) => {
+      const current = prev[fieldPath] || { requiredByVariation: {}, defaultByVariation: {} };
+      return { ...prev, [fieldPath]: { ...current, description: value } };
+    });
+  }
+
+  function handleCommonRequiredToggle(fieldPath, value) {
+    if (!fieldPath) return;
+    setRequestFieldMeta((prev) => {
+      const current = prev[fieldPath] || { requiredByVariation: {}, defaultByVariation: {} };
+      const requiredByVariation = value
+        ? variationColumns.reduce((acc, variation) => {
+          const key = variation.key;
+          if (key) {
+            acc[key] = true;
+          }
+          return acc;
+        }, {})
+        : {};
+      return {
+        ...prev,
+        [fieldPath]: { ...current, requiredCommon: value, requiredByVariation },
+      };
+    });
+  }
+
+  function handleVariationRequirementChange(fieldPath, variationKey, value) {
+    if (!fieldPath || !variationKey) return;
+    if (!value) {
+      clearVariationFieldSelection(variationKey, fieldPath);
+      return;
+    }
+    setRequestFieldMeta((prev) => {
+      const current = prev[fieldPath] || { requiredByVariation: {}, defaultByVariation: {} };
+      return {
+        ...prev,
+        [fieldPath]: {
+          ...current,
+          requiredByVariation: { ...current.requiredByVariation, [variationKey]: value },
+        },
+      };
+    });
+
+    ensureVariationFieldSelection(variationKey, fieldPath);
+  }
+
+  function handleVariationDefaultUpdate(fieldPath, variationKey, value) {
+    if (!fieldPath || !variationKey) return;
+    setRequestFieldMeta((prev) => {
+      const current = prev[fieldPath] || { requiredByVariation: {}, defaultByVariation: {} };
+      const defaultByVariation = { ...current.defaultByVariation };
+      if (value !== '' && value !== undefined && value !== null) {
+        defaultByVariation[variationKey] = value;
+      } else {
+        delete defaultByVariation[variationKey];
+      }
+      return { ...prev, [fieldPath]: { ...current, defaultByVariation } };
+    });
+    syncVariationDefaultChange(variationKey, fieldPath, value);
   }
 
   function handleAdminParamChange(name, value) {
@@ -5594,30 +7185,109 @@ export default function PosApiAdmin() {
     setTokenMeta({ lastFetchedAt: null, expiresAt: null });
   }
 
-  function handleNew() {
+  function resetEditorState(nextFormState = { ...EMPTY_ENDPOINT }) {
     setSelectedId('');
-    setFormState({ ...EMPTY_ENDPOINT });
     setStatus('');
     setError('');
     resetTestState();
+    setRequestBuilder(null);
+    setRequestBuilderError('');
     setDocExamples([]);
     setSelectedDocBlock('');
     setDocMetadata({});
     setDocFieldDescriptions({});
-    setSampleImportText('');
-    setSampleImportError('');
+    setImportSpecText('');
+    setImportDrafts([]);
+    setImportError('');
+    setImportStatus('');
+    setSelectedImportId('');
+    setImportTestValues({});
+    setImportRequestBody('');
+    setImportTestResult(null);
+    setImportTestRunning(false);
+    setImportTestError('');
+    setImportSelectedExampleKey('');
+    setImportExampleResponse(null);
     setImportBaseUrl('');
     setImportBaseUrlEnvVar('');
     setImportBaseUrlMode('literal');
+    setBaseRequestJson('');
+    setRequestSampleText('');
+    setCombinationBaseKey(BASE_COMBINATION_KEY);
+    setCombinationModifierKeys([]);
+    setCombinationPayloadText('');
+    setCombinationError('Select a base variation to build a combination.');
     setTestEnvironment('staging');
     setImportAuthEndpointId('');
     setUseCachedToken(true);
     setImportUseCachedToken(true);
     setRequestFieldValues({});
+    setRequestFieldMeta({});
     setTokenMeta({ lastFetchedAt: null, expiresAt: null });
+    setSelectedVariationKey('');
+    setPaymentDataDrafts({});
+    setPaymentDataErrors({});
+    setTaxTypeListText(DEFAULT_TAX_TYPES.join(', '));
+    setTaxTypeListError('');
+    setAdminSelectionId('');
+    setAdminParamValues({});
+    setAdminRequestBody('');
+    setAdminResult(null);
+    setAdminError('');
+    setAdminRunning(false);
+    setAdminHistory([]);
+    setAdminUseCachedToken(true);
+    setAdminAuthEndpointId('');
+    setFormState(nextFormState);
   }
 
-  async function handleTest() {
+  function handleNew() {
+    resetEditorState({ ...EMPTY_ENDPOINT });
+  }
+
+  async function handleTestCombination() {
+    if (!combinationPayloadText.trim()) {
+      setCombinationError('Build a combination payload before testing.');
+      return;
+    }
+    await handleTest({
+      payloadOverride: combinationPayloadText,
+      payloadLabel: 'Combination payload',
+    });
+  }
+
+  function parseRequestSamplePayload() {
+    return parseJsonPayloadFromText('Request sample', requestSampleText, {
+      setErrorState: (message) => setTestState({ running: false, error: message, result: null }),
+    });
+  }
+
+  function parseJsonPayloadFromText(label, text, options = {}) {
+    const trimmed = (text || '').trim();
+    if (!trimmed) {
+      const message = `${label} cannot be empty.`;
+      const setErrorState = options.setErrorState;
+      if (typeof setErrorState === 'function') {
+        setErrorState(message);
+      }
+      showToast(message, 'error');
+      throw new Error(message);
+    }
+    try {
+      return JSON.parse(text);
+    } catch (err) {
+      const message = err?.message || `${label} must be valid JSON.`;
+      const setErrorState = options.setErrorState;
+      if (typeof setErrorState === 'function') {
+        setErrorState(message);
+      }
+      showToast(message, 'error');
+      throw err;
+    }
+  }
+
+  async function handleTest(options = {}) {
+    const { payloadOverride, payloadLabel } = options || {};
     let definition;
     try {
       setError('');
@@ -5665,8 +7335,44 @@ export default function PosApiAdmin() {
       return;
     }
 
+    const payloadTextForTest = payloadOverride !== undefined && payloadOverride !== null
+      ? (typeof payloadOverride === 'string'
+        ? payloadOverride
+        : JSON.stringify(payloadOverride, null, 2))
+      : requestSampleText;
+    let payloadForTest = null;
+    const parseOverrideText = (text, label) =>
+      parseJsonPayloadFromText(label, text, {
+        setErrorState: (message) => setTestState({ running: false, error: message, result: null }),
+      });
+
+    if (payloadOverride !== undefined && payloadOverride !== null) {
+      if (typeof payloadOverride === 'string') {
+        try {
+          payloadForTest = parseOverrideText(payloadOverride, payloadLabel || 'Payload override');
+        } catch (err) {
+          if (payloadLabel === 'Combination payload') {
+            setCombinationError(err?.message || 'Invalid combination payload.');
+          }
+          return;
+        }
+      } else {
+        payloadForTest = payloadOverride;
+      }
+    } else {
+      try {
+        payloadForTest = parseRequestSamplePayload();
+      } catch {
+        return;
+      }
+    }
+    const hasPayloadOverride = payloadOverride !== undefined && payloadOverride !== null;
+
+    const confirmPayloadLabel = hasPayloadOverride
+      ? 'the built combination JSON box'
+      : 'the request sample JSON box';
     const confirmed = window.confirm(
-      `Run a test request against ${selectedTestUrl || activeTestSelection.display || 'the configured server'}? This will use the sample data shown above.`,
+      `Run a test request against ${selectedTestUrl || activeTestSelection.display || 'the configured server'}? This will use ${confirmPayloadLabel}.`,
     );
     if (!confirmed) return;
 
@@ -5696,45 +7402,86 @@ export default function PosApiAdmin() {
           environment: testEnvironment,
           authEndpointId: formState.authEndpointId || '',
           useCachedToken: effectiveUseCachedToken,
+          ...(payloadForTest !== undefined ? { body: payloadForTest } : {}),
+          ...(hasPayloadOverride
+            ? { payloadOverride: payloadForTest, payloadOverrideText: payloadTextForTest?.trim() || '' }
+            : {}),
         }),
       });
-      if (!res.ok) {
-        const text = await res.text();
-        let message = text;
-        let requestUrl = '';
-        try {
-          const parsed = JSON.parse(text);
-          if (parsed && typeof parsed === 'object') {
-            if (parsed.message) {
-              message = parsed.message;
-            }
-            if (parsed.request?.url) {
-              requestUrl = parsed.request.url;
-            }
-          }
-        } catch {
-          // ignore parse failure
-        }
-        const detailedMessage = requestUrl && !(message || '').includes(requestUrl)
-          ? `${message || 'Test request failed'} (Request URL: ${requestUrl})`
-          : message || 'Test request failed';
-        throw new Error(detailedMessage);
+      const responseText = await res.text();
+      let data = null;
+      try {
+        data = JSON.parse(responseText);
+      } catch {
+        // Response body isn't JSON; fall back to textual body below.
       }
-      const data = await res.json();
-      if (Array.isArray(data.envWarnings) && data.envWarnings.length) {
+
+      const buildResultPayload = (rawData = {}) => {
+        const responseSummary = {
+          ok: rawData?.response?.ok ?? res.ok,
+          status: rawData?.response?.status ?? res.status,
+          statusText: rawData?.response?.statusText ?? res.statusText,
+          bodyJson: rawData?.response?.bodyJson,
+          bodyText: rawData?.response?.bodyText ?? (!rawData.response ? responseText : ''),
+          headers: rawData?.response?.headers,
+        };
+
+        const inferredRequestUrl = rawData?.request?.url
+          || selectedTestUrl
+          || activeTestSelection.display
+          || endpointForTest.path;
+
+        const requestSummary = {
+          method: rawData?.request?.method || definition.method,
+          url: inferredRequestUrl,
+          ...(payloadForTest !== undefined ? { body: payloadForTest } : {}),
+          ...(rawData?.request || {}),
+        };
+
+        return { ...rawData, request: requestSummary, response: { ...rawData.response, ...responseSummary } };
+      };
+
+      if (!res.ok) {
+        const message = data?.message || responseText || 'Test request failed';
+        const detailedMessage = data?.request?.url && !(message || '').includes(data.request.url)
+          ? `${message} (Request URL: ${data.request.url})`
+          : message;
+        const resultPayload = buildResultPayload(data || {});
+        setTestState({ running: false, error: detailedMessage, result: resultPayload });
+        showToast(detailedMessage, 'error');
+        return;
+      }
+
+      const resultPayload = buildResultPayload(data || {});
+      if (Array.isArray(data?.envWarnings) && data.envWarnings.length) {
         setStatus(data.envWarnings.join(' '));
         showToast(data.envWarnings.join(' '), 'info');
       }
-      updateTokenMetaFromResult(data);
-      setTestState({ running: false, error: '', result: data });
-      const statusCode = data?.response?.status ?? res.status;
-      const statusText = data?.response?.statusText || res.statusText || '';
-      const success = data?.response?.ok !== undefined ? data.response.ok : res.ok;
-      showToast(`Test request URL: ${data?.request?.url || endpointForTest.path}`, 'info');
+      if (data) {
+        updateTokenMetaFromResult(data);
+      }
+      setTestState({ running: false, error: '', result: resultPayload });
+      const statusCode = resultPayload.response?.status ?? res.status;
+      const statusText = resultPayload.response?.statusText || res.statusText || '';
+      const success = resultPayload.response?.ok !== undefined ? resultPayload.response.ok : res.ok;
+      showToast(`Test request URL: ${resultPayload?.request?.url || endpointForTest.path}`, 'info');
       showToast(`Test response status: ${statusCode} ${statusText}`.trim(), success ? 'success' : 'error');
     } catch (err) {
       console.error(err);
-      setTestState({ running: false, error: err.message || 'Failed to run test', result: null });
+      const fallbackResult = {
+        request: {
+          method: definition?.method,
+          url: selectedTestUrl || activeTestSelection.display || definition?.path,
+          ...(payloadForTest !== undefined ? { body: payloadForTest } : {}),
+        },
+        response: {
+          ok: false,
+          status: null,
+          statusText: err.message || 'Failed to run test',
+          bodyText: '',
+        },
+      };
+      setTestState({ running: false, error: err.message || 'Failed to run test', result: fallbackResult });
       showToast(err.message || 'Failed to run test', 'error');
     }
   }
@@ -5822,7 +7569,7 @@ export default function PosApiAdmin() {
                     <li key={ep.id}>
                       <button
                         type="button"
-                        onClick={() => handleSelect(ep.id)}
+                        onClick={() => handleSelect(ep.id, ep)}
                         style={{
                           ...styles.listButton,
                           ...(selectedId === ep.id ? styles.listButtonActive : {}),
@@ -6439,404 +8186,6 @@ export default function PosApiAdmin() {
               )}
             </span>
           </label>
-          <label style={{ ...styles.checkboxLabel, marginTop: '1.9rem' }}>
-            <input
-              type="checkbox"
-              checked={Boolean(formState.supportsMultipleReceipts)}
-              onChange={(e) => handleChange('supportsMultipleReceipts', e.target.checked)}
-              disabled={formState.usage !== 'transaction'}
-            />
-            <span>
-              Supports multiple receipt groups
-              {formState.usage !== 'transaction' && (
-                <span style={styles.checkboxHint}> (transaction endpoints only)</span>
-              )}
-            </span>
-          </label>
-          <label style={{ ...styles.checkboxLabel, marginTop: '1.9rem' }}>
-            <input
-              type="checkbox"
-              checked={Boolean(formState.supportsMultiplePayments)}
-              onChange={(e) => handleChange('supportsMultiplePayments', e.target.checked)}
-              disabled={formState.usage !== 'transaction'}
-            />
-            <span>
-              Supports multiple payment methods
-              {formState.usage !== 'transaction' && (
-                <span style={styles.checkboxHint}> (transaction endpoints only)</span>
-              )}
-            </span>
-          </label>
-          <label style={{ ...styles.checkboxLabel, marginTop: '1.9rem' }}>
-            <input
-              type="checkbox"
-              checked={Boolean(formState.supportsItems)}
-              onChange={(e) => handleChange('supportsItems', e.target.checked)}
-              disabled={formState.usage !== 'transaction'}
-            />
-            <span>
-              Includes receipt items
-              {formState.usage !== 'transaction' && (
-                <span style={styles.checkboxHint}> (transaction endpoints only)</span>
-              )}
-            </span>
-          </label>
-          {isTransactionUsage ? (
-            <label style={styles.label}>
-              POSAPI type
-              <select
-                value={formState.posApiType}
-                onChange={(e) => handleTypeChange(e.target.value)}
-                style={styles.input}
-              >
-                <option value="">Select a type…</option>
-                {(USAGE_TYPE_OPTIONS[formState.usage] || POSAPI_TRANSACTION_TYPES).map((type) => (
-                  <option key={type.value} value={type.value}>
-                    {type.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-          ) : (
-            <div style={styles.label}>
-              <div style={{ fontWeight: 600, marginBottom: '0.25rem' }}>POSAPI type</div>
-              <div style={styles.toggleStateHelper}>
-                {formatTypeLabel(formState.posApiType) || 'Auto-selected from usage'}
-              </div>
-            </div>
-          )}
-          {isTransactionUsage && supportsItems && (
-            <div style={styles.labelFull}>
-              <div style={styles.featureToggleRow}>
-                <label style={styles.checkboxLabel}>
-                  <input
-                    type="checkbox"
-                    checked={receiptTypesEnabled}
-                    onChange={(e) => handleChange('enableReceiptTypes', e.target.checked)}
-                  />
-                  <span>Enable receipt types</span>
-                </label>
-                <span style={styles.toggleStateBadge}>
-                  {formState.allowMultipleReceiptTypes !== false ? 'Multiple allowed' : 'Single value'}
-                </span>
-              </div>
-              {receiptTypesEnabled ? (
-                <>
-                  <label style={{ ...styles.checkboxLabel, marginBottom: '0.5rem' }}>
-                    <input
-                      type="checkbox"
-                      checked={Boolean(formState.allowMultipleReceiptTypes)}
-                      onChange={(e) => handleChange('allowMultipleReceiptTypes', e.target.checked)}
-                    />
-                    <span>Allow selecting more than one receipt type</span>
-                  </label>
-                  <span style={styles.multiSelectTitle}>Receipt types</span>
-                  <span style={styles.multiSelectHint}>
-                    Choose the transaction types this endpoint accepts at runtime.
-                  </span>
-                  <div style={styles.multiSelectOptions}>
-                    {POSAPI_TRANSACTION_TYPES.map((type) => {
-                      const checked = Array.isArray(formState.receiptTypes)
-                        ? formState.receiptTypes.includes(type.value)
-                        : false;
-                      return (
-                        <label key={type.value} style={styles.multiSelectOption}>
-                          <input
-                            type="checkbox"
-                            checked={checked}
-                            onChange={() => toggleReceiptType(type.value)}
-                          />
-                          <span>{type.label}</span>
-                        </label>
-                      );
-                    })}
-                  </div>
-                  {selectedReceiptTypes.length > 0 ? (
-                    <div style={styles.templateList}>
-                      <span style={styles.multiSelectTitle}>Receipt-type JSON templates</span>
-                      <span style={styles.multiSelectHint}>
-                        Paste formatted JSON that will be stored with this definition for each type.
-                      </span>
-                      {selectedReceiptTypes.map((code) => (
-                        <div key={`receipt-template-${code}`} style={styles.templateBox}>
-                          <div style={styles.templateHeader}>
-                            <strong>{formatTypeLabel(code) || code}</strong>
-                            <span style={styles.templatePill}>
-                              {formState.allowMultipleReceiptTypes !== false ? 'Multi' : 'Single'}
-                            </span>
-                          </div>
-                          <textarea
-                            style={styles.templateTextarea}
-                            rows={4}
-                            value={receiptTypeTemplates[code] || ''}
-                            onChange={(e) =>
-                              handleTemplateTextChange('receiptTypeTemplates', code, e.target.value)
-                            }
-                            placeholder="{\n  &quot;type&quot;: &quot;B2C&quot;,\n  &quot;totalAmount&quot;: 0\n}"
-                          />
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div style={styles.toggleStateHelper}>Select at least one receipt type to attach JSON.</div>
-                  )}
-                </>
-              ) : (
-                <div style={styles.toggleStateHelper}>
-                  Receipt type metadata is disabled for this endpoint.
-                </div>
-              )}
-            </div>
-          )}
-          {isTransactionUsage && supportsItems && (
-            <div style={styles.labelFull}>
-              <div style={styles.featureToggleRow}>
-                <label style={styles.checkboxLabel}>
-                  <input
-                    type="checkbox"
-                    checked={receiptItemsEnabled}
-                    onChange={(e) => handleChange('enableReceiptItems', e.target.checked)}
-                  />
-                  <span>Enable receipt items</span>
-                </label>
-                <span style={styles.toggleStateBadge}>
-                  {formState.allowMultipleReceiptItems !== false ? 'Multiple allowed' : 'Single value'}
-                </span>
-              </div>
-              {receiptItemsEnabled ? (
-                <>
-                  <label style={{ ...styles.checkboxLabel, marginBottom: '0.5rem' }}>
-                    <input
-                      type="checkbox"
-                      checked={Boolean(formState.allowMultipleReceiptItems)}
-                      onChange={(e) => handleChange('allowMultipleReceiptItems', e.target.checked)}
-                    />
-                    <span>Allow more than one receipt item template</span>
-                  </label>
-                  <span style={styles.multiSelectTitle}>Receipt item templates</span>
-                  <span style={styles.multiSelectHint}>
-                    Store JSON snippets that describe individual item rows (used when previewing the payload).
-                  </span>
-                  <div style={styles.templateList}>
-                    {receiptItemTemplates.map((template, index) => (
-                      <div key={`receipt-item-template-${index}`} style={styles.templateBox}>
-                        <div style={styles.templateHeader}>
-                          <strong>Item template {index + 1}</strong>
-                          {receiptItemTemplates.length > 1 && (
-                            <button
-                              type="button"
-                              style={styles.templateRemoveButton}
-                              onClick={() => removeReceiptItemTemplate(index)}
-                            >
-                              Remove
-                            </button>
-                          )}
-                        </div>
-                        <textarea
-                          style={styles.templateTextarea}
-                          rows={4}
-                          value={template || ''}
-                          onChange={(e) => handleReceiptItemTemplateChange(index, e.target.value)}
-                          placeholder="{\n  &quot;name&quot;: &quot;Sample item&quot;,\n  &quot;qty&quot;: 1\n}"
-                        />
-                      </div>
-                    ))}
-                  </div>
-                  {formState.allowMultipleReceiptItems !== false && (
-                    <button type="button" style={styles.smallButton} onClick={addReceiptItemTemplate}>
-                      Add another item template
-                    </button>
-                  )}
-                </>
-              ) : (
-                <div style={styles.toggleStateHelper}>Receipt item templates are disabled for this endpoint.</div>
-              )}
-            </div>
-          )}
-          {isTransactionUsage && supportsItems && (
-            <div style={styles.labelFull}>
-              <div style={styles.featureToggleRow}>
-                <label style={styles.checkboxLabel}>
-                  <input
-                    type="checkbox"
-                    checked={receiptTaxTypesEnabled}
-                    onChange={(e) => handleChange('enableReceiptTaxTypes', e.target.checked)}
-                  />
-                  <span>Enable receipt tax types</span>
-                </label>
-                <span style={styles.toggleStateBadge}>
-                  {formState.allowMultipleReceiptTaxTypes !== false ? 'Multiple allowed' : 'Single value'}
-                </span>
-              </div>
-              {receiptTaxTypesEnabled ? (
-                <>
-                  <label style={{ ...styles.checkboxLabel, marginBottom: '0.5rem' }}>
-                    <input
-                      type="checkbox"
-                      checked={Boolean(formState.allowMultipleReceiptTaxTypes)}
-                      onChange={(e) => handleChange('allowMultipleReceiptTaxTypes', e.target.checked)}
-                    />
-                    <span>Allow selecting more than one receipt tax type</span>
-                  </label>
-                  <span style={styles.multiSelectTitle}>Receipt tax types</span>
-                  <span style={styles.multiSelectHint}>
-                    Limit the tax type choices when building receipts and mapping fields.
-                  </span>
-                  <div style={styles.multiSelectOptions}>
-                    {TAX_TYPES.map((tax) => {
-                      const checked = Array.isArray(formState.taxTypes)
-                        ? formState.taxTypes.includes(tax.value)
-                        : false;
-                      return (
-                        <label key={tax.value} style={styles.multiSelectOption}>
-                          <input
-                            type="checkbox"
-                            checked={checked}
-                            onChange={() => toggleTaxType(tax.value)}
-                          />
-                          <span>{tax.label}</span>
-                        </label>
-                      );
-                    })}
-                  </div>
-                  <div style={styles.multiSelectImport}>
-                    <span style={styles.multiSelectTitle}>Paste tax-type codes</span>
-                    <span style={styles.multiSelectHint}>
-                      Paste comma- or newline-separated values (VAT_ABLE, VAT_FREE, VAT_ZERO, NO_VAT).
-                    </span>
-                    <textarea
-                      value={taxTypeListText}
-                      onChange={(e) => handleTaxTypeListChange(e.target.value)}
-                      onFocus={handleTaxTypeListFocus}
-                      onBlur={handleTaxTypeListBlur}
-                      style={styles.inlineTextarea}
-                      rows={3}
-                      placeholder="VAT_ABLE, VAT_FREE"
-                    />
-                    <div style={styles.inlineActionRow}>
-                      <button type="button" style={styles.applyButton} onClick={handleTaxTypeListApplyClick}>
-                        Apply pasted values
-                      </button>
-                      <span style={styles.inlineActionHint}>Values outside the supported list are ignored.</span>
-                    </div>
-                    {taxTypeListError && <div style={styles.inputError}>{taxTypeListError}</div>}
-                  </div>
-                  {selectedTaxTypes.length > 0 ? (
-                    <div style={styles.templateList}>
-                      <span style={styles.multiSelectTitle}>Tax-type JSON templates</span>
-                      <span style={styles.multiSelectHint}>
-                        Store additional JSON payloads per tax type (e.g., special totals or product codes).
-                      </span>
-                      {selectedTaxTypes.map((code) => (
-                        <div key={`tax-template-${code}`} style={styles.templateBox}>
-                          <div style={styles.templateHeader}>
-                            <strong>{code}</strong>
-                            <span style={styles.templatePill}>
-                              {formState.allowMultipleReceiptTaxTypes !== false ? 'Multi' : 'Single'}
-                            </span>
-                          </div>
-                          <textarea
-                            style={styles.templateTextarea}
-                            rows={4}
-                            value={taxTypeTemplates[code] || ''}
-                            onChange={(e) =>
-                              handleTemplateTextChange('taxTypeTemplates', code, e.target.value)
-                            }
-                            placeholder="{\n  &quot;taxType&quot;: &quot;VAT_ABLE&quot;\n}"
-                          />
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div style={styles.toggleStateHelper}>Select a tax type to attach JSON details.</div>
-                  )}
-                </>
-              ) : (
-                <div style={styles.toggleStateHelper}>Tax type metadata is disabled for this endpoint.</div>
-              )}
-            </div>
-          )}
-          {isTransactionUsage && supportsMultiplePayments && (
-            <div style={styles.labelFull}>
-              <div style={styles.featureToggleRow}>
-                <label style={styles.checkboxLabel}>
-                  <input
-                    type="checkbox"
-                    checked={paymentMethodsEnabled}
-                    onChange={(e) => handleChange('enablePaymentMethods', e.target.checked)}
-                  />
-                  <span>Enable payment methods</span>
-                </label>
-                <span style={styles.toggleStateBadge}>
-                  {formState.allowMultiplePaymentMethods !== false ? 'Multiple allowed' : 'Single value'}
-                </span>
-              </div>
-              {paymentMethodsEnabled ? (
-                <>
-                  <label style={{ ...styles.checkboxLabel, marginBottom: '0.5rem' }}>
-                    <input
-                      type="checkbox"
-                      checked={Boolean(formState.allowMultiplePaymentMethods)}
-                      onChange={(e) => handleChange('allowMultiplePaymentMethods', e.target.checked)}
-                    />
-                    <span>Allow selecting more than one payment method</span>
-                  </label>
-                  <span style={styles.multiSelectTitle}>Payment methods</span>
-                  <span style={styles.multiSelectHint}>
-                    Choose the payment methods offered in the request builder UI.
-                  </span>
-                  <div style={styles.multiSelectOptions}>
-                    {PAYMENT_TYPES.map((payment) => {
-                      const checked = Array.isArray(formState.paymentMethods)
-                        ? formState.paymentMethods.includes(payment.value)
-                        : false;
-                      return (
-                        <label key={payment.value} style={styles.multiSelectOption}>
-                          <input
-                            type="checkbox"
-                            checked={checked}
-                            onChange={() => togglePaymentMethod(payment.value)}
-                          />
-                          <span>{payment.label}</span>
-                        </label>
-                      );
-                    })}
-                  </div>
-                  {selectedPaymentMethods.length > 0 ? (
-                    <div style={styles.templateList}>
-                      <span style={styles.multiSelectTitle}>Payment-method JSON templates</span>
-                      <span style={styles.multiSelectHint}>
-                        Provide per-method JSON (e.g., gateway metadata or default payload fragments).
-                      </span>
-                      {selectedPaymentMethods.map((code) => (
-                        <div key={`payment-template-${code}`} style={styles.templateBox}>
-                          <div style={styles.templateHeader}>
-                            <strong>{code.replace(/_/g, ' ')}</strong>
-                            <span style={styles.templatePill}>
-                              {formState.allowMultiplePaymentMethods !== false ? 'Multi' : 'Single'}
-                            </span>
-                          </div>
-                          <textarea
-                            style={styles.templateTextarea}
-                            rows={4}
-                            value={paymentMethodTemplates[code] || ''}
-                            onChange={(e) =>
-                              handleTemplateTextChange('paymentMethodTemplates', code, e.target.value)
-                            }
-                            placeholder="{\n  &quot;type&quot;: &quot;CASH&quot;,\n  &quot;amount&quot;: 0\n}"
-                          />
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div style={styles.toggleStateHelper}>Select a payment method to attach JSON.</div>
-                  )}
-                </>
-              ) : (
-                <div style={styles.toggleStateHelper}>Payment method metadata is disabled for this endpoint.</div>
-              )}
-            </div>
-          )}
           <label style={styles.label}>
             Path
             <input
@@ -6868,744 +8217,6 @@ export default function PosApiAdmin() {
           </label>
         </div>
 
-        <section style={styles.builderSection}>
-          <div style={styles.sectionHeader}>
-            <h2 style={styles.sectionTitle}>Structured request builder</h2>
-            {formState.posApiType && (
-              <span style={styles.sectionBadge}>{formatTypeLabel(formState.posApiType)}</span>
-            )}
-          </div>
-          {!isTransactionUsage && (
-            <p style={styles.sectionHelp}>
-              Structured builder is available only for transaction endpoints. Edit the JSON schema directly for
-              admin or lookup endpoints.
-            </p>
-          )}
-          {isTransactionUsage && !formState.posApiType && (
-            <p style={styles.sectionHelp}>
-              Select a POSAPI type to load guided templates for receipts, invoices, and stock QR payloads.
-            </p>
-          )}
-          {isTransactionUsage && requestBuilderError && (
-            <div style={styles.previewErrorBox}>
-              <strong>Invalid request JSON:</strong> {requestBuilderError}
-            </div>
-          )}
-          {isTransactionUsage && formState.posApiType && requestBuilder && (
-            <>
-              <details open style={styles.detailSection}>
-                <summary style={styles.detailSummary}>Header &amp; totals</summary>
-                <div style={styles.detailBody}>
-                  <div style={styles.builderGrid}>
-                    <label style={styles.builderLabel}>
-                      Branch number
-                      <input
-                        type="text"
-                        value={requestBuilder.branchNo || ''}
-                        onChange={(e) => handleBuilderFieldChange('branchNo', e.target.value)}
-                        style={styles.input}
-                      />
-                    </label>
-                    <label style={styles.builderLabel}>
-                      POS number
-                      <input
-                        type="text"
-                        value={requestBuilder.posNo || ''}
-                        onChange={(e) => handleBuilderFieldChange('posNo', e.target.value)}
-                        style={styles.input}
-                      />
-                    </label>
-                    <label style={styles.builderLabel}>
-                      Merchant TIN
-                      <input
-                        type="text"
-                        value={requestBuilder.merchantTin || ''}
-                        onChange={(e) => handleBuilderFieldChange('merchantTin', e.target.value)}
-                        style={styles.input}
-                      />
-                    </label>
-                    {!isStockType && (
-                      <label style={styles.builderLabel}>
-                        Tax type
-                        <select
-                          value={requestBuilder.taxType || 'VAT_ABLE'}
-                          onChange={(e) => handleBuilderFieldChange('taxType', e.target.value)}
-                          style={styles.input}
-                        >
-                          {taxTypeOptions.map((tax) => (
-                            <option key={tax.value} value={tax.value}>
-                              {tax.label}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                    )}
-                    {formState.posApiType?.startsWith('B2B') && (
-                      <label style={styles.builderLabel}>
-                        Customer TIN
-                        <input
-                          type="text"
-                          value={requestBuilder.customerTin || ''}
-                          onChange={(e) => handleBuilderFieldChange('customerTin', e.target.value)}
-                          style={styles.input}
-                        />
-                      </label>
-                    )}
-                    {!formState.posApiType?.startsWith('B2B') && isReceiptType && (
-                      <label style={styles.builderLabel}>
-                        Consumer number / phone
-                        <input
-                          type="text"
-                          value={requestBuilder.consumerNo || ''}
-                          onChange={(e) => handleBuilderFieldChange('consumerNo', e.target.value)}
-                          style={styles.input}
-                        />
-                      </label>
-                    )}
-                    {isReceiptType && (
-                      <>
-                        <label style={styles.builderLabel}>
-                          Total amount
-                          <input
-                            type="number"
-                            value={requestBuilder.totalAmount ?? 0}
-                            onChange={(e) =>
-                              handleBuilderFieldChange('totalAmount', Number(e.target.value) || 0)
-                            }
-                            style={styles.input}
-                          />
-                        </label>
-                        <label style={styles.builderLabel}>
-                          Total VAT
-                          <input
-                            type="number"
-                            value={requestBuilder.totalVAT ?? 0}
-                            onChange={(e) =>
-                              handleBuilderFieldChange('totalVAT', Number(e.target.value) || 0)
-                            }
-                            style={styles.input}
-                            disabled={requestBuilder.taxType !== 'VAT_ABLE'}
-                          />
-                        </label>
-                        <label style={styles.builderLabel}>
-                          Total city tax
-                          <input
-                            type="number"
-                            value={requestBuilder.totalCityTax ?? 0}
-                            onChange={(e) =>
-                              handleBuilderFieldChange('totalCityTax', Number(e.target.value) || 0)
-                            }
-                            style={styles.input}
-                            disabled={requestBuilder.taxType !== 'VAT_ABLE'}
-                          />
-                        </label>
-                      </>
-                    )}
-                  </div>
-                </div>
-              </details>
-
-              {formState.usage === 'transaction' && receiptBuilderEnabled && (
-                <details open style={styles.detailSection}>
-                  <summary style={styles.detailSummary}>Receipt &amp; invoice samples</summary>
-                  <div style={styles.detailBody}>
-                    <p style={styles.sectionHelp}>
-                      Each <code>receipts[]</code> entry must declare one of the following tax types.
-                      Create a separate receipt group when a sale mixes different tax treatments.
-                    </p>
-                    <ul style={styles.inlineList}>
-                      {TAX_TYPES.map((tax) => (
-                        <li key={`tax-${tax.value}`} style={styles.inlineListItem}>
-                          <strong>{tax.value}</strong>
-                          {TAX_TYPE_DESCRIPTIONS[tax.value]
-                            ? ` – ${TAX_TYPE_DESCRIPTIONS[tax.value]}`
-                            : ''}
-                        </li>
-                      ))}
-                    </ul>
-                    <div style={styles.sampleGrid}>
-                      {POSAPI_TRANSACTION_TYPES.map((type) => {
-                        const sample = RECEIPT_SAMPLE_PAYLOADS[type.value];
-                        if (!sample) return null;
-                        const pretty = JSON.stringify(sample, null, 2);
-                        return (
-                          <div key={`sample-${type.value}`} style={styles.sampleCard}>
-                            <div style={styles.sampleHeader}>
-                              <strong>{type.label}</strong>
-                              <div style={styles.sampleActions}>
-                                <button
-                                  type="button"
-                                  onClick={() => handleApplySamplePayload(type.value)}
-                                  style={styles.smallButton}
-                                >
-                                  Use in builder
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => handleCopySamplePayload(type.value)}
-                                  style={styles.smallSecondaryButton}
-                                >
-                                  Copy JSON
-                                </button>
-                              </div>
-                            </div>
-                            <pre style={styles.samplePre}>{pretty}</pre>
-                          </div>
-                        );
-                      })}
-                    </div>
-                    <div style={styles.sampleImportContainer}>
-                      <label style={styles.sampleImportLabel}>
-                        Paste a sample JSON payload
-                        <textarea
-                          value={sampleImportText}
-                          onChange={(e) => setSampleImportText(e.target.value)}
-                          style={styles.sampleTextarea}
-                          placeholder={`{\n  "type": "B2C",\n  "receipts": []\n}`}
-                          rows={6}
-                        />
-                      </label>
-                      <div style={styles.sampleImportControls}>
-                        <button type="button" onClick={handleSampleImport} style={styles.smallButton}>
-                          Import to builder
-                        </button>
-                        <label style={styles.sampleFileLabel}>
-                          <span>Upload JSON file</span>
-                          <input
-                            type="file"
-                            accept="application/json,.json"
-                            onChange={handleSampleFile}
-                            style={styles.sampleFileInput}
-                          />
-                        </label>
-                      </div>
-                      {sampleImportError && <div style={styles.previewErrorBox}>{sampleImportError}</div>}
-                    </div>
-                  </div>
-                </details>
-              )}
-
-              {receiptBuilderEnabled && receiptItemsEnabled && (
-                <details open style={styles.detailSection}>
-                  <summary style={styles.detailSummary}>Receipts by tax type</summary>
-                  <div style={styles.detailBody}>
-                    <p style={styles.sectionHelp}>
-                      Create one receipt group per tax type. Each group contains its own items and totals.
-                    </p>
-                    {(Array.isArray(requestBuilder.receipts) ? requestBuilder.receipts : []).map(
-                      (receipt, index) => {
-                        const items = Array.isArray(receipt.items) ? receipt.items : [];
-                        const showVatFields = receipt.taxType === 'VAT_ABLE';
-                        const showTaxProduct =
-                          receipt.taxType === 'VAT_FREE' || receipt.taxType === 'VAT_ZERO';
-                        return (
-                          <div key={`receipt-${index}`} style={styles.receiptCard}>
-                            <div style={styles.receiptHeader}>
-                              <div>
-                                <strong>Receipt group {index + 1}</strong>
-                                <span style={styles.receiptSub}>Tax type: {receipt.taxType}</span>
-                              </div>
-                              <button
-                                type="button"
-                                onClick={() => removeReceiptGroup(index)}
-                                style={styles.smallDangerButton}
-                              >
-                                Remove group
-                              </button>
-                            </div>
-                            <div style={styles.builderGrid}>
-                              <label style={styles.builderLabel}>
-                                Tax type
-                                <select
-                                  value={receipt.taxType || 'VAT_ABLE'}
-                                  onChange={(e) => handleReceiptChange(index, 'taxType', e.target.value)}
-                                  style={styles.input}
-                                >
-                                  {taxTypeOptions.map((tax) => (
-                                    <option key={tax.value} value={tax.value}>
-                                      {tax.label}
-                                    </option>
-                                  ))}
-                                </select>
-                              </label>
-                              <label style={styles.builderLabel}>
-                                Group amount
-                                <input
-                                  type="number"
-                                  value={receipt.totalAmount ?? 0}
-                                  onChange={(e) =>
-                                    handleReceiptChange(index, 'totalAmount', Number(e.target.value) || 0)
-                                  }
-                                  style={styles.input}
-                                />
-                              </label>
-                              {showVatFields && (
-                                <>
-                                  <label style={styles.builderLabel}>
-                                    Group VAT
-                                    <input
-                                      type="number"
-                                      value={receipt.totalVAT ?? 0}
-                                      onChange={(e) =>
-                                        handleReceiptChange(index, 'totalVAT', Number(e.target.value) || 0)
-                                      }
-                                      style={styles.input}
-                                    />
-                                  </label>
-                                  <label style={styles.builderLabel}>
-                                    Group city tax
-                                    <input
-                                      type="number"
-                                      value={receipt.totalCityTax ?? 0}
-                                      onChange={(e) =>
-                                        handleReceiptChange(index, 'totalCityTax', Number(e.target.value) || 0)
-                                      }
-                                      style={styles.input}
-                                    />
-                                  </label>
-                                </>
-                              )}
-                              {showTaxProduct && (
-                                <label style={styles.builderLabel}>
-                                  Tax product code
-                                  <input
-                                    type="text"
-                                    list="taxProductCodes"
-                                    value={receipt.taxProductCode ?? ''}
-                                    onChange={(e) => handleReceiptChange(index, 'taxProductCode', e.target.value)}
-                                    style={styles.input}
-                                    placeholder="Select or type the exemption reason"
-                                  />
-                                </label>
-                              )}
-                            </div>
-
-                            {supportsItems ? (
-                              <div style={styles.itemsContainer}>
-                                {items.map((item, itemIndex) => (
-                                  <div key={`item-${itemIndex}`} style={styles.itemCard}>
-                                    <div style={styles.itemHeader}>
-                                      <strong>Item {itemIndex + 1}</strong>
-                                      <button
-                                        type="button"
-                                      onClick={() => removeReceiptItem(index, itemIndex)}
-                                      style={styles.smallButton}
-                                    >
-                                      Remove item
-                                    </button>
-                                  </div>
-                                  <div style={styles.builderGrid}>
-                                    <label style={styles.builderLabel}>
-                                      Name
-                                      <input
-                                        type="text"
-                                        value={item.name || ''}
-                                        onChange={(e) =>
-                                          handleReceiptItemChange(index, itemIndex, 'name', e.target.value)
-                                        }
-                                        style={styles.input}
-                                      />
-                                    </label>
-                                    <label style={styles.builderLabel}>
-                                      Barcode
-                                      <input
-                                        type="text"
-                                        value={item.barCode || ''}
-                                        onChange={(e) =>
-                                          handleReceiptItemChange(index, itemIndex, 'barCode', e.target.value)
-                                        }
-                                        style={styles.input}
-                                      />
-                                    </label>
-                                    <label style={styles.builderLabel}>
-                                      Classification code
-                                      <input
-                                        type="text"
-                                        value={item.classificationCode || ''}
-                                        onChange={(e) =>
-                                          handleReceiptItemChange(
-                                            index,
-                                            itemIndex,
-                                            'classificationCode',
-                                            e.target.value,
-                                          )
-                                        }
-                                        style={styles.input}
-                                      />
-                                    </label>
-                                    {showTaxProduct && (
-                                      <label style={styles.builderLabel}>
-                                        Tax product code
-                                        <input
-                                          type="text"
-                                          list="taxProductCodes"
-                                          value={item.taxProductCode ?? ''}
-                                          onChange={(e) =>
-                                            handleReceiptItemChange(
-                                              index,
-                                              itemIndex,
-                                              'taxProductCode',
-                                              e.target.value,
-                                            )
-                                          }
-                                          style={styles.input}
-                                        />
-                                      </label>
-                                    )}
-                                    <label style={styles.builderLabel}>
-                                      Measure unit
-                                      <input
-                                        type="text"
-                                        value={item.measureUnit || ''}
-                                        onChange={(e) =>
-                                          handleReceiptItemChange(
-                                            index,
-                                            itemIndex,
-                                            'measureUnit',
-                                            e.target.value,
-                                          )
-                                        }
-                                        style={styles.input}
-                                      />
-                                    </label>
-                                    <label style={styles.builderLabel}>
-                                      Quantity
-                                      <input
-                                        type="number"
-                                        value={item.qty ?? 0}
-                                        onChange={(e) =>
-                                          handleReceiptItemChange(
-                                            index,
-                                            itemIndex,
-                                            'qty',
-                                            Number(e.target.value) || 0,
-                                          )
-                                        }
-                                        style={styles.input}
-                                      />
-                                    </label>
-                                    <label style={styles.builderLabel}>
-                                      Unit price
-                                      <input
-                                        type="number"
-                                        value={item.price ?? 0}
-                                        onChange={(e) =>
-                                          handleReceiptItemChange(
-                                            index,
-                                            itemIndex,
-                                            'price',
-                                            Number(e.target.value) || 0,
-                                          )
-                                        }
-                                        style={styles.input}
-                                      />
-                                    </label>
-                                    {showVatFields && (
-                                      <label style={styles.builderLabel}>
-                                        City tax
-                                        <input
-                                          type="number"
-                                          value={item.cityTax ?? 0}
-                                          onChange={(e) =>
-                                            handleReceiptItemChange(
-                                              index,
-                                              itemIndex,
-                                              'cityTax',
-                                              Number(e.target.value) || 0,
-                                            )
-                                          }
-                                          style={styles.input}
-                                        />
-                                      </label>
-                                    )}
-                                    <label style={styles.builderLabel}>
-                                      VAT tax type
-                                      <select
-                                        value={item.vatTaxType || receipt.taxType || 'VAT_ABLE'}
-                                        onChange={(e) =>
-                                          handleReceiptItemChange(
-                                            index,
-                                            itemIndex,
-                                            'vatTaxType',
-                                            e.target.value,
-                                          )
-                                        }
-                                        style={styles.input}
-                                      >
-                                        {taxTypeOptions.map((tax) => (
-                                          <option key={tax.value} value={tax.value}>
-                                            {tax.label}
-                                          </option>
-                                        ))}
-                                      </select>
-                                    </label>
-                                    <label style={styles.builderLabel}>
-                                      Lot number
-                                      <input
-                                        type="text"
-                                        value={item.lotNo || ''}
-                                        onChange={(e) =>
-                                          handleReceiptItemChange(index, itemIndex, 'lotNo', e.target.value)
-                                        }
-                                        style={styles.input}
-                                      />
-                                    </label>
-                                  </div>
-                                </div>
-                                ))}
-                                <button
-                                  type="button"
-                                  onClick={() => addReceiptItem(index)}
-                                  style={styles.smallButton}
-                                >
-                                  + Add item
-                                </button>
-                              </div>
-                            ) : (
-                              <div style={styles.serviceOnlyHint}>
-                                Items are disabled for this endpoint. Enable "Includes receipt items" and
-                                the "Enable receipt items" toggle to manage goods-level details.
-                              </div>
-                            )}
-                          </div>
-                        );
-                      },
-                    )}
-                    <button type="button" onClick={addReceiptGroup} style={styles.smallButton}>
-                      + Add receipt group
-                    </button>
-                  </div>
-                </details>
-              )}
-
-              {isReceiptType && !receiptBuilderEnabled && (
-                <div style={styles.toggleStateHelper}>
-                  Receipt groups and items are disabled for this endpoint. Enable "Includes receipt items" to
-                  configure receipt details.
-                </div>
-              )}
-
-              {paymentBuilderEnabled && (
-                <details open style={styles.detailSection}>
-                  <summary style={styles.detailSummary}>Payments</summary>
-                  <div style={styles.detailBody}>
-                    <div style={styles.paymentsTable}>
-                      {(Array.isArray(requestBuilder.payments) ? requestBuilder.payments : []).map(
-                        (payment, index) => {
-                          const type = payment.type || 'CASH';
-                          const draftKey = String(index);
-                          const draftValue =
-                            paymentDataDrafts[draftKey] ?? JSON.stringify(payment.data ?? {}, null, 2);
-                          const dataError = paymentDataErrors[draftKey];
-                          const isPaymentCard = type === 'PAYMENT_CARD';
-                          const isEasyBank = type === 'EASY_BANK_CARD';
-                          return (
-                            <div key={`payment-${index}`} style={styles.paymentGroup}>
-                              <div style={styles.paymentRow}>
-                                <select
-                                  value={type}
-                                  onChange={(e) => handlePaymentChange(index, 'type', e.target.value)}
-                                  style={styles.paymentSelect}
-                                  title={PAYMENT_DESCRIPTIONS[type] || ''}
-                                >
-                                  {paymentTypeOptions.map((paymentType) => (
-                                    <option key={paymentType.value} value={paymentType.value}>
-                                      {paymentType.label}
-                                    </option>
-                                  ))}
-                                </select>
-                                <input
-                                  type="number"
-                                  value={payment.amount ?? 0}
-                                  onChange={(e) =>
-                                    handlePaymentChange(index, 'amount', Number(e.target.value) || 0)
-                                  }
-                                  style={styles.paymentAmount}
-                                />
-                                <button
-                                  type="button"
-                                  onClick={() => removePayment(index)}
-                                  style={styles.smallDangerButton}
-                                >
-                                  Remove
-                                </button>
-                              </div>
-                              {isPaymentCard && (
-                                <div style={styles.paymentDataContainer}>
-                                  <label style={styles.paymentDataLabel}>
-                                    Payment data (JSON)
-                                    <textarea
-                                      value={draftValue}
-                                      onChange={(e) => handlePaymentDataChange(index, e.target.value)}
-                                      style={styles.paymentDataTextarea}
-                                      rows={4}
-                                    />
-                                  </label>
-                                  {dataError && <div style={styles.inlineError}>{dataError}</div>}
-                                </div>
-                              )}
-                              {isEasyBank && (
-                                <div style={styles.paymentDataContainer}>
-                                  <div style={styles.easyBankGrid}>
-                                    <label style={styles.paymentDataLabel}>
-                                      Retrieval reference number (RRN)
-                                      <input
-                                        type="text"
-                                        value={payment.data?.rrn || ''}
-                                        onChange={(e) => handleEasyBankDataChange(index, 'rrn', e.target.value)}
-                                        style={styles.input}
-                                      />
-                                    </label>
-                                    <label style={styles.paymentDataLabel}>
-                                      Approval code
-                                      <input
-                                        type="text"
-                                        value={payment.data?.approvalCode || ''}
-                                        onChange={(e) =>
-                                          handleEasyBankDataChange(index, 'approvalCode', e.target.value)
-                                        }
-                                        style={styles.input}
-                                      />
-                                    </label>
-                                    <label style={styles.paymentDataLabel}>
-                                      Terminal ID
-                                      <input
-                                        type="text"
-                                        value={payment.data?.terminalId || ''}
-                                        onChange={(e) =>
-                                          handleEasyBankDataChange(index, 'terminalId', e.target.value)
-                                        }
-                                        style={styles.input}
-                                      />
-                                    </label>
-                                  </div>
-                                </div>
-                              )}
-                            </div>
-                          );
-                        },
-                      )}
-                    </div>
-                    <div style={styles.paymentSummary}>
-                      <div>Payment total: {paymentsTotal.toLocaleString()}</div>
-                      <div>Total amount: {(requestBuilder.totalAmount ?? 0).toLocaleString()}</div>
-                      {!paymentsBalanced && (
-                        <div style={styles.warningText}>
-                          The sum of payments must equal the total amount.
-                        </div>
-                      )}
-                    </div>
-                    <button type="button" onClick={addPayment} style={styles.smallButton}>
-                      + Add payment method
-                    </button>
-                  </div>
-                </details>
-              )}
-
-              {isReceiptType && !paymentBuilderEnabled && (
-                <div style={styles.toggleStateHelper}>
-                  Payment inputs are hidden for this endpoint. Enable "Supports multiple payment methods" to
-                  configure payment details.
-                </div>
-              )}
-
-              {isStockType && (
-                <details open style={styles.detailSection}>
-                  <summary style={styles.detailSummary}>Stock QR payload</summary>
-                  <div style={styles.detailBody}>
-                    <p style={styles.sectionHelp}>
-                      Define the stock codes that should be encoded into the QR payload.
-                    </p>
-                    {(Array.isArray(requestBuilder.stockCodes) ? requestBuilder.stockCodes : []).map(
-                      (stock, index) => (
-                        <div key={`stock-${index}`} style={styles.itemCard}>
-                          <div style={styles.itemHeader}>
-                            <strong>Stock entry {index + 1}</strong>
-                            <button
-                              type="button"
-                              onClick={() => removeStockItem(index)}
-                              style={styles.smallButton}
-                            >
-                              Remove
-                            </button>
-                          </div>
-                          <div style={styles.builderGrid}>
-                            <label style={styles.builderLabel}>
-                              Code
-                              <input
-                                type="text"
-                                value={stock.code || ''}
-                                onChange={(e) => handleStockItemChange(index, 'code', e.target.value)}
-                                style={styles.input}
-                              />
-                            </label>
-                            <label style={styles.builderLabel}>
-                              Name
-                              <input
-                                type="text"
-                                value={stock.name || ''}
-                                onChange={(e) => handleStockItemChange(index, 'name', e.target.value)}
-                                style={styles.input}
-                              />
-                            </label>
-                            <label style={styles.builderLabel}>
-                              Classification code
-                              <input
-                                type="text"
-                                value={stock.classificationCode || ''}
-                                onChange={(e) =>
-                                  handleStockItemChange(index, 'classificationCode', e.target.value)
-                                }
-                                style={styles.input}
-                              />
-                            </label>
-                            <label style={styles.builderLabel}>
-                              Quantity
-                              <input
-                                type="number"
-                                value={stock.qty ?? 0}
-                                onChange={(e) =>
-                                  handleStockItemChange(index, 'qty', Number(e.target.value) || 0)
-                                }
-                                style={styles.input}
-                              />
-                            </label>
-                            <label style={styles.builderLabel}>
-                              Measure unit
-                              <input
-                                type="text"
-                                value={stock.measureUnit || ''}
-                                onChange={(e) => handleStockItemChange(index, 'measureUnit', e.target.value)}
-                                style={styles.input}
-                              />
-                            </label>
-                            <label style={styles.builderLabel}>
-                              Lot number
-                              <input
-                                type="text"
-                                value={stock.lotNo || ''}
-                                onChange={(e) => handleStockItemChange(index, 'lotNo', e.target.value)}
-                                style={styles.input}
-                              />
-                            </label>
-                          </div>
-                        </div>
-                      ),
-                    )}
-                    <button type="button" onClick={addStockItem} style={styles.smallButton}>
-                      + Add stock entry
-                    </button>
-                  </div>
-                </details>
-              )}
-            </>
-          )}
-          <datalist id="taxProductCodes">
-            {TAX_PRODUCT_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value} label={option.label} />
-            ))}
-          </datalist>
-        </section>
 
         {formState.usage === 'transaction' && (supportsMultipleReceipts || supportsMultiplePayments) && (
           <div style={styles.multiNotice}>
@@ -7639,59 +8250,132 @@ export default function PosApiAdmin() {
             placeholder="Batch of receipts with payments and items"
           />
         </label>
-        {((formState.method || '').toUpperCase() !== 'GET') || (formState.requestSchemaText || '').trim()
-          ? (
-            <label style={styles.labelFull}>
-              Request body schema (JSON)
-              <div style={styles.inlineActionRow}>
-                <button type="button" style={styles.smallButton} onClick={handleResetRequestSchema}>
-                  Reset to empty object
-                </button>
-                <span style={styles.inlineActionHint}>
-                  Clears the structured builder for non-transaction endpoints and removes receipt defaults.
-                </span>
-              </div>
-              <textarea
-                value={formState.requestSchemaText}
-                onChange={(e) => handleChange('requestSchemaText', e.target.value)}
-                style={styles.textarea}
-                rows={10}
-              />
-            </label>
-            )
-          : (
-            <div style={styles.sectionHelp}>
-              GET requests typically do not send a body; request schema is hidden until a payload is added.
-            </div>
-          )}
         <label style={styles.labelFull}>
-          Response description
-          <input
-            type="text"
-            value={formState.responseDescription}
-            onChange={(e) => handleChange('responseDescription', e.target.value)}
-            style={styles.input}
-            placeholder="Receipt submission response"
-          />
-        </label>
-        <label style={styles.labelFull}>
-          Response body schema (JSON)
+          Base request sample (JSON only)
+          <span style={styles.fieldHelp}>
+            This is the canonical request payload used as the base for modifiers and tests. Keep it valid JSON only.
+          </span>
           <textarea
-            value={formState.responseSchemaText}
-            onChange={(e) => handleChange('responseSchemaText', e.target.value)}
+            value={baseRequestJson}
+            onChange={(e) => setBaseRequestJson(e.target.value)}
             style={styles.textarea}
             rows={10}
           />
         </label>
         <label style={styles.labelFull}>
-          Examples (JSON array)
+          Request sample notes (optional)
           <textarea
-            value={formState.examplesText}
-            onChange={(e) => handleChange('examplesText', e.target.value)}
+            value={formState.requestSampleNotes}
+            onChange={(e) => handleChange('requestSampleNotes', e.target.value)}
             style={styles.textarea}
-            rows={6}
+            rows={3}
+            placeholder="Explain how the base sample should be used or modified."
           />
         </label>
+        
+        <div style={styles.hintCard}>
+          <div style={styles.hintHeader}>
+            <h3 style={styles.hintTitle}>Variations</h3>
+            <span style={styles.hintCount}>{variations.length}</span>
+          </div>
+          <p style={styles.hintDescription}>
+            Configure request variations imported from tabbed examples or add your own. All fields start as required, but you can
+            toggle requirements below.
+          </p>
+          <button type="button" style={styles.smallButton} onClick={handleAddVariation}>
+            Add variation
+          </button>
+          {variations.length === 0 && (
+            <div style={styles.sectionHelp}>No variations defined yet.</div>
+          )}
+          {variations.map((variation, index) => (
+            <div key={variation.key || `variation-${index}`} style={styles.variationCard}>
+              <div style={styles.inlineActionRow}>
+                <label style={styles.checkboxLabel}>
+                  <input
+                    type="checkbox"
+                    checked={variation.enabled !== false}
+                    onChange={(e) => handleVariationToggle(index, e.target.checked)}
+                  />
+                  <span>Enabled</span>
+                </label>
+                <input
+                  type="text"
+                  value={variation.name || ''}
+                  onChange={(e) => handleVariationChange(index, 'name', e.target.value)}
+                  style={styles.input}
+                  placeholder="Variation name"
+                />
+              </div>
+              <textarea
+                value={variation.description || ''}
+                onChange={(e) => handleVariationChange(index, 'description', e.target.value)}
+                style={styles.textarea}
+                rows={2}
+                placeholder="Variation description"
+              />
+              <label style={styles.labelFull}>
+                Request example (JSON)
+                <textarea
+                  value={variation.requestExampleText || ''}
+                  onChange={(e) => handleVariationExampleChange(index, e.target.value)}
+                  style={styles.textarea}
+                  rows={6}
+                />
+              </label>
+              <div>
+                <div style={styles.inlineActionRow}>
+                  <strong>Fields</strong>
+                  <button type="button" style={styles.smallButton} onClick={() => handleAddVariationField(index)}>
+                    Add field
+                  </button>
+                </div>
+                {(!variation.requestFields || variation.requestFields.length === 0) && (
+                  <div style={styles.sectionHelp}>No fields detected; add mappings to control requirements.</div>
+                )}
+                {Array.isArray(variation.requestFields)
+                  ? variation.requestFields.map((field, fieldIndex) => (
+                    <div key={`variation-${index}-field-${fieldIndex}`} style={styles.variationFieldRow}>
+                      <input
+                        type="text"
+                        value={field.field || ''}
+                        onChange={(e) => handleVariationRequestFieldChange(index, fieldIndex, { field: e.target.value })}
+                        style={styles.input}
+                        placeholder="field.path"
+                      />
+                      <label style={styles.checkboxLabel}>
+                        <input
+                          type="checkbox"
+                          checked={field.required !== false}
+                          onChange={(e) =>
+                            handleVariationRequestFieldChange(index, fieldIndex, { required: e.target.checked })
+                          }
+                        />
+                        <span>Required</span>
+                      </label>
+                      <input
+                        type="text"
+                        value={field.description || ''}
+                        onChange={(e) =>
+                          handleVariationRequestFieldChange(index, fieldIndex, { description: e.target.value })
+                        }
+                        style={styles.input}
+                        placeholder="Description (optional)"
+                      />
+                      <button
+                        type="button"
+                        style={styles.smallDangerButton}
+                        onClick={() => handleRemoveVariationField(index, fieldIndex)}
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  ))
+                  : null}
+              </div>
+            </div>
+          ))}
+        </div>
         <label style={styles.labelFull}>
           Pre-request script
           <textarea
@@ -7758,117 +8442,239 @@ export default function PosApiAdmin() {
               <div style={styles.hintError}>{requestFieldDisplay.error}</div>
             )}
             {requestFieldDisplay.state === 'ok' && (
-              <ul style={styles.hintList}>
-                {requestFieldDisplay.items.map((hint, index) => {
-                  const normalized = normalizeHintEntry(hint);
-                  const fieldLabel = normalized.field || '(unnamed field)';
-                  const selection = requestFieldValues[fieldLabel] || {
+              <div style={styles.requestFieldTableWrapper}>
+                <div style={styles.requestFieldTable}>
+                  <div
+                    style={{
+                      ...styles.requestFieldHeaderRow,
+                      display: 'grid',
+                      gridTemplateColumns: requestFieldColumnTemplate,
+                    }}
+                  >
+                    <span style={styles.requestFieldHeaderCell}>Field</span>
+                    <span style={styles.requestFieldHeaderCell}>Description</span>
+                    <span style={styles.requestFieldHeaderCell}>Common required</span>
+                    {variationColumns.map((variation) => (
+                      <span
+                        key={`variation-head-${variation.key}`}
+                        style={{ ...styles.requestFieldHeaderCell, display: 'flex', gap: '0.35rem', alignItems: 'center' }}
+                      >
+                        <span>{variation.label}</span>
+                        {variation.type === 'combination' && (
+                          <span style={{ ...styles.hintBadge, background: '#eef2ff', color: '#3730a3' }}>
+                            Combination
+                          </span>
+                        )}
+                      </span>
+                    ))}
+                  </div>
+                  {requestFieldDisplay.items.map((hint, index) => {
+                    const normalized = normalizeHintEntry(hint);
+                    const fieldLabel = normalized.field || '(unnamed field)';
+                    const meta = requestFieldMeta[fieldLabel] || {};
+                    const commonRequired =
+                      typeof meta.requiredCommon === 'boolean'
+                        ? meta.requiredCommon
+                        : typeof normalized.requiredCommon === 'boolean'
+                          ? normalized.requiredCommon
+                          : Boolean(normalized.required);
+                    const descriptionValue = meta.description || normalized.description || '';
+                    return (
+                      <div
+                        key={`request-hint-${fieldLabel}-${index}`}
+                        style={{
+                          ...styles.requestFieldRow,
+                          display: 'grid',
+                          gridTemplateColumns: requestFieldColumnTemplate,
+                        }}
+                      >
+                        <div style={styles.requestFieldMainCell}>
+                          <div style={styles.hintFieldRow}>
+                            <span style={styles.hintField}>{fieldLabel}</span>
+                            {hint.source === 'parameter' && (
+                              <span style={{ ...styles.hintBadge, background: '#eef2ff', color: '#3730a3' }}>
+                                {hint.location === 'path' ? 'Path parameter' : 'Query parameter'}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        <div style={styles.requestFieldDescriptionCell}>
+                          <textarea
+                            value={descriptionValue}
+                            onChange={(e) => handleRequestFieldDescriptionChange(fieldLabel, e.target.value)}
+                            style={{ ...styles.textarea, minHeight: '60px' }}
+                            placeholder="Describe the field"
+                          />
+                        </div>
+                        <div style={styles.requestFieldRequiredCell}>
+                          <label style={styles.checkboxLabel}>
+                            <input
+                              type="checkbox"
+                              checked={commonRequired}
+                              onChange={(e) => handleCommonRequiredToggle(fieldLabel, e.target.checked)}
+                            />
+                            <span>Required</span>
+                          </label>
+                        </div>
+                        {variationColumns.map((variation) => {
+                          const variationKey = variation.key;
+                          const required = commonRequired
+                            ? true
+                            : meta.requiredByVariation?.[variationKey]
+                              ?? normalized.requiredByVariation?.[variationKey]
+                              ?? false;
+                          const defaultValue =
+                            meta.defaultByVariation?.[variationKey]
+                            ?? normalized.defaultByVariation?.[variationKey]
+                            ?? '';
+                          return (
+                            <div
+                              key={`variation-toggle-${variationKey}-${fieldLabel}`}
+                              style={styles.requestVariationCell}
+                            >
+                              <label style={styles.checkboxLabel}>
+                                <input
+                                  type="checkbox"
+                                  checked={required}
+                                  disabled={commonRequired}
+                                  onChange={(e) =>
+                                    handleVariationRequirementChange(
+                                      fieldLabel,
+                                      variationKey,
+                                      e.target.checked,
+                                    )
+                                  }
+                                />
+                                <span>Required</span>
+                              </label>
+                              <input
+                                type="text"
+                                value={defaultValue}
+                                onChange={(e) =>
+                                  handleVariationDefaultUpdate(fieldLabel, variationKey, e.target.value)
+                                }
+                                placeholder="Default value"
+                                style={styles.input}
+                              />
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+          <div style={styles.hintCard}>
+            <div style={styles.hintHeader}>
+              <h3 style={styles.hintTitle}>Request values & environment variables</h3>
+            </div>
+            {requestFieldDisplay.state !== 'ok' && (
+              <p style={styles.hintEmpty}>
+                Add request fields above to configure literal values or environment variable mappings.
+              </p>
+            )}
+            {requestFieldDisplay.state === 'ok' && visibleRequestFieldItems.length === 0 && (
+              <p style={styles.hintEmpty}>No request fields available for the active variations.</p>
+            )}
+            {requestFieldDisplay.state === 'ok' && visibleRequestFieldItems.length > 0 && (
+              <div style={styles.requestValueList}>
+                {visibleRequestFieldItems.map((entry, index) => {
+                  const normalized = normalizeHintEntry(entry);
+                  const fieldPath = normalized.field;
+                  const selection = requestFieldValues[fieldPath] || {
                     mode: 'literal',
                     literal: '',
                     envVar: '',
+                    applyToBody: entry.source !== 'parameter',
                   };
-                  const envVarMissing = selection.mode === 'env'
-                    && selection.envVar
-                    && !resolveEnvironmentVariable(selection.envVar, { parseJson: false }).found;
+                  const mode = selection.mode === 'env' ? 'env' : 'literal';
+                  const envMode = mode === 'env';
+                  const envVarValue = selection.envVar || '';
+                  const literalValue = selection.literal || '';
+                  const applyToBody = selection.applyToBody !== false;
                   return (
-                    <li key={`request-hint-${fieldLabel}-${index}`} style={styles.hintItem}>
-                      <div style={styles.hintFieldRow}>
-                        <span style={styles.hintField}>{fieldLabel}</span>
-                        {typeof normalized.required === 'boolean' && (
-                          <span
-                            style={{
-                              ...styles.hintBadge,
-                              ...(normalized.required
-                                ? styles.hintBadgeRequired
-                                : styles.hintBadgeOptional),
-                            }}
-                          >
-                            {normalized.required ? 'Required' : 'Optional'}
-                          </span>
-                        )}
-                        {hint.source === 'parameter' && (
-                          <span style={{ ...styles.hintBadge, background: '#eef2ff', color: '#3730a3' }}>
-                            {hint.location === 'path' ? 'Path parameter' : 'Query parameter'}
-                          </span>
+                    <div key={`${fieldPath || 'field'}-${index}`} style={styles.requestValueRow}>
+                      <div style={styles.requestValueFieldMeta}>
+                        <div style={styles.hintFieldRow}>
+                          <span style={styles.hintField}>{fieldPath || '(unnamed field)'}</span>
+                          {entry.source === 'parameter' && (
+                            <span style={{ ...styles.hintBadge, background: '#eef2ff', color: '#3730a3' }}>
+                              {entry.location === 'path' ? 'Path parameter' : 'Query parameter'}
+                            </span>
+                          )}
+                        </div>
+                        {normalized.description && (
+                          <div style={styles.hintDescription}>{normalized.description}</div>
                         )}
                       </div>
-                      {normalized.description && (
-                        <p style={styles.hintDescription}>{normalized.description}</p>
-                      )}
-                      <div style={styles.requestFieldControls}>
-                        <div style={styles.requestFieldModes}>
-                          <label style={styles.radioLabel}>
-                            <input
-                              type="radio"
-                              name={`request-field-mode-${fieldLabel}`}
-                              checked={selection.mode === 'literal'}
-                              onChange={() => handleRequestFieldValueChange(fieldLabel, { mode: 'literal' })}
-                            />
-                            Literal value
-                          </label>
-                          <label style={styles.radioLabel}>
-                            <input
-                              type="radio"
-                              name={`request-field-mode-${fieldLabel}`}
-                              checked={selection.mode === 'env'}
-                              onChange={() => handleRequestFieldValueChange(fieldLabel, { mode: 'env' })}
-                            />
-                            Environment variable
-                          </label>
-                        </div>
-                        {selection.mode === 'literal' ? (
+                      <div style={styles.requestFieldModes}>
+                        <label style={styles.radioLabel}>
+                          <input
+                            type="radio"
+                            name={`request-value-mode-${index}`}
+                            checked={!envMode}
+                            onChange={() => handleRequestFieldValueChange(fieldPath, { mode: 'literal' })}
+                          />
+                          Literal value
+                        </label>
+                        <label style={styles.radioLabel}>
+                          <input
+                            type="radio"
+                            name={`request-value-mode-${index}`}
+                            checked={envMode}
+                            onChange={() => handleRequestFieldValueChange(fieldPath, { mode: 'env' })}
+                          />
+                          Environment variable
+                        </label>
+                      </div>
+                      <div style={styles.requestValueInputs}>
+                        <label style={styles.label}>
+                          <span>Literal / test value</span>
                           <input
                             type="text"
-                            value={selection.literal ?? ''}
+                            value={literalValue}
                             onChange={(e) =>
-                              handleRequestFieldValueChange(fieldLabel, { literal: e.target.value })
+                              handleRequestFieldValueChange(fieldPath, { literal: e.target.value })
                             }
-                            placeholder="Enter sample value"
                             style={styles.input}
+                            placeholder="Sample request value"
                           />
-                        ) : (
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', width: '100%' }}>
-                            <input
-                              type="text"
-                              list={`env-options-${fieldLabel}`}
-                              value={selection.envVar || ''}
-                              onChange={(e) =>
-                                handleRequestFieldValueChange(fieldLabel, {
-                                  envVar: e.target.value,
-                                  mode: 'env',
-                                })
-                              }
-                              placeholder="Enter environment variable name"
-                              style={styles.input}
-                            />
-                            <datalist id={`env-options-${fieldLabel}`}>
-                              {envVariableOptions.map((opt) => (
-                                <option key={`env-${fieldLabel}-${opt}`} value={opt} />
-                              ))}
-                            </datalist>
-                            <input
-                              type="text"
-                              value={selection.literal ?? ''}
-                              onChange={(e) =>
-                                handleRequestFieldValueChange(fieldLabel, { literal: e.target.value })
-                              }
-                              placeholder="Fallback literal (used if the environment variable is missing)"
-                              style={styles.input}
-                            />
-                            {envVarMissing && selection.envVar && (
-                              <div style={styles.hintError}>
-                                Environment variable {selection.envVar} is not available; the fallback
-                                literal will be sent instead.
-                              </div>
-                            )}
-                          </div>
-                        )}
-                        <span style={styles.requestFieldHint}>Updates the request sample JSON automatically.</span>
+                        </label>
+                        <label style={styles.label}>
+                          <span>Environment variable</span>
+                          <input
+                            type="text"
+                            list={`env-options-${index}`}
+                            value={envVarValue}
+                            onChange={(e) =>
+                              handleRequestFieldValueChange(fieldPath, { envVar: e.target.value, mode: 'env' })
+                            }
+                            style={styles.input}
+                            placeholder="ENV_VAR_NAME"
+                          />
+                          <datalist id={`env-options-${index}`}>
+                            {envVariableOptions.map((opt) => (
+                              <option key={`env-opt-${opt}`} value={opt} />
+                            ))}
+                          </datalist>
+                        </label>
+                        <label style={{ ...styles.checkboxLabel, marginTop: '0.35rem' }}>
+                          <input
+                            type="checkbox"
+                            checked={applyToBody}
+                            onChange={(e) =>
+                              handleRequestFieldValueChange(fieldPath, { applyToBody: e.target.checked })
+                            }
+                          />
+                          <span>Apply to request body</span>
+                        </label>
                       </div>
-                    </li>
+                    </div>
                   );
                 })}
-              </ul>
+              </div>
             )}
           </div>
           <div style={styles.hintCard}>
@@ -8075,43 +8881,6 @@ export default function PosApiAdmin() {
             </div>
           </div>
 
-        <div style={styles.previewSection}>
-          <div style={styles.previewCard}>
-            <div style={styles.previewHeader}>
-              <h3 style={styles.previewTitle}>Request sample</h3>
-              {requestPreview.state === 'ok' && <span style={styles.previewTag}>JSON</span>}
-            </div>
-            {requestPreview.state === 'empty' && (
-              <p style={styles.previewEmpty}>Paste JSON above to see a preview.</p>
-            )}
-            {requestPreview.state === 'error' && (
-              <div style={styles.previewErrorBox}>
-                <strong>Invalid JSON:</strong> {requestPreview.error}
-              </div>
-            )}
-            {requestPreview.state === 'ok' && (
-              <pre style={styles.codeBlock}>{requestPreview.formatted}</pre>
-            )}
-          </div>
-          <div style={styles.previewCard}>
-            <div style={styles.previewHeader}>
-              <h3 style={styles.previewTitle}>Response sample</h3>
-              {responsePreview.state === 'ok' && <span style={styles.previewTag}>JSON</span>}
-            </div>
-            {responsePreview.state === 'empty' && (
-              <p style={styles.previewEmpty}>Paste JSON above to see a preview.</p>
-            )}
-            {responsePreview.state === 'error' && (
-              <div style={styles.previewErrorBox}>
-                <strong>Invalid JSON:</strong> {responsePreview.error}
-              </div>
-            )}
-            {responsePreview.state === 'ok' && (
-              <pre style={styles.codeBlock}>{responsePreview.formatted}</pre>
-            )}
-          </div>
-        </div>
-
         <div style={styles.docFetcher}>
           <label style={{ ...styles.label, flex: 1 }}>
             Documentation URL
@@ -8123,8 +8892,13 @@ export default function PosApiAdmin() {
               placeholder="https://developer.itc.gov.mn/docs/..."
             />
           </label>
-          <button type="button" onClick={handleFetchDoc} disabled={loading} style={styles.fetchButton}>
-            {loading ? 'Fetching…' : 'Fetch documentation'}
+          <button
+            type="button"
+            onClick={handleFetchDoc}
+            disabled={loading || saving || fetchingDoc}
+            style={styles.fetchButton}
+          >
+            {fetchingDoc ? 'Fetching…' : 'Fetch documentation'}
           </button>
         </div>
 
@@ -8182,13 +8956,128 @@ export default function PosApiAdmin() {
           </div>
         )}
 
+        <div style={styles.hintCard}>
+          <div style={styles.hintHeader}>
+            <h3 style={styles.hintTitle}>Build combination</h3>
+            <span style={styles.hintCount}>{combinationModifierOptions.length}</span>
+          </div>
+          <p style={styles.hintDescription}>
+            Choose a base variation and layer on modifiers. The payload below updates immediately and can be edited before
+            testing.
+          </p>
+          <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
+            <div style={{ flex: 1, minWidth: '280px' }}>
+              <span style={styles.multiSelectTitle}>Base variation</span>
+              <div style={styles.multiSelectOptions}>
+                {combinationBaseOptions.length === 0 && <div style={styles.sectionHelp}>No variations available yet.</div>}
+                {combinationBaseOptions.map((variation) => (
+                  <label key={`combo-base-${variation.key}`} style={styles.multiSelectOption}>
+                    <input
+                      type="radio"
+                      name="combination-base"
+                      checked={combinationBaseKey === variation.key}
+                      onChange={() => setCombinationBaseKey(variation.key)}
+                    />
+                    <span>{variation.label}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+            <div style={{ flex: 1, minWidth: '320px' }}>
+              <span style={styles.multiSelectTitle}>Modifiers</span>
+              <span style={styles.multiSelectHint}>Stack multiple modifiers to build a composite example.</span>
+              <div style={styles.multiSelectOptions}>
+                {combinationModifierOptions
+                  .filter((option) => option.key !== combinationBaseKey)
+                  .map((option) => (
+                    <label key={`combo-mod-${option.key}`} style={styles.multiSelectOption}>
+                      <input
+                        type="checkbox"
+                        checked={combinationModifierKeys.includes(option.key)}
+                        onChange={() => toggleCombinationModifier(option.key)}
+                      />
+                      <span>
+                        {option.label}
+                        {option.type === 'combination' ? ' (example)' : ''}
+                      </span>
+                    </label>
+                  ))}
+              </div>
+            </div>
+          </div>
+          <textarea
+            value={combinationPayloadText}
+            onChange={(e) => {
+              setCombinationPayloadText(e.target.value);
+              setCombinationError('');
+            }}
+            style={{ ...styles.textarea, marginTop: '0.75rem' }}
+            rows={8}
+            placeholder="Built combination payload will appear here"
+          />
+          {combinationError && <div style={styles.inputError}>{combinationError}</div>}
+          <div style={styles.inlineActionRow}>
+            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+              <span style={styles.checkboxHint}>Use the payload above directly without saving a new variation.</span>
+            </div>
+            <button
+              type="button"
+              onClick={handleTestCombination}
+              disabled={loading || saving || fetchingDoc || testState.running || !combinationPayloadText.trim()}
+              style={styles.testButton}
+            >
+              Test built combination
+            </button>
+          </div>
+        </div>
+
+        {variationColumns.length > 0 && (
+          <div style={styles.docSelection}>
+            <label style={{ ...styles.label, flex: 1 }}>
+              Select variation for testing
+              <select
+                value={selectedVariationKey}
+                onChange={(e) => setSelectedVariationKey(e.target.value)}
+                style={styles.input}
+              >
+                <option value="">Manual request data</option>
+                {variationColumns.map((variation) => (
+                  <option key={`test-variation-${variation.key}`} value={variation.key}>
+                    {variation.label} {variation.type === 'combination' ? '(combination)' : ''}
+                  </option>
+                ))}
+              </select>
+              <span style={styles.checkboxHint}>
+                Applying a variation builds the request JSON using its saved defaults.
+              </span>
+            </label>
+          </div>
+        )}
+
+        <label style={styles.labelFull}>
+          Request sample for testing (JSON)
+          <span style={styles.fieldHelp}>
+            The Test endpoint button uses this payload. Selecting a variation loads its example here without changing the base
+            request.
+          </span>
+          <textarea
+            value={requestSampleText}
+            onChange={(e) => setRequestSampleText(e.target.value)}
+            style={styles.textarea}
+            rows={8}
+            placeholder="Request payload sent when testing the endpoint"
+          />
+        </label>
+
         <div style={styles.actions}>
-          <button
-            type="button"
-            onClick={handleTest}
-            disabled={
-              loading ||
-              testState.running ||
+            <button
+              type="button"
+              onClick={() => handleTest()}
+              disabled={
+                loading ||
+                saving ||
+                fetchingDoc ||
+                testState.running ||
               !formState.testable ||
               !hasTestServerUrl
             }
@@ -8197,13 +9086,13 @@ export default function PosApiAdmin() {
             {testState.running ? 'Testing…' : 'Test endpoint'}
           </button>
           <div style={{ flex: 1 }} />
-          <button type="button" onClick={handleSave} disabled={loading}>
-            {loading ? 'Saving…' : 'Save changes'}
+          <button type="button" onClick={handleSave} disabled={loading || saving || fetchingDoc}>
+            {saving ? 'Saving…' : 'Save changes'}
           </button>
           <button
             type="button"
             onClick={handleDelete}
-            disabled={loading || (!selectedId && !formState.id)}
+            disabled={loading || saving || fetchingDoc || (!selectedId && !formState.id)}
             style={styles.deleteButton}
           >
             Delete
@@ -8731,6 +9620,7 @@ const styles = {
   container: {
     display: 'flex',
     gap: '1.5rem',
+    width: '100%',
     alignItems: 'flex-start',
   },
   infoContainer: {
@@ -8918,10 +9808,12 @@ const styles = {
     borderRadius: '6px',
     padding: '0.5rem',
     cursor: 'pointer',
+    userSelect: 'none',
   },
   listButtonActive: {
     borderColor: '#2563eb',
     background: '#dbeafe',
+    color: '#2563eb',
   },
   listButtonHeader: {
     display: 'flex',
@@ -8982,13 +9874,14 @@ const styles = {
   },
   formContainer: {
     flex: 1,
+    width: '100%',
     background: '#fff',
     border: '1px solid #e2e8f0',
     borderRadius: '8px',
     padding: '1.5rem',
-    maxWidth: '900px',
+    maxWidth: '100%',
     position: 'relative',
-    overflow: 'hidden',
+    overflow: 'visible',
   },
   formGrid: {
     display: 'grid',
@@ -9042,70 +9935,6 @@ const styles = {
   inlineListItem: {
     fontSize: '0.85rem',
     color: '#1f2937',
-  },
-  sampleGrid: {
-    display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
-    gap: '1rem',
-    marginTop: '1rem',
-  },
-  sampleCard: {
-    border: '1px solid #e2e8f0',
-    borderRadius: '6px',
-    background: '#fff',
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '0.5rem',
-    padding: '0.75rem',
-  },
-  sampleHeader: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    gap: '0.5rem',
-  },
-  sampleActions: {
-    display: 'flex',
-    gap: '0.4rem',
-  },
-  samplePre: {
-    background: '#0f172a',
-    color: '#f8fafc',
-    borderRadius: '4px',
-    padding: '0.75rem',
-    fontSize: '0.75rem',
-    maxHeight: '220px',
-    overflow: 'auto',
-  },
-  sampleImportContainer: {
-    marginTop: '1rem',
-    borderTop: '1px solid #e2e8f0',
-    paddingTop: '1rem',
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '0.75rem',
-  },
-  sampleImportLabel: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '0.4rem',
-    fontWeight: 600,
-    fontSize: '0.85rem',
-    color: '#1f2937',
-  },
-  sampleTextarea: {
-    width: '100%',
-    borderRadius: '4px',
-    border: '1px solid #cbd5f5',
-    fontFamily: 'monospace',
-    fontSize: '0.85rem',
-    padding: '0.6rem',
-  },
-  sampleImportControls: {
-    display: 'flex',
-    flexWrap: 'wrap',
-    gap: '0.75rem',
-    alignItems: 'center',
   },
   importUploadRow: {
     display: 'grid',
@@ -9465,8 +10294,8 @@ const styles = {
     fontSize: '0.9rem',
   },
   hintGrid: {
-    display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
+    display: 'flex',
+    flexDirection: 'column',
     gap: '1rem',
     marginTop: '0.75rem',
   },
@@ -9502,6 +10331,53 @@ const styles = {
     flexDirection: 'column',
     gap: '0.35rem',
   },
+  requestFieldTable: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.5rem',
+  },
+  requestFieldTableWrapper: {
+    overflowX: 'auto',
+    paddingBottom: '0.5rem',
+  },
+  requestFieldHeaderRow: {
+    display: 'grid',
+    alignItems: 'center',
+    gap: '0.75rem',
+    borderBottom: '1px solid #e2e8f0',
+    paddingBottom: '0.35rem',
+  },
+  requestFieldHeaderCell: {
+    fontWeight: 700,
+    color: '#0f172a',
+    fontSize: '0.9rem',
+  },
+  requestFieldRow: {
+    display: 'grid',
+    alignItems: 'flex-start',
+    gap: '0.75rem',
+    padding: '0.75rem 0',
+    borderBottom: '1px solid #e2e8f0',
+  },
+  requestFieldMainCell: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.35rem',
+  },
+  requestFieldDescriptionCell: {
+    color: '#475569',
+    fontSize: '0.9rem',
+  },
+  requestFieldRequiredCell: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'flex-start',
+  },
+  requestVariationCell: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.35rem',
+  },
   urlFieldControls: {
     display: 'flex',
     flexDirection: 'column',
@@ -9517,9 +10393,79 @@ const styles = {
     gap: '1rem',
     alignItems: 'center',
   },
+  requestValueList: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.75rem',
+  },
+  requestValueRow: {
+    border: '1px solid #e2e8eb',
+    borderRadius: '10px',
+    padding: '0.75rem',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.75rem',
+  },
+  requestValueFieldMeta: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.35rem',
+  },
+  requestValueInputs: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+    gap: '0.5rem',
+  },
   requestFieldHint: {
     color: '#475569',
     fontSize: '0.85rem',
+  },
+  variationList: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
+    gap: '0.75rem',
+  },
+  variationCard: {
+    border: '1px solid #e2e8f0',
+    borderRadius: '6px',
+    padding: '0.75rem',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.5rem',
+    background: '#fff',
+  },
+  variationFieldRow: {
+    display: 'grid',
+    gridTemplateColumns: '2fr auto 2fr auto',
+    gap: '0.5rem',
+    alignItems: 'center',
+    padding: '0.25rem 0',
+  },
+  variationRequirementRow: {
+    borderTop: '1px dashed #e2e8f0',
+    paddingTop: '0.35rem',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.35rem',
+  },
+  variationRequirementLabel: {
+    color: '#475569',
+    fontSize: '0.85rem',
+    fontWeight: 600,
+  },
+  variationRequirementGrid: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: '0.5rem',
+  },
+  variationRequirementToggle: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: '0.35rem',
+    padding: '0.25rem 0.5rem',
+    borderRadius: '6px',
+    background: '#f8fafc',
+    border: '1px solid #e2e8f0',
   },
   hintEmpty: {
     margin: 0,
@@ -9567,6 +10513,21 @@ const styles = {
     margin: 0,
     fontSize: '0.85rem',
     color: '#475569',
+  },
+  combinationExampleList: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.5rem',
+  },
+  combinationExampleRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '0.5rem',
+    flexWrap: 'wrap',
+  },
+  combinationLabel: {
+    whiteSpace: 'normal',
+    wordBreak: 'break-word',
   },
   hintBadge: {
     borderRadius: '999px',

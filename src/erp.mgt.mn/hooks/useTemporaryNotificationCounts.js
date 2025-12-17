@@ -1,8 +1,12 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import useGeneralConfig from './useGeneralConfig.js';
 import { API_BASE } from '../utils/apiBase.js';
+import { usePollingContext, useSharedPoller } from '../context/PollingContext.jsx';
+import { connectSocket, disconnectSocket } from '../utils/socket.js';
 
 const DEFAULT_POLL_INTERVAL_SECONDS = 30;
+const MIN_POLL_INTERVAL_MS = 45_000;
+const GROUP_DEBOUNCE_MS = 400;
 const SCOPES = ['created', 'review'];
 const TEMPORARY_FILTER_CACHE_KEY = 'temporary-transaction-filter';
 
@@ -47,12 +51,18 @@ function createInitialCounts() {
 export default function useTemporaryNotificationCounts(empid) {
   const [counts, setCounts] = useState(() => createInitialCounts());
   const cfg = useGeneralConfig();
+  const { socketConnected } = usePollingContext();
   const intervalSeconds =
     Number(
       cfg?.general?.temporaryPollingIntervalSeconds ||
         cfg?.temporaries?.pollingIntervalSeconds ||
         cfg?.general?.requestPollingIntervalSeconds,
     ) || DEFAULT_POLL_INTERVAL_SECONDS;
+
+  const effectivePollIntervalMs = useMemo(
+    () => Math.max(intervalSeconds * 1000, MIN_POLL_INTERVAL_MS),
+    [intervalSeconds],
+  );
 
   const storageBase = useMemo(() => {
     const id = empid != null && empid !== '' ? String(empid).trim() : 'anonymous';
@@ -68,6 +78,21 @@ export default function useTemporaryNotificationCounts(empid) {
   const legacyStorageKey = useCallback(
     (scope) => `${storageBase}-temporary-${scope}-seen`,
     [storageBase],
+  );
+
+  const pollKey = useMemo(
+    () => `temporary-summary:${storageBase}`,
+    [storageBase],
+  );
+
+  const pollerOptions = useMemo(
+    () => ({
+      intervalMs: effectivePollIntervalMs,
+      enabled: !socketConnected,
+      pauseWhenHidden: true,
+      pauseWhenSocketActive: true,
+    }),
+    [effectivePollIntervalMs, socketConnected],
   );
 
   const getSeenValue = useCallback(
@@ -126,7 +151,35 @@ export default function useTemporaryNotificationCounts(empid) {
     [getSeenValue],
   );
 
-  const refresh = useCallback(async () => {
+  const debouncedApplyCountsRef = useRef();
+  const appliedCountRef = useRef(0);
+
+  const scheduleEvaluateCounts = useCallback(
+    (data, reason = 'unknown') => {
+      if (debouncedApplyCountsRef.current) {
+        clearTimeout(debouncedApplyCountsRef.current);
+      }
+      debouncedApplyCountsRef.current = setTimeout(() => {
+        appliedCountRef.current += 1;
+        console.debug('temporary-summary: applying grouped counts', {
+          reason,
+          appliedCount: appliedCountRef.current,
+        });
+        evaluateCounts(data);
+      }, GROUP_DEBOUNCE_MS);
+    },
+    [evaluateCounts],
+  );
+
+  useEffect(() => {
+    return () => {
+      if (debouncedApplyCountsRef.current) {
+        clearTimeout(debouncedApplyCountsRef.current);
+      }
+    };
+  }, []);
+
+  const fetchSummary = useCallback(async () => {
     try {
       const params = new URLSearchParams();
       const cachedFilter = readCachedTemporaryFilter();
@@ -143,35 +196,85 @@ export default function useTemporaryNotificationCounts(empid) {
         skipLoader: true,
       });
       if (!res.ok) throw new Error('Failed to load summary');
-      const data = await res.json().catch(() => ({}));
-      evaluateCounts(data);
+      return await res.json().catch(() => ({}));
     } catch {
-      // Ignore errors but keep previous counts
+      return null;
     }
-  }, [evaluateCounts]);
+  }, []);
+
+  const { data: latestSummary, refresh: refreshSummary } = useSharedPoller(
+    pollKey,
+    fetchSummary,
+    pollerOptions,
+  );
+
+  const summaryGroupingInput = useMemo(() => {
+    if (!latestSummary) return null;
+    return {
+      createdPending: Number(latestSummary?.createdPending) || 0,
+      createdReviewed: Number(latestSummary?.createdReviewed) || 0,
+      createdTotal: Number(latestSummary?.createdTotal) || 0,
+      createdLatestUpdate: latestSummary?.createdLatestUpdate || null,
+      reviewPending: Number(latestSummary?.reviewPending) || 0,
+      reviewReviewed: Number(latestSummary?.reviewReviewed) || 0,
+      reviewTotal: Number(latestSummary?.reviewTotal) || 0,
+      reviewLatestUpdate: latestSummary?.reviewLatestUpdate || null,
+    };
+  }, [
+    latestSummary?.createdLatestUpdate,
+    latestSummary?.createdPending,
+    latestSummary?.createdReviewed,
+    latestSummary?.createdTotal,
+    latestSummary?.reviewLatestUpdate,
+    latestSummary?.reviewPending,
+    latestSummary?.reviewReviewed,
+    latestSummary?.reviewTotal,
+  ]);
+
+  const lastAppliedSummaryRef = useRef(null);
 
   useEffect(() => {
-    let cancelled = false;
-    const run = async () => {
-      if (!cancelled) await refresh();
-    };
-    run();
+    if (!summaryGroupingInput) return;
+    const prev = lastAppliedSummaryRef.current;
+    const hasChange =
+      !prev ||
+      SCOPES.some((scope) => {
+        const prefix = scope === 'review' ? 'review' : 'created';
+        return (
+          prev[`${prefix}Pending`] !== summaryGroupingInput[`${prefix}Pending`] ||
+          prev[`${prefix}Reviewed`] !== summaryGroupingInput[`${prefix}Reviewed`] ||
+          prev[`${prefix}Total`] !== summaryGroupingInput[`${prefix}Total`] ||
+          prev[`${prefix}LatestUpdate`] !==
+            summaryGroupingInput[`${prefix}LatestUpdate`]
+        );
+      });
+    if (!hasChange) return;
+    lastAppliedSummaryRef.current = summaryGroupingInput;
+    scheduleEvaluateCounts(summaryGroupingInput, 'summary-change');
+  }, [scheduleEvaluateCounts, summaryGroupingInput]);
 
-    const handler = () => {
-      refresh();
+  const refresh = useCallback(() => refreshSummary(), [refreshSummary]);
+
+  useEffect(() => {
+    let socket;
+    const handleTemporaryUpdate = () => {
+      refreshSummary();
     };
 
-    window.addEventListener('transaction-temporary-refresh', handler);
-    const timer = setInterval(() => {
-      refresh();
-    }, intervalSeconds * 1000);
+    try {
+      socket = connectSocket();
+      socket.on('temporaryReviewed', handleTemporaryUpdate);
+    } catch {
+      // ignore socket errors; polling will continue
+    }
 
     return () => {
-      cancelled = true;
-      window.removeEventListener('transaction-temporary-refresh', handler);
-      clearInterval(timer);
+      if (socket) {
+        socket.off('temporaryReviewed', handleTemporaryUpdate);
+        disconnectSocket();
+      }
     };
-  }, [intervalSeconds, refresh]);
+  }, [refreshSummary]);
 
   const markScopeSeen = useCallback(
     (scope) => {
@@ -209,11 +312,19 @@ export default function useTemporaryNotificationCounts(empid) {
   }, [markScopeSeen]);
 
   const fetchScopeEntries = useCallback(async (scope, options = {}) => {
-    const { limit = 5, status = 'pending' } = options || {};
-    if (!SCOPES.includes(scope)) return [];
+    const { limit = 50, status = 'pending', cursor = 0, grouped = false } = options || {};
+    if (!SCOPES.includes(scope)) return { rows: [], hasMore: false, nextCursor: null };
     const params = new URLSearchParams({ scope });
     if (status && typeof status === 'string') {
       params.set('status', status);
+    }
+    const normalizedLimit = Number(limit);
+    if (Number.isFinite(normalizedLimit) && normalizedLimit > 0) {
+      params.set('limit', String(normalizedLimit));
+    }
+    const normalizedCursor = Number(cursor);
+    if (Number.isFinite(normalizedCursor) && normalizedCursor >= 0) {
+      params.set('offset', String(normalizedCursor));
     }
     const cachedFilter = readCachedTemporaryFilter();
     const hasCachedValue =
@@ -222,20 +333,32 @@ export default function useTemporaryNotificationCounts(empid) {
       params.set('transactionTypeField', cachedFilter.field);
       params.set('transactionTypeValue', cachedFilter.value);
     }
+    if (grouped) {
+      params.set('grouped', '1');
+    }
     try {
-      const res = await fetch(`${API_BASE}/transaction_temporaries?${params.toString()}`, {
+      const endpoint = grouped
+        ? `${API_BASE}/transaction_temporaries/grouped`
+        : `${API_BASE}/transaction_temporaries`;
+      const res = await fetch(`${endpoint}?${params.toString()}`, {
         credentials: 'include',
         skipLoader: true,
       });
       if (!res.ok) throw new Error('Failed');
       const data = await res.json().catch(() => ({}));
       const rows = Array.isArray(data?.rows) ? data.rows : [];
-      if (limit && Number.isFinite(limit)) {
-        return rows.slice(0, limit);
+      const groups = Array.isArray(data?.groups) ? data.groups : [];
+      const hasMore = Boolean(data?.hasMore);
+      const nextCursor = Number.isFinite(Number(data?.nextOffset)) ? Number(data.nextOffset) : null;
+      if (grouped) {
+        return { rows, groups, hasMore, nextCursor };
       }
-      return rows;
+      if (limit && Number.isFinite(limit)) {
+        return { rows: rows.slice(0, limit), hasMore, nextCursor };
+      }
+      return { rows, hasMore, nextCursor };
     } catch {
-      return [];
+      return { rows: [], hasMore: false, nextCursor: null };
     }
   }, []);
 

@@ -19,6 +19,7 @@ import useRequestNotificationCounts from "../hooks/useRequestNotificationCounts.
 import useTemporaryNotificationCounts from "../hooks/useTemporaryNotificationCounts.js";
 import useBuildUpdateNotice from "../hooks/useBuildUpdateNotice.js";
 import { PendingRequestContext } from "../context/PendingRequestContext.jsx";
+import { PollingProvider } from "../context/PollingContext.jsx";
 import Joyride, { STATUS, ACTIONS, EVENTS } from "react-joyride";
 import ErrorBoundary from "../components/ErrorBoundary.jsx";
 import { useToast } from "../context/ToastContext.jsx";
@@ -3603,91 +3604,93 @@ export default function ERPLayout() {
   );
 
   return (
-    <TourContext.Provider value={tourContextValue}>
-      {tourBuilderState && (
-        <TourBuilder state={tourBuilderState} onClose={closeTourBuilder} />
-      )}
-      {tourViewerState && (
-        <TourViewer
-          state={{
-            ...tourViewerState,
-            currentStepIndex: tourStepIndex,
-            runId: activeTourRunId,
-          }}
-          onClose={closeTourViewer}
-          onEndTour={endTour}
-          onSelectStep={handleTourStepJump}
-          guideMode={isTourGuideMode}
-          onToggleGuideMode={toggleTourGuideMode}
-        />
-      )}
-      <PendingRequestContext.Provider value={pendingRequestValue}>
-        <div style={styles.container}>
-          <Joyride
-            steps={tourSteps}
-            run={runTour}
-            stepIndex={tourStepIndex}
-            continuous
-            spotlightClicks
-            scrollOffset={joyrideScrollOffset}
-            scrollToFirstStep
-            scrollToSteps
-            showBackButton
-            showProgress
-            disableOverlayClose
-            disableBeacon
-            disableKeyboardNavigation={false}
-            floaterProps={{ offset: joyrideScrollOffset }}
-            styles={{
-              options: {
-                zIndex: 12000,
-              },
-              overlay: {
-                backgroundColor: joyrideOverlayColor,
-                pointerEvents: isTourGuideMode ? 'none' : 'auto',
-              },
-              spotlight: {
-                borderRadius: 12,
-                boxShadow: joyrideSpotlightShadow,
-              },
+    <PollingProvider>
+      <TourContext.Provider value={tourContextValue}>
+        {tourBuilderState && (
+          <TourBuilder state={tourBuilderState} onClose={closeTourBuilder} />
+        )}
+        {tourViewerState && (
+          <TourViewer
+            state={{
+              ...tourViewerState,
+              currentStepIndex: tourStepIndex,
+              runId: activeTourRunId,
             }}
-            callback={handleTourCallback}
-            tooltipComponent={JoyrideTooltip}
-            locale={{
-              back: 'Back',
-              close: 'End tour',
-              last: 'End tour',
-              next: 'Next',
-            }}
+            onClose={closeTourViewer}
+            onEndTour={endTour}
+            onSelectStep={handleTourStepJump}
+            guideMode={isTourGuideMode}
+            onToggleGuideMode={toggleTourGuideMode}
           />
-          <Header
-            user={user}
-            onLogout={handleLogout}
-            onHome={handleHome}
-            isMobile={isMobile}
-            onToggleSidebar={() => setSidebarOpen((o) => !o)}
-            onOpen={handleOpen}
-            onResetGuide={resetGuide}
-            hasUpdateAvailable={hasUpdateAvailable}
-          />
-          <div style={styles.body(isMobile)}>
-            {isMobile && sidebarOpen && (
-              <div
-                className="sidebar-overlay"
-                onClick={() => setSidebarOpen(false)}
-              />
-            )}
-            <Sidebar
-              open={isMobile ? sidebarOpen : true}
-              onOpen={handleOpen}
-              isMobile={isMobile}
+        )}
+        <PendingRequestContext.Provider value={pendingRequestValue}>
+          <div style={styles.container}>
+            <Joyride
+              steps={tourSteps}
+              run={runTour}
+              stepIndex={tourStepIndex}
+              continuous
+              spotlightClicks
+              scrollOffset={joyrideScrollOffset}
+              scrollToFirstStep
+              scrollToSteps
+              showBackButton
+              showProgress
+              disableOverlayClose
+              disableBeacon
+              disableKeyboardNavigation={false}
+              floaterProps={{ offset: joyrideScrollOffset }}
+              styles={{
+                options: {
+                  zIndex: 12000,
+                },
+                overlay: {
+                  backgroundColor: joyrideOverlayColor,
+                  pointerEvents: isTourGuideMode ? 'none' : 'auto',
+                },
+                spotlight: {
+                  borderRadius: 12,
+                  boxShadow: joyrideSpotlightShadow,
+                },
+              }}
+              callback={handleTourCallback}
+              tooltipComponent={JoyrideTooltip}
+              locale={{
+                back: 'Back',
+                close: 'End tour',
+                last: 'End tour',
+                next: 'Next',
+              }}
             />
-            <MainWindow title={windowTitle} />
+            <Header
+              user={user}
+              onLogout={handleLogout}
+              onHome={handleHome}
+              isMobile={isMobile}
+              onToggleSidebar={() => setSidebarOpen((o) => !o)}
+              onOpen={handleOpen}
+              onResetGuide={resetGuide}
+              hasUpdateAvailable={hasUpdateAvailable}
+            />
+            <div style={styles.body(isMobile)}>
+              {isMobile && sidebarOpen && (
+                <div
+                  className="sidebar-overlay"
+                  onClick={() => setSidebarOpen(false)}
+                />
+              )}
+              <Sidebar
+                open={isMobile ? sidebarOpen : true}
+                onOpen={handleOpen}
+                isMobile={isMobile}
+              />
+              <MainWindow title={windowTitle} />
+            </div>
+            {generalConfig.general?.aiApiEnabled && <AskAIFloat />}
           </div>
-          {generalConfig.general?.aiApiEnabled && <AskAIFloat />}
-        </div>
-      </PendingRequestContext.Provider>
-    </TourContext.Provider>
+        </PendingRequestContext.Provider>
+      </TourContext.Provider>
+    </PollingProvider>
   );
 }
 

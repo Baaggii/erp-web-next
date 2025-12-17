@@ -557,6 +557,17 @@ function normalizeSupervisorEmpId(value) {
   return trimmed ? trimmed.toUpperCase() : null;
 }
 
+function normalizeStatuses(status) {
+  if (status === undefined || status === null) return [];
+  const rawList = Array.isArray(status) ? status : String(status).split(',');
+  const normalized = rawList
+    .map((item) => String(item || '').trim().toLowerCase())
+    .filter(Boolean);
+  if (!normalized.length) return [];
+  if (normalized.includes('any') || normalized.includes('all')) return [];
+  return Array.from(new Set(normalized));
+}
+
 export async function createRequest({
   tableName,
   recordId,
@@ -761,9 +772,13 @@ export async function listRequests(filters) {
   const conditions = [];
   const params = [];
 
-  if (status) {
+  const statusList = normalizeStatuses(status);
+  if (statusList.length === 1) {
     conditions.push('LOWER(TRIM(status)) = ?');
-    params.push(String(status).trim().toLowerCase());
+    params.push(statusList[0]);
+  } else if (statusList.length > 1) {
+    conditions.push(`LOWER(TRIM(status)) IN (${statusList.map(() => '?').join(', ')})`);
+    params.push(...statusList);
   }
   if (senior_empid) {
     conditions.push('UPPER(TRIM(senior_empid)) = ?');

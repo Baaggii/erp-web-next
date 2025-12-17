@@ -1,8 +1,10 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { connectSocket, disconnectSocket } from '../utils/socket.js';
 import useGeneralConfig from '../hooks/useGeneralConfig.js';
+import { useSharedPoller } from '../context/PollingContext.jsx';
 
 const DEFAULT_POLL_INTERVAL_SECONDS = 30;
+const DISCONNECT_FALLBACK_MS = 5 * 60 * 1000;
 
 /**
  * Polls the pending request endpoint for a supervisor and returns the count.
@@ -19,6 +21,7 @@ export default function usePendingRequestCount(
 ) {
   const storageKey = useMemo(() => `${empid}-pendingSeen`, [empid]);
   const [count, setCount] = useState(0);
+  const countRef = useRef(0);
   const [seen, setSeen] = useState(() =>
     Number(localStorage.getItem(storageKey) || 0),
   );
@@ -45,11 +48,29 @@ export default function usePendingRequestCount(
     return seniorEmpId;
   }, [memoFilters, seniorEmpId, seniorPlanEmpId]);
 
-  useEffect(() => {
-    if (!effectiveSeniorEmpId) {
-      setCount(0);
-      return undefined;
-    }
+  const [enablePolling, setEnablePolling] = useState(false);
+  const disconnectTimeoutRef = useRef();
+  const filterKey = useMemo(() => JSON.stringify(memoFilters), [memoFilters]);
+  const pollKey = useMemo(
+    () => `pending-request:${effectiveSeniorEmpId ?? 'none'}:${filterKey}`,
+    [effectiveSeniorEmpId, filterKey],
+  );
+
+  const applyCount = useCallback(
+    (value) => {
+      const normalized = Number(value) || 0;
+      countRef.current = normalized;
+      setCount(normalized);
+      const storedSeen = Number(localStorage.getItem(storageKey) || 0);
+      const newHasNew = normalized > storedSeen;
+      setHasNew(newHasNew);
+      if (newHasNew) window.dispatchEvent(new Event('pending-request-new'));
+    },
+    [storageKey],
+  );
+
+  const fetchCount = useCallback(async () => {
+    if (!effectiveSeniorEmpId) return 0;
 
     const params = new URLSearchParams({
       status: 'pending',
@@ -61,95 +82,123 @@ export default function usePendingRequestCount(
       }
     });
 
+    try {
+      const res = await fetch(`/api/pending_request?${params.toString()}`, {
+        credentials: 'include',
+        skipLoader: true,
+      });
+      if (!res.ok) return 0;
+      const data = await res.json().catch(() => 0);
+      if (typeof data === 'number') return data;
+      if (Array.isArray(data)) return data.length;
+      return Number(data?.count) || 0;
+    } catch {
+      return 0;
+    }
+  }, [effectiveSeniorEmpId, memoFilters]);
+
+  const pollerOptions = useMemo(
+    () => ({
+      intervalMs: intervalSeconds * 1000,
+      enabled: pollingEnabled && enablePolling && Boolean(effectiveSeniorEmpId),
+      pauseWhenHidden: true,
+      pauseWhenSocketActive: true,
+    }),
+    [effectiveSeniorEmpId, enablePolling, intervalSeconds, pollingEnabled],
+  );
+
+  const { data: polledCount } = useSharedPoller(pollKey, fetchCount, pollerOptions);
+
+  useEffect(() => {
+    if (polledCount !== undefined && polledCount !== null) {
+      applyCount(polledCount);
+    }
+  }, [applyCount, polledCount]);
+
+  useEffect(() => {
+    if (!effectiveSeniorEmpId) {
+      setCount(0);
+      setHasNew(false);
+      setEnablePolling(false);
+      return () => {};
+    }
+
     let cancelled = false;
-    async function fetchCount() {
-      try {
-        const res = await fetch(`/api/pending_request?${params.toString()}`, {
-          credentials: 'include',
-          skipLoader: true,
-        });
-        if (!res.ok) {
-          if (!cancelled) setCount(0);
-          return;
-        }
-        const data = await res.json().catch(() => 0);
-        let c = 0;
-        if (typeof data === 'number') c = data;
-        else if (Array.isArray(data)) c = data.length;
-        else c = Number(data?.count) || 0;
-        if (!cancelled) {
-          setCount(c);
-          const storedSeen = Number(localStorage.getItem(storageKey) || 0);
-          const newHasNew = c > storedSeen;
-          setHasNew(newHasNew);
-          if (newHasNew) window.dispatchEvent(new Event('pending-request-new'));
-        }
-      } catch {
-        if (!cancelled) {
-          setCount(0);
-          setHasNew(false);
-        }
-      }
-    }
-
-    fetchCount();
-    let timer;
-
-    function startPolling() {
-      if (!timer) timer = setInterval(fetchCount, intervalSeconds * 1000);
-    }
-
-    function stopPolling() {
-      if (timer) {
-        clearInterval(timer);
-        timer = null;
-      }
-    }
-
     let socket;
+
+    setEnablePolling(false);
+
+    const applyFromFetch = async () => {
+      const value = await fetchCount();
+      if (!cancelled) applyCount(value);
+    };
+
+    const startFallback = () => {
+      if (!pollingEnabled) return;
+      clearTimeout(disconnectTimeoutRef.current);
+      disconnectTimeoutRef.current = setTimeout(
+        () => setEnablePolling(true),
+        DISCONNECT_FALLBACK_MS,
+      );
+    };
+
+    const stopFallback = () => {
+      clearTimeout(disconnectTimeoutRef.current);
+      setEnablePolling(false);
+    };
+
+    applyFromFetch();
+
     try {
       socket = connectSocket();
-      socket.on('newRequest', fetchCount);
+      socket.on('newRequest', applyFromFetch);
+      socket.on('connect', () => {
+        stopFallback();
+        applyFromFetch();
+      });
       if (pollingEnabled) {
-        socket.on('connect_error', startPolling);
-        socket.on('disconnect', startPolling);
-        socket.on('connect', stopPolling);
+        socket.on('disconnect', startFallback);
+        socket.on('connect_error', startFallback);
       }
     } catch {
-      if (pollingEnabled) startPolling();
+      if (pollingEnabled) setEnablePolling(true);
     }
+
     function handleSeen() {
       const s = Number(localStorage.getItem(storageKey) || 0);
       setSeen(s);
-      setHasNew(count > s);
+      setHasNew(countRef.current > s);
     }
+
     function handleNew() {
       setHasNew(true);
     }
-    window.addEventListener('pending-request-refresh', fetchCount);
+
+    window.addEventListener('pending-request-refresh', applyFromFetch);
     window.addEventListener('pending-request-seen', handleSeen);
     window.addEventListener('pending-request-new', handleNew);
+
     return () => {
       cancelled = true;
+      clearTimeout(disconnectTimeoutRef.current);
       if (socket) {
-        socket.off('newRequest', fetchCount);
+        socket.off('newRequest', applyFromFetch);
+        socket.off('connect', stopFallback);
         if (pollingEnabled) {
-          socket.off('connect_error', startPolling);
-          socket.off('disconnect', startPolling);
-          socket.off('connect', stopPolling);
+          socket.off('disconnect', startFallback);
+          socket.off('connect_error', startFallback);
         }
         disconnectSocket();
       }
-      stopPolling();
-      window.removeEventListener('pending-request-refresh', fetchCount);
+      window.removeEventListener('pending-request-refresh', applyFromFetch);
       window.removeEventListener('pending-request-seen', handleSeen);
       window.removeEventListener('pending-request-new', handleNew);
     };
   }, [
+    applyCount,
     effectiveSeniorEmpId,
-    memoFilters,
+    fetchCount,
     pollingEnabled,
-    intervalSeconds,
     storageKey,
   ]);
 

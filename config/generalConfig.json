@@ -1,0 +1,42 @@
+{
+  "forms": {
+    "labelFontSize": 12,
+    "boxWidth": 60,
+    "boxHeight": 30,
+    "boxMaxWidth": 150,
+    "boxMaxHeight": 150
+  },
+  "pos": {
+    "labelFontSize": 12,
+    "boxWidth": 60,
+    "boxHeight": 30,
+    "boxMaxWidth": 150,
+    "boxMaxHeight": 150
+  },
+  "general": {
+    "aiApiEnabled": false,
+    "aiInventoryApiEnabled": false,
+    "triggerToastEnabled": false,
+    "procToastEnabled": false,
+    "viewToastEnabled": false,
+    "reportRowToastEnabled": false,
+    "imageToastEnabled": false,
+    "debugLoggingEnabled": false,
+    "editLabelsEnabled": true,
+    "showReportParams": false,
+    "requestPollingEnabled": false,
+    "requestPollingIntervalSeconds": 30,
+    "procLabels": {},
+    "procFieldLabels": {},
+    "reportProcPrefix": "dynrep_",
+    "reportViewPrefix": "dynview_",
+    "imageDir": "txn_images"
+  },
+  "images": {
+    "basePath": "uploads",
+    "cleanupDays": 30,
+    "ignoreOnSearch": [
+      "deleted_images"
+    ]
+  }
+}
