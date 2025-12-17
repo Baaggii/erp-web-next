@@ -3,8 +3,6 @@ import useGeneralConfig from './useGeneralConfig.js';
 import { API_BASE } from '../utils/apiBase.js';
 
 const DEFAULT_POLL_INTERVAL_SECONDS = 30;
-const MIN_POLL_INTERVAL_SECONDS = 120;
-const HIDDEN_POLL_INTERVAL_SECONDS = 300;
 const SCOPES = ['created', 'review'];
 const TEMPORARY_FILTER_CACHE_KEY = 'temporary-transaction-filter';
 
@@ -49,17 +47,12 @@ function createInitialCounts() {
 export default function useTemporaryNotificationCounts(empid) {
   const [counts, setCounts] = useState(() => createInitialCounts());
   const cfg = useGeneralConfig();
-  const intervalSeconds = Math.max(
+  const intervalSeconds =
     Number(
       cfg?.general?.temporaryPollingIntervalSeconds ||
         cfg?.temporaries?.pollingIntervalSeconds ||
         cfg?.general?.requestPollingIntervalSeconds,
-    ) || DEFAULT_POLL_INTERVAL_SECONDS,
-    MIN_POLL_INTERVAL_SECONDS,
-  );
-
-  const refreshInFlight = useRef(false);
-  const pendingRefresh = useRef(false);
+    ) || DEFAULT_POLL_INTERVAL_SECONDS;
 
   const refreshInFlight = useRef(false);
   const pendingRefresh = useRef(false);
@@ -136,8 +129,6 @@ export default function useTemporaryNotificationCounts(empid) {
     [getSeenValue],
   );
 
-  const lastRefreshRef = useRef(0);
-
   const refresh = useCallback(async () => {
     if (refreshInFlight.current) {
       pendingRefresh.current = true;
@@ -175,46 +166,24 @@ export default function useTemporaryNotificationCounts(empid) {
 
   useEffect(() => {
     let cancelled = false;
-    let timer = null;
-
-    const schedule = (delayMs) => {
-      if (timer) clearTimeout(timer);
-      timer = setTimeout(run, delayMs);
-    };
-
     const run = async () => {
-      if (cancelled) return;
-      await refresh();
-      const hidden = typeof document !== 'undefined' && document.visibilityState === 'hidden';
-      const nextDelay = (hidden ? HIDDEN_POLL_INTERVAL_SECONDS : intervalSeconds) * 1000;
-      schedule(nextDelay);
+      if (!cancelled) await refresh();
     };
+    run();
 
     const handler = () => {
-      const hidden = typeof document !== 'undefined' && document.visibilityState === 'hidden';
-      if (hidden) return;
       refresh();
     };
 
-    const handleVisibility = () => {
-      if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
-        refresh();
-      }
-    };
-
     window.addEventListener('transaction-temporary-refresh', handler);
-    if (typeof document !== 'undefined') {
-      document.addEventListener('visibilitychange', handleVisibility);
-    }
-    run();
+    const timer = setInterval(() => {
+      refresh();
+    }, intervalSeconds * 1000);
 
     return () => {
       cancelled = true;
-      if (timer) clearTimeout(timer);
       window.removeEventListener('transaction-temporary-refresh', handler);
-      if (typeof document !== 'undefined') {
-        document.removeEventListener('visibilitychange', handleVisibility);
-      }
+      clearInterval(timer);
     };
   }, [intervalSeconds, refresh]);
 
