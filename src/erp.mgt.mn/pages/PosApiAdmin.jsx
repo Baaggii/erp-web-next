@@ -6209,9 +6209,11 @@ export default function PosApiAdmin() {
 
     const sanitizedVariations = (variations || []).map((variation, index) => {
       const variationKey = variation.key || variation.name || `variation-${index + 1}`;
+      const requestExampleText = variation.requestExampleText
+        || toPrettyJson(variation.requestExample || {}, '{}');
       const requestExample = parseJsonInput(
         `Request example for variation ${variation.name || index + 1}`,
-        variation.requestExampleText || '{}',
+        requestExampleText,
         {},
       );
       const requestFields = Array.isArray(variation.requestFields)
@@ -6255,6 +6257,7 @@ export default function PosApiAdmin() {
         description: variation.description || '',
         enabled: variation.enabled !== false,
         requestExample,
+        requestExampleText: toPrettyJson(requestExample, '{}'),
         requestFields,
         requiredFields: {
           ...(variationRequirementByKey[variationKey] || {}),
