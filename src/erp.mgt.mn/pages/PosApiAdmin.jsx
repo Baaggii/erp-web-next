@@ -4167,6 +4167,251 @@ export default function PosApiAdmin() {
       });
       return { ...prev, requestFieldVariations: updated };
     });
+
+    syncVariationDefaultChange(key, fieldPath, value);
+  };
+
+  const syncVariationDefaultChange = (variationKey, fieldPath, value) => {
+    if (!variationKey || !fieldPath) return;
+    const segments = parsePathSegments(fieldPath);
+    if (segments.length === 0) return;
+
+    setFormState((prev) => {
+      let changed = false;
+      const variations = Array.isArray(prev.variations) ? prev.variations.slice() : [];
+      const variationIndex = variations.findIndex(
+        (entry) => (entry.key || entry.name) === variationKey,
+      );
+
+      if (variationIndex >= 0) {
+        const variation = variations[variationIndex];
+        const defaultValues = variation.defaultValues ? { ...variation.defaultValues } : {};
+        const examplePayload = cleanSampleText(
+          variation.requestExampleText || variation.requestExample || {},
+        );
+        const beforeState = JSON.stringify(examplePayload);
+        const beforeDefaults = JSON.stringify(defaultValues);
+        if (value) {
+          setNestedValue(examplePayload, segments, value);
+          defaultValues[fieldPath] = value;
+        } else {
+          removeNestedValue(examplePayload, segments);
+          delete defaultValues[fieldPath];
+        }
+        const afterState = JSON.stringify(examplePayload);
+        const afterDefaults = JSON.stringify(defaultValues);
+        if (beforeState !== afterState || beforeDefaults !== afterDefaults) {
+          variations[variationIndex] = {
+            ...variation,
+            defaultValues,
+            requestExample: examplePayload,
+            requestExampleText: JSON.stringify(examplePayload, null, 2),
+          };
+          changed = true;
+        }
+      }
+
+      const requestFieldVariations = Array.isArray(prev.requestFieldVariations)
+        ? prev.requestFieldVariations.slice()
+        : [];
+      const variationMetaIndex = requestFieldVariations.findIndex((entry) => entry.key === variationKey);
+      if (variationMetaIndex >= 0) {
+        const meta = requestFieldVariations[variationMetaIndex];
+        const defaultValues = { ...(meta.defaultValues || {}) };
+        const requiredFields = { ...(meta.requiredFields || {}) };
+        const defaultExists = Object.prototype.hasOwnProperty.call(defaultValues, fieldPath);
+        const requiredExists = Object.prototype.hasOwnProperty.call(requiredFields, fieldPath);
+
+        if (value) {
+          defaultValues[fieldPath] = value;
+        } else {
+          delete defaultValues[fieldPath];
+        }
+        if (requiredExists && !value) {
+          delete requiredFields[fieldPath];
+        }
+
+        if (
+          defaultExists !== Object.prototype.hasOwnProperty.call(defaultValues, fieldPath)
+          || requiredExists !== Object.prototype.hasOwnProperty.call(requiredFields, fieldPath)
+          || (value && defaultValues[fieldPath] !== meta.defaultValues?.[fieldPath])
+        ) {
+          requestFieldVariations[variationMetaIndex] = {
+            ...meta,
+            defaultValues,
+            requiredFields,
+          };
+          changed = true;
+        }
+      }
+
+      if (!changed) return prev;
+      return { ...prev, variations, requestFieldVariations };
+    });
+  };
+
+  const clearVariationFieldSelection = (variationKey, fieldPath) => {
+    if (!variationKey || !fieldPath) return;
+
+    setRequestFieldMeta((prev) => {
+      const existing = prev[fieldPath];
+      if (!existing) return prev;
+      const requiredByVariation = { ...(existing.requiredByVariation || {}) };
+      const defaultByVariation = { ...(existing.defaultByVariation || {}) };
+      let changed = false;
+
+      if (requiredByVariation[variationKey]) {
+        delete requiredByVariation[variationKey];
+        changed = true;
+      }
+      if (Object.prototype.hasOwnProperty.call(defaultByVariation, variationKey)) {
+        delete defaultByVariation[variationKey];
+        changed = true;
+      }
+
+      if (!changed) return prev;
+      return { ...prev, [fieldPath]: { ...existing, requiredByVariation, defaultByVariation } };
+    });
+
+    setFormState((prev) => {
+      let changed = false;
+      const variations = Array.isArray(prev.variations) ? prev.variations.slice() : [];
+      const variationIndex = variations.findIndex(
+        (entry) => (entry.key || entry.name) === variationKey,
+      );
+
+      if (variationIndex >= 0) {
+        const variation = variations[variationIndex];
+        const requestFields = Array.isArray(variation.requestFields)
+          ? variation.requestFields.slice()
+          : [];
+        const requiredFields = variation.requiredFields ? { ...variation.requiredFields } : {};
+        const defaultValues = variation.defaultValues ? { ...variation.defaultValues } : {};
+        const examplePayload = cleanSampleText(
+          variation.requestExampleText || variation.requestExample || {},
+        );
+        const beforeExample = JSON.stringify(examplePayload);
+        const beforeDefaults = JSON.stringify(defaultValues);
+        const beforeRequired = JSON.stringify(requiredFields);
+        const beforeRequestFields = JSON.stringify(requestFields);
+
+        const requestFieldIndex = requestFields.findIndex(
+          (entry) => normalizeHintEntry(entry).field === fieldPath,
+        );
+        if (requestFieldIndex >= 0) {
+          requestFields.splice(requestFieldIndex, 1);
+        }
+
+        delete requiredFields[fieldPath];
+        delete defaultValues[fieldPath];
+        removeNestedValue(examplePayload, parsePathSegments(fieldPath));
+
+        const afterExample = JSON.stringify(examplePayload);
+        const variationChanged =
+          beforeExample !== afterExample
+          || beforeDefaults !== JSON.stringify(defaultValues)
+          || beforeRequired !== JSON.stringify(requiredFields)
+          || beforeRequestFields !== JSON.stringify(requestFields);
+
+        if (variationChanged) {
+          variations[variationIndex] = {
+            ...variation,
+            requestFields,
+            requiredFields,
+            defaultValues,
+            requestExample: examplePayload,
+            requestExampleText: JSON.stringify(examplePayload, null, 2),
+          };
+          changed = true;
+        }
+      }
+
+      const requestFieldVariations = Array.isArray(prev.requestFieldVariations)
+        ? prev.requestFieldVariations.slice()
+        : [];
+      const variationMetaIndex = requestFieldVariations.findIndex((entry) => entry.key === variationKey);
+      if (variationMetaIndex >= 0) {
+        const meta = requestFieldVariations[variationMetaIndex];
+        const defaultValues = { ...(meta.defaultValues || {}) };
+        const requiredFields = { ...(meta.requiredFields || {}) };
+        const defaultHad = Object.prototype.hasOwnProperty.call(defaultValues, fieldPath);
+        const requiredHad = Object.prototype.hasOwnProperty.call(requiredFields, fieldPath);
+
+        delete defaultValues[fieldPath];
+        delete requiredFields[fieldPath];
+
+        if (defaultHad || requiredHad) {
+          requestFieldVariations[variationMetaIndex] = {
+            ...meta,
+            defaultValues,
+            requiredFields,
+          };
+          changed = true;
+        }
+      }
+
+      if (!changed) return prev;
+      return { ...prev, variations, requestFieldVariations };
+    });
+  };
+
+  const ensureVariationFieldSelection = (variationKey, fieldPath) => {
+    if (!variationKey || !fieldPath) return;
+
+    setFormState((prev) => {
+      let changed = false;
+      const variations = Array.isArray(prev.variations) ? prev.variations.slice() : [];
+      const variationIndex = variations.findIndex((entry) => (entry.key || entry.name) === variationKey);
+
+      if (variationIndex >= 0) {
+        const variation = variations[variationIndex];
+        const requestFields = Array.isArray(variation.requestFields)
+          ? variation.requestFields.slice()
+          : [];
+        const requiredFields = variation.requiredFields ? { ...variation.requiredFields } : {};
+        const existingIndex = requestFields.findIndex(
+          (entry) => normalizeHintEntry(entry).field === fieldPath,
+        );
+
+        if (existingIndex >= 0) {
+          const current = requestFields[existingIndex];
+          const normalized = normalizeHintEntry(current);
+          if (normalized.required === false || normalized.required === undefined) {
+            requestFields[existingIndex] = { ...current, required: true };
+            changed = true;
+          }
+        } else {
+          requestFields.push({ field: fieldPath, required: true });
+          changed = true;
+        }
+
+        if (requiredFields[fieldPath] !== true) {
+          requiredFields[fieldPath] = true;
+          changed = true;
+        }
+
+        if (changed) {
+          variations[variationIndex] = { ...variation, requestFields, requiredFields };
+        }
+      }
+
+      const requestFieldVariations = Array.isArray(prev.requestFieldVariations)
+        ? prev.requestFieldVariations.slice()
+        : [];
+      const variationMetaIndex = requestFieldVariations.findIndex((entry) => entry.key === variationKey);
+      if (variationMetaIndex >= 0) {
+        const meta = requestFieldVariations[variationMetaIndex];
+        const requiredFields = { ...(meta.requiredFields || {}) };
+        if (requiredFields[fieldPath] !== true) {
+          requiredFields[fieldPath] = true;
+          requestFieldVariations[variationMetaIndex] = { ...meta, requiredFields };
+          changed = true;
+        }
+      }
+
+      if (!changed) return prev;
+      return { ...prev, variations, requestFieldVariations };
+    });
   };
 
   const syncVariationDefaultChange = (variationKey, fieldPath, value) => {
@@ -6668,17 +6913,38 @@ export default function PosApiAdmin() {
     return [];
   }
 
+  function applyDefaultsToPayload(payload, defaults = {}) {
+    const basePayload = deepClone(payload || {});
+    const entries = Object.entries(defaults || {});
+    if (entries.length === 0) return basePayload;
+
+    entries.forEach(([path, value]) => {
+      const segments = parsePathSegments(path);
+      if (segments.length === 0) return;
+      if (value === undefined || value === null || value === '') {
+        removeNestedValue(basePayload, segments);
+        return;
+      }
+      setNestedValue(basePayload, segments, value);
+    });
+
+    return basePayload;
+  }
+
   function resolveVariationRequestExample(key) {
     if (!key) return null;
     const variation = activeVariations.find((entry) => (entry.key || entry.name) === key);
     if (variation) {
-      return toSamplePayload(variation.requestExample ?? variation.requestExampleText ?? {});
+      const payload = toSamplePayload(variation.requestExample ?? variation.requestExampleText ?? {});
+      return applyDefaultsToPayload(payload, variation.defaultValues);
     }
     const exampleEntry = exampleVariationMap.get(key);
     if (exampleEntry) {
-      return toSamplePayload(
+      const payload = toSamplePayload(
         exampleEntry.requestExample ?? exampleEntry.request?.body ?? exampleEntry.body ?? exampleEntry,
       );
+      const variationMeta = requestFieldVariationMap.get(key);
+      return applyDefaultsToPayload(payload, variationMeta?.defaultValues);
     }
     return null;
   }
