@@ -4950,7 +4950,6 @@ export default function PosApiAdmin() {
     setSelectedImportId('');
     setRequestBuilder(null);
     setRequestBuilderError('');
-    setRequestFieldRequirements({});
     setRequestFieldValues(nextRequestFieldValues);
     setFormState(nextFormState);
     setTestEnvironment('staging');
