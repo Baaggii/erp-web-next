@@ -736,13 +736,6 @@ const TableManager = forwardRef(function TableManager({
       if (!res.ok) throw new Error('failed');
       const data = await res.json();
       setTemporarySummary(data);
-      if (typeof window !== 'undefined') {
-        window.dispatchEvent(
-          new CustomEvent('transaction-temporary-refresh', {
-            detail: { source: 'forms', table },
-          }),
-        );
-      }
       const reviewPending = Number(data?.reviewPending) || 0;
       const preferredScope =
         availableTemporaryScopes.includes('review') && reviewPending > 0

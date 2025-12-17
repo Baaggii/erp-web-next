@@ -1,6 +1,8 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import useGeneralConfig from './useGeneralConfig.js';
 import { API_BASE } from '../utils/apiBase.js';
+import { useSharedPoller } from '../context/PollingContext.jsx';
+import { connectSocket, disconnectSocket } from '../utils/socket.js';
 
 const DEFAULT_POLL_INTERVAL_SECONDS = 30;
 const SCOPES = ['created', 'review'];
@@ -54,9 +56,6 @@ export default function useTemporaryNotificationCounts(empid) {
         cfg?.general?.requestPollingIntervalSeconds,
     ) || DEFAULT_POLL_INTERVAL_SECONDS;
 
-  const refreshInFlight = useRef(false);
-  const pendingRefresh = useRef(false);
-
   const storageBase = useMemo(() => {
     const id = empid != null && empid !== '' ? String(empid).trim() : 'anonymous';
     return id || 'anonymous';
@@ -71,6 +70,21 @@ export default function useTemporaryNotificationCounts(empid) {
   const legacyStorageKey = useCallback(
     (scope) => `${storageBase}-temporary-${scope}-seen`,
     [storageBase],
+  );
+
+  const pollKey = useMemo(
+    () => `temporary-summary:${storageBase}`,
+    [storageBase],
+  );
+
+  const pollerOptions = useMemo(
+    () => ({
+      intervalMs: intervalSeconds * 1000,
+      enabled: true,
+      pauseWhenHidden: true,
+      pauseWhenSocketActive: true,
+    }),
+    [intervalSeconds],
   );
 
   const getSeenValue = useCallback(
@@ -129,12 +143,7 @@ export default function useTemporaryNotificationCounts(empid) {
     [getSeenValue],
   );
 
-  const refresh = useCallback(async () => {
-    if (refreshInFlight.current) {
-      pendingRefresh.current = true;
-      return;
-    }
-    refreshInFlight.current = true;
+  const fetchSummary = useCallback(async () => {
     try {
       const params = new URLSearchParams();
       const cachedFilter = readCachedTemporaryFilter();
@@ -151,41 +160,46 @@ export default function useTemporaryNotificationCounts(empid) {
         skipLoader: true,
       });
       if (!res.ok) throw new Error('Failed to load summary');
-      const data = await res.json().catch(() => ({}));
-      evaluateCounts(data);
+      return await res.json().catch(() => ({}));
     } catch {
-      // Ignore errors but keep previous counts
-    } finally {
-      refreshInFlight.current = false;
-      if (pendingRefresh.current) {
-        pendingRefresh.current = false;
-        refresh();
-      }
+      return null;
     }
-  }, [evaluateCounts]);
+  }, []);
+
+  const { data: latestSummary, refresh: refreshSummary } = useSharedPoller(
+    pollKey,
+    fetchSummary,
+    pollerOptions,
+  );
 
   useEffect(() => {
-    let cancelled = false;
-    const run = async () => {
-      if (!cancelled) await refresh();
-    };
-    run();
+    if (latestSummary) {
+      evaluateCounts(latestSummary);
+    }
+  }, [evaluateCounts, latestSummary]);
 
-    const handler = () => {
-      refresh();
+  const refresh = useCallback(() => refreshSummary(), [refreshSummary]);
+
+  useEffect(() => {
+    let socket;
+    const handleTemporaryUpdate = () => {
+      refreshSummary();
     };
 
-    window.addEventListener('transaction-temporary-refresh', handler);
-    const timer = setInterval(() => {
-      refresh();
-    }, intervalSeconds * 1000);
+    try {
+      socket = connectSocket();
+      socket.on('temporaryReviewed', handleTemporaryUpdate);
+    } catch {
+      // ignore socket errors; polling will continue
+    }
 
     return () => {
-      cancelled = true;
-      window.removeEventListener('transaction-temporary-refresh', handler);
-      clearInterval(timer);
+      if (socket) {
+        socket.off('temporaryReviewed', handleTemporaryUpdate);
+        disconnectSocket();
+      }
     };
-  }, [intervalSeconds, refresh]);
+  }, [refreshSummary]);
 
   const markScopeSeen = useCallback(
     (scope) => {
