@@ -2993,7 +2993,6 @@ export default function PosApiAdmin() {
   const infoSyncEndpointOptions = useMemo(() => {
     const normalized = endpoints.map(withEndpointMetadata);
     return normalized
-      .filter((endpoint) => String(endpoint.method || '').toUpperCase() === 'GET')
       .filter((endpoint) => infoSyncUsage === 'all' || !infoSyncUsage || endpoint.usage === infoSyncUsage)
       .map((endpoint) => ({
         id: endpoint.id,
@@ -3085,7 +3084,6 @@ export default function PosApiAdmin() {
     const desiredUsage = infoSyncUsage === 'all' ? null : infoSyncUsage;
     return endpoints
       .map(withEndpointMetadata)
-      .filter((endpoint) => String(endpoint.method || '').toUpperCase() === 'GET')
       .filter((endpoint) => !desiredUsage || endpoint.usage === desiredUsage)
       .filter((endpoint) => selected.size === 0 || selected.has(endpoint.id));
   }, [endpoints, infoSyncEndpointIds, infoSyncUsage]);
@@ -3144,10 +3142,13 @@ export default function PosApiAdmin() {
         // Allow selecting from all available tables so response mappings can be configured even when
         // POSAPI-specific prefixes are absent. Prefer prefixed tables when they exist, but fall back
         // to the full list to avoid presenting an empty, unusable selector.
-        const prefixed = options.filter((option) =>
-          normalizeTableValue(option?.value || '').startsWith('ebarimt_'),
-        );
-        setTableOptions(prefixed.length > 0 ? prefixed : options);
+          const prefixed = options.filter((option) =>
+            normalizeTableValue(option?.value || '').startsWith('ebarimt_'),
+          );
+          const remainder = options.filter((option) =>
+            !normalizeTableValue(option?.value || '').startsWith('ebarimt_'),
+          );
+          setTableOptions(prefixed.length > 0 ? [...prefixed, ...remainder] : options);
       } catch (err) {
         if (!cancelled && err?.name !== 'AbortError') {
           setTableOptionsError(err?.message || 'Unable to load POSAPI response tables.');
