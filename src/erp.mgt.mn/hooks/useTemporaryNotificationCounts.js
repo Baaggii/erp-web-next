@@ -236,35 +236,20 @@ export default function useTemporaryNotificationCounts(empid) {
     SCOPES.forEach((scope) => markScopeSeen(scope));
   }, [markScopeSeen]);
 
-  const DEFAULT_PAGE_SIZE = 50;
-  const MAX_PAGE_SIZE = 100;
-
   const fetchScopeEntries = useCallback(async (scope, options = {}) => {
-    const {
-      limit = DEFAULT_PAGE_SIZE,
-      offset = 0,
-      status = 'pending',
-      sort = 'latest',
-    } = options || {};
-    if (!SCOPES.includes(scope))
-      return { entries: [], hasMore: false, nextOffset: Math.max(Number(offset) || 0, 0) };
-    const parsedLimit = Number(limit);
-    const cappedLimit = Math.min(
-      Math.max(Number.isFinite(parsedLimit) ? parsedLimit : DEFAULT_PAGE_SIZE, 1),
-      MAX_PAGE_SIZE,
-    );
-    const parsedOffset = Number(offset);
-    const safeOffset = Math.max(Number.isFinite(parsedOffset) ? parsedOffset : 0, 0);
-    const params = new URLSearchParams({
-      scope,
-      limit: String(cappedLimit),
-      offset: String(safeOffset),
-    });
+    const { limit = 50, status = 'pending', cursor = 0 } = options || {};
+    if (!SCOPES.includes(scope)) return { rows: [], hasMore: false, nextCursor: null };
+    const params = new URLSearchParams({ scope });
     if (status && typeof status === 'string') {
       params.set('status', status);
     }
-    if (sort) {
-      params.set('sort', sort);
+    const normalizedLimit = Number(limit);
+    if (Number.isFinite(normalizedLimit) && normalizedLimit > 0) {
+      params.set('limit', String(normalizedLimit));
+    }
+    const normalizedCursor = Number(cursor);
+    if (Number.isFinite(normalizedCursor) && normalizedCursor >= 0) {
+      params.set('offset', String(normalizedCursor));
     }
     const cachedFilter = readCachedTemporaryFilter();
     const hasCachedValue =
@@ -282,13 +267,13 @@ export default function useTemporaryNotificationCounts(empid) {
       const data = await res.json().catch(() => ({}));
       const rows = Array.isArray(data?.rows) ? data.rows : [];
       const hasMore = Boolean(data?.hasMore);
-      const nextOffset = Number.isFinite(data?.nextOffset)
-        ? data.nextOffset
-        : safeOffset + rows.length;
-      const entries = rows.slice(0, cappedLimit);
-      return { entries, hasMore, nextOffset };
+      const nextCursor = Number.isFinite(Number(data?.nextOffset)) ? Number(data.nextOffset) : null;
+      if (limit && Number.isFinite(limit)) {
+        return { rows: rows.slice(0, limit), hasMore, nextCursor };
+      }
+      return { rows, hasMore, nextCursor };
     } catch {
-      return { entries: [], hasMore: false, nextOffset: safeOffset };
+      return { rows: [], hasMore: false, nextCursor: null };
     }
   }, []);
 

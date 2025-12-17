@@ -44,10 +44,10 @@ router.get('/', requireAuth, async (req, res, next) => {
       scope = 'created',
       table,
       status,
+      limit,
+      offset,
       transactionTypeField = null,
       transactionTypeValue = null,
-      limit = null,
-      offset = null,
     } = req.query;
     const scopeParam = typeof scope === 'string' ? scope.trim().toLowerCase() : '';
     const normalizedScope = scopeParam === 'review' ? 'review' : 'created';
@@ -63,12 +63,13 @@ router.get('/', requireAuth, async (req, res, next) => {
       empId: req.user.empid,
       companyId: req.user.companyId,
       status: normalizedStatus,
+      limit,
+      offset,
       transactionTypeField,
       transactionTypeValue,
-      limit: Number.isFinite(Number(limit)) ? Number(limit) : undefined,
-      offset: Number.isFinite(Number(offset)) ? Number(offset) : undefined,
+      includeHasMore: true,
     });
-    res.json(list);
+    res.json({ rows: list.rows, hasMore: list.hasMore, nextOffset: list.nextOffset });
   } catch (err) {
     next(err);
   }

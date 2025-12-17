@@ -1,4 +1,4 @@
-import React, { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { usePendingRequests } from '../context/PendingRequestContext.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
@@ -6,6 +6,7 @@ import LangContext from '../context/I18nContext.jsx';
 import formatTimestamp from '../utils/formatTimestamp.js';
 
 const SECTION_LIMIT = 5;
+const TEMPORARY_PAGE_SIZE = 50;
 
 function dedupeRequests(list) {
   const map = new Map();
@@ -74,21 +75,8 @@ function createEmptyResponses() {
   return { accepted: [], declined: [] };
 }
 
-function createPaginationState() {
-  return { loading: false, hasMore: false, nextOffset: 0 };
-}
-
-function normalizeTemporaryFetchResult(result, fallbackOffset = 0) {
-  const baseOffset = Number.isFinite(fallbackOffset) ? fallbackOffset : 0;
-  if (Array.isArray(result)) {
-    return { entries: result, hasMore: false, nextOffset: baseOffset + result.length };
-  }
-  const entries = Array.isArray(result?.entries) ? result.entries : [];
-  const hasMore = Boolean(result?.hasMore);
-  const nextOffset = Number.isFinite(result?.nextOffset)
-    ? result.nextOffset
-    : baseOffset + entries.length;
-  return { entries, hasMore, nextOffset };
+function createEmptyTemporaryScope() {
+  return { entries: [], hasMore: false, cursor: 0, loading: false };
 }
 
 export default function NotificationsPage() {
@@ -113,23 +101,9 @@ export default function NotificationsPage() {
   const [temporaryState, setTemporaryState] = useState({
     loading: true,
     error: '',
-    review: [],
-    created: [],
-    pagination: { review: createPaginationState(), created: createPaginationState() },
+    review: createEmptyTemporaryScope(),
+    created: createEmptyTemporaryScope(),
   });
-
-  const temporaryCancelledRef = useRef(false);
-  const temporaryFetchKeyRef = useRef(0);
-  const safeSetTemporaryState = useCallback(
-    (updater, fetchKey = temporaryFetchKeyRef.current) => {
-      if (temporaryCancelledRef.current) return;
-      setTemporaryState((prev) => {
-        if (temporaryFetchKeyRef.current !== fetchKey) return prev;
-        return updater(prev);
-      });
-    },
-    [],
-  );
 
   const hasSupervisor =
     Number(session?.senior_empid) > 0 || Number(session?.senior_plan_empid) > 0;
@@ -421,134 +395,100 @@ export default function NotificationsPage() {
     return list;
   }, []);
 
-  const TEMPORARY_PAGE_SIZE = 50;
+  const mergeTemporaryEntries = useCallback(
+    (previousEntries, nextEntries, scope) => {
+      const combined = dedupeTemporaryEntries([...(previousEntries || []), ...(nextEntries || [])]);
+      return sortTemporaryEntries(combined, scope);
+    },
+    [sortTemporaryEntries],
+  );
 
-  const loadTemporaryScope = useCallback(
-    async (scope, { append = false, reset = false, fetchKey } = {}) => {
+  const fetchTemporaryPage = useCallback(
+    async (scope, { cursor = 0, append = false, status = 'pending', isCancelled } = {}) => {
       if (typeof temporaryFetchScopeEntries !== 'function') return;
-
-      const activeFetchKey = fetchKey ?? temporaryFetchKeyRef.current;
-      let targetOffset = 0;
-      safeSetTemporaryState((prev) => {
-        const pagination = prev.pagination?.[scope] || createPaginationState();
-        targetOffset = reset ? 0 : pagination.nextOffset || 0;
-        const nextPagination = {
-          ...prev.pagination,
-          [scope]: {
-            ...pagination,
-            loading: true,
-            hasMore: reset ? false : pagination.hasMore,
-            nextOffset: targetOffset,
-          },
-        };
+      if (isCancelled?.()) return;
+      setTemporaryState((prev) => {
+        if (isCancelled?.()) return prev;
         return {
           ...prev,
-          ...(reset ? { [scope]: [] } : {}),
-          loading: true,
-          error: reset ? '' : prev.error,
-          pagination: nextPagination,
+          loading: prev.loading || !append,
+          error: '',
+          [scope]: { ...(prev[scope] || createEmptyTemporaryScope()), loading: true },
         };
-      }, activeFetchKey);
-
+      });
       try {
         const result = await temporaryFetchScopeEntries(scope, {
           limit: TEMPORARY_PAGE_SIZE,
-          status: scope === 'review' ? 'pending' : 'any',
-          offset: targetOffset,
-          sort: 'latest',
+          status,
+          cursor,
         });
-        const { entries, hasMore, nextOffset } = normalizeTemporaryFetchResult(
-          result,
-          targetOffset,
-        );
-        safeSetTemporaryState((prev) => {
-          const pagination = prev.pagination?.[scope] || createPaginationState();
-          const combined = append
-            ? dedupeTemporaryEntries([...(prev[scope] || []), ...entries])
-            : dedupeTemporaryEntries(entries);
-          const sorted = sortTemporaryEntries(combined, scope);
-          const entriesChanged = !areTemporaryListsEqual(prev[scope], sorted);
-          const nextEntries = entriesChanged ? sorted : prev[scope];
-          const nextPagination = {
-            ...prev.pagination,
-            [scope]: {
-              ...pagination,
-              loading: false,
-              hasMore,
-              nextOffset,
-            },
+        if (isCancelled?.()) return;
+        const rows = Array.isArray(result?.rows)
+          ? result.rows
+          : Array.isArray(result)
+          ? result
+          : [];
+        const hasMore = Boolean(result?.hasMore);
+        const nextCursorRaw = result?.nextCursor ?? result?.nextOffset;
+        const nextCursor = Number.isFinite(Number(nextCursorRaw))
+          ? Number(nextCursorRaw)
+          : cursor + TEMPORARY_PAGE_SIZE;
+        setTemporaryState((prev) => {
+          if (isCancelled?.()) return prev;
+          const otherScope = scope === 'review' ? 'created' : 'review';
+          const previousScope = prev[scope] || createEmptyTemporaryScope();
+          const mergedEntries = mergeTemporaryEntries(
+            append ? previousScope.entries : [],
+            rows,
+            scope,
+          );
+          const updatedScope = {
+            ...previousScope,
+            entries: mergedEntries,
+            hasMore,
+            cursor: hasMore ? nextCursor : mergedEntries.length,
+            loading: false,
           };
-          const anyLoading = Object.values(nextPagination || {}).some((meta) => meta?.loading);
-          const paginationChanged =
-            pagination.loading !== nextPagination[scope].loading ||
-            pagination.hasMore !== nextPagination[scope].hasMore ||
-            pagination.nextOffset !== nextPagination[scope].nextOffset;
-          const shouldUpdate =
-            entriesChanged || paginationChanged || prev.loading !== anyLoading || Boolean(prev.error);
-          if (!shouldUpdate) return prev;
+          const otherScopeLoading = prev[otherScope]?.loading || false;
           return {
             ...prev,
-            [scope]: nextEntries,
-            pagination: nextPagination,
-            loading: anyLoading,
+            loading: otherScopeLoading || updatedScope.loading,
             error: '',
+            [scope]: updatedScope,
           };
-        }, activeFetchKey);
+        });
       } catch {
-        safeSetTemporaryState((prev) => {
-          const pagination = prev.pagination?.[scope] || createPaginationState();
-          const nextPagination = {
-            ...prev.pagination,
-            [scope]: { ...pagination, loading: false },
-          };
-          const anyLoading = Object.values(nextPagination || {}).some((meta) => meta?.loading);
-          return {
-            ...prev,
-            pagination: nextPagination,
-            loading: anyLoading,
-            error: t(
-              'notifications_temporary_error',
-              'Failed to load temporary submissions',
-            ),
-          };
-        }, activeFetchKey);
+        if (isCancelled?.()) return;
+        setTemporaryState((prev) => ({
+          ...prev,
+          loading: false,
+          error: t('notifications_temporary_error', 'Failed to load temporary submissions'),
+          [scope]: { ...(prev[scope] || createEmptyTemporaryScope()), loading: false },
+        }));
       }
     },
-    [safeSetTemporaryState, sortTemporaryEntries, t, temporaryFetchScopeEntries],
+    [mergeTemporaryEntries, t, temporaryFetchScopeEntries],
   );
 
   useEffect(() => {
-    const nextFetchKey = temporaryFetchKeyRef.current + 1;
-    temporaryFetchKeyRef.current = nextFetchKey;
-    temporaryCancelledRef.current = false;
-    if (typeof temporaryFetchScopeEntries !== 'function') return undefined;
-    safeSetTemporaryState(
-      (prev) => ({
-        ...prev,
-        loading: true,
-        error: '',
-        review: [],
-        created: [],
-        pagination: {
-          review: { ...createPaginationState(), loading: true },
-          created: { ...createPaginationState(), loading: true },
-        },
-      }),
-      nextFetchKey,
-    );
-    loadTemporaryScope('review', { reset: true, fetchKey: nextFetchKey });
-    loadTemporaryScope('created', { reset: true, fetchKey: nextFetchKey });
+    let cancelled = false;
+    setTemporaryState((prev) => ({ ...prev, loading: true, error: '' }));
+    fetchTemporaryPage('review', {
+      cursor: 0,
+      append: false,
+      status: 'pending',
+      isCancelled: () => cancelled,
+    });
+    fetchTemporaryPage('created', {
+      cursor: 0,
+      append: false,
+      status: 'any',
+      isCancelled: () => cancelled,
+    });
     return () => {
-      temporaryCancelledRef.current = true;
+      cancelled = true;
     };
-  }, [
-    t,
-    temporaryReviewPending,
-    temporaryCreatedPending,
-    temporaryFetchScopeEntries,
-    loadTemporaryScope,
-    safeSetTemporaryState,
-  ]);
+  }, [fetchTemporaryPage, temporaryCreatedPending, temporaryReviewPending]);
 
   const reportPending = useMemo(() => {
     const incomingPending = workflows?.reportApproval?.incoming?.pending?.count || 0;
@@ -576,18 +516,6 @@ export default function NotificationsPage() {
 
   const temporaryReviewNew = temporary?.counts?.review?.newCount || 0;
   const temporaryCreatedNew = temporary?.counts?.created?.newCount || 0;
-  const temporaryPagination = temporaryState.pagination || {};
-  const reviewPagination = temporaryPagination.review || createPaginationState();
-  const createdPagination = temporaryPagination.created || createPaginationState();
-  const temporaryInitialLoading =
-    temporaryState.loading &&
-    temporaryState.review.length === 0 &&
-    temporaryState.created.length === 0;
-
-  const handleTemporaryLoadMore = useCallback(
-    (scope) => loadTemporaryScope(scope, { append: true }),
-    [loadTemporaryScope],
-  );
 
   const handleReportMarkRead = useCallback(() => {
     if (typeof markWorkflowSeen === 'function') markWorkflowSeen('report_approval');
@@ -602,6 +530,19 @@ export default function NotificationsPage() {
       temporary?.markScopeSeen?.(scope);
     },
     [temporary?.markScopeSeen],
+  );
+
+  const handleLoadMoreTemporary = useCallback(
+    (scope) => {
+      const status = scope === 'review' ? 'pending' : 'any';
+      const cursor = temporaryState?.[scope]?.cursor || 0;
+      fetchTemporaryPage(scope, {
+        cursor,
+        append: true,
+        status,
+      });
+    },
+    [fetchTemporaryPage, temporaryState?.created?.cursor, temporaryState?.review?.cursor],
   );
 
   const openRequest = useCallback(
@@ -1062,8 +1003,15 @@ export default function NotificationsPage() {
   );
 
   const groupedTemporary = useMemo(
-    () => ({ review: groupedTemporaryReview, created: groupedTemporaryCreated }),
-    [groupedTemporaryCreated, groupedTemporaryReview],
+    () => ({
+      review: groupTemporaryEntries(temporaryState.review.entries),
+      created: groupTemporaryEntries(temporaryState.created.entries),
+    }),
+    [
+      groupTemporaryEntries,
+      temporaryState.created.entries,
+      temporaryState.review.entries,
+    ],
   );
 
   const temporaryReviewTotal = temporaryReviewPending;
@@ -1283,7 +1231,7 @@ export default function NotificationsPage() {
             </button>
           </div>
         </header>
-        {temporaryInitialLoading ? (
+        {temporaryState.loading ? (
           <p>{t('loading', 'Loading')}...</p>
         ) : temporaryState.error ? (
           <p style={styles.errorText}>{temporaryState.error}</p>
@@ -1291,21 +1239,22 @@ export default function NotificationsPage() {
           <div style={styles.columnLayout}>
             <div style={styles.column}>
               <h3 style={styles.columnTitle}>{t('notifications_review_queue', 'Review queue')}</h3>
-                {groupedTemporary.review.length === 0 ? (
-                  <p style={styles.emptyText}>{t('notifications_none', 'No notifications')}</p>
-                ) : (
-                  <ul style={styles.list}>
-                    {groupedTemporary.review.map((group) => renderTemporaryGroup(group, 'review'))}
-                  </ul>
-                )}
-              {reviewPagination.hasMore && (
+              {groupedTemporary.review.length === 0 ? (
+                <p style={styles.emptyText}>{t('notifications_none', 'No notifications')}</p>
+              ) : (
+                <ul style={styles.list}>
+                  {groupedTemporary.review.map((group) => renderTemporaryGroup(group, 'review'))}
+                </ul>
+              )}
+              {temporaryState.review.hasMore && (
                 <button
+                  type="button"
                   style={styles.listAction}
-                  disabled={reviewPagination.loading}
-                  onClick={() => handleTemporaryLoadMore('review')}
+                  onClick={() => handleLoadMoreTemporary('review')}
+                  disabled={temporaryState.review.loading}
                 >
-                  {reviewPagination.loading
-                    ? t('loading', 'Loading...')
+                  {temporaryState.review.loading
+                    ? t('loading', 'Loading')
                     : t('notifications_load_more', 'Load more')}
                 </button>
               )}
@@ -1320,21 +1269,22 @@ export default function NotificationsPage() {
             </div>
             <div style={styles.column}>
               <h3 style={styles.columnTitle}>{t('notifications_my_drafts', 'My drafts')}</h3>
-                {groupedTemporary.created.length === 0 ? (
-                  <p style={styles.emptyText}>{t('notifications_none', 'No notifications')}</p>
-                ) : (
-                  <ul style={styles.list}>
-                    {groupedTemporary.created.map((group) => renderTemporaryGroup(group, 'created'))}
-                  </ul>
-                )}
-              {createdPagination.hasMore && (
+              {groupedTemporary.created.length === 0 ? (
+                <p style={styles.emptyText}>{t('notifications_none', 'No notifications')}</p>
+              ) : (
+                <ul style={styles.list}>
+                  {groupedTemporary.created.map((group) => renderTemporaryGroup(group, 'created'))}
+                </ul>
+              )}
+              {temporaryState.created.hasMore && (
                 <button
+                  type="button"
                   style={styles.listAction}
-                  disabled={createdPagination.loading}
-                  onClick={() => handleTemporaryLoadMore('created')}
+                  onClick={() => handleLoadMoreTemporary('created')}
+                  disabled={temporaryState.created.loading}
                 >
-                  {createdPagination.loading
-                    ? t('loading', 'Loading...')
+                  {temporaryState.created.loading
+                    ? t('loading', 'Loading')
                     : t('notifications_load_more', 'Load more')}
                 </button>
               )}

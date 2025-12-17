@@ -327,7 +327,7 @@ test('listTemporarySubmissions filters before grouping by chain', async () => {
     }
     if (sql.includes('WITH filtered AS')) {
       if (sql.includes('plan_senior_empid = ?')) {
-        const reviewer = params[params.length - 1];
+        const reviewer = params[params.length - 3];
         const pendingRows = temporaries.filter(
           (row) => row.plan_senior_empid === reviewer && row.status === 'pending',
         );
@@ -343,7 +343,7 @@ test('listTemporarySubmissions filters before grouping by chain', async () => {
         });
         return [Array.from(grouped.values())];
       }
-      const creator = params[params.length - 1];
+      const creator = params[params.length - 3];
       const filteredRows = temporaries.filter((row) => row.created_by === creator);
       const grouped = new Map();
       filteredRows.forEach((row) => {
@@ -368,8 +368,9 @@ test('listTemporarySubmissions filters before grouping by chain', async () => {
       companyId: 1,
       status: 'pending',
     });
+    assert.equal(reviewRows.hasMore, false);
     assert.deepEqual(
-      reviewRows.map((row) => row.id).sort((a, b) => a - b),
+      reviewRows.rows.map((row) => row.id).sort((a, b) => a - b),
       [101, 201],
     );
 
@@ -380,8 +381,9 @@ test('listTemporarySubmissions filters before grouping by chain', async () => {
       companyId: 1,
       status: 'any',
     });
+    assert.equal(createdRows.hasMore, false);
     assert.deepEqual(
-      createdRows.map((row) => row.id).sort((a, b) => a - b),
+      createdRows.rows.map((row) => row.id).sort((a, b) => a - b),
       [102, 201],
     );
   } finally {
