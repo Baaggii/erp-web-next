@@ -2817,6 +2817,7 @@ export default function PosApiAdmin() {
   const [infoSyncTableOptionsBase, setInfoSyncTableOptionsBase] = useState([]);
   const [tableOptions, setTableOptions] = useState([]);
   const [tableOptionsError, setTableOptionsError] = useState('');
+  const [tableOptionsLoading, setTableOptionsLoading] = useState(false);
   const [tableFields, setTableFields] = useState({});
   const [tableFieldLoading, setTableFieldLoading] = useState({});
   const [infoUploadCodeType, setInfoUploadCodeType] = useState('classification');
@@ -3036,6 +3037,13 @@ export default function PosApiAdmin() {
       .filter(Boolean);
   }, [formState.responseTables, tableOptions]);
 
+  const responseTablesUnavailableReason = useMemo(() => {
+    if (responseTableOptions.length > 0) return '';
+    if (tableOptionsLoading) return 'Loading database tables…';
+    if (tableOptionsError) return tableOptionsError;
+    return 'No database tables were loaded. Verify access permissions or try again later.';
+  }, [responseTableOptions.length, tableOptionsError, tableOptionsLoading]);
+
   const responseFieldOptions = useMemo(() => {
     const options = [];
     formState.responseTables.forEach((table) => {
@@ -3082,15 +3090,23 @@ export default function PosApiAdmin() {
       .filter((endpoint) => selected.size === 0 || selected.has(endpoint.id));
   }, [endpoints, infoSyncEndpointIds, infoSyncUsage]);
 
+  const infoSyncEndpointUnavailableReason = useMemo(() => {
+    if (infoSyncEndpointOptions.length > 0) return '';
+    if (loading) return 'POSAPI endpoints are still loading.';
+    if (error) return error;
+    return 'No GET endpoints available for the selected usage.';
+  }, [error, infoSyncEndpointOptions.length, infoSyncUsage, loading]);
+
   useEffect(() => {
     setInfoSyncEndpointIds((prev) => {
+      if (loading) return prev;
       const filtered = prev.filter((id) => infoSyncEndpointOptions.some((ep) => ep.id === id));
       if (filtered.length !== prev.length) {
         setInfoSyncSettings((settings) => ({ ...settings, endpointIds: filtered }));
       }
       return filtered;
     });
-  }, [infoSyncEndpointOptions]);
+  }, [infoSyncEndpointOptions, loading]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -3098,6 +3114,7 @@ export default function PosApiAdmin() {
 
     async function loadResponseTables() {
       try {
+        setTableOptionsLoading(true);
         setTableOptionsError('');
         const res = await fetch(`${API_BASE}/report_builder/tables`, {
           credentials: 'include',
@@ -3135,6 +3152,10 @@ export default function PosApiAdmin() {
           setTableOptionsError(err?.message || 'Unable to load POSAPI response tables.');
           setTableOptions([]);
           console.warn('Unable to load POSAPI response tables', err);
+        }
+      } finally {
+        if (!cancelled) {
+          setTableOptionsLoading(false);
         }
       }
     }
@@ -8727,7 +8748,9 @@ export default function PosApiAdmin() {
               <span style={styles.checkboxHint}>
                 Select one or more tables to load columns for response field mappings.
               </span>
-              {tableOptionsError && <div style={styles.hintError}>{tableOptionsError}</div>}
+              {responseTablesUnavailableReason && (
+                <div style={styles.hintError}>{responseTablesUnavailableReason}</div>
+              )}
             </label>
             {responseFieldHints.state === 'empty' && (
               <p style={styles.hintEmpty}>Add response field hints in the JSON textarea above.</p>
@@ -9525,9 +9548,12 @@ export default function PosApiAdmin() {
                       </option>
                     ))}
                   </select>
-                    <span style={styles.checkboxHint}>
-                      Leave empty to include all endpoints in the selected usage.
-                    </span>
+                  <span style={styles.checkboxHint}>
+                    Leave empty to include all endpoints in the selected usage.
+                  </span>
+                  {infoSyncEndpointUnavailableReason && (
+                    <div style={styles.hintError}>{infoSyncEndpointUnavailableReason}</div>
+                  )}
                   </label>
               </div>
               <button
