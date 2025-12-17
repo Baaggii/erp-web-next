@@ -3,8 +3,6 @@ import { connectSocket, disconnectSocket } from '../utils/socket.js';
 import useGeneralConfig from '../hooks/useGeneralConfig.js';
 
 const DEFAULT_POLL_INTERVAL_SECONDS = 30;
-const MIN_POLL_INTERVAL_SECONDS = 120;
-const HIDDEN_POLL_INTERVAL_SECONDS = 300;
 const STATUSES = ['pending', 'accepted', 'declined'];
 
 function normalizeStatuses(statuses) {
@@ -56,10 +54,9 @@ export default function useRequestNotificationCounts(
   const fetchCountsRef = useRef(() => Promise.resolve());
   const cfg = useGeneralConfig();
   const pollingEnabled = !!cfg?.general?.requestPollingEnabled;
-  const intervalSeconds = Math.max(
-    Number(cfg?.general?.requestPollingIntervalSeconds) || DEFAULT_POLL_INTERVAL_SECONDS,
-    MIN_POLL_INTERVAL_SECONDS,
-  );
+  const intervalSeconds =
+    Number(cfg?.general?.requestPollingIntervalSeconds) ||
+    DEFAULT_POLL_INTERVAL_SECONDS;
 
   const filterKey = useMemo(() => stringifyFilters(filters), [filters]);
   const optionNamespace = options ? options.storageNamespace : undefined;
@@ -140,130 +137,122 @@ export default function useRequestNotificationCounts(
   useEffect(() => {
     let cancelled = false;
 
-    const inFlight = { current: false };
     async function fetchCounts() {
-      if (inFlight.current) return;
-      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
-      inFlight.current = true;
       const newIncoming = createInitial();
       const newOutgoing = createInitial();
 
-      try {
-        await Promise.all(
-          STATUSES.map(async (status) => {
-            // Incoming requests (for seniors)
-            if (supervisorIds.length) {
-              try {
-                let combined = 0;
-                await Promise.all(
-                  supervisorIds.map(async (id) => {
-                    const params = new URLSearchParams({
-                      status,
-                      senior_empid: id,
-                      count_only: '1',
-                    });
-                    Object.entries(memoFilters).forEach(([k, v]) => {
-                      if (Array.isArray(v)) {
-                        v
-                          .filter((value) => value !== undefined && value !== null && value !== '')
-                          .forEach((value) => params.append(k, value));
-                      } else if (v !== undefined && v !== null && v !== '') {
-                        params.append(k, v);
-                      }
-                    });
-                    const res = await fetch(
-                      `/api/pending_request?${params.toString()}`,
-                      { credentials: 'include', skipLoader: true },
-                    );
-                    if (res.ok) {
-                      const data = await res.json().catch(() => 0);
-                      if (typeof data === 'number') combined += data;
-                      else if (Array.isArray(data)) combined += data.length;
-                      else combined += Number(data?.count ?? data?.total) || 0;
-                    }
-                  }),
-                );
-                const seenKey = storageKey('incoming', status);
-                if (combined === 0) {
-                  localStorage.setItem(seenKey, '0');
-                  newIncoming[status] = { count: 0, hasNew: false, newCount: 0 };
-                } else {
-                  const storedSeen = localStorage.getItem(seenKey);
-                  const seen = storedSeen === null ? combined : Number(storedSeen);
-                  if (storedSeen === null) {
-                    localStorage.setItem(seenKey, String(combined));
-                  }
-                  const delta = Math.max(0, combined - seen);
-                  newIncoming[status] = {
-                    count: combined,
-                    hasNew: delta > 0,
-                    newCount: delta,
-                  };
-                }
-              } catch {
-                newIncoming[status] = { count: 0, hasNew: false, newCount: 0 };
-              }
-            } else {
-              newIncoming[status] = { count: 0, hasNew: false, newCount: 0 };
-            }
-
-            // Outgoing requests (always for current user)
+      await Promise.all(
+        STATUSES.map(async (status) => {
+          // Incoming requests (for seniors)
+          if (supervisorIds.length) {
             try {
-              const params = new URLSearchParams({ status });
-              params.append('count_only', '1');
-              Object.entries(memoFilters).forEach(([k, v]) => {
-                if (Array.isArray(v)) {
-                  v
-                    .filter((value) => value !== undefined && value !== null && value !== '')
-                    .forEach((value) => params.append(k, value));
-                } else if (v !== undefined && v !== null && v !== '') {
-                  params.append(k, v);
-                }
-              });
-              const res = await fetch(`/api/pending_request/outgoing?${params.toString()}`, {
-                credentials: 'include',
-                skipLoader: true,
-              });
-              let c = 0;
-              if (res.ok) {
-                const data = await res.json().catch(() => 0);
-                if (typeof data === 'number') c = data;
-                else if (Array.isArray(data)) c = data.length;
-                else c = Number(data?.count ?? data?.total) || 0;
-              }
-              const seenKey = storageKey('outgoing', status);
-              if (status === 'pending') {
-                // Requesters shouldn't get "new" badges for their own submissions
-                localStorage.setItem(seenKey, String(c));
-                newOutgoing[status] = { count: c, hasNew: false, newCount: 0 };
-              } else if (c === 0) {
+              let combined = 0;
+              await Promise.all(
+                supervisorIds.map(async (id) => {
+                  const params = new URLSearchParams({
+                    status,
+                    senior_empid: id,
+                    count_only: '1',
+                  });
+                  Object.entries(memoFilters).forEach(([k, v]) => {
+                    if (Array.isArray(v)) {
+                      v
+                        .filter((value) => value !== undefined && value !== null && value !== '')
+                        .forEach((value) => params.append(k, value));
+                    } else if (v !== undefined && v !== null && v !== '') {
+                      params.append(k, v);
+                    }
+                  });
+                  const res = await fetch(
+                    `/api/pending_request?${params.toString()}`,
+                    { credentials: 'include', skipLoader: true },
+                  );
+                  if (res.ok) {
+                    const data = await res.json().catch(() => 0);
+                    if (typeof data === 'number') combined += data;
+                    else if (Array.isArray(data)) combined += data.length;
+                    else combined += Number(data?.count ?? data?.total) || 0;
+                  }
+                }),
+              );
+              const seenKey = storageKey('incoming', status);
+              if (combined === 0) {
                 localStorage.setItem(seenKey, '0');
-                newOutgoing[status] = { count: 0, hasNew: false, newCount: 0 };
+                newIncoming[status] = { count: 0, hasNew: false, newCount: 0 };
               } else {
                 const storedSeen = localStorage.getItem(seenKey);
-                const seen = storedSeen === null ? c : Number(storedSeen);
+                const seen = storedSeen === null ? combined : Number(storedSeen);
                 if (storedSeen === null) {
-                  localStorage.setItem(seenKey, String(c));
+                  localStorage.setItem(seenKey, String(combined));
                 }
-                const delta = Math.max(0, c - seen);
-                newOutgoing[status] = {
-                  count: c,
+                const delta = Math.max(0, combined - seen);
+                newIncoming[status] = {
+                  count: combined,
                   hasNew: delta > 0,
                   newCount: delta,
                 };
               }
             } catch {
-              newOutgoing[status] = { count: 0, hasNew: false, newCount: 0 };
+              newIncoming[status] = { count: 0, hasNew: false, newCount: 0 };
             }
-          }),
-        );
+          } else {
+            newIncoming[status] = { count: 0, hasNew: false, newCount: 0 };
+          }
 
-        if (!cancelled) {
-          setIncoming(newIncoming);
-          setOutgoing(newOutgoing);
-        }
-      } finally {
-        inFlight.current = false;
+          // Outgoing requests (always for current user)
+          try {
+            const params = new URLSearchParams({ status });
+            params.append('count_only', '1');
+            Object.entries(memoFilters).forEach(([k, v]) => {
+              if (Array.isArray(v)) {
+                v
+                  .filter((value) => value !== undefined && value !== null && value !== '')
+                  .forEach((value) => params.append(k, value));
+              } else if (v !== undefined && v !== null && v !== '') {
+                params.append(k, v);
+              }
+            });
+            const res = await fetch(`/api/pending_request/outgoing?${params.toString()}`, {
+              credentials: 'include',
+              skipLoader: true,
+            });
+            let c = 0;
+            if (res.ok) {
+              const data = await res.json().catch(() => 0);
+              if (typeof data === 'number') c = data;
+              else if (Array.isArray(data)) c = data.length;
+              else c = Number(data?.count ?? data?.total) || 0;
+            }
+            const seenKey = storageKey('outgoing', status);
+            if (status === 'pending') {
+              // Requesters shouldn't get "new" badges for their own submissions
+              localStorage.setItem(seenKey, String(c));
+              newOutgoing[status] = { count: c, hasNew: false, newCount: 0 };
+            } else if (c === 0) {
+              localStorage.setItem(seenKey, '0');
+              newOutgoing[status] = { count: 0, hasNew: false, newCount: 0 };
+            } else {
+              const storedSeen = localStorage.getItem(seenKey);
+              const seen = storedSeen === null ? c : Number(storedSeen);
+              if (storedSeen === null) {
+                localStorage.setItem(seenKey, String(c));
+              }
+              const delta = Math.max(0, c - seen);
+              newOutgoing[status] = {
+                count: c,
+                hasNew: delta > 0,
+                newCount: delta,
+              };
+            }
+          } catch {
+            newOutgoing[status] = { count: 0, hasNew: false, newCount: 0 };
+          }
+        }),
+      );
+
+      if (!cancelled) {
+        setIncoming(newIncoming);
+        setOutgoing(newOutgoing);
       }
     }
 
@@ -271,37 +260,16 @@ export default function useRequestNotificationCounts(
     fetchCounts();
     let timer;
 
-    function startPolling(delayMs = intervalSeconds * 1000) {
-      if (timer) return;
-      timer = setTimeout(function tick() {
-        fetchCounts();
-        timer = setTimeout(tick, intervalSeconds * 1000);
-      }, delayMs);
+    function startPolling() {
+      if (!timer) timer = setInterval(fetchCounts, intervalSeconds * 1000);
     }
 
     function stopPolling() {
       if (timer) {
-        clearTimeout(timer);
+        clearInterval(timer);
         timer = null;
       }
     }
-
-    let fallbackTimer;
-
-    const startFallbackPolling = (delayMs = HIDDEN_POLL_INTERVAL_SECONDS * 1000) => {
-      if (fallbackTimer || timer) return;
-      fallbackTimer = setTimeout(() => {
-        fallbackTimer = null;
-        startPolling();
-      }, delayMs);
-    };
-
-    const clearFallbackPolling = () => {
-      if (fallbackTimer) {
-        clearTimeout(fallbackTimer);
-        fallbackTimer = null;
-      }
-    };
 
     let socket;
     try {
@@ -309,33 +277,12 @@ export default function useRequestNotificationCounts(
       socket.on('newRequest', fetchCounts);
       socket.on('requestResolved', fetchCounts);
       if (pollingEnabled) {
-        socket.on('connect_error', () => startFallbackPolling());
-        socket.on('disconnect', () => startFallbackPolling());
-        socket.on('connect', () => {
-          stopPolling();
-          clearFallbackPolling();
-          fetchCounts();
-        });
+        socket.on('connect_error', startPolling);
+        socket.on('disconnect', startPolling);
+        socket.on('connect', stopPolling);
       }
     } catch {
-      if (pollingEnabled) startFallbackPolling();
-    }
-
-    const handleVisibility = () => {
-      if (typeof document === 'undefined') return;
-      if (document.visibilityState === 'hidden') {
-        stopPolling();
-        clearFallbackPolling();
-        return;
-      }
-      fetchCounts();
-      if (pollingEnabled && (!socket || !socket.connected)) {
-        startFallbackPolling();
-      }
-    };
-
-    if (typeof document !== 'undefined') {
-      document.addEventListener('visibilitychange', handleVisibility);
+      if (pollingEnabled) startPolling();
     }
 
     return () => {
@@ -345,17 +292,13 @@ export default function useRequestNotificationCounts(
         socket.off('newRequest', fetchCounts);
         socket.off('requestResolved', fetchCounts);
         if (pollingEnabled) {
-          socket.off('connect_error', startFallbackPolling);
-          socket.off('disconnect', startFallbackPolling);
-          socket.off('connect', clearFallbackPolling);
+          socket.off('connect_error', startPolling);
+          socket.off('disconnect', startPolling);
+          socket.off('connect', stopPolling);
         }
         disconnectSocket();
       }
-      if (typeof document !== 'undefined') {
-        document.removeEventListener('visibilitychange', handleVisibility);
-      }
       stopPolling();
-      clearFallbackPolling();
     };
   }, [supervisorIds, filterKey, pollingEnabled, intervalSeconds, storageKey]);
 

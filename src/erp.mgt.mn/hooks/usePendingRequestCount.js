@@ -3,8 +3,6 @@ import { connectSocket, disconnectSocket } from '../utils/socket.js';
 import useGeneralConfig from '../hooks/useGeneralConfig.js';
 
 const DEFAULT_POLL_INTERVAL_SECONDS = 30;
-const MIN_POLL_INTERVAL_SECONDS = 120;
-const FALLBACK_DISCONNECT_SECONDS = 300;
 
 /**
  * Polls the pending request endpoint for a supervisor and returns the count.
@@ -27,10 +25,9 @@ export default function usePendingRequestCount(
   const [hasNew, setHasNew] = useState(false);
   const cfg = useGeneralConfig();
   const pollingEnabled = !!cfg?.general?.requestPollingEnabled;
-  const intervalSeconds = Math.max(
-    Number(cfg?.general?.requestPollingIntervalSeconds) || DEFAULT_POLL_INTERVAL_SECONDS,
-    MIN_POLL_INTERVAL_SECONDS,
-  );
+  const intervalSeconds =
+    Number(cfg?.general?.requestPollingIntervalSeconds) ||
+    DEFAULT_POLL_INTERVAL_SECONDS;
 
   const markSeen = () => {
     localStorage.setItem(storageKey, String(count));
@@ -65,11 +62,7 @@ export default function usePendingRequestCount(
     });
 
     let cancelled = false;
-    const inFlight = { current: false };
     async function fetchCount() {
-      if (inFlight.current) return;
-      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
-      inFlight.current = true;
       try {
         const res = await fetch(`/api/pending_request?${params.toString()}`, {
           credentials: 'include',
@@ -96,61 +89,34 @@ export default function usePendingRequestCount(
           setCount(0);
           setHasNew(false);
         }
-      } finally {
-        inFlight.current = false;
       }
     }
 
     fetchCount();
     let timer;
 
-    function startPolling(delayMs = intervalSeconds * 1000) {
-      if (timer) return;
-      timer = setTimeout(function tick() {
-        fetchCount();
-        timer = setTimeout(tick, intervalSeconds * 1000);
-      }, delayMs);
+    function startPolling() {
+      if (!timer) timer = setInterval(fetchCount, intervalSeconds * 1000);
     }
 
     function stopPolling() {
       if (timer) {
-        clearTimeout(timer);
+        clearInterval(timer);
         timer = null;
       }
     }
-
-    let fallbackTimer;
-
-    const startFallbackPolling = (delayMs = FALLBACK_DISCONNECT_SECONDS * 1000) => {
-      if (fallbackTimer || timer) return;
-      fallbackTimer = setTimeout(() => {
-        fallbackTimer = null;
-        startPolling();
-      }, delayMs);
-    };
-
-    const clearFallbackPolling = () => {
-      if (fallbackTimer) {
-        clearTimeout(fallbackTimer);
-        fallbackTimer = null;
-      }
-    };
 
     let socket;
     try {
       socket = connectSocket();
       socket.on('newRequest', fetchCount);
       if (pollingEnabled) {
-        socket.on('connect_error', () => startFallbackPolling());
-        socket.on('disconnect', () => startFallbackPolling());
-        socket.on('connect', () => {
-          stopPolling();
-          clearFallbackPolling();
-          fetchCount();
-        });
+        socket.on('connect_error', startPolling);
+        socket.on('disconnect', startPolling);
+        socket.on('connect', stopPolling);
       }
     } catch {
-      if (pollingEnabled) startFallbackPolling();
+      if (pollingEnabled) startPolling();
     }
     function handleSeen() {
       const s = Number(localStorage.getItem(storageKey) || 0);
@@ -160,43 +126,24 @@ export default function usePendingRequestCount(
     function handleNew() {
       setHasNew(true);
     }
-    function handleVisibility() {
-      if (typeof document === 'undefined') return;
-      if (document.visibilityState === 'hidden') {
-        stopPolling();
-        clearFallbackPolling();
-        return;
-      }
-      fetchCount();
-      if (pollingEnabled && (!socket || !socket.connected)) {
-        startFallbackPolling();
-      }
-    }
     window.addEventListener('pending-request-refresh', fetchCount);
     window.addEventListener('pending-request-seen', handleSeen);
     window.addEventListener('pending-request-new', handleNew);
-    if (typeof document !== 'undefined') {
-      document.addEventListener('visibilitychange', handleVisibility);
-    }
     return () => {
       cancelled = true;
       if (socket) {
         socket.off('newRequest', fetchCount);
         if (pollingEnabled) {
-          socket.off('connect_error', startFallbackPolling);
-          socket.off('disconnect', startFallbackPolling);
-          socket.off('connect', clearFallbackPolling);
+          socket.off('connect_error', startPolling);
+          socket.off('disconnect', startPolling);
+          socket.off('connect', stopPolling);
         }
         disconnectSocket();
       }
       stopPolling();
-      clearFallbackPolling();
       window.removeEventListener('pending-request-refresh', fetchCount);
       window.removeEventListener('pending-request-seen', handleSeen);
       window.removeEventListener('pending-request-new', handleNew);
-      if (typeof document !== 'undefined') {
-        document.removeEventListener('visibilitychange', handleVisibility);
-      }
     };
   }, [
     effectiveSeniorEmpId,
