@@ -6,7 +6,6 @@ import LangContext from '../context/I18nContext.jsx';
 import formatTimestamp from '../utils/formatTimestamp.js';
 
 const SECTION_LIMIT = 5;
-const TEMPORARY_SECTION_LIMIT = 10;
 
 function dedupeRequests(list) {
   const map = new Map();
@@ -68,8 +67,8 @@ export default function NotificationsPage() {
   const [temporaryState, setTemporaryState] = useState({
     loading: true,
     error: '',
-    reviewRaw: [],
-    createdRaw: [],
+    review: [],
+    created: [],
   });
 
   const hasSupervisor =
@@ -367,21 +366,23 @@ export default function NotificationsPage() {
     let cancelled = false;
     setTemporaryState((prev) => ({ ...prev, loading: true, error: '' }));
     const reviewPromise = temporaryFetchScopeEntries('review', {
-      limit: TEMPORARY_SECTION_LIMIT,
+      limit: null,
       status: 'pending',
     });
     const createdPromise = temporaryFetchScopeEntries('created', {
-      limit: TEMPORARY_SECTION_LIMIT,
+      limit: null,
       status: 'any',
     });
     Promise.all([reviewPromise, createdPromise])
       .then(([review, created]) => {
         if (!cancelled) {
+          const uniqueReview = dedupeTemporaryEntries(review);
+          const uniqueCreated = dedupeTemporaryEntries(created);
           setTemporaryState({
             loading: false,
             error: '',
-            reviewRaw: review,
-            createdRaw: created,
+            review: sortTemporaryEntries(uniqueReview, 'review'),
+            created: sortTemporaryEntries(uniqueCreated, 'created'),
           });
         }
       })
@@ -390,8 +391,8 @@ export default function NotificationsPage() {
           setTemporaryState({
             loading: false,
             error: t('notifications_temporary_error', 'Failed to load temporary submissions'),
-            reviewRaw: [],
-            createdRaw: [],
+            review: [],
+            created: [],
           });
       });
     return () => {
@@ -484,10 +485,7 @@ export default function NotificationsPage() {
     (scope, entry) => {
       handleTemporarySeen(scope);
       if (!entry) {
-        const params = new URLSearchParams();
-        params.set('temporaryOpen', '1');
-        if (scope) params.set('temporaryScope', scope);
-        navigate(`/forms?${params.toString()}`);
+        navigate('/forms');
         return;
       }
       const params = new URLSearchParams();
@@ -514,16 +512,6 @@ export default function NotificationsPage() {
       navigate(`${path}?${params.toString()}`);
     },
     [handleTemporarySeen, navigate],
-  );
-
-  const openTemporaryList = useCallback(
-    (scope) => {
-      const params = new URLSearchParams();
-      params.set('temporaryOpen', '1');
-      if (scope) params.set('temporaryScope', scope);
-      navigate(`/forms?${params.toString()}`);
-    },
-    [navigate],
   );
 
   const normalizeRequestDate = useCallback(
@@ -894,32 +882,12 @@ export default function NotificationsPage() {
     [getTemporaryDate, getTemporaryTransactionType, getTemporaryUser, normalizeTemporaryStatus],
   );
 
-  const dedupedTemporaryReview = useMemo(
-    () => dedupeTemporaryEntries(temporaryState.reviewRaw),
-    [temporaryState.reviewRaw],
-  );
-
-  const dedupedTemporaryCreated = useMemo(
-    () => dedupeTemporaryEntries(temporaryState.createdRaw),
-    [temporaryState.createdRaw],
-  );
-
-  const sortedTemporaryReview = useMemo(
-    () => sortTemporaryEntries(dedupedTemporaryReview, 'review'),
-    [dedupedTemporaryReview, sortTemporaryEntries],
-  );
-
-  const sortedTemporaryCreated = useMemo(
-    () => sortTemporaryEntries(dedupedTemporaryCreated, 'created'),
-    [dedupedTemporaryCreated, sortTemporaryEntries],
-  );
-
   const groupedTemporary = useMemo(
     () => ({
-      review: groupTemporaryEntries(sortedTemporaryReview),
-      created: groupTemporaryEntries(sortedTemporaryCreated),
+      review: groupTemporaryEntries(temporaryState.review),
+      created: groupTemporaryEntries(temporaryState.created),
     }),
-    [groupTemporaryEntries, sortedTemporaryCreated, sortedTemporaryReview],
+    [groupTemporaryEntries, temporaryState.created, temporaryState.review],
   );
 
   const temporaryReviewTotal = temporaryReviewPending;
@@ -1162,12 +1130,6 @@ export default function NotificationsPage() {
               >
                 {t('notifications_open_review', 'Open review workspace')}
               </button>
-              <button
-                style={styles.linkButton}
-                onClick={() => openTemporaryList('review')}
-              >
-                {t('notifications_see_all_review', 'See all review items')}
-              </button>
             </div>
             <div style={styles.column}>
               <h3 style={styles.columnTitle}>{t('notifications_my_drafts', 'My drafts')}</h3>
@@ -1185,12 +1147,6 @@ export default function NotificationsPage() {
                 }
               >
                 {t('notifications_open_drafts', 'Open drafts workspace')}
-              </button>
-              <button
-                style={styles.linkButton}
-                onClick={() => openTemporaryList('created')}
-              >
-                {t('notifications_see_all_drafts', 'See all drafts')}
               </button>
             </div>
           </div>
@@ -1241,15 +1197,6 @@ const styles = {
     padding: '0.4rem 0.9rem',
     cursor: 'pointer',
     fontSize: '0.85rem',
-  },
-  linkButton: {
-    background: 'none',
-    border: 'none',
-    color: '#2563eb',
-    cursor: 'pointer',
-    padding: '0.35rem 0',
-    fontSize: '0.9rem',
-    textDecoration: 'underline',
   },
   sectionActionsGroup: {
     display: 'flex',
