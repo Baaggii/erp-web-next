@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import useGeneralConfig from './useGeneralConfig.js';
 import { API_BASE } from '../utils/apiBase.js';
 
+const DEFAULT_POLL_INTERVAL_SECONDS = 30;
 const SCOPES = ['created', 'review'];
 const TEMPORARY_FILTER_CACHE_KEY = 'temporary-transaction-filter';
 
@@ -45,19 +46,13 @@ function createInitialCounts() {
 
 export default function useTemporaryNotificationCounts(empid) {
   const [counts, setCounts] = useState(() => createInitialCounts());
-  const { summary, refresh, setParams } = useTemporarySummary();
-
-  useEffect(() => {
-    const cachedFilter = readCachedTemporaryFilter();
-    const hasCachedValue =
-      cachedFilter?.value !== undefined && cachedFilter?.value !== null && cachedFilter?.value !== '';
-    if (!cachedFilter?.field || !hasCachedValue) return;
-    setParams((prev) => ({
-      ...prev,
-      transactionTypeField: cachedFilter.field,
-      transactionTypeValue: cachedFilter.value,
-    }));
-  }, [setParams]);
+  const cfg = useGeneralConfig();
+  const intervalSeconds =
+    Number(
+      cfg?.general?.temporaryPollingIntervalSeconds ||
+        cfg?.temporaries?.pollingIntervalSeconds ||
+        cfg?.general?.requestPollingIntervalSeconds,
+    ) || DEFAULT_POLL_INTERVAL_SECONDS;
 
   const refreshInFlight = useRef(false);
   const pendingRefresh = useRef(false);
@@ -170,8 +165,27 @@ export default function useTemporaryNotificationCounts(empid) {
   }, [evaluateCounts]);
 
   useEffect(() => {
-    if (summary) evaluateCounts(summary);
-  }, [evaluateCounts, summary]);
+    let cancelled = false;
+    const run = async () => {
+      if (!cancelled) await refresh();
+    };
+    run();
+
+    const handler = () => {
+      refresh();
+    };
+
+    window.addEventListener('transaction-temporary-refresh', handler);
+    const timer = setInterval(() => {
+      refresh();
+    }, intervalSeconds * 1000);
+
+    return () => {
+      cancelled = true;
+      window.removeEventListener('transaction-temporary-refresh', handler);
+      clearInterval(timer);
+    };
+  }, [intervalSeconds, refresh]);
 
   const markScopeSeen = useCallback(
     (scope) => {
