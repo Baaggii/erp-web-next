@@ -3,6 +3,8 @@ import { connectSocket, disconnectSocket } from '../utils/socket.js';
 import useGeneralConfig from '../hooks/useGeneralConfig.js';
 
 const DEFAULT_POLL_INTERVAL_SECONDS = 30;
+const MIN_POLL_INTERVAL_SECONDS = 120;
+const FALLBACK_DISCONNECT_SECONDS = 300;
 
 /**
  * Polls the pending request endpoint for a supervisor and returns the count.
@@ -25,9 +27,10 @@ export default function usePendingRequestCount(
   const [hasNew, setHasNew] = useState(false);
   const cfg = useGeneralConfig();
   const pollingEnabled = !!cfg?.general?.requestPollingEnabled;
-  const intervalSeconds =
-    Number(cfg?.general?.requestPollingIntervalSeconds) ||
-    DEFAULT_POLL_INTERVAL_SECONDS;
+  const intervalSeconds = Math.max(
+    Number(cfg?.general?.requestPollingIntervalSeconds) || DEFAULT_POLL_INTERVAL_SECONDS,
+    MIN_POLL_INTERVAL_SECONDS,
+  );
 
   const markSeen = () => {
     localStorage.setItem(storageKey, String(count));
@@ -62,7 +65,11 @@ export default function usePendingRequestCount(
     });
 
     let cancelled = false;
+    const inFlight = { current: false };
     async function fetchCount() {
+      if (inFlight.current) return;
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+      inFlight.current = true;
       try {
         const res = await fetch(`/api/pending_request?${params.toString()}`, {
           credentials: 'include',
@@ -89,19 +96,30 @@ export default function usePendingRequestCount(
           setCount(0);
           setHasNew(false);
         }
+      } finally {
+        inFlight.current = false;
       }
     }
 
     fetchCount();
     let timer;
 
-    function startPolling() {
-      if (!timer) timer = setInterval(fetchCount, intervalSeconds * 1000);
+    function startPolling(delayMs = intervalSeconds * 1000) {
+      if (timer) return;
+      timer = setTimeout(function tick() {
+        fetchCount();
+        timer = setTimeout(
+          tick,
+          (typeof document !== 'undefined' && document.visibilityState === 'hidden'
+            ? FALLBACK_DISCONNECT_SECONDS
+            : intervalSeconds) * 1000,
+        );
+      }, delayMs);
     }
 
     function stopPolling() {
       if (timer) {
-        clearInterval(timer);
+        clearTimeout(timer);
         timer = null;
       }
     }
@@ -111,9 +129,12 @@ export default function usePendingRequestCount(
       socket = connectSocket();
       socket.on('newRequest', fetchCount);
       if (pollingEnabled) {
-        socket.on('connect_error', startPolling);
-        socket.on('disconnect', startPolling);
-        socket.on('connect', stopPolling);
+        socket.on('connect_error', () => startPolling());
+        socket.on('disconnect', () => startPolling(FALLBACK_DISCONNECT_SECONDS * 1000));
+        socket.on('connect', () => {
+          stopPolling();
+          fetchCount();
+        });
       }
     } catch {
       if (pollingEnabled) startPolling();
@@ -126,9 +147,21 @@ export default function usePendingRequestCount(
     function handleNew() {
       setHasNew(true);
     }
+    function handleVisibility() {
+      if (typeof document === 'undefined') return;
+      if (document.visibilityState === 'hidden') {
+        stopPolling();
+        return;
+      }
+      fetchCount();
+      if (pollingEnabled) startPolling();
+    }
     window.addEventListener('pending-request-refresh', fetchCount);
     window.addEventListener('pending-request-seen', handleSeen);
     window.addEventListener('pending-request-new', handleNew);
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', handleVisibility);
+    }
     return () => {
       cancelled = true;
       if (socket) {
@@ -144,6 +177,9 @@ export default function usePendingRequestCount(
       window.removeEventListener('pending-request-refresh', fetchCount);
       window.removeEventListener('pending-request-seen', handleSeen);
       window.removeEventListener('pending-request-new', handleNew);
+      if (typeof document !== 'undefined') {
+        document.removeEventListener('visibilitychange', handleVisibility);
+      }
     };
   }, [
     effectiveSeniorEmpId,
