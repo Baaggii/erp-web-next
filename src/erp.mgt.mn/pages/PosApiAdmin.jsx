@@ -5047,11 +5047,12 @@ export default function PosApiAdmin() {
   }, [activeTab]);
 
   function handleSelect(id, explicitDefinition = null) {
-    if (!id) {
+    const targetId = id || explicitDefinition?.id;
+    if (!targetId && !explicitDefinition) {
       return;
     }
 
-    const definition = endpoints.find((ep) => ep.id === id);
+    const definition = explicitDefinition || endpoints.find((ep) => ep.id === targetId);
     if (!definition) {
       return;
     }
