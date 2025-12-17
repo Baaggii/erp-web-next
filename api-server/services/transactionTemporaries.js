@@ -20,6 +20,7 @@ import {
   persistEbarimtInvoiceResponse,
 } from './ebarimtInvoiceStore.js';
 import { getMerchantById } from './merchantService.js';
+import formatTimestamp from '../../src/erp.mgt.mn/utils/formatTimestamp.js';
 
 const TEMP_TABLE = 'transaction_temporaries';
 const TEMP_REVIEW_HISTORY_TABLE = 'transaction_temporary_review_history';
@@ -656,13 +657,40 @@ async function ensureTemporaryTable(conn = pool) {
             row &&
             typeof row.INDEX_NAME === 'string' &&
             row.INDEX_NAME.toLowerCase() === 'idx_temp_status_plan_senior',
-      );
+        );
       if (!hasCompositeIndex) {
         await conn.query(
           `ALTER TABLE \`${TEMP_TABLE}\`
              ADD INDEX idx_temp_status_plan_senior (status, plan_senior_empid)`,
         );
       }
+      const [existingIndexes] = await conn.query(
+        `SELECT INDEX_NAME
+           FROM INFORMATION_SCHEMA.STATISTICS
+          WHERE TABLE_SCHEMA = DATABASE()
+            AND TABLE_NAME = ?`,
+        [TEMP_TABLE],
+      );
+      const indexLookup = new Set(
+        Array.isArray(existingIndexes)
+          ? existingIndexes
+              .map((row) => row?.INDEX_NAME?.toLowerCase?.())
+              .filter(Boolean)
+          : [],
+      );
+      const ensureIndex = async (name, definition) => {
+        if (!indexLookup.has(name.toLowerCase())) {
+          await conn.query(`ALTER TABLE \`${TEMP_TABLE}\` ADD ${definition}`);
+        }
+      };
+      await ensureIndex('idx_temp_company', 'KEY idx_temp_company (company_id)');
+      await ensureIndex('idx_temp_status', 'KEY idx_temp_status (status)');
+      await ensureIndex('idx_temp_table', 'KEY idx_temp_table (table_name)');
+      await ensureIndex(
+        'idx_temp_plan_senior',
+        'KEY idx_temp_plan_senior (plan_senior_empid)',
+      );
+      await ensureIndex('idx_temp_creator', 'KEY idx_temp_creator (created_by)');
       const [chainIndexes] = await conn.query(
         `SELECT INDEX_NAME
            FROM INFORMATION_SCHEMA.STATISTICS
@@ -1285,6 +1313,92 @@ export async function listTemporarySubmissions({
     rows: enriched,
     hasMore,
     nextOffset: hasMore ? normalizedOffset + normalizedLimit : null,
+  };
+}
+
+function formatTemporaryStatusLabel(status) {
+  const normalized = String(status || '').trim().toLowerCase();
+  if (normalized === 'promoted') return 'Promoted';
+  if (normalized === 'rejected') return 'Rejected';
+  return 'Pending';
+}
+
+function deriveTemporaryTransactionType(row) {
+  if (!row) return 'Other transaction';
+  const fallback =
+    row.formLabel ||
+    row.formName ||
+    row.configName ||
+    row.moduleLabel ||
+    row.moduleKey ||
+    row.tableName ||
+    'Other transaction';
+  return String(fallback || '').trim() || 'Other transaction';
+}
+
+function groupTemporaryRows(entries = []) {
+  const buckets = [];
+  const lookup = new Map();
+  entries.forEach((entry) => {
+    if (!entry) return;
+    const user = entry.createdBy || '';
+    const transactionType = deriveTemporaryTransactionType(entry);
+    const status = entry.status || 'pending';
+    const dateValue = entry.updatedAt || entry.createdAt || entry.reviewedAt || null;
+    const dateObj = dateValue ? new Date(dateValue) : null;
+    const dateKey = dateObj && !Number.isNaN(dateObj.getTime())
+      ? dateObj.toISOString().slice(0, 10)
+      : 'unknown';
+    const dateLabel = dateObj && !Number.isNaN(dateObj.getTime())
+      ? formatTimestamp(dateObj)
+      : 'Unknown date';
+    const key = `${user || 'unknown'}|${transactionType || 'unknown'}|${dateKey}|${status}`;
+    let bucket = lookup.get(key);
+    if (!bucket) {
+      bucket = {
+        key,
+        user,
+        transactionType,
+        dateKey,
+        dateLabel,
+        status,
+        statusLabel: formatTemporaryStatusLabel(status),
+        statusColor: status === 'rejected' ? '#dc2626' : '#2563eb',
+        entries: [],
+        count: 0,
+        latest: dateObj ? dateObj.getTime() : 0,
+        sampleEntry: null,
+      };
+      lookup.set(key, bucket);
+      buckets.push(bucket);
+    }
+    bucket.entries.push(entry);
+    bucket.count += 1;
+    const ts = dateObj ? dateObj.getTime() : 0;
+    bucket.latest = Math.max(bucket.latest, ts);
+    if (!bucket.sampleEntry) {
+      bucket.sampleEntry = entry;
+    }
+  });
+  buckets.sort((a, b) => b.latest - a.latest);
+  return buckets.map((bucket) => ({
+    ...bucket,
+    count: bucket.count || bucket.entries.length,
+    sampleEntry: bucket.sampleEntry || bucket.entries[0] || null,
+  }));
+}
+
+export async function listTemporarySubmissionGroups(options) {
+  const result = await listTemporarySubmissions({
+    ...options,
+    includeHasMore: true,
+  });
+  const grouped = groupTemporaryRows(result.rows);
+  return {
+    rows: result.rows,
+    groups: grouped,
+    hasMore: result.hasMore,
+    nextOffset: result.nextOffset,
   };
 }
 
