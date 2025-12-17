@@ -1537,7 +1537,7 @@ export async function promoteTemporarySubmission(
     notes,
     io,
     cleanedValues: cleanedOverride,
-    promoteAsTemporary = false,
+    promoteAsTemporary,
   },
   runtimeDeps = {},
 ) {
@@ -1739,28 +1739,26 @@ export async function promoteTemporarySubmission(
     const resolvedBranchPref = normalizeScopePreference(row.branch_id);
     const resolvedDepartmentPref = normalizeScopePreference(row.department_id);
     let forwardReviewerEmpId = null;
-    if (promoteAsTemporary === true) {
-      try {
-        const reviewerSession = await employmentSessionFetcher(
-          normalizedReviewer,
-          row.company_id,
-          {
-            ...(resolvedBranchPref ? { branchId: resolvedBranchPref } : {}),
-            ...(resolvedDepartmentPref
-              ? { departmentId: resolvedDepartmentPref }
-              : {}),
-          },
-        );
-        forwardReviewerEmpId =
-          normalizeEmpId(reviewerSession?.senior_empid) ||
-          normalizeEmpId(reviewerSession?.senior_plan_empid);
-      } catch (sessionErr) {
-        console.error('Failed to resolve reviewer senior for temporary forward', {
-          error: sessionErr,
-          reviewer: normalizedReviewer,
-          company: row.company_id,
-        });
-      }
+    try {
+      const reviewerSession = await employmentSessionFetcher(
+        normalizedReviewer,
+        row.company_id,
+        {
+          ...(resolvedBranchPref ? { branchId: resolvedBranchPref } : {}),
+          ...(resolvedDepartmentPref
+            ? { departmentId: resolvedDepartmentPref }
+            : {}),
+        },
+      );
+      forwardReviewerEmpId =
+        normalizeEmpId(reviewerSession?.senior_empid) ||
+        normalizeEmpId(reviewerSession?.senior_plan_empid);
+    } catch (sessionErr) {
+      console.error('Failed to resolve reviewer senior for temporary forward', {
+        error: sessionErr,
+        reviewer: normalizedReviewer,
+        company: row.company_id,
+      });
     }
 
     const mutationContext = {
@@ -1772,14 +1770,17 @@ export async function promoteTemporarySubmission(
       errorRevokedFields.length > 0;
     const skipTriggers = shouldSkipTriggers;
     const reviewerHasSenior = Boolean(forwardReviewerEmpId);
-    const shouldForwardTemporary =
-      promoteAsTemporary === true &&
+    const explicitForwardRequest = promoteAsTemporary === true;
+    const inferredForwardIntent =
+      promoteAsTemporary !== false &&
       reviewerHasSenior &&
       forwardReviewerEmpId !== normalizedReviewer;
+    const shouldForwardTemporary = explicitForwardRequest || inferredForwardIntent;
     if (shouldForwardTemporary && !effectiveChainId) {
       const fallbackChainId =
         normalizeTemporaryId(row.chain_id) ||
         resolveExternalChainId(updatedForwardMeta, row.id) ||
+        normalizeTemporaryId(row.id) ||
         null;
       if (fallbackChainId) {
         effectiveChainId = fallbackChainId;

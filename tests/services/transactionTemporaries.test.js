@@ -485,7 +485,7 @@ test('promoteTemporarySubmission forwards chain with normalized metadata and cle
   assert.ok(conn.released);
 });
 
-test('promoteTemporarySubmission blocks forwarding when chain_id is missing', async () => {
+test('promoteTemporarySubmission forwards by falling back to its own id when chain_id is missing', async () => {
   const temporaryRow = {
     id: 25,
     company_id: 1,
@@ -517,18 +517,60 @@ test('promoteTemporarySubmission blocks forwarding when chain_id is missing', as
     activityLogger: async () => {},
   };
 
-  await assert.rejects(
-    () =>
-      promoteTemporarySubmission(
-        25,
-        { reviewerEmpId: 'EMP100', cleanedValues: { amount: 10 }, promoteAsTemporary: true },
-        runtimeDeps,
-      ),
-    (err) => err && err.status === 409,
+  const result = await promoteTemporarySubmission(
+    25,
+    { reviewerEmpId: 'EMP100', cleanedValues: { amount: 10 }, promoteAsTemporary: true },
+    runtimeDeps,
   );
-  assert.equal(chainUpdates.length, 0);
-  assert.ok(!queries.some(({ sql }) => sql.includes('INSERT INTO `transaction_temporaries`') && sql.includes('chain_id')));
+  assert.equal(result.forwardedTo, 'EMP500');
+  assert.equal(chainUpdates[0]?.chainId, 25);
+  assert.ok(
+    queries.some(
+      ({ sql, params }) =>
+        sql.includes('UPDATE `transaction_temporaries` SET chain_id = ?') && params.includes(25),
+    ),
+  );
   assert.ok(conn.released);
+});
+
+test('promoteTemporarySubmission infers forwarding without explicit promoteAsTemporary flag', async () => {
+  const temporaryRow = {
+    id: 35,
+    company_id: 1,
+    chain_id: 35,
+    table_name: 'transactions_test',
+    form_name: null,
+    config_name: null,
+    module_key: null,
+    payload_json: '{}',
+    cleaned_values_json: '{}',
+    raw_values_json: '{}',
+    created_by: 'EMP200',
+    plan_senior_empid: 'EMP100',
+    branch_id: null,
+    department_id: null,
+    status: 'pending',
+  };
+
+  const chainUpdates = [];
+  const { conn } = createStubConnection({ temporaryRow });
+  const runtimeDeps = {
+    connectionFactory: async () => conn,
+    columnLister: async () => [{ name: 'amount', type: 'int', maxLength: null }],
+    employmentSessionFetcher: async () => ({ senior_empid: 'EMP777' }),
+    chainStatusUpdater: async (_c, chainId, payload) => chainUpdates.push({ chainId, payload }),
+    notificationInserter: async () => {},
+    activityLogger: async () => {},
+  };
+
+  const result = await promoteTemporarySubmission(
+    35,
+    { reviewerEmpId: 'EMP100', cleanedValues: { amount: 10 } },
+    runtimeDeps,
+  );
+
+  assert.equal(result.forwardedTo, 'EMP777');
+  assert.equal(chainUpdates[0]?.chainId, 35);
 });
 
 test('promoteTemporarySubmission promotes chain and records promotedRecordId', async () => {
