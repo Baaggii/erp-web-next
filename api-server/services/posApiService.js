@@ -134,15 +134,22 @@ function applyEnvMapToPayload(payload, envMap = {}) {
       ? basePayload.body
       : basePayload;
 
-  Object.entries(envMap || {}).forEach(([fieldPath, envVar]) => {
-    if (!fieldPath || !envVar) return;
+  Object.entries(envMap || {}).forEach(([fieldPath, entry]) => {
+    if (!fieldPath || !entry) return;
+
+    const envVar = typeof entry === 'string' ? entry : entry.envVar;
+    const applyToBody =
+      entry && typeof entry === 'object' && 'applyToBody' in entry ? Boolean(entry.applyToBody) : true;
+
+    if (!envVar) return;
     const envRaw = process.env[envVar];
     if (envRaw === undefined || envRaw === null || envRaw === '') {
       return;
     }
     const parsed = parseEnvValue(envRaw);
     const tokens = tokenizeFieldPath(fieldPath);
-    setValueAtTokens(target, tokens, parsed);
+    const destination = applyToBody ? target : basePayload;
+    setValueAtTokens(destination, tokens, parsed);
   });
 
   return { payload: basePayload };
@@ -1433,6 +1440,18 @@ async function fetchTokenFromAuthEndpoint(
   let requestPayload = normalizePayload(payload);
   if (!requestPayload) {
     requestPayload = normalizePayload(authEndpoint.requestExample);
+  }
+  if (!requestPayload && Array.isArray(authEndpoint.variations)) {
+    const variationWithRequest = authEndpoint.variations.find(
+      (variation) => variation?.requestExample || variation?.request?.body || variation?.request,
+    );
+    if (variationWithRequest?.requestExample) {
+      requestPayload = normalizePayload(variationWithRequest.requestExample);
+    } else if (variationWithRequest?.request?.body !== undefined) {
+      requestPayload = normalizePayload(variationWithRequest.request.body);
+    } else if (variationWithRequest?.request) {
+      requestPayload = normalizePayload(variationWithRequest.request);
+    }
   }
   if (!requestPayload && authEndpoint.requestBody?.schema && typeof authEndpoint.requestBody.schema === 'object') {
     requestPayload = authEndpoint.requestBody.schema;
