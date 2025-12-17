@@ -6787,6 +6787,10 @@ export default function PosApiAdmin() {
 
   function handleVariationRequirementChange(fieldPath, variationKey, value) {
     if (!fieldPath || !variationKey) return;
+    if (!value) {
+      clearVariationFieldSelection(variationKey, fieldPath);
+      return;
+    }
     setRequestFieldMeta((prev) => {
       const current = prev[fieldPath] || { requiredByVariation: {}, defaultByVariation: {} };
       return {
@@ -6797,6 +6801,8 @@ export default function PosApiAdmin() {
         },
       };
     });
+
+    ensureVariationFieldSelection(variationKey, fieldPath);
   }
 
   function handleVariationDefaultUpdate(fieldPath, variationKey, value) {
