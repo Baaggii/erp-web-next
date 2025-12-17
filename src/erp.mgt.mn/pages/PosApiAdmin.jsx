@@ -3021,7 +3021,12 @@ export default function PosApiAdmin() {
 
   const responseTableOptions = useMemo(() => {
     const seen = new Set();
-    return tableOptions
+    const merged = [
+      ...tableOptions,
+      ...buildTableOptions(formState.responseTables),
+    ];
+
+    return merged
       .map((option) => {
         const value = option?.value;
         if (!value || seen.has(value)) return null;
@@ -3029,7 +3034,7 @@ export default function PosApiAdmin() {
         return { value, label: formatTableDisplay(value, option.label) };
       })
       .filter(Boolean);
-  }, [tableOptions]);
+  }, [formState.responseTables, tableOptions]);
 
   const responseFieldOptions = useMemo(() => {
     const options = [];
