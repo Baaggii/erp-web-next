@@ -5499,6 +5499,7 @@ export default function PosApiAdmin() {
   }
 
   function handleResponseTableSelection(event) {
+    if (tableOptionsLoading || tableOptionsError) return;
     const values = Array.from(event.target.selectedOptions || []).map((opt) => opt.value);
     const sanitized = sanitizeTableSelection(values, responseTableOptions);
     setFormState((prev) => {
@@ -5876,6 +5877,7 @@ export default function PosApiAdmin() {
   }
 
   function handleInfoEndpointSelection(event) {
+    if (loading || infoSyncLoading || infoSyncError || infoSyncEndpointOptions.length === 0) return;
     const selected = Array.from(event.target.selectedOptions || []).map((option) => option.value);
     setInfoSyncEndpointIds(selected);
     updateInfoSetting('endpointIds', selected);
@@ -7642,6 +7644,9 @@ export default function PosApiAdmin() {
           </div>
         </div>
         <div style={styles.list}>
+          {endpointListUnavailableReason && (
+            <div style={styles.hintError}>{endpointListUnavailableReason}</div>
+          )}
           {groupedEndpoints.map((group) => (
             <div key={group.usage} style={styles.listGroup}>
               <div style={styles.listGroupHeader}>
@@ -8780,7 +8785,7 @@ export default function PosApiAdmin() {
                 value={formState.responseTables}
                 onChange={handleResponseTableSelection}
                 style={{ ...styles.input, minHeight: '120px' }}
-                disabled={responseTableOptions.length === 0}
+                disabled={responseTableOptions.length === 0 || tableOptionsLoading || !!tableOptionsError}
               >
                 {responseTableOptions.map((table) => (
                   <option key={`response-table-${table.value}`} value={table.value}>
@@ -9584,6 +9589,13 @@ export default function PosApiAdmin() {
                     value={infoSyncEndpointIds}
                     onChange={handleInfoEndpointSelection}
                     style={{ ...styles.input, minHeight: '140px' }}
+                    disabled={
+                      infoSyncEndpointOptions.length === 0
+                      || loading
+                      || infoSyncLoading
+                      || !!infoSyncError
+                      || !!error
+                    }
                   >
                     {infoSyncEndpointOptions.map((endpoint) => (
                       <option key={endpoint.id} value={endpoint.id}>
