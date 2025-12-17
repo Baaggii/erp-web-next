@@ -312,7 +312,7 @@ export default function useTemporaryNotificationCounts(empid) {
   }, [markScopeSeen]);
 
   const fetchScopeEntries = useCallback(async (scope, options = {}) => {
-    const { limit = 50, status = 'pending', cursor = 0 } = options || {};
+    const { limit = 50, status = 'pending', cursor = 0, grouped = false } = options || {};
     if (!SCOPES.includes(scope)) return { rows: [], hasMore: false, nextCursor: null };
     const params = new URLSearchParams({ scope });
     if (status && typeof status === 'string') {
@@ -333,16 +333,26 @@ export default function useTemporaryNotificationCounts(empid) {
       params.set('transactionTypeField', cachedFilter.field);
       params.set('transactionTypeValue', cachedFilter.value);
     }
+    if (grouped) {
+      params.set('grouped', '1');
+    }
     try {
-      const res = await fetch(`${API_BASE}/transaction_temporaries?${params.toString()}`, {
+      const endpoint = grouped
+        ? `${API_BASE}/transaction_temporaries/grouped`
+        : `${API_BASE}/transaction_temporaries`;
+      const res = await fetch(`${endpoint}?${params.toString()}`, {
         credentials: 'include',
         skipLoader: true,
       });
       if (!res.ok) throw new Error('Failed');
       const data = await res.json().catch(() => ({}));
       const rows = Array.isArray(data?.rows) ? data.rows : [];
+      const groups = Array.isArray(data?.groups) ? data.groups : [];
       const hasMore = Boolean(data?.hasMore);
       const nextCursor = Number.isFinite(Number(data?.nextOffset)) ? Number(data.nextOffset) : null;
+      if (grouped) {
+        return { rows, groups, hasMore, nextCursor };
+      }
       if (limit && Number.isFinite(limit)) {
         return { rows: rows.slice(0, limit), hasMore, nextCursor };
       }

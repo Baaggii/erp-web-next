@@ -6,7 +6,7 @@ import LangContext from '../context/I18nContext.jsx';
 import formatTimestamp from '../utils/formatTimestamp.js';
 
 const SECTION_LIMIT = 5;
-const TEMPORARY_PAGE_SIZE = 50;
+const TEMPORARY_PAGE_SIZE = 10;
 
 function dedupeRequests(list) {
   const map = new Map();
@@ -76,7 +76,7 @@ function createEmptyResponses() {
 }
 
 function createEmptyTemporaryScope() {
-  return { entries: [], hasMore: false, cursor: 0, loading: false };
+  return { entries: [], groups: [], hasMore: false, cursor: 0, loading: false };
 }
 
 export default function NotificationsPage() {
@@ -166,43 +166,39 @@ export default function NotificationsPage() {
             );
           }
 
-          await Promise.all(
-            normalizedStatuses.map(async (status) => {
-              try {
-                const params = new URLSearchParams({
-                  status,
-                  request_type: type,
-                  per_page: String(SECTION_LIMIT),
-                  page: '1',
-                });
-                const res = await fetch(
-                  `/api/pending_request/outgoing?${params.toString()}`,
-                  {
-                    credentials: 'include',
-                    skipLoader: true,
-                  },
-                );
-                if (res.ok) {
-                  const data = await res.json().catch(() => ({}));
-                  const rows = Array.isArray(data?.rows) ? data.rows : [];
-                  const withMeta = rows.map((row) => {
-                    const resolvedStatus = row.status || row.response_status || status;
-                    return {
-                      ...row,
-                      request_type: row.request_type || type,
-                      status: resolvedStatus
-                        ? String(resolvedStatus).trim().toLowerCase()
-                        : status,
-                    };
-                  });
-                  const prev = outgoingStatusLists.get(status) || [];
-                  outgoingStatusLists.set(status, prev.concat(withMeta));
-                }
-              } catch {
-                // ignore
-              }
-            }),
-          );
+          try {
+            const params = new URLSearchParams({
+              status: normalizedStatuses.join(','),
+              request_type: type,
+              per_page: String(SECTION_LIMIT),
+              page: '1',
+            });
+            const res = await fetch(
+              `/api/pending_request/outgoing?${params.toString()}`,
+              {
+                credentials: 'include',
+                skipLoader: true,
+              },
+            );
+            if (res.ok) {
+              const data = await res.json().catch(() => ({}));
+              const rows = Array.isArray(data?.rows) ? data.rows : [];
+              rows.forEach((row) => {
+                const resolvedStatus = row.status || row.response_status || 'pending';
+                const normalizedStatus = resolvedStatus
+                  ? String(resolvedStatus).trim().toLowerCase()
+                  : 'pending';
+                const prev = outgoingStatusLists.get(normalizedStatus) || [];
+                outgoingStatusLists.set(normalizedStatus, prev.concat({
+                  ...row,
+                  request_type: row.request_type || type,
+                  status: normalizedStatus,
+                }));
+              });
+            }
+          } catch {
+            // ignore
+          }
         }),
       );
 
@@ -403,6 +399,22 @@ export default function NotificationsPage() {
     [sortTemporaryEntries],
   );
 
+  const mergeTemporaryGroups = useCallback((previousGroups = [], nextGroups = []) => {
+    const map = new Map();
+    [...previousGroups, ...nextGroups].forEach((group) => {
+      if (!group) return;
+      const key =
+        group.key ||
+        `${group.user || 'unknown'}|${group.transactionType || 'unknown'}|${group.dateKey || ''}|${
+          group.status || 'pending'
+        }`;
+      if (!map.has(key)) {
+        map.set(key, group);
+      }
+    });
+    return Array.from(map.values());
+  }, []);
+
   const fetchTemporaryPage = useCallback(
     async (scope, { cursor = 0, append = false, status = 'pending', isCancelled } = {}) => {
       if (typeof temporaryFetchScopeEntries !== 'function') return;
@@ -421,12 +433,16 @@ export default function NotificationsPage() {
           limit: TEMPORARY_PAGE_SIZE,
           status,
           cursor,
+          grouped: true,
         });
         if (isCancelled?.()) return;
         const rows = Array.isArray(result?.rows)
           ? result.rows
           : Array.isArray(result)
           ? result
+          : [];
+        const groups = Array.isArray(result?.groups)
+          ? result.groups
           : [];
         const hasMore = Boolean(result?.hasMore);
         const nextCursorRaw = result?.nextCursor ?? result?.nextOffset;
@@ -442,9 +458,14 @@ export default function NotificationsPage() {
             rows,
             scope,
           );
+          const mergedGroups = mergeTemporaryGroups(
+            append ? previousScope.groups : [],
+            groups,
+          );
           const updatedScope = {
             ...previousScope,
             entries: mergedEntries,
+            groups: mergedGroups,
             hasMore,
             cursor: hasMore ? nextCursor : mergedEntries.length,
             loading: false,
@@ -467,7 +488,7 @@ export default function NotificationsPage() {
         }));
       }
     },
-    [mergeTemporaryEntries, t, temporaryFetchScopeEntries],
+    [mergeTemporaryEntries, mergeTemporaryGroups, t, temporaryFetchScopeEntries],
   );
 
   useEffect(() => {
@@ -992,25 +1013,23 @@ export default function NotificationsPage() {
     };
   }, [getTemporaryDate, getTemporaryTransactionType, getTemporaryUser, normalizeTemporaryStatus]);
 
-  const groupedTemporaryReview = useMemo(
-    () => groupTemporaryEntries(temporaryState.review, 'review'),
-    [groupTemporaryEntries, temporaryState.review],
-  );
-
-  const groupedTemporaryCreated = useMemo(
-    () => groupTemporaryEntries(temporaryState.created, 'created'),
-    [groupTemporaryEntries, temporaryState.created],
-  );
-
   const groupedTemporary = useMemo(
     () => ({
-      review: groupTemporaryEntries(temporaryState.review.entries),
-      created: groupTemporaryEntries(temporaryState.created.entries),
+      review:
+        temporaryState.review.groups?.length > 0
+          ? temporaryState.review.groups
+          : groupTemporaryEntries(temporaryState.review.entries),
+      created:
+        temporaryState.created.groups?.length > 0
+          ? temporaryState.created.groups
+          : groupTemporaryEntries(temporaryState.created.entries),
     }),
     [
       groupTemporaryEntries,
       temporaryState.created.entries,
+      temporaryState.created.groups,
       temporaryState.review.entries,
+      temporaryState.review.groups,
     ],
   );
 
@@ -1027,7 +1046,7 @@ export default function NotificationsPage() {
         <div style={styles.listTitleRow}>
           <span style={styles.listTitle}>{group.transactionType}</span>
           <span style={styles.groupCountBadge}>
-            {t('notifications_group_count', 'Count')}: {group.entries.length}
+            {t('notifications_group_count', 'Count')}: {group.count || group.entries.length}
           </span>
         </div>
         <div style={styles.listMeta}>
@@ -1053,7 +1072,10 @@ export default function NotificationsPage() {
           })}
         </div>
       </div>
-      <button style={styles.listAction} onClick={() => openTemporary(scope, group.entries[0])}>
+      <button
+        style={styles.listAction}
+        onClick={() => openTemporary(scope, group.sampleEntry || group.entries?.[0])}
+      >
         {t('notifications_open_group_forms', 'Open forms')}
       </button>
     </li>
@@ -1261,7 +1283,11 @@ export default function NotificationsPage() {
               <button
                 style={styles.listAction}
                 onClick={() =>
-                  openTemporary('review', groupedTemporary.review[0]?.entries?.[0])
+                  openTemporary(
+                    'review',
+                    groupedTemporary.review[0]?.sampleEntry ||
+                      groupedTemporary.review[0]?.entries?.[0],
+                  )
                 }
               >
                 {t('notifications_open_review', 'Open review workspace')}
@@ -1291,7 +1317,11 @@ export default function NotificationsPage() {
               <button
                 style={styles.listAction}
                 onClick={() =>
-                  openTemporary('created', groupedTemporary.created[0]?.entries?.[0])
+                  openTemporary(
+                    'created',
+                    groupedTemporary.created[0]?.sampleEntry ||
+                      groupedTemporary.created[0]?.entries?.[0],
+                  )
                 }
               >
                 {t('notifications_open_drafts', 'Open drafts workspace')}
