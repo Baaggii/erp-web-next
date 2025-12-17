@@ -61,6 +61,9 @@ export default function useTemporaryNotificationCounts(empid) {
   const refreshInFlight = useRef(false);
   const pendingRefresh = useRef(false);
 
+  const refreshInFlight = useRef(false);
+  const pendingRefresh = useRef(false);
+
   const storageBase = useMemo(() => {
     const id = empid != null && empid !== '' ? String(empid).trim() : 'anonymous';
     return id || 'anonymous';
@@ -136,11 +139,6 @@ export default function useTemporaryNotificationCounts(empid) {
   const lastRefreshRef = useRef(0);
 
   const refresh = useCallback(async () => {
-    const now = Date.now();
-    if (now - lastRefreshRef.current < 1000) {
-      return;
-    }
-    lastRefreshRef.current = now;
     if (refreshInFlight.current) {
       pendingRefresh.current = true;
       return;
