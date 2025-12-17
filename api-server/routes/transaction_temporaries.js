@@ -46,8 +46,6 @@ router.get('/', requireAuth, async (req, res, next) => {
       status,
       transactionTypeField = null,
       transactionTypeValue = null,
-      limit = null,
-      offset = null,
     } = req.query;
     const scopeParam = typeof scope === 'string' ? scope.trim().toLowerCase() : '';
     const normalizedScope = scopeParam === 'review' ? 'review' : 'created';
@@ -65,10 +63,8 @@ router.get('/', requireAuth, async (req, res, next) => {
       status: normalizedStatus,
       transactionTypeField,
       transactionTypeValue,
-      limit: Number.isFinite(Number(limit)) ? Number(limit) : undefined,
-      offset: Number.isFinite(Number(offset)) ? Number(offset) : undefined,
     });
-    res.json(list);
+    res.json({ rows: list });
   } catch (err) {
     next(err);
   }

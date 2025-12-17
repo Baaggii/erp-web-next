@@ -1191,9 +1191,6 @@ async function enrichTemporaryMetadata(rows, companyId) {
   );
 }
 
-const TEMPORARY_DEFAULT_LIMIT = 50;
-const TEMPORARY_MAX_LIMIT = 200;
-
 export async function listTemporarySubmissions({
   scope,
   tableName,
@@ -1202,8 +1199,6 @@ export async function listTemporarySubmissions({
   status,
   transactionTypeField,
   transactionTypeValue,
-  limit = TEMPORARY_DEFAULT_LIMIT,
-  offset = 0,
 }) {
   await ensureTemporaryTable();
   const normalizedEmp = normalizeEmpId(empId);
@@ -1248,13 +1243,6 @@ export async function listTemporarySubmissions({
   const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
   const chainGroupKey = (alias = '') =>
     `COALESCE(${alias ? `${alias}.` : ''}chain_id, ${alias ? `${alias}.` : ''}id)`;
-  const parsedLimit = Number(limit);
-  const cappedLimit = Math.min(
-    Math.max(Number.isFinite(parsedLimit) ? parsedLimit : TEMPORARY_DEFAULT_LIMIT, 1),
-    TEMPORARY_MAX_LIMIT,
-  );
-  const parsedOffset = Number(offset);
-  const safeOffset = Math.max(Number.isFinite(parsedOffset) ? parsedOffset : 0, 0);
   const filteredQuery = `SELECT * FROM \`${TEMP_TABLE}\` ${where}`;
   const groupingQuery = `
     WITH filtered AS (${filteredQuery})
@@ -1268,24 +1256,16 @@ export async function listTemporarySubmissions({
         ON ${chainGroupKey('filtered')} = latest.chain_group_id
        AND filtered.updated_at = latest.max_updated_at
      ORDER BY filtered.updated_at DESC, filtered.created_at DESC
-     LIMIT ? OFFSET ?`;
-  const queryLimit = cappedLimit + 1;
-  const [rawRows] = await pool.query(groupingQuery, [...params, queryLimit, safeOffset]);
-  const mapped = rawRows.map(mapTemporaryRow);
+     LIMIT 200`;
+  const [rows] = await pool.query(groupingQuery, params);
+  const mapped = rows.map(mapTemporaryRow);
   const filtered = filterRowsByTransactionType(
     mapped,
     transactionTypeField,
     transactionTypeValue,
   );
   const grouped = groupTemporaryRowsByChain(filtered);
-  const limitedGrouped = grouped.slice(0, cappedLimit);
-  const hasMore = rawRows.length > cappedLimit;
-  const nextOffset = safeOffset + Math.min(rawRows.length, cappedLimit);
-  return {
-    rows: enrichTemporaryMetadata(limitedGrouped, companyId),
-    hasMore,
-    nextOffset,
-  };
+  return enrichTemporaryMetadata(grouped, companyId);
 }
 
 export async function getTemporarySummary(
@@ -1294,7 +1274,7 @@ export async function getTemporarySummary(
   { tableName = null, transactionTypeField = null, transactionTypeValue = null } = {},
 ) {
   await ensureTemporaryTable();
-  const createdRowsResult = await listTemporarySubmissions({
+  const createdRows = await listTemporarySubmissions({
     scope: 'created',
     tableName,
     empId,
@@ -1302,9 +1282,8 @@ export async function getTemporarySummary(
     status: 'any',
     transactionTypeField,
     transactionTypeValue,
-    limit: TEMPORARY_MAX_LIMIT,
   });
-  const reviewRowsResult = await listTemporarySubmissions({
+  const reviewRows = await listTemporarySubmissions({
     scope: 'review',
     tableName,
     empId,
@@ -1312,10 +1291,7 @@ export async function getTemporarySummary(
     status: 'any',
     transactionTypeField,
     transactionTypeValue,
-    limit: TEMPORARY_MAX_LIMIT,
   });
-  const createdRows = createdRowsResult.rows;
-  const reviewRows = reviewRowsResult.rows;
   const createdPending = createdRows.filter((row) => row.status === 'pending').length;
   const reviewPending = reviewRows.filter((row) => row.status === 'pending').length;
   return {
