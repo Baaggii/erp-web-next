@@ -4635,6 +4635,32 @@ const TableManager = forwardRef(function TableManager({
     };
   }, [temporaryChainModalData]);
 
+  const latestTemporaryReviewById = useMemo(() => {
+    const history = Array.isArray(temporaryChainModalData?.reviewHistory)
+      ? temporaryChainModalData.reviewHistory
+      : [];
+    const map = new Map();
+    history.forEach((item, idx) => {
+      const temporaryId =
+        item?.temporaryId || item?.temporary_id || item?.temporaryid || null;
+      if (!temporaryId) return;
+      const createdAtRaw = item?.createdAt || item?.created_at || null;
+      const createdAtTs = createdAtRaw ? Date.parse(createdAtRaw) : Number.NaN;
+      const orderValue = Number.isFinite(createdAtTs) ? createdAtTs : idx;
+      const existing = map.get(temporaryId);
+      if (existing && existing.order >= orderValue) return;
+      map.set(temporaryId, {
+        action: item?.action || '',
+        reviewer:
+          item?.reviewerEmpId || item?.reviewer_emp_id || item?.reviewer || '',
+        createdAt: createdAtRaw,
+        notes: item?.notes || '',
+        order: orderValue,
+      });
+    });
+    return map;
+  }, [temporaryChainModalData]);
+
   const toggleTemporarySelection = useCallback(
     (id) => {
       if (!canSelectTemporaries || !id) return;
@@ -7183,16 +7209,13 @@ const TableManager = forwardRef(function TableManager({
                         {t('temporary_step', 'Step')}
                       </th>
                       <th style={{ textAlign: 'left', borderBottom: '1px solid #e5e7eb', padding: '0.5rem' }}>
+                        {t('created_by', 'Created by')}
+                      </th>
+                      <th style={{ textAlign: 'left', borderBottom: '1px solid #e5e7eb', padding: '0.5rem' }}>
                         {t('temporary_reviewer', 'Reviewer')}
                       </th>
                       <th style={{ textAlign: 'left', borderBottom: '1px solid #e5e7eb', padding: '0.5rem' }}>
-                        {t('status', 'Status')}
-                      </th>
-                      <th style={{ textAlign: 'left', borderBottom: '1px solid #e5e7eb', padding: '0.5rem' }}>
-                        {t('temporary_reviewed_by', 'Reviewed by')}
-                      </th>
-                      <th style={{ textAlign: 'left', borderBottom: '1px solid #e5e7eb', padding: '0.5rem' }}>
-                        {t('temporary_reviewed_at', 'Reviewed')}
+                        {t('temporary_action', 'Action')}
                       </th>
                       <th style={{ textAlign: 'left', borderBottom: '1px solid #e5e7eb', padding: '0.5rem' }}>
                         {t('temporary_review_notes', 'Review notes')}
@@ -7202,7 +7225,7 @@ const TableManager = forwardRef(function TableManager({
                   <tbody>
                     {temporaryChainModalData.chain.length === 0 ? (
                       <tr>
-                        <td colSpan="6" style={{ padding: '0.75rem', color: '#6b7280' }}>
+                        <td colSpan="5" style={{ padding: '0.75rem', color: '#6b7280' }}>
                           {t('temporary_chain_empty', 'No review chain information available.')}
                         </td>
                       </tr>
@@ -7220,6 +7243,33 @@ const TableManager = forwardRef(function TableManager({
                             : normalizedStatus === 'rejected'
                             ? t('temporary_rejected_short', 'Rejected')
                             : row?.status || '-';
+                        const temporaryId =
+                          row?.temporaryId || row?.temporary_id || row?.temporaryid || row?.id;
+                        const creator = row?.createdBy || row?.created_by || '—';
+                        const latestReview =
+                          temporaryId && latestTemporaryReviewById.get(temporaryId);
+                        const reviewerDisplay =
+                          latestReview?.reviewer ||
+                          row?.planSeniorEmpId ||
+                          row?.reviewerEmpId ||
+                          row?.reviewer_emp_id ||
+                          row?.reviewer ||
+                          '—';
+                        const actionLabel = latestReview?.action
+                          ? latestReview.action
+                          : statusLabel;
+                        const actionNotes =
+                          latestReview?.notes || row?.reviewNotes || row?.review_notes;
+                        const actionTimestamp =
+                          latestReview?.createdAt ||
+                          row?.reviewedAt ||
+                          row?.reviewed_at ||
+                          null;
+                        const actionActor =
+                          latestReview?.reviewer ||
+                          row?.reviewedBy ||
+                          row?.reviewed_by ||
+                          reviewerDisplay;
                         const rowKey = row?.id || idx;
                         return (
                           <tr key={`chain-${rowKey}`}>
@@ -7227,20 +7277,25 @@ const TableManager = forwardRef(function TableManager({
                               {idx + 1}
                             </td>
                             <td style={{ padding: '0.5rem', borderBottom: '1px solid #f3f4f6' }}>
-                              {row?.planSeniorEmpId || row?.createdBy || '—'}
+                              {creator}
                             </td>
                             <td style={{ padding: '0.5rem', borderBottom: '1px solid #f3f4f6' }}>
-                              {statusLabel}
+                              {reviewerDisplay}
                             </td>
                             <td style={{ padding: '0.5rem', borderBottom: '1px solid #f3f4f6' }}>
-                              {row?.reviewedBy || '—'}
+                              <div style={{ fontWeight: 600 }}>{actionLabel || '—'}</div>
+                              <div style={{ fontSize: '0.8rem', color: '#6b7280' }}>
+                                {actionActor || '—'}
+                              </div>
+                              <div style={{ fontSize: '0.8rem', color: '#6b7280' }}>
+                                {actionTimestamp
+                                  ? formatTimestamp(actionTimestamp)
+                                  : '—'}
+                              </div>
                             </td>
                             <td style={{ padding: '0.5rem', borderBottom: '1px solid #f3f4f6' }}>
-                              {row?.reviewedAt ? formatTimestamp(row.reviewedAt) : '—'}
-                            </td>
-                            <td style={{ padding: '0.5rem', borderBottom: '1px solid #f3f4f6' }}>
-                              {row?.reviewNotes ? (
-                                <span style={{ whiteSpace: 'pre-wrap' }}>{row.reviewNotes}</span>
+                              {actionNotes ? (
+                                <div style={{ whiteSpace: 'pre-wrap' }}>{actionNotes}</div>
                               ) : (
                                 '—'
                               )}
