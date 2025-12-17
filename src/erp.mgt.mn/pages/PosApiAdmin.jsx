@@ -4750,7 +4750,10 @@ export default function PosApiAdmin() {
   }, []);
 
   useEffect(() => {
-    if (!Array.isArray(endpoints) || endpoints.length === 0) return;
+    if (!Array.isArray(endpoints) || endpoints.length === 0) {
+      setStatus((prev) => (prev ? '' : prev));
+      return;
+    }
     const missing = endpoints.filter((endpoint) => {
       const selectionFor = (key) => ({
         literal: endpoint?.[key],
@@ -4766,12 +4769,10 @@ export default function PosApiAdmin() {
       return !selections.some(hasUrlSelectionValue);
     });
 
-    if (missing.length > 0) {
-      const sample = missing[0].name || missing[0].id || 'endpoint';
-      setStatus(
-        `Warning: ${missing.length} endpoint(s) are missing a base URL or environment variable mapping (for example: ${sample}).`,
-      );
-    }
+    const message = missing.length > 0
+      ? `Warning: ${missing.length} endpoint(s) are missing a base URL or environment variable mapping (for example: ${missing[0].name || missing[0].id || 'endpoint'}).`
+      : '';
+    setStatus((prev) => (prev === message ? prev : message));
   }, [endpoints]);
 
   useEffect(() => {
