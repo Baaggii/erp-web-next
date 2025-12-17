@@ -41,6 +41,35 @@ function dedupeTemporaryEntries(list) {
   return Array.from(map.values());
 }
 
+function getTemporaryEntryKey(entry) {
+  return String(
+    entry?.id ??
+      entry?.temporary_id ??
+      entry?.temporaryId ??
+      entry?.temporaryID ??
+      '',
+  ).trim();
+}
+
+function getTemporaryEntryTimestamp(entry) {
+  const reviewedAt = entry?.reviewed_at || entry?.reviewedAt || entry?.updated_at || entry?.updatedAt;
+  const createdAt = entry?.created_at || entry?.createdAt || 0;
+  const raw = reviewedAt || createdAt || 0;
+  const ts = new Date(raw).getTime();
+  return Number.isFinite(ts) ? ts : 0;
+}
+
+function areTemporaryListsEqual(previous = [], next = []) {
+  if (previous === next) return true;
+  if (!Array.isArray(previous) || !Array.isArray(next)) return false;
+  if (previous.length !== next.length) return false;
+  for (let i = 0; i < previous.length; i += 1) {
+    if (getTemporaryEntryKey(previous[i]) !== getTemporaryEntryKey(next[i])) return false;
+    if (getTemporaryEntryTimestamp(previous[i]) !== getTemporaryEntryTimestamp(next[i])) return false;
+  }
+  return true;
+}
+
 function createEmptyResponses() {
   return { accepted: [], declined: [] };
 }
@@ -365,19 +394,8 @@ export default function NotificationsPage() {
   const temporaryFetchScopeEntries = temporary?.fetchScopeEntries;
   const sortTemporaryEntries = useCallback((entries, scope) => {
     if (!Array.isArray(entries)) return [];
-    const list = [...entries];
     const getStatus = (entry) => String(entry?.status || '').trim().toLowerCase();
-    const getTime = (entry, status) => {
-      if (!entry) return 0;
-      const reviewedAt = entry.reviewed_at || entry.reviewedAt || entry.updated_at || entry.updatedAt;
-      const createdAt = entry.created_at || entry.createdAt;
-      if (scope === 'created' && status && status !== 'pending') {
-        return new Date(reviewedAt || createdAt || 0).getTime();
-      }
-      return new Date(reviewedAt || createdAt || 0).getTime();
-    };
-
-    list.sort((a, b) => {
+    const compare = (a, b) => {
       const statusA = getStatus(a);
       const statusB = getStatus(b);
       const processedA = scope === 'created' && statusA && statusA !== 'pending';
@@ -385,10 +403,21 @@ export default function NotificationsPage() {
       if (processedA !== processedB) {
         return processedA ? -1 : 1;
       }
-      const diff = getTime(b, statusB) - getTime(a, statusA);
+      const diff = getTemporaryEntryTimestamp(b) - getTemporaryEntryTimestamp(a);
       if (diff !== 0) return diff;
-      return String(b?.id || '').localeCompare(String(a?.id || ''));
-    });
+      return getTemporaryEntryKey(b).localeCompare(getTemporaryEntryKey(a));
+    };
+
+    let alreadySorted = true;
+    for (let i = 1; i < entries.length; i += 1) {
+      if (compare(entries[i - 1], entries[i]) > 0) {
+        alreadySorted = false;
+        break;
+      }
+    }
+    if (alreadySorted) return entries;
+    const list = [...entries];
+    list.sort(compare);
     return list;
   }, []);
 
@@ -426,6 +455,7 @@ export default function NotificationsPage() {
           limit: TEMPORARY_PAGE_SIZE,
           status: scope === 'review' ? 'pending' : 'any',
           offset: targetOffset,
+          sort: 'latest',
         });
         const { entries, hasMore, nextOffset } = normalizeTemporaryFetchResult(
           result,
@@ -436,6 +466,9 @@ export default function NotificationsPage() {
           const combined = append
             ? dedupeTemporaryEntries([...(prev[scope] || []), ...entries])
             : dedupeTemporaryEntries(entries);
+          const sorted = sortTemporaryEntries(combined, scope);
+          const entriesChanged = !areTemporaryListsEqual(prev[scope], sorted);
+          const nextEntries = entriesChanged ? sorted : prev[scope];
           const nextPagination = {
             ...prev.pagination,
             [scope]: {
@@ -446,9 +479,16 @@ export default function NotificationsPage() {
             },
           };
           const anyLoading = Object.values(nextPagination || {}).some((meta) => meta?.loading);
+          const paginationChanged =
+            pagination.loading !== nextPagination[scope].loading ||
+            pagination.hasMore !== nextPagination[scope].hasMore ||
+            pagination.nextOffset !== nextPagination[scope].nextOffset;
+          const shouldUpdate =
+            entriesChanged || paginationChanged || prev.loading !== anyLoading || Boolean(prev.error);
+          if (!shouldUpdate) return prev;
           return {
             ...prev,
-            [scope]: sortTemporaryEntries(combined, scope),
+            [scope]: nextEntries,
             pagination: nextPagination,
             loading: anyLoading,
             error: '',
@@ -967,10 +1007,17 @@ export default function NotificationsPage() {
     [t],
   );
 
-  const groupTemporaryEntries = useCallback(
-    (entries) => {
+  const groupTemporaryEntries = useMemo(() => {
+    const cache = new WeakMap();
+    const shouldProfile = process.env.NODE_ENV !== 'production';
+    return (entries, scope = 'unknown') => {
       if (!Array.isArray(entries)) return [];
-      const map = new Map();
+      const cached = cache.get(entries);
+      if (cached) return cached;
+      const label = `groupTemporaryEntries:${scope}:${entries.length}`;
+      if (shouldProfile && typeof console?.time === 'function') console.time(label);
+      const buckets = [];
+      const bucketMap = new Map();
       entries.forEach((entry) => {
         const user = getTemporaryUser(entry);
         const type = getTemporaryTransactionType(entry);
@@ -978,32 +1025,45 @@ export default function NotificationsPage() {
         const { statusRaw, statusLabel, statusColor } = normalizeTemporaryStatus(entry);
         const statusKey = statusRaw || 'pending';
         const groupKey = `${user}|${type}|${dateInfo.key}|${statusKey}`;
-        const existing = map.get(groupKey) || {
-          user,
-          transactionType: type,
-          dateLabel: dateInfo.label,
-          dateKey: dateInfo.key,
-          statusLabel,
-          statusColor,
-          statusKey,
-          entries: [],
-          latest: dateInfo.value,
-        };
-        existing.entries.push(entry);
-        existing.latest = Math.max(existing.latest, dateInfo.value);
-        map.set(groupKey, existing);
+        let bucket = bucketMap.get(groupKey);
+        if (!bucket) {
+          bucket = {
+            user,
+            transactionType: type,
+            dateLabel: dateInfo.label,
+            dateKey: dateInfo.key,
+            statusLabel,
+            statusColor,
+            statusKey,
+            entries: [],
+            latest: dateInfo.value,
+          };
+          bucketMap.set(groupKey, bucket);
+          buckets.push(bucket);
+        }
+        bucket.entries.push(entry);
+        bucket.latest = Math.max(bucket.latest, dateInfo.value);
       });
-      return Array.from(map.values()).sort((a, b) => b.latest - a.latest);
-    },
-    [getTemporaryDate, getTemporaryTransactionType, getTemporaryUser, normalizeTemporaryStatus],
+      buckets.sort((a, b) => b.latest - a.latest);
+      cache.set(entries, buckets);
+      if (shouldProfile && typeof console?.timeEnd === 'function') console.timeEnd(label);
+      return buckets;
+    };
+  }, [getTemporaryDate, getTemporaryTransactionType, getTemporaryUser, normalizeTemporaryStatus]);
+
+  const groupedTemporaryReview = useMemo(
+    () => groupTemporaryEntries(temporaryState.review, 'review'),
+    [groupTemporaryEntries, temporaryState.review],
+  );
+
+  const groupedTemporaryCreated = useMemo(
+    () => groupTemporaryEntries(temporaryState.created, 'created'),
+    [groupTemporaryEntries, temporaryState.created],
   );
 
   const groupedTemporary = useMemo(
-    () => ({
-      review: groupTemporaryEntries(temporaryState.review),
-      created: groupTemporaryEntries(temporaryState.created),
-    }),
-    [groupTemporaryEntries, temporaryState.created, temporaryState.review],
+    () => ({ review: groupedTemporaryReview, created: groupedTemporaryCreated }),
+    [groupedTemporaryCreated, groupedTemporaryReview],
   );
 
   const temporaryReviewTotal = temporaryReviewPending;

@@ -244,6 +244,7 @@ export default function useTemporaryNotificationCounts(empid) {
       limit = DEFAULT_PAGE_SIZE,
       offset = 0,
       status = 'pending',
+      sort = 'latest',
     } = options || {};
     if (!SCOPES.includes(scope))
       return { entries: [], hasMore: false, nextOffset: Math.max(Number(offset) || 0, 0) };
@@ -261,6 +262,9 @@ export default function useTemporaryNotificationCounts(empid) {
     });
     if (status && typeof status === 'string') {
       params.set('status', status);
+    }
+    if (sort) {
+      params.set('sort', sort);
     }
     const cachedFilter = readCachedTemporaryFilter();
     const hasCachedValue =
