@@ -3730,6 +3730,7 @@ export default function PosApiAdmin() {
   }, [paymentMethodsEnabled, selectedPaymentMethods]);
 
   const combinationModifierOptions = useMemo(() => {
+    const seen = new Set();
     const baseOptions = activeVariations.map((variation, index) => ({
       key: variation.key || variation.name || `variation-${index + 1}`,
       label: variation.name || variation.label || variation.key,
@@ -3740,7 +3741,12 @@ export default function PosApiAdmin() {
       label: entry.label || entry.key,
       type: 'combination',
     }));
-    return [...baseOptions, ...requestBased];
+    return [...baseOptions, ...requestBased].filter((option) => {
+      if (!option?.key) return false;
+      if (seen.has(option.key)) return false;
+      seen.add(option.key);
+      return true;
+    });
   }, [activeVariations, enabledRequestFieldVariations]);
 
   const combinationBaseOptions = useMemo(
