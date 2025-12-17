@@ -3297,6 +3297,35 @@ export default function PosApiAdmin() {
     () => new Map(enabledRequestFieldVariations.map((entry) => [entry.key, entry])),
     [enabledRequestFieldVariations],
   );
+  useEffect(() => {
+    const variationSnapshot = Array.isArray(formState.variations) ? formState.variations : [];
+    setFormState((prev) => {
+      const existingMeta = Array.isArray(prev.requestFieldVariations)
+        ? prev.requestFieldVariations
+        : [];
+      const nextMeta = variationSnapshot.map((variation, index) => {
+        const key = variation.key || variation.name || `variation-${index + 1}`;
+        const existing = existingMeta.find((entry) => entry.key === key) || {};
+        return {
+          ...existing,
+          key,
+          label: variation.name || variation.label || key,
+          enabled: variation.enabled !== false,
+          requiredFields: {
+            ...normalizeFieldRequirementMap(existing.requiredFields),
+            ...normalizeFieldRequirementMap(variation.requiredFields),
+          },
+          defaultValues: {
+            ...normalizeFieldValueMap(existing.defaultValues),
+            ...normalizeFieldValueMap(variation.defaultValues),
+          },
+        };
+      });
+
+      if (JSON.stringify(nextMeta) === JSON.stringify(existingMeta)) return prev;
+      return { ...prev, requestFieldVariations: nextMeta };
+    });
+  }, [formState.variations]);
   const variationColumns = useMemo(
     () =>
       activeVariations.map((variation, index) => ({
@@ -4158,7 +4187,7 @@ export default function PosApiAdmin() {
       const updated = current.map((entry) => {
         if (entry.key !== key) return entry;
         const defaultValues = { ...(entry.defaultValues || {}) };
-        if (value) {
+        if (value !== '' && value !== undefined && value !== null) {
           defaultValues[fieldPath] = value;
         } else {
           delete defaultValues[fieldPath];
@@ -4189,7 +4218,7 @@ export default function PosApiAdmin() {
         );
         const beforeState = JSON.stringify(examplePayload);
         const beforeDefaults = JSON.stringify(defaultValues);
-        if (value) {
+        if (value !== '' && value !== undefined && value !== null) {
           setNestedValue(examplePayload, segments, value);
           defaultValues[fieldPath] = value;
         } else {
@@ -4220,7 +4249,7 @@ export default function PosApiAdmin() {
         const defaultExists = Object.prototype.hasOwnProperty.call(defaultValues, fieldPath);
         const requiredExists = Object.prototype.hasOwnProperty.call(requiredFields, fieldPath);
 
-        if (value) {
+        if (value !== '' && value !== undefined && value !== null) {
           defaultValues[fieldPath] = value;
         } else {
           delete defaultValues[fieldPath];
@@ -6810,7 +6839,7 @@ export default function PosApiAdmin() {
     setRequestFieldMeta((prev) => {
       const current = prev[fieldPath] || { requiredByVariation: {}, defaultByVariation: {} };
       const defaultByVariation = { ...current.defaultByVariation };
-      if (value) {
+      if (value !== '' && value !== undefined && value !== null) {
         defaultByVariation[variationKey] = value;
       } else {
         delete defaultByVariation[variationKey];
@@ -6977,10 +7006,24 @@ export default function PosApiAdmin() {
     setStatus('');
     setError('');
     resetTestState();
+    setRequestBuilder(null);
+    setRequestBuilderError('');
     setDocExamples([]);
     setSelectedDocBlock('');
     setDocMetadata({});
     setDocFieldDescriptions({});
+    setImportSpecText('');
+    setImportDrafts([]);
+    setImportError('');
+    setImportStatus('');
+    setSelectedImportId('');
+    setImportTestValues({});
+    setImportRequestBody('');
+    setImportTestResult(null);
+    setImportTestRunning(false);
+    setImportTestError('');
+    setImportSelectedExampleKey('');
+    setImportExampleResponse(null);
     setImportBaseUrl('');
     setImportBaseUrlEnvVar('');
     setImportBaseUrlMode('literal');
@@ -6997,6 +7040,20 @@ export default function PosApiAdmin() {
     setRequestFieldValues({});
     setRequestFieldMeta({});
     setTokenMeta({ lastFetchedAt: null, expiresAt: null });
+    setSelectedVariationKey('');
+    setPaymentDataDrafts({});
+    setPaymentDataErrors({});
+    setTaxTypeListText(DEFAULT_TAX_TYPES.join(', '));
+    setTaxTypeListError('');
+    setAdminSelectionId('');
+    setAdminParamValues({});
+    setAdminRequestBody('');
+    setAdminResult(null);
+    setAdminError('');
+    setAdminRunning(false);
+    setAdminHistory([]);
+    setAdminUseCachedToken(true);
+    setAdminAuthEndpointId('');
     setFormState(nextFormState);
   }
 
