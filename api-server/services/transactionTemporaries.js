@@ -815,7 +815,14 @@ export async function createTemporarySubmission({
   departmentId,
   createdBy,
   tenant = {},
-}) {
+  chainId,
+}, runtimeDeps = {}) {
+  const {
+    connection: providedConnection = null,
+    connectionFactory = () => pool.getConnection(),
+    employmentSessionFetcher = getEmploymentSession,
+    notificationInserter = insertNotification,
+  } = runtimeDeps;
   if (!tableName) {
     const err = new Error('tableName required');
     err.status = 400;
@@ -845,21 +852,20 @@ export async function createTemporarySubmission({
   const normalizedDepartmentPref = departmentPrefSpecified
     ? normalizeScopePreference(rawDepartmentPref)
     : undefined;
+  const normalizedChainId = normalizeTemporaryId(chainId);
 
-  const conn = await pool.getConnection();
-  const shouldReleaseConnection = true;
+  const conn = providedConnection || (await connectionFactory());
+  const shouldReleaseConnection = !providedConnection;
   try {
     await ensureTemporaryTable(conn);
     await conn.query('BEGIN');
-    const session = await getEmploymentSession(normalizedCreator, companyId, {
+    const session = await employmentSessionFetcher(normalizedCreator, companyId, {
       ...(branchPrefSpecified ? { branchId: normalizedBranchPref } : {}),
       ...(departmentPrefSpecified
         ? { departmentId: normalizedDepartmentPref }
         : {}),
     });
-    const reviewerEmpId =
-      normalizeEmpId(session?.senior_empid) ||
-      normalizeEmpId(session?.senior_plan_empid);
+    const reviewerEmpId = normalizeEmpId(session?.senior_empid);
     const fallbackBranch = normalizeScopePreference(branchId);
     const fallbackDepartment = normalizeScopePreference(departmentId);
     const insertBranchId = branchPrefSpecified
@@ -888,11 +894,14 @@ export async function createTemporarySubmission({
         reviewerEmpId,
         insertBranchId,
         insertDepartmentId,
-        null,
+        normalizedChainId,
       ],
     );
     const temporaryId = result.insertId;
-    await conn.query(`UPDATE \`${TEMP_TABLE}\` SET chain_id = ? WHERE id = ?`, [temporaryId, temporaryId]);
+    const persistedChainId = normalizedChainId ?? temporaryId;
+    if (!normalizedChainId) {
+      await conn.query(`UPDATE \`${TEMP_TABLE}\` SET chain_id = ? WHERE id = ?`, [temporaryId, temporaryId]);
+    }
     await logUserAction(
       {
         emp_id: normalizedCreator,
@@ -919,7 +928,12 @@ export async function createTemporarySubmission({
       });
     }
     await conn.query('COMMIT');
-    return { id: temporaryId, reviewerEmpId, planSenior: reviewerEmpId, chainId: temporaryId };
+    return {
+      id: temporaryId,
+      reviewerEmpId,
+      planSenior: reviewerEmpId,
+      chainId: persistedChainId,
+    };
   } catch (err) {
     try {
       await conn.query('ROLLBACK');
@@ -1582,9 +1596,7 @@ export async function promoteTemporarySubmission(
             : {}),
         },
       );
-      forwardReviewerEmpId =
-        normalizeEmpId(reviewerSession?.senior_empid) ||
-        normalizeEmpId(reviewerSession?.senior_plan_empid);
+      forwardReviewerEmpId = normalizeEmpId(reviewerSession?.senior_empid);
     } catch (sessionErr) {
       console.error('Failed to resolve reviewer senior for temporary forward', {
         error: sessionErr,
@@ -1750,6 +1762,7 @@ export async function promoteTemporarySubmission(
           row.branch_id ?? null,
           row.department_id ?? null,
           effectiveChainId,
+          'pending',
         ],
       );
       const forwardTemporaryId = forwardResult?.insertId || null;
