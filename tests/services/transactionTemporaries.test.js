@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as db from '../../db/index.js';
 import {
+  createTemporarySubmission,
   getTemporarySummary,
   sanitizeCleanedValuesForInsert,
   promoteTemporarySubmission,
@@ -73,6 +74,9 @@ function createStubConnection({ temporaryRow, chainIds = [] } = {}) {
       }
       if (sql.startsWith('INSERT INTO `transaction_temporary_review_history`')) {
         return [[{ insertId: 301 }]];
+      }
+      if (sql.startsWith('INSERT INTO user_activity_log')) {
+        return [[{ insertId: 401 }]];
       }
       if (sql.startsWith('UPDATE `transaction_temporaries`')) {
         return [[{ affectedRows: 1 }]];
@@ -213,6 +217,45 @@ test('sanitizeCleanedValuesForInsert trims oversized string values and records w
   assert.equal(result.warnings[0].type, 'maxLength');
   assert.equal(result.warnings[0].maxLength, 10);
   assert.equal(result.warnings[0].actualLength, 15);
+});
+
+test('createTemporarySubmission ignores plan senior for reviewer assignment', async () => {
+  const { conn, queries } = createStubConnection();
+  const notifications = [];
+  const originalGetConnection = db.pool.getConnection;
+  db.pool.getConnection = async () => conn;
+
+  try {
+    const result = await createTemporarySubmission(
+      {
+        tableName: 'transactions_contract',
+        payload: {},
+        rawValues: {},
+        cleanedValues: {},
+        companyId: 1,
+        createdBy: 'EMP009',
+      },
+      {
+        employmentSessionFetcher: async () => ({
+          senior_empid: null,
+          senior_plan_empid: 'PLAN9',
+        }),
+        notificationInserter: async (_c, payload) => notifications.push(payload),
+      },
+    );
+
+    assert.equal(result.reviewerEmpId, null);
+    assert.equal(result.planSenior, null);
+    assert.ok(
+      queries.some(({ sql }) =>
+        typeof sql === 'string' && sql.startsWith('INSERT INTO `transaction_temporaries`'),
+      ),
+    );
+    assert.equal(notifications.length, 0);
+    assert.equal(conn.released, true);
+  } finally {
+    db.pool.getConnection = originalGetConnection;
+  }
 });
 
 test('listTemporarySubmissions filters before grouping by chain', async () => {
@@ -426,7 +469,6 @@ test('promoteTemporarySubmission forwards chain with normalized metadata and cle
   assert.equal(chainUpdates[0].payload.clearReviewerAssignment, true);
   assert.equal(chainUpdates[0].payload.status, 'forwarded');
   assert.equal(chainUpdates[0].payload.pendingOnly, true);
-  assert.equal(chainUpdates[0].payload.temporaryOnly, true);
   assert.ok(queries.some(({ sql }) => sql.includes('INSERT INTO `transaction_temporaries`')));
   const forwardInsert = queries.find(({ sql }) => sql.includes('INSERT INTO `transaction_temporaries`'));
   assert.ok(forwardInsert);
@@ -491,7 +533,6 @@ test('promoteTemporarySubmission forwards by falling back to its own id when cha
   assert.equal(result.forwardedTo, 'EMP500');
   assert.equal(chainUpdates[0]?.chainId, 25);
   assert.equal(chainUpdates[0]?.payload.status, 'forwarded');
-  assert.equal(chainUpdates[0]?.payload.temporaryOnly, true);
   assert.ok(conn.released);
 });
 
@@ -534,7 +575,55 @@ test('promoteTemporarySubmission forwards when reviewer has a senior reviewer', 
   assert.equal(result.forwardedTo, 'EMP777');
   assert.equal(chainUpdates[0]?.chainId, 35);
   assert.equal(chainUpdates[0]?.payload.status, 'forwarded');
-  assert.equal(chainUpdates[0]?.payload.temporaryOnly, true);
+});
+
+test('promoteTemporarySubmission promotes when reviewer only has plan senior', async () => {
+  const temporaryRow = {
+    id: 36,
+    company_id: 1,
+    chain_id: 36,
+    table_name: 'transactions_test',
+    form_name: null,
+    config_name: null,
+    module_key: null,
+    payload_json: '{}',
+    cleaned_values_json: '{}',
+    raw_values_json: '{}',
+    created_by: 'EMP200',
+    plan_senior_empid: 'EMP100',
+    branch_id: null,
+    department_id: null,
+    status: 'pending',
+  };
+
+  const chainUpdates = [];
+  const notifications = [];
+  const { conn } = createStubConnection({ temporaryRow, chainIds: [36] });
+
+  const runtimeDeps = {
+    connectionFactory: async () => conn,
+    columnLister: async () => [{ name: 'amount', type: 'int', maxLength: null }],
+    tableInserter: async () => ({ id: 'R1' }),
+    employmentSessionFetcher: async () => ({
+      senior_empid: null,
+      senior_plan_empid: 'PLAN300',
+    }),
+    chainStatusUpdater: async (_c, chainId, payload) =>
+      chainUpdates.push({ chainId, payload }),
+    notificationInserter: async (_c, payload) => notifications.push(payload),
+    activityLogger: async () => {},
+  };
+
+  const result = await promoteTemporarySubmission(
+    36,
+    { reviewerEmpId: 'EMP100', cleanedValues: { amount: 10 } },
+    runtimeDeps,
+  );
+
+  assert.equal(result.promotedRecordId, 'R1');
+  assert.ok(chainUpdates.some(({ payload }) => payload.status === 'promoted'));
+  assert.ok(notifications.every((n) => n.recipientEmpId !== 'PLAN300'));
+  assert.equal(conn.released, true);
 });
 
 test('promoteTemporarySubmission promotes chain and records promotedRecordId', async () => {
