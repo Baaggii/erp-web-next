@@ -666,7 +666,6 @@ const TableManager = forwardRef(function TableManager({
     accessEvaluation.canPost === undefined
       ? true
       : Boolean(accessEvaluation.canPost);
-  const effectiveCanPostTransactions = canPostTransactions && !isEditingTemporaryDraft;
 
   const availableTemporaryScopes = useMemo(() => {
     const scopes = [];
@@ -775,15 +774,6 @@ const TableManager = forwardRef(function TableManager({
   ]);
 
   const validCols = useMemo(() => new Set(columnMeta.map((c) => c.name)), [columnMeta]);
-  const validColsLower = useMemo(
-    () =>
-      new Set(
-        columnMeta
-          .map((c) => (c && c.name ? String(c.name).toLowerCase() : ''))
-          .filter(Boolean),
-      ),
-    [columnMeta],
-  );
   const columnCaseMap = useMemo(
     () => buildColumnCaseMap(columnMeta),
     [columnMeta],
@@ -3189,7 +3179,7 @@ const TableManager = forwardRef(function TableManager({
 
   async function handleSubmit(values, options = {}) {
     const { issueEbarimt = false } = options || {};
-    if (requestType !== 'temporary-promote' && !effectiveCanPostTransactions) {
+    if (requestType !== 'temporary-promote' && !canPostTransactions) {
       addToast(
         t(
           'temporary_post_not_allowed',
@@ -3249,7 +3239,6 @@ const TableManager = forwardRef(function TableManager({
     const skipFields = new Set([...autoCols, ...generatedCols, 'id', 'rows']);
     Object.entries(merged).forEach(([k, v]) => {
       const lower = k.toLowerCase();
-      if (!validColsLower.has(lower)) return;
       if (skipFields.has(k) || skipFields.has(lower) || k.startsWith('_')) return;
       if (auditFieldSet.has(lower) && !(editSet?.has(lower))) return;
       if (v !== '') {
@@ -3557,7 +3546,6 @@ const TableManager = forwardRef(function TableManager({
     const skipFields = new Set([...autoCols, ...generatedCols, 'id', 'rows']);
     Object.entries(merged).forEach(([k, v]) => {
       const lower = k.toLowerCase();
-      if (!validColsLower.has(lower)) return;
       if (skipFields.has(k) || skipFields.has(lower) || k.startsWith('_')) return;
       if (auditFieldSet.has(lower) && !(editSet?.has(lower))) return;
       if (v !== '') {
@@ -3606,7 +3594,6 @@ const TableManager = forwardRef(function TableManager({
       if (row) {
         Object.entries(row).forEach(([k, v]) => {
           const lower = k.toLowerCase();
-          if (!validColsLower.has(lower)) return;
           if (skipFields.has(k) || skipFields.has(lower) || k.startsWith('_')) return;
           if (auditFieldSet.has(lower) && !(editSet?.has(lower))) return;
           if (v !== '') {
@@ -4543,7 +4530,7 @@ const TableManager = forwardRef(function TableManager({
         setTemporaryPromotionQueue([]);
         setEditing(normalizedValues);
         setGridRows(sanitizedRows);
-        setIsAdding(true);
+        setIsAdding(false);
         setRequestType(null);
         setShowTemporaryModal(false);
         setShowForm(true);
@@ -6600,7 +6587,7 @@ const TableManager = forwardRef(function TableManager({
         scope="forms"
         allowTemporarySave={canSaveTemporaryDraft}
         isAdding={isAdding}
-        canPost={effectiveCanPostTransactions}
+        canPost={canPostTransactions}
         forceEditable={guardOverridesActive}
         posApiEnabled={Boolean(formConfig?.posApiEnabled)}
         posApiTypeField={formConfig?.posApiTypeField || ''}
