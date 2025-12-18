@@ -774,15 +774,6 @@ const TableManager = forwardRef(function TableManager({
   ]);
 
   const validCols = useMemo(() => new Set(columnMeta.map((c) => c.name)), [columnMeta]);
-  const validColsLower = useMemo(
-    () =>
-      new Set(
-        columnMeta
-          .map((c) => (c && c.name ? String(c.name).toLowerCase() : ''))
-          .filter(Boolean),
-      ),
-    [columnMeta],
-  );
   const columnCaseMap = useMemo(
     () => buildColumnCaseMap(columnMeta),
     [columnMeta],
@@ -3188,15 +3179,6 @@ const TableManager = forwardRef(function TableManager({
 
   async function handleSubmit(values, options = {}) {
     const { issueEbarimt = false } = options || {};
-    const meta = await ensureColumnMeta();
-    const effectiveMeta = Array.isArray(meta) && meta.length > 0 ? meta : columnMeta;
-    const effectiveColumnNames = effectiveMeta.map((c) => c.name).filter(Boolean);
-    const columnNameSet =
-      effectiveColumnNames.length > 0 ? new Set(effectiveColumnNames) : new Set(allColumns);
-    const columnLowerSet = new Set(
-      effectiveColumnNames.map((name) => name.toLowerCase()).filter(Boolean),
-    );
-
     if (requestType !== 'temporary-promote' && !canPostTransactions) {
       addToast(
         t(
@@ -3207,7 +3189,7 @@ const TableManager = forwardRef(function TableManager({
       );
       return false;
     }
-    const columns = columnNameSet;
+    const columns = new Set(allColumns);
     const mergedSource = { ...(editing || {}) };
     Object.entries(values).forEach(([k, v]) => {
       mergedSource[k] = v;
@@ -3257,7 +3239,6 @@ const TableManager = forwardRef(function TableManager({
     const skipFields = new Set([...autoCols, ...generatedCols, 'id', 'rows']);
     Object.entries(merged).forEach(([k, v]) => {
       const lower = k.toLowerCase();
-      if (!columnLowerSet.has(lower)) return;
       if (skipFields.has(k) || skipFields.has(lower) || k.startsWith('_')) return;
       if (auditFieldSet.has(lower) && !(editSet?.has(lower))) return;
       if (v !== '') {
@@ -3545,7 +3526,7 @@ const TableManager = forwardRef(function TableManager({
       }
     });
     if (isAdding && autoFillSession) {
-      const columns = columnNameSet.size > 0 ? columnNameSet : new Set(allColumns);
+      const columns = new Set(allColumns);
       userIdFields.forEach((f) => {
         if (columns.has(f)) mergedSource[f] = user?.empid;
       });
@@ -3565,7 +3546,6 @@ const TableManager = forwardRef(function TableManager({
     const skipFields = new Set([...autoCols, ...generatedCols, 'id', 'rows']);
     Object.entries(merged).forEach(([k, v]) => {
       const lower = k.toLowerCase();
-      if (!columnLowerSet.has(lower)) return;
       if (skipFields.has(k) || skipFields.has(lower) || k.startsWith('_')) return;
       if (auditFieldSet.has(lower) && !(editSet?.has(lower))) return;
       if (v !== '') {
@@ -3614,7 +3594,6 @@ const TableManager = forwardRef(function TableManager({
       if (row) {
         Object.entries(row).forEach(([k, v]) => {
           const lower = k.toLowerCase();
-          if (!columnLowerSet.has(lower)) return;
           if (skipFields.has(k) || skipFields.has(lower) || k.startsWith('_')) return;
           if (auditFieldSet.has(lower) && !(editSet?.has(lower))) return;
           if (v !== '') {
@@ -4551,7 +4530,7 @@ const TableManager = forwardRef(function TableManager({
         setTemporaryPromotionQueue([]);
         setEditing(normalizedValues);
         setGridRows(sanitizedRows);
-        setIsAdding(true);
+        setIsAdding(false);
         setRequestType(null);
         setShowTemporaryModal(false);
         setShowForm(true);
@@ -6608,7 +6587,7 @@ const TableManager = forwardRef(function TableManager({
         scope="forms"
         allowTemporarySave={canSaveTemporaryDraft}
         isAdding={isAdding}
-        canPost={effectiveCanPostTransactions}
+        canPost={canPostTransactions}
         forceEditable={guardOverridesActive}
         posApiEnabled={Boolean(formConfig?.posApiEnabled)}
         posApiTypeField={formConfig?.posApiTypeField || ''}
