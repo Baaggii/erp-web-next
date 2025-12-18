@@ -774,6 +774,15 @@ const TableManager = forwardRef(function TableManager({
   ]);
 
   const validCols = useMemo(() => new Set(columnMeta.map((c) => c.name)), [columnMeta]);
+  const validColsLower = useMemo(
+    () =>
+      new Set(
+        columnMeta
+          .map((c) => (c && c.name ? String(c.name).toLowerCase() : ''))
+          .filter(Boolean),
+      ),
+    [columnMeta],
+  );
   const columnCaseMap = useMemo(
     () => buildColumnCaseMap(columnMeta),
     [columnMeta],
@@ -3239,6 +3248,7 @@ const TableManager = forwardRef(function TableManager({
     const skipFields = new Set([...autoCols, ...generatedCols, 'id', 'rows']);
     Object.entries(merged).forEach(([k, v]) => {
       const lower = k.toLowerCase();
+      if (!validColsLower.has(lower)) return;
       if (skipFields.has(k) || skipFields.has(lower) || k.startsWith('_')) return;
       if (auditFieldSet.has(lower) && !(editSet?.has(lower))) return;
       if (v !== '') {
@@ -3539,6 +3549,7 @@ const TableManager = forwardRef(function TableManager({
     const skipFields = new Set([...autoCols, ...generatedCols, 'id', 'rows']);
     Object.entries(merged).forEach(([k, v]) => {
       const lower = k.toLowerCase();
+      if (!validColsLower.has(lower)) return;
       if (skipFields.has(k) || skipFields.has(lower) || k.startsWith('_')) return;
       if (auditFieldSet.has(lower) && !(editSet?.has(lower))) return;
       if (v !== '') {
@@ -3582,6 +3593,7 @@ const TableManager = forwardRef(function TableManager({
       if (row) {
         Object.entries(row).forEach(([k, v]) => {
           const lower = k.toLowerCase();
+          if (!validColsLower.has(lower)) return;
           if (skipFields.has(k) || skipFields.has(lower) || k.startsWith('_')) return;
           if (auditFieldSet.has(lower) && !(editSet?.has(lower))) return;
           if (v !== '') {
@@ -4518,7 +4530,7 @@ const TableManager = forwardRef(function TableManager({
         setTemporaryPromotionQueue([]);
         setEditing(normalizedValues);
         setGridRows(sanitizedRows);
-        setIsAdding(false);
+        setIsAdding(true);
         setRequestType(null);
         setShowTemporaryModal(false);
         setShowForm(true);
