@@ -127,6 +127,7 @@ router.post('/', requireAuth, async (req, res, next) => {
       payload,
       rawValues,
       cleanedValues,
+      chainId,
       tenant = {},
     } = req.body || {};
     const result = await createTemporarySubmission({
@@ -137,6 +138,7 @@ router.post('/', requireAuth, async (req, res, next) => {
       payload,
       rawValues,
       cleanedValues,
+      chainId,
       companyId: tenant.company_id ?? req.user.companyId,
       branchId: tenant.branch_id ?? null,
       departmentId: tenant.department_id ?? null,
