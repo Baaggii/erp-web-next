@@ -851,6 +851,7 @@ export async function createTemporarySubmission({
   const normalizedDepartmentPref = departmentPrefSpecified
     ? normalizeScopePreference(rawDepartmentPref)
     : undefined;
+  const normalizedChainId = normalizeTemporaryId(chainId);
 
   const conn = providedConnection || (await connectionFactory());
   const shouldReleaseConnection = !providedConnection;
@@ -892,11 +893,14 @@ export async function createTemporarySubmission({
         reviewerEmpId,
         insertBranchId,
         insertDepartmentId,
-        null,
+        normalizedChainId,
       ],
     );
     const temporaryId = result.insertId;
-    await conn.query(`UPDATE \`${TEMP_TABLE}\` SET chain_id = ? WHERE id = ?`, [temporaryId, temporaryId]);
+    const persistedChainId = normalizedChainId ?? temporaryId;
+    if (!normalizedChainId) {
+      await conn.query(`UPDATE \`${TEMP_TABLE}\` SET chain_id = ? WHERE id = ?`, [temporaryId, temporaryId]);
+    }
     await logUserAction(
       {
         emp_id: normalizedCreator,
@@ -923,7 +927,12 @@ export async function createTemporarySubmission({
       });
     }
     await conn.query('COMMIT');
-    return { id: temporaryId, reviewerEmpId, planSenior: reviewerEmpId, chainId: temporaryId };
+    return {
+      id: temporaryId,
+      reviewerEmpId,
+      planSenior: reviewerEmpId,
+      chainId: persistedChainId,
+    };
   } catch (err) {
     try {
       await conn.query('ROLLBACK');
