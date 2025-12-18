@@ -2,11 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as db from '../../db/index.js';
 import {
-  expandForwardMeta,
-  buildChainIdsForUpdate,
   getTemporarySummary,
   sanitizeCleanedValuesForInsert,
-  resolveChainIdsForUpdate,
   promoteTemporarySubmission,
   getTemporaryChainHistory,
   listTemporarySubmissions,
@@ -47,6 +44,9 @@ function createStubConnection({ temporaryRow, chainIds = [] } = {}) {
       if (sql.includes('SET chain_id = id WHERE chain_id IS NULL')) {
         return [[], []];
       }
+      if (sql.startsWith('UPDATE `transaction_temporaries` SET chain_id = id WHERE id = ?')) {
+        return [[], []];
+      }
       if (sql === 'BEGIN' || sql === 'COMMIT' || sql === 'ROLLBACK') {
         return [[], []];
       }
@@ -64,6 +64,9 @@ function createStubConnection({ temporaryRow, chainIds = [] } = {}) {
           .filter((id) => params.includes(id))
           .map((id) => ({ id }));
         return [rows];
+      }
+      if (sql.startsWith('SELECT DISTINCT created_by FROM `transaction_temporaries` WHERE chain_id = ?')) {
+        return [[{ created_by: temporaryRow?.created_by || null }]];
       }
       if (sql.startsWith('INSERT INTO `transaction_temporaries`')) {
         return [[{ insertId: 202 }]];
@@ -210,18 +213,6 @@ test('sanitizeCleanedValuesForInsert trims oversized string values and records w
   assert.equal(result.warnings[0].type, 'maxLength');
   assert.equal(result.warnings[0].maxLength, 10);
   assert.equal(result.warnings[0].actualLength, 15);
-});
-
-test('buildChainIdsForUpdate includes root and parent temporaries when forwarding', () => {
-  const forwardMeta = {
-    chainIds: ['10'],
-    rootTemporaryId: '1',
-    parentTemporaryId: '2',
-  };
-
-  const chainIds = buildChainIdsForUpdate(forwardMeta, 3);
-
-  assert.deepEqual(chainIds.sort((a, b) => a - b), [1, 2, 3, 10]);
 });
 
 test('listTemporarySubmissions filters before grouping by chain', async () => {
@@ -391,47 +382,6 @@ test('listTemporarySubmissions filters before grouping by chain', async () => {
   }
 });
 
-test('expandForwardMeta preserves existing chain metadata while normalizing current links', () => {
-  const forwardMeta = {
-    chainIds: ['10'],
-    rootTemporaryId: '1',
-    parentTemporaryId: '2',
-    originCreator: null,
-  };
-
-  const updated = expandForwardMeta(forwardMeta, {
-    currentId: 3,
-    createdBy: 'emp123',
-  });
-
-  assert.equal(updated.rootTemporaryId, 1);
-  assert.equal(updated.parentTemporaryId, 3);
-  assert.equal(updated.originCreator, 'EMP123');
-  assert.deepEqual(updated.chainIds.sort((a, b) => a - b), [1, 2, 3, 10]);
-});
-
-test('resolveChainIdsForUpdate filters missing temporaries and locks rows', async () => {
-  const seen = [];
-  const conn = {
-    async query(sql, params = []) {
-      seen.push(sql);
-      if (sql.includes('SELECT id FROM')) {
-        return [[{ id: 1 }, { id: 3 }]];
-      }
-      return [[], []];
-    },
-  };
-
-  const chain = await resolveChainIdsForUpdate(
-    conn,
-    { chainIds: [1, 2, 3], parentTemporaryId: 1 },
-    3,
-  );
-
-  assert.deepEqual(chain, [1, 3]);
-  assert.ok(seen.some((sql) => sql.includes('FOR UPDATE')));
-});
-
 test('promoteTemporarySubmission forwards chain with normalized metadata and clears reviewers', async () => {
   const temporaryRow = {
     id: 3,
@@ -459,7 +409,7 @@ test('promoteTemporarySubmission forwards chain with normalized metadata and cle
 
   const result = await promoteTemporarySubmission(
     3,
-    { reviewerEmpId: 'EMP100', cleanedValues: { amount: 10 }, promoteAsTemporary: true },
+    { reviewerEmpId: 'EMP100', cleanedValues: { amount: 10 } },
     {
       connectionFactory: async () => conn,
       columnLister: async () => [{ name: 'amount', type: 'int', maxLength: null }],
@@ -474,14 +424,30 @@ test('promoteTemporarySubmission forwards chain with normalized metadata and cle
   assert.ok(chainUpdates.length > 0);
   assert.equal(chainUpdates[0].chainId, 1);
   assert.equal(chainUpdates[0].payload.clearReviewerAssignment, true);
-  assert.equal(chainUpdates[0].payload.status, 'promoted');
+  assert.equal(chainUpdates[0].payload.status, 'forwarded');
+  assert.equal(chainUpdates[0].payload.pendingOnly, true);
+  assert.equal(chainUpdates[0].payload.temporaryOnly, true);
   assert.ok(queries.some(({ sql }) => sql.includes('INSERT INTO `transaction_temporaries`')));
+  const forwardInsert = queries.find(({ sql }) => sql.includes('INSERT INTO `transaction_temporaries`'));
+  assert.ok(forwardInsert);
+  const forwardParams = forwardInsert.params;
+  assert.equal(forwardParams[8], 'EMP100'); // created_by
+  assert.equal(forwardParams[9], 'EMP300'); // plan_senior_empid
+  assert.equal(forwardParams[12], 1); // chain_id
+  assert.equal(forwardParams[13], 'pending');
   const historyInsert = queries.find(({ sql }) =>
     sql.includes('INSERT INTO `transaction_temporary_review_history`'),
   );
   assert.ok(historyInsert);
   assert.equal(historyInsert.params[2], 'forwarded');
   assert.equal(historyInsert.params[4], 'EMP300');
+  assert.ok(
+    notifications.some(
+      (payload) =>
+        payload.recipientEmpId === 'EMP300' &&
+        payload.message.includes('Temporary submission pending review'),
+    ),
+  );
   assert.ok(conn.released);
 });
 
@@ -519,21 +485,17 @@ test('promoteTemporarySubmission forwards by falling back to its own id when cha
 
   const result = await promoteTemporarySubmission(
     25,
-    { reviewerEmpId: 'EMP100', cleanedValues: { amount: 10 }, promoteAsTemporary: true },
+    { reviewerEmpId: 'EMP100', cleanedValues: { amount: 10 } },
     runtimeDeps,
   );
   assert.equal(result.forwardedTo, 'EMP500');
   assert.equal(chainUpdates[0]?.chainId, 25);
-  assert.ok(
-    queries.some(
-      ({ sql, params }) =>
-        sql.includes('UPDATE `transaction_temporaries` SET chain_id = ?') && params.includes(25),
-    ),
-  );
+  assert.equal(chainUpdates[0]?.payload.status, 'forwarded');
+  assert.equal(chainUpdates[0]?.payload.temporaryOnly, true);
   assert.ok(conn.released);
 });
 
-test('promoteTemporarySubmission infers forwarding without explicit promoteAsTemporary flag', async () => {
+test('promoteTemporarySubmission forwards when reviewer has a senior reviewer', async () => {
   const temporaryRow = {
     id: 35,
     company_id: 1,
@@ -571,6 +533,8 @@ test('promoteTemporarySubmission infers forwarding without explicit promoteAsTem
 
   assert.equal(result.forwardedTo, 'EMP777');
   assert.equal(chainUpdates[0]?.chainId, 35);
+  assert.equal(chainUpdates[0]?.payload.status, 'forwarded');
+  assert.equal(chainUpdates[0]?.payload.temporaryOnly, true);
 });
 
 test('promoteTemporarySubmission promotes chain and records promotedRecordId', async () => {
@@ -660,6 +624,9 @@ test('promoteTemporarySubmission prevents concurrent promotions and respects row
       }
       if (sql.includes('WHERE chain_id = ?')) {
         return [[]];
+      }
+      if (sql.startsWith('SELECT DISTINCT created_by FROM `transaction_temporaries` WHERE chain_id = ?')) {
+        return [[{ created_by: temporaryRow.created_by }]];
       }
       if (sql.startsWith('SET @skip_triggers')) return [[], []];
       if (sql.startsWith('UPDATE `transaction_temporaries`')) {
