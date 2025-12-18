@@ -815,7 +815,6 @@ export async function createTemporarySubmission({
   departmentId,
   createdBy,
   tenant = {},
-  chainId,
 }, runtimeDeps = {}) {
   const {
     connection: providedConnection = null,
