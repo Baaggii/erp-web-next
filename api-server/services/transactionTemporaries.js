@@ -1750,7 +1750,6 @@ export async function promoteTemporarySubmission(
           row.branch_id ?? null,
           row.department_id ?? null,
           effectiveChainId,
-          'pending',
         ],
       );
       const forwardTemporaryId = forwardResult?.insertId || null;

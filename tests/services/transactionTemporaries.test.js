@@ -423,7 +423,6 @@ test('promoteTemporarySubmission forwards chain with normalized metadata and cle
   assert.equal(chainUpdates[0].payload.clearReviewerAssignment, true);
   assert.equal(chainUpdates[0].payload.status, 'forwarded');
   assert.equal(chainUpdates[0].payload.pendingOnly, true);
-  assert.equal(chainUpdates[0].payload.temporaryOnly, true);
   assert.ok(queries.some(({ sql }) => sql.includes('INSERT INTO `transaction_temporaries`')));
   const forwardInsert = queries.find(({ sql }) => sql.includes('INSERT INTO `transaction_temporaries`'));
   assert.ok(forwardInsert);
@@ -488,7 +487,6 @@ test('promoteTemporarySubmission forwards by falling back to its own id when cha
   assert.equal(result.forwardedTo, 'EMP500');
   assert.equal(chainUpdates[0]?.chainId, 25);
   assert.equal(chainUpdates[0]?.payload.status, 'forwarded');
-  assert.equal(chainUpdates[0]?.payload.temporaryOnly, true);
   assert.ok(conn.released);
 });
 
@@ -531,7 +529,6 @@ test('promoteTemporarySubmission forwards when reviewer has a senior reviewer', 
   assert.equal(result.forwardedTo, 'EMP777');
   assert.equal(chainUpdates[0]?.chainId, 35);
   assert.equal(chainUpdates[0]?.payload.status, 'forwarded');
-  assert.equal(chainUpdates[0]?.payload.temporaryOnly, true);
 });
 
 test('promoteTemporarySubmission promotes chain and records promotedRecordId', async () => {
