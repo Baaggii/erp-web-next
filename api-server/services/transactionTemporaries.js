@@ -815,7 +815,13 @@ export async function createTemporarySubmission({
   departmentId,
   createdBy,
   tenant = {},
-}) {
+}, runtimeDeps = {}) {
+  const {
+    connection: providedConnection = null,
+    connectionFactory = () => pool.getConnection(),
+    employmentSessionFetcher = getEmploymentSession,
+    notificationInserter = insertNotification,
+  } = runtimeDeps;
   if (!tableName) {
     const err = new Error('tableName required');
     err.status = 400;
@@ -846,20 +852,18 @@ export async function createTemporarySubmission({
     ? normalizeScopePreference(rawDepartmentPref)
     : undefined;
 
-  const conn = await pool.getConnection();
-  const shouldReleaseConnection = true;
+  const conn = providedConnection || (await connectionFactory());
+  const shouldReleaseConnection = !providedConnection;
   try {
     await ensureTemporaryTable(conn);
     await conn.query('BEGIN');
-    const session = await getEmploymentSession(normalizedCreator, companyId, {
+    const session = await employmentSessionFetcher(normalizedCreator, companyId, {
       ...(branchPrefSpecified ? { branchId: normalizedBranchPref } : {}),
       ...(departmentPrefSpecified
         ? { departmentId: normalizedDepartmentPref }
         : {}),
     });
-    const reviewerEmpId =
-      normalizeEmpId(session?.senior_empid) ||
-      normalizeEmpId(session?.senior_plan_empid);
+    const reviewerEmpId = normalizeEmpId(session?.senior_empid);
     const fallbackBranch = normalizeScopePreference(branchId);
     const fallbackDepartment = normalizeScopePreference(departmentId);
     const insertBranchId = branchPrefSpecified
@@ -1582,9 +1586,7 @@ export async function promoteTemporarySubmission(
             : {}),
         },
       );
-      forwardReviewerEmpId =
-        normalizeEmpId(reviewerSession?.senior_empid) ||
-        normalizeEmpId(reviewerSession?.senior_plan_empid);
+      forwardReviewerEmpId = normalizeEmpId(reviewerSession?.senior_empid);
     } catch (sessionErr) {
       console.error('Failed to resolve reviewer senior for temporary forward', {
         error: sessionErr,
@@ -1750,6 +1752,7 @@ export async function promoteTemporarySubmission(
           row.branch_id ?? null,
           row.department_id ?? null,
           effectiveChainId,
+          'pending',
         ],
       );
       const forwardTemporaryId = forwardResult?.insertId || null;
