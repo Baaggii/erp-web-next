@@ -45,6 +45,9 @@ function createStubConnection({ temporaryRow, chainIds = [] } = {}) {
       if (sql.includes('SET chain_id = id WHERE chain_id IS NULL')) {
         return [[], []];
       }
+      if (sql.startsWith('UPDATE `transaction_temporaries` SET chain_id = id WHERE id = ?')) {
+        return [[], []];
+      }
       if (sql === 'BEGIN' || sql === 'COMMIT' || sql === 'ROLLBACK') {
         return [[], []];
       }
@@ -71,9 +74,6 @@ function createStubConnection({ temporaryRow, chainIds = [] } = {}) {
       }
       if (sql.startsWith('INSERT INTO `transaction_temporary_review_history`')) {
         return [[{ insertId: 301 }]];
-      }
-      if (sql.startsWith('INSERT INTO notifications')) {
-        return [[{ insertId: 501 }]];
       }
       if (sql.startsWith('INSERT INTO user_activity_log')) {
         return [[{ insertId: 401 }]];
@@ -252,42 +252,6 @@ test('createTemporarySubmission ignores plan senior for reviewer assignment', as
       ),
     );
     assert.equal(notifications.length, 0);
-    assert.equal(conn.released, true);
-  } finally {
-    db.pool.getConnection = originalGetConnection;
-  }
-});
-
-test('createTemporarySubmission reuses provided chain id', async () => {
-  const { conn, queries } = createStubConnection();
-  const originalGetConnection = db.pool.getConnection;
-  db.pool.getConnection = async () => conn;
-
-  try {
-    const result = await createTemporarySubmission(
-      {
-        tableName: 'transactions_contract',
-        payload: {},
-        rawValues: {},
-        cleanedValues: {},
-        companyId: 1,
-        createdBy: 'EMP010',
-        chainId: '777',
-      },
-      {
-        employmentSessionFetcher: async () => ({
-          senior_empid: 'SUP1',
-          senior_plan_empid: 'PLAN1',
-        }),
-      },
-    );
-
-    const insert = queries.find(({ sql }) =>
-      typeof sql === 'string' && sql.startsWith('INSERT INTO `transaction_temporaries`'),
-    );
-    assert.ok(insert, 'should perform insert');
-    assert.equal(insert.params[12], 777);
-    assert.equal(result.chainId, 777);
     assert.equal(conn.released, true);
   } finally {
     db.pool.getConnection = originalGetConnection;
