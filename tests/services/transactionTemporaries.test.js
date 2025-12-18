@@ -45,6 +45,9 @@ function createStubConnection({ temporaryRow, chainIds = [] } = {}) {
       if (sql.includes('SET chain_id = id WHERE chain_id IS NULL')) {
         return [[], []];
       }
+      if (sql.startsWith('UPDATE `transaction_temporaries` SET chain_id = id WHERE id = ?')) {
+        return [[], []];
+      }
       if (sql === 'BEGIN' || sql === 'COMMIT' || sql === 'ROLLBACK') {
         return [[], []];
       }
