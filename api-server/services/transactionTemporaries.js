@@ -311,6 +311,7 @@ async function updateTemporaryChainStatus(
     clearReviewerAssignment = false,
     pendingOnly = false,
     temporaryId = null,
+    temporaryOnly = false,
   },
 ) {
   const normalizedChain = normalizeTemporaryId(chainId);
@@ -336,14 +337,15 @@ async function updateTemporaryChainStatus(
   if (clearReviewerAssignment || (status && status !== 'pending')) {
     columns.push('plan_senior_empid = NULL');
   }
-  const whereClause = targetChainId
+  const shouldTargetTemporaryOnly = temporaryOnly || (!targetChainId && normalizedTemporaryId);
+  const whereClause = shouldTargetTemporaryOnly
     ? pendingOnly
-      ? 'chain_id = ? AND status = "pending"'
-      : 'chain_id = ?'
+      ? 'id = ? AND status = "pending"'
+      : 'id = ?'
     : pendingOnly
-    ? 'id = ? AND status = "pending"'
-    : 'id = ?';
-  params.push(targetChainId || normalizedTemporaryId);
+    ? 'chain_id = ? AND status = "pending"'
+    : 'chain_id = ?';
+  params.push(shouldTargetTemporaryOnly ? normalizedTemporaryId : targetChainId);
   await conn.query(
     `UPDATE \`${TEMP_TABLE}\` SET ${columns.join(', ')} WHERE ${whereClause}`,
     params,
@@ -1718,6 +1720,7 @@ export async function promoteTemporarySubmission(
         promotedRecordId: null,
         pendingOnly: true,
         temporaryId: id,
+        temporaryOnly: true,
       });
       const mergedPayload = isPlainObject(payloadJson) ? { ...payloadJson } : {};
       const sanitizedPayloadValues = isPlainObject(mergedPayload.cleanedValues)
@@ -1731,8 +1734,8 @@ export async function promoteTemporarySubmission(
         `INSERT INTO \`${TEMP_TABLE}\`
          (company_id, table_name, form_name, config_name, module_key, payload_json,
         raw_values_json, cleaned_values_json, created_by, plan_senior_empid,
-         branch_id, department_id, chain_id)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         branch_id, department_id, chain_id, status)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           row.company_id ?? null,
           row.table_name,

@@ -424,6 +424,13 @@ test('promoteTemporarySubmission forwards chain with normalized metadata and cle
   assert.equal(chainUpdates[0].payload.status, 'forwarded');
   assert.equal(chainUpdates[0].payload.pendingOnly, true);
   assert.ok(queries.some(({ sql }) => sql.includes('INSERT INTO `transaction_temporaries`')));
+  const forwardInsert = queries.find(({ sql }) => sql.includes('INSERT INTO `transaction_temporaries`'));
+  assert.ok(forwardInsert);
+  const forwardParams = forwardInsert.params;
+  assert.equal(forwardParams[8], 'EMP100'); // created_by
+  assert.equal(forwardParams[9], 'EMP300'); // plan_senior_empid
+  assert.equal(forwardParams[12], 1); // chain_id
+  assert.equal(forwardParams[13], 'pending');
   const historyInsert = queries.find(({ sql }) =>
     sql.includes('INSERT INTO `transaction_temporary_review_history`'),
   );
