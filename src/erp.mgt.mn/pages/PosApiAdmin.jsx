@@ -2994,10 +2994,6 @@ export default function PosApiAdmin() {
     setAdminAuthEndpointId((prev) => prev || activeAdminEndpoint.authEndpointId || '');
   }, [activeAdminEndpoint, adminResult]);
 
-  useEffect(() => {
-    formStateRef.current = formState;
-  }, [formState]);
-
   const infoSyncUsageEndpoints = useMemo(() => {
     const normalized = endpoints.map(withEndpointMetadata);
     const selectedEndpointIds = new Set(infoSyncEndpointIds.filter(Boolean));
@@ -3128,12 +3124,10 @@ export default function PosApiAdmin() {
     if (loadError) return loadError;
     if (error) return error;
     if (!infoSyncHasGetEndpoint && infoSyncUsageEndpoints.length > 0 && !infoSyncMethodRelaxed) {
-      return 'No GET endpoints available for the selected usage. Enable non-GET methods or add a GET endpoint for this usage.';
+      return 'No GET endpoints available for the selected usage. Enable non-GET methods to continue.';
     }
-    if (infoSyncUsageEndpoints.length === 0) {
-      return 'No endpoints were found for the selected usage. Create a POSAPI endpoint with the required HTTP method.';
-    }
-    return 'No endpoints match the current HTTP method filter. Try enabling non-GET endpoints or adjust the endpoint definitions.';
+    if (infoSyncUsageEndpoints.length === 0) return 'No endpoints were found for the selected usage.';
+    return 'No endpoints match the current HTTP method filter.';
   }, [
     error,
     infoSyncEndpointOptions.length,
@@ -9734,10 +9728,7 @@ export default function PosApiAdmin() {
                 <label style={{ ...styles.label, flex: 1 }}>
                   Endpoints to sync
                   {loading ? (
-                    <div style={styles.inlineLoading} role="status" aria-live="polite">
-                      <span style={styles.inlineLoadingIcon} aria-hidden="true">⏳</span>
-                      <span>Loading endpoints…</span>
-                    </div>
+                    <div style={styles.helpText}>Loading endpoints…</div>
                   ) : (
                     <>
                       <select

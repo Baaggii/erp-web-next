@@ -22,6 +22,10 @@ cp src/homepage/.htaccess "$WEB_TARGET/.htaccess"
 # npm prune --omit=dev
 
 # Restart the appropriate PM2 process
-pm2 restart "$PM2_NAME" --update-env
+# pm2 restart "$PM2_NAME" --update-env
+
+pm2 describe "$PM2_NAME" >/dev/null 2>&1 \
+  && pm2 restart "$PM2_NAME" --update-env \
+  || pm2 start api-server/server.js --name "$PM2_NAME"
 
 echo "Deployed ERP to $ERP_TARGET and homepage to $WEB_TARGET using process $PM2_NAME"
