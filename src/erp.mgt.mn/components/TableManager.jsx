@@ -679,6 +679,10 @@ const TableManager = forwardRef(function TableManager({
     if (availableTemporaryScopes.length > 0) return availableTemporaryScopes[0];
     return 'created';
   }, [availableTemporaryScopes]);
+  const shouldShowForwardTemporaryLabel = Boolean(pendingTemporaryPromotion) && hasAnySenior;
+  const temporarySaveLabel = shouldShowForwardTemporaryLabel
+    ? t('save_temporary_forward', 'Save as Temporary and Forward')
+    : null;
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -6536,6 +6540,7 @@ const TableManager = forwardRef(function TableManager({
         row={editing}
         rows={gridRows}
         isEditingTemporaryDraft={isEditingTemporaryDraft}
+        temporarySaveLabel={temporarySaveLabel}
         relations={relationOpts}
         relationConfigs={relationConfigs}
         relationData={refRows}
