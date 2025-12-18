@@ -666,6 +666,7 @@ const TableManager = forwardRef(function TableManager({
     accessEvaluation.canPost === undefined
       ? true
       : Boolean(accessEvaluation.canPost);
+  const effectiveCanPostTransactions = canPostTransactions && !isEditingTemporaryDraft;
 
   const availableTemporaryScopes = useMemo(() => {
     const scopes = [];
@@ -3188,7 +3189,7 @@ const TableManager = forwardRef(function TableManager({
 
   async function handleSubmit(values, options = {}) {
     const { issueEbarimt = false } = options || {};
-    if (requestType !== 'temporary-promote' && !canPostTransactions) {
+    if (requestType !== 'temporary-promote' && !effectiveCanPostTransactions) {
       addToast(
         t(
           'temporary_post_not_allowed',
@@ -6587,7 +6588,7 @@ const TableManager = forwardRef(function TableManager({
         scope="forms"
         allowTemporarySave={canSaveTemporaryDraft}
         isAdding={isAdding}
-        canPost={canPostTransactions}
+        canPost={effectiveCanPostTransactions}
         forceEditable={guardOverridesActive}
         posApiEnabled={Boolean(formConfig?.posApiEnabled)}
         posApiTypeField={formConfig?.posApiTypeField || ''}
