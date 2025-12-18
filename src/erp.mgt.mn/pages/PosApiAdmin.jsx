@@ -2815,6 +2815,7 @@ export default function PosApiAdmin() {
   const [infoSyncLoading, setInfoSyncLoading] = useState(false);
   const [infoSyncUsage, setInfoSyncUsage] = useState('all');
   const [infoSyncEndpointIds, setInfoSyncEndpointIds] = useState([]);
+  const [infoSyncAllowAllMethods, setInfoSyncAllowAllMethods] = useState(false);
   const [infoSyncTableOptionsBase, setInfoSyncTableOptionsBase] = useState([]);
   const [infoSyncSelectionError, setInfoSyncSelectionError] = useState('');
   const [tableOptions, setTableOptions] = useState([]);
@@ -2992,14 +2993,32 @@ export default function PosApiAdmin() {
     setAdminAuthEndpointId((prev) => prev || activeAdminEndpoint.authEndpointId || '');
   }, [activeAdminEndpoint, adminResult]);
 
-  const infoSyncEndpointOptions = useMemo(() => {
+  const infoSyncUsageEndpoints = useMemo(() => {
     const normalized = endpoints.map(withEndpointMetadata);
     const selectedEndpointIds = new Set(infoSyncEndpointIds.filter(Boolean));
-    return normalized
-      .filter((endpoint) => {
-        const matchesUsage = infoSyncUsage === 'all' || !infoSyncUsage || endpoint.usage === infoSyncUsage;
-        return matchesUsage || selectedEndpointIds.has(endpoint.id);
-      })
+    return normalized.filter((endpoint) => {
+      const matchesUsage = infoSyncUsage === 'all' || !infoSyncUsage || endpoint.usage === infoSyncUsage;
+      return matchesUsage || selectedEndpointIds.has(endpoint.id);
+    });
+  }, [endpoints, infoSyncEndpointIds, infoSyncUsage]);
+
+  const infoSyncHasGetEndpoint = useMemo(
+    () =>
+      infoSyncUsageEndpoints.some(
+        (endpoint) => (endpoint?.method || '').toUpperCase() === 'GET',
+      ),
+    [infoSyncUsageEndpoints],
+  );
+
+  const infoSyncForceAllMethods = !infoSyncHasGetEndpoint && infoSyncUsageEndpoints.length > 0;
+  const infoSyncMethodRelaxed = infoSyncAllowAllMethods || infoSyncForceAllMethods;
+
+  const infoSyncEndpointOptions = useMemo(() => {
+    const methodFilter = infoSyncMethodRelaxed
+      ? () => true
+      : (endpoint) => (endpoint?.method || '').toUpperCase() === 'GET';
+    return infoSyncUsageEndpoints
+      .filter(methodFilter)
       .map((endpoint) => ({
         id: endpoint.id,
         name: endpoint.name || endpoint.id,
@@ -3007,7 +3026,7 @@ export default function PosApiAdmin() {
         path: endpoint.path,
         usage: endpoint.usage,
       }));
-  }, [endpoints, infoSyncEndpointIds, infoSyncUsage]);
+  }, [infoSyncMethodRelaxed, infoSyncUsageEndpoints]);
 
   const infoSyncTableOptions = useMemo(() => {
     const seen = new Set();
@@ -3088,20 +3107,39 @@ export default function PosApiAdmin() {
 
   const infoMappingEndpoints = useMemo(() => {
     const selected = new Set(infoSyncEndpointIds.filter(Boolean));
-    const desiredUsage = infoSyncUsage === 'all' ? null : infoSyncUsage;
-    return endpoints
-      .map(withEndpointMetadata)
-      .filter((endpoint) => !desiredUsage || endpoint.usage === desiredUsage)
+    const methodFilter = infoSyncMethodRelaxed
+      ? () => true
+      : (endpoint) => (endpoint?.method || '').toUpperCase() === 'GET';
+    return infoSyncUsageEndpoints
+      .filter(methodFilter)
       .filter((endpoint) => selected.size === 0 || selected.has(endpoint.id));
-  }, [endpoints, infoSyncEndpointIds, infoSyncUsage]);
+  }, [infoSyncEndpointIds, infoSyncMethodRelaxed, infoSyncUsageEndpoints]);
 
   const infoSyncEndpointUnavailableReason = useMemo(() => {
     if (infoSyncEndpointOptions.length > 0) return '';
     if (loading) return 'POSAPI endpoints are still loading.';
     if (loadError) return loadError;
     if (error) return error;
-    return 'No GET endpoints available for the selected usage.';
-  }, [error, infoSyncEndpointOptions.length, infoSyncUsage, loadError, loading]);
+    if (!infoSyncHasGetEndpoint && infoSyncUsageEndpoints.length > 0 && !infoSyncMethodRelaxed) {
+      return 'No GET endpoints available for the selected usage. Enable non-GET methods to continue.';
+    }
+    if (infoSyncUsageEndpoints.length === 0) return 'No endpoints were found for the selected usage.';
+    return 'No endpoints match the current HTTP method filter.';
+  }, [
+    error,
+    infoSyncEndpointOptions.length,
+    infoSyncHasGetEndpoint,
+    infoSyncMethodRelaxed,
+    infoSyncUsageEndpoints.length,
+    loadError,
+    loading,
+  ]);
+
+  useEffect(() => {
+    if (infoSyncForceAllMethods) {
+      setInfoSyncAllowAllMethods(true);
+    }
+  }, [infoSyncForceAllMethods]);
 
   useEffect(() => {
     if (infoSyncEndpointOptions.length > 0 && !loading) {
@@ -9646,34 +9684,58 @@ export default function PosApiAdmin() {
                   </select>
                 </label>
                 <label style={{ ...styles.label, flex: 1 }}>
+                  HTTP methods
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <input
+                        type="checkbox"
+                        checked={infoSyncMethodRelaxed}
+                        onChange={(e) => setInfoSyncAllowAllMethods(e.target.checked)}
+                        disabled={infoSyncForceAllMethods}
+                      />
+                      <span>Include non-GET endpoints</span>
+                    </label>
+                    <p style={styles.helpText}>
+                      {infoSyncForceAllMethods
+                        ? 'No GET endpoints were found for this usage, so all HTTP methods are temporarily allowed.'
+                        : 'Enable this to sync POST/PUT endpoints when GET endpoints are unavailable for this usage.'}
+                    </p>
+                  </div>
+                </label>
+                <label style={{ ...styles.label, flex: 1 }}>
                   Endpoints to sync
-                  <select
-                    multiple
-                    value={infoSyncEndpointIds}
-                    onChange={handleInfoEndpointSelection}
-                    style={{ ...styles.input, minHeight: '140px' }}
-                    disabled={infoSyncLoading}
-                  >
-                    {infoSyncEndpointOptions.length === 0 && (
-                      <option value="" disabled>
-                        {loading
-                          ? 'Loading endpoints…'
-                          : 'No endpoints available for the selected usage yet.'}
-                      </option>
-                    )}
-                    {infoSyncEndpointOptions.map((endpoint) => (
-                      <option key={endpoint.id} value={endpoint.id}>
-                        {endpoint.name} – {endpoint.method} {endpoint.path} ({formatUsageLabel(endpoint.usage)})
-                      </option>
-                    ))}
-                  </select>
-                  <span style={styles.checkboxHint}>
-                    Leave empty to include all endpoints in the selected usage.
-                  </span>
-                  {infoSyncEndpointUnavailableReason && (
-                    <div style={styles.hintError}>{infoSyncEndpointUnavailableReason}</div>
+                  {loading ? (
+                    <div style={styles.helpText}>Loading endpoints…</div>
+                  ) : (
+                    <>
+                      <select
+                        multiple
+                        value={infoSyncEndpointIds}
+                        onChange={handleInfoEndpointSelection}
+                        style={{ ...styles.input, minHeight: '140px' }}
+                        disabled={infoSyncLoading}
+                      >
+                        {infoSyncEndpointOptions.length === 0 && (
+                          <option value="" disabled>
+                            {infoSyncEndpointUnavailableReason ||
+                              'No endpoints available for the selected usage yet.'}
+                          </option>
+                        )}
+                        {infoSyncEndpointOptions.map((endpoint) => (
+                          <option key={endpoint.id} value={endpoint.id}>
+                            {endpoint.name} – {endpoint.method} {endpoint.path} ({formatUsageLabel(endpoint.usage)})
+                          </option>
+                        ))}
+                      </select>
+                      <span style={styles.checkboxHint}>
+                        Leave empty to include all endpoints in the selected usage.
+                      </span>
+                      {infoSyncEndpointUnavailableReason && (
+                        <div style={styles.hintError}>{infoSyncEndpointUnavailableReason}</div>
+                      )}
+                      {infoSyncSelectionError && <div style={styles.hintError}>{infoSyncSelectionError}</div>}
+                    </>
                   )}
-                  {infoSyncSelectionError && <div style={styles.hintError}>{infoSyncSelectionError}</div>}
                   </label>
               </div>
               <button
