@@ -3568,9 +3568,15 @@ const TableManager = forwardRef(function TableManager({
     const baseTenant = {
       company_id: company ?? null,
     };
+    const promotionChainId = normalizeChainId(
+      pendingTemporaryPromotion?.entry?.chainId ??
+        pendingTemporaryPromotion?.entry?.chain_id ??
+        getTemporaryId(pendingTemporaryPromotion?.entry),
+    );
     const resolvedChainId =
       normalizeChainId(submission.chainId ?? submission.chain_id) ||
       normalizeChainId(editing?.chainId ?? editing?.chain_id) ||
+      promotionChainId ||
       null;
     const baseRequest = {
       table,
