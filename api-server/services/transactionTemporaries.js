@@ -937,13 +937,6 @@ export async function createTemporarySubmission({
     try {
       await conn.query('ROLLBACK');
     } catch {}
-    if (isDynamicSqlTriggerError(err)) {
-      throw attachDynamicSqlErrorDetails(err, {
-        table: row?.table_name || null,
-        temporaryId: id,
-        reviewerEmpId: normalizedReviewer,
-      });
-    }
     throw err;
   } finally {
     if (shouldReleaseConnection) {
