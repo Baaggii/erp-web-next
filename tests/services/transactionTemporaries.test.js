@@ -258,6 +258,41 @@ test('createTemporarySubmission ignores plan senior for reviewer assignment', as
   }
 });
 
+test('createTemporarySubmission uses provided chainId when supplied', async () => {
+  const { conn, queries } = createStubConnection();
+  const originalGetConnection = db.pool.getConnection;
+  db.pool.getConnection = async () => conn;
+
+  try {
+    const result = await createTemporarySubmission(
+      {
+        tableName: 'transactions_contract',
+        payload: {},
+        rawValues: {},
+        cleanedValues: {},
+        chainId: '303',
+        companyId: 1,
+        createdBy: 'EMP010',
+      },
+      {
+        employmentSessionFetcher: async () => ({
+          senior_empid: null,
+          senior_plan_empid: null,
+        }),
+      },
+    );
+
+    assert.equal(result.chainId, 303);
+    const insertQuery = queries.find(({ sql }) =>
+      typeof sql === 'string' && sql.startsWith('INSERT INTO `transaction_temporaries`'),
+    );
+    assert.ok(insertQuery);
+    assert.equal(insertQuery.params[12], 303);
+  } finally {
+    db.pool.getConnection = originalGetConnection;
+  }
+});
+
 test('listTemporarySubmissions filters before grouping by chain', async () => {
   const now = new Date().toISOString();
   const temporaries = [
