@@ -3485,6 +3485,13 @@ const TableManager = forwardRef(function TableManager({
   async function handleSaveTemporary(submission) {
     if (!canSaveTemporaryDraft) return false;
     if (!submission || typeof submission !== 'object') return false;
+    const normalizeChainId = (value) => {
+      if (value === undefined || value === null) return null;
+      const numeric = Number(value);
+      if (Number.isFinite(numeric) && numeric > 0) return numeric;
+      const str = String(value).trim();
+      return str ? str : null;
+    };
     const valueSource =
       submission.values && typeof submission.values === 'object'
         ? submission.values
@@ -3561,12 +3568,17 @@ const TableManager = forwardRef(function TableManager({
     const baseTenant = {
       company_id: company ?? null,
     };
+    const resolvedChainId =
+      normalizeChainId(submission.chainId ?? submission.chain_id) ||
+      normalizeChainId(editing?.chainId ?? editing?.chain_id) ||
+      null;
     const baseRequest = {
       table,
       formName: formName || formConfig?.moduleLabel || null,
       configName: formName || null,
       moduleKey: formConfig?.moduleKey || null,
       tenant: baseTenant,
+      ...(resolvedChainId ? { chainId: resolvedChainId } : {}),
     };
 
     const rowsToProcess = gridRows && gridRows.length > 0 ? gridRows : [null];
