@@ -2835,6 +2835,7 @@ export default function PosApiAdmin() {
   const [adminUseCachedToken, setAdminUseCachedToken] = useState(true);
   const [adminAuthEndpointId, setAdminAuthEndpointId] = useState('');
   const builderSyncRef = useRef(false);
+  const formStateRef = useRef(formState);
   const requestSampleSyncRef = useRef(false);
   const refreshInfoSyncLogsRef = useRef(() => Promise.resolve());
 
@@ -3063,7 +3064,9 @@ export default function PosApiAdmin() {
   }, [formState.responseTables, tableOptions]);
 
   const responseTablesUnavailableReason = useMemo(() => {
-    if (responseTableOptions.length > 0) return '';
+    if (responseTableOptions.length > 0) {
+      return tableOptionsError ? `Loaded tables with warnings. Details: ${tableOptionsError}` : '';
+    }
     if (tableOptionsError) return tableOptionsError;
     return 'No database tables were loaded. Verify access permissions or try again later.';
   }, [responseTableOptions.length, tableOptionsError]);
@@ -5397,7 +5400,11 @@ export default function PosApiAdmin() {
       return;
     }
 
-    let nextFormState = { ...EMPTY_ENDPOINT };
+    const previousFormState = formStateRef.current || formState;
+    let nextFormState =
+      previousFormState && Object.keys(previousFormState).length
+        ? { ...previousFormState }
+        : { ...EMPTY_ENDPOINT };
     let nextRequestFieldValues = {};
     let formattedSample = '';
 
@@ -5406,7 +5413,12 @@ export default function PosApiAdmin() {
     } catch (err) {
       console.error('Failed to prepare form state for selected endpoint', err);
       setError('Failed to load the selected endpoint. Please review its configuration.');
-      nextFormState = pruneUnavailableControls({ ...EMPTY_ENDPOINT, ...(definition || {}) });
+      nextFormState = pruneUnavailableControls({
+        ...(previousFormState && Object.keys(previousFormState).length
+          ? previousFormState
+          : EMPTY_ENDPOINT),
+        ...(definition || {}),
+      });
     }
 
     try {
@@ -5424,7 +5436,12 @@ export default function PosApiAdmin() {
     } catch (err) {
       console.error('Failed to select endpoint', err);
       setError('Failed to load the selected endpoint. Please review its configuration.');
-      nextFormState = pruneUnavailableControls({ ...EMPTY_ENDPOINT, ...(definition || {}) });
+      nextFormState = pruneUnavailableControls({
+        ...(previousFormState && Object.keys(previousFormState).length
+          ? previousFormState
+          : EMPTY_ENDPOINT),
+        ...(definition || {}),
+      });
       nextRequestFieldValues = {};
     }
 
@@ -8870,6 +8887,12 @@ export default function PosApiAdmin() {
             </div>
             <label style={{ ...styles.labelFull, marginTop: '0.35rem' }}>
               Tables for response mappings
+              {tableOptionsLoading && (
+                <div style={styles.inlineLoading} role="status" aria-live="polite">
+                  <span style={styles.inlineLoadingIcon} aria-hidden="true">⏳</span>
+                  <span>Loading tables…</span>
+                </div>
+              )}
               <select
                 multiple
                 value={formState.responseTables}
@@ -10785,6 +10808,16 @@ const styles = {
     display: 'flex',
     gap: '1rem',
     alignItems: 'center',
+  },
+  inlineLoading: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '0.35rem',
+    color: '#475569',
+    fontSize: '0.9rem',
+  },
+  inlineLoadingIcon: {
+    fontSize: '1rem',
   },
   checkboxLabel: {
     display: 'flex',
