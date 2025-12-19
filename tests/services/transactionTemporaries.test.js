@@ -700,7 +700,7 @@ test('promoteTemporarySubmission promotes chain and records promotedRecordId', a
   );
 
   assert.equal(result.promotedRecordId, '909');
-  assert.equal(chainUpdates.length, 2);
+  assert.equal(chainUpdates.length, 1);
   assert.equal(chainUpdates[0].chainId, 6);
   assert.equal(chainUpdates[0].payload.promotedRecordId, '909');
   assert.equal(chainUpdates[0].payload.clearReviewerAssignment, true);
@@ -715,7 +715,7 @@ test('promoteTemporarySubmission promotes chain and records promotedRecordId', a
   assert.ok(conn.released);
 });
 
-test('promoteTemporarySubmission falls back to chain update when temporary-only update has no effect', async () => {
+test('promoteTemporarySubmission rejects when the target status cannot be updated', async () => {
   const temporaryRow = {
     id: 17,
     company_id: 1,
@@ -750,17 +750,18 @@ test('promoteTemporarySubmission falls back to chain update when temporary-only 
     activityLogger: async () => {},
   };
 
-  const result = await promoteTemporarySubmission(
-    17,
-    { reviewerEmpId: 'EMP777', cleanedValues: { amount: 42 } },
-    runtimeDeps,
+  await assert.rejects(
+    () =>
+      promoteTemporarySubmission(
+        17,
+        { reviewerEmpId: 'EMP777', cleanedValues: { amount: 42 } },
+        runtimeDeps,
+      ),
+    (err) => err && err.status === 409,
   );
 
-  assert.equal(result.promotedRecordId, '321');
-  assert.equal(chainUpdates.length, 2);
+  assert.equal(chainUpdates.length, 1);
   assert.equal(chainUpdates[0].payload.temporaryOnly, true);
-  assert.equal(chainUpdates[1].payload.temporaryOnly, false);
-  assert.equal(chainUpdates[1].payload.pendingOnly, true);
   assert.equal(conn.released, true);
 });
 

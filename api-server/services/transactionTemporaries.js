@@ -350,7 +350,10 @@ async function updateTemporaryChainStatus(
     `UPDATE \`${TEMP_TABLE}\` SET ${columns.join(', ')} WHERE ${whereClause}`,
     params,
   );
-  return result?.affectedRows ?? 0;
+  const updateResult = Array.isArray(result) ? result[0] : result;
+  const affected = updateResult?.affectedRows ?? 0;
+  const normalized = Number.isFinite(Number(affected)) ? Number(affected) : 0;
+  return normalized;
 }
 
 export async function sanitizeCleanedValuesForInsert(tableName, values, columns) {
@@ -1719,16 +1722,23 @@ export async function promoteTemporarySubmission(
     }
     const promotedId = insertedId ? String(insertedId) : null;
     if (shouldForwardTemporary) {
-      await chainStatusUpdater(conn, effectiveChainId, {
-        status: 'forwarded',
-        reviewerEmpId: normalizedReviewer,
-        notes: reviewNotesValue ?? null,
-        clearReviewerAssignment: true,
-        promotedRecordId: null,
-        pendingOnly: true,
-        temporaryId: id,
-        temporaryOnly: true,
-      });
+      const updateCount = Number(
+        await chainStatusUpdater(conn, effectiveChainId, {
+          status: 'forwarded',
+          reviewerEmpId: normalizedReviewer,
+          notes: reviewNotesValue ?? null,
+          clearReviewerAssignment: true,
+          promotedRecordId: null,
+          pendingOnly: true,
+          temporaryId: id,
+          temporaryOnly: true,
+        }),
+      );
+      if (!Number.isFinite(updateCount) || updateCount === 0) {
+        const err = new Error('Temporary submission status could not be updated');
+        err.status = 409;
+        throw err;
+      }
       const mergedPayload = isPlainObject(payloadJson) ? { ...payloadJson } : {};
       const sanitizedPayloadValues = isPlainObject(mergedPayload.cleanedValues)
         ? { ...mergedPayload.cleanedValues }
@@ -1945,17 +1955,11 @@ export async function promoteTemporarySubmission(
       temporaryId: id,
       temporaryOnly: true,
     });
-    if (primaryUpdateCount === 0 && effectiveChainId) {
-      await chainStatusUpdater(conn, effectiveChainId, {
-        status: 'promoted',
-        reviewerEmpId: normalizedReviewer,
-        notes: reviewNotesValue ?? null,
-        promotedRecordId: promotedId,
-        clearReviewerAssignment: true,
-        pendingOnly: true,
-        temporaryId: id,
-        temporaryOnly: false,
-      });
+    const normalizedUpdateCount = Number(primaryUpdateCount);
+    if (!Number.isFinite(normalizedUpdateCount) || normalizedUpdateCount === 0) {
+      const err = new Error('Temporary submission status could not be updated');
+      err.status = 409;
+      throw err;
     }
     await recordTemporaryReviewHistory(conn, {
       temporaryId: id,
@@ -2119,17 +2123,11 @@ export async function rejectTemporarySubmission(
       temporaryId: id,
       temporaryOnly: true,
     });
-    if (primaryUpdateCount === 0 && effectiveChainId) {
-      await chainStatusUpdater(conn, effectiveChainId, {
-        status: 'rejected',
-        reviewerEmpId: normalizedReviewer,
-        notes: notes ?? null,
-        promotedRecordId: null,
-        clearReviewerAssignment: true,
-        pendingOnly: true,
-        temporaryId: id,
-        temporaryOnly: false,
-      });
+    const normalizedUpdateCount = Number(primaryUpdateCount);
+    if (!Number.isFinite(normalizedUpdateCount) || normalizedUpdateCount === 0) {
+      const err = new Error('Temporary submission status could not be updated');
+      err.status = 409;
+      throw err;
     }
     await recordTemporaryReviewHistory(conn, {
       temporaryId: id,
