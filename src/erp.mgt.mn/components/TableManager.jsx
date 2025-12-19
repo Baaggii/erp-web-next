@@ -679,7 +679,20 @@ const TableManager = forwardRef(function TableManager({
     if (availableTemporaryScopes.length > 0) return availableTemporaryScopes[0];
     return 'created';
   }, [availableTemporaryScopes]);
-  const shouldShowForwardTemporaryLabel = Boolean(pendingTemporaryPromotion) && hasAnySenior;
+  const pendingPromotionHasSeniorAbove = useMemo(() => {
+    if (!pendingTemporaryPromotion?.entry) return false;
+    const entry = pendingTemporaryPromotion.entry;
+    const plannedSenior =
+      entry.planSeniorEmpId ??
+      entry.plan_senior_empid ??
+      entry.plan_senior_emp_id ??
+      entry.planSeniorEmpID ??
+      null;
+    return hasSenior(plannedSenior);
+  }, [pendingTemporaryPromotion]);
+
+  const shouldShowForwardTemporaryLabel =
+    Boolean(pendingTemporaryPromotion) && hasAnySenior && pendingPromotionHasSeniorAbove;
   const temporarySaveLabel = shouldShowForwardTemporaryLabel
     ? t('save_temporary_forward', 'Save as Temporary and Forward')
     : null;
@@ -3543,6 +3556,15 @@ const TableManager = forwardRef(function TableManager({
         mergedSource[k] = stripTemporaryLabelValue(v);
       }
     });
+
+    const nextSeniorEmpId = hasSenior(session?.senior_plan_empid)
+      ? session?.senior_plan_empid
+      : null;
+    const forwardingExistingTemporary =
+      requestType === 'temporary-promote' &&
+      pendingPromotionHasSeniorAbove &&
+      pendingTemporaryPromotion?.id;
+
     if (isAdding && autoFillSession) {
       const columns = new Set(allColumns);
       userIdFields.forEach((f) => {
@@ -3557,6 +3579,14 @@ const TableManager = forwardRef(function TableManager({
       companyIdFields.forEach((f) => {
         if (columns.has(f) && company !== undefined) mergedSource[f] = company;
       });
+    }
+
+    if (forwardingExistingTemporary && nextSeniorEmpId) {
+      ['plan_senior_empid', 'plan_senior_emp_id', 'planSeniorEmpId', 'planSeniorEmpID'].forEach(
+        (key) => {
+          mergedSource[key] = nextSeniorEmpId;
+        },
+      );
     }
 
     const merged = stripTemporaryLabelValue(mergedSource);
@@ -3623,6 +3653,18 @@ const TableManager = forwardRef(function TableManager({
       ...(resolvedChainId ? { chainId: resolvedChainId } : {}),
     };
 
+    if (forwardingExistingTemporary) {
+      const promoted = await promoteTemporary(pendingTemporaryPromotion.id, {
+        skipConfirm: true,
+        silent: false,
+        overrideValues: cleaned,
+        promoteAsTemporary: true,
+      });
+      if (!promoted) {
+        return false;
+      }
+    }
+
     const rowsToProcess = gridRows && gridRows.length > 0 ? gridRows : [null];
     const rawRowList = Array.isArray(rawRows) ? rawRows : [];
     let successCount = 0;
@@ -3633,6 +3675,14 @@ const TableManager = forwardRef(function TableManager({
       const rowRawSource = Array.isArray(rawRowList) ? rawRowList[idx] : null;
       const rowValues = row ? { ...headerNormalizedValues, ...row } : { ...normalizedValues };
       const rowCleaned = { ...cleaned };
+      if (forwardingExistingTemporary && nextSeniorEmpId) {
+        ['plan_senior_empid', 'plan_senior_emp_id', 'planSeniorEmpId', 'planSeniorEmpID'].forEach(
+          (key) => {
+            rowValues[key] = nextSeniorEmpId;
+            rowCleaned[key] = nextSeniorEmpId;
+          },
+        );
+      }
       if (row) {
         Object.entries(row).forEach(([k, v]) => {
           const lower = k.toLowerCase();
