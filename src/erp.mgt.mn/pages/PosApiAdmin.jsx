@@ -3062,6 +3062,16 @@ export default function PosApiAdmin() {
       .filter(Boolean);
   }, [infoSyncMethodRelaxed, infoSyncUsageEndpoints]);
 
+  const endpointNameById = useMemo(() => {
+    const map = new Map();
+    endpoints.forEach((endpoint) => {
+      if (!endpoint?.id) return;
+      const label = endpoint.name || endpoint.id;
+      map.set(endpoint.id, label);
+    });
+    return map;
+  }, [endpoints]);
+
   const infoSyncTableOptions = useMemo(() => {
     const seen = new Set();
     const merged = [
@@ -5407,6 +5417,8 @@ export default function PosApiAdmin() {
       }
     }
 
+    refreshInfoSyncLogsRef.current = refreshInfoSyncLogs;
+
     async function loadInfoSync() {
       try {
         setInfoSyncLoading(true);
@@ -6184,15 +6196,20 @@ export default function PosApiAdmin() {
       }
       const data = await res.json();
       const usageLabel = infoSyncUsage === 'all' ? 'all usages' : formatUsageLabel(infoSyncUsage);
-      const endpointLabel =
-        infoSyncEndpointIds.length > 0
-          ? `${infoSyncEndpointIds.length} endpoint(s)`
-          : 'all endpoints';
-      setInfoSyncStatus(
-        `Synced reference codes (${usageLabel}, ${endpointLabel}) – added ${data.added || 0}, updated ${
-          data.updated || 0
-        }, deactivated ${data.deactivated || 0}.`,
-      );
+      const endpointLabel = (() => {
+        if (infoSyncEndpointIds.length === 0) return 'all endpoints';
+        const names = infoSyncEndpointIds
+          .map((id) => endpointNameById.get(id) || id)
+          .filter(Boolean);
+        if (names.length === 0) return `${infoSyncEndpointIds.length} endpoint(s)`;
+        return names.join(', ');
+      })();
+      const baseStatus = `Synced reference codes (${usageLabel}, ${endpointLabel}) – added ${data.added || 0}, updated ${
+        data.updated || 0
+      }, deactivated ${data.deactivated || 0}.`;
+      const noChanges = (data.added || 0) + (data.updated || 0) + (data.deactivated || 0) === 0;
+      const statusReason = data.message || (noChanges ? 'No changes were returned by the source endpoints.' : '');
+      setInfoSyncStatus(noChanges && statusReason ? `${baseStatus} Reason: ${statusReason}` : baseStatus);
       await refreshInfoSyncLogsRef.current();
     } catch (err) {
       setInfoSyncError(err.message || 'Unable to refresh reference codes');
@@ -6219,12 +6236,36 @@ export default function PosApiAdmin() {
     const endpointIds = Array.isArray(log.endpointIds)
       ? log.endpointIds.filter((value) => typeof value === 'string' && value)
       : [];
-    const endpointCount = Number.isFinite(log.endpointCount) ? log.endpointCount : endpointIds.length;
-    const endpointLabel = endpointCount > 0 ? `${endpointCount} endpoint(s)` : 'all endpoints';
+    const endpointNamesFromLog = Array.isArray(log.endpoints)
+      ? log.endpoints
+        .map((entry) => entry?.name || entry?.id || '')
+        .filter(Boolean)
+      : [];
+    const endpointCount = Number.isFinite(log.endpointCount)
+      ? log.endpointCount
+      : (endpointIds.length || endpointNamesFromLog.length);
+    const endpointLabel = (() => {
+      if (endpointIds.length === 0 && endpointNamesFromLog.length === 0 && endpointCount === 0) {
+        return 'all endpoints';
+      }
+      const names = [
+        ...endpointNamesFromLog,
+        ...endpointIds
+        .map((id) => endpointNameById.get(id) || id)
+        .filter(Boolean),
+      ].filter(Boolean);
+      if (names.length > 0) return names.join(', ');
+      return endpointCount > 0 ? `${endpointCount} endpoint(s)` : 'all endpoints';
+    })();
     const added = log.added ?? 0;
     const updated = log.updated ?? 0;
     const deactivated = log.deactivated ?? 0;
-    return `Synced reference codes (${usageLabel}, ${endpointLabel}) – added ${added}, updated ${updated}, deactivated ${deactivated}.`;
+    const base = `Synced reference codes (${usageLabel}, ${endpointLabel}) – added ${added}, updated ${updated}, deactivated ${deactivated}.`;
+    if (added + updated + deactivated > 0) return base;
+    const reason = log.reason
+      || (Array.isArray(log.errors) && log.errors.length > 0 ? formatSyncErrors(log) : '');
+    if (reason) return `${base} Reason: ${reason}`;
+    return `${base} Reason: No changes were returned by the source endpoints.`;
   }
 
   async function handleStaticUpload(event) {
@@ -9847,7 +9888,7 @@ export default function PosApiAdmin() {
                         value={infoSyncEndpointIds}
                         onChange={handleInfoEndpointSelection}
                         style={{ ...styles.input, minHeight: '140px' }}
-                        disabled={infoSyncLoading}
+                        disabled={infoSyncLoading && infoSyncEndpointOptions.length === 0}
                       >
                         {infoSyncEndpointOptions.length === 0 && (
                           <option value="" disabled>
