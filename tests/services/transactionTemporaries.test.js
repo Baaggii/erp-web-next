@@ -706,8 +706,6 @@ test('promoteTemporarySubmission promotes chain and records promotedRecordId', a
   assert.equal(chainUpdates[0].payload.clearReviewerAssignment, true);
   assert.equal(chainUpdates[0].payload.pendingOnly, true);
   assert.equal(chainUpdates[0].payload.temporaryOnly, true);
-  assert.equal(chainUpdates[1].payload.temporaryOnly, false);
-  assert.equal(chainUpdates[1].payload.pendingOnly, true);
   const historyInsert = queries.find(({ sql }) =>
     sql.includes('INSERT INTO `transaction_temporary_review_history`'),
   );
@@ -738,13 +736,15 @@ test('promoteTemporarySubmission falls back to chain update when temporary-only 
 
   const chainUpdates = [];
   const { conn } = createStubConnection({ temporaryRow, chainIds: [17] });
+  let callCount = 0;
   const runtimeDeps = {
     connectionFactory: async () => conn,
     columnLister: async () => [{ name: 'amount', type: 'int', maxLength: null }],
     tableInserter: async () => ({ id: 321 }),
     chainStatusUpdater: async (_c, chainId, payload) => {
       chainUpdates.push({ chainId, payload });
-      return chainUpdates.length === 1 ? 0 : 1;
+      callCount += 1;
+      return callCount === 1 ? 0 : 1;
     },
     notificationInserter: async () => {},
     activityLogger: async () => {},

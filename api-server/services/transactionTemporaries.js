@@ -1935,7 +1935,7 @@ export async function promoteTemporarySubmission(
       id,
       chainId: effectiveChainId,
     });
-    await chainStatusUpdater(conn, effectiveChainId, {
+    const primaryUpdateCount = await chainStatusUpdater(conn, effectiveChainId, {
       status: 'promoted',
       reviewerEmpId: normalizedReviewer,
       notes: reviewNotesValue ?? null,
@@ -1945,7 +1945,7 @@ export async function promoteTemporarySubmission(
       temporaryId: id,
       temporaryOnly: true,
     });
-    if (effectiveChainId) {
+    if (primaryUpdateCount === 0 && effectiveChainId) {
       await chainStatusUpdater(conn, effectiveChainId, {
         status: 'promoted',
         reviewerEmpId: normalizedReviewer,
@@ -2109,7 +2109,7 @@ export async function rejectTemporarySubmission(
       id,
       chainId: effectiveChainId,
     });
-    await chainStatusUpdater(conn, effectiveChainId, {
+    const primaryUpdateCount = await chainStatusUpdater(conn, effectiveChainId, {
       status: 'rejected',
       reviewerEmpId: normalizedReviewer,
       notes: notes ?? null,
@@ -2119,7 +2119,7 @@ export async function rejectTemporarySubmission(
       temporaryId: id,
       temporaryOnly: true,
     });
-    if (effectiveChainId) {
+    if (primaryUpdateCount === 0 && effectiveChainId) {
       await chainStatusUpdater(conn, effectiveChainId, {
         status: 'rejected',
         reviewerEmpId: normalizedReviewer,
