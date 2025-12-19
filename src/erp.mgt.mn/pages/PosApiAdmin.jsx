@@ -6162,17 +6162,17 @@ export default function PosApiAdmin() {
       if (infoSyncEndpointIds.length > 0) {
         payload.endpointIds = infoSyncEndpointIds;
       }
-      const tablesFromEndpoints = Array.from(
-        new Set(
-          infoMappingEndpoints
-            .map((endpoint) => collectEndpointTables(endpoint))
-            .flat()
-            .map((table) => normalizeTableValue(table))
-            .filter(Boolean),
-        ),
-      );
-      if (tablesFromEndpoints.length > 0) {
-        payload.tables = tablesFromEndpoints;
+      const tablesFromEndpoints = infoMappingEndpoints
+        .map((endpoint) => collectEndpointTables(endpoint))
+        .flat()
+        .map((table) => normalizeTableValue(table))
+        .filter(Boolean);
+      const selectedTables = Array.isArray(infoSyncSettings.tables)
+        ? infoSyncSettings.tables.map((table) => normalizeTableValue(table)).filter(Boolean)
+        : [];
+      const combinedTables = Array.from(new Set([...tablesFromEndpoints, ...selectedTables]));
+      if (combinedTables.length > 0) {
+        payload.tables = combinedTables;
       }
       const hasPayload = Object.keys(payload).length > 0;
       const res = await fetch(`${API_BASE}/posapi/reference-codes/sync`, {
