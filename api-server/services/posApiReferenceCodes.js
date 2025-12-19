@@ -289,12 +289,17 @@ async function appendSyncLog(entry) {
 
 async function upsertReferenceCodes(codeType, codes) {
   if (!codeType || !Array.isArray(codes)) return { added: 0, updated: 0, deactivated: 0 };
-  const normalizedCodes = codes
-    .map((entry) => ({
-      code: String(entry.code || '').trim(),
-      name: entry.name ? String(entry.name).trim() : null,
-    }))
-    .filter((entry) => entry.code);
+  const normalizedCodes = [];
+  const seenCodes = new Set();
+  codes.forEach((entry) => {
+    const code = String(entry?.code || '').trim();
+    if (!code || seenCodes.has(code)) return;
+    seenCodes.add(code);
+    normalizedCodes.push({
+      code,
+      name: entry?.name ? String(entry.name).trim() : null,
+    });
+  });
 
   if (!normalizedCodes.length) return { added: 0, updated: 0, deactivated: 0 };
 
@@ -303,7 +308,23 @@ async function upsertReferenceCodes(codeType, codes) {
     [codeType],
   );
   const existingMap = new Map();
-  existingRows.forEach((row) => existingMap.set(row.code, row));
+  const duplicateIds = [];
+  existingRows.forEach((row) => {
+    const code = String(row.code || '').trim();
+    if (!code) return;
+    if (existingMap.has(code)) {
+      duplicateIds.push(row.id);
+    } else {
+      existingMap.set(code, row);
+    }
+  });
+
+  if (duplicateIds.length) {
+    await pool.query(
+      `DELETE FROM ebarimt_reference_code WHERE id IN (${duplicateIds.map(() => '?').join(',')})`,
+      duplicateIds,
+    );
+  }
 
   let added = 0;
   let updated = 0;
