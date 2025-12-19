@@ -3180,16 +3180,6 @@ export default function PosApiAdmin() {
     tableOptionsLoading,
   ]);
 
-  const infoMappingEndpoints = useMemo(() => {
-    const selected = new Set(infoSyncEndpointIds.filter(Boolean));
-    const methodFilter = infoSyncMethodRelaxed
-      ? () => true
-      : (endpoint) => (endpoint?.method || '').toUpperCase() === 'GET';
-    return infoSyncUsageEndpoints
-      .filter(methodFilter)
-      .filter((endpoint) => selected.size === 0 || selected.has(endpoint.id));
-  }, [infoSyncEndpointIds, infoSyncMethodRelaxed, infoSyncUsageEndpoints]);
-
   const infoSyncEndpointUnavailableReason = useMemo(() => {
     if (infoSyncEndpointOptions.length > 0) return '';
     if (loading) return 'POSAPI endpoints are still loading.';
@@ -6162,18 +6152,6 @@ export default function PosApiAdmin() {
       if (infoSyncEndpointIds.length > 0) {
         payload.endpointIds = infoSyncEndpointIds;
       }
-      const tablesFromEndpoints = infoMappingEndpoints
-        .map((endpoint) => collectEndpointTables(endpoint))
-        .flat()
-        .map((table) => normalizeTableValue(table))
-        .filter(Boolean);
-      const selectedTables = Array.isArray(infoSyncSettings.tables)
-        ? infoSyncSettings.tables.map((table) => normalizeTableValue(table)).filter(Boolean)
-        : [];
-      const combinedTables = Array.from(new Set([...tablesFromEndpoints, ...selectedTables]));
-      if (combinedTables.length > 0) {
-        payload.tables = combinedTables;
-      }
       const hasPayload = Object.keys(payload).length > 0;
       const res = await fetch(`${API_BASE}/posapi/reference-codes/sync`, {
         method: 'POST',
@@ -6195,13 +6173,17 @@ export default function PosApiAdmin() {
         throw new Error(errorMessage);
       }
       const data = await res.json();
-      const usageLabel = infoSyncUsage === 'all' ? 'all usages' : formatUsageLabel(infoSyncUsage);
+      const responseUsage = data.usage && VALID_USAGE_VALUES.has(data.usage) ? data.usage : infoSyncUsage;
+      const usageLabel = responseUsage === 'all' ? 'all usages' : formatUsageLabel(responseUsage);
+      const responseEndpointIds = Array.isArray(data.endpointIds)
+        ? data.endpointIds.filter((value) => typeof value === 'string' && value)
+        : infoSyncEndpointIds;
       const endpointLabel = (() => {
-        if (infoSyncEndpointIds.length === 0) return 'all endpoints';
-        const names = infoSyncEndpointIds
+        if (responseEndpointIds.length === 0) return 'all endpoints';
+        const names = responseEndpointIds
           .map((id) => endpointNameById.get(id) || id)
           .filter(Boolean);
-        if (names.length === 0) return `${infoSyncEndpointIds.length} endpoint(s)`;
+        if (names.length === 0) return `${responseEndpointIds.length} endpoint(s)`;
         return names.join(', ');
       })();
       const baseStatus = `Synced reference codes (${usageLabel}, ${endpointLabel}) – added ${data.added || 0}, updated ${
@@ -6209,7 +6191,39 @@ export default function PosApiAdmin() {
       }, deactivated ${data.deactivated || 0}.`;
       const noChanges = (data.added || 0) + (data.updated || 0) + (data.deactivated || 0) === 0;
       const statusReason = data.message || (noChanges ? 'No changes were returned by the source endpoints.' : '');
-      setInfoSyncStatus(noChanges && statusReason ? `${baseStatus} Reason: ${statusReason}` : baseStatus);
+      const endpointDiagnostics = Array.isArray(data.endpoints)
+        ? data.endpoints
+          .map((endpoint) => endpointNameById.get(endpoint.id) || endpoint.name || endpoint.id)
+          .filter(Boolean)
+        : [];
+      const resolvedTables = Array.isArray(data.tables) ? data.tables.filter(Boolean) : [];
+      const tableRows = data.tableRows && typeof data.tableRows === 'object' ? data.tableRows : {};
+      const tableRowEntries = Object.entries(tableRows)
+        .filter(([table]) => table)
+        .map(([table, count]) => `${table} (${count || 0})`);
+      const diagnostics = [
+        endpointDiagnostics.length > 0
+          ? `Endpoints executed: ${endpointDiagnostics.join(', ')}`
+          : 'Endpoints executed: not available',
+        resolvedTables.length > 0
+          ? `Tables resolved: ${resolvedTables.join(', ')}`
+          : 'Tables resolved: none',
+        tableRowEntries.length > 0
+          ? `Rows written: ${tableRowEntries.join(', ')}`
+          : 'Rows written: none',
+      ];
+      const noRowsHint = (data.updated || 0) === 0
+        ? 'No rows written. Check endpoint responseTables and responseFieldMappings.'
+        : '';
+      const statusDetails = diagnostics.filter(Boolean).join(' • ');
+      const statusText = [
+        noChanges && statusReason ? `${baseStatus} Reason: ${statusReason}` : baseStatus,
+        statusDetails,
+        noRowsHint,
+      ]
+        .filter(Boolean)
+        .join(' ');
+      setInfoSyncStatus(statusText);
       await refreshInfoSyncLogsRef.current();
     } catch (err) {
       setInfoSyncError(err.message || 'Unable to refresh reference codes');

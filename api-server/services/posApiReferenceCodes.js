@@ -374,6 +374,7 @@ async function applyFieldMappings({ response, mappings }) {
   if (!response || !mappings || typeof mappings !== 'object') return { rows: 0 };
   const mappedRowsByTable = {};
   const records = extractResponseRecords(response);
+  const tableRows = {};
   Object.entries(mappings).forEach(([sourceField, target]) => {
     if (!sourceField || !target || typeof target !== 'object') return;
     const { table, column } = target;
@@ -396,6 +397,7 @@ async function applyFieldMappings({ response, mappings }) {
   for (const [table, rowMap] of Object.entries(mappedRowsByTable)) {
     const rows = Array.from(rowMap.values());
     if (rows.length === 0) continue;
+    tableRows[table] = (tableRows[table] || 0) + rows.length;
     const columns = Array.from(
       new Set(
         rows
@@ -422,7 +424,7 @@ async function applyFieldMappings({ response, mappings }) {
     const [result] = await pool.query(sql, values);
     totalRows += Number(result?.affectedRows) || rows.length;
   }
-  return { rows: totalRows };
+  return { rows: totalRows, tableRows };
 }
 
 export async function runReferenceCodeSync(trigger = 'manual', options = {}) {
@@ -436,20 +438,24 @@ export async function runReferenceCodeSync(trigger = 'manual', options = {}) {
   const selectedEndpointIds = sanitizeIdList(
     Object.prototype.hasOwnProperty.call(options, 'endpointIds') ? options.endpointIds : settings.endpointIds,
   );
-  const targetTables =
-    Object.prototype.hasOwnProperty.call(options, 'tables') && Array.isArray(options.tables)
-      ? options.tables
-      : settings.tables;
-  const fieldMappings = sanitizeFieldMappings(
-    Object.prototype.hasOwnProperty.call(options, 'fieldMappings')
-      ? options.fieldMappings
-      : settings.fieldMappings,
-    targetTables,
-  );
   const infoEndpoints = endpoints
     .filter((endpoint) => String(endpoint.method || '').toUpperCase() === 'GET')
     .filter((endpoint) => desiredUsage === 'all' || normalizeUsage(endpoint.usage) === desiredUsage)
     .filter((endpoint) => selectedEndpointIds.length === 0 || selectedEndpointIds.includes(endpoint.id));
+  const targetTables = Array.from(
+    new Set(
+      infoEndpoints
+        .flatMap((endpoint) => endpoint.responseTables || [])
+        .map((table) => sanitizeIdentifier(table))
+        .filter(Boolean),
+    ),
+  );
+
+  if (infoEndpoints.length > 0 && targetTables.length === 0) {
+    const error = new Error('No responseTables defined for the selected endpoints');
+    error.details = { attempted: infoEndpoints.length, endpointIds: selectedEndpointIds };
+    throw error;
+  }
 
   const summary = {
     added: 0,
@@ -458,38 +464,38 @@ export async function runReferenceCodeSync(trigger = 'manual', options = {}) {
     totalTypes: 0,
     attempted: infoEndpoints.length,
     successful: 0,
+    usage: desiredUsage,
+    endpointIds: selectedEndpointIds,
+    endpoints: infoEndpoints.map((endpoint) => ({
+      id: endpoint.id,
+      name: endpoint.name,
+      usage: endpoint.usage,
+      method: endpoint.method,
+    })),
+    tables: targetTables,
+    tableRows: {},
   };
   const errors = [];
 
   for (const endpoint of infoEndpoints) {
     try {
+      if (!endpoint.responseTables || endpoint.responseTables.length === 0) {
+        throw new Error(`Endpoint ${endpoint.id} defines no responseTables`);
+      }
+      const mappings = extractEndpointFieldMappings(endpoint, targetTables);
+      if (!Object.keys(mappings).length) {
+        throw new Error(`Endpoint ${endpoint.id} has no valid responseFieldMappings`);
+      }
       const response = await invokePosApiEndpoint(endpoint.id, {}, { endpoint });
-      const endpointMappings = extractEndpointFieldMappings(endpoint, targetTables);
-      const mappings = Object.keys(endpointMappings).length
-        ? endpointMappings
-        : fieldMappings[endpoint.id];
-      if (mappings) {
-        const result = await applyFieldMappings({ response, mappings });
-        summary.updated += Number(result?.rows) || 0;
-        summary.successful += 1;
-        continue;
+      const result = await applyFieldMappings({ response, mappings });
+      summary.updated += Number(result?.rows) || 0;
+      if (result?.tableRows && typeof result.tableRows === 'object') {
+        Object.entries(result.tableRows).forEach(([table, count]) => {
+          const prev = summary.tableRows[table] || 0;
+          summary.tableRows[table] = prev + count;
+        });
       }
-      const codes = parseCodesFromEndpoint(endpoint.id, response);
       summary.successful += 1;
-      if (!codes.length) continue;
-      const grouped = codes.reduce((acc, entry) => {
-        if (!entry.code_type) return acc;
-        acc[entry.code_type] = acc[entry.code_type] || [];
-        acc[entry.code_type].push({ code: entry.code, name: entry.name });
-        return acc;
-      }, {});
-      for (const [codeType, list] of Object.entries(grouped)) {
-        summary.totalTypes += 1;
-        const result = await upsertReferenceCodes(codeType, list);
-        summary.added += result.added;
-        summary.updated += result.updated;
-        summary.deactivated += result.deactivated;
-      }
     } catch (err) {
       errors.push({ endpoint: endpoint.id, message: err.message });
     }
@@ -578,4 +584,3 @@ export async function importStaticCodesFromXlsx(codeType, content) {
   const result = await upsertReferenceCodes(codeType, codes);
   return { ...result, skipped };
 }
-
