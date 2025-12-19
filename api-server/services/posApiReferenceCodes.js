@@ -102,9 +102,20 @@ function sanitizeFieldMappings(raw, allowedTables = []) {
       const normalizedField = String(sourceField || '').trim();
       const targetTable = sanitizeIdentifier(target?.table);
       const targetColumn = sanitizeIdentifier(target?.column);
+      const rawValue = Object.prototype.hasOwnProperty.call(target || {}, 'value')
+        ? target.value
+        : undefined;
+      const targetValue =
+        typeof rawValue === 'string'
+          ? rawValue.trim()
+          : rawValue;
       if (!normalizedField || !targetTable || !targetColumn) return;
       if (allowedSet.size > 0 && !allowedSet.has(targetTable)) return;
-      tableMap[normalizedField] = { table: targetTable, column: targetColumn };
+      tableMap[normalizedField] = {
+        table: targetTable,
+        column: targetColumn,
+        ...(targetValue !== undefined && targetValue !== '' ? { value: targetValue } : {}),
+      };
     });
     if (Object.keys(tableMap).length > 0) {
       result[normalizedEndpoint] = tableMap;
@@ -134,9 +145,20 @@ function extractEndpointFieldMappings(endpoint, allowedTables = []) {
     const normalizedField = normalizeSourceField(field);
     const table = sanitizeIdentifier(target?.table);
     const column = sanitizeIdentifier(target?.column);
+    const rawValue = Object.prototype.hasOwnProperty.call(target || {}, 'value')
+      ? target.value
+      : undefined;
+    const value =
+      typeof rawValue === 'string'
+        ? rawValue.trim()
+        : rawValue;
     if (!normalizedField || !table || !column) return;
     if (allowedSet.size > 0 && !allowedSet.has(table)) return;
-    mappings[normalizedField] = { table, column };
+    mappings[normalizedField] = {
+      table,
+      column,
+      ...(value !== undefined && value !== '' ? { value } : {}),
+    };
   };
 
   const responseFields = Array.isArray(endpoint.responseFields) ? endpoint.responseFields : [];
@@ -388,11 +410,12 @@ async function applyFieldMappings({ response, mappings }) {
     if (!sourceField || !target || typeof target !== 'object') return;
     const { table, column } = target;
     if (!table || !column) return;
+    const hasExplicitValue = Object.prototype.hasOwnProperty.call(target, 'value');
     if (!mappedRowsByTable[table]) mappedRowsByTable[table] = new Map();
     const tableMap = mappedRowsByTable[table];
     records.forEach((record) => {
       if (record === undefined || record === null) return;
-      const value = resolveValue(record, sourceField);
+      const value = hasExplicitValue ? target.value : resolveValue(record, sourceField);
       if (value === undefined || value === null) return;
       resolvedCount += 1;
       const serialized = typeof value === 'object' ? JSON.stringify(value) : value;
