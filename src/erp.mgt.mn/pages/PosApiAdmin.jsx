@@ -6162,10 +6162,7 @@ export default function PosApiAdmin() {
       if (infoSyncEndpointIds.length > 0) {
         payload.endpointIds = infoSyncEndpointIds;
       }
-      const endpointsForTables = (infoSyncEndpointIds.length > 0
-        ? infoSyncUsageEndpoints.filter((endpoint) => infoSyncEndpointIds.includes(endpoint.id))
-        : infoSyncUsageEndpoints);
-      const tablesFromEndpoints = endpointsForTables
+      const tablesFromEndpoints = infoMappingEndpoints
         .map((endpoint) => collectEndpointTables(endpoint))
         .flat()
         .map((table) => normalizeTableValue(table))

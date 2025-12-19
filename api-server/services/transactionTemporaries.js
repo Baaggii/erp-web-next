@@ -312,12 +312,10 @@ async function updateTemporaryChainStatus(
     pendingOnly = false,
     temporaryId = null,
     temporaryOnly = false,
-    creatorEmpId = null,
   },
 ) {
   const normalizedChain = normalizeTemporaryId(chainId);
   const normalizedTemporaryId = normalizeTemporaryId(temporaryId);
-  const normalizedCreator = normalizeEmpId(creatorEmpId);
   if (!conn || (!normalizedChain && !normalizedTemporaryId)) return;
   let targetChainId = normalizedChain;
   if (!targetChainId && normalizedTemporaryId) {
@@ -340,35 +338,19 @@ async function updateTemporaryChainStatus(
     columns.push('plan_senior_empid = NULL');
   }
   const shouldTargetTemporaryOnly = temporaryOnly || (!targetChainId && normalizedTemporaryId);
-  const whereParams = [];
-  let whereClause;
-  if (shouldTargetTemporaryOnly) {
-    whereClause = pendingOnly ? 'id = ? AND status = "pending"' : 'id = ?';
-    whereParams.push(normalizedTemporaryId);
-  } else {
-    const filters = [];
-    if (targetChainId) {
-      filters.push('chain_id = ?');
-      whereParams.push(targetChainId);
-    }
-    if (normalizedCreator) {
-      filters.push('created_by = ?');
-      whereParams.push(normalizedCreator);
-    }
-    if (!filters.length && normalizedTemporaryId) {
-      filters.push('id = ?');
-      whereParams.push(normalizedTemporaryId);
-    }
-    if (pendingOnly) {
-      filters.push('status = "pending"');
-    }
-    whereClause = filters.join(' AND ');
-  }
-  params.push(...whereParams);
-  await conn.query(
+  const whereClause = shouldTargetTemporaryOnly
+    ? pendingOnly
+      ? 'id = ? AND status = "pending"'
+      : 'id = ?'
+    : pendingOnly
+    ? 'chain_id = ? AND status = "pending"'
+    : 'chain_id = ?';
+  params.push(shouldTargetTemporaryOnly ? normalizedTemporaryId : targetChainId);
+  const [result] = await conn.query(
     `UPDATE \`${TEMP_TABLE}\` SET ${columns.join(', ')} WHERE ${whereClause}`,
     params,
   );
+  return result?.affectedRows ?? 0;
 }
 
 export async function sanitizeCleanedValuesForInsert(tableName, values, columns) {
@@ -784,7 +766,7 @@ async function recordTemporaryReviewHistory(
   await ensureTemporaryTable(conn);
   const normalizedForward = normalizeEmpId(forwardedToEmpId);
   const recordId = promotedRecordId ? String(promotedRecordId) : null;
-  await conn.query(
+  const [result] = await conn.query(
     `INSERT INTO \`${TEMP_REVIEW_HISTORY_TABLE}\`
      (temporary_id, chain_id, action, reviewer_empid, forwarded_to_empid, promoted_record_id, notes)
      VALUES (?, ?, ?, ?, ?, ?, ?)`,
@@ -798,6 +780,7 @@ async function recordTemporaryReviewHistory(
       notes ?? null,
     ],
   );
+  return result?.affectedRows ?? 0;
 }
 
 function mergeCalculatedValues(cleanedValues, payload) {
@@ -1745,7 +1728,6 @@ export async function promoteTemporarySubmission(
         pendingOnly: true,
         temporaryId: id,
         temporaryOnly: true,
-        creatorEmpId: row.created_by,
       });
       const mergedPayload = isPlainObject(payloadJson) ? { ...payloadJson } : {};
       const sanitizedPayloadValues = isPlainObject(mergedPayload.cleanedValues)
@@ -1953,17 +1935,28 @@ export async function promoteTemporarySubmission(
       id,
       chainId: effectiveChainId,
     });
-    await chainStatusUpdater(conn, effectiveChainId, {
+    const primaryUpdateCount = await chainStatusUpdater(conn, effectiveChainId, {
       status: 'promoted',
       reviewerEmpId: normalizedReviewer,
       notes: reviewNotesValue ?? null,
       promotedRecordId: promotedId,
       clearReviewerAssignment: true,
-      pendingOnly: false,
+      pendingOnly: true,
       temporaryId: id,
       temporaryOnly: true,
-      creatorEmpId: row.created_by,
     });
+    if (primaryUpdateCount === 0 && effectiveChainId) {
+      await chainStatusUpdater(conn, effectiveChainId, {
+        status: 'promoted',
+        reviewerEmpId: normalizedReviewer,
+        notes: reviewNotesValue ?? null,
+        promotedRecordId: promotedId,
+        clearReviewerAssignment: true,
+        pendingOnly: true,
+        temporaryId: id,
+        temporaryOnly: false,
+      });
+    }
     await recordTemporaryReviewHistory(conn, {
       temporaryId: id,
       action: 'promoted',
@@ -2116,7 +2109,7 @@ export async function rejectTemporarySubmission(
       id,
       chainId: effectiveChainId,
     });
-    await chainStatusUpdater(conn, effectiveChainId, {
+    const primaryUpdateCount = await chainStatusUpdater(conn, effectiveChainId, {
       status: 'rejected',
       reviewerEmpId: normalizedReviewer,
       notes: notes ?? null,
@@ -2125,8 +2118,19 @@ export async function rejectTemporarySubmission(
       pendingOnly: true,
       temporaryId: id,
       temporaryOnly: true,
-      creatorEmpId: row.created_by,
     });
+    if (primaryUpdateCount === 0 && effectiveChainId) {
+      await chainStatusUpdater(conn, effectiveChainId, {
+        status: 'rejected',
+        reviewerEmpId: normalizedReviewer,
+        notes: notes ?? null,
+        promotedRecordId: null,
+        clearReviewerAssignment: true,
+        pendingOnly: true,
+        temporaryId: id,
+        temporaryOnly: false,
+      });
+    }
     await recordTemporaryReviewHistory(conn, {
       temporaryId: id,
       action: 'rejected',
