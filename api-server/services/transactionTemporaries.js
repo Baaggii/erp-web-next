@@ -346,10 +346,11 @@ async function updateTemporaryChainStatus(
     ? 'chain_id = ? AND status = "pending"'
     : 'chain_id = ?';
   params.push(shouldTargetTemporaryOnly ? normalizedTemporaryId : targetChainId);
-  await conn.query(
+  const [result] = await conn.query(
     `UPDATE \`${TEMP_TABLE}\` SET ${columns.join(', ')} WHERE ${whereClause}`,
     params,
   );
+  return result?.affectedRows ?? 0;
 }
 
 export async function sanitizeCleanedValuesForInsert(tableName, values, columns) {
@@ -765,7 +766,7 @@ async function recordTemporaryReviewHistory(
   await ensureTemporaryTable(conn);
   const normalizedForward = normalizeEmpId(forwardedToEmpId);
   const recordId = promotedRecordId ? String(promotedRecordId) : null;
-  await conn.query(
+  const [result] = await conn.query(
     `INSERT INTO \`${TEMP_REVIEW_HISTORY_TABLE}\`
      (temporary_id, chain_id, action, reviewer_empid, forwarded_to_empid, promoted_record_id, notes)
      VALUES (?, ?, ?, ?, ?, ?, ?)`,
@@ -779,6 +780,7 @@ async function recordTemporaryReviewHistory(
       notes ?? null,
     ],
   );
+  return result?.affectedRows ?? 0;
 }
 
 function mergeCalculatedValues(cleanedValues, payload) {
@@ -1933,7 +1935,7 @@ export async function promoteTemporarySubmission(
       id,
       chainId: effectiveChainId,
     });
-    await chainStatusUpdater(conn, effectiveChainId, {
+    const primaryUpdateCount = await chainStatusUpdater(conn, effectiveChainId, {
       status: 'promoted',
       reviewerEmpId: normalizedReviewer,
       notes: reviewNotesValue ?? null,
@@ -1943,6 +1945,18 @@ export async function promoteTemporarySubmission(
       temporaryId: id,
       temporaryOnly: true,
     });
+    if (primaryUpdateCount === 0 && effectiveChainId) {
+      await chainStatusUpdater(conn, effectiveChainId, {
+        status: 'promoted',
+        reviewerEmpId: normalizedReviewer,
+        notes: reviewNotesValue ?? null,
+        promotedRecordId: promotedId,
+        clearReviewerAssignment: true,
+        pendingOnly: true,
+        temporaryId: id,
+        temporaryOnly: false,
+      });
+    }
     await recordTemporaryReviewHistory(conn, {
       temporaryId: id,
       action: 'promoted',
@@ -2095,7 +2109,7 @@ export async function rejectTemporarySubmission(
       id,
       chainId: effectiveChainId,
     });
-    await chainStatusUpdater(conn, effectiveChainId, {
+    const primaryUpdateCount = await chainStatusUpdater(conn, effectiveChainId, {
       status: 'rejected',
       reviewerEmpId: normalizedReviewer,
       notes: notes ?? null,
@@ -2105,6 +2119,18 @@ export async function rejectTemporarySubmission(
       temporaryId: id,
       temporaryOnly: true,
     });
+    if (primaryUpdateCount === 0 && effectiveChainId) {
+      await chainStatusUpdater(conn, effectiveChainId, {
+        status: 'rejected',
+        reviewerEmpId: normalizedReviewer,
+        notes: notes ?? null,
+        promotedRecordId: null,
+        clearReviewerAssignment: true,
+        pendingOnly: true,
+        temporaryId: id,
+        temporaryOnly: false,
+      });
+    }
     await recordTemporaryReviewHistory(conn, {
       temporaryId: id,
       action: 'rejected',
