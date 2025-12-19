@@ -8,6 +8,7 @@ import {
   promoteTemporarySubmission,
   getTemporaryChainHistory,
   listTemporarySubmissions,
+  updateTemporaryChainStatus,
 } from '../../api-server/services/transactionTemporaries.js';
 
 function mockQuery(handler) {
@@ -193,6 +194,56 @@ test('getTemporarySummary marks reviewers even without pending temporaries', asy
   } finally {
     restore();
   }
+});
+
+test('updateTemporaryChainStatus prefers the targeted temporary when an id is provided', async () => {
+  const queries = [];
+  const conn = {
+    async query(sql, params = []) {
+      queries.push({ sql, params });
+      if (sql.startsWith('UPDATE `transaction_temporaries`')) {
+        return [[{ affectedRows: 1 }]];
+      }
+      throw new Error(`Unexpected SQL: ${sql}`);
+    },
+  };
+
+  const result = await updateTemporaryChainStatus(conn, 200, {
+    status: 'promoted',
+    reviewerEmpId: 'EMP001',
+    temporaryId: 123,
+  });
+
+  assert.equal(result, 1);
+  const updateQuery = queries.find(({ sql }) => sql.startsWith('UPDATE `transaction_temporaries`'));
+  assert.ok(updateQuery);
+  assert.ok(updateQuery.sql.includes('WHERE id = ?'));
+  assert.equal(updateQuery.params.at(-1), 123);
+});
+
+test('updateTemporaryChainStatus updates the chain only when explicitly requested', async () => {
+  const queries = [];
+  const conn = {
+    async query(sql, params = []) {
+      queries.push({ sql, params });
+      if (sql.startsWith('UPDATE `transaction_temporaries`')) {
+        return [[{ affectedRows: 2 }]];
+      }
+      throw new Error(`Unexpected SQL: ${sql}`);
+    },
+  };
+
+  const result = await updateTemporaryChainStatus(conn, 300, {
+    status: 'rejected',
+    reviewerEmpId: 'EMP002',
+    applyToChain: true,
+  });
+
+  assert.equal(result, 2);
+  const updateQuery = queries.find(({ sql }) => sql.startsWith('UPDATE `transaction_temporaries`'));
+  assert.ok(updateQuery);
+  assert.ok(updateQuery.sql.includes('WHERE chain_id = ?'));
+  assert.equal(updateQuery.params.at(-1), 300);
 });
 
 test('sanitizeCleanedValuesForInsert trims oversized string values and records warnings', async () => {

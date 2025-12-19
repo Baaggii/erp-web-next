@@ -300,7 +300,7 @@ function groupTemporaryRowsByChain(rows) {
   return Array.from(lookup.values());
 }
 
-async function updateTemporaryChainStatus(
+export async function updateTemporaryChainStatus(
   conn,
   chainId,
   {
@@ -312,13 +312,15 @@ async function updateTemporaryChainStatus(
     pendingOnly = false,
     temporaryId = null,
     temporaryOnly = false,
+    applyToChain = false,
   },
 ) {
   const normalizedChain = normalizeTemporaryId(chainId);
   const normalizedTemporaryId = normalizeTemporaryId(temporaryId);
   if (!conn || (!normalizedChain && !normalizedTemporaryId)) return;
   let targetChainId = normalizedChain;
-  if (!targetChainId && normalizedTemporaryId) {
+  const shouldTargetTemporary = !applyToChain && (temporaryOnly || normalizedTemporaryId);
+  if (!targetChainId && !shouldTargetTemporary && normalizedTemporaryId) {
     const [chainRows] = await conn.query(
       `SELECT chain_id FROM \`${TEMP_TABLE}\` WHERE id = ? LIMIT 1`,
       [normalizedTemporaryId],
@@ -337,7 +339,7 @@ async function updateTemporaryChainStatus(
   if (clearReviewerAssignment || (status && status !== 'pending')) {
     columns.push('plan_senior_empid = NULL');
   }
-  const shouldTargetTemporaryOnly = temporaryOnly || (!targetChainId && normalizedTemporaryId);
+  const shouldTargetTemporaryOnly = shouldTargetTemporary && normalizedTemporaryId;
   const whereClause = shouldTargetTemporaryOnly
     ? pendingOnly
       ? 'id = ? AND status = "pending"'
