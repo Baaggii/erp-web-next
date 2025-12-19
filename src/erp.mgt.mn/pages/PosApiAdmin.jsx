@@ -356,7 +356,9 @@ function buildTableOptions(tables) {
 }
 
 function sanitizeTableSelection(selection, options) {
-  const allowedValues = Array.isArray(options) ? options.map((option) => option.value) : [];
+  const allowedValues = Array.isArray(options)
+    ? options.map((option) => normalizeTableValue(option.value))
+    : [];
   const allowedSet = new Set(allowedValues.filter(Boolean));
   const values = Array.isArray(selection) ? selection : [];
   const normalized = values
@@ -370,7 +372,23 @@ function sanitizeTableSelection(selection, options) {
     .filter(Boolean);
   const unique = Array.from(new Set(normalized));
   if (allowedSet.size === 0) return unique;
-  return unique.filter((value) => allowedSet.has(value));
+  return unique.filter((value) => allowedSet.has(normalizeTableValue(value)));
+}
+
+function extractSelectedValues(event, normalizer) {
+  const target = event?.target || event?.currentTarget;
+  if (!target) return [];
+  const selectedOptions = target.selectedOptions || target.options;
+  if (!selectedOptions) return [];
+  const normalize = typeof normalizer === 'function' ? normalizer : (value) => value;
+  return Array.from(selectedOptions)
+    .filter((option) => option && option.selected)
+    .map((option) => normalize(option.value))
+    .map((value) => {
+      if (value === undefined || value === null) return '';
+      return typeof value === 'string' ? value.trim() : `${value}`.trim();
+    })
+    .filter(Boolean);
 }
 
 function sanitizeInfoFieldMappings(mappings, allowedTables) {
@@ -2996,7 +3014,12 @@ export default function PosApiAdmin() {
 
   const infoSyncUsageEndpoints = useMemo(() => {
     const normalized = endpoints.map(withEndpointMetadata);
-    const selectedEndpointIds = new Set(infoSyncEndpointIds.filter(Boolean));
+    const selectedEndpointIds = new Set(
+      infoSyncEndpointIds
+        .filter(Boolean)
+        .map((id) => `${id}`.trim())
+        .filter(Boolean),
+    );
     return normalized.filter((endpoint) => {
       const matchesUsage = infoSyncUsage === 'all' || !infoSyncUsage || endpoint.usage === infoSyncUsage;
       return matchesUsage || selectedEndpointIds.has(endpoint.id);
@@ -3020,13 +3043,18 @@ export default function PosApiAdmin() {
       : (endpoint) => (endpoint?.method || '').toUpperCase() === 'GET';
     return infoSyncUsageEndpoints
       .filter(methodFilter)
-      .map((endpoint) => ({
-        id: endpoint.id,
-        name: endpoint.name || endpoint.id,
-        method: endpoint.method,
-        path: endpoint.path,
-        usage: endpoint.usage,
-      }));
+      .map((endpoint) => {
+        const id = endpoint?.id === undefined || endpoint.id === null ? '' : `${endpoint.id}`.trim();
+        if (!id) return null;
+        return {
+          id,
+          name: endpoint.name || id,
+          method: endpoint.method,
+          path: endpoint.path,
+          usage: endpoint.usage,
+        };
+      })
+      .filter(Boolean);
   }, [infoSyncMethodRelaxed, infoSyncUsageEndpoints]);
 
   const infoSyncTableOptions = useMemo(() => {
@@ -3038,7 +3066,7 @@ export default function PosApiAdmin() {
     ];
     return merged
       .map((option) => {
-        const value = option?.value;
+        const value = normalizeTableValue(option?.value);
         if (!value || seen.has(value)) return null;
         seen.add(value);
         return { value, label: formatTableDisplay(value, option.label) };
@@ -3055,7 +3083,7 @@ export default function PosApiAdmin() {
 
     return merged
       .map((option) => {
-        const value = option?.value;
+        const value = normalizeTableValue(option?.value);
         if (!value || seen.has(value)) return null;
         seen.add(value);
         return { value, label: formatTableDisplay(value, option.label) };
@@ -5634,7 +5662,7 @@ export default function PosApiAdmin() {
   }
 
   function handleResponseTableSelection(event) {
-    const values = Array.from(event.target.selectedOptions || []).map((opt) => opt.value);
+    const values = extractSelectedValues(event, normalizeTableValue);
     const sanitized = sanitizeTableSelection(values, responseTableOptions);
     if (sanitized.length === 0 && values.length > 0) {
       setResponseTableSelectionError(
@@ -6023,9 +6051,15 @@ export default function PosApiAdmin() {
   }
 
   function handleInfoEndpointSelection(event) {
-    const selected = Array.from(event.target.selectedOptions || []).map((option) => option.value);
-    const allowed = new Set(infoSyncEndpointOptions.map((endpoint) => endpoint.id));
-    const sanitized = selected.filter((id) => allowed.has(id));
+    const selected = extractSelectedValues(event, (value) => value);
+    const allowed = new Set(
+      infoSyncEndpointOptions
+        .map((endpoint) => (endpoint.id === undefined || endpoint.id === null
+          ? ''
+          : `${endpoint.id}`.trim()))
+        .filter(Boolean),
+    );
+    const sanitized = allowed.size === 0 ? selected : selected.filter((id) => allowed.has(id));
 
     if (sanitized.length === 0 && selected.length > 0) {
       setInfoSyncSelectionError(
