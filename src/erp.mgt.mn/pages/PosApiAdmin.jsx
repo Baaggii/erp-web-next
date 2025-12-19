@@ -3069,7 +3069,7 @@ export default function PosApiAdmin() {
     }
     if (tableOptionsError) return tableOptionsError;
     return 'No database tables were loaded. Verify access permissions or try again later.';
-  }, [responseTableOptions.length, tableOptionsError]);
+  }, [responseTableOptions.length, tableOptionsError, tableOptionsLoading]);
 
   const responseFieldOptions = useMemo(() => {
     const options = [];
@@ -3091,6 +3091,7 @@ export default function PosApiAdmin() {
   }, [formState.responseTables, tableFields]);
 
   useEffect(() => {
+    let removedTables = 0;
     setFormState((prev) => {
       const sanitizedTables = sanitizeTableSelection(prev.responseTables, responseTableOptions);
       const allowedTables = new Set(sanitizedTables.map((table) => normalizeTableValue(table)));
@@ -3099,6 +3100,9 @@ export default function PosApiAdmin() {
           allowedTables.has(normalizeTableValue(target.table)),
         ),
       );
+      removedTables = (prev.responseTables || []).filter(
+        (table) => table && !allowedTables.has(normalizeTableValue(table)),
+      ).length;
       const tablesChanged = JSON.stringify(sanitizedTables) !== JSON.stringify(prev.responseTables || []);
       const mappingsChanged =
         JSON.stringify(filteredMappings) !== JSON.stringify(prev.responseFieldMappings || {});
@@ -3106,7 +3110,32 @@ export default function PosApiAdmin() {
       if (!tablesChanged && !mappingsChanged) return prev;
       return { ...prev, responseTables: sanitizedTables, responseFieldMappings: filteredMappings };
     });
-  }, [responseTableOptions]);
+    if (removedTables > 0) {
+      setResponseTableSelectionError(
+        responseTablesUnavailableReason
+          || 'Some selected tables are no longer available. Reload the table list or pick another option.',
+      );
+    } else if (responseTableOptions.length > 0 && !tableOptionsLoading) {
+      setResponseTableSelectionError('');
+    }
+  }, [responseTableOptions, responseTablesUnavailableReason, tableOptionsLoading]);
+
+  useEffect(() => {
+    if (tableOptionsLoading) return;
+    if (formState.responseTables.length > 0 && responseTableOptions.length === 0) {
+      setResponseTableSelectionError(
+        responseTablesUnavailableReason
+          || 'The saved response mapping tables are unavailable. Reload or pick from the updated list.',
+      );
+    } else if (responseTableOptions.length > 0) {
+      setResponseTableSelectionError('');
+    }
+  }, [
+    formState.responseTables,
+    responseTableOptions.length,
+    responseTablesUnavailableReason,
+    tableOptionsLoading,
+  ]);
 
   const infoMappingEndpoints = useMemo(() => {
     const selected = new Set(infoSyncEndpointIds.filter(Boolean));
@@ -3151,6 +3180,24 @@ export default function PosApiAdmin() {
   }, [infoSyncEndpointOptions.length, loading]);
 
   useEffect(() => {
+    if (loading) return;
+    if (infoSyncEndpointOptions.length === 0 && infoSyncEndpointIds.length > 0) {
+      setInfoSyncSelectionError(
+        infoSyncEndpointUnavailableReason
+          || 'Selected endpoints are unavailable for the chosen usage. Reload or adjust the filter.',
+      );
+    } else if (infoSyncEndpointOptions.length > 0) {
+      setInfoSyncSelectionError('');
+    }
+  }, [
+    infoSyncEndpointIds,
+    infoSyncEndpointOptions.length,
+    infoSyncEndpointUnavailableReason,
+    loading,
+  ]);
+
+  useEffect(() => {
+    let removedCount = 0;
     setInfoSyncEndpointIds((prev) => {
       if (loading || infoSyncEndpointOptions.length === 0) return prev;
       const filtered = prev.filter((id) => infoSyncEndpointOptions.some((ep) => ep.id === id));
@@ -3162,7 +3209,15 @@ export default function PosApiAdmin() {
       }
       return filtered;
     });
-  }, [infoSyncEndpointOptions, loading]);
+    if (removedCount > 0) {
+      setInfoSyncSelectionError(
+        infoSyncEndpointUnavailableReason
+          || 'Some selected endpoints are no longer available for the selected usage.',
+      );
+    } else if (infoSyncEndpointOptions.length > 0 && !loading) {
+      setInfoSyncSelectionError('');
+    }
+  }, [infoSyncEndpointOptions, infoSyncEndpointUnavailableReason, loading]);
 
   useEffect(() => {
     if (responseTableOptions.length > 0 && !tableOptionsLoading) {
@@ -9759,6 +9814,7 @@ export default function PosApiAdmin() {
                       {infoSyncSelectionError && <div style={styles.hintError}>{infoSyncSelectionError}</div>}
                     </>
                   )}
+                  {infoSyncSelectionError && <div style={styles.hintError}>{infoSyncSelectionError}</div>}
                   </label>
               </div>
               <button
