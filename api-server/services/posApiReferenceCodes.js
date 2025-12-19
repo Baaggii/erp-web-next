@@ -567,15 +567,12 @@ export async function runReferenceCodeSync(trigger = 'manual', options = {}) {
           const codeValue = String(entry?.code || '').trim();
           if (!codeType || !codeValue) return;
           const name = entry?.name ? String(entry.name).trim() : null;
-          const typeMap = codesByType.get(codeType) || new Map();
-          if (!typeMap.has(codeValue)) {
-            typeMap.set(codeValue, { code: codeValue, name });
-            codesByType.set(codeType, typeMap);
-          }
+          const list = codesByType.get(codeType) || [];
+          list.push({ code: codeValue, name });
+          codesByType.set(codeType, list);
         });
         const summaryTotals = { added: 0, updated: 0, deactivated: 0 };
-        for (const [codeType, codesMap] of codesByType.entries()) {
-          const codes = Array.from(codesMap.values());
+        for (const [codeType, codes] of codesByType.entries()) {
           const result = await upsertReferenceCodes(codeType, codes);
           summaryTotals.added += Number(result?.added) || 0;
           summaryTotals.updated += Number(result?.updated) || 0;
