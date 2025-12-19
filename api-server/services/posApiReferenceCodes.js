@@ -116,18 +116,6 @@ function sanitizeFieldMappings(raw, allowedTables = []) {
   return result;
 }
 
-function sanitizeCodeTypeByEndpoint(map) {
-  if (!map || typeof map !== 'object') return {};
-  const normalized = {};
-  Object.entries(map).forEach(([endpointId, codeType]) => {
-    const normalizedId = String(endpointId || '').trim();
-    const normalizedType = String(codeType || '').trim();
-    if (!normalizedId || !REFERENCE_CODE_TYPES.has(normalizedType)) return;
-    normalized[normalizedId] = normalizedType;
-  });
-  return normalized;
-}
-
 function normalizeSourceField(field) {
   if (typeof field !== 'string') return '';
   return field
@@ -462,7 +450,7 @@ async function applyFieldMappings({ response, mappings, tableDefaults = {} }) {
     if (columns.length === 0) continue;
     const codeColumn = columns.find((col) => col === 'code');
     if (codeColumn) {
-      const codes = normalizedRows
+      const codes = rows
         .map((row) => row[codeColumn])
         .filter((value) => value !== undefined && value !== null);
       if (codes.length > 0) {
