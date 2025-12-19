@@ -2856,6 +2856,11 @@ export default function PosApiAdmin() {
   const formStateRef = useRef(formState);
   const requestSampleSyncRef = useRef(false);
   const refreshInfoSyncLogsRef = useRef(() => Promise.resolve());
+  const mountedRef = useRef(true);
+
+  useEffect(() => () => {
+    mountedRef.current = false;
+  }, []);
 
   function showToast(message, type = 'info') {
     if (typeof addToast === 'function') {
@@ -3056,6 +3061,16 @@ export default function PosApiAdmin() {
       })
       .filter(Boolean);
   }, [infoSyncMethodRelaxed, infoSyncUsageEndpoints]);
+
+  const endpointNameById = useMemo(() => {
+    const map = new Map();
+    endpoints.forEach((endpoint) => {
+      if (!endpoint?.id) return;
+      const label = endpoint.name || endpoint.id;
+      map.set(endpoint.id, label);
+    });
+    return map;
+  }, [endpoints]);
 
   const infoSyncTableOptions = useMemo(() => {
     const seen = new Set();
@@ -3320,35 +3335,49 @@ export default function PosApiAdmin() {
     );
     if (missingTables.length === 0) return undefined;
     let cancelled = false;
-    const abortController = new AbortController();
+    const controllers = new Map();
+
+    const updateLoading = (table, isLoading) => {
+      if (!mountedRef.current) return;
+      setTableFieldLoading((prev) => {
+        if (prev[table] === isLoading) return prev;
+        return { ...prev, [table]: isLoading };
+      });
+    };
+
     missingTables.forEach((table) => {
-      setTableFieldLoading((prev) => ({ ...prev, [table]: true }));
+      const controller = new AbortController();
+      controllers.set(table, controller);
+      updateLoading(table, true);
       fetch(`${API_BASE}/report_builder/fields?table=${encodeURIComponent(table)}`, {
         credentials: 'include',
         skipLoader: true,
-        signal: abortController.signal,
+        signal: controller.signal,
       })
         .then((res) => res.json().then((data) => ({ ok: res.ok, data })))
         .then(({ ok, data }) => {
-          if (cancelled) return;
+          if (cancelled || !mountedRef.current) return;
           if (!ok) {
-            setTableFieldLoading((prev) => ({ ...prev, [table]: false }));
+            updateLoading(table, false);
             return;
           }
           const normalized = normalizeFieldList(data);
           setTableFields((prev) => ({ ...prev, [table]: normalized }));
-          setTableFieldLoading((prev) => ({ ...prev, [table]: false }));
+          updateLoading(table, false);
         })
-        .catch(() => {
-          if (cancelled) return;
-          setTableFieldLoading((prev) => ({ ...prev, [table]: false }));
+        .catch((err) => {
+          if (cancelled || err?.name === 'AbortError' || !mountedRef.current) return;
+          updateLoading(table, false);
         });
     });
     return () => {
       cancelled = true;
-      abortController.abort();
+      controllers.forEach((controller, table) => {
+        controller.abort();
+        updateLoading(table, false);
+      });
     };
-  }, [formState.responseTables, tableFields, tableFieldLoading]);
+  }, [formState.responseTables]);
 
   const isTransactionUsage = formState.usage === 'transaction';
   const supportsItems = isTransactionUsage ? formState.supportsItems !== false : false;
@@ -5244,7 +5273,7 @@ export default function PosApiAdmin() {
           return;
         }
         const [settingsData, tableData] = await Promise.all([settingsRes.json(), tablesRes.json()]);
-        if (cancelled) return;
+        if (cancelled || !mountedRef.current) return;
         const tableOptions = buildTableOptions(Array.isArray(tableData.tables) ? tableData.tables : []);
         setInfoSyncTableOptionsBase(tableOptions);
         const usage = settingsData.settings?.usage && VALID_USAGE_VALUES.has(settingsData.settings.usage)
@@ -5270,12 +5299,12 @@ export default function PosApiAdmin() {
         setInfoSyncLogs(Array.isArray(settingsData.logs) ? settingsData.logs : []);
         infoSyncPreloadedRef.current = true;
       } catch (err) {
-        if (!cancelled) {
+        if (!cancelled && mountedRef.current) {
           setInfoSyncError(err?.message || 'Unable to preload POSAPI information sync settings');
           console.warn('Unable to preload POSAPI information sync settings', err);
         }
       } finally {
-        if (!cancelled) setInfoSyncLoading(false);
+        if (mountedRef.current) setInfoSyncLoading(false);
       }
     }
 
@@ -5388,6 +5417,8 @@ export default function PosApiAdmin() {
       }
     }
 
+    refreshInfoSyncLogsRef.current = refreshInfoSyncLogs;
+
     async function loadInfoSync() {
       try {
         setInfoSyncLoading(true);
@@ -5429,7 +5460,7 @@ export default function PosApiAdmin() {
           throw new Error(message);
         }
         const [settingsData, tableData] = await Promise.all([settingsRes.json(), tablesRes.json()]);
-        if (cancelled) return;
+        if (cancelled || !mountedRef.current) return;
         const tableOptions = buildTableOptions(Array.isArray(tableData.tables) ? tableData.tables : []);
         setInfoSyncTableOptionsBase(tableOptions);
         const usage = settingsData.settings?.usage && VALID_USAGE_VALUES.has(settingsData.settings.usage)
@@ -5453,11 +5484,11 @@ export default function PosApiAdmin() {
         setInfoSyncEndpointIds(endpointIds);
         setInfoSyncLogs(Array.isArray(settingsData.logs) ? settingsData.logs : []);
       } catch (err) {
-        if (!cancelled) {
+        if (!cancelled && mountedRef.current) {
           setInfoSyncError(err.message || 'Unable to load POSAPI information sync settings');
         }
       } finally {
-        if (!cancelled) {
+        if (mountedRef.current) {
           setInfoSyncLoading(false);
         }
       }
@@ -5468,6 +5499,9 @@ export default function PosApiAdmin() {
     return () => {
       cancelled = true;
       controller.abort();
+      if (mountedRef.current) {
+        setInfoSyncLoading(false);
+      }
       if (intervalId) window.clearInterval(intervalId);
     };
   }, [activeTab]);
@@ -6128,17 +6162,20 @@ export default function PosApiAdmin() {
       if (infoSyncEndpointIds.length > 0) {
         payload.endpointIds = infoSyncEndpointIds;
       }
-      const tablesFromEndpoints = Array.from(
-        new Set(
-          infoMappingEndpoints
-            .map((endpoint) => collectEndpointTables(endpoint))
-            .flat()
-            .map((table) => normalizeTableValue(table))
-            .filter(Boolean),
-        ),
-      );
-      if (tablesFromEndpoints.length > 0) {
-        payload.tables = tablesFromEndpoints;
+      const endpointsForTables = (infoSyncEndpointIds.length > 0
+        ? infoSyncUsageEndpoints.filter((endpoint) => infoSyncEndpointIds.includes(endpoint.id))
+        : infoSyncUsageEndpoints);
+      const tablesFromEndpoints = endpointsForTables
+        .map((endpoint) => collectEndpointTables(endpoint))
+        .flat()
+        .map((table) => normalizeTableValue(table))
+        .filter(Boolean);
+      const selectedTables = Array.isArray(infoSyncSettings.tables)
+        ? infoSyncSettings.tables.map((table) => normalizeTableValue(table)).filter(Boolean)
+        : [];
+      const combinedTables = Array.from(new Set([...tablesFromEndpoints, ...selectedTables]));
+      if (combinedTables.length > 0) {
+        payload.tables = combinedTables;
       }
       const hasPayload = Object.keys(payload).length > 0;
       const res = await fetch(`${API_BASE}/posapi/reference-codes/sync`, {
@@ -6162,15 +6199,20 @@ export default function PosApiAdmin() {
       }
       const data = await res.json();
       const usageLabel = infoSyncUsage === 'all' ? 'all usages' : formatUsageLabel(infoSyncUsage);
-      const endpointLabel =
-        infoSyncEndpointIds.length > 0
-          ? `${infoSyncEndpointIds.length} endpoint(s)`
-          : 'all endpoints';
-      setInfoSyncStatus(
-        `Synced reference codes (${usageLabel}, ${endpointLabel}) – added ${data.added || 0}, updated ${
-          data.updated || 0
-        }, deactivated ${data.deactivated || 0}.`,
-      );
+      const endpointLabel = (() => {
+        if (infoSyncEndpointIds.length === 0) return 'all endpoints';
+        const names = infoSyncEndpointIds
+          .map((id) => endpointNameById.get(id) || id)
+          .filter(Boolean);
+        if (names.length === 0) return `${infoSyncEndpointIds.length} endpoint(s)`;
+        return names.join(', ');
+      })();
+      const baseStatus = `Synced reference codes (${usageLabel}, ${endpointLabel}) – added ${data.added || 0}, updated ${
+        data.updated || 0
+      }, deactivated ${data.deactivated || 0}.`;
+      const noChanges = (data.added || 0) + (data.updated || 0) + (data.deactivated || 0) === 0;
+      const statusReason = data.message || (noChanges ? 'No changes were returned by the source endpoints.' : '');
+      setInfoSyncStatus(noChanges && statusReason ? `${baseStatus} Reason: ${statusReason}` : baseStatus);
       await refreshInfoSyncLogsRef.current();
     } catch (err) {
       setInfoSyncError(err.message || 'Unable to refresh reference codes');
@@ -6197,12 +6239,36 @@ export default function PosApiAdmin() {
     const endpointIds = Array.isArray(log.endpointIds)
       ? log.endpointIds.filter((value) => typeof value === 'string' && value)
       : [];
-    const endpointCount = Number.isFinite(log.endpointCount) ? log.endpointCount : endpointIds.length;
-    const endpointLabel = endpointCount > 0 ? `${endpointCount} endpoint(s)` : 'all endpoints';
+    const endpointNamesFromLog = Array.isArray(log.endpoints)
+      ? log.endpoints
+        .map((entry) => entry?.name || entry?.id || '')
+        .filter(Boolean)
+      : [];
+    const endpointCount = Number.isFinite(log.endpointCount)
+      ? log.endpointCount
+      : (endpointIds.length || endpointNamesFromLog.length);
+    const endpointLabel = (() => {
+      if (endpointIds.length === 0 && endpointNamesFromLog.length === 0 && endpointCount === 0) {
+        return 'all endpoints';
+      }
+      const names = [
+        ...endpointNamesFromLog,
+        ...endpointIds
+        .map((id) => endpointNameById.get(id) || id)
+        .filter(Boolean),
+      ].filter(Boolean);
+      if (names.length > 0) return names.join(', ');
+      return endpointCount > 0 ? `${endpointCount} endpoint(s)` : 'all endpoints';
+    })();
     const added = log.added ?? 0;
     const updated = log.updated ?? 0;
     const deactivated = log.deactivated ?? 0;
-    return `Synced reference codes (${usageLabel}, ${endpointLabel}) – added ${added}, updated ${updated}, deactivated ${deactivated}.`;
+    const base = `Synced reference codes (${usageLabel}, ${endpointLabel}) – added ${added}, updated ${updated}, deactivated ${deactivated}.`;
+    if (added + updated + deactivated > 0) return base;
+    const reason = log.reason
+      || (Array.isArray(log.errors) && log.errors.length > 0 ? formatSyncErrors(log) : '');
+    if (reason) return `${base} Reason: ${reason}`;
+    return `${base} Reason: No changes were returned by the source endpoints.`;
   }
 
   async function handleStaticUpload(event) {
@@ -9825,7 +9891,7 @@ export default function PosApiAdmin() {
                         value={infoSyncEndpointIds}
                         onChange={handleInfoEndpointSelection}
                         style={{ ...styles.input, minHeight: '140px' }}
-                        disabled={infoSyncLoading}
+                        disabled={infoSyncLoading && infoSyncEndpointOptions.length === 0}
                       >
                         {infoSyncEndpointOptions.length === 0 && (
                           <option value="" disabled>
