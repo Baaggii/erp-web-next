@@ -212,7 +212,6 @@ test('updateTemporaryChainStatus prefers the targeted temporary when an id is pr
     status: 'promoted',
     reviewerEmpId: 'EMP001',
     temporaryId: 123,
-    applyToChain: false,
   });
 
   assert.equal(result, 1);
