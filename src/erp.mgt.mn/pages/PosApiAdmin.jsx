@@ -115,6 +115,14 @@ const DEFAULT_TOKEN_TTL_MS = 55 * 60 * 1000;
 const DEFAULT_INFO_TABLE_OPTIONS = [
   { value: 'posapi_reference_codes', label: 'POSAPI reference codes' },
 ];
+const REFERENCE_CODE_TYPE_OPTIONS = [
+  { value: 'classification', label: 'Product classification' },
+  { value: 'tax_reason', label: 'VAT exemption reason' },
+  { value: 'district', label: 'District' },
+  { value: 'barcode_type', label: 'Barcode type' },
+  { value: 'payment_code', label: 'Payment code' },
+];
+const VALID_REFERENCE_CODE_TYPES = new Set(REFERENCE_CODE_TYPE_OPTIONS.map((opt) => opt.value));
 const BASE_COMBINATION_KEY = '__posapi-base__';
 const BASE_COMPLEX_REQUEST_SCHEMA = createReceiptTemplate('B2C');
 const TRANSACTION_POSAPI_TYPES = new Set(['B2C', 'B2B_SALE', 'B2B_PURCHASE', 'TRANSACTION', 'STOCK_QR']);
@@ -2826,6 +2834,7 @@ export default function PosApiAdmin() {
     usage: 'all',
     endpointIds: [],
     tables: [],
+    codeTypeByEndpoint: {},
   });
   const [infoSyncLogs, setInfoSyncLogs] = useState([]);
   const [infoSyncStatus, setInfoSyncStatus] = useState('');
@@ -3057,6 +3066,10 @@ export default function PosApiAdmin() {
           method: endpoint.method,
           path: endpoint.path,
           usage: endpoint.usage,
+          referenceCodeType: endpoint.referenceCodeType || endpoint.codeType || endpoint.code_type || '',
+          writesReferenceCodes: Array.isArray(endpoint.responseTables)
+            ? endpoint.responseTables.includes('ebarimt_reference_code')
+            : false,
         };
       })
       .filter(Boolean);
@@ -5272,6 +5285,10 @@ export default function PosApiAdmin() {
         const endpointIds = Array.isArray(settingsData.settings?.endpointIds)
           ? settingsData.settings.endpointIds.filter((value) => typeof value === 'string' && value)
           : [];
+        const codeTypeByEndpoint =
+          settingsData.settings?.codeTypeByEndpoint && typeof settingsData.settings.codeTypeByEndpoint === 'object'
+            ? settingsData.settings.codeTypeByEndpoint
+            : {};
         const tables = sanitizeTableSelection(
           settingsData.settings?.tables,
           tableOptions.length > 0 ? tableOptions : DEFAULT_INFO_TABLE_OPTIONS,
@@ -5283,6 +5300,7 @@ export default function PosApiAdmin() {
           usage,
           endpointIds,
           tables,
+          codeTypeByEndpoint,
         }));
         setInfoSyncUsage(usage);
         setInfoSyncEndpointIds(endpointIds);
@@ -6074,6 +6092,19 @@ export default function PosApiAdmin() {
     setInfoSyncSettings((prev) => ({ ...prev, [field]: value }));
   }
 
+  function updateEndpointCodeType(endpointId, codeType) {
+    if (!endpointId) return;
+    setInfoSyncSettings((prev) => {
+      const nextMap = { ...(prev.codeTypeByEndpoint || {}) };
+      if (VALID_REFERENCE_CODE_TYPES.has(codeType)) {
+        nextMap[endpointId] = codeType;
+      } else {
+        delete nextMap[endpointId];
+      }
+      return { ...prev, codeTypeByEndpoint: nextMap };
+    });
+  }
+
   function handleInfoEndpointSelection(event) {
     const selected = extractSelectedValues(event, (value) => value);
     const allowed = new Set(
@@ -6099,7 +6130,15 @@ export default function PosApiAdmin() {
     }
 
     setInfoSyncEndpointIds(sanitized);
-    updateInfoSetting('endpointIds', sanitized);
+    setInfoSyncSettings((prev) => {
+      const nextMap = { ...(prev.codeTypeByEndpoint || {}) };
+      if (sanitized.length > 0) {
+        Object.keys(nextMap).forEach((key) => {
+          if (!sanitized.includes(key)) delete nextMap[key];
+        });
+      }
+      return { ...prev, endpointIds: sanitized, codeTypeByEndpoint: nextMap };
+    });
   }
 
   async function saveInfoSettings() {
@@ -6123,12 +6162,17 @@ export default function PosApiAdmin() {
         ? saved.endpointIds.filter((value) => typeof value === 'string' && value)
         : infoSyncEndpointIds;
       const savedTables = sanitizeTableSelection(saved.tables, infoSyncTableOptions);
+      const savedCodeTypes =
+        saved.codeTypeByEndpoint && typeof saved.codeTypeByEndpoint === 'object'
+          ? saved.codeTypeByEndpoint
+          : infoSyncSettings.codeTypeByEndpoint;
       setInfoSyncSettings((prev) => ({
         ...prev,
         ...saved,
         usage: savedUsage,
         endpointIds: savedEndpointIds,
         tables: savedTables,
+        codeTypeByEndpoint: savedCodeTypes,
       }));
       setInfoSyncUsage(savedUsage);
       setInfoSyncEndpointIds(savedEndpointIds);
@@ -6151,6 +6195,14 @@ export default function PosApiAdmin() {
       }
       if (infoSyncEndpointIds.length > 0) {
         payload.endpointIds = infoSyncEndpointIds;
+      }
+      const validCodeTypes = Object.fromEntries(
+        Object.entries(infoSyncSettings.codeTypeByEndpoint || {}).filter(([, value]) =>
+          VALID_REFERENCE_CODE_TYPES.has(value),
+        ),
+      );
+      if (Object.keys(validCodeTypes).length > 0) {
+        payload.codeTypeByEndpoint = validCodeTypes;
       }
       const hasPayload = Object.keys(payload).length > 0;
       const res = await fetch(`${API_BASE}/posapi/reference-codes/sync`, {
@@ -9928,6 +9980,66 @@ export default function PosApiAdmin() {
                   {infoSyncSelectionError && <div style={styles.hintError}>{infoSyncSelectionError}</div>}
                   </label>
               </div>
+              {infoSyncEndpointOptions.length > 0 && (
+                <div style={styles.codeTypeContainer}>
+                  <div style={{ ...styles.helpText, marginTop: 0 }}>
+                    Select the reference code type (enum) to use when inserting rows for each endpoint.
+                  </div>
+                  <div style={styles.codeTypeList}>
+                    {(infoSyncEndpointIds.length > 0
+                      ? infoSyncEndpointOptions.filter(
+                        (endpoint) => endpoint.writesReferenceCodes && infoSyncEndpointIds.includes(endpoint.id),
+                      )
+                      : infoSyncEndpointOptions.filter((endpoint) => endpoint.writesReferenceCodes)
+                    ).map((endpoint) => {
+                      const selected = (infoSyncSettings.codeTypeByEndpoint || {})[endpoint.id]
+                        || endpoint.referenceCodeType
+                        || '';
+                      const isSelectedEndpoint = infoSyncEndpointIds.length === 0 || infoSyncEndpointIds.includes(endpoint.id);
+                      if (!isSelectedEndpoint) return null;
+                      return (
+                        <div key={endpoint.id} style={styles.codeTypeRow}>
+                          <div style={styles.codeTypeEndpoint}>
+                            <div style={{ fontWeight: 600 }}>{endpoint.name}</div>
+                            <div style={styles.codeTypeEndpointMeta}>
+                              <span>{endpoint.method} {endpoint.path}</span>
+                              <span>{formatUsageLabel(endpoint.usage)}</span>
+                            </div>
+                          </div>
+                          <div style={styles.codeTypeSelectWrapper}>
+                            <select
+                              value={selected}
+                              onChange={(e) => updateEndpointCodeType(endpoint.id, e.target.value)}
+                              style={styles.input}
+                            >
+                              <option value="">Select code type</option>
+                              {REFERENCE_CODE_TYPE_OPTIONS.map((option) => (
+                                <option key={option.value} value={option.value}>
+                                  {option.label}
+                                </option>
+                              ))}
+                            </select>
+                            {!selected && (
+                              <div style={styles.hintError}>Required for writing to ebarimt_reference_code.</div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                    {(
+                      infoSyncEndpointIds.length > 0
+                        ? infoSyncEndpointOptions.filter(
+                          (endpoint) => endpoint.writesReferenceCodes && infoSyncEndpointIds.includes(endpoint.id),
+                        )
+                        : infoSyncEndpointOptions.filter((endpoint) => endpoint.writesReferenceCodes)
+                    ).length === 0 && (
+                      <div style={styles.helpText}>
+                        No endpoints in the current selection write to ebarimt_reference_code.
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
               <button
                 type="button"
                 onClick={handleManualSync}
@@ -10975,6 +11087,44 @@ const styles = {
     display: 'flex',
     gap: '1rem',
     alignItems: 'center',
+  },
+  codeTypeContainer: {
+    marginTop: '1rem',
+    borderTop: '1px solid #e2e8f0',
+    paddingTop: '1rem',
+  },
+  codeTypeList: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.75rem',
+  },
+  codeTypeRow: {
+    display: 'flex',
+    gap: '0.75rem',
+    alignItems: 'flex-start',
+    background: '#fff',
+    border: '1px solid #e2e8f0',
+    borderRadius: '8px',
+    padding: '0.75rem',
+  },
+  codeTypeEndpoint: {
+    flex: 1,
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.25rem',
+  },
+  codeTypeEndpointMeta: {
+    display: 'flex',
+    flexDirection: 'column',
+    fontSize: '0.9rem',
+    color: '#475569',
+    gap: '0.15rem',
+  },
+  codeTypeSelectWrapper: {
+    flexBasis: '240px',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.25rem',
   },
   inlineLoading: {
     display: 'flex',
