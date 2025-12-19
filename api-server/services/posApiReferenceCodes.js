@@ -21,7 +21,11 @@ const DEFAULT_SETTINGS = {
   endpointIds: [],
   tables: [],
   fieldMappings: {},
+  codeTypeByEndpoint: {},
+  enumDefaultsByEndpoint: {},
 };
+
+const REFERENCE_CODE_TYPES = new Set(['district', 'classification', 'tax_reason', 'barcode_type', 'payment_code']);
 
 const upload = multer({ storage: multer.memoryStorage() });
 
@@ -214,6 +218,11 @@ export async function loadSyncSettings() {
         )
       : DEFAULT_SETTINGS.tables,
     fieldMappings: sanitizeFieldMappings(settings.fieldMappings, settings.tables),
+    codeTypeByEndpoint: sanitizeCodeTypeByEndpoint(settings.codeTypeByEndpoint),
+    enumDefaultsByEndpoint: sanitizeEnumDefaultsByEndpoint(
+      settings.enumDefaultsByEndpoint,
+      settings.codeTypeByEndpoint,
+    ),
   };
 }
 
@@ -244,6 +253,11 @@ export async function saveSyncSettings(settings) {
       : DEFAULT_SETTINGS.tables,
   };
   sanitized.fieldMappings = sanitizeFieldMappings(settings?.fieldMappings, sanitized.tables);
+  sanitized.codeTypeByEndpoint = sanitizeCodeTypeByEndpoint(settings?.codeTypeByEndpoint);
+  sanitized.enumDefaultsByEndpoint = sanitizeEnumDefaultsByEndpoint(
+    settings?.enumDefaultsByEndpoint,
+    settings?.codeTypeByEndpoint,
+  );
   await writeJson(settingsPath, sanitized);
   return sanitized;
 }
@@ -378,7 +392,7 @@ function resolveValue(obj, path) {
   return current;
 }
 
-async function applyFieldMappings({ response, mappings }) {
+async function applyFieldMappings({ response, mappings, tableDefaults = {} }) {
   if (!response || !mappings || typeof mappings !== 'object') return { rows: 0 };
   const mappedRowsByTable = {};
   const records = extractResponseRecords(response);
@@ -412,13 +426,30 @@ async function applyFieldMappings({ response, mappings }) {
   }
 
   let totalRows = 0;
+  const sanitizedDefaults = Object.entries(tableDefaults || {}).reduce((acc, [table, defaults]) => {
+    const normalizedTable = sanitizeIdentifier(table);
+    if (!normalizedTable || !defaults || typeof defaults !== 'object') return acc;
+    const normalizedDefaults = Object.entries(defaults).reduce((inner, [column, value]) => {
+      const normalizedColumn = sanitizeIdentifier(column);
+      if (!normalizedColumn) return inner;
+      inner[normalizedColumn] = value;
+      return inner;
+    }, {});
+    if (Object.keys(normalizedDefaults).length > 0) {
+      acc[normalizedTable] = normalizedDefaults;
+    }
+    return acc;
+  }, {});
   for (const [table, rowMap] of Object.entries(mappedRowsByTable)) {
     const rows = Array.from(rowMap.values());
     if (rows.length === 0) continue;
-    tableRows[table] = (tableRows[table] || 0) + rows.length;
+    const defaults = sanitizedDefaults[table];
+    const normalizedRows = defaults ? rows.map((row) => ({ ...row, ...defaults })) : rows;
+    if (normalizedRows.length === 0) continue;
+    tableRows[table] = (tableRows[table] || 0) + normalizedRows.length;
     const columns = Array.from(
       new Set(
-        rows
+        normalizedRows
           .map((row) => Object.keys(row))
           .flat()
           .map((name) => sanitizeIdentifier(name))
@@ -439,18 +470,18 @@ async function applyFieldMappings({ response, mappings }) {
     const escapedColumns = columns.map((col) => `\`${col}\``).join(',');
     const placeholders = `(${columns.map(() => '?').join(',')})`;
     const values = [];
-    rows.forEach((row) => {
+    normalizedRows.forEach((row) => {
       columns.forEach((col) => {
         values.push(row[col] ?? null);
       });
     });
-    const sql = `INSERT INTO \`${table}\` (${escapedColumns}) VALUES ${rows
+    const sql = `INSERT INTO \`${table}\` (${escapedColumns}) VALUES ${normalizedRows
       .map(() => placeholders)
       .join(',')} ON DUPLICATE KEY UPDATE ${columns
       .map((col) => `\`${col}\` = VALUES(\`${col}\`)`)
       .join(',')}`;
     const [result] = await pool.query(sql, values);
-    totalRows += Number(result?.affectedRows) || rows.length;
+    totalRows += Number(result?.affectedRows) || normalizedRows.length;
   }
   return { rows: totalRows, tableRows };
 }
@@ -465,6 +496,17 @@ export async function runReferenceCodeSync(trigger = 'manual', options = {}) {
   const desiredUsage = normalizeUsage(normalizedUsage);
   const selectedEndpointIds = sanitizeIdList(
     Object.prototype.hasOwnProperty.call(options, 'endpointIds') ? options.endpointIds : settings.endpointIds,
+  );
+  const codeTypeByEndpoint = sanitizeCodeTypeByEndpoint(
+    Object.prototype.hasOwnProperty.call(options, 'codeTypeByEndpoint')
+      ? options.codeTypeByEndpoint
+      : settings.codeTypeByEndpoint,
+  );
+  const enumDefaultsByEndpoint = sanitizeEnumDefaultsByEndpoint(
+    Object.prototype.hasOwnProperty.call(options, 'enumDefaultsByEndpoint')
+      ? options.enumDefaultsByEndpoint
+      : settings.enumDefaultsByEndpoint,
+    codeTypeByEndpoint,
   );
   const infoEndpoints = endpoints
     .filter((endpoint) => String(endpoint.method || '').toUpperCase() === 'GET')
@@ -502,6 +544,8 @@ export async function runReferenceCodeSync(trigger = 'manual', options = {}) {
     })),
     tables: targetTables,
     tableRows: {},
+    codeTypeByEndpoint,
+    enumDefaultsByEndpoint,
   };
   const errors = [];
 
@@ -514,8 +558,29 @@ export async function runReferenceCodeSync(trigger = 'manual', options = {}) {
       if (!Object.keys(mappings).length) {
         throw new Error(`Endpoint ${endpoint.id} has no valid responseFieldMappings`);
       }
+      const enumDefault = enumDefaultsByEndpoint[endpoint.id];
+      const needsCodeType = endpoint.responseTables.includes('ebarimt_reference_code');
+      const codeType =
+        enumDefault?.value ||
+        codeTypeByEndpoint[endpoint.id] ||
+        endpoint.referenceCodeType ||
+        endpoint.codeType ||
+        endpoint.code_type;
+      if (needsCodeType && !codeType) {
+        const error = new Error(
+          `Endpoint ${endpoint.id} requires a reference code type (district, classification, tax_reason, barcode_type, payment_code)`,
+        );
+        error.statusCode = 400;
+        throw error;
+      }
       const response = await invokePosApiEndpoint(endpoint.id, {}, { endpoint });
-      const result = await applyFieldMappings({ response, mappings });
+      const tableDefaults = {};
+      if (needsCodeType && codeType) {
+        const tableName = enumDefault?.table || 'ebarimt_reference_code';
+        const columnName = enumDefault?.column || 'code_type';
+        tableDefaults[tableName] = { [columnName]: codeType };
+      }
+      const result = await applyFieldMappings({ response, mappings, tableDefaults });
       summary.updated += Number(result?.rows) || 0;
       if (result?.tableRows && typeof result.tableRows === 'object') {
         Object.entries(result.tableRows).forEach(([table, count]) => {
