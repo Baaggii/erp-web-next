@@ -106,9 +106,20 @@ function sanitizeFieldMappings(raw, allowedTables = []) {
       const normalizedField = String(sourceField || '').trim();
       const targetTable = sanitizeIdentifier(target?.table);
       const targetColumn = sanitizeIdentifier(target?.column);
+      const rawValue = Object.prototype.hasOwnProperty.call(target || {}, 'value')
+        ? target.value
+        : undefined;
+      const targetValue =
+        typeof rawValue === 'string'
+          ? rawValue.trim()
+          : rawValue;
       if (!normalizedField || !targetTable || !targetColumn) return;
       if (allowedSet.size > 0 && !allowedSet.has(targetTable)) return;
-      tableMap[normalizedField] = { table: targetTable, column: targetColumn };
+      tableMap[normalizedField] = {
+        table: targetTable,
+        column: targetColumn,
+        ...(targetValue !== undefined && targetValue !== '' ? { value: targetValue } : {}),
+      };
     });
     if (Object.keys(tableMap).length > 0) {
       result[normalizedEndpoint] = tableMap;
@@ -116,50 +127,6 @@ function sanitizeFieldMappings(raw, allowedTables = []) {
   });
   return result;
 }
-
-function sanitizeCodeTypeByEndpoint(map) {
-  if (!map || typeof map !== 'object') return {};
-  const normalized = {};
-  Object.entries(map).forEach(([endpointId, codeType]) => {
-    const normalizedId = String(endpointId || '').trim();
-    const normalizedType = String(codeType || '').trim();
-    if (!normalizedId || !REFERENCE_CODE_TYPES.has(normalizedType)) return;
-    normalized[normalizedId] = normalizedType;
-  });
-  return normalized;
-}
-
-function sanitizeEnumDefaultsByEndpoint(map, legacyCodeTypeByEndpoint = {}) {
-  const result = {};
-  const normalizeTable = (value) => sanitizeIdentifier(value);
-  const normalizeColumn = (value) => sanitizeIdentifier(value);
-
-  if (legacyCodeTypeByEndpoint && typeof legacyCodeTypeByEndpoint === 'object') {
-    Object.entries(legacyCodeTypeByEndpoint).forEach(([endpointId, value]) => {
-      const normalizedId = String(endpointId || '').trim();
-      const normalizedValue = String(value || '').trim();
-      if (!normalizedId || !REFERENCE_CODE_TYPES.has(normalizedValue)) return;
-      result[normalizedId] = { table: 'ebarimt_reference_code', column: 'code_type', value: normalizedValue };
-    });
-  }
-
-  if (!map || typeof map !== 'object') return result;
-
-  Object.entries(map).forEach(([endpointId, entry]) => {
-    const normalizedId = String(endpointId || '').trim();
-    if (!normalizedId) return;
-    const table = normalizeTable(entry?.table);
-    const column = normalizeColumn(entry?.column || entry?.field);
-    const value = typeof entry?.value === 'string' ? entry.value.trim() : '';
-    if (!table || !column || !value) return;
-    result[normalizedId] = { table, column, value };
-  });
-
-  return result;
-}
-
-// Backwards-compatible alias to protect against stale references
-const sanitizeCodeTypeByEndpointSafe = sanitizeCodeTypeByEndpoint;
 
 function normalizeSourceField(field) {
   if (typeof field !== 'string') return '';
@@ -182,9 +149,20 @@ function extractEndpointFieldMappings(endpoint, allowedTables = []) {
     const normalizedField = normalizeSourceField(field);
     const table = sanitizeIdentifier(target?.table);
     const column = sanitizeIdentifier(target?.column);
+    const rawValue = Object.prototype.hasOwnProperty.call(target || {}, 'value')
+      ? target.value
+      : undefined;
+    const value =
+      typeof rawValue === 'string'
+        ? rawValue.trim()
+        : rawValue;
     if (!normalizedField || !table || !column) return;
     if (allowedSet.size > 0 && !allowedSet.has(table)) return;
-    mappings[normalizedField] = { table, column };
+    mappings[normalizedField] = {
+      table,
+      column,
+      ...(value !== undefined && value !== '' ? { value } : {}),
+    };
   };
 
   const responseFields = Array.isArray(endpoint.responseFields) ? endpoint.responseFields : [];
@@ -446,11 +424,12 @@ async function applyFieldMappings({ response, mappings, tableDefaults = {} }) {
     if (!sourceField || !target || typeof target !== 'object') return;
     const { table, column } = target;
     if (!table || !column) return;
+    const hasExplicitValue = Object.prototype.hasOwnProperty.call(target, 'value');
     if (!mappedRowsByTable[table]) mappedRowsByTable[table] = new Map();
     const tableMap = mappedRowsByTable[table];
     records.forEach((record) => {
       if (record === undefined || record === null) return;
-      const value = resolveValue(record, sourceField);
+      const value = hasExplicitValue ? target.value : resolveValue(record, sourceField);
       if (value === undefined || value === null) return;
       resolvedCount += 1;
       const serialized = typeof value === 'object' ? JSON.stringify(value) : value;
@@ -503,22 +482,12 @@ async function applyFieldMappings({ response, mappings, tableDefaults = {} }) {
     if (columns.length === 0) continue;
     const codeColumn = columns.find((col) => col === 'code');
     if (codeColumn) {
-      const codes = normalizedRows
+      const codes = rows
         .map((row) => row[codeColumn])
         .filter((value) => value !== undefined && value !== null);
       if (codes.length > 0) {
         const placeholders = codes.map(() => '?').join(',');
-        const where = [`\`${codeColumn}\` IN (${placeholders})`];
-        const params = [...codes];
-        if (defaults && typeof defaults === 'object') {
-          Object.entries(defaults).forEach(([col, val]) => {
-            const normalizedCol = sanitizeIdentifier(col);
-            if (!normalizedCol) return;
-            where.push(`\`${normalizedCol}\` = ?`);
-            params.push(val);
-          });
-        }
-        await pool.query(`DELETE FROM \`${table}\` WHERE ${where.join(' AND ')}`, params);
+        await pool.query(`DELETE FROM \`${table}\` WHERE \`${codeColumn}\` IN (${placeholders})`, codes);
       }
     }
     const escapedColumns = columns.map((col) => `\`${col}\``).join(',');

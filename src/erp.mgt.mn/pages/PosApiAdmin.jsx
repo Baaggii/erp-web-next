@@ -1322,8 +1322,19 @@ function sanitizeResponseFieldMappings(mappings = {}) {
     const normalizedField = typeof field === 'string' ? field.trim() : '';
     const table = typeof target?.table === 'string' ? target.table.trim() : '';
     const column = typeof target?.column === 'string' ? target.column.trim() : '';
+    const value = Object.prototype.hasOwnProperty.call(target || {}, 'value')
+      ? target.value
+      : undefined;
+    const normalizedValue =
+      typeof value === 'string'
+        ? value.trim()
+        : value;
     if (!normalizedField || !table || !column) return;
-    result[normalizedField] = { table, column };
+    result[normalizedField] = {
+      table,
+      column,
+      ...(normalizedValue !== undefined && normalizedValue !== '' ? { value: normalizedValue } : {}),
+    };
   });
   return result;
 }
@@ -1637,8 +1648,19 @@ function extractResponseFieldMappings(definition) {
     const mapping = entry?.mapTo || entry?.mapping || entry?.target;
     const table = typeof mapping?.table === 'string' ? mapping.table.trim() : '';
     const column = typeof mapping?.column === 'string' ? mapping.column.trim() : '';
+    const value = Object.prototype.hasOwnProperty.call(mapping || {}, 'value')
+      ? mapping.value
+      : undefined;
+    const normalizedValue =
+      typeof value === 'string'
+        ? value.trim()
+        : value;
     if (field && table && column) {
-      derived[field] = { table, column };
+      derived[field] = {
+        table,
+        column,
+        ...(normalizedValue !== undefined && normalizedValue !== '' ? { value: normalizedValue } : {}),
+      };
     }
   });
   return sanitizeResponseFieldMappings(derived);
@@ -5748,6 +5770,7 @@ export default function PosApiAdmin() {
   function handleResponseFieldMappingChange(field, value) {
     setFormState((prev) => {
       const current = sanitizeResponseFieldMappings(prev.responseFieldMappings);
+      const existing = current[field];
       const next = { ...current };
       if (!value) {
         delete next[field];
@@ -5755,8 +5778,33 @@ export default function PosApiAdmin() {
         const [table, ...columnParts] = value.split('.');
         const column = columnParts.join('.') || '';
         if (table && column) {
-          next[field] = { table, column };
+          const preservedValue =
+            existing && existing.table === table && existing.column === column
+              ? existing.value
+              : undefined;
+          next[field] = {
+            table,
+            column,
+            ...(preservedValue !== undefined && preservedValue !== '' ? { value: preservedValue } : {}),
+          };
         }
+      }
+      if (JSON.stringify(next) === JSON.stringify(prev.responseFieldMappings || {})) return prev;
+      return { ...prev, responseFieldMappings: next };
+    });
+  }
+
+  function handleResponseFieldEnumValueChange(field, value) {
+    setFormState((prev) => {
+      const current = sanitizeResponseFieldMappings(prev.responseFieldMappings);
+      if (!current[field]) return prev;
+      const next = { ...current };
+      const normalizedValue = typeof value === 'string' ? value.trim() : value;
+      next[field] = { ...next[field] };
+      if (normalizedValue === undefined || normalizedValue === '') {
+        delete next[field].value;
+      } else {
+        next[field].value = normalizedValue;
       }
       if (JSON.stringify(next) === JSON.stringify(prev.responseFieldMappings || {})) return prev;
       return { ...prev, responseFieldMappings: next };
@@ -9216,6 +9264,21 @@ export default function PosApiAdmin() {
                   const fieldLabel = normalized.field || '(unnamed field)';
                   const mapping = formState.responseFieldMappings?.[fieldLabel];
                   const mappingValue = mapping ? `${mapping.table}.${mapping.column}` : '';
+                  const mappedField =
+                    mapping && mapping.table && mapping.column
+                      ? (tableFields[mapping.table] || []).find(
+                          (field) => extractFieldName(field) === mapping.column,
+                        )
+                      : null;
+                  const enumOptions = Array.isArray(mappedField?.enumValues)
+                    ? mappedField.enumValues
+                        .map((value) => (value === undefined || value === null ? '' : `${value}`.trim()))
+                        .filter(Boolean)
+                    : [];
+                  const selectedEnumValue =
+                    mapping && Object.prototype.hasOwnProperty.call(mapping, 'value')
+                      ? `${mapping.value ?? ''}`
+                      : '';
                   const hasCustomMapping = mappingValue
                     && !responseFieldOptions.some((option) => option.value === mappingValue);
                   return (
@@ -9262,6 +9325,31 @@ export default function PosApiAdmin() {
                           Uses the tables selected above.
                         </span>
                       </label>
+                      {enumOptions.length > 0 && mapping?.table && mapping?.column && (
+                        <label style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+                          <span style={{ color: '#475569', fontSize: '0.9rem' }}>
+                            Enum value for {mapping.column}
+                          </span>
+                          <select
+                            value={selectedEnumValue}
+                            onChange={(e) => handleResponseFieldEnumValueChange(fieldLabel, e.target.value)}
+                            style={styles.input}
+                          >
+                            <option value="">Select enum value</option>
+                            {enumOptions.map((value) => (
+                              <option
+                                key={`enum-${mapping.table}-${mapping.column}-${value}`}
+                                value={value}
+                              >
+                                {value}
+                              </option>
+                            ))}
+                          </select>
+                          <span style={styles.requestFieldHint}>
+                            Inserts the selected enum value when writing rows for this mapping.
+                          </span>
+                        </label>
+                      )}
                     </li>
                   );
                 })}

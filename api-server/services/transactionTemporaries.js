@@ -1437,6 +1437,8 @@ export async function promoteTemporarySubmission(
     const payloadJson = safeJsonParse(row.payload_json, {});
     const effectiveChainId =
       normalizeTemporaryId(row.chain_id) || normalizeTemporaryId(row.id) || null;
+    const isDirectReviewer = normalizeEmpId(row.plan_senior_empid) === normalizedReviewer;
+    const applyToChain = Boolean(effectiveChainId) && isDirectReviewer;
     if (effectiveChainId) {
       const [pendingRows] = await conn.query(
         `SELECT id FROM \`${TEMP_TABLE}\` WHERE chain_id = ? AND status = 'pending' AND id <> ? FOR UPDATE`,
@@ -1734,6 +1736,7 @@ export async function promoteTemporarySubmission(
           pendingOnly: true,
           temporaryId: id,
           temporaryOnly: true,
+          applyToChain,
         }),
       );
       if (!Number.isFinite(updateCount) || updateCount === 0) {
@@ -1956,6 +1959,7 @@ export async function promoteTemporarySubmission(
       pendingOnly: true,
       temporaryId: id,
       temporaryOnly: true,
+      applyToChain,
     });
     const normalizedUpdateCount = Number(primaryUpdateCount);
     if (!Number.isFinite(normalizedUpdateCount) || normalizedUpdateCount === 0) {
@@ -2111,6 +2115,8 @@ export async function rejectTemporarySubmission(
     }
     const effectiveChainId =
       normalizeTemporaryId(row.chain_id) || normalizeTemporaryId(row.id) || null;
+    const isDirectReviewer = normalizeEmpId(row.plan_senior_empid) === normalizedReviewer;
+    const applyToChain = Boolean(effectiveChainId) && isDirectReviewer;
     console.info('Temporary rejection chain update', {
       id,
       chainId: effectiveChainId,
@@ -2124,6 +2130,7 @@ export async function rejectTemporarySubmission(
       pendingOnly: true,
       temporaryId: id,
       temporaryOnly: true,
+      applyToChain,
     });
     const normalizedUpdateCount = Number(primaryUpdateCount);
     if (!Number.isFinite(normalizedUpdateCount) || normalizedUpdateCount === 0) {

@@ -555,6 +555,7 @@ test('promoteTemporarySubmission forwards chain with normalized metadata and cle
   assert.equal(chainUpdates[0].payload.clearReviewerAssignment, true);
   assert.equal(chainUpdates[0].payload.status, 'forwarded');
   assert.equal(chainUpdates[0].payload.pendingOnly, true);
+  assert.equal(chainUpdates[0].payload.applyToChain, true);
   assert.ok(queries.some(({ sql }) => sql.includes('INSERT INTO `transaction_temporaries`')));
   const forwardInsert = queries.find(({ sql }) => sql.includes('INSERT INTO `transaction_temporaries`'));
   assert.ok(forwardInsert);
@@ -619,6 +620,7 @@ test('promoteTemporarySubmission forwards by falling back to its own id when cha
   assert.equal(result.forwardedTo, 'EMP500');
   assert.equal(chainUpdates[0]?.chainId, 25);
   assert.equal(chainUpdates[0]?.payload.status, 'forwarded');
+  assert.equal(chainUpdates[0]?.payload.applyToChain, true);
   assert.ok(conn.released);
 });
 
@@ -661,6 +663,7 @@ test('promoteTemporarySubmission forwards when reviewer has a senior reviewer', 
   assert.equal(result.forwardedTo, 'EMP777');
   assert.equal(chainUpdates[0]?.chainId, 35);
   assert.equal(chainUpdates[0]?.payload.status, 'forwarded');
+  assert.equal(chainUpdates[0]?.payload.applyToChain, true);
 });
 
 test('promoteTemporarySubmission promotes when reviewer only has plan senior', async () => {
@@ -757,6 +760,7 @@ test('promoteTemporarySubmission promotes chain and records promotedRecordId', a
   assert.equal(chainUpdates[0].payload.clearReviewerAssignment, true);
   assert.equal(chainUpdates[0].payload.pendingOnly, true);
   assert.equal(chainUpdates[0].payload.temporaryOnly, true);
+  assert.equal(chainUpdates[0].payload.applyToChain, true);
   const historyInsert = queries.find(({ sql }) =>
     sql.includes('INSERT INTO `transaction_temporary_review_history`'),
   );
@@ -846,10 +850,13 @@ test('promoteTemporarySubmission prevents concurrent promotions and respects row
       if (sql.startsWith('SELECT * FROM `transaction_temporaries` WHERE id = ?')) {
         return [[{ ...temporaryRow, status }]];
       }
-      if (sql.includes("WHERE chain_id = ? AND status = 'pending'")) {
+      if (
+        !sql.startsWith('UPDATE `transaction_temporaries`') &&
+        sql.includes("WHERE chain_id = ? AND status = 'pending'")
+      ) {
         return [[]];
       }
-      if (sql.includes('WHERE chain_id = ?')) {
+      if (!sql.startsWith('UPDATE `transaction_temporaries`') && sql.includes('WHERE chain_id = ?')) {
         return [[]];
       }
       if (sql.startsWith('SELECT DISTINCT created_by FROM `transaction_temporaries` WHERE chain_id = ?')) {
@@ -897,6 +904,47 @@ test('promoteTemporarySubmission prevents concurrent promotions and respects row
   );
 
   assert.ok(queries.some(({ sql }) => sql.includes('FOR UPDATE')));
+});
+
+test('promoteTemporarySubmission does not apply chain-wide updates when reviewer is the creator', async () => {
+  const temporaryRow = {
+    id: 55,
+    company_id: 1,
+    chain_id: 55,
+    table_name: 'transactions_test',
+    form_name: null,
+    config_name: null,
+    module_key: null,
+    payload_json: '{}',
+    cleaned_values_json: '{}',
+    raw_values_json: '{}',
+    created_by: 'EMP800',
+    plan_senior_empid: 'EMP999',
+    branch_id: null,
+    department_id: null,
+    status: 'pending',
+  };
+
+  const chainUpdates = [];
+  const { conn } = createStubConnection({ temporaryRow, chainIds: [55] });
+  const runtimeDeps = {
+    connectionFactory: async () => conn,
+    columnLister: async () => [{ name: 'amount', type: 'int', maxLength: null }],
+    tableInserter: async () => ({ id: 'R99' }),
+    chainStatusUpdater: async (_c, chainId, payload) => chainUpdates.push({ chainId, payload }),
+    employmentSessionFetcher: async () => ({}),
+    notificationInserter: async () => {},
+    activityLogger: async () => {},
+  };
+
+  await promoteTemporarySubmission(
+    55,
+    { reviewerEmpId: 'EMP800', cleanedValues: { amount: 10 } },
+    runtimeDeps,
+  );
+
+  assert.equal(chainUpdates.length, 1);
+  assert.equal(chainUpdates[0].payload.applyToChain, false);
 });
 
 test('promoteTemporarySubmission blocks when another pending temporary exists in the chain', async () => {
