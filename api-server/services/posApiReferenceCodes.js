@@ -538,6 +538,39 @@ export async function runReferenceCodeSync(trigger = 'manual', options = {}) {
         throw new Error(`Endpoint ${endpoint.id} has no valid responseFieldMappings`);
       }
       const response = await invokePosApiEndpoint(endpoint.id, {}, { endpoint });
+      const parsedCodes = parseCodesFromEndpoint(endpoint.id, response);
+      if (parsedCodes.length > 0) {
+        const codesByType = new Map();
+        parsedCodes.forEach((entry) => {
+          const codeType = String(entry?.code_type || '').trim();
+          const codeValue = String(entry?.code || '').trim();
+          if (!codeType || !codeValue) return;
+          const name = entry?.name ? String(entry.name).trim() : null;
+          const list = codesByType.get(codeType) || [];
+          list.push({ code: codeValue, name });
+          codesByType.set(codeType, list);
+        });
+        const summaryTotals = { added: 0, updated: 0, deactivated: 0 };
+        for (const [codeType, codes] of codesByType.entries()) {
+          const result = await upsertReferenceCodes(codeType, codes);
+          summaryTotals.added += Number(result?.added) || 0;
+          summaryTotals.updated += Number(result?.updated) || 0;
+          summaryTotals.deactivated += Number(result?.deactivated) || 0;
+          const affectedRows =
+            (Number(result?.added) || 0)
+            + (Number(result?.updated) || 0)
+            + (Number(result?.deactivated) || 0);
+          summary.tableRows.ebarimt_reference_code =
+            (summary.tableRows.ebarimt_reference_code || 0)
+            + (affectedRows || codes.length || 0);
+        }
+        summary.totalTypes += codesByType.size;
+        summary.added += summaryTotals.added;
+        summary.updated += summaryTotals.updated;
+        summary.deactivated += summaryTotals.deactivated;
+        summary.successful += 1;
+        continue;
+      }
       const result = await applyFieldMappings({ response, mappings });
       summary.updated += Number(result?.rows) || 0;
       if (result?.tableRows && typeof result.tableRows === 'object') {
