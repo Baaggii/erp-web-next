@@ -700,7 +700,7 @@ test('promoteTemporarySubmission promotes chain and records promotedRecordId', a
   );
 
   assert.equal(result.promotedRecordId, '909');
-  assert.ok(chainUpdates.length > 0);
+  assert.equal(chainUpdates.length, 2);
   assert.equal(chainUpdates[0].chainId, 6);
   assert.equal(chainUpdates[0].payload.promotedRecordId, '909');
   assert.equal(chainUpdates[0].payload.clearReviewerAssignment, true);
