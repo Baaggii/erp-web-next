@@ -113,6 +113,14 @@ function sanitizeFieldMappings(raw, allowedTables = []) {
   return result;
 }
 
+function normalizeSourceField(field) {
+  if (typeof field !== 'string') return '';
+  return field
+    .replace(/^data\[\]\./, '')
+    .replace(/^data\./, '')
+    .trim();
+}
+
 function extractEndpointFieldMappings(endpoint, allowedTables = []) {
   const mappings = {};
   if (!endpoint || typeof endpoint !== 'object') return mappings;
@@ -123,7 +131,7 @@ function extractEndpointFieldMappings(endpoint, allowedTables = []) {
   );
 
   const addMapping = (field, target) => {
-    const normalizedField = typeof field === 'string' ? field.trim() : '';
+    const normalizedField = normalizeSourceField(field);
     const table = sanitizeIdentifier(target?.table);
     const column = sanitizeIdentifier(target?.column);
     if (!normalizedField || !table || !column) return;
@@ -375,6 +383,7 @@ async function applyFieldMappings({ response, mappings }) {
   const mappedRowsByTable = {};
   const records = extractResponseRecords(response);
   const tableRows = {};
+  let resolvedCount = 0;
   Object.entries(mappings).forEach(([sourceField, target]) => {
     if (!sourceField || !target || typeof target !== 'object') return;
     const { table, column } = target;
@@ -385,6 +394,7 @@ async function applyFieldMappings({ response, mappings }) {
       if (record === undefined || record === null) return;
       const value = resolveValue(record, sourceField);
       if (value === undefined || value === null) return;
+      resolvedCount += 1;
       const serialized = typeof value === 'object' ? JSON.stringify(value) : value;
       const compositeKey = JSON.stringify(record);
       const existing = tableMap.get(compositeKey) || {};
@@ -392,6 +402,14 @@ async function applyFieldMappings({ response, mappings }) {
       tableMap.set(compositeKey, existing);
     });
   });
+
+  const hasNonNullRecords = records.some((record) => record !== undefined && record !== null);
+  const hasResolvedValues = resolvedCount > 0;
+  if (hasNonNullRecords && !hasResolvedValues) {
+    throw new Error(
+      'Response records exist but no fields were resolved. Check responseFieldMappings paths.',
+    );
+  }
 
   let totalRows = 0;
   for (const [table, rowMap] of Object.entries(mappedRowsByTable)) {
