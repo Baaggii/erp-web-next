@@ -700,10 +700,14 @@ test('promoteTemporarySubmission promotes chain and records promotedRecordId', a
   );
 
   assert.equal(result.promotedRecordId, '909');
-  assert.ok(chainUpdates.length > 0);
+  assert.equal(chainUpdates.length, 2);
   assert.equal(chainUpdates[0].chainId, 6);
   assert.equal(chainUpdates[0].payload.promotedRecordId, '909');
   assert.equal(chainUpdates[0].payload.clearReviewerAssignment, true);
+  assert.equal(chainUpdates[0].payload.pendingOnly, true);
+  assert.equal(chainUpdates[0].payload.temporaryOnly, true);
+  assert.equal(chainUpdates[1].payload.temporaryOnly, false);
+  assert.equal(chainUpdates[1].payload.pendingOnly, true);
   const historyInsert = queries.find(({ sql }) =>
     sql.includes('INSERT INTO `transaction_temporary_review_history`'),
   );
@@ -711,6 +715,53 @@ test('promoteTemporarySubmission promotes chain and records promotedRecordId', a
   assert.equal(historyInsert.params[2], 'promoted');
   assert.equal(historyInsert.params[5], '909');
   assert.ok(conn.released);
+});
+
+test('promoteTemporarySubmission falls back to chain update when temporary-only update has no effect', async () => {
+  const temporaryRow = {
+    id: 17,
+    company_id: 1,
+    chain_id: 17,
+    table_name: 'transactions_test',
+    form_name: null,
+    config_name: null,
+    module_key: null,
+    payload_json: '{}',
+    cleaned_values_json: '{}',
+    raw_values_json: '{}',
+    created_by: 'EMP150',
+    plan_senior_empid: 'EMP777',
+    branch_id: null,
+    department_id: null,
+    status: 'pending',
+  };
+
+  const chainUpdates = [];
+  const { conn } = createStubConnection({ temporaryRow, chainIds: [17] });
+  const runtimeDeps = {
+    connectionFactory: async () => conn,
+    columnLister: async () => [{ name: 'amount', type: 'int', maxLength: null }],
+    tableInserter: async () => ({ id: 321 }),
+    chainStatusUpdater: async (_c, chainId, payload) => {
+      chainUpdates.push({ chainId, payload });
+      return chainUpdates.length === 1 ? 0 : 1;
+    },
+    notificationInserter: async () => {},
+    activityLogger: async () => {},
+  };
+
+  const result = await promoteTemporarySubmission(
+    17,
+    { reviewerEmpId: 'EMP777', cleanedValues: { amount: 42 } },
+    runtimeDeps,
+  );
+
+  assert.equal(result.promotedRecordId, '321');
+  assert.equal(chainUpdates.length, 2);
+  assert.equal(chainUpdates[0].payload.temporaryOnly, true);
+  assert.equal(chainUpdates[1].payload.temporaryOnly, false);
+  assert.equal(chainUpdates[1].payload.pendingOnly, true);
+  assert.equal(conn.released, true);
 });
 
 test('promoteTemporarySubmission prevents concurrent promotions and respects row locks', async () => {
