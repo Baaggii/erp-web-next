@@ -117,50 +117,6 @@ function sanitizeFieldMappings(raw, allowedTables = []) {
   return result;
 }
 
-function sanitizeCodeTypeByEndpoint(map) {
-  if (!map || typeof map !== 'object') return {};
-  const normalized = {};
-  Object.entries(map).forEach(([endpointId, codeType]) => {
-    const normalizedId = String(endpointId || '').trim();
-    const normalizedType = String(codeType || '').trim();
-    if (!normalizedId || !REFERENCE_CODE_TYPES.has(normalizedType)) return;
-    normalized[normalizedId] = normalizedType;
-  });
-  return normalized;
-}
-
-function sanitizeEnumDefaultsByEndpoint(map, legacyCodeTypeByEndpoint = {}) {
-  const result = {};
-  const normalizeTable = (value) => sanitizeIdentifier(value);
-  const normalizeColumn = (value) => sanitizeIdentifier(value);
-
-  if (legacyCodeTypeByEndpoint && typeof legacyCodeTypeByEndpoint === 'object') {
-    Object.entries(legacyCodeTypeByEndpoint).forEach(([endpointId, value]) => {
-      const normalizedId = String(endpointId || '').trim();
-      const normalizedValue = String(value || '').trim();
-      if (!normalizedId || !REFERENCE_CODE_TYPES.has(normalizedValue)) return;
-      result[normalizedId] = { table: 'ebarimt_reference_code', column: 'code_type', value: normalizedValue };
-    });
-  }
-
-  if (!map || typeof map !== 'object') return result;
-
-  Object.entries(map).forEach(([endpointId, entry]) => {
-    const normalizedId = String(endpointId || '').trim();
-    if (!normalizedId) return;
-    const table = normalizeTable(entry?.table);
-    const column = normalizeColumn(entry?.column || entry?.field);
-    const value = typeof entry?.value === 'string' ? entry.value.trim() : '';
-    if (!table || !column || !value) return;
-    result[normalizedId] = { table, column, value };
-  });
-
-  return result;
-}
-
-// Backwards-compatible alias to protect against stale references
-const sanitizeCodeTypeByEndpointSafe = sanitizeCodeTypeByEndpoint;
-
 function normalizeSourceField(field) {
   if (typeof field !== 'string') return '';
   return field
@@ -262,7 +218,7 @@ export async function loadSyncSettings() {
         )
       : DEFAULT_SETTINGS.tables,
     fieldMappings: sanitizeFieldMappings(settings.fieldMappings, settings.tables),
-    codeTypeByEndpoint: sanitizeCodeTypeByEndpointSafe(settings.codeTypeByEndpoint),
+    codeTypeByEndpoint: sanitizeCodeTypeByEndpoint(settings.codeTypeByEndpoint),
     enumDefaultsByEndpoint: sanitizeEnumDefaultsByEndpoint(
       settings.enumDefaultsByEndpoint,
       settings.codeTypeByEndpoint,
@@ -297,7 +253,7 @@ export async function saveSyncSettings(settings) {
       : DEFAULT_SETTINGS.tables,
   };
   sanitized.fieldMappings = sanitizeFieldMappings(settings?.fieldMappings, sanitized.tables);
-  sanitized.codeTypeByEndpoint = sanitizeCodeTypeByEndpointSafe(settings?.codeTypeByEndpoint);
+  sanitized.codeTypeByEndpoint = sanitizeCodeTypeByEndpoint(settings?.codeTypeByEndpoint);
   sanitized.enumDefaultsByEndpoint = sanitizeEnumDefaultsByEndpoint(
     settings?.enumDefaultsByEndpoint,
     settings?.codeTypeByEndpoint,
@@ -503,7 +459,7 @@ async function applyFieldMappings({ response, mappings, tableDefaults = {} }) {
     if (columns.length === 0) continue;
     const codeColumn = columns.find((col) => col === 'code');
     if (codeColumn) {
-      const codes = normalizedRows
+      const codes = rows
         .map((row) => row[codeColumn])
         .filter((value) => value !== undefined && value !== null);
       if (codes.length > 0) {
@@ -541,7 +497,7 @@ export async function runReferenceCodeSync(trigger = 'manual', options = {}) {
   const selectedEndpointIds = sanitizeIdList(
     Object.prototype.hasOwnProperty.call(options, 'endpointIds') ? options.endpointIds : settings.endpointIds,
   );
-  const codeTypeByEndpoint = sanitizeCodeTypeByEndpointSafe(
+  const codeTypeByEndpoint = sanitizeCodeTypeByEndpoint(
     Object.prototype.hasOwnProperty.call(options, 'codeTypeByEndpoint')
       ? options.codeTypeByEndpoint
       : settings.codeTypeByEndpoint,
