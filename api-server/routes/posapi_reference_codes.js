@@ -46,10 +46,6 @@ router.post('/sync', requireAuth, async (req, res, next) => {
     const result = await runReferenceCodeSync('manual', payload);
     res.json(result);
   } catch (err) {
-    if (err?.statusCode) {
-      res.status(err.statusCode).json({ message: err.message || 'Failed to refresh reference codes' });
-      return;
-    }
     if (err?.details) {
       res.status(502).json({ message: err.message || 'Failed to refresh reference codes', ...err.details });
       return;
@@ -120,3 +116,4 @@ initialiseReferenceCodeSync().catch((err) => {
 });
 
 export default router;
+
