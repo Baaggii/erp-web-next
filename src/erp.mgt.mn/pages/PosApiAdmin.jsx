@@ -2856,6 +2856,11 @@ export default function PosApiAdmin() {
   const formStateRef = useRef(formState);
   const requestSampleSyncRef = useRef(false);
   const refreshInfoSyncLogsRef = useRef(() => Promise.resolve());
+  const mountedRef = useRef(true);
+
+  useEffect(() => () => {
+    mountedRef.current = false;
+  }, []);
 
   function showToast(message, type = 'info') {
     if (typeof addToast === 'function') {
@@ -3320,35 +3325,49 @@ export default function PosApiAdmin() {
     );
     if (missingTables.length === 0) return undefined;
     let cancelled = false;
-    const abortController = new AbortController();
+    const controllers = new Map();
+
+    const updateLoading = (table, isLoading) => {
+      if (!mountedRef.current) return;
+      setTableFieldLoading((prev) => {
+        if (prev[table] === isLoading) return prev;
+        return { ...prev, [table]: isLoading };
+      });
+    };
+
     missingTables.forEach((table) => {
-      setTableFieldLoading((prev) => ({ ...prev, [table]: true }));
+      const controller = new AbortController();
+      controllers.set(table, controller);
+      updateLoading(table, true);
       fetch(`${API_BASE}/report_builder/fields?table=${encodeURIComponent(table)}`, {
         credentials: 'include',
         skipLoader: true,
-        signal: abortController.signal,
+        signal: controller.signal,
       })
         .then((res) => res.json().then((data) => ({ ok: res.ok, data })))
         .then(({ ok, data }) => {
-          if (cancelled) return;
+          if (cancelled || !mountedRef.current) return;
           if (!ok) {
-            setTableFieldLoading((prev) => ({ ...prev, [table]: false }));
+            updateLoading(table, false);
             return;
           }
           const normalized = normalizeFieldList(data);
           setTableFields((prev) => ({ ...prev, [table]: normalized }));
-          setTableFieldLoading((prev) => ({ ...prev, [table]: false }));
+          updateLoading(table, false);
         })
-        .catch(() => {
-          if (cancelled) return;
-          setTableFieldLoading((prev) => ({ ...prev, [table]: false }));
+        .catch((err) => {
+          if (cancelled || err?.name === 'AbortError' || !mountedRef.current) return;
+          updateLoading(table, false);
         });
     });
     return () => {
       cancelled = true;
-      abortController.abort();
+      controllers.forEach((controller, table) => {
+        controller.abort();
+        updateLoading(table, false);
+      });
     };
-  }, [formState.responseTables, tableFields, tableFieldLoading]);
+  }, [formState.responseTables]);
 
   const isTransactionUsage = formState.usage === 'transaction';
   const supportsItems = isTransactionUsage ? formState.supportsItems !== false : false;
@@ -5244,7 +5263,7 @@ export default function PosApiAdmin() {
           return;
         }
         const [settingsData, tableData] = await Promise.all([settingsRes.json(), tablesRes.json()]);
-        if (cancelled) return;
+        if (cancelled || !mountedRef.current) return;
         const tableOptions = buildTableOptions(Array.isArray(tableData.tables) ? tableData.tables : []);
         setInfoSyncTableOptionsBase(tableOptions);
         const usage = settingsData.settings?.usage && VALID_USAGE_VALUES.has(settingsData.settings.usage)
@@ -5270,12 +5289,12 @@ export default function PosApiAdmin() {
         setInfoSyncLogs(Array.isArray(settingsData.logs) ? settingsData.logs : []);
         infoSyncPreloadedRef.current = true;
       } catch (err) {
-        if (!cancelled) {
+        if (!cancelled && mountedRef.current) {
           setInfoSyncError(err?.message || 'Unable to preload POSAPI information sync settings');
           console.warn('Unable to preload POSAPI information sync settings', err);
         }
       } finally {
-        if (!cancelled) setInfoSyncLoading(false);
+        if (mountedRef.current) setInfoSyncLoading(false);
       }
     }
 
@@ -5429,7 +5448,7 @@ export default function PosApiAdmin() {
           throw new Error(message);
         }
         const [settingsData, tableData] = await Promise.all([settingsRes.json(), tablesRes.json()]);
-        if (cancelled) return;
+        if (cancelled || !mountedRef.current) return;
         const tableOptions = buildTableOptions(Array.isArray(tableData.tables) ? tableData.tables : []);
         setInfoSyncTableOptionsBase(tableOptions);
         const usage = settingsData.settings?.usage && VALID_USAGE_VALUES.has(settingsData.settings.usage)
@@ -5453,11 +5472,11 @@ export default function PosApiAdmin() {
         setInfoSyncEndpointIds(endpointIds);
         setInfoSyncLogs(Array.isArray(settingsData.logs) ? settingsData.logs : []);
       } catch (err) {
-        if (!cancelled) {
+        if (!cancelled && mountedRef.current) {
           setInfoSyncError(err.message || 'Unable to load POSAPI information sync settings');
         }
       } finally {
-        if (!cancelled) {
+        if (mountedRef.current) {
           setInfoSyncLoading(false);
         }
       }
@@ -5468,6 +5487,9 @@ export default function PosApiAdmin() {
     return () => {
       cancelled = true;
       controller.abort();
+      if (mountedRef.current) {
+        setInfoSyncLoading(false);
+      }
       if (intervalId) window.clearInterval(intervalId);
     };
   }, [activeTab]);
