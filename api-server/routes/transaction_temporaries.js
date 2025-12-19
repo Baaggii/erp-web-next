@@ -127,6 +127,7 @@ router.post('/', requireAuth, async (req, res, next) => {
       payload,
       rawValues,
       cleanedValues,
+      chainId,
       tenant = {},
     } = req.body || {};
     const result = await createTemporarySubmission({
@@ -137,6 +138,7 @@ router.post('/', requireAuth, async (req, res, next) => {
       payload,
       rawValues,
       cleanedValues,
+      chainId,
       companyId: tenant.company_id ?? req.user.companyId,
       branchId: tenant.branch_id ?? null,
       departmentId: tenant.department_id ?? null,
@@ -151,14 +153,13 @@ router.post('/', requireAuth, async (req, res, next) => {
 
 router.post('/:id/promote', requireAuth, async (req, res, next) => {
   try {
-    const { notes, cleanedValues, promoteAsTemporary = false } = req.body || {};
+    const { notes, cleanedValues } = req.body || {};
     const io = req.app.get('io');
     const result = await promoteTemporarySubmission(req.params.id, {
       reviewerEmpId: req.user.empid,
       notes,
       io,
       cleanedValues,
-      promoteAsTemporary,
     });
     res.json(result);
   } catch (err) {
@@ -196,4 +197,3 @@ router.delete('/:id', requireAuth, async (req, res, next) => {
 });
 
 export default router;
-

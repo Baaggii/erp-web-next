@@ -2,11 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as db from '../../db/index.js';
 import {
-  expandForwardMeta,
-  buildChainIdsForUpdate,
+  createTemporarySubmission,
   getTemporarySummary,
   sanitizeCleanedValuesForInsert,
-  resolveChainIdsForUpdate,
   promoteTemporarySubmission,
   getTemporaryChainHistory,
   listTemporarySubmissions,
@@ -47,6 +45,9 @@ function createStubConnection({ temporaryRow, chainIds = [] } = {}) {
       if (sql.includes('SET chain_id = id WHERE chain_id IS NULL')) {
         return [[], []];
       }
+      if (sql.startsWith('UPDATE `transaction_temporaries` SET chain_id = id WHERE id = ?')) {
+        return [[], []];
+      }
       if (sql === 'BEGIN' || sql === 'COMMIT' || sql === 'ROLLBACK') {
         return [[], []];
       }
@@ -65,11 +66,17 @@ function createStubConnection({ temporaryRow, chainIds = [] } = {}) {
           .map((id) => ({ id }));
         return [rows];
       }
+      if (sql.startsWith('SELECT DISTINCT created_by FROM `transaction_temporaries` WHERE chain_id = ?')) {
+        return [[{ created_by: temporaryRow?.created_by || null }]];
+      }
       if (sql.startsWith('INSERT INTO `transaction_temporaries`')) {
         return [[{ insertId: 202 }]];
       }
       if (sql.startsWith('INSERT INTO `transaction_temporary_review_history`')) {
         return [[{ insertId: 301 }]];
+      }
+      if (sql.startsWith('INSERT INTO user_activity_log')) {
+        return [[{ insertId: 401 }]];
       }
       if (sql.startsWith('UPDATE `transaction_temporaries`')) {
         return [[{ affectedRows: 1 }]];
@@ -212,16 +219,78 @@ test('sanitizeCleanedValuesForInsert trims oversized string values and records w
   assert.equal(result.warnings[0].actualLength, 15);
 });
 
-test('buildChainIdsForUpdate includes root and parent temporaries when forwarding', () => {
-  const forwardMeta = {
-    chainIds: ['10'],
-    rootTemporaryId: '1',
-    parentTemporaryId: '2',
-  };
+test('createTemporarySubmission ignores plan senior for reviewer assignment', async () => {
+  const { conn, queries } = createStubConnection();
+  const notifications = [];
+  const originalGetConnection = db.pool.getConnection;
+  db.pool.getConnection = async () => conn;
 
-  const chainIds = buildChainIdsForUpdate(forwardMeta, 3);
+  try {
+    const result = await createTemporarySubmission(
+      {
+        tableName: 'transactions_contract',
+        payload: {},
+        rawValues: {},
+        cleanedValues: {},
+        companyId: 1,
+        createdBy: 'EMP009',
+      },
+      {
+        employmentSessionFetcher: async () => ({
+          senior_empid: null,
+          senior_plan_empid: 'PLAN9',
+        }),
+        notificationInserter: async (_c, payload) => notifications.push(payload),
+      },
+    );
 
-  assert.deepEqual(chainIds.sort((a, b) => a - b), [1, 2, 3, 10]);
+    assert.equal(result.reviewerEmpId, null);
+    assert.equal(result.planSenior, null);
+    assert.ok(
+      queries.some(({ sql }) =>
+        typeof sql === 'string' && sql.startsWith('INSERT INTO `transaction_temporaries`'),
+      ),
+    );
+    assert.equal(notifications.length, 0);
+    assert.equal(conn.released, true);
+  } finally {
+    db.pool.getConnection = originalGetConnection;
+  }
+});
+
+test('createTemporarySubmission uses provided chainId when supplied', async () => {
+  const { conn, queries } = createStubConnection();
+  const originalGetConnection = db.pool.getConnection;
+  db.pool.getConnection = async () => conn;
+
+  try {
+    const result = await createTemporarySubmission(
+      {
+        tableName: 'transactions_contract',
+        payload: {},
+        rawValues: {},
+        cleanedValues: {},
+        chainId: '303',
+        companyId: 1,
+        createdBy: 'EMP010',
+      },
+      {
+        employmentSessionFetcher: async () => ({
+          senior_empid: null,
+          senior_plan_empid: null,
+        }),
+      },
+    );
+
+    assert.equal(result.chainId, 303);
+    const insertQuery = queries.find(({ sql }) =>
+      typeof sql === 'string' && sql.startsWith('INSERT INTO `transaction_temporaries`'),
+    );
+    assert.ok(insertQuery);
+    assert.equal(insertQuery.params[12], 303);
+  } finally {
+    db.pool.getConnection = originalGetConnection;
+  }
 });
 
 test('listTemporarySubmissions filters before grouping by chain', async () => {
@@ -391,47 +460,6 @@ test('listTemporarySubmissions filters before grouping by chain', async () => {
   }
 });
 
-test('expandForwardMeta preserves existing chain metadata while normalizing current links', () => {
-  const forwardMeta = {
-    chainIds: ['10'],
-    rootTemporaryId: '1',
-    parentTemporaryId: '2',
-    originCreator: null,
-  };
-
-  const updated = expandForwardMeta(forwardMeta, {
-    currentId: 3,
-    createdBy: 'emp123',
-  });
-
-  assert.equal(updated.rootTemporaryId, 1);
-  assert.equal(updated.parentTemporaryId, 3);
-  assert.equal(updated.originCreator, 'EMP123');
-  assert.deepEqual(updated.chainIds.sort((a, b) => a - b), [1, 2, 3, 10]);
-});
-
-test('resolveChainIdsForUpdate filters missing temporaries and locks rows', async () => {
-  const seen = [];
-  const conn = {
-    async query(sql, params = []) {
-      seen.push(sql);
-      if (sql.includes('SELECT id FROM')) {
-        return [[{ id: 1 }, { id: 3 }]];
-      }
-      return [[], []];
-    },
-  };
-
-  const chain = await resolveChainIdsForUpdate(
-    conn,
-    { chainIds: [1, 2, 3], parentTemporaryId: 1 },
-    3,
-  );
-
-  assert.deepEqual(chain, [1, 3]);
-  assert.ok(seen.some((sql) => sql.includes('FOR UPDATE')));
-});
-
 test('promoteTemporarySubmission forwards chain with normalized metadata and clears reviewers', async () => {
   const temporaryRow = {
     id: 3,
@@ -459,7 +487,7 @@ test('promoteTemporarySubmission forwards chain with normalized metadata and cle
 
   const result = await promoteTemporarySubmission(
     3,
-    { reviewerEmpId: 'EMP100', cleanedValues: { amount: 10 }, promoteAsTemporary: true },
+    { reviewerEmpId: 'EMP100', cleanedValues: { amount: 10 } },
     {
       connectionFactory: async () => conn,
       columnLister: async () => [{ name: 'amount', type: 'int', maxLength: null }],
@@ -474,18 +502,33 @@ test('promoteTemporarySubmission forwards chain with normalized metadata and cle
   assert.ok(chainUpdates.length > 0);
   assert.equal(chainUpdates[0].chainId, 1);
   assert.equal(chainUpdates[0].payload.clearReviewerAssignment, true);
-  assert.equal(chainUpdates[0].payload.status, 'promoted');
+  assert.equal(chainUpdates[0].payload.status, 'forwarded');
+  assert.equal(chainUpdates[0].payload.pendingOnly, true);
   assert.ok(queries.some(({ sql }) => sql.includes('INSERT INTO `transaction_temporaries`')));
+  const forwardInsert = queries.find(({ sql }) => sql.includes('INSERT INTO `transaction_temporaries`'));
+  assert.ok(forwardInsert);
+  const forwardParams = forwardInsert.params;
+  assert.equal(forwardParams[8], 'EMP100'); // created_by
+  assert.equal(forwardParams[9], 'EMP300'); // plan_senior_empid
+  assert.equal(forwardParams[12], 1); // chain_id
+  assert.equal(forwardParams[13], 'pending');
   const historyInsert = queries.find(({ sql }) =>
     sql.includes('INSERT INTO `transaction_temporary_review_history`'),
   );
   assert.ok(historyInsert);
   assert.equal(historyInsert.params[2], 'forwarded');
   assert.equal(historyInsert.params[4], 'EMP300');
+  assert.ok(
+    notifications.some(
+      (payload) =>
+        payload.recipientEmpId === 'EMP300' &&
+        payload.message.includes('Temporary submission pending review'),
+    ),
+  );
   assert.ok(conn.released);
 });
 
-test('promoteTemporarySubmission blocks forwarding when chain_id is missing', async () => {
+test('promoteTemporarySubmission forwards by falling back to its own id when chain_id is missing', async () => {
   const temporaryRow = {
     id: 25,
     company_id: 1,
@@ -517,18 +560,105 @@ test('promoteTemporarySubmission blocks forwarding when chain_id is missing', as
     activityLogger: async () => {},
   };
 
-  await assert.rejects(
-    () =>
-      promoteTemporarySubmission(
-        25,
-        { reviewerEmpId: 'EMP100', cleanedValues: { amount: 10 }, promoteAsTemporary: true },
-        runtimeDeps,
-      ),
-    (err) => err && err.status === 409,
+  const result = await promoteTemporarySubmission(
+    25,
+    { reviewerEmpId: 'EMP100', cleanedValues: { amount: 10 } },
+    runtimeDeps,
   );
-  assert.equal(chainUpdates.length, 0);
-  assert.ok(!queries.some(({ sql }) => sql.includes('INSERT INTO `transaction_temporaries`') && sql.includes('chain_id')));
+  assert.equal(result.forwardedTo, 'EMP500');
+  assert.equal(chainUpdates[0]?.chainId, 25);
+  assert.equal(chainUpdates[0]?.payload.status, 'forwarded');
   assert.ok(conn.released);
+});
+
+test('promoteTemporarySubmission forwards when reviewer has a senior reviewer', async () => {
+  const temporaryRow = {
+    id: 35,
+    company_id: 1,
+    chain_id: 35,
+    table_name: 'transactions_test',
+    form_name: null,
+    config_name: null,
+    module_key: null,
+    payload_json: '{}',
+    cleaned_values_json: '{}',
+    raw_values_json: '{}',
+    created_by: 'EMP200',
+    plan_senior_empid: 'EMP100',
+    branch_id: null,
+    department_id: null,
+    status: 'pending',
+  };
+
+  const chainUpdates = [];
+  const { conn } = createStubConnection({ temporaryRow });
+  const runtimeDeps = {
+    connectionFactory: async () => conn,
+    columnLister: async () => [{ name: 'amount', type: 'int', maxLength: null }],
+    employmentSessionFetcher: async () => ({ senior_empid: 'EMP777' }),
+    chainStatusUpdater: async (_c, chainId, payload) => chainUpdates.push({ chainId, payload }),
+    notificationInserter: async () => {},
+    activityLogger: async () => {},
+  };
+
+  const result = await promoteTemporarySubmission(
+    35,
+    { reviewerEmpId: 'EMP100', cleanedValues: { amount: 10 } },
+    runtimeDeps,
+  );
+
+  assert.equal(result.forwardedTo, 'EMP777');
+  assert.equal(chainUpdates[0]?.chainId, 35);
+  assert.equal(chainUpdates[0]?.payload.status, 'forwarded');
+});
+
+test('promoteTemporarySubmission promotes when reviewer only has plan senior', async () => {
+  const temporaryRow = {
+    id: 36,
+    company_id: 1,
+    chain_id: 36,
+    table_name: 'transactions_test',
+    form_name: null,
+    config_name: null,
+    module_key: null,
+    payload_json: '{}',
+    cleaned_values_json: '{}',
+    raw_values_json: '{}',
+    created_by: 'EMP200',
+    plan_senior_empid: 'EMP100',
+    branch_id: null,
+    department_id: null,
+    status: 'pending',
+  };
+
+  const chainUpdates = [];
+  const notifications = [];
+  const { conn } = createStubConnection({ temporaryRow, chainIds: [36] });
+
+  const runtimeDeps = {
+    connectionFactory: async () => conn,
+    columnLister: async () => [{ name: 'amount', type: 'int', maxLength: null }],
+    tableInserter: async () => ({ id: 'R1' }),
+    employmentSessionFetcher: async () => ({
+      senior_empid: null,
+      senior_plan_empid: 'PLAN300',
+    }),
+    chainStatusUpdater: async (_c, chainId, payload) =>
+      chainUpdates.push({ chainId, payload }),
+    notificationInserter: async (_c, payload) => notifications.push(payload),
+    activityLogger: async () => {},
+  };
+
+  const result = await promoteTemporarySubmission(
+    36,
+    { reviewerEmpId: 'EMP100', cleanedValues: { amount: 10 } },
+    runtimeDeps,
+  );
+
+  assert.equal(result.promotedRecordId, 'R1');
+  assert.ok(chainUpdates.some(({ payload }) => payload.status === 'promoted'));
+  assert.ok(notifications.every((n) => n.recipientEmpId !== 'PLAN300'));
+  assert.equal(conn.released, true);
 });
 
 test('promoteTemporarySubmission promotes chain and records promotedRecordId', async () => {
@@ -618,6 +748,9 @@ test('promoteTemporarySubmission prevents concurrent promotions and respects row
       }
       if (sql.includes('WHERE chain_id = ?')) {
         return [[]];
+      }
+      if (sql.startsWith('SELECT DISTINCT created_by FROM `transaction_temporaries` WHERE chain_id = ?')) {
+        return [[{ created_by: temporaryRow.created_by }]];
       }
       if (sql.startsWith('SET @skip_triggers')) return [[], []];
       if (sql.startsWith('UPDATE `transaction_temporaries`')) {

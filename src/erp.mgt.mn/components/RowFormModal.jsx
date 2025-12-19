@@ -92,6 +92,7 @@ const RowFormModal = function RowFormModal({
   tableColumns = [],
   onSaveTemporary = null,
   allowTemporarySave = false,
+  temporarySaveLabel = null,
   isAdding = false,
   isEditingTemporaryDraft = false,
   canPost = true,
@@ -3828,7 +3829,7 @@ const RowFormModal = function RowFormModal({
                 onClick={handleTemporarySave}
                 className="px-3 py-1 bg-yellow-400 text-gray-900 rounded"
               >
-                {t('save_temporary', 'Save as Temporary')}
+                {temporarySaveLabel || t('save_temporary', 'Save as Temporary')}
               </button>
             )}
             <button

@@ -679,6 +679,10 @@ const TableManager = forwardRef(function TableManager({
     if (availableTemporaryScopes.length > 0) return availableTemporaryScopes[0];
     return 'created';
   }, [availableTemporaryScopes]);
+  const shouldShowForwardTemporaryLabel = Boolean(pendingTemporaryPromotion) && hasAnySenior;
+  const temporarySaveLabel = shouldShowForwardTemporaryLabel
+    ? t('save_temporary_forward', 'Save as Temporary and Forward')
+    : null;
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -3233,13 +3237,31 @@ const TableManager = forwardRef(function TableManager({
 
     const cleaned = {};
     const skipFields = new Set([...autoCols, ...generatedCols, 'id', 'rows']);
+    const hasColumnMeta = validCols.size > 0;
     Object.entries(merged).forEach(([k, v]) => {
       const lower = k.toLowerCase();
-      if (skipFields.has(k) || skipFields.has(lower) || k.startsWith('_')) return;
+      const canonicalKey = resolveCanonicalKey(k);
+      const targetKey = canonicalKey || k;
+      if (
+        skipFields.has(k) ||
+        skipFields.has(lower) ||
+        skipFields.has(targetKey) ||
+        k.startsWith('_')
+      )
+        return;
+      if (hasColumnMeta && (!targetKey || !validCols.has(targetKey))) return;
       if (auditFieldSet.has(lower) && !(editSet?.has(lower))) return;
       if (v !== '') {
-        cleaned[k] =
-          typeof v === 'string' ? normalizeDateInput(v, placeholders[k]) : v;
+        const placeholderKey =
+          placeholders[targetKey] !== undefined
+            ? targetKey
+            : placeholders[k] !== undefined
+            ? k
+            : null;
+        const normalizedPlaceholder =
+          placeholderKey !== null ? placeholders[placeholderKey] : undefined;
+        cleaned[targetKey] =
+          typeof v === 'string' ? normalizeDateInput(v, normalizedPlaceholder) : v;
       }
     });
     delete cleaned.rows;
@@ -3481,6 +3503,13 @@ const TableManager = forwardRef(function TableManager({
   async function handleSaveTemporary(submission) {
     if (!canSaveTemporaryDraft) return false;
     if (!submission || typeof submission !== 'object') return false;
+    const normalizeChainId = (value) => {
+      if (value === undefined || value === null) return null;
+      const numeric = Number(value);
+      if (Number.isFinite(numeric) && numeric > 0) return numeric;
+      const str = String(value).trim();
+      return str ? str : null;
+    };
     const valueSource =
       submission.values && typeof submission.values === 'object'
         ? submission.values
@@ -3533,13 +3562,31 @@ const TableManager = forwardRef(function TableManager({
     const merged = stripTemporaryLabelValue(mergedSource);
     const cleaned = {};
     const skipFields = new Set([...autoCols, ...generatedCols, 'id', 'rows']);
+    const hasColumnMeta = validCols.size > 0;
     Object.entries(merged).forEach(([k, v]) => {
       const lower = k.toLowerCase();
-      if (skipFields.has(k) || skipFields.has(lower) || k.startsWith('_')) return;
+      const canonicalKey = resolveCanonicalKey(k);
+      const targetKey = canonicalKey || k;
+      if (
+        skipFields.has(k) ||
+        skipFields.has(lower) ||
+        skipFields.has(targetKey) ||
+        k.startsWith('_')
+      )
+        return;
+      if (hasColumnMeta && (!targetKey || !validCols.has(targetKey))) return;
       if (auditFieldSet.has(lower) && !(editSet?.has(lower))) return;
       if (v !== '') {
-        cleaned[k] =
-          typeof v === 'string' ? normalizeDateInput(v, placeholders[k]) : v;
+        const placeholderKey =
+          placeholders[targetKey] !== undefined
+            ? targetKey
+            : placeholders[k] !== undefined
+            ? k
+            : null;
+        const normalizedPlaceholder =
+          placeholderKey !== null ? placeholders[placeholderKey] : undefined;
+        cleaned[targetKey] =
+          typeof v === 'string' ? normalizeDateInput(v, normalizedPlaceholder) : v;
       }
     });
 
@@ -3557,12 +3604,23 @@ const TableManager = forwardRef(function TableManager({
     const baseTenant = {
       company_id: company ?? null,
     };
+    const promotionChainId = normalizeChainId(
+      pendingTemporaryPromotion?.entry?.chainId ??
+        pendingTemporaryPromotion?.entry?.chain_id ??
+        getTemporaryId(pendingTemporaryPromotion?.entry),
+    );
+    const resolvedChainId =
+      normalizeChainId(submission.chainId ?? submission.chain_id) ||
+      normalizeChainId(editing?.chainId ?? editing?.chain_id) ||
+      promotionChainId ||
+      null;
     const baseRequest = {
       table,
       formName: formName || formConfig?.moduleLabel || null,
       configName: formName || null,
       moduleKey: formConfig?.moduleKey || null,
       tenant: baseTenant,
+      ...(resolvedChainId ? { chainId: resolvedChainId } : {}),
     };
 
     const rowsToProcess = gridRows && gridRows.length > 0 ? gridRows : [null];
@@ -3578,11 +3636,28 @@ const TableManager = forwardRef(function TableManager({
       if (row) {
         Object.entries(row).forEach(([k, v]) => {
           const lower = k.toLowerCase();
-          if (skipFields.has(k) || skipFields.has(lower) || k.startsWith('_')) return;
+          const canonicalKey = resolveCanonicalKey(k);
+          const targetKey = canonicalKey || k;
+          if (
+            skipFields.has(k) ||
+            skipFields.has(lower) ||
+            skipFields.has(targetKey) ||
+            k.startsWith('_')
+          )
+            return;
+          if (hasColumnMeta && (!targetKey || !validCols.has(targetKey))) return;
           if (auditFieldSet.has(lower) && !(editSet?.has(lower))) return;
           if (v !== '') {
-            rowCleaned[k] =
-              typeof v === 'string' ? normalizeDateInput(v, placeholders[k]) : v;
+            const placeholderKey =
+              placeholders[targetKey] !== undefined
+                ? targetKey
+                : placeholders[k] !== undefined
+                ? k
+                : null;
+            const normalizedPlaceholder =
+              placeholderKey !== null ? placeholders[placeholderKey] : undefined;
+            rowCleaned[targetKey] =
+              typeof v === 'string' ? normalizeDateInput(v, normalizedPlaceholder) : v;
           }
         });
       }
@@ -4514,7 +4589,7 @@ const TableManager = forwardRef(function TableManager({
         setTemporaryPromotionQueue([]);
         setEditing(normalizedValues);
         setGridRows(sanitizedRows);
-        setIsAdding(false);
+        setIsAdding(true);
         setRequestType(null);
         setShowTemporaryModal(false);
         setShowForm(true);
@@ -6536,6 +6611,7 @@ const TableManager = forwardRef(function TableManager({
         row={editing}
         rows={gridRows}
         isEditingTemporaryDraft={isEditingTemporaryDraft}
+        temporarySaveLabel={temporarySaveLabel}
         relations={relationOpts}
         relationConfigs={relationConfigs}
         relationData={refRows}
