@@ -704,6 +704,8 @@ test('promoteTemporarySubmission promotes chain and records promotedRecordId', a
   assert.equal(chainUpdates[0].chainId, 6);
   assert.equal(chainUpdates[0].payload.promotedRecordId, '909');
   assert.equal(chainUpdates[0].payload.clearReviewerAssignment, true);
+  assert.equal(chainUpdates[0].payload.pendingOnly, true);
+  assert.equal(chainUpdates[0].payload.temporaryOnly, true);
   const historyInsert = queries.find(({ sql }) =>
     sql.includes('INSERT INTO `transaction_temporary_review_history`'),
   );

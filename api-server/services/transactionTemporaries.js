@@ -1939,8 +1939,9 @@ export async function promoteTemporarySubmission(
       notes: reviewNotesValue ?? null,
       promotedRecordId: promotedId,
       clearReviewerAssignment: true,
-      pendingOnly: false,
+      pendingOnly: true,
       temporaryId: id,
+      temporaryOnly: true,
     });
     await recordTemporaryReviewHistory(conn, {
       temporaryId: id,
@@ -2100,8 +2101,9 @@ export async function rejectTemporarySubmission(
       notes: notes ?? null,
       promotedRecordId: null,
       clearReviewerAssignment: true,
-      pendingOnly: false,
+      pendingOnly: true,
       temporaryId: id,
+      temporaryOnly: true,
     });
     await recordTemporaryReviewHistory(conn, {
       temporaryId: id,
