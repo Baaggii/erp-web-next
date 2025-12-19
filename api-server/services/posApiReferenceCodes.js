@@ -426,6 +426,16 @@ async function applyFieldMappings({ response, mappings }) {
       ),
     );
     if (columns.length === 0) continue;
+    const codeColumn = columns.find((col) => col === 'code');
+    if (codeColumn) {
+      const codes = rows
+        .map((row) => row[codeColumn])
+        .filter((value) => value !== undefined && value !== null);
+      if (codes.length > 0) {
+        const placeholders = codes.map(() => '?').join(',');
+        await pool.query(`DELETE FROM \`${table}\` WHERE \`${codeColumn}\` IN (${placeholders})`, codes);
+      }
+    }
     const escapedColumns = columns.map((col) => `\`${col}\``).join(',');
     const placeholders = `(${columns.map(() => '?').join(',')})`;
     const values = [];
