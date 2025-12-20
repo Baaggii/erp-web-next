@@ -41,12 +41,11 @@ async function recordLoginSessionImpl(req, sessionPayload, user) {
   const companyId = sessionPayload?.company_id ?? null;
   const branchId = sessionPayload?.branch_id ?? null;
   const merchantId =
-    normalizeNumericId(
-      sessionPayload?.merchant_id ??
-        sessionPayload?.merchantId ??
-        req.body?.merchant_id ??
-        req.body?.merchantId,
-    );
+    sessionPayload?.merchant_id ??
+    sessionPayload?.merchantId ??
+    sessionPayload?.merchant_tin ??
+    sessionPayload?.merchantTin ??
+    null;
   const posNo =
     sessionPayload?.pos_no ??
     sessionPayload?.posNo ??
