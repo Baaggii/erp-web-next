@@ -4815,6 +4815,7 @@ export async function listTableColumnMeta(tableName, companyId = 0) {
             c.COLUMN_KEY,
             c.EXTRA,
             c.GENERATION_EXPRESSION,
+            c.COLUMN_TYPE,
             pk.SEQ_IN_INDEX AS PRIMARY_KEY_ORDINAL
        FROM information_schema.COLUMNS c
        LEFT JOIN information_schema.STATISTICS pk
@@ -4844,6 +4845,13 @@ export async function listTableColumnMeta(tableName, companyId = 0) {
   return rows.map((r) => {
     const ordinal =
       r.PRIMARY_KEY_ORDINAL != null ? Number(r.PRIMARY_KEY_ORDINAL) : null;
+    const enumValues =
+      typeof r.COLUMN_TYPE === 'string' && /^enum\(/i.test(r.COLUMN_TYPE)
+        ? r.COLUMN_TYPE
+            .slice(5, -1)
+            .split(',')
+            .map((v) => v.trim().slice(1, -1))
+        : [];
     return {
       name: r.COLUMN_NAME,
       key: r.COLUMN_KEY,
@@ -4851,6 +4859,7 @@ export async function listTableColumnMeta(tableName, companyId = 0) {
       label: labels[r.COLUMN_NAME] || headerMap[r.COLUMN_NAME] || r.COLUMN_NAME,
       generationExpression: r.GENERATION_EXPRESSION ?? null,
       primaryKeyOrdinal: Number.isFinite(ordinal) ? ordinal : null,
+      enumValues,
     };
   });
 }
