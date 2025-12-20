@@ -588,6 +588,24 @@ const TableManager = forwardRef(function TableManager({
     () => normalizeEmpId(session?.senior_plan_empid),
     [normalizeEmpId, session?.senior_plan_empid],
   );
+  const employmentSeniorId = useMemo(() => {
+    const candidates = [
+      session?.employment_senior_empid,
+      session?.employment?.senior_empid,
+      session?.employment?.senior_emp_id,
+      session?.employment?.seniorEmpId,
+      session?.employment?.seniorEmpID,
+      user?.employment_senior_empid,
+      user?.employment?.senior_empid,
+      user?.employment?.senior_emp_id,
+      user?.employment?.seniorEmpId,
+      user?.employment?.seniorEmpID,
+    ];
+    for (const candidate of candidates) {
+      if (hasSenior(candidate)) return candidate;
+    }
+    return null;
+  }, [hasSenior, session?.employment, session?.employment_senior_empid, user?.employment, user?.employment_senior_empid]);
   const isSubordinate = hasAnySenior;
   const generalConfig = useGeneralConfig();
   const txnToastEnabled = generalConfig.general?.txnToastEnabled;
@@ -673,6 +691,9 @@ const TableManager = forwardRef(function TableManager({
   const supportsTemporary =
     formSupportsTemporary &&
     (canCreateTemporary || canReviewTemporary || temporaryReviewer);
+  const hasEmploymentSenior = Boolean(
+    session?.employment_senior_empid || user?.employment_senior_empid,
+  );
   const isEditingTemporaryDraft = activeTemporaryDraftId != null;
   const canSaveTemporaryDraft = canCreateTemporary || isEditingTemporaryDraft;
   const canPostTransactions =
@@ -3527,8 +3548,69 @@ const TableManager = forwardRef(function TableManager({
   }
 
   async function handleSaveTemporary(submission) {
-    if (!canSaveTemporaryDraft) return false;
+    if (!canSaveTemporaryDraft || !hasEmploymentSenior) return false;
     if (!submission || typeof submission !== 'object') return false;
+    const cloneValue = (value) => {
+      if (value === undefined) return undefined;
+      if (value === null) return null;
+      try {
+        return typeof structuredClone === 'function'
+          ? structuredClone(value)
+          : JSON.parse(JSON.stringify(value));
+      } catch {
+        return value;
+      }
+    };
+    const extractTemporaryPayload = (entry) => {
+      if (!entry || typeof entry !== 'object') return null;
+      const payload =
+        entry.payload && typeof entry.payload === 'object' ? cloneValue(entry.payload) : null;
+      const values =
+        cloneValue(payload?.values) ||
+        cloneValue(entry.cleanedValues) ||
+        cloneValue(entry.values) ||
+        cloneValue(entry.rawValues) ||
+        {};
+      const cleanedValues =
+        cloneValue(entry.cleanedValues) ||
+        cloneValue(payload?.cleanedValues) ||
+        cloneValue(values) ||
+        {};
+      const rawValues =
+        cloneValue(entry.rawValues) ||
+        cloneValue(payload?.rawValues) ||
+        (values ? cloneValue(values) : null);
+      const gridRows =
+        cloneValue(payload?.gridRows) ||
+        (Array.isArray(values?.rows) ? cloneValue(values.rows) : null);
+      const rawRows =
+        cloneValue(payload?.rawRows) ||
+        (rawValues && Array.isArray(rawValues.rows) ? cloneValue(rawValues.rows) : null);
+      return {
+        payload: payload || null,
+        values: values || {},
+        cleanedValues,
+        rawValues,
+        gridRows,
+        rawRows,
+      };
+    };
+    const fetchTemporaryRecord = async (id) => {
+      if (!id) return null;
+      try {
+        const res = await fetch(
+          `${API_BASE}/transaction_temporaries/${encodeURIComponent(id)}`,
+          { credentials: 'include' },
+        );
+        if (!res.ok) return null;
+        const data = await res.json().catch(() => ({}));
+        return data?.row || data || null;
+      } catch (err) {
+        console.error('Failed to load original temporary record', err);
+        return null;
+      }
+    };
+
     const normalizeChainId = (value) => {
       if (value === undefined || value === null) return null;
       const numeric = Number(value);
@@ -3540,11 +3622,11 @@ const TableManager = forwardRef(function TableManager({
       submission.values && typeof submission.values === 'object'
         ? submission.values
         : submission;
-    const normalizedValues =
+    let normalizedValues =
       valueSource && typeof valueSource === 'object' && !Array.isArray(valueSource)
         ? stripTemporaryLabelValue(valueSource)
         : {};
-    const rawOverride =
+    let rawOverride =
       submission.rawValues && typeof submission.rawValues === 'object'
         ? stripTemporaryLabelValue(submission.rawValues)
         : null;
@@ -3553,22 +3635,14 @@ const TableManager = forwardRef(function TableManager({
       : Array.isArray(valueSource?.rows)
       ? valueSource.rows
       : null;
-    const gridRows = Array.isArray(gridRowsSource)
+    let gridRows = Array.isArray(gridRowsSource)
       ? stripTemporaryLabelValue(gridRowsSource)
       : null;
-    const rawRows =
+    let rawRows =
       submission.rawRows && typeof submission.rawRows === 'object'
         ? stripTemporaryLabelValue(submission.rawRows)
         : null;
     const mergedSource = { ...(editing || {}) };
-    Object.entries(normalizedValues).forEach(([k, v]) => {
-      mergedSource[k] = v;
-    });
-    Object.entries(formConfig?.defaultValues || {}).forEach(([k, v]) => {
-      if (mergedSource[k] === undefined || mergedSource[k] === '') {
-        mergedSource[k] = stripTemporaryLabelValue(v);
-      }
-    });
 
     const nextSeniorEmpId = hasSenior(session?.senior_plan_empid)
       ? session?.senior_plan_empid
@@ -3577,8 +3651,37 @@ const TableManager = forwardRef(function TableManager({
       requestType === 'temporary-promote' &&
       pendingPromotionHasSeniorAbove &&
       pendingTemporaryPromotion?.id;
+    const isReviewForwarding =
+      forwardingExistingTemporary && canReviewTemporary && temporaryScope === 'review';
 
-    if (isAdding && autoFillSession) {
+    let preservedPayload = null;
+    if (isReviewForwarding && pendingTemporaryPromotion?.id) {
+      const preservedTemporary =
+        (await fetchTemporaryRecord(pendingTemporaryPromotion.id)) ||
+        pendingTemporaryPromotion?.entry ||
+        null;
+      preservedPayload = extractTemporaryPayload(preservedTemporary);
+    }
+
+    if (preservedPayload) {
+      normalizedValues = preservedPayload.values || {};
+      rawOverride = preservedPayload.rawValues || rawOverride;
+      gridRows = preservedPayload.gridRows ?? gridRows;
+      rawRows = preservedPayload.rawRows ?? rawRows;
+    }
+
+    Object.entries(normalizedValues).forEach(([k, v]) => {
+      mergedSource[k] = v;
+    });
+    if (!preservedPayload) {
+      Object.entries(formConfig?.defaultValues || {}).forEach(([k, v]) => {
+        if (mergedSource[k] === undefined || mergedSource[k] === '') {
+          mergedSource[k] = stripTemporaryLabelValue(v);
+        }
+      });
+    }
+
+    if (isAdding && autoFillSession && !preservedPayload) {
       const columns = new Set(allColumns);
       userIdFields.forEach((f) => {
         if (columns.has(f)) mergedSource[f] = user?.empid;
@@ -3594,7 +3697,7 @@ const TableManager = forwardRef(function TableManager({
       });
     }
 
-    if (forwardingExistingTemporary && nextSeniorEmpId) {
+    if (forwardingExistingTemporary && nextSeniorEmpId && !preservedPayload) {
       ['plan_senior_empid', 'plan_senior_emp_id', 'planSeniorEmpId', 'planSeniorEmpID'].forEach(
         (key) => {
           mergedSource[key] = nextSeniorEmpId;
@@ -3603,35 +3706,39 @@ const TableManager = forwardRef(function TableManager({
     }
 
     const merged = stripTemporaryLabelValue(mergedSource);
-    const cleaned = {};
+    let cleaned = preservedPayload
+      ? cloneValue(preservedPayload.cleanedValues || preservedPayload.values || {})
+      : {};
     const skipFields = new Set([...autoCols, ...generatedCols, 'id', 'rows']);
     const hasColumnMeta = validCols.size > 0;
-    Object.entries(merged).forEach(([k, v]) => {
-      const lower = k.toLowerCase();
-      const canonicalKey = resolveCanonicalKey(k);
-      const targetKey = canonicalKey || k;
-      if (
-        skipFields.has(k) ||
-        skipFields.has(lower) ||
-        skipFields.has(targetKey) ||
-        k.startsWith('_')
-      )
-        return;
-      if (hasColumnMeta && (!targetKey || !validCols.has(targetKey))) return;
-      if (auditFieldSet.has(lower) && !(editSet?.has(lower))) return;
-      if (v !== '') {
-        const placeholderKey =
-          placeholders[targetKey] !== undefined
-            ? targetKey
-            : placeholders[k] !== undefined
-            ? k
-            : null;
-        const normalizedPlaceholder =
-          placeholderKey !== null ? placeholders[placeholderKey] : undefined;
-        cleaned[targetKey] =
-          typeof v === 'string' ? normalizeDateInput(v, normalizedPlaceholder) : v;
-      }
-    });
+    if (!preservedPayload) {
+      Object.entries(merged).forEach(([k, v]) => {
+        const lower = k.toLowerCase();
+        const canonicalKey = resolveCanonicalKey(k);
+        const targetKey = canonicalKey || k;
+        if (
+          skipFields.has(k) ||
+          skipFields.has(lower) ||
+          skipFields.has(targetKey) ||
+          k.startsWith('_')
+        )
+          return;
+        if (hasColumnMeta && (!targetKey || !validCols.has(targetKey))) return;
+        if (auditFieldSet.has(lower) && !(editSet?.has(lower))) return;
+        if (v !== '') {
+          const placeholderKey =
+            placeholders[targetKey] !== undefined
+              ? targetKey
+              : placeholders[k] !== undefined
+              ? k
+              : null;
+          const normalizedPlaceholder =
+            placeholderKey !== null ? placeholders[placeholderKey] : undefined;
+          cleaned[targetKey] =
+            typeof v === 'string' ? normalizeDateInput(v, normalizedPlaceholder) : v;
+        }
+      });
+    }
 
     const headerNormalizedValues = { ...normalizedValues };
     if (gridRows && 'rows' in headerNormalizedValues) {
@@ -3670,7 +3777,7 @@ const TableManager = forwardRef(function TableManager({
       const promoted = await promoteTemporary(pendingTemporaryPromotion.id, {
         skipConfirm: true,
         silent: false,
-        overrideValues: cleaned,
+        overrideValues: isReviewForwarding ? null : cleaned,
         promoteAsTemporary: true,
       });
       if (!promoted) {
@@ -3678,7 +3785,12 @@ const TableManager = forwardRef(function TableManager({
       }
     }
 
-    const rowsToProcess = gridRows && gridRows.length > 0 ? gridRows : [null];
+    const rowsToProcess =
+      preservedPayload && isReviewForwarding
+        ? [null]
+        : gridRows && gridRows.length > 0
+        ? gridRows
+        : [null];
     const rawRowList = Array.isArray(rawRows) ? rawRows : [];
     let successCount = 0;
     let failureCount = 0;
@@ -3687,8 +3799,11 @@ const TableManager = forwardRef(function TableManager({
       const row = rowsToProcess[idx];
       const rowRawSource = Array.isArray(rawRowList) ? rawRowList[idx] : null;
       const rowValues = row ? { ...headerNormalizedValues, ...row } : { ...normalizedValues };
-      const rowCleaned = { ...cleaned };
-      if (forwardingExistingTemporary && nextSeniorEmpId) {
+      const rowCleaned =
+        preservedPayload && isReviewForwarding && preservedPayload.cleanedValues
+          ? cloneValue(preservedPayload.cleanedValues)
+          : { ...cleaned };
+      if (forwardingExistingTemporary && nextSeniorEmpId && !preservedPayload) {
         ['plan_senior_empid', 'plan_senior_emp_id', 'planSeniorEmpId', 'planSeniorEmpID'].forEach(
           (key) => {
             rowValues[key] = nextSeniorEmpId;
@@ -3696,7 +3811,7 @@ const TableManager = forwardRef(function TableManager({
           },
         );
       }
-      if (row) {
+      if (row && !(preservedPayload && isReviewForwarding)) {
         Object.entries(row).forEach(([k, v]) => {
           const lower = k.toLowerCase();
           const canonicalKey = resolveCanonicalKey(k);
@@ -3725,39 +3840,63 @@ const TableManager = forwardRef(function TableManager({
         });
       }
 
-      const rowPayload = {
-        values: rowValues,
-        submittedAt,
-      };
-      if (row) {
+      const rowPayload =
+        preservedPayload && isReviewForwarding && preservedPayload.payload
+          ? (() => {
+              const clone = cloneValue(preservedPayload.payload) || {};
+              if (!clone.values) {
+                clone.values = cloneValue(normalizedValues);
+              }
+              if (!clone.submittedAt) {
+                clone.submittedAt = submittedAt;
+              }
+              return clone;
+            })()
+          : {
+              values: rowValues,
+              submittedAt,
+            };
+      if (row && !(preservedPayload && isReviewForwarding)) {
         rowPayload.gridRows = [row];
         rowPayload.rowCount = 1;
         if (rowRawSource) {
           rowPayload.rawRows = [stripTemporaryLabelValue(rowRawSource)];
         }
-      } else if (rawRows && !Array.isArray(rawRows)) {
+      } else if (!row && rawRows && !Array.isArray(rawRows) && !rowPayload.rawRows) {
         rowPayload.rawRows = rawRows;
       }
 
-      const rowRawValues = row
-        ? (() => {
-            const combined = { ...headerRawValues };
-            const source =
-              rowRawSource && typeof rowRawSource === 'object'
-                ? stripTemporaryLabelValue(rowRawSource)
-                : null;
-            Object.entries(source || row || {}).forEach(([k, v]) => {
-              combined[k] = v;
-            });
-            return combined;
-          })()
-        : rawOverride || merged;
+      const rowRawValues =
+        preservedPayload && isReviewForwarding
+          ? cloneValue(
+              rawOverride ||
+                preservedPayload.payload?.rawValues ||
+                preservedPayload.rawValues ||
+                rowPayload.values ||
+                merged,
+            )
+          : row
+          ? (() => {
+              const combined = { ...headerRawValues };
+              const source =
+                rowRawSource && typeof rowRawSource === 'object'
+                  ? stripTemporaryLabelValue(rowRawSource)
+                  : null;
+              Object.entries(source || row || {}).forEach(([k, v]) => {
+                combined[k] = v;
+              });
+              return combined;
+            })()
+          : rawOverride || merged;
 
       const body = {
         ...baseRequest,
         payload: rowPayload,
         rawValues: rowRawValues,
-        cleanedValues: rowCleaned,
+        cleanedValues:
+          preservedPayload && isReviewForwarding && preservedPayload.cleanedValues
+            ? cloneValue(preservedPayload.cleanedValues)
+            : rowCleaned,
       };
 
       try {
@@ -5538,6 +5677,9 @@ const TableManager = forwardRef(function TableManager({
 
   const showReviewActions = canReviewTemporary && temporaryScope === 'review';
   const showCreatorActions = canCreateTemporary && temporaryScope === 'created';
+  const isTemporaryReviewMode = canReviewTemporary && temporaryScope === 'review';
+  const temporarySaveEnabled =
+    canSaveTemporaryDraft && (!isTemporaryReviewMode || shouldShowForwardTemporaryLabel);
 
   const temporaryDetailColumns = useMemo(() => {
     const valueKeys = new Set();
@@ -6719,7 +6861,7 @@ const TableManager = forwardRef(function TableManager({
           setActiveTemporaryDraftId(null);
         }}
         onSubmit={handleSubmit}
-        onSaveTemporary={canSaveTemporaryDraft ? handleSaveTemporary : null}
+        onSaveTemporary={temporarySaveEnabled ? handleSaveTemporary : null}
         onChange={handleFieldChange}
         columns={formColumns}
         row={editing}
@@ -6758,7 +6900,8 @@ const TableManager = forwardRef(function TableManager({
         onRowsChange={handleRowsChange}
         autoFillSession={autoFillSession}
         scope="forms"
-        allowTemporarySave={canSaveTemporaryDraft}
+        allowTemporarySave={temporarySaveEnabled}
+        readOnly={isTemporaryReviewMode}
         isAdding={isAdding}
         canPost={canPostTransactions}
         forceEditable={guardOverridesActive}

@@ -93,6 +93,7 @@ const RowFormModal = function RowFormModal({
   onSaveTemporary = null,
   allowTemporarySave = false,
   temporarySaveLabel = null,
+  readOnly = false,
   isAdding = false,
   isEditingTemporaryDraft = false,
   canPost = true,
@@ -213,9 +214,19 @@ const RowFormModal = function RowFormModal({
     [userIdFields],
   );
   const disabledSet = React.useMemo(() => {
+    if (readOnly) {
+      const all = new Set();
+      [columns, headerFields, mainFields, footerFields].forEach((list) => {
+        (list || []).forEach((field) => {
+          if (!field) return;
+          all.add(String(field).toLowerCase());
+        });
+      });
+      return all;
+    }
     if (forceEditable) return new Set();
     return new Set(disabledFields.map((f) => f.toLowerCase()));
-  }, [disabledFields, forceEditable]);
+  }, [columns, disabledFields, forceEditable, footerFields, headerFields, mainFields, readOnly]);
   const disabledReasonLookup = React.useMemo(() => {
     const map = {};
     Object.entries(disabledFieldReasons || {}).forEach(([key, value]) => {
@@ -231,7 +242,8 @@ const RowFormModal = function RowFormModal({
     });
     return map;
   }, [disabledFieldReasons]);
-  const guardToastEnabled = !forceEditable && !!general.posGuardToastEnabled;
+  const guardToastEnabled = !forceEditable && !readOnly && !!general.posGuardToastEnabled;
+  const isReadOnly = Boolean(readOnly);
   const lastGuardToastRef = useRef({ field: null, ts: 0 });
   const describeGuardReasons = React.useCallback(
     (codes = []) => {
@@ -3503,6 +3515,7 @@ const RowFormModal = function RowFormModal({
             scope={scope}
             configHash={configHash}
             tableColumns={tableColumns}
+            readOnly={isReadOnly}
           />
         </div>
       );
@@ -3684,6 +3697,12 @@ const RowFormModal = function RowFormModal({
     }
   }
 
+  const showTemporarySaveButton =
+    allowTemporarySave &&
+    onSaveTemporary &&
+    (isAdding || isEditingTemporaryDraft) &&
+    (!isReadOnly || temporarySaveLabel);
+
   if (inline) {
     return (
       <div
@@ -3762,6 +3781,7 @@ const RowFormModal = function RowFormModal({
                   className="rounded"
                   checked={issueEbarimtEnabled}
                   onChange={(e) => setIssueEbarimtEnabled(e.target.checked)}
+                  disabled={isReadOnly}
                 />
                 <span>{t('issue_ebarimt_toggle', 'Issue Ebarimt (POSAPI)')}</span>
               </label>
@@ -3773,6 +3793,7 @@ const RowFormModal = function RowFormModal({
                   className="border border-gray-300 rounded px-2 py-1 text-sm"
                   value={currentPosApiType}
                   onChange={handlePosApiTypeChange}
+                  disabled={isReadOnly}
                 >
                   {posApiTypeOptions.map((opt) => (
                     <option key={opt.value} value={opt.value}>
@@ -3788,6 +3809,7 @@ const RowFormModal = function RowFormModal({
                   key={`info-quick-${endpoint.id}`}
                   type="button"
                   onClick={() => handleQuickInfoAction(endpoint)}
+                  disabled={isReadOnly}
                   className="px-3 py-1 text-sm rounded border border-indigo-300 bg-indigo-100 text-indigo-800"
                 >
                   {endpoint.quickActionLabel}
@@ -3797,6 +3819,7 @@ const RowFormModal = function RowFormModal({
               <button
                 type="button"
                 onClick={openInfoModal}
+                disabled={isReadOnly}
                 className="px-3 py-1 text-sm rounded border border-indigo-200 bg-indigo-50 text-indigo-700"
               >
                 {t('posapi_open_info_lookup', 'POSAPI Lookups')}
@@ -3823,7 +3846,7 @@ const RowFormModal = function RowFormModal({
             >
               {t('printCust', 'Print Cust')}
             </button>
-            {allowTemporarySave && onSaveTemporary && (isAdding || isEditingTemporaryDraft) && (
+            {showTemporarySaveButton && (
               <button
                 type="button"
                 onClick={handleTemporarySave}
