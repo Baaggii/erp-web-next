@@ -129,6 +129,10 @@ export async function getTableRelations(req, res, next) {
             ...(relation.combinationTargetColumn
               ? { combinationTargetColumn: relation.combinationTargetColumn }
               : {}),
+            ...(relation.filterColumn ? { filterColumn: relation.filterColumn } : {}),
+            ...(relation.filterValue !== undefined && relation.filterValue !== null
+              ? { filterValue: relation.filterValue }
+              : {}),
           });
         });
       }
@@ -195,6 +199,8 @@ export async function saveCustomTableRelation(req, res, next) {
       req.body?.combinationSourceColumn ?? req.body?.combination_source_column;
     const combinationTarget =
       req.body?.combinationTargetColumn ?? req.body?.combination_target_column;
+    const filterColumn = req.body?.filterColumn ?? req.body?.filter_column;
+    const filterValue = req.body?.filterValue ?? req.body?.filter_value;
     if (!targetTable) {
       return res.status(400).json({ message: 'targetTable is required' });
     }
@@ -210,6 +216,13 @@ export async function saveCustomTableRelation(req, res, next) {
     ) {
       relationInput.combinationSourceColumn = combinationSource.trim();
       relationInput.combinationTargetColumn = combinationTarget.trim();
+    }
+    if (typeof filterColumn === 'string' && filterColumn.trim() && filterValue !== undefined) {
+      const valueStr = String(filterValue).trim();
+      if (valueStr) {
+        relationInput.filterColumn = filterColumn.trim();
+        relationInput.filterValue = valueStr;
+      }
     }
     const rawIndex = req.body?.index;
     const rawMatch = req.body?.match;

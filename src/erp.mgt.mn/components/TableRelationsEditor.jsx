@@ -17,11 +17,37 @@ function normalizeColumns(list) {
     .sort((a, b) => a.localeCompare(b));
 }
 
-function buildRelationSummary(relations) {
+function buildRelationSummary(relations, customRelationsMap = {}) {
   if (!Array.isArray(relations)) return [];
   return relations
     .filter((rel) => rel && rel.COLUMN_NAME)
-    .map((rel, order) => ({ ...rel, __order: order }))
+    .map((rel, order) => {
+      if (rel?.source !== 'custom') return { ...rel, __order: order };
+      const customList = customRelationsMap?.[rel.COLUMN_NAME];
+      const match =
+        Array.isArray(customList) && Number.isInteger(rel?.configIndex)
+          ? customList[rel.configIndex]
+          : null;
+      if (!match || typeof match !== 'object') return { ...rel, __order: order };
+      return {
+        ...rel,
+        ...(match.idField ? { idField: match.idField } : {}),
+        ...(Array.isArray(match.displayFields)
+          ? { displayFields: match.displayFields }
+          : {}),
+        ...(match.combinationSourceColumn && !rel.combinationSourceColumn
+          ? { combinationSourceColumn: match.combinationSourceColumn }
+          : {}),
+        ...(match.combinationTargetColumn && !rel.combinationTargetColumn
+          ? { combinationTargetColumn: match.combinationTargetColumn }
+          : {}),
+        ...(match.filterColumn ? { filterColumn: match.filterColumn } : {}),
+        ...(match.filterValue !== undefined && match.filterValue !== null
+          ? { filterValue: match.filterValue }
+          : {}),
+        __order: order,
+      };
+    })
     .sort((a, b) => {
       const col = a.COLUMN_NAME.localeCompare(b.COLUMN_NAME);
       if (col !== 0) return col;
@@ -70,6 +96,18 @@ function normalizeCustomRelationsMap(relations) {
             normalizedEntry.combinationSourceColumn = comboSource.trim();
             normalizedEntry.combinationTargetColumn = comboTarget.trim();
           }
+          const filterColumn = item.filterColumn ?? item.filter_column;
+          const filterValue = item.filterValue ?? item.filter_value;
+          if (
+            typeof filterColumn === 'string' &&
+            filterColumn.trim() &&
+            filterValue !== undefined &&
+            filterValue !== null &&
+            String(filterValue).trim()
+          ) {
+            normalizedEntry.filterColumn = filterColumn.trim();
+            normalizedEntry.filterValue = String(filterValue).trim();
+          }
           return normalizedEntry;
         })
         .filter(Boolean);
@@ -91,6 +129,8 @@ function normalizeCustomRelationsMap(relations) {
           ...(entry.combinationTargetColumn
             ? { combinationTargetColumn: entry.combinationTargetColumn }
             : {}),
+          ...(entry.filterColumn ? { filterColumn: entry.filterColumn } : {}),
+          ...(entry.filterValue ? { filterValue: entry.filterValue } : {}),
         },
       ];
     }
@@ -116,11 +156,17 @@ export default function TableRelationsEditor({ table }) {
   const [isDefaultConfig, setIsDefaultConfig] = useState(true);
   const [combinationSource, setCombinationSource] = useState('');
   const [combinationTarget, setCombinationTarget] = useState('');
+  const [targetFilterColumn, setTargetFilterColumn] = useState('');
+  const [targetFilterValue, setTargetFilterValue] = useState('');
 
   const sortedColumns = useMemo(() => [...columns].sort((a, b) => a.localeCompare(b)), [columns]);
   const sortedTables = useMemo(() => [...tables].sort((a, b) => a.localeCompare(b)), [tables]);
-  const summaryRelations = useMemo(() => buildRelationSummary(relations), [relations]);
-  const currentTargetColumns = targetColumnsCache[targetTable] || [];
+  const summaryRelations = useMemo(
+    () => buildRelationSummary(relations, customRelations),
+    [relations, customRelations],
+  );
+  const currentTargetColumns = targetColumnsCache[targetTable]?.columns || [];
+  const currentTargetColumnMeta = targetColumnsCache[targetTable]?.meta || {};
   const selectedCustomRelations = useMemo(() => {
     const list = customRelations?.[selectedColumn];
     return Array.isArray(list) ? list : [];
@@ -156,6 +202,8 @@ export default function TableRelationsEditor({ table }) {
       setTargetColumn('');
       setCombinationSource('');
       setCombinationTarget('');
+      setTargetFilterColumn('');
+      setTargetFilterValue('');
       return;
     }
     setLoading(true);
@@ -199,6 +247,8 @@ export default function TableRelationsEditor({ table }) {
       setTargetColumn('');
       setCombinationSource('');
       setCombinationTarget('');
+      setTargetFilterColumn('');
+      setTargetFilterValue('');
     } catch (err) {
       console.error('Failed to load table relations configuration', err);
       addToast(
@@ -217,7 +267,7 @@ export default function TableRelationsEditor({ table }) {
   const ensureTargetColumns = useCallback(
     async (tbl) => {
       if (!tbl) return [];
-      if (targetColumnsCache[tbl]) return targetColumnsCache[tbl];
+      if (targetColumnsCache[tbl]) return targetColumnsCache[tbl].columns;
       try {
         const encoded = encodeURIComponent(tbl);
         const res = await fetch(`/api/tables/${encoded}/columns`, {
@@ -225,9 +275,24 @@ export default function TableRelationsEditor({ table }) {
         });
         if (!res.ok) throw new Error('Failed to load target columns');
         const json = await res.json().catch(() => []);
-        const normalized = normalizeColumns(json);
-        setTargetColumnsCache((prev) => ({ ...prev, [tbl]: normalized }));
-        return normalized;
+        const normalizedColumns = normalizeColumns(json);
+        const metaMap = {};
+        if (Array.isArray(json)) {
+          json.forEach((col) => {
+            const name =
+              typeof col === 'string'
+                ? col
+                : col?.COLUMN_NAME || col?.column_name || col?.name || col?.Field;
+            if (name) {
+              metaMap[name] = col;
+            }
+          });
+        }
+        setTargetColumnsCache((prev) => ({
+          ...prev,
+          [tbl]: { columns: normalizedColumns, meta: metaMap },
+        }));
+        return normalizedColumns;
       } catch (err) {
         console.error('Failed to load target table columns', err);
         addToast('Failed to load target table columns', 'error');
@@ -268,6 +333,12 @@ export default function TableRelationsEditor({ table }) {
         setTargetColumn(resolvedRelation.column);
         setCombinationSource(resolvedRelation.combinationSourceColumn || '');
         setCombinationTarget(resolvedRelation.combinationTargetColumn || '');
+        setTargetFilterColumn(resolvedRelation.filterColumn || '');
+        setTargetFilterValue(
+          resolvedRelation.filterValue !== undefined && resolvedRelation.filterValue !== null
+            ? String(resolvedRelation.filterValue)
+            : '',
+        );
         return;
       }
 
@@ -280,6 +351,12 @@ export default function TableRelationsEditor({ table }) {
         setTargetColumn(col);
         setCombinationSource(relation.combinationSourceColumn || '');
         setCombinationTarget(relation.combinationTargetColumn || '');
+        setTargetFilterColumn(relation.filterColumn || '');
+        setTargetFilterValue(
+          relation.filterValue !== undefined && relation.filterValue !== null
+            ? String(relation.filterValue)
+            : '',
+        );
         return;
       }
 
@@ -288,6 +365,8 @@ export default function TableRelationsEditor({ table }) {
       setTargetColumn('');
       setCombinationSource('');
       setCombinationTarget('');
+      setTargetFilterColumn('');
+      setTargetFilterValue('');
     },
     [customRelations, ensureTargetColumns],
   );
@@ -296,6 +375,8 @@ export default function TableRelationsEditor({ table }) {
     async (value) => {
       setTargetTable(value);
       setTargetColumn('');
+      setTargetFilterColumn('');
+      setTargetFilterValue('');
       if (value) {
         await ensureTargetColumns(value);
       }
@@ -314,6 +395,10 @@ export default function TableRelationsEditor({ table }) {
     }
     if (!targetColumn) {
       addToast('Select a target column', 'error');
+      return;
+    }
+    if (targetFilterColumn && !targetFilterValue) {
+      addToast('Enter a filter value for the selected target field', 'error');
       return;
     }
     setSaving(true);
@@ -335,6 +420,12 @@ export default function TableRelationsEditor({ table }) {
               ? {
                   combinationSourceColumn: combinationSource,
                   combinationTargetColumn: combinationTarget,
+                }
+              : {}),
+            ...(targetFilterColumn && targetFilterValue
+              ? {
+                  filterColumn: targetFilterColumn,
+                  filterValue: targetFilterValue,
                 }
               : {}),
             ...(editingExisting ? { index: selectedRelationIndex } : {}),
@@ -415,7 +506,12 @@ export default function TableRelationsEditor({ table }) {
     setTargetColumn('');
     setCombinationSource('');
     setCombinationTarget('');
+    setTargetFilterColumn('');
+    setTargetFilterValue('');
   }, [selectedColumn]);
+
+  const filterMeta = targetFilterColumn ? currentTargetColumnMeta[targetFilterColumn] : null;
+  const filterEnumValues = Array.isArray(filterMeta?.enumValues) ? filterMeta.enumValues : [];
 
   return (
     <div className="table-relations-editor">
@@ -447,6 +543,8 @@ export default function TableRelationsEditor({ table }) {
                     <th>Source</th>
                     <th>Combination Source</th>
                     <th>Combination Target</th>
+                    <th>Filter Column</th>
+                    <th>Filter Value</th>
                     <th>Actions</th>
                   </tr>
                 </thead>
@@ -471,6 +569,12 @@ export default function TableRelationsEditor({ table }) {
                         <td>{rel.source === 'custom' ? 'Custom' : 'Database'}</td>
                         <td>{rel.combinationSourceColumn || '-'}</td>
                         <td>{rel.combinationTargetColumn || '-'}</td>
+                        <td>{rel.filterColumn || '-'}</td>
+                        <td>
+                          {rel.filterValue !== undefined && rel.filterValue !== null && rel.filterValue !== ''
+                            ? rel.filterValue
+                            : '-'}
+                        </td>
                         <td>
                           <button
                             type="button"
@@ -561,6 +665,58 @@ export default function TableRelationsEditor({ table }) {
                 </select>
               </label>
             </div>
+            <div style={{ marginBottom: '0.5rem' }}>
+              <label>
+                Target Field Filter (optional)
+                <select
+                  value={targetFilterColumn}
+                  data-testid="relations-target-filter-column"
+                  onChange={(e) => {
+                    setTargetFilterColumn(e.target.value);
+                    setTargetFilterValue('');
+                  }}
+                >
+                  <option value="">-- No filter --</option>
+                  {currentTargetColumns.map((col) => (
+                    <option key={`filter-${col}`} value={col}>
+                      {col}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+            {targetFilterColumn && (
+              <div style={{ marginBottom: '0.5rem' }}>
+                {filterEnumValues.length > 0 ? (
+                  <label>
+                    Filter Value
+                    <select
+                      value={targetFilterValue}
+                      data-testid="relations-target-filter-enum"
+                      onChange={(e) => setTargetFilterValue(e.target.value)}
+                    >
+                      <option value="">-- Select value --</option>
+                      {filterEnumValues.map((val) => (
+                        <option key={`enum-${val}`} value={val}>
+                          {val}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                ) : (
+                  <label>
+                    Filter Value
+                    <input
+                      type="text"
+                      data-testid="relations-target-filter-value"
+                      value={targetFilterValue}
+                      onChange={(e) => setTargetFilterValue(e.target.value)}
+                      placeholder="Enter filter value"
+                    />
+                  </label>
+                )}
+              </div>
+            )}
             <div style={{ marginBottom: '0.5rem' }}>
               <label>
                 Combination Source Column (optional)

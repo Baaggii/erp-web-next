@@ -325,7 +325,14 @@ if (typeof mock?.import !== 'function') {
       return { ok: true, json: async () => ['id', 'name'] };
     }
     if (key === '/api/tables/teams/columns') {
-      return { ok: true, json: async () => ['lead_id', 'name'] };
+      return {
+        ok: true,
+        json: async () => [
+          { name: 'lead_id' },
+          { name: 'status', enumValues: ['active', 'inactive'] },
+          { name: 'name' },
+        ],
+      };
     }
     if (key === '/api/tables/users/relations/custom/dept_id') {
       assert.equal(options.method, 'PUT');
@@ -335,6 +342,8 @@ if (typeof mock?.import !== 'function') {
         targetColumn: 'lead_id',
         combinationSourceColumn: 'dept_id',
         combinationTargetColumn: 'lead_id',
+        filterColumn: 'status',
+        filterValue: 'active',
       });
       saved = true;
       return {
@@ -388,6 +397,13 @@ if (typeof mock?.import !== 'function') {
 
   let comboTarget = reactMock.findByTestId('relations-combo-target');
   comboTarget.props.onChange({ target: { value: 'lead_id' } });
+
+  const filterColumnSelect = reactMock.findByTestId('relations-target-filter-column');
+  filterColumnSelect.props.onChange({ target: { value: 'status' } });
+  await flushPromises();
+
+  const filterValueSelect = reactMock.findByTestId('relations-target-filter-enum');
+  filterValueSelect.props.onChange({ target: { value: 'active' } });
 
   const saveBtn = reactMock.findByTestId('relations-save');
   await saveBtn.props.onClick();
