@@ -30,23 +30,16 @@ router.post('/execute', requireAuth, async (req, res, next) => {
     }
     const result = await runSql(sql, controller.signal);
     if (controller.signal.aborted || result?.aborted) {
-      const messageBase = result?.completedStatements
-        ? `SQL execution was interrupted after ${result.completedStatements} statement(s).`
-        : 'SQL execution was interrupted.';
-      const lastError =
-        Array.isArray(result?.failed) && result.failed.length > 0
-          ? ` Last error: ${result.failed[result.failed.length - 1].error}`
-          : '';
-      return res.json({
-        ...(result || {}),
-        message: `${messageBase}${lastError}`.trim(),
-        aborted: true,
-      });
+      return res
+        .status(499)
+        .json({ ...(result || {}), message: 'SQL execution was interrupted' });
     }
     res.json(result);
   } catch (err) {
     if (controller.signal.aborted) {
-      return res.json({ message: 'SQL execution was interrupted', aborted: true });
+      return res
+        .status(499)
+        .json({ message: 'SQL execution was interrupted', aborted: true });
     }
     next(err);
   } finally {
