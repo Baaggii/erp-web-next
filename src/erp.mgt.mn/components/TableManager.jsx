@@ -5661,9 +5661,7 @@ const TableManager = forwardRef(function TableManager({
   const showCreatorActions = canCreateTemporary && temporaryScope === 'created';
   const isTemporaryReviewMode = canReviewTemporary && temporaryScope === 'review';
   const temporarySaveEnabled =
-    canSaveTemporaryDraft &&
-    hasEmploymentSenior &&
-    (!isTemporaryReviewMode || shouldShowForwardTemporaryLabel);
+    canSaveTemporaryDraft && (!isTemporaryReviewMode || shouldShowForwardTemporaryLabel);
 
   const temporaryDetailColumns = useMemo(() => {
     const valueKeys = new Set();
