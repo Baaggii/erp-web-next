@@ -104,10 +104,6 @@ const RowFormModal = function RowFormModal({
   posApiInfoEndpointConfig = {},
   posApiReceiptTypes = [],
   posApiPaymentMethods = [],
-  reviewMode = false,
-  reviewNotes = '',
-  onReviewNotesChange = () => {},
-  onRejectReview = null,
 }) {
   const mounted = useRef(false);
   const renderCount = useRef(0);
@@ -217,12 +213,9 @@ const RowFormModal = function RowFormModal({
     [userIdFields],
   );
   const disabledSet = React.useMemo(() => {
-    if (reviewMode) {
-      return new Set((columns || []).map((f) => String(f || '').toLowerCase()));
-    }
     if (forceEditable) return new Set();
     return new Set(disabledFields.map((f) => f.toLowerCase()));
-  }, [columns, disabledFields, forceEditable, reviewMode]);
+  }, [disabledFields, forceEditable]);
   const disabledReasonLookup = React.useMemo(() => {
     const map = {};
     Object.entries(disabledFieldReasons || {}).forEach(([key, value]) => {
@@ -238,7 +231,7 @@ const RowFormModal = function RowFormModal({
     });
     return map;
   }, [disabledFieldReasons]);
-  const guardToastEnabled = !forceEditable && !!general.posGuardToastEnabled && !reviewMode;
+  const guardToastEnabled = !forceEditable && !!general.posGuardToastEnabled;
   const lastGuardToastRef = useRef({ field: null, ts: 0 });
   const describeGuardReasons = React.useCallback(
     (codes = []) => {
@@ -3502,7 +3495,6 @@ const RowFormModal = function RowFormModal({
             defaultValues={defaultValues}
             dateField={dateField}
             rows={gridRows}
-            readOnly={reviewMode}
             onNextForm={onNextForm}
             labelFontSize={labelFontSize}
             boxWidth={boxWidth}
@@ -3761,29 +3753,9 @@ const RowFormModal = function RowFormModal({
             </div>
           </div>
         )}
-        {reviewMode && (
-          <div className="mt-2 space-y-1">
-            <label className="block mb-1 font-medium" style={labelStyle}>
-              {t('temporary_review_notes', 'Review notes')}
-            </label>
-            <textarea
-              className="w-full border border-gray-300 rounded px-2 py-1 text-sm"
-              rows={3}
-              value={reviewNotes}
-              onChange={(e) => onReviewNotesChange(e.target.value)}
-              placeholder={t('temporary_review_notes_placeholder', 'Add notes for the submitter or audit trail')}
-            />
-            <div className="text-xs text-gray-500">
-              {t(
-                'temporary_review_notes_hint',
-                'Notes are stored with the review and do not change transaction data.',
-              )}
-            </div>
-          </div>
-        )}
         <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-            {!reviewMode && posApiEnabled && canPost && (
+            {posApiEnabled && canPost && (
               <label className="inline-flex items-center space-x-2 text-sm text-gray-700">
                 <input
                   type="checkbox"
@@ -3794,7 +3766,7 @@ const RowFormModal = function RowFormModal({
                 <span>{t('issue_ebarimt_toggle', 'Issue Ebarimt (POSAPI)')}</span>
               </label>
             )}
-            {!reviewMode && showPosApiTypeSelect && (
+            {showPosApiTypeSelect && (
               <label className="flex items-center space-x-2 text-sm text-gray-700">
                 <span>{t('posapi_type_label', 'POSAPI Type')}</span>
                 <select
@@ -3810,7 +3782,7 @@ const RowFormModal = function RowFormModal({
                 </select>
               </label>
             )}
-            {!reviewMode && posApiEnabled &&
+            {posApiEnabled &&
               quickInfoEndpoints.map((endpoint) => (
                 <button
                   key={`info-quick-${endpoint.id}`}
@@ -3821,7 +3793,7 @@ const RowFormModal = function RowFormModal({
                   {endpoint.quickActionLabel}
                 </button>
               ))}
-            {!reviewMode && posApiEnabled && infoEndpoints.length > 0 && (
+            {posApiEnabled && infoEndpoints.length > 0 && (
               <button
                 type="button"
                 onClick={openInfoModal}
@@ -3830,95 +3802,64 @@ const RowFormModal = function RowFormModal({
                 {t('posapi_open_info_lookup', 'POSAPI Lookups')}
               </button>
             )}
-            {!reviewMode && posApiEnabled && posApiEndpointMeta && (
+            {posApiEnabled && posApiEndpointMeta && (
               <span className="text-xs text-gray-500">
                 {(posApiEndpointMeta.method || 'POST').toUpperCase()} {posApiEndpointMeta.path || ''}
               </span>
             )}
           </div>
           <div className="text-right space-x-2">
-            {!reviewMode && (
-              <>
-                <button
-                  type="button"
-                  onClick={() => handlePrint('emp')}
-                  className="px-3 py-1 bg-gray-200 rounded"
-                >
-                  {t('printEmp', 'Print Emp')}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handlePrint('cust')}
-                  className="px-3 py-1 bg-gray-200 rounded"
-                >
-                  {t('printCust', 'Print Cust')}
-                </button>
-                {allowTemporarySave && onSaveTemporary && (isAdding || isEditingTemporaryDraft) && (
-                  <button
-                    type="button"
-                    onClick={handleTemporarySave}
-                    className="px-3 py-1 bg-yellow-400 text-gray-900 rounded"
-                  >
-                    {temporarySaveLabel || t('save_temporary', 'Save as Temporary')}
-                  </button>
-                )}
-                <button
-                  type="button"
-                  onClick={onCancel}
-                  className="px-3 py-1 bg-gray-200 rounded"
-                >
-                  {t('cancel', 'Cancel')}
-                </button>
-                {posApiEnabled && canPost && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (!issueEbarimtEnabled) return;
-                      submitForm({ issueEbarimt: true });
-                    }}
-                    className="px-3 py-1 bg-green-600 text-white rounded"
-                    disabled={!issueEbarimtEnabled || submitLocked}
-                  >
-                    {t('ebarimt_post', 'Ebarimt Post')}
-                  </button>
-                )}
-                {canPost && (
-                  <button
-                    type="submit"
-                    className="px-3 py-1 bg-blue-600 text-white rounded"
-                    disabled={submitLocked}
-                  >
-                    {t('post', 'Post')}
-                  </button>
-                )}
-              </>
+            <button
+              type="button"
+              onClick={() => handlePrint('emp')}
+              className="px-3 py-1 bg-gray-200 rounded"
+            >
+              {t('printEmp', 'Print Emp')}
+            </button>
+            <button
+              type="button"
+              onClick={() => handlePrint('cust')}
+              className="px-3 py-1 bg-gray-200 rounded"
+            >
+              {t('printCust', 'Print Cust')}
+            </button>
+            {allowTemporarySave && onSaveTemporary && (isAdding || isEditingTemporaryDraft) && (
+              <button
+                type="button"
+                onClick={handleTemporarySave}
+                className="px-3 py-1 bg-yellow-400 text-gray-900 rounded"
+              >
+                {temporarySaveLabel || t('save_temporary', 'Save as Temporary')}
+              </button>
             )}
-            {reviewMode && (
-              <>
-                <button
-                  type="button"
-                  onClick={onCancel}
-                  className="px-3 py-1 bg-gray-200 rounded"
-                >
-                  {t('cancel', 'Cancel')}
-                </button>
-                {onRejectReview && (
-                  <button
-                    type="button"
-                    onClick={() => onRejectReview(reviewNotes)}
-                    className="px-3 py-1 bg-red-600 text-white rounded"
-                  >
-                    {t('reject', 'Reject')}
-                  </button>
-                )}
-                <button
-                  type="submit"
-                  className="px-3 py-1 bg-blue-600 text-white rounded"
-                  disabled={submitLocked}
-                >
-                  {t('promote', 'Promote')}
-                </button>
-              </>
+            <button
+              type="button"
+              onClick={onCancel}
+              className="px-3 py-1 bg-gray-200 rounded"
+            >
+              {t('cancel', 'Cancel')}
+            </button>
+            {posApiEnabled && canPost && (
+              <button
+                type="button"
+                onClick={() => {
+                  if (!issueEbarimtEnabled) return;
+                  submitForm({ issueEbarimt: true });
+                }}
+                className="px-3 py-1 bg-green-600 text-white rounded"
+                disabled={!issueEbarimtEnabled || submitLocked}
+              >
+                {t('ebarimt_post', 'Ebarimt Post')}
+              </button>
+            )}
+            {canPost && (
+              <button
+                type="submit"
+                className="px-3 py-1 bg-blue-600 text-white rounded"
+                disabled={submitLocked}
+              >
+                {t('post', 'Post')}
+              </button>
             )}
           </div>
         </div>
