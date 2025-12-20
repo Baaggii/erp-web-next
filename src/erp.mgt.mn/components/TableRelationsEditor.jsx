@@ -161,10 +161,7 @@ export default function TableRelationsEditor({ table }) {
 
   const sortedColumns = useMemo(() => [...columns].sort((a, b) => a.localeCompare(b)), [columns]);
   const sortedTables = useMemo(() => [...tables].sort((a, b) => a.localeCompare(b)), [tables]);
-  const summaryRelations = useMemo(
-    () => buildRelationSummary(relations, customRelations),
-    [relations, customRelations],
-  );
+  const summaryRelations = useMemo(() => buildRelationSummary(relations), [relations]);
   const currentTargetColumns = targetColumnsCache[targetTable]?.columns || [];
   const currentTargetColumnMeta = targetColumnsCache[targetTable]?.meta || {};
   const selectedCustomRelations = useMemo(() => {
