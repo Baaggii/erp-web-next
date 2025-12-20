@@ -1112,6 +1112,7 @@ export async function getUserByEmpId(empid) {
 function mapEmploymentRow(row) {
   const {
     company_id,
+    merchant_tin,
     branch_id,
     department_id,
     position_id,
@@ -1149,6 +1150,7 @@ function mapEmploymentRow(row) {
   for (const k of all) permissions[k] = flags.has(k);
   return {
     company_id,
+    merchant_tin,
     branch_id,
     department_id,
     position_id,
@@ -1278,6 +1280,7 @@ export async function getEmploymentSessions(empid, options = {}) {
   const sql = `SELECT
           e.employment_company_id AS company_id,
           ${companyRel.nameExpr} AS company_name,
+          ${merchantTinExpr} AS merchant_tin,
           e.employment_branch_id AS branch_id,
           ${branchRel.nameExpr} AS branch_name,
           e.employment_department_id AS department_id,
@@ -1332,20 +1335,22 @@ export async function getEmploymentSessions(empid, options = {}) {
            AND es.deleted_at IS NULL
        ) es
          ON es.emp_id = e.employment_emp_id
-        AND es.company_id = e.employment_company_id
+       AND es.company_id = e.employment_company_id
         AND es.branch_id = e.employment_branch_id
         AND es.department_id = e.employment_department_id
        LEFT JOIN tbl_workplace tw
          ON tw.company_id = e.employment_company_id
         AND tw.branch_id = e.employment_branch_id
-        AND tw.department_id = e.employment_department_id
-        AND tw.workplace_id = es.workplace_id
-       LEFT JOIN code_workplace cw ON cw.workplace_id = es.workplace_id
+       AND tw.department_id = e.employment_department_id
+       AND tw.workplace_id = es.workplace_id
+      LEFT JOIN code_workplace cw ON cw.workplace_id = es.workplace_id
+      LEFT JOIN companies mc ON mc.id = e.employment_company_id
        LEFT JOIN tbl_employee emp ON e.employment_emp_id = emp.emp_id
        LEFT JOIN user_levels ul ON e.employment_user_level = ul.userlevel_id
       LEFT JOIN user_level_permissions up ON up.userlevel_id = ul.userlevel_id AND up.action = 'permission' AND up.company_id IN (${GLOBAL_COMPANY_ID}, e.employment_company_id)
        WHERE e.employment_emp_id = ?
       GROUP BY e.employment_company_id, company_name,
+                ${merchantTinExpr},
                 e.employment_branch_id, branch_name,
                 e.employment_department_id, department_name,
                 es.workplace_id, cw.workplace_name, es.workplace_session_id,
@@ -1528,6 +1533,7 @@ export async function getEmploymentSession(empid, companyId, options = {}) {
     const baseSql = `SELECT
             e.employment_company_id AS company_id,
             ${companyRel.nameExpr} AS company_name,
+            ${merchantTinExpr} AS merchant_tin,
             e.employment_branch_id AS branch_id,
             ${branchRel.nameExpr} AS branch_name,
             e.employment_department_id AS department_id,
@@ -1555,7 +1561,9 @@ export async function getEmploymentSession(empid, companyId, options = {}) {
              es.department_id,
              es.emp_id,
              es.workplace_id,
-             es.id AS workplace_session_id
+             es.id AS workplace_session_id,
+             ${posNoExpr} AS pos_no,
+             ${merchantExpr} AS merchant_id
            FROM tbl_employment_schedule es
            INNER JOIN (
              SELECT
@@ -1581,7 +1589,7 @@ export async function getEmploymentSession(empid, companyId, options = {}) {
          ) es
            ON es.emp_id = e.employment_emp_id
           AND es.company_id = e.employment_company_id
-          AND es.branch_id = e.employment_branch_id
+         AND es.branch_id = e.employment_branch_id
           AND es.department_id = e.employment_department_id
          LEFT JOIN tbl_workplace tw
            ON tw.company_id = e.employment_company_id
@@ -1589,6 +1597,7 @@ export async function getEmploymentSession(empid, companyId, options = {}) {
           AND tw.department_id = e.employment_department_id
           AND tw.workplace_id = es.workplace_id
          LEFT JOIN code_workplace cw ON cw.workplace_id = es.workplace_id
+         LEFT JOIN companies mc ON mc.id = e.employment_company_id
          LEFT JOIN tbl_employee emp ON e.employment_emp_id = emp.emp_id
          LEFT JOIN user_levels ul ON e.employment_user_level = ul.userlevel_id
          LEFT JOIN user_level_permissions up ON up.userlevel_id = ul.userlevel_id AND up.action = 'permission' AND up.company_id IN (${GLOBAL_COMPANY_ID}, e.employment_company_id)
