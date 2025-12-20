@@ -589,33 +589,23 @@ const TableManager = forwardRef(function TableManager({
     [normalizeEmpId, session?.senior_plan_empid],
   );
   const employmentSeniorId = useMemo(() => {
-    const resolveFrom = (source) => {
-      if (!source || typeof source !== 'object') return null;
-      const keys = [
-        'employment_senior_empid',
-        'employment_senior_emp_id',
-        'employmentSeniorEmpId',
-        'employmentSeniorEmpID',
-        'senior_empid',
-        'senior_emp_id',
-        'seniorEmpId',
-        'seniorEmpID',
-      ];
-      for (const key of keys) {
-        if (key.toLowerCase().includes('plan')) continue;
-        const value = source[key];
-        if (hasSenior(value)) return value;
-      }
-      return null;
-    };
-    return (
-      resolveFrom(session) ||
-      resolveFrom(session?.employment) ||
-      resolveFrom(user) ||
-      resolveFrom(user?.employment) ||
-      null
-    );
-  }, [hasSenior, session, user]);
+    const candidates = [
+      session?.employment_senior_empid,
+      session?.employment?.senior_empid,
+      session?.employment?.senior_emp_id,
+      session?.employment?.seniorEmpId,
+      session?.employment?.seniorEmpID,
+      user?.employment_senior_empid,
+      user?.employment?.senior_empid,
+      user?.employment?.senior_emp_id,
+      user?.employment?.seniorEmpId,
+      user?.employment?.seniorEmpID,
+    ];
+    for (const candidate of candidates) {
+      if (hasSenior(candidate)) return candidate;
+    }
+    return null;
+  }, [hasSenior, session?.employment, session?.employment_senior_empid, user?.employment, user?.employment_senior_empid]);
   const isSubordinate = hasAnySenior;
   const generalConfig = useGeneralConfig();
   const txnToastEnabled = generalConfig.general?.txnToastEnabled;
@@ -702,7 +692,7 @@ const TableManager = forwardRef(function TableManager({
     formSupportsTemporary &&
     (canCreateTemporary || canReviewTemporary || temporaryReviewer);
   const hasEmploymentSenior = Boolean(
-    employmentSeniorId,
+    session?.employment_senior_empid || user?.employment_senior_empid,
   );
   const isEditingTemporaryDraft = activeTemporaryDraftId != null;
   const canSaveTemporaryDraft = canCreateTemporary || isEditingTemporaryDraft;
@@ -5689,9 +5679,7 @@ const TableManager = forwardRef(function TableManager({
   const showCreatorActions = canCreateTemporary && temporaryScope === 'created';
   const isTemporaryReviewMode = canReviewTemporary && temporaryScope === 'review';
   const temporarySaveEnabled =
-    canSaveTemporaryDraft &&
-    hasEmploymentSenior &&
-    (!isTemporaryReviewMode || shouldShowForwardTemporaryLabel);
+    canSaveTemporaryDraft && (!isTemporaryReviewMode || shouldShowForwardTemporaryLabel);
 
   const temporaryDetailColumns = useMemo(() => {
     const valueKeys = new Set();
