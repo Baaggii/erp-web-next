@@ -6997,6 +6997,8 @@ const TableManager = forwardRef(function TableManager({
                         ? t('temporary_pending_status', 'Pending')
                         : statusRaw === 'promoted'
                         ? t('temporary_promoted_short', 'Promoted')
+                        : statusRaw === 'forwarded'
+                        ? t('temporary_forwarded_short', 'Forwarded')
                         : statusRaw === 'rejected'
                         ? t('temporary_rejected_short', 'Rejected')
                         : entry?.status || '-';
@@ -7004,6 +7006,8 @@ const TableManager = forwardRef(function TableManager({
                         ? '#b91c1c'
                         : statusRaw === 'promoted'
                         ? '#15803d'
+                        : statusRaw === 'forwarded'
+                        ? '#2563eb'
                         : '#1f2937';
                       const reviewNotes = entry?.reviewNotes || entry?.review_notes || '';
                       const reviewedAt = entry?.reviewedAt || entry?.reviewed_at || null;
@@ -7371,15 +7375,15 @@ const TableManager = forwardRef(function TableManager({
                   {t('temporary_chain_pending', 'Pending reviewers')}
                 </div>
                 <div style={{ fontWeight: 700, fontSize: '1.1rem', color: '#b45309' }}>
-                  {temporaryChainStats.pendingCount}
-                </div>
-                {temporaryChainStats.currentReviewer && (
-                  <div style={{ fontSize: '0.8rem', color: '#92400e' }}>
-                    {t('temporary_chain_current_reviewer', 'Current reviewer')}: {temporaryChainStats.currentReviewer}
-                  </div>
-                )}
-              </div>
-            </div>
+                          {temporaryChainStats.pendingCount}
+                        </div>
+                        {temporaryChainStats.currentReviewer && (
+                          <div style={{ fontSize: '0.8rem', color: '#92400e' }}>
+                            {t('temporary_chain_current_reviewer', 'Current reviewer')}: {temporaryChainStats.currentReviewer}
+                          </div>
+                        )}
+                      </div>
+                    </div>
             <div>
               <h4 style={{ marginBottom: '0.5rem' }}>
                 {t('temporary_chain_steps', 'Review steps')}
@@ -7429,6 +7433,8 @@ const TableManager = forwardRef(function TableManager({
                             ? t('temporary_pending_status', 'Pending')
                             : normalizedStatus === 'promoted'
                             ? t('temporary_promoted_short', 'Promoted')
+                            : normalizedStatus === 'forwarded'
+                            ? t('temporary_forwarded_short', 'Forwarded')
                             : normalizedStatus === 'rejected'
                             ? t('temporary_rejected_short', 'Rejected')
                             : row?.status || '-';
