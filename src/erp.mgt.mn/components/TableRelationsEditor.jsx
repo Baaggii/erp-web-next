@@ -514,6 +514,8 @@ export default function TableRelationsEditor({ table }) {
                     <th>Source</th>
                     <th>Combination Source</th>
                     <th>Combination Target</th>
+                    <th>Filter Column</th>
+                    <th>Filter Value</th>
                     <th>Actions</th>
                   </tr>
                 </thead>
@@ -538,6 +540,12 @@ export default function TableRelationsEditor({ table }) {
                         <td>{rel.source === 'custom' ? 'Custom' : 'Database'}</td>
                         <td>{rel.combinationSourceColumn || '-'}</td>
                         <td>{rel.combinationTargetColumn || '-'}</td>
+                        <td>{rel.filterColumn || '-'}</td>
+                        <td>
+                          {rel.filterValue !== undefined && rel.filterValue !== null && rel.filterValue !== ''
+                            ? rel.filterValue
+                            : '-'}
+                        </td>
                         <td>
                           <button
                             type="button"
