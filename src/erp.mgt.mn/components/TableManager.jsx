@@ -1334,6 +1334,10 @@ const TableManager = forwardRef(function TableManager({
             ...(mapping.combinationTargetColumn
               ? { combinationTargetColumn: mapping.combinationTargetColumn }
               : {}),
+            ...(mapping.filterColumn ? { filterColumn: mapping.filterColumn } : {}),
+            ...(mapping.filterValue !== undefined && mapping.filterValue !== null
+              ? { filterValue: mapping.filterValue }
+              : {}),
           });
         });
       });
@@ -1514,6 +1518,10 @@ const TableManager = forwardRef(function TableManager({
             ...(entry.combinationTargetColumn
               ? { combinationTargetColumn: entry.combinationTargetColumn }
               : {}),
+            ...(entry.filterColumn ? { filterColumn: entry.filterColumn } : {}),
+            ...(entry.filterValue !== undefined && entry.filterValue !== null
+              ? { filterValue: entry.filterValue }
+              : {}),
           };
         });
         relationCache[cacheKey] = relMap;
@@ -1524,9 +1532,13 @@ const TableManager = forwardRef(function TableManager({
       }
     };
 
-    const fetchTableRows = (tableName, tenantInfo) => {
+    const fetchTableRows = (tableName, tenantInfo, filter) => {
       if (!tableName) return Promise.resolve([]);
-      const cacheKey = [tableName.toLowerCase(), company ?? ''].join('|');
+      const cacheKeyParts = [tableName.toLowerCase(), company ?? ''];
+      if (filter?.column && filter?.value !== undefined && filter.value !== null) {
+        cacheKeyParts.push(`${filter.column}:${filter.value}`);
+      }
+      const cacheKey = cacheKeyParts.join('|');
       if (tableRowsCache.has(cacheKey)) return tableRowsCache.get(cacheKey);
       const promise = (async () => {
         const info = tenantInfo || (await fetchTenantInfo(tableName));
@@ -1539,6 +1551,9 @@ const TableManager = forwardRef(function TableManager({
           const params = new URLSearchParams({ page, perPage });
           if (!isShared && tenantKeys.includes('company_id') && company != null)
             params.set('company_id', company);
+          if (filter?.column && filter?.value !== undefined && filter.value !== null) {
+            params.set(filter.column, filter.value);
+          }
           let res;
           try {
             res = await fetch(
@@ -1608,7 +1623,11 @@ const TableManager = forwardRef(function TableManager({
       ]);
       if (canceled) return {};
 
-      const rows = await fetchTableRows(nestedRel.table, nestedTenant);
+      const filterConfig =
+        nestedRel.filterColumn && nestedRel.filterValue
+          ? { column: nestedRel.filterColumn, value: nestedRel.filterValue }
+          : null;
+      const rows = await fetchTableRows(nestedRel.table, nestedTenant, filterConfig);
       if (canceled) return {};
 
       const labelMap = {};
@@ -1685,7 +1704,13 @@ const TableManager = forwardRef(function TableManager({
         }
       }
 
-      const rows = await fetchTableRows(rel.table, tenantInfo);
+      const hasFilterValue =
+        rel.filterValue !== undefined && rel.filterValue !== null && String(rel.filterValue) !== '';
+      const filterConfig =
+        rel.filterColumn && hasFilterValue
+          ? { column: rel.filterColumn, value: rel.filterValue }
+          : null;
+      const rows = await fetchTableRows(rel.table, tenantInfo, filterConfig);
       if (canceled) return null;
 
       const sortedRows = sortRowsByIndex(rows, {
@@ -1753,6 +1778,9 @@ const TableManager = forwardRef(function TableManager({
           ...(rel.combinationTargetColumn
             ? { combinationTargetColumn: rel.combinationTargetColumn }
             : {}),
+          ...(filterConfig
+            ? { filterColumn: filterConfig.column, filterValue: filterConfig.value }
+            : {}),
           ...(Object.keys(nestedDisplayLookups || {}).length > 0
             ? { nestedLookups: nestedDisplayLookups }
             : {}),
@@ -1807,7 +1835,7 @@ const TableManager = forwardRef(function TableManager({
             }
             return;
           }
-          rels = customList;
+        rels = customList;
         }
         if (canceled) return;
 
@@ -1822,6 +1850,10 @@ const TableManager = forwardRef(function TableManager({
               : {}),
             ...(r.combinationTargetColumn
               ? { combinationTargetColumn: r.combinationTargetColumn }
+              : {}),
+            ...(r.filterColumn ? { filterColumn: r.filterColumn } : {}),
+            ...(r.filterValue !== undefined && r.filterValue !== null
+              ? { filterValue: r.filterValue }
               : {}),
           };
         });

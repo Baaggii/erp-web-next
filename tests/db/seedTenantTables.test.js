@@ -1017,13 +1017,13 @@ await test(
       if (trimmed.startsWith('SELECT COLUMN_NAME, COLUMN_KEY, EXTRA')) {
         return [[
           { COLUMN_NAME: 'id', COLUMN_KEY: 'PRI', EXTRA: '' },
-          { COLUMN_NAME: 'company_id', COLUMN_KEY: '', EXTRA: '' },
-          { COLUMN_NAME: 'title', COLUMN_KEY: '', EXTRA: '' },
-          { COLUMN_NAME: 'is_deleted', COLUMN_KEY: '', EXTRA: '' },
-          { COLUMN_NAME: 'deleted_by', COLUMN_KEY: '', EXTRA: '' },
-          { COLUMN_NAME: 'deleted_at', COLUMN_KEY: '', EXTRA: '' },
-          { COLUMN_NAME: 'updated_by', COLUMN_KEY: '', EXTRA: '' },
-          { COLUMN_NAME: 'updated_at', COLUMN_KEY: '', EXTRA: '' },
+          { COLUMN_NAME: 'company_id', COLUMN_KEY: '', EXTRA: '', COLUMN_TYPE: 'int(11)' },
+          { COLUMN_NAME: 'title', COLUMN_KEY: '', EXTRA: '', COLUMN_TYPE: 'varchar(255)' },
+          { COLUMN_NAME: 'is_deleted', COLUMN_KEY: '', EXTRA: '', COLUMN_TYPE: 'tinyint(1)' },
+          { COLUMN_NAME: 'deleted_by', COLUMN_KEY: '', EXTRA: '', COLUMN_TYPE: 'int(11)' },
+          { COLUMN_NAME: 'deleted_at', COLUMN_KEY: '', EXTRA: '', COLUMN_TYPE: 'datetime' },
+          { COLUMN_NAME: 'updated_by', COLUMN_KEY: '', EXTRA: '', COLUMN_TYPE: 'int(11)' },
+          { COLUMN_NAME: 'updated_at', COLUMN_KEY: '', EXTRA: '', COLUMN_TYPE: 'datetime' },
         ]];
       }
       if (trimmed.startsWith('SELECT column_name, mn_label FROM table_column_labels')) {
@@ -1234,4 +1234,3 @@ await test('seedSeedTablesForCompanies seeds all companies', async () => {
     [2, 55],
   ]);
 });
-
