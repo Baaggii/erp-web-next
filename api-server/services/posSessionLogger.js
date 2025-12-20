@@ -28,6 +28,12 @@ function normalizeMac(value) {
   return normalizeValue(value) || 'unknown';
 }
 
+function normalizeNumericId(value) {
+  if (value === undefined || value === null) return null;
+  const num = Number(value);
+  return Number.isFinite(num) && num > 0 ? num : null;
+}
+
 async function recordLoginSessionImpl(req, sessionPayload, user) {
   const sessionUuid = crypto.randomUUID
     ? crypto.randomUUID()
