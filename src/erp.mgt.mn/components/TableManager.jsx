@@ -1334,6 +1334,10 @@ const TableManager = forwardRef(function TableManager({
             ...(mapping.combinationTargetColumn
               ? { combinationTargetColumn: mapping.combinationTargetColumn }
               : {}),
+            ...(mapping.filterColumn ? { filterColumn: mapping.filterColumn } : {}),
+            ...(mapping.filterValue !== undefined && mapping.filterValue !== null
+              ? { filterValue: mapping.filterValue }
+              : {}),
           });
         });
       });
@@ -1508,11 +1512,19 @@ const TableManager = forwardRef(function TableManager({
           relMap[lower] = {
             table: entry.REFERENCED_TABLE_NAME,
             column: entry.REFERENCED_COLUMN_NAME,
+            ...(entry.idField ? { idField: entry.idField } : {}),
+            ...(Array.isArray(entry.displayFields)
+              ? { displayFields: entry.displayFields }
+              : {}),
             ...(entry.combinationSourceColumn
               ? { combinationSourceColumn: entry.combinationSourceColumn }
               : {}),
             ...(entry.combinationTargetColumn
               ? { combinationTargetColumn: entry.combinationTargetColumn }
+              : {}),
+            ...(entry.filterColumn ? { filterColumn: entry.filterColumn } : {}),
+            ...(entry.filterValue !== undefined && entry.filterValue !== null
+              ? { filterValue: entry.filterValue }
               : {}),
           };
         });
@@ -1524,9 +1536,13 @@ const TableManager = forwardRef(function TableManager({
       }
     };
 
-    const fetchTableRows = (tableName, tenantInfo) => {
+    const fetchTableRows = (tableName, tenantInfo, filter) => {
       if (!tableName) return Promise.resolve([]);
-      const cacheKey = [tableName.toLowerCase(), company ?? ''].join('|');
+      const cacheKeyParts = [tableName.toLowerCase(), company ?? ''];
+      if (filter?.column && filter?.value !== undefined && filter.value !== null) {
+        cacheKeyParts.push(`${filter.column}:${filter.value}`);
+      }
+      const cacheKey = cacheKeyParts.join('|');
       if (tableRowsCache.has(cacheKey)) return tableRowsCache.get(cacheKey);
       const promise = (async () => {
         const info = tenantInfo || (await fetchTenantInfo(tableName));
@@ -1539,6 +1555,9 @@ const TableManager = forwardRef(function TableManager({
           const params = new URLSearchParams({ page, perPage });
           if (!isShared && tenantKeys.includes('company_id') && company != null)
             params.set('company_id', company);
+          if (filter?.column && filter?.value !== undefined && filter.value !== null) {
+            params.set(filter.column, filter.value);
+          }
           let res;
           try {
             res = await fetch(
@@ -1608,7 +1627,11 @@ const TableManager = forwardRef(function TableManager({
       ]);
       if (canceled) return {};
 
-      const rows = await fetchTableRows(nestedRel.table, nestedTenant);
+      const filterConfig =
+        nestedRel.filterColumn && nestedRel.filterValue
+          ? { column: nestedRel.filterColumn, value: nestedRel.filterValue }
+          : null;
+      const rows = await fetchTableRows(nestedRel.table, nestedTenant, filterConfig);
       if (canceled) return {};
 
       const labelMap = {};
@@ -1666,8 +1689,12 @@ const TableManager = forwardRef(function TableManager({
       if (canceled) return null;
 
       const normalizedCfg = {
-        idField: cfg?.idField ?? rel.column,
-        displayFields: Array.isArray(cfg?.displayFields) ? cfg.displayFields : [],
+        idField: rel.idField || cfg?.idField || rel.column,
+        displayFields: Array.isArray(rel.displayFields)
+          ? rel.displayFields
+          : Array.isArray(cfg?.displayFields)
+          ? cfg.displayFields
+          : [],
       };
       if (typeof cfg?.indexField === 'string' && cfg.indexField.trim()) {
         normalizedCfg.indexField = cfg.indexField.trim();
@@ -1685,7 +1712,13 @@ const TableManager = forwardRef(function TableManager({
         }
       }
 
-      const rows = await fetchTableRows(rel.table, tenantInfo);
+      const hasFilterValue =
+        rel.filterValue !== undefined && rel.filterValue !== null && String(rel.filterValue) !== '';
+      const filterConfig =
+        rel.filterColumn && hasFilterValue
+          ? { column: rel.filterColumn, value: rel.filterValue }
+          : null;
+      const rows = await fetchTableRows(rel.table, tenantInfo, filterConfig);
       if (canceled) return null;
 
       const sortedRows = sortRowsByIndex(rows, {
@@ -1753,6 +1786,9 @@ const TableManager = forwardRef(function TableManager({
           ...(rel.combinationTargetColumn
             ? { combinationTargetColumn: rel.combinationTargetColumn }
             : {}),
+          ...(filterConfig
+            ? { filterColumn: filterConfig.column, filterValue: filterConfig.value }
+            : {}),
           ...(Object.keys(nestedDisplayLookups || {}).length > 0
             ? { nestedLookups: nestedDisplayLookups }
             : {}),
@@ -1817,11 +1853,17 @@ const TableManager = forwardRef(function TableManager({
           relationMap[key] = {
             table: r.REFERENCED_TABLE_NAME,
             column: r.REFERENCED_COLUMN_NAME,
+            ...(r.idField ? { idField: r.idField } : {}),
+            ...(Array.isArray(r.displayFields) ? { displayFields: r.displayFields } : {}),
             ...(r.combinationSourceColumn
               ? { combinationSourceColumn: r.combinationSourceColumn }
               : {}),
             ...(r.combinationTargetColumn
               ? { combinationTargetColumn: r.combinationTargetColumn }
+              : {}),
+            ...(r.filterColumn ? { filterColumn: r.filterColumn } : {}),
+            ...(r.filterValue !== undefined && r.filterValue !== null
+              ? { filterValue: r.filterValue }
               : {}),
           };
         });

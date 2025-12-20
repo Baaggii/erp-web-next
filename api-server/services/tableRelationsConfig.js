@@ -31,6 +31,8 @@ function normalizeRelation(relation = {}) {
     relation.combinationSourceColumn ?? relation.combination_source_column;
   const combinationTarget =
     relation.combinationTargetColumn ?? relation.combination_target_column;
+  const filterColumn = relation.filterColumn ?? relation.filter_column;
+  const filterValue = relation.filterValue ?? relation.filter_value;
 
   const tableStr = typeof targetTable === 'string' ? targetTable.trim() : '';
   const columnStr = typeof targetColumn === 'string' ? targetColumn.trim() : '';
@@ -52,9 +54,19 @@ function normalizeRelation(relation = {}) {
     typeof combinationSource === 'string' ? combinationSource.trim() : '';
   const targetStr =
     typeof combinationTarget === 'string' ? combinationTarget.trim() : '';
+  const filterColumnStr =
+    typeof filterColumn === 'string' ? filterColumn.trim() : '';
+  const filterValueStr =
+    filterValue === null || filterValue === undefined
+      ? ''
+      : String(filterValue).trim();
   if (sourceStr && targetStr) {
     normalized.combinationSourceColumn = sourceStr;
     normalized.combinationTargetColumn = targetStr;
+  }
+  if (filterColumnStr && filterValueStr) {
+    normalized.filterColumn = filterColumnStr;
+    normalized.filterValue = filterValueStr;
   }
   return normalized;
 }
@@ -124,6 +136,12 @@ function findRelationIndex(list, match = {}) {
       match.combinationTargetColumn &&
       rel.combinationTargetColumn !== match.combinationTargetColumn
     ) {
+      return false;
+    }
+    if (match.filterColumn && rel.filterColumn !== match.filterColumn) {
+      return false;
+    }
+    if (match.filterValue && rel.filterValue !== match.filterValue) {
       return false;
     }
     return true;
@@ -296,4 +314,3 @@ export async function removeTableCustomRelations(table, companyId = 0) {
     await writeConfig(cfg, companyId);
   }
 }
-

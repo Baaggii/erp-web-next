@@ -1428,9 +1428,9 @@ test(
       ) {
         if (params?.[0] === 'posts') {
           return [[
-            { COLUMN_NAME: 'id', COLUMN_KEY: 'PRI', EXTRA: '' },
-            { COLUMN_NAME: 'company_id', COLUMN_KEY: '', EXTRA: '' },
-            { COLUMN_NAME: 'title', COLUMN_KEY: '', EXTRA: '' },
+            { COLUMN_NAME: 'id', COLUMN_KEY: 'PRI', EXTRA: '', COLUMN_TYPE: 'int(11)' },
+            { COLUMN_NAME: 'company_id', COLUMN_KEY: '', EXTRA: '', COLUMN_TYPE: 'int(11)' },
+            { COLUMN_NAME: 'title', COLUMN_KEY: '', EXTRA: '', COLUMN_TYPE: 'varchar(255)' },
           ]];
         }
       }
