@@ -400,9 +400,7 @@ async function applyFieldMappings({ response, mappings }) {
     const hasExplicitValue = Object.prototype.hasOwnProperty.call(target, 'value');
     if (hasExplicitValue) {
       const constantsForTable = constantColumnsByTable.get(table) || new Map();
-      const values = constantsForTable.get(column) || new Set();
-      values.add(target.value);
-      constantsForTable.set(column, values);
+      constantsForTable.set(column, target.value);
       constantColumnsByTable.set(table, constantsForTable);
     }
     if (!mappedRowsByTable[table]) mappedRowsByTable[table] = new Map();
@@ -463,6 +461,13 @@ async function applyFieldMappings({ response, mappings }) {
         const placeholders = codes.map(() => '?').join(',');
         await pool.query(`DELETE FROM \`${table}\` WHERE \`${codeColumn}\` IN (${placeholders})`, codes);
       }
+    }
+    const constants = Array.from(constantColumnsByTable.get(table)?.entries() || []).filter(
+      ([col, value]) => col && value !== undefined && value !== null && typeof value !== 'object',
+    );
+    if (constants.length > 0) {
+      const [col, value] = constants[0];
+      await pool.query(`DELETE FROM \`${table}\` WHERE \`${col}\` = ?`, [value]);
     }
     const escapedColumns = columns.map((col) => `\`${col}\``).join(',');
     const placeholders = `(${columns.map(() => '?').join(',')})`;
