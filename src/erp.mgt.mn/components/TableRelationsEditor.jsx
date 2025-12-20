@@ -457,6 +457,8 @@ export default function TableRelationsEditor({ table }) {
     table,
     targetColumn,
     targetTable,
+    targetFilterColumn,
+    targetFilterValue,
   ]);
 
   const handleDelete = useCallback(
