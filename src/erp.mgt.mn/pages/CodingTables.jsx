@@ -1785,13 +1785,7 @@ export default function CodingTablesPage() {
               'Execution failed'
           );
         }
-        const displayError =
-          detail ||
-          errorMessage ||
-          (data && data.message) ||
-          res.statusText ||
-          'Execution failed';
-        alert(displayError);
+        alert(detail || errorMessage || data.message || 'Execution failed');
         abortCtrlRef.current = null;
         return {
           inserted: totalInserted,
@@ -1801,10 +1795,7 @@ export default function CodingTablesPage() {
         };
       }
       const data = await res.json().catch(() => ({}));
-      captureErrorDetails(
-        data,
-        (data && (data.message || data.error || data.detail)) || ''
-      );
+      captureErrorDetails(data, data && data.message);
       const payloadFailed = Array.isArray(data.failed) ? data.failed : [];
       if (payloadFailed.length > 0) {
         const errMsg = payloadFailed
