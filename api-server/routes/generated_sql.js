@@ -20,16 +20,31 @@ router.post('/', requireAuth, async (req, res, next) => {
 
 router.post('/execute', requireAuth, async (req, res, next) => {
   const controller = new AbortController();
-  req.on('close', () => controller.abort());
+  const abortHandler = () => controller.abort();
+  req.on('close', abortHandler);
+  res.on('close', abortHandler);
   try {
     const { sql } = req.body;
     if (!sql) {
       return res.status(400).json({ message: 'sql required' });
     }
-    const { inserted, failed, aborted } = await runSql(sql, controller.signal);
-    res.json({ inserted, failed, aborted });
+    const result = await runSql(sql, controller.signal);
+    if (controller.signal.aborted || result?.aborted) {
+      return res
+        .status(499)
+        .json({ ...(result || {}), message: 'SQL execution was interrupted' });
+    }
+    res.json(result);
   } catch (err) {
+    if (controller.signal.aborted) {
+      return res
+        .status(499)
+        .json({ message: 'SQL execution was interrupted', aborted: true });
+    }
     next(err);
+  } finally {
+    req.off('close', abortHandler);
+    res.off('close', abortHandler);
   }
 });
 
