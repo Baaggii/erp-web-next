@@ -84,6 +84,7 @@ function InlineTransactionTable(
     tableColumns = [],
     numericScaleMap = {},
     disabledFieldReasons = {},
+    readOnly = false,
   },
   ref,
 ) {
@@ -133,10 +134,17 @@ function InlineTransactionTable(
     () => new Set((userIdFields || []).map((f) => f.toLowerCase())),
     [userIdFields],
   );
-  const disabledSet = React.useMemo(
-    () => new Set(disabledFields.map((f) => f.toLowerCase())),
-    [disabledFields],
-  );
+  const disabledSet = React.useMemo(() => {
+    const base = new Set(disabledFields.map((f) => f.toLowerCase()));
+    if (readOnly) {
+      const targets = Array.isArray(allFields) && allFields.length > 0 ? allFields : fields;
+      targets.forEach((field) => {
+        if (!field) return;
+        base.add(String(field).toLowerCase());
+      });
+    }
+    return base;
+  }, [allFields, disabledFields, fields, readOnly]);
   const guardReasonLookup = React.useMemo(() => {
     const map = {};
     Object.entries(disabledFieldReasons || {}).forEach(([key, value]) => {
@@ -152,7 +160,7 @@ function InlineTransactionTable(
     });
     return map;
   }, [disabledFieldReasons]);
-  const guardToastEnabled = !!general.posGuardToastEnabled;
+  const guardToastEnabled = !readOnly && !!general.posGuardToastEnabled;
   const lastGuardToastRef = useRef({ field: null, ts: 0, message: null, context: null });
   const describeGuardReasons = useCallback(
     (codes = []) => {
@@ -1732,6 +1740,7 @@ function InlineTransactionTable(
   }
 
   function addRow() {
+    if (readOnly) return;
     if (requiredFields.length > 0 && rows.length > 0) {
       const prev = rows[rows.length - 1];
       for (const f of fields) {
@@ -1798,14 +1807,17 @@ function InlineTransactionTable(
   }
 
   function removeRow(idx) {
+    if (readOnly) return;
     commitRowsUpdate((r) => r.filter((_, i) => i !== idx));
   }
 
   function openUpload(idx) {
+    if (readOnly) return;
     setUploadRow(idx);
   }
 
   function handleUploaded(idx, name) {
+    if (readOnly) return;
     commitRowsUpdate(
       (r) =>
         r.map((row, i) => (i === idx ? { ...row, _imageName: name } : row)),
@@ -1847,6 +1859,7 @@ function InlineTransactionTable(
 
 
   function handleChange(rowIdx, field, value) {
+    if (readOnly) return;
     if (field && !String(field || '').startsWith('_')) {
       notifyGuardToastOnEdit(field);
     }
@@ -1967,6 +1980,7 @@ function InlineTransactionTable(
   }
 
   async function saveRow(idx) {
+    if (readOnly) return;
     const row = rows[idx] || {};
     for (const f of requiredFields) {
       let val = row[f];
@@ -2095,6 +2109,7 @@ function InlineTransactionTable(
   }, [rows, fields, totalAmountSet, totalCurrencySet, totalAmountFields]);
 
   function handleOptionSelect(rowIdx, colIdx, opt) {
+    if (readOnly) return;
     const el = inputRefs.current[`${rowIdx}-${colIdx}`];
     if (!el) return;
     const fake = {
@@ -2107,6 +2122,7 @@ function InlineTransactionTable(
   }
 
   async function handleKeyDown(e, rowIdx, colIdx) {
+    if (readOnly) return;
     const isEnter = e.key === 'Enter';
     const isForwardTab = e.key === 'Tab' && !e.shiftKey;
     if (!isEnter && !isForwardTab) return;
@@ -2522,10 +2538,14 @@ function InlineTransactionTable(
                 </td>
               ))}
               <td className="border px-1 py-1 text-right" style={{ whiteSpace: 'nowrap' }}>
-                <button type="button" onClick={() => openUpload(idx)}>Add/View Image</button>
+                <button type="button" onClick={() => openUpload(idx)} disabled={readOnly}>
+                  Add/View Image
+                </button>
               </td>
               <td className="border px-1 py-1 text-right">
-                {collectRows ? (
+                {readOnly ? (
+                  <span className="text-sm text-gray-500">Read-only</span>
+                ) : collectRows ? (
                   <button onClick={() => removeRow(idx)}>Delete</button>
                 ) : r._saved ? (
                   <button onClick={() => handleChange(idx, '_saved', false)}>
@@ -2579,7 +2599,7 @@ function InlineTransactionTable(
       {errorMsg && (
         <div className="text-red-600 text-sm mt-1">{errorMsg}</div>
       )}
-      {collectRows && (
+      {collectRows && !readOnly && (
         <button
           onClick={addRow}
           ref={addBtnRef}
