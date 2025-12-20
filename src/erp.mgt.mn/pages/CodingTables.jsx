@@ -1625,6 +1625,7 @@ export default function CodingTablesPage() {
     let otherInserted = 0;
     const errGroups = {};
     const failedAll = [];
+    const failedNoInsert = [];
     let errorMessage = '';
     const ensureErrorMessage = (fallback) => {
       if (!errorMessage && fallback) {
@@ -1740,6 +1741,7 @@ export default function CodingTablesPage() {
         );
       }
       let res;
+      let insertedVal = 0;
       try {
         res = await fetch('/api/generated_sql/execute', {
           method: 'POST',
@@ -1804,6 +1806,12 @@ export default function CodingTablesPage() {
       const data = await res.json().catch(() => ({}));
       captureErrorDetails(data, data && data.message);
       const payloadFailed = Array.isArray(data.failed) ? data.failed : [];
+      insertedVal = Number.isFinite(data.inserted)
+        ? data.inserted
+        : Math.max(
+            0,
+            rowCount - (Array.isArray(payloadFailed) ? payloadFailed.length : 0),
+          );
       if (payloadFailed.length > 0) {
         const errMsg = payloadFailed
           .map((f) => (typeof f === 'string' ? f : f.error))
@@ -1815,6 +1823,13 @@ export default function CodingTablesPage() {
             typeof f === 'string' ? f : `${f.sql} -- ${f.error}`
           )
         );
+        if (insertedVal === 0) {
+          failedNoInsert.push(
+            ...payloadFailed.map((f) =>
+              typeof f === 'string' ? f : `${f.sql} -- ${f.error}`,
+            ),
+          );
+        }
       }
       if (data.aborted) {
         const abortMsg =
@@ -1822,10 +1837,12 @@ export default function CodingTablesPage() {
         ensureErrorMessage(abortMsg);
         errGroups[abortMsg] = (errGroups[abortMsg] || 0) + rowCount;
         failedAll.push(`${stmt} -- ${abortMsg}`);
+        if (insertedVal === 0) {
+          failedNoInsert.push(`${stmt} -- ${abortMsg}`);
+        }
         setUploadProgress({ done: i + 1, total: statements.length });
         continue;
       }
-      const inserted = data.inserted || 0;
       if (Array.isArray(data.failed) && data.failed.length > 0) {
         const errMsg = data.failed
           .map((f) => (typeof f === 'string' ? f : f.error))
@@ -1836,14 +1853,20 @@ export default function CodingTablesPage() {
             typeof f === 'string' ? f : `${f.sql} -- ${f.error}`
           )
         );
-      } else {
-        if (isOtherTable) {
-          otherInserted += inserted;
-        } else {
-          mainInserted += inserted;
+        if (insertedVal === 0) {
+          failedNoInsert.push(
+            ...data.failed.map((f) =>
+              typeof f === 'string' ? f : `${f.sql} -- ${f.error}`,
+            ),
+          );
         }
       }
-      totalInserted += inserted;
+      if (isOtherTable) {
+        otherInserted += insertedVal;
+      } else {
+        mainInserted += insertedVal;
+      }
+      totalInserted += insertedVal;
       setInsertedCount(totalInserted);
       addToast(`Inserted ${totalInserted} records`, 'info');
       setUploadProgress({ done: i + 1, total: statements.length });
@@ -1862,6 +1885,7 @@ export default function CodingTablesPage() {
       insertedOther: otherInserted,
       errorGroups: errGroups,
       errorMessage,
+      failedNoInsert,
     };
   }
 
@@ -1878,6 +1902,7 @@ export default function CodingTablesPage() {
       let {
         inserted,
         failed,
+        failedNoInsert,
         aborted,
         insertedMain: mInserted,
         insertedOther: oInserted,
@@ -1891,8 +1916,8 @@ export default function CodingTablesPage() {
           addToast('Insert interrupted', 'warning');
         }
       } else {
-        if (failed.length > 0) {
-          setSqlMove(failed.join('\n'));
+        if (failedNoInsert.length > 0) {
+          setSqlMove(failedNoInsert.join('\n'));
         }
         setInsertedMain(mInserted);
         setInsertedOther(oInserted);
@@ -1931,6 +1956,7 @@ export default function CodingTablesPage() {
       let {
         inserted,
         failed,
+        failedNoInsert,
         aborted,
         insertedMain: mInserted,
         insertedOther: oInserted,
@@ -1944,8 +1970,8 @@ export default function CodingTablesPage() {
           addToast('Insert interrupted', 'warning');
         }
       } else {
-        if (failed.length > 0) {
-          setSqlMove(failed.join('\n'));
+        if (failedNoInsert.length > 0) {
+          setSqlMove(failedNoInsert.join('\n'));
         }
         setInsertedMain(mInserted);
         setInsertedOther(oInserted);
@@ -2327,15 +2353,16 @@ export default function CodingTablesPage() {
       let {
         inserted,
         failed,
+        failedNoInsert,
         aborted,
         insertedMain: mInserted,
         insertedOther: oInserted,
         errorGroups: runErr,
         errorMessage,
       } = await runStatements(statements);
-      if (failed.length > 0) {
+      if (failedNoInsert.length > 0) {
         const tbl = cleanIdentifier(tableName);
-        const moveSql = failed
+        const moveSql = failedNoInsert
           .map((stmt) => {
             const re = new RegExp(`INSERT INTO\\s+\`${tbl}\``, 'i');
             if (re.test(stmt) && !/\_other`/i.test(stmt)) {
