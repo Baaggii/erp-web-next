@@ -303,34 +303,16 @@ async function upsertReferenceCodes(codeType, codes) {
 
   if (!normalizedCodes.length) return { added: 0, updated: 0, deactivated: 0 };
 
-  // Replace the entire code set for this type to guarantee idempotent refreshes.
-  await pool.query('DELETE FROM ebarimt_reference_code WHERE code_type = ?', [codeType]);
-
   const [existingRows] = await pool.query(
     'SELECT id, code, is_active FROM ebarimt_reference_code WHERE code_type = ?',
     [codeType],
   );
-  const existingMap = new Map();
-  const duplicateIds = [];
-  existingRows.forEach((row) => {
-    const code = String(row.code || '').trim();
-    if (!code) return;
-    if (existingMap.has(code)) {
-      duplicateIds.push(row.id);
-    } else {
-      existingMap.set(code, row);
-    }
-  });
-
-  if (duplicateIds.length) {
-    await pool.query(
-      `DELETE FROM ebarimt_reference_code WHERE id IN (${duplicateIds.map(() => '?').join(',')})`,
-      duplicateIds,
-    );
+  const hadExistingRows = Array.isArray(existingRows) && existingRows.length > 0;
+  if (hadExistingRows) {
+    await pool.query('DELETE FROM ebarimt_reference_code WHERE code_type = ?', [codeType]);
   }
 
   let added = 0;
-  let updated = 0;
 
   const placeholders = normalizedCodes.map(() => '(?, ?, ?, 1)').join(',');
   const values = normalizedCodes.flatMap((entry) => [codeType, entry.code, entry.name]);
@@ -343,20 +325,11 @@ async function upsertReferenceCodes(codeType, codes) {
     added = Number(result?.affectedRows) || normalizedCodes.length;
   }
 
-  // After replacing the set, mark any lingering duplicates inactive just in case.
-  const staleIds = Array.from(existingMap.values()).map((row) => row.id);
-  let deactivated = 0;
-  if (staleIds.length) {
-    await pool.query(
-      `UPDATE ebarimt_reference_code
-       SET is_active = 0
-       WHERE id IN (${staleIds.map(() => '?').join(',')})`,
-      staleIds,
-    );
-    deactivated = staleIds.length;
-  }
-
-  return { added, updated, deactivated };
+  return {
+    added,
+    updated: 0,
+    deactivated: hadExistingRows ? existingRows.length : 0,
+  };
 }
 
 function parseCodesFromEndpoint(endpointId, response) {
