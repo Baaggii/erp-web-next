@@ -1803,18 +1803,6 @@ export default function CodingTablesPage() {
         setErrorMessage(failureMessage);
         errGroups[failureMessage] = (errGroups[failureMessage] || 0) + rowCount;
         failedAll.push(`${stmt} -- ${failureMessage}`);
-        if (insertedVal === 0) {
-          failedNoInsert.push(`${stmt} -- ${failureMessage}`);
-        }
-        if (insertedVal > 0) {
-          if (isOtherTable) {
-            otherInserted += insertedVal;
-          } else {
-            mainInserted += insertedVal;
-          }
-          totalInserted += insertedVal;
-          setInsertedCount(totalInserted);
-        }
         abortCtrlRef.current = null;
         setUploadProgress({ done: i + 1, total: statements.length });
         continue;
