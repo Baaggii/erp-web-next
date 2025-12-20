@@ -14,7 +14,13 @@ router.get('/', requireAuth, async (req, res, next) => {
     const companyId = Number(req.query.companyId ?? req.user.companyId);
     const table = req.query.table;
     if (table) {
-      const { config, isDefault } = await getDisplayFields(table, companyId);
+      const { config, isDefault } = await getDisplayFields(
+        table,
+        companyId,
+        req.query.filterColumn ?? req.query.filter_column,
+        req.query.filterValue ?? req.query.filter_value,
+        req.query.idField ?? req.query.id_field ?? req.query.preferredIdField,
+      );
       res.json({ ...config, isDefault });
     } else {
       const { config, isDefault } = await getAllDisplayFields(companyId);
@@ -28,9 +34,9 @@ router.get('/', requireAuth, async (req, res, next) => {
 router.post('/', requireAuth, async (req, res, next) => {
   try {
     const companyId = Number(req.query.companyId ?? req.user.companyId);
-    const { table, idField, displayFields } = req.body;
+    const { table, idField, displayFields, filters } = req.body;
     if (!table) return res.status(400).json({ message: 'table is required' });
-    await setDisplayFields(table, { idField, displayFields }, companyId);
+    await setDisplayFields(table, { idField, displayFields, filters }, companyId);
     res.sendStatus(204);
   } catch (err) {
     next(err);
