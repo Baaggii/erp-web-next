@@ -557,6 +557,11 @@ const TableManager = forwardRef(function TableManager({
     () => Array.from(requestIdSet).sort().join(','),
     [requestIdSet],
   );
+  const normalizeEmpId = useCallback((value) => {
+    if (value === undefined || value === null) return '';
+    const str = String(value).trim();
+    return str ? str.toUpperCase() : '';
+  }, []);
   const { user, company, branch, department, session } = useContext(AuthContext);
   const hasSenior = (value) => {
     if (value === null || value === undefined) return false;
@@ -575,6 +580,14 @@ const TableManager = forwardRef(function TableManager({
   const temporaryReviewer =
     Boolean(temporarySummary?.isReviewer) ||
     Number(temporarySummary?.reviewPending) > 0;
+  const normalizedViewerEmpId = useMemo(
+    () => normalizeEmpId(user?.empid),
+    [normalizeEmpId, user?.empid],
+  );
+  const normalizedViewerDirectSeniorId = useMemo(
+    () => normalizeEmpId(session?.senior_plan_empid),
+    [normalizeEmpId, session?.senior_plan_empid],
+  );
   const isSubordinate = hasAnySenior;
   const generalConfig = useGeneralConfig();
   const txnToastEnabled = generalConfig.general?.txnToastEnabled;
@@ -679,7 +692,20 @@ const TableManager = forwardRef(function TableManager({
     if (availableTemporaryScopes.length > 0) return availableTemporaryScopes[0];
     return 'created';
   }, [availableTemporaryScopes]);
-  const shouldShowForwardTemporaryLabel = Boolean(pendingTemporaryPromotion) && hasAnySenior;
+  const pendingPromotionHasSeniorAbove = useMemo(() => {
+    if (!pendingTemporaryPromotion?.entry) return false;
+    const entry = pendingTemporaryPromotion.entry;
+    const plannedSenior =
+      entry.planSeniorEmpId ??
+      entry.plan_senior_empid ??
+      entry.plan_senior_emp_id ??
+      entry.planSeniorEmpID ??
+      null;
+    return hasSenior(plannedSenior);
+  }, [pendingTemporaryPromotion]);
+
+  const shouldShowForwardTemporaryLabel =
+    Boolean(pendingTemporaryPromotion) && hasAnySenior && pendingPromotionHasSeniorAbove;
   const temporarySaveLabel = shouldShowForwardTemporaryLabel
     ? t('save_temporary_forward', 'Save as Temporary and Forward')
     : null;
@@ -3543,6 +3569,15 @@ const TableManager = forwardRef(function TableManager({
         mergedSource[k] = stripTemporaryLabelValue(v);
       }
     });
+
+    const nextSeniorEmpId = hasSenior(session?.senior_plan_empid)
+      ? session?.senior_plan_empid
+      : null;
+    const forwardingExistingTemporary =
+      requestType === 'temporary-promote' &&
+      pendingPromotionHasSeniorAbove &&
+      pendingTemporaryPromotion?.id;
+
     if (isAdding && autoFillSession) {
       const columns = new Set(allColumns);
       userIdFields.forEach((f) => {
@@ -3557,6 +3592,14 @@ const TableManager = forwardRef(function TableManager({
       companyIdFields.forEach((f) => {
         if (columns.has(f) && company !== undefined) mergedSource[f] = company;
       });
+    }
+
+    if (forwardingExistingTemporary && nextSeniorEmpId) {
+      ['plan_senior_empid', 'plan_senior_emp_id', 'planSeniorEmpId', 'planSeniorEmpID'].forEach(
+        (key) => {
+          mergedSource[key] = nextSeniorEmpId;
+        },
+      );
     }
 
     const merged = stripTemporaryLabelValue(mergedSource);
@@ -3623,6 +3666,18 @@ const TableManager = forwardRef(function TableManager({
       ...(resolvedChainId ? { chainId: resolvedChainId } : {}),
     };
 
+    if (forwardingExistingTemporary) {
+      const promoted = await promoteTemporary(pendingTemporaryPromotion.id, {
+        skipConfirm: true,
+        silent: false,
+        overrideValues: cleaned,
+        promoteAsTemporary: true,
+      });
+      if (!promoted) {
+        return false;
+      }
+    }
+
     const rowsToProcess = gridRows && gridRows.length > 0 ? gridRows : [null];
     const rawRowList = Array.isArray(rawRows) ? rawRows : [];
     let successCount = 0;
@@ -3633,6 +3688,14 @@ const TableManager = forwardRef(function TableManager({
       const rowRawSource = Array.isArray(rawRowList) ? rawRowList[idx] : null;
       const rowValues = row ? { ...headerNormalizedValues, ...row } : { ...normalizedValues };
       const rowCleaned = { ...cleaned };
+      if (forwardingExistingTemporary && nextSeniorEmpId) {
+        ['plan_senior_empid', 'plan_senior_emp_id', 'planSeniorEmpId', 'planSeniorEmpID'].forEach(
+          (key) => {
+            rowValues[key] = nextSeniorEmpId;
+            rowCleaned[key] = nextSeniorEmpId;
+          },
+        );
+      }
       if (row) {
         Object.entries(row).forEach(([k, v]) => {
           const lower = k.toLowerCase();
@@ -4709,6 +4772,57 @@ const TableManager = forwardRef(function TableManager({
       lastUpdated: chain[chain.length - 1]?.updatedAt || null,
     };
   }, [temporaryChainModalData]);
+
+  const temporaryChainView = useMemo(() => {
+    const fullChain = Array.isArray(temporaryChainModalData?.chain)
+      ? temporaryChainModalData.chain
+      : [];
+    const fullHistory = Array.isArray(temporaryChainModalData?.reviewHistory)
+      ? temporaryChainModalData.reviewHistory
+      : [];
+    if (fullChain.length === 0) {
+      return { chain: fullChain, reviewHistory: fullHistory };
+    }
+    const normalizePlanSenior = (row) =>
+      normalizeEmpId(
+        row?.planSeniorEmpId ??
+          row?.plan_senior_empid ??
+          row?.plan_senior_emp_id ??
+          row?.planSeniorEmpID ??
+          row?.reviewedBy ??
+          row?.reviewed_by ??
+          row?.reviewerEmpId ??
+          row?.reviewer_emp_id ??
+          '',
+      );
+    const normalizedChain = fullChain.map((row) => ({
+      ...row,
+      __normalizedPlanSenior: normalizePlanSenior(row),
+    }));
+    let sliceEnd = normalizedChain.length - 1;
+    if (normalizedViewerDirectSeniorId) {
+      const seniorIdx = normalizedChain.findIndex(
+        (row) => row.__normalizedPlanSenior === normalizedViewerDirectSeniorId,
+      );
+      if (seniorIdx >= 0) {
+        sliceEnd = Math.min(normalizedChain.length - 1, seniorIdx + 1);
+      }
+    }
+    const visibleChain = normalizedChain.slice(0, sliceEnd + 1);
+    const visibleIds = new Set(
+      visibleChain
+        .map((row) => String(row?.id ?? row?.temporaryId ?? row?.temporary_id ?? '').trim())
+        .filter(Boolean),
+    );
+    const visibleHistory = fullHistory.filter((item) => {
+      const tempId = String(
+        item?.temporaryId || item?.temporary_id || item?.temporaryid || item?.id || '',
+      ).trim();
+      if (!tempId) return true;
+      return visibleIds.has(tempId);
+    });
+    return { chain: visibleChain, reviewHistory: visibleHistory };
+  }, [normalizeEmpId, normalizedViewerDirectSeniorId, temporaryChainModalData]);
 
   const latestTemporaryReviewById = useMemo(() => {
     const history = Array.isArray(temporaryChainModalData?.reviewHistory)
@@ -7298,17 +7412,17 @@ const TableManager = forwardRef(function TableManager({
                     </tr>
                   </thead>
                   <tbody>
-                    {temporaryChainModalData.chain.length === 0 ? (
-                      <tr>
-                        <td colSpan="5" style={{ padding: '0.75rem', color: '#6b7280' }}>
-                          {t('temporary_chain_empty', 'No review chain information available.')}
-                        </td>
-                      </tr>
-                    ) : (
-                      temporaryChainModalData.chain.map((row, idx) => {
-                        const normalizedStatus = (row?.status || '')
-                          .toString()
-                          .trim()
+            {temporaryChainView.chain.length === 0 ? (
+              <tr>
+                <td colSpan="5" style={{ padding: '0.75rem', color: '#6b7280' }}>
+                  {t('temporary_chain_empty', 'No review chain information available.')}
+                </td>
+              </tr>
+            ) : (
+              temporaryChainView.chain.map((row, idx) => {
+                const normalizedStatus = (row?.status || '')
+                  .toString()
+                  .trim()
                           .toLowerCase();
                         const statusLabel =
                           normalizedStatus === 'pending'
@@ -7385,13 +7499,13 @@ const TableManager = forwardRef(function TableManager({
               <h4 style={{ marginBottom: '0.5rem' }}>
                 {t('temporary_chain_history', 'Action timeline')}
               </h4>
-              {temporaryChainModalData.reviewHistory.length === 0 ? (
+              {temporaryChainView.reviewHistory.length === 0 ? (
                 <p style={{ fontSize: '0.85rem', color: '#6b7280' }}>
                   {t('temporary_chain_history_empty', 'No actions have been recorded yet.')}
                 </p>
               ) : (
                 <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
-                  {temporaryChainModalData.reviewHistory.map((item) => (
+                  {temporaryChainView.reviewHistory.map((item) => (
                     <li
                       key={`history-${item.id || `${item.temporaryId}-${item.createdAt}`}`}
                       style={{
