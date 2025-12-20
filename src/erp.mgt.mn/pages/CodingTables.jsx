@@ -1753,6 +1753,18 @@ export default function CodingTablesPage() {
       }
       const data = await res.json().catch(() => ({}));
       captureErrorDetails(data);
+      const payloadFailed = Array.isArray(data.failed) ? data.failed : [];
+      if (payloadFailed.length > 0) {
+        const errMsg = payloadFailed
+          .map((f) => (typeof f === 'string' ? f : f.error))
+          .join('; ');
+        errGroups[errMsg] = (errGroups[errMsg] || 0) + rowCount;
+        failedAll.push(
+          ...payloadFailed.map((f) =>
+            typeof f === 'string' ? f : `${f.sql} -- ${f.error}`
+          )
+        );
+      }
       if (data.aborted) {
         ensureErrorMessage(data.message || 'Execution was interrupted');
         abortCtrlRef.current = null;
