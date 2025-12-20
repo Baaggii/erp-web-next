@@ -91,54 +91,31 @@ function normalizeTableConfig(entry = {}) {
   };
 }
 
-function selectConfigForFilter(tableConfig, filterColumn, filterValue, preferredIdField) {
+function selectConfigForFilter(tableConfig, filterColumn, filterValue) {
   const normalizedColumn =
     typeof filterColumn === 'string' && filterColumn.trim() ? filterColumn.trim() : '';
   const normalizedValue =
     filterValue === null || filterValue === undefined
       ? ''
       : String(filterValue).trim();
-  const normalizedIdField =
-    typeof preferredIdField === 'string' && preferredIdField.trim()
-      ? preferredIdField.trim().toLowerCase()
-      : '';
 
   if (!normalizedColumn) {
     return tableConfig;
   }
 
   let matched = null;
-  let bestScore = -1;
   for (const entry of tableConfig.filters || []) {
     if (!entry?.filterColumn || entry.filterColumn !== normalizedColumn) continue;
     const entryValue =
       entry.filterValue === null || entry.filterValue === undefined
         ? ''
         : String(entry.filterValue).trim();
-    const entryId =
-      typeof entry.idField === 'string' && entry.idField.trim()
-        ? entry.idField.trim().toLowerCase()
-        : '';
-    if (entryValue && normalizedValue && entryValue !== normalizedValue) {
-      continue;
-    }
-
-    let score = 0;
     if (normalizedValue && entryValue === normalizedValue) {
-      score += 2;
-    } else if (!normalizedValue && !entryValue) {
-      score += 1;
-    } else if (!entryValue) {
-      // wildcard filterValue fallback
-      score += 1;
-    }
-    if (normalizedIdField && entryId && entryId === normalizedIdField) {
-      score += 1;
-    }
-
-    if (score > bestScore) {
       matched = entry;
-      bestScore = score;
+      break;
+    }
+    if (!matched && !entryValue) {
+      matched = entry;
     }
   }
 
@@ -156,22 +133,11 @@ function selectConfigForFilter(tableConfig, filterColumn, filterValue, preferred
   };
 }
 
-export async function getDisplayFields(
-  table,
-  companyId = 0,
-  filterColumn,
-  filterValue,
-  preferredIdField,
-) {
+export async function getDisplayFields(table, companyId = 0, filterColumn, filterValue) {
   const { cfg, isDefault } = await readConfig(companyId);
   if (cfg[table]) {
     const normalized = normalizeTableConfig(cfg[table]);
-    const selected = selectConfigForFilter(
-      normalized,
-      filterColumn,
-      filterValue,
-      preferredIdField,
-    );
+    const selected = selectConfigForFilter(normalized, filterColumn, filterValue);
     return { config: selected, isDefault };
   }
 

@@ -25,8 +25,8 @@ Applications can fetch or update this information via `/api/display_fields`.
 To remove a configuration for a table, send a `DELETE` request to
 `/api/display_fields?table=TABLE_NAME`.
 
-To request the configuration that matches a specific relation filter, include `filterColumn` and (optionally) `filterValue` query parameters. If multiple filtered configurations share the same filter value, you can further disambiguate with `idField` to select the set that matches the referenced column:
+To request the configuration that matches a specific relation filter, include `filterColumn` and (optionally) `filterValue` query parameters:
 
 ```
-/api/display_fields?table=tbl_employee&filterColumn=status&filterValue=active&idField=emp_id
+/api/display_fields?table=tbl_employee&filterColumn=status&filterValue=active
 ```
