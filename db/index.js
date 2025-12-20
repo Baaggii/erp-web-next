@@ -5919,9 +5919,32 @@ export async function listTransactions({
   refCol,
   refVal,
   company_id,
+  originalCreatorEmpId,
 } = {}) {
   if (!table || !/^[a-zA-Z0-9_]+$/.test(table)) {
     throw new Error('Invalid table');
+  }
+  const normalizedOriginalCreator =
+    originalCreatorEmpId === undefined || originalCreatorEmpId === null
+      ? ''
+      : String(originalCreatorEmpId).trim().toUpperCase();
+  let enforceOriginalCreator = false;
+  if (normalizedOriginalCreator) {
+    const [creatorColumns] = await pool.query(
+      `SELECT COLUMN_NAME
+         FROM INFORMATION_SCHEMA.COLUMNS
+        WHERE TABLE_SCHEMA = DATABASE()
+          AND TABLE_NAME = ?
+          AND LOWER(COLUMN_NAME) = 'original_creator_empid'
+        LIMIT 1`,
+      [table],
+    );
+    const hasOriginalCreatorColumn =
+      Array.isArray(creatorColumns) && creatorColumns.length > 0;
+    if (!hasOriginalCreatorColumn) {
+      return { rows: [], count: 0 };
+    }
+    enforceOriginalCreator = true;
   }
   const clauses = [];
   const params = [];
@@ -5944,6 +5967,10 @@ export async function listTransactions({
   if (refCol && /^[a-zA-Z0-9_]+$/.test(refCol)) {
     clauses.push(`${refCol} = ?`);
     params.push(refVal);
+  }
+  if (enforceOriginalCreator) {
+    clauses.push('original_creator_empid = ?');
+    params.push(normalizedOriginalCreator);
   }
   const where = clauses.length > 0 ? 'WHERE ' + clauses.join(' AND ') : '';
 
