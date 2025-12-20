@@ -956,7 +956,10 @@ export default function CodingTablesPage() {
       (c) => c !== idCol && c !== nmCol && !uniqueOnly.includes(c)
     );
     if (!idCol && !nmCol && uniqueOnly.length === 0 && otherFiltered.length === 0) {
-      alert('Please select at least one ID, Name, Unique or Other column');
+      addToast(
+        'Please select at least one ID, Name, Unique or Other column',
+        'error',
+      );
       return;
     }
     const idIdx = allHdrs.indexOf(idCol);
@@ -1347,7 +1350,8 @@ export default function CodingTablesPage() {
       if (!rows.length || !fields.length) return '';
       const cols = fields.map((f) => `\`${dbCols[f] || cleanIdentifier(renameMap[f] || f)}\``);
       const idxMap = fields.map((f) => allHdrs.indexOf(f));
-      const updates = cols.map((c) => `${c} = VALUES(${c})`);
+      const alias = '`new_vals`';
+      const updates = cols.map((c) => `${c} = ${alias}.${c}`);
       const parts = [];
       let chunkValues = [];
       for (const r of rows) {
@@ -1390,12 +1394,12 @@ export default function CodingTablesPage() {
         if (!hasData) continue;
         chunkValues.push(`(${vals.join(', ')})`);
         if (chunkValues.length >= chunkLimit) {
-          parts.push(`INSERT INTO \`${tableNameForSql}\` (${cols.join(', ')}) VALUES ${chunkValues.join(', ')} ON DUPLICATE KEY UPDATE ${updates.join(', ')};`);
+          parts.push(`INSERT INTO \`${tableNameForSql}\` ${alias} (${cols.join(', ')}) VALUES ${chunkValues.join(', ')} ON DUPLICATE KEY UPDATE ${updates.join(', ')};`);
           chunkValues = [];
         }
       }
       if (chunkValues.length > 0) {
-        parts.push(`INSERT INTO \`${tableNameForSql}\` (${cols.join(', ')}) VALUES ${chunkValues.join(', ')} ON DUPLICATE KEY UPDATE ${updates.join(', ')};`);
+        parts.push(`INSERT INTO \`${tableNameForSql}\` ${alias} (${cols.join(', ')}) VALUES ${chunkValues.join(', ')} ON DUPLICATE KEY UPDATE ${updates.join(', ')};`);
       }
       return parts.join('\n');
     }
@@ -1546,7 +1550,7 @@ export default function CodingTablesPage() {
 
   function handleGenerateSql() {
     if (duplicateHeaders.size > 0) {
-      alert('Please rename duplicate fields first');
+      addToast('Please rename duplicate fields first', 'error');
       return;
     }
     setStructSql('');
@@ -1561,7 +1565,7 @@ export default function CodingTablesPage() {
 
   function handleGenerateRecords() {
     if (duplicateHeaders.size > 0) {
-      alert('Please rename duplicate fields first');
+      addToast('Please rename duplicate fields first', 'error');
       return;
     }
     setRecordsSql('');
@@ -1622,6 +1626,7 @@ export default function CodingTablesPage() {
     let otherInserted = 0;
     const errGroups = {};
     const failedAll = [];
+    const failedNoInsert = [];
     let errorMessage = '';
     const ensureErrorMessage = (fallback) => {
       if (!errorMessage && fallback) {
@@ -1707,9 +1712,10 @@ export default function CodingTablesPage() {
       return '';
     };
     interruptRef.current = false;
-    abortCtrlRef.current = new AbortController();
     for (let i = 0; i < statements.length; i++) {
       if (interruptRef.current) break;
+      const controller = new AbortController();
+      abortCtrlRef.current = controller;
       let stmt = statements[i];
       const progressMatch = stmt.match(/^--\s*Progress:\s*(.*)\n/);
       if (progressMatch) {
@@ -1736,13 +1742,14 @@ export default function CodingTablesPage() {
         );
       }
       let res;
+      let insertedVal = 0;
       try {
         res = await fetch('/api/generated_sql/execute', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ sql: stmt }),
           credentials: 'include',
-          signal: abortCtrlRef.current.signal,
+          signal: controller.signal,
         });
       } catch (err) {
         if (err.name === 'AbortError') {
@@ -1763,15 +1770,13 @@ export default function CodingTablesPage() {
           setUploadProgress({ done: i + 1, total: statements.length });
           continue;
         }
-        setErrorMessage(err?.message || 'Execution failed');
-        alert(errorMessage || err?.message || 'Execution failed');
+        const errMsg = err?.message || 'Execution failed';
+        setErrorMessage(errMsg);
+        errGroups[errMsg] = (errGroups[errMsg] || 0) + rowCount;
+        failedAll.push(`${stmt} -- ${errMsg}`);
         abortCtrlRef.current = null;
-        return {
-          inserted: totalInserted,
-          failed: failedAll,
-          aborted: true,
-          errorMessage,
-        };
+        setUploadProgress({ done: i + 1, total: statements.length });
+        continue;
       }
       if (!res.ok) {
         const data = await res.json().catch(async () => {
@@ -1782,29 +1787,47 @@ export default function CodingTablesPage() {
             return {};
           }
         });
+        if (Number.isFinite(data?.inserted)) {
+          insertedVal = Math.max(0, Number(data.inserted));
+        }
         const detail = captureErrorDetails(
           data,
           res.statusText || 'Execution failed'
         );
-        if (!errorMessage) {
-          setErrorMessage(
-            (data && typeof data.message === 'string' && data.message) ||
-              res.statusText ||
-              'Execution failed'
-          );
+        const failureMessage =
+          detail ||
+          errorMessage ||
+          (data && typeof data.message === 'string' && data.message) ||
+          res.statusText ||
+          'Execution failed';
+        setErrorMessage(failureMessage);
+        errGroups[failureMessage] = (errGroups[failureMessage] || 0) + rowCount;
+        failedAll.push(`${stmt} -- ${failureMessage}`);
+        if (insertedVal === 0) {
+          failedNoInsert.push(`${stmt} -- ${failureMessage}`);
         }
-        alert(detail || errorMessage || data.message || 'Execution failed');
+        if (insertedVal > 0) {
+          if (isOtherTable) {
+            otherInserted += insertedVal;
+          } else {
+            mainInserted += insertedVal;
+          }
+          totalInserted += insertedVal;
+          setInsertedCount(totalInserted);
+        }
         abortCtrlRef.current = null;
-        return {
-          inserted: totalInserted,
-          failed: failedAll,
-          aborted: true,
-          errorMessage,
-        };
+        setUploadProgress({ done: i + 1, total: statements.length });
+        continue;
       }
       const data = await res.json().catch(() => ({}));
       captureErrorDetails(data, data && data.message);
       const payloadFailed = Array.isArray(data.failed) ? data.failed : [];
+      insertedVal = Number.isFinite(data.inserted)
+        ? data.inserted
+        : Math.max(
+            0,
+            rowCount - (Array.isArray(payloadFailed) ? payloadFailed.length : 0),
+          );
       if (payloadFailed.length > 0) {
         const errMsg = payloadFailed
           .map((f) => (typeof f === 'string' ? f : f.error))
@@ -1816,6 +1839,13 @@ export default function CodingTablesPage() {
             typeof f === 'string' ? f : `${f.sql} -- ${f.error}`
           )
         );
+        if (insertedVal === 0) {
+          failedNoInsert.push(
+            ...payloadFailed.map((f) =>
+              typeof f === 'string' ? f : `${f.sql} -- ${f.error}`,
+            ),
+          );
+        }
       }
       if (data.aborted) {
         const abortMsg =
@@ -1823,10 +1853,12 @@ export default function CodingTablesPage() {
         ensureErrorMessage(abortMsg);
         errGroups[abortMsg] = (errGroups[abortMsg] || 0) + rowCount;
         failedAll.push(`${stmt} -- ${abortMsg}`);
+        if (insertedVal === 0) {
+          failedNoInsert.push(`${stmt} -- ${abortMsg}`);
+        }
         setUploadProgress({ done: i + 1, total: statements.length });
         continue;
       }
-      const inserted = data.inserted || 0;
       if (Array.isArray(data.failed) && data.failed.length > 0) {
         const errMsg = data.failed
           .map((f) => (typeof f === 'string' ? f : f.error))
@@ -1837,17 +1869,24 @@ export default function CodingTablesPage() {
             typeof f === 'string' ? f : `${f.sql} -- ${f.error}`
           )
         );
-      } else {
-        if (isOtherTable) {
-          otherInserted += inserted;
-        } else {
-          mainInserted += inserted;
+        if (insertedVal === 0) {
+          failedNoInsert.push(
+            ...data.failed.map((f) =>
+              typeof f === 'string' ? f : `${f.sql} -- ${f.error}`,
+            ),
+          );
         }
       }
-      totalInserted += inserted;
+      if (isOtherTable) {
+        otherInserted += insertedVal;
+      } else {
+        mainInserted += insertedVal;
+      }
+      totalInserted += insertedVal;
       setInsertedCount(totalInserted);
       addToast(`Inserted ${totalInserted} records`, 'info');
       setUploadProgress({ done: i + 1, total: statements.length });
+      abortCtrlRef.current = null;
       if (i < statements.length - 1) {
         await new Promise((r) => setTimeout(r, 250));
       }
@@ -1862,6 +1901,7 @@ export default function CodingTablesPage() {
       insertedOther: otherInserted,
       errorGroups: errGroups,
       errorMessage,
+      failedNoInsert,
     };
   }
 
@@ -1869,7 +1909,7 @@ export default function CodingTablesPage() {
   async function executeGeneratedSql() {
     const combined = [sql, sqlOther].filter(Boolean).join('\n');
     if (!combined) {
-      alert('Generate SQL first');
+      addToast('Generate SQL first', 'error');
       return;
     }
     setUploading(true);
@@ -1878,6 +1918,7 @@ export default function CodingTablesPage() {
       let {
         inserted,
         failed,
+        failedNoInsert,
         aborted,
         insertedMain: mInserted,
         insertedOther: oInserted,
@@ -1890,9 +1931,18 @@ export default function CodingTablesPage() {
         } else {
           addToast('Insert interrupted', 'warning');
         }
+        setInsertedMain(mInserted);
+        setInsertedOther(oInserted);
+        setUnsuccessfulGroups(runErr);
+        const errSummary = Object.entries(runErr)
+          .map(([k, v]) => `${k}: ${v}`)
+          .join('; ');
+        setSummaryInfo(
+          `Inserted to main: ${mInserted}. _other: ${oInserted}. Duplicates: ${dupCount}. ${errSummary}`
+        );
       } else {
-        if (failed.length > 0) {
-          setSqlMove(failed.join('\n'));
+        if (failedNoInsert.length > 0) {
+          setSqlMove(failedNoInsert.join('\n'));
         }
         setInsertedMain(mInserted);
         setInsertedOther(oInserted);
@@ -1910,7 +1960,7 @@ export default function CodingTablesPage() {
       }
     } catch (err) {
       console.error('SQL execution failed', err);
-      alert('Execution failed');
+      addToast('Execution failed', 'error');
     } finally {
       setUploading(false);
       setUploadProgress({ done: 0, total: 0 });
@@ -1922,7 +1972,7 @@ export default function CodingTablesPage() {
       .filter(Boolean)
       .join('\n');
     if (!combined) {
-      alert('No SQL to execute');
+      addToast('No SQL to execute', 'error');
       return;
     }
     setUploading(true);
@@ -1931,6 +1981,7 @@ export default function CodingTablesPage() {
       let {
         inserted,
         failed,
+        failedNoInsert,
         aborted,
         insertedMain: mInserted,
         insertedOther: oInserted,
@@ -1943,9 +1994,18 @@ export default function CodingTablesPage() {
         } else {
           addToast('Insert interrupted', 'warning');
         }
+        setInsertedMain(mInserted);
+        setInsertedOther(oInserted);
+        setUnsuccessfulGroups(runErr);
+        const errSummary = Object.entries(runErr)
+          .map(([k, v]) => `${k}: ${v}`)
+          .join('; ');
+        setSummaryInfo(
+          `Inserted to main: ${mInserted}. _other: ${oInserted}. Duplicates: ${dupCount}. ${errSummary}`
+        );
       } else {
-        if (failed.length > 0) {
-          setSqlMove(failed.join('\n'));
+        if (failedNoInsert.length > 0) {
+          setSqlMove(failedNoInsert.join('\n'));
         }
         setInsertedMain(mInserted);
         setInsertedOther(oInserted);
@@ -1963,7 +2023,7 @@ export default function CodingTablesPage() {
       }
     } catch (err) {
       console.error('SQL execution failed', err);
-      alert('Execution failed');
+      addToast('Execution failed', 'error');
     } finally {
       setUploading(false);
       setUploadProgress({ done: 0, total: 0 });
@@ -1972,7 +2032,7 @@ export default function CodingTablesPage() {
 
   async function executeOtherSql() {
     if (!structSqlOther) {
-      alert('Generate SQL first');
+      addToast('Generate SQL first', 'error');
       return;
     }
     setUploading(true);
@@ -1991,6 +2051,15 @@ export default function CodingTablesPage() {
         } else {
           addToast('Insert interrupted', 'warning');
         }
+        setInsertedMain(mInserted);
+        setInsertedOther(oInserted);
+        setUnsuccessfulGroups(runErr);
+        const errSummary = Object.entries(runErr)
+          .map(([k, v]) => `${k}: ${v}`)
+          .join('; ');
+        setSummaryInfo(
+          `Inserted to main: ${mInserted}. _other: ${oInserted}. Duplicates: ${dupCount}. ${errSummary}`,
+        );
       } else {
         if (errorMessage) {
           addToast(errorMessage, 'error');
@@ -2008,7 +2077,7 @@ export default function CodingTablesPage() {
       }
     } catch (err) {
       console.error('SQL execution failed', err);
-      alert('Execution failed');
+      addToast('Execution failed', 'error');
     } finally {
       setUploading(false);
     }
@@ -2029,7 +2098,8 @@ export default function CodingTablesPage() {
     const cleanedTable = cleanIdentifier(tableName) || tableName;
     const normalizedColumns = columns.map((col) => cleanIdentifier(col) || col);
     const quotedColumns = normalizedColumns.map((col) => `\`${col}\``);
-    const updates = quotedColumns.map((col) => `${col} = VALUES(${col})`);
+    const alias = '`new_vals`';
+    const updates = quotedColumns.map((col) => `${col} = ${alias}.${col}`);
     const limit = Number.isFinite(chunkLimit) && chunkLimit > 0 ? chunkLimit : 300;
     const statements = [];
     let chunkValues = [];
@@ -2057,14 +2127,14 @@ export default function CodingTablesPage() {
       chunkValues.push(`(${vals.join(', ')})`);
       if (chunkValues.length >= limit) {
         statements.push(
-          `INSERT INTO \`${cleanedTable}\` (${quotedColumns.join(', ')}) VALUES ${chunkValues.join(', ')} ON DUPLICATE KEY UPDATE ${updates.join(', ')};`,
+          `INSERT INTO \`${cleanedTable}\` ${alias} (${quotedColumns.join(', ')}) VALUES ${chunkValues.join(', ')} ON DUPLICATE KEY UPDATE ${updates.join(', ')};`,
         );
         chunkValues = [];
       }
     }
     if (chunkValues.length > 0) {
       statements.push(
-        `INSERT INTO \`${cleanedTable}\` (${quotedColumns.join(', ')}) VALUES ${chunkValues.join(', ')} ON DUPLICATE KEY UPDATE ${updates.join(', ')};`,
+        `INSERT INTO \`${cleanedTable}\` ${alias} (${quotedColumns.join(', ')}) VALUES ${chunkValues.join(', ')} ON DUPLICATE KEY UPDATE ${updates.join(', ')};`,
       );
     }
     return statements.join('\n');
@@ -2221,11 +2291,11 @@ export default function CodingTablesPage() {
   async function executeRecordsSql() {
     const preparedRows = rowUploadPayload?.rows || [];
     if (!requiresRowUpload && !recordsSql && !recordsSqlOther) {
-      alert('Generate SQL first');
+      addToast('Generate SQL first', 'error');
       return;
     }
     if (requiresRowUpload && preparedRows.length === 0 && !recordsSqlOther) {
-      alert('No rows prepared');
+      addToast('No rows prepared', 'error');
       return;
     }
     setUploading(true);
@@ -2327,15 +2397,16 @@ export default function CodingTablesPage() {
       let {
         inserted,
         failed,
+        failedNoInsert,
         aborted,
         insertedMain: mInserted,
         insertedOther: oInserted,
         errorGroups: runErr,
         errorMessage,
       } = await runStatements(statements);
-      if (failed.length > 0) {
+      if (failedNoInsert.length > 0) {
         const tbl = cleanIdentifier(tableName);
-        const moveSql = failed
+        const moveSql = failedNoInsert
           .map((stmt) => {
             const re = new RegExp(`INSERT INTO\\s+\`${tbl}\``, 'i');
             if (re.test(stmt) && !/\_other`/i.test(stmt)) {
@@ -2344,6 +2415,7 @@ export default function CodingTablesPage() {
             return stmt;
           })
           .join('\n');
+        setSqlMove(moveSql);
         const resMove = await fetch('/api/generated_sql/execute', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -2351,20 +2423,22 @@ export default function CodingTablesPage() {
           credentials: 'include',
         });
         if (!resMove.ok) {
-          setSqlMove(moveSql);
         } else {
           const dataMove = await resMove.json().catch(() => ({}));
           if (typeof dataMove.inserted === 'number') {
             oInserted += dataMove.inserted;
           }
           if (Array.isArray(dataMove.failed) && dataMove.failed.length > 0) {
-            setSqlMove(
-              dataMove.failed
+            setSqlMove((prev) => {
+              const failedSql = dataMove.failed
                 .map((f) =>
                   typeof f === 'string' ? f : `${f.sql} -- ${f.error}`,
                 )
-                .join('\n'),
-            );
+                .join('\n');
+              if (!prev) return failedSql;
+              if (prev.includes(failedSql)) return prev;
+              return `${prev}\n${failedSql}`;
+            });
           }
         }
       }
@@ -2391,7 +2465,7 @@ export default function CodingTablesPage() {
       }
     } catch (err) {
       console.error('SQL execution failed', err);
-      alert('Execution failed');
+      addToast('Execution failed', 'error');
     } finally {
       setUploading(false);
       setUploadProgress({ done: 0, total: 0 });
@@ -2411,9 +2485,9 @@ export default function CodingTablesPage() {
         credentials: 'include',
         body: JSON.stringify(finalMap),
       });
-      alert('Mappings saved');
+      addToast('Mappings saved', 'success');
     } catch {
-      alert('Failed to save mappings');
+      addToast('Failed to save mappings', 'error');
     }
   }
 
