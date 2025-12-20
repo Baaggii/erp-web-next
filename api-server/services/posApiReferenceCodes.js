@@ -432,31 +432,6 @@ async function applyFieldMappings({ response, mappings }) {
     if (rows.length === 0) continue;
     tableRows[table] = (tableRows[table] || 0) + rows.length;
 
-    // Special-case reference code table so refreshes de-duplicate rows using upsertReferenceCodes
-    if (table === 'ebarimt_reference_code') {
-      const codesByType = new Map();
-      rows.forEach((row) => {
-        if (!row || typeof row !== 'object') return;
-        const codeType = String(row.code_type || row.codeType || '').trim();
-        const code = String(row.code || '').trim();
-        if (!codeType || !code) return;
-        const name = row.name === undefined || row.name === null ? null : String(row.name).trim();
-        const list = codesByType.get(codeType) || [];
-        list.push({ code, name });
-        codesByType.set(codeType, list);
-      });
-      if (codesByType.size > 0) {
-        for (const [codeType, codes] of codesByType.entries()) {
-          const result = await upsertReferenceCodes(codeType, codes);
-          totalRows +=
-            (Number(result?.added) || 0)
-            + (Number(result?.updated) || 0)
-            + (Number(result?.deactivated) || 0);
-        }
-        continue;
-      }
-    }
-
     const columns = Array.from(
       new Set(
         rows
@@ -467,6 +442,16 @@ async function applyFieldMappings({ response, mappings }) {
       ),
     );
     if (columns.length === 0) continue;
+    const constantsByColumn = constantColumnsByTable.get(table) || new Map();
+    for (const [col, valuesSet] of constantsByColumn.entries()) {
+      const values = Array.from(valuesSet).filter(
+        (value) => value !== undefined && value !== null && typeof value !== 'object',
+      );
+      if (values.length > 0) {
+        const placeholders = values.map(() => '?').join(',');
+        await pool.query(`DELETE FROM \`${table}\` WHERE \`${col}\` IN (${placeholders})`, values);
+      }
+    }
     const codeColumn = columns.find((col) => col === 'code');
     if (codeColumn) {
       const codes = rows
