@@ -1763,13 +1763,15 @@ export default function CodingTablesPage() {
           setUploadProgress({ done: i + 1, total: statements.length });
           continue;
         }
-        const detail = err?.message || 'Execution failed';
-        setErrorMessage(detail);
-        errGroups[detail] = (errGroups[detail] || 0) + rowCount;
-        failedAll.push(`${stmt} -- ${detail}`);
-        addToast(errorMessage || detail || 'Execution failed', 'error');
-        setUploadProgress({ done: i + 1, total: statements.length });
-        continue;
+        setErrorMessage(err?.message || 'Execution failed');
+        alert(errorMessage || err?.message || 'Execution failed');
+        abortCtrlRef.current = null;
+        return {
+          inserted: totalInserted,
+          failed: failedAll,
+          aborted: true,
+          errorMessage,
+        };
       }
       if (!res.ok) {
         const data = await res.json().catch(async () => {
@@ -1791,24 +1793,17 @@ export default function CodingTablesPage() {
               'Execution failed'
           );
         }
-        const displayError =
-          detail ||
-          errorMessage ||
-          (data && data.message) ||
-          res.statusText ||
-          'Execution failed';
-        setErrorMessage(displayError);
-        errGroups[displayError] = (errGroups[displayError] || 0) + rowCount;
-        failedAll.push(`${stmt} -- ${displayError}`);
-        addToast(displayError, 'error');
-        setUploadProgress({ done: i + 1, total: statements.length });
-        continue;
+        alert(detail || errorMessage || data.message || 'Execution failed');
+        abortCtrlRef.current = null;
+        return {
+          inserted: totalInserted,
+          failed: failedAll,
+          aborted: true,
+          errorMessage,
+        };
       }
       const data = await res.json().catch(() => ({}));
-      captureErrorDetails(
-        data,
-        (data && (data.message || data.error || data.detail)) || ''
-      );
+      captureErrorDetails(data, data && data.message);
       const payloadFailed = Array.isArray(data.failed) ? data.failed : [];
       if (payloadFailed.length > 0) {
         const errMsg = payloadFailed
