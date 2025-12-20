@@ -1623,6 +1623,12 @@ export default function CodingTablesPage() {
     const errGroups = {};
     const failedAll = [];
     let errorMessage = '';
+    const ensureErrorMessage = (fallback) => {
+      if (!errorMessage && fallback) {
+        const trimmed = String(fallback).trim();
+        if (trimmed) errorMessage = trimmed;
+      }
+    };
     const setErrorMessage = (msg) => {
       if (typeof msg === 'string') {
         const trimmed = msg.trim();
@@ -1701,11 +1707,12 @@ export default function CodingTablesPage() {
       } catch (err) {
         if (err.name === 'AbortError') {
           abortCtrlRef.current = null;
+          ensureErrorMessage('Execution was interrupted');
           return {
             inserted: totalInserted,
             failed: failedAll,
             aborted: true,
-            errorMessage,
+            errorMessage: errorMessage || 'Execution was interrupted',
           };
         }
         setErrorMessage(err?.message || 'Execution failed');
@@ -1719,7 +1726,14 @@ export default function CodingTablesPage() {
         };
       }
       if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
+        const data = await res.json().catch(async () => {
+          try {
+            const text = await res.text();
+            return { message: text };
+          } catch {
+            return {};
+          }
+        });
         captureErrorDetails(data);
         if (!errorMessage) {
           setErrorMessage(
@@ -1728,7 +1742,7 @@ export default function CodingTablesPage() {
               'Execution failed'
           );
         }
-        alert(data.message || 'Execution failed');
+        alert(errorMessage || data.message || 'Execution failed');
         abortCtrlRef.current = null;
         return {
           inserted: totalInserted,
@@ -1740,12 +1754,13 @@ export default function CodingTablesPage() {
       const data = await res.json().catch(() => ({}));
       captureErrorDetails(data);
       if (data.aborted) {
+        ensureErrorMessage(data.message || 'Execution was interrupted');
         abortCtrlRef.current = null;
         return {
           inserted: totalInserted,
           failed: failedAll,
           aborted: true,
-          errorMessage,
+          errorMessage: errorMessage || 'Execution was interrupted',
         };
       }
       const inserted = data.inserted || 0;

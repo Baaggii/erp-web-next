@@ -64,6 +64,9 @@ export function splitSqlStatements(sqlText) {
 }
 
 export async function runSql(sql, signal) {
+  if (signal?.aborted) {
+    return { inserted: 0, failed: [], aborted: true };
+  }
   const statements = splitSqlStatements(sql);
   let inserted = 0;
   const failed = [];
