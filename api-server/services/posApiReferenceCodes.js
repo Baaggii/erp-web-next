@@ -303,13 +303,30 @@ async function upsertReferenceCodes(codeType, codes) {
 
   if (!normalizedCodes.length) return { added: 0, updated: 0, deactivated: 0 };
 
+  // Replace the entire code set for this type to guarantee idempotent refreshes.
+  await pool.query('DELETE FROM ebarimt_reference_code WHERE code_type = ?', [codeType]);
+
   const [existingRows] = await pool.query(
     'SELECT id, code, is_active FROM ebarimt_reference_code WHERE code_type = ?',
     [codeType],
   );
-  const existingCount = Array.isArray(existingRows) ? existingRows.length : 0;
-  if (existingCount > 0) {
-    await pool.query('DELETE FROM ebarimt_reference_code WHERE code_type = ?', [codeType]);
+  const existingMap = new Map();
+  const duplicateIds = [];
+  existingRows.forEach((row) => {
+    const code = String(row.code || '').trim();
+    if (!code) return;
+    if (existingMap.has(code)) {
+      duplicateIds.push(row.id);
+    } else {
+      existingMap.set(code, row);
+    }
+  });
+
+  if (duplicateIds.length) {
+    await pool.query(
+      `DELETE FROM ebarimt_reference_code WHERE id IN (${duplicateIds.map(() => '?').join(',')})`,
+      duplicateIds,
+    );
   }
 
   let added = 0;
@@ -322,6 +339,19 @@ async function upsertReferenceCodes(codeType, codes) {
       `INSERT INTO ebarimt_reference_code (code_type, code, name, is_active)
        VALUES ${placeholders}`,
       values,
+    );
+    added = Number(result?.affectedRows) || normalizedCodes.length;
+  }
+
+  // After replacing the set, mark any lingering duplicates inactive just in case.
+  const staleIds = Array.from(existingMap.values()).map((row) => row.id);
+  let deactivated = 0;
+  if (staleIds.length) {
+    await pool.query(
+      `UPDATE ebarimt_reference_code
+       SET is_active = 0
+       WHERE id IN (${staleIds.map(() => '?').join(',')})`,
+      staleIds,
     );
     added = Number(result?.affectedRows) || normalizedCodes.length;
   }
@@ -558,15 +588,12 @@ export async function runReferenceCodeSync(trigger = 'manual', options = {}) {
           const codeValue = String(entry?.code || '').trim();
           if (!codeType || !codeValue) return;
           const name = entry?.name ? String(entry.name).trim() : null;
-          const typeMap = codesByType.get(codeType) || new Map();
-          if (!typeMap.has(codeValue)) {
-            typeMap.set(codeValue, { code: codeValue, name });
-            codesByType.set(codeType, typeMap);
-          }
+          const list = codesByType.get(codeType) || [];
+          list.push({ code: codeValue, name });
+          codesByType.set(codeType, list);
         });
         const summaryTotals = { added: 0, updated: 0, deactivated: 0 };
-        for (const [codeType, codesMap] of codesByType.entries()) {
-          const codes = Array.from(codesMap.values());
+        for (const [codeType, codes] of codesByType.entries()) {
           const result = await upsertReferenceCodes(codeType, codes);
           summaryTotals.added += Number(result?.added) || 0;
           summaryTotals.updated += Number(result?.updated) || 0;
