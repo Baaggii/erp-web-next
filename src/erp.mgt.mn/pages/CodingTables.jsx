@@ -1802,6 +1802,7 @@ export default function CodingTablesPage() {
           .map((f) => (typeof f === 'string' ? f : f.error))
           .join('; ');
         errGroups[errMsg] = (errGroups[errMsg] || 0) + rowCount;
+        setErrorMessage(errMsg);
         failedAll.push(
           ...payloadFailed.map((f) =>
             typeof f === 'string' ? f : `${f.sql} -- ${f.error}`
