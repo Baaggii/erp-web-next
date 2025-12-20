@@ -673,6 +673,9 @@ const TableManager = forwardRef(function TableManager({
   const supportsTemporary =
     formSupportsTemporary &&
     (canCreateTemporary || canReviewTemporary || temporaryReviewer);
+  const hasEmploymentSenior = Boolean(
+    session?.employment_senior_empid || user?.employment_senior_empid,
+  );
   const isEditingTemporaryDraft = activeTemporaryDraftId != null;
   const canSaveTemporaryDraft = canCreateTemporary || isEditingTemporaryDraft;
   const canPostTransactions =
@@ -3527,7 +3530,7 @@ const TableManager = forwardRef(function TableManager({
   }
 
   async function handleSaveTemporary(submission) {
-    if (!canSaveTemporaryDraft) return false;
+    if (!canSaveTemporaryDraft || !hasEmploymentSenior) return false;
     if (!submission || typeof submission !== 'object') return false;
     const cloneValue = (value) => {
       if (value === undefined) return undefined;
