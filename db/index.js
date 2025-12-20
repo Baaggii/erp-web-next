@@ -1356,7 +1356,27 @@ export async function getEmploymentSessions(empid, options = {}) {
                 employee_name, e.employment_user_level, ul.name
       ORDER BY company_name, department_name, branch_name, workplace_name, user_level_name`;
   const params = [...scheduleDateParams, empid];
-  const [rows] = await pool.query(sql, params);
+  let rows;
+  try {
+    [rows] = await pool.query(sql, params);
+  } catch (err) {
+    if (
+      err?.code === "ER_BAD_FIELD_ERROR" &&
+      /\b(pos_no|merchant_id)\b/i.test(err.message || "")
+    ) {
+      employmentScheduleColumnCache = { hasPosNo: false, hasMerchantId: false };
+      const replaceExpr = (text, target, replacement) =>
+        text.split(target).join(replacement);
+      const fallbackSql = replaceExpr(
+        replaceExpr(sql, posNoExpr, "NULL"),
+        merchantExpr,
+        "NULL",
+      );
+      [rows] = await pool.query(fallbackSql, params);
+    } else {
+      throw err;
+    }
+  }
   const sessions = rows.map(mapEmploymentRow);
   if (options?.includeDiagnostics) {
     const sqlText = typeof sql === 'string' ? sql : String(sql ?? '');
@@ -1505,8 +1525,7 @@ export async function getEmploymentSession(empid, companyId, options = {}) {
       'user_level_name',
     ];
 
-      const [rows] = await pool.query(
-        `SELECT
+    const baseSql = `SELECT
             e.employment_company_id AS company_id,
             ${companyRel.nameExpr} AS company_name,
             e.employment_branch_id AS branch_id,
@@ -1584,9 +1603,29 @@ export async function getEmploymentSession(empid, companyId, options = {}) {
                   e.employment_senior_plan_empid,
                   employee_name, e.employment_user_level, ul.name
          ORDER BY ${orderParts.join(', ')}
-         LIMIT 1`,
-        [...scheduleDateParams, ...params],
-      );
+         LIMIT 1`;
+    const queryParams = [...scheduleDateParams, ...params];
+    let rows;
+    try {
+      [rows] = await pool.query(baseSql, queryParams);
+    } catch (err) {
+      if (
+        err?.code === "ER_BAD_FIELD_ERROR" &&
+        /\b(pos_no|merchant_id)\b/i.test(err.message || "")
+      ) {
+        employmentScheduleColumnCache = { hasPosNo: false, hasMerchantId: false };
+        const replaceExpr = (text, target, replacement) =>
+          text.split(target).join(replacement);
+        const fallbackSql = replaceExpr(
+          replaceExpr(baseSql, posNoExpr, "NULL"),
+          merchantExpr,
+          "NULL",
+        );
+        [rows] = await pool.query(fallbackSql, queryParams);
+      } else {
+        throw err;
+      }
+    }
     if (rows.length === 0) return null;
     return mapEmploymentRow(rows[0]);
   }
