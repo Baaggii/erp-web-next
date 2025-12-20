@@ -5,7 +5,6 @@ import * as db from '../../db/index.js';
 import * as posSessions from '../../api-server/services/posSessionLogger.js';
 
 process.env.SKIP_SCHEDULE_COLUMN_CHECK = '1';
-process.env.SKIP_COMPANY_COLUMN_CHECK = '1';
 
 function mockPoolSequential(responses = []) {
   const orig = db.pool.query;

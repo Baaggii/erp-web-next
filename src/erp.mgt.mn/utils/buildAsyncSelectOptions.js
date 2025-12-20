@@ -208,6 +208,7 @@ async function fetchNestedLabelMap(nestedRel, { company }) {
     nestedRel.table.toLowerCase(),
     nestedRel.column.toLowerCase(),
     company ?? '',
+    nestedRel.idField || nestedRel.id_field || '',
   ].join('|');
   if (nestedLabelCache.has(cacheKey)) return nestedLabelCache.get(cacheKey);
 

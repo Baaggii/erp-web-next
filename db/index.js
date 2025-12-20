@@ -1168,28 +1168,6 @@ function mapEmploymentRow(row) {
 
 let employmentScheduleColumnCache = null;
 
-let companyMetadataColumnCache = null;
-
-async function getCompanyMetadataColumnInfo() {
-  if (companyMetadataColumnCache) return companyMetadataColumnCache;
-  if (process.env.SKIP_COMPANY_COLUMN_CHECK === "1") {
-    companyMetadataColumnCache = { hasMerchantTin: true };
-    return companyMetadataColumnCache;
-  }
-  try {
-    const columns = await getTableColumnsSafe("companies");
-    const lower = new Set(columns.map((c) => String(c).toLowerCase()));
-    companyMetadataColumnCache = { hasMerchantTin: lower.has("merchant_tin") };
-  } catch (err) {
-    if (err?.code === "ER_NO_SUCH_TABLE") {
-      companyMetadataColumnCache = { hasMerchantTin: false };
-    } else {
-      throw err;
-    }
-  }
-  return companyMetadataColumnCache;
-}
-
 async function getEmploymentScheduleColumnInfo() {
   if (employmentScheduleColumnCache) return employmentScheduleColumnCache;
   if (process.env.SKIP_SCHEDULE_COLUMN_CHECK === "1") {
@@ -1247,10 +1225,6 @@ export async function getEmploymentSessions(empid, options = {}) {
   const scheduleInfo = await getEmploymentScheduleColumnInfo();
   const posNoExpr = scheduleInfo.hasPosNo ? "es.pos_no" : "NULL";
   const merchantExpr = scheduleInfo.hasMerchantId ? "es.merchant_id" : "NULL";
-  const companyInfo = await getCompanyMetadataColumnInfo();
-  const merchantTinExpr = companyInfo.hasMerchantTin
-    ? "mc.merchant_tin"
-    : "NULL";
 
   const [companyRel, branchRel, deptRel] = await Promise.all([
     resolveEmploymentRelation({
@@ -1334,9 +1308,9 @@ export async function getEmploymentSessions(empid, options = {}) {
             es.department_id,
             es.emp_id,
             es.workplace_id,
-           es.id AS workplace_session_id,
-           ${posNoExpr} AS pos_no,
-           ${merchantExpr} AS merchant_id
+            es.id AS workplace_session_id,
+            ${posNoExpr} AS pos_no,
+            ${merchantExpr} AS merchant_id
          FROM tbl_employment_schedule es
          INNER JOIN (
            SELECT
@@ -1483,10 +1457,6 @@ export async function getEmploymentSession(empid, companyId, options = {}) {
     const scheduleInfo = await getEmploymentScheduleColumnInfo();
     const posNoExpr = scheduleInfo.hasPosNo ? "es.pos_no" : "NULL";
     const merchantExpr = scheduleInfo.hasMerchantId ? "es.merchant_id" : "NULL";
-    const companyInfo = await getCompanyMetadataColumnInfo();
-    const merchantTinExpr = companyInfo.hasMerchantTin
-      ? "mc.merchant_tin"
-      : "NULL";
 
     const [companyRel, branchRel, deptRel] = await Promise.all([
       resolveEmploymentRelation({
@@ -1633,12 +1603,11 @@ export async function getEmploymentSession(empid, companyId, options = {}) {
          LEFT JOIN user_level_permissions up ON up.userlevel_id = ul.userlevel_id AND up.action = 'permission' AND up.company_id IN (${GLOBAL_COMPANY_ID}, e.employment_company_id)
          WHERE e.employment_emp_id = ? AND e.employment_company_id = ?
          GROUP BY e.employment_company_id, company_name,
-                   ${merchantTinExpr},
-                   e.employment_branch_id, branch_name,
-                   e.employment_department_id, department_name,
-                   es.workplace_id, cw.workplace_name, es.workplace_session_id,
-                   es.pos_no, es.merchant_id,
-                   e.employment_position_id,
+                  e.employment_branch_id, branch_name,
+                  e.employment_department_id, department_name,
+                  es.workplace_id, cw.workplace_name, es.workplace_session_id,
+                  es.pos_no, es.merchant_id,
+                  e.employment_position_id,
                   e.employment_senior_empid,
                   e.employment_senior_plan_empid,
                   employee_name, e.employment_user_level, ul.name
