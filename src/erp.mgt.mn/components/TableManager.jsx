@@ -588,6 +588,24 @@ const TableManager = forwardRef(function TableManager({
     () => normalizeEmpId(session?.senior_plan_empid),
     [normalizeEmpId, session?.senior_plan_empid],
   );
+  const employmentSeniorId = useMemo(() => {
+    const candidates = [
+      session?.employment_senior_empid,
+      session?.employment?.senior_empid,
+      session?.employment?.senior_emp_id,
+      session?.employment?.seniorEmpId,
+      session?.employment?.seniorEmpID,
+      user?.employment_senior_empid,
+      user?.employment?.senior_empid,
+      user?.employment?.senior_emp_id,
+      user?.employment?.seniorEmpId,
+      user?.employment?.seniorEmpID,
+    ];
+    for (const candidate of candidates) {
+      if (hasSenior(candidate)) return candidate;
+    }
+    return null;
+  }, [hasSenior, session?.employment, session?.employment_senior_empid, user?.employment, user?.employment_senior_empid]);
   const isSubordinate = hasAnySenior;
   const generalConfig = useGeneralConfig();
   const txnToastEnabled = generalConfig.general?.txnToastEnabled;
