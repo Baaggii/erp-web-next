@@ -74,8 +74,6 @@ export async function runSql(sql, signal) {
   let aborted = false;
   let lastStatement = '';
   let completedStatements = 0;
-  let lastError = '';
-  const totalStatements = statements.length;
   try {
     for (const stmt of statements) {
       lastStatement = stmt;
@@ -88,7 +86,6 @@ export async function runSql(sql, signal) {
         completedStatements += 1;
       } catch (err) {
         failed.push({ sql: stmt, error: err.message });
-        lastError = err?.message || '';
         completedStatements += 1;
       }
       if (signal?.aborted) {
@@ -100,15 +97,7 @@ export async function runSql(sql, signal) {
   } finally {
     if (!aborted) conn.release();
   }
-  return {
-    inserted,
-    failed,
-    aborted,
-    lastStatement,
-    lastError,
-    completedStatements,
-    totalStatements,
-  };
+  return { inserted, failed, aborted, lastStatement, completedStatements };
 }
 
 export async function getTableStructure(table) {
