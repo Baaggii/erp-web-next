@@ -956,7 +956,10 @@ export default function CodingTablesPage() {
       (c) => c !== idCol && c !== nmCol && !uniqueOnly.includes(c)
     );
     if (!idCol && !nmCol && uniqueOnly.length === 0 && otherFiltered.length === 0) {
-      alert('Please select at least one ID, Name, Unique or Other column');
+      addToast(
+        'Please select at least one ID, Name, Unique or Other column',
+        'error',
+      );
       return;
     }
     const idIdx = allHdrs.indexOf(idCol);
@@ -1546,7 +1549,7 @@ export default function CodingTablesPage() {
 
   function handleGenerateSql() {
     if (duplicateHeaders.size > 0) {
-      alert('Please rename duplicate fields first');
+      addToast('Please rename duplicate fields first', 'error');
       return;
     }
     setStructSql('');
@@ -1561,7 +1564,7 @@ export default function CodingTablesPage() {
 
   function handleGenerateRecords() {
     if (duplicateHeaders.size > 0) {
-      alert('Please rename duplicate fields first');
+      addToast('Please rename duplicate fields first', 'error');
       return;
     }
     setRecordsSql('');
@@ -1763,15 +1766,13 @@ export default function CodingTablesPage() {
           setUploadProgress({ done: i + 1, total: statements.length });
           continue;
         }
-        setErrorMessage(err?.message || 'Execution failed');
-        alert(errorMessage || err?.message || 'Execution failed');
+        const errMsg = err?.message || 'Execution failed';
+        setErrorMessage(errMsg);
+        errGroups[errMsg] = (errGroups[errMsg] || 0) + rowCount;
+        failedAll.push(`${stmt} -- ${errMsg}`);
         abortCtrlRef.current = null;
-        return {
-          inserted: totalInserted,
-          failed: failedAll,
-          aborted: true,
-          errorMessage,
-        };
+        setUploadProgress({ done: i + 1, total: statements.length });
+        continue;
       }
       if (!res.ok) {
         const data = await res.json().catch(async () => {
@@ -1786,21 +1787,18 @@ export default function CodingTablesPage() {
           data,
           res.statusText || 'Execution failed'
         );
-        if (!errorMessage) {
-          setErrorMessage(
-            (data && typeof data.message === 'string' && data.message) ||
-              res.statusText ||
-              'Execution failed'
-          );
-        }
-        alert(detail || errorMessage || data.message || 'Execution failed');
+        const failureMessage =
+          detail ||
+          errorMessage ||
+          (data && typeof data.message === 'string' && data.message) ||
+          res.statusText ||
+          'Execution failed';
+        setErrorMessage(failureMessage);
+        errGroups[failureMessage] = (errGroups[failureMessage] || 0) + rowCount;
+        failedAll.push(`${stmt} -- ${failureMessage}`);
         abortCtrlRef.current = null;
-        return {
-          inserted: totalInserted,
-          failed: failedAll,
-          aborted: true,
-          errorMessage,
-        };
+        setUploadProgress({ done: i + 1, total: statements.length });
+        continue;
       }
       const data = await res.json().catch(() => ({}));
       captureErrorDetails(data, data && data.message);
@@ -1869,7 +1867,7 @@ export default function CodingTablesPage() {
   async function executeGeneratedSql() {
     const combined = [sql, sqlOther].filter(Boolean).join('\n');
     if (!combined) {
-      alert('Generate SQL first');
+      addToast('Generate SQL first', 'error');
       return;
     }
     setUploading(true);
@@ -1910,7 +1908,7 @@ export default function CodingTablesPage() {
       }
     } catch (err) {
       console.error('SQL execution failed', err);
-      alert('Execution failed');
+      addToast('Execution failed', 'error');
     } finally {
       setUploading(false);
       setUploadProgress({ done: 0, total: 0 });
@@ -1922,7 +1920,7 @@ export default function CodingTablesPage() {
       .filter(Boolean)
       .join('\n');
     if (!combined) {
-      alert('No SQL to execute');
+      addToast('No SQL to execute', 'error');
       return;
     }
     setUploading(true);
@@ -1963,7 +1961,7 @@ export default function CodingTablesPage() {
       }
     } catch (err) {
       console.error('SQL execution failed', err);
-      alert('Execution failed');
+      addToast('Execution failed', 'error');
     } finally {
       setUploading(false);
       setUploadProgress({ done: 0, total: 0 });
@@ -1972,7 +1970,7 @@ export default function CodingTablesPage() {
 
   async function executeOtherSql() {
     if (!structSqlOther) {
-      alert('Generate SQL first');
+      addToast('Generate SQL first', 'error');
       return;
     }
     setUploading(true);
@@ -2008,7 +2006,7 @@ export default function CodingTablesPage() {
       }
     } catch (err) {
       console.error('SQL execution failed', err);
-      alert('Execution failed');
+      addToast('Execution failed', 'error');
     } finally {
       setUploading(false);
     }
@@ -2221,11 +2219,11 @@ export default function CodingTablesPage() {
   async function executeRecordsSql() {
     const preparedRows = rowUploadPayload?.rows || [];
     if (!requiresRowUpload && !recordsSql && !recordsSqlOther) {
-      alert('Generate SQL first');
+      addToast('Generate SQL first', 'error');
       return;
     }
     if (requiresRowUpload && preparedRows.length === 0 && !recordsSqlOther) {
-      alert('No rows prepared');
+      addToast('No rows prepared', 'error');
       return;
     }
     setUploading(true);
@@ -2344,6 +2342,7 @@ export default function CodingTablesPage() {
             return stmt;
           })
           .join('\n');
+        setSqlMove(moveSql);
         const resMove = await fetch('/api/generated_sql/execute', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -2351,20 +2350,22 @@ export default function CodingTablesPage() {
           credentials: 'include',
         });
         if (!resMove.ok) {
-          setSqlMove(moveSql);
         } else {
           const dataMove = await resMove.json().catch(() => ({}));
           if (typeof dataMove.inserted === 'number') {
             oInserted += dataMove.inserted;
           }
           if (Array.isArray(dataMove.failed) && dataMove.failed.length > 0) {
-            setSqlMove(
-              dataMove.failed
+            setSqlMove((prev) => {
+              const failedSql = dataMove.failed
                 .map((f) =>
                   typeof f === 'string' ? f : `${f.sql} -- ${f.error}`,
                 )
-                .join('\n'),
-            );
+                .join('\n');
+              if (!prev) return failedSql;
+              if (prev.includes(failedSql)) return prev;
+              return `${prev}\n${failedSql}`;
+            });
           }
         }
       }
@@ -2391,7 +2392,7 @@ export default function CodingTablesPage() {
       }
     } catch (err) {
       console.error('SQL execution failed', err);
-      alert('Execution failed');
+      addToast('Execution failed', 'error');
     } finally {
       setUploading(false);
       setUploadProgress({ done: 0, total: 0 });
@@ -2411,9 +2412,9 @@ export default function CodingTablesPage() {
         credentials: 'include',
         body: JSON.stringify(finalMap),
       });
-      alert('Mappings saved');
+      addToast('Mappings saved', 'success');
     } catch {
-      alert('Failed to save mappings');
+      addToast('Failed to save mappings', 'error');
     }
   }
 
