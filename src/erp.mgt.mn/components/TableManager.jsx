@@ -1420,16 +1420,32 @@ const TableManager = forwardRef(function TableManager({
       return fallback.join(' - ');
     };
 
-    const fetchDisplayConfig = (tableName) => {
+    const fetchDisplayConfig = (tableName, filter) => {
       if (!tableName) return Promise.resolve(null);
-      const cacheKey = tableName.toLowerCase();
+      const filterColumn =
+        filter?.column || filter?.filterColumn || filter?.filter_column || '';
+      const hasFilterValue =
+        filterColumn &&
+        (filter?.value !== undefined && filter?.value !== null
+          ? true
+          : filter?.filterValue !== undefined && filter?.filterValue !== null);
+      const filterValue =
+        filter?.value ?? filter?.filterValue ?? filter?.filter_value ?? '';
+      const cacheKeyParts = [tableName.toLowerCase()];
+      if (filterColumn) cacheKeyParts.push(`fc:${filterColumn}`);
+      if (filterColumn && hasFilterValue) cacheKeyParts.push(`fv:${String(filterValue)}`);
+      const cacheKey = cacheKeyParts.join('|');
       if (displayConfigCache.has(cacheKey)) return displayConfigCache.get(cacheKey);
       const promise = (async () => {
         try {
-          const res = await fetch(
-            `/api/display_fields?table=${encodeURIComponent(tableName)}`,
-            { credentials: 'include' },
-          );
+          const params = new URLSearchParams({ table: tableName });
+          if (filterColumn) params.set('filterColumn', filterColumn);
+          if (filterColumn && hasFilterValue) {
+            params.set('filterValue', String(filterValue).trim());
+          }
+          const res = await fetch(`/api/display_fields?${params.toString()}`, {
+            credentials: 'include',
+          });
           if (!res.ok) {
             if (!canceled) {
               addToast(
@@ -1454,6 +1470,7 @@ const TableManager = forwardRef(function TableManager({
             displayFields: Array.isArray(json.displayFields)
               ? json.displayFields
               : [],
+            filters: Array.isArray(json.filters) ? json.filters : [],
           };
         } catch (err) {
           if (!canceled) {
@@ -1618,17 +1635,24 @@ const TableManager = forwardRef(function TableManager({
         company ?? '',
         branch ?? '',
         department ?? '',
+        nestedRel.filterColumn || '',
+        nestedRel.filterValue ?? '',
       ].join('|');
       if (nestedLabelCache[cacheKey]) return nestedLabelCache[cacheKey];
 
       const [nestedCfg, nestedTenant] = await Promise.all([
-        fetchDisplayConfig(nestedRel.table),
+        fetchDisplayConfig(nestedRel.table, {
+          column: nestedRel.filterColumn,
+          value: nestedRel.filterValue,
+        }),
         fetchTenantInfo(nestedRel.table),
       ]);
       if (canceled) return {};
 
+      const hasFilterValue =
+        nestedRel.filterValue !== undefined && nestedRel.filterValue !== null;
       const filterConfig =
-        nestedRel.filterColumn && nestedRel.filterValue
+        nestedRel.filterColumn && (hasFilterValue || nestedRel.filterValue === '')
           ? { column: nestedRel.filterColumn, value: nestedRel.filterValue }
           : null;
       const rows = await fetchTableRows(nestedRel.table, nestedTenant, filterConfig);
@@ -1683,7 +1707,10 @@ const TableManager = forwardRef(function TableManager({
     const loadRelationColumn = async ([col, rel]) => {
       if (!rel?.table || !rel?.column) return null;
       const [cfg, tenantInfo] = await Promise.all([
-        fetchDisplayConfig(rel.table),
+        fetchDisplayConfig(rel.table, {
+          column: rel.filterColumn,
+          value: rel.filterValue,
+        }),
         fetchTenantInfo(rel.table),
       ]);
       if (canceled) return null;
@@ -1712,8 +1739,7 @@ const TableManager = forwardRef(function TableManager({
         }
       }
 
-      const hasFilterValue =
-        rel.filterValue !== undefined && rel.filterValue !== null && String(rel.filterValue) !== '';
+      const hasFilterValue = rel.filterValue !== undefined && rel.filterValue !== null;
       const filterConfig =
         rel.filterColumn && hasFilterValue
           ? { column: rel.filterColumn, value: rel.filterValue }
@@ -1843,7 +1869,7 @@ const TableManager = forwardRef(function TableManager({
             }
             return;
           }
-          rels = customList;
+        rels = customList;
         }
         if (canceled) return;
 
