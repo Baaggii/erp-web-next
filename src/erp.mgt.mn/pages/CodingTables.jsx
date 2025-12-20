@@ -1350,7 +1350,8 @@ export default function CodingTablesPage() {
       if (!rows.length || !fields.length) return '';
       const cols = fields.map((f) => `\`${dbCols[f] || cleanIdentifier(renameMap[f] || f)}\``);
       const idxMap = fields.map((f) => allHdrs.indexOf(f));
-      const updates = cols.map((c) => `${c} = VALUES(${c})`);
+      const alias = 'new_vals';
+      const updates = cols.map((c) => `${c} = ${alias}.${c}`);
       const parts = [];
       let chunkValues = [];
       for (const r of rows) {
@@ -1393,12 +1394,12 @@ export default function CodingTablesPage() {
         if (!hasData) continue;
         chunkValues.push(`(${vals.join(', ')})`);
         if (chunkValues.length >= chunkLimit) {
-          parts.push(`INSERT INTO \`${tableNameForSql}\` (${cols.join(', ')}) VALUES ${chunkValues.join(', ')} ON DUPLICATE KEY UPDATE ${updates.join(', ')};`);
+          parts.push(`INSERT INTO \`${tableNameForSql}\` ${alias} (${cols.join(', ')}) VALUES ${chunkValues.join(', ')} ON DUPLICATE KEY UPDATE ${updates.join(', ')};`);
           chunkValues = [];
         }
       }
       if (chunkValues.length > 0) {
-        parts.push(`INSERT INTO \`${tableNameForSql}\` (${cols.join(', ')}) VALUES ${chunkValues.join(', ')} ON DUPLICATE KEY UPDATE ${updates.join(', ')};`);
+        parts.push(`INSERT INTO \`${tableNameForSql}\` ${alias} (${cols.join(', ')}) VALUES ${chunkValues.join(', ')} ON DUPLICATE KEY UPDATE ${updates.join(', ')};`);
       }
       return parts.join('\n');
     }
@@ -2085,7 +2086,8 @@ export default function CodingTablesPage() {
     const cleanedTable = cleanIdentifier(tableName) || tableName;
     const normalizedColumns = columns.map((col) => cleanIdentifier(col) || col);
     const quotedColumns = normalizedColumns.map((col) => `\`${col}\``);
-    const updates = quotedColumns.map((col) => `${col} = VALUES(${col})`);
+    const alias = 'new_vals';
+    const updates = quotedColumns.map((col) => `${col} = ${alias}.${col}`);
     const limit = Number.isFinite(chunkLimit) && chunkLimit > 0 ? chunkLimit : 300;
     const statements = [];
     let chunkValues = [];
@@ -2113,14 +2115,14 @@ export default function CodingTablesPage() {
       chunkValues.push(`(${vals.join(', ')})`);
       if (chunkValues.length >= limit) {
         statements.push(
-          `INSERT INTO \`${cleanedTable}\` (${quotedColumns.join(', ')}) VALUES ${chunkValues.join(', ')} ON DUPLICATE KEY UPDATE ${updates.join(', ')};`,
+          `INSERT INTO \`${cleanedTable}\` ${alias} (${quotedColumns.join(', ')}) VALUES ${chunkValues.join(', ')} ON DUPLICATE KEY UPDATE ${updates.join(', ')};`,
         );
         chunkValues = [];
       }
     }
     if (chunkValues.length > 0) {
       statements.push(
-        `INSERT INTO \`${cleanedTable}\` (${quotedColumns.join(', ')}) VALUES ${chunkValues.join(', ')} ON DUPLICATE KEY UPDATE ${updates.join(', ')};`,
+        `INSERT INTO \`${cleanedTable}\` ${alias} (${quotedColumns.join(', ')}) VALUES ${chunkValues.join(', ')} ON DUPLICATE KEY UPDATE ${updates.join(', ')};`,
       );
     }
     return statements.join('\n');
