@@ -692,7 +692,7 @@ const TableManager = forwardRef(function TableManager({
     formSupportsTemporary &&
     (canCreateTemporary || canReviewTemporary || temporaryReviewer);
   const hasEmploymentSenior = Boolean(
-    employmentSeniorId,
+    session?.employment_senior_empid || user?.employment_senior_empid,
   );
   const isEditingTemporaryDraft = activeTemporaryDraftId != null;
   const canSaveTemporaryDraft = canCreateTemporary || isEditingTemporaryDraft;
@@ -5679,9 +5679,7 @@ const TableManager = forwardRef(function TableManager({
   const showCreatorActions = canCreateTemporary && temporaryScope === 'created';
   const isTemporaryReviewMode = canReviewTemporary && temporaryScope === 'review';
   const temporarySaveEnabled =
-    canSaveTemporaryDraft &&
-    hasEmploymentSenior &&
-    (!isTemporaryReviewMode || shouldShowForwardTemporaryLabel);
+    canSaveTemporaryDraft && (!isTemporaryReviewMode || shouldShowForwardTemporaryLabel);
 
   const temporaryDetailColumns = useMemo(() => {
     const valueKeys = new Set();

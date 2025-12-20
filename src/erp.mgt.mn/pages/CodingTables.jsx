@@ -1630,41 +1630,81 @@ export default function CodingTablesPage() {
       }
     };
     const setErrorMessage = (msg) => {
-      if (typeof msg === 'string') {
-        const trimmed = msg.trim();
-        if (trimmed && !errorMessage) {
-          errorMessage = trimmed;
-        }
+      if (typeof msg !== 'string') return;
+      const trimmed = msg.trim();
+      if (!trimmed) return;
+      if (!errorMessage) {
+        errorMessage = trimmed;
+        return;
+      }
+      if (trimmed.length > errorMessage.length && trimmed.includes(errorMessage)) {
+        errorMessage = trimmed;
+        return;
+      }
+      if (!errorMessage.includes(trimmed)) {
+        errorMessage = `${errorMessage}: ${trimmed}`;
       }
     };
-    const captureErrorDetails = (payload) => {
-      if (!payload || typeof payload !== 'object') return;
+    const captureErrorDetails = (payload, fallback) => {
       const parts = [];
-      if (typeof payload.message === 'string' && payload.message.trim()) {
-        parts.push(payload.message.trim());
-      }
-      if (Array.isArray(payload.failed) && payload.failed.length > 0) {
-        const firstFailedObj = payload.failed.find(
-          (item) =>
-            item &&
-            typeof item === 'object' &&
-            typeof item.error === 'string' &&
-            item.error.trim()
-        );
-        if (firstFailedObj) {
-          parts.push(firstFailedObj.error.trim());
-        } else {
-          const firstFailedStr = payload.failed.find(
-            (item) => typeof item === 'string' && item.trim()
+      const pushPart = (val) => {
+        if (typeof val === 'string') {
+          const trimmed = val.trim();
+          if (trimmed) parts.push(trimmed);
+        }
+      };
+      if (payload && typeof payload === 'object') {
+        pushPart(payload.message);
+        pushPart(payload.error);
+        pushPart(payload.detail);
+        if (Array.isArray(payload.errors)) {
+          const firstError = payload.errors.find((item) => {
+            if (typeof item === 'string') return item.trim();
+            if (item && typeof item === 'object') {
+              return (
+                (typeof item.message === 'string' && item.message.trim()) ||
+                (typeof item.error === 'string' && item.error.trim()) ||
+                (typeof item.detail === 'string' && item.detail.trim())
+              );
+            }
+            return false;
+          });
+          if (typeof firstError === 'string') {
+            pushPart(firstError);
+          } else if (firstError && typeof firstError === 'object') {
+            pushPart(firstError.message);
+            pushPart(firstError.error);
+            pushPart(firstError.detail);
+          }
+        }
+        if (Array.isArray(payload.failed) && payload.failed.length > 0) {
+          const firstFailedObj = payload.failed.find(
+            (item) =>
+              item &&
+              typeof item === 'object' &&
+              typeof item.error === 'string' &&
+              item.error.trim()
           );
-          if (firstFailedStr) {
-            parts.push(firstFailedStr.trim());
+          if (firstFailedObj) {
+            pushPart(firstFailedObj.error);
+            pushPart(firstFailedObj.sql);
+          } else {
+            const firstFailedStr = payload.failed.find(
+              (item) => typeof item === 'string' && item.trim()
+            );
+            if (firstFailedStr) {
+              pushPart(firstFailedStr);
+            }
           }
         }
       }
+      pushPart(fallback);
       if (parts.length > 0) {
-        setErrorMessage(parts.join(': '));
+        const detail = Array.from(new Set(parts)).join(': ');
+        setErrorMessage(detail);
+        return detail;
       }
+      return '';
     };
     interruptRef.current = false;
     abortCtrlRef.current = new AbortController();
@@ -1716,7 +1756,7 @@ export default function CodingTablesPage() {
           };
         }
         setErrorMessage(err?.message || 'Execution failed');
-        alert('Execution failed');
+        alert(errorMessage || err?.message || 'Execution failed');
         abortCtrlRef.current = null;
         return {
           inserted: totalInserted,
@@ -1734,7 +1774,10 @@ export default function CodingTablesPage() {
             return {};
           }
         });
-        captureErrorDetails(data);
+        const detail = captureErrorDetails(
+          data,
+          res.statusText || 'Execution failed'
+        );
         if (!errorMessage) {
           setErrorMessage(
             (data && typeof data.message === 'string' && data.message) ||
@@ -1742,7 +1785,7 @@ export default function CodingTablesPage() {
               'Execution failed'
           );
         }
-        alert(errorMessage || data.message || 'Execution failed');
+        alert(detail || errorMessage || data.message || 'Execution failed');
         abortCtrlRef.current = null;
         return {
           inserted: totalInserted,
@@ -1752,13 +1795,14 @@ export default function CodingTablesPage() {
         };
       }
       const data = await res.json().catch(() => ({}));
-      captureErrorDetails(data);
+      captureErrorDetails(data, data && data.message);
       const payloadFailed = Array.isArray(data.failed) ? data.failed : [];
       if (payloadFailed.length > 0) {
         const errMsg = payloadFailed
           .map((f) => (typeof f === 'string' ? f : f.error))
           .join('; ');
         errGroups[errMsg] = (errGroups[errMsg] || 0) + rowCount;
+        setErrorMessage(errMsg);
         failedAll.push(
           ...payloadFailed.map((f) =>
             typeof f === 'string' ? f : `${f.sql} -- ${f.error}`
@@ -1766,14 +1810,13 @@ export default function CodingTablesPage() {
         );
       }
       if (data.aborted) {
-        ensureErrorMessage(data.message || 'Execution was interrupted');
-        abortCtrlRef.current = null;
-        return {
-          inserted: totalInserted,
-          failed: failedAll,
-          aborted: true,
-          errorMessage: errorMessage || 'Execution was interrupted',
-        };
+        const abortMsg =
+          data.message || errorMessage || 'Execution was interrupted';
+        ensureErrorMessage(abortMsg);
+        errGroups[abortMsg] = (errGroups[abortMsg] || 0) + rowCount;
+        failedAll.push(`${stmt} -- ${abortMsg}`);
+        setUploadProgress({ done: i + 1, total: statements.length });
+        continue;
       }
       const inserted = data.inserted || 0;
       if (Array.isArray(data.failed) && data.failed.length > 0) {
