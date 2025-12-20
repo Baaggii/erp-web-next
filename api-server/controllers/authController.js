@@ -8,9 +8,17 @@ import {
 } from '../../db/index.js';
 import { hash } from '../services/passwordService.js';
 import * as jwtService from '../services/jwtService.js';
-import { getCookieName, getRefreshCookieName } from '../utils/cookieNames.js';
+import {
+  getCookieName,
+  getRefreshCookieName,
+  getPosSessionCookieName,
+} from '../utils/cookieNames.js';
 import { normalizeEmploymentSession } from '../utils/employmentSession.js';
 import { normalizeNumericId } from '../utils/workplaceAssignments.js';
+import {
+  recordLoginSession,
+  recordLogoutSession,
+} from '../services/posSessionLogger.js';
 
 export async function login(req, res, next) {
   try {
@@ -177,6 +185,19 @@ export async function login(req, res, next) {
       sameSite: 'lax',
       maxAge: jwtService.getRefreshExpiryMillis(),
     });
+    try {
+      const posSession = await recordLoginSession(req, sessionPayload, user);
+      if (posSession?.sessionUuid) {
+        res.cookie(getPosSessionCookieName(), posSession.sessionUuid, {
+          httpOnly: true,
+          secure: process.env.NODE_ENV === 'production',
+          sameSite: 'lax',
+          maxAge: jwtService.getRefreshExpiryMillis(),
+        });
+      }
+    } catch (err) {
+      console.error('Failed to log POS session', err);
+    }
     res.json({
       id: user.id,
       empid: user.empid,
@@ -211,6 +232,12 @@ export async function logout(req, res) {
   };
   res.clearCookie(getCookieName(), opts);
   res.clearCookie(getRefreshCookieName(), opts);
+  res.clearCookie(getPosSessionCookieName(), opts);
+  try {
+    await recordLogoutSession(req);
+  } catch (err) {
+    console.error('Failed to close POS session', err);
+  }
   res.sendStatus(204);
 }
 
