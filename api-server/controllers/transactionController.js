@@ -11,7 +11,6 @@ export async function getTransactions(req, res, next) {
       perPage,
       refCol,
       refVal,
-      original_creator_empid,
     } = req.query;
     const result = await listTransactions({
       table,
@@ -23,7 +22,6 @@ export async function getTransactions(req, res, next) {
       refCol,
       refVal,
       company_id: req.user.companyId,
-      originalCreatorEmpId: original_creator_empid,
     });
     res.json(result);
   } catch (err) {

@@ -470,7 +470,6 @@ const TableManager = forwardRef(function TableManager({
   const [pendingTemporaryPromotion, setPendingTemporaryPromotion] = useState(null);
   const [temporaryPromotionQueue, setTemporaryPromotionQueue] = useState([]);
   const [activeTemporaryDraftId, setActiveTemporaryDraftId] = useState(null);
-  const [reviewNotes, setReviewNotes] = useState('');
   const [gridRows, setGridRows] = useState([]);
   const [selectedRows, setSelectedRows] = useState(new Set());
   const [localRefresh, setLocalRefresh] = useState(0);
@@ -490,10 +489,6 @@ const TableManager = forwardRef(function TableManager({
   const [temporaryChainModalError, setTemporaryChainModalError] = useState('');
   const [temporaryChainModalLoading, setTemporaryChainModalLoading] =
     useState(false);
-  const [creatorTransactions, setCreatorTransactions] = useState([]);
-  const [creatorTransactionsLoading, setCreatorTransactionsLoading] = useState(false);
-  const [creatorTransactionsError, setCreatorTransactionsError] = useState('');
-  const [showCreatorTransactions, setShowCreatorTransactions] = useState(false);
   const setTemporaryRowRef = useCallback((id, node) => {
     if (id == null) return;
     const key = String(id);
@@ -803,38 +798,6 @@ const TableManager = forwardRef(function TableManager({
     formConfig?.transactionTypeField,
     typeFilter,
   ]);
-
-  const loadCreatorTransactions = useCallback(async () => {
-    if (!table || !user?.empid) return;
-    setCreatorTransactionsLoading(true);
-    setCreatorTransactionsError('');
-    try {
-      const params = new URLSearchParams({
-        table,
-        original_creator_empid: user.empid,
-        perPage: '200',
-      });
-      const res = await fetch(`/api/transactions?${params.toString()}`, {
-        credentials: 'include',
-      });
-      if (!res.ok) {
-        const text = await res.text().catch(() => '');
-        throw new Error(text || 'Failed to load transactions');
-      }
-      const data = await res.json().catch(() => ({}));
-      setCreatorTransactions(Array.isArray(data?.rows) ? data.rows : []);
-    } catch (err) {
-      setCreatorTransactionsError(err?.message || 'Failed to load transactions');
-      setCreatorTransactions([]);
-    } finally {
-      setCreatorTransactionsLoading(false);
-    }
-  }, [table, user?.empid]);
-
-  useEffect(() => {
-    if (!showCreatorTransactions) return;
-    loadCreatorTransactions();
-  }, [loadCreatorTransactions, showCreatorTransactions]);
 
   const validCols = useMemo(() => new Set(columnMeta.map((c) => c.name)), [columnMeta]);
   const columnCaseMap = useMemo(
@@ -3391,7 +3354,6 @@ const TableManager = forwardRef(function TableManager({
         silent: false,
         overrideValues: cleaned,
         promoteAsTemporary: !canPostTransactions,
-        notes: reviewNotes,
       });
       if (ok) {
         const [nextEntry, ...remainingQueue] = temporaryPromotionQueue;
@@ -3406,7 +3368,6 @@ const TableManager = forwardRef(function TableManager({
         setEditing(null);
         setIsAdding(false);
         setGridRows([]);
-        setReviewNotes('');
         setRequestType(null);
         setPendingTemporaryPromotion(null);
         setActiveTemporaryDraftId(null);
@@ -3717,61 +3678,88 @@ const TableManager = forwardRef(function TableManager({
       }
     }
 
+    const rowsToProcess = gridRows && gridRows.length > 0 ? gridRows : [null];
+    const rawRowList = Array.isArray(rawRows) ? rawRows : [];
     let successCount = 0;
     let failureCount = 0;
-    const reviewForwardEntry =
-      forwardingExistingTemporary && temporaryScope === 'review'
-        ? pendingTemporaryPromotion?.entry || null
-        : null;
-    const clonePreserve = (value) => {
-      if (value === undefined) return undefined;
-      try {
-        return JSON.parse(JSON.stringify(value));
-      } catch {
-        if (value && typeof value === 'object') {
-          return Array.isArray(value) ? [...value] : { ...value };
-        }
-        return value;
-      }
-    };
-    let preservedPayload = null;
-    let preservedCleanedValues = null;
-    let preservedRawValues = null;
-    if (reviewForwardEntry) {
-      const payloadClone = clonePreserve(reviewForwardEntry.payload);
-      const payloadValues =
-        clonePreserve(payloadClone?.values) ||
-        clonePreserve(reviewForwardEntry.values) ||
-        clonePreserve(reviewForwardEntry.cleanedValues);
-      if (payloadClone && !payloadClone.values && payloadValues) {
-        payloadClone.values = payloadValues;
-      }
-      preservedPayload =
-        payloadClone ||
-        (payloadValues
-          ? {
-              values: payloadValues,
-            }
-          : null);
-      preservedCleanedValues =
-        clonePreserve(reviewForwardEntry.cleanedValues) ||
-        clonePreserve(reviewForwardEntry.payload?.cleanedValues) ||
-        clonePreserve(reviewForwardEntry.payload?.values) ||
-        clonePreserve(reviewForwardEntry.values) ||
-        null;
-      preservedRawValues =
-        clonePreserve(reviewForwardEntry.rawValues) ||
-        clonePreserve(reviewForwardEntry.payload?.rawValues) ||
-        null;
-    }
 
-    if (reviewForwardEntry && preservedPayload) {
+    for (let idx = 0; idx < rowsToProcess.length; idx += 1) {
+      const row = rowsToProcess[idx];
+      const rowRawSource = Array.isArray(rawRowList) ? rawRowList[idx] : null;
+      const rowValues = row ? { ...headerNormalizedValues, ...row } : { ...normalizedValues };
+      const rowCleaned = { ...cleaned };
+      if (forwardingExistingTemporary && nextSeniorEmpId) {
+        ['plan_senior_empid', 'plan_senior_emp_id', 'planSeniorEmpId', 'planSeniorEmpID'].forEach(
+          (key) => {
+            rowValues[key] = nextSeniorEmpId;
+            rowCleaned[key] = nextSeniorEmpId;
+          },
+        );
+      }
+      if (row) {
+        Object.entries(row).forEach(([k, v]) => {
+          const lower = k.toLowerCase();
+          const canonicalKey = resolveCanonicalKey(k);
+          const targetKey = canonicalKey || k;
+          if (
+            skipFields.has(k) ||
+            skipFields.has(lower) ||
+            skipFields.has(targetKey) ||
+            k.startsWith('_')
+          )
+            return;
+          if (hasColumnMeta && (!targetKey || !validCols.has(targetKey))) return;
+          if (auditFieldSet.has(lower) && !(editSet?.has(lower))) return;
+          if (v !== '') {
+            const placeholderKey =
+              placeholders[targetKey] !== undefined
+                ? targetKey
+                : placeholders[k] !== undefined
+                ? k
+                : null;
+            const normalizedPlaceholder =
+              placeholderKey !== null ? placeholders[placeholderKey] : undefined;
+            rowCleaned[targetKey] =
+              typeof v === 'string' ? normalizeDateInput(v, normalizedPlaceholder) : v;
+          }
+        });
+      }
+
+      const rowPayload = {
+        values: rowValues,
+        submittedAt,
+      };
+      if (row) {
+        rowPayload.gridRows = [row];
+        rowPayload.rowCount = 1;
+        if (rowRawSource) {
+          rowPayload.rawRows = [stripTemporaryLabelValue(rowRawSource)];
+        }
+      } else if (rawRows && !Array.isArray(rawRows)) {
+        rowPayload.rawRows = rawRows;
+      }
+
+      const rowRawValues = row
+        ? (() => {
+            const combined = { ...headerRawValues };
+            const source =
+              rowRawSource && typeof rowRawSource === 'object'
+                ? stripTemporaryLabelValue(rowRawSource)
+                : null;
+            Object.entries(source || row || {}).forEach(([k, v]) => {
+              combined[k] = v;
+            });
+            return combined;
+          })()
+        : rawOverride || merged;
+
       const body = {
         ...baseRequest,
-        payload: preservedPayload,
-        rawValues: preservedRawValues ?? null,
-        cleanedValues: preservedCleanedValues || {},
+        payload: rowPayload,
+        rawValues: rowRawValues,
+        cleanedValues: rowCleaned,
       };
+
       try {
         const res = await fetch(`${API_BASE}/transaction_temporaries`, {
           method: 'POST',
@@ -3794,137 +3782,24 @@ const TableManager = forwardRef(function TableManager({
               }
             } catch {}
           }
+          if (rowsToProcess.length > 1) {
+            errorMessage = `${errorMessage} (row ${idx + 1})`;
+          }
           addToast(errorMessage, 'error');
           failureCount += 1;
-        } else {
-          successCount += 1;
+          continue;
         }
+        successCount += 1;
       } catch (err) {
         console.error('Temporary save failed', err);
-        addToast(t('temporary_save_failed', 'Failed to save temporary draft'), 'error');
+        const baseMessage = t('temporary_save_failed', 'Failed to save temporary draft');
+        addToast(
+          rowsToProcess.length > 1
+            ? `${baseMessage} (row ${idx + 1})`
+            : baseMessage,
+          'error',
+        );
         failureCount += 1;
-      }
-    } else {
-      const rowsToProcess = gridRows && gridRows.length > 0 ? gridRows : [null];
-      const rawRowList = Array.isArray(rawRows) ? rawRows : [];
-      for (let idx = 0; idx < rowsToProcess.length; idx += 1) {
-        const row = rowsToProcess[idx];
-        const rowRawSource = Array.isArray(rawRowList) ? rawRowList[idx] : null;
-        const rowValues = row ? { ...headerNormalizedValues, ...row } : { ...normalizedValues };
-        const rowCleaned = { ...cleaned };
-        if (forwardingExistingTemporary && nextSeniorEmpId) {
-          ['plan_senior_empid', 'plan_senior_emp_id', 'planSeniorEmpId', 'planSeniorEmpID'].forEach(
-            (key) => {
-              rowValues[key] = nextSeniorEmpId;
-              rowCleaned[key] = nextSeniorEmpId;
-            },
-          );
-        }
-        if (row) {
-          Object.entries(row).forEach(([k, v]) => {
-            const lower = k.toLowerCase();
-            const canonicalKey = resolveCanonicalKey(k);
-            const targetKey = canonicalKey || k;
-            if (
-              skipFields.has(k) ||
-              skipFields.has(lower) ||
-              skipFields.has(targetKey) ||
-              k.startsWith('_')
-            )
-              return;
-            if (hasColumnMeta && (!targetKey || !validCols.has(targetKey))) return;
-            if (auditFieldSet.has(lower) && !(editSet?.has(lower))) return;
-            if (v !== '') {
-              const placeholderKey =
-                placeholders[targetKey] !== undefined
-                  ? targetKey
-                  : placeholders[k] !== undefined
-                  ? k
-                  : null;
-              const normalizedPlaceholder =
-                placeholderKey !== null ? placeholders[placeholderKey] : undefined;
-              rowCleaned[targetKey] =
-                typeof v === 'string' ? normalizeDateInput(v, normalizedPlaceholder) : v;
-            }
-          });
-        }
-
-        const rowPayload = {
-          values: rowValues,
-          submittedAt,
-        };
-        if (row) {
-          rowPayload.gridRows = [row];
-          rowPayload.rowCount = 1;
-          if (rowRawSource) {
-            rowPayload.rawRows = [stripTemporaryLabelValue(rowRawSource)];
-          }
-        } else if (rawRows && !Array.isArray(rawRows)) {
-          rowPayload.rawRows = rawRows;
-        }
-
-        const rowRawValues = row
-          ? (() => {
-              const combined = { ...headerRawValues };
-              const source =
-                rowRawSource && typeof rowRawSource === 'object'
-                  ? stripTemporaryLabelValue(rowRawSource)
-                  : null;
-              Object.entries(source || row || {}).forEach(([k, v]) => {
-                combined[k] = v;
-              });
-              return combined;
-            })()
-          : rawOverride || merged;
-
-        const body = {
-          ...baseRequest,
-          payload: rowPayload,
-          rawValues: rowRawValues,
-          cleanedValues: rowCleaned,
-        };
-
-        try {
-          const res = await fetch(`${API_BASE}/transaction_temporaries`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'include',
-            body: JSON.stringify(body),
-          });
-          if (!res.ok) {
-            let errorMessage = t('temporary_save_failed', 'Failed to save temporary draft');
-            try {
-              const data = await res.json();
-              if (data?.message) {
-                errorMessage = `${errorMessage}: ${data.message}`;
-              }
-            } catch {
-              try {
-                const text = await res.text();
-                if (text) {
-                  errorMessage = `${errorMessage}: ${text}`;
-                }
-              } catch {}
-            }
-            if (rowsToProcess.length > 1) {
-              errorMessage = `${errorMessage} (row ${idx + 1})`;
-            }
-            addToast(errorMessage, 'error');
-            failureCount += 1;
-            continue;
-          }
-          successCount += 1;
-        } catch (err) {
-          console.error('Temporary save failed', err);
-          const baseMessage = t('temporary_save_failed', 'Failed to save temporary draft');
-          addToast(
-            rowsToProcess.length > 1
-              ? `${baseMessage} (row ${idx + 1})`
-              : baseMessage,
-            'error',
-          );
-          failureCount += 1;
-        }
       }
     }
 
@@ -3945,7 +3820,6 @@ const TableManager = forwardRef(function TableManager({
         setEditing(null);
         setIsAdding(false);
         setGridRows([]);
-        setReviewNotes('');
       }
     }
 
@@ -4036,21 +3910,6 @@ const TableManager = forwardRef(function TableManager({
     await executeDeleteRow(id, true);
   }
 
-  const buildCleanedRowForRequest = useCallback(
-    (row) => {
-      const cleaned = {};
-      const skipFields = new Set([...autoCols, ...generatedCols, 'id']);
-      Object.entries(row || {}).forEach(([k, v]) => {
-        const lower = k.toLowerCase();
-        if (skipFields.has(k) || k.startsWith('_')) return;
-        if (auditFieldSet.has(lower) && !(editSet?.has(lower))) return;
-        if (v !== '') cleaned[k] = v;
-      });
-      return cleaned;
-    },
-    [auditFieldSet, autoCols, editSet, generatedCols],
-  );
-
   async function handleRequestDelete(row) {
     const id = getRowId(row);
     if (id === undefined) {
@@ -4070,7 +3929,14 @@ const TableManager = forwardRef(function TableManager({
       return;
     }
     try {
-      const cleaned = buildCleanedRowForRequest(row);
+      const cleaned = {};
+      const skipFields = new Set([...autoCols, ...generatedCols, 'id']);
+      Object.entries(row).forEach(([k, v]) => {
+        const lower = k.toLowerCase();
+        if (skipFields.has(k) || k.startsWith('_')) return;
+        if (auditFieldSet.has(lower) && !(editSet?.has(lower))) return;
+        if (v !== '') cleaned[k] = v;
+      });
       const res = await fetch(`${API_BASE}/pending_request`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -4097,55 +3963,6 @@ const TableManager = forwardRef(function TableManager({
         addToast(t('delete_request_failed', 'Delete request failed'), 'error');
     } catch {
       addToast(t('delete_request_failed', 'Delete request failed'), 'error');
-    }
-  }
-
-  async function handleRequestEditRow(row) {
-    const id = getRowId(row);
-    if (id === undefined) {
-      addToast(
-        t('edit_request_failed_no_primary_key', 'Edit request failed: table has no primary key'),
-        'error',
-      );
-      return;
-    }
-    const reason = await promptRequestReason();
-    if (!reason || !reason.trim()) {
-      addToast(
-        t('request_reason_required', 'Request reason is required'),
-        'error',
-      );
-      return;
-    }
-    try {
-      const cleaned = buildCleanedRowForRequest(row);
-      const res = await fetch(`${API_BASE}/pending_request`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({
-          table_name: table,
-          record_id: id,
-          request_type: 'edit',
-          request_reason: reason,
-          proposed_data: cleaned,
-        }),
-      });
-      if (res.ok) {
-        addToast(
-          t('edit_request_submitted', 'Edit request submitted'),
-          'success',
-        );
-      } else if (res.status === 409) {
-        addToast(
-          t('similar_request_pending', 'A similar request is already pending'),
-          'error',
-        );
-      } else {
-        addToast(t('edit_request_failed', 'Edit request failed'), 'error');
-      }
-    } catch {
-      addToast(t('edit_request_failed', 'Edit request failed'), 'error');
     }
   }
 
@@ -4612,7 +4429,6 @@ const TableManager = forwardRef(function TableManager({
       silent = false,
       overrideValues = null,
       promoteAsTemporary = false,
-      notes = '',
     } = {},
   ) {
     if (!canReviewTemporary) return false;
@@ -4627,11 +4443,10 @@ const TableManager = forwardRef(function TableManager({
           ? stripTemporaryLabelValue(overrideValues)
           : null;
       const hasPayload = payload && Object.keys(payload).length > 0;
-      const requestBody = promoteAsTemporary || hasPayload || (notes && notes.trim())
+      const requestBody = promoteAsTemporary || hasPayload
         ? {
             ...(hasPayload ? { cleanedValues: payload } : {}),
             promoteAsTemporary,
-            ...(notes && notes.trim() ? { notes: notes.trim() } : {}),
           }
         : null;
       const res = await fetch(
@@ -4780,7 +4595,6 @@ const TableManager = forwardRef(function TableManager({
           setPendingTemporaryPromotion({ id: temporaryId, entry });
           setEditing(normalizedValues);
           setGridRows(sanitizedRows);
-          setReviewNotes('');
           setIsAdding(true);
           setRequestType('temporary-promote');
           setShowTemporaryModal(false);
@@ -4791,7 +4605,6 @@ const TableManager = forwardRef(function TableManager({
           ensureColumnMeta,
         setEditing,
         setGridRows,
-        setReviewNotes,
         setIsAdding,
         setRequestType,
         setShowTemporaryModal,
@@ -4860,19 +4673,10 @@ const TableManager = forwardRef(function TableManager({
       ],
     );
 
-  async function rejectTemporary(id, notesOverride = null) {
+  async function rejectTemporary(id) {
     if (!canReviewTemporary) return;
-    const resolvedNotes =
-      typeof notesOverride === 'string' && notesOverride.trim()
-        ? notesOverride
-        : window.prompt(t('temporary_reject_reason', 'Enter rejection notes'));
-    if (!resolvedNotes || !resolvedNotes.trim()) {
-      addToast(
-        t('temporary_reject_reason_required', 'Rejection notes are required'),
-        'error',
-      );
-      return;
-    }
+    const notes = window.prompt(t('temporary_reject_reason', 'Enter rejection notes'));
+    if (!notes || !notes.trim()) return;
     try {
       const res = await fetch(
         `${API_BASE}/transaction_temporaries/${encodeURIComponent(id)}/reject`,
@@ -4880,7 +4684,7 @@ const TableManager = forwardRef(function TableManager({
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
-          body: JSON.stringify({ notes: resolvedNotes.trim() }),
+          body: JSON.stringify({ notes }),
         },
       );
       if (!res.ok) throw new Error('Failed to reject');
@@ -4891,7 +4695,6 @@ const TableManager = forwardRef(function TableManager({
         const filtered = prev.filter((entry) => getTemporaryId(entry) !== targetId);
         return filtered.length === prev.length ? prev : filtered;
       });
-      setReviewNotes('');
       await refreshTemporaryQueuesAfterDecision({ focusId: id });
     } catch (err) {
       console.error(err);
@@ -5735,9 +5538,6 @@ const TableManager = forwardRef(function TableManager({
 
   const showReviewActions = canReviewTemporary && temporaryScope === 'review';
   const showCreatorActions = canCreateTemporary && temporaryScope === 'created';
-  const isTemporaryReviewMode =
-    temporaryScope === 'review' && requestType === 'temporary-promote';
-  const allowTemporarySave = canSaveTemporaryDraft && !isTemporaryReviewMode;
 
   const temporaryDetailColumns = useMemo(() => {
     const valueKeys = new Set();
@@ -5753,16 +5553,6 @@ const TableManager = forwardRef(function TableManager({
     const mergedColumns = columns.length > 0 ? [...columns, ...valueKeys] : [...valueKeys];
     return Array.from(new Set(mergedColumns.filter(Boolean)));
   }, [buildTemporaryFormState, columns, temporaryList]);
-
-  const creatorDisplayColumns = useMemo(() => {
-    if (columns.length > 0) {
-      return columns.slice(0, Math.min(columns.length, 6));
-    }
-    if (creatorTransactions.length > 0) {
-      return Object.keys(creatorTransactions[0]).slice(0, 6);
-    }
-    return [];
-  }, [columns, creatorTransactions]);
 
   let detailHeaderRendered = false;
 
@@ -5856,24 +5646,6 @@ const TableManager = forwardRef(function TableManager({
                   )}
                 </span>
               )}
-            </button>
-          </TooltipWrapper>
-        )}
-        {user?.empid && (
-          <TooltipWrapper
-            title={t(
-              'creator_transactions_button_tooltip',
-              'View posted transactions you originally created',
-            )}
-          >
-            <button
-              onClick={() => {
-                setShowCreatorTransactions(true);
-              }}
-              style={{ marginRight: '0.5rem' }}
-              disabled={!table}
-            >
-              {t('creator_transactions_button', 'My posted transactions')}
             </button>
           </TooltipWrapper>
         )}
@@ -6945,10 +6717,9 @@ const TableManager = forwardRef(function TableManager({
           setPendingTemporaryPromotion(null);
           setTemporaryPromotionQueue([]);
           setActiveTemporaryDraftId(null);
-          setReviewNotes('');
         }}
         onSubmit={handleSubmit}
-        onSaveTemporary={allowTemporarySave ? handleSaveTemporary : null}
+        onSaveTemporary={canSaveTemporaryDraft ? handleSaveTemporary : null}
         onChange={handleFieldChange}
         columns={formColumns}
         row={editing}
@@ -6987,7 +6758,7 @@ const TableManager = forwardRef(function TableManager({
         onRowsChange={handleRowsChange}
         autoFillSession={autoFillSession}
         scope="forms"
-        allowTemporarySave={allowTemporarySave}
+        allowTemporarySave={canSaveTemporaryDraft}
         isAdding={isAdding}
         canPost={canPostTransactions}
         forceEditable={guardOverridesActive}
@@ -6998,14 +6769,6 @@ const TableManager = forwardRef(function TableManager({
         posApiInfoEndpointConfig={formConfig?.infoEndpointConfig || {}}
         posApiReceiptTypes={formConfig?.posApiReceiptTypes || []}
         posApiPaymentMethods={formConfig?.posApiPaymentMethods || []}
-        reviewMode={isTemporaryReviewMode}
-        reviewNotes={reviewNotes}
-        onReviewNotesChange={setReviewNotes}
-        onRejectReview={
-          isTemporaryReviewMode && pendingTemporaryPromotion?.id
-            ? () => rejectTemporary(pendingTemporaryPromotion.id, reviewNotes)
-            : null
-        }
       />
       <CascadeDeleteModal
         visible={showCascade}
@@ -7056,113 +6819,6 @@ const TableManager = forwardRef(function TableManager({
         columnCaseMap={columnCaseMap}
         configs={allConfigs}
       />
-      <Modal
-        visible={showCreatorTransactions}
-        onClose={() => {
-          setShowCreatorTransactions(false);
-          setCreatorTransactionsError('');
-        }}
-        title={t('creator_transactions_title', 'My posted transactions')}
-        width="70vw"
-      >
-        {creatorTransactionsError && (
-          <div className="text-red-600 mb-2">{creatorTransactionsError}</div>
-        )}
-        {creatorTransactionsLoading ? (
-          <p>{t('loading', 'Loading')}...</p>
-        ) : creatorTransactions.length === 0 ? (
-          <p>{t('creator_transactions_empty', 'No posted transactions found.')}</p>
-        ) : (
-          <div style={{ maxHeight: '60vh', overflowY: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-              <thead>
-                <tr>
-                  {creatorDisplayColumns.map((col) => (
-                    <th
-                      key={col}
-                      style={{
-                        borderBottom: '1px solid #d1d5db',
-                        textAlign: 'left',
-                        padding: '0.25rem',
-                      }}
-                    >
-                      {labels[col] || col}
-                    </th>
-                  ))}
-                  <th
-                    style={{
-                      borderBottom: '1px solid #d1d5db',
-                      textAlign: 'right',
-                      padding: '0.25rem',
-                    }}
-                  >
-                    {t('actions', 'Actions')}
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {creatorTransactions.map((row, index) => {
-                  const rowId = getRowId(row);
-                  const rowKey =
-                    rowId === undefined || rowId === null ? `creator-${index}` : rowId;
-                  return (
-                    <tr key={rowKey}>
-                      {creatorDisplayColumns.map((col) => (
-                        <td
-                          key={`${rowKey}-${col}`}
-                          style={{
-                            borderBottom: '1px solid #f3f4f6',
-                            padding: '0.25rem',
-                            fontSize: '0.85rem',
-                          }}
-                        >
-                          {formatTemporaryFieldValue(col, row[col])}
-                        </td>
-                      ))}
-                      <td
-                        style={{
-                          borderBottom: '1px solid #f3f4f6',
-                          padding: '0.25rem',
-                          textAlign: 'right',
-                        }}
-                      >
-                        <button
-                          type="button"
-                          onClick={() => handleRequestEditRow(row)}
-                          style={{
-                            marginRight: '0.25rem',
-                            padding: '0.25rem 0.5rem',
-                            backgroundColor: '#e5e7eb',
-                            border: 'none',
-                            borderRadius: '4px',
-                            cursor: 'pointer',
-                          }}
-                        >
-                          {t('request_edit', 'Request Edit')}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleRequestDelete(row)}
-                          style={{
-                            padding: '0.25rem 0.5rem',
-                            backgroundColor: '#f87171',
-                            color: '#fff',
-                            border: 'none',
-                            borderRadius: '4px',
-                            cursor: 'pointer',
-                          }}
-                        >
-                          {t('request_delete', 'Request Delete')}
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </Modal>
       <Modal
         visible={showTemporaryModal}
         onClose={() => setShowTemporaryModal(false)}
