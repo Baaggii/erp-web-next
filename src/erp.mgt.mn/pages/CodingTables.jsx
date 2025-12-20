@@ -1803,18 +1803,6 @@ export default function CodingTablesPage() {
         setErrorMessage(failureMessage);
         errGroups[failureMessage] = (errGroups[failureMessage] || 0) + rowCount;
         failedAll.push(`${stmt} -- ${failureMessage}`);
-        if (insertedVal === 0) {
-          failedNoInsert.push(`${stmt} -- ${failureMessage}`);
-        }
-        if (insertedVal > 0) {
-          if (isOtherTable) {
-            otherInserted += insertedVal;
-          } else {
-            mainInserted += insertedVal;
-          }
-          totalInserted += insertedVal;
-          setInsertedCount(totalInserted);
-        }
         abortCtrlRef.current = null;
         setUploadProgress({ done: i + 1, total: statements.length });
         continue;
@@ -2406,43 +2394,39 @@ export default function CodingTablesPage() {
       } = await runStatements(statements);
       if (failedNoInsert.length > 0) {
         const tbl = cleanIdentifier(tableName);
-        const moveCandidates = failedNoInsert.filter((stmt) =>
-          new RegExp(`INSERT INTO\\s+\`${tbl}\`\\b`, 'i').test(stmt) &&
-          !/\b_other\b/i.test(stmt)
-        );
-        if (moveCandidates.length > 0) {
-          const moveSql = moveCandidates
-            .map((stmt) =>
-              stmt.replace(
-                new RegExp(`INSERT INTO\\s+\`${tbl}\``, 'i'),
-                `INSERT INTO \`${tbl}_other\``
-              )
-            )
-            .join('\n');
-          setSqlMove(moveSql);
-          const resMove = await fetch('/api/generated_sql/execute', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ sql: moveSql }),
-            credentials: 'include',
-          });
-          if (resMove.ok) {
-            const dataMove = await resMove.json().catch(() => ({}));
-            if (typeof dataMove.inserted === 'number') {
-              oInserted += dataMove.inserted;
+        const moveSql = failedNoInsert
+          .map((stmt) => {
+            const re = new RegExp(`INSERT INTO\\s+\`${tbl}\``, 'i');
+            if (re.test(stmt) && !/\_other`/i.test(stmt)) {
+              return stmt.replace(re, `INSERT INTO \`${tbl}_other\``);
             }
-            if (Array.isArray(dataMove.failed) && dataMove.failed.length > 0) {
-              setSqlMove((prev) => {
-                const failedSql = dataMove.failed
-                  .map((f) =>
-                    typeof f === 'string' ? f : `${f.sql} -- ${f.error}`,
-                  )
-                  .join('\n');
-                if (!prev) return failedSql;
-                if (prev.includes(failedSql)) return prev;
-                return `${prev}\n${failedSql}`;
-              });
-            }
+            return stmt;
+          })
+          .join('\n');
+        setSqlMove(moveSql);
+        const resMove = await fetch('/api/generated_sql/execute', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sql: moveSql }),
+          credentials: 'include',
+        });
+        if (!resMove.ok) {
+        } else {
+          const dataMove = await resMove.json().catch(() => ({}));
+          if (typeof dataMove.inserted === 'number') {
+            oInserted += dataMove.inserted;
+          }
+          if (Array.isArray(dataMove.failed) && dataMove.failed.length > 0) {
+            setSqlMove((prev) => {
+              const failedSql = dataMove.failed
+                .map((f) =>
+                  typeof f === 'string' ? f : `${f.sql} -- ${f.error}`,
+                )
+                .join('\n');
+              if (!prev) return failedSql;
+              if (prev.includes(failedSql)) return prev;
+              return `${prev}\n${failedSql}`;
+            });
           }
         }
       }

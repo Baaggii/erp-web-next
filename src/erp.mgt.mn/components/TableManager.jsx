@@ -575,8 +575,6 @@ const TableManager = forwardRef(function TableManager({
     return Boolean(value);
   };
   const hasDirectSenior = hasSenior(session?.senior_empid);
-  const hasPlanSenior = hasSenior(session?.senior_plan_empid);
-  const hasAnySenior = hasDirectSenior || hasPlanSenior;
   const temporaryReviewer =
     Boolean(temporarySummary?.isReviewer) ||
     Number(temporarySummary?.reviewPending) > 0;
@@ -606,7 +604,9 @@ const TableManager = forwardRef(function TableManager({
     }
     return null;
   }, [hasSenior, session?.employment, session?.employment_senior_empid, user?.employment, user?.employment_senior_empid]);
-  const isSubordinate = hasAnySenior;
+  const hasEmploymentSenior = hasSenior(employmentSeniorId);
+  const hasTransactionSenior = hasDirectSenior || hasEmploymentSenior;
+  const isSubordinate = hasTransactionSenior;
   const generalConfig = useGeneralConfig();
   const txnToastEnabled = generalConfig.general?.txnToastEnabled;
   const ebarimtToastEnabled = generalConfig.general?.ebarimtToastEnabled;
@@ -685,15 +685,14 @@ const TableManager = forwardRef(function TableManager({
   );
   const canCreateTemporary = Boolean(accessEvaluation.allowTemporary);
   const isSenior =
-    Boolean(user?.empid) && (!hasAnySenior || temporaryReviewer);
+    Boolean(user?.empid) && (!hasTransactionSenior || temporaryReviewer);
   const canReviewTemporary =
-    formSupportsTemporary && Boolean(user?.empid) && (!hasAnySenior || temporaryReviewer);
+    formSupportsTemporary &&
+    Boolean(user?.empid) &&
+    (!hasTransactionSenior || temporaryReviewer);
   const supportsTemporary =
     formSupportsTemporary &&
     (canCreateTemporary || canReviewTemporary || temporaryReviewer);
-  const hasEmploymentSenior = Boolean(
-    session?.employment_senior_empid || user?.employment_senior_empid,
-  );
   const isEditingTemporaryDraft = activeTemporaryDraftId != null;
   const canSaveTemporaryDraft = canCreateTemporary || isEditingTemporaryDraft;
   const canPostTransactions =
@@ -726,7 +725,9 @@ const TableManager = forwardRef(function TableManager({
   }, [pendingTemporaryPromotion]);
 
   const shouldShowForwardTemporaryLabel =
-    Boolean(pendingTemporaryPromotion) && hasAnySenior && pendingPromotionHasSeniorAbove;
+    Boolean(pendingTemporaryPromotion) &&
+    hasTransactionSenior &&
+    pendingPromotionHasSeniorAbove;
   const temporarySaveLabel = shouldShowForwardTemporaryLabel
     ? t('save_temporary_forward', 'Save as Temporary and Forward')
     : null;
@@ -3548,7 +3549,7 @@ const TableManager = forwardRef(function TableManager({
   }
 
   async function handleSaveTemporary(submission) {
-    if (!canSaveTemporaryDraft || !hasEmploymentSenior) return false;
+    if (!canSaveTemporaryDraft || !hasTransactionSenior) return false;
     if (!submission || typeof submission !== 'object') return false;
     const cloneValue = (value) => {
       if (value === undefined) return undefined;
@@ -5679,7 +5680,9 @@ const TableManager = forwardRef(function TableManager({
   const showCreatorActions = canCreateTemporary && temporaryScope === 'created';
   const isTemporaryReviewMode = canReviewTemporary && temporaryScope === 'review';
   const temporarySaveEnabled =
-    canSaveTemporaryDraft && (!isTemporaryReviewMode || shouldShowForwardTemporaryLabel);
+    canSaveTemporaryDraft &&
+    hasTransactionSenior &&
+    (!isTemporaryReviewMode || shouldShowForwardTemporaryLabel);
 
   const temporaryDetailColumns = useMemo(() => {
     const valueKeys = new Set();
