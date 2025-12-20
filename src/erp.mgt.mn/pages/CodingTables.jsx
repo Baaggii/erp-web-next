@@ -1710,9 +1710,10 @@ export default function CodingTablesPage() {
       return '';
     };
     interruptRef.current = false;
-    abortCtrlRef.current = new AbortController();
     for (let i = 0; i < statements.length; i++) {
       if (interruptRef.current) break;
+      const controller = new AbortController();
+      abortCtrlRef.current = controller;
       let stmt = statements[i];
       const progressMatch = stmt.match(/^--\s*Progress:\s*(.*)\n/);
       if (progressMatch) {
@@ -1745,7 +1746,7 @@ export default function CodingTablesPage() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ sql: stmt }),
           credentials: 'include',
-          signal: abortCtrlRef.current.signal,
+          signal: controller.signal,
         });
       } catch (err) {
         if (err.name === 'AbortError') {
@@ -1846,6 +1847,7 @@ export default function CodingTablesPage() {
       setInsertedCount(totalInserted);
       addToast(`Inserted ${totalInserted} records`, 'info');
       setUploadProgress({ done: i + 1, total: statements.length });
+      abortCtrlRef.current = null;
       if (i < statements.length - 1) {
         await new Promise((r) => setTimeout(r, 250));
       }
