@@ -8,7 +8,15 @@ The configuration file lives at `config/tableDisplayFields.json` and has the fol
 {
   "tbl_employee": {
     "idField": "emp_id",
-    "displayFields": ["emp_fname", "emp_lname"]
+    "displayFields": ["emp_fname", "emp_lname"],
+    "filters": [
+      {
+        "filterColumn": "status",
+        "filterValue": "active",
+        "idField": "emp_id",
+        "displayFields": ["emp_fname", "emp_lname", "emp_dept"]
+      }
+    ]
   }
 }
 ```
@@ -17,3 +25,8 @@ Applications can fetch or update this information via `/api/display_fields`.
 To remove a configuration for a table, send a `DELETE` request to
 `/api/display_fields?table=TABLE_NAME`.
 
+To request the configuration that matches a specific relation filter, include `filterColumn` and (optionally) `filterValue` query parameters:
+
+```
+/api/display_fields?table=tbl_employee&filterColumn=status&filterValue=active
+```
