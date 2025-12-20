@@ -153,14 +153,13 @@ router.post('/', requireAuth, async (req, res, next) => {
 
 router.post('/:id/promote', requireAuth, async (req, res, next) => {
   try {
-    const { notes, cleanedValues, promoteAsTemporary = false } = req.body || {};
+    const { notes, cleanedValues } = req.body || {};
     const io = req.app.get('io');
     const result = await promoteTemporarySubmission(req.params.id, {
       reviewerEmpId: req.user.empid,
       notes,
       io,
       cleanedValues,
-      promoteAsTemporary,
     });
     res.json(result);
   } catch (err) {

@@ -5919,32 +5919,9 @@ export async function listTransactions({
   refCol,
   refVal,
   company_id,
-  originalCreatorEmpId,
 } = {}) {
   if (!table || !/^[a-zA-Z0-9_]+$/.test(table)) {
     throw new Error('Invalid table');
-  }
-  const normalizedOriginalCreator =
-    originalCreatorEmpId === undefined || originalCreatorEmpId === null
-      ? ''
-      : String(originalCreatorEmpId).trim().toUpperCase();
-  let enforceOriginalCreator = false;
-  if (normalizedOriginalCreator) {
-    const [creatorColumns] = await pool.query(
-      `SELECT COLUMN_NAME
-         FROM INFORMATION_SCHEMA.COLUMNS
-        WHERE TABLE_SCHEMA = DATABASE()
-          AND TABLE_NAME = ?
-          AND LOWER(COLUMN_NAME) = 'original_creator_empid'
-        LIMIT 1`,
-      [table],
-    );
-    const hasOriginalCreatorColumn =
-      Array.isArray(creatorColumns) && creatorColumns.length > 0;
-    if (!hasOriginalCreatorColumn) {
-      return { rows: [], count: 0 };
-    }
-    enforceOriginalCreator = true;
   }
   const clauses = [];
   const params = [];
@@ -5967,10 +5944,6 @@ export async function listTransactions({
   if (refCol && /^[a-zA-Z0-9_]+$/.test(refCol)) {
     clauses.push(`${refCol} = ?`);
     params.push(refVal);
-  }
-  if (enforceOriginalCreator) {
-    clauses.push('original_creator_empid = ?');
-    params.push(normalizedOriginalCreator);
   }
   const where = clauses.length > 0 ? 'WHERE ' + clauses.join(' AND ') : '';
 
@@ -7654,7 +7627,6 @@ export async function getProcedureRawRows(
       return -1;
     })();
     let primaryFields = [];
-    let selectableFields = [];
     let table = '';
     if (fromIdx !== -1) {
       const fieldsPart = sql.slice(6, fromIdx);
@@ -7686,7 +7658,6 @@ export async function getProcedureRawRows(
         const prefix = alias ? `${alias}.` : '';
         // Collect fields from primary table
         const fields = [];
-        const selectAliases = [];
         let buf = '';
         let depth = 0;
         for (let i = 0; i < fieldsPart.length; i++) {
@@ -7705,15 +7676,14 @@ export async function getProcedureRawRows(
           const cleaned = field.replace(/`/g, '').trim();
           const lower = cleaned.toLowerCase();
           if (/(?:sum|count|avg|min|max)\s*\(/i.test(lower)) continue;
-          const aliasMatch = field.match(/(?:AS\s+)?`?([a-zA-Z0-9_]+)`?\s*$/i);
-          const alias = aliasMatch
-            ? aliasMatch[1]
-            : cleaned.slice(prefix ? prefix.length : 0).split(/\s+/)[0];
-          if (alias) selectAliases.push(alias);
           if (
             (prefix && cleaned.startsWith(prefix)) ||
             (!prefix && !cleaned.includes('.'))
           ) {
+            const m = field.match(/(?:AS\s+)?`?([a-zA-Z0-9_]+)`?\s*$/i);
+            const alias = m
+              ? m[1]
+              : cleaned.slice(prefix ? prefix.length : 0).split(/\s+/)[0];
             if (
               columnWasAggregated &&
               alias.toLowerCase() === String(column).toLowerCase()
@@ -7723,7 +7693,6 @@ export async function getProcedureRawRows(
             primaryFields.push(alias);
           }
         }
-        selectableFields = selectAliases;
         try {
           const { path: tfPath } = await getConfigPath('transactionForms.json');
           const txt = await fs.readFile(tfPath, 'utf8');
@@ -7786,18 +7755,11 @@ export async function getProcedureRawRows(
       groupValue !== undefined ||
       (Array.isArray(extraConditions) && extraConditions.length)
     ) {
-      const availableFields = new Set(
-        [...primaryFields, ...selectableFields].map((f) =>
-          String(f).toLowerCase(),
-        ),
-      );
+      const pfSet = new Set(primaryFields.map((f) => String(f).toLowerCase()));
       const clauses = [];
-      function formatVal(field, val, typeOverride) {
+      function formatVal(field, val) {
         if (val === undefined || val === null || val === '') return null;
-        const type =
-          typeOverride ??
-          fieldTypes[String(field).toLowerCase()] ??
-          '';
+        const type = fieldTypes[String(field).toLowerCase()] || '';
         if (/int|decimal|float|double|bit|year/.test(type)) {
           const num = Number(val);
           return Number.isNaN(num) ? mysql.escape(val) : String(num);
@@ -7834,50 +7796,26 @@ export async function getProcedureRawRows(
         }
         return mysql.escape(val);
       }
-      const parseYearMonth = (val) => {
-        if (val === undefined || val === null || val === '') return null;
-        if (val instanceof Date && !Number.isNaN(val.getTime())) {
-          return { year: val.getFullYear(), month: val.getMonth() + 1 };
-        }
-        const str = String(val).trim();
-        const m = str.match(/^(\d{4})[-/](\d{1,2})(?:[-/]\d{1,2})?/);
-        if (!m) return null;
-        const year = Number(m[1]);
-        const month = Number(m[2]);
-        if (!Number.isFinite(year) || !Number.isFinite(month)) return null;
-        if (month < 1 || month > 12) return null;
-        return { year, month };
-      };
-      const buildClause = (fieldName, rawValue) => {
-        const normalizedField = String(fieldName).split('.').pop();
-        if (!normalizedField) return null;
-        const lower = normalizedField.toLowerCase();
-        if (!availableFields.has(lower)) return null;
-        const type = fieldTypes[lower] || '';
-        const ym = parseYearMonth(rawValue);
-        if (ym && (!type || /(date|datetime|timestamp)/.test(type))) {
-          const safeField = escapeIdentifier(normalizedField);
-          return `YEAR(${safeField}) = ${ym.year} AND MONTH(${safeField}) = ${ym.month}`;
-        }
-        const formatted = formatVal(normalizedField, rawValue, type);
-        if (formatted === null) return null;
-        return `${escapeIdentifier(normalizedField)} = ${formatted}`;
-      };
       if (
         groupValue !== undefined &&
         groupValue !== null &&
         groupValue !== '' &&
         groupField
       ) {
-        const clause = buildClause(groupField, groupValue);
-        if (clause) clauses.push(clause);
+        const gf = String(groupField).split('.').pop();
+        if (pfSet.has(gf.toLowerCase())) {
+          const formatted = formatVal(gf, groupValue);
+          if (formatted !== null) clauses.push(`${gf} = ${formatted}`);
+        }
       }
       if (Array.isArray(extraConditions)) {
         for (const { field, value } of extraConditions) {
           if (!field) continue;
           if (value === undefined || value === null || value === '') continue;
-          const clause = buildClause(field, value);
-          if (clause) clauses.push(clause);
+          const f = String(field).split('.').pop();
+          if (!pfSet.has(f.toLowerCase())) continue;
+          const formatted = formatVal(f, value);
+          if (formatted !== null) clauses.push(`${f} = ${formatted}`);
         }
       }
       if (clauses.length) {
