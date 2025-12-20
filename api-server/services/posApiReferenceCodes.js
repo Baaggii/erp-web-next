@@ -353,11 +353,8 @@ async function upsertReferenceCodes(codeType, codes) {
        WHERE id IN (${staleIds.map(() => '?').join(',')})`,
       staleIds,
     );
-    added = Number(result?.affectedRows) || normalizedCodes.length;
+    deactivated = staleIds.length;
   }
-
-  // Report rows removed before insert as deactivated for visibility.
-  const deactivated = existingCount;
 
   return { added, updated, deactivated };
 }
