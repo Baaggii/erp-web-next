@@ -1766,13 +1766,7 @@ export default function CodingTablesPage() {
         );
       }
       if (data.aborted) {
-        const detailMsg =
-          data.message ||
-          data.lastError ||
-          (Array.isArray(data.failed) && data.failed.length > 0
-            ? data.failed[data.failed.length - 1]?.error
-            : '');
-        ensureErrorMessage(detailMsg || 'Execution was interrupted');
+        ensureErrorMessage(data.message || 'Execution was interrupted');
         abortCtrlRef.current = null;
         return {
           inserted: totalInserted,
