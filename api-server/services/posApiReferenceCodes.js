@@ -289,12 +289,17 @@ async function appendSyncLog(entry) {
 
 async function upsertReferenceCodes(codeType, codes) {
   if (!codeType || !Array.isArray(codes)) return { added: 0, updated: 0, deactivated: 0 };
-  const normalizedCodes = codes
-    .map((entry) => ({
-      code: String(entry.code || '').trim(),
-      name: entry.name ? String(entry.name).trim() : null,
-    }))
-    .filter((entry) => entry.code);
+  const normalizedCodes = [];
+  const seenCodes = new Set();
+  codes.forEach((entry) => {
+    const code = String(entry?.code || '').trim();
+    if (!code || seenCodes.has(code)) return;
+    seenCodes.add(code);
+    normalizedCodes.push({
+      code,
+      name: entry?.name ? String(entry.name).trim() : null,
+    });
+  });
 
   if (!normalizedCodes.length) return { added: 0, updated: 0, deactivated: 0 };
 
@@ -302,46 +307,27 @@ async function upsertReferenceCodes(codeType, codes) {
     'SELECT id, code, is_active FROM ebarimt_reference_code WHERE code_type = ?',
     [codeType],
   );
-  const existingMap = new Map();
-  existingRows.forEach((row) => existingMap.set(row.code, row));
+  const existingCount = Array.isArray(existingRows) ? existingRows.length : 0;
+  if (existingCount > 0) {
+    await pool.query('DELETE FROM ebarimt_reference_code WHERE code_type = ?', [codeType]);
+  }
 
   let added = 0;
   let updated = 0;
 
-  for (const entry of normalizedCodes) {
-    const current = existingMap.get(entry.code);
-    if (!current) {
-      await pool.query(
-        `INSERT INTO ebarimt_reference_code (code_type, code, name, is_active)
-         VALUES (?, ?, ?, 1)`,
-        [codeType, entry.code, entry.name],
-      );
-      added += 1;
-    } else {
-      await pool.query(
-        `UPDATE ebarimt_reference_code
-         SET name = ?, is_active = 1
-         WHERE id = ?`,
-        [entry.name, current.id],
-      );
-      updated += 1;
-      existingMap.delete(entry.code);
-    }
+  const placeholders = normalizedCodes.map(() => '(?, ?, ?, 1)').join(',');
+  const values = normalizedCodes.flatMap((entry) => [codeType, entry.code, entry.name]);
+  if (placeholders) {
+    const [result] = await pool.query(
+      `INSERT INTO ebarimt_reference_code (code_type, code, name, is_active)
+       VALUES ${placeholders}`,
+      values,
+    );
+    added = Number(result?.affectedRows) || normalizedCodes.length;
   }
 
-  const staleIds = Array.from(existingMap.values())
-    .filter((row) => row.is_active)
-    .map((row) => row.id);
-  let deactivated = 0;
-  if (staleIds.length) {
-    await pool.query(
-      `UPDATE ebarimt_reference_code
-       SET is_active = 0
-       WHERE id IN (${staleIds.map(() => '?').join(',')})`,
-      staleIds,
-    );
-    deactivated = staleIds.length;
-  }
+  // Report rows removed before insert as deactivated for visibility.
+  const deactivated = existingCount;
 
   return { added, updated, deactivated };
 }
@@ -439,6 +425,32 @@ async function applyFieldMappings({ response, mappings }) {
     const rows = Array.from(rowMap.values());
     if (rows.length === 0) continue;
     tableRows[table] = (tableRows[table] || 0) + rows.length;
+
+    // Special-case reference code table so refreshes de-duplicate rows using upsertReferenceCodes
+    if (table === 'ebarimt_reference_code') {
+      const codesByType = new Map();
+      rows.forEach((row) => {
+        if (!row || typeof row !== 'object') return;
+        const codeType = String(row.code_type || row.codeType || '').trim();
+        const code = String(row.code || '').trim();
+        if (!codeType || !code) return;
+        const name = row.name === undefined || row.name === null ? null : String(row.name).trim();
+        const list = codesByType.get(codeType) || [];
+        list.push({ code, name });
+        codesByType.set(codeType, list);
+      });
+      if (codesByType.size > 0) {
+        for (const [codeType, codes] of codesByType.entries()) {
+          const result = await upsertReferenceCodes(codeType, codes);
+          totalRows +=
+            (Number(result?.added) || 0)
+            + (Number(result?.updated) || 0)
+            + (Number(result?.deactivated) || 0);
+        }
+        continue;
+      }
+    }
+
     const columns = Array.from(
       new Set(
         rows
@@ -538,6 +550,42 @@ export async function runReferenceCodeSync(trigger = 'manual', options = {}) {
         throw new Error(`Endpoint ${endpoint.id} has no valid responseFieldMappings`);
       }
       const response = await invokePosApiEndpoint(endpoint.id, {}, { endpoint });
+      const parsedCodes = parseCodesFromEndpoint(endpoint.id, response);
+      if (parsedCodes.length > 0) {
+        const codesByType = new Map();
+        parsedCodes.forEach((entry) => {
+          const codeType = String(entry?.code_type || '').trim();
+          const codeValue = String(entry?.code || '').trim();
+          if (!codeType || !codeValue) return;
+          const name = entry?.name ? String(entry.name).trim() : null;
+          const typeMap = codesByType.get(codeType) || new Map();
+          if (!typeMap.has(codeValue)) {
+            typeMap.set(codeValue, { code: codeValue, name });
+            codesByType.set(codeType, typeMap);
+          }
+        });
+        const summaryTotals = { added: 0, updated: 0, deactivated: 0 };
+        for (const [codeType, codesMap] of codesByType.entries()) {
+          const codes = Array.from(codesMap.values());
+          const result = await upsertReferenceCodes(codeType, codes);
+          summaryTotals.added += Number(result?.added) || 0;
+          summaryTotals.updated += Number(result?.updated) || 0;
+          summaryTotals.deactivated += Number(result?.deactivated) || 0;
+          const affectedRows =
+            (Number(result?.added) || 0)
+            + (Number(result?.updated) || 0)
+            + (Number(result?.deactivated) || 0);
+          summary.tableRows.ebarimt_reference_code =
+            (summary.tableRows.ebarimt_reference_code || 0)
+            + (affectedRows || codes.length || 0);
+        }
+        summary.totalTypes += codesByType.size;
+        summary.added += summaryTotals.added;
+        summary.updated += summaryTotals.updated;
+        summary.deactivated += summaryTotals.deactivated;
+        summary.successful += 1;
+        continue;
+      }
       const result = await applyFieldMappings({ response, mappings });
       summary.updated += Number(result?.rows) || 0;
       if (result?.tableRows && typeof result.tableRows === 'object') {

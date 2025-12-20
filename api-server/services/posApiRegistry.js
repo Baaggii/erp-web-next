@@ -32,6 +32,7 @@ function mergeEndpointSettings(endpoint, settings) {
     'supportsMultipleReceipts',
     'supportsMultiplePayments',
     'receiptTypes',
+    'taxTypes',
     'paymentMethods',
     'receiptTypeDescriptions',
     'paymentMethodDescriptions',
