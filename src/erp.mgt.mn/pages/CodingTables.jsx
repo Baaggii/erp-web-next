@@ -1810,14 +1810,13 @@ export default function CodingTablesPage() {
         );
       }
       if (data.aborted) {
-        ensureErrorMessage(data.message || 'Execution was interrupted');
-        abortCtrlRef.current = null;
-        return {
-          inserted: totalInserted,
-          failed: failedAll,
-          aborted: true,
-          errorMessage: errorMessage || 'Execution was interrupted',
-        };
+        const abortMsg =
+          data.message || errorMessage || 'Execution was interrupted';
+        ensureErrorMessage(abortMsg);
+        errGroups[abortMsg] = (errGroups[abortMsg] || 0) + rowCount;
+        failedAll.push(`${stmt} -- ${abortMsg}`);
+        setUploadProgress({ done: i + 1, total: statements.length });
+        continue;
       }
       const inserted = data.inserted || 0;
       if (Array.isArray(data.failed) && data.failed.length > 0) {
