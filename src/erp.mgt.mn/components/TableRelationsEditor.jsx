@@ -17,11 +17,37 @@ function normalizeColumns(list) {
     .sort((a, b) => a.localeCompare(b));
 }
 
-function buildRelationSummary(relations) {
+function buildRelationSummary(relations, customRelationsMap = {}) {
   if (!Array.isArray(relations)) return [];
   return relations
     .filter((rel) => rel && rel.COLUMN_NAME)
-    .map((rel, order) => ({ ...rel, __order: order }))
+    .map((rel, order) => {
+      if (rel?.source !== 'custom') return { ...rel, __order: order };
+      const customList = customRelationsMap?.[rel.COLUMN_NAME];
+      const match =
+        Array.isArray(customList) && Number.isInteger(rel?.configIndex)
+          ? customList[rel.configIndex]
+          : null;
+      if (!match || typeof match !== 'object') return { ...rel, __order: order };
+      return {
+        ...rel,
+        ...(match.idField ? { idField: match.idField } : {}),
+        ...(Array.isArray(match.displayFields)
+          ? { displayFields: match.displayFields }
+          : {}),
+        ...(match.combinationSourceColumn && !rel.combinationSourceColumn
+          ? { combinationSourceColumn: match.combinationSourceColumn }
+          : {}),
+        ...(match.combinationTargetColumn && !rel.combinationTargetColumn
+          ? { combinationTargetColumn: match.combinationTargetColumn }
+          : {}),
+        ...(match.filterColumn ? { filterColumn: match.filterColumn } : {}),
+        ...(match.filterValue !== undefined && match.filterValue !== null
+          ? { filterValue: match.filterValue }
+          : {}),
+        __order: order,
+      };
+    })
     .sort((a, b) => {
       const col = a.COLUMN_NAME.localeCompare(b.COLUMN_NAME);
       if (col !== 0) return col;

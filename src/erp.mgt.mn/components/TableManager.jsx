@@ -1529,6 +1529,10 @@ const TableManager = forwardRef(function TableManager({
           relMap[lower] = {
             table: entry.REFERENCED_TABLE_NAME,
             column: entry.REFERENCED_COLUMN_NAME,
+            ...(entry.idField ? { idField: entry.idField } : {}),
+            ...(Array.isArray(entry.displayFields)
+              ? { displayFields: entry.displayFields }
+              : {}),
             ...(entry.combinationSourceColumn
               ? { combinationSourceColumn: entry.combinationSourceColumn }
               : {}),
@@ -1712,8 +1716,12 @@ const TableManager = forwardRef(function TableManager({
       if (canceled) return null;
 
       const normalizedCfg = {
-        idField: cfg?.idField ?? rel.column,
-        displayFields: Array.isArray(cfg?.displayFields) ? cfg.displayFields : [],
+        idField: rel.idField || cfg?.idField || rel.column,
+        displayFields: Array.isArray(rel.displayFields)
+          ? rel.displayFields
+          : Array.isArray(cfg?.displayFields)
+          ? cfg.displayFields
+          : [],
       };
       if (typeof cfg?.indexField === 'string' && cfg.indexField.trim()) {
         normalizedCfg.indexField = cfg.indexField.trim();
@@ -1871,6 +1879,8 @@ const TableManager = forwardRef(function TableManager({
           relationMap[key] = {
             table: r.REFERENCED_TABLE_NAME,
             column: r.REFERENCED_COLUMN_NAME,
+            ...(r.idField ? { idField: r.idField } : {}),
+            ...(Array.isArray(r.displayFields) ? { displayFields: r.displayFields } : {}),
             ...(r.combinationSourceColumn
               ? { combinationSourceColumn: r.combinationSourceColumn }
               : {}),
