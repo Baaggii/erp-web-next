@@ -3,9 +3,9 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: localhost:3306
--- Generation Time: Dec 09, 2025 at 06:29 PM
--- Server version: 8.0.43-cll-lve
--- PHP Version: 8.4.14
+-- Generation Time: Dec 20, 2025 at 10:08 PM
+-- Server version: 8.0.44-cll-lve
+-- PHP Version: 8.4.16
 
 SET SQL_MODE = "NO_AUTO_VALUE_ON_ZERO";
 START TRANSACTION;
@@ -27,6 +27,7 @@ SET time_zone = "+00:00";
 -- Table structure for table `audit_log`
 --
 
+DROP TABLE IF EXISTS `audit_log`;
 CREATE TABLE `audit_log` (
   `id` int NOT NULL,
   `table_name` varchar(255) DEFAULT NULL,
@@ -50,6 +51,7 @@ CREATE TABLE `audit_log` (
 -- Table structure for table `code_band`
 --
 
+DROP TABLE IF EXISTS `code_band`;
 CREATE TABLE `code_band` (
   `band_id` bigint NOT NULL,
   `band_code` varchar(64) NOT NULL,
@@ -69,6 +71,7 @@ CREATE TABLE `code_band` (
 -- Table structure for table `code_bayarodor`
 --
 
+DROP TABLE IF EXISTS `code_bayarodor`;
 CREATE TABLE `code_bayarodor` (
   `id` int NOT NULL,
   `fest_year` int NOT NULL,
@@ -88,6 +91,7 @@ CREATE TABLE `code_bayarodor` (
 -- Table structure for table `code_bkod`
 --
 
+DROP TABLE IF EXISTS `code_bkod`;
 CREATE TABLE `code_bkod` (
   `id` int NOT NULL,
   `bkod` varchar(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL,
@@ -112,6 +116,7 @@ CREATE TABLE `code_bkod` (
 -- Table structure for table `code_bkodprim`
 --
 
+DROP TABLE IF EXISTS `code_bkodprim`;
 CREATE TABLE `code_bkodprim` (
   `id` int NOT NULL,
   `bkod_Tk` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL,
@@ -153,6 +158,7 @@ CREATE TABLE `code_bkodprim` (
 -- Table structure for table `code_branches`
 --
 
+DROP TABLE IF EXISTS `code_branches`;
 CREATE TABLE `code_branches` (
   `id` int NOT NULL,
   `branch_id` int NOT NULL,
@@ -171,6 +177,7 @@ CREATE TABLE `code_branches` (
 -- Table structure for table `code_calendar_days`
 --
 
+DROP TABLE IF EXISTS `code_calendar_days`;
 CREATE TABLE `code_calendar_days` (
   `id` int NOT NULL,
   `company_id` int NOT NULL DEFAULT '0',
@@ -192,6 +199,7 @@ CREATE TABLE `code_calendar_days` (
 -- Table structure for table `code_cashier`
 --
 
+DROP TABLE IF EXISTS `code_cashier`;
 CREATE TABLE `code_cashier` (
   `id` int NOT NULL,
   `cahier_id` int NOT NULL,
@@ -210,6 +218,7 @@ CREATE TABLE `code_cashier` (
 -- Table structure for table `code_chiglel`
 --
 
+DROP TABLE IF EXISTS `code_chiglel`;
 CREATE TABLE `code_chiglel` (
   `id` int NOT NULL,
   `chig_id` int NOT NULL,
@@ -228,6 +237,7 @@ CREATE TABLE `code_chiglel` (
 -- Table structure for table `code_department`
 --
 
+DROP TABLE IF EXISTS `code_department`;
 CREATE TABLE `code_department` (
   `id` int NOT NULL,
   `department_id` int DEFAULT NULL,
@@ -246,6 +256,7 @@ CREATE TABLE `code_department` (
 -- Table structure for table `code_edhorongo`
 --
 
+DROP TABLE IF EXISTS `code_edhorongo`;
 CREATE TABLE `code_edhorongo` (
   `id` int NOT NULL,
   `ehkod` varchar(21) NOT NULL,
@@ -284,6 +295,7 @@ CREATE TABLE `code_edhorongo` (
 -- Table structure for table `code_edhorongo_other`
 --
 
+DROP TABLE IF EXISTS `code_edhorongo_other`;
 CREATE TABLE `code_edhorongo_other` (
   `id` int NOT NULL,
   `ehkod` varchar(21) DEFAULT NULL,
@@ -322,6 +334,7 @@ CREATE TABLE `code_edhorongo_other` (
 -- Table structure for table `code_expenseangilal`
 --
 
+DROP TABLE IF EXISTS `code_expenseangilal`;
 CREATE TABLE `code_expenseangilal` (
   `id` int NOT NULL,
   `exp_angilal_id` int NOT NULL,
@@ -340,6 +353,7 @@ CREATE TABLE `code_expenseangilal` (
 -- Table structure for table `code_expensebalancetype`
 --
 
+DROP TABLE IF EXISTS `code_expensebalancetype`;
 CREATE TABLE `code_expensebalancetype` (
   `id` int NOT NULL,
   `exp_balance_angilal_id` int NOT NULL,
@@ -358,6 +372,7 @@ CREATE TABLE `code_expensebalancetype` (
 -- Table structure for table `code_expensebaltype`
 --
 
+DROP TABLE IF EXISTS `code_expensebaltype`;
 CREATE TABLE `code_expensebaltype` (
   `id` int NOT NULL,
   `k1` int NOT NULL,
@@ -380,6 +395,7 @@ CREATE TABLE `code_expensebaltype` (
 -- Table structure for table `code_expensetype`
 --
 
+DROP TABLE IF EXISTS `code_expensetype`;
 CREATE TABLE `code_expensetype` (
   `id` int NOT NULL,
   `expense_type` int NOT NULL,
@@ -398,6 +414,7 @@ CREATE TABLE `code_expensetype` (
 -- Table structure for table `code_expenseutga`
 --
 
+DROP TABLE IF EXISTS `code_expenseutga`;
 CREATE TABLE `code_expenseutga` (
   `id` int NOT NULL,
   `expense_utga_id` int NOT NULL,
@@ -416,6 +433,7 @@ CREATE TABLE `code_expenseutga` (
 -- Table structure for table `code_frequency`
 --
 
+DROP TABLE IF EXISTS `code_frequency`;
 CREATE TABLE `code_frequency` (
   `id` int NOT NULL,
   `frequency_id` int NOT NULL,
@@ -434,6 +452,7 @@ CREATE TABLE `code_frequency` (
 -- Table structure for table `code_incometype`
 --
 
+DROP TABLE IF EXISTS `code_incometype`;
 CREATE TABLE `code_incometype` (
   `id` int NOT NULL,
   `income_type_id` int NOT NULL,
@@ -457,6 +476,7 @@ CREATE TABLE `code_incometype` (
 -- Table structure for table `code_income_priority`
 --
 
+DROP TABLE IF EXISTS `code_income_priority`;
 CREATE TABLE `code_income_priority` (
   `id` int NOT NULL,
   `utility_id` int NOT NULL,
@@ -476,6 +496,7 @@ CREATE TABLE `code_income_priority` (
 -- Table structure for table `code_initiator`
 --
 
+DROP TABLE IF EXISTS `code_initiator`;
 CREATE TABLE `code_initiator` (
   `id` int NOT NULL,
   `initiator` int NOT NULL,
@@ -494,6 +515,7 @@ CREATE TABLE `code_initiator` (
 -- Table structure for table `code_material`
 --
 
+DROP TABLE IF EXISTS `code_material`;
 CREATE TABLE `code_material` (
   `id` int NOT NULL,
   `xmkod` int NOT NULL,
@@ -524,6 +546,7 @@ CREATE TABLE `code_material` (
 -- Table structure for table `code_materialprim`
 --
 
+DROP TABLE IF EXISTS `code_materialprim`;
 CREATE TABLE `code_materialprim` (
   `id` int NOT NULL,
   `xmkodtk` int NOT NULL,
@@ -557,6 +580,7 @@ CREATE TABLE `code_materialprim` (
 -- Table structure for table `code_orav_eseh`
 --
 
+DROP TABLE IF EXISTS `code_orav_eseh`;
 CREATE TABLE `code_orav_eseh` (
   `id` int NOT NULL,
   `av_eseh` int NOT NULL,
@@ -575,6 +599,7 @@ CREATE TABLE `code_orav_eseh` (
 -- Table structure for table `code_penalty`
 --
 
+DROP TABLE IF EXISTS `code_penalty`;
 CREATE TABLE `code_penalty` (
   `id` int NOT NULL,
   `penalty_id` int NOT NULL,
@@ -598,6 +623,7 @@ CREATE TABLE `code_penalty` (
 -- Table structure for table `code_position`
 --
 
+DROP TABLE IF EXISTS `code_position`;
 CREATE TABLE `code_position` (
   `id` int NOT NULL,
   `position_id` int NOT NULL,
@@ -617,6 +643,7 @@ CREATE TABLE `code_position` (
 -- Table structure for table `code_position_other`
 --
 
+DROP TABLE IF EXISTS `code_position_other`;
 CREATE TABLE `code_position_other` (
   `id` int NOT NULL,
   `workplace_id` int DEFAULT NULL,
@@ -637,6 +664,7 @@ CREATE TABLE `code_position_other` (
 -- Table structure for table `code_reason`
 --
 
+DROP TABLE IF EXISTS `code_reason`;
 CREATE TABLE `code_reason` (
   `id` int NOT NULL,
   `reason_id` int NOT NULL,
@@ -656,6 +684,7 @@ CREATE TABLE `code_reason` (
 -- Table structure for table `code_room`
 --
 
+DROP TABLE IF EXISTS `code_room`;
 CREATE TABLE `code_room` (
   `id` int NOT NULL,
   `room_id` int NOT NULL,
@@ -674,6 +703,7 @@ CREATE TABLE `code_room` (
 -- Table structure for table `code_status`
 --
 
+DROP TABLE IF EXISTS `code_status`;
 CREATE TABLE `code_status` (
   `id` int NOT NULL,
   `status` varchar(64) NOT NULL,
@@ -692,6 +722,7 @@ CREATE TABLE `code_status` (
 -- Table structure for table `code_talbai`
 --
 
+DROP TABLE IF EXISTS `code_talbai`;
 CREATE TABLE `code_talbai` (
   `id` int NOT NULL,
   `talbai_id` int NOT NULL,
@@ -710,6 +741,7 @@ CREATE TABLE `code_talbai` (
 -- Table structure for table `code_torol`
 --
 
+DROP TABLE IF EXISTS `code_torol`;
 CREATE TABLE `code_torol` (
   `id` int NOT NULL,
   `torol_id` int NOT NULL,
@@ -729,6 +761,7 @@ CREATE TABLE `code_torol` (
 -- Table structure for table `code_transaction`
 --
 
+DROP TABLE IF EXISTS `code_transaction`;
 CREATE TABLE `code_transaction` (
   `id` int NOT NULL,
   `UITransType` int NOT NULL,
@@ -765,6 +798,7 @@ CREATE TABLE `code_transaction` (
 -- Table structure for table `code_unit`
 --
 
+DROP TABLE IF EXISTS `code_unit`;
 CREATE TABLE `code_unit` (
   `id` int NOT NULL,
   `unit_id` int NOT NULL,
@@ -788,6 +822,7 @@ CREATE TABLE `code_unit` (
 -- Table structure for table `code_userlevel_settings`
 --
 
+DROP TABLE IF EXISTS `code_userlevel_settings`;
 CREATE TABLE `code_userlevel_settings` (
   `id` int NOT NULL,
   `uls_id` int NOT NULL,
@@ -826,6 +861,7 @@ CREATE TABLE `code_userlevel_settings` (
 -- Table structure for table `code_utility`
 --
 
+DROP TABLE IF EXISTS `code_utility`;
 CREATE TABLE `code_utility` (
   `utility_id` bigint NOT NULL,
   `utility_code` varchar(64) NOT NULL,
@@ -846,6 +882,7 @@ CREATE TABLE `code_utility` (
 -- Table structure for table `code_utility_band`
 --
 
+DROP TABLE IF EXISTS `code_utility_band`;
 CREATE TABLE `code_utility_band` (
   `utility_id` bigint NOT NULL,
   `band_id` bigint NOT NULL,
@@ -864,6 +901,7 @@ CREATE TABLE `code_utility_band` (
 -- Table structure for table `code_utility_rates`
 --
 
+DROP TABLE IF EXISTS `code_utility_rates`;
 CREATE TABLE `code_utility_rates` (
   `rate_id` bigint NOT NULL,
   `uchig_id` int DEFAULT NULL,
@@ -903,6 +941,7 @@ CREATE TABLE `code_utility_rates` (
 -- Table structure for table `code_valut`
 --
 
+DROP TABLE IF EXISTS `code_valut`;
 CREATE TABLE `code_valut` (
   `id` int NOT NULL,
   `currency_id` int NOT NULL,
@@ -921,6 +960,7 @@ CREATE TABLE `code_valut` (
 -- Table structure for table `code_violation`
 --
 
+DROP TABLE IF EXISTS `code_violation`;
 CREATE TABLE `code_violation` (
   `id` int NOT NULL,
   `violation_id` int NOT NULL,
@@ -939,6 +979,7 @@ CREATE TABLE `code_violation` (
 -- Table structure for table `code_week_config`
 --
 
+DROP TABLE IF EXISTS `code_week_config`;
 CREATE TABLE `code_week_config` (
   `id` int NOT NULL,
   `company_id` int NOT NULL,
@@ -959,6 +1000,7 @@ CREATE TABLE `code_week_config` (
 -- Table structure for table `code_woodprocctype`
 --
 
+DROP TABLE IF EXISTS `code_woodprocctype`;
 CREATE TABLE `code_woodprocctype` (
   `id` int NOT NULL,
   `proccessing_type_id` int NOT NULL,
@@ -977,6 +1019,7 @@ CREATE TABLE `code_woodprocctype` (
 -- Table structure for table `code_woodsort`
 --
 
+DROP TABLE IF EXISTS `code_woodsort`;
 CREATE TABLE `code_woodsort` (
   `id` int NOT NULL,
   `sort_id` int NOT NULL,
@@ -995,6 +1038,7 @@ CREATE TABLE `code_woodsort` (
 -- Table structure for table `code_woodtype`
 --
 
+DROP TABLE IF EXISTS `code_woodtype`;
 CREATE TABLE `code_woodtype` (
   `id` int NOT NULL,
   `woodtype_id` int NOT NULL,
@@ -1013,6 +1057,7 @@ CREATE TABLE `code_woodtype` (
 -- Table structure for table `code_workplace`
 --
 
+DROP TABLE IF EXISTS `code_workplace`;
 CREATE TABLE `code_workplace` (
   `id` int NOT NULL,
   `company_id` int NOT NULL,
@@ -1035,6 +1080,7 @@ CREATE TABLE `code_workplace` (
 -- Table structure for table `companies`
 --
 
+DROP TABLE IF EXISTS `companies`;
 CREATE TABLE `companies` (
   `id` int NOT NULL,
   `name` varchar(100) NOT NULL,
@@ -1057,6 +1103,7 @@ CREATE TABLE `companies` (
 -- Table structure for table `company_licenses`
 --
 
+DROP TABLE IF EXISTS `company_licenses`;
 CREATE TABLE `company_licenses` (
   `id` int NOT NULL,
   `company_id` int DEFAULT NULL,
@@ -1077,6 +1124,7 @@ CREATE TABLE `company_licenses` (
 -- Table structure for table `company_module_licenses`
 --
 
+DROP TABLE IF EXISTS `company_module_licenses`;
 CREATE TABLE `company_module_licenses` (
   `company_id` int NOT NULL,
   `module_key` varchar(50) NOT NULL,
@@ -1094,6 +1142,7 @@ CREATE TABLE `company_module_licenses` (
 -- Table structure for table `contract1`
 --
 
+DROP TABLE IF EXISTS `contract1`;
 CREATE TABLE `contract1` (
   `id` int NOT NULL,
   `g_num` varchar(50) NOT NULL,
@@ -1150,6 +1199,7 @@ CREATE TABLE `contract1` (
 -- Table structure for table `contractor_request`
 --
 
+DROP TABLE IF EXISTS `contractor_request`;
 CREATE TABLE `contractor_request` (
   `request_id` bigint NOT NULL,
   `contract_g_id` int NOT NULL,
@@ -1171,6 +1221,7 @@ CREATE TABLE `contractor_request` (
 -- Table structure for table `contract_receivable_cache`
 --
 
+DROP TABLE IF EXISTS `contract_receivable_cache`;
 CREATE TABLE `contract_receivable_cache` (
   `g_id` int NOT NULL,
   `rec` decimal(18,2) DEFAULT NULL,
@@ -1186,6 +1237,7 @@ CREATE TABLE `contract_receivable_cache` (
 -- Table structure for table `ebarimt_api_log`
 --
 
+DROP TABLE IF EXISTS `ebarimt_api_log`;
 CREATE TABLE `ebarimt_api_log` (
   `id` int NOT NULL,
   `invoice_id` int DEFAULT NULL,
@@ -1206,6 +1258,7 @@ CREATE TABLE `ebarimt_api_log` (
 -- Table structure for table `ebarimt_customer`
 --
 
+DROP TABLE IF EXISTS `ebarimt_customer`;
 CREATE TABLE `ebarimt_customer` (
   `id` int NOT NULL,
   `customer_type` enum('BUSINESS','INDIVIDUAL') DEFAULT 'BUSINESS',
@@ -1224,6 +1277,7 @@ CREATE TABLE `ebarimt_customer` (
 -- Table structure for table `ebarimt_invoice`
 --
 
+DROP TABLE IF EXISTS `ebarimt_invoice`;
 CREATE TABLE `ebarimt_invoice` (
   `id` int NOT NULL,
   `invoice_no` varchar(50) NOT NULL,
@@ -1252,6 +1306,7 @@ CREATE TABLE `ebarimt_invoice` (
 -- Table structure for table `ebarimt_invoice_item`
 --
 
+DROP TABLE IF EXISTS `ebarimt_invoice_item`;
 CREATE TABLE `ebarimt_invoice_item` (
   `id` int NOT NULL,
   `invoice_id` int DEFAULT NULL,
@@ -1278,6 +1333,7 @@ CREATE TABLE `ebarimt_invoice_item` (
 -- Table structure for table `ebarimt_invoice_payment`
 --
 
+DROP TABLE IF EXISTS `ebarimt_invoice_payment`;
 CREATE TABLE `ebarimt_invoice_payment` (
   `id` int NOT NULL,
   `invoice_id` int DEFAULT NULL,
@@ -1294,15 +1350,46 @@ CREATE TABLE `ebarimt_invoice_payment` (
 -- Table structure for table `ebarimt_reference_code`
 --
 
+DROP TABLE IF EXISTS `ebarimt_reference_code`;
 CREATE TABLE `ebarimt_reference_code` (
   `id` int NOT NULL,
   `code_type` enum('district','classification','tax_reason','barcode_type','payment_code') NOT NULL,
-  `code` varchar(50) NOT NULL,
-  `name` varchar(255) DEFAULT NULL,
-  `description_mn` varchar(255) DEFAULT NULL,
-  `description_en` varchar(255) DEFAULT NULL,
+  `code` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci DEFAULT NULL,
+  `name` varchar(1024) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci DEFAULT NULL,
+  `type_code` int DEFAULT NULL,
+  `type_name` varchar(512) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci DEFAULT NULL,
+  `subtype_code` int DEFAULT NULL,
+  `subtype_name` varchar(512) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci DEFAULT NULL,
+  `tax_code` int DEFAULT NULL,
+  `tax_name` varchar(256) DEFAULT NULL,
+  `start_date` date DEFAULT NULL,
+  `end_date` date DEFAULT NULL,
+  `description_mn` varchar(512) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci DEFAULT NULL,
+  `description_en` varchar(512) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci DEFAULT NULL,
   `is_active` tinyint(1) DEFAULT '1',
   `updated_at` datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `ebarimt_reference_code_other`
+--
+
+DROP TABLE IF EXISTS `ebarimt_reference_code_other`;
+CREATE TABLE `ebarimt_reference_code_other` (
+  `code` varchar(50) DEFAULT NULL,
+  `name` varchar(1024) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci DEFAULT NULL,
+  `code_type` varchar(44) DEFAULT NULL,
+  `company_id` int DEFAULT '2',
+  `department_id` int DEFAULT NULL,
+  `branch_id` int DEFAULT NULL,
+  `created_by` varchar(50) DEFAULT NULL,
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_by` varchar(50) DEFAULT NULL,
+  `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `deleted_at` timestamp NULL DEFAULT NULL,
+  `error_description` varchar(255) DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 -- --------------------------------------------------------
@@ -1311,6 +1398,7 @@ CREATE TABLE `ebarimt_reference_code` (
 -- Table structure for table `forms`
 --
 
+DROP TABLE IF EXISTS `forms`;
 CREATE TABLE `forms` (
   `id` int NOT NULL,
   `name` varchar(100) NOT NULL,
@@ -1329,6 +1417,7 @@ CREATE TABLE `forms` (
 -- Table structure for table `form_submissions`
 --
 
+DROP TABLE IF EXISTS `form_submissions`;
 CREATE TABLE `form_submissions` (
   `id` int NOT NULL,
   `form_id` varchar(100) NOT NULL,
@@ -1348,6 +1437,7 @@ CREATE TABLE `form_submissions` (
 -- Table structure for table `international_code`
 --
 
+DROP TABLE IF EXISTS `international_code`;
 CREATE TABLE `international_code` (
   `code` varchar(10) NOT NULL,
   `name` text NOT NULL,
@@ -1362,17 +1452,18 @@ CREATE TABLE `international_code` (
 -- Stand-in structure for view `InventoryStockPerBranch`
 -- (See below for the actual view)
 --
+DROP VIEW IF EXISTS `InventoryStockPerBranch`;
 CREATE TABLE `InventoryStockPerBranch` (
-`company_id` int
+`avg_cost` double(22,6)
 ,`branch_id` int
+,`company_id` int
+,`inventory_value` double
 ,`item_code` varchar(255)
+,`on_hand_qty` double(22,2)
 ,`pm_name` varchar(255)
 ,`total_in_qty` double(19,2)
-,`total_out_qty` double(19,2)
 ,`total_in_value` double(19,2)
-,`on_hand_qty` double(22,2)
-,`avg_cost` double(22,6)
-,`inventory_value` double
+,`total_out_qty` double(19,2)
 );
 
 -- --------------------------------------------------------
@@ -1381,18 +1472,19 @@ CREATE TABLE `InventoryStockPerBranch` (
 -- Stand-in structure for view `InventoryStockPerCompany`
 -- (See below for the actual view)
 --
+DROP VIEW IF EXISTS `InventoryStockPerCompany`;
 CREATE TABLE `InventoryStockPerCompany` (
-`company_id` int
+`avg_cost` double(22,6)
+,`company_id` int
 ,`fifo_lifo_qty` double(19,2)
 ,`fifo_lifo_value` double(19,2)
+,`inventory_value` double
 ,`item_code` varchar(100)
+,`on_hand_qty` double(22,2)
 ,`pm_name` varchar(255)
 ,`total_in_qty` double(19,2)
-,`total_out_qty` double(19,2)
 ,`total_in_value` double(19,2)
-,`on_hand_qty` double(22,2)
-,`avg_cost` double(22,6)
-,`inventory_value` double
+,`total_out_qty` double(19,2)
 );
 
 -- --------------------------------------------------------
@@ -1401,6 +1493,7 @@ CREATE TABLE `InventoryStockPerCompany` (
 -- Stand-in structure for view `InventoryTransactionView`
 -- (See below for the actual view)
 --
+DROP VIEW IF EXISTS `InventoryTransactionView`;
 CREATE TABLE `InventoryTransactionView` (
 );
 
@@ -1410,6 +1503,7 @@ CREATE TABLE `InventoryTransactionView` (
 -- Table structure for table `license_plans`
 --
 
+DROP TABLE IF EXISTS `license_plans`;
 CREATE TABLE `license_plans` (
   `id` int NOT NULL,
   `name` varchar(50) DEFAULT NULL,
@@ -1429,6 +1523,7 @@ CREATE TABLE `license_plans` (
 -- Table structure for table `merchant`
 --
 
+DROP TABLE IF EXISTS `merchant`;
 CREATE TABLE `merchant` (
   `id` int NOT NULL,
   `company_id` int NOT NULL,
@@ -1449,6 +1544,7 @@ CREATE TABLE `merchant` (
 -- Table structure for table `modules`
 --
 
+DROP TABLE IF EXISTS `modules`;
 CREATE TABLE `modules` (
   `id` int NOT NULL,
   `module_key` varchar(50) NOT NULL,
@@ -1467,6 +1563,7 @@ CREATE TABLE `modules` (
 --
 -- Triggers `modules`
 --
+DROP TRIGGER IF EXISTS `log_update_modules`;
 DELIMITER $$
 CREATE TRIGGER `log_update_modules` AFTER UPDATE ON `modules` FOR EACH ROW INSERT INTO audit_log (table_name, action, changed_at, row_id, old_data, new_data)
 VALUES ('modules', 'UPDATE', NOW(), OLD.module_key, OLD.label, NEW.label)
@@ -1479,6 +1576,7 @@ DELIMITER ;
 -- Table structure for table `notifications`
 --
 
+DROP TABLE IF EXISTS `notifications`;
 CREATE TABLE `notifications` (
   `notification_id` bigint NOT NULL,
   `recipient_empid` varchar(10) NOT NULL,
@@ -1500,6 +1598,7 @@ CREATE TABLE `notifications` (
 -- Table structure for table `payments`
 --
 
+DROP TABLE IF EXISTS `payments`;
 CREATE TABLE `payments` (
   `id` int NOT NULL,
   `company_license_id` int DEFAULT NULL,
@@ -1522,6 +1621,7 @@ CREATE TABLE `payments` (
 -- Table structure for table `pending_request`
 --
 
+DROP TABLE IF EXISTS `pending_request`;
 CREATE TABLE `pending_request` (
   `request_id` bigint NOT NULL,
   `table_name` varchar(100) NOT NULL,
@@ -1551,6 +1651,7 @@ CREATE TABLE `pending_request` (
 -- Table structure for table `pos_session`
 --
 
+DROP TABLE IF EXISTS `pos_session`;
 CREATE TABLE `pos_session` (
   `id` bigint UNSIGNED NOT NULL,
   `session_uuid` varchar(36) NOT NULL,
@@ -1570,6 +1671,7 @@ CREATE TABLE `pos_session` (
 -- Table structure for table `report_approvals`
 --
 
+DROP TABLE IF EXISTS `report_approvals`;
 CREATE TABLE `report_approvals` (
   `id` bigint UNSIGNED NOT NULL,
   `company_id` int DEFAULT NULL,
@@ -1596,6 +1698,7 @@ CREATE TABLE `report_approvals` (
 -- Table structure for table `report_definitions`
 --
 
+DROP TABLE IF EXISTS `report_definitions`;
 CREATE TABLE `report_definitions` (
   `id` int NOT NULL,
   `report_key` varchar(100) NOT NULL,
@@ -1618,6 +1721,7 @@ CREATE TABLE `report_definitions` (
 -- Table structure for table `report_income_plan`
 --
 
+DROP TABLE IF EXISTS `report_income_plan`;
 CREATE TABLE `report_income_plan` (
   `id` int NOT NULL,
   `company_id` int DEFAULT NULL,
@@ -1641,6 +1745,7 @@ CREATE TABLE `report_income_plan` (
 -- Table structure for table `report_transaction_locks`
 --
 
+DROP TABLE IF EXISTS `report_transaction_locks`;
 CREATE TABLE `report_transaction_locks` (
   `id` bigint UNSIGNED NOT NULL,
   `company_id` int DEFAULT NULL,
@@ -1665,6 +1770,7 @@ CREATE TABLE `report_transaction_locks` (
 -- Table structure for table `request_approvers`
 --
 
+DROP TABLE IF EXISTS `request_approvers`;
 CREATE TABLE `request_approvers` (
   `id` bigint NOT NULL,
   `request_id` bigint NOT NULL,
@@ -1681,6 +1787,7 @@ CREATE TABLE `request_approvers` (
 -- Table structure for table `request_print_form`
 --
 
+DROP TABLE IF EXISTS `request_print_form`;
 CREATE TABLE `request_print_form` (
   `id` bigint NOT NULL,
   `template_path` varchar(255) NOT NULL,
@@ -1693,6 +1800,7 @@ CREATE TABLE `request_print_form` (
 -- Table structure for table `request_seen_counts`
 --
 
+DROP TABLE IF EXISTS `request_seen_counts`;
 CREATE TABLE `request_seen_counts` (
   `emp_id` varchar(10) NOT NULL,
   `incoming_pending` int NOT NULL DEFAULT '0',
@@ -1714,6 +1822,7 @@ CREATE TABLE `request_seen_counts` (
 -- Table structure for table `role_default_modules`
 --
 
+DROP TABLE IF EXISTS `role_default_modules`;
 CREATE TABLE `role_default_modules` (
   `id` int NOT NULL,
   `role_id` int NOT NULL,
@@ -1733,6 +1842,7 @@ CREATE TABLE `role_default_modules` (
 -- Table structure for table `role_module_permissions`
 --
 
+DROP TABLE IF EXISTS `role_module_permissions`;
 CREATE TABLE `role_module_permissions` (
   `company_id` int NOT NULL,
   `position_id` int NOT NULL,
@@ -1751,6 +1861,7 @@ CREATE TABLE `role_module_permissions` (
 -- Table structure for table `seq_0_to_30`
 --
 
+DROP TABLE IF EXISTS `seq_0_to_30`;
 CREATE TABLE `seq_0_to_30` (
   `num` int NOT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
@@ -1761,6 +1872,7 @@ CREATE TABLE `seq_0_to_30` (
 -- Table structure for table `service_coding`
 --
 
+DROP TABLE IF EXISTS `service_coding`;
 CREATE TABLE `service_coding` (
   `id` int NOT NULL,
   `classification_code` varchar(10) NOT NULL,
@@ -1775,6 +1887,7 @@ CREATE TABLE `service_coding` (
 -- Table structure for table `tbl_beltgenniiluulegch`
 --
 
+DROP TABLE IF EXISTS `tbl_beltgenniiluulegch`;
 CREATE TABLE `tbl_beltgenniiluulegch` (
   `id` int NOT NULL,
   `manuf_id` varchar(10) NOT NULL,
@@ -1794,6 +1907,7 @@ CREATE TABLE `tbl_beltgenniiluulegch` (
 -- Table structure for table `tbl_bills`
 --
 
+DROP TABLE IF EXISTS `tbl_bills`;
 CREATE TABLE `tbl_bills` (
   `bill_id` bigint NOT NULL,
   `contract_id` bigint DEFAULT NULL,
@@ -1819,6 +1933,7 @@ CREATE TABLE `tbl_bills` (
 -- Table structure for table `tbl_bill_lines`
 --
 
+DROP TABLE IF EXISTS `tbl_bill_lines`;
 CREATE TABLE `tbl_bill_lines` (
   `line_id` bigint NOT NULL,
   `bill_id` bigint DEFAULT NULL,
@@ -1854,6 +1969,7 @@ CREATE TABLE `tbl_bill_lines` (
 --
 -- Triggers `tbl_bill_lines`
 --
+DROP TRIGGER IF EXISTS `trg_tbl_bill_lines_before_insert`;
 DELIMITER $$
 CREATE TRIGGER `trg_tbl_bill_lines_before_insert` BEFORE INSERT ON `tbl_bill_lines` FOR EACH ROW BEGIN
   DECLARE v_prev DECIMAL(18,6);
@@ -1871,6 +1987,7 @@ CREATE TRIGGER `trg_tbl_bill_lines_before_insert` BEFORE INSERT ON `tbl_bill_lin
 END
 $$
 DELIMITER ;
+DROP TRIGGER IF EXISTS `trg_tbl_bill_lines_bi`;
 DELIMITER $$
 CREATE TRIGGER `trg_tbl_bill_lines_bi` BEFORE INSERT ON `tbl_bill_lines` FOR EACH ROW BEGIN
     DECLARE v_allowed TINYINT;
@@ -1885,6 +2002,7 @@ CREATE TRIGGER `trg_tbl_bill_lines_bi` BEFORE INSERT ON `tbl_bill_lines` FOR EAC
 END
 $$
 DELIMITER ;
+DROP TRIGGER IF EXISTS `trg_tbl_bill_lines_bu`;
 DELIMITER $$
 CREATE TRIGGER `trg_tbl_bill_lines_bu` BEFORE UPDATE ON `tbl_bill_lines` FOR EACH ROW BEGIN
     DECLARE v_allowed TINYINT;
@@ -1906,6 +2024,7 @@ DELIMITER ;
 -- Table structure for table `tbl_contracter`
 --
 
+DROP TABLE IF EXISTS `tbl_contracter`;
 CREATE TABLE `tbl_contracter` (
   `id` int NOT NULL,
   `manuf_id` varchar(10) NOT NULL,
@@ -1937,6 +2056,7 @@ CREATE TABLE `tbl_contracter` (
 -- Table structure for table `tbl_currate`
 --
 
+DROP TABLE IF EXISTS `tbl_currate`;
 CREATE TABLE `tbl_currate` (
   `id` int NOT NULL,
   `Valutid` int NOT NULL,
@@ -1957,6 +2077,7 @@ CREATE TABLE `tbl_currate` (
 -- Table structure for table `tbl_discount`
 --
 
+DROP TABLE IF EXISTS `tbl_discount`;
 CREATE TABLE `tbl_discount` (
   `id` int NOT NULL,
   `inventory_code` varchar(50) NOT NULL,
@@ -2008,6 +2129,7 @@ CREATE TABLE `tbl_discount` (
 --
 -- Triggers `tbl_discount`
 --
+DROP TRIGGER IF EXISTS `trg_resolve_discount_inventory_metadata`;
 DELIMITER $$
 CREATE TRIGGER `trg_resolve_discount_inventory_metadata` BEFORE INSERT ON `tbl_discount` FOR EACH ROW BEGIN
   DECLARE v_primary_code VARCHAR(50);
@@ -2045,6 +2167,7 @@ CREATE TRIGGER `trg_resolve_discount_inventory_metadata` BEFORE INSERT ON `tbl_d
 END
 $$
 DELIMITER ;
+DROP TRIGGER IF EXISTS `trg_resolve_discount_inventory_metadata_update`;
 DELIMITER $$
 CREATE TRIGGER `trg_resolve_discount_inventory_metadata_update` BEFORE UPDATE ON `tbl_discount` FOR EACH ROW BEGIN
   DECLARE v_primary_code VARCHAR(50);
@@ -2089,6 +2212,7 @@ DELIMITER ;
 -- Table structure for table `tbl_discount_other`
 --
 
+DROP TABLE IF EXISTS `tbl_discount_other`;
 CREATE TABLE `tbl_discount_other` (
   `id` int NOT NULL,
   `inventory_code` varchar(50) DEFAULT NULL,
@@ -2126,6 +2250,7 @@ CREATE TABLE `tbl_discount_other` (
 -- Table structure for table `tbl_employee`
 --
 
+DROP TABLE IF EXISTS `tbl_employee`;
 CREATE TABLE `tbl_employee` (
   `id` int NOT NULL,
   `emp_id` varchar(10) NOT NULL,
@@ -2164,6 +2289,7 @@ CREATE TABLE `tbl_employee` (
 -- Table structure for table `tbl_employment`
 --
 
+DROP TABLE IF EXISTS `tbl_employment`;
 CREATE TABLE `tbl_employment` (
   `id` int NOT NULL,
   `employment_emp_id` varchar(4) NOT NULL,
@@ -2190,6 +2316,7 @@ CREATE TABLE `tbl_employment` (
 -- Table structure for table `tbl_employment_other`
 --
 
+DROP TABLE IF EXISTS `tbl_employment_other`;
 CREATE TABLE `tbl_employment_other` (
   `id` int NOT NULL,
   `employment_emp_id` varchar(4) DEFAULT NULL,
@@ -2214,6 +2341,7 @@ CREATE TABLE `tbl_employment_other` (
 -- Table structure for table `tbl_employment_schedule`
 --
 
+DROP TABLE IF EXISTS `tbl_employment_schedule`;
 CREATE TABLE `tbl_employment_schedule` (
   `id` int NOT NULL,
   `company_id` int NOT NULL,
@@ -2236,6 +2364,7 @@ CREATE TABLE `tbl_employment_schedule` (
 -- Table structure for table `tbl_expenseorg`
 --
 
+DROP TABLE IF EXISTS `tbl_expenseorg`;
 CREATE TABLE `tbl_expenseorg` (
   `id` int NOT NULL,
   `z_org_id` varchar(10) NOT NULL,
@@ -2253,6 +2382,7 @@ CREATE TABLE `tbl_expenseorg` (
 -- Table structure for table `tbl_hongololt`
 --
 
+DROP TABLE IF EXISTS `tbl_hongololt`;
 CREATE TABLE `tbl_hongololt` (
   `id` int NOT NULL,
   `hon_g_id` int NOT NULL,
@@ -2279,6 +2409,7 @@ CREATE TABLE `tbl_hongololt` (
 -- Table structure for table `tbl_hongololt_backup`
 --
 
+DROP TABLE IF EXISTS `tbl_hongololt_backup`;
 CREATE TABLE `tbl_hongololt_backup` (
   `id` int NOT NULL DEFAULT '0',
   `hon_g_id` int NOT NULL,
@@ -2305,6 +2436,7 @@ CREATE TABLE `tbl_hongololt_backup` (
 -- Table structure for table `tbl_sale`
 --
 
+DROP TABLE IF EXISTS `tbl_sale`;
 CREATE TABLE `tbl_sale` (
   `id` int NOT NULL,
   `hkod` varchar(50) NOT NULL,
@@ -2352,6 +2484,7 @@ CREATE TABLE `tbl_sale` (
 -- Table structure for table `tbl_sellingprice`
 --
 
+DROP TABLE IF EXISTS `tbl_sellingprice`;
 CREATE TABLE `tbl_sellingprice` (
   `id` int NOT NULL,
   `product_primary_code` varchar(50) NOT NULL,
@@ -2379,6 +2512,7 @@ CREATE TABLE `tbl_sellingprice` (
 --
 -- Triggers `tbl_sellingprice`
 --
+DROP TRIGGER IF EXISTS `trg_resolve_sellingprice_inventory_metadata`;
 DELIMITER $$
 CREATE TRIGGER `trg_resolve_sellingprice_inventory_metadata` BEFORE INSERT ON `tbl_sellingprice` FOR EACH ROW BEGIN
   DECLARE v_primary_code VARCHAR(50);
@@ -2418,6 +2552,7 @@ CREATE TRIGGER `trg_resolve_sellingprice_inventory_metadata` BEFORE INSERT ON `t
 END
 $$
 DELIMITER ;
+DROP TRIGGER IF EXISTS `trg_resolve_sellprice_inventory_metadata`;
 DELIMITER $$
 CREATE TRIGGER `trg_resolve_sellprice_inventory_metadata` BEFORE INSERT ON `tbl_sellingprice` FOR EACH ROW BEGIN
   DECLARE v_primary_code VARCHAR(50);
@@ -2455,6 +2590,7 @@ CREATE TRIGGER `trg_resolve_sellprice_inventory_metadata` BEFORE INSERT ON `tbl_
 END
 $$
 DELIMITER ;
+DROP TRIGGER IF EXISTS `trg_resolve_sellprice_inventory_metadata_update`;
 DELIMITER $$
 CREATE TRIGGER `trg_resolve_sellprice_inventory_metadata_update` BEFORE UPDATE ON `tbl_sellingprice` FOR EACH ROW BEGIN
   DECLARE v_primary_code VARCHAR(50);
@@ -2499,6 +2635,7 @@ DELIMITER ;
 -- Table structure for table `tbl_sellingprice_other`
 --
 
+DROP TABLE IF EXISTS `tbl_sellingprice_other`;
 CREATE TABLE `tbl_sellingprice_other` (
   `id` int NOT NULL,
   `product_primary_code` varchar(50) NOT NULL,
@@ -2520,6 +2657,7 @@ CREATE TABLE `tbl_sellingprice_other` (
 -- Table structure for table `tbl_tariff`
 --
 
+DROP TABLE IF EXISTS `tbl_tariff`;
 CREATE TABLE `tbl_tariff` (
   `id` int NOT NULL,
   `chig_id` int NOT NULL,
@@ -2555,6 +2693,7 @@ CREATE TABLE `tbl_tariff` (
 -- Table structure for table `tbl_utility_contracts`
 --
 
+DROP TABLE IF EXISTS `tbl_utility_contracts`;
 CREATE TABLE `tbl_utility_contracts` (
   `contract_id` bigint NOT NULL,
   `contract_number` varchar(64) NOT NULL,
@@ -2576,6 +2715,7 @@ CREATE TABLE `tbl_utility_contracts` (
 -- Table structure for table `tbl_workplace`
 --
 
+DROP TABLE IF EXISTS `tbl_workplace`;
 CREATE TABLE `tbl_workplace` (
   `id` int NOT NULL,
   `wchig_id` int NOT NULL,
@@ -2599,6 +2739,7 @@ CREATE TABLE `tbl_workplace` (
 -- Table structure for table `tenant_tables`
 --
 
+DROP TABLE IF EXISTS `tenant_tables`;
 CREATE TABLE `tenant_tables` (
   `table_name` varchar(100) NOT NULL,
   `is_shared` tinyint(1) DEFAULT '0',
@@ -2617,6 +2758,7 @@ CREATE TABLE `tenant_tables` (
 -- Table structure for table `transactions_contract`
 --
 
+DROP TABLE IF EXISTS `transactions_contract`;
 CREATE TABLE `transactions_contract` (
   `id` int NOT NULL,
   `g_num` varchar(50) NOT NULL,
@@ -2682,6 +2824,7 @@ CREATE TABLE `transactions_contract` (
 --
 -- Triggers `transactions_contract`
 --
+DROP TRIGGER IF EXISTS `tr_contract_trtype_insert`;
 DELIMITER $$
 CREATE TRIGGER `tr_contract_trtype_insert` BEFORE INSERT ON `transactions_contract` FOR EACH ROW BEGIN
   DECLARE v_trtype VARCHAR(10);
@@ -2694,6 +2837,7 @@ CREATE TRIGGER `tr_contract_trtype_insert` BEFORE INSERT ON `transactions_contra
 END
 $$
 DELIMITER ;
+DROP TRIGGER IF EXISTS `tr_contract_trtype_update`;
 DELIMITER $$
 CREATE TRIGGER `tr_contract_trtype_update` BEFORE UPDATE ON `transactions_contract` FOR EACH ROW BEGIN
   DECLARE v_trtype VARCHAR(10);
@@ -2706,6 +2850,7 @@ CREATE TRIGGER `tr_contract_trtype_update` BEFORE UPDATE ON `transactions_contra
 END
 $$
 DELIMITER ;
+DROP TRIGGER IF EXISTS `transactions_contract_g_num_bi`;
 DELIMITER $$
 CREATE TRIGGER `transactions_contract_g_num_bi` BEFORE INSERT ON `transactions_contract` FOR EACH ROW BEGIN
   SET NEW.`g_num` = CONCAT(
@@ -2740,6 +2885,7 @@ CREATE TRIGGER `transactions_contract_g_num_bi` BEFORE INSERT ON `transactions_c
 END
 $$
 DELIMITER ;
+DROP TRIGGER IF EXISTS `trg_fill_fields_from_latest_g_id`;
 DELIMITER $$
 CREATE TRIGGER `trg_fill_fields_from_latest_g_id` BEFORE INSERT ON `transactions_contract` FOR EACH ROW BEGIN
   DECLARE v_burtgel_id VARCHAR(10);
@@ -2777,6 +2923,7 @@ DELIMITER ;
 -- Table structure for table `transactions_contract_other`
 --
 
+DROP TABLE IF EXISTS `transactions_contract_other`;
 CREATE TABLE `transactions_contract_other` (
   `id` int NOT NULL,
   `g_num` varchar(50) NOT NULL,
@@ -2840,6 +2987,7 @@ CREATE TABLE `transactions_contract_other` (
 --
 -- Triggers `transactions_contract_other`
 --
+DROP TRIGGER IF EXISTS `transactions_contract_other_g_num_bi`;
 DELIMITER $$
 CREATE TRIGGER `transactions_contract_other_g_num_bi` BEFORE INSERT ON `transactions_contract_other` FOR EACH ROW BEGIN
   SET NEW.`g_num` = CONCAT(
@@ -2881,6 +3029,7 @@ DELIMITER ;
 -- Table structure for table `transactions_expense`
 --
 
+DROP TABLE IF EXISTS `transactions_expense`;
 CREATE TABLE `transactions_expense` (
   `id` int NOT NULL,
   `z_num` varchar(50) NOT NULL,
@@ -2965,6 +3114,7 @@ CREATE TABLE `transactions_expense` (
 --
 -- Triggers `transactions_expense`
 --
+DROP TRIGGER IF EXISTS `transactions_expense_z_num_bi`;
 DELIMITER $$
 CREATE TRIGGER `transactions_expense_z_num_bi` BEFORE INSERT ON `transactions_expense` FOR EACH ROW BEGIN
   IF NEW.z_num IS NULL OR NEW.z_num = '' THEN
@@ -3005,6 +3155,7 @@ CHAR(IF(RAND() < 0.5, FLOOR(65 + RAND() * 26), FLOOR(97 + RAND() * 26)))
 END
 $$
 DELIMITER ;
+DROP TRIGGER IF EXISTS `trg_resolve_expense_inventory_metadata`;
 DELIMITER $$
 CREATE TRIGGER `trg_resolve_expense_inventory_metadata` BEFORE INSERT ON `transactions_expense` FOR EACH ROW BEGIN
   DECLARE v_primary_code VARCHAR(50);
@@ -3042,6 +3193,7 @@ CREATE TRIGGER `trg_resolve_expense_inventory_metadata` BEFORE INSERT ON `transa
 END
 $$
 DELIMITER ;
+DROP TRIGGER IF EXISTS `trg_resolve_expense_inventory_metadata_update`;
 DELIMITER $$
 CREATE TRIGGER `trg_resolve_expense_inventory_metadata_update` BEFORE UPDATE ON `transactions_expense` FOR EACH ROW BEGIN
   DECLARE v_primary_code VARCHAR(50);
@@ -3086,6 +3238,7 @@ DELIMITER ;
 -- Table structure for table `transactions_expense_other`
 --
 
+DROP TABLE IF EXISTS `transactions_expense_other`;
 CREATE TABLE `transactions_expense_other` (
   `id` int NOT NULL,
   `z_num` varchar(50) DEFAULT NULL,
@@ -3161,6 +3314,7 @@ CREATE TABLE `transactions_expense_other` (
 -- Table structure for table `transactions_income`
 --
 
+DROP TABLE IF EXISTS `transactions_income`;
 CREATE TABLE `transactions_income` (
   `id` int NOT NULL,
   `or_num` varchar(50) NOT NULL,
@@ -3252,6 +3406,7 @@ CREATE TABLE `transactions_income` (
 --
 -- Triggers `transactions_income`
 --
+DROP TRIGGER IF EXISTS `tr_income_trtype`;
 DELIMITER $$
 CREATE TRIGGER `tr_income_trtype` BEFORE INSERT ON `transactions_income` FOR EACH ROW BEGIN
   DECLARE v_trtype VARCHAR(10);
@@ -3264,6 +3419,7 @@ CREATE TRIGGER `tr_income_trtype` BEFORE INSERT ON `transactions_income` FOR EAC
 END
 $$
 DELIMITER ;
+DROP TRIGGER IF EXISTS `tr_income_trtype_update`;
 DELIMITER $$
 CREATE TRIGGER `tr_income_trtype_update` BEFORE INSERT ON `transactions_income` FOR EACH ROW BEGIN
   DECLARE v_trtype VARCHAR(10);
@@ -3276,6 +3432,7 @@ CREATE TRIGGER `tr_income_trtype_update` BEFORE INSERT ON `transactions_income` 
 END
 $$
 DELIMITER ;
+DROP TRIGGER IF EXISTS `transactions_income_or_num_bi`;
 DELIMITER $$
 CREATE TRIGGER `transactions_income_or_num_bi` BEFORE INSERT ON `transactions_income` FOR EACH ROW BEGIN
   IF NEW.or_num IS NULL OR NEW.or_num = '' THEN
@@ -3316,6 +3473,7 @@ CHAR(IF(RAND() < 0.5, FLOOR(65 + RAND() * 26), FLOOR(97 + RAND() * 26)))
 END
 $$
 DELIMITER ;
+DROP TRIGGER IF EXISTS `trg_resolve_contract_receivables`;
 DELIMITER $$
 CREATE TRIGGER `trg_resolve_contract_receivables` BEFORE INSERT ON `transactions_income` FOR EACH ROW trigger_block: BEGIN
 
@@ -3349,6 +3507,7 @@ CREATE TRIGGER `trg_resolve_contract_receivables` BEFORE INSERT ON `transactions
 END
 $$
 DELIMITER ;
+DROP TRIGGER IF EXISTS `trg_resolve_income_inventory_metadata`;
 DELIMITER $$
 CREATE TRIGGER `trg_resolve_income_inventory_metadata` BEFORE INSERT ON `transactions_income` FOR EACH ROW BEGIN
   DECLARE v_primary_code VARCHAR(50);
@@ -3386,6 +3545,7 @@ CREATE TRIGGER `trg_resolve_income_inventory_metadata` BEFORE INSERT ON `transac
 END
 $$
 DELIMITER ;
+DROP TRIGGER IF EXISTS `trg_resolve_income_inventory_metadata_update`;
 DELIMITER $$
 CREATE TRIGGER `trg_resolve_income_inventory_metadata_update` BEFORE UPDATE ON `transactions_income` FOR EACH ROW BEGIN
   DECLARE v_primary_code VARCHAR(50);
@@ -3430,6 +3590,7 @@ DELIMITER ;
 -- Table structure for table `transactions_income_other`
 --
 
+DROP TABLE IF EXISTS `transactions_income_other`;
 CREATE TABLE `transactions_income_other` (
   `id` int NOT NULL,
   `or_num` varchar(50) DEFAULT NULL,
@@ -3503,6 +3664,7 @@ CREATE TABLE `transactions_income_other` (
 -- Table structure for table `transactions_inventory`
 --
 
+DROP TABLE IF EXISTS `transactions_inventory`;
 CREATE TABLE `transactions_inventory` (
   `id` int NOT NULL,
   `bmtr_num` varchar(50) NOT NULL,
@@ -3602,6 +3764,7 @@ CREATE TABLE `transactions_inventory` (
 --
 -- Triggers `transactions_inventory`
 --
+DROP TRIGGER IF EXISTS `bi_assign_bmtr_actid`;
 DELIMITER $$
 CREATE TRIGGER `bi_assign_bmtr_actid` BEFORE INSERT ON `transactions_inventory` FOR EACH ROW BEGIN
   DECLARE last_id BIGINT UNSIGNED;
@@ -3614,6 +3777,7 @@ CREATE TRIGGER `bi_assign_bmtr_actid` BEFORE INSERT ON `transactions_inventory` 
 END
 $$
 DELIMITER ;
+DROP TRIGGER IF EXISTS `transactions_inventory_bmtr_num_bi`;
 DELIMITER $$
 CREATE TRIGGER `transactions_inventory_bmtr_num_bi` BEFORE INSERT ON `transactions_inventory` FOR EACH ROW BEGIN
   IF NEW.bmtr_num IS NULL OR NEW.bmtr_num = '' THEN
@@ -3654,6 +3818,7 @@ CHAR(IF(RAND() < 0.5, FLOOR(65 + RAND() * 26), FLOOR(97 + RAND() * 26)))
 END
 $$
 DELIMITER ;
+DROP TRIGGER IF EXISTS `trg_calculate_price_discount`;
 DELIMITER $$
 CREATE TRIGGER `trg_calculate_price_discount` BEFORE INSERT ON `transactions_inventory` FOR EACH ROW BEGIN
   DECLARE v_price DECIMAL(18,4);
@@ -3683,6 +3848,7 @@ CREATE TRIGGER `trg_calculate_price_discount` BEFORE INSERT ON `transactions_inv
 END
 $$
 DELIMITER ;
+DROP TRIGGER IF EXISTS `trg_calculate_price_discount_update`;
 DELIMITER $$
 CREATE TRIGGER `trg_calculate_price_discount_update` BEFORE UPDATE ON `transactions_inventory` FOR EACH ROW BEGIN
   DECLARE v_price DECIMAL(18,4);
@@ -3712,6 +3878,7 @@ CREATE TRIGGER `trg_calculate_price_discount_update` BEFORE UPDATE ON `transacti
 END
 $$
 DELIMITER ;
+DROP TRIGGER IF EXISTS `trg_resolve_inventory_metadata`;
 DELIMITER $$
 CREATE TRIGGER `trg_resolve_inventory_metadata` BEFORE INSERT ON `transactions_inventory` FOR EACH ROW BEGIN
   DECLARE v_primary_code VARCHAR(50);
@@ -3749,6 +3916,7 @@ CREATE TRIGGER `trg_resolve_inventory_metadata` BEFORE INSERT ON `transactions_i
 END
 $$
 DELIMITER ;
+DROP TRIGGER IF EXISTS `trg_resolve_inventory_metadata_update`;
 DELIMITER $$
 CREATE TRIGGER `trg_resolve_inventory_metadata_update` BEFORE UPDATE ON `transactions_inventory` FOR EACH ROW BEGIN
   DECLARE v_primary_code VARCHAR(50);
@@ -3786,6 +3954,7 @@ CREATE TRIGGER `trg_resolve_inventory_metadata_update` BEFORE UPDATE ON `transac
 END
 $$
 DELIMITER ;
+DROP TRIGGER IF EXISTS `trg_set_current_stock`;
 DELIMITER $$
 CREATE TRIGGER `trg_set_current_stock` BEFORE INSERT ON `transactions_inventory` FOR EACH ROW BEGIN
   DECLARE v_stock DECIMAL(18,4);
@@ -3801,6 +3970,7 @@ CREATE TRIGGER `trg_set_current_stock` BEFORE INSERT ON `transactions_inventory`
 END
 $$
 DELIMITER ;
+DROP TRIGGER IF EXISTS `trg_set_current_stock_update`;
 DELIMITER $$
 CREATE TRIGGER `trg_set_current_stock_update` BEFORE UPDATE ON `transactions_inventory` FOR EACH ROW BEGIN
   DECLARE v_stock DECIMAL(18,4);
@@ -3816,6 +3986,7 @@ CREATE TRIGGER `trg_set_current_stock_update` BEFORE UPDATE ON `transactions_inv
 END
 $$
 DELIMITER ;
+DROP TRIGGER IF EXISTS `trg_transactions_inventory_insert`;
 DELIMITER $$
 CREATE TRIGGER `trg_transactions_inventory_insert` BEFORE INSERT ON `transactions_inventory` FOR EACH ROW BEGIN
   DECLARE v_trtype VARCHAR(10);
@@ -3828,6 +3999,7 @@ CREATE TRIGGER `trg_transactions_inventory_insert` BEFORE INSERT ON `transaction
 END
 $$
 DELIMITER ;
+DROP TRIGGER IF EXISTS `trg_transactions_inventory_update`;
 DELIMITER $$
 CREATE TRIGGER `trg_transactions_inventory_update` BEFORE UPDATE ON `transactions_inventory` FOR EACH ROW BEGIN
   DECLARE v_trtype VARCHAR(10);
@@ -3847,6 +4019,7 @@ DELIMITER ;
 -- Table structure for table `transactions_inventory_other`
 --
 
+DROP TABLE IF EXISTS `transactions_inventory_other`;
 CREATE TABLE `transactions_inventory_other` (
   `id` int NOT NULL,
   `bmtr_num` varchar(50) DEFAULT NULL,
@@ -3927,6 +4100,7 @@ CREATE TABLE `transactions_inventory_other` (
 -- Table structure for table `transactions_order`
 --
 
+DROP TABLE IF EXISTS `transactions_order`;
 CREATE TABLE `transactions_order` (
   `id` int NOT NULL,
   `company_id` int NOT NULL,
@@ -4037,6 +4211,7 @@ CREATE TABLE `transactions_order` (
 --
 -- Triggers `transactions_order`
 --
+DROP TRIGGER IF EXISTS `transactions_order_ordrnum_bi`;
 DELIMITER $$
 CREATE TRIGGER `transactions_order_ordrnum_bi` BEFORE INSERT ON `transactions_order` FOR EACH ROW BEGIN
   IF NEW.ordrnum IS NULL OR NEW.ordrnum = '' THEN
@@ -4077,6 +4252,7 @@ CHAR(IF(RAND() < 0.5, FLOOR(65 + RAND() * 26), FLOOR(97 + RAND() * 26)))
 END
 $$
 DELIMITER ;
+DROP TRIGGER IF EXISTS `trg_order_calculate_price_discount`;
 DELIMITER $$
 CREATE TRIGGER `trg_order_calculate_price_discount` BEFORE INSERT ON `transactions_order` FOR EACH ROW BEGIN
   DECLARE v_price DECIMAL(18,4);
@@ -4106,6 +4282,7 @@ CREATE TRIGGER `trg_order_calculate_price_discount` BEFORE INSERT ON `transactio
 END
 $$
 DELIMITER ;
+DROP TRIGGER IF EXISTS `trg_order_calculate_price_discount_update`;
 DELIMITER $$
 CREATE TRIGGER `trg_order_calculate_price_discount_update` BEFORE UPDATE ON `transactions_order` FOR EACH ROW BEGIN
   DECLARE v_price DECIMAL(18,4);
@@ -4135,6 +4312,7 @@ CREATE TRIGGER `trg_order_calculate_price_discount_update` BEFORE UPDATE ON `tra
 END
 $$
 DELIMITER ;
+DROP TRIGGER IF EXISTS `trg_resolve_order_inventory_metadata`;
 DELIMITER $$
 CREATE TRIGGER `trg_resolve_order_inventory_metadata` BEFORE INSERT ON `transactions_order` FOR EACH ROW BEGIN
   DECLARE v_primary_code VARCHAR(50);
@@ -4172,6 +4350,7 @@ CREATE TRIGGER `trg_resolve_order_inventory_metadata` BEFORE INSERT ON `transact
 END
 $$
 DELIMITER ;
+DROP TRIGGER IF EXISTS `trg_resolve_order_inventory_metadata_update`;
 DELIMITER $$
 CREATE TRIGGER `trg_resolve_order_inventory_metadata_update` BEFORE UPDATE ON `transactions_order` FOR EACH ROW BEGIN
   DECLARE v_primary_code VARCHAR(50);
@@ -4209,6 +4388,7 @@ CREATE TRIGGER `trg_resolve_order_inventory_metadata_update` BEFORE UPDATE ON `t
 END
 $$
 DELIMITER ;
+DROP TRIGGER IF EXISTS `trg_transactions_order_insert`;
 DELIMITER $$
 CREATE TRIGGER `trg_transactions_order_insert` AFTER INSERT ON `transactions_order` FOR EACH ROW BEGIN
   UPDATE transactions_order ti
@@ -4219,6 +4399,7 @@ CREATE TRIGGER `trg_transactions_order_insert` AFTER INSERT ON `transactions_ord
 END
 $$
 DELIMITER ;
+DROP TRIGGER IF EXISTS `trg_transactions_order_update`;
 DELIMITER $$
 CREATE TRIGGER `trg_transactions_order_update` AFTER UPDATE ON `transactions_order` FOR EACH ROW BEGIN
   UPDATE transactions_order ti
@@ -4236,6 +4417,7 @@ DELIMITER ;
 -- Table structure for table `transactions_order_other`
 --
 
+DROP TABLE IF EXISTS `transactions_order_other`;
 CREATE TABLE `transactions_order_other` (
   `id` int NOT NULL,
   `company_id` int DEFAULT NULL,
@@ -4327,6 +4509,7 @@ CREATE TABLE `transactions_order_other` (
 -- Table structure for table `transactions_plan`
 --
 
+DROP TABLE IF EXISTS `transactions_plan`;
 CREATE TABLE `transactions_plan` (
   `id` int NOT NULL,
   `num` varchar(36) NOT NULL,
@@ -4401,6 +4584,7 @@ CREATE TABLE `transactions_plan` (
 --
 -- Triggers `transactions_plan`
 --
+DROP TRIGGER IF EXISTS `transactions_plan_num_bi`;
 DELIMITER $$
 CREATE TRIGGER `transactions_plan_num_bi` BEFORE INSERT ON `transactions_plan` FOR EACH ROW BEGIN
   IF NEW.num IS NULL OR NEW.num = '' THEN
@@ -4441,6 +4625,7 @@ CHAR(IF(RAND() < 0.5, FLOOR(65 + RAND() * 26), FLOOR(97 + RAND() * 26)))
 END
 $$
 DELIMITER ;
+DROP TRIGGER IF EXISTS `transactions_plan_pid_bi`;
 DELIMITER $$
 CREATE TRIGGER `transactions_plan_pid_bi` BEFORE INSERT ON `transactions_plan` FOR EACH ROW BEGIN
   DECLARE next_id VARCHAR(10);
@@ -4468,6 +4653,7 @@ END IF;
 END
 $$
 DELIMITER ;
+DROP TRIGGER IF EXISTS `trg_resolve_plan_inventory_metadata`;
 DELIMITER $$
 CREATE TRIGGER `trg_resolve_plan_inventory_metadata` BEFORE INSERT ON `transactions_plan` FOR EACH ROW BEGIN
   DECLARE v_primary_code VARCHAR(50);
@@ -4505,6 +4691,7 @@ CREATE TRIGGER `trg_resolve_plan_inventory_metadata` BEFORE INSERT ON `transacti
 END
 $$
 DELIMITER ;
+DROP TRIGGER IF EXISTS `trg_resolve_plan_inventory_metadata_update`;
 DELIMITER $$
 CREATE TRIGGER `trg_resolve_plan_inventory_metadata_update` BEFORE UPDATE ON `transactions_plan` FOR EACH ROW BEGIN
   DECLARE v_primary_code VARCHAR(50);
@@ -4542,6 +4729,7 @@ CREATE TRIGGER `trg_resolve_plan_inventory_metadata_update` BEFORE UPDATE ON `tr
 END
 $$
 DELIMITER ;
+DROP TRIGGER IF EXISTS `trg_transactions_plan_insert`;
 DELIMITER $$
 CREATE TRIGGER `trg_transactions_plan_insert` BEFORE INSERT ON `transactions_plan` FOR EACH ROW BEGIN
   DECLARE v_trtype VARCHAR(10);
@@ -4554,6 +4742,7 @@ CREATE TRIGGER `trg_transactions_plan_insert` BEFORE INSERT ON `transactions_pla
 END
 $$
 DELIMITER ;
+DROP TRIGGER IF EXISTS `trg_transactions_plan_update`;
 DELIMITER $$
 CREATE TRIGGER `trg_transactions_plan_update` BEFORE UPDATE ON `transactions_plan` FOR EACH ROW BEGIN
   DECLARE v_trtype VARCHAR(10);
@@ -4573,6 +4762,7 @@ DELIMITER ;
 -- Table structure for table `transactions_plan_other`
 --
 
+DROP TABLE IF EXISTS `transactions_plan_other`;
 CREATE TABLE `transactions_plan_other` (
   `id` int NOT NULL,
   `num` varchar(36) DEFAULT NULL,
@@ -4641,6 +4831,7 @@ CREATE TABLE `transactions_plan_other` (
 -- Table structure for table `transactions_pos`
 --
 
+DROP TABLE IF EXISTS `transactions_pos`;
 CREATE TABLE `transactions_pos` (
   `id` int NOT NULL,
   `session_id` varchar(64) DEFAULT NULL,
@@ -4680,6 +4871,7 @@ CREATE TABLE `transactions_pos` (
 -- Table structure for table `transactions_posservices`
 --
 
+DROP TABLE IF EXISTS `transactions_posservices`;
 CREATE TABLE `transactions_posservices` (
   `id` int NOT NULL,
   `transaction_id` int NOT NULL,
@@ -4703,6 +4895,7 @@ CREATE TABLE `transactions_posservices` (
 -- Table structure for table `transactions_test`
 --
 
+DROP TABLE IF EXISTS `transactions_test`;
 CREATE TABLE `transactions_test` (
   `id` bigint UNSIGNED NOT NULL,
   `company_id` int NOT NULL,
@@ -4723,6 +4916,7 @@ CREATE TABLE `transactions_test` (
 -- Table structure for table `transactions_test_detail`
 --
 
+DROP TABLE IF EXISTS `transactions_test_detail`;
 CREATE TABLE `transactions_test_detail` (
   `id` bigint UNSIGNED NOT NULL,
   `transaction_id` bigint UNSIGNED NOT NULL,
@@ -4744,6 +4938,7 @@ CREATE TABLE `transactions_test_detail` (
 -- Table structure for table `transaction_temporaries`
 --
 
+DROP TABLE IF EXISTS `transaction_temporaries`;
 CREATE TABLE `transaction_temporaries` (
   `id` bigint UNSIGNED NOT NULL,
   `company_id` bigint NOT NULL,
@@ -4755,22 +4950,70 @@ CREATE TABLE `transaction_temporaries` (
   `raw_values_json` longtext COLLATE utf8mb4_unicode_ci,
   `cleaned_values_json` longtext COLLATE utf8mb4_unicode_ci,
   `created_by` varchar(64) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `last_promoter_empid` varchar(64) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   `plan_senior_empid` varchar(64) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   `branch_id` bigint DEFAULT NULL,
   `department_id` bigint DEFAULT NULL,
-  `status` enum('pending','promoted','rejected') COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'pending',
-  `chain_id` bigint UNSIGNED DEFAULT NULL,
-  `is_pending` tinyint(1) GENERATED ALWAYS AS (if((`status` = 'pending'),1,NULL)) STORED,
+  `status` enum('pending','promoted','rejected','forwarded') CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'pending',
   `review_notes` text COLLATE utf8mb4_unicode_ci,
   `reviewed_by` varchar(64) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   `reviewed_at` datetime DEFAULT NULL,
   `promoted_record_id` varchar(64) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  CONSTRAINT `chk_temp_pending_reviewer` CHECK (`status` = 'pending' OR `plan_senior_empid` IS NULL),
   `updated_by` varchar(50) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
-  `deleted_at` timestamp NULL DEFAULT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+  `deleted_at` timestamp NULL DEFAULT NULL,
+  `chain_key` varchar(512) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `pending_key` char(1) COLLATE utf8mb4_unicode_ci GENERATED ALWAYS AS (if((`status` = _utf8mb4'pending'),_utf8mb4'1',NULL)) STORED,
+  `chain_id` bigint UNSIGNED DEFAULT NULL,
+  `is_pending` tinyint(1) GENERATED ALWAYS AS (if((`status` = _utf8mb4'pending'),1,NULL)) STORED
+) ;
+
+--
+-- Triggers `transaction_temporaries`
+--
+DROP TRIGGER IF EXISTS `trg_temp_clear_reviewer`;
+DELIMITER $$
+CREATE TRIGGER `trg_temp_clear_reviewer` BEFORE UPDATE ON `transaction_temporaries` FOR EACH ROW SET NEW.plan_senior_empid = IF(NEW.status = 'pending', NEW.plan_senior_empid, NULL)
+$$
+DELIMITER ;
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `transaction_temporaries_backup_J72_J6_J2`
+--
+
+DROP TABLE IF EXISTS `transaction_temporaries_backup_J72_J6_J2`;
+CREATE TABLE `transaction_temporaries_backup_J72_J6_J2` (
+  `id` bigint UNSIGNED NOT NULL DEFAULT '0',
+  `company_id` bigint NOT NULL,
+  `table_name` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
+  `form_name` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `config_name` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `module_key` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `payload_json` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
+  `raw_values_json` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci,
+  `cleaned_values_json` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci,
+  `created_by` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
+  `plan_senior_empid` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `branch_id` bigint DEFAULT NULL,
+  `department_id` bigint DEFAULT NULL,
+  `status` enum('pending','promoted','rejected') CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'pending',
+  `review_notes` text CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci,
+  `reviewed_by` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `reviewed_at` datetime DEFAULT NULL,
+  `promoted_record_id` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `updated_by` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `deleted_at` timestamp NULL DEFAULT NULL,
+  `chain_uuid` char(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
+  `chain_key` varchar(512) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `pending_key` char(1) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `chain_id` bigint UNSIGNED DEFAULT NULL,
+  `is_pending` tinyint(1) DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 -- --------------------------------------------------------
 
@@ -4778,16 +5021,17 @@ CREATE TABLE `transaction_temporaries` (
 -- Table structure for table `transaction_temporary_review_history`
 --
 
+DROP TABLE IF EXISTS `transaction_temporary_review_history`;
 CREATE TABLE `transaction_temporary_review_history` (
   `id` bigint UNSIGNED NOT NULL,
   `temporary_id` bigint UNSIGNED NOT NULL,
-  `chain_id` bigint UNSIGNED NOT NULL,
+  `chain_id` bigint UNSIGNED DEFAULT NULL,
   `action` enum('forwarded','promoted','rejected') COLLATE utf8mb4_unicode_ci NOT NULL,
   `reviewer_empid` varchar(64) COLLATE utf8mb4_unicode_ci NOT NULL,
   `forwarded_to_empid` varchar(64) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   `promoted_record_id` varchar(64) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   `notes` text COLLATE utf8mb4_unicode_ci,
-  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP
+  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- --------------------------------------------------------
@@ -4796,6 +5040,7 @@ CREATE TABLE `transaction_temporary_review_history` (
 -- Table structure for table `transaction_vat_summary`
 --
 
+DROP TABLE IF EXISTS `transaction_vat_summary`;
 CREATE TABLE `transaction_vat_summary` (
   `id` bigint UNSIGNED NOT NULL,
   `transaction_id` bigint UNSIGNED NOT NULL,
@@ -4810,16 +5055,17 @@ CREATE TABLE `transaction_vat_summary` (
 -- Stand-in structure for view `UnifiedInventoryCode`
 -- (See below for the actual view)
 --
+DROP VIEW IF EXISTS `UnifiedInventoryCode`;
 CREATE TABLE `UnifiedInventoryCode` (
-`cost_code` varchar(100)
+`categories` int
 ,`cost` decimal(18,2)
+,`cost_code` varchar(100)
 ,`cost_date` date
-,`primary_code` varchar(100)
-,`selling_code` varchar(100)
+,`manufacturer_id` bigint
 ,`pm_name` varchar(255)
 ,`pm_unit_id` int
-,`categories` int
-,`manufacturer_id` bigint
+,`primary_code` varchar(100)
+,`selling_code` varchar(100)
 ,`source_table` varchar(13)
 );
 
@@ -4829,15 +5075,16 @@ CREATE TABLE `UnifiedInventoryCode` (
 -- Stand-in structure for view `unified_lookup`
 -- (See below for the actual view)
 --
+DROP VIEW IF EXISTS `unified_lookup`;
 CREATE TABLE `unified_lookup` (
-`cost_code` varchar(100)
+`categories` int
 ,`cost` decimal(18,2)
-,`primary_code` varchar(100)
-,`selling_code` varchar(100)
+,`cost_code` varchar(100)
+,`manufacturer_id` bigint
 ,`pm_name` varchar(255)
 ,`pm_unit_id` int
-,`categories` int
-,`manufacturer_id` bigint
+,`primary_code` varchar(100)
+,`selling_code` varchar(100)
 ,`source_table` varchar(13)
 );
 
@@ -4847,6 +5094,7 @@ CREATE TABLE `unified_lookup` (
 -- Table structure for table `users`
 --
 
+DROP TABLE IF EXISTS `users`;
 CREATE TABLE `users` (
   `id` int NOT NULL,
   `password` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL DEFAULT '$2a$10$OyIyhW8VD6/4X2A/2IA3mOvwvx.a4spsEteH9tjqf69hq70jFnNmu',
@@ -4865,6 +5113,7 @@ CREATE TABLE `users` (
 -- Table structure for table `user_activity_log`
 --
 
+DROP TABLE IF EXISTS `user_activity_log`;
 CREATE TABLE `user_activity_log` (
   `log_id` bigint NOT NULL,
   `emp_id` varchar(10) NOT NULL,
@@ -4888,6 +5137,7 @@ CREATE TABLE `user_activity_log` (
 -- Table structure for table `user_levels`
 --
 
+DROP TABLE IF EXISTS `user_levels`;
 CREATE TABLE `user_levels` (
   `id` int NOT NULL,
   `userlevel_id` int NOT NULL,
@@ -4907,6 +5157,7 @@ CREATE TABLE `user_levels` (
 -- Table structure for table `user_level_permissions`
 --
 
+DROP TABLE IF EXISTS `user_level_permissions`;
 CREATE TABLE `user_level_permissions` (
   `id` int NOT NULL,
   `userlevel_id` int NOT NULL,
@@ -4926,20 +5177,21 @@ CREATE TABLE `user_level_permissions` (
 -- Stand-in structure for view `view_inventory_report_summary`
 -- (See below for the actual view)
 --
+DROP VIEW IF EXISTS `view_inventory_report_summary`;
 CREATE TABLE `view_inventory_report_summary` (
-`primary_code` varchar(50)
-,`pm_name` varchar(255)
-,`pm_unit_id` int
-,`opening_acc` double(19,2)
-,`opening_sub` double(19,2)
-,`increase_acc` double(19,2)
-,`increase_sub` double(19,2)
-,`decrease_acc` double(19,2)
-,`decrease_sub` double(19,2)
+`calculated_closing_acc` double(22,2)
 ,`closing_acc` double(19,2)
 ,`closing_sub` double(19,2)
-,`calculated_closing_acc` double(22,2)
+,`decrease_acc` double(19,2)
+,`decrease_sub` double(19,2)
 ,`diff_vs_actual_closing_sub` double(22,2)
+,`increase_acc` double(19,2)
+,`increase_sub` double(19,2)
+,`opening_acc` double(19,2)
+,`opening_sub` double(19,2)
+,`pm_name` varchar(255)
+,`pm_unit_id` int
+,`primary_code` varchar(50)
 );
 
 -- --------------------------------------------------------
@@ -4948,64 +5200,65 @@ CREATE TABLE `view_inventory_report_summary` (
 -- Stand-in structure for view `view_transactions_income`
 -- (See below for the actual view)
 --
+DROP VIEW IF EXISTS `view_transactions_income`;
 CREATE TABLE `view_transactions_income` (
-`id` int
-,`or_num` varchar(50)
-,`ortr_transbranch` int
-,`or_o_barimt` varchar(50)
-,`company_id` int
+`actime` date
 ,`branch_id` int
-,`or_g_id` int
-,`or_burtgel` int
-,`or_chig` int
-,`or_torol` int
-,`or_type_id` int
-,`or_av_now` int
-,`or_av_time` varchar(50)
-,`or_date` date
-,`orcash_or_id` int
-,`or_or` double(15,2)
-,`or_vallut_id` int
-,`or_valut_choice` int
-,`or_bar_suu` varchar(17)
-,`or_bcode` varchar(50)
-,`or_orderid` varchar(102)
-,`or_tailbar1` varchar(65)
-,`orBurtgel_rd` varchar(27)
-,`or_eb` int
-,`or_bank` varchar(7)
-,`or_uglug_id` varchar(15)
-,`or_emp_receiver` varchar(10)
-,`or_tur_receiver` varchar(10)
-,`or_other_receiver` varchar(100)
-,`or_org_id` varchar(10)
-,`TRTYPENAME` varchar(100)
-,`trtype` varchar(4)
-,`TransType` int
-,`ORGANIZATION` varchar(50)
-,`ROOMID` varchar(10)
-,`USERID` varchar(10)
-,`LOCATION` varchar(50)
+,`company_id` int
 ,`deviceid` varchar(50)
 ,`devicename` varchar(50)
-,`rawdata` varchar(500)
-,`actime` date
-,`rectime` date
-,`ortr_state` int
-,`ortr_id` varchar(50)
+,`id` int
+,`LOCATION` varchar(50)
+,`or_av_now` int
+,`or_av_time` varchar(50)
+,`or_bank` varchar(7)
+,`or_bar_suu` varchar(17)
+,`or_bcode` varchar(50)
+,`or_burtgel` int
+,`or_chig` int
+,`or_date` date
+,`or_eb` int
+,`or_emp_receiver` varchar(10)
+,`or_g_id` int
+,`or_num` varchar(50)
+,`or_o_barimt` varchar(50)
+,`or_or` double(15,2)
+,`or_orderid` varchar(102)
+,`or_org_id` varchar(10)
+,`or_other_receiver` varchar(100)
+,`or_tailbar1` varchar(65)
+,`or_torol` int
+,`or_tur_receiver` varchar(10)
+,`or_type_id` int
+,`or_uglug_id` varchar(15)
+,`or_vallut_id` int
+,`or_valut_choice` int
+,`orBurtgel_rd` varchar(27)
+,`orcash_or_id` int
+,`ORGANIZATION` varchar(50)
+,`ortr_check_cause` varchar(500)
+,`ortr_check_date` date
+,`ortr_check_emp` varchar(10)
+,`ortr_checkyn` varchar(500)
 ,`ortr_confirm` int
 ,`ortr_confirm_date` date
 ,`ortr_confirm_emp` varchar(10)
-,`ortr_edit_date` date
-,`ortr_edit_emp` varchar(10)
-,`ortr_edit_cause` varchar(500)
+,`ortr_del_cause` varchar(500)
 ,`ortr_del_date` date
 ,`ortr_del_emp` varchar(10)
-,`ortr_del_cause` varchar(500)
-,`ortr_check_date` date
-,`ortr_checkyn` varchar(500)
-,`ortr_check_emp` varchar(10)
-,`ortr_check_cause` varchar(500)
+,`ortr_edit_cause` varchar(500)
+,`ortr_edit_date` date
+,`ortr_edit_emp` varchar(10)
+,`ortr_id` varchar(50)
+,`ortr_state` int
+,`ortr_transbranch` int
+,`rawdata` varchar(500)
+,`rectime` date
+,`ROOMID` varchar(10)
+,`TransType` int
+,`trtype` varchar(4)
+,`TRTYPENAME` varchar(100)
+,`USERID` varchar(10)
 );
 
 --
@@ -5403,7 +5656,10 @@ ALTER TABLE `ebarimt_invoice_payment`
 -- Indexes for table `ebarimt_reference_code`
 --
 ALTER TABLE `ebarimt_reference_code`
-  ADD PRIMARY KEY (`id`);
+  ADD PRIMARY KEY (`id`),
+  ADD UNIQUE KEY `code_type` (`code_type`,`code`,`is_active`),
+  ADD UNIQUE KEY `code_type_2` (`code_type`,`type_code`,`subtype_code`,`is_active`),
+  ADD UNIQUE KEY `code_type_3` (`code_type`,`code`,`tax_code`,`start_date`,`end_date`,`is_active`);
 
 --
 -- Indexes for table `forms`
@@ -5742,7 +5998,7 @@ ALTER TABLE `transactions_expense_other`
 --
 ALTER TABLE `transactions_income`
   ADD PRIMARY KEY (`id`),
-  ADD UNIQUE KEY `uniq_db40a088` (`or_num`,`ortr_transbranch`,`or_o_barimt`,`company_id`,`branch_id`),
+  ADD UNIQUE KEY `uniq_db40a088` (`or_num`,`ortr_transbranch`,`or_o_barimt`,`company_id`,`branch_id`,`or_av_now`,`or_burtgel`,`or_date`,`or_eb`,`or_emp_receiver`,`or_g_id`,`or_or`,`or_tailbar1`,`orcash_or_id`,`ortr_confirm_emp`,`TransType`) USING BTREE,
   ADD KEY `company_id` (`company_id`),
   ADD KEY `TransType` (`TransType`),
   ADD KEY `branch_id` (`branch_id`),
@@ -5844,9 +6100,9 @@ ALTER TABLE `transaction_temporaries`
   ADD KEY `idx_temp_status` (`status`),
   ADD KEY `idx_temp_table` (`table_name`),
   ADD KEY `idx_temp_plan_senior` (`plan_senior_empid`),
+  ADD KEY `idx_temp_creator` (`created_by`),
   ADD KEY `idx_temp_status_plan_senior` (`status`,`plan_senior_empid`),
-  ADD UNIQUE KEY `idx_temp_chain_pending` (`chain_id`,`is_pending`),
-  ADD KEY `idx_temp_creator` (`created_by`);
+  ADD KEY `idx_temp_last_promoter` (`last_promoter_empid`);
 
 --
 -- Indexes for table `transaction_temporary_review_history`
@@ -5854,15 +6110,8 @@ ALTER TABLE `transaction_temporaries`
 ALTER TABLE `transaction_temporary_review_history`
   ADD PRIMARY KEY (`id`),
   ADD KEY `idx_temp_history_temp` (`temporary_id`),
-  ADD KEY `idx_temp_history_chain` (`chain_id`),
-  ADD KEY `idx_temp_history_action` (`action`);
-
---
--- Triggers `transaction_temporaries`
---
-DELIMITER $$
-CREATE TRIGGER `trg_temp_clear_reviewer` BEFORE UPDATE ON `transaction_temporaries` FOR EACH ROW SET NEW.plan_senior_empid = IF(NEW.status = 'pending', NEW.plan_senior_empid, NULL)$$
-DELIMITER ;
+  ADD KEY `idx_temp_history_action` (`action`),
+  ADD KEY `idx_temp_history_chain` (`chain_id`);
 
 --
 -- Indexes for table `transaction_vat_summary`
@@ -6542,6 +6791,12 @@ ALTER TABLE `transaction_temporaries`
   MODIFY `id` bigint UNSIGNED NOT NULL AUTO_INCREMENT;
 
 --
+-- AUTO_INCREMENT for table `transaction_temporary_review_history`
+--
+ALTER TABLE `transaction_temporary_review_history`
+  MODIFY `id` bigint UNSIGNED NOT NULL AUTO_INCREMENT;
+
+--
 -- AUTO_INCREMENT for table `transaction_vat_summary`
 --
 ALTER TABLE `transaction_vat_summary`
@@ -6578,6 +6833,7 @@ ALTER TABLE `user_level_permissions`
 --
 DROP TABLE IF EXISTS `InventoryStockPerBranch`;
 
+DROP VIEW IF EXISTS `InventoryStockPerBranch`;
 CREATE ALGORITHM=UNDEFINED DEFINER=`root`@`localhost` SQL SECURITY DEFINER VIEW `InventoryStockPerBranch`  AS SELECT `ti`.`company_id` AS `company_id`, `ti`.`bmtr_transbranch` AS `branch_id`, ifnull(`unified`.`primary_code`,`ti`.`bmtr_pmid`) AS `item_code`, `unified`.`pm_name` AS `pm_name`, sum((case when ((`ti`.`trtype` in ('bmor','asor')) and (`ti`.`bmtr_branchid` = `ti`.`bmtr_transbranch`)) then `ti`.`bmtr_sub` else 0 end)) AS `total_in_qty`, sum((case when ((`ti`.`trtype` in ('bmza','asza')) and (`ti`.`bmtr_frombranchid` = `ti`.`bmtr_transbranch`)) then `ti`.`bmtr_sub` when (`ti`.`trtype` in ('bmsh','assh')) then `ti`.`bmtr_sub` else 0 end)) AS `total_out_qty`, sum((case when ((`ti`.`trtype` in ('bmor','asor')) and (`ti`.`bmtr_branchid` = `ti`.`bmtr_transbranch`)) then (`ti`.`bmtr_sub` * `unified`.`cost`) else 0 end)) AS `total_in_value`, (sum((case when ((`ti`.`trtype` in ('bmor','asor')) and (`ti`.`bmtr_branchid` = `ti`.`bmtr_transbranch`)) then `ti`.`bmtr_sub` else 0 end)) - sum((case when ((`ti`.`trtype` in ('bmza','asza')) and (`ti`.`bmtr_frombranchid` = `ti`.`bmtr_transbranch`)) then `ti`.`bmtr_sub` when (`ti`.`trtype` in ('bmsh','assh')) then `ti`.`bmtr_sub` else 0 end))) AS `on_hand_qty`, (case when (sum((case when ((`ti`.`trtype` in ('bmor','asor')) and (`ti`.`bmtr_branchid` = `ti`.`bmtr_transbranch`)) then `ti`.`bmtr_sub` else 0 end)) > 0) then (sum((case when ((`ti`.`trtype` in ('bmor','asor')) and (`ti`.`bmtr_branchid` = `ti`.`bmtr_transbranch`)) then (`ti`.`bmtr_sub` * `unified`.`cost`) else 0 end)) / nullif(sum((case when ((`ti`.`trtype` in ('bmor','asor')) and (`ti`.`bmtr_branchid` = `ti`.`bmtr_transbranch`)) then `ti`.`bmtr_sub` else 0 end)),0)) else 0 end) AS `avg_cost`, round(((sum((case when ((`ti`.`trtype` in ('bmor','asor')) and (`ti`.`bmtr_branchid` = `ti`.`bmtr_transbranch`)) then `ti`.`bmtr_sub` else 0 end)) - sum((case when ((`ti`.`trtype` in ('bmza','asza')) and (`ti`.`bmtr_frombranchid` = `ti`.`bmtr_transbranch`)) then `ti`.`bmtr_sub` when (`ti`.`trtype` in ('bmsh','assh')) then `ti`.`bmtr_sub` else 0 end))) * (case when (sum((case when ((`ti`.`trtype` in ('bmor','asor')) and (`ti`.`bmtr_branchid` = `ti`.`bmtr_transbranch`)) then `ti`.`bmtr_sub` else 0 end)) > 0) then (sum((case when ((`ti`.`trtype` in ('bmor','asor')) and (`ti`.`bmtr_branchid` = `ti`.`bmtr_transbranch`)) then (`ti`.`bmtr_sub` * `unified`.`cost`) else 0 end)) / nullif(sum((case when ((`ti`.`trtype` in ('bmor','asor')) and (`ti`.`bmtr_branchid` = `ti`.`bmtr_transbranch`)) then `ti`.`bmtr_sub` else 0 end)),0)) else 0 end)),2) AS `inventory_value` FROM (`transactions_inventory` `ti` left join (select `cm`.`xmkod` AS `cost_code`,`cm`.`xmkod_cost` AS `cost`,`cm`.`xmkod_date` AS `cost_date`,`cmp`.`xmkodtk` AS `primary_code`,`cmp`.`xmkodtk_tkkod` AS `selling_code`,`cmp`.`xmkodtk_name` AS `pm_name`,`cmp`.`xmkodtk_muid` AS `pm_unit_id`,`cm`.`category` AS `categories`,0 AS `manufacturer_id`,'material_cost' AS `source_table` from (`code_material` `cm` left join `code_materialprim` `cmp` on((`cm`.`xmkod_tkkod` = `cmp`.`xmkodtk`))) union all select `cp`.`bkod` AS `cost_code`,`cp`.`bkod_cost` AS `cost`,`cp`.`bkod_date` AS `cost_date`,`cpp`.`bkod_Tk` AS `primary_code`,`cpp`.`bkod_Tk` AS `selling_code`,`cpp`.`bkod_Tk_name` AS `pm_name`,`cpp`.`bkod_Tk_muid` AS `pm_unit_id`,`cp`.`category` AS `categories`,`cp`.`bkod_prod` AS `manufacturer_id`,'product_cost' AS `source_table` from (`code_bkod` `cp` left join `code_bkodprim` `cpp` on((`cp`.`bkod_prim` = `cpp`.`bkod_Tk`))) union all select `cpp`.`bkod_Tk` AS `cost_code`,NULL AS `cost`,NULL AS `cost_date`,`cpp`.`bkod_Tk` AS `primary_code`,`cpp`.`bkod_Tk` AS `selling_code`,`cpp`.`bkod_Tk_name` AS `pm_name`,`cpp`.`bkod_Tk_muid` AS `pm_unit_id`,`cpp`.`category` AS `categories`,`cpp`.`bkod_Tk_prod` AS `manufacturer_id`,'product_prim' AS `source_table` from `code_bkodprim` `cpp` union all select `cmp`.`xmkodtk` AS `cost_code`,NULL AS `cost`,NULL AS `cost_date`,`cmp`.`xmkodtk` AS `primary_code`,`cmp`.`xmkodtk_tkkod` AS `selling_code`,`cmp`.`xmkodtk_name` AS `pm_name`,`cmp`.`xmkodtk_muid` AS `pm_unit_id`,`cmp`.`category` AS `categories`,0 AS `manufacturer_id`,'material_prim' AS `source_table` from `code_materialprim` `cmp` union all select `eh`.`ehkod` AS `cost_code`,`eh`.`ehkod_price` AS `cost`,`eh`.`ehkod_date` AS `cost_date`,`eh`.`ehkod` AS `primary_code`,`eh`.`ehkod` AS `selling_code`,`eh`.`ehkod_name` AS `pm_name`,`eh`.`ehkod_muid` AS `pm_unit_id`,`eh`.`category` AS `categories`,0 AS `manufacturer_id`,'property' AS `source_table` from `code_edhorongo` `eh`) `unified` on((`ti`.`bmtr_pmid` = `unified`.`cost_code`))) GROUP BY `ti`.`company_id`, `ti`.`bmtr_transbranch`, ifnull(`unified`.`primary_code`,`ti`.`bmtr_pmid`), `unified`.`pm_name` ;
 
 -- --------------------------------------------------------
@@ -6587,6 +6843,7 @@ CREATE ALGORITHM=UNDEFINED DEFINER=`root`@`localhost` SQL SECURITY DEFINER VIEW 
 --
 DROP TABLE IF EXISTS `InventoryStockPerCompany`;
 
+DROP VIEW IF EXISTS `InventoryStockPerCompany`;
 CREATE ALGORITHM=UNDEFINED DEFINER=`root`@`localhost` SQL SECURITY DEFINER VIEW `InventoryStockPerCompany`  AS SELECT `ti`.`company_id` AS `company_id`, sum((case when ((`ti`.`trtype` in ('bmor','asor')) and ((`ti`.`bmtr_frombranchid` is null) or (`ti`.`bmtr_frombranchid` = 0))) then `ti`.`bmtr_sub` else 0 end)) AS `fifo_lifo_qty`, sum((case when ((`ti`.`trtype` in ('bmor','asor')) and ((`ti`.`bmtr_frombranchid` is null) or (`ti`.`bmtr_frombranchid` = 0))) then (`ti`.`bmtr_sub` * `unified`.`cost`) else 0 end)) AS `fifo_lifo_value`, `unified`.`primary_code` AS `item_code`, `unified`.`pm_name` AS `pm_name`, sum((case when ((`ti`.`trtype` in ('bmor','asor')) and ((`ti`.`bmtr_frombranchid` is null) or (`ti`.`bmtr_frombranchid` = 0))) then `ti`.`bmtr_sub` when ((`ti`.`trtype` in ('bmor','asor')) and (`ti`.`bmtr_frombranchid` is not null)) then 0 else 0 end)) AS `total_in_qty`, sum((case when ((`ti`.`trtype` in ('bmza','asza')) and ((`ti`.`bmtr_branchid` is null) or (`ti`.`bmtr_branchid` = 0))) then `ti`.`bmtr_sub` when (`ti`.`trtype` in ('bmsh','assh')) then `ti`.`bmtr_sub` when ((`ti`.`trtype` in ('bmza','asza')) and (`ti`.`bmtr_branchid` is not null) and (`ti`.`bmtr_frombranchid` is not null)) then 0 else 0 end)) AS `total_out_qty`, sum((case when ((`ti`.`trtype` in ('bmor','asor')) and ((`ti`.`bmtr_frombranchid` is null) or (`ti`.`bmtr_frombranchid` = 0))) then (`ti`.`bmtr_sub` * `unified`.`cost`) when ((`ti`.`trtype` in ('bmor','asor')) and (`ti`.`bmtr_frombranchid` is not null)) then 0 else 0 end)) AS `total_in_value`, (sum((case when ((`ti`.`trtype` in ('bmor','asor')) and ((`ti`.`bmtr_frombranchid` is null) or (`ti`.`bmtr_frombranchid` = 0))) then `ti`.`bmtr_sub` else 0 end)) - sum((case when ((`ti`.`trtype` in ('bmza','asza')) and ((`ti`.`bmtr_branchid` is null) or (`ti`.`bmtr_branchid` = 0))) then `ti`.`bmtr_sub` when (`ti`.`trtype` in ('bmsh','assh')) then `ti`.`bmtr_sub` else 0 end))) AS `on_hand_qty`, (case when (sum((case when ((`ti`.`trtype` in ('bmor','asor')) and ((`ti`.`bmtr_frombranchid` is null) or (`ti`.`bmtr_frombranchid` = 0))) then `ti`.`bmtr_sub` else 0 end)) > 0) then (sum((case when ((`ti`.`trtype` in ('bmor','asor')) and ((`ti`.`bmtr_frombranchid` is null) or (`ti`.`bmtr_frombranchid` = 0))) then (`ti`.`bmtr_sub` * `unified`.`cost`) else 0 end)) / nullif(sum((case when ((`ti`.`trtype` in ('bmor','asor')) and ((`ti`.`bmtr_frombranchid` is null) or (`ti`.`bmtr_frombranchid` = 0))) then `ti`.`bmtr_sub` else 0 end)),0)) else 0 end) AS `avg_cost`, round(((sum((case when ((`ti`.`trtype` in ('bmor','asor')) and ((`ti`.`bmtr_frombranchid` is null) or (`ti`.`bmtr_frombranchid` = 0))) then `ti`.`bmtr_sub` else 0 end)) - sum((case when ((`ti`.`trtype` in ('bmza','asza')) and ((`ti`.`bmtr_branchid` is null) or (`ti`.`bmtr_branchid` = 0))) then `ti`.`bmtr_sub` when (`ti`.`trtype` in ('bmsh','assh')) then `ti`.`bmtr_sub` else 0 end))) * (case when (sum((case when ((`ti`.`trtype` in ('bmor','asor')) and ((`ti`.`bmtr_frombranchid` is null) or (`ti`.`bmtr_frombranchid` = 0))) then `ti`.`bmtr_sub` else 0 end)) > 0) then (sum((case when ((`ti`.`trtype` in ('bmor','asor')) and ((`ti`.`bmtr_frombranchid` is null) or (`ti`.`bmtr_frombranchid` = 0))) then (`ti`.`bmtr_sub` * `unified`.`cost`) else 0 end)) / nullif(sum((case when ((`ti`.`trtype` in ('bmor','asor')) and ((`ti`.`bmtr_frombranchid` is null) or (`ti`.`bmtr_frombranchid` = 0))) then `ti`.`bmtr_sub` else 0 end)),0)) else 0 end)),2) AS `inventory_value` FROM (`transactions_inventory` `ti` left join (select `cm`.`xmkod` AS `cost_code`,`cm`.`xmkod_cost` AS `cost`,`cm`.`xmkod_date` AS `cost_date`,`cmp`.`xmkodtk` AS `primary_code`,`cmp`.`xmkodtk_tkkod` AS `selling_code`,`cmp`.`xmkodtk_name` AS `pm_name`,`cmp`.`xmkodtk_muid` AS `pm_unit_id`,`cm`.`category` AS `categories`,0 AS `manufacturer_id`,'material_cost' AS `source_table` from (`code_material` `cm` left join `code_materialprim` `cmp` on((`cm`.`xmkod_tkkod` = `cmp`.`xmkodtk`))) union all select `cp`.`bkod` AS `cost_code`,`cp`.`bkod_cost` AS `cost`,`cp`.`bkod_date` AS `cost_date`,`cpp`.`bkod_Tk` AS `primary_code`,`cpp`.`bkod_Tk` AS `selling_code`,`cpp`.`bkod_Tk_name` AS `pm_name`,`cpp`.`bkod_Tk_muid` AS `pm_unit_id`,`cp`.`category` AS `categories`,`cp`.`bkod_prod` AS `manufacturer_id`,'product_cost' AS `source_table` from (`code_bkod` `cp` left join `code_bkodprim` `cpp` on((`cp`.`bkod_prim` = `cpp`.`bkod_Tk`))) union all select `cpp`.`bkod_Tk` AS `cost_code`,NULL AS `cost`,NULL AS `cost_date`,`cpp`.`bkod_Tk` AS `primary_code`,`cpp`.`bkod_Tk` AS `selling_code`,`cpp`.`bkod_Tk_name` AS `pm_name`,`cpp`.`bkod_Tk_muid` AS `pm_unit_id`,`cpp`.`category` AS `categories`,`cpp`.`bkod_Tk_prod` AS `manufacturer_id`,'product_prim' AS `source_table` from `code_bkodprim` `cpp` union all select `cmp`.`xmkodtk` AS `cost_code`,NULL AS `cost`,NULL AS `cost_date`,`cmp`.`xmkodtk` AS `primary_code`,`cmp`.`xmkodtk_tkkod` AS `selling_code`,`cmp`.`xmkodtk_name` AS `pm_name`,`cmp`.`xmkodtk_muid` AS `pm_unit_id`,`cmp`.`category` AS `categories`,0 AS `manufacturer_id`,'material_prim' AS `source_table` from `code_materialprim` `cmp` union all select `eh`.`ehkod` AS `cost_code`,`eh`.`ehkod_price` AS `cost`,`eh`.`ehkod_date` AS `cost_date`,`eh`.`ehkod` AS `primary_code`,`eh`.`ehkod` AS `selling_code`,`eh`.`ehkod_name` AS `pm_name`,`eh`.`ehkod_muid` AS `pm_unit_id`,`eh`.`category` AS `categories`,0 AS `manufacturer_id`,'property' AS `source_table` from `code_edhorongo` `eh`) `unified` on((`ti`.`bmtr_pmid` = `unified`.`cost_code`))) GROUP BY `ti`.`company_id`, `unified`.`primary_code`, `unified`.`pm_name` ;
 
 -- --------------------------------------------------------
@@ -6596,6 +6853,7 @@ CREATE ALGORITHM=UNDEFINED DEFINER=`root`@`localhost` SQL SECURITY DEFINER VIEW 
 --
 DROP TABLE IF EXISTS `InventoryTransactionView`;
 
+DROP VIEW IF EXISTS `InventoryTransactionView`;
 CREATE ALGORITHM=UNDEFINED DEFINER=`root`@`localhost` SQL SECURITY DEFINER VIEW `InventoryTransactionView`  AS SELECT `u`.`primary_code` AS `primary_code`, (select json_object('avg_cost',(sum((`ti`.`bmtr_sub` * `u`.`cost`)) / nullif(sum(`ti`.`bmtr_sub`),0)),'item_cost_qty',sum(`ti`.`bmtr_sub`),'item_cost_value',sum((`ti`.`bmtr_sub` * `u`.`cost`))) from `transactions_inventory` `ti` where ((`ti`.`trtype` in ('bmor','asor')) and ((`ti`.`bmtr_frombranchid` is null) or (`ti`.`bmtr_frombranchid` = 0)) and (`ti`.`bmtr_date` <= curdate()) and ((`ti`.`bmtr_pmid` = `u`.`cost_code`) or (`ti`.`bmtr_pmid` = `u`.`primary_code`)))) AS `cost_metrics`, (select `sp`.`selling_price` from `tbl_sellingprice` `sp` where ((`sp`.`product_primary_code` = `u`.`selling_code`) and (`sp`.`price_date` <= curdate()) and (`sp`.`company_id` = 2)) order by `sp`.`price_date` desc limit 1) AS `sell_price`, (select `d`.`discount_percent` from `tbl_discount` `d` where (((`d`.`inventory_code` = `u`.`cost_code`) or (`d`.`inventory_code` = `u`.`primary_code`) or (`d`.`inventory_code` = `u`.`selling_code`)) and ((`d`.`coupon_code` is null) or (`d`.`coupon_code` = '0')) and (`d`.`start_date` <= curdate()) and (`d`.`end_date` >= curdate()) and (`d`.`company_id` = 2) and (`d`.`branchid` = 4)) order by `d`.`start_date` desc limit 1) AS `discount_percent` FROM (select `unified_all`.`cost_code` AS `cost_code`,`unified_all`.`cost` AS `cost`,`unified_all`.`cost_date` AS `cost_date`,`unified_all`.`primary_code` AS `primary_code`,`unified_all`.`selling_code` AS `selling_code`,`unified_all`.`pm_name` AS `pm_name`,`unified_all`.`pm_unit_id` AS `pm_unit_id`,`unified_all`.`categories` AS `categories`,`unified_all`.`source_table` AS `source_table` from (select `cm`.`xmkod` AS `cost_code`,`cm`.`xmkod_cost` AS `cost`,`cm`.`xmkod_date` AS `cost_date`,`cmp`.`xmkodtk` AS `primary_code`,`cmp`.`xmkodtk_tkkod` AS `selling_code`,`cmp`.`xmkodtk_name` AS `pm_name`,`cmp`.`xmkodtk_muid` AS `pm_unit_id`,`cm`.`category` AS `categories`,'material_cost' AS `source_table` from (`code_material` `cm` left join `code_materialprim` `cmp` on((`cm`.`xmkod_tkkod` = `cmp`.`xmkodtk`))) union all select `cp`.`bkod` AS `cost_code`,`cp`.`bkod_cost` AS `cost`,`cp`.`bkod_date` AS `cost_date`,`cpp`.`bkod_Tk` AS `primary_code`,`cpp`.`bkod_Tk` AS `selling_code`,`cpp`.`bkod_Tk_name` AS `pm_name`,`cpp`.`bkod_Tk_muid` AS `pm_unit_id`,`cp`.`category` AS `categories`,'product_cost' AS `source_table` from (`code_bkod` `cp` left join `code_bkodprim` `cpp` on((`cp`.`bkod_prim` = `cpp`.`bkod_Tk`))) union all select `eh`.`id` AS `cost_code`,`eh`.`ehkod_price` AS `cost`,`eh`.`ehkod_date` AS `cost_date`,`eh`.`id` AS `primary_code`,`eh`.`id` AS `selling_code`,`eh`.`name` AS `pm_name`,`eh`.`ehkod_muid` AS `pm_unit_id`,`eh`.`category` AS `categories`,'property' AS `source_table` from `code_edhorongo` `eh`) `unified_all` where ((`unified_all`.`cost_code` = '600001') or (`unified_all`.`primary_code` = '600001'))) AS `u` GROUP BY `u`.`primary_code` ;
 
 -- --------------------------------------------------------
@@ -6605,6 +6863,7 @@ CREATE ALGORITHM=UNDEFINED DEFINER=`root`@`localhost` SQL SECURITY DEFINER VIEW 
 --
 DROP TABLE IF EXISTS `UnifiedInventoryCode`;
 
+DROP VIEW IF EXISTS `UnifiedInventoryCode`;
 CREATE ALGORITHM=UNDEFINED DEFINER=`root`@`localhost` SQL SECURITY DEFINER VIEW `UnifiedInventoryCode`  AS SELECT `unified`.`cost_code` AS `cost_code`, `unified`.`cost` AS `cost`, `unified`.`cost_date` AS `cost_date`, `unified`.`primary_code` AS `primary_code`, `unified`.`selling_code` AS `selling_code`, `unified`.`pm_name` AS `pm_name`, `unified`.`pm_unit_id` AS `pm_unit_id`, `unified`.`categories` AS `categories`, `unified`.`manufacturer_id` AS `manufacturer_id`, `unified`.`source_table` AS `source_table` FROM (select `cpp`.`bkod_Tk` AS `cost_code`,NULL AS `cost`,NULL AS `cost_date`,`cpp`.`bkod_Tk` AS `primary_code`,`cpp`.`bkod_Tk` AS `selling_code`,`cpp`.`bkod_Tk_name` AS `pm_name`,`cpp`.`bkod_Tk_muid` AS `pm_unit_id`,`cpp`.`category` AS `categories`,`cpp`.`bkod_Tk_prod` AS `manufacturer_id`,'product_prim' AS `source_table` from `code_bkodprim` `cpp` union all select `cmp`.`xmkodtk` AS `cost_code`,NULL AS `cost`,NULL AS `cost_date`,`cmp`.`xmkodtk` AS `primary_code`,`cmp`.`xmkodtk_tkkod` AS `selling_code`,`cmp`.`xmkodtk_name` AS `pm_name`,`cmp`.`xmkodtk_muid` AS `pm_unit_id`,`cmp`.`category` AS `categories`,0 AS `manufacturer_id`,'material_prim' AS `source_table` from `code_materialprim` `cmp` union all select `eh`.`ehkod` AS `cost_code`,`eh`.`ehkod_price` AS `cost`,`eh`.`ehkod_date` AS `cost_date`,`eh`.`ehkod` AS `primary_code`,`eh`.`ehkod` AS `selling_code`,`eh`.`ehkod_name` AS `pm_name`,`eh`.`ehkod_muid` AS `pm_unit_id`,`eh`.`category` AS `categories`,0 AS `manufacturer_id`,'property' AS `source_table` from `code_edhorongo` `eh`) AS `unified` ORDER BY `unified`.`cost_code` ASC, `unified`.`pm_name` ASC ;
 
 -- --------------------------------------------------------
@@ -6614,6 +6873,7 @@ CREATE ALGORITHM=UNDEFINED DEFINER=`root`@`localhost` SQL SECURITY DEFINER VIEW 
 --
 DROP TABLE IF EXISTS `unified_lookup`;
 
+DROP VIEW IF EXISTS `unified_lookup`;
 CREATE ALGORITHM=UNDEFINED DEFINER=`root`@`localhost` SQL SECURITY DEFINER VIEW `unified_lookup`  AS SELECT `combined`.`cost_code` AS `cost_code`, max(`combined`.`cost`) AS `cost`, max(`combined`.`primary_code`) AS `primary_code`, max(`combined`.`selling_code`) AS `selling_code`, max(`combined`.`pm_name`) AS `pm_name`, max(`combined`.`pm_unit_id`) AS `pm_unit_id`, max(`combined`.`categories`) AS `categories`, max(`combined`.`manufacturer_id`) AS `manufacturer_id`, max(`combined`.`source_table`) AS `source_table` FROM (select distinct `cm`.`xmkod` AS `cost_code`,`cm`.`xmkod_cost` AS `cost`,`cmp`.`xmkodtk` AS `primary_code`,`cmp`.`xmkodtk_tkkod` AS `selling_code`,`cmp`.`xmkodtk_name` AS `pm_name`,`cmp`.`xmkodtk_muid` AS `pm_unit_id`,`cm`.`category` AS `categories`,0 AS `manufacturer_id`,'material_cost' AS `source_table` from (`code_material` `cm` left join `code_materialprim` `cmp` on((`cm`.`xmkod_tkkod` = `cmp`.`xmkodtk`))) union all select distinct `cp`.`bkod` AS `cost_code`,`cp`.`bkod_cost` AS `cost`,`cpp`.`bkod_Tk` AS `primary_code`,`cpp`.`bkod_Tk` AS `selling_code`,`cpp`.`bkod_Tk_name` AS `pm_name`,`cpp`.`bkod_Tk_muid` AS `pm_unit_id`,`cp`.`category` AS `categories`,`cp`.`bkod_prod` AS `manufacturer_id`,'product_cost' AS `source_table` from (`code_bkod` `cp` left join `code_bkodprim` `cpp` on((`cp`.`bkod_prim` = `cpp`.`bkod_Tk`))) union all select distinct `cpp`.`bkod_Tk` AS `cost_code`,NULL AS `cost`,`cpp`.`bkod_Tk` AS `primary_code`,`cpp`.`bkod_Tk` AS `selling_code`,`cpp`.`bkod_Tk_name` AS `pm_name`,`cpp`.`bkod_Tk_muid` AS `pm_unit_id`,`cpp`.`category` AS `categories`,`cpp`.`bkod_Tk_prod` AS `manufacturer_id`,'product_prim' AS `source_table` from `code_bkodprim` `cpp` union all select distinct `cmp`.`xmkodtk` AS `cost_code`,NULL AS `cost`,`cmp`.`xmkodtk` AS `primary_code`,`cmp`.`xmkodtk_tkkod` AS `selling_code`,`cmp`.`xmkodtk_name` AS `pm_name`,`cmp`.`xmkodtk_muid` AS `pm_unit_id`,`cmp`.`category` AS `categories`,0 AS `manufacturer_id`,'material_prim' AS `source_table` from `code_materialprim` `cmp` union all select distinct `eh`.`ehkod` AS `cost_code`,`eh`.`ehkod_price` AS `cost`,`eh`.`ehkod` AS `primary_code`,`eh`.`ehkod` AS `selling_code`,`eh`.`ehkod_name` AS `pm_name`,`eh`.`ehkod_muid` AS `pm_unit_id`,`eh`.`category` AS `categories`,0 AS `manufacturer_id`,'property' AS `source_table` from `code_edhorongo` `eh`) AS `combined` GROUP BY `combined`.`cost_code` ;
 
 -- --------------------------------------------------------
@@ -6623,6 +6883,7 @@ CREATE ALGORITHM=UNDEFINED DEFINER=`root`@`localhost` SQL SECURITY DEFINER VIEW 
 --
 DROP TABLE IF EXISTS `view_inventory_report_summary`;
 
+DROP VIEW IF EXISTS `view_inventory_report_summary`;
 CREATE ALGORITHM=UNDEFINED DEFINER=`root`@`localhost` SQL SECURITY DEFINER VIEW `view_inventory_report_summary`  AS SELECT `inv`.`sp_primary_code` AS `primary_code`, `inv`.`sp_pm_name` AS `pm_name`, `inv`.`sp_pm_unit_id` AS `pm_unit_id`, sum((case when ((`tx`.`inventory_stock` = 1) and (`inv`.`bmtr_date` = '2025-01-01')) then ifnull(`inv`.`bmtr_acc`,0) else 0 end)) AS `opening_acc`, sum((case when ((`tx`.`inventory_stock` = 1) and (`inv`.`bmtr_date` = '2025-01-01')) then ifnull(`inv`.`bmtr_sub`,0) else 0 end)) AS `opening_sub`, sum((case when ((`tx`.`trn_affects_stock` = 1) and (`inv`.`bmtr_date` >= '2025-01-01') and (`inv`.`bmtr_date` < '2025-08-01') and (`tx`.`trn_inventory_change` = 'increase')) then ifnull(`inv`.`bmtr_acc`,0) else 0 end)) AS `increase_acc`, sum((case when ((`tx`.`trn_affects_stock` = 1) and (`inv`.`bmtr_date` >= '2025-01-01') and (`inv`.`bmtr_date` < '2025-08-01') and (`tx`.`trn_inventory_change` = 'increase')) then ifnull(`inv`.`bmtr_sub`,0) else 0 end)) AS `increase_sub`, sum((case when ((`tx`.`trn_affects_stock` = 1) and (`inv`.`bmtr_date` >= '2025-01-01') and (`inv`.`bmtr_date` < '2025-08-01') and (`tx`.`trn_inventory_change` = 'decrease')) then ifnull(`inv`.`bmtr_acc`,0) else 0 end)) AS `decrease_acc`, sum((case when ((`tx`.`trn_affects_stock` = 1) and (`inv`.`bmtr_date` >= '2025-01-01') and (`inv`.`bmtr_date` < '2025-08-01') and (`tx`.`trn_inventory_change` = 'decrease')) then ifnull(`inv`.`bmtr_sub`,0) else 0 end)) AS `decrease_sub`, sum((case when ((`tx`.`inventory_stock` = 1) and (`inv`.`bmtr_date` = '2025-08-01')) then ifnull(`inv`.`bmtr_acc`,0) else 0 end)) AS `closing_acc`, sum((case when ((`tx`.`inventory_stock` = 1) and (`inv`.`bmtr_date` = '2025-08-01')) then ifnull(`inv`.`bmtr_sub`,0) else 0 end)) AS `closing_sub`, ((sum((case when ((`tx`.`inventory_stock` = 1) and (`inv`.`bmtr_date` = '2025-01-01')) then ifnull(`inv`.`bmtr_acc`,0) else 0 end)) + sum((case when ((`tx`.`trn_affects_stock` = 1) and (`inv`.`bmtr_date` >= '2025-01-01') and (`inv`.`bmtr_date` < '2025-08-01') and (`tx`.`trn_inventory_change` = 'increase')) then ifnull(`inv`.`bmtr_acc`,0) else 0 end))) - sum((case when ((`tx`.`trn_affects_stock` = 1) and (`inv`.`bmtr_date` >= '2025-01-01') and (`inv`.`bmtr_date` < '2025-08-01') and (`tx`.`trn_inventory_change` = 'decrease')) then ifnull(`inv`.`bmtr_acc`,0) else 0 end))) AS `calculated_closing_acc`, (((sum((case when ((`tx`.`inventory_stock` = 1) and (`inv`.`bmtr_date` = '2025-07-01')) then ifnull(`inv`.`bmtr_sub`,0) else 0 end)) + sum((case when ((`tx`.`trn_affects_stock` = 1) and (`inv`.`bmtr_date` >= '2025-07-01') and (`inv`.`bmtr_date` < '2025-08-01') and (`tx`.`trn_inventory_change` = 'increase')) then ifnull(`inv`.`bmtr_sub`,0) else 0 end))) - sum((case when ((`tx`.`trn_affects_stock` = 1) and (`inv`.`bmtr_date` >= '2025-07-01') and (`inv`.`bmtr_date` < '2025-08-01') and (`tx`.`trn_inventory_change` = 'decrease')) then ifnull(`inv`.`bmtr_sub`,0) else 0 end))) - sum((case when ((`tx`.`inventory_stock` = 1) and (`inv`.`bmtr_date` = '2025-08-01')) then ifnull(`inv`.`bmtr_sub`,0) else 0 end))) AS `diff_vs_actual_closing_sub` FROM (`code_transaction` `tx` join `transactions_inventory` `inv` on((`inv`.`TransType` = `tx`.`UITransType`))) WHERE ((`tx`.`trn_category` = 'inventory') AND (`inv`.`bmtr_transbranch` = 4)) GROUP BY `inv`.`sp_primary_code`, `inv`.`sp_pm_name`, `inv`.`sp_pm_unit_id` HAVING ((`opening_sub` <> 0) OR (`increase_sub` <> 0) OR (`decrease_sub` <> 0) OR (`closing_sub` <> 0)) ;
 
 -- --------------------------------------------------------
@@ -6632,6 +6893,7 @@ CREATE ALGORITHM=UNDEFINED DEFINER=`root`@`localhost` SQL SECURITY DEFINER VIEW 
 --
 DROP TABLE IF EXISTS `view_transactions_income`;
 
+DROP VIEW IF EXISTS `view_transactions_income`;
 CREATE ALGORITHM=UNDEFINED DEFINER=`root`@`localhost` SQL SECURITY DEFINER VIEW `view_transactions_income`  AS SELECT `transactions_income`.`id` AS `id`, `transactions_income`.`or_num` AS `or_num`, `transactions_income`.`ortr_transbranch` AS `ortr_transbranch`, `transactions_income`.`or_o_barimt` AS `or_o_barimt`, `transactions_income`.`company_id` AS `company_id`, `transactions_income`.`branch_id` AS `branch_id`, `transactions_income`.`or_g_id` AS `or_g_id`, `transactions_income`.`or_burtgel` AS `or_burtgel`, `transactions_income`.`or_chig` AS `or_chig`, `transactions_income`.`or_torol` AS `or_torol`, `transactions_income`.`or_type_id` AS `or_type_id`, `transactions_income`.`or_av_now` AS `or_av_now`, `transactions_income`.`or_av_time` AS `or_av_time`, `transactions_income`.`or_date` AS `or_date`, `transactions_income`.`orcash_or_id` AS `orcash_or_id`, `transactions_income`.`or_or` AS `or_or`, `transactions_income`.`or_vallut_id` AS `or_vallut_id`, `transactions_income`.`or_valut_choice` AS `or_valut_choice`, `transactions_income`.`or_bar_suu` AS `or_bar_suu`, `transactions_income`.`or_bcode` AS `or_bcode`, `transactions_income`.`or_orderid` AS `or_orderid`, `transactions_income`.`or_tailbar1` AS `or_tailbar1`, `transactions_income`.`orBurtgel_rd` AS `orBurtgel_rd`, `transactions_income`.`or_eb` AS `or_eb`, `transactions_income`.`or_bank` AS `or_bank`, `transactions_income`.`or_uglug_id` AS `or_uglug_id`, `transactions_income`.`or_emp_receiver` AS `or_emp_receiver`, `transactions_income`.`or_tur_receiver` AS `or_tur_receiver`, `transactions_income`.`or_other_receiver` AS `or_other_receiver`, `transactions_income`.`or_org_id` AS `or_org_id`, `transactions_income`.`TRTYPENAME` AS `TRTYPENAME`, `transactions_income`.`trtype` AS `trtype`, `transactions_income`.`TransType` AS `TransType`, `transactions_income`.`ORGANIZATION` AS `ORGANIZATION`, `transactions_income`.`ROOMID` AS `ROOMID`, `transactions_income`.`USERID` AS `USERID`, `transactions_income`.`LOCATION` AS `LOCATION`, `transactions_income`.`deviceid` AS `deviceid`, `transactions_income`.`devicename` AS `devicename`, `transactions_income`.`rawdata` AS `rawdata`, `transactions_income`.`actime` AS `actime`, `transactions_income`.`rectime` AS `rectime`, `transactions_income`.`ortr_state` AS `ortr_state`, `transactions_income`.`ortr_id` AS `ortr_id`, `transactions_income`.`ortr_confirm` AS `ortr_confirm`, `transactions_income`.`ortr_confirm_date` AS `ortr_confirm_date`, `transactions_income`.`ortr_confirm_emp` AS `ortr_confirm_emp`, `transactions_income`.`ortr_edit_date` AS `ortr_edit_date`, `transactions_income`.`ortr_edit_emp` AS `ortr_edit_emp`, `transactions_income`.`ortr_edit_cause` AS `ortr_edit_cause`, `transactions_income`.`ortr_del_date` AS `ortr_del_date`, `transactions_income`.`ortr_del_emp` AS `ortr_del_emp`, `transactions_income`.`ortr_del_cause` AS `ortr_del_cause`, `transactions_income`.`ortr_check_date` AS `ortr_check_date`, `transactions_income`.`ortr_checkyn` AS `ortr_checkyn`, `transactions_income`.`ortr_check_emp` AS `ortr_check_emp`, `transactions_income`.`ortr_check_cause` AS `ortr_check_cause` FROM `transactions_income` ;
 
 --
