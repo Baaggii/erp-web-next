@@ -28,10 +28,32 @@ function normalizeMac(value) {
   return normalizeValue(value) || 'unknown';
 }
 
+function normalizeNumericId(value) {
+  if (value === undefined || value === null) return null;
+  const num = Number(value);
+  return Number.isFinite(num) && num > 0 ? num : null;
+}
+
 async function recordLoginSessionImpl(req, sessionPayload, user) {
   const sessionUuid = crypto.randomUUID
     ? crypto.randomUUID()
     : crypto.randomBytes(16).toString('hex');
+  const companyId = sessionPayload?.company_id ?? null;
+  const branchId = sessionPayload?.branch_id ?? null;
+  const merchantId =
+    normalizeNumericId(
+      sessionPayload?.merchant_id ??
+        sessionPayload?.merchantId ??
+        req.body?.merchant_id ??
+        req.body?.merchantId,
+    );
+  const posNo =
+    sessionPayload?.pos_no ??
+    sessionPayload?.posNo ??
+    sessionPayload?.pos_number ??
+    req.body?.pos_no ??
+    req.body?.posNo ??
+    null;
   const deviceMac =
     normalizeMac(
       req.body?.device_mac ??
@@ -54,10 +76,10 @@ async function recordLoginSessionImpl(req, sessionPayload, user) {
 
   await logPosSessionStart({
     sessionUuid,
-    companyId: sessionPayload?.company_id ?? null,
-    branchId: sessionPayload?.branch_id ?? null,
-    merchantId: sessionPayload?.merchant_id ?? null,
-    posNo: sessionPayload?.pos_no ?? null,
+    companyId,
+    branchId,
+    merchantId,
+    posNo,
     deviceMac,
     deviceUuid,
     location,
