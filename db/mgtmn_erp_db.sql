@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: localhost:3306
--- Generation Time: Dec 20, 2025 at 10:08 PM
+-- Generation Time: Dec 21, 2025 at 01:20 AM
 -- Server version: 8.0.44-cll-lve
 -- PHP Version: 8.4.16
 
@@ -620,6 +620,23 @@ CREATE TABLE `code_penalty` (
 -- --------------------------------------------------------
 
 --
+-- Table structure for table `code_pos`
+--
+
+DROP TABLE IF EXISTS `code_pos`;
+CREATE TABLE `code_pos` (
+  `id` int NOT NULL,
+  `pos_no` int NOT NULL,
+  `pos_aimag` int NOT NULL,
+  `pos_district` int NOT NULL,
+  `company_id` int NOT NULL,
+  `branch_id` int NOT NULL,
+  `department_id` int NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+-- --------------------------------------------------------
+
+--
 -- Table structure for table `code_position`
 --
 
@@ -1086,7 +1103,10 @@ CREATE TABLE `companies` (
   `name` varchar(100) NOT NULL,
   `company_id` int NOT NULL DEFAULT '0',
   `Gov_Registration_number` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL,
+  `merchant_tin` varchar(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci DEFAULT NULL,
   `Address` varchar(255) NOT NULL,
+  `headq_aimag` varchar(10) DEFAULT NULL,
+  `headq_district` varchar(10) DEFAULT NULL,
   `Telephone` varchar(50) NOT NULL,
   `website` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci DEFAULT NULL,
   `email` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci DEFAULT NULL,
@@ -1661,6 +1681,8 @@ CREATE TABLE `pos_session` (
   `pos_no` varchar(32) NOT NULL,
   `device_uuid` varchar(64) DEFAULT NULL,
   `started_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `device_mac` varchar(50) NOT NULL,
+  `location` json NOT NULL,
   `ended_at` datetime DEFAULT NULL,
   `current_user_id` bigint DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
@@ -2347,6 +2369,7 @@ CREATE TABLE `tbl_employment_schedule` (
   `company_id` int NOT NULL,
   `branch_id` int NOT NULL,
   `workplace_id` int NOT NULL,
+  `pos_no` int DEFAULT NULL,
   `emp_id` varchar(4) NOT NULL,
   `start_date` date NOT NULL,
   `end_date` date DEFAULT NULL,
@@ -5439,6 +5462,12 @@ ALTER TABLE `code_penalty`
   ADD PRIMARY KEY (`id`);
 
 --
+-- Indexes for table `code_pos`
+--
+ALTER TABLE `code_pos`
+  ADD PRIMARY KEY (`id`);
+
+--
 -- Indexes for table `code_position`
 --
 ALTER TABLE `code_position`
@@ -6302,6 +6331,12 @@ ALTER TABLE `code_orav_eseh`
 -- AUTO_INCREMENT for table `code_penalty`
 --
 ALTER TABLE `code_penalty`
+  MODIFY `id` int NOT NULL AUTO_INCREMENT;
+
+--
+-- AUTO_INCREMENT for table `code_pos`
+--
+ALTER TABLE `code_pos`
   MODIFY `id` int NOT NULL AUTO_INCREMENT;
 
 --

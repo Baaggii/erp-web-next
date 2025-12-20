@@ -1420,27 +1420,20 @@ const TableManager = forwardRef(function TableManager({
       return fallback.join(' - ');
     };
 
-    const fetchDisplayConfig = (tableName, options = {}) => {
+    const fetchDisplayConfig = (tableName, filter) => {
       if (!tableName) return Promise.resolve(null);
       const filterColumn =
-        options?.column || options?.filterColumn || options?.filter_column || '';
+        filter?.column || filter?.filterColumn || filter?.filter_column || '';
       const hasFilterValue =
         filterColumn &&
-        (options?.value !== undefined && options?.value !== null
+        (filter?.value !== undefined && filter?.value !== null
           ? true
-          : options?.filterValue !== undefined && options?.filterValue !== null);
+          : filter?.filterValue !== undefined && filter?.filterValue !== null);
       const filterValue =
-        options?.value ?? options?.filterValue ?? options?.filter_value ?? '';
-      const preferredIdField =
-        options?.preferredIdField ||
-        options?.idField ||
-        options?.id_field ||
-        options?.targetColumn ||
-        '';
+        filter?.value ?? filter?.filterValue ?? filter?.filter_value ?? '';
       const cacheKeyParts = [tableName.toLowerCase()];
       if (filterColumn) cacheKeyParts.push(`fc:${filterColumn}`);
       if (filterColumn && hasFilterValue) cacheKeyParts.push(`fv:${String(filterValue)}`);
-      if (preferredIdField) cacheKeyParts.push(`id:${String(preferredIdField)}`);
       const cacheKey = cacheKeyParts.join('|');
       if (displayConfigCache.has(cacheKey)) return displayConfigCache.get(cacheKey);
       const promise = (async () => {
@@ -1449,9 +1442,6 @@ const TableManager = forwardRef(function TableManager({
           if (filterColumn) params.set('filterColumn', filterColumn);
           if (filterColumn && hasFilterValue) {
             params.set('filterValue', String(filterValue).trim());
-          }
-          if (preferredIdField) {
-            params.set('idField', preferredIdField);
           }
           const res = await fetch(`/api/display_fields?${params.toString()}`, {
             credentials: 'include',
@@ -1540,6 +1530,9 @@ const TableManager = forwardRef(function TableManager({
             table: entry.REFERENCED_TABLE_NAME,
             column: entry.REFERENCED_COLUMN_NAME,
             ...(entry.idField ? { idField: entry.idField } : {}),
+            ...(Array.isArray(entry.displayFields)
+              ? { displayFields: entry.displayFields }
+              : {}),
             ...(entry.combinationSourceColumn
               ? { combinationSourceColumn: entry.combinationSourceColumn }
               : {}),
@@ -1644,7 +1637,6 @@ const TableManager = forwardRef(function TableManager({
         department ?? '',
         nestedRel.filterColumn || '',
         nestedRel.filterValue ?? '',
-        nestedRel.idField || '',
       ].join('|');
       if (nestedLabelCache[cacheKey]) return nestedLabelCache[cacheKey];
 
@@ -1652,7 +1644,6 @@ const TableManager = forwardRef(function TableManager({
         fetchDisplayConfig(nestedRel.table, {
           column: nestedRel.filterColumn,
           value: nestedRel.filterValue,
-          preferredIdField: nestedRel.idField || nestedRel.column,
         }),
         fetchTenantInfo(nestedRel.table),
       ]);
@@ -1719,15 +1710,18 @@ const TableManager = forwardRef(function TableManager({
         fetchDisplayConfig(rel.table, {
           column: rel.filterColumn,
           value: rel.filterValue,
-          preferredIdField: rel.idField || rel.column,
         }),
         fetchTenantInfo(rel.table),
       ]);
       if (canceled) return null;
 
       const normalizedCfg = {
-        idField: cfg?.idField ?? rel.column,
-        displayFields: Array.isArray(cfg?.displayFields) ? cfg.displayFields : [],
+        idField: rel.idField || cfg?.idField || rel.column,
+        displayFields: Array.isArray(rel.displayFields)
+          ? rel.displayFields
+          : Array.isArray(cfg?.displayFields)
+          ? cfg.displayFields
+          : [],
       };
       if (typeof cfg?.indexField === 'string' && cfg.indexField.trim()) {
         normalizedCfg.indexField = cfg.indexField.trim();
@@ -1886,6 +1880,7 @@ const TableManager = forwardRef(function TableManager({
             table: r.REFERENCED_TABLE_NAME,
             column: r.REFERENCED_COLUMN_NAME,
             ...(r.idField ? { idField: r.idField } : {}),
+            ...(Array.isArray(r.displayFields) ? { displayFields: r.displayFields } : {}),
             ...(r.combinationSourceColumn
               ? { combinationSourceColumn: r.combinationSourceColumn }
               : {}),
