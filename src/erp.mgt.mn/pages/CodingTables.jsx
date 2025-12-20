@@ -1746,14 +1746,22 @@ export default function CodingTablesPage() {
         });
       } catch (err) {
         if (err.name === 'AbortError') {
-          abortCtrlRef.current = null;
-          ensureErrorMessage('Execution was interrupted');
-          return {
-            inserted: totalInserted,
-            failed: failedAll,
-            aborted: true,
-            errorMessage: errorMessage || 'Execution was interrupted',
-          };
+          if (interruptRef.current) {
+            abortCtrlRef.current = null;
+            ensureErrorMessage('Execution was interrupted');
+            return {
+              inserted: totalInserted,
+              failed: failedAll,
+              aborted: true,
+              errorMessage: errorMessage || 'Execution was interrupted',
+            };
+          }
+          setErrorMessage('Execution was interrupted');
+          errGroups['Execution was interrupted'] =
+            (errGroups['Execution was interrupted'] || 0) + rowCount;
+          failedAll.push(`${stmt} -- Execution was interrupted`);
+          setUploadProgress({ done: i + 1, total: statements.length });
+          continue;
         }
         setErrorMessage(err?.message || 'Execution failed');
         alert(errorMessage || err?.message || 'Execution failed');
