@@ -29,7 +29,11 @@ function createStubConnection({ temporaryRow, chainIds = [] } = {}) {
         return [[], []];
       }
       if (sql.includes('INFORMATION_SCHEMA.COLUMNS')) {
-        return [[{ COLUMN_NAME: 'chain_id' }, { COLUMN_NAME: 'is_pending' }]];
+        return [[
+          { COLUMN_NAME: 'chain_id' },
+          { COLUMN_NAME: 'is_pending' },
+          { COLUMN_NAME: 'last_promoter_empid' },
+        ]];
       }
       if (sql.includes('idx_temp_chain_pending')) {
         return [[{ INDEX_NAME: 'idx_temp_chain_pending' }]];
@@ -102,7 +106,11 @@ test('getTemporarySummary marks reviewers even without pending temporaries', asy
         return [[], []];
       }
       if (sql.includes('INFORMATION_SCHEMA.COLUMNS')) {
-        return [[{ COLUMN_NAME: 'chain_id' }, { COLUMN_NAME: 'is_pending' }]];
+        return [[
+          { COLUMN_NAME: 'chain_id' },
+          { COLUMN_NAME: 'is_pending' },
+          { COLUMN_NAME: 'last_promoter_empid' },
+        ]];
       }
       if (sql.includes('idx_temp_chain_pending')) {
         return [[{ INDEX_NAME: 'idx_temp_chain_pending' }]];
@@ -162,11 +170,11 @@ test('getTemporarySummary marks reviewers even without pending temporaries', asy
           ],
         ];
       }
-      if (sql.includes('created_by = ?')) {
+      if (sql.includes('created_by = ? OR last_promoter_empid = ?')) {
         return [[]];
       }
     }
-    if (sql.includes('WHERE created_by = ?')) {
+    if (sql.includes('WHERE created_by = ? OR last_promoter_empid = ?')) {
       return [[{ pending_cnt: 0, total_cnt: 1 }]];
     }
     if (sql.includes('WHERE plan_senior_empid = ?')) {
@@ -425,7 +433,11 @@ test('listTemporarySubmissions filters before grouping by chain', async () => {
       return [[], []];
     }
     if (sql.includes('INFORMATION_SCHEMA.COLUMNS')) {
-      return [[{ COLUMN_NAME: 'chain_id' }, { COLUMN_NAME: 'is_pending' }]];
+      return [[
+        { COLUMN_NAME: 'chain_id' },
+        { COLUMN_NAME: 'is_pending' },
+        { COLUMN_NAME: 'last_promoter_empid' },
+      ]];
     }
     if (sql.includes('INFORMATION_SCHEMA.TABLE_CONSTRAINTS')) {
       return [[{ CONSTRAINT_NAME: 'chk_temp_pending_reviewer' }]];
@@ -561,9 +573,10 @@ test('promoteTemporarySubmission forwards chain with normalized metadata and cle
   assert.ok(forwardInsert);
   const forwardParams = forwardInsert.params;
   assert.equal(forwardParams[8], 'EMP100'); // created_by
-  assert.equal(forwardParams[9], 'EMP300'); // plan_senior_empid
-  assert.equal(forwardParams[12], 1); // chain_id
-  assert.equal(forwardParams[13], 'pending');
+  assert.equal(forwardParams[9], 'EMP100'); // last_promoter_empid
+  assert.equal(forwardParams[10], 'EMP300'); // plan_senior_empid
+  assert.equal(forwardParams[13], 1); // chain_id
+  assert.equal(forwardParams[14], 'pending');
   const historyInsert = queries.find(({ sql }) =>
     sql.includes('INSERT INTO `transaction_temporary_review_history`'),
   );
@@ -1060,7 +1073,11 @@ test('getTemporaryChainHistory returns chainId and history rows', async () => {
       queries.push({ sql, params });
       if (sql.startsWith('CREATE TABLE IF NOT EXISTS')) return [[], []];
       if (sql.includes('INFORMATION_SCHEMA.COLUMNS')) {
-        return [[{ COLUMN_NAME: 'chain_id' }, { COLUMN_NAME: 'is_pending' }]];
+        return [[
+          { COLUMN_NAME: 'chain_id' },
+          { COLUMN_NAME: 'is_pending' },
+          { COLUMN_NAME: 'last_promoter_empid' },
+        ]];
       }
       if (sql.includes('INFORMATION_SCHEMA.STATISTICS')) {
         return [[{ INDEX_NAME: 'idx_temp_chain_pending' }]];

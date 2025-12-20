@@ -210,6 +210,18 @@ function normalizeFieldName(name) {
   return String(name).trim().toLowerCase();
 }
 
+function findColumnName(columns, targetName) {
+  if (!Array.isArray(columns) || !targetName) return null;
+  const target = String(targetName).toLowerCase();
+  const match = columns.find(
+    (col) =>
+      col &&
+      typeof col.name === 'string' &&
+      col.name.trim().toLowerCase() === target,
+  );
+  return match ? match.name : null;
+}
+
 function extractTransactionTypeValue(row, fieldName) {
   const normalizedField = normalizeFieldName(fieldName);
   if (!normalizedField) return undefined;
@@ -464,6 +476,7 @@ async function ensureTemporaryTable(conn = pool) {
         raw_values_json LONGTEXT DEFAULT NULL,
         cleaned_values_json LONGTEXT DEFAULT NULL,
         created_by VARCHAR(64) NOT NULL,
+        last_promoter_empid VARCHAR(64) DEFAULT NULL,
         plan_senior_empid VARCHAR(64) DEFAULT NULL,
         branch_id BIGINT DEFAULT NULL,
         department_id BIGINT DEFAULT NULL,
@@ -484,6 +497,7 @@ async function ensureTemporaryTable(conn = pool) {
         KEY idx_temp_table (table_name),
         KEY idx_temp_plan_senior (plan_senior_empid),
         KEY idx_temp_status_plan_senior (status, plan_senior_empid),
+        KEY idx_temp_last_promoter (last_promoter_empid),
         UNIQUE KEY idx_temp_chain_pending (chain_id, is_pending),
         KEY idx_temp_creator (created_by)
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;`
@@ -503,6 +517,12 @@ async function ensureTemporaryTable(conn = pool) {
               .filter(Boolean)
           : [],
       );
+      if (!columnLookup.has('last_promoter_empid')) {
+        await conn.query(
+          `ALTER TABLE \`${TEMP_TABLE}\`
+             ADD COLUMN last_promoter_empid VARCHAR(64) DEFAULT NULL AFTER created_by`,
+        );
+      }
       if (!columnLookup.has('chain_id')) {
         await conn.query(
           `ALTER TABLE \`${TEMP_TABLE}\`
@@ -587,6 +607,10 @@ async function ensureTemporaryTable(conn = pool) {
       await ensureIndex(
         'idx_temp_plan_senior',
         'KEY idx_temp_plan_senior (plan_senior_empid)',
+      );
+      await ensureIndex(
+        'idx_temp_last_promoter',
+        'KEY idx_temp_last_promoter (last_promoter_empid)',
       );
       await ensureIndex('idx_temp_creator', 'KEY idx_temp_creator (created_by)');
       const [chainIndexes] = await conn.query(
@@ -980,6 +1004,7 @@ function mapTemporaryRow(row) {
     cleanedValues,
     values: promotableValues,
     createdBy: row.created_by,
+    lastPromoterEmpId: row.last_promoter_empid,
     planSeniorEmpId: row.plan_senior_empid,
     reviewerEmpId: row.plan_senior_empid,
     branchId: row.branch_id,
@@ -1116,8 +1141,8 @@ export async function listTemporarySubmissions({
     conditions.push('plan_senior_empid = ?');
     params.push(normalizedEmp);
   } else {
-    conditions.push('created_by = ?');
-    params.push(normalizedEmp);
+    conditions.push('(created_by = ? OR last_promoter_empid = ?)');
+    params.push(normalizedEmp, normalizedEmp);
   }
   const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
   const chainGroupKey = (alias = '') =>
@@ -1383,6 +1408,7 @@ export async function promoteTemporarySubmission(
     notes,
     io,
     cleanedValues: cleanedOverride,
+    promoteAsTemporary = false,
   },
   runtimeDeps = {},
 ) {
@@ -1557,32 +1583,6 @@ export async function promoteTemporarySubmission(
     }
 
     const fallbackCreator = normalizeEmpId(row.created_by);
-    if (fallbackCreator) {
-      const hasCreatedByColumn = Array.isArray(columns)
-        ? columns.some(
-            (col) =>
-              col &&
-              typeof col.name === 'string' &&
-              col.name.trim().toLowerCase() === 'created_by',
-          )
-        : false;
-      if (hasCreatedByColumn) {
-        const hasSanitizedCreator = Object.prototype.hasOwnProperty.call(
-          sanitizedValues,
-          'created_by',
-        );
-        const sanitizedCreator = hasSanitizedCreator
-          ? sanitizedValues.created_by
-          : undefined;
-        const creatorMissing =
-          sanitizedCreator === undefined ||
-          sanitizedCreator === null ||
-          (typeof sanitizedCreator === 'string' && !sanitizedCreator.trim());
-        if (creatorMissing || sanitizedCreator !== fallbackCreator) {
-          sanitizedValues.created_by = fallbackCreator;
-        }
-      }
-    }
 
     const resolvedBranchPref = normalizeScopePreference(row.branch_id);
     const resolvedDepartmentPref = normalizeScopePreference(row.department_id);
@@ -1607,6 +1607,18 @@ export async function promoteTemporarySubmission(
       });
     }
 
+    const createdByColumn = findColumnName(columns, 'created_by');
+    const originalCreatorColumn = findColumnName(columns, 'original_creator_empid');
+    const shouldForwardTemporary = Boolean(forwardReviewerEmpId);
+    const shouldMarkLastPromoter = shouldForwardTemporary;
+    if (createdByColumn && !shouldForwardTemporary) {
+      sanitizedValues[createdByColumn] = normalizedReviewer;
+    }
+    if (originalCreatorColumn && !shouldForwardTemporary) {
+      sanitizedValues[originalCreatorColumn] =
+        fallbackCreator ?? sanitizedValues[originalCreatorColumn] ?? null;
+    }
+
     const mutationContext = {
       companyId: row.company_id ?? null,
       changedBy: normalizedReviewer,
@@ -1615,7 +1627,6 @@ export async function promoteTemporarySubmission(
       payloadJson?.skipTriggerOnPromote === true ||
       errorRevokedFields.length > 0;
     const skipTriggers = shouldSkipTriggers;
-    const shouldForwardTemporary = Boolean(forwardReviewerEmpId);
     const trimmedNotes =
       typeof notes === 'string' && notes.trim() ? notes.trim() : '';
     const baseReviewNotes = trimmedNotes ? trimmedNotes : null;
@@ -1754,10 +1765,10 @@ export async function promoteTemporarySubmission(
       mergedPayload.cleanedValues = sanitizedPayloadValues;
       const [forwardResult] = await conn.query(
         `INSERT INTO \`${TEMP_TABLE}\`
-         (company_id, table_name, form_name, config_name, module_key, payload_json,
-        raw_values_json, cleaned_values_json, created_by, plan_senior_empid,
+        (company_id, table_name, form_name, config_name, module_key, payload_json,
+        raw_values_json, cleaned_values_json, created_by, last_promoter_empid, plan_senior_empid,
          branch_id, department_id, chain_id, status)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           row.company_id ?? null,
           row.table_name,
@@ -1768,6 +1779,7 @@ export async function promoteTemporarySubmission(
           row.raw_values_json ?? null,
           safeJsonStringify(sanitizedPayloadValues),
           normalizedReviewer,
+          shouldMarkLastPromoter ? normalizedReviewer : null,
           forwardReviewerEmpId,
           row.branch_id ?? null,
           row.department_id ?? null,
@@ -1967,6 +1979,25 @@ export async function promoteTemporarySubmission(
       err.status = 409;
       throw err;
     }
+    try {
+      if (effectiveChainId) {
+        await conn.query(
+          `UPDATE \`${TEMP_TABLE}\` SET last_promoter_empid = NULL WHERE chain_id = ?`,
+          [effectiveChainId],
+        );
+      } else {
+        await conn.query(
+          `UPDATE \`${TEMP_TABLE}\` SET last_promoter_empid = NULL WHERE id = ?`,
+          [id],
+        );
+      }
+    } catch (clearErr) {
+      console.error('Failed to clear last promoter after promotion', {
+        chainId: effectiveChainId,
+        temporaryId: id,
+        error: clearErr,
+      });
+    }
     await recordTemporaryReviewHistory(conn, {
       temporaryId: id,
       action: 'promoted',
@@ -2100,9 +2131,11 @@ export async function rejectTemporarySubmission(
       err.status = 404;
       throw err;
     }
+    const lastPromoter = normalizeEmpId(row.last_promoter_empid);
     const allowedReviewer =
       normalizeEmpId(row.plan_senior_empid) === normalizedReviewer ||
-      normalizeEmpId(row.created_by) === normalizedReviewer;
+      normalizeEmpId(row.created_by) === normalizedReviewer ||
+      lastPromoter === normalizedReviewer;
     if (!allowedReviewer) {
       const err = new Error('Forbidden');
       err.status = 403;
@@ -2179,8 +2212,12 @@ export async function rejectTemporarySubmission(
       }
     }
     const creatorRecipient = normalizeEmpId(row.created_by);
+    const responsibleRecipient = lastPromoter || creatorRecipient;
     if (creatorRecipient) {
       rejectionRecipients.add(creatorRecipient);
+    }
+    if (responsibleRecipient) {
+      rejectionRecipients.add(responsibleRecipient);
     }
     const rejectionMessage = `Temporary submission for ${row.table_name} rejected`;
     for (const recipientEmpId of rejectionRecipients) {

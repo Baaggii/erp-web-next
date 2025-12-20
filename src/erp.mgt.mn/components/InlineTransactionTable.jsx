@@ -84,6 +84,7 @@ function InlineTransactionTable(
     tableColumns = [],
     numericScaleMap = {},
     disabledFieldReasons = {},
+    readOnly = false,
   },
   ref,
 ) {
@@ -133,10 +134,12 @@ function InlineTransactionTable(
     () => new Set((userIdFields || []).map((f) => f.toLowerCase())),
     [userIdFields],
   );
-  const disabledSet = React.useMemo(
-    () => new Set(disabledFields.map((f) => f.toLowerCase())),
-    [disabledFields],
-  );
+  const disabledSet = React.useMemo(() => {
+    if (readOnly) {
+      return new Set((fields || []).map((f) => String(f || '').toLowerCase()));
+    }
+    return new Set(disabledFields.map((f) => f.toLowerCase()));
+  }, [disabledFields, fields, readOnly]);
   const guardReasonLookup = React.useMemo(() => {
     const map = {};
     Object.entries(disabledFieldReasons || {}).forEach(([key, value]) => {
@@ -152,7 +155,7 @@ function InlineTransactionTable(
     });
     return map;
   }, [disabledFieldReasons]);
-  const guardToastEnabled = !!general.posGuardToastEnabled;
+  const guardToastEnabled = !!general.posGuardToastEnabled && !readOnly;
   const lastGuardToastRef = useRef({ field: null, ts: 0, message: null, context: null });
   const describeGuardReasons = useCallback(
     (codes = []) => {
@@ -2522,10 +2525,21 @@ function InlineTransactionTable(
                 </td>
               ))}
               <td className="border px-1 py-1 text-right" style={{ whiteSpace: 'nowrap' }}>
-                <button type="button" onClick={() => openUpload(idx)}>Add/View Image</button>
+                <button
+                  type="button"
+                  disabled={readOnly}
+                  onClick={() => {
+                    if (readOnly) return;
+                    openUpload(idx);
+                  }}
+                >
+                  Add/View Image
+                </button>
               </td>
               <td className="border px-1 py-1 text-right">
-                {collectRows ? (
+                {readOnly ? (
+                  <span className="text-gray-500">—</span>
+                ) : collectRows ? (
                   <button onClick={() => removeRow(idx)}>Delete</button>
                 ) : r._saved ? (
                   <button onClick={() => handleChange(idx, '_saved', false)}>
@@ -2579,7 +2593,7 @@ function InlineTransactionTable(
       {errorMsg && (
         <div className="text-red-600 text-sm mt-1">{errorMsg}</div>
       )}
-      {collectRows && (
+      {collectRows && !readOnly && (
         <button
           onClick={addRow}
           ref={addBtnRef}
