@@ -64,21 +64,32 @@ export function splitSqlStatements(sqlText) {
 }
 
 export async function runSql(sql, signal) {
+  if (signal?.aborted) {
+    return { inserted: 0, failed: [], aborted: true };
+  }
   const statements = splitSqlStatements(sql);
   let inserted = 0;
   const failed = [];
   const conn = await pool.getConnection();
   let aborted = false;
+  let lastStatement = '';
+  let completedStatements = 0;
+  let lastError = '';
+  const totalStatements = statements.length;
   try {
     for (const stmt of statements) {
+      lastStatement = stmt;
       try {
         const [res] = await conn.query(stmt);
         if (res && typeof res.affectedRows === 'number') {
           const change = typeof res.changedRows === 'number' ? res.changedRows : 0;
           inserted += res.affectedRows - change;
         }
+        completedStatements += 1;
       } catch (err) {
         failed.push({ sql: stmt, error: err.message });
+        lastError = err?.message || '';
+        completedStatements += 1;
       }
       if (signal?.aborted) {
         aborted = true;
@@ -89,7 +100,15 @@ export async function runSql(sql, signal) {
   } finally {
     if (!aborted) conn.release();
   }
-  return { inserted, failed, aborted };
+  return {
+    inserted,
+    failed,
+    aborted,
+    lastStatement,
+    lastError,
+    completedStatements,
+    totalStatements,
+  };
 }
 
 export async function getTableStructure(table) {
