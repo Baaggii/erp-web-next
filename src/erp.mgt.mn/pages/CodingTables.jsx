@@ -1394,12 +1394,12 @@ export default function CodingTablesPage() {
         if (!hasData) continue;
         chunkValues.push(`(${vals.join(', ')})`);
         if (chunkValues.length >= chunkLimit) {
-          parts.push(`INSERT INTO \`${tableNameForSql}\` ${alias} (${cols.join(', ')}) VALUES ${chunkValues.join(', ')} ON DUPLICATE KEY UPDATE ${updates.join(', ')};`);
+          parts.push(`INSERT INTO \`${tableNameForSql}\` AS ${alias} (${cols.join(', ')}) VALUES ${chunkValues.join(', ')} ON DUPLICATE KEY UPDATE ${updates.join(', ')};`);
           chunkValues = [];
         }
       }
       if (chunkValues.length > 0) {
-        parts.push(`INSERT INTO \`${tableNameForSql}\` ${alias} (${cols.join(', ')}) VALUES ${chunkValues.join(', ')} ON DUPLICATE KEY UPDATE ${updates.join(', ')};`);
+        parts.push(`INSERT INTO \`${tableNameForSql}\` AS ${alias} (${cols.join(', ')}) VALUES ${chunkValues.join(', ')} ON DUPLICATE KEY UPDATE ${updates.join(', ')};`);
       }
       return parts.join('\n');
     }
@@ -1803,18 +1803,6 @@ export default function CodingTablesPage() {
         setErrorMessage(failureMessage);
         errGroups[failureMessage] = (errGroups[failureMessage] || 0) + rowCount;
         failedAll.push(`${stmt} -- ${failureMessage}`);
-        if (insertedVal === 0) {
-          failedNoInsert.push(`${stmt} -- ${failureMessage}`);
-        }
-        if (insertedVal > 0) {
-          if (isOtherTable) {
-            otherInserted += insertedVal;
-          } else {
-            mainInserted += insertedVal;
-          }
-          totalInserted += insertedVal;
-          setInsertedCount(totalInserted);
-        }
         abortCtrlRef.current = null;
         setUploadProgress({ done: i + 1, total: statements.length });
         continue;
@@ -2127,14 +2115,14 @@ export default function CodingTablesPage() {
       chunkValues.push(`(${vals.join(', ')})`);
       if (chunkValues.length >= limit) {
         statements.push(
-          `INSERT INTO \`${cleanedTable}\` ${alias} (${quotedColumns.join(', ')}) VALUES ${chunkValues.join(', ')} ON DUPLICATE KEY UPDATE ${updates.join(', ')};`,
+          `INSERT INTO \`${cleanedTable}\` AS ${alias} (${quotedColumns.join(', ')}) VALUES ${chunkValues.join(', ')} ON DUPLICATE KEY UPDATE ${updates.join(', ')};`,
         );
         chunkValues = [];
       }
     }
     if (chunkValues.length > 0) {
       statements.push(
-        `INSERT INTO \`${cleanedTable}\` ${alias} (${quotedColumns.join(', ')}) VALUES ${chunkValues.join(', ')} ON DUPLICATE KEY UPDATE ${updates.join(', ')};`,
+        `INSERT INTO \`${cleanedTable}\` AS ${alias} (${quotedColumns.join(', ')}) VALUES ${chunkValues.join(', ')} ON DUPLICATE KEY UPDATE ${updates.join(', ')};`,
       );
     }
     return statements.join('\n');

@@ -465,6 +465,7 @@ async function ensureTemporaryTable(conn = pool) {
         cleaned_values_json LONGTEXT DEFAULT NULL,
         created_by VARCHAR(64) NOT NULL,
         plan_senior_empid VARCHAR(64) DEFAULT NULL,
+        last_promoter_empid VARCHAR(64) DEFAULT NULL,
         branch_id BIGINT DEFAULT NULL,
         department_id BIGINT DEFAULT NULL,
         status ENUM('pending','promoted','rejected') NOT NULL DEFAULT 'pending',
@@ -485,6 +486,7 @@ async function ensureTemporaryTable(conn = pool) {
         KEY idx_temp_plan_senior (plan_senior_empid),
         KEY idx_temp_status_plan_senior (status, plan_senior_empid),
         UNIQUE KEY idx_temp_chain_pending (chain_id, is_pending),
+        KEY idx_temp_last_promoter (last_promoter_empid),
         KEY idx_temp_creator (created_by)
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;`
     );
@@ -507,6 +509,12 @@ async function ensureTemporaryTable(conn = pool) {
         await conn.query(
           `ALTER TABLE \`${TEMP_TABLE}\`
              ADD COLUMN chain_id BIGINT UNSIGNED DEFAULT NULL`,
+        );
+      }
+      if (!columnLookup.has('last_promoter_empid')) {
+        await conn.query(
+          `ALTER TABLE \`${TEMP_TABLE}\`
+             ADD COLUMN last_promoter_empid VARCHAR(64) DEFAULT NULL AFTER plan_senior_empid`,
         );
       }
       if (!columnLookup.has('is_pending')) {
@@ -587,6 +595,10 @@ async function ensureTemporaryTable(conn = pool) {
       await ensureIndex(
         'idx_temp_plan_senior',
         'KEY idx_temp_plan_senior (plan_senior_empid)',
+      );
+      await ensureIndex(
+        'idx_temp_last_promoter',
+        'KEY idx_temp_last_promoter (last_promoter_empid)',
       );
       await ensureIndex('idx_temp_creator', 'KEY idx_temp_creator (created_by)');
       const [chainIndexes] = await conn.query(
@@ -982,6 +994,7 @@ function mapTemporaryRow(row) {
     createdBy: row.created_by,
     planSeniorEmpId: row.plan_senior_empid,
     reviewerEmpId: row.plan_senior_empid,
+    lastPromoterEmpId: row.last_promoter_empid || null,
     branchId: row.branch_id,
     departmentId: row.department_id,
     status: row.status,
@@ -1300,6 +1313,7 @@ function formatChainHistoryRow(row) {
     reviewedAt: row.reviewed_at || null,
     reviewNotes: row.review_notes || null,
     promotedRecordId: row.promoted_record_id || null,
+    lastPromoterEmpId: row.last_promoter_empid || null,
     createdBy: row.created_by || null,
     createdAt: row.created_at || null,
     updatedAt: row.updated_at || null,
@@ -1328,7 +1342,7 @@ export async function getTemporaryChainHistory(id) {
   try {
     await ensureTemporaryTable(conn);
     const [rows] = await conn.query(
-      `SELECT id, chain_id AS chainId, chain_id, status, plan_senior_empid, reviewed_by, reviewed_at, review_notes, promoted_record_id, created_by, created_at, updated_at
+      `SELECT id, chain_id AS chainId, chain_id, status, plan_senior_empid, last_promoter_empid, reviewed_by, reviewed_at, review_notes, promoted_record_id, created_by, created_at, updated_at
          FROM \`${TEMP_TABLE}\`
         WHERE id = ?
         LIMIT 1`,
@@ -1340,7 +1354,7 @@ export async function getTemporaryChainHistory(id) {
     let chainRows = [];
     if (chainId) {
       const [rowsByChain] = await conn.query(
-        `SELECT id, chain_id AS chainId, chain_id, status, plan_senior_empid, reviewed_by, reviewed_at, review_notes, promoted_record_id, created_by, created_at, updated_at
+        `SELECT id, chain_id AS chainId, chain_id, status, plan_senior_empid, last_promoter_empid, reviewed_by, reviewed_at, review_notes, promoted_record_id, created_by, created_at, updated_at
            FROM \`${TEMP_TABLE}\`
           WHERE chain_id = ?
           ORDER BY created_at ASC, id ASC`,
@@ -1726,6 +1740,12 @@ export async function promoteTemporarySubmission(
     }
     const promotedId = insertedId ? String(insertedId) : null;
     if (shouldForwardTemporary) {
+      await conn.query(
+        `UPDATE \`${TEMP_TABLE}\`
+            SET last_promoter_empid = ?
+          WHERE id = ?`,
+        [normalizedReviewer, id],
+      );
       const updateCount = Number(
         await chainStatusUpdater(conn, effectiveChainId, {
           status: 'forwarded',
@@ -1756,8 +1776,8 @@ export async function promoteTemporarySubmission(
         `INSERT INTO \`${TEMP_TABLE}\`
          (company_id, table_name, form_name, config_name, module_key, payload_json,
         raw_values_json, cleaned_values_json, created_by, plan_senior_empid,
-         branch_id, department_id, chain_id, status)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         last_promoter_empid, branch_id, department_id, chain_id, status)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           row.company_id ?? null,
           row.table_name,
@@ -1769,6 +1789,7 @@ export async function promoteTemporarySubmission(
           safeJsonStringify(sanitizedPayloadValues),
           normalizedReviewer,
           forwardReviewerEmpId,
+          normalizedReviewer,
           row.branch_id ?? null,
           row.department_id ?? null,
           effectiveChainId,
@@ -1967,6 +1988,21 @@ export async function promoteTemporarySubmission(
       err.status = 409;
       throw err;
     }
+    if (effectiveChainId) {
+      await conn.query(
+        `UPDATE \`${TEMP_TABLE}\`
+            SET last_promoter_empid = NULL
+          WHERE chain_id = ?`,
+        [effectiveChainId],
+      );
+    } else {
+      await conn.query(
+        `UPDATE \`${TEMP_TABLE}\`
+            SET last_promoter_empid = NULL
+          WHERE id = ?`,
+        [id],
+      );
+    }
     await recordTemporaryReviewHistory(conn, {
       temporaryId: id,
       action: 'promoted',
@@ -2112,6 +2148,18 @@ export async function rejectTemporarySubmission(
       const err = new Error('Temporary submission already reviewed');
       err.status = 409;
       throw err;
+    }
+    const lastPromoterEmpId = normalizeEmpId(row.last_promoter_empid);
+    const originalCreatorEmpId = normalizeEmpId(row.created_by);
+    const rejectionReturnEmpId = lastPromoterEmpId || originalCreatorEmpId;
+    if (rejectionReturnEmpId && rejectionReturnEmpId !== originalCreatorEmpId) {
+      await conn.query(
+        `UPDATE \`${TEMP_TABLE}\`
+            SET created_by = ?
+          WHERE id = ?`,
+        [rejectionReturnEmpId, id],
+      );
+      row.created_by = rejectionReturnEmpId;
     }
     const effectiveChainId =
       normalizeTemporaryId(row.chain_id) || normalizeTemporaryId(row.id) || null;
