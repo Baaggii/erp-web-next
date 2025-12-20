@@ -1799,7 +1799,6 @@ export default function CodingTablesPage() {
         setErrorMessage(failureMessage);
         errGroups[failureMessage] = (errGroups[failureMessage] || 0) + rowCount;
         failedAll.push(`${stmt} -- ${failureMessage}`);
-        failedNoInsert.push(`${stmt} -- ${failureMessage}`);
         abortCtrlRef.current = null;
         setUploadProgress({ done: i + 1, total: statements.length });
         continue;
