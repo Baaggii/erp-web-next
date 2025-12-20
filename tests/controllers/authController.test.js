@@ -2,6 +2,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { login } from '../../api-server/controllers/authController.js';
 import * as db from '../../db/index.js';
+import * as posSessions from '../../api-server/services/posSessionLogger.js';
+
+process.env.SKIP_SCHEDULE_COLUMN_CHECK = '1';
+process.env.SKIP_COMPANY_COLUMN_CHECK = '1';
 
 function mockPoolSequential(responses = []) {
   const orig = db.pool.query;
@@ -28,7 +32,15 @@ function createRes() {
   };
 }
 
+function mockPosSessionLogger() {
+  return posSessions.__test__.setRecorders({
+    login: async () => ({ sessionUuid: 'mock-session', cookieName: 'pos_session_uuid' }),
+    logout: async () => true,
+  });
+}
+
 test('login prompts for company selection when companyId undefined', async () => {
+  const restorePos = mockPosSessionLogger();
   const sessions = [
     { company_id: 0, company_name: 'Alpha', branch_id: 1, department_id: 1, position_id: 1, position: 'P', senior_empid: null, senior_plan_empid: null, employee_name: 'Emp0', user_level: 1, user_level_name: 'Admin', permission_list: '', workplace_session_id: null },
     { company_id: 0, company_name: 'Alpha', branch_id: 2, department_id: 2, position_id: 2, position: 'Q', senior_empid: null, senior_plan_empid: null, employee_name: 'Emp0', user_level: 1, user_level_name: 'Admin', permission_list: '', workplace_session_id: 10 },
@@ -43,6 +55,7 @@ test('login prompts for company selection when companyId undefined', async () =>
   const res = createRes();
   await login({ body: { empid: 1, password: 'pw' } }, res, () => {});
   restore();
+  restorePos();
   assert.equal(res.code, 200);
   assert.equal(res.body.needsCompany, true);
   assert.equal(res.body.sessions.length, 2);
@@ -53,6 +66,7 @@ test('login prompts for company selection when companyId undefined', async () =>
 });
 
 test('login succeeds when companyId is 0', async () => {
+  const restorePos = mockPosSessionLogger();
   const sessions = [
     { company_id: 0, company_name: 'Alpha', branch_id: 1, department_id: 1, position_id: 1, position: 'P', senior_empid: null, senior_plan_empid: null, employee_name: 'Emp0', user_level: 1, user_level_name: 'Admin', permission_list: '', workplace_session_id: null },
     { company_id: 1, company_name: 'Beta', branch_id: 1, department_id: 1, position_id: 1, position: 'P', senior_empid: null, senior_plan_empid: null, employee_name: 'Emp1', user_level: 1, user_level_name: 'Admin', permission_list: '', workplace_session_id: 30 },
@@ -66,6 +80,7 @@ test('login succeeds when companyId is 0', async () => {
   const res = createRes();
   await login({ body: { empid: 1, password: 'pw', companyId: 0 } }, res, () => {});
   restore();
+  restorePos();
   assert.equal(res.code, 200);
   assert.equal(res.body.company, 0);
   assert.equal(res.body.session.company_id, 0);
@@ -74,6 +89,7 @@ test('login succeeds when companyId is 0', async () => {
 });
 
 test('login succeeds without workplace assignments', async () => {
+  const restorePos = mockPosSessionLogger();
   const sessions = [
     { company_id: 2, company_name: 'Gamma', branch_id: 1, department_id: 1, position_id: 1, position: 'P', senior_empid: null, senior_plan_empid: null, employee_name: 'Emp2', user_level: 1, user_level_name: 'Admin', permission_list: '', workplace_session_id: null },
   ];
@@ -86,6 +102,7 @@ test('login succeeds without workplace assignments', async () => {
   const res = createRes();
   await login({ body: { empid: 1, password: 'pw' } }, res, () => {});
   restore();
+  restorePos();
   assert.equal(res.code, 200);
   assert.equal(res.body.company, 2);
   assert.equal(res.body.workplace, null);

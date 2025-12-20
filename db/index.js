@@ -1,4 +1,5 @@
 let mysql;
+import crypto from "crypto";
 
 function basicEscape(value) {
   if (value === undefined || value === null) {
@@ -1111,6 +1112,7 @@ export async function getUserByEmpId(empid) {
 function mapEmploymentRow(row) {
   const {
     company_id,
+    merchant_tin,
     branch_id,
     department_id,
     position_id,
@@ -1119,6 +1121,8 @@ function mapEmploymentRow(row) {
     workplace_id,
     workplace_name,
     workplace_session_id,
+    pos_no,
+    merchant_id,
     permission_list,
     ...rest
   } = row;
@@ -1146,6 +1150,7 @@ function mapEmploymentRow(row) {
   for (const k of all) permissions[k] = flags.has(k);
   return {
     company_id,
+    merchant_tin,
     branch_id,
     department_id,
     position_id,
@@ -1154,9 +1159,58 @@ function mapEmploymentRow(row) {
     workplace_id,
     workplace_name,
     workplace_session_id,
+    pos_no,
+    merchant_id,
     ...rest,
     permissions,
   };
+}
+
+let employmentScheduleColumnCache = null;
+
+let companyMetadataColumnCache = null;
+
+async function getCompanyMetadataColumnInfo() {
+  if (companyMetadataColumnCache) return companyMetadataColumnCache;
+  if (process.env.SKIP_COMPANY_COLUMN_CHECK === "1") {
+    companyMetadataColumnCache = { hasMerchantTin: true };
+    return companyMetadataColumnCache;
+  }
+  try {
+    const columns = await getTableColumnsSafe("companies");
+    const lower = new Set(columns.map((c) => String(c).toLowerCase()));
+    companyMetadataColumnCache = { hasMerchantTin: lower.has("merchant_tin") };
+  } catch (err) {
+    if (err?.code === "ER_NO_SUCH_TABLE") {
+      companyMetadataColumnCache = { hasMerchantTin: false };
+    } else {
+      throw err;
+    }
+  }
+  return companyMetadataColumnCache;
+}
+
+async function getEmploymentScheduleColumnInfo() {
+  if (employmentScheduleColumnCache) return employmentScheduleColumnCache;
+  if (process.env.SKIP_SCHEDULE_COLUMN_CHECK === "1") {
+    employmentScheduleColumnCache = { hasPosNo: true, hasMerchantId: true };
+    return employmentScheduleColumnCache;
+  }
+  try {
+    const columns = await getTableColumnsSafe("tbl_employment_schedule");
+    const lower = new Set(columns.map((c) => String(c).toLowerCase()));
+    employmentScheduleColumnCache = {
+      hasPosNo: lower.has("pos_no"),
+      hasMerchantId: lower.has("merchant_id"),
+    };
+  } catch (err) {
+    if (err?.code === "ER_NO_SUCH_TABLE") {
+      employmentScheduleColumnCache = { hasPosNo: false, hasMerchantId: false };
+    } else {
+      throw err;
+    }
+  }
+  return employmentScheduleColumnCache;
 }
 
 /**
@@ -1190,6 +1244,13 @@ export async function getEmploymentSessions(empid, options = {}) {
   const deptCfg = unwrapDisplayConfig(deptCfgRaw);
   const empCfg = unwrapDisplayConfig(empCfgRaw);
   const relationConfig = relationCfg?.config || {};
+  const scheduleInfo = await getEmploymentScheduleColumnInfo();
+  const posNoExpr = scheduleInfo.hasPosNo ? "es.pos_no" : "NULL";
+  const merchantExpr = scheduleInfo.hasMerchantId ? "es.merchant_id" : "NULL";
+  const companyInfo = await getCompanyMetadataColumnInfo();
+  const merchantTinExpr = companyInfo.hasMerchantTin
+    ? "mc.merchant_tin"
+    : "NULL";
 
   const [companyRel, branchRel, deptRel] = await Promise.all([
     resolveEmploymentRelation({
@@ -1245,12 +1306,15 @@ export async function getEmploymentSessions(empid, options = {}) {
   const sql = `SELECT
           e.employment_company_id AS company_id,
           ${companyRel.nameExpr} AS company_name,
+          ${merchantTinExpr} AS merchant_tin,
           e.employment_branch_id AS branch_id,
           ${branchRel.nameExpr} AS branch_name,
           e.employment_department_id AS department_id,
           ${deptRel.nameExpr} AS department_name,
           es.workplace_id AS workplace_id,
           es.workplace_session_id AS workplace_session_id,
+          ${posNoExpr} AS pos_no,
+          ${merchantExpr} AS merchant_id,
           cw.workplace_name AS workplace_name,
           e.employment_position_id AS position_id,
           e.employment_senior_empid AS senior_empid,
@@ -1265,12 +1329,14 @@ export async function getEmploymentSessions(empid, options = {}) {
        ${deptRel.join}
        LEFT JOIN (
          SELECT
-           es.company_id,
-           es.branch_id,
-           es.department_id,
-           es.emp_id,
-           es.workplace_id,
-           es.id AS workplace_session_id
+            es.company_id,
+            es.branch_id,
+            es.department_id,
+            es.emp_id,
+            es.workplace_id,
+           es.id AS workplace_session_id,
+           ${posNoExpr} AS pos_no,
+           ${merchantExpr} AS merchant_id
          FROM tbl_employment_schedule es
          INNER JOIN (
            SELECT
@@ -1295,30 +1361,53 @@ export async function getEmploymentSessions(empid, options = {}) {
            AND es.deleted_at IS NULL
        ) es
          ON es.emp_id = e.employment_emp_id
-        AND es.company_id = e.employment_company_id
+       AND es.company_id = e.employment_company_id
         AND es.branch_id = e.employment_branch_id
         AND es.department_id = e.employment_department_id
        LEFT JOIN tbl_workplace tw
          ON tw.company_id = e.employment_company_id
         AND tw.branch_id = e.employment_branch_id
-        AND tw.department_id = e.employment_department_id
-        AND tw.workplace_id = es.workplace_id
-       LEFT JOIN code_workplace cw ON cw.workplace_id = es.workplace_id
+       AND tw.department_id = e.employment_department_id
+       AND tw.workplace_id = es.workplace_id
+      LEFT JOIN code_workplace cw ON cw.workplace_id = es.workplace_id
+      LEFT JOIN companies mc ON mc.id = e.employment_company_id
        LEFT JOIN tbl_employee emp ON e.employment_emp_id = emp.emp_id
        LEFT JOIN user_levels ul ON e.employment_user_level = ul.userlevel_id
       LEFT JOIN user_level_permissions up ON up.userlevel_id = ul.userlevel_id AND up.action = 'permission' AND up.company_id IN (${GLOBAL_COMPANY_ID}, e.employment_company_id)
        WHERE e.employment_emp_id = ?
       GROUP BY e.employment_company_id, company_name,
+                ${merchantTinExpr},
                 e.employment_branch_id, branch_name,
                 e.employment_department_id, department_name,
                 es.workplace_id, cw.workplace_name, es.workplace_session_id,
+                es.pos_no, es.merchant_id,
                 e.employment_position_id,
                 e.employment_senior_empid,
                 e.employment_senior_plan_empid,
                 employee_name, e.employment_user_level, ul.name
       ORDER BY company_name, department_name, branch_name, workplace_name, user_level_name`;
   const params = [...scheduleDateParams, empid];
-  const [rows] = await pool.query(sql, params);
+  let rows;
+  try {
+    [rows] = await pool.query(sql, params);
+  } catch (err) {
+    if (
+      err?.code === "ER_BAD_FIELD_ERROR" &&
+      /\b(pos_no|merchant_id)\b/i.test(err.message || "")
+    ) {
+      employmentScheduleColumnCache = { hasPosNo: false, hasMerchantId: false };
+      const replaceExpr = (text, target, replacement) =>
+        text.split(target).join(replacement);
+      const fallbackSql = replaceExpr(
+        replaceExpr(sql, posNoExpr, "NULL"),
+        merchantExpr,
+        "NULL",
+      );
+      [rows] = await pool.query(fallbackSql, params);
+    } else {
+      throw err;
+    }
+  }
   const sessions = rows.map(mapEmploymentRow);
   if (options?.includeDiagnostics) {
     const sqlText = typeof sql === 'string' ? sql : String(sql ?? '');
@@ -1391,6 +1480,13 @@ export async function getEmploymentSession(empid, companyId, options = {}) {
     const deptCfg = unwrapDisplayConfig(deptCfgRaw);
     const empCfg = unwrapDisplayConfig(empCfgRaw);
     const relationConfig = relationCfg?.config || {};
+    const scheduleInfo = await getEmploymentScheduleColumnInfo();
+    const posNoExpr = scheduleInfo.hasPosNo ? "es.pos_no" : "NULL";
+    const merchantExpr = scheduleInfo.hasMerchantId ? "es.merchant_id" : "NULL";
+    const companyInfo = await getCompanyMetadataColumnInfo();
+    const merchantTinExpr = companyInfo.hasMerchantTin
+      ? "mc.merchant_tin"
+      : "NULL";
 
     const [companyRel, branchRel, deptRel] = await Promise.all([
       resolveEmploymentRelation({
@@ -1464,16 +1560,18 @@ export async function getEmploymentSession(empid, companyId, options = {}) {
       'user_level_name',
     ];
 
-      const [rows] = await pool.query(
-        `SELECT
+    const baseSql = `SELECT
             e.employment_company_id AS company_id,
             ${companyRel.nameExpr} AS company_name,
+            ${merchantTinExpr} AS merchant_tin,
             e.employment_branch_id AS branch_id,
             ${branchRel.nameExpr} AS branch_name,
             e.employment_department_id AS department_id,
             ${deptRel.nameExpr} AS department_name,
             es.workplace_id AS workplace_id,
             es.workplace_session_id AS workplace_session_id,
+            ${posNoExpr} AS pos_no,
+            ${merchantExpr} AS merchant_id,
             cw.workplace_name AS workplace_name,
             e.employment_position_id AS position_id,
             e.employment_senior_empid AS senior_empid,
@@ -1493,7 +1591,9 @@ export async function getEmploymentSession(empid, companyId, options = {}) {
              es.department_id,
              es.emp_id,
              es.workplace_id,
-             es.id AS workplace_session_id
+             es.id AS workplace_session_id,
+             ${posNoExpr} AS pos_no,
+             ${merchantExpr} AS merchant_id
            FROM tbl_employment_schedule es
            INNER JOIN (
              SELECT
@@ -1519,7 +1619,7 @@ export async function getEmploymentSession(empid, companyId, options = {}) {
          ) es
            ON es.emp_id = e.employment_emp_id
           AND es.company_id = e.employment_company_id
-          AND es.branch_id = e.employment_branch_id
+         AND es.branch_id = e.employment_branch_id
           AND es.department_id = e.employment_department_id
          LEFT JOIN tbl_workplace tw
            ON tw.company_id = e.employment_company_id
@@ -1527,22 +1627,45 @@ export async function getEmploymentSession(empid, companyId, options = {}) {
           AND tw.department_id = e.employment_department_id
           AND tw.workplace_id = es.workplace_id
          LEFT JOIN code_workplace cw ON cw.workplace_id = es.workplace_id
+         LEFT JOIN companies mc ON mc.id = e.employment_company_id
          LEFT JOIN tbl_employee emp ON e.employment_emp_id = emp.emp_id
          LEFT JOIN user_levels ul ON e.employment_user_level = ul.userlevel_id
          LEFT JOIN user_level_permissions up ON up.userlevel_id = ul.userlevel_id AND up.action = 'permission' AND up.company_id IN (${GLOBAL_COMPANY_ID}, e.employment_company_id)
          WHERE e.employment_emp_id = ? AND e.employment_company_id = ?
          GROUP BY e.employment_company_id, company_name,
-                  e.employment_branch_id, branch_name,
-                  e.employment_department_id, department_name,
-                  es.workplace_id, cw.workplace_name, es.workplace_session_id,
-                  e.employment_position_id,
+                   ${merchantTinExpr},
+                   e.employment_branch_id, branch_name,
+                   e.employment_department_id, department_name,
+                   es.workplace_id, cw.workplace_name, es.workplace_session_id,
+                   es.pos_no, es.merchant_id,
+                   e.employment_position_id,
                   e.employment_senior_empid,
                   e.employment_senior_plan_empid,
                   employee_name, e.employment_user_level, ul.name
          ORDER BY ${orderParts.join(', ')}
-         LIMIT 1`,
-        [...scheduleDateParams, ...params],
-      );
+         LIMIT 1`;
+    const queryParams = [...scheduleDateParams, ...params];
+    let rows;
+    try {
+      [rows] = await pool.query(baseSql, queryParams);
+    } catch (err) {
+      if (
+        err?.code === "ER_BAD_FIELD_ERROR" &&
+        /\b(pos_no|merchant_id)\b/i.test(err.message || "")
+      ) {
+        employmentScheduleColumnCache = { hasPosNo: false, hasMerchantId: false };
+        const replaceExpr = (text, target, replacement) =>
+          text.split(target).join(replacement);
+        const fallbackSql = replaceExpr(
+          replaceExpr(baseSql, posNoExpr, "NULL"),
+          merchantExpr,
+          "NULL",
+        );
+        [rows] = await pool.query(fallbackSql, queryParams);
+      } else {
+        throw err;
+      }
+    }
     if (rows.length === 0) return null;
     return mapEmploymentRow(rows[0]);
   }
@@ -7851,4 +7974,137 @@ export async function getProcedureRawRows(
   } catch {
     return { rows: [], sql, original: originalSql, file, displayFields };
   }
+}
+
+let posSessionColumnInfo = null;
+
+async function getPosSessionColumnInfo() {
+  if (posSessionColumnInfo) return posSessionColumnInfo;
+  try {
+    const columns = await getTableColumnsSafe("pos_session");
+    const lower = new Set(columns.map((c) => String(c).toLowerCase()));
+    posSessionColumnInfo = {
+      exists: true,
+      hasDeviceUuid: lower.has("device_uuid"),
+      hasCurrentUserId: lower.has("current_user_id"),
+    };
+  } catch (err) {
+    if (err?.code === "ER_NO_SUCH_TABLE") {
+      posSessionColumnInfo = {
+        exists: false,
+        hasDeviceUuid: false,
+        hasCurrentUserId: false,
+      };
+    } else {
+      throw err;
+    }
+  }
+  return posSessionColumnInfo;
+}
+
+function normalizePosSessionLocation(location) {
+  if (location === undefined || location === null) return {};
+  if (typeof location === "string") {
+    try {
+      const parsed = JSON.parse(location);
+      return typeof parsed === "object" && parsed !== null ? parsed : {};
+    } catch {
+      return { raw: location };
+    }
+  }
+  if (typeof location === "object") {
+    return Array.isArray(location) ? { points: location } : location;
+  }
+  return { value: location };
+}
+
+function normalizeDeviceMac(value) {
+  if (value === undefined || value === null) return "unknown";
+  const trimmed = String(value).trim();
+  return trimmed || "unknown";
+}
+
+export async function logPosSessionStart(
+  {
+    sessionUuid,
+    companyId,
+    branchId,
+    merchantId,
+    posNo,
+    deviceMac,
+    deviceUuid = null,
+    location = {},
+    startedAt = new Date(),
+    currentUserId = null,
+  } = {},
+  conn = pool,
+) {
+  const info = await getPosSessionColumnInfo();
+  if (!info.exists || !sessionUuid) return null;
+  const cols = [
+    "session_uuid",
+    "company_id",
+    "branch_id",
+    "merchant_id",
+    "pos_no",
+    "device_mac",
+    "location",
+    "started_at",
+  ];
+  const params = [
+    sessionUuid,
+    companyId ?? 0,
+    branchId ?? 0,
+    merchantId ?? 0,
+    posNo ?? "unknown",
+    normalizeDeviceMac(deviceMac),
+    JSON.stringify(normalizePosSessionLocation(location)),
+    normalizeDateTimeInput(startedAt) ?? new Date(),
+  ];
+  if (info.hasDeviceUuid) {
+    cols.push("device_uuid");
+    params.push(deviceUuid ?? null);
+  }
+  if (info.hasCurrentUserId) {
+    cols.push("current_user_id");
+    params.push(currentUserId ?? null);
+  }
+  const placeholders = cols.map(() => "?").join(", ");
+  const updateCols = [
+    "company_id = VALUES(company_id)",
+    "branch_id = VALUES(branch_id)",
+    "merchant_id = VALUES(merchant_id)",
+    "pos_no = VALUES(pos_no)",
+    "device_mac = VALUES(device_mac)",
+    "location = VALUES(location)",
+    "started_at = VALUES(started_at)",
+    "ended_at = NULL",
+  ];
+  if (info.hasDeviceUuid) {
+    updateCols.push("device_uuid = VALUES(device_uuid)");
+  }
+  if (info.hasCurrentUserId) {
+    updateCols.push("current_user_id = VALUES(current_user_id)");
+  }
+  const sql = `INSERT INTO pos_session (${cols.join(
+    ", ",
+  )}) VALUES (${placeholders})
+    ON DUPLICATE KEY UPDATE ${updateCols.join(", ")}`;
+  await conn.query(sql, params);
+  return sessionUuid;
+}
+
+export async function closePosSession(
+  sessionUuid,
+  endedAt = new Date(),
+  conn = pool,
+) {
+  const info = await getPosSessionColumnInfo();
+  if (!info.exists || !sessionUuid) return false;
+  const endedValue = normalizeDateTimeInput(endedAt) ?? new Date();
+  await conn.query(
+    "UPDATE pos_session SET ended_at = ? WHERE session_uuid = ?",
+    [endedValue, sessionUuid],
+  );
+  return true;
 }
