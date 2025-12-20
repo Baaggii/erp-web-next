@@ -1786,6 +1786,9 @@ export default function CodingTablesPage() {
             return {};
           }
         });
+        if (Number.isFinite(data?.inserted)) {
+          insertedVal = Math.max(0, Number(data.inserted));
+        }
         const detail = captureErrorDetails(
           data,
           res.statusText || 'Execution failed'
@@ -1915,6 +1918,15 @@ export default function CodingTablesPage() {
         } else {
           addToast('Insert interrupted', 'warning');
         }
+        setInsertedMain(mInserted);
+        setInsertedOther(oInserted);
+        setUnsuccessfulGroups(runErr);
+        const errSummary = Object.entries(runErr)
+          .map(([k, v]) => `${k}: ${v}`)
+          .join('; ');
+        setSummaryInfo(
+          `Inserted to main: ${mInserted}. _other: ${oInserted}. Duplicates: ${dupCount}. ${errSummary}`
+        );
       } else {
         if (failedNoInsert.length > 0) {
           setSqlMove(failedNoInsert.join('\n'));
@@ -1969,6 +1981,15 @@ export default function CodingTablesPage() {
         } else {
           addToast('Insert interrupted', 'warning');
         }
+        setInsertedMain(mInserted);
+        setInsertedOther(oInserted);
+        setUnsuccessfulGroups(runErr);
+        const errSummary = Object.entries(runErr)
+          .map(([k, v]) => `${k}: ${v}`)
+          .join('; ');
+        setSummaryInfo(
+          `Inserted to main: ${mInserted}. _other: ${oInserted}. Duplicates: ${dupCount}. ${errSummary}`
+        );
       } else {
         if (failedNoInsert.length > 0) {
           setSqlMove(failedNoInsert.join('\n'));
@@ -2017,6 +2038,15 @@ export default function CodingTablesPage() {
         } else {
           addToast('Insert interrupted', 'warning');
         }
+        setInsertedMain(mInserted);
+        setInsertedOther(oInserted);
+        setUnsuccessfulGroups(runErr);
+        const errSummary = Object.entries(runErr)
+          .map(([k, v]) => `${k}: ${v}`)
+          .join('; ');
+        setSummaryInfo(
+          `Inserted to main: ${mInserted}. _other: ${oInserted}. Duplicates: ${dupCount}. ${errSummary}`,
+        );
       } else {
         if (errorMessage) {
           addToast(errorMessage, 'error');
