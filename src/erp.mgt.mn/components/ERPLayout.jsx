@@ -29,6 +29,7 @@ import TourViewer from "./tours/TourViewer.jsx";
 import derivePageKey from "../utils/derivePageKey.js";
 import { findVisibleFallbackSelector } from "../utils/findVisibleTourStep.js";
 import { playNotificationSound } from "../utils/playNotificationSound.js";
+import { buildOptionsForRows } from "../utils/buildAsyncSelectOptions.js";
 
 export const TourContext = React.createContext({
   startTour: () => false,
@@ -3855,14 +3856,128 @@ export function Header({
     return labels;
   }, [session]);
 
-  const positionLabel = useMemo(() => {
+  const [positionLabel, setPositionLabel] = useState(null);
+  const [workplacePositions, setWorkplacePositions] = useState({});
+
+  const allWorkplaceIds = useMemo(() => {
+    const ids = [];
+    const assignments = Array.isArray(session?.workplace_assignments)
+      ? session.workplace_assignments
+      : [];
+    assignments.forEach((assignment) => {
+      const wId =
+        assignment?.workplace_id ??
+        assignment?.workplaceId ??
+        assignment?.id ??
+        null;
+      if (wId !== null && wId !== undefined) {
+        ids.push(wId);
+      }
+    });
+    const sessionId = session?.workplace_id ?? session?.workplaceId;
+    if (sessionId !== null && sessionId !== undefined) {
+      ids.push(sessionId);
+    }
+    return Array.from(
+      new Set(
+        ids
+          .map((value) => {
+            if (value === null || value === undefined) return null;
+            if (typeof value === 'number' && Number.isFinite(value)) return value;
+            if (typeof value === 'string' && value.trim()) {
+              const parsed = Number(value.trim());
+              return Number.isFinite(parsed) ? parsed : value.trim();
+            }
+            return value;
+          })
+          .filter((value) => value !== null && value !== undefined),
+      ),
+    );
+  }, [session?.workplaceId, session?.workplace_id, session?.workplace_assignments]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const setMapIfActive = (map) => {
+      if (!cancelled) setWorkplacePositions(map);
+    };
+
+    if (!allWorkplaceIds.length) {
+      setMapIfActive({});
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    const fetchPositions = async () => {
+      const entries = {};
+      await Promise.all(
+        allWorkplaceIds.map(async (workplaceId) => {
+          const params = new URLSearchParams();
+          params.set('perPage', '1');
+          params.set('workplace_id', String(workplaceId));
+          try {
+            const res = await fetch(
+              `/api/tables/code_workplace?${params.toString()}`,
+              { credentials: 'include' },
+            );
+            if (!res.ok) return;
+            const data = await res.json().catch(() => ({}));
+            const rows = Array.isArray(data?.rows) ? data.rows : [];
+            if (!rows.length) return;
+            const row = rows[0];
+            const keyMap = Object.keys(row || {}).reduce((acc, key) => {
+              acc[key.toLowerCase()] = key;
+              return acc;
+            }, {});
+            const resolvedWorkplaceKey =
+              keyMap.workplace_id ??
+              keyMap.workplaceid ??
+              keyMap.workplace ??
+              null;
+            const resolvedWorkplaceId =
+              resolvedWorkplaceKey && row[resolvedWorkplaceKey] !== undefined
+                ? row[resolvedWorkplaceKey]
+                : workplaceId;
+            const positionKey =
+              keyMap.position_id ??
+              keyMap.positionid ??
+              keyMap.position ??
+              null;
+            const positionNameKey =
+              keyMap.position_name ??
+              keyMap.positionname ??
+              keyMap.workplace_position_name ??
+              null;
+            entries[resolvedWorkplaceId] = {
+              positionId: positionKey ? row[positionKey] : null,
+              positionName: positionNameKey ? row[positionNameKey] : null,
+            };
+          } catch (err) {
+            console.warn('Failed to resolve workplace position', {
+              workplaceId,
+              err,
+            });
+          }
+        }),
+      );
+      setMapIfActive(entries);
+    };
+
+    fetchPositions();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [allWorkplaceIds]);
+
+  const matchedAssignment = useMemo(() => {
     const assignments = Array.isArray(session?.workplace_assignments)
       ? session.workplace_assignments
       : [];
     const currentSessionId =
       session?.workplace_session_id ?? session?.workplaceSessionId ?? null;
     const currentWorkplaceId = session?.workplace_id ?? session?.workplaceId ?? null;
-    const matchedAssignment =
+    return (
       assignments.find((assignment) => {
         const assignmentSessionId =
           assignment?.workplace_session_id ?? assignment?.workplaceSessionId ?? null;
@@ -3884,33 +3999,195 @@ export function Header({
           assignmentWorkplaceId !== undefined &&
           assignmentWorkplaceId === currentWorkplaceId
         );
-      }) || null;
-
-    const assignmentPosition =
-      matchedAssignment?.position_name ??
-      matchedAssignment?.positionName ??
-      matchedAssignment?.workplace_position_name ??
-      matchedAssignment?.workplacePositionName ??
-      matchedAssignment?.position ??
-      matchedAssignment?.position_id ??
-      matchedAssignment?.positionId ??
-      null;
-
-    const sessionPosition =
-      session?.position_name ??
-      session?.positionName ??
-      session?.employment_position_name ??
-      session?.employmentPositionName ??
-      session?.position ??
-      session?.employment_position_id ??
-      session?.position_id ??
-      null;
-
-    const value = assignmentPosition ?? sessionPosition;
-    if (value === null || value === undefined) return null;
-    const label = String(value).trim();
-    return label || null;
+      }) || null
+    );
   }, [session]);
+
+  const currentWorkplaceId = useMemo(() => {
+    const fromAssignment =
+      matchedAssignment?.workplace_id ??
+      matchedAssignment?.workplaceId ??
+      matchedAssignment?.id ??
+      null;
+    if (fromAssignment !== null && fromAssignment !== undefined) return fromAssignment;
+    return session?.workplace_id ?? session?.workplaceId ?? null;
+  }, [matchedAssignment, session?.workplaceId, session?.workplace_id]);
+
+  const normalizeText = useCallback((value) => {
+    if (value === null || value === undefined) return null;
+    const text = String(value).trim();
+    return text || null;
+  }, []);
+
+  const preferNameLikeText = useCallback(
+    (value) => {
+      const text = normalizeText(value);
+      if (!text) return null;
+      if (/^[+-]?\d+(\.\d+)?$/.test(text)) return null;
+      return text;
+    },
+    [normalizeText],
+  );
+
+  const positionNameCandidate = useMemo(() => {
+    const candidates = [
+      matchedAssignment?.position_name,
+      matchedAssignment?.positionName,
+      matchedAssignment?.workplace_position_name,
+      matchedAssignment?.workplacePositionName,
+      matchedAssignment?.employment_position_name,
+      matchedAssignment?.employmentPositionName,
+      matchedAssignment?.position,
+      workplacePositions?.[currentWorkplaceId]?.positionName,
+      session?.position_name,
+      session?.positionName,
+      session?.employment_position_name,
+      session?.employmentPositionName,
+      session?.position,
+      workplacePositions?.[session?.workplace_id ?? session?.workplaceId]?.positionName,
+    ];
+    const normalized = candidates
+      .map((value) => preferNameLikeText(value))
+      .find((value) => value && value.length);
+    return normalized || null;
+  }, [
+    currentWorkplaceId,
+    matchedAssignment,
+    preferNameLikeText,
+    session,
+    workplacePositions,
+  ]);
+
+  const positionIdentifier = useMemo(() => {
+    const candidates = [
+      matchedAssignment?.employment_position_id,
+      matchedAssignment?.position_id,
+      matchedAssignment?.positionId,
+      matchedAssignment?.position,
+      workplacePositions?.[currentWorkplaceId]?.positionId,
+      session?.employment_position_id,
+      session?.employmentPositionId,
+      session?.position_id,
+      session?.positionId,
+      session?.position,
+      workplacePositions?.[session?.workplace_id ?? session?.workplaceId]?.positionId,
+    ];
+    const resolved = candidates
+      .map((value) => normalizeText(value))
+      .find((value) => value && value.length);
+    return resolved || null;
+  }, [currentWorkplaceId, matchedAssignment, normalizeText, session, workplacePositions]);
+
+  useEffect(() => {
+    let isCancelled = false;
+    const setIfActive = (label) => {
+      if (!isCancelled) setPositionLabel(label);
+    };
+
+    if (positionNameCandidate) {
+      setIfActive(positionNameCandidate);
+      return () => {
+        isCancelled = true;
+      };
+    }
+
+    setIfActive(null);
+
+    const positionValue =
+      positionIdentifier === null || positionIdentifier === undefined
+        ? null
+        : String(positionIdentifier).trim();
+    if (!positionValue) {
+      return () => {
+        isCancelled = true;
+      };
+    }
+
+    const resolvePositionName = async () => {
+      try {
+        const cfgRes = await fetch('/api/display_fields?table=code_position', {
+          credentials: 'include',
+        });
+        const cfg = cfgRes.ok ? await cfgRes.json() : {};
+        const configuredIdField =
+          (typeof cfg?.idField === 'string' && cfg.idField.trim()) ||
+          (typeof cfg?.id_field === 'string' && cfg.id_field.trim()) ||
+          '';
+        const configuredDisplayFields = Array.isArray(cfg?.displayFields)
+          ? cfg.displayFields.filter(
+              (field) => typeof field === 'string' && field.trim().length > 0,
+            )
+          : [];
+        const hasConfiguredTable =
+          Boolean(configuredIdField) || configuredDisplayFields.length > 0;
+
+        const idField = configuredIdField || 'position_id';
+        const displayFields =
+          hasConfiguredTable && configuredDisplayFields.length > 0
+            ? configuredDisplayFields
+            : ['position_name'];
+
+        const params = new URLSearchParams();
+        params.set(idField, positionValue);
+        params.set('perPage', '1');
+
+        const res = await fetch(`/api/tables/code_position?${params.toString()}`, {
+          credentials: 'include',
+        });
+        if (res.ok) {
+          const data = await res.json().catch(() => ({}));
+          const rows = Array.isArray(data.rows) ? data.rows : [];
+          if (rows.length > 0) {
+            const options = await buildOptionsForRows({
+              table: 'code_position',
+              rows,
+              idField,
+              searchColumn: idField,
+              labelFields: displayFields,
+              companyId: session?.company_id ?? session?.companyId ?? null,
+            });
+            const match = options.find(
+              (opt) =>
+                opt?.value !== undefined &&
+                opt?.value !== null &&
+                String(opt.value).trim() === positionValue,
+            );
+            const fallbackRow = rows[0] || {};
+            const fallbackLabel =
+              displayFields
+                .map((field) => {
+                  const lower = field.toLowerCase();
+                  const matchingKey = Object.keys(fallbackRow || {}).find(
+                    (key) => key.toLowerCase() === lower,
+                  );
+                  return matchingKey ? normalizeText(fallbackRow[matchingKey]) : null;
+                })
+                .find((val) => val && val.length) ??
+              normalizeText(fallbackRow.position_name) ??
+              normalizeText(fallbackRow.name) ??
+              normalizeText(fallbackRow.position);
+            setIfActive(match?.label || fallbackLabel || positionValue);
+            return;
+          }
+        }
+      } catch (err) {
+        console.warn('Failed to resolve position label', err);
+      }
+      setIfActive(positionValue);
+    };
+
+    resolvePositionName();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [
+    normalizeText,
+    positionIdentifier,
+    positionNameCandidate,
+    session?.companyId,
+    session?.company_id,
+  ]);
 
   return (
     <header className="sticky-header" style={styles.header(isMobile)}>
@@ -3960,8 +4237,6 @@ export function Header({
           🏢 {session.company_name}
           {workplaceLabels.length > 0 &&
             ` | 🏭 ${workplaceLabels.filter(Boolean).join(', ')}`}
-          {session.department_name && ` | 🏬 ${session.department_name}`}
-          {session.branch_name && ` | 📍 ${session.branch_name}`}
           {session.user_level_name && ` | 👤 ${session.user_level_name}`}
           {positionLabel && ` | 🧑‍💼 ${positionLabel}`}
         </span>
