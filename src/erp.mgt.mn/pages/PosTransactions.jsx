@@ -1403,6 +1403,16 @@ export default function PosTransactionsPage() {
       session?.workplace_id ??
       session?.workplaceId ??
       null;
+    const workplacePositionId =
+      session?.workplace_position_id ??
+      session?.workplacePositionId ??
+      null;
+    const positionId =
+      session?.employment_position_id ??
+      session?.position_id ??
+      session?.position ??
+      user?.position ??
+      null;
     entries.forEach(([cfgName, cfgValue]) => {
       if (!cfgValue || typeof cfgValue !== 'object') return;
       if (
@@ -1410,6 +1420,8 @@ export default function PosTransactionsPage() {
           allowTemporaryAnyScope: true,
           userRightId,
           workplaceId,
+          workplacePositionId,
+          positionId,
         })
       ) {
         filtered[cfgName] = cfgValue;
@@ -1922,6 +1934,22 @@ export default function PosTransactionsPage() {
     if (workplaceId != null && String(workplaceId).trim() !== '') {
       params.set('workplaceId', workplaceId);
     }
+    const workplacePositionId =
+      session?.workplace_position_id ??
+      session?.workplacePositionId ??
+      null;
+    if (workplacePositionId != null && String(workplacePositionId).trim() !== '') {
+      params.set('workplacePositionId', workplacePositionId);
+    }
+    const positionId =
+      session?.employment_position_id ??
+      session?.position_id ??
+      session?.position ??
+      user?.position ??
+      null;
+    if (positionId != null && String(positionId).trim() !== '') {
+      params.set('positionId', positionId);
+    }
     const qs = params.toString();
     fetch(`/api/pos_txn_config${qs ? `?${qs}` : ''}`, { credentials: 'include' })
       .then((res) => (res.ok ? res.json() : {}))
@@ -1973,6 +2001,22 @@ export default function PosTransactionsPage() {
       null;
     if (workplaceId != null && String(workplaceId).trim() !== '') {
       params.set('workplaceId', workplaceId);
+    }
+    const workplacePositionId =
+      session?.workplace_position_id ??
+      session?.workplacePositionId ??
+      null;
+    if (workplacePositionId != null && String(workplacePositionId).trim() !== '') {
+      params.set('workplacePositionId', workplacePositionId);
+    }
+    const positionId =
+      session?.employment_position_id ??
+      session?.position_id ??
+      session?.position ??
+      user?.position ??
+      null;
+    if (positionId != null && String(positionId).trim() !== '') {
+      params.set('positionId', positionId);
     }
     fetch(`/api/pos_txn_config?${params.toString()}`, { credentials: 'include' })
       .then((res) => (res.ok ? res.json() : null))
@@ -2152,6 +2196,15 @@ export default function PosTransactionsPage() {
                 `${department}`.trim() !== ''
               ) {
                 params.set('departmentId', department);
+              }
+              if (userRightId !== undefined && userRightId !== null && `${userRightId}`.trim() !== '') {
+                params.set('userRightId', userRightId);
+              }
+              if (workplaceId !== undefined && workplaceId !== null && `${workplaceId}`.trim() !== '') {
+                params.set('workplaceId', workplaceId);
+              }
+              if (positionId !== undefined && positionId !== null && `${positionId}`.trim() !== '') {
+                params.set('positionId', positionId);
               }
               const res = await fetchWithAbort(
                 `/api/transaction_forms?${params.toString()}`,

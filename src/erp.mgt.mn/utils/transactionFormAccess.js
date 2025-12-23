@@ -27,6 +27,23 @@ function matchesScope(list, value) {
   return list.includes(value);
 }
 
+function matchesPositions(list, positionValue, workplacePositionValue) {
+  if (!Array.isArray(list) || list.length === 0) return true;
+  if (workplacePositionValue !== null && list.includes(workplacePositionValue)) {
+    return true;
+  }
+  if (Array.isArray(positionValue)) {
+    const normalizedValues = positionValue
+      .map((item) => normalizeAccessValue(item))
+      .filter((val) => val !== null);
+    if (normalizedValues.length === 0) return false;
+    return normalizedValues.some((val) => list.includes(val));
+  }
+  const normalizedValue = normalizeAccessValue(positionValue);
+  if (normalizedValue === null) return false;
+  return list.includes(normalizedValue);
+}
+
 export function hasTransactionFormAccess(
   info,
   branchId,
@@ -40,14 +57,22 @@ export function hasTransactionFormAccess(
     options.userRightId ?? options.userLevel ?? options.userRight,
   );
   const workplaceValue = normalizeAccessValue(options.workplaceId ?? options.workplace);
+  const positionValue = normalizeAccessValue(
+    options.positionId ?? options.position ?? options.employmentPositionId,
+  );
+  const workplacePositionValue = normalizeAccessValue(
+    options.workplacePositionId ?? options.workplacePosition,
+  );
   const procedureValue = normalizeAccessValue(options.procedure);
   const userRightValues = Array.isArray(options.userRights) ? options.userRights : null;
   const workplaceValues = Array.isArray(options.workplaces) ? options.workplaces : null;
+  const positionValues = Array.isArray(options.positions) ? options.positions : null;
 
   const allowedBranches = normalizeAccessList(info.allowedBranches);
   const allowedDepartments = normalizeAccessList(info.allowedDepartments);
   const allowedUserRights = normalizeAccessList(info.allowedUserRights);
   const allowedWorkplaces = normalizeAccessList(info.allowedWorkplaces);
+  const allowedPositions = normalizeAccessList(info.allowedPositions);
   const allowedProcedures = normalizeAccessList(info.procedures);
 
   const generalAllowed =
@@ -55,6 +80,11 @@ export function hasTransactionFormAccess(
     matchesScope(allowedDepartments, departmentValue) &&
     matchesScope(allowedUserRights, userRightValues ?? userRightValue) &&
     matchesScope(allowedWorkplaces, workplaceValues ?? workplaceValue) &&
+    matchesPositions(
+      allowedPositions,
+      positionValues ?? positionValue,
+      workplacePositionValue,
+    ) &&
     matchesScope(allowedProcedures, procedureValue);
 
   if (generalAllowed) return true;
@@ -75,6 +105,7 @@ export function hasTransactionFormAccess(
   const temporaryDepartments = normalizeAccessList(info.temporaryAllowedDepartments);
   const temporaryUserRights = normalizeAccessList(info.temporaryAllowedUserRights);
   const temporaryWorkplaces = normalizeAccessList(info.temporaryAllowedWorkplaces);
+  const temporaryPositions = normalizeAccessList(info.temporaryAllowedPositions);
   const temporaryProcedures = normalizeAccessList(info.temporaryProcedures);
 
   return (
@@ -82,6 +113,11 @@ export function hasTransactionFormAccess(
     matchesScope(temporaryDepartments, departmentValue) &&
     matchesScope(temporaryUserRights, userRightValues ?? userRightValue) &&
     matchesScope(temporaryWorkplaces, workplaceValues ?? workplaceValue) &&
+    matchesPositions(
+      temporaryPositions,
+      positionValues ?? positionValue,
+      workplacePositionValue,
+    ) &&
     matchesScope(temporaryProcedures, procedureValue)
   );
 }
@@ -106,14 +142,22 @@ export function evaluateTransactionFormAccess(
     options.userRightId ?? options.userLevel ?? options.userRight,
   );
   const workplaceValue = normalizeAccessValue(options.workplaceId ?? options.workplace);
+  const positionValue = normalizeAccessValue(
+    options.positionId ?? options.position ?? options.employmentPositionId,
+  );
+  const workplacePositionValue = normalizeAccessValue(
+    options.workplacePositionId ?? options.workplacePosition,
+  );
   const procedureValue = normalizeAccessValue(options.procedure);
   const userRightValues = Array.isArray(options.userRights) ? options.userRights : null;
   const workplaceValues = Array.isArray(options.workplaces) ? options.workplaces : null;
+  const positionValues = Array.isArray(options.positions) ? options.positions : null;
 
   const allowedBranches = normalizeAccessList(info.allowedBranches);
   const allowedDepartments = normalizeAccessList(info.allowedDepartments);
   const allowedUserRights = normalizeAccessList(info.allowedUserRights);
   const allowedWorkplaces = normalizeAccessList(info.allowedWorkplaces);
+  const allowedPositions = normalizeAccessList(info.allowedPositions);
   const allowedProcedures = normalizeAccessList(info.procedures);
 
   const canPost =
@@ -121,6 +165,11 @@ export function evaluateTransactionFormAccess(
     matchesScope(allowedDepartments, departmentValue) &&
     matchesScope(allowedUserRights, userRightValues ?? userRightValue) &&
     matchesScope(allowedWorkplaces, workplaceValues ?? workplaceValue) &&
+    matchesPositions(
+      allowedPositions,
+      positionValues ?? positionValue,
+      workplacePositionValue,
+    ) &&
     matchesScope(allowedProcedures, procedureValue);
 
   const temporaryEnabled = Boolean(
@@ -139,6 +188,7 @@ export function evaluateTransactionFormAccess(
       const temporaryDepartments = normalizeAccessList(info.temporaryAllowedDepartments);
       const temporaryUserRights = normalizeAccessList(info.temporaryAllowedUserRights);
       const temporaryWorkplaces = normalizeAccessList(info.temporaryAllowedWorkplaces);
+      const temporaryPositions = normalizeAccessList(info.temporaryAllowedPositions);
       const temporaryProcedures = normalizeAccessList(info.temporaryProcedures);
 
       allowTemporary =
@@ -146,6 +196,11 @@ export function evaluateTransactionFormAccess(
         matchesScope(temporaryDepartments, departmentValue) &&
         matchesScope(temporaryUserRights, userRightValues ?? userRightValue) &&
         matchesScope(temporaryWorkplaces, workplaceValues ?? workplaceValue) &&
+        matchesPositions(
+          temporaryPositions,
+          positionValues ?? positionValue,
+          workplacePositionValue,
+        ) &&
         matchesScope(temporaryProcedures, procedureValue);
     }
   }

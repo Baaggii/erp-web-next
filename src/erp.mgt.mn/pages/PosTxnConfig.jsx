@@ -45,11 +45,13 @@ const emptyConfig = {
   statusField: { table: '', field: '', created: '', beforePost: '', posted: '' },
   allowedBranches: [],
   allowedDepartments: [],
+  allowedPositions: [],
   allowedUserRights: [],
   allowedWorkplaces: [],
   procedures: [],
   temporaryAllowedBranches: [],
   temporaryAllowedDepartments: [],
+  temporaryAllowedPositions: [],
   temporaryAllowedUserRights: [],
   temporaryAllowedWorkplaces: [],
   temporaryProcedures: [],
@@ -92,6 +94,8 @@ export default function PosTxnConfig() {
   const [branchCfg, setBranchCfg] = useState({ idField: null, displayFields: [] });
   const [departments, setDepartments] = useState([]);
   const [deptCfg, setDeptCfg] = useState({ idField: null, displayFields: [] });
+  const [positions, setPositions] = useState([]);
+  const [positionCfg, setPositionCfg] = useState({ idField: null, displayFields: [] });
   const [procedureOptions, setProcedureOptions] = useState([]);
   const [userRights, setUserRights] = useState([]);
   const [userRightCfg, setUserRightCfg] = useState({ idField: null, displayFields: [] });
@@ -169,6 +173,23 @@ export default function PosTxnConfig() {
       return { value: String(val), label };
     });
   }, [departments, deptCfg]);
+
+  const positionOptions = useMemo(() => {
+    const idField = positionCfg?.idField || 'position_id';
+    return positions.map((pos) => {
+      const val =
+        pos[idField] ?? pos.position_id ?? pos.id ?? pos.positionId ?? '';
+      const label = positionCfg?.displayFields?.length
+        ? positionCfg.displayFields
+            .map((field) => pos[field])
+            .filter((v) => v !== undefined && v !== null)
+            .join(' - ')
+        : Object.values(pos)
+            .filter((v) => v !== undefined && v !== null)
+            .join(' - ');
+      return { value: String(val), label: label || String(val) };
+    });
+  }, [positions, positionCfg]);
 
   const userRightOptions = useMemo(() => {
     const idField = userRightCfg?.idField || 'userlevel_id';
@@ -702,6 +723,11 @@ export default function PosTxnConfig() {
       .then((data) => setUserRights(data.rows || []))
       .catch(() => setUserRights([]));
 
+    fetch('/api/tables/code_position?perPage=500', { credentials: 'include' })
+      .then((res) => (res.ok ? res.json() : { rows: [] }))
+      .then((data) => setPositions(data.rows || []))
+      .catch(() => setPositions([]));
+
     fetch('/api/tables/code_workplace?perPage=500', { credentials: 'include' })
       .then((res) => (res.ok ? res.json() : { rows: [] }))
       .then((data) => setWorkplaces(data.rows || []))
@@ -720,6 +746,13 @@ export default function PosTxnConfig() {
       )
       .then((cfg) => setUserRightCfg(cfg || { idField: null, displayFields: [] }))
       .catch(() => setUserRightCfg({ idField: null, displayFields: [] }));
+
+    fetch('/api/display_fields?table=code_position', { credentials: 'include' })
+      .then((res) =>
+        res.ok ? res.json() : { idField: null, displayFields: [] },
+      )
+      .then((cfg) => setPositionCfg(cfg || { idField: null, displayFields: [] }))
+      .catch(() => setPositionCfg({ idField: null, displayFields: [] }));
 
     fetch('/api/tables/code_department?perPage=500', { credentials: 'include' })
       .then((res) => (res.ok ? res.json() : { rows: [] }))
@@ -912,6 +945,7 @@ export default function PosTxnConfig() {
           : [];
       loaded.allowedBranches = normalizeAccessStrings(loaded.allowedBranches);
       loaded.allowedDepartments = normalizeAccessStrings(loaded.allowedDepartments);
+      loaded.allowedPositions = normalizeAccessStrings(loaded.allowedPositions);
       loaded.allowedUserRights = normalizeAccessStrings(loaded.allowedUserRights);
       loaded.allowedWorkplaces = normalizeAccessStrings(loaded.allowedWorkplaces);
       loaded.procedures = normalizeProcedures(loaded.procedures);
@@ -920,6 +954,9 @@ export default function PosTxnConfig() {
       );
       loaded.temporaryAllowedDepartments = normalizeAccessStrings(
         loaded.temporaryAllowedDepartments,
+      );
+      loaded.temporaryAllowedPositions = normalizeAccessStrings(
+        loaded.temporaryAllowedPositions,
       );
       loaded.temporaryAllowedUserRights = normalizeAccessStrings(
         loaded.temporaryAllowedUserRights,
@@ -1562,6 +1599,49 @@ export default function PosTxnConfig() {
                 </div>
 
                 <div style={fieldColumnStyle}>
+                  <span style={{ fontWeight: 600 }}>Allowed positions</span>
+                  <select
+                    multiple
+                    size={8}
+                    value={config.allowedPositions}
+                    onChange={(e) =>
+                      setConfig((c) => ({
+                        ...c,
+                        allowedPositions: Array.from(
+                          e.target.selectedOptions,
+                          (o) => o.value,
+                        ),
+                      }))
+                    }
+                  >
+                    {positionOptions.map((p) => (
+                      <option key={p.value} value={p.value}>
+                        {p.label}
+                      </option>
+                    ))}
+                  </select>
+                  <div style={{ display: 'flex', gap: '0.5rem' }}>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setConfig((c) => ({
+                          ...c,
+                          allowedPositions: positionOptions.map((p) => p.value),
+                        }))
+                      }
+                    >
+                      All
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setConfig((c) => ({ ...c, allowedPositions: [] }))}
+                    >
+                      None
+                    </button>
+                  </div>
+                </div>
+
+                <div style={fieldColumnStyle}>
                   <span style={{ fontWeight: 600 }}>Allowed user rights</span>
                   <select
                     multiple
@@ -1763,6 +1843,51 @@ export default function PosTxnConfig() {
                       type="button"
                       onClick={() =>
                         setConfig((c) => ({ ...c, temporaryAllowedDepartments: [] }))
+                      }
+                    >
+                      None
+                    </button>
+                  </div>
+                </div>
+
+                <div style={fieldColumnStyle}>
+                  <span style={{ fontWeight: 600 }}>Temporary allowed positions</span>
+                  <select
+                    multiple
+                    size={8}
+                    value={config.temporaryAllowedPositions}
+                    onChange={(e) =>
+                      setConfig((c) => ({
+                        ...c,
+                        temporaryAllowedPositions: Array.from(
+                          e.target.selectedOptions,
+                          (o) => o.value,
+                        ),
+                      }))
+                    }
+                  >
+                    {positionOptions.map((p) => (
+                      <option key={p.value} value={p.value}>
+                        {p.label}
+                      </option>
+                    ))}
+                  </select>
+                  <div style={{ display: 'flex', gap: '0.5rem' }}>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setConfig((c) => ({
+                          ...c,
+                          temporaryAllowedPositions: positionOptions.map((p) => p.value),
+                        }))
+                      }
+                    >
+                      All
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setConfig((c) => ({ ...c, temporaryAllowedPositions: [] }))
                       }
                     >
                       None

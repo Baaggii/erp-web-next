@@ -21,6 +21,7 @@ const COLUMN_DEFAULT_WIDTHS = {
   label: 220,
   branches: 240,
   departments: 240,
+  workplaces: 240,
   permissions: 220,
   visibility: 300,
   actions: 120,
@@ -31,6 +32,7 @@ const COLUMN_MIN_WIDTHS = {
   label: 160,
   branches: 180,
   departments: 180,
+  workplaces: 180,
   permissions: 160,
   visibility: 200,
   actions: 96,
@@ -49,6 +51,7 @@ export default function AllowedReportsConfig() {
   const [proc, setProc] = useState('');
   const [branches, setBranches] = useState([]);
   const [departments, setDepartments] = useState([]);
+  const [workplaces, setWorkplaces] = useState([]);
   const [permissions, setPermissions] = useState([]);
   const [isDefault, setIsDefault] = useState(false);
   const [procOptions, setProcOptions] = useState([]);
@@ -56,6 +59,8 @@ export default function AllowedReportsConfig() {
   const [branchCfg, setBranchCfg] = useState({});
   const [deptRows, setDeptRows] = useState([]);
   const [deptCfg, setDeptCfg] = useState({});
+  const [workplaceRows, setWorkplaceRows] = useState([]);
+  const [workplaceCfg, setWorkplaceCfg] = useState({});
   const [permRows, setPermRows] = useState([]);
   const [permCfg, setPermCfg] = useState({});
   const [isLoading, setIsLoading] = useState(true);
@@ -223,10 +228,20 @@ export default function AllowedReportsConfig() {
       .then((data) => setDeptRows(data.rows || []))
       .catch(() => setDeptRows([]));
 
+    fetch('/api/tables/code_workplace?perPage=500', { credentials: 'include' })
+      .then((res) => (res.ok ? res.json() : { rows: [] }))
+      .then((data) => setWorkplaceRows(data.rows || []))
+      .catch(() => setWorkplaceRows([]));
+
     fetch('/api/display_fields?table=code_department', { credentials: 'include' })
       .then((res) => (res.ok ? res.json() : { idField: null, displayFields: [] }))
       .then(setDeptCfg)
       .catch(() => setDeptCfg({ idField: null, displayFields: [] }));
+
+    fetch('/api/display_fields?table=code_workplace', { credentials: 'include' })
+      .then((res) => (res.ok ? res.json() : { idField: null, displayFields: [] }))
+      .then(setWorkplaceCfg)
+      .catch(() => setWorkplaceCfg({ idField: null, displayFields: [] }));
 
     fetch('/api/tables/user_levels?perPage=500', { credentials: 'include' })
       .then((res) => (res.ok ? res.json() : { rows: [] }))
@@ -337,6 +352,33 @@ export default function AllowedReportsConfig() {
     return map;
   }, [deptOptions]);
 
+  const workplaceOptions = useMemo(() => {
+    const idField = workplaceCfg?.idField || 'workplace_id';
+    return workplaceRows.map((w) => {
+      const val =
+        w[idField] ??
+        w.workplace_id ??
+        w.id ??
+        w.workplaceId ??
+        '';
+      const label = workplaceCfg?.displayFields?.length
+        ? workplaceCfg.displayFields
+            .map((f) => w[f])
+            .filter((v) => v !== undefined && v !== null)
+            .join(' - ')
+        : Object.values(w)
+            .filter((v) => v !== undefined && v !== null)
+            .join(' - ');
+      return { value: String(val), label };
+    });
+  }, [workplaceRows, workplaceCfg]);
+
+  const workplaceLabelMap = useMemo(() => {
+    const map = new Map();
+    workplaceOptions.forEach((w) => map.set(String(w.value), w.label));
+    return map;
+  }, [workplaceOptions]);
+
   const permOptions = useMemo(() => {
     const idField = permCfg?.idField || 'id';
     return permRows.map((r) => {
@@ -360,10 +402,11 @@ export default function AllowedReportsConfig() {
   }, [permOptions]);
 
   function edit(p) {
-    const info = reports[p] || { branches: [], departments: [], permissions: [] };
+    const info = reports[p] || { branches: [], departments: [], workplaces: [], permissions: [] };
     setProc(p);
     setBranches((info.branches || []).map(String));
     setDepartments((info.departments || []).map(String));
+    setWorkplaces((info.workplaces || []).map(String));
     setPermissions((info.permissions || []).map(String));
   }
 
@@ -371,6 +414,7 @@ export default function AllowedReportsConfig() {
     setProc('');
     setBranches([]);
     setDepartments([]);
+    setWorkplaces([]);
     setPermissions([]);
   }
 
@@ -384,6 +428,7 @@ export default function AllowedReportsConfig() {
         proc,
         branches: branches.map((v) => Number(v)).filter((v) => !Number.isNaN(v)),
         departments: departments.map((v) => Number(v)).filter((v) => !Number.isNaN(v)),
+        workplaces: workplaces.map((v) => Number(v)).filter((v) => !Number.isNaN(v)),
         permissions: permissions
           .map((v) => Number(v))
           .filter((v) => !Number.isNaN(v)),
@@ -621,6 +666,16 @@ export default function AllowedReportsConfig() {
                       <span style={resizeHandleBarStyle} />
                     </span>
                   </th>
+                  <th style={headerStyle('workplaces')}>
+                    Workplaces
+                    <span
+                      aria-hidden="true"
+                      onMouseDown={startColumnResize('workplaces')}
+                      style={resizeHandleStyle}
+                    >
+                      <span style={resizeHandleBarStyle} />
+                    </span>
+                  </th>
                   <th style={headerStyle('permissions')}>
                     Permissions
                     <span
@@ -655,13 +710,13 @@ export default function AllowedReportsConfig() {
               <tbody>
                 {isLoading ? (
                   <tr>
-                    <td colSpan={7} style={{ padding: '1rem', textAlign: 'center' }}>
+                    <td colSpan={8} style={{ padding: '1rem', textAlign: 'center' }}>
                       Loading…
                     </td>
                   </tr>
                 ) : reportEntries.length === 0 ? (
                   <tr>
-                    <td colSpan={7} style={{ padding: '1rem', textAlign: 'center' }}>
+                    <td colSpan={8} style={{ padding: '1rem', textAlign: 'center' }}>
                       No report access rules configured.
                     </td>
                   </tr>
@@ -669,12 +724,14 @@ export default function AllowedReportsConfig() {
                   reportEntries.map(([p, info]) => {
                     const branches = info.branches || [];
                     const departments = info.departments || [];
+                    const workplacesList = info.workplaces || [];
                     const permissionsList = info.permissions || [];
                     const hasBranches = branches.length > 0;
                     const hasDepartments = departments.length > 0;
+                    const hasWorkplaces = workplacesList.length > 0;
                     const hasPermissions = permissionsList.length > 0;
                     const allOpen =
-                      !hasBranches && !hasDepartments && !hasPermissions;
+                      !hasBranches && !hasDepartments && !hasWorkplaces && !hasPermissions;
                     const labelValue =
                       procLabels[p] || headerMappings?.[p] || '';
                     return (
@@ -704,6 +761,9 @@ export default function AllowedReportsConfig() {
                         <td style={cellStyle('departments')}>
                           {renderCollection(departments, deptLabelMap)}
                         </td>
+                        <td style={cellStyle('workplaces')}>
+                          {renderCollection(workplacesList, workplaceLabelMap)}
+                        </td>
                         <td style={cellStyle('permissions')}>
                           {renderPermissions(permissionsList)}
                         </td>
@@ -728,6 +788,9 @@ export default function AllowedReportsConfig() {
                                       departments.length === 1 ? '' : 's'
                                     }`
                                   : 'All departments',
+                                hasWorkplaces
+                                  ? `${workplacesList.length} workplace${workplacesList.length === 1 ? '' : 's'}`
+                                  : 'All workplaces',
                                 hasPermissions
                                   ? `${permissionsList.length} permission level${
                                       permissionsList.length === 1 ? '' : 's'
@@ -871,6 +934,36 @@ export default function AllowedReportsConfig() {
                 All
               </button>
               <button type="button" onClick={() => setDepartments([])}>
+                None
+              </button>
+            </label>
+          </div>
+          <div>
+            <label>
+              Workplaces:{' '}
+              <select
+                multiple
+                size={8}
+                value={workplaces}
+                onChange={(e) =>
+                  setWorkplaces(
+                    Array.from(e.target.selectedOptions, (o) => o.value),
+                  )
+                }
+              >
+                {workplaceOptions.map((w) => (
+                  <option key={w.value} value={w.value}>
+                    {w.label}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                onClick={() => setWorkplaces(workplaceOptions.map((w) => w.value))}
+              >
+                All
+              </button>
+              <button type="button" onClick={() => setWorkplaces([])}>
                 None
               </button>
             </label>

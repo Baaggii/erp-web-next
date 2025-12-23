@@ -38,6 +38,23 @@ function matchesScope(list, value) {
   return list.includes(normalizedValue);
 }
 
+function matchesPositions(list, positionValue, workplacePositionValue) {
+  if (!Array.isArray(list) || list.length === 0) return true;
+  if (workplacePositionValue !== null && list.includes(workplacePositionValue)) {
+    return true;
+  }
+  if (Array.isArray(positionValue)) {
+    const normalized = positionValue
+      .map((item) => normalizeAccessValue(item))
+      .filter((val) => val !== null);
+    if (normalized.length === 0) return false;
+    return normalized.some((val) => list.includes(val));
+  }
+  const normalizedPosition = normalizeAccessValue(positionValue);
+  if (normalizedPosition === null) return false;
+  return list.includes(normalizedPosition);
+}
+
 function normalizeStoredAccessList(list) {
   if (!Array.isArray(list) || list.length === 0) return [];
   const normalized = [];
@@ -98,11 +115,18 @@ export function hasPosTransactionAccess(
     options?.userRightId ?? options?.userLevel ?? options?.userRight,
   );
   const workplaceValue = normalizeAccessValue(options?.workplaceId ?? options?.workplace);
+  const positionValue = normalizeAccessValue(
+    options?.positionId ?? options?.position ?? options?.employmentPositionId,
+  );
+  const workplacePositionValue = normalizeAccessValue(
+    options?.workplacePositionId ?? options?.workplacePosition,
+  );
 
   const allowedBranches = normalizeAccessList(config.allowedBranches);
   const allowedDepartments = normalizeAccessList(config.allowedDepartments);
   const allowedUserRights = normalizeAccessList(config.allowedUserRights);
   const allowedWorkplaces = normalizeAccessList(config.allowedWorkplaces);
+  const allowedPositions = normalizeAccessList(config.allowedPositions);
   const allowedProcedures = normalizeAccessList(config.procedures);
   const requestedProcedure = normalizeAccessValue(options?.procedure);
 
@@ -111,6 +135,7 @@ export function hasPosTransactionAccess(
     matchesScope(allowedDepartments, departmentValue) &&
     matchesScope(allowedUserRights, userRightValue) &&
     matchesScope(allowedWorkplaces, workplaceValue) &&
+    matchesPositions(allowedPositions, positionValue, workplacePositionValue) &&
     matchesScope(allowedProcedures, requestedProcedure);
 
   if (generalAllowed) return true;
@@ -132,6 +157,7 @@ export function hasPosTransactionAccess(
   );
   const temporaryUserRights = normalizeAccessList(config.temporaryAllowedUserRights);
   const temporaryWorkplaces = normalizeAccessList(config.temporaryAllowedWorkplaces);
+  const temporaryPositions = normalizeAccessList(config.temporaryAllowedPositions);
   const temporaryProcedures = normalizeAccessList(config.temporaryProcedures);
 
   return (
@@ -139,6 +165,7 @@ export function hasPosTransactionAccess(
     matchesScope(temporaryDepartments, departmentValue) &&
     matchesScope(temporaryUserRights, userRightValue) &&
     matchesScope(temporaryWorkplaces, workplaceValue) &&
+    matchesPositions(temporaryPositions, positionValue, workplacePositionValue) &&
     matchesScope(temporaryProcedures, requestedProcedure)
   );
 }
@@ -183,6 +210,7 @@ export async function setConfig(name, config = {}, companyId = 0) {
     allowedDepartments: normalizeStoredAccessList(config.allowedDepartments),
     allowedUserRights: normalizeStoredAccessList(config.allowedUserRights),
     allowedWorkplaces: normalizeStoredAccessList(config.allowedWorkplaces),
+    allowedPositions: normalizeStoredAccessList(config.allowedPositions),
     temporaryAllowedBranches: normalizeStoredAccessList(
       config.temporaryAllowedBranches,
     ),
@@ -194,6 +222,9 @@ export async function setConfig(name, config = {}, companyId = 0) {
     ),
     temporaryAllowedWorkplaces: normalizeStoredAccessList(
       config.temporaryAllowedWorkplaces,
+    ),
+    temporaryAllowedPositions: normalizeStoredAccessList(
+      config.temporaryAllowedPositions,
     ),
     supportsTemporarySubmission: Boolean(
       config.supportsTemporarySubmission ??

@@ -578,6 +578,7 @@ function parseEntry(raw = {}) {
     allowedDepartments: Array.isArray(raw.allowedDepartments)
       ? raw.allowedDepartments.map((v) => Number(v)).filter((v) => !Number.isNaN(v))
       : [],
+    allowedPositions: normalizeMixedAccessList(raw.allowedPositions),
     allowedUserRights: normalizeMixedAccessList(raw.allowedUserRights),
     allowedWorkplaces: normalizeMixedAccessList(raw.allowedWorkplaces),
     temporaryAllowedBranches: Array.isArray(raw.temporaryAllowedBranches)
@@ -590,6 +591,9 @@ function parseEntry(raw = {}) {
           .map((v) => Number(v))
           .filter((v) => !Number.isNaN(v))
       : [],
+    temporaryAllowedPositions: normalizeMixedAccessList(
+      raw.temporaryAllowedPositions,
+    ),
     temporaryAllowedUserRights: normalizeMixedAccessList(
       raw.temporaryAllowedUserRights,
     ),
@@ -710,7 +714,15 @@ export async function findTableByProcedure(proc, companyId = 0) {
 }
 
 export async function listTransactionNames(
-  { moduleKey, branchId, departmentId, userRightId, workplaceId } = {},
+  {
+    moduleKey,
+    branchId,
+    departmentId,
+    userRightId,
+    workplaceId,
+    positionId,
+    workplacePositionId,
+  } = {},
   companyId = 0,
 ) {
   const { cfg, isDefault } = await readConfig(companyId);
@@ -729,6 +741,18 @@ export async function listTransactionNames(
       : Number.isFinite(Number(workplaceId))
         ? Number(workplaceId)
         : String(workplaceId).trim() || null;
+  const positionValue =
+    positionId === undefined || positionId === null
+      ? null
+      : Number.isFinite(Number(positionId))
+        ? Number(positionId)
+        : String(positionId).trim() || null;
+  const workplacePositionValue =
+    workplacePositionId === undefined || workplacePositionId === null
+      ? null
+      : Number.isFinite(Number(workplacePositionId))
+        ? Number(workplacePositionId)
+        : String(workplacePositionId).trim() || null;
   for (const [tbl, names] of Object.entries(cfg)) {
     for (const [name, info] of Object.entries(names)) {
       const parsed = parseEntry(info);
@@ -741,6 +765,9 @@ export async function listTransactionNames(
       const allowedDepartments = Array.isArray(parsed.allowedDepartments)
         ? parsed.allowedDepartments
         : [];
+      const allowedPositions = Array.isArray(parsed.allowedPositions)
+        ? parsed.allowedPositions
+        : [];
       const allowedUserRights = Array.isArray(parsed.allowedUserRights)
         ? parsed.allowedUserRights
         : [];
@@ -752,6 +779,9 @@ export async function listTransactionNames(
         : [];
       const tempDepartments = Array.isArray(parsed.temporaryAllowedDepartments)
         ? parsed.temporaryAllowedDepartments
+        : [];
+      const tempPositions = Array.isArray(parsed.temporaryAllowedPositions)
+        ? parsed.temporaryAllowedPositions
         : [];
       const tempUserRights = Array.isArray(parsed.temporaryAllowedUserRights)
         ? parsed.temporaryAllowedUserRights
@@ -768,6 +798,11 @@ export async function listTransactionNames(
         allowedDepartments.length === 0 ||
         dId == null ||
         allowedDepartments.includes(dId);
+      const positionAllowed =
+        allowedPositions.length === 0 ||
+        (workplacePositionValue !== null &&
+          allowedPositions.includes(workplacePositionValue)) ||
+        (positionValue !== null && allowedPositions.includes(positionValue));
       const userRightAllowed =
         allowedUserRights.length === 0 ||
         userRightValue === null ||
@@ -777,7 +812,12 @@ export async function listTransactionNames(
         workplaceValue === null ||
         allowedWorkplaces.includes(workplaceValue);
 
-      let permitted = branchAllowed && departmentAllowed && userRightAllowed && workplaceAllowed;
+      let permitted =
+        branchAllowed &&
+        departmentAllowed &&
+        positionAllowed &&
+        userRightAllowed &&
+        workplaceAllowed;
 
       if (!permitted) {
         const tempEnabled = Boolean(
@@ -794,6 +834,11 @@ export async function listTransactionNames(
             tempDepartments.length === 0 ||
             dId == null ||
             tempDepartments.includes(dId);
+          const tempPositionAllowed =
+            tempPositions.length === 0 ||
+            (workplacePositionValue !== null &&
+              tempPositions.includes(workplacePositionValue)) ||
+            (positionValue !== null && tempPositions.includes(positionValue));
           const tempUserRightAllowed =
             tempUserRights.length === 0 ||
             userRightValue === null ||
@@ -803,7 +848,11 @@ export async function listTransactionNames(
             workplaceValue === null ||
             tempWorkplaces.includes(workplaceValue);
           permitted =
-            tempBranchAllowed && tempDepartmentAllowed && tempUserRightAllowed && tempWorkplaceAllowed;
+            tempBranchAllowed &&
+            tempDepartmentAllowed &&
+            tempPositionAllowed &&
+            tempUserRightAllowed &&
+            tempWorkplaceAllowed;
         }
       }
 
@@ -833,10 +882,12 @@ export async function setFormConfig(
     companyIdFields = [],
     allowedBranches = [],
     allowedDepartments = [],
+    allowedPositions = [],
     allowedUserRights = [],
     allowedWorkplaces = [],
     temporaryAllowedBranches = [],
     temporaryAllowedDepartments = [],
+    temporaryAllowedPositions = [],
     temporaryAllowedUserRights = [],
     temporaryAllowedWorkplaces = [],
     moduleKey: parentModuleKey = '',
@@ -891,6 +942,7 @@ export async function setFormConfig(
   const ad = Array.isArray(allowedDepartments)
     ? allowedDepartments.map((v) => Number(v)).filter((v) => !Number.isNaN(v))
     : [];
+  const ap = normalizeMixedAccessList(allowedPositions);
   const aur = normalizeMixedAccessList(allowedUserRights);
   const aw = normalizeMixedAccessList(allowedWorkplaces);
   const tab = Array.isArray(temporaryAllowedBranches)
@@ -899,6 +951,7 @@ export async function setFormConfig(
   const tad = Array.isArray(temporaryAllowedDepartments)
     ? temporaryAllowedDepartments.map((v) => Number(v)).filter((v) => !Number.isNaN(v))
     : [];
+  const tap = normalizeMixedAccessList(temporaryAllowedPositions);
   const taur = normalizeMixedAccessList(temporaryAllowedUserRights);
   const taw = normalizeMixedAccessList(temporaryAllowedWorkplaces);
   const tempProcedures = Array.isArray(temporaryProcedures)
@@ -940,10 +993,12 @@ export async function setFormConfig(
     moduleLabel: moduleLabel || undefined,
     allowedBranches: ab,
     allowedDepartments: ad,
+    allowedPositions: ap,
     allowedUserRights: aur,
     allowedWorkplaces: aw,
     temporaryAllowedBranches: tab,
     temporaryAllowedDepartments: tad,
+    temporaryAllowedPositions: tap,
     temporaryAllowedUserRights: taur,
     temporaryAllowedWorkplaces: taw,
     procedures: arrify(procedures),

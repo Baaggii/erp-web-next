@@ -49,17 +49,34 @@ router.get('/', requireAuth, async (req, res, next) => {
       req.user?.userLevel ??
       req.user?.userlevel_id ??
       req.user?.userlevelId;
+    const sessionPosition =
+      session?.employment_position_id ??
+      session?.position_id ??
+      session?.position ??
+      req.user?.position ??
+      null;
     const sessionWorkplace =
       session?.workplace_id ??
       session?.workplaceId ??
       req.session?.workplace_id ??
       req.session?.workplaceId ??
       req.session?.workplace;
+    const sessionWorkplacePosition =
+      session?.workplace_position_id ??
+      session?.workplacePositionId ??
+      req.session?.workplace_position_id ??
+      req.session?.workplacePositionId ??
+      null;
 
     const branchId = pickScopeValue(req.query.branchId, sessionBranch);
     const departmentId = pickScopeValue(req.query.departmentId, sessionDepartment);
     const userRightId = pickScopeValue(req.query.userRightId, sessionUserLevel);
+    const positionId = pickScopeValue(req.query.positionId, sessionPosition);
     const workplaceId = pickScopeValue(req.query.workplaceId, sessionWorkplace);
+    const workplacePositionId = pickScopeValue(
+      req.query.workplacePositionId,
+      sessionWorkplacePosition,
+    );
 
     if (name) {
       const { config, isDefault } = await getConfig(name, companyId);
@@ -67,7 +84,14 @@ router.get('/', requireAuth, async (req, res, next) => {
         res.status(404).json({ message: 'POS config not found', isDefault });
         return;
       }
-      if (!hasPosTransactionAccess(config, branchId, departmentId, { userRightId, workplaceId })) {
+      if (
+        !hasPosTransactionAccess(config, branchId, departmentId, {
+          userRightId,
+          workplaceId,
+          workplacePositionId,
+          positionId,
+        })
+      ) {
         res.status(403).json({ message: 'Access denied', isDefault });
         return;
       }
@@ -77,6 +101,8 @@ router.get('/', requireAuth, async (req, res, next) => {
       const filtered = filterPosConfigsByAccess(config, branchId, departmentId, {
         userRightId,
         workplaceId,
+        workplacePositionId,
+        positionId,
       });
       res.json({ ...filtered, isDefault });
     }

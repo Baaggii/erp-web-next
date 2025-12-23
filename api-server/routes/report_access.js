@@ -28,11 +28,11 @@ router.get('/', requireAuth, async (req, res, next) => {
 router.post('/', requireAuth, async (req, res, next) => {
   try {
     const companyId = Number(req.query.companyId ?? req.user.companyId);
-    const { proc, branches, departments, permissions } = req.body;
+    const { proc, branches, departments, permissions, workplaces } = req.body;
     if (!proc) return res.status(400).json({ message: 'proc is required' });
     await setAllowedReport(
       proc,
-      { branches, departments, permissions },
+      { branches, departments, permissions, workplaces },
       companyId,
     );
     res.sendStatus(204);

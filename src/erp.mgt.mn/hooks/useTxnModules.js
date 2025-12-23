@@ -13,14 +13,29 @@ const cache = {
   companyId: undefined,
   userRightId: undefined,
   workplaceId: undefined,
+  positionId: undefined,
+  workplacePositionId: undefined,
 };
 const emitter = new EventTarget();
 
-function deriveTxnModuleState(data, branch, department, userRight, workplaceId, perms, licensed) {
+function deriveTxnModuleState(
+  data,
+  branch,
+  department,
+  userRight,
+  workplaceId,
+  positionId,
+  workplacePositionId,
+  perms,
+  licensed,
+) {
   const branchId = branch != null ? String(branch) : null;
   const departmentId = department != null ? String(department) : null;
   const userRightId = userRight != null ? String(userRight) : null;
   const workplace = workplaceId != null ? String(workplaceId) : null;
+  const position = positionId != null ? String(positionId) : null;
+  const workplacePosition =
+    workplacePositionId != null ? String(workplacePositionId) : null;
   const keys = new Set();
   const labels = {};
 
@@ -35,6 +50,8 @@ function deriveTxnModuleState(data, branch, department, userRight, workplaceId, 
           allowTemporaryAnyScope: true,
           userRightId,
           workplaceId: workplace,
+          positionId: position,
+          workplacePositionId: workplacePosition,
         })
       )
         return;
@@ -90,12 +107,23 @@ export function refreshTxnModules() {
   cache.branchId = undefined;
   cache.departmentId = undefined;
   cache.companyId = undefined;
+  cache.userRightId = undefined;
+  cache.workplaceId = undefined;
+  cache.positionId = undefined;
   emitter.dispatchEvent(new Event('refresh'));
 }
 
 export function useTxnModules() {
-  const { branch, department, company, permissions: perms, session, user, workplace } =
-    useContext(AuthContext);
+  const {
+    branch,
+    department,
+    company,
+    permissions: perms,
+    session,
+    user,
+    workplace,
+    position,
+  } = useContext(AuthContext);
   const licensed = useCompanyModules(company);
   const [state, setState] = useState(() => createEmptyState());
 
@@ -110,12 +138,24 @@ export function useTxnModules() {
       null;
     const workplaceId =
       workplace ?? session?.workplace_id ?? session?.workplaceId ?? null;
+    const positionId =
+      position ??
+      session?.employment_position_id ??
+      session?.position_id ??
+      session?.position ??
+      null;
+    const workplacePositionId =
+      session?.workplace_position_id ??
+      session?.workplacePositionId ??
+      null;
     const derived = deriveTxnModuleState(
       data,
       branch,
       department,
       userRightId,
       workplaceId,
+      positionId,
+      workplacePositionId,
       perms,
       licensed,
     );
@@ -136,6 +176,16 @@ export function useTxnModules() {
       null;
     const currentWorkplace =
       workplace ?? session?.workplace_id ?? session?.workplaceId ?? null;
+    const currentPosition =
+      position ??
+      session?.employment_position_id ??
+      session?.position_id ??
+      session?.position ??
+      null;
+    const currentWorkplacePosition =
+      session?.workplace_position_id ??
+      session?.workplacePositionId ??
+      null;
 
     try {
       const params = new URLSearchParams();
@@ -148,6 +198,22 @@ export function useTxnModules() {
         `${currentDepartment}`.trim() !== ''
       ) {
         params.set('departmentId', currentDepartment);
+      }
+      if (currentUserRight !== undefined && currentUserRight !== null && `${currentUserRight}`.trim() !== '') {
+        params.set('userRightId', currentUserRight);
+      }
+      if (currentWorkplace !== undefined && currentWorkplace !== null && `${currentWorkplace}`.trim() !== '') {
+        params.set('workplaceId', currentWorkplace);
+      }
+      if (currentPosition !== undefined && currentPosition !== null && `${currentPosition}`.trim() !== '') {
+        params.set('positionId', currentPosition);
+      }
+      if (
+        currentWorkplacePosition !== undefined &&
+        currentWorkplacePosition !== null &&
+        `${currentWorkplacePosition}`.trim() !== ''
+      ) {
+        params.set('workplacePositionId', currentWorkplacePosition);
       }
       const res = await fetch(
         `/api/transaction_forms${params.toString() ? `?${params.toString()}` : ''}`,
@@ -168,6 +234,8 @@ export function useTxnModules() {
       cache.companyId = currentCompany;
       cache.userRightId = currentUserRight;
       cache.workplaceId = currentWorkplace;
+      cache.positionId = currentPosition;
+      cache.workplacePositionId = currentWorkplacePosition;
       applyDerivedState(data);
     } catch (err) {
       console.error('Failed to load transaction modules', err);
@@ -177,6 +245,8 @@ export function useTxnModules() {
       cache.companyId = currentCompany;
       cache.userRightId = currentUserRight;
       cache.workplaceId = currentWorkplace;
+      cache.positionId = currentPosition;
+      cache.workplacePositionId = currentWorkplacePosition;
       applyDerivedState({});
     }
   }
@@ -196,14 +266,22 @@ export function useTxnModules() {
           session?.userlevel_id ??
           session?.userlevelId ??
           null) ||
-      cache.workplaceId !== (workplace ?? session?.workplace_id ?? session?.workplaceId ?? null)
+      cache.workplaceId !== (workplace ?? session?.workplace_id ?? session?.workplaceId ?? null) ||
+      cache.positionId !==
+        (position ??
+          session?.employment_position_id ??
+          session?.position_id ??
+          session?.position ??
+          null) ||
+      cache.workplacePositionId !==
+        (session?.workplace_position_id ?? session?.workplacePositionId ?? null)
     ) {
       setState((prev) => (prev.keys.size === 0 && Object.keys(prev.labels).length === 0 ? prev : createEmptyState()));
       fetchForms();
     } else {
       applyDerivedState(cache.forms);
     }
-  }, [branch, department, company, perms, licensed, session, user, workplace]);
+  }, [branch, department, company, perms, licensed, session, user, workplace, position]);
 
   useEffect(() => {
     debugLog('useTxnModules effect: refresh listener');

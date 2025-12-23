@@ -29,12 +29,16 @@ function normalizeFormConfig(info = {}) {
 
   const allowedBranches = toArray(info.allowedBranches).map((v) => String(v));
   const allowedDepartments = toArray(info.allowedDepartments).map((v) => String(v));
+  const allowedPositions = toArray(info.allowedPositions).map((v) => String(v));
   const allowedUserRights = toArray(info.allowedUserRights).map((v) => String(v));
   const allowedWorkplaces = toArray(info.allowedWorkplaces).map((v) => String(v));
   const temporaryAllowedBranches = toArray(info.temporaryAllowedBranches).map((v) =>
     String(v),
   );
   const temporaryAllowedDepartments = toArray(info.temporaryAllowedDepartments).map((v) =>
+    String(v),
+  );
+  const temporaryAllowedPositions = toArray(info.temporaryAllowedPositions).map((v) =>
     String(v),
   );
   const temporaryAllowedUserRights = toArray(info.temporaryAllowedUserRights).map((v) =>
@@ -77,11 +81,13 @@ function normalizeFormConfig(info = {}) {
     detectFields: toArray(info.detectFields),
     allowedBranches,
     allowedDepartments,
+    allowedPositions,
     allowedUserRights,
     allowedWorkplaces,
     procedures,
     temporaryAllowedBranches,
     temporaryAllowedDepartments,
+    temporaryAllowedPositions,
     temporaryAllowedUserRights,
     temporaryAllowedWorkplaces,
     temporaryProcedures,
@@ -160,6 +166,7 @@ export default function FormsManagement() {
   const [moduleKey, setModuleKey] = useState('');
   const [branches, setBranches] = useState([]);
   const [departments, setDepartments] = useState([]);
+  const [positions, setPositions] = useState([]);
   const [userRights, setUserRights] = useState([]);
   const [workplaces, setWorkplaces] = useState([]);
   const [txnTypes, setTxnTypes] = useState([]);
@@ -169,6 +176,7 @@ export default function FormsManagement() {
   const [procedureOptions, setProcedureOptions] = useState([]);
   const [branchCfg, setBranchCfg] = useState({ idField: null, displayFields: [] });
   const [deptCfg, setDeptCfg] = useState({ idField: null, displayFields: [] });
+  const [positionCfg, setPositionCfg] = useState({ idField: null, displayFields: [] });
   const [userRightCfg, setUserRightCfg] = useState({ idField: null, displayFields: [] });
   const [workplaceCfg, setWorkplaceCfg] = useState({ idField: null, displayFields: [] });
   const [posApiEndpoints, setPosApiEndpoints] = useState([]);
@@ -407,6 +415,23 @@ export default function FormsManagement() {
     });
   }, [departments, deptCfg]);
 
+  const positionOptions = useMemo(() => {
+    const idField = positionCfg?.idField || 'position_id';
+    return positions.map((p) => {
+      const val =
+        p[idField] ?? p.position_id ?? p.id ?? p.positionId ?? '';
+      const label = positionCfg?.displayFields?.length
+        ? positionCfg.displayFields
+            .map((f) => p[f])
+            .filter((v) => v !== undefined && v !== null)
+            .join(' - ')
+        : Object.values(p)
+            .filter((v) => v !== undefined && v !== null)
+            .join(' - ');
+      return { value: String(val), label: label || String(val) };
+    });
+  }, [positions, positionCfg]);
+
   const userRightOptions = useMemo(() => {
     const idField = userRightCfg?.idField || 'userlevel_id';
     return userRights.map((right) => {
@@ -550,6 +575,11 @@ export default function FormsManagement() {
         .then((data) => setUserRights(data.rows || []))
         .catch(() => setUserRights([]));
 
+      fetch('/api/tables/code_position?perPage=500', { credentials: 'include' })
+        .then((res) => (res.ok ? res.json() : { rows: [] }))
+        .then((data) => setPositions(data.rows || []))
+        .catch(() => setPositions([]));
+
       fetch('/api/tables/code_workplace?perPage=500', { credentials: 'include' })
         .then((res) => (res.ok ? res.json() : { rows: [] }))
         .then((data) => setWorkplaces(data.rows || []))
@@ -574,6 +604,11 @@ export default function FormsManagement() {
         .then((res) => (res.ok ? res.json() : { idField: null, displayFields: [] }))
         .then(setUserRightCfg)
         .catch(() => setUserRightCfg({ idField: null, displayFields: [] }));
+
+      fetch('/api/display_fields?table=code_position', { credentials: 'include' })
+        .then((res) => (res.ok ? res.json() : { idField: null, displayFields: [] }))
+        .then(setPositionCfg)
+        .catch(() => setPositionCfg({ idField: null, displayFields: [] }));
 
       fetch('/api/display_fields?table=code_workplace', { credentials: 'include' })
         .then((res) => (res.ok ? res.json() : { idField: null, displayFields: [] }))
@@ -758,12 +793,16 @@ export default function FormsManagement() {
       moduleKey,
       allowedBranches: normalizeMixedAccessList(config.allowedBranches),
       allowedDepartments: normalizeMixedAccessList(config.allowedDepartments),
+      allowedPositions: normalizeMixedAccessList(config.allowedPositions),
       allowedUserRights: normalizeMixedAccessList(config.allowedUserRights),
       allowedWorkplaces: normalizeMixedAccessList(config.allowedWorkplaces),
       procedures: normalizeProcedures(config.procedures),
       temporaryAllowedBranches: normalizeMixedAccessList(config.temporaryAllowedBranches),
       temporaryAllowedDepartments: normalizeMixedAccessList(
         config.temporaryAllowedDepartments,
+      ),
+      temporaryAllowedPositions: normalizeMixedAccessList(
+        config.temporaryAllowedPositions,
       ),
       temporaryAllowedUserRights: normalizeMixedAccessList(
         config.temporaryAllowedUserRights,
@@ -1573,6 +1612,51 @@ export default function FormsManagement() {
                     </div>
 
                     <div style={fieldColumnStyle}>
+                      <span style={{ fontWeight: 600 }}>Allowed positions</span>
+                      <select
+                        multiple
+                        size={8}
+                        value={config.allowedPositions}
+                        onChange={(e) =>
+                          setConfig((c) => ({
+                            ...c,
+                            allowedPositions: Array.from(
+                              e.target.selectedOptions,
+                              (o) => o.value,
+                            ),
+                          }))
+                        }
+                      >
+                        {positionOptions.map((p) => (
+                          <option key={p.value} value={p.value}>
+                            {p.label}
+                          </option>
+                        ))}
+                      </select>
+                      <div style={{ display: 'flex', gap: '0.5rem' }}>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setConfig((c) => ({
+                              ...c,
+                              allowedPositions: positionOptions.map((p) => p.value),
+                            }))
+                          }
+                        >
+                          All
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setConfig((c) => ({ ...c, allowedPositions: [] }))
+                          }
+                        >
+                          None
+                        </button>
+                      </div>
+                    </div>
+
+                    <div style={fieldColumnStyle}>
                       <span style={{ fontWeight: 600 }}>Allowed user rights</span>
                       <select
                         multiple
@@ -1780,10 +1864,57 @@ export default function FormsManagement() {
                             None
                           </button>
                         </div>
-                      </div>
+                    </div>
 
-                      <div style={fieldColumnStyle}>
-                        <span style={{ fontWeight: 600 }}>Temporary allowed user rights</span>
+                    <div style={fieldColumnStyle}>
+                      <span style={{ fontWeight: 600 }}>Temporary allowed positions</span>
+                      <select
+                        multiple
+                        size={8}
+                        value={config.temporaryAllowedPositions}
+                        onChange={(e) =>
+                          setConfig((c) => ({
+                            ...c,
+                            temporaryAllowedPositions: Array.from(
+                              e.target.selectedOptions,
+                              (o) => o.value,
+                            ),
+                          }))
+                        }
+                      >
+                        {positionOptions.map((p) => (
+                          <option key={p.value} value={p.value}>
+                            {p.label}
+                          </option>
+                        ))}
+                      </select>
+                      <div style={{ display: 'flex', gap: '0.5rem' }}>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setConfig((c) => ({
+                              ...c,
+                              temporaryAllowedPositions: positionOptions.map(
+                                (p) => p.value,
+                              ),
+                            }))
+                          }
+                        >
+                          All
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setConfig((c) => ({ ...c, temporaryAllowedPositions: [] }))
+                          }
+                        >
+                          None
+                        </button>
+                      </div>
+                    </div>
+
+                    <div style={fieldColumnStyle}>
+                      <span style={{ fontWeight: 600 }}>Temporary allowed user rights</span>
                         <select
                           multiple
                           size={8}
