@@ -28,6 +28,12 @@ function normalizeMac(value) {
   return normalizeValue(value) || 'unknown';
 }
 
+function normalizeText(value) {
+  if (value === undefined || value === null) return null;
+  const text = String(value).trim();
+  return text || null;
+}
+
 function normalizeNumericId(value) {
   if (value === undefined || value === null) return null;
   const num = Number(value);
@@ -35,11 +41,20 @@ function normalizeNumericId(value) {
 }
 
 async function recordLoginSessionImpl(req, sessionPayload, user) {
+  const devicePayload =
+    req.body?.device ||
+    req.body?.device_info ||
+    req.body?.deviceInfo ||
+    req.body?.devicePayload ||
+    req.body?.device_payload ||
+    {};
   const sessionUuid = crypto.randomUUID
     ? crypto.randomUUID()
     : crypto.randomBytes(16).toString('hex');
   const companyId = sessionPayload?.company_id ?? null;
   const branchId = sessionPayload?.branch_id ?? null;
+  const departmentId = sessionPayload?.department_id ?? null;
+  const workplaceId = sessionPayload?.workplace_id ?? null;
   const merchantId =
     sessionPayload?.merchant_id ??
     sessionPayload?.merchantId ??
@@ -100,6 +115,8 @@ async function recordLoginSessionImpl(req, sessionPayload, user) {
     sessionUuid,
     companyId,
     branchId,
+    departmentId,
+    workplaceId,
     merchantId,
     posNo,
     deviceMac,
@@ -125,7 +142,15 @@ async function recordLogoutSessionImpl(req) {
 }
 
 export async function recordLoginSession(req, sessionPayload, user) {
-  return recordLoginSessionImpl(req, sessionPayload, user);
+  try {
+    return await recordLoginSessionImpl(req, sessionPayload, user);
+  } catch (error) {
+    return {
+      sessionUuid: null,
+      cookieName: getPosSessionCookieName(),
+      error,
+    };
+  }
 }
 
 export async function recordLogoutSession(req) {
