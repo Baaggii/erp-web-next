@@ -138,6 +138,52 @@ const styles = {
     color: '#111827',
     wordBreak: 'break-word',
   },
+  detailSection: {
+    padding: '0.5rem 0.5rem 0.25rem 0.5rem',
+    borderBottom: '1px solid #e5e7eb',
+  },
+  detailTitle: {
+    fontSize: '0.85rem',
+    fontWeight: 700,
+    color: '#111827',
+    marginBottom: '0.25rem',
+  },
+  detailList: {
+    listStyle: 'none',
+    padding: 0,
+    margin: 0,
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.4rem',
+  },
+  detailItem: {
+    display: 'grid',
+    gridTemplateColumns: 'auto 1fr',
+    gap: '0.35rem',
+    alignItems: 'start',
+    color: '#1f2937',
+  },
+  detailIcon: {
+    opacity: 0.8,
+  },
+  detailText: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.1rem',
+    minWidth: 0,
+  },
+  detailLabel: {
+    fontSize: '0.75rem',
+    color: '#6b7280',
+    textTransform: 'uppercase',
+    letterSpacing: '0.02em',
+  },
+  detailValue: {
+    fontSize: '0.9rem',
+    fontWeight: 600,
+    color: '#111827',
+    wordBreak: 'break-word',
+  },
   menuItem: {
     display: 'block',
     width: '100%',

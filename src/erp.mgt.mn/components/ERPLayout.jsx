@@ -3923,6 +3923,39 @@ export function Header({
     return labels;
   }, [normalizeText, preferNameLikeText, session, workplacePositions]);
 
+  const userDetails = useMemo(() => {
+    const items = [];
+    if (session?.company_name) {
+      items.push({
+        label: t('userMenu.company', 'Company'),
+        value: session.company_name,
+        icon: '🏢',
+      });
+    }
+    if (workplaceLabels.length > 0) {
+      items.push({
+        label: t('userMenu.workplace', 'Workplace'),
+        value: workplaceLabels.filter(Boolean).join(', '),
+        icon: '🏭',
+      });
+    }
+    if (session?.user_level_name) {
+      items.push({
+        label: t('userMenu.role', 'Role'),
+        value: session.user_level_name,
+        icon: '👤',
+      });
+    }
+    if (positionLabel) {
+      items.push({
+        label: t('userMenu.position', 'Position'),
+        value: positionLabel,
+        icon: '🧑‍💼',
+      });
+    }
+    return items;
+  }, [positionLabel, session?.company_name, session?.user_level_name, t, workplaceLabels]);
+
   const allWorkplaceIds = useMemo(() => {
     const ids = [];
     const assignments = Array.isArray(session?.workplace_assignments)
@@ -5111,7 +5144,7 @@ const styles = {
     paddingLeft: mobile ? "1rem" : "calc(240px + 1rem)",
     gap: "0.5rem",
     minWidth: 0,
-    overflow: "visible",
+    overflow: "hidden",
   }),
   logoSection: {
     display: "flex",
