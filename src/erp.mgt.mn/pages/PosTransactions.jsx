@@ -1938,15 +1938,6 @@ export default function PosTransactionsPage() {
     if (positionId != null && String(positionId).trim() !== '') {
       params.set('positionId', positionId);
     }
-    const positionId =
-      session?.employment_position_id ??
-      session?.position_id ??
-      session?.position ??
-      user?.position ??
-      null;
-    if (positionId != null && String(positionId).trim() !== '') {
-      params.set('positionId', positionId);
-    }
     const qs = params.toString();
     fetch(`/api/pos_txn_config${qs ? `?${qs}` : ''}`, { credentials: 'include' })
       .then((res) => (res.ok ? res.json() : {}))
