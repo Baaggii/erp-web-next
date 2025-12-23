@@ -44,9 +44,11 @@ test('hasPosTransactionAccess enforces user rights, workplaces, and procedures',
     allowedBranches: [],
     allowedDepartments: [],
     allowedUserRights: ['100'],
+    allowedPositions: ['10'],
     allowedWorkplaces: [5],
     procedures: ['sp_pos_submit'],
     temporaryAllowedUserRights: ['200'],
+    temporaryAllowedPositions: ['20'],
     temporaryAllowedWorkplaces: ['9'],
     temporaryProcedures: ['sp_pos_temp'],
     supportsTemporarySubmission: true,
@@ -54,6 +56,7 @@ test('hasPosTransactionAccess enforces user rights, workplaces, and procedures',
   assert.equal(
     hasPosTransactionAccess(config, null, null, {
       userRightId: '100',
+      positionId: '10',
       workplaceId: 5,
       procedure: 'sp_pos_submit',
     }),
@@ -62,6 +65,7 @@ test('hasPosTransactionAccess enforces user rights, workplaces, and procedures',
   assert.equal(
     hasPosTransactionAccess(config, null, null, {
       userRightId: '101',
+      positionId: '10',
       workplaceId: 5,
       procedure: 'sp_pos_submit',
     }),
@@ -70,6 +74,7 @@ test('hasPosTransactionAccess enforces user rights, workplaces, and procedures',
   assert.equal(
     hasPosTransactionAccess(config, null, null, {
       userRightId: '200',
+      positionId: '20',
       workplaceId: '9',
       procedure: 'sp_pos_temp',
     }),
@@ -78,10 +83,33 @@ test('hasPosTransactionAccess enforces user rights, workplaces, and procedures',
   assert.equal(
     hasPosTransactionAccess(config, null, null, {
       userRightId: '200',
+      positionId: '10',
       workplaceId: '9',
       procedure: 'sp_pos_submit',
     }),
     false,
+  );
+});
+
+test('hasPosTransactionAccess enforces positions for regular access', () => {
+  const config = {
+    allowedBranches: [],
+    allowedDepartments: [],
+    allowedPositions: ['77'],
+    supportsTemporarySubmission: true,
+    temporaryAllowedPositions: ['99'],
+  };
+  assert.equal(
+    hasPosTransactionAccess(config, null, null, { positionId: '77' }),
+    true,
+  );
+  assert.equal(
+    hasPosTransactionAccess(config, null, null, { positionId: '88' }),
+    false,
+  );
+  assert.equal(
+    hasPosTransactionAccess(config, null, null, { positionId: '99' }),
+    true,
   );
 });
 

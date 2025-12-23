@@ -36,14 +36,19 @@ export function hasPosTransactionAccess(info, branchId, departmentId, options = 
     options.userRightId ?? options.userLevel ?? options.userRight,
   );
   const workplaceValue = normalizeAccessValue(options.workplaceId ?? options.workplace);
+  const positionValue = normalizeAccessValue(
+    options.positionId ?? options.position ?? options.employmentPositionId,
+  );
   const procedureValue = normalizeAccessValue(options.procedure);
   const userRightValues = Array.isArray(options.userRights) ? options.userRights : null;
   const workplaceValues = Array.isArray(options.workplaces) ? options.workplaces : null;
+  const positionValues = Array.isArray(options.positions) ? options.positions : null;
 
   const allowedBranches = normalizeAccessList(info.allowedBranches);
   const allowedDepartments = normalizeAccessList(info.allowedDepartments);
   const allowedUserRights = normalizeAccessList(info.allowedUserRights);
   const allowedWorkplaces = normalizeAccessList(info.allowedWorkplaces);
+  const allowedPositions = normalizeAccessList(info.allowedPositions);
   const allowedProcedures = normalizeAccessList(info.procedures);
 
   const generalAllowed =
@@ -51,6 +56,7 @@ export function hasPosTransactionAccess(info, branchId, departmentId, options = 
     matchesScope(allowedDepartments, departmentValue) &&
     matchesScope(allowedUserRights, userRightValues ?? userRightValue) &&
     matchesScope(allowedWorkplaces, workplaceValues ?? workplaceValue) &&
+    matchesScope(allowedPositions, positionValues ?? positionValue) &&
     matchesScope(allowedProcedures, procedureValue);
 
   if (generalAllowed) return true;
@@ -67,6 +73,7 @@ export function hasPosTransactionAccess(info, branchId, departmentId, options = 
   const temporaryDepartments = normalizeAccessList(info.temporaryAllowedDepartments);
   const temporaryUserRights = normalizeAccessList(info.temporaryAllowedUserRights);
   const temporaryWorkplaces = normalizeAccessList(info.temporaryAllowedWorkplaces);
+  const temporaryPositions = normalizeAccessList(info.temporaryAllowedPositions);
   const temporaryProcedures = normalizeAccessList(info.temporaryProcedures);
 
   return (
@@ -74,6 +81,7 @@ export function hasPosTransactionAccess(info, branchId, departmentId, options = 
     matchesScope(temporaryDepartments, departmentValue) &&
     matchesScope(temporaryUserRights, userRightValues ?? userRightValue) &&
     matchesScope(temporaryWorkplaces, workplaceValues ?? workplaceValue) &&
+    matchesScope(temporaryPositions, positionValues ?? positionValue) &&
     matchesScope(temporaryProcedures, procedureValue)
   );
 }

@@ -562,7 +562,7 @@ const TableManager = forwardRef(function TableManager({
     const str = String(value).trim();
     return str ? str.toUpperCase() : '';
   }, []);
-  const { user, company, branch, department, session } = useContext(AuthContext);
+  const { user, company, branch, department, session, position, workplace } = useContext(AuthContext);
   const hasSenior = (value) => {
     if (value === null || value === undefined) return false;
     const numeric = Number(value);
@@ -672,9 +672,30 @@ const TableManager = forwardRef(function TableManager({
         formConfig,
         branchScopeId,
         departmentScopeId,
-        { allowTemporaryAnyScope: true },
+        {
+          allowTemporaryAnyScope: true,
+          userRightId:
+            user?.userLevel ??
+            user?.userlevel_id ??
+            user?.userlevelId ??
+            session?.user_level ??
+            session?.userlevel_id ??
+            session?.userlevelId,
+          workplaceId:
+            workplace ??
+            session?.workplace_id ??
+            session?.workplaceId ??
+            null,
+          positionId:
+            position ??
+            session?.employment_position_id ??
+            session?.position_id ??
+            session?.position ??
+            user?.position ??
+            null,
+        },
       ),
-    [formConfig, branchScopeId, departmentScopeId],
+    [formConfig, branchScopeId, departmentScopeId, session, user, position, workplace],
   );
 
   const formSupportsTemporary = Boolean(
@@ -3669,7 +3690,7 @@ const TableManager = forwardRef(function TableManager({
   }
 
   async function handleSaveTemporary(submission) {
-    if (!canSaveTemporaryDraft || !hasTransactionSenior) return false;
+    if (!canSaveTemporaryDraft) return false;
     if (!submission || typeof submission !== 'object') return false;
     const cloneValue = (value) => {
       if (value === undefined) return undefined;
@@ -5802,9 +5823,7 @@ const TableManager = forwardRef(function TableManager({
   const isTemporaryReadOnlyMode =
     isTemporaryReviewMode && requestType === 'temporary-promote';
   const temporarySaveEnabled =
-    canSaveTemporaryDraft &&
-    hasTransactionSenior &&
-    (!isTemporaryReviewMode || shouldShowForwardTemporaryLabel);
+    canSaveTemporaryDraft && (!isTemporaryReviewMode || shouldShowForwardTemporaryLabel);
 
   const temporaryDetailColumns = useMemo(() => {
     const valueKeys = new Set();

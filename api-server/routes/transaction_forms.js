@@ -14,7 +14,17 @@ const router = express.Router();
 router.get('/', requireAuth, async (req, res, next) => {
   try {
     const companyId = Number(req.query.companyId ?? req.user.companyId);
-    const { table, name, moduleKey, branchId, departmentId, proc, userRightId, workplaceId } =
+    const {
+      table,
+      name,
+      moduleKey,
+      branchId,
+      departmentId,
+      proc,
+      userRightId,
+      workplaceId,
+      positionId,
+    } =
       req.query;
     if (proc) {
       const { table: tbl, isDefault } = await findTableByProcedure(proc, companyId);
@@ -28,7 +38,7 @@ router.get('/', requireAuth, async (req, res, next) => {
       res.json({ ...config, isDefault });
     } else {
       const { names, isDefault } = await listTransactionNames(
-        { moduleKey, branchId, departmentId, userRightId, workplaceId },
+        { moduleKey, branchId, departmentId, userRightId, workplaceId, positionId },
         companyId,
       );
       res.json({ ...names, isDefault });

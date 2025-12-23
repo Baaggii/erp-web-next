@@ -29,6 +29,9 @@ function parseEntry(raw = {}) {
     departments: Array.isArray(raw.departments)
       ? raw.departments.map((v) => Number(v)).filter((v) => !Number.isNaN(v))
       : [],
+    workplaces: Array.isArray(raw.workplaces)
+      ? raw.workplaces.map((v) => Number(v)).filter((v) => !Number.isNaN(v))
+      : [],
     permissions: Array.isArray(raw.permissions)
       ? raw.permissions.map((v) => Number(v)).filter((v) => !Number.isNaN(v))
       : [],
@@ -63,4 +66,3 @@ export async function removeAllowedReport(proc, companyId = 0) {
     await writeConfig(cfg, companyId);
   }
 }
-

@@ -9,6 +9,8 @@ async function getUserContext(user, companyId) {
     branchId: session?.branch_id,
     departmentId: session?.department_id,
     userLevelId: session?.user_level,
+    workplaceId: session?.workplace_id,
+    positionId: session?.position_id ?? session?.employment_position_id,
   };
 }
 
@@ -17,8 +19,15 @@ export async function listPermittedProcedures(
   companyId,
   user,
 ) {
+  const userCtx = await getUserContext(user, companyId);
   const { names: forms, isDefault: formsDefault } = await listTransactionNames(
-    { branchId, departmentId },
+    {
+      branchId,
+      departmentId,
+      userRightId: userCtx.userLevelId,
+      workplaceId: userCtx.workplaceId,
+      positionId: userCtx.positionId,
+    },
     companyId,
   );
   const { config: allowedCfg, isDefault: accessDefault } =
@@ -56,11 +65,12 @@ export async function listPermittedProcedures(
 
   const liveProcedures = new Set(await listReportProcedures(prefix));
 
-  const userCtx = await getUserContext(user, companyId);
   const bId = Number(branchId ?? userCtx.branchId);
   const dId = Number(departmentId ?? userCtx.departmentId);
+  const wId = Number(userCtx.workplaceId);
   const hasBranch = !Number.isNaN(bId);
   const hasDept = !Number.isNaN(dId);
+  const hasWorkplace = !Number.isNaN(wId);
 
   const list = [];
   for (const proc of allProcs) {
@@ -74,11 +84,14 @@ export async function listPermittedProcedures(
       const hasDepartments = Array.isArray(access.departments)
         ? access.departments.length > 0
         : false;
+      const hasWorkplaces = Array.isArray(access.workplaces)
+        ? access.workplaces.length > 0
+        : false;
       const hasPermissions = Array.isArray(access.permissions)
         ? access.permissions.length > 0
         : false;
 
-      if (!hasBranches && !hasDepartments && !hasPermissions) {
+      if (!hasBranches && !hasDepartments && !hasWorkplaces && !hasPermissions) {
         // Configuration exists but no visibility rules were defined – hide it entirely.
         continue;
       }
@@ -86,6 +99,8 @@ export async function listPermittedProcedures(
       if (access.branches.length && hasBranch && !access.branches.includes(bId))
         continue;
       if (access.departments.length && hasDept && !access.departments.includes(dId))
+        continue;
+      if (access.workplaces.length && hasWorkplace && !access.workplaces.includes(wId))
         continue;
       if (hasPermissions) {
         if (

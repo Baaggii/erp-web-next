@@ -415,6 +415,21 @@ useEffect(() => {
       session?.workplace_id ??
       session?.workplaceId ??
       null;
+    const positionId =
+      session?.employment_position_id ??
+      session?.position_id ??
+      session?.position ??
+      user?.position ??
+      null;
+    if (userRightId != null && `${userRightId}`.trim() !== '') {
+      params.set('userRightId', userRightId);
+    }
+    if (workplaceId != null && `${workplaceId}`.trim() !== '') {
+      params.set('workplaceId', workplaceId);
+    }
+    if (positionId != null && `${positionId}`.trim() !== '') {
+      params.set('positionId', positionId);
+    }
     const query = params.toString();
     const url = `/api/transaction_forms${query ? `?${query}` : ''}`;
     fetch(url, { credentials: 'include', skipLoader: true })
@@ -442,6 +457,7 @@ useEffect(() => {
               allowTemporaryAnyScope: true,
               userRightId,
               workplaceId,
+              positionId,
             })
           )
             return;

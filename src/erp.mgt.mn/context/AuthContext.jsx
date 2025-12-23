@@ -162,7 +162,12 @@ export default function AuthContextProvider({ children }) {
             data.department ?? normalizedSession?.department_id ?? null,
           );
           trackSetState('AuthContext.setPosition');
-          setPosition(data.position ?? normalizedSession?.position_id ?? null);
+          setPosition(
+            data.position ??
+              normalizedSession?.position_id ??
+              normalizedSession?.employment_position_id ??
+              null,
+          );
           trackSetState('AuthContext.setWorkplace');
           setWorkplace(data.workplace ?? normalizedSession?.workplace_id ?? null);
           trackSetState('AuthContext.setPermissions');

@@ -186,11 +186,12 @@ export async function login(req, res, next) {
       senior_empid = null,
       senior_plan_empid = null,
     } = sessionPayload || {};
+    const resolvedPosition = position_id ?? position ?? null;
 
     const payload = {
       id: user.id,
       empid: user.empid,
-      position,
+      position: resolvedPosition,
       companyId: company,
       userLevel: sessionPayload?.user_level ?? null,
       seniorPlanEmpid: senior_plan_empid || null,
@@ -245,7 +246,7 @@ export async function login(req, res, next) {
       branch,
       department,
       position_id,
-      position,
+      position: resolvedPosition,
       senior_empid,
       senior_plan_empid,
       workplace: sessionPayload?.workplace_id ?? null,
@@ -326,32 +327,33 @@ export async function getProfile(req, res) {
         sessionPayload.company_id,
       )
     : {};
-  const {
-    company_id: company,
-    branch_id: branch,
-    department_id: department,
-    position_id,
-    position,
-    senior_empid,
-    senior_plan_empid,
-    workplace_id,
-    workplace_name,
-  } = sessionPayload || {};
-  res.json({
-    id: req.user.id,
-    empid: req.user.empid,
-    position: req.user.position,
-    full_name: sessionPayload?.employee_name,
-    user_level: sessionPayload?.user_level,
-    user_level_name: sessionPayload?.user_level_name,
-    company,
-    branch,
-    department,
-    position_id,
-    position,
-    senior_empid,
-    senior_plan_empid,
-    workplace: workplace_id ?? null,
+    const {
+      company_id: company,
+      branch_id: branch,
+      department_id: department,
+      position_id,
+      position,
+      senior_empid,
+      senior_plan_empid,
+      workplace_id,
+      workplace_name,
+    } = sessionPayload || {};
+    const resolvedPosition = position_id ?? position ?? null;
+    res.json({
+      id: req.user.id,
+      empid: req.user.empid,
+      position: resolvedPosition,
+      full_name: sessionPayload?.employee_name,
+      user_level: sessionPayload?.user_level,
+      user_level_name: sessionPayload?.user_level_name,
+      company,
+      branch,
+      department,
+      position_id,
+      position: resolvedPosition,
+      senior_empid,
+      senior_plan_empid,
+      workplace: workplace_id ?? null,
     workplace_session_id: sessionPayload?.workplace_session_id ?? null,
     workplace_session_ids: sessionPayload?.workplace_session_ids ?? [],
     workplace_name: workplace_name ?? null,
@@ -441,10 +443,11 @@ export async function refresh(req, res) {
       workplace_id,
       workplace_name,
     } = sessionPayload || {};
+    const resolvedPosition = position_id ?? position ?? null;
     const newPayload = {
       id: user.id,
       empid: user.empid,
-      position,
+      position: resolvedPosition,
       companyId: company,
       userLevel: sessionPayload?.user_level,
       seniorPlanEmpid: senior_plan_empid || null,
@@ -474,7 +477,7 @@ export async function refresh(req, res) {
       branch,
       department,
       position_id,
-      position,
+      position: resolvedPosition,
       senior_empid,
       senior_plan_empid,
       workplace: workplace_id ?? null,

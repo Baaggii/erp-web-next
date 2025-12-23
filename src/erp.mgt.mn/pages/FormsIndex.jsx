@@ -66,6 +66,21 @@ export default function FormsIndex() {
       session?.workplace_id ??
       session?.workplaceId ??
       null;
+    const positionId =
+      session?.employment_position_id ??
+      session?.position_id ??
+      session?.position ??
+      user?.position ??
+      null;
+    if (userRightId != null && `${userRightId}`.trim() !== '') {
+      params.set('userRightId', userRightId);
+    }
+    if (workplaceId != null && `${workplaceId}`.trim() !== '') {
+      params.set('workplaceId', workplaceId);
+    }
+    if (positionId != null && `${positionId}`.trim() !== '') {
+      params.set('positionId', positionId);
+    }
     const url = `/api/transaction_forms${params.toString() ? `?${params.toString()}` : ''}`;
     fetch(url, { credentials: 'include' })
       .then((res) => (res.ok ? res.json() : {}))
@@ -83,6 +98,7 @@ export default function FormsIndex() {
               allowTemporaryAnyScope: true,
               userRightId,
               workplaceId,
+              positionId,
             })
           )
             return;
