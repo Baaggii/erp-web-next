@@ -3747,6 +3747,38 @@ export function Header({
 
   const [positionLabel, setPositionLabel] = useState(null);
   const [workplacePositions, setWorkplacePositions] = useState({});
+  const userDetails = useMemo(() => {
+    const items = [];
+    if (session?.company_name) {
+      items.push({
+        label: t('userMenu.company', 'Company'),
+        value: session.company_name,
+        icon: '🏢',
+      });
+    }
+    if (workplaceLabels.length > 0) {
+      items.push({
+        label: t('userMenu.workplace', 'Workplace'),
+        value: workplaceLabels.filter(Boolean).join(', '),
+        icon: '🏭',
+      });
+    }
+    if (session?.user_level_name) {
+      items.push({
+        label: t('userMenu.role', 'Role'),
+        value: session.user_level_name,
+        icon: '👤',
+      });
+    }
+    if (positionLabel) {
+      items.push({
+        label: t('userMenu.position', 'Position'),
+        value: positionLabel,
+        icon: '🧑‍💼',
+      });
+    }
+    return items;
+  }, [positionLabel, session?.company_name, session?.user_level_name, t, workplaceLabels]);
 
   const normalizeText = useCallback((value) => {
     if (value === null || value === undefined) return null;
@@ -4460,15 +4492,6 @@ export function Header({
         </button>
       )}
       <HeaderMenu onOpen={onOpen} />
-      {session && (
-        <span style={styles.locationInfo}>
-          🏢 {session.company_name}
-          {workplaceLabels.length > 0 &&
-            ` | 🏭 ${workplaceLabels.filter(Boolean).join(', ')}`}
-          {session.user_level_name && ` | 👤 ${session.user_level_name}`}
-          {positionLabel && ` | 🧑‍💼 ${positionLabel}`}
-        </span>
-      )}
       <div style={styles.userSection}>
         <select
           value={lang}
@@ -4490,7 +4513,12 @@ export function Header({
           <option value="fr">fr</option>
           <option value="ru">ru</option>
         </select>
-        <UserMenu user={user} onLogout={onLogout} onResetGuide={onResetGuide} />
+        <UserMenu
+          user={user}
+          onLogout={onLogout}
+          onResetGuide={onResetGuide}
+          details={userDetails}
+        />
       </div>
     </header>
   );
@@ -5076,7 +5104,14 @@ const styles = {
     position: "sticky",
     top: 0,
     zIndex: 15030,
-    marginLeft: mobile ? 0 : "240px",
+    width: "100%",
+    left: 0,
+    right: 0,
+    boxSizing: "border-box",
+    paddingLeft: mobile ? "1rem" : "calc(240px + 1rem)",
+    gap: "0.5rem",
+    minWidth: 0,
+    overflow: "hidden",
   }),
   logoSection: {
     display: "flex",
@@ -5099,6 +5134,7 @@ const styles = {
     overflowX: "auto",
     whiteSpace: "nowrap",
     flexGrow: 1,
+    minWidth: 0,
   },
   updateButton: {
     backgroundColor: "#f97316",
@@ -5143,11 +5179,7 @@ const styles = {
     alignItems: "center",
     flex: "0 0 auto",
     gap: "0.5rem",
-  },
-  locationInfo: {
-    color: "#e5e7eb",
-    fontSize: "0.85rem",
-    marginRight: "0.75rem",
+    minWidth: 0,
   },
   logoutBtn: {
     backgroundColor: "#dc2626",
@@ -5163,7 +5195,10 @@ const styles = {
     flexGrow: 1,
     backgroundColor: "#f3f4f6",
     overflow: "auto",
-    marginLeft: mobile ? 0 : "240px",
+    marginLeft: 0,
+    paddingLeft: mobile ? 0 : "240px",
+    width: "100%",
+    minWidth: 0,
   }),
   sidebar: (mobile, open) => ({
     width: "240px",
@@ -5179,6 +5214,8 @@ const styles = {
     left: 0,
     height: "calc(100vh - 48px)",
     zIndex: 15020,
+    paddingBottom: "4rem",
+    overscrollBehavior: "contain",
     ...(mobile
       ? {
           transform: open ? "translateX(0)" : "translateX(-100%)",
@@ -5225,6 +5262,10 @@ const styles = {
   sidebarFooter: {
     marginTop: "auto",
     padding: "0.5rem 0.75rem",
+    position: "sticky",
+    bottom: 0,
+    background: "linear-gradient(180deg, rgba(55,65,81,0.92) 0%, #374151 35%, #1f2937 100%)",
+    borderTop: "1px solid #4b5563",
   },
   exitButton: {
     width: "100%",
