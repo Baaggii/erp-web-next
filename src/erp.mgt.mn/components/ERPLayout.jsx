@@ -3856,6 +3856,34 @@ export function Header({
   }, [session]);
 
   const positionLabel = useMemo(() => {
+    const pickPositionName = (source) => {
+      if (!source || typeof source !== 'object') return null;
+      const rawName =
+        source.workplace_position_name ??
+        source.workplacePositionName ??
+        source.employment_position_name ??
+        source.employmentPositionName ??
+        source.position_name ??
+        source.positionName ??
+        null;
+      if (rawName !== null && rawName !== undefined) {
+        const trimmed = String(rawName).trim();
+        if (trimmed) return trimmed;
+      }
+      const rawId =
+        source.workplace_position_id ??
+        source.workplacePositionId ??
+        source.position_id ??
+        source.positionId ??
+        source.employment_position_id ??
+        source.employmentPositionId ??
+        source.position ??
+        null;
+      if (rawId === null || rawId === undefined) return null;
+      const trimmedId = String(rawId).trim();
+      return trimmedId || null;
+    };
+
     const assignments = Array.isArray(session?.workplace_assignments)
       ? session.workplace_assignments
       : [];
@@ -3886,29 +3914,7 @@ export function Header({
         );
       }) || null;
 
-    const assignmentPosition =
-      matchedAssignment?.position_name ??
-      matchedAssignment?.positionName ??
-      matchedAssignment?.workplace_position_name ??
-      matchedAssignment?.workplacePositionName ??
-      matchedAssignment?.position ??
-      matchedAssignment?.position_id ??
-      matchedAssignment?.positionId ??
-      null;
-
-    const sessionPosition =
-      session?.position_name ??
-      session?.positionName ??
-      session?.employment_position_name ??
-      session?.employmentPositionName ??
-      session?.position ??
-      session?.employment_position_id ??
-      session?.position_id ??
-      null;
-
-    const value = assignmentPosition ?? sessionPosition;
-    if (value === null || value === undefined) return null;
-    const label = String(value).trim();
+    const label = pickPositionName(matchedAssignment) ?? pickPositionName(session);
     return label || null;
   }, [session]);
 
