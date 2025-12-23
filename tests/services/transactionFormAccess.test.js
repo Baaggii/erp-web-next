@@ -27,6 +27,13 @@ test('hasTransactionFormAccess respects workplace-linked positions', () => {
     }),
     false,
   );
+  assert.equal(
+    hasTransactionFormAccess(config, null, null, {
+      positionId: '200',
+      workplaceId: '11',
+    }),
+    false,
+  );
 });
 
 test('evaluateTransactionFormAccess blocks when workplace-linked position is disallowed', () => {

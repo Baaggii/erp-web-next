@@ -28,9 +28,17 @@ function matchesScope(list, value) {
   return list.includes(normalizedValue);
 }
 
-function resolveWorkplacePosition(options, workplaceValue) {
-  if (!options || typeof options !== 'object') return null;
+function resolveWorkplacePositions(options, workplaceValue) {
+  if (!options || typeof options !== 'object') return [];
   const workplaces = Array.isArray(workplaceValue) ? workplaceValue : [workplaceValue];
+  const resolved = [];
+  const addPosition = (position) => {
+    const normalized = normalizeAccessValue(position);
+    if (normalized !== null && !resolved.includes(normalized)) {
+      resolved.push(normalized);
+    }
+  };
+
   for (const wp of workplaces) {
     const normalizedWorkplace = normalizeAccessValue(wp);
     if (normalizedWorkplace === null) continue;
@@ -42,8 +50,7 @@ function resolveWorkplacePosition(options, workplaceValue) {
     ];
     for (const map of mapCandidates) {
       if (map && typeof map === 'object' && !Array.isArray(map)) {
-        const mappedPosition = normalizeAccessValue(map[normalizedWorkplace]);
-        if (mappedPosition !== null) return mappedPosition;
+        addPosition(map[normalizedWorkplace]);
       }
     }
 
@@ -58,35 +65,36 @@ function resolveWorkplacePosition(options, workplaceValue) {
           entry?.workplaceId ?? entry?.workplace_id ?? entry?.workplace ?? entry?.id,
         );
         if (entryWorkplace !== normalizedWorkplace) continue;
-        const positionId = normalizeAccessValue(
+        addPosition(
           entry?.positionId ??
             entry?.position_id ??
             entry?.position ??
             entry?.workplacePositionId ??
             entry?.workplace_position_id,
         );
-        if (positionId !== null) return positionId;
       }
     }
 
-    const directPosition = normalizeAccessValue(
+    addPosition(
       options.workplacePositionId ??
         options.workplacePosition ??
         options.workplace_position_id ??
         options.workplace_position,
     );
-    if (directPosition !== null) return directPosition;
   }
-  return null;
+
+  return resolved;
 }
 
 function isPositionAllowed(allowedPositions, positionValue, workplaceValue, options) {
-  const matchesDirect = matchesScope(allowedPositions, positionValue);
-  if (matchesDirect) return true;
   if (!Array.isArray(allowedPositions) || allowedPositions.length === 0) return true;
-  const workplacePosition = resolveWorkplacePosition(options, workplaceValue);
-  if (workplacePosition === null) return false;
-  return matchesScope(allowedPositions, workplacePosition);
+
+  if (workplaceValue !== null && workplaceValue !== undefined) {
+    const workplacePositions = resolveWorkplacePositions(options, workplaceValue);
+    return matchesScope(allowedPositions, workplacePositions);
+  }
+
+  return matchesScope(allowedPositions, positionValue);
 }
 
 export function hasPosTransactionAccess(info, branchId, departmentId, options = {}) {
