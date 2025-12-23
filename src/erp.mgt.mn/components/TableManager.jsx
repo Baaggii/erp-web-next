@@ -2858,39 +2858,80 @@ const TableManager = forwardRef(function TableManager({
         return true;
       };
 
-      const getRelationOption = (fieldKey, value) => {
+      const matchesCombinationRow = (row, sourceValue, combinationTargetColumn) => {
+        if (!combinationTargetColumn) return true;
+        if (sourceValue === undefined || sourceValue === null) return false;
+        if (!row || typeof row !== 'object') return false;
+        const rowKeyMap = {};
+        Object.keys(row).forEach((k) => {
+          rowKeyMap[k.toLowerCase()] = k;
+        });
+        const targetKey =
+          rowKeyMap[combinationTargetColumn.toLowerCase()] || combinationTargetColumn;
+        if (!targetKey) return false;
+        const targetValue = row[targetKey];
+        return (
+          targetValue !== undefined &&
+          targetValue !== null &&
+          String(targetValue).trim() === String(sourceValue).trim()
+        );
+      };
+
+      const getCombinationSourceValue = (config) => {
+        if (!config?.combinationSourceColumn) return undefined;
+        const canonicalSource = resolveCanonicalKey(config.combinationSourceColumn);
+        if (!canonicalSource) return undefined;
+        return hydrated === values ? values[canonicalSource] : hydrated[canonicalSource];
+      };
+
+      const getRelationOption = (fieldKey, value, config, sourceValue) => {
         if (value === undefined || value === null) return null;
         const relationId = resolveScopeId(value);
         const options =
           refData[fieldKey] || refData[resolveCanonicalKey(fieldKey)] || [];
         if (!Array.isArray(options)) return null;
         return (
-          options.find(
-            (opt) =>
-              opt &&
-              (opt.value === relationId ||
+          options.find((opt) => {
+            if (
+              !opt ||
+              !(
+                opt.value === relationId ||
                 (relationId !== undefined &&
                   relationId !== null &&
-                  String(opt.value) === String(relationId))),
-          ) || null
+                  String(opt.value) === String(relationId))
+              )
+            ) {
+              return false;
+            }
+            if (!config?.combinationTargetColumn) return true;
+            const row = getRelationRow(fieldKey, opt.value, config, sourceValue);
+            return matchesCombinationRow(row, sourceValue, config.combinationTargetColumn);
+          }) || null
         );
       };
 
-      const getRelationRow = (fieldKey, value) => {
+      const getRelationRow = (fieldKey, value, config, sourceValue) => {
         if (value === undefined || value === null) return null;
         const relationId = resolveScopeId(value);
         const map = refRows[fieldKey] || refRows[resolveCanonicalKey(fieldKey)];
         if (!map || typeof map !== 'object') return null;
+        const tryKeys = [];
         if (relationId !== undefined && relationId !== null) {
-          if (Object.prototype.hasOwnProperty.call(map, relationId)) {
-            return map[relationId];
-          }
+          tryKeys.push(relationId);
           const strRelationId = String(relationId).trim();
+          if (strRelationId) tryKeys.push(strRelationId);
+        }
+        for (const key of tryKeys) {
+          if (!Object.prototype.hasOwnProperty.call(map, key)) continue;
+          const candidate = map[key];
           if (
-            strRelationId &&
-            Object.prototype.hasOwnProperty.call(map, strRelationId)
+            matchesCombinationRow(
+              candidate,
+              sourceValue,
+              config?.combinationTargetColumn || config?.combination_target_column,
+            )
           ) {
-            return map[strRelationId];
+            return candidate;
           }
         }
         return null;
@@ -2909,11 +2950,22 @@ const TableManager = forwardRef(function TableManager({
         }
         const canonicalField = resolveCanonicalKey(rawField);
         if (!canonicalField) return;
+        const combinationSourceValue = getCombinationSourceValue(config);
         const relationValue =
           hydrated === values ? values[canonicalField] : hydrated[canonicalField];
         if (!hasMeaningfulValue(relationValue)) return;
-        const relationRow = getRelationRow(canonicalField, relationValue);
-        const relationOption = getRelationOption(canonicalField, relationValue);
+        const relationRow = getRelationRow(
+          canonicalField,
+          relationValue,
+          config,
+          combinationSourceValue,
+        );
+        const relationOption = getRelationOption(
+          canonicalField,
+          relationValue,
+          config,
+          combinationSourceValue,
+        );
         if (!relationRow && !relationOption) return;
         const rowKeyMap = {};
         Object.keys(relationRow || {}).forEach((key) => {
