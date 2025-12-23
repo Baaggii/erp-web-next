@@ -72,6 +72,23 @@ function buildNormalizedAssignment(source = {}, defaults = {}, options = {}) {
         fallbackMeta ? defaults.workplace_name ?? defaults.workplaceName : null,
       ),
     ) ?? null;
+  const workplacePositionId = normalizeNumericId(
+    coalesce(
+      source.workplace_position_id ?? source.workplacePositionId,
+      fallbackMeta
+        ? defaults.workplace_position_id ?? defaults.workplacePositionId
+        : null,
+    ),
+  );
+  const workplacePositionName =
+    trimOrNull(
+      coalesce(
+        source.workplace_position_name ?? source.workplacePositionName,
+        fallbackMeta
+          ? defaults.workplace_position_name ?? defaults.workplacePositionName
+          : null,
+      ),
+    ) ?? null;
   const workplaceSessionId = normalizeNumericId(
     coalesce(
       source.workplace_session_id ?? source.workplaceSessionId,
@@ -103,6 +120,10 @@ function buildNormalizedAssignment(source = {}, defaults = {}, options = {}) {
     workplaceId: workplaceId,
     workplace_name: workplaceName,
     workplaceName: workplaceName,
+    workplace_position_id: workplacePositionId,
+    workplacePositionId: workplacePositionId,
+    workplace_position_name: workplacePositionName,
+    workplacePositionName: workplacePositionName,
     workplace_session_id: workplaceSessionId,
     workplaceSessionId: workplaceSessionId,
   };
@@ -176,11 +197,27 @@ export function normalizeEmploymentSession(session, assignments = []) {
     combinedSessionIds.push(fallbackSessionId);
   }
 
+  const resolvedEmploymentPositionId = normalizeNumericId(
+    session.employment_position_id ??
+      session.position_id ??
+      session.employmentPositionId ??
+      session.positionId,
+  );
+  const resolvedEmploymentPositionName =
+    trimOrNull(
+      session.employment_position_name ??
+        session.position_name ??
+        session.employmentPositionName ??
+        session.positionName,
+    ) ?? null;
+
   return {
     ...session,
     workplace_id: fallbackWorkplaceId,
     workplace_session_id: fallbackSessionId,
     workplace_assignments: hydratedAssignments,
     workplace_session_ids: combinedSessionIds,
+    employment_position_id: resolvedEmploymentPositionId,
+    employment_position_name: resolvedEmploymentPositionName,
   };
 }
