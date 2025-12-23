@@ -207,6 +207,9 @@ export async function login(req, res, next) {
     } catch (err) {
       posSessionError = err?.message || 'Failed to record POS session';
       console.error('Failed to log POS session', err);
+      const error = new Error('Failed to record POS session');
+      error.status = err?.status || 500;
+      throw error;
     }
     res.json({
       id: user.id,

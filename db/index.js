@@ -8040,16 +8040,12 @@ export async function logPosSessionStart(
     params.push(workplaceId ?? null);
   }
   if (info.hasMerchantTin) {
-    const normalizedTin =
-      merchantTin === undefined || merchantTin === null
-        ? "unknown"
-        : String(merchantTin).trim() || "unknown";
     cols.push("merchant_tin");
-    params.push(normalizedTin);
+    params.push(merchantTin ?? null);
   }
   if (info.hasPosNo) {
     const normalizedPosNo =
-      posNo === undefined || posNo === null ? "unknown" : String(posNo).trim() || "unknown";
+      posNo === undefined || posNo === null ? null : String(posNo).trim() || null;
     cols.push("pos_no");
     params.push(normalizedPosNo);
   }
