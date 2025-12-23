@@ -1148,6 +1148,10 @@ function mapEmploymentRow(row) {
   ];
   const permissions = {};
   for (const k of all) permissions[k] = flags.has(k);
+  const resolvedWorkplaceSessionId =
+    workplace_session_id !== undefined && workplace_session_id !== null
+      ? workplace_session_id
+      : workplace_id ?? null;
   return {
     company_id,
     branch_id,
@@ -1157,7 +1161,7 @@ function mapEmploymentRow(row) {
     senior_plan_empid,
     workplace_id,
     workplace_name,
-    workplace_session_id,
+    workplace_session_id: resolvedWorkplaceSessionId,
     pos_no,
     merchant_id,
     merchant_tin,
@@ -1241,7 +1245,7 @@ export async function getEmploymentSessions(empid, options = {}) {
       baseColumn: "employment_branch_id",
       alias: "b",
       defaultTable: "code_branches",
-      defaultIdField: branchCfg?.idField || "branch_id",
+      defaultIdField: "branch_id",
       defaultFallbackColumn: "name",
       defaultDisplayConfig: branchCfg,
       defaultJoinExtras: [
@@ -1308,7 +1312,7 @@ export async function getEmploymentSessions(empid, options = {}) {
             es.department_id,
             es.emp_id,
             es.workplace_id,
-            es.id AS workplace_session_id,
+            NULL AS workplace_session_id,
             ${posNoExpr} AS pos_no,
             ${merchantExpr} AS merchant_id
          FROM tbl_employment_schedule es
@@ -1346,23 +1350,25 @@ export async function getEmploymentSessions(empid, options = {}) {
        LEFT JOIN code_workplace cw ON cw.workplace_id = es.workplace_id
        LEFT JOIN tbl_employee emp ON e.employment_emp_id = emp.emp_id
        LEFT JOIN user_levels ul ON e.employment_user_level = ul.userlevel_id
-      LEFT JOIN user_level_permissions up ON up.userlevel_id = ul.userlevel_id AND up.action = 'permission' AND up.company_id IN (${GLOBAL_COMPANY_ID}, e.employment_company_id)
+       LEFT JOIN user_level_permissions up ON up.userlevel_id = ul.userlevel_id AND up.action = 'permission' AND up.company_id IN (${GLOBAL_COMPANY_ID}, e.employment_company_id)
        WHERE e.employment_emp_id = ?
       GROUP BY e.employment_company_id, company_name,
                 c.merchant_tin,
                 e.employment_branch_id, branch_name,
                 e.employment_department_id, department_name,
-                es.workplace_id, cw.workplace_name, es.workplace_session_id,
+                es.workplace_id, cw.workplace_name,
                 pos_no, merchant_id,
                 e.employment_position_id,
                 e.employment_senior_empid,
                 e.employment_senior_plan_empid,
                 employee_name, e.employment_user_level, ul.name
       ORDER BY company_name, department_name, branch_name, workplace_name, user_level_name`;
+  const querySql = sql.replace(/`/g, "");
+  const normalizedSql = querySql.replace(/`/g, "");
   const params = [...scheduleDateParams, empid];
   let rows;
   try {
-    [rows] = await pool.query(sql, params);
+    [rows] = await pool.query(normalizedSql, params);
   } catch (err) {
     if (
       err?.code === "ER_BAD_FIELD_ERROR" &&
@@ -1372,7 +1378,7 @@ export async function getEmploymentSessions(empid, options = {}) {
       const replaceExpr = (text, target, replacement) =>
         text.split(target).join(replacement);
       const fallbackSql = replaceExpr(
-        replaceExpr(sql, posNoExpr, "NULL"),
+        replaceExpr(normalizedSql, posNoExpr, "NULL"),
         merchantExpr,
         "NULL",
       );
@@ -1383,7 +1389,8 @@ export async function getEmploymentSessions(empid, options = {}) {
   }
   const sessions = rows.map(mapEmploymentRow);
   if (options?.includeDiagnostics) {
-    const sqlText = typeof sql === 'string' ? sql : String(sql ?? '');
+    const sqlText =
+      typeof normalizedSql === 'string' ? normalizedSql : String(normalizedSql ?? '');
     const diagnostics = { sql: sqlText, params };
     let formattedSql = null;
     if (typeof mysql?.format === 'function') {
@@ -1440,96 +1447,96 @@ export async function getEmploymentSession(empid, companyId, options = {}) {
       deptCfgRaw,
       empCfgRaw,
       relationCfg,
-    ] = await Promise.all([
-      getDisplayCfg("companies", configCompanyId),
-      getDisplayCfg("code_branches", configCompanyId),
-      getDisplayCfg("code_department", configCompanyId),
-      getDisplayCfg("tbl_employee", configCompanyId),
-      listCustomRelations("tbl_employment", configCompanyId),
-    ]);
+  ] = await Promise.all([
+    getDisplayCfg("companies", configCompanyId),
+    getDisplayCfg("code_branches", configCompanyId),
+    getDisplayCfg("code_department", configCompanyId),
+    getDisplayCfg("tbl_employee", configCompanyId),
+    listCustomRelations("tbl_employment", configCompanyId),
+  ]);
 
-    const companyCfg = unwrapDisplayConfig(companyCfgRaw);
-    const branchCfg = unwrapDisplayConfig(branchCfgRaw);
-    const deptCfg = unwrapDisplayConfig(deptCfgRaw);
-    const empCfg = unwrapDisplayConfig(empCfgRaw);
-    const relationConfig = relationCfg?.config || {};
-    const scheduleInfo = await getEmploymentScheduleColumnInfo();
-    const posNoExpr = scheduleInfo.hasPosNo ? "es.pos_no" : "NULL";
-    const merchantExpr = scheduleInfo.hasMerchantId ? "es.merchant_id" : "NULL";
+  const companyCfg = unwrapDisplayConfig(companyCfgRaw);
+  const branchCfg = unwrapDisplayConfig(branchCfgRaw);
+  const deptCfg = unwrapDisplayConfig(deptCfgRaw);
+  const empCfg = unwrapDisplayConfig(empCfgRaw);
+  const relationConfig = relationCfg?.config || {};
+  const scheduleInfo = await getEmploymentScheduleColumnInfo();
+  const posNoExpr = scheduleInfo.hasPosNo ? "es.pos_no" : "NULL";
+  const merchantExpr = scheduleInfo.hasMerchantId ? "es.merchant_id" : "NULL";
 
-    const [companyRel, branchRel, deptRel] = await Promise.all([
-      resolveEmploymentRelation({
-        baseColumn: "employment_company_id",
-        alias: "c",
-        defaultTable: "companies",
-        defaultIdField: companyCfg?.idField || "id",
-        defaultFallbackColumn: "name",
-        defaultDisplayConfig: companyCfg,
-        relationConfig,
-        companyId: configCompanyId,
-      }),
-      resolveEmploymentRelation({
-        baseColumn: "employment_branch_id",
-        alias: "b",
-        defaultTable: "code_branches",
-        defaultIdField: branchCfg?.idField || "branch_id",
-        defaultFallbackColumn: "name",
-        defaultDisplayConfig: branchCfg,
-        defaultJoinExtras: [
-          `${aliasedColumn("b", "company_id")} = ${aliasedColumn(
-            "e",
-            "employment_company_id",
-          )}`,
-        ],
-        relationConfig,
-        companyId: configCompanyId,
-      }),
-      resolveEmploymentRelation({
-        baseColumn: "employment_department_id",
-        alias: "d",
-        defaultTable: "code_department",
-        defaultIdField: deptCfg?.idField || "id",
-        defaultFallbackColumn: "name",
-        defaultDisplayConfig: deptCfg,
-        defaultJoinExtras: [
-          `${aliasedColumn("d", "company_id")} IN (${GLOBAL_COMPANY_ID}, ${aliasedColumn(
-            "e",
-            "employment_company_id",
-          )})`,
-        ],
-        relationConfig,
-        companyId: configCompanyId,
-      }),
-    ]);
+  const [companyRel, branchRel, deptRel] = await Promise.all([
+    resolveEmploymentRelation({
+      baseColumn: "employment_company_id",
+      alias: "c",
+      defaultTable: "companies",
+      defaultIdField: companyCfg?.idField || "id",
+      defaultFallbackColumn: "name",
+      defaultDisplayConfig: companyCfg,
+      relationConfig,
+      companyId: configCompanyId,
+    }),
+    resolveEmploymentRelation({
+      baseColumn: "employment_branch_id",
+      alias: "b",
+      defaultTable: "code_branches",
+      defaultIdField: "branch_id",
+      defaultFallbackColumn: "name",
+      defaultDisplayConfig: branchCfg,
+      defaultJoinExtras: [
+        `${aliasedColumn("b", "company_id")} = ${aliasedColumn(
+          "e",
+          "employment_company_id",
+        )}`,
+      ],
+      relationConfig,
+      companyId: configCompanyId,
+    }),
+    resolveEmploymentRelation({
+      baseColumn: "employment_department_id",
+      alias: "d",
+      defaultTable: "code_department",
+      defaultIdField: deptCfg?.idField || "id",
+      defaultFallbackColumn: "name",
+      defaultDisplayConfig: deptCfg,
+      defaultJoinExtras: [
+        `${aliasedColumn("d", "company_id")} IN (${GLOBAL_COMPANY_ID}, ${aliasedColumn(
+          "e",
+          "employment_company_id",
+        )})`,
+      ],
+      relationConfig,
+      companyId: configCompanyId,
+    }),
+  ]);
 
-    const empName = buildDisplayExpr(
-      "emp",
-      empCfg,
-      "CONCAT_WS(' ', emp.emp_fname, emp.emp_lname)",
+  const empName = buildDisplayExpr(
+    "emp",
+    empCfg,
+    "CONCAT_WS(' ', emp.emp_fname, emp.emp_lname)",
+  );
+
+  const orderPriority = [];
+  const params = [empid, companyId];
+  if (hasBranchPref) {
+    orderPriority.push('CASE WHEN e.employment_branch_id <=> ? THEN 0 ELSE 1 END');
+    params.push(branchPreference);
+  }
+  if (hasDepartmentPref) {
+    orderPriority.push(
+      'CASE WHEN e.employment_department_id <=> ? THEN 0 ELSE 1 END',
     );
+    params.push(departmentPreference);
+  }
+  const orderParts = [
+    ...orderPriority,
+    'company_name',
+    'department_name',
+    'branch_name',
+    'workplace_name',
+    'user_level_name',
+  ];
 
-    const orderPriority = [];
-    const params = [empid, companyId];
-    if (hasBranchPref) {
-      orderPriority.push('CASE WHEN e.employment_branch_id <=> ? THEN 0 ELSE 1 END');
-      params.push(branchPreference);
-    }
-    if (hasDepartmentPref) {
-      orderPriority.push(
-        'CASE WHEN e.employment_department_id <=> ? THEN 0 ELSE 1 END',
-      );
-      params.push(departmentPreference);
-    }
-    const orderParts = [
-      ...orderPriority,
-      'company_name',
-      'department_name',
-      'branch_name',
-      'workplace_name',
-      'user_level_name',
-    ];
-
-    const baseSql = `SELECT
+  const baseSql = `SELECT
             e.employment_company_id AS company_id,
             c.merchant_tin AS merchant_tin,
             ${companyRel.nameExpr} AS company_name,
@@ -1560,7 +1567,7 @@ export async function getEmploymentSession(empid, companyId, options = {}) {
              es.department_id,
              es.emp_id,
              es.workplace_id,
-             es.id AS workplace_session_id,
+             NULL AS workplace_session_id,
              ${posNoExpr} AS pos_no,
              ${merchantExpr} AS merchant_id
            FROM tbl_employment_schedule es
@@ -1604,7 +1611,7 @@ export async function getEmploymentSession(empid, companyId, options = {}) {
                    c.merchant_tin,
                    e.employment_branch_id, branch_name,
                    e.employment_department_id, department_name,
-                   es.workplace_id, cw.workplace_name, es.workplace_session_id,
+                   es.workplace_id, cw.workplace_name,
                    pos_no, merchant_id,
                    e.employment_position_id,
                    e.employment_senior_empid,
@@ -1612,10 +1619,11 @@ export async function getEmploymentSession(empid, companyId, options = {}) {
                    employee_name, e.employment_user_level, ul.name
          ORDER BY ${orderParts.join(', ')}
          LIMIT 1`;
+    const normalizedSql = baseSql.replace(/`/g, "");
     const queryParams = [...scheduleDateParams, ...params];
     let rows;
     try {
-      [rows] = await pool.query(baseSql, queryParams);
+      [rows] = await pool.query(normalizedSql, queryParams);
     } catch (err) {
       if (
         err?.code === "ER_BAD_FIELD_ERROR" &&
@@ -1625,7 +1633,7 @@ export async function getEmploymentSession(empid, companyId, options = {}) {
         const replaceExpr = (text, target, replacement) =>
           text.split(target).join(replacement);
         const fallbackSql = replaceExpr(
-          replaceExpr(baseSql, posNoExpr, "NULL"),
+          replaceExpr(normalizedSql, posNoExpr, "NULL"),
           merchantExpr,
           "NULL",
         );
