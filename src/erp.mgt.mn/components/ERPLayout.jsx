@@ -4003,24 +4003,39 @@ export function Header({
       return rel;
     };
 
-    const fetchRelations = async () => {
+    const relationCache = new Map();
+    const fetchRelations = async (table) => {
+      if (!table) return [];
+      const cacheKey = table.toLowerCase();
+      if (relationCache.has(cacheKey)) return relationCache.get(cacheKey);
       try {
-        const res = await fetch('/api/tables/code_workplace/relations', {
+        const res = await fetch(`/api/tables/${encodeURIComponent(table)}/relations`, {
           credentials: 'include',
         });
-        if (!res.ok) return [];
+        if (!res.ok) {
+          relationCache.set(cacheKey, []);
+          return [];
+        }
         const list = await res.json().catch(() => []);
-        if (!Array.isArray(list)) return [];
-        return list
-          .map((entry) => normalizeRelationEntry(entry))
-          .filter((entry) => entry);
+        if (!Array.isArray(list)) {
+          relationCache.set(cacheKey, []);
+          return [];
+        }
+        const normalized = list.map((entry) => normalizeRelationEntry(entry)).filter((entry) => entry);
+        relationCache.set(cacheKey, normalized);
+        return normalized;
       } catch {
         return [];
       }
     };
 
+    const displayCache = new Map();
     const fetchDisplayConfig = async (table, relation = null) => {
       if (!table) return { idField: undefined, displayFields: [] };
+      const cacheKey = `${table.toLowerCase()}|${relation?.filterColumn ?? ''}|${
+        relation?.filterValue ?? ''
+      }`;
+      if (displayCache.has(cacheKey)) return displayCache.get(cacheKey);
       try {
         const params = new URLSearchParams({ table });
         const relFilterColumn = relation?.filterColumn ?? relation?.filter_column;
@@ -4032,7 +4047,10 @@ export function Header({
         const res = await fetch(`/api/display_fields?${params.toString()}`, {
           credentials: 'include',
         });
-        if (!res.ok) return { idField: undefined, displayFields: [] };
+        if (!res.ok) {
+          displayCache.set(cacheKey, { idField: undefined, displayFields: [] });
+          return { idField: undefined, displayFields: [] };
+        }
         const cfg = await res.json().catch(() => ({}));
         const idField =
           (typeof cfg?.idField === 'string' && cfg.idField.trim()) ||
@@ -4041,186 +4059,211 @@ export function Header({
         const displayFields = Array.isArray(cfg?.displayFields)
           ? cfg.displayFields.filter((field) => typeof field === 'string' && field.trim())
           : [];
-        return { idField, displayFields };
+        const normalized = { idField, displayFields };
+        displayCache.set(cacheKey, normalized);
+        return normalized;
       } catch {
-        return { idField: undefined, displayFields: [] };
+        const fallback = { idField: undefined, displayFields: [] };
+        displayCache.set(cacheKey, fallback);
+        return fallback;
       }
+    };
+
+    const rowCache = new Map();
+    const fetchRowById = async (table, idField, idValue, relation = null) => {
+      if (!table || !idField || idValue === null || idValue === undefined) return null;
+      const cacheKey = `${table.toLowerCase()}|${idField}|${String(idValue)}|${
+        relation?.filterColumn ?? ''
+      }|${relation?.filterValue ?? ''}`;
+      if (rowCache.has(cacheKey)) return rowCache.get(cacheKey);
+      const params = new URLSearchParams();
+      params.set('perPage', '1');
+      params.set(idField, String(idValue));
+      const relFilterColumn = relation?.filterColumn ?? relation?.filter_column;
+      const relFilterValue = relation?.filterValue ?? relation?.filter_value;
+      if (relFilterColumn && relFilterValue !== undefined && relFilterValue !== null) {
+        params.set(relFilterColumn, String(relFilterValue));
+      }
+      const companyId = session?.company_id ?? session?.companyId ?? null;
+      if (companyId !== null && companyId !== undefined) {
+        params.set('company_id', String(companyId));
+      }
+      try {
+        const res = await fetch(`/api/tables/${encodeURIComponent(table)}?${params.toString()}`, {
+          credentials: 'include',
+        });
+        if (!res.ok) {
+          rowCache.set(cacheKey, null);
+          return null;
+        }
+        const data = await res.json().catch(() => ({}));
+        const rows = Array.isArray(data?.rows) ? data.rows : [];
+        const row = rows.length > 0 ? rows[0] : null;
+        rowCache.set(cacheKey, row);
+        return row;
+      } catch {
+        rowCache.set(cacheKey, null);
+        return null;
+      }
+    };
+
+    const extractPositionInfo = (row, keyMap, positionLabelFields) => {
+      if (!row) return null;
+      const positionIdCandidates = [
+        'workplace_position_id',
+        'position_id',
+        'positionId',
+        'workplacePositionId',
+        'employment_position_id',
+        'employmentPositionId',
+        'workplace_position',
+        'workplacePosition',
+        'position',
+      ];
+      const rawPositionId = positionIdCandidates
+        .map((key) => {
+          const mapped = keyMap[key.toLowerCase()] || key;
+          return row[mapped];
+        })
+        .find((val) => val !== null && val !== undefined && String(val).trim() !== '');
+      const positionId =
+        rawPositionId === null || rawPositionId === undefined ? null : rawPositionId;
+
+      const nameCandidates = [
+        ...(Array.isArray(positionLabelFields) ? positionLabelFields : []),
+        'workplace_position_name',
+        'position_name',
+        'employment_position_name',
+        'positionName',
+        'position',
+      ];
+      const positionName =
+        nameCandidates
+          .map((key) => {
+            const mapped = keyMap[key?.toLowerCase?.()] || key;
+            const value = mapped ? row[mapped] : undefined;
+            return preferNameLikeText(value) ?? normalizeText(value);
+          })
+          .find((val) => val && val.length) || null;
+
+      if (positionId === null && !positionName) return null;
+      return { positionId, positionName };
+    };
+
+    const MAX_RELATION_DEPTH = 3;
+    const resolvePositionThroughRelations = async (
+      table,
+      row,
+      keyMap,
+      positionLabelFields,
+      depth,
+      visited,
+    ) => {
+      if (!table || !row || depth > MAX_RELATION_DEPTH) return null;
+      const direct = extractPositionInfo(row, keyMap, positionLabelFields);
+      if (direct) return direct;
+
+      const relations = await fetchRelations(table);
+      if (!relations.length) return null;
+
+      for (const relation of relations) {
+        const sourceKey =
+          relation.columnLower && (keyMap[relation.columnLower] || relation.column);
+        if (!sourceKey) continue;
+        const rawValue = row[sourceKey];
+        if (rawValue === null || rawValue === undefined || String(rawValue).trim() === '') continue;
+        const targetTable = relation.table;
+        if (!targetTable) continue;
+        const visitKey = `${targetTable.toLowerCase()}|${String(rawValue)}`;
+        if (visited.has(visitKey)) continue;
+        visited.add(visitKey);
+        const targetDisplayCfg = await fetchDisplayConfig(targetTable, relation);
+        const targetIdField =
+          targetDisplayCfg.idField ||
+          relation.targetColumn ||
+          relation.column ||
+          `${targetTable}_id`;
+        if (!targetIdField) continue;
+        const relatedRow = await fetchRowById(targetTable, targetIdField, rawValue, relation);
+        if (!relatedRow) continue;
+        const relatedKeyMap = buildKeyMap(relatedRow);
+        const resolved = await resolvePositionThroughRelations(
+          targetTable,
+          relatedRow,
+          relatedKeyMap,
+          positionLabelFields,
+          depth + 1,
+          visited,
+        );
+        if (resolved) return resolved;
+      }
+
+      return null;
     };
 
     const resolveWorkplacePositions = async () => {
       try {
-        const companyId = session?.company_id ?? session?.companyId ?? null;
-        const [relations, workplaceDisplayCfg] = await Promise.all([
-          fetchRelations(),
+        const [workplaceDisplayCfg, positionDisplayCfg] = await Promise.all([
           fetchDisplayConfig('code_workplace'),
+          fetchDisplayConfig('code_position'),
         ]);
-        const positionRelation =
-          relations.find((rel) => rel.tableLower === 'code_position') ||
-          relations.find((rel) => rel.columnLower.includes('position')) ||
-          null;
-        const positionTable = positionRelation?.table || 'code_position';
-        const positionDisplayCfg = await fetchDisplayConfig(positionTable, positionRelation);
-        const positionLabelFields =
-          Array.isArray(positionRelation?.displayFields) &&
-          positionRelation.displayFields.length > 0
-            ? positionRelation.displayFields
-            : positionDisplayCfg.displayFields;
         const workplaceIdField = workplaceDisplayCfg.idField || 'workplace_id';
-        const positionSourceColumn =
-          positionRelation?.column || positionRelation?.targetColumn || 'position_id';
-        const positionTargetField =
-          positionRelation?.idField ||
-          positionRelation?.targetColumn ||
-          positionDisplayCfg.idField ||
-          positionSourceColumn ||
-          'position_id';
+        const positionLabelFields =
+          Array.isArray(positionDisplayCfg.displayFields) && positionDisplayCfg.displayFields.length
+            ? positionDisplayCfg.displayFields
+            : ['position_name', 'name'];
+
         const entries = {};
-        const uniquePositionIds = new Set();
+        for (const workplaceId of allWorkplaceIds) {
+          const row = await fetchRowById('code_workplace', workplaceIdField, workplaceId);
+          if (!row) {
+            entries[workplaceId] = { positionId: null, positionName: null };
+            continue;
+          }
+          const keyMap = buildKeyMap(row);
+          const resolvedWorkplaceKey = keyMap[workplaceIdField.toLowerCase()] || workplaceIdField;
+          const resolvedWorkplaceId =
+            resolvedWorkplaceKey && row[resolvedWorkplaceKey] !== undefined
+              ? row[resolvedWorkplaceKey]
+              : workplaceId;
 
-        await Promise.all(
-          allWorkplaceIds.map(async (workplaceId) => {
-            const params = new URLSearchParams();
-            params.set('perPage', '1');
-            params.set(workplaceIdField, String(workplaceId));
-            if (companyId !== null && companyId !== undefined) {
-              params.set('company_id', String(companyId));
-            }
-            try {
-              const res = await fetch(
-                `/api/tables/code_workplace?${params.toString()}`,
-                { credentials: 'include' },
-              );
-              if (!res.ok) return;
-              const data = await res.json().catch(() => ({}));
-              const rows = Array.isArray(data?.rows) ? data.rows : [];
-              if (!rows.length) return;
-              const row = rows[0];
-              const keyMap = buildKeyMap(row);
-              const resolvedWorkplaceKey = keyMap[workplaceIdField.toLowerCase()] || workplaceIdField;
-              const resolvedWorkplaceId =
-                resolvedWorkplaceKey && row[resolvedWorkplaceKey] !== undefined
-                  ? row[resolvedWorkplaceKey]
-                  : workplaceId;
-              const positionKey = positionSourceColumn
-                ? keyMap[positionSourceColumn.toLowerCase()] || positionSourceColumn
-                : null;
-              const rawPositionId = positionKey ? row[positionKey] : null;
-              if (rawPositionId !== null && rawPositionId !== undefined) {
-                const normalizedId = String(rawPositionId).trim();
-                if (normalizedId) {
-                  uniquePositionIds.add(normalizedId);
-                }
-              }
-              const inlineNameCandidates = [];
-              (Array.isArray(positionLabelFields)
-                ? positionLabelFields
-                : []
-              ).forEach((field) => {
-                const mapped = keyMap[field.toLowerCase()] || field;
-                if (mapped in row) {
-                  inlineNameCandidates.push(row[mapped]);
-                }
-              });
-              const inlinePositionName =
-                inlineNameCandidates.map((val) => normalizeText(val)).find((val) => val) ??
-                normalizeText(row[keyMap.position_name]) ??
-                normalizeText(row[keyMap.workplace_position_name]);
-              entries[resolvedWorkplaceId] = {
-                positionId: rawPositionId ?? null,
-                positionName: inlinePositionName || null,
-              };
-            } catch (err) {
-              console.warn('Failed to resolve workplace position', {
-                workplaceId,
-                err,
-              });
-            }
-          }),
-        );
+          const visited = new Set([
+            `code_workplace|${resolvedWorkplaceId === undefined ? workplaceId : resolvedWorkplaceId}`,
+          ]);
+          const resolved =
+            extractPositionInfo(row, keyMap, positionLabelFields) ||
+            (await resolvePositionThroughRelations(
+              'code_workplace',
+              row,
+              keyMap,
+              positionLabelFields,
+              0,
+              visited,
+            )) ||
+            { positionId: null, positionName: null };
 
-        if (uniquePositionIds.size === 0) {
-          setMapIfActive(entries);
-          return;
+          entries[resolvedWorkplaceId] = resolved;
         }
 
-        const resolvedPositionLabels = {};
-        await Promise.all(
-          Array.from(uniquePositionIds).map(async (posId) => {
-            const params = new URLSearchParams();
-            params.set('perPage', '1');
-            params.set(positionTargetField, posId);
-            if (
-              positionRelation?.filterColumn &&
-              positionRelation.filterValue !== undefined &&
-              positionRelation.filterValue !== null
-            ) {
-              params.set(positionRelation.filterColumn, String(positionRelation.filterValue));
-            }
-            if (companyId !== null && companyId !== undefined) {
-              params.set('company_id', String(companyId));
-            }
-            try {
-              const res = await fetch(
-                `/api/tables/${encodeURIComponent(positionTable)}?${params.toString()}`,
-                { credentials: 'include' },
-              );
-              if (!res.ok) return;
-              const json = await res.json().catch(() => ({}));
-              const rows = Array.isArray(json?.rows) ? json.rows : [];
-              if (!rows.length) return;
-              const options = await buildOptionsForRows({
-                table: positionTable,
-                rows,
-                idField: positionTargetField,
-                searchColumn: positionTargetField,
-                labelFields: positionLabelFields,
-                companyId,
-              });
-              const match = options.find(
-                (opt) =>
-                  opt?.value !== undefined &&
-                  opt?.value !== null &&
-                  String(opt.value).trim() === posId,
-              );
-              if (match?.label) {
-                resolvedPositionLabels[posId] = match.label;
-                return;
-              }
-              const row = rows[0] || {};
-              const keyMap = buildKeyMap(row);
-              const fallbackLabel = (positionLabelFields || [])
-                .map((field) => {
-                  const mapped = keyMap[field.toLowerCase()] || field;
-                  return normalizeText(row[mapped]);
-                })
-                .find((val) => val && val.length);
-              resolvedPositionLabels[posId] =
-                fallbackLabel ??
-                normalizeText(row.position_name) ??
-                normalizeText(row.name) ??
-                posId;
-            } catch (err) {
-              console.warn('Failed to resolve position label', { positionId: posId, err });
-            }
-          }),
-        );
+        setMapIfActive(entries);
+      } catch (err) {
+        console.warn('Failed to resolve workplace positions', err);
+        setMapIfActive({});
+      }
+    };
 
-        const finalEntries = {};
-        Object.entries(entries).forEach(([workplaceId, info]) => {
-          const normalizedId =
-            info.positionId === null || info.positionId === undefined
-              ? null
-              : String(info.positionId).trim();
-          finalEntries[workplaceId] = {
-            positionId: normalizedId || info.positionId || null,
-            positionName:
-              info.positionName ||
-              (normalizedId ? resolvedPositionLabels[normalizedId] : null) ||
-              null,
-          };
-        });
+    resolveWorkplacePositions();
 
-  const [positionLabel, setPositionLabel] = useState(null);
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    allWorkplaceIds,
+    normalizeText,
+    preferNameLikeText,
+    session?.companyId,
+    session?.company_id,
+  ]);
 
   const matchedAssignment = useMemo(() => {
     const assignments = Array.isArray(session?.workplace_assignments)
@@ -4254,22 +4297,6 @@ export function Header({
       }) || null
     );
   }, [session]);
-
-  const normalizeText = useCallback((value) => {
-    if (value === null || value === undefined) return null;
-    const text = String(value).trim();
-    return text || null;
-  }, []);
-
-  const preferNameLikeText = useCallback(
-    (value) => {
-      const text = normalizeText(value);
-      if (!text) return null;
-      if (/^[+-]?\d+(\.\d+)?$/.test(text)) return null;
-      return text;
-    },
-    [normalizeText],
-  );
 
   const positionNameCandidate = useMemo(() => {
     const candidates = [
