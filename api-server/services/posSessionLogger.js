@@ -38,28 +38,18 @@ async function recordLoginSessionImpl(req, sessionPayload, user) {
   const sessionUuid = crypto.randomUUID
     ? crypto.randomUUID()
     : crypto.randomBytes(16).toString('hex');
-  const devicePayload =
-    (req.body && typeof req.body === 'object' ? req.body.device : null) || {};
   const companyId = sessionPayload?.company_id ?? null;
   const branchId = sessionPayload?.branch_id ?? null;
-  const departmentId = sessionPayload?.department_id ?? sessionPayload?.departmentId ?? null;
-  const workplaceId = sessionPayload?.workplace_id ?? sessionPayload?.workplaceId ?? null;
-  const normalizeText = (value) => normalizeValue(value);
-  const merchantTin = normalizeText(
+  const merchantId =
+    sessionPayload?.merchant_id ??
+    sessionPayload?.merchantId ??
     sessionPayload?.merchant_tin ??
-      sessionPayload?.merchantTin ??
-      devicePayload?.merchant_tin ??
-      devicePayload?.merchantTin ??
-      req.body?.merchant_tin ??
-      req.body?.merchantTin ??
-      req.headers?.['x-merchant-tin'],
-  );
+    sessionPayload?.merchantTin ??
+    null;
   const posNo =
     sessionPayload?.pos_no ??
     sessionPayload?.posNo ??
     sessionPayload?.pos_number ??
-    devicePayload?.pos_no ??
-    devicePayload?.posNo ??
     req.body?.pos_no ??
     req.body?.posNo ??
     null;
@@ -110,9 +100,7 @@ async function recordLoginSessionImpl(req, sessionPayload, user) {
     sessionUuid,
     companyId,
     branchId,
-    departmentId,
-    workplaceId,
-    merchantTin,
+    merchantId,
     posNo,
     deviceMac,
     deviceUuid,
