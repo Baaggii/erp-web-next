@@ -28,6 +28,67 @@ function matchesScope(list, value) {
   return list.includes(normalizedValue);
 }
 
+function resolveWorkplacePosition(options, workplaceValue) {
+  if (!options || typeof options !== 'object') return null;
+  const workplaces = Array.isArray(workplaceValue) ? workplaceValue : [workplaceValue];
+  for (const wp of workplaces) {
+    const normalizedWorkplace = normalizeAccessValue(wp);
+    if (normalizedWorkplace === null) continue;
+
+    const mapCandidates = [
+      options.workplacePositionMap,
+      options.workplacePositionById,
+      options.workplacePositionsMap,
+    ];
+    for (const map of mapCandidates) {
+      if (map && typeof map === 'object' && !Array.isArray(map)) {
+        const mappedPosition = normalizeAccessValue(map[normalizedWorkplace]);
+        if (mappedPosition !== null) return mappedPosition;
+      }
+    }
+
+    const listCandidates = [
+      options.workplacePositions,
+      options.workplacesWithPositions,
+    ];
+    for (const list of listCandidates) {
+      if (!Array.isArray(list)) continue;
+      for (const entry of list) {
+        const entryWorkplace = normalizeAccessValue(
+          entry?.workplaceId ?? entry?.workplace_id ?? entry?.workplace ?? entry?.id,
+        );
+        if (entryWorkplace !== normalizedWorkplace) continue;
+        const positionId = normalizeAccessValue(
+          entry?.positionId ??
+            entry?.position_id ??
+            entry?.position ??
+            entry?.workplacePositionId ??
+            entry?.workplace_position_id,
+        );
+        if (positionId !== null) return positionId;
+      }
+    }
+
+    const directPosition = normalizeAccessValue(
+      options.workplacePositionId ??
+        options.workplacePosition ??
+        options.workplace_position_id ??
+        options.workplace_position,
+    );
+    if (directPosition !== null) return directPosition;
+  }
+  return null;
+}
+
+function isPositionAllowed(allowedPositions, positionValue, workplaceValue, options) {
+  const matchesDirect = matchesScope(allowedPositions, positionValue);
+  if (matchesDirect) return true;
+  if (!Array.isArray(allowedPositions) || allowedPositions.length === 0) return true;
+  const workplacePosition = resolveWorkplacePosition(options, workplaceValue);
+  if (workplacePosition === null) return false;
+  return matchesScope(allowedPositions, workplacePosition);
+}
+
 export function hasPosTransactionAccess(info, branchId, departmentId, options = {}) {
   if (!info || typeof info !== 'object') return true;
   const branchValue = normalizeAccessValue(branchId);
@@ -56,7 +117,12 @@ export function hasPosTransactionAccess(info, branchId, departmentId, options = 
     matchesScope(allowedDepartments, departmentValue) &&
     matchesScope(allowedUserRights, userRightValues ?? userRightValue) &&
     matchesScope(allowedWorkplaces, workplaceValues ?? workplaceValue) &&
-    matchesScope(allowedPositions, positionValues ?? positionValue) &&
+    isPositionAllowed(
+      allowedPositions,
+      positionValues ?? positionValue,
+      workplaceValues ?? workplaceValue,
+      options,
+    ) &&
     matchesScope(allowedProcedures, procedureValue);
 
   if (generalAllowed) return true;
@@ -81,7 +147,12 @@ export function hasPosTransactionAccess(info, branchId, departmentId, options = 
     matchesScope(temporaryDepartments, departmentValue) &&
     matchesScope(temporaryUserRights, userRightValues ?? userRightValue) &&
     matchesScope(temporaryWorkplaces, workplaceValues ?? workplaceValue) &&
-    matchesScope(temporaryPositions, positionValues ?? positionValue) &&
+    isPositionAllowed(
+      temporaryPositions,
+      positionValues ?? positionValue,
+      workplaceValues ?? workplaceValue,
+      options,
+    ) &&
     matchesScope(temporaryProcedures, procedureValue)
   );
 }
