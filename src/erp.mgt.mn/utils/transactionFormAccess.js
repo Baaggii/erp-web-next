@@ -82,13 +82,14 @@ function resolveWorkplacePosition(options, workplaceValue) {
 function isPositionAllowed(allowedPositions, positionValue, workplaceValue, options) {
   if (!Array.isArray(allowedPositions) || allowedPositions.length === 0) return true;
 
-  if (workplaceValue !== null && workplaceValue !== undefined) {
-    const workplacePosition = resolveWorkplacePosition(options, workplaceValue);
-    if (workplacePosition !== null) {
-      return matchesScope(allowedPositions, workplacePosition);
-    }
+  const hasWorkplaceInput = workplaceValue !== null && workplaceValue !== undefined;
+  const workplacePosition = resolveWorkplacePosition(options, workplaceValue);
+  if (hasWorkplaceInput) {
+    if (workplacePosition === null) return false;
+    return matchesScope(allowedPositions, workplacePosition);
   }
 
+  if (workplacePosition !== null) return matchesScope(allowedPositions, workplacePosition);
   return matchesScope(allowedPositions, positionValue);
 }
 
