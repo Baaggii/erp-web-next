@@ -193,7 +193,6 @@ export async function login(req, res, next) {
       sameSite: 'lax',
       maxAge: jwtService.getRefreshExpiryMillis(),
     });
-    let posSessionError = null;
     try {
       const posSession = await recordLoginSession(req, sessionPayload, user);
       if (posSession?.sessionUuid) {
@@ -205,7 +204,6 @@ export async function login(req, res, next) {
         });
       }
     } catch (err) {
-      posSessionError = err?.message || 'Failed to record POS session';
       console.error('Failed to log POS session', err);
       const error = new Error('Failed to record POS session');
       error.status = err?.status || 500;
@@ -231,7 +229,6 @@ export async function login(req, res, next) {
       workplace_name: sessionPayload?.workplace_name ?? null,
       session: sessionPayload,
       permissions,
-      pos_session_error: posSessionError,
     });
   } catch (err) {
     next(err);
