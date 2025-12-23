@@ -802,14 +802,13 @@ export async function listTransactionNames(
   const isPositionAllowed = (allowedPositions, value, workplaceValue) => {
     if (!Array.isArray(allowedPositions) || allowedPositions.length === 0) return true;
 
-    const hasWorkplaceInput = workplaceValue !== null && workplaceValue !== undefined;
-    const resolved = resolveWorkplacePosition(workplaceValue);
-    if (hasWorkplaceInput) {
-      if (resolved === null) return false;
-      return matchesScope(allowedPositions, resolved);
+    if (workplaceValue !== null && workplaceValue !== undefined) {
+      const resolved = resolveWorkplacePosition(workplaceValue);
+      if (resolved !== null) {
+        return matchesScope(allowedPositions, resolved);
+      }
     }
 
-    if (resolved !== null) return matchesScope(allowedPositions, resolved);
     return matchesScope(allowedPositions, value);
   };
 
