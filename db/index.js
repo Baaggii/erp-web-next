@@ -1112,6 +1112,7 @@ export async function getUserByEmpId(empid) {
 function mapEmploymentRow(row) {
   const {
     company_id,
+    merchant_tin,
     branch_id,
     department_id,
     position_id,
@@ -1159,6 +1160,7 @@ function mapEmploymentRow(row) {
     workplace_session_id,
     pos_no,
     merchant_id,
+    merchant_tin,
     ...rest,
     permissions,
   };
@@ -1277,6 +1279,7 @@ export async function getEmploymentSessions(empid, options = {}) {
 
   const sql = `SELECT
           e.employment_company_id AS company_id,
+          c.merchant_tin AS merchant_tin,
           ${companyRel.nameExpr} AS company_name,
           e.employment_branch_id AS branch_id,
           ${branchRel.nameExpr} AS branch_name,
@@ -1346,10 +1349,11 @@ export async function getEmploymentSessions(empid, options = {}) {
       LEFT JOIN user_level_permissions up ON up.userlevel_id = ul.userlevel_id AND up.action = 'permission' AND up.company_id IN (${GLOBAL_COMPANY_ID}, e.employment_company_id)
        WHERE e.employment_emp_id = ?
       GROUP BY e.employment_company_id, company_name,
+                c.merchant_tin,
                 e.employment_branch_id, branch_name,
                 e.employment_department_id, department_name,
                 es.workplace_id, cw.workplace_name, es.workplace_session_id,
-                es.pos_no, es.merchant_id,
+                pos_no, merchant_id,
                 e.employment_position_id,
                 e.employment_senior_empid,
                 e.employment_senior_plan_empid,
@@ -1527,6 +1531,7 @@ export async function getEmploymentSession(empid, companyId, options = {}) {
 
     const baseSql = `SELECT
             e.employment_company_id AS company_id,
+            c.merchant_tin AS merchant_tin,
             ${companyRel.nameExpr} AS company_name,
             e.employment_branch_id AS branch_id,
             ${branchRel.nameExpr} AS branch_name,
@@ -1555,7 +1560,9 @@ export async function getEmploymentSession(empid, companyId, options = {}) {
              es.department_id,
              es.emp_id,
              es.workplace_id,
-             es.id AS workplace_session_id
+             es.id AS workplace_session_id,
+             ${posNoExpr} AS pos_no,
+             ${merchantExpr} AS merchant_id
            FROM tbl_employment_schedule es
            INNER JOIN (
              SELECT
@@ -1582,7 +1589,7 @@ export async function getEmploymentSession(empid, companyId, options = {}) {
            ON es.emp_id = e.employment_emp_id
           AND es.company_id = e.employment_company_id
           AND es.branch_id = e.employment_branch_id
-          AND es.department_id = e.employment_department_id
+         AND es.department_id = e.employment_department_id
          LEFT JOIN tbl_workplace tw
            ON tw.company_id = e.employment_company_id
           AND tw.branch_id = e.employment_branch_id
@@ -1594,14 +1601,15 @@ export async function getEmploymentSession(empid, companyId, options = {}) {
          LEFT JOIN user_level_permissions up ON up.userlevel_id = ul.userlevel_id AND up.action = 'permission' AND up.company_id IN (${GLOBAL_COMPANY_ID}, e.employment_company_id)
          WHERE e.employment_emp_id = ? AND e.employment_company_id = ?
          GROUP BY e.employment_company_id, company_name,
-                  e.employment_branch_id, branch_name,
-                  e.employment_department_id, department_name,
-                  es.workplace_id, cw.workplace_name, es.workplace_session_id,
-                  es.pos_no, es.merchant_id,
-                  e.employment_position_id,
-                  e.employment_senior_empid,
-                  e.employment_senior_plan_empid,
-                  employee_name, e.employment_user_level, ul.name
+                   c.merchant_tin,
+                   e.employment_branch_id, branch_name,
+                   e.employment_department_id, department_name,
+                   es.workplace_id, cw.workplace_name, es.workplace_session_id,
+                   pos_no, merchant_id,
+                   e.employment_position_id,
+                   e.employment_senior_empid,
+                   e.employment_senior_plan_empid,
+                   employee_name, e.employment_user_level, ul.name
          ORDER BY ${orderParts.join(', ')}
          LIMIT 1`;
     const queryParams = [...scheduleDateParams, ...params];
