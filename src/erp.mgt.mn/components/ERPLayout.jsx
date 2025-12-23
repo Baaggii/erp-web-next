@@ -5112,7 +5112,7 @@ const styles = {
     paddingLeft: mobile ? "1rem" : "calc(240px + 1rem)",
     gap: "0.5rem",
     minWidth: 0,
-    overflow: "hidden",
+    overflow: "visible",
   }),
   logoSection: {
     display: "flex",
