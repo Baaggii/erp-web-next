@@ -90,7 +90,7 @@ const styles = {
     boxShadow: '0 2px 6px rgba(0,0,0,0.1)',
     minWidth: '220px',
     padding: '0.25rem 0',
-    zIndex: 10,
+    zIndex: 20000,
   },
   detailSection: {
     padding: '0.5rem 0.5rem 0.25rem 0.5rem',
