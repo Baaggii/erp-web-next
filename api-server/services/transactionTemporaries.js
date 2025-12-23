@@ -1669,7 +1669,8 @@ export async function promoteTemporarySubmission(
     };
     const shouldSkipTriggers =
       payloadJson?.skipTriggerOnPromote === true ||
-      errorRevokedFields.length > 0;
+      errorRevokedFields.length > 0 ||
+      forcePromote;
     const skipTriggers = shouldSkipTriggers;
     const shouldForwardTemporary = !forcePromote && Boolean(forwardReviewerEmpId);
     const trimmedNotes =
