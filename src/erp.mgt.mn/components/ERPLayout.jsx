@@ -4498,9 +4498,10 @@ export function Header({
 
 /** Left sidebar with “menu groups” and “pinned items” **/
 function Sidebar({ onOpen, open, isMobile }) {
-  const { permissions: perms } = useContext(AuthContext);
+  const { permissions: perms, user, setUser } = useContext(AuthContext);
   const { t } = useContext(LangContext);
   const location = useLocation();
+  const navigate = useNavigate();
   const modules = useModules();
   const txnModules = useTxnModules();
   const generalConfig = useGeneralConfig();
@@ -4588,6 +4589,12 @@ function Sidebar({ onOpen, open, isMobile }) {
     }
   }
 
+  async function handleExit() {
+    await logout(user?.empid);
+    setUser(null);
+    navigate('/login');
+  }
+
   return (
     <aside
       id="sidebar"
@@ -4652,6 +4659,11 @@ function Sidebar({ onOpen, open, isMobile }) {
           ),
         )}
       </nav>
+      <div style={styles.sidebarFooter}>
+        <button type="button" style={styles.exitButton} onClick={handleExit}>
+          {t('exit', 'Exit')}
+        </button>
+      </div>
     </aside>
   );
 }
@@ -5063,7 +5075,7 @@ const styles = {
     flexShrink: 0,
     position: "sticky",
     top: 0,
-    zIndex: 20,
+    zIndex: 15030,
     marginLeft: mobile ? 0 : "240px",
   }),
   logoSection: {
@@ -5166,7 +5178,7 @@ const styles = {
     top: "48px",
     left: 0,
     height: "calc(100vh - 48px)",
-    zIndex: 30,
+    zIndex: 15020,
     ...(mobile
       ? {
           transform: open ? "translateX(0)" : "translateX(-100%)",
@@ -5209,6 +5221,20 @@ const styles = {
     border: "none",
     borderTop: "1px solid #4b5563",
     margin: "0.5rem 0",
+  },
+  sidebarFooter: {
+    marginTop: "auto",
+    padding: "0.5rem 0.75rem",
+  },
+  exitButton: {
+    width: "100%",
+    backgroundColor: "#dc2626",
+    color: "#f9fafb",
+    border: "1px solid #b91c1c",
+    borderRadius: "4px",
+    padding: "0.5rem 0.75rem",
+    cursor: "pointer",
+    fontWeight: 600,
   },
   windowContainer: {
     flexGrow: 1,

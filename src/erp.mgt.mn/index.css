@@ -346,6 +346,20 @@ select[multiple] option:checked {
   display: flex !important;
 }
 
+.menu-container,
+.menu-group,
+.menu-item,
+.submenu,
+.subsubmenu {
+  position: relative;
+  z-index: 15010;
+}
+
+.account-menu {
+  position: relative;
+  z-index: 15020;
+}
+
 /* Account dropdown styling */
 .account-menu {
   background-color: #1f2937; /* dark gray */
