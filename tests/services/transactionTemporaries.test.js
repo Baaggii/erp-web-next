@@ -49,6 +49,9 @@ function createStubConnection({ temporaryRow, chainIds = [] } = {}) {
       if (sql.startsWith('UPDATE `transaction_temporaries` SET chain_id = id WHERE id = ?')) {
         return [[], []];
       }
+      if (sql.startsWith('UPDATE `transaction_temporaries` SET chain_id = ? WHERE id = ?')) {
+        return [[], []];
+      }
       if (sql === 'BEGIN' || sql === 'COMMIT' || sql === 'ROLLBACK') {
         return [[], []];
       }
@@ -445,6 +448,9 @@ test('listTemporarySubmissions filters before grouping by chain', async () => {
     if (sql.startsWith('UPDATE `transaction_temporaries` SET chain_id = id WHERE chain_id IS NULL')) {
       return [[], []];
     }
+    if (sql.startsWith('UPDATE `transaction_temporaries` SET chain_id = ? WHERE id = ?')) {
+      return [[], []];
+    }
     if (sql.includes('WITH filtered AS')) {
       if (sql.includes('plan_senior_empid = ?')) {
         const reviewer = params[params.length - 3];
@@ -548,7 +554,6 @@ test('promoteTemporarySubmission forwards chain with normalized metadata and cle
       activityLogger: async () => {},
     },
   );
-
   assert.equal(result.forwardedTo, 'EMP300');
   assert.ok(chainUpdates.length > 0);
   assert.equal(chainUpdates[0].chainId, 1);
@@ -562,8 +567,8 @@ test('promoteTemporarySubmission forwards chain with normalized metadata and cle
   const forwardParams = forwardInsert.params;
   assert.equal(forwardParams[8], 'EMP100'); // created_by
   assert.equal(forwardParams[9], 'EMP300'); // plan_senior_empid
-  assert.equal(forwardParams[12], 1); // chain_id
-  assert.equal(forwardParams[13], 'pending');
+  assert.equal(forwardParams[13], 1); // chain_id
+  assert.equal(forwardParams[14], 'pending');
   const historyInsert = queries.find(({ sql }) =>
     sql.includes('INSERT INTO `transaction_temporary_review_history`'),
   );
@@ -577,6 +582,63 @@ test('promoteTemporarySubmission forwards chain with normalized metadata and cle
         payload.message.includes('Temporary submission pending review'),
     ),
   );
+  assert.ok(conn.released);
+});
+
+test('promoteTemporarySubmission force-promotes rejected temporaries with trigger override', async () => {
+  const temporaryRow = {
+    id: 90,
+    company_id: 1,
+    chain_id: 10,
+    table_name: 'transactions_test',
+    form_name: null,
+    config_name: null,
+    module_key: null,
+    payload_json: '{}',
+    cleaned_values_json: '{}',
+    raw_values_json: '{}',
+    created_by: 'EMP100',
+    plan_senior_empid: 'EMP100',
+    last_promoter_empid: 'EMP100',
+    branch_id: null,
+    department_id: null,
+    status: 'rejected',
+  };
+  const { conn, queries } = createStubConnection({ temporaryRow, chainIds: [10] });
+  let inserterCalls = 0;
+  const chainUpdates = [];
+
+  const result = await promoteTemporarySubmission(
+    90,
+    { reviewerEmpId: 'EMP100', cleanedValues: { amount: 10 } },
+    {
+      connectionFactory: async () => conn,
+      columnLister: async () => [{ name: 'amount', type: 'int', maxLength: null }],
+      tableInserter: async () => {
+        inserterCalls += 1;
+        if (inserterCalls === 1) {
+          const err = new Error('Dynamic SQL is not allowed in stored function or trigger');
+          err.errno = 1336;
+          err.sqlMessage = err.message;
+          throw err;
+        }
+        return { id: 'R-DYN' };
+      },
+      chainStatusUpdater: async (_c, chainId, payload) => {
+        chainUpdates.push({ chainId, payload });
+        return 1;
+      },
+      notificationInserter: async () => {},
+      activityLogger: async () => {},
+      employmentSessionFetcher: async () => ({}),
+    },
+  );
+
+  assert.equal(result.promotedRecordId, 'R-DYN');
+  assert.equal(chainUpdates.length, 1);
+  assert.equal(chainUpdates[0].payload.status, 'promoted');
+  assert.equal(chainUpdates[0].payload.applyToChain, true);
+  assert.ok(queries.some(({ sql }) => sql.includes('@skip_triggers = 1')));
   assert.ok(conn.released);
 });
 
@@ -1073,6 +1135,9 @@ test('getTemporaryChainHistory returns chainId and history rows', async () => {
       }
       if (sql.startsWith('ALTER TABLE `transaction_temporaries`')) return [[], []];
       if (sql.startsWith('UPDATE `transaction_temporaries` SET chain_id = id WHERE chain_id IS NULL')) {
+        return [[], []];
+      }
+      if (sql.startsWith('UPDATE `transaction_temporaries` SET chain_id = ? WHERE id = ?')) {
         return [[], []];
       }
       if (sql.startsWith('ALTER TABLE `transaction_temporary_review_history`')) return [[], []];
