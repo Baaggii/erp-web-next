@@ -65,14 +65,6 @@ function buildNormalizedAssignment(source = {}, defaults = {}, options = {}) {
       defaults.workplace_id ?? defaults.workplaceId,
     ),
   );
-  const workplacePositionId = normalizeNumericId(
-    coalesce(
-      source.workplace_position_id ?? source.workplacePositionId,
-      fallbackMeta
-        ? defaults.workplace_position_id ?? defaults.workplacePositionId
-        : null,
-    ),
-  );
   const workplaceName =
     trimOrNull(
       coalesce(
@@ -85,18 +77,12 @@ function buildNormalizedAssignment(source = {}, defaults = {}, options = {}) {
       source.workplace_session_id ?? source.workplaceSessionId,
       defaults.workplace_session_id ??
         defaults.workplaceSessionId ??
-        workplacePositionId ??
-        defaults.workplace_position_id ??
-        defaults.workplacePositionId ??
         defaults.workplace_id ??
         defaults.workplaceId,
     ),
   );
 
-  const resolvedAssignmentId =
-    workplaceSessionId ?? workplacePositionId ?? workplaceId;
-
-  if (resolvedAssignmentId === null) {
+  if (workplaceSessionId === null) {
     return null;
   }
 
@@ -115,12 +101,10 @@ function buildNormalizedAssignment(source = {}, defaults = {}, options = {}) {
     departmentName: departmentName,
     workplace_id: workplaceId,
     workplaceId: workplaceId,
-    workplace_position_id: workplacePositionId,
-    workplacePositionId: workplacePositionId,
     workplace_name: workplaceName,
     workplaceName: workplaceName,
-    workplace_session_id: resolvedAssignmentId,
-    workplaceSessionId: resolvedAssignmentId,
+    workplace_session_id: workplaceSessionId,
+    workplaceSessionId: workplaceSessionId,
   };
 }
 
@@ -131,39 +115,19 @@ export function normalizeEmploymentSession(session, assignments = []) {
 
   const { assignments: normalizedAssignments, sessionIds } =
     normalizeWorkplaceAssignments(assignments);
-  const normalizedWorkplaceId = normalizeNumericId(
-    session.workplace_id ?? session.workplaceId,
-  );
-  const normalizedPositionId = normalizeNumericId(
-    session.workplace_position_id ?? session.workplacePositionId,
-  );
-  const normalizedSessionId = normalizeNumericId(
-    session.workplace_session_id ?? session.workplaceSessionId,
-  );
+  const normalizedWorkplaceId = normalizeNumericId(session.workplace_id);
+  const normalizedSessionId = normalizeNumericId(session.workplace_session_id);
   const fallbackWorkplaceId =
     normalizedWorkplaceId ??
     (normalizedAssignments.find((item) => item.workplace_id !== null)?.workplace_id ??
       null);
   const fallbackSessionId =
-    normalizedSessionId ??
-    (sessionIds.length ? sessionIds[0] : null) ??
-    normalizedPositionId ??
-    fallbackWorkplaceId ??
-    null;
-  const fallbackPositionId =
-    normalizedPositionId ??
-    normalizedAssignments.find(
-      (item) =>
-        item.workplace_position_id !== undefined &&
-        item.workplace_position_id !== null,
-    )?.workplace_position_id ?? null;
+    normalizedSessionId ?? (sessionIds.length ? sessionIds[0] : null);
 
   const fallbackDefaults = {
     ...session,
     workplace_id: fallbackWorkplaceId,
     workplaceId: fallbackWorkplaceId,
-    workplace_position_id: fallbackPositionId,
-    workplacePositionId: fallbackPositionId,
     workplace_session_id: fallbackSessionId,
     workplaceSessionId: fallbackSessionId,
   };
@@ -215,7 +179,6 @@ export function normalizeEmploymentSession(session, assignments = []) {
   return {
     ...session,
     workplace_id: fallbackWorkplaceId,
-    workplace_position_id: fallbackPositionId,
     workplace_session_id: fallbackSessionId,
     workplace_assignments: hydratedAssignments,
     workplace_session_ids: combinedSessionIds,

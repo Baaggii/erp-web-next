@@ -1120,7 +1120,7 @@ function mapEmploymentRow(row) {
     senior_plan_empid,
     workplace_id,
     workplace_name,
-    workplace_position_id,
+    workplace_session_id,
     pos_no,
     merchant_id,
     permission_list,
@@ -1157,7 +1157,7 @@ function mapEmploymentRow(row) {
     senior_plan_empid,
     workplace_id,
     workplace_name,
-    workplace_position_id,
+    workplace_session_id,
     pos_no,
     merchant_id,
     merchant_tin,
@@ -1286,10 +1286,10 @@ export async function getEmploymentSessions(empid, options = {}) {
           e.employment_department_id AS department_id,
           ${deptRel.nameExpr} AS department_name,
           es.workplace_id AS workplace_id,
+          es.workplace_session_id AS workplace_session_id,
           ${posNoExpr} AS pos_no,
           ${merchantExpr} AS merchant_id,
           cw.workplace_name AS workplace_name,
-          cw.workplace_position_id AS workplace_position_id,
           e.employment_position_id AS position_id,
           e.employment_senior_empid AS senior_empid,
           e.employment_senior_plan_empid AS senior_plan_empid,
@@ -1308,6 +1308,7 @@ export async function getEmploymentSessions(empid, options = {}) {
             es.department_id,
             es.emp_id,
             es.workplace_id,
+            es.id AS workplace_session_id,
             ${posNoExpr} AS pos_no,
             ${merchantExpr} AS merchant_id
          FROM tbl_employment_schedule es
@@ -1346,17 +1347,17 @@ export async function getEmploymentSessions(empid, options = {}) {
        LEFT JOIN tbl_employee emp ON e.employment_emp_id = emp.emp_id
        LEFT JOIN user_levels ul ON e.employment_user_level = ul.userlevel_id
       LEFT JOIN user_level_permissions up ON up.userlevel_id = ul.userlevel_id AND up.action = 'permission' AND up.company_id IN (${GLOBAL_COMPANY_ID}, e.employment_company_id)
-      WHERE e.employment_emp_id = ?
-     GROUP BY e.employment_company_id, company_name,
-               c.merchant_tin,
-               e.employment_branch_id, branch_name,
-               e.employment_department_id, department_name,
-               es.workplace_id, cw.workplace_name, cw.workplace_position_id,
-               pos_no, merchant_id,
-               e.employment_position_id,
-               e.employment_senior_empid,
-               e.employment_senior_plan_empid,
-               employee_name, e.employment_user_level, ul.name
+       WHERE e.employment_emp_id = ?
+      GROUP BY e.employment_company_id, company_name,
+                c.merchant_tin,
+                e.employment_branch_id, branch_name,
+                e.employment_department_id, department_name,
+                es.workplace_id, cw.workplace_name, es.workplace_session_id,
+                pos_no, merchant_id,
+                e.employment_position_id,
+                e.employment_senior_empid,
+                e.employment_senior_plan_empid,
+                employee_name, e.employment_user_level, ul.name
       ORDER BY company_name, department_name, branch_name, workplace_name, user_level_name`;
   const params = [...scheduleDateParams, empid];
   let rows;
@@ -1537,10 +1538,10 @@ export async function getEmploymentSession(empid, companyId, options = {}) {
             e.employment_department_id AS department_id,
             ${deptRel.nameExpr} AS department_name,
             es.workplace_id AS workplace_id,
+            es.workplace_session_id AS workplace_session_id,
             ${posNoExpr} AS pos_no,
             ${merchantExpr} AS merchant_id,
             cw.workplace_name AS workplace_name,
-            cw.workplace_position_id AS workplace_position_id,
             e.employment_position_id AS position_id,
             e.employment_senior_empid AS senior_empid,
             e.employment_senior_plan_empid AS senior_plan_empid,
@@ -1559,6 +1560,7 @@ export async function getEmploymentSession(empid, companyId, options = {}) {
              es.department_id,
              es.emp_id,
              es.workplace_id,
+             es.id AS workplace_session_id,
              ${posNoExpr} AS pos_no,
              ${merchantExpr} AS merchant_id
            FROM tbl_employment_schedule es
@@ -1587,7 +1589,7 @@ export async function getEmploymentSession(empid, companyId, options = {}) {
            ON es.emp_id = e.employment_emp_id
           AND es.company_id = e.employment_company_id
           AND es.branch_id = e.employment_branch_id
-          AND es.department_id = e.employment_department_id
+         AND es.department_id = e.employment_department_id
          LEFT JOIN tbl_workplace tw
            ON tw.company_id = e.employment_company_id
           AND tw.branch_id = e.employment_branch_id
@@ -1602,7 +1604,7 @@ export async function getEmploymentSession(empid, companyId, options = {}) {
                    c.merchant_tin,
                    e.employment_branch_id, branch_name,
                    e.employment_department_id, department_name,
-                   es.workplace_id, cw.workplace_name, cw.workplace_position_id,
+                   es.workplace_id, cw.workplace_name, es.workplace_session_id,
                    pos_no, merchant_id,
                    e.employment_position_id,
                    e.employment_senior_empid,
