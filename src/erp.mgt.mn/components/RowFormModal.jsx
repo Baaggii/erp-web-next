@@ -13,6 +13,7 @@ import {
   applyGeneratedColumnEvaluators,
   createGeneratedColumnEvaluator,
 } from '../utils/generatedColumns.js';
+import selectDisplayFieldsForRelation from '../utils/selectDisplayFieldsForRelation.js';
 import extractCombinationFilterValue from '../utils/extractCombinationFilterValue.js';
 import useGeneralConfig from '../hooks/useGeneralConfig.js';
 import { API_BASE } from '../utils/apiBase.js';
@@ -381,20 +382,6 @@ const RowFormModal = function RowFormModal({
     [relationConfigMap],
   );
 
-  const displayIndex = React.useMemo(() => {
-    const index = {};
-    Object.entries(tableDisplayFields || {}).forEach(([tbl, cfg]) => {
-      const id = cfg.idField;
-      if (!id) return;
-      index[id.toLowerCase()] = {
-        table: tbl,
-        idField: cfg.idField,
-        displayFields: cfg.displayFields || [],
-      };
-    });
-    return index;
-  }, [tableDisplayFieldsKey]);
-
   const relationsKey = React.useMemo(() => JSON.stringify(relations || {}), [relations]);
   const relationOptionLabelLookup = React.useMemo(() => {
     const lookup = {};
@@ -537,7 +524,24 @@ const RowFormModal = function RowFormModal({
         mergeSource(target, tableRelation);
       }
 
-      mergeSource(target, displayIndex[lower]);
+      if (
+        target.table &&
+        (!target.displayFields || target.displayFields.length === 0 || !target.idField)
+      ) {
+        const matchedDisplay = selectDisplayFieldsForRelation(
+          tableDisplayFields,
+          target.table,
+          target,
+        );
+        if (matchedDisplay) {
+          if (!target.idField && matchedDisplay.idField) {
+            target.idField = matchedDisplay.idField;
+          }
+          if (!target.displayFields || target.displayFields.length === 0) {
+            target.displayFields = matchedDisplay.displayFields || [];
+          }
+        }
+      }
 
       if (!target.table || !target.idField) {
         delete map[column];
@@ -547,7 +551,14 @@ const RowFormModal = function RowFormModal({
     });
 
     return map;
-  }, [columnCaseMapKey, relatedColumns, relationConfigMapKey, tableRelationsKey, displayIndex]);
+  }, [
+    columnCaseMapKey,
+    relatedColumns,
+    relationConfigMapKey,
+    tableRelationsKey,
+    tableDisplayFieldsKey,
+    tableDisplayFields,
+  ]);
   const getRowValueCaseInsensitive = useCallback((rowObj, key) => {
     if (!rowObj || !key) return undefined;
     const lowerKey = key.toLowerCase();
