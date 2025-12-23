@@ -29,6 +29,7 @@ import TourViewer from "./tours/TourViewer.jsx";
 import derivePageKey from "../utils/derivePageKey.js";
 import { findVisibleFallbackSelector } from "../utils/findVisibleTourStep.js";
 import { playNotificationSound } from "../utils/playNotificationSound.js";
+import { buildOptionsForRows } from "../utils/buildAsyncSelectOptions.js";
 
 export const TourContext = React.createContext({
   startTour: () => false,
@@ -3727,6 +3728,11 @@ export function Header({
   const { session } = useContext(AuthContext);
   const { lang, setLang, t } = useContext(LangContext);
   const { anyHasNew, notificationColors } = useContext(PendingRequestContext);
+  const [positionDisplayConfig, setPositionDisplayConfig] = useState({
+    idField: null,
+    displayFields: [],
+  });
+  const [positionLabel, setPositionLabel] = useState(null);
   const handleRefresh = () => {
     if (typeof window === 'undefined' || !window?.location) return;
     try {
@@ -3743,6 +3749,35 @@ export function Header({
     if (anyHasNew) return [NOTIFICATION_STATUS_COLORS.pending];
     return [];
   }, [anyHasNew, notificationColors]);
+
+  useEffect(() => {
+    let canceled = false;
+    async function loadDisplayConfig() {
+      try {
+        const res = await fetch('/api/display_fields?table=code_position', {
+          credentials: 'include',
+        });
+        if (!res.ok) throw new Error('Failed to load display fields');
+        const cfg = await res.json().catch(() => ({}));
+        if (canceled) return;
+        setPositionDisplayConfig({
+          idField:
+            typeof cfg?.idField === 'string' && cfg.idField.trim()
+              ? cfg.idField.trim()
+              : null,
+          displayFields: Array.isArray(cfg?.displayFields) ? cfg.displayFields : [],
+        });
+      } catch {
+        if (!canceled) {
+          setPositionDisplayConfig({ idField: null, displayFields: [] });
+        }
+      }
+    }
+    loadDisplayConfig();
+    return () => {
+      canceled = true;
+    };
+  }, []);
 
   const workplaceLabels = useMemo(() => {
     if (!session) return [];
@@ -3855,7 +3890,7 @@ export function Header({
     return labels;
   }, [session]);
 
-  const positionLabel = useMemo(() => {
+  const { positionName, positionId } = useMemo(() => {
     const assignments = Array.isArray(session?.workplace_assignments)
       ? session.workplace_assignments
       : [];
@@ -3886,31 +3921,117 @@ export function Header({
         );
       }) || null;
 
-    const assignmentPosition =
+    const assignmentPositionName =
       matchedAssignment?.position_name ??
       matchedAssignment?.positionName ??
       matchedAssignment?.workplace_position_name ??
       matchedAssignment?.workplacePositionName ??
+      null;
+
+    const assignmentPositionId =
       matchedAssignment?.position ??
       matchedAssignment?.position_id ??
       matchedAssignment?.positionId ??
       null;
 
-    const sessionPosition =
+    const sessionPositionName =
       session?.position_name ??
       session?.positionName ??
       session?.employment_position_name ??
       session?.employmentPositionName ??
-      session?.position ??
-      session?.employment_position_id ??
-      session?.position_id ??
       null;
 
-    const value = assignmentPosition ?? sessionPosition;
-    if (value === null || value === undefined) return null;
-    const label = String(value).trim();
-    return label || null;
+    const sessionPositionId =
+      session?.position ?? session?.employment_position_id ?? session?.position_id ?? null;
+
+    const normalizedName = [assignmentPositionName, sessionPositionName]
+      .map((value) =>
+        typeof value === 'string' || typeof value === 'number' ? String(value).trim() : '',
+      )
+      .find((value) => Boolean(value));
+
+    const normalizedId =
+      assignmentPositionId !== undefined &&
+      assignmentPositionId !== null &&
+      `${assignmentPositionId}`.trim() !== ''
+        ? assignmentPositionId
+        : sessionPositionId !== undefined &&
+          sessionPositionId !== null &&
+          `${sessionPositionId}`.trim() !== ''
+        ? sessionPositionId
+        : null;
+
+    return { positionName: normalizedName || null, positionId: normalizedId };
   }, [session]);
+
+  useEffect(() => {
+    let canceled = false;
+    const existingName = positionName;
+    if (!session || (!existingName && (positionId === null || positionId === undefined))) {
+      setPositionLabel(null);
+      return () => {
+        canceled = true;
+      };
+    }
+    if (existingName) {
+      setPositionLabel(existingName);
+      return () => {
+        canceled = true;
+      };
+    }
+    const normalizedId = `${positionId ?? ''}`.trim();
+    if (!normalizedId) {
+      setPositionLabel(null);
+      return () => {
+        canceled = true;
+      };
+    }
+
+    async function resolvePositionLabel() {
+      try {
+        const idField =
+          typeof positionDisplayConfig?.idField === 'string' &&
+          positionDisplayConfig.idField.trim()
+            ? positionDisplayConfig.idField.trim()
+            : 'position_id';
+        const params = new URLSearchParams({ perPage: 1 });
+        params.set(idField, normalizedId);
+        const res = await fetch(
+          `/api/tables/${encodeURIComponent('code_position')}?${params.toString()}`,
+          { credentials: 'include' },
+        );
+        if (!res.ok) throw new Error('Failed to load position data');
+        const json = await res.json().catch(() => ({}));
+        const rows = Array.isArray(json.rows) ? json.rows : [];
+        if (rows.length === 0) {
+          if (!canceled) setPositionLabel(normalizedId);
+          return;
+        }
+        const options = await buildOptionsForRows({
+          table: 'code_position',
+          rows,
+          idField,
+          labelFields: positionDisplayConfig?.displayFields || [],
+          companyId: session?.company_id ?? session?.companyId ?? null,
+        });
+        const match =
+          options.find(
+            (opt) =>
+              opt?.value !== undefined && opt?.value !== null && `${opt.value}` === normalizedId,
+          ) || options[0];
+        const label =
+          match?.label && `${match.label}`.trim() ? `${match.label}`.trim() : normalizedId;
+        if (!canceled) setPositionLabel(label);
+      } catch {
+        if (!canceled) setPositionLabel(normalizedId);
+      }
+    }
+
+    resolvePositionLabel();
+    return () => {
+      canceled = true;
+    };
+  }, [positionDisplayConfig, positionId, positionName, session]);
 
   return (
     <header className="sticky-header" style={styles.header(isMobile)}>

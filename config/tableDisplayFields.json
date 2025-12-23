@@ -16,6 +16,12 @@
       "name"
     ]
   },
+  "code_position": {
+    "idField": "position_id",
+    "displayFields": [
+      "position_name"
+    ]
+  },
   "tbl_contracter": {
     "idField": "manuf_id",
     "displayFields": [
