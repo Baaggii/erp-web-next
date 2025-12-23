@@ -103,9 +103,6 @@ async function fetchRelationMapForTable(table) {
           table: refTable,
           column: refColumn,
         };
-        if (entry?.idField) {
-          normalized.idField = entry.idField;
-        }
         if (
           entry?.combinationSourceColumn &&
           entry?.combinationTargetColumn
@@ -130,19 +127,13 @@ async function fetchRelationMapForTable(table) {
   }
 }
 
-async function fetchDisplayConfig(table, options = {}) {
+async function fetchDisplayConfig(table, filter = {}) {
   if (!table) return {};
   const filterColumn =
-    options.filterColumn || options.column || options.filter || options.filter_column || '';
+    filter.column || filter.filterColumn || filter.filter_column || '';
   const filterValue =
-    options.filterValue ?? options.value ?? options.filter_value ?? options.filter ?? '';
-  const preferredIdField = options.preferredIdField || options.idField || options.id_field || '';
-  const cacheKey = [
-    table.toLowerCase(),
-    filterColumn,
-    String(filterValue ?? ''),
-    preferredIdField,
-  ]
+    filter.value ?? filter.filterValue ?? filter.filter_value ?? '';
+  const cacheKey = [table.toLowerCase(), filterColumn, String(filterValue ?? '')]
     .filter((part) => part !== undefined)
     .join('|');
   if (displayConfigCache.has(cacheKey)) return displayConfigCache.get(cacheKey);
@@ -151,9 +142,6 @@ async function fetchDisplayConfig(table, options = {}) {
     if (filterColumn) params.set('filterColumn', filterColumn);
     if (filterColumn && filterValue !== undefined && filterValue !== null) {
       params.set('filterValue', String(filterValue).trim());
-    }
-    if (preferredIdField) {
-      params.set('idField', preferredIdField);
     }
     const res = await fetch(`/api/display_fields?${params.toString()}`, {
       credentials: 'include',
@@ -228,7 +216,6 @@ async function fetchNestedLabelMap(nestedRel, { company }) {
   const cfg = await fetchDisplayConfig(nestedRel.table, {
     column: nestedRel.filterColumn,
     value: nestedRel.filterValue,
-    preferredIdField: nestedRel.idField || nestedRel.id_field || nestedRel.column,
   });
   const tenantInfo = await fetchTenantInfo(nestedRel.table);
   const isShared = tenantInfo?.isShared ?? tenantInfo?.is_shared ?? false;
