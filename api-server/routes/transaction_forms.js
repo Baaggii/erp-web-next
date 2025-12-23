@@ -24,8 +24,15 @@ router.get('/', requireAuth, async (req, res, next) => {
       userRightId,
       workplaceId,
       positionId,
+      workplacePositionId,
     } =
       req.query;
+    const session = req.session || {};
+    const resolvedWorkplacePositionId =
+      workplacePositionId ??
+      session?.workplace_position_id ??
+      session?.workplacePositionId ??
+      null;
     if (proc) {
       const { table: tbl, isDefault } = await findTableByProcedure(proc, companyId);
       if (tbl) res.json({ table: tbl, isDefault });
@@ -38,7 +45,16 @@ router.get('/', requireAuth, async (req, res, next) => {
       res.json({ ...config, isDefault });
     } else {
       const { names, isDefault } = await listTransactionNames(
-        { moduleKey, branchId, departmentId, userRightId, workplaceId, positionId },
+        {
+          moduleKey,
+          branchId,
+          departmentId,
+          userRightId,
+          workplaceId,
+          positionId,
+          workplacePositionId: resolvedWorkplacePositionId,
+          workplacePositions: session?.workplace_assignments,
+        },
         companyId,
       );
       res.json({ ...names, isDefault });

@@ -24,6 +24,8 @@ function deriveTxnModuleState(
   userRight,
   workplaceId,
   positionId,
+  workplacePositionId,
+  workplacePositions,
   perms,
   licensed,
 ) {
@@ -32,6 +34,7 @@ function deriveTxnModuleState(
   const userRightId = userRight != null ? String(userRight) : null;
   const workplace = workplaceId != null ? String(workplaceId) : null;
   const position = positionId != null ? String(positionId) : null;
+  const workplacePosition = workplacePositionId != null ? String(workplacePositionId) : null;
   const keys = new Set();
   const labels = {};
 
@@ -47,6 +50,8 @@ function deriveTxnModuleState(
           userRightId,
           workplaceId: workplace,
           positionId: position,
+          workplacePositionId: workplacePosition,
+          workplacePositions,
         })
       )
         return;
@@ -139,6 +144,9 @@ export function useTxnModules() {
       session?.position_id ??
       session?.position ??
       null;
+    const workplacePositionId =
+      session?.workplace_position_id ?? session?.workplacePositionId ?? null;
+    const workplacePositions = session?.workplace_assignments;
     const derived = deriveTxnModuleState(
       data,
       branch,
@@ -146,6 +154,8 @@ export function useTxnModules() {
       userRightId,
       workplaceId,
       positionId,
+      workplacePositionId,
+      workplacePositions,
       perms,
       licensed,
     );
@@ -172,6 +182,9 @@ export function useTxnModules() {
       session?.position_id ??
       session?.position ??
       null;
+    const currentWorkplacePosition =
+      session?.workplace_position_id ?? session?.workplacePositionId ?? null;
+    const currentWorkplaceAssignments = session?.workplace_assignments;
 
     try {
       const params = new URLSearchParams();
@@ -194,6 +207,13 @@ export function useTxnModules() {
       if (currentPosition !== undefined && currentPosition !== null && `${currentPosition}`.trim() !== '') {
         params.set('positionId', currentPosition);
       }
+      if (
+        currentWorkplacePosition !== undefined &&
+        currentWorkplacePosition !== null &&
+        `${currentWorkplacePosition}`.trim() !== ''
+      ) {
+        params.set('workplacePositionId', currentWorkplacePosition);
+      }
       const res = await fetch(
         `/api/transaction_forms${params.toString() ? `?${params.toString()}` : ''}`,
         { credentials: 'include' },
@@ -214,6 +234,7 @@ export function useTxnModules() {
       cache.userRightId = currentUserRight;
       cache.workplaceId = currentWorkplace;
       cache.positionId = currentPosition;
+      cache.workplacePositionId = currentWorkplacePosition;
       applyDerivedState(data);
     } catch (err) {
       console.error('Failed to load transaction modules', err);
@@ -224,6 +245,7 @@ export function useTxnModules() {
       cache.userRightId = currentUserRight;
       cache.workplaceId = currentWorkplace;
       cache.positionId = currentPosition;
+      cache.workplacePositionId = currentWorkplacePosition;
       applyDerivedState({});
     }
   }

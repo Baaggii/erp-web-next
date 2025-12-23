@@ -3855,6 +3855,63 @@ export function Header({
     return labels;
   }, [session]);
 
+  const positionLabel = useMemo(() => {
+    const assignments = Array.isArray(session?.workplace_assignments)
+      ? session.workplace_assignments
+      : [];
+    const currentSessionId =
+      session?.workplace_session_id ?? session?.workplaceSessionId ?? null;
+    const currentWorkplaceId = session?.workplace_id ?? session?.workplaceId ?? null;
+    const matchedAssignment =
+      assignments.find((assignment) => {
+        const assignmentSessionId =
+          assignment?.workplace_session_id ?? assignment?.workplaceSessionId ?? null;
+        if (
+          currentSessionId !== null &&
+          currentSessionId !== undefined &&
+          assignmentSessionId !== null &&
+          assignmentSessionId !== undefined &&
+          assignmentSessionId === currentSessionId
+        ) {
+          return true;
+        }
+        const assignmentWorkplaceId =
+          assignment?.workplace_id ?? assignment?.workplaceId ?? assignment?.id ?? null;
+        return (
+          currentWorkplaceId !== null &&
+          currentWorkplaceId !== undefined &&
+          assignmentWorkplaceId !== null &&
+          assignmentWorkplaceId !== undefined &&
+          assignmentWorkplaceId === currentWorkplaceId
+        );
+      }) || null;
+
+    const assignmentPosition =
+      matchedAssignment?.position_name ??
+      matchedAssignment?.positionName ??
+      matchedAssignment?.workplace_position_name ??
+      matchedAssignment?.workplacePositionName ??
+      matchedAssignment?.position ??
+      matchedAssignment?.position_id ??
+      matchedAssignment?.positionId ??
+      null;
+
+    const sessionPosition =
+      session?.position_name ??
+      session?.positionName ??
+      session?.employment_position_name ??
+      session?.employmentPositionName ??
+      session?.position ??
+      session?.employment_position_id ??
+      session?.position_id ??
+      null;
+
+    const value = assignmentPosition ?? sessionPosition;
+    if (value === null || value === undefined) return null;
+    const label = String(value).trim();
+    return label || null;
+  }, [session]);
+
   return (
     <header className="sticky-header" style={styles.header(isMobile)}>
       {isMobile && (
@@ -3906,6 +3963,7 @@ export function Header({
           {session.department_name && ` | 🏬 ${session.department_name}`}
           {session.branch_name && ` | 📍 ${session.branch_name}`}
           {session.user_level_name && ` | 👤 ${session.user_level_name}`}
+          {positionLabel && ` | 🧑‍💼 ${positionLabel}`}
         </span>
       )}
       <div style={styles.userSection}>

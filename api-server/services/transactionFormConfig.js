@@ -714,9 +714,104 @@ export async function findTableByProcedure(proc, companyId = 0) {
 }
 
 export async function listTransactionNames(
-  { moduleKey, branchId, departmentId, userRightId, workplaceId, positionId } = {},
+  {
+    moduleKey,
+    branchId,
+    departmentId,
+    userRightId,
+    workplaceId,
+    positionId,
+    workplacePositionId,
+    workplacePositionMap,
+    workplacePositions,
+    workplacePositionById,
+    workplacePositionsMap,
+    workplacesWithPositions,
+  } = {},
   companyId = 0,
 ) {
+  const normalizeAccessValue = (value) => {
+    if (value === undefined || value === null) return null;
+    const str = String(value).trim();
+    if (!str) return null;
+    const num = Number(str);
+    return Number.isFinite(num) ? num : str;
+  };
+
+  const matchesScope = (list, value) => {
+    if (!Array.isArray(list) || list.length === 0) return true;
+    if (Array.isArray(value)) {
+      const normalizedValues = value
+        .map((item) => normalizeAccessValue(item))
+        .filter((val) => val !== null);
+      if (normalizedValues.length === 0) return false;
+      return normalizedValues.some((val) => list.includes(val));
+    }
+    const normalizedValue = normalizeAccessValue(value);
+    if (normalizedValue === null) return true;
+    return list.includes(normalizedValue);
+  };
+
+  const resolveWorkplacePosition = (workplaceValue) => {
+    const workplaces = Array.isArray(workplaceValue) ? workplaceValue : [workplaceValue];
+    for (const wp of workplaces) {
+      const normalizedWorkplace = normalizeAccessValue(wp);
+      if (normalizedWorkplace === null) continue;
+
+      const mapCandidates = [
+        workplacePositionMap,
+        workplacePositionById,
+        workplacePositionsMap,
+      ];
+      for (const map of mapCandidates) {
+        if (map && typeof map === 'object' && !Array.isArray(map)) {
+          const mapped = normalizeAccessValue(map[normalizedWorkplace]);
+          if (mapped !== null) return mapped;
+        }
+      }
+
+      const listCandidates = [workplacePositions, workplacesWithPositions];
+      for (const list of listCandidates) {
+        if (!Array.isArray(list)) continue;
+        for (const entry of list) {
+          const entryWorkplace = normalizeAccessValue(
+            entry?.workplaceId ?? entry?.workplace_id ?? entry?.workplace ?? entry?.id,
+          );
+          if (entryWorkplace !== normalizedWorkplace) continue;
+          const position = normalizeAccessValue(
+            entry?.positionId ??
+              entry?.position_id ??
+              entry?.position ??
+              entry?.workplacePositionId ??
+              entry?.workplace_position_id,
+          );
+          if (position !== null) return position;
+        }
+      }
+
+      const direct = normalizeAccessValue(
+        workplacePositionId ??
+          workplacePositionMap?.[normalizedWorkplace] ??
+          workplacePositionById?.[normalizedWorkplace],
+      );
+      if (direct !== null) return direct;
+    }
+    return null;
+  };
+
+  const isPositionAllowed = (allowedPositions, value, workplaceValue) => {
+    if (!Array.isArray(allowedPositions) || allowedPositions.length === 0) return true;
+
+    if (workplaceValue !== null && workplaceValue !== undefined) {
+      const resolved = resolveWorkplacePosition(workplaceValue);
+      if (resolved !== null) {
+        return matchesScope(allowedPositions, resolved);
+      }
+    }
+
+    return matchesScope(allowedPositions, value);
+  };
+
   const { cfg, isDefault } = await readConfig(companyId);
   const result = {};
   const bId = branchId ? Number(branchId) : null;
@@ -784,10 +879,7 @@ export async function listTransactionNames(
         allowedDepartments.length === 0 ||
         dId == null ||
         allowedDepartments.includes(dId);
-      const positionAllowed =
-        allowedPositions.length === 0 ||
-        positionValue === null ||
-        allowedPositions.includes(positionValue);
+      const positionAllowed = isPositionAllowed(allowedPositions, positionValue, workplaceValue);
       const userRightAllowed =
         allowedUserRights.length === 0 ||
         userRightValue === null ||
@@ -819,10 +911,11 @@ export async function listTransactionNames(
             tempDepartments.length === 0 ||
             dId == null ||
             tempDepartments.includes(dId);
-          const tempPositionAllowed =
-            tempPositions.length === 0 ||
-            positionValue === null ||
-            tempPositions.includes(positionValue);
+          const tempPositionAllowed = isPositionAllowed(
+            tempPositions,
+            positionValue,
+            workplaceValue,
+          );
           const tempUserRightAllowed =
             tempUserRights.length === 0 ||
             userRightValue === null ||

@@ -10,6 +10,8 @@ async function getUserContext(user, companyId) {
     departmentId: session?.department_id,
     userLevelId: session?.user_level,
     workplaceId: session?.workplace_id,
+    workplacePositionId: session?.workplace_position_id,
+    workplacePositions: session?.workplace_assignments,
     positionId: session?.position_id ?? session?.employment_position_id,
   };
 }
@@ -27,6 +29,8 @@ export async function listPermittedProcedures(
       userRightId: userCtx.userLevelId,
       workplaceId: userCtx.workplaceId,
       positionId: userCtx.positionId,
+      workplacePositionId: userCtx.workplacePositionId,
+      workplacePositions: userCtx.workplacePositions,
     },
     companyId,
   );
