@@ -57,6 +57,9 @@ async function recordLoginSessionImpl(req, sessionPayload, user) {
     normalizeMac(
       req.body?.device_mac ??
         req.body?.deviceMac ??
+        devicePayload?.mac ??
+        devicePayload?.device_mac ??
+        devicePayload?.deviceMac ??
         req.headers?.['x-device-mac'] ??
         req.headers?.['x-device-mac-address'],
     );
@@ -64,12 +67,20 @@ async function recordLoginSessionImpl(req, sessionPayload, user) {
     normalizeValue(
       req.body?.device_uuid ??
         req.body?.deviceUuid ??
+        devicePayload?.device_uuid ??
+        devicePayload?.deviceUuid ??
+        devicePayload?.uuid ??
+        devicePayload?.id ??
         req.headers?.['x-device-uuid'] ??
         req.headers?.['x-device-id'],
     ) || null;
   const location = parseLocation(
     req.body?.location ??
       req.body?.device_location ??
+      devicePayload?.location ??
+      devicePayload?.device_location ??
+      devicePayload?.coords ??
+      devicePayload?.coordinates ??
       req.headers?.['x-device-location'],
   );
 
