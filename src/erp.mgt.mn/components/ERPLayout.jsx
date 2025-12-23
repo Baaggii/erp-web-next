@@ -4220,7 +4220,19 @@ export function Header({
           };
         });
 
-  const [positionLabel, setPositionLabel] = useState(null);
+        setMapIfActive(finalEntries);
+      } catch (err) {
+        console.warn('Failed to resolve workplace positions', err);
+        setMapIfActive({});
+      }
+    };
+
+    resolveWorkplacePositions();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [allWorkplaceIds, normalizeText, session?.companyId, session?.company_id]);
 
   const matchedAssignment = useMemo(() => {
     const assignments = Array.isArray(session?.workplace_assignments)
@@ -4254,22 +4266,6 @@ export function Header({
       }) || null
     );
   }, [session]);
-
-  const normalizeText = useCallback((value) => {
-    if (value === null || value === undefined) return null;
-    const text = String(value).trim();
-    return text || null;
-  }, []);
-
-  const preferNameLikeText = useCallback(
-    (value) => {
-      const text = normalizeText(value);
-      if (!text) return null;
-      if (/^[+-]?\d+(\.\d+)?$/.test(text)) return null;
-      return text;
-    },
-    [normalizeText],
-  );
 
   const positionNameCandidate = useMemo(() => {
     const candidates = [
