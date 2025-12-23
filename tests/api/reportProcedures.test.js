@@ -103,6 +103,79 @@ test('listPermittedProcedures merges trigger procedures and respects filters', a
   }
 });
 
+test('listPermittedProcedures filters by position visibility rules', async () => {
+  const companyId = 13579;
+  await writeJsonConfig(companyId, 'transactionForms.json', {
+    tbl_reports: {
+      Summary: {
+        procedures: ['position_proc'],
+      },
+    },
+  });
+  await writeJsonConfig(companyId, 'report_management/allowedReports.json', {
+    position_proc: { branches: [], departments: [], workplaces: [], positions: [9], permissions: [] },
+  });
+
+  let positionId = 4;
+  const origQuery = pool.query;
+  pool.query = async (sql, params) => {
+    if (typeof sql === 'string' && sql.startsWith('SHOW TRIGGERS')) {
+      return [[]];
+    }
+    if (
+      typeof sql === 'string' &&
+      sql.includes('FROM information_schema.ROUTINES')
+    ) {
+      return [[
+        { ROUTINE_NAME: 'position_proc' },
+      ]];
+    }
+    if (typeof sql === 'string' && sql.includes('FROM tbl_employment')) {
+      return [[
+        {
+          company_id: companyId,
+          company_name: 'Acme Co',
+          branch_id: 1,
+          branch_name: 'HQ',
+          department_id: 2,
+          department_name: 'Operations',
+          position_id: positionId,
+          employment_position_id: positionId,
+          senior_empid: null,
+          senior_plan_empid: null,
+          workplace_id: 5,
+          employee_name: 'Tester',
+          user_level: 7,
+          user_level_name: 'Level 7',
+          permission_list: '',
+        },
+      ]];
+    }
+    return [[ ]];
+  };
+
+  try {
+    const { procedures: deniedProcedures } = await listPermittedProcedures({}, companyId, {
+      empid: 'emp-position',
+    });
+    const deniedNames = deniedProcedures.map((p) => p.name);
+    assert.ok(!deniedNames.includes('position_proc'));
+
+    positionId = 9;
+    const { procedures: allowedProcedures } = await listPermittedProcedures({}, companyId, {
+      empid: 'emp-position',
+    });
+    const allowedNames = allowedProcedures.map((p) => p.name);
+    assert.ok(allowedNames.includes('position_proc'));
+  } finally {
+    pool.query = origQuery;
+    await fs.rm(path.join(process.cwd(), 'config', String(companyId)), {
+      recursive: true,
+      force: true,
+    });
+  }
+});
+
 test('listPermittedProcedures hides procedures without visibility rules', async () => {
   const companyId = 6789;
   await writeJsonConfig(companyId, 'transactionForms.json', {

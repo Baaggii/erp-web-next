@@ -22,6 +22,7 @@ const COLUMN_DEFAULT_WIDTHS = {
   branches: 240,
   departments: 240,
   workplaces: 240,
+  positions: 240,
   permissions: 220,
   visibility: 300,
   actions: 120,
@@ -33,6 +34,7 @@ const COLUMN_MIN_WIDTHS = {
   branches: 180,
   departments: 180,
   workplaces: 180,
+  positions: 180,
   permissions: 160,
   visibility: 200,
   actions: 96,
@@ -52,6 +54,7 @@ export default function AllowedReportsConfig() {
   const [branches, setBranches] = useState([]);
   const [departments, setDepartments] = useState([]);
   const [workplaces, setWorkplaces] = useState([]);
+  const [positions, setPositions] = useState([]);
   const [permissions, setPermissions] = useState([]);
   const [isDefault, setIsDefault] = useState(false);
   const [procOptions, setProcOptions] = useState([]);
@@ -61,6 +64,8 @@ export default function AllowedReportsConfig() {
   const [deptCfg, setDeptCfg] = useState({});
   const [workplaceRows, setWorkplaceRows] = useState([]);
   const [workplaceCfg, setWorkplaceCfg] = useState({});
+  const [positionRows, setPositionRows] = useState([]);
+  const [positionCfg, setPositionCfg] = useState({});
   const [permRows, setPermRows] = useState([]);
   const [permCfg, setPermCfg] = useState({});
   const [isLoading, setIsLoading] = useState(true);
@@ -233,6 +238,11 @@ export default function AllowedReportsConfig() {
       .then((data) => setWorkplaceRows(data.rows || []))
       .catch(() => setWorkplaceRows([]));
 
+    fetch('/api/tables/code_position?perPage=500', { credentials: 'include' })
+      .then((res) => (res.ok ? res.json() : { rows: [] }))
+      .then((data) => setPositionRows(data.rows || []))
+      .catch(() => setPositionRows([]));
+
     fetch('/api/display_fields?table=code_department', { credentials: 'include' })
       .then((res) => (res.ok ? res.json() : { idField: null, displayFields: [] }))
       .then(setDeptCfg)
@@ -242,6 +252,11 @@ export default function AllowedReportsConfig() {
       .then((res) => (res.ok ? res.json() : { idField: null, displayFields: [] }))
       .then(setWorkplaceCfg)
       .catch(() => setWorkplaceCfg({ idField: null, displayFields: [] }));
+
+    fetch('/api/display_fields?table=code_position', { credentials: 'include' })
+      .then((res) => (res.ok ? res.json() : { idField: null, displayFields: [] }))
+      .then(setPositionCfg)
+      .catch(() => setPositionCfg({ idField: null, displayFields: [] }));
 
     fetch('/api/tables/user_levels?perPage=500', { credentials: 'include' })
       .then((res) => (res.ok ? res.json() : { rows: [] }))
@@ -379,6 +394,28 @@ export default function AllowedReportsConfig() {
     return map;
   }, [workplaceOptions]);
 
+  const positionOptions = useMemo(() => {
+    const idField = positionCfg?.idField || 'position_id';
+    return positionRows.map((p) => {
+      const val = p[idField] ?? p.position_id ?? p.positionId ?? p.id ?? '';
+      const label = positionCfg?.displayFields?.length
+        ? positionCfg.displayFields
+            .map((f) => p[f])
+            .filter((v) => v !== undefined && v !== null)
+            .join(' - ')
+        : Object.values(p)
+            .filter((v) => v !== undefined && v !== null)
+            .join(' - ');
+      return { value: String(val), label };
+    });
+  }, [positionCfg, positionRows]);
+
+  const positionLabelMap = useMemo(() => {
+    const map = new Map();
+    positionOptions.forEach((p) => map.set(String(p.value), p.label));
+    return map;
+  }, [positionOptions]);
+
   const permOptions = useMemo(() => {
     const idField = permCfg?.idField || 'id';
     return permRows.map((r) => {
@@ -402,11 +439,12 @@ export default function AllowedReportsConfig() {
   }, [permOptions]);
 
   function edit(p) {
-    const info = reports[p] || { branches: [], departments: [], workplaces: [], permissions: [] };
+    const info = reports[p] || { branches: [], departments: [], workplaces: [], positions: [], permissions: [] };
     setProc(p);
     setBranches((info.branches || []).map(String));
     setDepartments((info.departments || []).map(String));
     setWorkplaces((info.workplaces || []).map(String));
+    setPositions((info.positions || []).map(String));
     setPermissions((info.permissions || []).map(String));
   }
 
@@ -415,6 +453,7 @@ export default function AllowedReportsConfig() {
     setBranches([]);
     setDepartments([]);
     setWorkplaces([]);
+    setPositions([]);
     setPermissions([]);
   }
 
@@ -429,6 +468,7 @@ export default function AllowedReportsConfig() {
         branches: branches.map((v) => Number(v)).filter((v) => !Number.isNaN(v)),
         departments: departments.map((v) => Number(v)).filter((v) => !Number.isNaN(v)),
         workplaces: workplaces.map((v) => Number(v)).filter((v) => !Number.isNaN(v)),
+        positions: positions.map((v) => Number(v)).filter((v) => !Number.isNaN(v)),
         permissions: permissions
           .map((v) => Number(v))
           .filter((v) => !Number.isNaN(v)),
@@ -676,6 +716,16 @@ export default function AllowedReportsConfig() {
                       <span style={resizeHandleBarStyle} />
                     </span>
                   </th>
+                  <th style={headerStyle('positions')}>
+                    Positions
+                    <span
+                      aria-hidden="true"
+                      onMouseDown={startColumnResize('positions')}
+                      style={resizeHandleStyle}
+                    >
+                      <span style={resizeHandleBarStyle} />
+                    </span>
+                  </th>
                   <th style={headerStyle('permissions')}>
                     Permissions
                     <span
@@ -710,13 +760,13 @@ export default function AllowedReportsConfig() {
               <tbody>
                 {isLoading ? (
                   <tr>
-                    <td colSpan={8} style={{ padding: '1rem', textAlign: 'center' }}>
+                    <td colSpan={9} style={{ padding: '1rem', textAlign: 'center' }}>
                       Loading…
                     </td>
                   </tr>
                 ) : reportEntries.length === 0 ? (
                   <tr>
-                    <td colSpan={8} style={{ padding: '1rem', textAlign: 'center' }}>
+                    <td colSpan={9} style={{ padding: '1rem', textAlign: 'center' }}>
                       No report access rules configured.
                     </td>
                   </tr>
@@ -725,13 +775,19 @@ export default function AllowedReportsConfig() {
                     const branches = info.branches || [];
                     const departments = info.departments || [];
                     const workplacesList = info.workplaces || [];
+                    const positionsList = info.positions || [];
                     const permissionsList = info.permissions || [];
                     const hasBranches = branches.length > 0;
                     const hasDepartments = departments.length > 0;
                     const hasWorkplaces = workplacesList.length > 0;
+                    const hasPositions = positionsList.length > 0;
                     const hasPermissions = permissionsList.length > 0;
                     const allOpen =
-                      !hasBranches && !hasDepartments && !hasWorkplaces && !hasPermissions;
+                      !hasBranches &&
+                      !hasDepartments &&
+                      !hasWorkplaces &&
+                      !hasPositions &&
+                      !hasPermissions;
                     const labelValue =
                       procLabels[p] || headerMappings?.[p] || '';
                     return (
@@ -764,6 +820,9 @@ export default function AllowedReportsConfig() {
                         <td style={cellStyle('workplaces')}>
                           {renderCollection(workplacesList, workplaceLabelMap)}
                         </td>
+                        <td style={cellStyle('positions')}>
+                          {renderCollection(positionsList, positionLabelMap)}
+                        </td>
                         <td style={cellStyle('permissions')}>
                           {renderPermissions(permissionsList)}
                         </td>
@@ -791,6 +850,11 @@ export default function AllowedReportsConfig() {
                                 hasWorkplaces
                                   ? `${workplacesList.length} workplace${workplacesList.length === 1 ? '' : 's'}`
                                   : 'All workplaces',
+                                hasPositions
+                                  ? `${positionsList.length} position${
+                                      positionsList.length === 1 ? '' : 's'
+                                    }`
+                                  : 'All positions',
                                 hasPermissions
                                   ? `${permissionsList.length} permission level${
                                       permissionsList.length === 1 ? '' : 's'
@@ -964,6 +1028,36 @@ export default function AllowedReportsConfig() {
                 All
               </button>
               <button type="button" onClick={() => setWorkplaces([])}>
+                None
+              </button>
+            </label>
+          </div>
+          <div>
+            <label>
+              Positions:{' '}
+              <select
+                multiple
+                size={8}
+                value={positions}
+                onChange={(e) =>
+                  setPositions(
+                    Array.from(e.target.selectedOptions, (o) => o.value),
+                  )
+                }
+              >
+                {positionOptions.map((p) => (
+                  <option key={p.value} value={p.value}>
+                    {p.label}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                onClick={() => setPositions(positionOptions.map((p) => p.value))}
+              >
+                All
+              </button>
+              <button type="button" onClick={() => setPositions([])}>
                 None
               </button>
             </label>

@@ -68,9 +68,11 @@ export async function listPermittedProcedures(
   const bId = Number(branchId ?? userCtx.branchId);
   const dId = Number(departmentId ?? userCtx.departmentId);
   const wId = Number(userCtx.workplaceId);
+  const pId = Number(userCtx.positionId);
   const hasBranch = !Number.isNaN(bId);
   const hasDept = !Number.isNaN(dId);
   const hasWorkplace = !Number.isNaN(wId);
+  const hasPosition = !Number.isNaN(pId);
 
   const list = [];
   for (const proc of allProcs) {
@@ -87,21 +89,36 @@ export async function listPermittedProcedures(
       const hasWorkplaces = Array.isArray(access.workplaces)
         ? access.workplaces.length > 0
         : false;
+      const hasPositions = Array.isArray(access.positions)
+        ? access.positions.length > 0
+        : false;
       const hasPermissions = Array.isArray(access.permissions)
         ? access.permissions.length > 0
         : false;
 
-      if (!hasBranches && !hasDepartments && !hasWorkplaces && !hasPermissions) {
+      if (
+        !hasBranches &&
+        !hasDepartments &&
+        !hasWorkplaces &&
+        !hasPositions &&
+        !hasPermissions
+      ) {
         // Configuration exists but no visibility rules were defined – hide it entirely.
         continue;
       }
 
-      if (access.branches.length && hasBranch && !access.branches.includes(bId))
-        continue;
-      if (access.departments.length && hasDept && !access.departments.includes(dId))
-        continue;
-      if (access.workplaces.length && hasWorkplace && !access.workplaces.includes(wId))
-        continue;
+      if (access.branches.length) {
+        if (!hasBranch || !access.branches.includes(bId)) continue;
+      }
+      if (access.departments.length) {
+        if (!hasDept || !access.departments.includes(dId)) continue;
+      }
+      if (access.workplaces.length) {
+        if (!hasWorkplace || !access.workplaces.includes(wId)) continue;
+      }
+      if (access.positions.length) {
+        if (!hasPosition || !access.positions.includes(pId)) continue;
+      }
       if (hasPermissions) {
         if (
           userCtx.userLevelId == null ||

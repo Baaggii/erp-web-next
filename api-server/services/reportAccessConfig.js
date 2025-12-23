@@ -32,6 +32,9 @@ function parseEntry(raw = {}) {
     workplaces: Array.isArray(raw.workplaces)
       ? raw.workplaces.map((v) => Number(v)).filter((v) => !Number.isNaN(v))
       : [],
+    positions: Array.isArray(raw.positions)
+      ? raw.positions.map((v) => Number(v)).filter((v) => !Number.isNaN(v))
+      : [],
     permissions: Array.isArray(raw.permissions)
       ? raw.permissions.map((v) => Number(v)).filter((v) => !Number.isNaN(v))
       : [],
