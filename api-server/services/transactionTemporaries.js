@@ -1467,6 +1467,7 @@ export async function promoteTemporarySubmission(
       err.status = 404;
       throw err;
     }
+    const isRejected = row.status === 'rejected';
     const allowedReviewer =
       normalizeEmpId(row.plan_senior_empid) === normalizedReviewer ||
       normalizeEmpId(row.created_by) === normalizedReviewer;
@@ -1475,7 +1476,12 @@ export async function promoteTemporarySubmission(
       err.status = 403;
       throw err;
     }
-    if (row.status !== 'pending') {
+    if (row.status !== 'pending' && !isRejected) {
+      const err = new Error('Temporary submission already reviewed');
+      err.status = 409;
+      throw err;
+    }
+    if (isRejected && normalizeEmpId(row.created_by) !== normalizedReviewer) {
       const err = new Error('Temporary submission already reviewed');
       err.status = 409;
       throw err;
