@@ -533,6 +533,22 @@ function InlineTransactionTable(
       ) {
         target.combinationTargetColumn = source.combinationTargetColumn;
       }
+      if (
+        !target.filterColumn &&
+        typeof source.filterColumn === 'string' &&
+        source.filterColumn.trim()
+      ) {
+        target.filterColumn = source.filterColumn;
+      }
+      if (target.filterValue === undefined || target.filterValue === null || target.filterValue === '') {
+        const rawFilterValue = source.filterValue ?? source.filter_value;
+        if (rawFilterValue !== undefined && rawFilterValue !== null) {
+          const normalized = String(rawFilterValue).trim();
+          if (normalized) {
+            target.filterValue = normalized;
+          }
+        }
+      }
     };
 
     Object.entries(columnCaseMap || {}).forEach(([lower, column]) => {
