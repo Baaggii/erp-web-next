@@ -5799,6 +5799,8 @@ const TableManager = forwardRef(function TableManager({
   const showReviewActions = canReviewTemporary && temporaryScope === 'review';
   const showCreatorActions = canCreateTemporary && temporaryScope === 'created';
   const isTemporaryReviewMode = canReviewTemporary && temporaryScope === 'review';
+  const isTemporaryReadOnlyMode =
+    isTemporaryReviewMode && requestType === 'temporary-promote';
   const temporarySaveEnabled =
     canSaveTemporaryDraft &&
     hasTransactionSenior &&
@@ -7024,7 +7026,7 @@ const TableManager = forwardRef(function TableManager({
         autoFillSession={autoFillSession}
         scope="forms"
         allowTemporarySave={temporarySaveEnabled}
-        readOnly={isTemporaryReviewMode}
+        readOnly={isTemporaryReadOnlyMode}
         isAdding={isAdding}
         canPost={canPostTransactions}
         forceEditable={guardOverridesActive}
