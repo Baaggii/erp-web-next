@@ -1990,6 +1990,22 @@ export default function PosTransactionsPage() {
     if (workplaceId != null && String(workplaceId).trim() !== '') {
       params.set('workplaceId', workplaceId);
     }
+    const workplacePositionId =
+      session?.workplace_position_id ??
+      session?.workplacePositionId ??
+      null;
+    if (workplacePositionId != null && String(workplacePositionId).trim() !== '') {
+      params.set('workplacePositionId', workplacePositionId);
+    }
+    const positionId =
+      session?.employment_position_id ??
+      session?.position_id ??
+      session?.position ??
+      user?.position ??
+      null;
+    if (positionId != null && String(positionId).trim() !== '') {
+      params.set('positionId', positionId);
+    }
     fetch(`/api/pos_txn_config?${params.toString()}`, { credentials: 'include' })
       .then((res) => (res.ok ? res.json() : null))
       .then((cfg) => {

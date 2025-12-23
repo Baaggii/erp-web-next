@@ -41,9 +41,9 @@ function mockPosSessionLogger() {
 test('login prompts for company selection when companyId undefined', async () => {
   const restorePos = mockPosSessionLogger();
   const sessions = [
-    { company_id: 0, company_name: 'Alpha', branch_id: 1, department_id: 1, position_id: 1, position: 'P', senior_empid: null, senior_plan_empid: null, employee_name: 'Emp0', user_level: 1, user_level_name: 'Admin', permission_list: '', workplace_session_id: null },
-    { company_id: 0, company_name: 'Alpha', branch_id: 2, department_id: 2, position_id: 2, position: 'Q', senior_empid: null, senior_plan_empid: null, employee_name: 'Emp0', user_level: 1, user_level_name: 'Admin', permission_list: '', workplace_session_id: 10 },
-    { company_id: 1, company_name: 'Beta', branch_id: 1, department_id: 1, position_id: 1, position: 'P', senior_empid: null, senior_plan_empid: null, employee_name: 'Emp1', user_level: 1, user_level_name: 'Admin', permission_list: '', workplace_session_id: 20 },
+    { company_id: 0, company_name: 'Alpha', branch_id: 1, department_id: 1, position_id: 1, position: 'P', senior_empid: null, senior_plan_empid: null, employee_name: 'Emp0', user_level: 1, user_level_name: 'Admin', permission_list: '', workplace_id: 5, workplace_position_id: 500 },
+    { company_id: 0, company_name: 'Alpha', branch_id: 2, department_id: 2, position_id: 2, position: 'Q', senior_empid: null, senior_plan_empid: null, employee_name: 'Emp0', user_level: 1, user_level_name: 'Admin', permission_list: '', workplace_id: 6, workplace_position_id: 600 },
+    { company_id: 1, company_name: 'Beta', branch_id: 1, department_id: 1, position_id: 1, position: 'P', senior_empid: null, senior_plan_empid: null, employee_name: 'Emp1', user_level: 1, user_level_name: 'Admin', permission_list: '', workplace_id: 7, workplace_position_id: 700 },
   ];
   const restore = mockPoolSequential([
     [[{ id: 1, empid: 1, password: 'hashed' }]],
@@ -67,8 +67,8 @@ test('login prompts for company selection when companyId undefined', async () =>
 test('login succeeds when companyId is 0', async () => {
   const restorePos = mockPosSessionLogger();
   const sessions = [
-    { company_id: 0, company_name: 'Alpha', branch_id: 1, department_id: 1, position_id: 1, position: 'P', senior_empid: null, senior_plan_empid: null, employee_name: 'Emp0', user_level: 1, user_level_name: 'Admin', permission_list: '', workplace_session_id: null },
-    { company_id: 1, company_name: 'Beta', branch_id: 1, department_id: 1, position_id: 1, position: 'P', senior_empid: null, senior_plan_empid: null, employee_name: 'Emp1', user_level: 1, user_level_name: 'Admin', permission_list: '', workplace_session_id: 30 },
+    { company_id: 0, company_name: 'Alpha', branch_id: 1, department_id: 1, position_id: 1, position: 'P', senior_empid: null, senior_plan_empid: null, employee_name: 'Emp0', user_level: 1, user_level_name: 'Admin', permission_list: '', workplace_id: 8, workplace_position_id: 800 },
+    { company_id: 1, company_name: 'Beta', branch_id: 1, department_id: 1, position_id: 1, position: 'P', senior_empid: null, senior_plan_empid: null, employee_name: 'Emp1', user_level: 1, user_level_name: 'Admin', permission_list: '', workplace_id: 9, workplace_position_id: 900 },
   ];
   const restore = mockPoolSequential([
     [[{ id: 1, empid: 1, password: 'hashed' }]],
@@ -90,7 +90,7 @@ test('login succeeds when companyId is 0', async () => {
 test('login succeeds without workplace assignments', async () => {
   const restorePos = mockPosSessionLogger();
   const sessions = [
-    { company_id: 2, company_name: 'Gamma', branch_id: 1, department_id: 1, position_id: 1, position: 'P', senior_empid: null, senior_plan_empid: null, employee_name: 'Emp2', user_level: 1, user_level_name: 'Admin', permission_list: '', workplace_session_id: null },
+    { company_id: 2, company_name: 'Gamma', branch_id: 1, department_id: 1, position_id: 1, position: 'P', senior_empid: null, senior_plan_empid: null, employee_name: 'Emp2', user_level: 1, user_level_name: 'Admin', permission_list: '' },
   ];
   const restore = mockPoolSequential([
     [[{ id: 1, empid: 1, password: 'hashed' }]],
@@ -105,6 +105,6 @@ test('login succeeds without workplace assignments', async () => {
   assert.equal(res.code, 200);
   assert.equal(res.body.company, 2);
   assert.equal(res.body.workplace, null);
-  assert.equal(res.body.session.workplace_session_id, null);
+  assert.equal(res.body.session.workplace_position_id, null);
   assert.deepEqual(res.body.session.workplace_assignments, []);
 });

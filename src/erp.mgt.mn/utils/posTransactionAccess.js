@@ -28,6 +28,23 @@ function matchesScope(list, value) {
   return list.includes(normalizedValue);
 }
 
+function matchesPositions(list, positionValue, workplacePositionValue) {
+  if (!Array.isArray(list) || list.length === 0) return true;
+  if (workplacePositionValue !== null && list.includes(workplacePositionValue)) {
+    return true;
+  }
+  if (Array.isArray(positionValue)) {
+    const normalizedValues = positionValue
+      .map((item) => normalizeAccessValue(item))
+      .filter((val) => val !== null);
+    if (normalizedValues.length === 0) return false;
+    return normalizedValues.some((val) => list.includes(val));
+  }
+  const normalizedValue = normalizeAccessValue(positionValue);
+  if (normalizedValue === null) return false;
+  return list.includes(normalizedValue);
+}
+
 export function hasPosTransactionAccess(info, branchId, departmentId, options = {}) {
   if (!info || typeof info !== 'object') return true;
   const branchValue = normalizeAccessValue(branchId);

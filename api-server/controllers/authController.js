@@ -81,9 +81,7 @@ export async function login(req, res, next) {
 
     const pickDefaultSession = (items = []) => {
       if (!Array.isArray(items) || items.length === 0) return null;
-      const withWorkplace = items.find(
-        (item) => item?.workplace_session_id != null,
-      );
+      const withWorkplace = items.find((item) => item?.workplace_id != null);
       return withWorkplace ?? items[0];
     };
 
@@ -253,6 +251,7 @@ export async function login(req, res, next) {
       workplace_session_id: sessionPayload?.workplace_session_id ?? null,
       workplace_session_ids: sessionPayload?.workplace_session_ids ?? [],
       workplace_name: sessionPayload?.workplace_name ?? null,
+      workplace_position_id: sessionPayload?.workplace_position_id ?? null,
       session: sessionPayload,
       permissions,
       warnings,
@@ -291,11 +290,7 @@ export async function getProfile(req, res) {
 
   const workplaceAssignments = session
     ? sessions
-        .filter(
-          (s) =>
-            s.company_id === session.company_id &&
-            s.workplace_session_id != null,
-        )
+        .filter((s) => s && s.company_id === session.company_id && s.workplace_id != null)
         .map(
           ({
             branch_id,
@@ -304,7 +299,7 @@ export async function getProfile(req, res) {
             department_name,
             workplace_id,
             workplace_name,
-            workplace_session_id,
+            workplace_position_id,
           }) => ({
             branch_id: branch_id ?? null,
             branch_name: branch_name ?? null,
@@ -312,7 +307,7 @@ export async function getProfile(req, res) {
             department_name: department_name ?? null,
             workplace_id: workplace_id ?? null,
             workplace_name: workplace_name ?? null,
-            workplace_session_id: workplace_session_id ?? null,
+            workplace_position_id: workplace_position_id ?? null,
           }),
         )
     : [];
@@ -356,7 +351,7 @@ export async function getProfile(req, res) {
       workplace: workplace_id ?? null,
     workplace_session_id: sessionPayload?.workplace_session_id ?? null,
     workplace_session_ids: sessionPayload?.workplace_session_ids ?? [],
-    workplace_name: workplace_name ?? null,
+    workplace_position_id: workplace_position_id ?? null,
     session: sessionPayload,
     permissions,
   });
@@ -399,7 +394,7 @@ export async function refresh(req, res) {
           .filter(
             (s) =>
               s.company_id === session.company_id &&
-              s.workplace_session_id != null,
+              s.workplace_id != null,
           )
           .map(
             ({
@@ -409,7 +404,7 @@ export async function refresh(req, res) {
               department_name,
               workplace_id,
               workplace_name,
-              workplace_session_id,
+              workplace_position_id,
             }) => ({
               branch_id: branch_id ?? null,
               branch_name: branch_name ?? null,
@@ -417,7 +412,7 @@ export async function refresh(req, res) {
               department_name: department_name ?? null,
               workplace_id: workplace_id ?? null,
               workplace_name: workplace_name ?? null,
-              workplace_session_id: workplace_session_id ?? null,
+              workplace_position_id: workplace_position_id ?? null,
             }),
           )
       : [];
@@ -442,6 +437,7 @@ export async function refresh(req, res) {
       senior_plan_empid,
       workplace_id,
       workplace_name,
+      workplace_position_id,
     } = sessionPayload || {};
     const resolvedPosition = position_id ?? position ?? null;
     const newPayload = {
@@ -481,9 +477,10 @@ export async function refresh(req, res) {
       senior_empid,
       senior_plan_empid,
       workplace: workplace_id ?? null,
+      workplace_name: workplace_name ?? null,
       workplace_session_id: sessionPayload?.workplace_session_id ?? null,
       workplace_session_ids: sessionPayload?.workplace_session_ids ?? [],
-      workplace_name: workplace_name ?? null,
+      workplace_position_id: workplace_position_id ?? null,
       session: sessionPayload,
       permissions,
     });

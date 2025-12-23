@@ -38,6 +38,23 @@ function matchesScope(list, value) {
   return list.includes(normalizedValue);
 }
 
+function matchesPositions(list, positionValue, workplacePositionValue) {
+  if (!Array.isArray(list) || list.length === 0) return true;
+  if (workplacePositionValue !== null && list.includes(workplacePositionValue)) {
+    return true;
+  }
+  if (Array.isArray(positionValue)) {
+    const normalized = positionValue
+      .map((item) => normalizeAccessValue(item))
+      .filter((val) => val !== null);
+    if (normalized.length === 0) return false;
+    return normalized.some((val) => list.includes(val));
+  }
+  const normalizedPosition = normalizeAccessValue(positionValue);
+  if (normalizedPosition === null) return false;
+  return list.includes(normalizedPosition);
+}
+
 function normalizeStoredAccessList(list) {
   if (!Array.isArray(list) || list.length === 0) return [];
   const normalized = [];

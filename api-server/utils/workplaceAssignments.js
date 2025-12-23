@@ -23,27 +23,40 @@ export function normalizeWorkplaceAssignments(assignments = []) {
 
   assignments.forEach((assignment) => {
     if (!assignment || typeof assignment !== 'object') return;
-    const workplaceId = normalizeNumericId(assignment.workplace_id);
+    const workplaceId = normalizeNumericId(
+      assignment.workplace_id ?? assignment.workplaceId,
+    );
+    const workplacePositionId = normalizeNumericId(
+      assignment.workplace_position_id ?? assignment.workplacePositionId,
+    );
     const rawSessionId =
-      assignment.workplace_session_id !== undefined
-        ? assignment.workplace_session_id
-        : assignment.workplaceSessionId;
+      assignment.workplace_session_id ??
+      assignment.workplaceSessionId ??
+      workplacePositionId ??
+      assignment.workplace_id ??
+      assignment.workplaceId;
     const workplaceSessionId = normalizeNumericId(rawSessionId);
 
-    if (workplaceSessionId === null || workplaceId === null) return;
+    if (workplaceId === null && workplaceSessionId === null) return;
 
-    const key = `${workplaceId ?? ''}|${workplaceSessionId}`;
+    const key = `${workplaceId ?? 'null'}|${workplaceSessionId ?? 'null'}`;
     if (seen.has(key)) return;
     seen.add(key);
 
     const normalizedAssignment = {
       ...assignment,
       workplace_id: workplaceId,
-      workplace_session_id: workplaceSessionId,
+      workplace_session_id:
+        workplaceSessionId ?? workplacePositionId ?? workplaceId,
     };
+    if (workplacePositionId !== null) {
+      normalizedAssignment.workplace_position_id = workplacePositionId;
+    }
     normalized.push(normalizedAssignment);
-    if (!sessionIds.includes(workplaceSessionId)) {
-      sessionIds.push(workplaceSessionId);
+    const resolvedSessionId =
+      normalizedAssignment.workplace_session_id ?? workplaceId;
+    if (resolvedSessionId !== null && !sessionIds.includes(resolvedSessionId)) {
+      sessionIds.push(resolvedSessionId);
     }
   });
 
