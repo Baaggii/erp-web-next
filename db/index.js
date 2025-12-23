@@ -7955,6 +7955,14 @@ async function getPosSessionColumnInfo() {
       exists: true,
       hasDeviceUuid: lower.has("device_uuid"),
       hasCurrentUserId: lower.has("current_user_id"),
+      hasMerchantTin: lower.has("merchant_tin"),
+      hasDepartmentId: lower.has("department_id"),
+      hasWorkplaceId: lower.has("workplace_id"),
+      hasSeniorId: lower.has("senior_id"),
+      hasPlanSeniorId: lower.has("plan_senior_id"),
+      hasPosNo: lower.has("pos_no"),
+      hasDeviceMac: lower.has("device_mac"),
+      hasLocation: lower.has("location"),
     };
   } catch (err) {
     if (err?.code === "ER_NO_SUCH_TABLE") {
@@ -7962,6 +7970,14 @@ async function getPosSessionColumnInfo() {
         exists: false,
         hasDeviceUuid: false,
         hasCurrentUserId: false,
+        hasMerchantTin: false,
+        hasDepartmentId: false,
+        hasWorkplaceId: false,
+        hasSeniorId: false,
+        hasPlanSeniorId: false,
+        hasPosNo: false,
+        hasDeviceMac: false,
+        hasLocation: false,
       };
     } else {
       throw err;
@@ -7997,62 +8013,108 @@ export async function logPosSessionStart(
     sessionUuid,
     companyId,
     branchId,
-    merchantId,
+    departmentId = null,
+    workplaceId = null,
+    merchantTin = null,
     posNo,
     deviceMac,
     deviceUuid = null,
     location = {},
     startedAt = new Date(),
     currentUserId = null,
+    seniorId = null,
+    planSeniorId = null,
   } = {},
   conn = pool,
 ) {
   const info = await getPosSessionColumnInfo();
   if (!info.exists || !sessionUuid) return null;
-  const cols = [
-    "session_uuid",
-    "company_id",
-    "branch_id",
-    "merchant_id",
-    "pos_no",
-    "device_mac",
-    "location",
-    "started_at",
-  ];
-  const params = [
-    sessionUuid,
-    companyId ?? 0,
-    branchId ?? 0,
-    merchantId ?? 0,
-    posNo ?? "unknown",
-    normalizeDeviceMac(deviceMac),
-    JSON.stringify(normalizePosSessionLocation(location)),
-    normalizeDateTimeInput(startedAt) ?? new Date(),
-  ];
+  const cols = ["session_uuid", "company_id", "branch_id"];
+  const params = [sessionUuid, companyId ?? 0, branchId ?? 0];
+  if (info.hasDepartmentId) {
+    cols.push("department_id");
+    params.push(departmentId ?? null);
+  }
+  if (info.hasWorkplaceId) {
+    cols.push("workplace_id");
+    params.push(workplaceId ?? null);
+  }
+  if (info.hasMerchantTin) {
+    cols.push("merchant_tin");
+    params.push(merchantTin ?? null);
+  }
+  if (info.hasPosNo) {
+    const normalizedPosNo =
+      posNo === undefined || posNo === null ? null : String(posNo).trim() || null;
+    cols.push("pos_no");
+    params.push(normalizedPosNo);
+  }
   if (info.hasDeviceUuid) {
     cols.push("device_uuid");
     params.push(deviceUuid ?? null);
+  }
+  if (info.hasDeviceMac) {
+    cols.push("device_mac");
+    params.push(normalizeDeviceMac(deviceMac));
+  }
+  if (info.hasLocation) {
+    cols.push("location");
+    params.push(JSON.stringify(normalizePosSessionLocation(location)));
+  }
+  cols.push("started_at");
+  params.push(normalizeDateTimeInput(startedAt) ?? new Date());
+  if (info.hasDeviceUuid) {
+    // already added above; keep placeholder alignment
   }
   if (info.hasCurrentUserId) {
     cols.push("current_user_id");
     params.push(currentUserId ?? null);
   }
+  if (info.hasSeniorId) {
+    cols.push("senior_id");
+    params.push(seniorId ?? null);
+  }
+  if (info.hasPlanSeniorId) {
+    cols.push("plan_senior_id");
+    params.push(planSeniorId ?? null);
+  }
+
   const placeholders = cols.map(() => "?").join(", ");
   const updateCols = [
     "company_id = VALUES(company_id)",
     "branch_id = VALUES(branch_id)",
-    "merchant_id = VALUES(merchant_id)",
-    "pos_no = VALUES(pos_no)",
-    "device_mac = VALUES(device_mac)",
-    "location = VALUES(location)",
     "started_at = VALUES(started_at)",
     "ended_at = NULL",
   ];
+  if (info.hasDepartmentId) {
+    updateCols.push("department_id = VALUES(department_id)");
+  }
+  if (info.hasWorkplaceId) {
+    updateCols.push("workplace_id = VALUES(workplace_id)");
+  }
+  if (info.hasMerchantTin) {
+    updateCols.push("merchant_tin = VALUES(merchant_tin)");
+  }
+  if (info.hasPosNo) {
+    updateCols.push("pos_no = VALUES(pos_no)");
+  }
   if (info.hasDeviceUuid) {
     updateCols.push("device_uuid = VALUES(device_uuid)");
   }
+  if (info.hasDeviceMac) {
+    updateCols.push("device_mac = VALUES(device_mac)");
+  }
+  if (info.hasLocation) {
+    updateCols.push("location = VALUES(location)");
+  }
   if (info.hasCurrentUserId) {
     updateCols.push("current_user_id = VALUES(current_user_id)");
+  }
+  if (info.hasSeniorId) {
+    updateCols.push("senior_id = VALUES(senior_id)");
+  }
+  if (info.hasPlanSeniorId) {
+    updateCols.push("plan_senior_id = VALUES(plan_senior_id)");
   }
   const sql = `INSERT INTO pos_session (${cols.join(
     ", ",

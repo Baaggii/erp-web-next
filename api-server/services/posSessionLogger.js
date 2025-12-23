@@ -74,6 +74,18 @@ async function recordLoginSessionImpl(req, sessionPayload, user) {
         req.headers?.['x-device-uuid'] ??
         req.headers?.['x-device-id'],
     ) || null;
+  const seniorId = normalizeText(
+    sessionPayload?.senior_empid ??
+      sessionPayload?.seniorEmpid ??
+      req.body?.senior_empid ??
+      req.body?.seniorEmpid,
+  );
+  const planSeniorId = normalizeText(
+    sessionPayload?.senior_plan_empid ??
+      sessionPayload?.seniorPlanEmpid ??
+      req.body?.senior_plan_empid ??
+      req.body?.seniorPlanEmpid,
+  );
   const location = parseLocation(
     req.body?.location ??
       req.body?.device_location ??
@@ -94,6 +106,8 @@ async function recordLoginSessionImpl(req, sessionPayload, user) {
     deviceUuid,
     location,
     currentUserId: user?.id ?? null,
+    seniorId,
+    planSeniorId,
   });
 
   return {
