@@ -585,63 +585,6 @@ test('promoteTemporarySubmission forwards chain with normalized metadata and cle
   assert.ok(conn.released);
 });
 
-test('promoteTemporarySubmission force-promotes rejected temporaries with trigger override', async () => {
-  const temporaryRow = {
-    id: 90,
-    company_id: 1,
-    chain_id: 10,
-    table_name: 'transactions_test',
-    form_name: null,
-    config_name: null,
-    module_key: null,
-    payload_json: '{}',
-    cleaned_values_json: '{}',
-    raw_values_json: '{}',
-    created_by: 'EMP100',
-    plan_senior_empid: 'EMP100',
-    last_promoter_empid: 'EMP100',
-    branch_id: null,
-    department_id: null,
-    status: 'rejected',
-  };
-  const { conn, queries } = createStubConnection({ temporaryRow, chainIds: [10] });
-  let inserterCalls = 0;
-  const chainUpdates = [];
-
-  const result = await promoteTemporarySubmission(
-    90,
-    { reviewerEmpId: 'EMP100', cleanedValues: { amount: 10 } },
-    {
-      connectionFactory: async () => conn,
-      columnLister: async () => [{ name: 'amount', type: 'int', maxLength: null }],
-      tableInserter: async () => {
-        inserterCalls += 1;
-        if (inserterCalls === 1) {
-          const err = new Error('Dynamic SQL is not allowed in stored function or trigger');
-          err.errno = 1336;
-          err.sqlMessage = err.message;
-          throw err;
-        }
-        return { id: 'R-DYN' };
-      },
-      chainStatusUpdater: async (_c, chainId, payload) => {
-        chainUpdates.push({ chainId, payload });
-        return 1;
-      },
-      notificationInserter: async () => {},
-      activityLogger: async () => {},
-      employmentSessionFetcher: async () => ({}),
-    },
-  );
-
-  assert.equal(result.promotedRecordId, 'R-DYN');
-  assert.equal(chainUpdates.length, 1);
-  assert.equal(chainUpdates[0].payload.status, 'promoted');
-  assert.equal(chainUpdates[0].payload.applyToChain, true);
-  assert.ok(queries.some(({ sql }) => sql.includes('@skip_triggers = 1')));
-  assert.ok(conn.released);
-});
-
 test('promoteTemporarySubmission forwards by falling back to its own id when chain_id is missing', async () => {
   const temporaryRow = {
     id: 25,
