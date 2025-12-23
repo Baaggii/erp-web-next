@@ -29,18 +29,10 @@ export async function login(req, res, next) {
     }
 
     const effectiveDate = new Date();
-    let sessions;
-    try {
-      sessions = await getEmploymentSessions(empid, {
-        effectiveDate,
-        includeDiagnostics: true,
-      });
-    } catch (err) {
-      console.error('Failed to fetch employment sessions during login', err);
-      const error = new Error('Failed to load employment sessions');
-      error.status = err?.status || 500;
-      throw error;
-    }
+    const sessions = await getEmploymentSessions(empid, {
+      effectiveDate,
+      includeDiagnostics: true,
+    });
     if (!Array.isArray(sessions) || sessions.length === 0) {
       return res
         .status(403)
@@ -205,9 +197,6 @@ export async function login(req, res, next) {
       }
     } catch (err) {
       console.error('Failed to log POS session', err);
-      const error = new Error('Failed to record POS session');
-      error.status = err?.status || 500;
-      throw error;
     }
     res.json({
       id: user.id,
