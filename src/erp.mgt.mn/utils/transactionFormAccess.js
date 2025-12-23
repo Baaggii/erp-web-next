@@ -27,9 +27,43 @@ function matchesScope(list, value) {
   return list.includes(value);
 }
 
-function resolveWorkplacePosition(options, workplaceValue) {
-  if (!options || typeof options !== 'object') return null;
-  const workplaces = Array.isArray(workplaceValue) ? workplaceValue : [workplaceValue];
+function collectWorkplaces(workplaceValue, options) {
+  const ids = [];
+  const addWorkplace = (wp) => {
+    const normalized = normalizeAccessValue(wp);
+    if (normalized !== null && !ids.includes(normalized)) {
+      ids.push(normalized);
+    }
+  };
+
+  const rawWorkplaces = Array.isArray(workplaceValue) ? workplaceValue : [workplaceValue];
+  rawWorkplaces.forEach((wp) => addWorkplace(wp));
+
+  if (options && typeof options === 'object') {
+    if (Array.isArray(options.workplaces)) {
+      options.workplaces.forEach((wp) => addWorkplace(wp));
+    }
+    if (Array.isArray(options.workplacePositions)) {
+      options.workplacePositions.forEach((entry) => {
+        addWorkplace(entry?.workplaceId ?? entry?.workplace_id ?? entry?.workplace ?? entry?.id);
+      });
+    }
+  }
+
+  return ids;
+}
+
+function resolveWorkplacePositions(options, workplaceValue) {
+  if (!options || typeof options !== 'object') return [];
+  const workplaces = collectWorkplaces(workplaceValue, options);
+  const resolved = [];
+  const addPosition = (position) => {
+    const normalized = normalizeAccessValue(position);
+    if (normalized !== null && !resolved.includes(normalized)) {
+      resolved.push(normalized);
+    }
+  };
+
   for (const wp of workplaces) {
     const normalizedWorkplace = normalizeAccessValue(wp);
     if (normalizedWorkplace === null) continue;
@@ -41,8 +75,7 @@ function resolveWorkplacePosition(options, workplaceValue) {
     ];
     for (const map of mapCandidates) {
       if (map && typeof map === 'object' && !Array.isArray(map)) {
-        const mappedPosition = normalizeAccessValue(map[normalizedWorkplace]);
-        if (mappedPosition !== null) return mappedPosition;
+        addPosition(map[normalizedWorkplace]);
       }
     }
 
@@ -57,36 +90,33 @@ function resolveWorkplacePosition(options, workplaceValue) {
           entry?.workplaceId ?? entry?.workplace_id ?? entry?.workplace ?? entry?.id,
         );
         if (entryWorkplace !== normalizedWorkplace) continue;
-        const positionId = normalizeAccessValue(
+        addPosition(
           entry?.positionId ??
             entry?.position_id ??
             entry?.position ??
             entry?.workplacePositionId ??
             entry?.workplace_position_id,
         );
-        if (positionId !== null) return positionId;
       }
     }
 
-    const directPosition = normalizeAccessValue(
+    addPosition(
       options.workplacePositionId ??
         options.workplacePosition ??
         options.workplace_position_id ??
         options.workplace_position,
     );
-    if (directPosition !== null) return directPosition;
   }
-  return null;
+
+  return resolved;
 }
 
 function isPositionAllowed(allowedPositions, positionValue, workplaceValue, options) {
   if (!Array.isArray(allowedPositions) || allowedPositions.length === 0) return true;
 
   if (workplaceValue !== null && workplaceValue !== undefined) {
-    const workplacePosition = resolveWorkplacePosition(options, workplaceValue);
-    if (workplacePosition !== null) {
-      return matchesScope(allowedPositions, workplacePosition);
-    }
+    const workplacePositions = resolveWorkplacePositions(options, workplaceValue);
+    return matchesScope(allowedPositions, workplacePositions);
   }
 
   return matchesScope(allowedPositions, positionValue);
