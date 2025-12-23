@@ -39,28 +39,21 @@ export default function normalizeEmploymentSession(session) {
     const workplaceId = normalizeNumericId(
       assignment.workplace_id ?? assignment.workplaceId,
     );
-    const workplacePositionId = normalizeNumericId(
-      assignment.workplace_position_id ?? assignment.workplacePositionId,
-    );
     const sessionId = normalizeNumericId(
       assignment.workplace_session_id ??
         assignment.workplaceSessionId ??
-        workplacePositionId ??
         assignment.workplace_id ??
         assignment.workplaceId,
     );
-    if (workplaceId === null && sessionId === null) {
+    if (workplaceId === null || sessionId === null) {
       return list;
     }
 
     const normalizedAssignment = {
       ...assignment,
       workplace_id: workplaceId,
-      workplace_session_id: sessionId ?? workplacePositionId ?? workplaceId,
+      workplace_session_id: sessionId,
     };
-    if (workplacePositionId !== null) {
-      normalizedAssignment.workplace_position_id = workplacePositionId;
-    }
     list.push(normalizedAssignment);
     return list;
   }, []);
@@ -72,14 +65,9 @@ export default function normalizeEmploymentSession(session) {
   const normalizedWorkplaceId = normalizeNumericId(
     session.workplace_id ?? session.workplaceId,
   );
-  const normalizedPositionId = normalizeNumericId(
-    session.workplace_position_id ?? session.workplacePositionId,
-  );
   const normalizedSessionId = normalizeNumericId(
     session.workplace_session_id ??
       session.workplaceSessionId ??
-      session.workplace_position_id ??
-      session.workplacePositionId ??
       session.workplace_id ??
       session.workplaceId,
   );
@@ -92,30 +80,13 @@ export default function normalizeEmploymentSession(session) {
 
   const fallbackSessionId =
     normalizedSessionId ??
-    (assignmentSessionIds.length ? assignmentSessionIds[0] : null) ??
-    normalizedPositionId ??
-    fallbackWorkplaceId ??
-    null;
-
-  const fallbackPositionId =
-    normalizedPositionId ??
-    normalizedAssignments.find((assignment) => assignment.workplace_position_id != null)
-      ?.workplace_position_id ??
-    null;
-  const combinedSessionIds = [...assignmentSessionIds];
-  if (
-    fallbackSessionId !== null &&
-    !combinedSessionIds.includes(fallbackSessionId)
-  ) {
-    combinedSessionIds.push(fallbackSessionId);
-  }
+    (assignmentSessionIds.length ? assignmentSessionIds[0] : null);
 
   return {
     ...session,
     workplace_id: fallbackWorkplaceId,
-    workplace_position_id: fallbackPositionId,
     workplace_session_id: fallbackSessionId,
     workplace_assignments: normalizedAssignments,
-    workplace_session_ids: combinedSessionIds,
+    workplace_session_ids: assignmentSessionIds,
   };
 }
