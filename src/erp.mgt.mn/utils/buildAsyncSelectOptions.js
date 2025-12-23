@@ -99,10 +99,27 @@ async function fetchRelationMapForTable(table) {
         const refTable = entry?.REFERENCED_TABLE_NAME;
         const refColumn = entry?.REFERENCED_COLUMN_NAME;
         if (!col || !refTable || !refColumn) return;
-        map[col.toLowerCase()] = {
+        const normalized = {
           table: refTable,
           column: refColumn,
         };
+        if (entry?.idField) {
+          normalized.idField = entry.idField;
+        }
+        if (
+          entry?.combinationSourceColumn &&
+          entry?.combinationTargetColumn
+        ) {
+          normalized.combinationSourceColumn = entry.combinationSourceColumn;
+          normalized.combinationTargetColumn = entry.combinationTargetColumn;
+        }
+        if (entry?.filterColumn) {
+          normalized.filterColumn = entry.filterColumn;
+        }
+        if (entry?.filterValue !== undefined && entry.filterValue !== null) {
+          normalized.filterValue = entry.filterValue;
+        }
+        map[col.toLowerCase()] = normalized;
       });
     }
     relationMapCache.set(cacheKey, map);
@@ -113,12 +130,32 @@ async function fetchRelationMapForTable(table) {
   }
 }
 
-async function fetchDisplayConfig(table) {
+async function fetchDisplayConfig(table, options = {}) {
   if (!table) return {};
-  const cacheKey = table.toLowerCase();
+  const filterColumn =
+    options.filterColumn || options.column || options.filter || options.filter_column || '';
+  const filterValue =
+    options.filterValue ?? options.value ?? options.filter_value ?? options.filter ?? '';
+  const preferredIdField = options.preferredIdField || options.idField || options.id_field || '';
+  const cacheKey = [
+    table.toLowerCase(),
+    filterColumn,
+    String(filterValue ?? ''),
+    preferredIdField,
+  ]
+    .filter((part) => part !== undefined)
+    .join('|');
   if (displayConfigCache.has(cacheKey)) return displayConfigCache.get(cacheKey);
   try {
-    const res = await fetch(`/api/display_fields?table=${encodeURIComponent(table)}`, {
+    const params = new URLSearchParams({ table });
+    if (filterColumn) params.set('filterColumn', filterColumn);
+    if (filterColumn && filterValue !== undefined && filterValue !== null) {
+      params.set('filterValue', String(filterValue).trim());
+    }
+    if (preferredIdField) {
+      params.set('idField', preferredIdField);
+    }
+    const res = await fetch(`/api/display_fields?${params.toString()}`, {
       credentials: 'include',
     });
     if (!res.ok) {
@@ -144,6 +181,9 @@ async function fetchDisplayConfig(table) {
       if (deduped.length > 0) {
         normalized.indexFields = deduped;
       }
+    }
+    if (Array.isArray(cfg?.filters)) {
+      normalized.filters = cfg.filters;
     }
     displayConfigCache.set(cacheKey, normalized);
     return normalized;
@@ -180,14 +220,19 @@ async function fetchNestedLabelMap(nestedRel, { company }) {
     nestedRel.table.toLowerCase(),
     nestedRel.column.toLowerCase(),
     company ?? '',
+    nestedRel.idField || nestedRel.id_field || '',
   ].join('|');
   if (nestedLabelCache.has(cacheKey)) return nestedLabelCache.get(cacheKey);
 
   try {
-    const cfg = await fetchDisplayConfig(nestedRel.table);
-    const tenantInfo = await fetchTenantInfo(nestedRel.table);
-    const isShared = tenantInfo?.isShared ?? tenantInfo?.is_shared ?? false;
-    const tenantKeys = getTenantKeyList(tenantInfo);
+  const cfg = await fetchDisplayConfig(nestedRel.table, {
+    column: nestedRel.filterColumn,
+    value: nestedRel.filterValue,
+    preferredIdField: nestedRel.idField || nestedRel.id_field || nestedRel.column,
+  });
+  const tenantInfo = await fetchTenantInfo(nestedRel.table);
+  const isShared = tenantInfo?.isShared ?? tenantInfo?.is_shared ?? false;
+  const tenantKeys = getTenantKeyList(tenantInfo);
 
     const perPage = 500;
     let page = 1;
@@ -198,6 +243,14 @@ async function fetchNestedLabelMap(nestedRel, { company }) {
       if (!isShared) {
         if (tenantKeys.includes('company_id') && company != null)
           params.set('company_id', company);
+      }
+      if (
+        nestedRel.filterColumn &&
+        nestedRel.filterColumn.trim() &&
+        nestedRel.filterValue !== undefined &&
+        nestedRel.filterValue !== null
+      ) {
+        params.set(nestedRel.filterColumn, nestedRel.filterValue);
       }
       const res = await fetch(
         `/api/tables/${encodeURIComponent(nestedRel.table)}?${params.toString()}`,
@@ -335,4 +388,3 @@ export function __clearAsyncSelectOptionCaches() {
   displayConfigCache.clear();
   tenantInfoCache.clear();
 }
-

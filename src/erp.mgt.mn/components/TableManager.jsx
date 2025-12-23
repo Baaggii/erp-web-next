@@ -1420,16 +1420,42 @@ const TableManager = forwardRef(function TableManager({
       return fallback.join(' - ');
     };
 
-    const fetchDisplayConfig = (tableName) => {
+    const fetchDisplayConfig = (tableName, options = {}) => {
       if (!tableName) return Promise.resolve(null);
-      const cacheKey = tableName.toLowerCase();
+      const filterColumn =
+        options?.column || options?.filterColumn || options?.filter_column || '';
+      const hasFilterValue =
+        filterColumn &&
+        (options?.value !== undefined && options?.value !== null
+          ? true
+          : options?.filterValue !== undefined && options?.filterValue !== null);
+      const filterValue =
+        options?.value ?? options?.filterValue ?? options?.filter_value ?? '';
+      const preferredIdField =
+        options?.preferredIdField ||
+        options?.idField ||
+        options?.id_field ||
+        options?.targetColumn ||
+        '';
+      const cacheKeyParts = [tableName.toLowerCase()];
+      if (filterColumn) cacheKeyParts.push(`fc:${filterColumn}`);
+      if (filterColumn && hasFilterValue) cacheKeyParts.push(`fv:${String(filterValue)}`);
+      if (preferredIdField) cacheKeyParts.push(`id:${String(preferredIdField)}`);
+      const cacheKey = cacheKeyParts.join('|');
       if (displayConfigCache.has(cacheKey)) return displayConfigCache.get(cacheKey);
       const promise = (async () => {
         try {
-          const res = await fetch(
-            `/api/display_fields?table=${encodeURIComponent(tableName)}`,
-            { credentials: 'include' },
-          );
+          const params = new URLSearchParams({ table: tableName });
+          if (filterColumn) params.set('filterColumn', filterColumn);
+          if (filterColumn && hasFilterValue) {
+            params.set('filterValue', String(filterValue).trim());
+          }
+          if (preferredIdField) {
+            params.set('idField', preferredIdField);
+          }
+          const res = await fetch(`/api/display_fields?${params.toString()}`, {
+            credentials: 'include',
+          });
           if (!res.ok) {
             if (!canceled) {
               addToast(
@@ -1454,6 +1480,7 @@ const TableManager = forwardRef(function TableManager({
             displayFields: Array.isArray(json.displayFields)
               ? json.displayFields
               : [],
+            filters: Array.isArray(json.filters) ? json.filters : [],
           };
         } catch (err) {
           if (!canceled) {
@@ -1512,6 +1539,7 @@ const TableManager = forwardRef(function TableManager({
           relMap[lower] = {
             table: entry.REFERENCED_TABLE_NAME,
             column: entry.REFERENCED_COLUMN_NAME,
+            ...(entry.idField ? { idField: entry.idField } : {}),
             ...(entry.combinationSourceColumn
               ? { combinationSourceColumn: entry.combinationSourceColumn }
               : {}),
@@ -1614,17 +1642,26 @@ const TableManager = forwardRef(function TableManager({
         company ?? '',
         branch ?? '',
         department ?? '',
+        nestedRel.filterColumn || '',
+        nestedRel.filterValue ?? '',
+        nestedRel.idField || '',
       ].join('|');
       if (nestedLabelCache[cacheKey]) return nestedLabelCache[cacheKey];
 
       const [nestedCfg, nestedTenant] = await Promise.all([
-        fetchDisplayConfig(nestedRel.table),
+        fetchDisplayConfig(nestedRel.table, {
+          column: nestedRel.filterColumn,
+          value: nestedRel.filterValue,
+          preferredIdField: nestedRel.idField || nestedRel.column,
+        }),
         fetchTenantInfo(nestedRel.table),
       ]);
       if (canceled) return {};
 
+      const hasFilterValue =
+        nestedRel.filterValue !== undefined && nestedRel.filterValue !== null;
       const filterConfig =
-        nestedRel.filterColumn && nestedRel.filterValue
+        nestedRel.filterColumn && (hasFilterValue || nestedRel.filterValue === '')
           ? { column: nestedRel.filterColumn, value: nestedRel.filterValue }
           : null;
       const rows = await fetchTableRows(nestedRel.table, nestedTenant, filterConfig);
@@ -1679,7 +1716,11 @@ const TableManager = forwardRef(function TableManager({
     const loadRelationColumn = async ([col, rel]) => {
       if (!rel?.table || !rel?.column) return null;
       const [cfg, tenantInfo] = await Promise.all([
-        fetchDisplayConfig(rel.table),
+        fetchDisplayConfig(rel.table, {
+          column: rel.filterColumn,
+          value: rel.filterValue,
+          preferredIdField: rel.idField || rel.column,
+        }),
         fetchTenantInfo(rel.table),
       ]);
       if (canceled) return null;
@@ -1704,8 +1745,7 @@ const TableManager = forwardRef(function TableManager({
         }
       }
 
-      const hasFilterValue =
-        rel.filterValue !== undefined && rel.filterValue !== null && String(rel.filterValue) !== '';
+      const hasFilterValue = rel.filterValue !== undefined && rel.filterValue !== null;
       const filterConfig =
         rel.filterColumn && hasFilterValue
           ? { column: rel.filterColumn, value: rel.filterValue }
@@ -1845,6 +1885,7 @@ const TableManager = forwardRef(function TableManager({
           relationMap[key] = {
             table: r.REFERENCED_TABLE_NAME,
             column: r.REFERENCED_COLUMN_NAME,
+            ...(r.idField ? { idField: r.idField } : {}),
             ...(r.combinationSourceColumn
               ? { combinationSourceColumn: r.combinationSourceColumn }
               : {}),
@@ -2822,39 +2863,80 @@ const TableManager = forwardRef(function TableManager({
         return true;
       };
 
-      const getRelationOption = (fieldKey, value) => {
+      const matchesCombinationRow = (row, sourceValue, combinationTargetColumn) => {
+        if (!combinationTargetColumn) return true;
+        if (sourceValue === undefined || sourceValue === null) return false;
+        if (!row || typeof row !== 'object') return false;
+        const rowKeyMap = {};
+        Object.keys(row).forEach((k) => {
+          rowKeyMap[k.toLowerCase()] = k;
+        });
+        const targetKey =
+          rowKeyMap[combinationTargetColumn.toLowerCase()] || combinationTargetColumn;
+        if (!targetKey) return false;
+        const targetValue = row[targetKey];
+        return (
+          targetValue !== undefined &&
+          targetValue !== null &&
+          String(targetValue).trim() === String(sourceValue).trim()
+        );
+      };
+
+      const getCombinationSourceValue = (config) => {
+        if (!config?.combinationSourceColumn) return undefined;
+        const canonicalSource = resolveCanonicalKey(config.combinationSourceColumn);
+        if (!canonicalSource) return undefined;
+        return hydrated === values ? values[canonicalSource] : hydrated[canonicalSource];
+      };
+
+      const getRelationOption = (fieldKey, value, config, sourceValue) => {
         if (value === undefined || value === null) return null;
         const relationId = resolveScopeId(value);
         const options =
           refData[fieldKey] || refData[resolveCanonicalKey(fieldKey)] || [];
         if (!Array.isArray(options)) return null;
         return (
-          options.find(
-            (opt) =>
-              opt &&
-              (opt.value === relationId ||
+          options.find((opt) => {
+            if (
+              !opt ||
+              !(
+                opt.value === relationId ||
                 (relationId !== undefined &&
                   relationId !== null &&
-                  String(opt.value) === String(relationId))),
-          ) || null
+                  String(opt.value) === String(relationId))
+              )
+            ) {
+              return false;
+            }
+            if (!config?.combinationTargetColumn) return true;
+            const row = getRelationRow(fieldKey, opt.value, config, sourceValue);
+            return matchesCombinationRow(row, sourceValue, config.combinationTargetColumn);
+          }) || null
         );
       };
 
-      const getRelationRow = (fieldKey, value) => {
+      const getRelationRow = (fieldKey, value, config, sourceValue) => {
         if (value === undefined || value === null) return null;
         const relationId = resolveScopeId(value);
         const map = refRows[fieldKey] || refRows[resolveCanonicalKey(fieldKey)];
         if (!map || typeof map !== 'object') return null;
+        const tryKeys = [];
         if (relationId !== undefined && relationId !== null) {
-          if (Object.prototype.hasOwnProperty.call(map, relationId)) {
-            return map[relationId];
-          }
+          tryKeys.push(relationId);
           const strRelationId = String(relationId).trim();
+          if (strRelationId) tryKeys.push(strRelationId);
+        }
+        for (const key of tryKeys) {
+          if (!Object.prototype.hasOwnProperty.call(map, key)) continue;
+          const candidate = map[key];
           if (
-            strRelationId &&
-            Object.prototype.hasOwnProperty.call(map, strRelationId)
+            matchesCombinationRow(
+              candidate,
+              sourceValue,
+              config?.combinationTargetColumn || config?.combination_target_column,
+            )
           ) {
-            return map[strRelationId];
+            return candidate;
           }
         }
         return null;
@@ -2873,11 +2955,22 @@ const TableManager = forwardRef(function TableManager({
         }
         const canonicalField = resolveCanonicalKey(rawField);
         if (!canonicalField) return;
+        const combinationSourceValue = getCombinationSourceValue(config);
         const relationValue =
           hydrated === values ? values[canonicalField] : hydrated[canonicalField];
         if (!hasMeaningfulValue(relationValue)) return;
-        const relationRow = getRelationRow(canonicalField, relationValue);
-        const relationOption = getRelationOption(canonicalField, relationValue);
+        const relationRow = getRelationRow(
+          canonicalField,
+          relationValue,
+          config,
+          combinationSourceValue,
+        );
+        const relationOption = getRelationOption(
+          canonicalField,
+          relationValue,
+          config,
+          combinationSourceValue,
+        );
         if (!relationRow && !relationOption) return;
         const rowKeyMap = {};
         Object.keys(relationRow || {}).forEach((key) => {
