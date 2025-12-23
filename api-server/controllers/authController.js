@@ -148,10 +148,6 @@ export async function login(req, res, next) {
             workplace_id,
             workplace_name,
             workplace_session_id,
-            workplace_position_id,
-            workplace_position_name,
-            employment_position_name,
-            position_id,
           }) => ({
             company_id: company_id ?? null,
             company_name: company_name ?? null,
@@ -162,10 +158,6 @@ export async function login(req, res, next) {
             workplace_id: workplace_id ?? null,
             workplace_name: workplace_name ?? null,
             workplace_session_id: workplace_session_id ?? null,
-            workplace_position_id: workplace_position_id ?? null,
-            workplace_position_name: workplace_position_name ?? null,
-            employment_position_name: employment_position_name ?? null,
-            position_id: position_id ?? null,
           }),
         );
 
@@ -193,9 +185,6 @@ export async function login(req, res, next) {
       position = null,
       senior_empid = null,
       senior_plan_empid = null,
-      workplace_position_id = null,
-      workplace_position_name = null,
-      employment_position_name = null,
     } = sessionPayload || {};
     const resolvedPosition = position_id ?? position ?? null;
 
@@ -260,13 +249,10 @@ export async function login(req, res, next) {
       position: resolvedPosition,
       senior_empid,
       senior_plan_empid,
-      employment_position_name: employment_position_name ?? null,
       workplace: sessionPayload?.workplace_id ?? null,
       workplace_session_id: sessionPayload?.workplace_session_id ?? null,
       workplace_session_ids: sessionPayload?.workplace_session_ids ?? [],
       workplace_name: sessionPayload?.workplace_name ?? null,
-      workplace_position_id: workplace_position_id ?? null,
-      workplace_position_name: workplace_position_name ?? null,
       session: sessionPayload,
       permissions,
       warnings,
@@ -319,10 +305,6 @@ export async function getProfile(req, res) {
             workplace_id,
             workplace_name,
             workplace_session_id,
-            workplace_position_id,
-            workplace_position_name,
-            employment_position_name,
-            position_id,
           }) => ({
             branch_id: branch_id ?? null,
             branch_name: branch_name ?? null,
@@ -331,10 +313,6 @@ export async function getProfile(req, res) {
             workplace_id: workplace_id ?? null,
             workplace_name: workplace_name ?? null,
             workplace_session_id: workplace_session_id ?? null,
-            workplace_position_id: workplace_position_id ?? null,
-            workplace_position_name: workplace_position_name ?? null,
-            employment_position_name: employment_position_name ?? null,
-            position_id: position_id ?? null,
           }),
         )
     : [];
@@ -349,42 +327,36 @@ export async function getProfile(req, res) {
         sessionPayload.company_id,
       )
     : {};
-  const {
-    company_id: company,
-    branch_id: branch,
-    department_id: department,
-    position_id,
-    position,
-    senior_empid,
-    senior_plan_empid,
-    workplace_id,
-    workplace_name,
-    workplace_position_id,
-    workplace_position_name,
-    employment_position_name,
-  } = sessionPayload || {};
-  const resolvedPosition = position_id ?? position ?? null;
-  res.json({
-    id: req.user.id,
-    empid: req.user.empid,
-    position: resolvedPosition,
-    full_name: sessionPayload?.employee_name,
-    user_level: sessionPayload?.user_level,
-    user_level_name: sessionPayload?.user_level_name,
-    company,
-    branch,
-    department,
-    position_id,
-    position: resolvedPosition,
-    senior_empid,
-    senior_plan_empid,
-    employment_position_name: employment_position_name ?? null,
-    workplace: workplace_id ?? null,
+    const {
+      company_id: company,
+      branch_id: branch,
+      department_id: department,
+      position_id,
+      position,
+      senior_empid,
+      senior_plan_empid,
+      workplace_id,
+      workplace_name,
+    } = sessionPayload || {};
+    const resolvedPosition = position_id ?? position ?? null;
+    res.json({
+      id: req.user.id,
+      empid: req.user.empid,
+      position: resolvedPosition,
+      full_name: sessionPayload?.employee_name,
+      user_level: sessionPayload?.user_level,
+      user_level_name: sessionPayload?.user_level_name,
+      company,
+      branch,
+      department,
+      position_id,
+      position: resolvedPosition,
+      senior_empid,
+      senior_plan_empid,
+      workplace: workplace_id ?? null,
     workplace_session_id: sessionPayload?.workplace_session_id ?? null,
     workplace_session_ids: sessionPayload?.workplace_session_ids ?? [],
     workplace_name: workplace_name ?? null,
-    workplace_position_id: workplace_position_id ?? null,
-    workplace_position_name: workplace_position_name ?? null,
     session: sessionPayload,
     permissions,
   });
@@ -438,10 +410,6 @@ export async function refresh(req, res) {
               workplace_id,
               workplace_name,
               workplace_session_id,
-              workplace_position_id,
-              workplace_position_name,
-              employment_position_name,
-              position_id,
             }) => ({
               branch_id: branch_id ?? null,
               branch_name: branch_name ?? null,
@@ -450,10 +418,6 @@ export async function refresh(req, res) {
               workplace_id: workplace_id ?? null,
               workplace_name: workplace_name ?? null,
               workplace_session_id: workplace_session_id ?? null,
-              workplace_position_id: workplace_position_id ?? null,
-              workplace_position_name: workplace_position_name ?? null,
-              employment_position_name: employment_position_name ?? null,
-              position_id: position_id ?? null,
             }),
           )
       : [];
@@ -478,9 +442,6 @@ export async function refresh(req, res) {
       senior_plan_empid,
       workplace_id,
       workplace_name,
-      workplace_position_id,
-      workplace_position_name,
-      employment_position_name,
     } = sessionPayload || {};
     const resolvedPosition = position_id ?? position ?? null;
     const newPayload = {
@@ -519,13 +480,10 @@ export async function refresh(req, res) {
       position: resolvedPosition,
       senior_empid,
       senior_plan_empid,
-      employment_position_name: employment_position_name ?? null,
       workplace: workplace_id ?? null,
       workplace_session_id: sessionPayload?.workplace_session_id ?? null,
       workplace_session_ids: sessionPayload?.workplace_session_ids ?? [],
       workplace_name: workplace_name ?? null,
-      workplace_position_id: workplace_position_id ?? null,
-      workplace_position_name: workplace_position_name ?? null,
       session: sessionPayload,
       permissions,
     });
