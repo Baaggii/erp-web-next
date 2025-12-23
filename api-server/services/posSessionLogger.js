@@ -38,25 +38,18 @@ async function recordLoginSessionImpl(req, sessionPayload, user) {
   const sessionUuid = crypto.randomUUID
     ? crypto.randomUUID()
     : crypto.randomBytes(16).toString('hex');
-  const devicePayload =
-    (req.body && typeof req.body === 'object' ? req.body.device : null) || {};
   const companyId = sessionPayload?.company_id ?? null;
   const branchId = sessionPayload?.branch_id ?? null;
   const merchantId =
-    normalizeNumericId(
-      sessionPayload?.merchant_id ??
-        sessionPayload?.merchantId ??
-        devicePayload?.merchant_id ??
-        devicePayload?.merchantId ??
-        req.body?.merchant_id ??
-        req.body?.merchantId,
-    );
+    sessionPayload?.merchant_id ??
+    sessionPayload?.merchantId ??
+    sessionPayload?.merchant_tin ??
+    sessionPayload?.merchantTin ??
+    null;
   const posNo =
     sessionPayload?.pos_no ??
     sessionPayload?.posNo ??
     sessionPayload?.pos_number ??
-    devicePayload?.pos_no ??
-    devicePayload?.posNo ??
     req.body?.pos_no ??
     req.body?.posNo ??
     null;
