@@ -137,6 +137,22 @@ test('hasPosTransactionAccess allows workplace-linked positions', () => {
   );
 });
 
+test('hasPosTransactionAccess blocks when workplace-linked position is disallowed even if employment position is allowed', () => {
+  const config = {
+    allowedBranches: [],
+    allowedDepartments: [],
+    allowedPositions: ['11'],
+  };
+  assert.equal(
+    hasPosTransactionAccess(config, null, null, {
+      workplaceId: '77',
+      positionId: '11',
+      workplacePositionMap: { 77: '99' },
+    }),
+    false,
+  );
+});
+
 test('filterPosConfigsByAccess returns only permitted configurations', () => {
   const configs = {
     Alpha: { allowedBranches: [1], allowedDepartments: [], allowedUserRights: ['10'] },
