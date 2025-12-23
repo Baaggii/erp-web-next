@@ -66,6 +66,8 @@ export default function FormsIndex() {
       session?.workplace_id ??
       session?.workplaceId ??
       null;
+    const workplacePositionId =
+      session?.workplace_position_id ?? session?.workplacePositionId ?? null;
     const positionId =
       session?.employment_position_id ??
       session?.position_id ??
@@ -80,6 +82,9 @@ export default function FormsIndex() {
     }
     if (positionId != null && `${positionId}`.trim() !== '') {
       params.set('positionId', positionId);
+    }
+    if (workplacePositionId != null && `${workplacePositionId}`.trim() !== '') {
+      params.set('workplacePositionId', workplacePositionId);
     }
     const url = `/api/transaction_forms${params.toString() ? `?${params.toString()}` : ''}`;
     fetch(url, { credentials: 'include' })
@@ -99,6 +104,8 @@ export default function FormsIndex() {
               userRightId,
               workplaceId,
               positionId,
+              workplacePositions: session?.workplace_assignments,
+              workplacePositionId,
             })
           )
             return;

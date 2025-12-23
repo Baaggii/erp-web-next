@@ -415,6 +415,8 @@ useEffect(() => {
       session?.workplace_id ??
       session?.workplaceId ??
       null;
+    const workplacePositionId =
+      session?.workplace_position_id ?? session?.workplacePositionId ?? null;
     const positionId =
       session?.employment_position_id ??
       session?.position_id ??
@@ -429,6 +431,9 @@ useEffect(() => {
     }
     if (positionId != null && `${positionId}`.trim() !== '') {
       params.set('positionId', positionId);
+    }
+    if (workplacePositionId != null && `${workplacePositionId}`.trim() !== '') {
+      params.set('workplacePositionId', workplacePositionId);
     }
     const query = params.toString();
     const url = `/api/transaction_forms${query ? `?${query}` : ''}`;
@@ -458,6 +463,8 @@ useEffect(() => {
               userRightId,
               workplaceId,
               positionId,
+              workplacePositions: session?.workplace_assignments,
+              workplacePositionId,
             })
           )
             return;

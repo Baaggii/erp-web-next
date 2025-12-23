@@ -1403,6 +1403,8 @@ export default function PosTransactionsPage() {
       session?.workplace_id ??
       session?.workplaceId ??
       null;
+    const workplacePositionId =
+      session?.workplace_position_id ?? session?.workplacePositionId ?? null;
     const positionId =
       session?.employment_position_id ??
       session?.position_id ??
@@ -1417,6 +1419,8 @@ export default function PosTransactionsPage() {
           userRightId,
           workplaceId,
           positionId,
+          workplacePositions: session?.workplace_assignments,
+          workplacePositionId,
         })
       ) {
         filtered[cfgName] = cfgValue;
@@ -2177,6 +2181,13 @@ export default function PosTransactionsPage() {
               }
               if (positionId !== undefined && positionId !== null && `${positionId}`.trim() !== '') {
                 params.set('positionId', positionId);
+              }
+              if (
+                workplacePositionId !== undefined &&
+                workplacePositionId !== null &&
+                `${workplacePositionId}`.trim() !== ''
+              ) {
+                params.set('workplacePositionId', workplacePositionId);
               }
               const res = await fetchWithAbort(
                 `/api/transaction_forms?${params.toString()}`,
