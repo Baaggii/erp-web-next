@@ -823,11 +823,13 @@ export async function listTransactionNames(
         ? Number(userRightId)
         : String(userRightId).trim() || null;
   const workplaceValue =
-    workplaceId === undefined || workplaceId === null
-      ? null
-      : Number.isFinite(Number(workplaceId))
-        ? Number(workplaceId)
-        : String(workplaceId).trim() || null;
+    normalizedWorkplaces.length > 0
+      ? normalizedWorkplaces
+      : workplaceId === undefined || workplaceId === null
+        ? null
+        : Number.isFinite(Number(workplaceId))
+          ? Number(workplaceId)
+          : String(workplaceId).trim() || null;
   const positionValue =
     positionId === undefined || positionId === null
       ? null
@@ -887,7 +889,7 @@ export async function listTransactionNames(
       const workplaceAllowed =
         allowedWorkplaces.length === 0 ||
         workplaceValue === null ||
-        allowedWorkplaces.includes(workplaceValue);
+        matchesScope(allowedWorkplaces, workplaceValue);
 
       let permitted =
         branchAllowed &&
@@ -923,7 +925,7 @@ export async function listTransactionNames(
           const tempWorkplaceAllowed =
             tempWorkplaces.length === 0 ||
             workplaceValue === null ||
-            tempWorkplaces.includes(workplaceValue);
+            matchesScope(tempWorkplaces, workplaceValue);
           permitted =
             tempBranchAllowed &&
             tempDepartmentAllowed &&
