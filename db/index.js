@@ -1112,6 +1112,7 @@ export async function getUserByEmpId(empid) {
 function mapEmploymentRow(row) {
   const {
     company_id,
+    merchant_tin,
     branch_id,
     department_id,
     position_id,
@@ -1159,6 +1160,7 @@ function mapEmploymentRow(row) {
     workplace_session_id,
     pos_no,
     merchant_id,
+    merchant_tin,
     ...rest,
     permissions,
   };
@@ -1277,6 +1279,7 @@ export async function getEmploymentSessions(empid, options = {}) {
 
   const sql = `SELECT
           e.employment_company_id AS company_id,
+          c.merchant_tin AS merchant_tin,
           ${companyRel.nameExpr} AS company_name,
           e.employment_branch_id AS branch_id,
           ${branchRel.nameExpr} AS branch_name,
@@ -1346,10 +1349,11 @@ export async function getEmploymentSessions(empid, options = {}) {
       LEFT JOIN user_level_permissions up ON up.userlevel_id = ul.userlevel_id AND up.action = 'permission' AND up.company_id IN (${GLOBAL_COMPANY_ID}, e.employment_company_id)
        WHERE e.employment_emp_id = ?
       GROUP BY e.employment_company_id, company_name,
+                c.merchant_tin,
                 e.employment_branch_id, branch_name,
                 e.employment_department_id, department_name,
                 es.workplace_id, cw.workplace_name, es.workplace_session_id,
-                es.pos_no, es.merchant_id,
+                pos_no, merchant_id,
                 e.employment_position_id,
                 e.employment_senior_empid,
                 e.employment_senior_plan_empid,
@@ -1527,6 +1531,7 @@ export async function getEmploymentSession(empid, companyId, options = {}) {
 
     const baseSql = `SELECT
             e.employment_company_id AS company_id,
+            c.merchant_tin AS merchant_tin,
             ${companyRel.nameExpr} AS company_name,
             e.employment_branch_id AS branch_id,
             ${branchRel.nameExpr} AS branch_name,
@@ -1555,7 +1560,9 @@ export async function getEmploymentSession(empid, companyId, options = {}) {
              es.department_id,
              es.emp_id,
              es.workplace_id,
-             es.id AS workplace_session_id
+             es.id AS workplace_session_id,
+             ${posNoExpr} AS pos_no,
+             ${merchantExpr} AS merchant_id
            FROM tbl_employment_schedule es
            INNER JOIN (
              SELECT
@@ -1582,7 +1589,7 @@ export async function getEmploymentSession(empid, companyId, options = {}) {
            ON es.emp_id = e.employment_emp_id
           AND es.company_id = e.employment_company_id
           AND es.branch_id = e.employment_branch_id
-          AND es.department_id = e.employment_department_id
+         AND es.department_id = e.employment_department_id
          LEFT JOIN tbl_workplace tw
            ON tw.company_id = e.employment_company_id
           AND tw.branch_id = e.employment_branch_id
@@ -1594,14 +1601,15 @@ export async function getEmploymentSession(empid, companyId, options = {}) {
          LEFT JOIN user_level_permissions up ON up.userlevel_id = ul.userlevel_id AND up.action = 'permission' AND up.company_id IN (${GLOBAL_COMPANY_ID}, e.employment_company_id)
          WHERE e.employment_emp_id = ? AND e.employment_company_id = ?
          GROUP BY e.employment_company_id, company_name,
-                  e.employment_branch_id, branch_name,
-                  e.employment_department_id, department_name,
-                  es.workplace_id, cw.workplace_name, es.workplace_session_id,
-                  es.pos_no, es.merchant_id,
-                  e.employment_position_id,
-                  e.employment_senior_empid,
-                  e.employment_senior_plan_empid,
-                  employee_name, e.employment_user_level, ul.name
+                   c.merchant_tin,
+                   e.employment_branch_id, branch_name,
+                   e.employment_department_id, department_name,
+                   es.workplace_id, cw.workplace_name, es.workplace_session_id,
+                   pos_no, merchant_id,
+                   e.employment_position_id,
+                   e.employment_senior_empid,
+                   e.employment_senior_plan_empid,
+                   employee_name, e.employment_user_level, ul.name
          ORDER BY ${orderParts.join(', ')}
          LIMIT 1`;
     const queryParams = [...scheduleDateParams, ...params];
@@ -7947,6 +7955,14 @@ async function getPosSessionColumnInfo() {
       exists: true,
       hasDeviceUuid: lower.has("device_uuid"),
       hasCurrentUserId: lower.has("current_user_id"),
+      hasMerchantTin: lower.has("merchant_tin"),
+      hasDepartmentId: lower.has("department_id"),
+      hasWorkplaceId: lower.has("workplace_id"),
+      hasSeniorId: lower.has("senior_id"),
+      hasPlanSeniorId: lower.has("plan_senior_id"),
+      hasPosNo: lower.has("pos_no"),
+      hasDeviceMac: lower.has("device_mac"),
+      hasLocation: lower.has("location"),
     };
   } catch (err) {
     if (err?.code === "ER_NO_SUCH_TABLE") {
@@ -7954,6 +7970,14 @@ async function getPosSessionColumnInfo() {
         exists: false,
         hasDeviceUuid: false,
         hasCurrentUserId: false,
+        hasMerchantTin: false,
+        hasDepartmentId: false,
+        hasWorkplaceId: false,
+        hasSeniorId: false,
+        hasPlanSeniorId: false,
+        hasPosNo: false,
+        hasDeviceMac: false,
+        hasLocation: false,
       };
     } else {
       throw err;
@@ -7989,62 +8013,112 @@ export async function logPosSessionStart(
     sessionUuid,
     companyId,
     branchId,
-    merchantId,
+    departmentId = null,
+    workplaceId = null,
+    merchantTin = null,
     posNo,
     deviceMac,
     deviceUuid = null,
     location = {},
     startedAt = new Date(),
     currentUserId = null,
+    seniorId = null,
+    planSeniorId = null,
   } = {},
   conn = pool,
 ) {
   const info = await getPosSessionColumnInfo();
   if (!info.exists || !sessionUuid) return null;
-  const cols = [
-    "session_uuid",
-    "company_id",
-    "branch_id",
-    "merchant_id",
-    "pos_no",
-    "device_mac",
-    "location",
-    "started_at",
-  ];
-  const params = [
-    sessionUuid,
-    companyId ?? 0,
-    branchId ?? 0,
-    merchantId ?? 0,
-    posNo ?? "unknown",
-    normalizeDeviceMac(deviceMac),
-    JSON.stringify(normalizePosSessionLocation(location)),
-    normalizeDateTimeInput(startedAt) ?? new Date(),
-  ];
+  const cols = ["session_uuid", "company_id", "branch_id"];
+  const params = [sessionUuid, companyId ?? 0, branchId ?? 0];
+  if (info.hasDepartmentId) {
+    cols.push("department_id");
+    params.push(departmentId ?? null);
+  }
+  if (info.hasWorkplaceId) {
+    cols.push("workplace_id");
+    params.push(workplaceId ?? null);
+  }
+  if (info.hasMerchantTin) {
+    const normalizedTin =
+      merchantTin === undefined || merchantTin === null
+        ? "unknown"
+        : String(merchantTin).trim() || "unknown";
+    cols.push("merchant_tin");
+    params.push(normalizedTin);
+  }
+  if (info.hasPosNo) {
+    const normalizedPosNo =
+      posNo === undefined || posNo === null ? "unknown" : String(posNo).trim() || "unknown";
+    cols.push("pos_no");
+    params.push(normalizedPosNo);
+  }
   if (info.hasDeviceUuid) {
     cols.push("device_uuid");
     params.push(deviceUuid ?? null);
+  }
+  if (info.hasDeviceMac) {
+    cols.push("device_mac");
+    params.push(normalizeDeviceMac(deviceMac));
+  }
+  if (info.hasLocation) {
+    cols.push("location");
+    params.push(JSON.stringify(normalizePosSessionLocation(location)));
+  }
+  cols.push("started_at");
+  params.push(normalizeDateTimeInput(startedAt) ?? new Date());
+  if (info.hasDeviceUuid) {
+    // already added above; keep placeholder alignment
   }
   if (info.hasCurrentUserId) {
     cols.push("current_user_id");
     params.push(currentUserId ?? null);
   }
+  if (info.hasSeniorId) {
+    cols.push("senior_id");
+    params.push(seniorId ?? null);
+  }
+  if (info.hasPlanSeniorId) {
+    cols.push("plan_senior_id");
+    params.push(planSeniorId ?? null);
+  }
+
   const placeholders = cols.map(() => "?").join(", ");
   const updateCols = [
     "company_id = VALUES(company_id)",
     "branch_id = VALUES(branch_id)",
-    "merchant_id = VALUES(merchant_id)",
-    "pos_no = VALUES(pos_no)",
-    "device_mac = VALUES(device_mac)",
-    "location = VALUES(location)",
     "started_at = VALUES(started_at)",
     "ended_at = NULL",
   ];
+  if (info.hasDepartmentId) {
+    updateCols.push("department_id = VALUES(department_id)");
+  }
+  if (info.hasWorkplaceId) {
+    updateCols.push("workplace_id = VALUES(workplace_id)");
+  }
+  if (info.hasMerchantTin) {
+    updateCols.push("merchant_tin = VALUES(merchant_tin)");
+  }
+  if (info.hasPosNo) {
+    updateCols.push("pos_no = VALUES(pos_no)");
+  }
   if (info.hasDeviceUuid) {
     updateCols.push("device_uuid = VALUES(device_uuid)");
   }
+  if (info.hasDeviceMac) {
+    updateCols.push("device_mac = VALUES(device_mac)");
+  }
+  if (info.hasLocation) {
+    updateCols.push("location = VALUES(location)");
+  }
   if (info.hasCurrentUserId) {
     updateCols.push("current_user_id = VALUES(current_user_id)");
+  }
+  if (info.hasSeniorId) {
+    updateCols.push("senior_id = VALUES(senior_id)");
+  }
+  if (info.hasPlanSeniorId) {
+    updateCols.push("plan_senior_id = VALUES(plan_senior_id)");
   }
   const sql = `INSERT INTO pos_session (${cols.join(
     ", ",
