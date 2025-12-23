@@ -11,7 +11,6 @@ async function getUserContext(user, companyId) {
     userLevelId: session?.user_level,
     workplaceId: session?.workplace_id,
     positionId: session?.position_id ?? session?.employment_position_id,
-    workplacePositionId: session?.workplace_position_id ?? null,
   };
 }
 
@@ -28,7 +27,6 @@ export async function listPermittedProcedures(
       userRightId: userCtx.userLevelId,
       workplaceId: userCtx.workplaceId,
       positionId: userCtx.positionId,
-      workplacePositionId: userCtx.workplacePositionId,
     },
     companyId,
   );
@@ -70,13 +68,9 @@ export async function listPermittedProcedures(
   const bId = Number(branchId ?? userCtx.branchId);
   const dId = Number(departmentId ?? userCtx.departmentId);
   const wId = Number(userCtx.workplaceId);
-  const pId = Number(userCtx.positionId);
-  const wpId = Number(userCtx.workplacePositionId);
   const hasBranch = !Number.isNaN(bId);
   const hasDept = !Number.isNaN(dId);
   const hasWorkplace = !Number.isNaN(wId);
-  const hasPosition = !Number.isNaN(pId);
-  const hasWorkplacePosition = !Number.isNaN(wpId);
 
   const list = [];
   for (const proc of allProcs) {
@@ -90,9 +84,6 @@ export async function listPermittedProcedures(
       const hasDepartments = Array.isArray(access.departments)
         ? access.departments.length > 0
         : false;
-      const hasPositions = Array.isArray(access.positions)
-        ? access.positions.length > 0
-        : false;
       const hasWorkplaces = Array.isArray(access.workplaces)
         ? access.workplaces.length > 0
         : false;
@@ -100,13 +91,7 @@ export async function listPermittedProcedures(
         ? access.permissions.length > 0
         : false;
 
-      if (
-        !hasBranches &&
-        !hasDepartments &&
-        !hasPositions &&
-        !hasWorkplaces &&
-        !hasPermissions
-      ) {
+      if (!hasBranches && !hasDepartments && !hasWorkplaces && !hasPermissions) {
         // Configuration exists but no visibility rules were defined – hide it entirely.
         continue;
       }
@@ -115,12 +100,6 @@ export async function listPermittedProcedures(
         continue;
       if (access.departments.length && hasDept && !access.departments.includes(dId))
         continue;
-      if (access.positions?.length) {
-        const positionMatch =
-          (hasWorkplacePosition && access.positions.includes(wpId)) ||
-          (hasPosition && access.positions.includes(pId));
-        if (!positionMatch) continue;
-      }
       if (access.workplaces.length && hasWorkplace && !access.workplaces.includes(wId))
         continue;
       if (hasPermissions) {

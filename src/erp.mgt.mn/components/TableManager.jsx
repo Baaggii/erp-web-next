@@ -686,10 +686,6 @@ const TableManager = forwardRef(function TableManager({
             session?.workplace_id ??
             session?.workplaceId ??
             null,
-          workplacePositionId:
-            session?.workplace_position_id ??
-            session?.workplacePositionId ??
-            null,
           positionId:
             position ??
             session?.employment_position_id ??
@@ -699,15 +695,7 @@ const TableManager = forwardRef(function TableManager({
             null,
         },
       ),
-    [
-      formConfig,
-      branchScopeId,
-      departmentScopeId,
-      session,
-      user,
-      position,
-      workplace,
-    ],
+    [formConfig, branchScopeId, departmentScopeId, session, user, position, workplace],
   );
 
   const formSupportsTemporary = Boolean(

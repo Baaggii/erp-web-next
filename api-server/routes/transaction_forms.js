@@ -24,7 +24,6 @@ router.get('/', requireAuth, async (req, res, next) => {
       userRightId,
       workplaceId,
       positionId,
-      workplacePositionId,
     } =
       req.query;
     if (proc) {
@@ -39,15 +38,7 @@ router.get('/', requireAuth, async (req, res, next) => {
       res.json({ ...config, isDefault });
     } else {
       const { names, isDefault } = await listTransactionNames(
-        {
-          moduleKey,
-          branchId,
-          departmentId,
-          userRightId,
-          workplaceId,
-          positionId,
-          workplacePositionId,
-        },
+        { moduleKey, branchId, departmentId, userRightId, workplaceId, positionId },
         companyId,
       );
       res.json({ ...names, isDefault });

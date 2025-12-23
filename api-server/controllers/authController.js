@@ -23,20 +23,37 @@ import {
 export async function login(req, res, next) {
   try {
     const { empid, password, companyId } = req.body;
+    const warnings = [];
     const user = await getUserByEmpId(empid);
     if (!user || !(await user.verifyPassword(password))) {
       return res.status(401).json({ message: 'Invalid credentials' });
     }
 
     const effectiveDate = new Date();
-    const sessions = await getEmploymentSessions(empid, {
-      effectiveDate,
-      includeDiagnostics: true,
-    });
-    if (!Array.isArray(sessions) || sessions.length === 0) {
-      return res
-        .status(403)
-        .json({ message: 'No employment sessions available for this user' });
+    let sessions = [];
+    let sessionFetchFailed = false;
+    try {
+      sessions = await getEmploymentSessions(empid, {
+        effectiveDate,
+        includeDiagnostics: true,
+      });
+    } catch (err) {
+      sessionFetchFailed = true;
+      console.error('Failed to fetch employment sessions', err);
+      if (err?.message) {
+        warnings.push(`Employment session lookup failed: ${err.message}`);
+      } else {
+        warnings.push('Employment session lookup failed');
+      }
+    }
+    if (!sessionFetchFailed) {
+      if (!Array.isArray(sessions) || sessions.length === 0) {
+        return res
+          .status(403)
+          .json({ message: 'No employment sessions available for this user' });
+      }
+    } else {
+      sessions = [];
     }
 
     const companyGroups = new Map();
@@ -71,6 +88,9 @@ export async function login(req, res, next) {
     const hasCompanySelection =
       companyId !== undefined && companyId !== null;
     let selectedCompanyId = null;
+    let sessionPayload = null;
+    let workplaceAssignments = [];
+    let permissions = {};
     if (hasCompanySelection) {
       selectedCompanyId = normalizeNumericId(companyId);
       if (selectedCompanyId === null) {
@@ -78,77 +98,82 @@ export async function login(req, res, next) {
       }
     }
 
-    let sessionGroup = null;
-    if (!hasCompanySelection) {
-      if (companyGroups.size > 1) {
-        const options = Array.from(companyGroups.values()).map(
-          ({ companyId: id, companyName: name }) => ({
-            company_id: id,
-            company_name: name,
+    if (!sessionFetchFailed) {
+      let sessionGroup = null;
+      if (!hasCompanySelection) {
+        if (companyGroups.size > 1) {
+          const options = Array.from(companyGroups.values()).map(
+            ({ companyId: id, companyName: name }) => ({
+              company_id: id,
+              company_name: name,
+            }),
+          );
+          options.sort((a, b) => {
+            const nameA = (a.company_name || '').toLowerCase();
+            const nameB = (b.company_name || '').toLowerCase();
+            if (nameA < nameB) return -1;
+            if (nameA > nameB) return 1;
+            return 0;
+          });
+          return res.json({ needsCompany: true, sessions: options });
+        }
+        sessionGroup = companyGroups.values().next().value || null;
+      } else {
+        const key = `id:${selectedCompanyId}`;
+        sessionGroup = companyGroups.get(key) || null;
+        if (!sessionGroup) {
+          return res.status(400).json({ message: 'Invalid company selection' });
+        }
+      }
+
+      const session = pickDefaultSession(sessionGroup?.sessions || []);
+      if (!session) {
+        return res
+          .status(403)
+          .json({ message: 'No employment session found for the selected company' });
+      }
+
+      workplaceAssignments = (sessionGroup?.sessions || [])
+        .filter((s) => s && s.workplace_session_id != null)
+        .map(
+          ({
+            company_id,
+            company_name,
+            branch_id,
+            branch_name,
+            department_id,
+            department_name,
+            workplace_id,
+            workplace_name,
+            workplace_session_id,
+          }) => ({
+            company_id: company_id ?? null,
+            company_name: company_name ?? null,
+            branch_id: branch_id ?? null,
+            branch_name: branch_name ?? null,
+            department_id: department_id ?? null,
+            department_name: department_name ?? null,
+            workplace_id: workplace_id ?? null,
+            workplace_name: workplace_name ?? null,
+            workplace_session_id: workplace_session_id ?? null,
           }),
         );
-        options.sort((a, b) => {
-          const nameA = (a.company_name || '').toLowerCase();
-          const nameB = (b.company_name || '').toLowerCase();
-          if (nameA < nameB) return -1;
-          if (nameA > nameB) return 1;
-          return 0;
-        });
-        return res.json({ needsCompany: true, sessions: options });
-      }
-      sessionGroup = companyGroups.values().next().value || null;
+
+      sessionPayload = session
+        ? normalizeEmploymentSession(session, workplaceAssignments)
+        : null;
+
+      permissions =
+        sessionPayload?.user_level && sessionPayload?.company_id
+          ? await getUserLevelActions(
+              sessionPayload.user_level,
+              sessionPayload.company_id,
+            )
+          : {};
     } else {
-      const key = `id:${selectedCompanyId}`;
-      sessionGroup = companyGroups.get(key) || null;
-      if (!sessionGroup) {
-        return res.status(400).json({ message: 'Invalid company selection' });
-      }
+      sessionPayload = null;
+      permissions = {};
     }
-
-    const session = pickDefaultSession(sessionGroup?.sessions || []);
-    if (!session) {
-      return res
-        .status(403)
-        .json({ message: 'No employment session found for the selected company' });
-    }
-
-    const workplaceAssignments = (sessionGroup?.sessions || [])
-      .filter((s) => s && s.workplace_id != null)
-      .map(
-        ({
-          company_id,
-          company_name,
-          branch_id,
-          branch_name,
-          department_id,
-          department_name,
-          workplace_id,
-          workplace_name,
-          workplace_position_id,
-        }) => ({
-          company_id: company_id ?? null,
-          company_name: company_name ?? null,
-          branch_id: branch_id ?? null,
-          branch_name: branch_name ?? null,
-          department_id: department_id ?? null,
-          department_name: department_name ?? null,
-          workplace_id: workplace_id ?? null,
-          workplace_name: workplace_name ?? null,
-          workplace_position_id: workplace_position_id ?? null,
-        }),
-      );
-
-    const sessionPayload = session
-      ? normalizeEmploymentSession(session, workplaceAssignments)
-      : null;
-
-    const permissions =
-      sessionPayload?.user_level && sessionPayload?.company_id
-        ? await getUserLevelActions(
-            sessionPayload.user_level,
-            sessionPayload.company_id,
-          )
-        : {};
 
     const {
       company_id: company = null,
@@ -193,9 +218,20 @@ export async function login(req, res, next) {
           sameSite: 'lax',
           maxAge: jwtService.getRefreshExpiryMillis(),
         });
+      } else if (posSession?.error) {
+        warnings.push(
+          posSession.error?.message
+            ? `POS session was not recorded: ${posSession.error.message}`
+            : 'POS session was not recorded',
+        );
       }
     } catch (err) {
       console.error('Failed to log POS session', err);
+      warnings.push(
+        err?.message
+          ? `POS session was not recorded: ${err.message}`
+          : 'POS session was not recorded',
+      );
     }
     res.json({
       id: user.id,
@@ -218,6 +254,7 @@ export async function login(req, res, next) {
       workplace_position_id: sessionPayload?.workplace_position_id ?? null,
       session: sessionPayload,
       permissions,
+      warnings,
     });
   } catch (err) {
     next(err);
@@ -285,35 +322,33 @@ export async function getProfile(req, res) {
         sessionPayload.company_id,
       )
     : {};
-  const {
-    company_id: company,
-    branch_id: branch,
-    department_id: department,
-    position_id,
-    position,
-    senior_empid,
-    senior_plan_empid,
-    workplace_id,
-    workplace_name,
-    workplace_position_id,
-  } = sessionPayload || {};
-  const resolvedPosition = position_id ?? position ?? null;
-  res.json({
-    id: req.user.id,
-    empid: req.user.empid,
-    position: resolvedPosition,
-    full_name: sessionPayload?.employee_name,
-    user_level: sessionPayload?.user_level,
-    user_level_name: sessionPayload?.user_level_name,
-    company,
-    branch,
-    department,
-    position_id,
-    position: resolvedPosition,
-    senior_empid,
-    senior_plan_empid,
-    workplace: workplace_id ?? null,
-    workplace_name: workplace_name ?? null,
+    const {
+      company_id: company,
+      branch_id: branch,
+      department_id: department,
+      position_id,
+      position,
+      senior_empid,
+      senior_plan_empid,
+      workplace_id,
+      workplace_name,
+    } = sessionPayload || {};
+    const resolvedPosition = position_id ?? position ?? null;
+    res.json({
+      id: req.user.id,
+      empid: req.user.empid,
+      position: resolvedPosition,
+      full_name: sessionPayload?.employee_name,
+      user_level: sessionPayload?.user_level,
+      user_level_name: sessionPayload?.user_level_name,
+      company,
+      branch,
+      department,
+      position_id,
+      position: resolvedPosition,
+      senior_empid,
+      senior_plan_empid,
+      workplace: workplace_id ?? null,
     workplace_session_id: sessionPayload?.workplace_session_id ?? null,
     workplace_session_ids: sessionPayload?.workplace_session_ids ?? [],
     workplace_position_id: workplace_position_id ?? null,

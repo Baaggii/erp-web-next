@@ -1403,10 +1403,6 @@ export default function PosTransactionsPage() {
       session?.workplace_id ??
       session?.workplaceId ??
       null;
-    const workplacePositionId =
-      session?.workplace_position_id ??
-      session?.workplacePositionId ??
-      null;
     const positionId =
       session?.employment_position_id ??
       session?.position_id ??
@@ -1420,7 +1416,6 @@ export default function PosTransactionsPage() {
           allowTemporaryAnyScope: true,
           userRightId,
           workplaceId,
-          workplacePositionId,
           positionId,
         })
       ) {
@@ -1933,13 +1928,6 @@ export default function PosTransactionsPage() {
       null;
     if (workplaceId != null && String(workplaceId).trim() !== '') {
       params.set('workplaceId', workplaceId);
-    }
-    const workplacePositionId =
-      session?.workplace_position_id ??
-      session?.workplacePositionId ??
-      null;
-    if (workplacePositionId != null && String(workplacePositionId).trim() !== '') {
-      params.set('workplacePositionId', workplacePositionId);
     }
     const positionId =
       session?.employment_position_id ??

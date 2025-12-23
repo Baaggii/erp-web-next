@@ -88,7 +88,6 @@ router.get('/', requireAuth, async (req, res, next) => {
         !hasPosTransactionAccess(config, branchId, departmentId, {
           userRightId,
           workplaceId,
-          workplacePositionId,
           positionId,
         })
       ) {
@@ -101,7 +100,6 @@ router.get('/', requireAuth, async (req, res, next) => {
       const filtered = filterPosConfigsByAccess(config, branchId, departmentId, {
         userRightId,
         workplaceId,
-        workplacePositionId,
         positionId,
       });
       res.json({ ...filtered, isDefault });

@@ -714,15 +714,7 @@ export async function findTableByProcedure(proc, companyId = 0) {
 }
 
 export async function listTransactionNames(
-  {
-    moduleKey,
-    branchId,
-    departmentId,
-    userRightId,
-    workplaceId,
-    positionId,
-    workplacePositionId,
-  } = {},
+  { moduleKey, branchId, departmentId, userRightId, workplaceId, positionId } = {},
   companyId = 0,
 ) {
   const { cfg, isDefault } = await readConfig(companyId);
@@ -747,12 +739,6 @@ export async function listTransactionNames(
       : Number.isFinite(Number(positionId))
         ? Number(positionId)
         : String(positionId).trim() || null;
-  const workplacePositionValue =
-    workplacePositionId === undefined || workplacePositionId === null
-      ? null
-      : Number.isFinite(Number(workplacePositionId))
-        ? Number(workplacePositionId)
-        : String(workplacePositionId).trim() || null;
   for (const [tbl, names] of Object.entries(cfg)) {
     for (const [name, info] of Object.entries(names)) {
       const parsed = parseEntry(info);
@@ -800,9 +786,8 @@ export async function listTransactionNames(
         allowedDepartments.includes(dId);
       const positionAllowed =
         allowedPositions.length === 0 ||
-        (workplacePositionValue !== null &&
-          allowedPositions.includes(workplacePositionValue)) ||
-        (positionValue !== null && allowedPositions.includes(positionValue));
+        positionValue === null ||
+        allowedPositions.includes(positionValue);
       const userRightAllowed =
         allowedUserRights.length === 0 ||
         userRightValue === null ||
@@ -836,9 +821,8 @@ export async function listTransactionNames(
             tempDepartments.includes(dId);
           const tempPositionAllowed =
             tempPositions.length === 0 ||
-            (workplacePositionValue !== null &&
-              tempPositions.includes(workplacePositionValue)) ||
-            (positionValue !== null && tempPositions.includes(positionValue));
+            positionValue === null ||
+            tempPositions.includes(positionValue);
           const tempUserRightAllowed =
             tempUserRights.length === 0 ||
             userRightValue === null ||
