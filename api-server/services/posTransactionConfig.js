@@ -98,12 +98,15 @@ function resolveWorkplacePosition(options, workplaceValue) {
 }
 
 function isPositionAllowed(allowedPositions, positionValue, workplaceValue, options) {
-  const matchesDirect = matchesScope(allowedPositions, positionValue);
-  if (matchesDirect) return true;
   if (!Array.isArray(allowedPositions) || allowedPositions.length === 0) return true;
+  const hasWorkplaceInput = workplaceValue !== null && workplaceValue !== undefined;
   const workplacePosition = resolveWorkplacePosition(options, workplaceValue);
-  if (workplacePosition === null) return false;
-  return matchesScope(allowedPositions, workplacePosition);
+  if (hasWorkplaceInput) {
+    if (workplacePosition === null) return false;
+    return matchesScope(allowedPositions, workplacePosition);
+  }
+  if (workplacePosition !== null) return matchesScope(allowedPositions, workplacePosition);
+  return matchesScope(allowedPositions, positionValue);
 }
 
 function normalizeStoredAccessList(list) {
