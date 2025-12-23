@@ -752,8 +752,7 @@ export async function listTransactionNames(
     return list.includes(normalizedValue);
   };
 
-  const resolveWorkplacePositions = (workplaceValue) => {
-    const resolved = new Set();
+  const resolveWorkplacePosition = (workplaceValue) => {
     const workplaces = Array.isArray(workplaceValue) ? workplaceValue : [workplaceValue];
     for (const wp of workplaces) {
       const normalizedWorkplace = normalizeAccessValue(wp);
@@ -767,7 +766,7 @@ export async function listTransactionNames(
       for (const map of mapCandidates) {
         if (map && typeof map === 'object' && !Array.isArray(map)) {
           const mapped = normalizeAccessValue(map[normalizedWorkplace]);
-          if (mapped !== null) resolved.add(mapped);
+          if (mapped !== null) return mapped;
         }
       }
 
@@ -786,7 +785,7 @@ export async function listTransactionNames(
               entry?.workplacePositionId ??
               entry?.workplace_position_id,
           );
-          if (position !== null) resolved.add(position);
+          if (position !== null) return position;
         }
       }
 
@@ -795,17 +794,19 @@ export async function listTransactionNames(
           workplacePositionMap?.[normalizedWorkplace] ??
           workplacePositionById?.[normalizedWorkplace],
       );
-      if (direct !== null) resolved.add(direct);
+      if (direct !== null) return direct;
     }
-    return Array.from(resolved);
+    return null;
   };
 
   const isPositionAllowed = (allowedPositions, value, workplaceValue) => {
     if (!Array.isArray(allowedPositions) || allowedPositions.length === 0) return true;
 
-    const resolvedPositions = resolveWorkplacePositions(workplaceValue);
-    if (resolvedPositions.length > 0) {
-      return resolvedPositions.some((resolved) => matchesScope(allowedPositions, resolved));
+    if (workplaceValue !== null && workplaceValue !== undefined) {
+      const resolved = resolveWorkplacePosition(workplaceValue);
+      if (resolved !== null) {
+        return matchesScope(allowedPositions, resolved);
+      }
     }
 
     return matchesScope(allowedPositions, value);

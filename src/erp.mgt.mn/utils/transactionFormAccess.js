@@ -27,11 +27,9 @@ function matchesScope(list, value) {
   return list.includes(value);
 }
 
-function resolveWorkplacePositions(options, workplaceValue) {
-  if (!options || typeof options !== 'object') return [];
+function resolveWorkplacePosition(options, workplaceValue) {
+  if (!options || typeof options !== 'object') return null;
   const workplaces = Array.isArray(workplaceValue) ? workplaceValue : [workplaceValue];
-  const resolved = new Set();
-
   for (const wp of workplaces) {
     const normalizedWorkplace = normalizeAccessValue(wp);
     if (normalizedWorkplace === null) continue;
@@ -44,7 +42,7 @@ function resolveWorkplacePositions(options, workplaceValue) {
     for (const map of mapCandidates) {
       if (map && typeof map === 'object' && !Array.isArray(map)) {
         const mappedPosition = normalizeAccessValue(map[normalizedWorkplace]);
-        if (mappedPosition !== null) resolved.add(mappedPosition);
+        if (mappedPosition !== null) return mappedPosition;
       }
     }
 
@@ -66,7 +64,7 @@ function resolveWorkplacePositions(options, workplaceValue) {
             entry?.workplacePositionId ??
             entry?.workplace_position_id,
         );
-        if (positionId !== null) resolved.add(positionId);
+        if (positionId !== null) return positionId;
       }
     }
 
@@ -76,20 +74,19 @@ function resolveWorkplacePositions(options, workplaceValue) {
         options.workplace_position_id ??
         options.workplace_position,
     );
-    if (directPosition !== null) resolved.add(directPosition);
+    if (directPosition !== null) return directPosition;
   }
-
-  return Array.from(resolved);
+  return null;
 }
 
 function isPositionAllowed(allowedPositions, positionValue, workplaceValue, options) {
   if (!Array.isArray(allowedPositions) || allowedPositions.length === 0) return true;
 
-  const workplacePositions = resolveWorkplacePositions(options, workplaceValue);
-  if (workplacePositions.length > 0) {
-    return workplacePositions.some((workplacePosition) =>
-      matchesScope(allowedPositions, workplacePosition),
-    );
+  if (workplaceValue !== null && workplaceValue !== undefined) {
+    const workplacePosition = resolveWorkplacePosition(options, workplaceValue);
+    if (workplacePosition !== null) {
+      return matchesScope(allowedPositions, workplacePosition);
+    }
   }
 
   return matchesScope(allowedPositions, positionValue);
