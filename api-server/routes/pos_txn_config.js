@@ -61,6 +61,13 @@ router.get('/', requireAuth, async (req, res, next) => {
       req.session?.workplace_id ??
       req.session?.workplaceId ??
       req.session?.workplace;
+    const workplacePositions = session?.workplace_assignments;
+    const workplaceIds =
+      Array.isArray(workplacePositions)
+        ? workplacePositions
+            .map((wp) => wp?.workplace_id ?? wp?.workplaceId ?? null)
+            .filter((val) => val !== null && val !== undefined)
+        : [];
 
     const branchId = pickScopeValue(req.query.branchId, sessionBranch);
     const departmentId = pickScopeValue(req.query.departmentId, sessionDepartment);
@@ -79,6 +86,8 @@ router.get('/', requireAuth, async (req, res, next) => {
           userRightId,
           workplaceId,
           positionId,
+          workplacePositions,
+          workplaces: workplaceIds,
         })
       ) {
         res.status(403).json({ message: 'Access denied', isDefault });
@@ -91,6 +100,8 @@ router.get('/', requireAuth, async (req, res, next) => {
         userRightId,
         workplaceId,
         positionId,
+        workplacePositions,
+        workplaces: workplaceIds,
       });
       res.json({ ...filtered, isDefault });
     }

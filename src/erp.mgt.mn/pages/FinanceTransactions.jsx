@@ -402,19 +402,26 @@ useEffect(() => {
     if (moduleKey) params.set('moduleKey', moduleKey);
     if (branch != null) params.set('branchId', branch);
     if (department != null) params.set('departmentId', department);
-    const userRightId =
-      user?.userLevel ??
-      user?.userlevel_id ??
-      user?.userlevelId ??
-      session?.user_level ??
-      session?.userlevel_id ??
-      session?.userlevelId ??
-      null;
-    const workplaceId =
-      workplace ??
-      session?.workplace_id ??
-      session?.workplaceId ??
-      null;
+  const userRightId =
+    user?.userLevel ??
+    user?.userlevel_id ??
+    user?.userlevelId ??
+    session?.user_level ??
+    session?.userlevel_id ??
+    session?.userlevelId ??
+    null;
+  const workplaceId =
+    workplace ??
+    session?.workplace_id ??
+    session?.workplaceId ??
+    null;
+  const workplaceIds = Array.isArray(session?.workplace_assignments)
+    ? session.workplace_assignments
+        .map((wp) => wp?.workplace_id ?? wp?.workplaceId ?? null)
+        .filter((val) => val !== null && val !== undefined)
+    : [];
+  const workplacePositionId =
+    session?.workplace_position_id ?? session?.workplacePositionId ?? null;
     const positionId =
       session?.employment_position_id ??
       session?.position_id ??
@@ -429,6 +436,9 @@ useEffect(() => {
     }
     if (positionId != null && `${positionId}`.trim() !== '') {
       params.set('positionId', positionId);
+    }
+    if (workplacePositionId != null && `${workplacePositionId}`.trim() !== '') {
+      params.set('workplacePositionId', workplacePositionId);
     }
     const query = params.toString();
     const url = `/api/transaction_forms${query ? `?${query}` : ''}`;
@@ -458,6 +468,9 @@ useEffect(() => {
               userRightId,
               workplaceId,
               positionId,
+              workplacePositions: session?.workplace_assignments,
+              workplaces: workplaceIds,
+              workplacePositionId,
             })
           )
             return;

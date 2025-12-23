@@ -24,8 +24,30 @@ router.get('/', requireAuth, async (req, res, next) => {
       userRightId,
       workplaceId,
       positionId,
+      workplacePositionId,
     } =
       req.query;
+    const session = req.session || {};
+    const workplaceAssignments = Array.isArray(session?.workplace_assignments)
+      ? session.workplace_assignments
+      : [];
+    const workplaceIds = workplaceAssignments
+      .map((wp) => wp?.workplace_id ?? wp?.workplaceId ?? null)
+      .filter((val) => val !== null && val !== undefined);
+    const workplacePositionMap = workplaceAssignments.reduce((acc, wp) => {
+      const wpId = wp?.workplace_id ?? wp?.workplaceId;
+      const posId =
+        wp?.workplace_position_id ?? wp?.workplacePositionId ?? wp?.position_id;
+      if (wpId !== undefined && wpId !== null && posId !== undefined && posId !== null) {
+        acc[wpId] = posId;
+      }
+      return acc;
+    }, {});
+    const resolvedWorkplacePositionId =
+      workplacePositionId ??
+      session?.workplace_position_id ??
+      session?.workplacePositionId ??
+      null;
     if (proc) {
       const { table: tbl, isDefault } = await findTableByProcedure(proc, companyId);
       if (tbl) res.json({ table: tbl, isDefault });
@@ -38,7 +60,18 @@ router.get('/', requireAuth, async (req, res, next) => {
       res.json({ ...config, isDefault });
     } else {
       const { names, isDefault } = await listTransactionNames(
-        { moduleKey, branchId, departmentId, userRightId, workplaceId, positionId },
+        {
+          moduleKey,
+          branchId,
+          departmentId,
+          userRightId,
+          workplaceId,
+          positionId,
+          workplacePositionId: resolvedWorkplacePositionId,
+          workplacePositions: workplaceAssignments,
+          workplaces: workplaceIds,
+          workplacePositionMap,
+        },
         companyId,
       );
       res.json({ ...names, isDefault });
