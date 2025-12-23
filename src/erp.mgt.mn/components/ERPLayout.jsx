@@ -4220,7 +4220,19 @@ export function Header({
           };
         });
 
-  const [positionLabel, setPositionLabel] = useState(null);
+        setMapIfActive(finalEntries);
+      } catch (err) {
+        console.warn('Failed to resolve workplace positions', err);
+        setMapIfActive({});
+      }
+    };
+
+    resolveWorkplacePositions();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [allWorkplaceIds, normalizeText, session?.companyId, session?.company_id]);
 
   const matchedAssignment = useMemo(() => {
     const assignments = Array.isArray(session?.workplace_assignments)
@@ -4254,22 +4266,6 @@ export function Header({
       }) || null
     );
   }, [session]);
-
-  const normalizeText = useCallback((value) => {
-    if (value === null || value === undefined) return null;
-    const text = String(value).trim();
-    return text || null;
-  }, []);
-
-  const preferNameLikeText = useCallback(
-    (value) => {
-      const text = normalizeText(value);
-      if (!text) return null;
-      if (/^[+-]?\d+(\.\d+)?$/.test(text)) return null;
-      return text;
-    },
-    [normalizeText],
-  );
 
   const positionNameCandidate = useMemo(() => {
     const candidates = [
@@ -5183,8 +5179,6 @@ const styles = {
     left: 0,
     height: "calc(100vh - 48px)",
     zIndex: 15020,
-    WebkitOverflowScrolling: "touch",
-    overscrollBehavior: "contain",
     ...(mobile
       ? {
           transform: open ? "translateX(0)" : "translateX(-100%)",
@@ -5231,11 +5225,6 @@ const styles = {
   sidebarFooter: {
     marginTop: "auto",
     padding: "0.5rem 0.75rem",
-    position: "sticky",
-    bottom: 0,
-    backgroundColor: "#374151",
-    borderTop: "1px solid #4b5563",
-    zIndex: 15025,
   },
   exitButton: {
     width: "100%",
