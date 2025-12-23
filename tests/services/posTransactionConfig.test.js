@@ -113,6 +113,54 @@ test('hasPosTransactionAccess enforces positions for regular access', () => {
   );
 });
 
+test('hasPosTransactionAccess allows workplace-linked positions', () => {
+  const config = {
+    allowedBranches: [],
+    allowedDepartments: [],
+    allowedPositions: ['123'],
+  };
+  assert.equal(
+    hasPosTransactionAccess(config, null, null, {
+      workplaceId: '77',
+      positionId: '999',
+      workplacePositionMap: { 77: '123' },
+    }),
+    true,
+  );
+  assert.equal(
+    hasPosTransactionAccess(config, null, null, {
+      workplaceId: '77',
+      positionId: '999',
+      workplacePositionMap: { 77: '555' },
+    }),
+    false,
+  );
+});
+
+test('hasPosTransactionAccess blocks when workplace-linked position is disallowed even if user position allowed', () => {
+  const config = {
+    allowedBranches: [],
+    allowedDepartments: [],
+    allowedPositions: ['500'],
+  };
+  assert.equal(
+    hasPosTransactionAccess(config, null, null, {
+      workplaceId: '11',
+      positionId: '500',
+      workplacePositionMap: { 11: '999' },
+    }),
+    false,
+  );
+  assert.equal(
+    hasPosTransactionAccess(config, null, null, {
+      workplaceId: '11',
+      positionId: '123',
+      workplacePositionMap: { 11: '500' },
+    }),
+    true,
+  );
+});
+
 test('filterPosConfigsByAccess returns only permitted configurations', () => {
   const configs = {
     Alpha: { allowedBranches: [1], allowedDepartments: [], allowedUserRights: ['10'] },
