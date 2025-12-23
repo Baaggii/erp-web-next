@@ -91,11 +91,9 @@ export function selectDisplayFieldsForRelation(tableConfigs = {}, tableName, rel
   const candidates = [];
   const addCandidate = (cfg) => {
     if (!cfg?.idField || cfg.idField.trim().toLowerCase() !== normalizedTarget) return;
-    const displayFields = Array.isArray(cfg.displayFields) ? cfg.displayFields.filter(Boolean) : [];
-    if (displayFields.length === 0) return;
     candidates.push({
       idField: cfg.idField,
-      displayFields,
+      displayFields: Array.isArray(cfg.displayFields) ? cfg.displayFields : [],
       filterColumn: cfg.filterColumn || '',
       filterValue:
         cfg.filterValue === null || cfg.filterValue === undefined ? '' : String(cfg.filterValue).trim(),
@@ -107,31 +105,30 @@ export function selectDisplayFieldsForRelation(tableConfigs = {}, tableName, rel
 
   if (candidates.length === 0) return null;
 
-  if (relFilterColumn) {
-    const exactFilterMatch = candidates.find(
-      (candidate) =>
-        candidate.filterColumn &&
-        candidate.filterColumn.toLowerCase() === relFilterColumn &&
-        candidate.filterValue &&
-        relFilterValue &&
-        candidate.filterValue === relFilterValue,
-    );
-    if (exactFilterMatch) return exactFilterMatch;
+  const exactFilterMatch = candidates.find(
+    (candidate) =>
+      candidate.filterColumn &&
+      relFilterColumn &&
+      candidate.filterColumn.toLowerCase() === relFilterColumn &&
+      candidate.filterValue &&
+      relFilterValue &&
+      candidate.filterValue === relFilterValue,
+  );
+  if (exactFilterMatch) return exactFilterMatch;
 
-    const columnOnlyMatch = candidates.find(
-      (candidate) =>
-        candidate.filterColumn &&
-        candidate.filterColumn.toLowerCase() === relFilterColumn &&
-        !candidate.filterValue &&
-        !relFilterValue,
-    );
-    if (columnOnlyMatch) return columnOnlyMatch;
-
-    return null;
-  }
+  const columnMatch = candidates.find(
+    (candidate) =>
+      candidate.filterColumn &&
+      relFilterColumn &&
+      candidate.filterColumn.toLowerCase() === relFilterColumn &&
+      (!candidate.filterValue || !relFilterValue || candidate.filterValue === relFilterValue),
+  );
+  if (columnMatch) return columnMatch;
 
   const baseMatch = candidates.find((candidate) => !candidate.filterColumn);
-  return baseMatch || candidates[0] || null;
+  if (baseMatch) return baseMatch;
+
+  return candidates[0];
 }
 
 export function __normalizeDisplayFieldTableConfig(entry = {}) {
