@@ -147,6 +147,8 @@ export async function login(req, res, next) {
             department_name,
             workplace_id,
             workplace_name,
+            workplace_position_id,
+            workplace_position_name,
             workplace_session_id,
           }) => ({
             company_id: company_id ?? null,
@@ -157,6 +159,8 @@ export async function login(req, res, next) {
             department_name: department_name ?? null,
             workplace_id: workplace_id ?? null,
             workplace_name: workplace_name ?? null,
+            workplace_position_id: workplace_position_id ?? null,
+            workplace_position_name: workplace_position_name ?? null,
             workplace_session_id: workplace_session_id ?? null,
           }),
         );
@@ -304,6 +308,8 @@ export async function getProfile(req, res) {
             department_name,
             workplace_id,
             workplace_name,
+            workplace_position_id,
+            workplace_position_name,
             workplace_session_id,
           }) => ({
             branch_id: branch_id ?? null,
@@ -312,6 +318,8 @@ export async function getProfile(req, res) {
             department_name: department_name ?? null,
             workplace_id: workplace_id ?? null,
             workplace_name: workplace_name ?? null,
+            workplace_position_id: workplace_position_id ?? null,
+            workplace_position_name: workplace_position_name ?? null,
             workplace_session_id: workplace_session_id ?? null,
           }),
         )
@@ -405,21 +413,25 @@ export async function refresh(req, res) {
             ({
               branch_id,
               branch_name,
-              department_id,
-              department_name,
-              workplace_id,
-              workplace_name,
-              workplace_session_id,
-            }) => ({
-              branch_id: branch_id ?? null,
-              branch_name: branch_name ?? null,
-              department_id: department_id ?? null,
-              department_name: department_name ?? null,
-              workplace_id: workplace_id ?? null,
-              workplace_name: workplace_name ?? null,
-              workplace_session_id: workplace_session_id ?? null,
-            }),
-          )
+            department_id,
+            department_name,
+            workplace_id,
+            workplace_name,
+            workplace_position_id,
+            workplace_position_name,
+            workplace_session_id,
+          }) => ({
+            branch_id: branch_id ?? null,
+            branch_name: branch_name ?? null,
+            department_id: department_id ?? null,
+            department_name: department_name ?? null,
+            workplace_id: workplace_id ?? null,
+            workplace_name: workplace_name ?? null,
+            workplace_position_id: workplace_position_id ?? null,
+            workplace_position_name: workplace_position_name ?? null,
+            workplace_session_id: workplace_session_id ?? null,
+          }),
+        )
       : [];
 
     const sessionPayload = session
