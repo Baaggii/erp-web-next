@@ -1283,12 +1283,10 @@ async function ensureTemporaryChainAssignment(conn, row) {
   return { chainId: normalizedChainId, updated: false };
 }
 
-function shouldForcePromote(forcePromoteFlag, payloadJson, rowStatus = '') {
+function shouldForcePromote(forcePromoteFlag, payloadJson) {
   if (forcePromoteFlag === true) return true;
-  const normalizedStatus = typeof rowStatus === 'string' ? rowStatus.trim().toLowerCase() : '';
   if (!payloadJson || typeof payloadJson !== 'object') return false;
   return (
-    normalizedStatus === 'rejected' ||
     payloadJson.forcePromote === true ||
     payloadJson.allowDirectPromotion === true ||
     payloadJson.allowDirectPost === true ||
@@ -1669,7 +1667,6 @@ export async function promoteTemporarySubmission(
       shouldForcePromote(
         cleanedOverride?.forcePromote ?? payloadJson?.forcePromote ?? false,
         payloadJson,
-        row.status,
       ) || normalizeEmpId(row.last_promoter_empid) === normalizedReviewer;
 
     const mutationContext = {

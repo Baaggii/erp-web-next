@@ -29,6 +29,7 @@ import TourViewer from "./tours/TourViewer.jsx";
 import derivePageKey from "../utils/derivePageKey.js";
 import { findVisibleFallbackSelector } from "../utils/findVisibleTourStep.js";
 import { playNotificationSound } from "../utils/playNotificationSound.js";
+import { buildOptionsForRows } from "../utils/buildAsyncSelectOptions.js";
 
 export const TourContext = React.createContext({
   startTour: () => false,
@@ -3744,6 +3745,25 @@ export function Header({
     return [];
   }, [anyHasNew, notificationColors]);
 
+  const [positionLabel, setPositionLabel] = useState(null);
+  const [workplacePositions, setWorkplacePositions] = useState({});
+
+  const normalizeText = useCallback((value) => {
+    if (value === null || value === undefined) return null;
+    const text = String(value).trim();
+    return text || null;
+  }, []);
+
+  const preferNameLikeText = useCallback(
+    (value) => {
+      const text = normalizeText(value);
+      if (!text) return null;
+      if (/^[+-]?\d+(\.\d+)?$/.test(text)) return null;
+      return text;
+    },
+    [normalizeText],
+  );
+
   const workplaceLabels = useMemo(() => {
     if (!session) return [];
     const assignments = Array.isArray(session.workplace_assignments)
@@ -3753,6 +3773,20 @@ export function Header({
     const seenComposite = new Set();
     const seenWorkplaceIds = new Set();
     const seenSessionIds = new Set();
+    const buildPositionSuffix = (workplaceId) => {
+      if (workplaceId === null || workplaceId === undefined) return null;
+      const entry = workplacePositions?.[workplaceId];
+      if (!entry) return null;
+      const idValue =
+        entry.positionId === null || entry.positionId === undefined
+          ? null
+          : String(entry.positionId).trim();
+      const idText = idValue ? `#${idValue}` : '';
+      const nameText = preferNameLikeText(entry.positionName) ?? normalizeText(entry.positionName);
+      const parts = [idText, nameText].filter(Boolean);
+      if (parts.length === 0) return null;
+      return `position ${parts.join(' · ')}`;
+    };
     const parseId = (value) => {
       if (value === null || value === undefined) return null;
       if (typeof value === 'number') {
@@ -3816,7 +3850,8 @@ export function Header({
         contextParts.push(String(assignment.branch_name).trim());
       }
       const context = contextParts.filter(Boolean).join(' / ');
-      const labelParts = [idLabel, baseName, context].filter(
+      const positionSuffix = buildPositionSuffix(normalizedWorkplaceId ?? workplaceId);
+      const labelParts = [idLabel, baseName, context, positionSuffix].filter(
         (part) => part && part.length,
       );
       if (labelParts.length) {
@@ -3845,7 +3880,8 @@ export function Header({
         contextParts.push(String(session.branch_name).trim());
       }
       const context = contextParts.filter(Boolean).join(' / ');
-      const fallbackParts = [idParts.join(' · '), baseName, context].filter(
+      const positionSuffix = buildPositionSuffix(session.workplace_id ?? session.workplaceId);
+      const fallbackParts = [idParts.join(' · '), baseName, context, positionSuffix].filter(
         (part) => part && part.length,
       );
       if (fallbackParts.length) {
@@ -3853,16 +3889,347 @@ export function Header({
       }
     }
     return labels;
-  }, [session]);
+  }, [normalizeText, preferNameLikeText, session, workplacePositions]);
 
-  const positionLabel = useMemo(() => {
+  const allWorkplaceIds = useMemo(() => {
+    const ids = [];
+    const assignments = Array.isArray(session?.workplace_assignments)
+      ? session.workplace_assignments
+      : [];
+    assignments.forEach((assignment) => {
+      const wId =
+        assignment?.workplace_id ??
+        assignment?.workplaceId ??
+        assignment?.id ??
+        null;
+      if (wId !== null && wId !== undefined) {
+        ids.push(wId);
+      }
+    });
+    const sessionId = session?.workplace_id ?? session?.workplaceId;
+    if (sessionId !== null && sessionId !== undefined) {
+      ids.push(sessionId);
+    }
+    return Array.from(
+      new Set(
+        ids
+          .map((value) => {
+            if (value === null || value === undefined) return null;
+            if (typeof value === 'number' && Number.isFinite(value)) return value;
+            if (typeof value === 'string' && value.trim()) {
+              const parsed = Number(value.trim());
+              return Number.isFinite(parsed) ? parsed : value.trim();
+            }
+            return value;
+          })
+          .filter((value) => value !== null && value !== undefined),
+      ),
+    );
+  }, [session?.workplaceId, session?.workplace_id, session?.workplace_assignments]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const setMapIfActive = (map) => {
+      if (!cancelled) setWorkplacePositions(map);
+    };
+
+    if (!allWorkplaceIds.length) {
+      setMapIfActive({});
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    const buildKeyMap = (row) => {
+      const keyMap = {};
+      Object.keys(row || {}).forEach((key) => {
+        keyMap[key.toLowerCase()] = key;
+      });
+      return keyMap;
+    };
+
+    const normalizeRelationEntry = (entry) => {
+      if (!entry || typeof entry !== 'object') return null;
+      const table =
+        (typeof entry.REFERENCED_TABLE_NAME === 'string' && entry.REFERENCED_TABLE_NAME.trim()) ||
+        (typeof entry.table === 'string' && entry.table.trim()) ||
+        (typeof entry.targetTable === 'string' && entry.targetTable.trim()) ||
+        '';
+      const column =
+        (typeof entry.COLUMN_NAME === 'string' && entry.COLUMN_NAME.trim()) ||
+        (typeof entry.sourceColumn === 'string' && entry.sourceColumn.trim()) ||
+        (typeof entry.source_column === 'string' && entry.source_column.trim()) ||
+        (typeof entry.column === 'string' && entry.column.trim()) ||
+        (typeof entry.targetColumn === 'string' && entry.targetColumn.trim()) ||
+        '';
+      const targetColumn =
+        (typeof entry.REFERENCED_COLUMN_NAME === 'string' && entry.REFERENCED_COLUMN_NAME.trim()) ||
+        (typeof entry.targetColumn === 'string' && entry.targetColumn.trim()) ||
+        '';
+      if (!table || !column) return null;
+      const rel = {
+        table,
+        column,
+        targetColumn,
+        tableLower: table.toLowerCase(),
+        columnLower: column.toLowerCase(),
+      };
+      const idField = entry.idField ?? entry.id_field;
+      if (typeof idField === 'string' && idField.trim()) {
+        rel.idField = idField.trim();
+      }
+      const displayFields = entry.displayFields ?? entry.display_fields;
+      if (Array.isArray(displayFields)) {
+        rel.displayFields = displayFields.filter((f) => typeof f === 'string' && f.trim());
+      }
+      const combinationSource =
+        entry.combinationSourceColumn ?? entry.combination_source_column ?? entry.combinationSource;
+      const combinationTarget =
+        entry.combinationTargetColumn ?? entry.combination_target_column ?? entry.combinationTarget;
+      if (typeof combinationSource === 'string' && combinationSource.trim()) {
+        rel.combinationSourceColumn = combinationSource.trim();
+      }
+      if (typeof combinationTarget === 'string' && combinationTarget.trim()) {
+        rel.combinationTargetColumn = combinationTarget.trim();
+      }
+      const filterColumn = entry.filterColumn ?? entry.filter_column;
+      const filterValue = entry.filterValue ?? entry.filter_value;
+      if (typeof filterColumn === 'string' && filterColumn.trim()) {
+        rel.filterColumn = filterColumn.trim();
+      }
+      if (filterValue !== undefined && filterValue !== null) {
+        rel.filterValue = filterValue;
+      }
+      return rel;
+    };
+
+    const fetchRelations = async () => {
+      try {
+        const res = await fetch('/api/tables/code_workplace/relations', {
+          credentials: 'include',
+        });
+        if (!res.ok) return [];
+        const list = await res.json().catch(() => []);
+        if (!Array.isArray(list)) return [];
+        return list
+          .map((entry) => normalizeRelationEntry(entry))
+          .filter((entry) => entry);
+      } catch {
+        return [];
+      }
+    };
+
+    const fetchDisplayConfig = async (table, relation = null) => {
+      if (!table) return { idField: undefined, displayFields: [] };
+      try {
+        const params = new URLSearchParams({ table });
+        const relFilterColumn = relation?.filterColumn ?? relation?.filter_column;
+        const relFilterValue = relation?.filterValue ?? relation?.filter_value;
+        if (relFilterColumn && relFilterValue !== undefined && relFilterValue !== null) {
+          params.set('filterColumn', relFilterColumn);
+          params.set('filterValue', String(relFilterValue));
+        }
+        const res = await fetch(`/api/display_fields?${params.toString()}`, {
+          credentials: 'include',
+        });
+        if (!res.ok) return { idField: undefined, displayFields: [] };
+        const cfg = await res.json().catch(() => ({}));
+        const idField =
+          (typeof cfg?.idField === 'string' && cfg.idField.trim()) ||
+          (typeof cfg?.id_field === 'string' && cfg.id_field.trim()) ||
+          undefined;
+        const displayFields = Array.isArray(cfg?.displayFields)
+          ? cfg.displayFields.filter((field) => typeof field === 'string' && field.trim())
+          : [];
+        return { idField, displayFields };
+      } catch {
+        return { idField: undefined, displayFields: [] };
+      }
+    };
+
+    const resolveWorkplacePositions = async () => {
+      try {
+        const companyId = session?.company_id ?? session?.companyId ?? null;
+        const [relations, workplaceDisplayCfg] = await Promise.all([
+          fetchRelations(),
+          fetchDisplayConfig('code_workplace'),
+        ]);
+        const positionRelation =
+          relations.find((rel) => rel.tableLower === 'code_position') ||
+          relations.find((rel) => rel.columnLower.includes('position')) ||
+          null;
+        const positionTable = positionRelation?.table || 'code_position';
+        const positionDisplayCfg = await fetchDisplayConfig(positionTable, positionRelation);
+        const positionLabelFields =
+          Array.isArray(positionRelation?.displayFields) &&
+          positionRelation.displayFields.length > 0
+            ? positionRelation.displayFields
+            : positionDisplayCfg.displayFields;
+        const workplaceIdField = workplaceDisplayCfg.idField || 'workplace_id';
+        const positionSourceColumn =
+          positionRelation?.column || positionRelation?.targetColumn || 'position_id';
+        const positionTargetField =
+          positionRelation?.idField ||
+          positionRelation?.targetColumn ||
+          positionDisplayCfg.idField ||
+          positionSourceColumn ||
+          'position_id';
+        const entries = {};
+        const uniquePositionIds = new Set();
+
+        await Promise.all(
+          allWorkplaceIds.map(async (workplaceId) => {
+            const params = new URLSearchParams();
+            params.set('perPage', '1');
+            params.set(workplaceIdField, String(workplaceId));
+            if (companyId !== null && companyId !== undefined) {
+              params.set('company_id', String(companyId));
+            }
+            try {
+              const res = await fetch(
+                `/api/tables/code_workplace?${params.toString()}`,
+                { credentials: 'include' },
+              );
+              if (!res.ok) return;
+              const data = await res.json().catch(() => ({}));
+              const rows = Array.isArray(data?.rows) ? data.rows : [];
+              if (!rows.length) return;
+              const row = rows[0];
+              const keyMap = buildKeyMap(row);
+              const resolvedWorkplaceKey = keyMap[workplaceIdField.toLowerCase()] || workplaceIdField;
+              const resolvedWorkplaceId =
+                resolvedWorkplaceKey && row[resolvedWorkplaceKey] !== undefined
+                  ? row[resolvedWorkplaceKey]
+                  : workplaceId;
+              const positionKey = positionSourceColumn
+                ? keyMap[positionSourceColumn.toLowerCase()] || positionSourceColumn
+                : null;
+              const rawPositionId = positionKey ? row[positionKey] : null;
+              if (rawPositionId !== null && rawPositionId !== undefined) {
+                const normalizedId = String(rawPositionId).trim();
+                if (normalizedId) {
+                  uniquePositionIds.add(normalizedId);
+                }
+              }
+              const inlineNameCandidates = [];
+              (Array.isArray(positionLabelFields)
+                ? positionLabelFields
+                : []
+              ).forEach((field) => {
+                const mapped = keyMap[field.toLowerCase()] || field;
+                if (mapped in row) {
+                  inlineNameCandidates.push(row[mapped]);
+                }
+              });
+              const inlinePositionName =
+                inlineNameCandidates.map((val) => normalizeText(val)).find((val) => val) ??
+                normalizeText(row[keyMap.position_name]) ??
+                normalizeText(row[keyMap.workplace_position_name]);
+              entries[resolvedWorkplaceId] = {
+                positionId: rawPositionId ?? null,
+                positionName: inlinePositionName || null,
+              };
+            } catch (err) {
+              console.warn('Failed to resolve workplace position', {
+                workplaceId,
+                err,
+              });
+            }
+          }),
+        );
+
+        if (uniquePositionIds.size === 0) {
+          setMapIfActive(entries);
+          return;
+        }
+
+        const resolvedPositionLabels = {};
+        await Promise.all(
+          Array.from(uniquePositionIds).map(async (posId) => {
+            const params = new URLSearchParams();
+            params.set('perPage', '1');
+            params.set(positionTargetField, posId);
+            if (
+              positionRelation?.filterColumn &&
+              positionRelation.filterValue !== undefined &&
+              positionRelation.filterValue !== null
+            ) {
+              params.set(positionRelation.filterColumn, String(positionRelation.filterValue));
+            }
+            if (companyId !== null && companyId !== undefined) {
+              params.set('company_id', String(companyId));
+            }
+            try {
+              const res = await fetch(
+                `/api/tables/${encodeURIComponent(positionTable)}?${params.toString()}`,
+                { credentials: 'include' },
+              );
+              if (!res.ok) return;
+              const json = await res.json().catch(() => ({}));
+              const rows = Array.isArray(json?.rows) ? json.rows : [];
+              if (!rows.length) return;
+              const options = await buildOptionsForRows({
+                table: positionTable,
+                rows,
+                idField: positionTargetField,
+                searchColumn: positionTargetField,
+                labelFields: positionLabelFields,
+                companyId,
+              });
+              const match = options.find(
+                (opt) =>
+                  opt?.value !== undefined &&
+                  opt?.value !== null &&
+                  String(opt.value).trim() === posId,
+              );
+              if (match?.label) {
+                resolvedPositionLabels[posId] = match.label;
+                return;
+              }
+              const row = rows[0] || {};
+              const keyMap = buildKeyMap(row);
+              const fallbackLabel = (positionLabelFields || [])
+                .map((field) => {
+                  const mapped = keyMap[field.toLowerCase()] || field;
+                  return normalizeText(row[mapped]);
+                })
+                .find((val) => val && val.length);
+              resolvedPositionLabels[posId] =
+                fallbackLabel ??
+                normalizeText(row.position_name) ??
+                normalizeText(row.name) ??
+                posId;
+            } catch (err) {
+              console.warn('Failed to resolve position label', { positionId: posId, err });
+            }
+          }),
+        );
+
+        const finalEntries = {};
+        Object.entries(entries).forEach(([workplaceId, info]) => {
+          const normalizedId =
+            info.positionId === null || info.positionId === undefined
+              ? null
+              : String(info.positionId).trim();
+          finalEntries[workplaceId] = {
+            positionId: normalizedId || info.positionId || null,
+            positionName:
+              info.positionName ||
+              (normalizedId ? resolvedPositionLabels[normalizedId] : null) ||
+              null,
+          };
+        });
+
+  const [positionLabel, setPositionLabel] = useState(null);
+
+  const matchedAssignment = useMemo(() => {
     const assignments = Array.isArray(session?.workplace_assignments)
       ? session.workplace_assignments
       : [];
     const currentSessionId =
       session?.workplace_session_id ?? session?.workplaceSessionId ?? null;
     const currentWorkplaceId = session?.workplace_id ?? session?.workplaceId ?? null;
-    const matchedAssignment =
+    return (
       assignments.find((assignment) => {
         const assignmentSessionId =
           assignment?.workplace_session_id ?? assignment?.workplaceSessionId ?? null;
@@ -3884,33 +4251,175 @@ export function Header({
           assignmentWorkplaceId !== undefined &&
           assignmentWorkplaceId === currentWorkplaceId
         );
-      }) || null;
-
-    const assignmentPosition =
-      matchedAssignment?.position_name ??
-      matchedAssignment?.positionName ??
-      matchedAssignment?.workplace_position_name ??
-      matchedAssignment?.workplacePositionName ??
-      matchedAssignment?.position ??
-      matchedAssignment?.position_id ??
-      matchedAssignment?.positionId ??
-      null;
-
-    const sessionPosition =
-      session?.position_name ??
-      session?.positionName ??
-      session?.employment_position_name ??
-      session?.employmentPositionName ??
-      session?.position ??
-      session?.employment_position_id ??
-      session?.position_id ??
-      null;
-
-    const value = assignmentPosition ?? sessionPosition;
-    if (value === null || value === undefined) return null;
-    const label = String(value).trim();
-    return label || null;
+      }) || null
+    );
   }, [session]);
+
+  const normalizeText = useCallback((value) => {
+    if (value === null || value === undefined) return null;
+    const text = String(value).trim();
+    return text || null;
+  }, []);
+
+  const preferNameLikeText = useCallback(
+    (value) => {
+      const text = normalizeText(value);
+      if (!text) return null;
+      if (/^[+-]?\d+(\.\d+)?$/.test(text)) return null;
+      return text;
+    },
+    [normalizeText],
+  );
+
+  const positionNameCandidate = useMemo(() => {
+    const candidates = [
+      matchedAssignment?.position_name,
+      matchedAssignment?.positionName,
+      matchedAssignment?.workplace_position_name,
+      matchedAssignment?.workplacePositionName,
+      matchedAssignment?.employment_position_name,
+      matchedAssignment?.employmentPositionName,
+      matchedAssignment?.position,
+      session?.position_name,
+      session?.positionName,
+      session?.employment_position_name,
+      session?.employmentPositionName,
+      session?.position,
+    ];
+    const normalized = candidates
+      .map((value) => preferNameLikeText(value))
+      .find((value) => value && value.length);
+    return normalized || null;
+  }, [matchedAssignment, preferNameLikeText, session]);
+
+  const positionIdentifier = useMemo(() => {
+    const candidates = [
+      matchedAssignment?.employment_position_id,
+      matchedAssignment?.position_id,
+      matchedAssignment?.positionId,
+      matchedAssignment?.position,
+      session?.employment_position_id,
+      session?.employmentPositionId,
+      session?.position_id,
+      session?.positionId,
+      session?.position,
+    ];
+    const resolved = candidates
+      .map((value) => normalizeText(value))
+      .find((value) => value && value.length);
+    return resolved || null;
+  }, [matchedAssignment, normalizeText, session]);
+
+  useEffect(() => {
+    let isCancelled = false;
+    const setIfActive = (label) => {
+      if (!isCancelled) setPositionLabel(label);
+    };
+
+    if (positionNameCandidate) {
+      setIfActive(positionNameCandidate);
+      return () => {
+        isCancelled = true;
+      };
+    }
+
+    setIfActive(null);
+
+    const positionValue =
+      positionIdentifier === null || positionIdentifier === undefined
+        ? null
+        : String(positionIdentifier).trim();
+    if (!positionValue) {
+      return () => {
+        isCancelled = true;
+      };
+    }
+
+    const resolvePositionName = async () => {
+      try {
+        const cfgRes = await fetch('/api/display_fields?table=code_position', {
+          credentials: 'include',
+        });
+        const cfg = cfgRes.ok ? await cfgRes.json() : {};
+        const configuredIdField =
+          (typeof cfg?.idField === 'string' && cfg.idField.trim()) ||
+          (typeof cfg?.id_field === 'string' && cfg.id_field.trim()) ||
+          '';
+        const configuredDisplayFields = Array.isArray(cfg?.displayFields)
+          ? cfg.displayFields.filter(
+              (field) => typeof field === 'string' && field.trim().length > 0,
+            )
+          : [];
+        const hasConfiguredTable =
+          Boolean(configuredIdField) || configuredDisplayFields.length > 0;
+
+        const idField = configuredIdField || 'position_id';
+        const displayFields =
+          hasConfiguredTable && configuredDisplayFields.length > 0
+            ? configuredDisplayFields
+            : ['position_name'];
+
+        const params = new URLSearchParams();
+        params.set(idField, positionValue);
+        params.set('perPage', '1');
+
+        const res = await fetch(`/api/tables/code_position?${params.toString()}`, {
+          credentials: 'include',
+        });
+        if (res.ok) {
+          const data = await res.json().catch(() => ({}));
+          const rows = Array.isArray(data.rows) ? data.rows : [];
+          if (rows.length > 0) {
+            const options = await buildOptionsForRows({
+              table: 'code_position',
+              rows,
+              idField,
+              searchColumn: idField,
+              labelFields: displayFields,
+              companyId: session?.company_id ?? session?.companyId ?? null,
+            });
+            const match = options.find(
+              (opt) =>
+                opt?.value !== undefined &&
+                opt?.value !== null &&
+                String(opt.value).trim() === positionValue,
+            );
+            const fallbackRow = rows[0] || {};
+            const fallbackLabel =
+              displayFields
+                .map((field) => {
+                  const lower = field.toLowerCase();
+                  const matchingKey = Object.keys(fallbackRow || {}).find(
+                    (key) => key.toLowerCase() === lower,
+                  );
+                  return matchingKey ? normalizeText(fallbackRow[matchingKey]) : null;
+                })
+                .find((val) => val && val.length) ??
+              normalizeText(fallbackRow.position_name) ??
+              normalizeText(fallbackRow.name) ??
+              normalizeText(fallbackRow.position);
+            setIfActive(match?.label || fallbackLabel || positionValue);
+            return;
+          }
+        }
+      } catch (err) {
+        console.warn('Failed to resolve position label', err);
+      }
+      setIfActive(positionValue);
+    };
+
+    resolvePositionName();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [
+    normalizeText,
+    positionIdentifier,
+    positionNameCandidate,
+    session?.companyId,
+    session?.company_id,
+  ]);
 
   return (
     <header className="sticky-header" style={styles.header(isMobile)}>
@@ -3960,8 +4469,6 @@ export function Header({
           🏢 {session.company_name}
           {workplaceLabels.length > 0 &&
             ` | 🏭 ${workplaceLabels.filter(Boolean).join(', ')}`}
-          {session.department_name && ` | 🏬 ${session.department_name}`}
-          {session.branch_name && ` | 📍 ${session.branch_name}`}
           {session.user_level_name && ` | 👤 ${session.user_level_name}`}
           {positionLabel && ` | 🧑‍💼 ${positionLabel}`}
         </span>
