@@ -727,7 +727,6 @@ export async function listTransactionNames(
     workplacePositionById,
     workplacePositionsMap,
     workplacesWithPositions,
-    workplaces = [],
   } = {},
   companyId = 0,
 ) {
@@ -812,12 +811,6 @@ export async function listTransactionNames(
 
     return matchesScope(allowedPositions, value);
   };
-
-  const normalizedWorkplaces = Array.isArray(workplaces)
-    ? workplaces
-        .map((wp) => normalizeAccessValue(wp))
-        .filter((val) => val !== null)
-    : [];
 
   const { cfg, isDefault } = await readConfig(companyId);
   const result = {};

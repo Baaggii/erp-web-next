@@ -3886,44 +3886,30 @@ export function Header({
         );
       }) || null;
 
-    const assignmentPositionName =
-      matchedAssignment?.workplace_position_name ??
-      matchedAssignment?.workplacePositionName ??
+    const assignmentPosition =
       matchedAssignment?.position_name ??
       matchedAssignment?.positionName ??
-      null;
-
-    const assignmentPositionId =
-      matchedAssignment?.workplace_position_id ??
-      matchedAssignment?.workplacePositionId ??
+      matchedAssignment?.workplace_position_name ??
+      matchedAssignment?.workplacePositionName ??
+      matchedAssignment?.position ??
       matchedAssignment?.position_id ??
       matchedAssignment?.positionId ??
       null;
 
-    const sessionPositionName =
+    const sessionPosition =
       session?.position_name ??
       session?.positionName ??
       session?.employment_position_name ??
       session?.employmentPositionName ??
-      null;
-
-    const sessionPositionId =
+      session?.position ??
       session?.employment_position_id ??
       session?.position_id ??
-      session?.position ??
       null;
 
-    const value = assignmentPositionName ?? sessionPositionName;
-    if (typeof value === 'string' && value.trim()) return value.trim();
-    if (value !== null && value !== undefined) {
-      const str = String(value).trim();
-      if (str) return str;
-    }
-
-    const resolvedId = assignmentPositionId ?? sessionPositionId;
-    if (resolvedId === null || resolvedId === undefined) return null;
-    const idLabel = String(resolvedId).trim();
-    return idLabel ? `${t('position_name', 'Position')} #${idLabel}` : null;
+    const value = assignmentPosition ?? sessionPosition;
+    if (value === null || value === undefined) return null;
+    const label = String(value).trim();
+    return label || null;
   }, [session]);
 
   return (

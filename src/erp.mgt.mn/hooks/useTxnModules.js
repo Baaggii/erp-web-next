@@ -26,7 +26,6 @@ function deriveTxnModuleState(
   positionId,
   workplacePositionId,
   workplacePositions,
-  workplaces,
   perms,
   licensed,
 ) {
@@ -36,11 +35,6 @@ function deriveTxnModuleState(
   const workplace = workplaceId != null ? String(workplaceId) : null;
   const position = positionId != null ? String(positionId) : null;
   const workplacePosition = workplacePositionId != null ? String(workplacePositionId) : null;
-  const workplaceList = Array.isArray(workplaces)
-    ? workplaces
-        .map((wp) => (wp != null ? String(wp) : null))
-        .filter((wp) => wp !== null && wp !== undefined)
-    : null;
   const keys = new Set();
   const labels = {};
 
@@ -58,7 +52,6 @@ function deriveTxnModuleState(
           positionId: position,
           workplacePositionId: workplacePosition,
           workplacePositions,
-          workplaces: workplaceList,
         })
       )
         return;
@@ -168,7 +161,6 @@ export function useTxnModules() {
       positionId,
       workplacePositionId,
       workplacePositions,
-      workplaceIds,
       perms,
       licensed,
     );
@@ -253,7 +245,6 @@ export function useTxnModules() {
       cache.workplaceId = currentWorkplace;
       cache.positionId = currentPosition;
       cache.workplacePositionId = currentWorkplacePosition;
-      cache.workplaces = currentWorkplaceIds;
       applyDerivedState(data);
     } catch (err) {
       console.error('Failed to load transaction modules', err);
@@ -265,7 +256,6 @@ export function useTxnModules() {
       cache.workplaceId = currentWorkplace;
       cache.positionId = currentPosition;
       cache.workplacePositionId = currentWorkplacePosition;
-      cache.workplaces = currentWorkplaceIds;
       applyDerivedState({});
     }
   }

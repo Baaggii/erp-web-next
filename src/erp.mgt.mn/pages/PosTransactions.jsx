@@ -1403,11 +1403,6 @@ export default function PosTransactionsPage() {
       session?.workplace_id ??
       session?.workplaceId ??
       null;
-    const workplaceIds = Array.isArray(session?.workplace_assignments)
-      ? session.workplace_assignments
-          .map((wp) => wp?.workplace_id ?? wp?.workplaceId ?? null)
-          .filter((val) => val !== null && val !== undefined)
-      : [];
     const workplacePositionId =
       session?.workplace_position_id ?? session?.workplacePositionId ?? null;
     const positionId =
@@ -1425,7 +1420,6 @@ export default function PosTransactionsPage() {
           workplaceId,
           positionId,
           workplacePositions: session?.workplace_assignments,
-          workplaces: workplaceIds,
           workplacePositionId,
         })
       ) {

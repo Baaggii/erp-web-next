@@ -28,21 +28,6 @@ router.get('/', requireAuth, async (req, res, next) => {
     } =
       req.query;
     const session = req.session || {};
-    const workplaceAssignments = Array.isArray(session?.workplace_assignments)
-      ? session.workplace_assignments
-      : [];
-    const workplaceIds = workplaceAssignments
-      .map((wp) => wp?.workplace_id ?? wp?.workplaceId ?? null)
-      .filter((val) => val !== null && val !== undefined);
-    const workplacePositionMap = workplaceAssignments.reduce((acc, wp) => {
-      const wpId = wp?.workplace_id ?? wp?.workplaceId;
-      const posId =
-        wp?.workplace_position_id ?? wp?.workplacePositionId ?? wp?.position_id;
-      if (wpId !== undefined && wpId !== null && posId !== undefined && posId !== null) {
-        acc[wpId] = posId;
-      }
-      return acc;
-    }, {});
     const resolvedWorkplacePositionId =
       workplacePositionId ??
       session?.workplace_position_id ??
@@ -68,9 +53,7 @@ router.get('/', requireAuth, async (req, res, next) => {
           workplaceId,
           positionId,
           workplacePositionId: resolvedWorkplacePositionId,
-          workplacePositions: workplaceAssignments,
-          workplaces: workplaceIds,
-          workplacePositionMap,
+          workplacePositions: session?.workplace_assignments,
         },
         companyId,
       );

@@ -10,22 +10,6 @@ async function getUserContext(user, companyId) {
     departmentId: session?.department_id,
     userLevelId: session?.user_level,
     workplaceId: session?.workplace_id,
-    workplaces: Array.isArray(session?.workplace_assignments)
-      ? session.workplace_assignments
-          .map((wp) => wp?.workplace_id ?? wp?.workplaceId ?? null)
-          .filter((val) => val !== null && val !== undefined)
-      : [],
-    workplacePositionMap: Array.isArray(session?.workplace_assignments)
-      ? session.workplace_assignments.reduce((acc, wp) => {
-          const wpId = wp?.workplace_id ?? wp?.workplaceId;
-          const posId =
-            wp?.workplace_position_id ?? wp?.workplacePositionId ?? wp?.position_id;
-          if (wpId !== undefined && wpId !== null && posId !== undefined && posId !== null) {
-            acc[wpId] = posId;
-          }
-          return acc;
-        }, {})
-      : {},
     workplacePositionId: session?.workplace_position_id,
     workplacePositions: session?.workplace_assignments,
     positionId: session?.position_id ?? session?.employment_position_id,
@@ -45,8 +29,6 @@ export async function listPermittedProcedures(
       userRightId: userCtx.userLevelId,
       workplaceId: userCtx.workplaceId,
       positionId: userCtx.positionId,
-      workplaces: userCtx.workplaces,
-      workplacePositionMap: userCtx.workplacePositionMap,
       workplacePositionId: userCtx.workplacePositionId,
       workplacePositions: userCtx.workplacePositions,
     },
