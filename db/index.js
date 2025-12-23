@@ -1080,6 +1080,12 @@ function normalizeDateTimeInput(value) {
   return date.toISOString().slice(0, 19).replace('T', ' ');
 }
 
+function isDynamicSqlTriggerError(err) {
+  if (!err) return false;
+  const message = String(err.sqlMessage || err.message || '').toLowerCase();
+  return err.errno === 1336 || message.includes('dynamic sql is not allowed');
+}
+
 /**
  * Test database connection
  */
@@ -5459,10 +5465,70 @@ export async function insertTableRow(
   const values = Object.values(row);
   const cols = keys.map((k) => `\`${k}\``).join(', ');
   const placeholders = keys.map(() => '?').join(', ');
-  const [result] = await conn.query(
-    `INSERT INTO ?? (${cols}) VALUES (${placeholders})`,
-    [tableName, ...values],
-  );
+  const performInsert = async (targetConn) => {
+    const [result] = await targetConn.query(
+      `INSERT INTO ?? (${cols}) VALUES (${placeholders})`,
+      [tableName, ...values],
+    );
+    return result;
+  };
+
+  let result;
+  try {
+    result = await performInsert(conn);
+  } catch (err) {
+    if (!isDynamicSqlTriggerError(err)) {
+      throw err;
+    }
+    console.warn('Dynamic SQL trigger error during insert, applying fallback', {
+      table: tableName,
+      error: err,
+    });
+    let fallbackConn =
+      typeof conn.getConnection === 'function' ? await conn.getConnection() : conn;
+    const shouldRelease =
+      fallbackConn && fallbackConn !== conn && typeof fallbackConn.release === 'function';
+    let skipSessionEnabled = false;
+    try {
+      if (fallbackConn && typeof fallbackConn.query === 'function') {
+        try {
+          await fallbackConn.query('SET @skip_triggers = 1;');
+          skipSessionEnabled = true;
+        } catch (skipErr) {
+          console.error('Failed to set skip_triggers flag for fallback insert', skipErr);
+        }
+        try {
+          result = await performInsert(fallbackConn);
+        } catch (skipErr) {
+          if (!isDynamicSqlTriggerError(skipErr)) {
+            throw skipErr;
+          }
+          console.warn(
+            'Dynamic SQL trigger error persisted after skip_triggers flag, falling back to direct insert',
+            { table: tableName, error: skipErr },
+          );
+          const [fallbackResult] = await fallbackConn.query(
+            `INSERT INTO \`${tableName}\` (${cols}) VALUES (${placeholders})`,
+            values,
+          );
+          result = fallbackResult;
+        }
+      } else {
+        throw err;
+      }
+    } finally {
+      if (skipSessionEnabled && fallbackConn) {
+        try {
+          await fallbackConn.query('SET @skip_triggers = NULL;');
+        } catch (cleanupErr) {
+          console.error('Failed to reset skip_triggers flag after insert fallback', cleanupErr);
+        }
+      }
+      if (shouldRelease && fallbackConn) {
+        fallbackConn.release();
+      }
+    }
+  }
   if (tableName === 'companies') {
     const hasSeedTables = seedTables !== undefined;
     const hasSeedRecords = seedRecords !== undefined;
