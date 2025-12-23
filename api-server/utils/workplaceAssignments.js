@@ -29,11 +29,6 @@ export function normalizeWorkplaceAssignments(assignments = []) {
         ? assignment.workplace_session_id
         : assignment.workplaceSessionId;
     const workplaceSessionId = normalizeNumericId(rawSessionId);
-    const workplacePositionId = normalizeNumericId(
-      assignment.workplace_position_id ??
-        assignment.workplacePositionId ??
-        assignment.workplace_position,
-    );
 
     if (workplaceSessionId === null || workplaceId === null) return;
 
@@ -45,10 +40,6 @@ export function normalizeWorkplaceAssignments(assignments = []) {
       ...assignment,
       workplace_id: workplaceId,
       workplace_session_id: workplaceSessionId,
-      workplace_position_id:
-        workplacePositionId !== null
-          ? workplacePositionId
-          : assignment.workplace_position_id ?? assignment.workplacePositionId ?? null,
     };
     normalized.push(normalizedAssignment);
     if (!sessionIds.includes(workplaceSessionId)) {

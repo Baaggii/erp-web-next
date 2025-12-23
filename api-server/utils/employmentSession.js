@@ -176,45 +176,10 @@ export function normalizeEmploymentSession(session, assignments = []) {
     combinedSessionIds.push(fallbackSessionId);
   }
 
-  const matchedAssignment =
-    hydratedAssignments.find(
-      (assignment) => assignment.workplace_session_id === fallbackSessionId,
-    ) || null;
-
-  const resolvedWorkplacePositionId =
-    normalizeNumericId(
-      session.workplace_position_id ??
-        session.workplacePositionId ??
-        session.workplace_position,
-    ) ??
-    normalizeNumericId(
-      matchedAssignment?.workplace_position_id ??
-        matchedAssignment?.workplacePositionId ??
-        matchedAssignment?.workplace_position,
-    );
-
-  const resolvedWorkplacePositionName =
-    trimOrNull(
-      session.workplace_position_name ??
-        session.workplacePositionName ??
-        matchedAssignment?.workplace_position_name ??
-        matchedAssignment?.workplacePositionName,
-    ) ?? null;
-
-  const resolvedEmploymentPositionName =
-    trimOrNull(
-      session.employment_position_name ??
-        session.position_name ??
-        session.positionName,
-    ) ?? null;
-
   return {
     ...session,
     workplace_id: fallbackWorkplaceId,
     workplace_session_id: fallbackSessionId,
-    workplace_position_id: resolvedWorkplacePositionId,
-    workplace_position_name: resolvedWorkplacePositionName,
-    employment_position_name: resolvedEmploymentPositionName,
     workplace_assignments: hydratedAssignments,
     workplace_session_ids: combinedSessionIds,
   };
