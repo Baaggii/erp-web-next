@@ -4105,8 +4105,6 @@ export function Header({
           🏢 {session.company_name}
           {workplaceLabels.length > 0 &&
             ` | 🏭 ${workplaceLabels.filter(Boolean).join(', ')}`}
-          {session.department_name && ` | 🏬 ${session.department_name}`}
-          {session.branch_name && ` | 📍 ${session.branch_name}`}
           {session.user_level_name && ` | 👤 ${session.user_level_name}`}
           {positionLabel && ` | 🧑‍💼 ${positionLabel}`}
         </span>
