@@ -4220,19 +4220,7 @@ export function Header({
           };
         });
 
-        setMapIfActive(finalEntries);
-      } catch (err) {
-        console.warn('Failed to resolve workplace position relations', err);
-        setMapIfActive({});
-      }
-    };
-
-    resolveWorkplacePositions();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [allWorkplaceIds, normalizeText, session?.companyId, session?.company_id]);
+  const [positionLabel, setPositionLabel] = useState(null);
 
   const matchedAssignment = useMemo(() => {
     const assignments = Array.isArray(session?.workplace_assignments)
@@ -4267,15 +4255,21 @@ export function Header({
     );
   }, [session]);
 
-  const currentWorkplaceId = useMemo(() => {
-    const fromAssignment =
-      matchedAssignment?.workplace_id ??
-      matchedAssignment?.workplaceId ??
-      matchedAssignment?.id ??
-      null;
-    if (fromAssignment !== null && fromAssignment !== undefined) return fromAssignment;
-    return session?.workplace_id ?? session?.workplaceId ?? null;
-  }, [matchedAssignment, session?.workplaceId, session?.workplace_id]);
+  const normalizeText = useCallback((value) => {
+    if (value === null || value === undefined) return null;
+    const text = String(value).trim();
+    return text || null;
+  }, []);
+
+  const preferNameLikeText = useCallback(
+    (value) => {
+      const text = normalizeText(value);
+      if (!text) return null;
+      if (/^[+-]?\d+(\.\d+)?$/.test(text)) return null;
+      return text;
+    },
+    [normalizeText],
+  );
 
   const positionNameCandidate = useMemo(() => {
     const candidates = [
@@ -4286,25 +4280,17 @@ export function Header({
       matchedAssignment?.employment_position_name,
       matchedAssignment?.employmentPositionName,
       matchedAssignment?.position,
-      workplacePositions?.[currentWorkplaceId]?.positionName,
       session?.position_name,
       session?.positionName,
       session?.employment_position_name,
       session?.employmentPositionName,
       session?.position,
-      workplacePositions?.[session?.workplace_id ?? session?.workplaceId]?.positionName,
     ];
     const normalized = candidates
       .map((value) => preferNameLikeText(value))
       .find((value) => value && value.length);
     return normalized || null;
-  }, [
-    currentWorkplaceId,
-    matchedAssignment,
-    preferNameLikeText,
-    session,
-    workplacePositions,
-  ]);
+  }, [matchedAssignment, preferNameLikeText, session]);
 
   const positionIdentifier = useMemo(() => {
     const candidates = [
@@ -4312,19 +4298,17 @@ export function Header({
       matchedAssignment?.position_id,
       matchedAssignment?.positionId,
       matchedAssignment?.position,
-      workplacePositions?.[currentWorkplaceId]?.positionId,
       session?.employment_position_id,
       session?.employmentPositionId,
       session?.position_id,
       session?.positionId,
       session?.position,
-      workplacePositions?.[session?.workplace_id ?? session?.workplaceId]?.positionId,
     ];
     const resolved = candidates
       .map((value) => normalizeText(value))
       .find((value) => value && value.length);
     return resolved || null;
-  }, [currentWorkplaceId, matchedAssignment, normalizeText, session, workplacePositions]);
+  }, [matchedAssignment, normalizeText, session]);
 
   useEffect(() => {
     let isCancelled = false;

@@ -1261,6 +1261,39 @@ export async function listTemporarySubmissionGroups(options) {
   };
 }
 
+async function ensureTemporaryChainAssignment(conn, row) {
+  const normalizedId = normalizeTemporaryId(row?.id);
+  const normalizedChainId = normalizeTemporaryId(row?.chain_id) || normalizedId;
+  if (!conn || !normalizedId || !normalizedChainId) {
+    return { chainId: normalizedChainId || null, updated: false };
+  }
+  if (!normalizeTemporaryId(row?.chain_id)) {
+    await conn.query(
+      `UPDATE \`${TEMP_TABLE}\`
+          SET chain_id = ?
+        WHERE id = ?`,
+      [normalizedChainId, normalizedId],
+    );
+    if (row) {
+      row.chain_id = normalizedChainId;
+      row.chainId = normalizedChainId;
+    }
+    return { chainId: normalizedChainId, updated: true };
+  }
+  return { chainId: normalizedChainId, updated: false };
+}
+
+function shouldForcePromote(forcePromoteFlag, payloadJson) {
+  if (forcePromoteFlag === true) return true;
+  if (!payloadJson || typeof payloadJson !== 'object') return false;
+  return (
+    payloadJson.forcePromote === true ||
+    payloadJson.allowDirectPromotion === true ||
+    payloadJson.allowDirectPost === true ||
+    payloadJson.canPostDirectly === true
+  );
+}
+
 export async function getTemporarySummary(
   empId,
   companyId,
@@ -1350,7 +1383,7 @@ export async function getTemporaryChainHistory(id) {
     );
     const row = rows[0];
     if (!row) return [];
-    const chainId = normalizeTemporaryId(row.chain_id) || null;
+    const { chainId } = await ensureTemporaryChainAssignment(conn, row);
     let chainRows = [];
     if (chainId) {
       const [rowsByChain] = await conn.query(
@@ -1447,10 +1480,11 @@ export async function promoteTemporarySubmission(
       err.status = 409;
       throw err;
     }
+    const { chainId: ensuredChainId } = await ensureTemporaryChainAssignment(conn, row);
     const columns = await columnLister(row.table_name);
     const payloadJson = safeJsonParse(row.payload_json, {});
     const effectiveChainId =
-      normalizeTemporaryId(row.chain_id) || normalizeTemporaryId(row.id) || null;
+      normalizeTemporaryId(ensuredChainId) || normalizeTemporaryId(row.id) || null;
     const isDirectReviewer = normalizeEmpId(row.plan_senior_empid) === normalizedReviewer;
     const applyToChain = Boolean(effectiveChainId) && isDirectReviewer;
     if (effectiveChainId) {
@@ -1620,6 +1654,14 @@ export async function promoteTemporarySubmission(
         company: row.company_id,
       });
     }
+    if (forwardReviewerEmpId && forwardReviewerEmpId === normalizedReviewer) {
+      forwardReviewerEmpId = null;
+    }
+    const forcePromote =
+      shouldForcePromote(
+        cleanedOverride?.forcePromote ?? payloadJson?.forcePromote ?? false,
+        payloadJson,
+      ) || normalizeEmpId(row.last_promoter_empid) === normalizedReviewer;
 
     const mutationContext = {
       companyId: row.company_id ?? null,
@@ -1627,9 +1669,10 @@ export async function promoteTemporarySubmission(
     };
     const shouldSkipTriggers =
       payloadJson?.skipTriggerOnPromote === true ||
-      errorRevokedFields.length > 0;
+      errorRevokedFields.length > 0 ||
+      forcePromote;
     const skipTriggers = shouldSkipTriggers;
-    const shouldForwardTemporary = Boolean(forwardReviewerEmpId);
+    const shouldForwardTemporary = !forcePromote && Boolean(forwardReviewerEmpId);
     const trimmedNotes =
       typeof notes === 'string' && notes.trim() ? notes.trim() : '';
     const baseReviewNotes = trimmedNotes ? trimmedNotes : null;
@@ -2149,6 +2192,7 @@ export async function rejectTemporarySubmission(
       err.status = 409;
       throw err;
     }
+    const { chainId: ensuredChainId } = await ensureTemporaryChainAssignment(conn, row);
     const lastPromoterEmpId = normalizeEmpId(row.last_promoter_empid);
     const originalCreatorEmpId = normalizeEmpId(row.created_by);
     const rejectionReturnEmpId = lastPromoterEmpId || originalCreatorEmpId;
@@ -2162,7 +2206,7 @@ export async function rejectTemporarySubmission(
       row.created_by = rejectionReturnEmpId;
     }
     const effectiveChainId =
-      normalizeTemporaryId(row.chain_id) || normalizeTemporaryId(row.id) || null;
+      normalizeTemporaryId(ensuredChainId) || normalizeTemporaryId(row.id) || null;
     const isDirectReviewer = normalizeEmpId(row.plan_senior_empid) === normalizedReviewer;
     const applyToChain = Boolean(effectiveChainId) && isDirectReviewer;
     console.info('Temporary rejection chain update', {
