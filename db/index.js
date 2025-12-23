@@ -1167,6 +1167,29 @@ function mapEmploymentRow(row) {
 }
 
 let employmentScheduleColumnCache = null;
+let codeWorkplaceColumnCache = null;
+
+async function getCodeWorkplaceColumnInfo() {
+  if (codeWorkplaceColumnCache) return codeWorkplaceColumnCache;
+  if (process.env.SKIP_CODE_WORKPLACE_COLUMN_CHECK === "1") {
+    codeWorkplaceColumnCache = { hasWorkplacePositionId: true };
+    return codeWorkplaceColumnCache;
+  }
+  try {
+    const columns = await getTableColumnsSafe("code_workplace");
+    const lower = new Set(columns.map((c) => String(c).toLowerCase()));
+    codeWorkplaceColumnCache = {
+      hasWorkplacePositionId: lower.has("workplace_position_id"),
+    };
+  } catch (err) {
+    if (err?.code === "ER_NO_SUCH_TABLE") {
+      codeWorkplaceColumnCache = { hasWorkplacePositionId: false };
+    } else {
+      throw err;
+    }
+  }
+  return codeWorkplaceColumnCache;
+}
 
 async function getEmploymentScheduleColumnInfo() {
   if (employmentScheduleColumnCache) return employmentScheduleColumnCache;
@@ -1225,6 +1248,10 @@ export async function getEmploymentSessions(empid, options = {}) {
   const scheduleInfo = await getEmploymentScheduleColumnInfo();
   const posNoExpr = scheduleInfo.hasPosNo ? "es.pos_no" : "NULL";
   const merchantExpr = scheduleInfo.hasMerchantId ? "es.merchant_id" : "NULL";
+  const codeWorkplaceInfo = await getCodeWorkplaceColumnInfo();
+  const workplacePositionExpr = codeWorkplaceInfo.hasWorkplacePositionId
+    ? "cw.workplace_position_id"
+    : "NULL";
 
   const [companyRel, branchRel, deptRel] = await Promise.all([
     resolveEmploymentRelation({
@@ -1289,7 +1316,7 @@ export async function getEmploymentSessions(empid, options = {}) {
           ${posNoExpr} AS pos_no,
           ${merchantExpr} AS merchant_id,
           cw.workplace_name AS workplace_name,
-          cw.workplace_position_id AS workplace_position_id,
+          ${workplacePositionExpr} AS workplace_position_id,
           e.employment_position_id AS position_id,
           e.employment_senior_empid AS senior_empid,
           e.employment_senior_plan_empid AS senior_plan_empid,
@@ -1351,7 +1378,7 @@ export async function getEmploymentSessions(empid, options = {}) {
                c.merchant_tin,
                e.employment_branch_id, branch_name,
                e.employment_department_id, department_name,
-               es.workplace_id, cw.workplace_name, cw.workplace_position_id,
+               es.workplace_id, cw.workplace_name, ${workplacePositionExpr},
                pos_no, merchant_id,
                e.employment_position_id,
                e.employment_senior_empid,
@@ -1428,6 +1455,10 @@ export async function getEmploymentSession(empid, companyId, options = {}) {
   const scheduleDateParams = scheduleDate
     ? [scheduleDate, scheduleDate, scheduleDate, scheduleDate]
     : [];
+  const codeWorkplaceInfo = await getCodeWorkplaceColumnInfo();
+  const workplacePositionExpr = codeWorkplaceInfo.hasWorkplacePositionId
+    ? "cw.workplace_position_id"
+    : "NULL";
 
   if (companyId !== undefined && companyId !== null) {
     const configCompanyId = Number.isFinite(Number(companyId))
@@ -1540,7 +1571,7 @@ export async function getEmploymentSession(empid, companyId, options = {}) {
             ${posNoExpr} AS pos_no,
             ${merchantExpr} AS merchant_id,
             cw.workplace_name AS workplace_name,
-            cw.workplace_position_id AS workplace_position_id,
+            ${workplacePositionExpr} AS workplace_position_id,
             e.employment_position_id AS position_id,
             e.employment_senior_empid AS senior_empid,
             e.employment_senior_plan_empid AS senior_plan_empid,
@@ -1602,7 +1633,7 @@ export async function getEmploymentSession(empid, companyId, options = {}) {
                    c.merchant_tin,
                    e.employment_branch_id, branch_name,
                    e.employment_department_id, department_name,
-                   es.workplace_id, cw.workplace_name, cw.workplace_position_id,
+                   es.workplace_id, cw.workplace_name, ${workplacePositionExpr},
                    pos_no, merchant_id,
                    e.employment_position_id,
                    e.employment_senior_empid,
