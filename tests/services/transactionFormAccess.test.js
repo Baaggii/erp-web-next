@@ -46,3 +46,19 @@ test('evaluateTransactionFormAccess blocks when workplace-linked position is dis
   assert.equal(result.allowTemporary, false);
   assert.equal(result.allowTemporaryOnly, false);
 });
+
+test('hasTransactionFormAccess allows when any mapped workplace position is allowed', () => {
+  const config = {
+    allowedBranches: [],
+    allowedDepartments: [],
+    allowedPositions: ['600'],
+  };
+  assert.equal(
+    hasTransactionFormAccess(config, null, null, {
+      positionId: '999',
+      workplaces: ['10', '20'],
+      workplacePositionMap: { 20: '600' },
+    }),
+    true,
+  );
+});
