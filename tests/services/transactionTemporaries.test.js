@@ -49,6 +49,9 @@ function createStubConnection({ temporaryRow, chainIds = [] } = {}) {
       if (sql.startsWith('UPDATE `transaction_temporaries` SET chain_id = id WHERE id = ?')) {
         return [[], []];
       }
+      if (sql.startsWith('UPDATE `transaction_temporaries` SET chain_id = ? WHERE id = ?')) {
+        return [[], []];
+      }
       if (sql === 'BEGIN' || sql === 'COMMIT' || sql === 'ROLLBACK') {
         return [[], []];
       }
@@ -445,6 +448,9 @@ test('listTemporarySubmissions filters before grouping by chain', async () => {
     if (sql.startsWith('UPDATE `transaction_temporaries` SET chain_id = id WHERE chain_id IS NULL')) {
       return [[], []];
     }
+    if (sql.startsWith('UPDATE `transaction_temporaries` SET chain_id = ? WHERE id = ?')) {
+      return [[], []];
+    }
     if (sql.includes('WITH filtered AS')) {
       if (sql.includes('plan_senior_empid = ?')) {
         const reviewer = params[params.length - 3];
@@ -548,7 +554,6 @@ test('promoteTemporarySubmission forwards chain with normalized metadata and cle
       activityLogger: async () => {},
     },
   );
-
   assert.equal(result.forwardedTo, 'EMP300');
   assert.ok(chainUpdates.length > 0);
   assert.equal(chainUpdates[0].chainId, 1);
@@ -562,8 +567,8 @@ test('promoteTemporarySubmission forwards chain with normalized metadata and cle
   const forwardParams = forwardInsert.params;
   assert.equal(forwardParams[8], 'EMP100'); // created_by
   assert.equal(forwardParams[9], 'EMP300'); // plan_senior_empid
-  assert.equal(forwardParams[12], 1); // chain_id
-  assert.equal(forwardParams[13], 'pending');
+  assert.equal(forwardParams[13], 1); // chain_id
+  assert.equal(forwardParams[14], 'pending');
   const historyInsert = queries.find(({ sql }) =>
     sql.includes('INSERT INTO `transaction_temporary_review_history`'),
   );
@@ -1073,6 +1078,9 @@ test('getTemporaryChainHistory returns chainId and history rows', async () => {
       }
       if (sql.startsWith('ALTER TABLE `transaction_temporaries`')) return [[], []];
       if (sql.startsWith('UPDATE `transaction_temporaries` SET chain_id = id WHERE chain_id IS NULL')) {
+        return [[], []];
+      }
+      if (sql.startsWith('UPDATE `transaction_temporaries` SET chain_id = ? WHERE id = ?')) {
         return [[], []];
       }
       if (sql.startsWith('ALTER TABLE `transaction_temporary_review_history`')) return [[], []];
