@@ -38,35 +38,6 @@ function matchesScope(list, value) {
   return list.includes(normalizedValue);
 }
 
-function matchesPositionScope(list, positions, workplacePosition) {
-  if (!Array.isArray(list) || list.length === 0) return true;
-
-  const candidates = [];
-
-  if (Array.isArray(positions) && positions.length) {
-    positions.forEach((pos) => {
-      const normalized = normalizeAccessValue(pos);
-      if (normalized !== null) candidates.push(normalized);
-    });
-  } else {
-    const normalizedPosition = normalizeAccessValue(positions);
-    if (normalizedPosition !== null) {
-      candidates.push(normalizedPosition);
-    }
-  }
-
-  const normalizedWorkplacePosition = normalizeAccessValue(workplacePosition);
-  if (normalizedWorkplacePosition !== null) {
-    candidates.push(normalizedWorkplacePosition);
-  }
-
-  if (candidates.length === 0) {
-    return normalizeAccessValue(positions) === null;
-  }
-
-  return candidates.some((val) => list.includes(val));
-}
-
 function normalizeStoredAccessList(list) {
   if (!Array.isArray(list) || list.length === 0) return [];
   const normalized = [];
@@ -130,10 +101,6 @@ export function hasPosTransactionAccess(
   const positionValue = normalizeAccessValue(
     options?.positionId ?? options?.position ?? options?.employmentPositionId,
   );
-  const workplacePositionValue = normalizeAccessValue(
-    options?.workplacePositionId ?? options?.workplacePosition,
-  );
-  const positionValues = Array.isArray(options?.positions) ? options.positions : null;
 
   const allowedBranches = normalizeAccessList(config.allowedBranches);
   const allowedDepartments = normalizeAccessList(config.allowedDepartments);
@@ -148,7 +115,7 @@ export function hasPosTransactionAccess(
     matchesScope(allowedDepartments, departmentValue) &&
     matchesScope(allowedUserRights, userRightValue) &&
     matchesScope(allowedWorkplaces, workplaceValue) &&
-    matchesPositionScope(allowedPositions, positionValues ?? positionValue, workplacePositionValue) &&
+    matchesScope(allowedPositions, positionValue) &&
     matchesScope(allowedProcedures, requestedProcedure);
 
   if (generalAllowed) return true;
@@ -178,11 +145,7 @@ export function hasPosTransactionAccess(
     matchesScope(temporaryDepartments, departmentValue) &&
     matchesScope(temporaryUserRights, userRightValue) &&
     matchesScope(temporaryWorkplaces, workplaceValue) &&
-    matchesPositionScope(
-      temporaryPositions,
-      positionValues ?? positionValue,
-      workplacePositionValue,
-    ) &&
+    matchesScope(temporaryPositions, positionValue) &&
     matchesScope(temporaryProcedures, requestedProcedure)
   );
 }
