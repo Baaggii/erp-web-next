@@ -27,35 +27,9 @@ function matchesScope(list, value) {
   return list.includes(value);
 }
 
-function collectWorkplaces(workplaceValue, options) {
-  const ids = [];
-  const addWorkplace = (wp) => {
-    const normalized = normalizeAccessValue(wp);
-    if (normalized !== null && !ids.includes(normalized)) {
-      ids.push(normalized);
-    }
-  };
-
-  const rawWorkplaces = Array.isArray(workplaceValue) ? workplaceValue : [workplaceValue];
-  rawWorkplaces.forEach((wp) => addWorkplace(wp));
-
-  if (options && typeof options === 'object') {
-    if (Array.isArray(options.workplaces)) {
-      options.workplaces.forEach((wp) => addWorkplace(wp));
-    }
-    if (Array.isArray(options.workplacePositions)) {
-      options.workplacePositions.forEach((entry) => {
-        addWorkplace(entry?.workplaceId ?? entry?.workplace_id ?? entry?.workplace ?? entry?.id);
-      });
-    }
-  }
-
-  return ids;
-}
-
 function resolveWorkplacePositions(options, workplaceValue) {
   if (!options || typeof options !== 'object') return [];
-  const workplaces = collectWorkplaces(workplaceValue, options);
+  const workplaces = Array.isArray(workplaceValue) ? workplaceValue : [workplaceValue];
   const resolved = [];
   const addPosition = (position) => {
     const normalized = normalizeAccessValue(position);

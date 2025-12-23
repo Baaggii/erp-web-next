@@ -34,15 +34,4 @@ test('hasPosTransactionAccess enforces workplace position precedence', () => {
     }),
     false,
   );
-
-  assert.equal(
-    hasPosTransactionAccess(config, null, null, {
-      workplaceId: '11',
-      workplacePositions: [
-        { workplaceId: '10', workplacePositionId: '200' },
-        { workplaceId: '11', workplacePositionId: '300' },
-      ],
-    }),
-    true,
-  );
 });
