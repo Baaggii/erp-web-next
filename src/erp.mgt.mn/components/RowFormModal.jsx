@@ -439,8 +439,23 @@ const RowFormModal = function RowFormModal({
     if (!table) return {};
     const sources = [generalConfig?.tableRelations, general?.tableRelations, cfg?.tableRelations];
     const lowerTable = String(table).toLowerCase();
-    for (const src of sources) {
-      if (!src || typeof src !== 'object') continue;
+    const aggregate = {};
+    const addEntry = (column, value) => {
+      if (!column) return;
+      const mapped = columnCaseMap[String(column).toLowerCase()] || column;
+      if (!mapped) return;
+      const existing = aggregate[mapped] || [];
+      const normalizedList = Array.isArray(value) ? value : [value];
+      normalizedList.forEach((rel) => {
+        if (rel && typeof rel === 'object' && Object.keys(rel).length > 0) {
+          existing.push(rel);
+        }
+      });
+      if (existing.length > 0) aggregate[mapped] = existing;
+    };
+
+    sources.forEach((src) => {
+      if (!src || typeof src !== 'object') return;
       let entry = src[table];
       if (!entry) {
         const match = Object.keys(src).find(
@@ -448,20 +463,10 @@ const RowFormModal = function RowFormModal({
         );
         if (match) entry = src[match];
       }
-      if (!entry || typeof entry !== 'object' || Array.isArray(entry)) continue;
-      const normalized = {};
-      Object.keys(entry).forEach((col) => {
-        if (typeof col !== 'string') return;
-        const mapped = columnCaseMap[col.toLowerCase()] || col;
-        if (typeof mapped === 'string') {
-          normalized[mapped] = entry[col];
-        }
-      });
-      if (Object.keys(normalized).length > 0) {
-        return normalized;
-      }
-    }
-    return {};
+      if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return;
+      Object.keys(entry).forEach((col) => addEntry(col, entry[col]));
+    });
+    return aggregate;
   }, [generalConfig, general, cfg, table, columnCaseMap, columnCaseMapKey]);
 
   const tableRelationsKey = React.useMemo(
@@ -487,101 +492,85 @@ const RowFormModal = function RowFormModal({
     return set;
   }, [relationConfigMapKey, relationsKey, tableRelationsKey, columnCaseMapKey, columnCaseMap]);
 
-  // Only columns present in columnCaseMap are evaluated, preventing cross-table false positives.
+  // Only columns present in relatedColumns are evaluated, preventing cross-table false positives.
   const autoSelectConfigs = React.useMemo(() => {
     const map = {};
-    const ensureConfig = (field) => {
-      if (!map[field]) map[field] = {};
-      return map[field];
-    };
-    const mergeSource = (target, source) => {
+    const addCandidate = (column, source) => {
       if (!source || typeof source !== 'object') return;
-      if (!target.table && typeof source.table === 'string') {
-        target.table = source.table;
-      }
-      const srcId = source.idField || source.column;
-      if (!target.idField && typeof srcId === 'string') {
-        target.idField = srcId;
-      }
-      const srcDisplay = Array.isArray(source.displayFields)
-        ? source.displayFields.filter((f) => typeof f === 'string')
-        : [];
-      if ((!target.displayFields || target.displayFields.length === 0) && srcDisplay.length > 0) {
-        target.displayFields = srcDisplay;
-      }
-      if (
-        !target.combinationSourceColumn &&
-        typeof source.combinationSourceColumn === 'string' &&
-        source.combinationSourceColumn.trim()
-      ) {
-        target.combinationSourceColumn = source.combinationSourceColumn;
-      }
-      if (
-        !target.combinationTargetColumn &&
-        typeof source.combinationTargetColumn === 'string' &&
-        source.combinationTargetColumn.trim()
-      ) {
-        target.combinationTargetColumn = source.combinationTargetColumn;
-      }
-      if (
-        !target.filterColumn &&
-        typeof source.filterColumn === 'string' &&
-        source.filterColumn.trim()
-      ) {
-        target.filterColumn = source.filterColumn;
-      }
-      if (target.filterValue === undefined || target.filterValue === null || target.filterValue === '') {
-        const rawFilterValue = source.filterValue ?? source.filter_value;
-        if (rawFilterValue !== undefined && rawFilterValue !== null) {
-          const normalized = String(rawFilterValue).trim();
-          if (normalized) {
-            target.filterValue = normalized;
+      const list = Array.isArray(source) ? source : [source];
+      list.forEach((rel) => {
+        if (!rel || typeof rel !== 'object') return;
+        const candidate = { ...rel };
+        if (!candidate.table && typeof rel.table === 'string') {
+          candidate.table = rel.table;
+        }
+        const srcId = rel.idField || rel.column;
+        if (!candidate.idField && typeof srcId === 'string') {
+          candidate.idField = srcId;
+        }
+        const srcDisplay = Array.isArray(rel.displayFields)
+          ? rel.displayFields.filter((f) => typeof f === 'string')
+          : [];
+        if ((!candidate.displayFields || candidate.displayFields.length === 0) && srcDisplay.length > 0) {
+          candidate.displayFields = srcDisplay;
+        }
+        if (
+          !candidate.combinationSourceColumn &&
+          typeof rel.combinationSourceColumn === 'string' &&
+          rel.combinationSourceColumn.trim()
+        ) {
+          candidate.combinationSourceColumn = rel.combinationSourceColumn;
+        }
+        if (
+          !candidate.combinationTargetColumn &&
+          typeof rel.combinationTargetColumn === 'string' &&
+          rel.combinationTargetColumn.trim()
+        ) {
+          candidate.combinationTargetColumn = rel.combinationTargetColumn;
+        }
+        if (!candidate.filterColumn && typeof rel.filterColumn === 'string' && rel.filterColumn.trim()) {
+          candidate.filterColumn = rel.filterColumn;
+        }
+        if (candidate.filterValue === undefined || candidate.filterValue === null || candidate.filterValue === '') {
+          const rawFilterValue = rel.filterValue ?? rel.filter_value;
+          if (rawFilterValue !== undefined && rawFilterValue !== null) {
+            const normalized = String(rawFilterValue).trim();
+            if (normalized) {
+              candidate.filterValue = normalized;
+            }
           }
         }
-      }
+        if (
+          candidate.table &&
+          (!candidate.displayFields || candidate.displayFields.length === 0 || !candidate.idField)
+        ) {
+          const matchedDisplay = selectDisplayFieldsForRelation(
+            tableDisplayFields,
+            candidate.table,
+            candidate,
+          );
+          if (matchedDisplay) {
+            if (!candidate.idField && matchedDisplay.idField) {
+              candidate.idField = matchedDisplay.idField;
+            }
+            if (!candidate.displayFields || candidate.displayFields.length === 0) {
+              candidate.displayFields = matchedDisplay.displayFields || [];
+            }
+          }
+        }
+        if (!candidate.table || !candidate.idField) return;
+        if (!map[column]) map[column] = [];
+        map[column].push(candidate);
+      });
     };
 
-    Object.entries(columnCaseMap || {}).forEach(([lower, column]) => {
-      if (!relatedColumns.has(column)) return;
-      const target = ensureConfig(column);
-      mergeSource(target, relationConfigMap[column]);
-
-      const tableRelation = tableRelationsConfig[column];
-      if (Array.isArray(tableRelation)) {
-        tableRelation.forEach((rel) => mergeSource(target, rel));
-      } else {
-        mergeSource(target, tableRelation);
-      }
-
-      if (
-        target.table &&
-        (!target.displayFields || target.displayFields.length === 0 || !target.idField)
-      ) {
-        const matchedDisplay = selectDisplayFieldsForRelation(
-          tableDisplayFields,
-          target.table,
-          target,
-        );
-        if (matchedDisplay) {
-          if (!target.idField && matchedDisplay.idField) {
-            target.idField = matchedDisplay.idField;
-          }
-          if (!target.displayFields || target.displayFields.length === 0) {
-            target.displayFields = matchedDisplay.displayFields || [];
-          }
-        }
-      }
-
-      if (!target.table || !target.idField) {
-        delete map[column];
-      } else if (!target.displayFields) {
-        target.displayFields = [];
-      }
+    Array.from(relatedColumns || []).forEach((column) => {
+      addCandidate(column, relationConfigMap[column]);
+      addCandidate(column, tableRelationsConfig[column]);
     });
 
     return map;
   }, [
-    columnCaseMapKey,
     relatedColumns,
     relationConfigMapKey,
     tableRelationsKey,
@@ -755,8 +744,10 @@ const RowFormModal = function RowFormModal({
   const resolveCombinationFilters = useCallback(
     (column, overrideConfig = null) => {
       if (!column) return null;
+      const autoCandidates = autoSelectConfigs[column];
+      const autoDefault = Array.isArray(autoCandidates) ? autoCandidates[0] : autoCandidates;
       const config =
-        overrideConfig || relationConfigMap[column] || autoSelectConfigs[column];
+        overrideConfig || relationConfigMap[column] || autoDefault;
       const sourceField = config?.combinationSourceColumn;
       const targetField = config?.combinationTargetColumn;
       if (!sourceField || !targetField) return null;
@@ -777,14 +768,53 @@ const RowFormModal = function RowFormModal({
     return !(value === undefined || value === null || value === '');
   };
 
+  const getAutoSelectConfig = useCallback(
+    (column) => {
+      const entries = autoSelectConfigs[column];
+      if (!Array.isArray(entries) || entries.length === 0) return null;
+      let best = null;
+      let bestScore = -Infinity;
+      entries.forEach((entry) => {
+        if (!entry || typeof entry !== 'object') return;
+        const filters = resolveCombinationFilters(column, entry);
+        const hasCombination = Boolean(
+          entry?.combinationSourceColumn && entry?.combinationTargetColumn,
+        );
+        const combinationReady = isCombinationFilterReady(
+          hasCombination,
+          entry?.combinationTargetColumn,
+          filters,
+        );
+        const score =
+          (hasCombination ? (combinationReady ? 3 : -1) : 0) +
+          (entry.filterColumn ? 1 : 0) +
+          (entry.filterValue ? 1 : 0) +
+          (combinationReady ? 1 : 0);
+        if (best === null || score > bestScore) {
+          best = { config: entry, filters, combinationReady };
+          bestScore = score;
+        }
+      });
+      if (best) return best;
+      const fallback = entries[0];
+      return {
+        config: fallback,
+        filters: resolveCombinationFilters(column, fallback),
+        combinationReady: true,
+      };
+    },
+    [autoSelectConfigs, resolveCombinationFilters],
+  );
+
   const filterRelationOptions = useCallback(
     (column, options) => {
       if (!Array.isArray(options) || options.length === 0) return options;
-      const config = relationConfigMap[column] || autoSelectConfigs[column];
+      const resolved = getAutoSelectConfig(column);
+      const config = relationConfigMap[column] || resolved?.config;
       const hasCombination = Boolean(
         config?.combinationSourceColumn && config?.combinationTargetColumn,
       );
-      const filters = resolveCombinationFilters(column);
+      const filters = resolved?.filters || resolveCombinationFilters(column, config);
       if (!filters) return hasCombination ? [] : options;
       const targetColumn = config?.combinationTargetColumn;
       if (!targetColumn) return hasCombination ? [] : options;
@@ -808,13 +838,7 @@ const RowFormModal = function RowFormModal({
         return String(targetValue) === normalizedFilter;
       });
     },
-    [
-      autoSelectConfigs,
-      getRowValueCaseInsensitive,
-      relationConfigMap,
-      relationData,
-      resolveCombinationFilters,
-    ],
+    [getAutoSelectConfig, getRowValueCaseInsensitive, relationConfigMap, relationData, resolveCombinationFilters],
   );
   const extraKeys = React.useMemo(() => Object.keys(extraVals || {}), [extraVals]);
   const extraKeyLookup = React.useMemo(() => {
@@ -2168,7 +2192,7 @@ const RowFormModal = function RowFormModal({
     const isLookupField =
       !!relationConfigMap[col] ||
       !!viewSourceMap[col] ||
-      !!autoSelectConfigs[col];
+      (Array.isArray(autoSelectConfigs[col]) && autoSelectConfigs[col].length > 0);
     if (isLookupField && e.lookupMatched === false) {
       setErrors((er) => ({ ...er, [col]: 'Тохирох утга олдсонгүй' }));
       const el = inputRefs.current[col];
@@ -2741,13 +2765,13 @@ const RowFormModal = function RowFormModal({
   async function openRelationPreview(col) {
     let val = formVals[col];
     if (val && typeof val === 'object') val = val.value;
-    const conf = relationConfigMap[col];
-    const auto = autoSelectConfigs[col];
-    const viewTbl = viewSourceMap[col] || auto?.table;
+    const auto = getAutoSelectConfig(col);
+    const conf = relationConfigMap[col] || auto?.config;
+    const viewTbl = viewSourceMap[col] || auto?.config?.table;
     const table = conf ? conf.table : viewTbl;
     const idField = conf
       ? conf.idField || conf.column
-      : auto?.idField || viewDisplays[viewTbl]?.idField || col;
+      : auto?.config?.idField || viewDisplays[viewTbl]?.idField || col;
     if (!table || val === undefined || val === '') return;
     let row = relationData[col]?.[val];
     if (!row) {
@@ -3095,6 +3119,8 @@ const RowFormModal = function RowFormModal({
         ? '1'
         : (1 / 10 ** numericScale).toFixed(numericScale);
     const isNumericField = fieldTypeMap[c] === 'number';
+    const autoSelectForField = getAutoSelectConfig(c);
+    const resolvedRelationConfig = relationConfigMap[c] || autoSelectForField?.config;
 
     if (disabled) {
       const raw = isColumn ? formVals[c] : extraVals[c];
@@ -3113,12 +3139,12 @@ const RowFormModal = function RowFormModal({
       }
       if (
         !resolvedOptionLabel &&
-        relationConfigMap[c] &&
+        resolvedRelationConfig &&
         val !== undefined &&
         relationData[c]?.[val]
       ) {
         const row = relationData[c][val];
-        const cfg = relationConfigMap[c];
+        const cfg = resolvedRelationConfig;
         const parts = [];
         const identifier = getRowValueCaseInsensitive(
           row,
@@ -3155,12 +3181,12 @@ const RowFormModal = function RowFormModal({
         display = parts.join(' - ');
       } else if (
         !resolvedOptionLabel &&
-        autoSelectConfigs[c] &&
+        autoSelectForField?.config &&
         val !== undefined &&
         relationData[c]?.[val]
       ) {
         const row = relationData[c][val];
-        const cfg = autoSelectConfigs[c];
+        const cfg = autoSelectForField?.config || {};
         const parts = [];
         const identifier = getRowValueCaseInsensitive(row, cfg.idField);
         if (identifier !== undefined && identifier !== null) {
@@ -3205,18 +3231,17 @@ const RowFormModal = function RowFormModal({
       );
     }
 
-    const control = relationConfigMap[c] ? (
+    const control = resolvedRelationConfig ? (
       (() => {
-        const conf = relationConfigMap[c];
-        const comboFilters = resolveCombinationFilters(c, conf);
+        const conf = resolvedRelationConfig;
+        const comboFilters =
+          autoSelectForField?.filters ?? resolveCombinationFilters(c, conf);
         const hasCombination = Boolean(
           conf?.combinationSourceColumn && conf?.combinationTargetColumn,
         );
-        const combinationReady = isCombinationFilterReady(
-          hasCombination,
-          conf?.combinationTargetColumn,
-          comboFilters,
-        );
+        const combinationReady =
+          autoSelectForField?.combinationReady ??
+          isCombinationFilterReady(hasCombination, conf?.combinationTargetColumn, comboFilters);
         return (
           formVisible && (
             <AsyncSearchSelect
@@ -3281,61 +3306,6 @@ const RowFormModal = function RowFormModal({
               searchColumns={[cfg.idField || c, ...(cfg.displayFields || [])]}
               labelFields={cfg.displayFields || []}
               idField={cfg.idField || c}
-              value={typeof formVals[c] === 'object' ? formVals[c].value : formVals[c]}
-              onChange={(val) => {
-                notifyAutoResetGuardOnEdit(c);
-                setFormValuesWithGenerated((prev) => {
-                  if (valuesEqual(prev[c], val)) return prev;
-                  return { ...prev, [c]: val };
-                });
-                setErrors((er) => ({ ...er, [c]: undefined }));
-              }}
-              onSelect={(opt) => {
-                const el = inputRefs.current[c];
-                if (el) {
-                  const fake = { key: 'Enter', preventDefault: () => {}, target: el, selectedOption: opt };
-                  handleKeyDown(fake, c);
-                }
-              }}
-              disabled={disabled}
-              onKeyDown={(e) => handleKeyDown(e, c)}
-              onFocus={(e) => {
-                e.target.select();
-                handleFocusField(c);
-                e.target.style.width = 'auto';
-                const w = Math.min(e.target.scrollWidth + 2, boxMaxWidth);
-                e.target.style.width = `${Math.max(boxWidth, w)}px`;
-              }}
-              inputRef={(el) => (inputRefs.current[c] = el)}
-              inputStyle={inputStyle}
-              companyId={company}
-              filters={comboFilters || undefined}
-              shouldFetch={combinationReady}
-            />
-          )
-        );
-      })()
-    ) : autoSelectConfigs[c] && !Array.isArray(relations[c]) ? (
-      (() => {
-        const cfg = autoSelectConfigs[c];
-        const comboFilters = resolveCombinationFilters(c);
-        const hasCombination = Boolean(
-          cfg?.combinationSourceColumn && cfg?.combinationTargetColumn,
-        );
-        const combinationReady = isCombinationFilterReady(
-          hasCombination,
-          cfg?.combinationTargetColumn,
-          comboFilters,
-        );
-        return (
-          formVisible && (
-            <AsyncSearchSelect
-              title={tip}
-              table={cfg.table}
-              searchColumn={cfg.idField}
-              searchColumns={[cfg.idField, ...(cfg.displayFields || [])]}
-              labelFields={cfg.displayFields || []}
-              idField={cfg.idField}
               value={typeof formVals[c] === 'object' ? formVals[c].value : formVals[c]}
               onChange={(val) => {
                 notifyAutoResetGuardOnEdit(c);
