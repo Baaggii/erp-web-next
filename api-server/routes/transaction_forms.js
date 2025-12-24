@@ -8,7 +8,6 @@ import {
   findTableByProcedure,
 } from '../services/transactionFormConfig.js';
 import { requireAuth } from '../middlewares/auth.js';
-import { deriveWorkplacePositionMap } from '../utils/workplacePositions.js';
 
 const router = express.Router();
 
@@ -26,34 +25,11 @@ router.get('/', requireAuth, async (req, res, next) => {
       workplaceId,
       positionId,
       workplacePositionId,
-      workplacePositionMap: workplacePositionMapRaw,
     } =
       req.query;
     const session = req.session || {};
-    let workplacePositionMap = {};
-    if (typeof workplacePositionMapRaw === 'string' && workplacePositionMapRaw.trim()) {
-      try {
-        const parsed = JSON.parse(workplacePositionMapRaw);
-        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-          workplacePositionMap = parsed;
-        }
-      } catch {
-        // ignore parse errors and fall back to derived map
-      }
-    }
-    if (!workplacePositionMap || Object.keys(workplacePositionMap).length === 0) {
-      workplacePositionMap = deriveWorkplacePositionMap({
-        workplaceAssignments: session?.workplace_assignments,
-        sessionWorkplaceId: session?.workplace_id ?? session?.workplaceId,
-        sessionWorkplacePositionId:
-          session?.workplace_position_id ?? session?.workplacePositionId,
-      });
-    }
-    const resolvedWorkplaceId =
-      workplaceId ?? session?.workplace_id ?? session?.workplaceId ?? null;
     const resolvedWorkplacePositionId =
       workplacePositionId ??
-      workplacePositionMap?.[resolvedWorkplaceId] ??
       session?.workplace_position_id ??
       session?.workplacePositionId ??
       null;
@@ -78,7 +54,6 @@ router.get('/', requireAuth, async (req, res, next) => {
           positionId,
           workplacePositionId: resolvedWorkplacePositionId,
           workplacePositions: session?.workplace_assignments,
-          workplacePositionMap,
         },
         companyId,
       );

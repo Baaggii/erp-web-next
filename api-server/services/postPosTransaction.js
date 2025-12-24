@@ -16,7 +16,6 @@ import {
   createColumnLookup,
 } from './posApiPersistence.js';
 import { parseLocalizedNumber } from '../../utils/parseLocalizedNumber.js';
-import { deriveWorkplacePositionMap } from '../utils/workplacePositions.js';
 import {
   saveEbarimtInvoiceSnapshot,
   persistEbarimtInvoiceResponse,
@@ -1178,43 +1177,7 @@ export async function postPosTransaction(
     sessionInfo?.department_id ??
     sessionInfo?.department ??
     null;
-  const workplaceAccessId =
-    sessionInfo?.workplaceId ??
-    sessionInfo?.workplace_id ??
-    sessionInfo?.workplace ??
-    null;
-  const employmentPositionId =
-    sessionInfo?.positionId ??
-    sessionInfo?.position_id ??
-    sessionInfo?.employment_position_id ??
-    sessionInfo?.position ??
-    null;
-  const workplaceAssignments =
-    sessionInfo?.workplacePositions ?? sessionInfo?.workplace_assignments;
-  const workplacePositionMap = deriveWorkplacePositionMap({
-    workplaceAssignments,
-    sessionWorkplaceId: workplaceAccessId,
-    sessionWorkplacePositionId:
-      sessionInfo?.workplacePositionId ?? sessionInfo?.workplace_position_id,
-  });
-  const resolvedWorkplacePositionId =
-    workplacePositionMap?.[workplaceAccessId] ??
-    sessionInfo?.workplacePositionId ??
-    sessionInfo?.workplace_position_id ??
-    null;
-  const userRightId =
-    sessionInfo?.userRightId ?? sessionInfo?.user_level ?? sessionInfo?.userLevel ?? null;
-
-  if (
-    !hasPosTransactionAccess(cfg, branchAccessId, departmentAccessId, {
-      workplaceId: workplaceAccessId,
-      positionId: employmentPositionId,
-      workplacePositionId: resolvedWorkplacePositionId,
-      workplacePositions: workplaceAssignments,
-      workplacePositionMap,
-      userRightId,
-    })
-  ) {
+  if (!hasPosTransactionAccess(cfg, branchAccessId, departmentAccessId)) {
     const err = new Error('POS transaction access denied for current scope');
     err.status = 403;
     throw err;
