@@ -15,51 +15,8 @@ const cache = {
   userRightName: undefined,
   workplaceId: undefined,
   positionId: undefined,
-  workplacePositionId: undefined,
-  workplacePositionMapKey: undefined,
 };
 const emitter = new EventTarget();
-
-const normalizeWorkplaceKey = (value) => {
-  if (value === undefined || value === null) return null;
-  const str = String(value).trim();
-  return str || null;
-};
-
-const normalizePositionId = (value) => {
-  if (value === undefined || value === null) return null;
-  if (typeof value === 'number' && Number.isFinite(value)) return String(value);
-  if (typeof value === 'string') {
-    const trimmed = value.trim();
-    if (trimmed) return trimmed;
-  }
-  return null;
-};
-
-const extractPositionId = (entry) => {
-  if (entry === undefined || entry === null) return null;
-  if (typeof entry === 'object' && !Array.isArray(entry)) {
-    return (
-      entry.positionId ??
-      entry.position_id ??
-      entry.position ??
-      entry.workplacePositionId ??
-      entry.workplace_position_id ??
-      entry.id ??
-      null
-    );
-  }
-  return entry;
-};
-
-const resolveWorkplacePositionId = (workplaceId, map, fallback) => {
-  const key = normalizeWorkplaceKey(workplaceId);
-  if (key && map && typeof map === 'object') {
-    const fromMap = normalizePositionId(extractPositionId(map[key]));
-    if (fromMap !== null) return fromMap;
-  }
-  return normalizePositionId(fallback);
-};
 
 function deriveTxnModuleState(
   data,
@@ -159,8 +116,6 @@ export function refreshTxnModules() {
   cache.userRightName = undefined;
   cache.workplaceId = undefined;
   cache.positionId = undefined;
-  cache.workplacePositionId = undefined;
-  cache.workplacePositionMapKey = undefined;
   emitter.dispatchEvent(new Event('refresh'));
 }
 
@@ -203,13 +158,10 @@ export function useTxnModules() {
       session?.position_id ??
       session?.position ??
       null;
-    const workplacePositionsMap = workplacePositionMap || {};
-    const workplacePositionId = resolveWorkplacePositionId(
-      workplaceId,
-      workplacePositionsMap,
-      session?.workplace_position_id ?? session?.workplacePositionId ?? null,
-    );
+    const workplacePositionId =
+      session?.workplace_position_id ?? session?.workplacePositionId ?? null;
     const workplacePositions = session?.workplace_assignments;
+    const workplacePositionsMap = workplacePositionMap || {};
     const derived = deriveTxnModuleState(
       data,
       branch,
@@ -254,12 +206,8 @@ export function useTxnModules() {
       session?.position_id ??
       session?.position ??
       null;
-    const currentWorkplacePositionsMap = workplacePositionMap || {};
-    const currentWorkplacePosition = resolveWorkplacePositionId(
-      currentWorkplace,
-      currentWorkplacePositionsMap,
-      session?.workplace_position_id ?? session?.workplacePositionId ?? null,
-    );
+    const currentWorkplacePosition =
+      session?.workplace_position_id ?? session?.workplacePositionId ?? null;
 
     try {
       const params = new URLSearchParams();
@@ -289,9 +237,6 @@ export function useTxnModules() {
       ) {
         params.set('workplacePositionId', currentWorkplacePosition);
       }
-      if (Object.keys(currentWorkplacePositionsMap).length > 0) {
-        params.set('workplacePositionMap', JSON.stringify(currentWorkplacePositionsMap));
-      }
       const res = await fetch(
         `/api/transaction_forms${params.toString() ? `?${params.toString()}` : ''}`,
         { credentials: 'include' },
@@ -314,7 +259,6 @@ export function useTxnModules() {
       cache.workplaceId = currentWorkplace;
       cache.positionId = currentPosition;
       cache.workplacePositionId = currentWorkplacePosition;
-      cache.workplacePositionMapKey = JSON.stringify(currentWorkplacePositionsMap);
       applyDerivedState(data);
     } catch (err) {
       console.error('Failed to load transaction modules', err);
@@ -327,7 +271,6 @@ export function useTxnModules() {
       cache.workplaceId = currentWorkplace;
       cache.positionId = currentPosition;
       cache.workplacePositionId = currentWorkplacePosition;
-      cache.workplacePositionMapKey = JSON.stringify(currentWorkplacePositionsMap);
       applyDerivedState({});
     }
   }
@@ -360,14 +303,7 @@ export function useTxnModules() {
           session?.employment_position_id ??
           session?.position_id ??
           session?.position ??
-          null) ||
-      cache.workplacePositionId !==
-        resolveWorkplacePositionId(
-          workplace ?? session?.workplace_id ?? session?.workplaceId ?? null,
-          workplacePositionMap || {},
-          session?.workplace_position_id ?? session?.workplacePositionId ?? null,
-        ) ||
-      cache.workplacePositionMapKey !== JSON.stringify(workplacePositionMap || {})
+          null)
     ) {
       setState((prev) => (prev.keys.size === 0 && Object.keys(prev.labels).length === 0 ? prev : createEmptyState()));
       fetchForms();
