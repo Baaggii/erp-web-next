@@ -96,6 +96,28 @@ function isPositionAllowed(allowedPositions, positionValue, workplaceValue, opti
   return matchesScope(allowedPositions, positionValue);
 }
 
+function hasRegularAccessUserRight(options = {}) {
+  const candidates = [];
+  if (Array.isArray(options.userRights)) {
+    candidates.push(...options.userRights);
+  }
+  candidates.push(
+    options.userRightId,
+    options.userRightValue,
+    options.userLevel,
+    options.userRight,
+    options.userRightName,
+    options.userRightLabel,
+    options.userLevelName,
+  );
+  return candidates.some((value) => {
+    const normalized = normalizeAccessValue(value);
+    if (normalized === null) return false;
+    const simplified = normalized.toLowerCase().replace(/[\s_-]+/g, '');
+    return simplified === 'regularaccess';
+  });
+}
+
 export function hasTransactionFormAccess(
   info,
   branchId,
@@ -106,7 +128,12 @@ export function hasTransactionFormAccess(
   const branchValue = normalizeAccessValue(branchId);
   const departmentValue = normalizeAccessValue(departmentId);
   const userRightValue = normalizeAccessValue(
-    options.userRightId ?? options.userLevel ?? options.userRight,
+    options.userRightId ??
+      options.userLevel ??
+      options.userRight ??
+      options.userRightName ??
+      options.userRightLabel ??
+      options.userLevelName,
   );
   const workplaceValue = normalizeAccessValue(options.workplaceId ?? options.workplace);
   const positionValue = normalizeAccessValue(
@@ -116,6 +143,7 @@ export function hasTransactionFormAccess(
   const userRightValues = Array.isArray(options.userRights) ? options.userRights : null;
   const workplaceValues = Array.isArray(options.workplaces) ? options.workplaces : null;
   const positionValues = Array.isArray(options.positions) ? options.positions : null;
+  const hasRegularAccess = hasRegularAccessUserRight({ ...options, userRightValue });
 
   const allowedBranches = normalizeAccessList(info.allowedBranches);
   const allowedDepartments = normalizeAccessList(info.allowedDepartments);
@@ -137,7 +165,7 @@ export function hasTransactionFormAccess(
     ) &&
     matchesScope(allowedProcedures, procedureValue);
 
-  if (generalAllowed) return true;
+  if (generalAllowed || hasRegularAccess) return true;
 
   const temporaryEnabled = Boolean(
     info.supportsTemporarySubmission ??
@@ -190,7 +218,12 @@ export function evaluateTransactionFormAccess(
   const branchValue = normalizeAccessValue(branchId);
   const departmentValue = normalizeAccessValue(departmentId);
   const userRightValue = normalizeAccessValue(
-    options.userRightId ?? options.userLevel ?? options.userRight,
+    options.userRightId ??
+      options.userLevel ??
+      options.userRight ??
+      options.userRightName ??
+      options.userRightLabel ??
+      options.userLevelName,
   );
   const workplaceValue = normalizeAccessValue(options.workplaceId ?? options.workplace);
   const positionValue = normalizeAccessValue(
@@ -200,6 +233,7 @@ export function evaluateTransactionFormAccess(
   const userRightValues = Array.isArray(options.userRights) ? options.userRights : null;
   const workplaceValues = Array.isArray(options.workplaces) ? options.workplaces : null;
   const positionValues = Array.isArray(options.positions) ? options.positions : null;
+  const hasRegularAccess = hasRegularAccessUserRight({ ...options, userRightValue });
 
   const allowedBranches = normalizeAccessList(info.allowedBranches);
   const allowedDepartments = normalizeAccessList(info.allowedDepartments);
@@ -209,17 +243,18 @@ export function evaluateTransactionFormAccess(
   const allowedProcedures = normalizeAccessList(info.procedures);
 
   const canPost =
-    matchesScope(allowedBranches, branchValue) &&
-    matchesScope(allowedDepartments, departmentValue) &&
-    matchesScope(allowedUserRights, userRightValues ?? userRightValue) &&
-    matchesScope(allowedWorkplaces, workplaceValues ?? workplaceValue) &&
-    isPositionAllowed(
-      allowedPositions,
-      positionValues ?? positionValue,
-      workplaceValues ?? workplaceValue,
-      options,
-    ) &&
-    matchesScope(allowedProcedures, procedureValue);
+    hasRegularAccess ||
+    (matchesScope(allowedBranches, branchValue) &&
+      matchesScope(allowedDepartments, departmentValue) &&
+      matchesScope(allowedUserRights, userRightValues ?? userRightValue) &&
+      matchesScope(allowedWorkplaces, workplaceValues ?? workplaceValue) &&
+      isPositionAllowed(
+        allowedPositions,
+        positionValues ?? positionValue,
+        workplaceValues ?? workplaceValue,
+        options,
+      ) &&
+      matchesScope(allowedProcedures, procedureValue));
 
   const temporaryEnabled = Boolean(
     info.supportsTemporarySubmission ??
