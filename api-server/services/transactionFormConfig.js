@@ -53,6 +53,10 @@ function sanitizeMappingHintField(field) {
     required: Boolean(field.required),
     description:
       typeof field.description === 'string' ? field.description : undefined,
+    defaultValue:
+      field.defaultValue !== undefined && field.defaultValue !== null
+        ? field.defaultValue
+        : undefined,
   };
 }
 
@@ -72,6 +76,116 @@ function deriveFieldDescriptions(requestFields, responseFields) {
   return descriptions;
 }
 
+function humanizeSegment(segment = '') {
+  const cleaned = segment.replace(/\[\]$/, '').replace(/[_-]+/g, ' ').replace(/([a-z0-9])([A-Z])/g, '$1 $2');
+  if (!cleaned.trim()) return segment;
+  return cleaned
+    .trim()
+    .split(/\s+/)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ');
+}
+
+function deriveNestedObjectsFromFields(fields = []) {
+  const nested = new Map();
+  fields.forEach((entry) => {
+    const field = typeof entry?.field === 'string' ? entry.field.trim() : '';
+    if (!field) return;
+    const segments = field.split('.');
+    const parts = [];
+    segments.forEach((segment) => {
+      if (!segment) return;
+      const isArray = /\[\]$/.test(segment);
+      const normalized = `${segment.replace(/\[\]$/, '')}${isArray ? '[]' : ''}`;
+      parts.push(normalized);
+      if (isArray) {
+        const path = parts.join('.');
+        if (!nested.has(path)) {
+          const label = parts.map((part) => humanizeSegment(part)).join(' → ');
+          nested.set(path, {
+            path,
+            label: label || path,
+            repeatable: true,
+          });
+        }
+      }
+    });
+  });
+  return Array.from(nested.values());
+}
+
+function collectFieldDefaults(fields = []) {
+  const defaults = {};
+  fields.forEach((entry) => {
+    const key = typeof entry?.field === 'string' ? entry.field.trim() : '';
+    if (!key) return;
+    if (entry.defaultValue !== undefined && entry.defaultValue !== null && entry.defaultValue !== '') {
+      defaults[key] = entry.defaultValue;
+    }
+  });
+  return defaults;
+}
+
+function assignRequestSampleValue(target, key, value) {
+  if (Object.prototype.hasOwnProperty.call(target, key)) return;
+  target[key] = value;
+}
+
+function ensureArrayObject(container, key) {
+  if (!Array.isArray(container[key])) {
+    container[key] = [];
+  }
+  if (!container[key][0] || typeof container[key][0] !== 'object') {
+    container[key][0] = {};
+  }
+  return container[key][0];
+}
+
+function buildRequestSampleFromFields(fields = [], defaults = {}, example = undefined) {
+  const baseSample =
+    example && typeof example === 'object' && !Array.isArray(example)
+      ? JSON.parse(JSON.stringify(example))
+      : {};
+
+  fields.forEach((entry) => {
+    const field = typeof entry?.field === 'string' ? entry.field.trim() : '';
+    if (!field) return;
+    const segments = field.split('.');
+    let cursor = baseSample;
+    segments.forEach((segment, index) => {
+      if (!segment) return;
+      const isArray = /\[\]$/.test(segment);
+      const key = segment.replace(/\[\]$/, '');
+      const isLast = index === segments.length - 1;
+
+      if (isArray) {
+        const arrayItem = ensureArrayObject(cursor, key);
+        if (isLast) {
+          const value = defaults[field];
+          if (value !== undefined) {
+            cursor[key][0] = value;
+          } else if (cursor[key][0] && typeof cursor[key][0] === 'object' && Object.keys(cursor[key][0]).length === 0) {
+            cursor[key][0] = null;
+          }
+          cursor = typeof cursor[key][0] === 'object' ? cursor[key][0] : cursor;
+        } else {
+          cursor = arrayItem;
+        }
+      } else if (isLast) {
+        const value = defaults[field] ?? null;
+        assignRequestSampleValue(cursor, key, value);
+      } else {
+        if (!cursor[key] || typeof cursor[key] !== 'object') {
+          cursor[key] = {};
+        }
+        cursor = cursor[key];
+      }
+    });
+  });
+
+  return baseSample;
+}
+
 function deriveMappingHints(endpoint) {
   if (!endpoint || typeof endpoint !== 'object') return undefined;
   const requestFields = Array.isArray(endpoint.requestFields) ? endpoint.requestFields : [];
@@ -80,6 +194,9 @@ function deriveMappingHints(endpoint) {
   const topLevelFields = [];
   const receiptFields = [];
   const itemFields = [];
+  const nestedObjects = Array.isArray(endpoint.nestedObjects)
+    ? endpoint.nestedObjects
+    : deriveNestedObjectsFromFields(requestFields);
 
   requestFields.forEach((entry) => {
     const field = typeof entry?.field === 'string' ? entry.field.trim() : '';
@@ -142,6 +259,23 @@ function deriveMappingHints(endpoint) {
     }
   }
 
+  const sanitizedNestedObjects = Array.isArray(nestedObjects)
+    ? nestedObjects
+        .map((entry) => {
+          if (!entry || typeof entry !== 'object') return null;
+          const path = typeof entry.path === 'string' ? entry.path.trim() : '';
+          if (!path) return null;
+          const label =
+            typeof entry.label === 'string' && entry.label.trim() ? entry.label.trim() : humanizeSegment(path);
+          return {
+            path,
+            label,
+            repeatable: entry.repeatable !== false,
+          };
+        })
+        .filter(Boolean)
+    : [];
+
   const hasReceiptContent = requestFields.some((entry) => typeof entry?.field === 'string' && entry.field.includes('receipts'));
   const hasPaymentContent = requestFields.some(
     (entry) => typeof entry?.field === 'string' && entry.field.includes('payments'),
@@ -151,6 +285,10 @@ function deriveMappingHints(endpoint) {
       ...(hasReceiptContent ? { receipts: 'receipts', items: 'receipts[].items' } : {}),
       ...(hasPaymentContent ? { payments: 'payments' } : {}),
     };
+  }
+
+  if (sanitizedNestedObjects.length) {
+    result.nestedObjects = sanitizedNestedObjects;
   }
 
   return Object.keys(result).length ? result : undefined;
@@ -404,6 +542,38 @@ function sanitizeEndpointForClient(endpoint) {
   const derivedHints = deriveMappingHints({ ...sanitized, receiptTypes: endpoint.receiptTypes });
   if (derivedHints) {
     sanitized.mappingHints = derivedHints;
+  }
+
+  const nestedObjects = Array.isArray(endpoint.nestedObjects)
+    ? endpoint.nestedObjects
+        .map((entry) => {
+          if (!entry || typeof entry !== 'object') return null;
+          const path = typeof entry.path === 'string' ? entry.path.trim() : '';
+          if (!path) return null;
+          const label =
+            typeof entry.label === 'string' && entry.label.trim() ? entry.label.trim() : humanizeSegment(path);
+          const repeatable = entry.repeatable !== false;
+          return { path, label, repeatable };
+        })
+        .filter(Boolean)
+    : deriveNestedObjectsFromFields(requestFields);
+  if (nestedObjects && nestedObjects.length) {
+    sanitized.nestedObjects = nestedObjects;
+  }
+
+  const mergedFieldDefaults =
+    endpoint && typeof endpoint.fieldDefaults === 'object' && endpoint.fieldDefaults !== null
+      ? { ...endpoint.fieldDefaults, ...collectFieldDefaults(requestFields) }
+      : collectFieldDefaults(requestFields);
+  if (Object.keys(mergedFieldDefaults).length) {
+    sanitized.fieldDefaults = mergedFieldDefaults;
+  }
+  const resolvedRequestSample =
+    endpoint && typeof endpoint.requestSample === 'object' && !Array.isArray(endpoint.requestSample)
+      ? endpoint.requestSample
+      : buildRequestSampleFromFields(requestFields, mergedFieldDefaults, endpoint.requestExample);
+  if (resolvedRequestSample && typeof resolvedRequestSample === 'object') {
+    sanitized.requestSample = resolvedRequestSample;
   }
 
   const parameters = sanitizeParameters(endpoint.parameters);
