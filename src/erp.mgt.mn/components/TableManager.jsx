@@ -4117,46 +4117,58 @@ const TableManager = forwardRef(function TableManager({
     }
 
     return failureCount === 0 && successCount > 0;
+  } catch (err) {
+    console.error('Temporary save request failed', err);
+    addToast(t('temporary_save_failed', 'Failed to save temporary draft'), 'error');
+    return false;
+  } finally {
+    setFormActionInProgress(false);
+  }
   }
 
   async function executeDeleteRow(id, cascade) {
-    const res = await fetch(
-      `/api/tables/${encodeURIComponent(table)}/${encodeURIComponent(id)}${
-        cascade ? '?cascade=true' : ''
-      }`,
-      { method: 'DELETE', credentials: 'include' },
-    );
-    if (res.ok) {
-      const params = new URLSearchParams({ page, perPage });
-      if (company != null && validCols.has('company_id'))
-        params.set('company_id', company);
-      if (sort.column) {
-        params.set('sort', sort.column);
-        params.set('dir', sort.dir);
+    setFormActionInProgress(true);
+    try {
+      const res = await fetch(
+        `/api/tables/${encodeURIComponent(table)}/${encodeURIComponent(id)}${
+          cascade ? '?cascade=true' : ''
+        }`,
+        { method: 'DELETE', credentials: 'include' },
+      );
+      if (res.ok) {
+        const params = new URLSearchParams({ page, perPage });
+        if (company != null && validCols.has('company_id'))
+          params.set('company_id', company);
+        if (sort.column) {
+          params.set('sort', sort.column);
+          params.set('dir', sort.dir);
+        }
+        Object.entries(filters).forEach(([k, v]) => {
+          if (v) params.set(k, v);
+        });
+        const data = await fetch(
+          `/api/tables/${encodeURIComponent(table)}?${params.toString()}`,
+          { credentials: 'include' },
+        ).then((r) => r.json());
+        const rows = data.rows || [];
+        setRows(rows);
+        setCount(data.total ?? data.count ?? 0);
+        logRowsMemory(rows);
+        setSelectedRows(new Set());
+        addToast(t('deleted', 'Deleted'), 'success');
+      } else {
+        let message = t('delete_failed', 'Delete failed');
+        try {
+          const data = await res.json();
+          if (data && data.message) message += `: ${data.message}`;
+        } catch {
+          // ignore json errors
+        }
+        addToast(message, 'error');
       }
-      Object.entries(filters).forEach(([k, v]) => {
-        if (v) params.set(k, v);
-      });
-      const data = await fetch(
-        `/api/tables/${encodeURIComponent(table)}?${params.toString()}`,
-        { credentials: 'include' },
-      ).then((r) => r.json());
-      const rows = data.rows || [];
-      setRows(rows);
-      setCount(data.total ?? data.count ?? 0);
-      logRowsMemory(rows);
-      setSelectedRows(new Set());
-      addToast(t('deleted', 'Deleted'), 'success');
-    } else {
-      let message = t('delete_failed', 'Delete failed');
-      try {
-        const data = await res.json();
-        if (data && data.message) message += `: ${data.message}`;
-      } catch {
-        // ignore json errors
-      }
-      addToast(message, 'error');
-    }
+    } catch (err) {
+      console.error('Delete failed', err);
+      addToast(t('delete_failed', 'Delete failed'), 'error');
     } finally {
       setFormActionInProgress(false);
     }
