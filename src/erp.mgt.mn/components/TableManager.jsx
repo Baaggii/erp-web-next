@@ -4141,9 +4141,25 @@ const TableManager = forwardRef(function TableManager({
             })
           : t('temporary_saved', 'Saved as temporary draft');
       addToast(message, 'success');
-      await refreshTemporarySummary();
+      const backgroundTasks = [
+        (async () => {
+          try {
+            await refreshTemporarySummary();
+          } catch (err) {
+            console.error('Failed to refresh temporary summary after save', err);
+          }
+        })(),
+      ];
       if (activeTemporaryDraftId) {
-        await cleanupActiveTemporaryDraft();
+        backgroundTasks.push(
+          (async () => {
+            try {
+              await cleanupActiveTemporaryDraft();
+            } catch (err) {
+              console.error('Failed to cleanup temporary draft after save', err);
+            }
+          })(),
+        );
       }
       if (failureCount === 0) {
         setShowForm(false);
@@ -4152,6 +4168,9 @@ const TableManager = forwardRef(function TableManager({
         setGridRows([]);
         resetWorkflowState();
       }
+      Promise.allSettled(backgroundTasks).catch((err) => {
+        console.error('Unexpected error finishing temporary save tasks', err);
+      });
     }
 
     return failureCount === 0 && successCount > 0;
