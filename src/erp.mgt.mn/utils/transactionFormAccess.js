@@ -88,8 +88,15 @@ function resolveWorkplacePositions(options, workplaceValue) {
 function isPositionAllowed(allowedPositions, positionValue, workplaceValue, options) {
   if (!Array.isArray(allowedPositions) || allowedPositions.length === 0) return true;
 
-  if (workplaceValue !== null && workplaceValue !== undefined) {
+  const hasWorkplace = workplaceValue !== null && workplaceValue !== undefined;
+
+  if (hasWorkplace) {
     const workplacePositions = resolveWorkplacePositions(options, workplaceValue);
+
+    if (!Array.isArray(workplacePositions) || workplacePositions.length === 0) {
+      return false;
+    }
+
     return matchesScope(allowedPositions, workplacePositions);
   }
 
@@ -144,6 +151,8 @@ export function hasTransactionFormAccess(
   const workplaceValues = Array.isArray(options.workplaces) ? options.workplaces : null;
   const positionValues = Array.isArray(options.positions) ? options.positions : null;
   const hasRegularAccess = hasRegularAccessUserRight({ ...options, userRightValue });
+  const effectiveWorkplace =
+    options.workplaceId ?? (Array.isArray(options.workplaces) ? options.workplaces : null);
 
   const allowedBranches = normalizeAccessList(info.allowedBranches);
   const allowedDepartments = normalizeAccessList(info.allowedDepartments);
@@ -160,7 +169,7 @@ export function hasTransactionFormAccess(
     isPositionAllowed(
       allowedPositions,
       positionValues ?? positionValue,
-      workplaceValues ?? workplaceValue,
+      effectiveWorkplace,
       options,
     ) &&
     matchesScope(allowedProcedures, procedureValue);
@@ -194,7 +203,7 @@ export function hasTransactionFormAccess(
     isPositionAllowed(
       temporaryPositions,
       positionValues ?? positionValue,
-      workplaceValues ?? workplaceValue,
+      effectiveWorkplace,
       options,
     ) &&
     matchesScope(temporaryProcedures, procedureValue)
@@ -234,6 +243,8 @@ export function evaluateTransactionFormAccess(
   const workplaceValues = Array.isArray(options.workplaces) ? options.workplaces : null;
   const positionValues = Array.isArray(options.positions) ? options.positions : null;
   const hasRegularAccess = hasRegularAccessUserRight({ ...options, userRightValue });
+  const effectiveWorkplace =
+    options.workplaceId ?? (Array.isArray(options.workplaces) ? options.workplaces : null);
 
   const allowedBranches = normalizeAccessList(info.allowedBranches);
   const allowedDepartments = normalizeAccessList(info.allowedDepartments);
@@ -251,7 +262,7 @@ export function evaluateTransactionFormAccess(
       isPositionAllowed(
         allowedPositions,
         positionValues ?? positionValue,
-        workplaceValues ?? workplaceValue,
+        effectiveWorkplace,
         options,
       ) &&
       matchesScope(allowedProcedures, procedureValue));
@@ -278,15 +289,15 @@ export function evaluateTransactionFormAccess(
       allowTemporary =
         matchesScope(temporaryBranches, branchValue) &&
         matchesScope(temporaryDepartments, departmentValue) &&
-        matchesScope(temporaryUserRights, userRightValues ?? userRightValue) &&
-        matchesScope(temporaryWorkplaces, workplaceValues ?? workplaceValue) &&
-        isPositionAllowed(
-          temporaryPositions,
-          positionValues ?? positionValue,
-          workplaceValues ?? workplaceValue,
-          options,
-        ) &&
-        matchesScope(temporaryProcedures, procedureValue);
+      matchesScope(temporaryUserRights, userRightValues ?? userRightValue) &&
+      matchesScope(temporaryWorkplaces, workplaceValues ?? workplaceValue) &&
+      isPositionAllowed(
+        temporaryPositions,
+        positionValues ?? positionValue,
+        effectiveWorkplace,
+        options,
+      ) &&
+      matchesScope(temporaryProcedures, procedureValue);
     }
   }
 

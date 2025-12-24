@@ -89,8 +89,15 @@ function resolveWorkplacePositions(options, workplaceValue) {
 function isPositionAllowed(allowedPositions, positionValue, workplaceValue, options) {
   if (!Array.isArray(allowedPositions) || allowedPositions.length === 0) return true;
 
-  if (workplaceValue !== null && workplaceValue !== undefined) {
+  const hasWorkplace = workplaceValue !== null && workplaceValue !== undefined;
+
+  if (hasWorkplace) {
     const workplacePositions = resolveWorkplacePositions(options, workplaceValue);
+
+    if (!Array.isArray(workplacePositions) || workplacePositions.length === 0) {
+      return false;
+    }
+
     return matchesScope(allowedPositions, workplacePositions);
   }
 
@@ -112,6 +119,8 @@ export function hasPosTransactionAccess(info, branchId, departmentId, options = 
   const userRightValues = Array.isArray(options.userRights) ? options.userRights : null;
   const workplaceValues = Array.isArray(options.workplaces) ? options.workplaces : null;
   const positionValues = Array.isArray(options.positions) ? options.positions : null;
+  const effectiveWorkplace =
+    options.workplaceId ?? (Array.isArray(options.workplaces) ? options.workplaces : null);
 
   const allowedBranches = normalizeAccessList(info.allowedBranches);
   const allowedDepartments = normalizeAccessList(info.allowedDepartments);
@@ -128,7 +137,7 @@ export function hasPosTransactionAccess(info, branchId, departmentId, options = 
     isPositionAllowed(
       allowedPositions,
       positionValues ?? positionValue,
-      workplaceValues ?? workplaceValue,
+      effectiveWorkplace,
       options,
     ) &&
     matchesScope(allowedProcedures, procedureValue);
@@ -158,7 +167,7 @@ export function hasPosTransactionAccess(info, branchId, departmentId, options = 
     isPositionAllowed(
       temporaryPositions,
       positionValues ?? positionValue,
-      workplaceValues ?? workplaceValue,
+      effectiveWorkplace,
       options,
     ) &&
     matchesScope(temporaryProcedures, procedureValue)
