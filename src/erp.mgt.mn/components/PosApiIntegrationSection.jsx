@@ -511,20 +511,6 @@ export default function PosApiIntegrationSection({
     return map;
   }, [selectedEndpoint]);
 
-  const responseFieldHints = useMemo(() => {
-    const source = selectedEndpoint?.responseFields;
-    if (!Array.isArray(source)) return {};
-    const map = {};
-    source.forEach((entry) => {
-      if (!entry || typeof entry.field !== 'string') return;
-      map[entry.field] = {
-        required: Boolean(entry.required),
-        description: typeof entry.description === 'string' ? entry.description : '',
-      };
-    });
-    return map;
-  }, [selectedEndpoint]);
-
   const receiptGroupHints = useMemo(() => {
     const source = selectedEndpoint?.mappingHints?.receiptGroups;
     if (!Array.isArray(source)) return {};
@@ -657,29 +643,11 @@ export default function PosApiIntegrationSection({
     }));
   }, [requestFieldGroups.receipts]);
 
-  const responseMappingFields = useMemo(() => {
-    const source = Array.isArray(selectedEndpoint?.responseFields) ? selectedEndpoint.responseFields : [];
-    if (source.length) {
-      return source.map((field) => ({
-        key: field.field,
-        path: field.field,
-        label: humanizeFieldLabel(field.field),
-        required: Boolean(field.required),
-        description: typeof field.description === 'string' ? field.description : '',
-      }));
-    }
-    return [];
-  }, [selectedEndpoint]);
-
   const nestedSourceMapping =
     config.posApiMapping &&
     typeof config.posApiMapping.nestedSources === 'object' &&
     !Array.isArray(config.posApiMapping.nestedSources)
       ? config.posApiMapping.nestedSources
-      : {};
-  const responseMapping =
-    responseFieldMapping && typeof responseFieldMapping === 'object' && !Array.isArray(responseFieldMapping)
-      ? responseFieldMapping
       : {};
 
   const fieldsFromPosApiText = useMemo(() => {
