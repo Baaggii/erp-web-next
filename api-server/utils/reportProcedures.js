@@ -2,9 +2,15 @@ import { listTransactionNames } from '../services/transactionFormConfig.js';
 import { listAllowedReports } from '../services/reportAccessConfig.js';
 import { getProcTriggers } from '../services/procTriggers.js';
 import { getEmploymentSession, listReportProcedures } from '../../db/index.js';
+import { deriveWorkplacePositionMap } from './workplacePositions.js';
 
 async function getUserContext(user, companyId) {
   const session = await getEmploymentSession(user.empid, companyId);
+  const workplacePositionMap = deriveWorkplacePositionMap({
+    workplaceAssignments: session?.workplace_assignments,
+    sessionWorkplaceId: session?.workplace_id,
+    sessionWorkplacePositionId: session?.workplace_position_id,
+  });
   return {
     branchId: session?.branch_id,
     departmentId: session?.department_id,
@@ -13,6 +19,7 @@ async function getUserContext(user, companyId) {
     workplacePositionId: session?.workplace_position_id,
     workplacePositions: session?.workplace_assignments,
     positionId: session?.position_id ?? session?.employment_position_id,
+    workplacePositionMap,
   };
 }
 
@@ -31,6 +38,7 @@ export async function listPermittedProcedures(
       positionId: userCtx.positionId,
       workplacePositionId: userCtx.workplacePositionId,
       workplacePositions: userCtx.workplacePositions,
+      workplacePositionMap: userCtx.workplacePositionMap,
     },
     companyId,
   );

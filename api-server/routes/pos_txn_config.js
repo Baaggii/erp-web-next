@@ -11,6 +11,7 @@ import {
   pickScopeValue,
 } from '../services/posTransactionConfig.js';
 import { getEmploymentSession, getUserLevelActions } from '../../db/index.js';
+import { deriveWorkplacePositionMap } from '../utils/workplacePositions.js';
 
 const router = express.Router();
 
@@ -62,6 +63,14 @@ router.get('/', requireAuth, async (req, res, next) => {
       req.session?.workplaceId ??
       req.session?.workplace;
     const workplacePositions = session?.workplace_assignments;
+    const workplacePositionMap = deriveWorkplacePositionMap({
+      workplaceAssignments: workplacePositions,
+      sessionWorkplaceId: sessionWorkplace,
+      sessionWorkplacePositionId:
+        session?.workplace_position_id ?? session?.workplacePositionId,
+    });
+    const workplacePositionId =
+      session?.workplace_position_id ?? session?.workplacePositionId ?? null;
 
     const branchId = pickScopeValue(req.query.branchId, sessionBranch);
     const departmentId = pickScopeValue(req.query.departmentId, sessionDepartment);
@@ -81,6 +90,8 @@ router.get('/', requireAuth, async (req, res, next) => {
           workplaceId,
           positionId,
           workplacePositions,
+          workplacePositionId,
+          workplacePositionMap,
         })
       ) {
         res.status(403).json({ message: 'Access denied', isDefault });
@@ -94,6 +105,8 @@ router.get('/', requireAuth, async (req, res, next) => {
         workplaceId,
         positionId,
         workplacePositions,
+        workplacePositionId,
+        workplacePositionMap,
       });
       res.json({ ...filtered, isDefault });
     }
