@@ -489,7 +489,6 @@ const TableManager = forwardRef(function TableManager({
   const [temporaryChainModalError, setTemporaryChainModalError] = useState('');
   const [temporaryChainModalLoading, setTemporaryChainModalLoading] =
     useState(false);
-  const [formActionInProgress, setFormActionInProgress] = useState(false);
   const setTemporaryRowRef = useCallback((id, node) => {
     if (id == null) return;
     const key = String(id);
@@ -3376,7 +3375,7 @@ const TableManager = forwardRef(function TableManager({
 
   async function handleSubmit(values, options = {}) {
     const { issueEbarimt = false } = options || {};
-    if (!canPostTransactions) {
+    if (requestType !== 'temporary-promote' && !canPostTransactions) {
       addToast(
         t(
           'temporary_post_not_allowed',
@@ -3523,10 +3522,9 @@ const TableManager = forwardRef(function TableManager({
       const ok = await promoteTemporary(temporaryId, {
         skipConfirm: true,
         silent: false,
-        showSuccessToast: false,
         overrideValues: cleaned,
-        promoteAsTemporary: false,
-        forcePromote: true,
+        promoteAsTemporary: !canPostTransactions,
+        forcePromote: canPostTransactions,
       });
       if (ok) {
         const [nextEntry, ...remainingQueue] = temporaryPromotionQueue;
@@ -3544,8 +3542,6 @@ const TableManager = forwardRef(function TableManager({
         setRequestType(null);
         setPendingTemporaryPromotion(null);
         setActiveTemporaryDraftId(null);
-        addToast(t('temporary_promoted', 'Temporary promoted'), 'success');
-        addToast(t('transaction_posted', 'Transaction posted'), 'success');
         if (nextEntry) {
           setTimeout(() => {
             openTemporaryPromotion(nextEntry, { resetQueue: false });
@@ -3647,15 +3643,11 @@ const TableManager = forwardRef(function TableManager({
             }
           }
         }
-        setShowForm(false);
-        setRequestType(null);
-        setEditing(null);
-        setIsAdding(false);
-        setGridRows([]);
-        setActiveTemporaryDraftId(null);
-        addToast(msg, 'success');
+        let ebarimtResult = null;
         if (shouldIssueEbarimt) {
-          issueTransactionEbarimt(targetRecordId).catch((err) => {
+          try {
+            ebarimtResult = await issueTransactionEbarimt(targetRecordId);
+          } catch (err) {
             const detailParts = [];
             const missingEnv = Array.isArray(err.details?.missingEnvVars)
               ? err.details.missingEnvVars
@@ -3679,7 +3671,11 @@ const TableManager = forwardRef(function TableManager({
               }),
               'error',
             );
-          });
+          }
+        }
+        addToast(msg, 'success');
+        if (shouldIssueEbarimt) {
+          await issueTransactionEbarimt(targetRecordId);
         }
         refreshRows();
         if (isAdding) {
@@ -3700,16 +3696,11 @@ const TableManager = forwardRef(function TableManager({
     } catch (err) {
       console.error('Save failed', err);
       return false;
-    } finally {
-      setFormActionInProgress(false);
     }
   }
 
   async function handleSaveTemporary(submission) {
     if (!canSaveTemporaryDraft) return false;
-    if (formActionInProgress) return false;
-    setFormActionInProgress(true);
-    try {
     if (!submission || typeof submission !== 'object') return false;
     const cloneValue = (value) => {
       if (value === undefined) return undefined;
@@ -4120,67 +4111,49 @@ const TableManager = forwardRef(function TableManager({
         setEditing(null);
         setIsAdding(false);
         setGridRows([]);
-        setRequestType(null);
-        setActiveTemporaryDraftId(null);
-        setShowTemporaryModal(false);
       }
     }
 
     return failureCount === 0 && successCount > 0;
-  } catch (err) {
-    console.error('Temporary save request failed', err);
-    addToast(t('temporary_save_failed', 'Failed to save temporary draft'), 'error');
-    return false;
-  } finally {
-    setFormActionInProgress(false);
-  }
   }
 
   async function executeDeleteRow(id, cascade) {
-    setFormActionInProgress(true);
-    try {
-      const res = await fetch(
-        `/api/tables/${encodeURIComponent(table)}/${encodeURIComponent(id)}${
-          cascade ? '?cascade=true' : ''
-        }`,
-        { method: 'DELETE', credentials: 'include' },
-      );
-      if (res.ok) {
-        const params = new URLSearchParams({ page, perPage });
-        if (company != null && validCols.has('company_id'))
-          params.set('company_id', company);
-        if (sort.column) {
-          params.set('sort', sort.column);
-          params.set('dir', sort.dir);
-        }
-        Object.entries(filters).forEach(([k, v]) => {
-          if (v) params.set(k, v);
-        });
-        const data = await fetch(
-          `/api/tables/${encodeURIComponent(table)}?${params.toString()}`,
-          { credentials: 'include' },
-        ).then((r) => r.json());
-        const rows = data.rows || [];
-        setRows(rows);
-        setCount(data.total ?? data.count ?? 0);
-        logRowsMemory(rows);
-        setSelectedRows(new Set());
-        addToast(t('deleted', 'Deleted'), 'success');
-      } else {
-        let message = t('delete_failed', 'Delete failed');
-        try {
-          const data = await res.json();
-          if (data && data.message) message += `: ${data.message}`;
-        } catch {
-          // ignore json errors
-        }
-        addToast(message, 'error');
+    const res = await fetch(
+      `/api/tables/${encodeURIComponent(table)}/${encodeURIComponent(id)}${
+        cascade ? '?cascade=true' : ''
+      }`,
+      { method: 'DELETE', credentials: 'include' },
+    );
+    if (res.ok) {
+      const params = new URLSearchParams({ page, perPage });
+      if (company != null && validCols.has('company_id'))
+        params.set('company_id', company);
+      if (sort.column) {
+        params.set('sort', sort.column);
+        params.set('dir', sort.dir);
       }
-    } catch (err) {
-      console.error('Delete failed', err);
-      addToast(t('delete_failed', 'Delete failed'), 'error');
-    } finally {
-      setFormActionInProgress(false);
+      Object.entries(filters).forEach(([k, v]) => {
+        if (v) params.set(k, v);
+      });
+      const data = await fetch(
+        `/api/tables/${encodeURIComponent(table)}?${params.toString()}`,
+        { credentials: 'include' },
+      ).then((r) => r.json());
+      const rows = data.rows || [];
+      setRows(rows);
+      setCount(data.total ?? data.count ?? 0);
+      logRowsMemory(rows);
+      setSelectedRows(new Set());
+      addToast(t('deleted', 'Deleted'), 'success');
+    } else {
+      let message = t('delete_failed', 'Delete failed');
+      try {
+        const data = await res.json();
+        if (data && data.message) message += `: ${data.message}`;
+      } catch {
+        // ignore json errors
+      }
+      addToast(message, 'error');
     }
   }
 
@@ -4748,10 +4721,9 @@ const TableManager = forwardRef(function TableManager({
       overrideValues = null,
       promoteAsTemporary = false,
       forcePromote = false,
-      showSuccessToast = true,
     } = {},
   ) {
-    if (!canReviewTemporary && !canPostTransactions) return false;
+    if (!canReviewTemporary) return false;
     if (
       !skipConfirm &&
       !window.confirm(t('promote_temporary_confirm', 'Promote temporary record?'))
@@ -4801,33 +4773,31 @@ const TableManager = forwardRef(function TableManager({
         return false;
       }
       if (!silent) {
-        if (showSuccessToast) {
-          addToast(t('temporary_promoted', 'Temporary promoted'), 'success');
-          if (Array.isArray(data?.warnings) && data.warnings.length > 0) {
-            const warningDetails = data.warnings
-              .map((warn) => {
-                if (!warn || !warn.column) return null;
-                if (
-                  warn.type === 'maxLength' &&
-                  warn.actualLength != null &&
-                  warn.maxLength != null
-                ) {
-                  return `${warn.column} (${warn.actualLength}→${warn.maxLength})`;
-                }
-                return warn.column;
-              })
-              .filter(Boolean)
-              .join(', ');
-            if (warningDetails) {
-              addToast(
-                t(
-                  'temporary_promoted_with_warnings',
-                  'Some fields were adjusted to fit length limits: {{details}}',
-                  { details: warningDetails },
-                ),
-                'warning',
-              );
-            }
+        addToast(t('temporary_promoted', 'Temporary promoted'), 'success');
+        if (Array.isArray(data?.warnings) && data.warnings.length > 0) {
+          const warningDetails = data.warnings
+            .map((warn) => {
+              if (!warn || !warn.column) return null;
+              if (
+                warn.type === 'maxLength' &&
+                warn.actualLength != null &&
+                warn.maxLength != null
+              ) {
+                return `${warn.column} (${warn.actualLength}→${warn.maxLength})`;
+              }
+              return warn.column;
+            })
+            .filter(Boolean)
+            .join(', ');
+          if (warningDetails) {
+            addToast(
+              t(
+                'temporary_promoted_with_warnings',
+                'Some fields were adjusted to fit length limits: {{details}}',
+                { details: warningDetails },
+              ),
+              'warning',
+            );
           }
         }
       }
@@ -7094,7 +7064,6 @@ const TableManager = forwardRef(function TableManager({
         allowTemporarySave={temporarySaveEnabled}
         readOnly={isTemporaryReadOnlyMode}
         isAdding={isAdding}
-        actionInProgress={formActionInProgress}
         canPost={canPostTransactions}
         forceEditable={guardOverridesActive}
         posApiEnabled={Boolean(formConfig?.posApiEnabled)}
