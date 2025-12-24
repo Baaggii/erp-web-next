@@ -3368,7 +3368,7 @@ const TableManager = forwardRef(function TableManager({
 
   async function handleSubmit(values, options = {}) {
     const { issueEbarimt = false } = options || {};
-    if (!canPostTransactions) {
+    if (requestType !== 'temporary-promote' && !canPostTransactions) {
       addToast(
         t(
           'temporary_post_not_allowed',
@@ -3516,8 +3516,8 @@ const TableManager = forwardRef(function TableManager({
         skipConfirm: true,
         silent: false,
         overrideValues: cleaned,
-        promoteAsTemporary: false,
-        forcePromote: true,
+        promoteAsTemporary: !canPostTransactions,
+        forcePromote: canPostTransactions,
       });
       if (ok) {
         const [nextEntry, ...remainingQueue] = temporaryPromotionQueue;
