@@ -241,3 +241,78 @@ test('listPermittedProcedures hides procedures without visibility rules', async 
     });
   }
 });
+
+test('listPermittedProcedures denies fallback when workplace access is configured', async () => {
+  const companyId = 24680;
+  await writeJsonConfig(companyId, 'transactionForms.json', {
+    tbl_reports: {
+      Summary: {
+        procedures: ['workplace_proc'],
+      },
+    },
+  });
+  await writeJsonConfig(companyId, 'report_management/allowedReports.json', {
+    workplace_proc: { branches: [], departments: [], workplaces: [5], positions: [9], permissions: [] },
+  });
+
+  let workplaceAssignments = [];
+  const origQuery = pool.query;
+  pool.query = async (sql, params) => {
+    if (typeof sql === 'string' && sql.startsWith('SHOW TRIGGERS')) {
+      return [[]];
+    }
+    if (
+      typeof sql === 'string' &&
+      sql.includes('FROM information_schema.ROUTINES')
+    ) {
+      return [[
+        { ROUTINE_NAME: 'workplace_proc' },
+      ]];
+    }
+    if (typeof sql === 'string' && sql.includes('FROM tbl_employment')) {
+      return [[
+        {
+          company_id: companyId,
+          company_name: 'Acme Co',
+          branch_id: 1,
+          branch_name: 'HQ',
+          department_id: 2,
+          department_name: 'Operations',
+          position_id: 9,
+          employment_position_id: 9,
+          senior_empid: null,
+          senior_plan_empid: null,
+          workplace_id: 5,
+          workplace_position_id: null,
+          workplace_assignments: workplaceAssignments,
+          employee_name: 'Tester',
+          user_level: 5,
+          user_level_name: 'Level 5',
+          permission_list: '',
+        },
+      ]];
+    }
+    return [[ ]];
+  };
+
+  try {
+    const { procedures: deniedProcedures } = await listPermittedProcedures({}, companyId, {
+      empid: 'emp-workplace',
+    });
+    const deniedNames = deniedProcedures.map((p) => p.name);
+    assert.ok(!deniedNames.includes('workplace_proc'));
+
+    workplaceAssignments = [{ workplace_id: 5, position_id: 9 }];
+    const { procedures: allowedProcedures } = await listPermittedProcedures({}, companyId, {
+      empid: 'emp-workplace',
+    });
+    const allowedNames = allowedProcedures.map((p) => p.name);
+    assert.ok(allowedNames.includes('workplace_proc'));
+  } finally {
+    pool.query = origQuery;
+    await fs.rm(path.join(process.cwd(), 'config', String(companyId)), {
+      recursive: true,
+      force: true,
+    });
+  }
+});

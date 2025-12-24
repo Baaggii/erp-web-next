@@ -35,3 +35,51 @@ test('hasPosTransactionAccess enforces workplace position precedence', () => {
     false,
   );
 });
+
+test('hasPosTransactionAccess blocks fallback when workplace exists', () => {
+  const config = {
+    allowedBranches: [],
+    allowedDepartments: [],
+    allowedPositions: ['100'],
+  };
+
+  assert.equal(
+    hasPosTransactionAccess(config, null, null, {
+      positionId: '100',
+      workplaceId: '20',
+    }),
+    false,
+  );
+
+  assert.equal(
+    hasPosTransactionAccess(config, null, null, {
+      positionId: '100',
+      workplaceId: '20',
+      workplacePositionMap: { 20: '200' },
+    }),
+    false,
+  );
+
+  assert.equal(
+    hasPosTransactionAccess(config, null, null, {
+      positionId: '999',
+      workplaceId: '20',
+      workplacePositionMap: { 20: '100' },
+    }),
+    true,
+  );
+
+  assert.equal(
+    hasPosTransactionAccess(config, null, null, {
+      positionId: '100',
+    }),
+    true,
+  );
+
+  assert.equal(
+    hasPosTransactionAccess(config, null, null, {
+      positionId: '200',
+    }),
+    false,
+  );
+});

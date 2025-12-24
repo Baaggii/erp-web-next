@@ -36,6 +36,54 @@ test('hasTransactionFormAccess respects workplace-linked positions', () => {
   );
 });
 
+test('hasTransactionFormAccess blocks fallback when workplace exists', () => {
+  const config = {
+    allowedBranches: [],
+    allowedDepartments: [],
+    allowedPositions: ['100'],
+  };
+
+  assert.equal(
+    hasTransactionFormAccess(config, null, null, {
+      positionId: '100',
+      workplaceId: '20',
+    }),
+    false,
+  );
+
+  assert.equal(
+    hasTransactionFormAccess(config, null, null, {
+      positionId: '100',
+      workplaceId: '20',
+      workplacePositionMap: { 20: '200' },
+    }),
+    false,
+  );
+
+  assert.equal(
+    hasTransactionFormAccess(config, null, null, {
+      positionId: '999',
+      workplaceId: '20',
+      workplacePositionMap: { 20: '100' },
+    }),
+    true,
+  );
+
+  assert.equal(
+    hasTransactionFormAccess(config, null, null, {
+      positionId: '100',
+    }),
+    true,
+  );
+
+  assert.equal(
+    hasTransactionFormAccess(config, null, null, {
+      positionId: '200',
+    }),
+    false,
+  );
+});
+
 test('evaluateTransactionFormAccess blocks when workplace-linked position is disallowed', () => {
   const config = {
     allowedBranches: [],

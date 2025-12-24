@@ -119,8 +119,17 @@ export async function listPermittedProcedures(
       }
       if (access.workplaces.length) {
         if (!hasWorkplace || !access.workplaces.includes(wId)) continue;
-      }
-      if (access.positions.length) {
+
+        if (access.positions.length) {
+          const wpPositions = Array.isArray(userCtx.workplacePositions)
+            ? userCtx.workplacePositions
+            : [];
+          const hasWorkplacePosition = wpPositions.some((wp) =>
+            access.positions.includes(wp?.position_id),
+          );
+          if (!hasWorkplacePosition) continue;
+        }
+      } else if (access.positions.length) {
         if (!hasPosition || !access.positions.includes(pId)) continue;
       }
       if (hasPermissions) {
