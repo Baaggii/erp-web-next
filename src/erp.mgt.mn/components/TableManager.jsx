@@ -489,7 +489,6 @@ const TableManager = forwardRef(function TableManager({
   const [temporaryChainModalError, setTemporaryChainModalError] = useState('');
   const [temporaryChainModalLoading, setTemporaryChainModalLoading] =
     useState(false);
-  const [formActionInProgress, setFormActionInProgress] = useState(false);
   const setTemporaryRowRef = useCallback((id, node) => {
     if (id == null) return;
     const key = String(id);
@@ -3516,7 +3515,6 @@ const TableManager = forwardRef(function TableManager({
       const ok = await promoteTemporary(temporaryId, {
         skipConfirm: true,
         silent: false,
-        showSuccessToast: false,
         overrideValues: cleaned,
         promoteAsTemporary: false,
         forcePromote: true,
@@ -3537,7 +3535,6 @@ const TableManager = forwardRef(function TableManager({
         setRequestType(null);
         setPendingTemporaryPromotion(null);
         setActiveTemporaryDraftId(null);
-        addToast(t('temporary_promoted', 'Temporary promoted'), 'success');
         if (nextEntry) {
           setTimeout(() => {
             openTemporaryPromotion(nextEntry, { resetQueue: false });
@@ -3637,15 +3634,11 @@ const TableManager = forwardRef(function TableManager({
             }
           }
         }
-        setShowForm(false);
-        setRequestType(null);
-        setEditing(null);
-        setIsAdding(false);
-        setGridRows([]);
-        setActiveTemporaryDraftId(null);
-        addToast(msg, 'success');
+        let ebarimtResult = null;
         if (shouldIssueEbarimt) {
-          issueTransactionEbarimt(targetRecordId).catch((err) => {
+          try {
+            ebarimtResult = await issueTransactionEbarimt(targetRecordId);
+          } catch (err) {
             const detailParts = [];
             const missingEnv = Array.isArray(err.details?.missingEnvVars)
               ? err.details.missingEnvVars
@@ -3669,7 +3662,11 @@ const TableManager = forwardRef(function TableManager({
               }),
               'error',
             );
-          });
+          }
+        }
+        addToast(msg, 'success');
+        if (shouldIssueEbarimt) {
+          await issueTransactionEbarimt(targetRecordId);
         }
         refreshRows();
         if (isAdding) {
@@ -3690,16 +3687,11 @@ const TableManager = forwardRef(function TableManager({
     } catch (err) {
       console.error('Save failed', err);
       return false;
-    } finally {
-      setFormActionInProgress(false);
     }
   }
 
   async function handleSaveTemporary(submission) {
     if (!canSaveTemporaryDraft) return false;
-    if (formActionInProgress) return false;
-    setFormActionInProgress(true);
-    try {
     if (!submission || typeof submission !== 'object') return false;
     const cloneValue = (value) => {
       if (value === undefined) return undefined;
@@ -4110,9 +4102,6 @@ const TableManager = forwardRef(function TableManager({
         setEditing(null);
         setIsAdding(false);
         setGridRows([]);
-        setRequestType(null);
-        setActiveTemporaryDraftId(null);
-        setShowTemporaryModal(false);
       }
     }
 
@@ -4156,9 +4145,6 @@ const TableManager = forwardRef(function TableManager({
         // ignore json errors
       }
       addToast(message, 'error');
-    }
-    } finally {
-      setFormActionInProgress(false);
     }
   }
 
@@ -4726,10 +4712,9 @@ const TableManager = forwardRef(function TableManager({
       overrideValues = null,
       promoteAsTemporary = false,
       forcePromote = false,
-      showSuccessToast = true,
     } = {},
   ) {
-    if (!canReviewTemporary && !canPostTransactions) return false;
+    if (!canReviewTemporary) return false;
     if (
       !skipConfirm &&
       !window.confirm(t('promote_temporary_confirm', 'Promote temporary record?'))
@@ -4779,33 +4764,31 @@ const TableManager = forwardRef(function TableManager({
         return false;
       }
       if (!silent) {
-        if (showSuccessToast) {
-          addToast(t('temporary_promoted', 'Temporary promoted'), 'success');
-          if (Array.isArray(data?.warnings) && data.warnings.length > 0) {
-            const warningDetails = data.warnings
-              .map((warn) => {
-                if (!warn || !warn.column) return null;
-                if (
-                  warn.type === 'maxLength' &&
-                  warn.actualLength != null &&
-                  warn.maxLength != null
-                ) {
-                  return `${warn.column} (${warn.actualLength}→${warn.maxLength})`;
-                }
-                return warn.column;
-              })
-              .filter(Boolean)
-              .join(', ');
-            if (warningDetails) {
-              addToast(
-                t(
-                  'temporary_promoted_with_warnings',
-                  'Some fields were adjusted to fit length limits: {{details}}',
-                  { details: warningDetails },
-                ),
-                'warning',
-              );
-            }
+        addToast(t('temporary_promoted', 'Temporary promoted'), 'success');
+        if (Array.isArray(data?.warnings) && data.warnings.length > 0) {
+          const warningDetails = data.warnings
+            .map((warn) => {
+              if (!warn || !warn.column) return null;
+              if (
+                warn.type === 'maxLength' &&
+                warn.actualLength != null &&
+                warn.maxLength != null
+              ) {
+                return `${warn.column} (${warn.actualLength}→${warn.maxLength})`;
+              }
+              return warn.column;
+            })
+            .filter(Boolean)
+            .join(', ');
+          if (warningDetails) {
+            addToast(
+              t(
+                'temporary_promoted_with_warnings',
+                'Some fields were adjusted to fit length limits: {{details}}',
+                { details: warningDetails },
+              ),
+              'warning',
+            );
           }
         }
       }
@@ -7072,7 +7055,6 @@ const TableManager = forwardRef(function TableManager({
         allowTemporarySave={temporarySaveEnabled}
         readOnly={isTemporaryReadOnlyMode}
         isAdding={isAdding}
-        actionInProgress={formActionInProgress}
         canPost={canPostTransactions}
         forceEditable={guardOverridesActive}
         posApiEnabled={Boolean(formConfig?.posApiEnabled)}

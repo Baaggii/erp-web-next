@@ -97,7 +97,6 @@ const RowFormModal = function RowFormModal({
   readOnly = false,
   isAdding = false,
   isEditingTemporaryDraft = false,
-  actionInProgress = false,
   canPost = true,
   forceEditable = false,
   posApiEnabled = false,
@@ -3879,7 +3878,6 @@ const RowFormModal = function RowFormModal({
                 type="button"
                 onClick={handleTemporarySave}
                 className="px-3 py-1 bg-yellow-400 text-gray-900 rounded"
-                disabled={actionInProgress}
               >
                 {temporarySaveLabel || t('save_temporary', 'Save as Temporary')}
               </button>
@@ -3899,7 +3897,7 @@ const RowFormModal = function RowFormModal({
                   submitForm({ issueEbarimt: true });
                 }}
                 className="px-3 py-1 bg-green-600 text-white rounded"
-                disabled={!issueEbarimtEnabled || submitLocked || actionInProgress}
+                disabled={!issueEbarimtEnabled || submitLocked}
               >
                 {t('ebarimt_post', 'Ebarimt Post')}
               </button>
@@ -3908,7 +3906,7 @@ const RowFormModal = function RowFormModal({
               <button
                 type="submit"
                 className="px-3 py-1 bg-blue-600 text-white rounded"
-                disabled={submitLocked || actionInProgress}
+                disabled={submitLocked}
               >
                 {t('post', 'Post')}
               </button>
