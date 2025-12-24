@@ -26,7 +26,6 @@ import permissionsRoutes from "./routes/permissions.js";
 import tenantTablesRoutes from "./routes/tenant_tables.js";
 import translationGeneratorRoutes from "./routes/translation_generator.js";
 import { getGeneralConfig } from "./services/generalConfig.js";
-import { initializeDisplayFieldConfig } from "./services/displayFieldConfig.js";
 import userSettingsRoutes from "./routes/user_settings.js";
 import printerRoutes from "./routes/printers.js";
 import printRoutes from "./routes/print.js";
@@ -51,7 +50,6 @@ app.use(logger);
 
 // Serve uploaded images statically before CSRF so image requests don't require tokens
 const { config: imgCfg } = await getGeneralConfig();
-await initializeDisplayFieldConfig();
 const imgBase = imgCfg.images?.basePath || "uploads";
 const projectRoot = path.resolve(__dirname, "../");
 const uploadsRoot = path.isAbsolute(imgBase)

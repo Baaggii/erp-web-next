@@ -40,7 +40,6 @@ import transactionImageRoutes from "./routes/transaction_images.js";
 import transactionTemporaryRoutes from "./routes/transaction_temporaries.js";
 import aiInventoryRoutes from "./routes/ai_inventory.js";
 import { getGeneralConfig } from "./services/generalConfig.js";
-import { initializeDisplayFieldConfig } from "./services/displayFieldConfig.js";
 import procedureRoutes from "./routes/procedures.js";
 import procTriggerRoutes from "./routes/proc_triggers.js";
 import reportProcedureRoutes from "./routes/report_procedures.js";
@@ -113,7 +112,6 @@ app.set("io", io);
 
 // Serve uploaded images statically
 const { config: imgCfg } = await getGeneralConfig();
-await initializeDisplayFieldConfig();
 const imgBase = imgCfg.images?.basePath || "uploads";
 const projectRoot = path.resolve(__dirname, "../");
 const uploadsRoot = path.isAbsolute(imgBase)
