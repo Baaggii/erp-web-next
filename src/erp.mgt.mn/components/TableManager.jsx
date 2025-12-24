@@ -489,6 +489,7 @@ const TableManager = forwardRef(function TableManager({
   const [temporaryChainModalError, setTemporaryChainModalError] = useState('');
   const [temporaryChainModalLoading, setTemporaryChainModalLoading] =
     useState(false);
+  const [formActionInProgress, setFormActionInProgress] = useState(false);
   const setTemporaryRowRef = useCallback((id, node) => {
     if (id == null) return;
     const key = String(id);
@@ -3368,16 +3369,19 @@ const TableManager = forwardRef(function TableManager({
 
   async function handleSubmit(values, options = {}) {
     const { issueEbarimt = false } = options || {};
-    if (requestType !== 'temporary-promote' && !canPostTransactions) {
-      addToast(
-        t(
-          'temporary_post_not_allowed',
-          'You do not have permission to post this transaction.',
-        ),
-        'error',
-      );
-      return false;
-    }
+    if (formActionInProgress) return false;
+    setFormActionInProgress(true);
+    try {
+      if (!canPostTransactions) {
+        addToast(
+          t(
+            'temporary_post_not_allowed',
+            'You do not have permission to post this transaction.',
+          ),
+          'error',
+        );
+        return false;
+      }
     const columns = new Set(allColumns);
     const mergedSource = { ...(editing || {}) };
     Object.entries(values).forEach(([k, v]) => {
@@ -3516,8 +3520,8 @@ const TableManager = forwardRef(function TableManager({
         skipConfirm: true,
         silent: false,
         overrideValues: cleaned,
-        promoteAsTemporary: !canPostTransactions,
-        forcePromote: canPostTransactions,
+        promoteAsTemporary: false,
+        forcePromote: true,
       });
       if (ok) {
         const [nextEntry, ...remainingQueue] = temporaryPromotionQueue;
@@ -3687,11 +3691,16 @@ const TableManager = forwardRef(function TableManager({
     } catch (err) {
       console.error('Save failed', err);
       return false;
+    } finally {
+      setFormActionInProgress(false);
     }
   }
 
   async function handleSaveTemporary(submission) {
     if (!canSaveTemporaryDraft) return false;
+    if (formActionInProgress) return false;
+    setFormActionInProgress(true);
+    try {
     if (!submission || typeof submission !== 'object') return false;
     const cloneValue = (value) => {
       if (value === undefined) return undefined;
@@ -4145,6 +4154,9 @@ const TableManager = forwardRef(function TableManager({
         // ignore json errors
       }
       addToast(message, 'error');
+    }
+    } finally {
+      setFormActionInProgress(false);
     }
   }
 
@@ -7055,6 +7067,7 @@ const TableManager = forwardRef(function TableManager({
         allowTemporarySave={temporarySaveEnabled}
         readOnly={isTemporaryReadOnlyMode}
         isAdding={isAdding}
+        actionInProgress={formActionInProgress}
         canPost={canPostTransactions}
         forceEditable={guardOverridesActive}
         posApiEnabled={Boolean(formConfig?.posApiEnabled)}
