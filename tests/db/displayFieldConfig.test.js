@@ -156,3 +156,37 @@ await test('validation enforces required fields and uniqueness', async () => {
   );
   await restore();
 });
+
+await test('filtered selection matches idField/target column', async () => {
+  const { file, restore } = await withTempFile();
+  await fs.writeFile(
+    file,
+    JSON.stringify([
+      {
+        table: 'tbl',
+        idField: 'primary_id',
+        filterColumn: 'status',
+        filterValue: 'active',
+        displayFields: ['primary'],
+      },
+      {
+        table: 'tbl',
+        idField: 'alt_id',
+        filterColumn: 'status',
+        filterValue: 'active',
+        displayFields: ['alternate'],
+      },
+    ]),
+  );
+
+  const { config } = await getDisplayFields('tbl', 0, 'status', 'active', 'ALT_ID');
+  assert.deepEqual(config, {
+    table: 'tbl',
+    idField: 'alt_id',
+    filterColumn: 'status',
+    filterValue: 'active',
+    displayFields: ['alternate'],
+  });
+
+  await restore();
+});
