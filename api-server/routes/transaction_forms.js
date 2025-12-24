@@ -8,9 +8,6 @@ import {
   findTableByProcedure,
 } from '../services/transactionFormConfig.js';
 import { requireAuth } from '../middlewares/auth.js';
-import { deriveWorkplacePositionsFromAssignments } from '../utils/workplacePositions.js';
-import { getEmploymentSession } from '../../db/index.js';
-import { normalizeEmploymentSession } from '../utils/employmentSession.js';
 
 const router = express.Router();
 
@@ -30,24 +27,12 @@ router.get('/', requireAuth, async (req, res, next) => {
       workplacePositionId,
     } =
       req.query;
-    const baseSession =
-      req.session && Number(req.session?.company_id) === companyId
-        ? req.session
-        : await getEmploymentSession(req.user.empid, companyId);
-    const session =
-      baseSession && !baseSession.workplace_assignments
-        ? normalizeEmploymentSession(baseSession, baseSession ? [baseSession] : [])
-        : baseSession || {};
+    const session = req.session || {};
     const resolvedWorkplacePositionId =
       workplacePositionId ??
       session?.workplace_position_id ??
       session?.workplacePositionId ??
       null;
-    const workplacePositions = session?.workplace_assignments;
-    const workplacePositionMap =
-      session?.workplace_position_map ??
-      session?.workplacePositionMap ??
-      deriveWorkplacePositionsFromAssignments(workplacePositions);
     if (proc) {
       const { table: tbl, isDefault } = await findTableByProcedure(proc, companyId);
       if (tbl) res.json({ table: tbl, isDefault });
@@ -68,8 +53,7 @@ router.get('/', requireAuth, async (req, res, next) => {
           workplaceId,
           positionId,
           workplacePositionId: resolvedWorkplacePositionId,
-          workplacePositions,
-          workplacePositionMap,
+          workplacePositions: session?.workplace_assignments,
         },
         companyId,
       );

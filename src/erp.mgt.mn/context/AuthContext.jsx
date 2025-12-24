@@ -3,7 +3,10 @@ import React, { createContext, useState, useEffect, useContext, useMemo } from '
 import { debugLog, trackSetState } from '../utils/debug.js';
 import { API_BASE } from '../utils/apiBase.js';
 import normalizeEmploymentSession from '../utils/normalizeEmploymentSession.js';
-import { deriveWorkplacePositionsFromAssignments } from '../utils/workplaceResolver.js';
+import {
+  deriveWorkplacePositionsFromAssignments,
+  resolveWorkplacePositionMap,
+} from '../utils/workplaceResolver.js';
 
 // Create the AuthContext
 export const AuthContext = createContext({
@@ -176,9 +179,7 @@ export default function AuthContextProvider({ children }) {
           setWorkplace(data.workplace ?? normalizedSession?.workplace_id ?? null);
           trackSetState('AuthContext.setPermissions');
           setPermissions(data.permissions || null);
-          const derivedWorkplaceMap =
-            normalizedSession?.workplace_position_map ??
-            deriveWorkplacePositionsFromAssignments(normalizedSession);
+          const derivedWorkplaceMap = deriveWorkplacePositionsFromAssignments(normalizedSession);
           trackSetState('AuthContext.setWorkplacePositionMap');
           setWorkplacePositionMap(derivedWorkplaceMap);
           try {
@@ -354,18 +355,44 @@ export default function AuthContextProvider({ children }) {
   );
 
   useEffect(() => {
-    if (!session) {
-      trackSetState('AuthContext.setWorkplacePositionMap');
-      setWorkplacePositionMap({});
-      return;
+    let isMounted = true;
+    const controller = new AbortController();
+
+    async function loadWorkplacePositions() {
+      if (!session) {
+        if (isMounted) {
+          trackSetState('AuthContext.setWorkplacePositionMap');
+          setWorkplacePositionMap({});
+        }
+        return;
+      }
+
+      const derived = deriveWorkplacePositionsFromAssignments(session);
+      if (isMounted) {
+        trackSetState('AuthContext.setWorkplacePositionMap');
+        setWorkplacePositionMap(derived);
+      }
+
+      try {
+        const resolved = await resolveWorkplacePositionMap({
+          session,
+          signal: controller.signal,
+        });
+        if (!isMounted || controller.signal.aborted) return;
+        trackSetState('AuthContext.setWorkplacePositionMap');
+        setWorkplacePositionMap(resolved);
+      } catch (err) {
+        if (controller.signal.aborted) return;
+        console.warn('Failed to resolve workplace positions', err);
+      }
     }
 
-    const derived =
-      session.workplace_position_map ??
-      session.workplacePositionMap ??
-      deriveWorkplacePositionsFromAssignments(session);
-    trackSetState('AuthContext.setWorkplacePositionMap');
-    setWorkplacePositionMap(derived);
+    loadWorkplacePositions();
+
+    return () => {
+      isMounted = false;
+      controller.abort();
+    };
   }, [
     session?.company_id,
     session?.companyId,

@@ -45,22 +45,6 @@ function matchesScope(list, value) {
   return list.includes(normalizedValue);
 }
 
-function extractPositionId(entry) {
-  if (entry === undefined || entry === null) return null;
-  if (typeof entry === 'object' && !Array.isArray(entry)) {
-    return (
-      entry.positionId ??
-      entry.position_id ??
-      entry.position ??
-      entry.workplacePositionId ??
-      entry.workplace_position_id ??
-      entry.id ??
-      null
-    );
-  }
-  return entry;
-}
-
 function resolveWorkplacePosition(options, workplaceValue) {
   if (!options || typeof options !== 'object') return null;
   const workplaces = Array.isArray(workplaceValue) ? workplaceValue : [workplaceValue];
@@ -75,7 +59,7 @@ function resolveWorkplacePosition(options, workplaceValue) {
     ];
     for (const map of mapCandidates) {
       if (map && typeof map === 'object' && !Array.isArray(map)) {
-        const mappedPosition = normalizeAccessValue(extractPositionId(map[normalizedWorkplace]));
+        const mappedPosition = normalizeAccessValue(map[normalizedWorkplace]);
         if (mappedPosition !== null) return mappedPosition;
       }
     }
@@ -91,39 +75,35 @@ function resolveWorkplacePosition(options, workplaceValue) {
           entry?.workplaceId ?? entry?.workplace_id ?? entry?.workplace ?? entry?.id,
         );
         if (entryWorkplace !== normalizedWorkplace) continue;
-        const positionId = extractPositionId(
+        const positionId = normalizeAccessValue(
           entry?.positionId ??
             entry?.position_id ??
             entry?.position ??
             entry?.workplacePositionId ??
-            entry?.workplace_position_id ??
-            entry,
+            entry?.workplace_position_id,
         );
-        const normalizedPosition = normalizeAccessValue(positionId);
-        if (normalizedPosition !== null) return normalizedPosition;
+        if (positionId !== null) return positionId;
       }
     }
 
-    const directPosition = extractPositionId(
+    const directPosition = normalizeAccessValue(
       options.workplacePositionId ??
         options.workplacePosition ??
         options.workplace_position_id ??
         options.workplace_position,
     );
-    const normalizedDirect = normalizeAccessValue(directPosition);
-    if (normalizedDirect !== null) return normalizedDirect;
+    if (directPosition !== null) return directPosition;
   }
   return null;
 }
 
 function isPositionAllowed(allowedPositions, positionValue, workplaceValue, options) {
+  const matchesDirect = matchesScope(allowedPositions, positionValue);
+  if (matchesDirect) return true;
   if (!Array.isArray(allowedPositions) || allowedPositions.length === 0) return true;
-  if (workplaceValue !== null && workplaceValue !== undefined) {
-    const workplacePosition = resolveWorkplacePosition(options, workplaceValue);
-    if (workplacePosition === null) return false;
-    return matchesScope(allowedPositions, workplacePosition);
-  }
-  return matchesScope(allowedPositions, positionValue);
+  const workplacePosition = resolveWorkplacePosition(options, workplaceValue);
+  if (workplacePosition === null) return false;
+  return matchesScope(allowedPositions, workplacePosition);
 }
 
 function normalizeStoredAccessList(list) {
