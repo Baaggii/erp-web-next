@@ -31,13 +31,28 @@ function humanizeFieldLabel(key) {
     .replace(/^./, (c) => c.toUpperCase());
 }
 
-function groupRequestFields(requestFields = []) {
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function groupRequestFields(requestFields = [], nestedObjects = []) {
   const groups = {
     top: [],
     receipts: [],
     items: [],
     payments: [],
+    objects: {},
   };
+  const nestedList = Array.isArray(nestedObjects) ? nestedObjects : [];
+  const nestedMatchers = nestedList
+    .map((obj) => {
+      const path = typeof obj?.path === 'string' ? obj.path.trim() : '';
+      if (!path) return null;
+      const normalized = path.replace(/\[\]/g, '[]');
+      const pattern = new RegExp(`^${escapeRegExp(normalized)}(?:\\.|\\[\\])?`);
+      return { ...obj, path: normalized, matcher: pattern };
+    })
+    .filter(Boolean);
   (Array.isArray(requestFields) ? requestFields : []).forEach((entry) => {
     const fieldPath = typeof entry?.field === 'string' ? entry.field.trim() : '';
     if (!fieldPath) return;
@@ -77,6 +92,22 @@ function groupRequestFields(requestFields = []) {
         key: fieldPath.replace('receipts[].', ''),
         label: humanizeFieldLabel(fieldPath.replace('receipts[].', '')),
       });
+      return;
+    }
+    const nestedMatch = nestedMatchers.find((obj) => obj.matcher?.test(fieldPath));
+    if (nestedMatch) {
+      const key = fieldPath.replace(new RegExp(`^${escapeRegExp(nestedMatch.path)}(?:\\.|\\[\\])?`), '');
+      const label = humanizeFieldLabel(key);
+      const current = groups.objects[nestedMatch.path] || [];
+      groups.objects[nestedMatch.path] = [
+        ...current,
+        {
+          ...base,
+          key: key || fieldPath,
+          label,
+          object: nestedMatch,
+        },
+      ];
       return;
     }
     groups.top.push({ ...base, label: humanizeFieldLabel(fieldPath) });
@@ -224,13 +255,22 @@ export default function PosApiIntegrationSection({
   }, [endpointCandidates, config.posApiEndpointId, config.posApiEndpointMeta, config.posApiMapping]);
 
   const requestFieldGroups = useMemo(
-    () => groupRequestFields(selectedEndpoint?.requestFields || []),
+    () => groupRequestFields(selectedEndpoint?.requestFields || [], selectedEndpoint?.nestedObjects),
     [selectedEndpoint],
   );
   const nestedObjects = useMemo(
     () => (Array.isArray(selectedEndpoint?.nestedObjects) ? selectedEndpoint.nestedObjects : []),
     [selectedEndpoint],
   );
+  const nestedObjectLookup = useMemo(() => {
+    const map = new Map();
+    nestedObjects.forEach((obj) => {
+      if (!obj || typeof obj.path !== 'string') return;
+      const normalized = obj.path.replace(/\[\]/g, '[]');
+      map.set(normalized, obj);
+    });
+    return map;
+  }, [nestedObjects]);
 
   useEffect(() => {
     if (!selectedEndpoint) return;
@@ -591,10 +631,53 @@ export default function PosApiIntegrationSection({
   }, [
     effectivePaymentMethods,
     paymentMethodHints,
-      paymentMethodMapping,
-      endpointPaymentMethods,
-      paymentMethodsFeatureEnabled,
-    ]);
+    paymentMethodMapping,
+    endpointPaymentMethods,
+    paymentMethodsFeatureEnabled,
+  ]);
+
+  const responseFieldHints = useMemo(() => {
+    const list = Array.isArray(selectedEndpoint?.responseFields)
+      ? selectedEndpoint.responseFields
+      : [];
+    const configuredKeys = Object.keys(responseFieldMapping || {});
+    const combined = Array.from(new Set([...list, ...configuredKeys.map((field) => ({ field }))]));
+    return combined
+      .map((entry) => {
+        const field = typeof entry?.field === 'string' ? entry.field.trim() : '';
+        if (!field) return null;
+        return {
+          field,
+          required: Boolean(entry?.required),
+          description: typeof entry?.description === 'string' ? entry.description : '',
+        };
+      })
+      .filter(Boolean);
+  }, [selectedEndpoint, responseFieldMapping]);
+
+  const objectRequestGroups = useMemo(() => {
+    const entries = Object.entries(requestFieldGroups.objects || {});
+    return entries.map(([path, fields]) => {
+      const meta = nestedObjectLookup.get(path) || { path };
+      return {
+        path,
+        label: meta.label || path,
+        repeatable: meta.repeatable !== false,
+        fields,
+      };
+    });
+  }, [requestFieldGroups.objects, nestedObjectLookup]);
+
+  const objectTableOptions = useMemo(() => {
+    const tables = new Set();
+    if (primaryTableName) tables.add(primaryTableName);
+    (config?.tables || []).forEach((entry) => {
+      const tbl = typeof entry?.table === 'string' ? entry.table.trim() : '';
+      if (tbl) tables.add(tbl);
+    });
+    Object.keys(tableColumns || {}).forEach((tbl) => tables.add(tbl));
+    return Array.from(tables).filter(Boolean);
+  }, [config?.tables, primaryTableName, tableColumns]);
 
   const primaryPosApiFields = useMemo(() => {
     const candidates = requestFieldGroups.top.length
@@ -647,6 +730,18 @@ export default function PosApiIntegrationSection({
     typeof config.posApiMapping.nestedSources === 'object' &&
     !Array.isArray(config.posApiMapping.nestedSources)
       ? config.posApiMapping.nestedSources
+      : {};
+  const responseFieldMapping =
+    config.posApiMapping &&
+    typeof config.posApiMapping.responseFields === 'object' &&
+    !Array.isArray(config.posApiMapping.responseFields)
+      ? config.posApiMapping.responseFields
+      : {};
+  const objectFieldMapping =
+    config.posApiMapping &&
+    typeof config.posApiMapping.objects === 'object' &&
+    !Array.isArray(config.posApiMapping.objects)
+      ? config.posApiMapping.objects
       : {};
 
   const fieldsFromPosApiText = useMemo(() => {
@@ -738,6 +833,61 @@ export default function PosApiIntegrationSection({
         base.nestedSources = allSources;
       } else {
         delete base.nestedSources;
+      }
+      return { ...c, posApiMapping: base };
+    });
+  };
+
+  const updateObjectFieldMapping = (objectPath, field, table, column) => {
+    setConfig((c) => {
+      const base = { ...(c.posApiMapping || {}) };
+      const objects =
+        base.objects && typeof base.objects === 'object' && !Array.isArray(base.objects)
+          ? { ...base.objects }
+          : {};
+      const current =
+        objects[objectPath] && typeof objects[objectPath] === 'object' && !Array.isArray(objects[objectPath])
+          ? { ...objects[objectPath] }
+          : {};
+      const nextValue = buildFieldSource(table, column);
+      if (!nextValue) {
+        delete current[field];
+      } else {
+        current[field] = nextValue;
+      }
+      if (Object.keys(current).length) {
+        objects[objectPath] = current;
+      } else {
+        delete objects[objectPath];
+      }
+      if (Object.keys(objects).length) {
+        base.objects = objects;
+      } else {
+        delete base.objects;
+      }
+      return { ...c, posApiMapping: base };
+    });
+  };
+
+  const updateResponseFieldMapping = (field, table, column) => {
+    setConfig((c) => {
+      const base = { ...(c.posApiMapping || {}) };
+      const mappings =
+        base.responseFields && typeof base.responseFields === 'object' && !Array.isArray(base.responseFields)
+          ? { ...base.responseFields }
+          : {};
+      const normalizedField = typeof field === 'string' ? field.trim() : '';
+      const normalizedTable = typeof table === 'string' ? table.trim() : '';
+      const normalizedColumn = typeof column === 'string' ? column.trim() : '';
+      if (!normalizedField || !normalizedTable || !normalizedColumn) {
+        delete mappings[normalizedField];
+      } else {
+        mappings[normalizedField] = { table: normalizedTable, column: normalizedColumn };
+      }
+      if (Object.keys(mappings).length) {
+        base.responseFields = mappings;
+      } else {
+        delete base.responseFields;
       }
       return { ...c, posApiMapping: base };
     });
@@ -1328,6 +1478,98 @@ export default function PosApiIntegrationSection({
           One field path per line (e.g., receipts[0].billId) to persist on the transaction record.
         </small>
       </label>
+      {responseFieldHints.length > 0 && (
+        <div style={{ marginTop: '0.75rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+          <strong>Response field mappings</strong>
+          <p style={{ fontSize: '0.85rem', color: '#555' }}>
+            Map fields returned by the POSAPI endpoint to database columns. Fields without a mapping
+            remain available in the raw response payload.
+          </p>
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
+              gap: '0.75rem',
+            }}
+          >
+            {responseFieldHints.map((hint) => {
+              const mapping = responseFieldMapping[hint.field] || {};
+              const table = typeof mapping.table === 'string' ? mapping.table : '';
+              const column = typeof mapping.column === 'string' ? mapping.column : '';
+              const listId = `response-field-${hint.field}-columns-${table || 'master'}`;
+              const availableColumns = table ? tableColumns[table] || [] : primaryTableColumns;
+              return (
+                <div
+                  key={`response-field-${hint.field}`}
+                  style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}
+                >
+                  <span
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.5rem',
+                      fontWeight: 600,
+                      color: '#0f172a',
+                    }}
+                  >
+                    {hint.field}
+                    <span
+                      style={{
+                        ...BADGE_BASE_STYLE,
+                        ...(hint.required ? REQUIRED_BADGE_STYLE : OPTIONAL_BADGE_STYLE),
+                      }}
+                    >
+                      {hint.required ? 'Required' : 'Optional'}
+                    </span>
+                  </span>
+                  <select
+                    value={table}
+                    onChange={(e) => {
+                      const nextTable = e.target.value;
+                      if (nextTable) onEnsureColumnsLoaded(nextTable);
+                      updateResponseFieldMapping(hint.field, nextTable, column);
+                    }}
+                    disabled={!config.posApiEnabled}
+                    style={{ minWidth: '160px' }}
+                  >
+                    <option value="">{primaryTableLabel}</option>
+                    {objectTableOptions
+                      .filter((tbl) => tbl !== primaryTableName)
+                      .map((tbl) => (
+                        <option key={`response-table-${hint.field}-${tbl}`} value={tbl}>
+                          {tbl}
+                        </option>
+                      ))}
+                  </select>
+                  <input
+                    type="text"
+                    list={listId}
+                    value={column}
+                    onChange={(e) => updateResponseFieldMapping(hint.field, table, e.target.value)}
+                    placeholder="Column name"
+                    disabled={!config.posApiEnabled}
+                  />
+                  {hint.description && <small style={{ color: '#555' }}>{hint.description}</small>}
+                  <datalist id={listId}>
+                    {(availableColumns || []).map((col) => (
+                      <option key={`response-${hint.field}-${table || 'master'}-${col}`} value={col} />
+                    ))}
+                  </datalist>
+                </div>
+              );
+            })}
+          </div>
+          {responseFieldHints.some((hint) => !responseFieldMapping[hint.field]) && (
+            <div style={{ color: '#0f172a', fontSize: '0.85rem' }}>
+              <strong>Not mapped yet:</strong>{' '}
+              {responseFieldHints
+                .filter((hint) => !responseFieldMapping[hint.field])
+                .map((hint) => hint.field)
+                .join(', ')}
+            </div>
+          )}
+        </div>
+      )}
       <div>
         <strong>Field mapping</strong>
         <p style={{ fontSize: '0.85rem', color: '#555' }}>
@@ -1441,6 +1683,119 @@ export default function PosApiIntegrationSection({
                   </div>
                 );
               })}
+            </div>
+          </div>
+        )}
+        {objectRequestGroups.length > 0 && (
+          <div style={{ marginTop: '1rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+            <strong>Object field mappings</strong>
+            <p style={{ fontSize: '0.85rem', color: '#555' }}>
+              Map request fields for each nested object directly to transaction tables. Objects without mappings
+              will fall back to master-row values.
+            </p>
+            <div className="space-y-4" style={{ marginTop: '0.25rem' }}>
+              {objectRequestGroups.map((group) => (
+                <div
+                  key={`object-group-${group.path}`}
+                  style={{
+                    border: '1px solid #d1d5db',
+                    borderRadius: '8px',
+                    padding: '0.75rem',
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <h4 style={{ margin: 0 }}>{group.label}</h4>
+                    <span
+                      style={{
+                        ...BADGE_BASE_STYLE,
+                        ...(group.repeatable ? REQUIRED_BADGE_STYLE : OPTIONAL_BADGE_STYLE),
+                      }}
+                    >
+                      {group.repeatable ? 'Repeatable' : 'Single'}
+                    </span>
+                  </div>
+                  <div
+                    style={{
+                      display: 'grid',
+                      gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
+                      gap: '0.75rem',
+                      marginTop: '0.5rem',
+                    }}
+                  >
+                    {group.fields.map((field) => {
+                      const mapping =
+                        objectFieldMapping[group.path] && typeof objectFieldMapping[group.path] === 'object'
+                          ? objectFieldMapping[group.path][field.key]
+                          : '';
+                      const parsed = parseFieldSource(mapping, primaryTableName);
+                      const selectedTable = parsed.table;
+                      const columnValue = parsed.column;
+                      const listId = `object-${group.path}-${field.key}-${selectedTable || 'master'}`;
+                      const availableColumns = selectedTable
+                        ? tableColumns[selectedTable] || []
+                        : primaryTableColumns;
+                      const tableChoices = objectTableOptions.filter((tbl) => tbl !== primaryTableName);
+                      return (
+                        <div
+                          key={`object-field-${group.path}-${field.key}`}
+                          style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}
+                        >
+                          <span style={{ fontWeight: 600, color: '#0f172a' }}>{field.label}</span>
+                          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
+                            <select
+                              value={selectedTable}
+                              onChange={(e) => {
+                                const nextTable = e.target.value;
+                                if (nextTable) onEnsureColumnsLoaded(nextTable);
+                                updateObjectFieldMapping(
+                                  group.path,
+                                  field.key,
+                                  nextTable,
+                                  columnValue,
+                                );
+                              }}
+                              disabled={!config.posApiEnabled}
+                              style={{ minWidth: '160px' }}
+                            >
+                              <option value="">{primaryTableLabel}</option>
+                              {tableChoices.map((tbl) => (
+                                <option key={`object-${group.path}-${field.key}-table-${tbl}`} value={tbl}>
+                                  {tbl}
+                                </option>
+                              ))}
+                            </select>
+                            <input
+                              type="text"
+                              list={listId}
+                              value={columnValue}
+                              onChange={(e) =>
+                                updateObjectFieldMapping(
+                                  group.path,
+                                  field.key,
+                                  selectedTable,
+                                  e.target.value,
+                                )
+                              }
+                              placeholder="Column or path"
+                              disabled={!config.posApiEnabled}
+                              style={{ flex: '1 1 140px', minWidth: '140px' }}
+                            />
+                          </div>
+                          <datalist id={listId}>
+                            {(availableColumns || []).map((col) => (
+                              <option
+                                key={`object-${group.path}-${field.key}-${selectedTable || 'master'}-${col}`}
+                                value={col}
+                              />
+                            ))}
+                          </datalist>
+                          {field.description && <small style={{ color: '#555' }}>{field.description}</small>}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
         )}
