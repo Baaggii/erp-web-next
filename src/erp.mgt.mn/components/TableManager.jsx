@@ -3633,45 +3633,27 @@ const TableManager = forwardRef(function TableManager({
       });
       const savedRow = res.ok ? await res.json().catch(() => ({})) : {};
       if (res.ok) {
-        const params = new URLSearchParams({ page, perPage });
-        if (company != null && columns.has('company_id'))
-          params.set('company_id', company);
-        if (sort.column) {
-          params.set('sort', sort.column);
-          params.set('dir', sort.dir);
-        }
-        Object.entries(filters).forEach(([k, v]) => {
-          if (v) params.set(k, v);
-        });
-        const data = await fetch(`/api/tables/${encodeURIComponent(table)}?${params.toString()}`, {
-          credentials: 'include',
-        }).then((r) => r.json());
-        const rows = data.rows || [];
-        setRows(rows);
-        setCount(data.total ?? data.count ?? 0);
-        logRowsMemory(rows);
-        setSelectedRows(new Set());
-        setShowForm(false);
-        setEditing(null);
-        setIsAdding(false);
-        setGridRows([]);
         const msg = isAdding
           ? t('transaction_posted', 'Transaction posted')
           : t('transaction_updated', 'Transaction updated');
         const targetRecordId = isAdding ? savedRow?.id ?? null : getRowId(editing);
         const shouldIssueEbarimt = issueEbarimt && formConfig?.posApiEnabled;
+        setShowForm(false);
+        setEditing(null);
+        setIsAdding(false);
+        setGridRows([]);
+        setRequestType(null);
+        setPendingTemporaryPromotion(null);
+        resetWorkflowState();
         if (activeTemporaryDraftId) {
           await cleanupActiveTemporaryDraft();
         } else {
           setActiveTemporaryDraftId(null);
         }
         if (isAdding && (formConfig?.imagenameField || []).length) {
-          const inserted = rows.find(
-            (r) => String(getRowId(r)) === String(savedRow.id),
-          );
-          const rowForName = inserted || {
+          const rowForName = {
             ...merged,
-            [formConfig.imageIdField]: savedRow[formConfig.imageIdField],
+            ...(savedRow && typeof savedRow === 'object' ? savedRow : {}),
           };
           const nameFields = Array.from(
             new Set(
@@ -3704,10 +3686,9 @@ const TableManager = forwardRef(function TableManager({
             }
           }
         }
-        let ebarimtResult = null;
         if (shouldIssueEbarimt) {
           try {
-            ebarimtResult = await issueTransactionEbarimt(targetRecordId);
+            await issueTransactionEbarimt(targetRecordId);
           } catch (err) {
             const detailParts = [];
             const missingEnv = Array.isArray(err.details?.missingEnvVars)
@@ -3735,9 +3716,6 @@ const TableManager = forwardRef(function TableManager({
           }
         }
         addToast(msg, 'success');
-        if (shouldIssueEbarimt) {
-          await issueTransactionEbarimt(targetRecordId);
-        }
         refreshRows();
         if (isAdding) {
           setTimeout(() => openAdd(), 0);
@@ -4830,25 +4808,13 @@ const TableManager = forwardRef(function TableManager({
           data?.message ||
           data?.error ||
           t('temporary_promote_failed', 'Failed to promote temporary');
-        const isPendingConflict =
-          res.status === 409 &&
-          typeof message === 'string' &&
-          message.toLowerCase().includes('another temporary submission in this chain is pending');
-        if (isPendingConflict && pendingTemporaryPromotion?.entry) {
-          addToast(
-            t(
-              'temporary_chain_conflict_notice',
-              'Another draft in this chain is pending. Review the chain to reject duplicates.',
-            ),
-            'info',
-          );
-          openTemporaryChainModal(pendingTemporaryPromotion.entry);
-        }
         const canForceResolveNow =
           !forcePromote &&
           !forceRetry &&
           showForceResolvePendingToggle &&
-          isPendingConflict;
+          res.status === 409 &&
+          typeof message === 'string' &&
+          message.toLowerCase().includes('another temporary submission in this chain is pending');
         if (canForceResolveNow) {
           const confirmForce = window.confirm(
             t(

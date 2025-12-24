@@ -1729,6 +1729,7 @@ const RowFormModal = function RowFormModal({
     errorsRef.current = errors;
   }, [errors]);
   const [submitLocked, setSubmitLocked] = useState(false);
+  const [temporaryLocked, setTemporaryLocked] = useState(false);
   const [issueEbarimtEnabled, setIssueEbarimtEnabled] = useState(() =>
     Boolean(posApiEnabled),
   );
@@ -1756,6 +1757,13 @@ const RowFormModal = function RowFormModal({
     }
     prevVisibleRef.current = visible;
   }, [visible, posApiEnabled]);
+
+  useEffect(() => {
+    if (!visible) {
+      setSubmitLocked(false);
+      setTemporaryLocked(false);
+    }
+  }, [visible]);
 
   useEffect(() => {
     if (!useGrid) return;
@@ -2827,114 +2835,119 @@ const RowFormModal = function RowFormModal({
   }
 
   async function handleTemporarySave() {
-    if (!allowTemporarySave || !onSaveTemporary) return;
-    if (useGrid && tableRef.current) {
-      if (tableRef.current.hasInvalid && tableRef.current.hasInvalid()) {
-        alert('Тэмдэглэсэн талбаруудыг засна уу.');
-        return;
-      }
-      const rows = tableRef.current.getRows();
-      const cleanedRows = [];
-      const rawRows = [];
-      let hasMissing = false;
-      let hasInvalid = false;
-      rows.forEach((r) => {
-        const hasValue = Object.values(r).some((v) => {
-          if (v === null || v === undefined || v === '') return false;
-          if (typeof v === 'object' && 'value' in v) return v.value !== '';
-          return true;
+    if (!allowTemporarySave || !onSaveTemporary || temporaryLocked) return;
+    setTemporaryLocked(true);
+    try {
+      if (useGrid && tableRef.current) {
+        if (tableRef.current.hasInvalid && tableRef.current.hasInvalid()) {
+          alert('Тэмдэглэсэн талбаруудыг засна уу.');
+          return;
+        }
+        const rows = tableRef.current.getRows();
+        const cleanedRows = [];
+        const rawRows = [];
+        let hasMissing = false;
+        let hasInvalid = false;
+        rows.forEach((r) => {
+          const hasValue = Object.values(r).some((v) => {
+            if (v === null || v === undefined || v === '') return false;
+            if (typeof v === 'object' && 'value' in v) return v.value !== '';
+            return true;
+          });
+          if (!hasValue) return;
+          const normalized = {};
+          Object.entries(r).forEach(([k, v]) => {
+            const raw = typeof v === 'object' && v !== null && 'value' in v ? v.value : v;
+            let val = normalizeDateInput(raw, placeholders[k]);
+            if (totalAmountSet.has(k) || totalCurrencySet.has(k)) {
+              val = normalizeNumberInput(val);
+            }
+            normalized[k] = val;
+          });
+          requiredFields.forEach((f) => {
+            if (
+              normalized[f] === '' ||
+              normalized[f] === null ||
+              normalized[f] === undefined
+            )
+              hasMissing = true;
+            if (
+              (totalAmountSet.has(f) || totalCurrencySet.has(f)) &&
+              normalized[f] !== '' &&
+              !/code/i.test(f) &&
+              isNaN(Number(normalizeNumberInput(normalized[f])))
+            )
+              hasInvalid = true;
+            const ph = placeholders[f];
+            if (ph && !isValidDate(normalized[f], ph)) hasInvalid = true;
+          });
+          cleanedRows.push(normalized);
+          rawRows.push(r);
         });
-        if (!hasValue) return;
-        const normalized = {};
-        Object.entries(r).forEach(([k, v]) => {
-          const raw = typeof v === 'object' && v !== null && 'value' in v ? v.value : v;
-          let val = normalizeDateInput(raw, placeholders[k]);
+        if (hasMissing) {
+          alert('Шаардлагатай талбаруудыг бөглөнө үү.');
+          return;
+        }
+        if (hasInvalid) {
+          alert('Буруу утгуудыг засна уу.');
+          return;
+        }
+        if (cleanedRows.length === 0) {
+          return;
+        }
+        const mergedExtra = { ...extraVals };
+        if (mergedExtra.seedRecords && mergedExtra.seedTables) {
+          const set = new Set(mergedExtra.seedTables);
+          const filtered = {};
+          Object.entries(mergedExtra.seedRecords).forEach(([tbl, recs]) => {
+            if (set.has(tbl)) filtered[tbl] = recs;
+          });
+          mergedExtra.seedRecords = filtered;
+        }
+        const normalizedExtra = {};
+        Object.entries(mergedExtra).forEach(([k, v]) => {
+          let val = normalizeDateInput(v, placeholders[k]);
           if (totalAmountSet.has(k) || totalCurrencySet.has(k)) {
             val = normalizeNumberInput(val);
           }
-          normalized[k] = val;
+          normalizedExtra[k] = val;
         });
-        requiredFields.forEach((f) => {
-          if (
-            normalized[f] === '' ||
-            normalized[f] === null ||
-            normalized[f] === undefined
-          )
-            hasMissing = true;
-          if (
-            (totalAmountSet.has(f) || totalCurrencySet.has(f)) &&
-            normalized[f] !== '' &&
-            !/code/i.test(f) &&
-            isNaN(Number(normalizeNumberInput(normalized[f])))
-          )
-            hasInvalid = true;
-          const ph = placeholders[f];
-          if (ph && !isValidDate(normalized[f], ph)) hasInvalid = true;
-        });
-        cleanedRows.push(normalized);
-        rawRows.push(r);
-      });
-      if (hasMissing) {
-        alert('Шаардлагатай талбаруудыг бөглөнө үү.');
+        try {
+          await Promise.resolve(
+            onSaveTemporary({
+              values: { ...normalizedExtra, rows: cleanedRows },
+              rawRows,
+            }),
+          );
+        } catch (err) {
+          console.error('Temporary save failed', err);
+        }
         return;
       }
-      if (hasInvalid) {
-        alert('Буруу утгуудыг засна уу.');
-        return;
-      }
-      if (cleanedRows.length === 0) {
-        return;
-      }
-      const mergedExtra = { ...extraVals };
-      if (mergedExtra.seedRecords && mergedExtra.seedTables) {
-        const set = new Set(mergedExtra.seedTables);
+      const merged = { ...extraVals, ...formVals };
+      if (merged.seedRecords && merged.seedTables) {
+        const set = new Set(merged.seedTables);
         const filtered = {};
-        Object.entries(mergedExtra.seedRecords).forEach(([tbl, recs]) => {
+        Object.entries(merged.seedRecords).forEach(([tbl, recs]) => {
           if (set.has(tbl)) filtered[tbl] = recs;
         });
-        mergedExtra.seedRecords = filtered;
+        merged.seedRecords = filtered;
       }
-      const normalizedExtra = {};
-      Object.entries(mergedExtra).forEach(([k, v]) => {
+      const normalized = {};
+      Object.entries(merged).forEach(([k, v]) => {
         let val = normalizeDateInput(v, placeholders[k]);
         if (totalAmountSet.has(k) || totalCurrencySet.has(k)) {
           val = normalizeNumberInput(val);
         }
-        normalizedExtra[k] = val;
+        normalized[k] = val;
       });
       try {
-        await Promise.resolve(
-          onSaveTemporary({
-            values: { ...normalizedExtra, rows: cleanedRows },
-            rawRows,
-          }),
-        );
+        await Promise.resolve(onSaveTemporary({ values: normalized }));
       } catch (err) {
         console.error('Temporary save failed', err);
       }
-      return;
-    }
-    const merged = { ...extraVals, ...formVals };
-    if (merged.seedRecords && merged.seedTables) {
-      const set = new Set(merged.seedTables);
-      const filtered = {};
-      Object.entries(merged.seedRecords).forEach(([tbl, recs]) => {
-        if (set.has(tbl)) filtered[tbl] = recs;
-      });
-      merged.seedRecords = filtered;
-    }
-    const normalized = {};
-    Object.entries(merged).forEach(([k, v]) => {
-      let val = normalizeDateInput(v, placeholders[k]);
-      if (totalAmountSet.has(k) || totalCurrencySet.has(k)) {
-        val = normalizeNumberInput(val);
-      }
-      normalized[k] = val;
-    });
-    try {
-      await Promise.resolve(onSaveTemporary({ values: normalized }));
-    } catch (err) {
-      console.error('Temporary save failed', err);
+    } finally {
+      setTemporaryLocked(false);
     }
   }
 
@@ -3878,6 +3891,7 @@ const RowFormModal = function RowFormModal({
               <button
                 type="button"
                 onClick={handleTemporarySave}
+                disabled={temporaryLocked}
                 className="px-3 py-1 bg-yellow-400 text-gray-900 rounded"
               >
                 {temporarySaveLabel || t('save_temporary', 'Save as Temporary')}
