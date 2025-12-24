@@ -34,3 +34,11 @@ To request the configuration that matches a specific relation filter, include `f
 ```
 /api/display_fields?table=tbl_employee&filterColumn=status&filterValue=active
 ```
+
+When a table has multiple relations with different key columns, pass the target column (or id field) so the server returns the correct configuration instead of falling back to the first one:
+
+```
+/api/display_fields?table=ebarimt_reference_code&targetColumn=type_code&filterColumn=code_type&filterValue=district
+```
+
+Including `targetColumn` (or `idField`) will scope the matched config and the `entries` list in the response to rows with that key. The API also returns every matching configuration for the table in the `entries` array so the UI can perform its own selection if needed.

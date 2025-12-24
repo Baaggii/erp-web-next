@@ -113,7 +113,7 @@ async function writeConfig(cfg, companyId = 0) {
   await fs.writeFile(filePath, JSON.stringify(cfg, null, 2));
 }
 
-function selectConfigForFilter(tableEntries, filterColumn, filterValue) {
+function selectConfigForFilter(tableEntries, filterColumn, filterValue, idField) {
   const normalizedColumn =
     typeof filterColumn === 'string' && filterColumn.trim() ? filterColumn.trim() : '';
   const normalizedValue =
@@ -121,27 +121,41 @@ function selectConfigForFilter(tableEntries, filterColumn, filterValue) {
       ? ''
       : String(filterValue).trim();
 
-  if (tableEntries.length === 0) return null;
+  const normalizedIdField =
+    typeof idField === 'string' && idField.trim() ? idField.trim() : '';
+  const scopedEntries =
+    normalizedIdField && Array.isArray(tableEntries)
+      ? tableEntries.filter((entry) => entry.idField === normalizedIdField)
+      : tableEntries;
+
+  const candidates =
+    Array.isArray(scopedEntries) && scopedEntries.length > 0
+      ? scopedEntries
+      : normalizedIdField
+      ? []
+      : tableEntries;
+
+  if (!Array.isArray(candidates) || candidates.length === 0) return null;
 
   if (normalizedColumn) {
-    const exact = tableEntries.find(
+    const exact = candidates.find(
       (entry) =>
         entry.filterColumn === normalizedColumn && (entry.filterValue ?? '') === normalizedValue,
     );
     if (exact) return exact;
 
-    const columnOnly = tableEntries.find(
+    const columnOnly = candidates.find(
       (entry) => entry.filterColumn === normalizedColumn && !entry.filterValue,
     );
     if (columnOnly && !normalizedValue) return columnOnly;
   }
 
-  const defaultEntry = tableEntries.find(
+  const defaultEntry = candidates.find(
     (entry) => !entry.filterColumn && !entry.filterValue,
   );
   if (defaultEntry) return defaultEntry;
 
-  return tableEntries[0];
+  return candidates[0];
 }
 
 function makeKey(entry) {
@@ -174,14 +188,52 @@ export function validateDisplayFieldConfig(newCfg, existingCfgs) {
   }
 }
 
-export async function getDisplayFields(table, companyId = 0, filterColumn, filterValue) {
+export async function getDisplayFields(
+  table,
+  companyId = 0,
+  filterColumn,
+  filterValue,
+  idField,
+) {
   const normalizedTable = typeof table === 'string' ? table.trim() : '';
+
+  let options = {};
+  if (filterColumn && typeof filterColumn === 'object' && !Array.isArray(filterColumn)) {
+    options = filterColumn;
+    filterColumn = undefined;
+  }
+
+  const normalizedColumn =
+    typeof (filterColumn ?? options.filterColumn ?? options.filter_column) === 'string' &&
+    (filterColumn ?? options.filterColumn ?? options.filter_column)?.trim()
+      ? (filterColumn ?? options.filterColumn ?? options.filter_column).trim()
+      : '';
+  const rawValue =
+    filterValue ?? options.filterValue ?? options.filter_value ?? options.filter ?? undefined;
+  const normalizedValue =
+    rawValue === null || rawValue === undefined ? '' : String(rawValue).trim();
+  const normalizedIdField = (() => {
+    const candidate =
+      idField ??
+      options.idField ??
+      options.id_field ??
+      options.targetColumn ??
+      options.target_column;
+    return typeof candidate === 'string' && candidate.trim() ? candidate.trim() : '';
+  })();
+  const includeMatchesOnly = Boolean(options.includeAllMatches || options.matchesOnly);
+
   const { cfg, isDefault } = await readConfig(companyId);
   const entries = cfg.filter((entry) => entry.table === normalizedTable);
-  const matched = selectConfigForFilter(entries, filterColumn, filterValue);
+  const filteredById = normalizedIdField
+    ? entries.filter((entry) => entry.idField === normalizedIdField)
+    : entries;
+  const matches = filteredById.length > 0 ? filteredById : normalizedIdField ? [] : entries;
+  const matched = selectConfigForFilter(matches, normalizedColumn, normalizedValue, normalizedIdField);
+  const responseEntries = includeMatchesOnly ? matches : entries;
 
   if (matched) {
-    return { config: matched, entries, isDefault };
+    return { config: matched, entries: responseEntries, matches, isDefault };
   }
 
   try {
@@ -189,7 +241,8 @@ export async function getDisplayFields(table, companyId = 0, filterColumn, filte
     if (!Array.isArray(meta) || meta.length === 0) {
       return {
         config: { table: normalizedTable, idField: null, displayFields: [] },
-        entries,
+        entries: responseEntries,
+        matches,
         isDefault,
       };
     }
@@ -199,11 +252,17 @@ export async function getDisplayFields(table, companyId = 0, filterColumn, filte
       .map((c) => c.name)
       .filter((n) => n !== idField)
       .slice(0, 3);
-    return { config: { table: normalizedTable, idField, displayFields }, entries, isDefault };
+    return {
+      config: { table: normalizedTable, idField, displayFields },
+      entries: responseEntries,
+      matches,
+      isDefault,
+    };
   } catch {
     return {
       config: { table: normalizedTable, idField: null, displayFields: [] },
-      entries,
+      entries: responseEntries,
+      matches,
       isDefault,
     };
   }

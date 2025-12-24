@@ -133,7 +133,18 @@ async function fetchDisplayConfig(table, filter = {}) {
     filter.column || filter.filterColumn || filter.filter_column || '';
   const filterValue =
     filter.value ?? filter.filterValue ?? filter.filter_value ?? '';
-  const cacheKey = [table.toLowerCase(), filterColumn, String(filterValue ?? '')]
+  const targetColumn =
+    filter.targetColumn ??
+    filter.target_column ??
+    filter.idField ??
+    filter.id_field ??
+    '';
+  const cacheKey = [
+    table.toLowerCase(),
+    filterColumn,
+    String(filterValue ?? ''),
+    targetColumn,
+  ]
     .filter((part) => part !== undefined)
     .join('|');
   if (displayConfigCache.has(cacheKey)) return displayConfigCache.get(cacheKey);
@@ -142,6 +153,9 @@ async function fetchDisplayConfig(table, filter = {}) {
     if (filterColumn) params.set('filterColumn', filterColumn);
     if (filterColumn && filterValue !== undefined && filterValue !== null) {
       params.set('filterValue', String(filterValue).trim());
+    }
+    if (targetColumn) {
+      params.set('targetColumn', targetColumn);
     }
     const res = await fetch(`/api/display_fields?${params.toString()}`, {
       credentials: 'include',
@@ -213,13 +227,14 @@ async function fetchNestedLabelMap(nestedRel, { company }) {
   if (nestedLabelCache.has(cacheKey)) return nestedLabelCache.get(cacheKey);
 
   try {
-  const cfg = await fetchDisplayConfig(nestedRel.table, {
-    column: nestedRel.filterColumn,
-    value: nestedRel.filterValue,
-  });
-  const tenantInfo = await fetchTenantInfo(nestedRel.table);
-  const isShared = tenantInfo?.isShared ?? tenantInfo?.is_shared ?? false;
-  const tenantKeys = getTenantKeyList(tenantInfo);
+    const cfg = await fetchDisplayConfig(nestedRel.table, {
+      column: nestedRel.filterColumn,
+      value: nestedRel.filterValue,
+      targetColumn: nestedRel.column,
+    });
+    const tenantInfo = await fetchTenantInfo(nestedRel.table);
+    const isShared = tenantInfo?.isShared ?? tenantInfo?.is_shared ?? false;
+    const tenantKeys = getTenantKeyList(tenantInfo);
 
     const perPage = 500;
     let page = 1;

@@ -103,9 +103,19 @@ async function fetchDisplayConfig(table, relation = null, signal) {
     const params = new URLSearchParams({ table });
     const relFilterColumn = relation?.filterColumn ?? relation?.filter_column;
     const relFilterValue = relation?.filterValue ?? relation?.filter_value;
+    const relTargetColumn =
+      relation?.targetColumn ??
+      relation?.target_column ??
+      relation?.idField ??
+      relation?.id_field ??
+      relation?.column ??
+      relation?.REFERENCED_COLUMN_NAME;
     if (relFilterColumn && relFilterValue !== undefined && relFilterValue !== null) {
       params.set('filterColumn', relFilterColumn);
       params.set('filterValue', String(relFilterValue));
+    }
+    if (relTargetColumn) {
+      params.set('targetColumn', relTargetColumn);
     }
     const res = await fetch(`/api/display_fields?${params.toString()}`, {
       credentials: 'include',

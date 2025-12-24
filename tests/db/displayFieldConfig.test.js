@@ -82,6 +82,60 @@ await test('table name lookup is case-sensitive', async (t) => {
   await restore();
 });
 
+await test('getDisplayFields scopes matches by idField', async () => {
+  const { file, restore } = await withTempFile();
+  const entries = [
+    { table: 'ref_table', idField: 'id', displayFields: ['code'] },
+    {
+      table: 'ref_table',
+      idField: 'type_code',
+      filterColumn: 'code_type',
+      displayFields: ['type_name'],
+    },
+    {
+      table: 'ref_table',
+      idField: 'subtype_code',
+      filterColumn: 'code_type',
+      filterValue: 'district',
+      displayFields: ['subtype_name'],
+    },
+  ];
+  await fs.writeFile(file, JSON.stringify(entries));
+
+  const { config: typeCfg, matches: typeMatches } = await getDisplayFields('ref_table', 0, {
+    idField: 'type_code',
+  });
+  assert.deepEqual(typeCfg, {
+    table: 'ref_table',
+    idField: 'type_code',
+    filterColumn: 'code_type',
+    displayFields: ['type_name'],
+  });
+  assert.deepEqual(typeMatches, [
+    {
+      table: 'ref_table',
+      idField: 'type_code',
+      filterColumn: 'code_type',
+      displayFields: ['type_name'],
+    },
+  ]);
+
+  const { config: subtypeCfg } = await getDisplayFields('ref_table', 0, {
+    filterColumn: 'code_type',
+    filterValue: 'district',
+    idField: 'subtype_code',
+  });
+  assert.deepEqual(subtypeCfg, {
+    table: 'ref_table',
+    idField: 'subtype_code',
+    filterColumn: 'code_type',
+    filterValue: 'district',
+    displayFields: ['subtype_name'],
+  });
+
+  await restore();
+});
+
 await test('removeDisplayFields deletes config', async (t) => {
   const { file, restore } = await withTempFile();
   await fs.writeFile(file, '[]');
