@@ -190,6 +190,36 @@ export function deriveWorkplacePositionsFromAssignments(session) {
   return map;
 }
 
+function normalizeWorkplacePositionMap(entries = {}) {
+  if (!entries || typeof entries !== 'object') return {};
+  const map = {};
+  Object.entries(entries).forEach(([workplaceKey, value]) => {
+    const workplaceId = normalizeWorkplaceId(workplaceKey);
+    if (workplaceId === null || workplaceId === undefined) return;
+    if (value && typeof value === 'object') {
+      const positionId = normalizePositionId(
+        value.positionId ?? value.position_id ?? value.id,
+      );
+      const positionName = normalizeText(
+        value.positionName ?? value.position_name ?? value.name,
+      );
+      map[workplaceId] = {
+        positionId,
+        positionName: positionName || null,
+      };
+      return;
+    }
+    const positionId = normalizePositionId(value);
+    if (positionId !== null) {
+      map[workplaceId] = {
+        positionId,
+        positionName: null,
+      };
+    }
+  });
+  return map;
+}
+
 export async function resolveWorkplacePositionMap({
   session,
   workplaceIds,
@@ -201,7 +231,10 @@ export async function resolveWorkplacePositionMap({
 
   if (!allWorkplaceIds.length) return {};
 
-  const seedMap = deriveWorkplacePositionsFromAssignments(session);
+  const seedMap = {
+    ...normalizeWorkplacePositionMap(session?.workplace_positions),
+    ...deriveWorkplacePositionsFromAssignments(session),
+  };
   const companyId = session?.company_id ?? session?.companyId ?? null;
 
   try {

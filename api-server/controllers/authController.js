@@ -13,12 +13,12 @@ import {
   getRefreshCookieName,
   getPosSessionCookieName,
 } from '../utils/cookieNames.js';
-import { normalizeEmploymentSession } from '../utils/employmentSession.js';
 import { normalizeNumericId } from '../utils/workplaceAssignments.js';
 import {
   recordLoginSession,
   recordLogoutSession,
 } from '../services/posSessionLogger.js';
+import { normalizeSessionWithPositions } from '../utils/workplacePositions.js';
 
 export async function login(req, res, next) {
   try {
@@ -161,9 +161,10 @@ export async function login(req, res, next) {
           }),
         );
 
-      sessionPayload = session
-        ? normalizeEmploymentSession(session, workplaceAssignments)
-        : null;
+      const normalized = session
+        ? await normalizeSessionWithPositions(session, workplaceAssignments)
+        : { session: null };
+      sessionPayload = normalized.session;
 
       permissions =
         sessionPayload?.user_level && sessionPayload?.company_id
@@ -317,9 +318,11 @@ export async function getProfile(req, res) {
         )
     : [];
 
-  const sessionPayload = session
-    ? normalizeEmploymentSession(session, workplaceAssignments)
-    : null;
+  const normalized = session
+    ? await normalizeSessionWithPositions(session, workplaceAssignments)
+    : { session: null };
+
+  const sessionPayload = normalized.session;
 
   const permissions = sessionPayload?.user_level
     ? await getUserLevelActions(
@@ -422,9 +425,10 @@ export async function refresh(req, res) {
           )
       : [];
 
-    const sessionPayload = session
-      ? normalizeEmploymentSession(session, workplaceAssignments)
-      : null;
+    const normalized = session
+      ? await normalizeSessionWithPositions(session, workplaceAssignments)
+      : { session: null };
+    const sessionPayload = normalized.session;
 
     const permissions = sessionPayload?.user_level
       ? await getUserLevelActions(
