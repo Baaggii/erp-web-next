@@ -185,6 +185,8 @@ async function recordLoginSessionImpl(req, sessionPayload, user) {
     currentUserId: user?.id ?? null,
     seniorId,
     planSeniorId,
+  }).catch((error) => {
+    console.warn('POS session logging skipped', { error });
   });
 
   return {
@@ -197,7 +199,11 @@ async function recordLogoutSessionImpl(req) {
   const sessionUuid =
     req.cookies?.[getPosSessionCookieName()] ?? req.body?.session_uuid ?? null;
   if (!sessionUuid) return false;
-  await closePosSession(sessionUuid);
+  try {
+    await closePosSession(sessionUuid);
+  } catch (error) {
+    console.warn('POS session close skipped', { error });
+  }
   return true;
 }
 
