@@ -14,6 +14,7 @@ import {
   isModuleLicensed,
   isModulePermissionGranted,
 } from '../utils/moduleAccess.js';
+import { resolveWorkplacePositionForContext } from '../utils/workplaceResolver.js';
 
 export default function FormsIndex() {
   const [transactions, setTransactions] = useState({});
@@ -77,13 +78,20 @@ export default function FormsIndex() {
       user?.userlevel_name ??
       user?.userlevelName ??
       null;
-    const workplaceId =
-      workplace ??
-      session?.workplace_id ??
-      session?.workplaceId ??
-      null;
-    const workplacePositionId =
-      session?.workplace_position_id ?? session?.workplacePositionId ?? null;
+  const workplaceId =
+    workplace ??
+    session?.workplace_id ??
+    session?.workplaceId ??
+    null;
+  const workplacePositionId =
+    resolveWorkplacePositionForContext({
+      workplaceId,
+      session,
+      workplacePositionMap,
+    })?.positionId ??
+    session?.workplace_position_id ??
+    session?.workplacePositionId ??
+    null;
     const positionId =
       session?.employment_position_id ??
       session?.position_id ??

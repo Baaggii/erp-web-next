@@ -144,6 +144,45 @@ function normalizePositionId(value) {
   return null;
 }
 
+function extractWorkplaceAssignment(entry) {
+  if (!entry || typeof entry !== 'object') return null;
+  const workplaceId = normalizeWorkplaceId(entry.workplace_id ?? entry.workplaceId ?? entry.id);
+  if (workplaceId === null || workplaceId === undefined) return null;
+  const sessionId = normalizeWorkplaceId(
+    entry.workplace_session_id ?? entry.workplaceSessionId ?? workplaceId,
+  );
+
+  return {
+    workplaceId,
+    workplaceSessionId: sessionId,
+    positionId: normalizePositionId(
+      entry.workplace_position_id ??
+        entry.workplacePositionId ??
+        entry.position_id ??
+        entry.positionId ??
+        entry.position ??
+        null,
+    ),
+    positionName:
+      normalizeText(entry.workplace_position_name ?? entry.workplacePositionName) ||
+      normalizeText(entry.position_name ?? entry.positionName) ||
+      null,
+  };
+}
+
+function storeWorkplaceEntry(map, { workplaceId, workplaceSessionId }, data) {
+  if (workplaceId !== null && workplaceId !== undefined) {
+    map[workplaceId] = data;
+  }
+  if (
+    workplaceSessionId !== null &&
+    workplaceSessionId !== undefined &&
+    workplaceSessionId !== workplaceId
+  ) {
+    map[workplaceSessionId] = data;
+  }
+}
+
 export function collectWorkplaceIds(session) {
   const ids = [];
   const assignments = Array.isArray(session?.workplace_assignments)
@@ -157,6 +196,13 @@ export function collectWorkplaceIds(session) {
       null;
     if (wId !== null && wId !== undefined) {
       ids.push(wId);
+    }
+    const sessionId =
+      assignment?.workplace_session_id ??
+      assignment?.workplaceSessionId ??
+      null;
+    if (sessionId !== null && sessionId !== undefined) {
+      ids.push(sessionId);
     }
   });
   const sessionId = session?.workplace_id ?? session?.workplaceId;
@@ -178,24 +224,13 @@ export function deriveWorkplacePositionsFromAssignments(session) {
     ? session.workplace_assignments
     : [];
   assignments.forEach((assignment) => {
-    const workplaceId = normalizeWorkplaceId(
-      assignment?.workplace_id ?? assignment?.workplaceId ?? assignment?.id,
-    );
-    if (workplaceId === null || workplaceId === undefined) return;
-    const positionId =
-      assignment?.workplace_position_id ??
-      assignment?.workplacePositionId ??
-      assignment?.position_id ??
-      assignment?.positionId ??
-      assignment?.position ??
-      null;
-    const positionName =
-      normalizeText(assignment?.workplace_position_name ?? assignment?.workplacePositionName) ||
-      normalizeText(assignment?.position_name ?? assignment?.positionName);
-    map[workplaceId] = {
-      positionId: normalizePositionId(positionId),
-      positionName: positionName || null,
-    };
+    const normalized = extractWorkplaceAssignment(assignment);
+    if (!normalized) return;
+    const { workplaceId, workplaceSessionId, positionId, positionName } = normalized;
+    storeWorkplaceEntry(map, { workplaceId, workplaceSessionId }, {
+      positionId,
+      positionName,
+    });
   });
   return map;
 }
@@ -386,13 +421,17 @@ export async function resolveWorkplacePositionMap({
         info?.positionId === null || info?.positionId === undefined
           ? null
           : String(info.positionId).trim();
-      finalEntries[workplaceId] = {
-        positionId: normalizedId || info?.positionId || null,
-        positionName:
-          info?.positionName ||
-          (normalizedId ? resolvedPositionLabels[normalizedId] : null) ||
-          null,
-      };
+      storeWorkplaceEntry(
+        finalEntries,
+        { workplaceId: normalizeWorkplaceId(workplaceId), workplaceSessionId: null },
+        {
+          positionId: normalizedId || info?.positionId || null,
+          positionName:
+            info?.positionName ||
+            (normalizedId ? resolvedPositionLabels[normalizedId] : null) ||
+            null,
+        },
+      );
     });
 
     return finalEntries;
@@ -401,4 +440,56 @@ export async function resolveWorkplacePositionMap({
     console.warn('Failed to resolve workplace positions', err);
     return seedMap;
   }
+}
+
+export function resolveWorkplacePositionForContext({
+  workplaceId,
+  session,
+  workplacePositionMap,
+} = {}) {
+  const normalizedWorkplaceId = normalizeWorkplaceId(
+    workplaceId ?? session?.workplace_id ?? session?.workplaceId,
+  );
+
+  if (
+    normalizedWorkplaceId !== null &&
+    normalizedWorkplaceId !== undefined &&
+    workplacePositionMap &&
+    typeof workplacePositionMap === 'object'
+  ) {
+    const direct = workplacePositionMap[normalizedWorkplaceId] ?? workplacePositionMap[String(normalizedWorkplaceId)];
+    if (direct && typeof direct === 'object') {
+      return direct;
+    }
+  }
+
+  const assignments = Array.isArray(session?.workplace_assignments)
+    ? session.workplace_assignments
+    : [];
+
+  const match = assignments
+    .map((entry) => extractWorkplaceAssignment(entry))
+    .find(
+      (entry) =>
+        entry &&
+        (entry.workplaceId === normalizedWorkplaceId ||
+          entry.workplaceSessionId === normalizedWorkplaceId),
+    );
+
+  if (match) {
+    return {
+      positionId: match.positionId,
+      positionName: match.positionName,
+    };
+  }
+
+  const fallbackId = normalizePositionId(
+    session?.workplace_position_id ?? session?.workplacePositionId,
+  );
+
+  if (fallbackId !== null) {
+    return { positionId: fallbackId, positionName: null };
+  }
+
+  return null;
 }
