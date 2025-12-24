@@ -24,12 +24,12 @@ test('listPermittedProcedures merges trigger procedures and respects filters', a
   await writeJsonConfig(companyId, 'report_management/allowedReports.json', {
     deleted_proc: { branches: [], departments: [], permissions: [] },
   });
-  await writeJsonConfig(companyId, 'tableDisplayFields.json', {
-    companies: { idField: 'id', displayFields: ['name'] },
-    code_branches: { idField: 'branch_id', displayFields: ['name'] },
-    code_department: { idField: 'id', displayFields: ['name'] },
-    tbl_employee: { idField: 'emp_id', displayFields: ['emp_fname'] },
-  });
+  await writeJsonConfig(companyId, 'tableDisplayFields.json', [
+    { table: 'companies', idField: 'id', displayFields: ['name'] },
+    { table: 'code_branches', idField: 'branch_id', displayFields: ['name'] },
+    { table: 'code_department', idField: 'id', displayFields: ['name'] },
+    { table: 'tbl_employee', idField: 'emp_id', displayFields: ['emp_fname'] },
+  ]);
 
   const triggerTables = [];
   const origQuery = pool.query;

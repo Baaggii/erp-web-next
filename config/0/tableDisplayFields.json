@@ -1,77 +1,11 @@
-{
-  "tbl_employee": {
-    "idField": "emp_id",
-    "displayFields": [
-      "emp_fname",
-      "emp_lname"
-    ],
-    "tooltips": {
-      "emp_fname": "tooltip.firstName",
-      "emp_lname": "tooltip.lastName"
-    }
-  },
-  "code_department": {
-    "idField": "department_id",
-    "displayFields": [
-      "name"
-    ]
-  },
-  "tbl_contracter": {
-    "idField": "manuf_id",
-    "displayFields": [
-      "manuf_fname",
-      "manuf_lname",
-      "manuf_orgname",
-      "brandname"
-    ]
-  },
-  "code_transaction": {
-    "idField": "UITransType",
-    "displayFields": [
-      "UITransTypeName"
-    ]
-  },
-  "InventoryTransactionView": {
-    "idField": "cost_code",
-    "displayFields": [
-      "avg_cost",
-      "item_cost_qty",
-      "item_cost_value"
-    ]
-  },
-  "UnifiedInventoryCode": {
-    "idField": "cost_code",
-    "displayFields": [
-      "pm_name",
-      "pm_unit_id",
-      "manufacturer_id"
-    ]
-  },
-  "user_levels": {
-    "idField": "userlevel_id",
-    "displayFields": [
-      "name",
-      "Description"
-    ]
-  },
-  "companies": {
-    "idField": "id",
-    "displayFields": [
-      "name",
-      "company_id"
-    ]
-  },
-  "code_branches": {
-    "idField": "branch_id",
-    "displayFields": [
-      "name",
-      "company_id"
-    ]
-  },
-  "MiXeD": {
+[
+  {
+    "table": "tbl",
     "idField": "id",
     "displayFields": [
       "x"
-    ]
+    ],
+    "filterColumn": "c",
+    "filterValue": "1"
   }
-}
+]

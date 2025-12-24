@@ -81,15 +81,18 @@ export default function RelationsConfig() {
       .then((res) =>
         res.ok
           ? res.json()
-          : { idField: '', displayFields: [], filters: [], isDefault: true },
+          : { idField: '', displayFields: [], entries: [], isDefault: true },
       )
       .then((cfg) => {
-        setIdField(cfg.idField || '');
-        setDisplayFields(Array.isArray(cfg.displayFields) ? cfg.displayFields : []);
+        const entries = Array.isArray(cfg.entries) ? cfg.entries : [];
+        const base =
+          entries.find((entry) => !entry.filterColumn && !entry.filterValue) || cfg || {};
+        setIdField(base.idField || '');
+        setDisplayFields(Array.isArray(base.displayFields) ? base.displayFields : []);
         setFilteredConfigs(
-          Array.isArray(cfg.filters)
-            ? cfg.filters.map((entry, idx) => normalizeFilteredConfig(entry, idx))
-            : [],
+          entries
+            .filter((entry) => entry.filterColumn || entry.filterValue)
+            .map((entry, idx) => normalizeFilteredConfig(entry, idx)),
         );
         setIsDefault(!!cfg.isDefault);
       })
@@ -140,32 +143,64 @@ export default function RelationsConfig() {
 
   async function handleSave() {
     try {
-      const normalizedFilters = filteredConfigs
-        .map((cfg) => {
-          const filterColumn = (cfg.filterColumn || '').trim();
-          const filterValue =
-            cfg.filterValue === null || cfg.filterValue === undefined
-              ? ''
-              : String(cfg.filterValue).trim();
-          const cfgIdField = (cfg.idField || '').trim();
-          const fields = Array.isArray(cfg.displayFields) ? cfg.displayFields : [];
-          const entry = {
-            idField: cfgIdField,
-            displayFields: fields,
-          };
-          if (filterColumn) entry.filterColumn = filterColumn;
-          if (filterColumn || filterValue) {
-            entry.filterValue = filterValue;
-          }
-          return entry;
-        })
-        .filter(
-          (cfg) =>
-            cfg.filterColumn ||
-            cfg.filterValue ||
-            (cfg.idField && cfg.idField.trim && cfg.idField.trim()) ||
-            (Array.isArray(cfg.displayFields) && cfg.displayFields.length > 0),
-        );
+      const baseId = (idField || '').trim();
+      const baseDisplay = Array.isArray(displayFields)
+        ? displayFields.map((f) => String(f).trim()).filter(Boolean)
+        : [];
+
+      if (!table) throw new Error('table is required');
+      if (!baseId) throw new Error('ID Field is required');
+      if (baseDisplay.length === 0) throw new Error('Select at least one display field');
+
+      const entries = [
+        {
+          table,
+          idField: baseId,
+          displayFields: baseDisplay,
+        },
+      ];
+
+      filteredConfigs.forEach((cfg) => {
+        const filterColumn = (cfg.filterColumn || '').trim();
+        const rawFilterValue = cfg.filterValue ?? '';
+        const filterValue = rawFilterValue === null ? '' : String(rawFilterValue).trim();
+        const cfgIdField = (cfg.idField || '').trim();
+        const fields = Array.isArray(cfg.displayFields)
+          ? cfg.displayFields.map((f) => String(f).trim()).filter(Boolean)
+          : [];
+        const hasContent = filterColumn || filterValue || cfgIdField || fields.length > 0;
+        if (!hasContent) return;
+        if (!filterColumn || !filterValue) {
+          throw new Error('Filtered entries require both a filter column and value');
+        }
+        if (!cfgIdField) {
+          throw new Error('Filtered entries must specify an ID field');
+        }
+        if (fields.length === 0) {
+          throw new Error('Filtered entries must include at least one display field');
+        }
+        entries.push({
+          table,
+          idField: cfgIdField,
+          filterColumn,
+          filterValue,
+          displayFields: fields,
+        });
+      });
+
+      const keys = new Set();
+      entries.forEach((entry) => {
+        const key = [
+          entry.table,
+          entry.idField,
+          entry.filterColumn || '',
+          entry.filterValue || '',
+        ].join('|');
+        if (keys.has(key)) {
+          throw new Error('Duplicate display field configuration');
+        }
+        keys.add(key);
+      });
 
       if (isDefault) {
         const resImport = await fetch(
@@ -180,16 +215,35 @@ export default function RelationsConfig() {
         if (!resImport.ok) throw new Error('import failed');
         setIsDefault(false);
       }
-      const res = await fetch('/api/display_fields', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+
+      const deleteRes = await fetch(`/api/display_fields?table=${encodeURIComponent(table)}`, {
+        method: 'DELETE',
         credentials: 'include',
-        body: JSON.stringify({ table, idField, displayFields, filters: normalizedFilters }),
       });
-      if (!res.ok) throw new Error('failed');
+      if (!deleteRes.ok) {
+        throw new Error('Failed to clear existing display field entries');
+      }
+
+      for (const entry of entries) {
+        const res = await fetch('/api/display_fields', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify(entry),
+        });
+        if (!res.ok) {
+          const message = await res
+            .json()
+            .then((body) => body?.message || '')
+            .catch(() => '');
+          throw new Error(message || 'Failed to save display fields');
+        }
+      }
+
       addToast('Saved', 'success');
-    } catch {
-      addToast('Failed to save', 'error');
+    } catch (err) {
+      const message = err?.message || 'Failed to save';
+      addToast(message, 'error');
     }
   }
 
@@ -236,12 +290,15 @@ export default function RelationsConfig() {
         );
         if (cfgRes.ok) {
           const cfg = await cfgRes.json();
-          setIdField(cfg.idField || '');
-          setDisplayFields(Array.isArray(cfg.displayFields) ? cfg.displayFields : []);
+          const entries = Array.isArray(cfg.entries) ? cfg.entries : [];
+          const base =
+            entries.find((entry) => !entry.filterColumn && !entry.filterValue) || cfg || {};
+          setIdField(base.idField || '');
+          setDisplayFields(Array.isArray(base.displayFields) ? base.displayFields : []);
           setFilteredConfigs(
-            Array.isArray(cfg.filters)
-              ? cfg.filters.map((entry, idx) => normalizeFilteredConfig(entry, idx))
-              : [],
+            entries
+              .filter((entry) => entry.filterColumn || entry.filterValue)
+              .map((entry, idx) => normalizeFilteredConfig(entry, idx)),
           );
           setIsDefault(!!cfg.isDefault);
         }
@@ -345,6 +402,10 @@ export default function RelationsConfig() {
               </div>
               <div style={{ marginTop: '1rem' }}>
                 <h4 style={{ margin: 0 }}>Filtered configurations</h4>
+                <p style={{ margin: '0.25rem 0' }}>
+                  Each filtered entry must include a filter column, filter value, ID field, and at
+                  least one display field.
+                </p>
                 {filteredConfigs.length === 0 && (
                   <p style={{ margin: '0.25rem 0' }}>
                     Add filter-specific display fields to override the default settings.
@@ -391,13 +452,13 @@ export default function RelationsConfig() {
                               Filter Value:
                               <select
                                 value={cfg.filterValue}
-                                onChange={(e) =>
-                                  updateFilteredConfigEntry(cfg.key, {
-                                    filterValue: e.target.value,
-                                  })
-                                }
-                              >
-                                <option value="">-- any value --</option>
+                              onChange={(e) =>
+                                updateFilteredConfigEntry(cfg.key, {
+                                  filterValue: e.target.value,
+                                })
+                              }
+                            >
+                                <option value="">-- select value --</option>
                                 {enumValues.map((val) => (
                                   <option key={`enum-${cfg.key}-${val}`} value={val}>
                                     {val}
@@ -411,15 +472,15 @@ export default function RelationsConfig() {
                               <input
                                 type="text"
                                 value={cfg.filterValue}
-                                onChange={(e) =>
-                                  updateFilteredConfigEntry(cfg.key, {
-                                    filterValue: e.target.value,
-                                  })
-                                }
-                                placeholder="Leave blank to match empty value"
-                              />
-                            </label>
-                          ))}
+                              onChange={(e) =>
+                                updateFilteredConfigEntry(cfg.key, {
+                                  filterValue: e.target.value,
+                                })
+                              }
+                              placeholder="Filter value (required)"
+                            />
+                          </label>
+                        ))}
                       </div>
                       <div style={{ marginTop: '0.5rem' }}>
                         <label>

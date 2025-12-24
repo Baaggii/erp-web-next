@@ -109,9 +109,13 @@ test(
         });
       }
       if (p.endsWith(path.join('config', '0', 'tableDisplayFields.json'))) {
-        return JSON.stringify({
-          trans: { idField: 'id', displayFields: ['id', 'note', 'hdr', 'main', 'ftr'] },
-        });
+        return JSON.stringify([
+          {
+            table: 'trans',
+            idField: 'id',
+            displayFields: ['id', 'note', 'hdr', 'main', 'ftr'],
+          },
+        ]);
       }
       return origRead(p, enc);
     };

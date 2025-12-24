@@ -112,11 +112,19 @@ const RowFormModal = function RowFormModal({
   const renderCount = useRef(0);
   const warned = useRef(false);
   const procCache = useRef({});
-  const [tableDisplayFields, setTableDisplayFields] = useState({});
+  const [tableDisplayFields, setTableDisplayFields] = useState([]);
   useEffect(() => {
     fetch('/api/display_fields', { credentials: 'include' })
       .then((res) => (res.ok ? res.json() : {}))
-      .then(setTableDisplayFields)
+      .then((data) => {
+        if (Array.isArray(data?.entries)) {
+          setTableDisplayFields(data.entries);
+        } else if (Array.isArray(data)) {
+          setTableDisplayFields(data);
+        } else {
+          setTableDisplayFields([]);
+        }
+      })
       .catch(() => {});
   }, []);
   const generalConfig = useGeneralConfig();
@@ -322,7 +330,7 @@ const RowFormModal = function RowFormModal({
     [relationConfigs],
   );
   const tableDisplayFieldsKey = React.useMemo(
-    () => JSON.stringify(tableDisplayFields || {}),
+    () => JSON.stringify(tableDisplayFields || []),
     [tableDisplayFields],
   );
 
