@@ -1,18 +1,70 @@
 import { listTransactionNames } from '../services/transactionFormConfig.js';
 import { listAllowedReports } from '../services/reportAccessConfig.js';
 import { getProcTriggers } from '../services/procTriggers.js';
-import { getEmploymentSession, listReportProcedures } from '../../db/index.js';
+import {
+  getEmploymentSession,
+  getEmploymentSessions,
+  listReportProcedures,
+} from '../../db/index.js';
+import { normalizeSessionWithPositions } from './workplacePositions.js';
 
 async function getUserContext(user, companyId) {
-  const session = await getEmploymentSession(user.empid, companyId);
+  const effectiveDate = new Date();
+  const [session, sessions] = await Promise.all([
+    getEmploymentSession(user.empid, companyId, { effectiveDate }),
+    getEmploymentSessions(user.empid, {
+      effectiveDate,
+      includeDiagnostics: true,
+    }),
+  ]);
+  const workplaceAssignments = session
+    ? (sessions || [])
+        .filter(
+          (s) =>
+            s &&
+            s.company_id === session.company_id &&
+            s.workplace_session_id != null,
+        )
+        .map(
+          ({
+            branch_id,
+            branch_name,
+            department_id,
+            department_name,
+            workplace_id,
+            workplace_name,
+            workplace_session_id,
+            workplace_position_id,
+            workplace_position_name,
+          }) => ({
+            branch_id: branch_id ?? null,
+            branch_name: branch_name ?? null,
+            department_id: department_id ?? null,
+            department_name: department_name ?? null,
+            workplace_id: workplace_id ?? null,
+            workplace_name: workplace_name ?? null,
+            workplace_session_id: workplace_session_id ?? null,
+            workplace_position_id: workplace_position_id ?? null,
+            workplace_position_name: workplace_position_name ?? null,
+          }),
+        )
+    : [];
+
+  const normalized = session
+    ? await normalizeSessionWithPositions(session, workplaceAssignments)
+    : { session: null };
+  const normalizedSession = normalized.session || session;
+
   return {
-    branchId: session?.branch_id,
-    departmentId: session?.department_id,
-    userLevelId: session?.user_level,
-    workplaceId: session?.workplace_id,
-    workplacePositionId: session?.workplace_position_id,
-    workplacePositions: session?.workplace_assignments,
-    positionId: session?.position_id ?? session?.employment_position_id,
+    branchId: normalizedSession?.branch_id,
+    departmentId: normalizedSession?.department_id,
+    userLevelId: normalizedSession?.user_level,
+    workplaceId: normalizedSession?.workplace_id,
+    workplacePositionId: normalizedSession?.workplace_position_id,
+    workplacePositions: normalizedSession?.workplace_assignments,
+    workplacePositionMap: normalizedSession?.workplace_positions,
+    positionId:
+      normalizedSession?.position_id ?? normalizedSession?.employment_position_id,
   };
 }
 
@@ -31,6 +83,7 @@ export async function listPermittedProcedures(
       positionId: userCtx.positionId,
       workplacePositionId: userCtx.workplacePositionId,
       workplacePositions: userCtx.workplacePositions,
+      workplacePositionMap: userCtx.workplacePositionMap,
     },
     companyId,
   );
@@ -126,7 +179,13 @@ export async function listPermittedProcedures(
             : [];
           const hasWorkplacePosition = wpPositions.some((wp) =>
             access.positions.includes(wp?.position_id),
-          );
+          ) ||
+          (userCtx.workplacePositionMap?.[wId]
+            ? access.positions.includes(
+                userCtx.workplacePositionMap[wId]?.positionId ??
+                  userCtx.workplacePositionMap[wId]?.position_id,
+              )
+            : false);
           if (!hasWorkplacePosition) continue;
         }
       } else if (access.positions.length) {

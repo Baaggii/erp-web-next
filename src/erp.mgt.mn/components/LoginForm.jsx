@@ -112,16 +112,25 @@ export default function LoginForm() {
         loggedIn.workplace ?? normalizedSession?.workplace_id ?? null,
       );
       setPermissions(loggedIn.permissions || null);
+      const sessionWorkplaceMap =
+        normalizedSession?.workplace_positions &&
+        typeof normalizedSession.workplace_positions === 'object'
+          ? normalizedSession.workplace_positions
+          : null;
       const derivedWorkplaceMap =
-        deriveWorkplacePositionsFromAssignments(normalizedSession);
+        (sessionWorkplaceMap && Object.keys(sessionWorkplaceMap).length
+          ? sessionWorkplaceMap
+          : null) || deriveWorkplacePositionsFromAssignments(normalizedSession);
       setWorkplacePositionMap(derivedWorkplaceMap);
-      try {
-        const resolvedWorkplaceMap = await resolveWorkplacePositionMap({
-          session: normalizedSession,
-        });
-        setWorkplacePositionMap(resolvedWorkplaceMap);
-      } catch (err) {
-        console.warn('Failed to resolve workplace positions after login', err);
+      if (!derivedWorkplaceMap || !Object.keys(derivedWorkplaceMap).length) {
+        try {
+          const resolvedWorkplaceMap = await resolveWorkplacePositionMap({
+            session: normalizedSession,
+          });
+          setWorkplacePositionMap(resolvedWorkplaceMap);
+        } catch (err) {
+          console.warn('Failed to resolve workplace positions after login', err);
+        }
       }
       refreshCompanyModules(loggedIn.company);
       refreshModules();
