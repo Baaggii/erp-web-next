@@ -1,6 +1,10 @@
 import { listTransactionNames } from '../services/transactionFormConfig.js';
 import { listAllowedReports } from '../services/reportAccessConfig.js';
 import { getProcTriggers } from '../services/procTriggers.js';
+import {
+  resolveEffectivePositions,
+  resolveWorkplaceAssignmentsFromOptions,
+} from '../../utils/accessControl.js';
 import { getEmploymentSession, listReportProcedures } from '../../db/index.js';
 
 async function getUserContext(user, companyId) {
@@ -21,6 +25,20 @@ export async function listPermittedProcedures(
   companyId,
   user,
 ) {
+  const normalizeAccessValue = (value) => {
+    if (value === undefined || value === null) return null;
+    const str = String(value).trim();
+    if (!str) return null;
+    const num = Number(str);
+    return Number.isFinite(num) ? num : str;
+  };
+  const normalizeList = (list) =>
+    Array.isArray(list)
+      ? list
+          .map((val) => normalizeAccessValue(val))
+          .filter((val) => val !== null)
+      : [];
+
   const userCtx = await getUserContext(user, companyId);
   const { names: forms, isDefault: formsDefault } = await listTransactionNames(
     {
@@ -72,11 +90,23 @@ export async function listPermittedProcedures(
   const bId = Number(branchId ?? userCtx.branchId);
   const dId = Number(departmentId ?? userCtx.departmentId);
   const wId = Number(userCtx.workplaceId);
-  const pId = Number(userCtx.positionId);
   const hasBranch = !Number.isNaN(bId);
   const hasDept = !Number.isNaN(dId);
   const hasWorkplace = !Number.isNaN(wId);
-  const hasPosition = !Number.isNaN(pId);
+  const workplaceAssignments = resolveWorkplaceAssignmentsFromOptions(
+    userCtx.workplaceId,
+    {
+      workplaceAssignments: userCtx.workplacePositions,
+      workplacePositionId: userCtx.workplacePositionId,
+    },
+    normalizeAccessValue,
+  );
+  const resolvedPositions = resolveEffectivePositions({
+    workplaceId: userCtx.workplaceId,
+    employmentPositionId: userCtx.positionId,
+    workplaceAssignments,
+    normalizeValue: normalizeAccessValue,
+  });
 
   const list = [];
   for (const proc of allProcs) {
@@ -84,21 +114,16 @@ export async function listPermittedProcedures(
     if (prefix && !proc.toLowerCase().includes(prefix.toLowerCase())) continue;
     const access = allowedCfg[proc];
     if (access) {
-      const hasBranches = Array.isArray(access.branches)
-        ? access.branches.length > 0
-        : false;
-      const hasDepartments = Array.isArray(access.departments)
-        ? access.departments.length > 0
-        : false;
-      const hasWorkplaces = Array.isArray(access.workplaces)
-        ? access.workplaces.length > 0
-        : false;
-      const hasPositions = Array.isArray(access.positions)
-        ? access.positions.length > 0
-        : false;
-      const hasPermissions = Array.isArray(access.permissions)
-        ? access.permissions.length > 0
-        : false;
+      const accessBranches = normalizeList(access.branches);
+      const accessDepartments = normalizeList(access.departments);
+      const accessWorkplaces = normalizeList(access.workplaces);
+      const accessPositions = normalizeList(access.positions);
+      const accessPermissions = normalizeList(access.permissions);
+      const hasBranches = accessBranches.length > 0;
+      const hasDepartments = accessDepartments.length > 0;
+      const hasWorkplaces = accessWorkplaces.length > 0;
+      const hasPositions = accessPositions.length > 0;
+      const hasPermissions = accessPermissions.length > 0;
 
       if (
         !hasBranches &&
@@ -111,31 +136,25 @@ export async function listPermittedProcedures(
         continue;
       }
 
-      if (access.branches.length) {
-        if (!hasBranch || !access.branches.includes(bId)) continue;
+      if (hasBranches) {
+        if (!hasBranch || !accessBranches.includes(bId)) continue;
       }
-      if (access.departments.length) {
-        if (!hasDept || !access.departments.includes(dId)) continue;
+      if (hasDepartments) {
+        if (!hasDept || !accessDepartments.includes(dId)) continue;
       }
-      if (access.workplaces.length) {
-        if (!hasWorkplace || !access.workplaces.includes(wId)) continue;
-
-        if (access.positions.length) {
-          const wpPositions = Array.isArray(userCtx.workplacePositions)
-            ? userCtx.workplacePositions
-            : [];
-          const hasWorkplacePosition = wpPositions.some((wp) =>
-            access.positions.includes(wp?.position_id),
-          );
-          if (!hasWorkplacePosition) continue;
-        }
-      } else if (access.positions.length) {
-        if (!hasPosition || !access.positions.includes(pId)) continue;
+      if (hasWorkplaces && !resolvedPositions.workplaces.some((wp) => accessWorkplaces.includes(wp))) {
+        continue;
+      }
+      if (hasPositions) {
+        if (resolvedPositions.mode === 'deny') continue;
+        if (!resolvedPositions.positions.some((pos) => accessPositions.includes(pos))) continue;
+      } else if (hasWorkplaces && resolvedPositions.mode === 'deny') {
+        continue;
       }
       if (hasPermissions) {
         if (
           userCtx.userLevelId == null ||
-          !access.permissions.includes(userCtx.userLevelId)
+          !accessPermissions.includes(userCtx.userLevelId)
         )
           continue;
       }
