@@ -61,6 +61,13 @@ export default function FormsIndex() {
       session?.userlevel_id ??
       session?.userlevelId ??
       null;
+    const userRightName =
+      session?.user_level_name ??
+      session?.userLevelName ??
+      user?.userLevelName ??
+      user?.userlevel_name ??
+      user?.userlevelName ??
+      null;
     const workplaceId =
       workplace ??
       session?.workplace_id ??
@@ -102,6 +109,7 @@ export default function FormsIndex() {
             !hasTransactionFormAccess(info, branchId, departmentId, {
               allowTemporaryAnyScope: true,
               userRightId,
+              userRightName,
               workplaceId,
               positionId,
               workplacePositions: session?.workplace_assignments,

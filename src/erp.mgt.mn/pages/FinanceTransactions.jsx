@@ -410,6 +410,13 @@ useEffect(() => {
       session?.userlevel_id ??
       session?.userlevelId ??
       null;
+    const userRightName =
+      session?.user_level_name ??
+      session?.userLevelName ??
+      user?.userLevelName ??
+      user?.userlevel_name ??
+      user?.userlevelName ??
+      null;
     const workplaceId =
       workplace ??
       session?.workplace_id ??
@@ -461,6 +468,7 @@ useEffect(() => {
             !hasTransactionFormAccess(info, branchId, departmentId, {
               allowTemporaryAnyScope: true,
               userRightId,
+              userRightName,
               workplaceId,
               positionId,
               workplacePositions: session?.workplace_assignments,

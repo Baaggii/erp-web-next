@@ -12,6 +12,7 @@ const cache = {
   departmentId: undefined,
   companyId: undefined,
   userRightId: undefined,
+  userRightName: undefined,
   workplaceId: undefined,
   positionId: undefined,
 };
@@ -22,6 +23,7 @@ function deriveTxnModuleState(
   branch,
   department,
   userRight,
+  userRightName,
   workplaceId,
   positionId,
   workplacePositionId,
@@ -48,6 +50,7 @@ function deriveTxnModuleState(
         !hasTransactionFormAccess(info, branchId, departmentId, {
           allowTemporaryAnyScope: true,
           userRightId,
+          userRightName,
           workplaceId: workplace,
           positionId: position,
           workplacePositionId: workplacePosition,
@@ -108,6 +111,7 @@ export function refreshTxnModules() {
   cache.departmentId = undefined;
   cache.companyId = undefined;
   cache.userRightId = undefined;
+  cache.userRightName = undefined;
   cache.workplaceId = undefined;
   cache.positionId = undefined;
   emitter.dispatchEvent(new Event('refresh'));
@@ -136,6 +140,13 @@ export function useTxnModules() {
       session?.userlevel_id ??
       session?.userlevelId ??
       null;
+    const userRightName =
+      session?.user_level_name ??
+      session?.userLevelName ??
+      user?.userLevelName ??
+      user?.userlevel_name ??
+      user?.userlevelName ??
+      null;
     const workplaceId =
       workplace ?? session?.workplace_id ?? session?.workplaceId ?? null;
     const positionId =
@@ -152,6 +163,7 @@ export function useTxnModules() {
       branch,
       department,
       userRightId,
+      userRightName,
       workplaceId,
       positionId,
       workplacePositionId,
@@ -173,6 +185,13 @@ export function useTxnModules() {
       session?.user_level ??
       session?.userlevel_id ??
       session?.userlevelId ??
+      null;
+    const currentUserRightName =
+      session?.user_level_name ??
+      session?.userLevelName ??
+      user?.userLevelName ??
+      user?.userlevel_name ??
+      user?.userlevelName ??
       null;
     const currentWorkplace =
       workplace ?? session?.workplace_id ?? session?.workplaceId ?? null;
@@ -232,6 +251,7 @@ export function useTxnModules() {
       cache.departmentId = currentDepartment;
       cache.companyId = currentCompany;
       cache.userRightId = currentUserRight;
+      cache.userRightName = currentUserRightName;
       cache.workplaceId = currentWorkplace;
       cache.positionId = currentPosition;
       cache.workplacePositionId = currentWorkplacePosition;
@@ -243,6 +263,7 @@ export function useTxnModules() {
       cache.departmentId = currentDepartment;
       cache.companyId = currentCompany;
       cache.userRightId = currentUserRight;
+      cache.userRightName = currentUserRightName;
       cache.workplaceId = currentWorkplace;
       cache.positionId = currentPosition;
       cache.workplacePositionId = currentWorkplacePosition;
@@ -264,6 +285,13 @@ export function useTxnModules() {
           session?.user_level ??
           session?.userlevel_id ??
           session?.userlevelId ??
+          null) ||
+      cache.userRightName !==
+        (session?.user_level_name ??
+          session?.userLevelName ??
+          user?.userLevelName ??
+          user?.userlevel_name ??
+          user?.userlevelName ??
           null) ||
       cache.workplaceId !== (workplace ?? session?.workplace_id ?? session?.workplaceId ?? null) ||
       cache.positionId !==
