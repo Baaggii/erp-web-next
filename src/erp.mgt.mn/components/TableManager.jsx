@@ -4117,13 +4117,6 @@ const TableManager = forwardRef(function TableManager({
     }
 
     return failureCount === 0 && successCount > 0;
-  } catch (err) {
-    console.error('Temporary save request failed', err);
-    addToast(t('temporary_save_failed', 'Failed to save temporary draft'), 'error');
-    return false;
-  } finally {
-    setFormActionInProgress(false);
-  }
   }
 
   async function executeDeleteRow(id, cascade) {
