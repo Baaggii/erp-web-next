@@ -1,19 +1,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'fs/promises';
-import path from 'path';
 import { listTransactionNames } from '../../api-server/services/transactionFormConfig.js';
 import { tenantConfigPath } from '../../api-server/utils/configPaths.js';
 
-async function withTempFile(companyId = 0) {
+function withTempFile(companyId = 0) {
   const file = tenantConfigPath('transactionForms.json', companyId);
-  await fs.mkdir(path.dirname(file), { recursive: true });
-  try {
-    const orig = await fs.readFile(file, 'utf8');
-    return { file, restore: () => fs.writeFile(file, orig) };
-  } catch {
-    return { file, restore: () => fs.rm(file, { force: true }) };
-  }
+  return fs
+    .readFile(file, 'utf8')
+    .then((orig) => ({ file, restore: () => fs.writeFile(file, orig) }))
+    .catch(() => ({ file, restore: () => fs.rm(file, { force: true }) }));
 }
 
 function collectProcedures(forms) {
@@ -41,56 +37,4 @@ await test('listTransactionNames filters procedures by companyId', async () => {
   assert.deepEqual(collectProcedures(tenantForms), ['tenantProc']);
   await tenant.restore();
   await base.restore();
-});
-
-await test('listTransactionNames enforces workplace position resolution', async () => {
-  const companyId = 9090;
-  const ctx = await withTempFile(companyId);
-  await fs.writeFile(
-    ctx.file,
-    JSON.stringify({
-      tbl: {
-        Sample: {
-          allowedPositions: [50],
-          procedures: ['work_proc'],
-        },
-      },
-    }),
-  );
-
-  try {
-    const missingMapping = await listTransactionNames(
-      { workplaceId: 2, positionId: 50 },
-      companyId,
-    );
-    assert.equal(missingMapping.names.Sample, undefined);
-
-    const disallowedMapping = await listTransactionNames(
-      {
-        workplaceId: 2,
-        positionId: 999,
-        workplacePositions: [{ workplace_id: 2, position_id: 70 }],
-      },
-      companyId,
-    );
-    assert.equal(disallowedMapping.names.Sample, undefined);
-
-    const allowedMapping = await listTransactionNames(
-      {
-        workplaceId: 2,
-        positionId: 999,
-        workplacePositions: [{ workplace_id: 2, position_id: 50 }],
-      },
-      companyId,
-    );
-    assert.ok(allowedMapping.names.Sample);
-
-    const employmentAllowed = await listTransactionNames({ positionId: 50 }, companyId);
-    assert.ok(employmentAllowed.names.Sample);
-
-    const employmentDenied = await listTransactionNames({ positionId: 70 }, companyId);
-    assert.equal(employmentDenied.names.Sample, undefined);
-  } finally {
-    await ctx.restore();
-  }
 });

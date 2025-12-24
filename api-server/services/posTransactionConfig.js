@@ -1,6 +1,5 @@
 import fs from 'fs/promises';
 import path from 'path';
-import { resolveEffectivePositions, resolveWorkplaceAssignmentsFromOptions } from '../../utils/accessControl.js';
 import { tenantConfigPath, getConfigPath } from '../utils/configPaths.js';
 
 async function readConfig(companyId = 0) {
@@ -44,6 +43,67 @@ function matchesScope(list, value) {
   const normalizedValue = normalizeAccessValue(value);
   if (normalizedValue === null) return true;
   return list.includes(normalizedValue);
+}
+
+function resolveWorkplacePosition(options, workplaceValue) {
+  if (!options || typeof options !== 'object') return null;
+  const workplaces = Array.isArray(workplaceValue) ? workplaceValue : [workplaceValue];
+  for (const wp of workplaces) {
+    const normalizedWorkplace = normalizeAccessValue(wp);
+    if (normalizedWorkplace === null) continue;
+
+    const mapCandidates = [
+      options.workplacePositionMap,
+      options.workplacePositionById,
+      options.workplacePositionsMap,
+    ];
+    for (const map of mapCandidates) {
+      if (map && typeof map === 'object' && !Array.isArray(map)) {
+        const mappedPosition = normalizeAccessValue(map[normalizedWorkplace]);
+        if (mappedPosition !== null) return mappedPosition;
+      }
+    }
+
+    const listCandidates = [
+      options.workplacePositions,
+      options.workplacesWithPositions,
+    ];
+    for (const list of listCandidates) {
+      if (!Array.isArray(list)) continue;
+      for (const entry of list) {
+        const entryWorkplace = normalizeAccessValue(
+          entry?.workplaceId ?? entry?.workplace_id ?? entry?.workplace ?? entry?.id,
+        );
+        if (entryWorkplace !== normalizedWorkplace) continue;
+        const positionId = normalizeAccessValue(
+          entry?.positionId ??
+            entry?.position_id ??
+            entry?.position ??
+            entry?.workplacePositionId ??
+            entry?.workplace_position_id,
+        );
+        if (positionId !== null) return positionId;
+      }
+    }
+
+    const directPosition = normalizeAccessValue(
+      options.workplacePositionId ??
+        options.workplacePosition ??
+        options.workplace_position_id ??
+        options.workplace_position,
+    );
+    if (directPosition !== null) return directPosition;
+  }
+  return null;
+}
+
+function isPositionAllowed(allowedPositions, positionValue, workplaceValue, options) {
+  const matchesDirect = matchesScope(allowedPositions, positionValue);
+  if (matchesDirect) return true;
+  if (!Array.isArray(allowedPositions) || allowedPositions.length === 0) return true;
+  const workplacePosition = resolveWorkplacePosition(options, workplaceValue);
+  if (workplacePosition === null) return false;
+  return matchesScope(allowedPositions, workplacePosition);
 }
 
 function normalizeStoredAccessList(list) {
@@ -120,34 +180,18 @@ export function hasPosTransactionAccess(
   const allowedPositions = normalizeAccessList(config.allowedPositions);
   const allowedProcedures = normalizeAccessList(config.procedures);
   const requestedProcedure = normalizeAccessValue(options?.procedure);
-  const workplaceAssignments = resolveWorkplaceAssignmentsFromOptions(
-    workplaceValues ?? workplaceValue,
-    options,
-    normalizeAccessValue,
-  );
-  const resolvedPositions = resolveEffectivePositions({
-    workplaceId: workplaceValues ?? workplaceValue,
-    employmentPositionId: positionValues ?? positionValue,
-    workplaceAssignments,
-    normalizeValue: normalizeAccessValue,
-    logger: options?.logger,
-    userId: options?.userId ?? options?.empid ?? options?.employeeId,
-  });
-  const positionAllowedFor = (positions) => {
-    if (resolvedPositions.mode === 'deny') {
-      return Array.isArray(positions) &&
-        positions.length === 0 &&
-        !resolvedPositions.hasWorkplace;
-    }
-    return matchesScope(positions, resolvedPositions.positions);
-  };
 
   const generalAllowed =
     matchesScope(allowedBranches, branchValue) &&
     matchesScope(allowedDepartments, departmentValue) &&
     matchesScope(allowedUserRights, userRightValues ?? userRightValue) &&
     matchesScope(allowedWorkplaces, workplaceValues ?? workplaceValue) &&
-    positionAllowedFor(allowedPositions) &&
+    isPositionAllowed(
+      allowedPositions,
+      positionValues ?? positionValue,
+      workplaceValues ?? workplaceValue,
+      options,
+    ) &&
     matchesScope(allowedProcedures, requestedProcedure);
 
   if (generalAllowed) return true;
@@ -177,7 +221,12 @@ export function hasPosTransactionAccess(
     matchesScope(temporaryDepartments, departmentValue) &&
     matchesScope(temporaryUserRights, userRightValues ?? userRightValue) &&
     matchesScope(temporaryWorkplaces, workplaceValues ?? workplaceValue) &&
-    positionAllowedFor(temporaryPositions) &&
+    isPositionAllowed(
+      temporaryPositions,
+      positionValues ?? positionValue,
+      workplaceValues ?? workplaceValue,
+      options,
+    ) &&
     matchesScope(temporaryProcedures, requestedProcedure)
   );
 }
