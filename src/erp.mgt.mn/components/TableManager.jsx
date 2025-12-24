@@ -3369,19 +3369,16 @@ const TableManager = forwardRef(function TableManager({
 
   async function handleSubmit(values, options = {}) {
     const { issueEbarimt = false } = options || {};
-    if (formActionInProgress) return false;
-    setFormActionInProgress(true);
-    try {
-      if (!canPostTransactions) {
-        addToast(
-          t(
-            'temporary_post_not_allowed',
-            'You do not have permission to post this transaction.',
-          ),
-          'error',
-        );
-        return false;
-      }
+    if (!canPostTransactions) {
+      addToast(
+        t(
+          'temporary_post_not_allowed',
+          'You do not have permission to post this transaction.',
+        ),
+        'error',
+      );
+      return false;
+    }
     const columns = new Set(allColumns);
     const mergedSource = { ...(editing || {}) };
     Object.entries(values).forEach(([k, v]) => {
