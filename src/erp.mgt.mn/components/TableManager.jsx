@@ -475,6 +475,7 @@ const TableManager = forwardRef(function TableManager({
   const [rowDefaults, setRowDefaults] = useState({});
   const [pendingTemporaryPromotion, setPendingTemporaryPromotion] = useState(null);
   const [temporaryPromotionQueue, setTemporaryPromotionQueue] = useState([]);
+  const [forceResolvePendingDrafts, setForceResolvePendingDrafts] = useState(false);
   const [activeTemporaryDraftId, setActiveTemporaryDraftId] = useState(null);
   const [gridRows, setGridRows] = useState([]);
   const [selectedRows, setSelectedRows] = useState(new Set());
@@ -787,6 +788,21 @@ const TableManager = forwardRef(function TableManager({
       null;
     return hasSenior(plannedSenior);
   }, [pendingTemporaryPromotion]);
+  const normalizedPendingPlanSenior = useMemo(() => {
+    if (!pendingTemporaryPromotion?.entry) return '';
+    const entry = pendingTemporaryPromotion.entry;
+    const plannedSenior =
+      entry.planSeniorEmpId ??
+      entry.plan_senior_empid ??
+      entry.plan_senior_emp_id ??
+      entry.planSeniorEmpID ??
+      null;
+    return normalizeEmpId(plannedSenior);
+  }, [normalizeEmpId, pendingTemporaryPromotion]);
+  const isDirectReviewerForPendingPromotion =
+    normalizedPendingPlanSenior &&
+    normalizedViewerEmpId &&
+    normalizedPendingPlanSenior === normalizedViewerEmpId;
 
   const shouldShowForwardTemporaryLabel =
     Boolean(pendingTemporaryPromotion) &&
@@ -3567,7 +3583,7 @@ const TableManager = forwardRef(function TableManager({
         silent: false,
         overrideValues: cleaned,
         promoteAsTemporary: !canPostTransactions,
-        forcePromote: canPostTransactions,
+        forcePromote: forceResolvePendingDrafts,
       });
       if (ok) {
         const [nextEntry, ...remainingQueue] = temporaryPromotionQueue;
@@ -3585,6 +3601,7 @@ const TableManager = forwardRef(function TableManager({
         setRequestType(null);
         setPendingTemporaryPromotion(null);
         setActiveTemporaryDraftId(null);
+        setForceResolvePendingDrafts(false);
         resetWorkflowState();
         if (nextEntry) {
           setTimeout(() => {
@@ -3677,42 +3694,33 @@ const TableManager = forwardRef(function TableManager({
             })();
           }
         }
-        addToast(msg, 'success');
-        void (async () => {
-          if (shouldIssueEbarimt) {
-            try {
-              await issueTransactionEbarimt(targetRecordId);
-            } catch (err) {
-              const detailParts = [];
-              const missingEnv = Array.isArray(err.details?.missingEnvVars)
-                ? err.details.missingEnvVars
-                : [];
-              if (missingEnv.length) {
-                detailParts.push(`missing config: ${missingEnv.join(', ')}`);
-              }
-              const missingMapping = Array.isArray(err.details?.missingMapping)
-                ? err.details.missingMapping
-                : [];
-              if (missingMapping.length) {
-                detailParts.push(`missing mapping: ${missingMapping.join(', ')}`);
-              }
-              if (err.details?.field && err.details?.column) {
-                detailParts.push(`${err.details.field} (column ${err.details.column})`);
-              }
-              const detailSuffix = detailParts.length ? ` (${detailParts.join('; ')})` : '';
-              addToast(
-                t('ebarimt_post_failed', 'Ebarimt post failed: {{message}}', {
-                  message: `${err.message}${detailSuffix}`,
-                }),
-                'error',
-              );
+        if (shouldIssueEbarimt) {
+          try {
+            await issueTransactionEbarimt(targetRecordId);
+          } catch (err) {
+            const detailParts = [];
+            const missingEnv = Array.isArray(err.details?.missingEnvVars)
+              ? err.details.missingEnvVars
+              : [];
+            if (missingEnv.length) {
+              detailParts.push(`missing config: ${missingEnv.join(', ')}`);
+            }
+            const missingMapping = Array.isArray(err.details?.missingMapping)
+              ? err.details.missingMapping
+              : [];
+            if (missingMapping.length) {
+              detailParts.push(`missing mapping: ${missingMapping.join(', ')}`);
+            }
+            if (err.details?.field && err.details?.column) {
+              detailParts.push(`${err.details.field} (column ${err.details.column})`);
             }
           }
-          refreshRows();
-          if (isAdding) {
-            setTimeout(() => openAdd(), 0);
-          }
-        })();
+        }
+        addToast(msg, 'success');
+        refreshRows();
+        if (isAdding) {
+          setTimeout(() => openAdd(), 0);
+        }
         return true;
       } else {
         let message = 'Хадгалахад алдаа гарлаа';
@@ -4754,6 +4762,7 @@ const TableManager = forwardRef(function TableManager({
       overrideValues = null,
       promoteAsTemporary = false,
       forcePromote = false,
+      forceRetry = false,
     } = {},
   ) {
     if (!canReviewTemporary) return false;
@@ -4800,6 +4809,32 @@ const TableManager = forwardRef(function TableManager({
           data?.message ||
           data?.error ||
           t('temporary_promote_failed', 'Failed to promote temporary');
+        const canForceResolveNow =
+          !forcePromote &&
+          !forceRetry &&
+          showForceResolvePendingToggle &&
+          res.status === 409 &&
+          typeof message === 'string' &&
+          message.toLowerCase().includes('another temporary submission in this chain is pending');
+        if (canForceResolveNow) {
+          const confirmForce = window.confirm(
+            t(
+              'temporary_force_resolve_confirm',
+              'Another draft in this chain is pending. Resolve other pending drafts and continue?',
+            ),
+          );
+          if (confirmForce) {
+            setForceResolvePendingDrafts(true);
+            return promoteTemporary(id, {
+              skipConfirm: true,
+              silent,
+              overrideValues,
+              promoteAsTemporary,
+              forcePromote: true,
+              forceRetry: true,
+            });
+          }
+        }
         if (!silent) {
           addToast(message, 'error');
         }
@@ -4928,6 +4963,7 @@ const TableManager = forwardRef(function TableManager({
           setGridRows(sanitizedRows);
           setIsAdding(true);
           setRequestType('temporary-promote');
+          setForceResolvePendingDrafts(false);
           setShowTemporaryModal(false);
           setShowForm(true);
         },
@@ -5872,6 +5908,10 @@ const TableManager = forwardRef(function TableManager({
   const isTemporaryReviewMode = canReviewTemporary && temporaryScope === 'review';
   const isTemporaryReadOnlyMode =
     isTemporaryReviewMode && requestType === 'temporary-promote';
+  const showForceResolvePendingToggle =
+    isTemporaryReviewMode &&
+    requestType === 'temporary-promote' &&
+    isDirectReviewerForPendingPromotion;
   const temporarySaveEnabled =
     canSaveTemporaryDraft && (!isTemporaryReviewMode || shouldShowForwardTemporaryLabel);
   const workflowHint = useMemo(
@@ -5898,6 +5938,22 @@ const TableManager = forwardRef(function TableManager({
   }, [buildTemporaryFormState, columns, temporaryList]);
 
   let detailHeaderRendered = false;
+  const forceResolveFooterContent = showForceResolvePendingToggle ? (
+    <label className="inline-flex items-center space-x-2 text-sm text-gray-700">
+      <input
+        type="checkbox"
+        className="rounded"
+        checked={forceResolvePendingDrafts}
+        onChange={(e) => setForceResolvePendingDrafts(e.target.checked)}
+      />
+      <span>
+        {t(
+          'temporary_force_resolve_chain',
+          'Resolve other pending drafts in this chain',
+        )}
+      </span>
+    </label>
+  ) : null;
 
   return (
     <div>
@@ -7060,6 +7116,7 @@ const TableManager = forwardRef(function TableManager({
           setPendingTemporaryPromotion(null);
           setTemporaryPromotionQueue([]);
           setActiveTemporaryDraftId(null);
+          setForceResolvePendingDrafts(false);
           resetWorkflowState();
         }}
         onSubmit={handleSubmit}
@@ -7107,6 +7164,7 @@ const TableManager = forwardRef(function TableManager({
         isAdding={isAdding}
         canPost={canPostTransactions}
         forceEditable={guardOverridesActive}
+        extraFooterContent={forceResolveFooterContent}
         posApiEnabled={Boolean(formConfig?.posApiEnabled)}
         posApiTypeField={formConfig?.posApiTypeField || ''}
         posApiEndpointMeta={formConfig?.posApiEndpointMeta || null}

@@ -107,6 +107,7 @@ const RowFormModal = function RowFormModal({
   posApiInfoEndpointConfig = {},
   posApiReceiptTypes = [],
   posApiPaymentMethods = [],
+  extraFooterContent = null,
 }) {
   const mounted = useRef(false);
   const renderCount = useRef(0);
@@ -3899,55 +3900,85 @@ const RowFormModal = function RowFormModal({
                 >
                   {t('printCust', 'Print Cust')}
                 </button>
-                {showTemporarySaveButton && (
-                  <button
-                    type="button"
-                    onClick={handleTemporarySave}
-                    disabled={temporaryLocked}
-                    className="px-3 py-1 bg-yellow-400 text-gray-900 rounded"
-                  >
-                    {temporarySaveLabel || t('save_temporary', 'Save as Temporary')}
-                  </button>
-                )}
-                <button
-                  type="button"
-                  onClick={onCancel}
-                  className="px-3 py-1 bg-gray-200 rounded"
-                  disabled={formBusy}
-                >
-                  {t('cancel', 'Cancel')}
-                </button>
-                {posApiEnabled && canPost && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (!issueEbarimtEnabled) return;
-                      submitForm({ issueEbarimt: true });
-                    }}
-                    className="px-3 py-1 bg-green-600 text-white rounded"
-                    disabled={!issueEbarimtEnabled || submitLocked}
-                  >
-                    {t('ebarimt_post', 'Ebarimt Post')}
-                  </button>
-                )}
-                {canPost && (
-                  <button
-                    type="submit"
-                    className="px-3 py-1 bg-blue-600 text-white rounded"
-                    disabled={submitLocked}
-                  >
-                    {t('post', 'Post')}
-                  </button>
-                )}
-              </div>
-            </div>
-            {!canPost && allowTemporarySave && (
-              <div className="mt-2 text-sm text-gray-600">
-                {t(
-                  'temporary_post_hint',
-                  'This form currently only allows temporary submissions.',
-                )}
-              </div>
+              ))}
+            {posApiEnabled && infoEndpoints.length > 0 && (
+              <button
+                type="button"
+                onClick={openInfoModal}
+                disabled={isReadOnly}
+                className="px-3 py-1 text-sm rounded border border-indigo-200 bg-indigo-50 text-indigo-700"
+              >
+                {t('posapi_open_info_lookup', 'POSAPI Lookups')}
+              </button>
+            )}
+            {extraFooterContent}
+            {posApiEnabled && posApiEndpointMeta && (
+              <span className="text-xs text-gray-500">
+                {(posApiEndpointMeta.method || 'POST').toUpperCase()} {posApiEndpointMeta.path || ''}
+              </span>
+            )}
+          </div>
+          <div className="text-right space-x-2">
+            <button
+              type="button"
+              onClick={() => handlePrint('emp')}
+              className="px-3 py-1 bg-gray-200 rounded"
+            >
+              {t('printEmp', 'Print Emp')}
+            </button>
+            <button
+              type="button"
+              onClick={() => handlePrint('cust')}
+              className="px-3 py-1 bg-gray-200 rounded"
+            >
+              {t('printCust', 'Print Cust')}
+            </button>
+            {showTemporarySaveButton && (
+              <button
+                type="button"
+                onClick={handleTemporarySave}
+                disabled={temporaryLocked}
+                className="px-3 py-1 bg-yellow-400 text-gray-900 rounded"
+              >
+                {temporarySaveLabel || t('save_temporary', 'Save as Temporary')}
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={onCancel}
+              className="px-3 py-1 bg-gray-200 rounded"
+            >
+              {t('cancel', 'Cancel')}
+            </button>
+            {posApiEnabled && canPost && (
+              <button
+                type="button"
+                onClick={() => {
+                  if (!issueEbarimtEnabled) return;
+                  submitForm({ issueEbarimt: true });
+                }}
+                className="px-3 py-1 bg-green-600 text-white rounded"
+                disabled={!issueEbarimtEnabled || submitLocked}
+              >
+                {t('ebarimt_post', 'Ebarimt Post')}
+              </button>
+            )}
+            {canPost && (
+              <button
+                type="submit"
+                className="px-3 py-1 bg-blue-600 text-white rounded"
+                disabled={submitLocked}
+              >
+                {t('post', 'Post')}
+              </button>
+            )}
+          </div>
+        </div>
+        {!canPost && allowTemporarySave && (
+          <div className="mt-2 text-sm text-gray-600">
+            {t(
+              'temporary_post_hint',
+              'This form currently only allows temporary submissions.',
             )}
             <div className="text-sm text-gray-600">
               Press <strong>Enter</strong> to move to next field. The field will be automatically selected. Use arrow keys to navigate selections.

@@ -153,13 +153,17 @@ router.post('/', requireAuth, async (req, res, next) => {
 
 router.post('/:id/promote', requireAuth, async (req, res, next) => {
   try {
-    const { notes, cleanedValues } = req.body || {};
+    const { notes, cleanedValues, forcePromote } = req.body || {};
+    if (forcePromote !== undefined && typeof forcePromote !== 'boolean') {
+      return res.status(400).json({ message: 'forcePromote must be a boolean' });
+    }
     const io = req.app.get('io');
     const result = await promoteTemporarySubmission(req.params.id, {
       reviewerEmpId: req.user.empid,
       notes,
       io,
       cleanedValues,
+      forcePromote: forcePromote === true,
     });
     res.json(result);
   } catch (err) {

@@ -1260,14 +1260,118 @@ function collectFieldDefaults(fields = []) {
 
 function deriveMappingHintsFromFields(fields = []) {
   const hints = {};
+  const topLevelFields = [];
+  const receiptFields = [];
+  const itemFields = [];
+  const paymentFields = [];
+  const nestedObjects = deriveNestedObjectsFromFields(fields);
+
   fields.forEach((entry) => {
     const key = typeof entry?.field === 'string' ? entry.field.trim() : '';
     if (!key) return;
+    const base = {
+      field: key,
+      required: Boolean(entry?.required),
+      description: typeof entry?.description === 'string' ? entry.description : undefined,
+    };
+    if (key.startsWith('receipts[].items[].')) {
+      itemFields.push({ ...base, field: key.replace('receipts[].items[].', '') });
+      return;
+    }
+    if (key.startsWith('receipts[].payments[].')) {
+      paymentFields.push({ ...base, field: key.replace('receipts[].payments[].', '') });
+      return;
+    }
+    if (key.startsWith('payments[].')) {
+      paymentFields.push({ ...base, field: key.replace('payments[].', '') });
+      return;
+    }
+    if (key.startsWith('receipts[].')) {
+      receiptFields.push({ ...base, field: key.replace('receipts[].', '') });
+      return;
+    }
+    topLevelFields.push(base);
     if (DEFAULT_MAPPING_HINTS[key]) {
       hints[key] = DEFAULT_MAPPING_HINTS[key];
     }
   });
+
+  if (topLevelFields.length) hints.topLevelFields = topLevelFields;
+  if (itemFields.length) hints.itemFields = itemFields;
+  if (receiptFields.length) hints.receiptFields = receiptFields;
+  if (paymentFields.length) hints.paymentFields = paymentFields;
+  if (nestedObjects.length) hints.nestedObjects = nestedObjects;
+
   return hints;
+}
+
+function deriveNestedObjectsFromFields(fields = []) {
+  const nested = new Map();
+  const humanize = (segment) => {
+    if (!segment) return '';
+    return segment
+      .replace(/\[\]/g, '')
+      .replace(/[_-]+/g, ' ')
+      .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .replace(/^./, (c) => c.toUpperCase());
+  };
+
+  fields.forEach((entry) => {
+    const key = typeof entry?.field === 'string' ? entry.field.trim() : '';
+    if (!key) return;
+    const tokens = tokenizeFieldPath(key);
+    const pathTokens = [];
+    tokens.forEach((token) => {
+      pathTokens.push(`${token.key}${token.isArray ? '[]' : ''}`);
+      if (token.isArray) {
+        const path = pathTokens.join('.');
+        if (!nested.has(path)) {
+          const labelParts = pathTokens
+            .map((segment) => humanize(segment))
+            .filter(Boolean);
+          nested.set(path, {
+            path,
+            label: labelParts.join(' – ') || humanize(token.key),
+            repeatable: true,
+          });
+        }
+      }
+    });
+  });
+
+  return Array.from(nested.values());
+}
+
+function buildRequestSampleFromFields(fields = [], defaults = {}, example) {
+  const sample = {};
+  const defaultMap = defaults && typeof defaults === 'object' ? defaults : {};
+  const exampleValues = Array.isArray(example)
+    ? []
+    : example && typeof example === 'object'
+      ? flattenFieldsWithValues(example)
+      : [];
+  const exampleLookup = new Map(
+    exampleValues
+      .map((entry) => [entry.field, entry.value])
+      .filter(([field]) => typeof field === 'string' && field),
+  );
+
+  fields.forEach((entry) => {
+    const fieldPath = typeof entry?.field === 'string' ? entry.field.trim() : '';
+    if (!fieldPath) return;
+    const tokens = tokenizeFieldPath(fieldPath);
+    const defaultValue =
+      exampleLookup.has(fieldPath) && exampleLookup.get(fieldPath) !== undefined
+        ? exampleLookup.get(fieldPath)
+        : defaultMap[fieldPath] !== undefined
+          ? defaultMap[fieldPath]
+          : null;
+    setValueAtTokens(sample, tokens, defaultValue);
+  });
+
+  return Object.keys(sample).length ? sample : undefined;
 }
 
 function pickEnumValues(node) {
@@ -1591,6 +1695,15 @@ function extractOperationsFromOpenApi(spec, meta = {}, metaLookup = {}) {
 
       const fieldDefaults = collectFieldDefaults(requestFields);
       const mappingHints = deriveMappingHintsFromFields(requestFields);
+      const nestedObjects =
+        Array.isArray(mappingHints?.nestedObjects) && mappingHints.nestedObjects.length
+          ? mappingHints.nestedObjects
+          : deriveNestedObjectsFromFields(requestFields);
+      const requestSample = buildRequestSampleFromFields(
+        requestFields,
+        fieldDefaults,
+        requestExample && typeof requestExample === 'object' ? requestExample : undefined,
+      );
 
       entries.push({
         id: id || `${method}-${entries.length + 1}`,
@@ -1612,7 +1725,9 @@ function extractOperationsFromOpenApi(spec, meta = {}, metaLookup = {}) {
         responseExamples: responseExampleEntries,
         variations,
         ...(Object.keys(fieldDefaults).length ? { fieldDefaults } : {}),
+        ...(requestSample ? { requestSample } : {}),
         ...(Object.keys(mappingHints).length ? { mappingHints } : {}),
+        ...(nestedObjects.length ? { nestedObjects } : {}),
         ...(Array.isArray(resolvedReceiptTypes) && resolvedReceiptTypes.length
           ? { receiptTypes: resolvedReceiptTypes }
           : {}),
@@ -2029,6 +2144,18 @@ function extractOperationsFromPostman(spec, meta = {}) {
         ...(Array.isArray(responseDetails.warnings) ? responseDetails.warnings : []),
       ];
 
+      const fieldDefaults = collectFieldDefaults(combinedRequestFields);
+      const mappingHints = deriveMappingHintsFromFields(combinedRequestFields);
+      const nestedObjects =
+        Array.isArray(mappingHints?.nestedObjects) && mappingHints.nestedObjects.length
+          ? mappingHints.nestedObjects
+          : deriveNestedObjectsFromFields(combinedRequestFields);
+      const requestSample = buildRequestSampleFromFields(
+        combinedRequestFields,
+        fieldDefaults,
+        requestExample && typeof requestExample === 'object' ? requestExample : undefined,
+      );
+
       entries.push({
         id: id || `${method}-${entries.length + 1}`,
         name: item.name || `${method} ${path}`,
@@ -2053,12 +2180,10 @@ function extractOperationsFromPostman(spec, meta = {}) {
         requestFields: combinedRequestFields,
         responseFields: responseDetails.responseFields,
         variations,
-        ...(Object.keys(collectFieldDefaults(combinedRequestFields)).length
-          ? { fieldDefaults: collectFieldDefaults(combinedRequestFields) }
-          : {}),
-        ...(Object.keys(deriveMappingHintsFromFields(combinedRequestFields)).length
-          ? { mappingHints: deriveMappingHintsFromFields(combinedRequestFields) }
-          : {}),
+        ...(Object.keys(fieldDefaults).length ? { fieldDefaults } : {}),
+        ...(requestSample ? { requestSample } : {}),
+        ...(Object.keys(mappingHints).length ? { mappingHints } : {}),
+        ...(nestedObjects.length ? { nestedObjects } : {}),
         ...(parseWarnings.length || variationWarnings.length
           ? { parseWarnings: [...parseWarnings, ...variationWarnings] }
           : {}),
