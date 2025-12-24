@@ -2,16 +2,50 @@ import { listTransactionNames } from '../services/transactionFormConfig.js';
 import { listAllowedReports } from '../services/reportAccessConfig.js';
 import { getProcTriggers } from '../services/procTriggers.js';
 import { getEmploymentSession, listReportProcedures } from '../../db/index.js';
+import { resolveWorkplacePositionsForAssignments } from './workplacePositionResolver.js';
 
 async function getUserContext(user, companyId) {
   const session = await getEmploymentSession(user.empid, companyId);
+  const baseAssignments = Array.isArray(session?.workplace_assignments)
+    ? session.workplace_assignments
+    : session?.workplace_id != null
+      ? [
+          {
+            company_id: session.company_id ?? companyId ?? null,
+            workplace_id: session.workplace_id ?? null,
+            workplace_session_id:
+              session.workplace_session_id ??
+              session.workplaceSessionId ??
+              session.workplace_id ??
+              null,
+          },
+        ]
+      : [];
+  let assignments = baseAssignments;
+  let workplacePositionMap = null;
+  try {
+    const resolved = await resolveWorkplacePositionsForAssignments(baseAssignments, {
+      companyId: session?.company_id ?? session?.companyId ?? companyId,
+    });
+    assignments = resolved.assignments;
+    workplacePositionMap = resolved.workplacePositionMap;
+  } catch (err) {
+    console.warn('Failed to resolve workplace positions for reports', err);
+  }
+  const resolvedWorkplaceId = session?.workplace_id ?? null;
+  const resolvedWorkplacePositionId =
+    session?.workplace_position_id ??
+    (resolvedWorkplaceId != null
+      ? workplacePositionMap?.[resolvedWorkplaceId]?.positionId ?? null
+      : null);
   return {
     branchId: session?.branch_id,
     departmentId: session?.department_id,
     userLevelId: session?.user_level,
     workplaceId: session?.workplace_id,
-    workplacePositionId: session?.workplace_position_id,
-    workplacePositions: session?.workplace_assignments,
+    workplacePositionId: resolvedWorkplacePositionId,
+    workplacePositions: assignments,
+    workplacePositionMap,
     positionId: session?.position_id ?? session?.employment_position_id,
   };
 }
@@ -31,6 +65,7 @@ export async function listPermittedProcedures(
       positionId: userCtx.positionId,
       workplacePositionId: userCtx.workplacePositionId,
       workplacePositions: userCtx.workplacePositions,
+      workplacePositionMap: userCtx.workplacePositionMap,
     },
     companyId,
   );

@@ -15,6 +15,7 @@ import {
 } from '../utils/cookieNames.js';
 import { normalizeEmploymentSession } from '../utils/employmentSession.js';
 import { normalizeNumericId } from '../utils/workplaceAssignments.js';
+import { resolveWorkplacePositionsForAssignments } from '../utils/workplacePositionResolver.js';
 import {
   recordLoginSession,
   recordLogoutSession,
@@ -161,8 +162,27 @@ export async function login(req, res, next) {
           }),
         );
 
+      let hydratedAssignments = workplaceAssignments;
+      let workplacePositionMap = null;
+      try {
+        const resolved = await resolveWorkplacePositionsForAssignments(
+          workplaceAssignments,
+          {
+            companyId: session?.company_id ?? session?.companyId ?? null,
+          },
+        );
+        hydratedAssignments = resolved.assignments;
+        workplacePositionMap = resolved.workplacePositionMap;
+      } catch (err) {
+        console.warn('Failed to resolve workplace positions for login', err);
+      }
+
       sessionPayload = session
-        ? normalizeEmploymentSession(session, workplaceAssignments)
+        ? normalizeEmploymentSession(
+            session,
+            hydratedAssignments,
+            workplacePositionMap,
+          )
         : null;
 
       permissions =
@@ -317,8 +337,27 @@ export async function getProfile(req, res) {
         )
     : [];
 
+  let hydratedAssignments = workplaceAssignments;
+  let workplacePositionMap = null;
+  try {
+    const resolved = await resolveWorkplacePositionsForAssignments(
+      workplaceAssignments,
+      {
+        companyId: session?.company_id ?? session?.companyId ?? null,
+      },
+    );
+    hydratedAssignments = resolved.assignments;
+    workplacePositionMap = resolved.workplacePositionMap;
+  } catch (err) {
+    console.warn('Failed to resolve workplace positions for profile', err);
+  }
+
   const sessionPayload = session
-    ? normalizeEmploymentSession(session, workplaceAssignments)
+    ? normalizeEmploymentSession(
+        session,
+        hydratedAssignments,
+        workplacePositionMap,
+      )
     : null;
 
   const permissions = sessionPayload?.user_level
@@ -422,8 +461,27 @@ export async function refresh(req, res) {
           )
       : [];
 
+    let hydratedAssignments = workplaceAssignments;
+    let workplacePositionMap = null;
+    try {
+      const resolved = await resolveWorkplacePositionsForAssignments(
+        workplaceAssignments,
+        {
+          companyId: session?.company_id ?? session?.companyId ?? null,
+        },
+      );
+      hydratedAssignments = resolved.assignments;
+      workplacePositionMap = resolved.workplacePositionMap;
+    } catch (err) {
+      console.warn('Failed to resolve workplace positions during refresh', err);
+    }
+
     const sessionPayload = session
-      ? normalizeEmploymentSession(session, workplaceAssignments)
+      ? normalizeEmploymentSession(
+          session,
+          hydratedAssignments,
+          workplacePositionMap,
+        )
       : null;
 
     const permissions = sessionPayload?.user_level
