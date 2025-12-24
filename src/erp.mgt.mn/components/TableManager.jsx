@@ -3646,9 +3646,7 @@ const TableManager = forwardRef(function TableManager({
         setPendingTemporaryPromotion(null);
         resetWorkflowState();
         if (activeTemporaryDraftId) {
-          void cleanupActiveTemporaryDraft().catch((err) =>
-            console.error('Failed to cleanup temporary draft', err),
-          );
+          await cleanupActiveTemporaryDraft();
         } else {
           setActiveTemporaryDraftId(null);
         }
@@ -3675,23 +3673,17 @@ const TableManager = forwardRef(function TableManager({
             newImageName &&
             (oldImageName !== newImageName || folder !== table)
           ) {
-            void (async () => {
-              try {
-                const renameUrl =
-                  `/api/transaction_images/${table}/${encodeURIComponent(oldImageName)}` +
-                  `/rename/${encodeURIComponent(newImageName)}?folder=${encodeURIComponent(folder)}`;
-                await fetch(renameUrl, { method: 'POST', credentials: 'include' });
-                const verifyUrl =
-                  `/api/transaction_images/${table}/${encodeURIComponent(newImageName)}?folder=${encodeURIComponent(folder)}`;
-                const res2 = await fetch(verifyUrl, { credentials: 'include' });
-                const imgs = res2.ok ? await res2.json().catch(() => []) : [];
-                if (!Array.isArray(imgs) || imgs.length === 0) {
-                  await fetch(renameUrl, { method: 'POST', credentials: 'include' });
-                }
-              } catch (err) {
-                console.error('Failed to rename transaction image', err);
-              }
-            })();
+            const renameUrl =
+              `/api/transaction_images/${table}/${encodeURIComponent(oldImageName)}` +
+              `/rename/${encodeURIComponent(newImageName)}?folder=${encodeURIComponent(folder)}`;
+            await fetch(renameUrl, { method: 'POST', credentials: 'include' });
+            const verifyUrl =
+              `/api/transaction_images/${table}/${encodeURIComponent(newImageName)}?folder=${encodeURIComponent(folder)}`;
+            const res2 = await fetch(verifyUrl, { credentials: 'include' });
+            const imgs = res2.ok ? await res2.json().catch(() => []) : [];
+            if (!Array.isArray(imgs) || imgs.length === 0) {
+              await fetch(renameUrl, { method: 'POST', credentials: 'include' });
+            }
           }
         }
         if (shouldIssueEbarimt) {
@@ -3714,6 +3706,13 @@ const TableManager = forwardRef(function TableManager({
             if (err.details?.field && err.details?.column) {
               detailParts.push(`${err.details.field} (column ${err.details.column})`);
             }
+            const detailSuffix = detailParts.length ? ` (${detailParts.join('; ')})` : '';
+            addToast(
+              t('ebarimt_post_failed', 'Ebarimt post failed: {{message}}', {
+                message: `${err.message}${detailSuffix}`,
+              }),
+              'error',
+            );
           }
         }
         addToast(msg, 'success');

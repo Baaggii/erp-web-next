@@ -1744,7 +1744,6 @@ const RowFormModal = function RowFormModal({
   const [seedRecordOptions, setSeedRecordOptions] = useState({});
   const [openSeed, setOpenSeed] = useState({});
   const alreadyRequestedRef = useRef(new Set());
-  const formBusy = submitLocked || temporaryLocked;
 
   useEffect(() => {
     if (visible) {
@@ -3756,149 +3755,104 @@ const RowFormModal = function RowFormModal({
             e.preventDefault();
             submitForm();
           }}
-          aria-busy={formBusy}
           className={fitted ? 'p-4 space-y-2' : 'p-4 space-y-4'}
         >
-          <div className="relative">
-            {formBusy && (
-              <div className="absolute inset-0 z-10 flex items-center justify-center rounded bg-white/70">
-                <div className="flex items-center gap-2 text-sm text-gray-700">
-                  <span className="h-4 w-4 animate-spin rounded-full border-2 border-blue-500 border-t-transparent" />
-                  <span>{t('submitting_transaction', 'Submitting transaction...')}</span>
-                </div>
-              </div>
-            )}
-            <div className={formBusy ? 'pointer-events-none opacity-60' : undefined}>
-              {isRejectedWorkflow && (
-                <div className="rounded border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800">
+          {isRejectedWorkflow && (
+            <div className="rounded border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800">
+              {t(
+                'rejected_transaction_warning',
+                'This transaction was rejected and requires review',
+              )}
+              {isTemporaryWorkflow && (
+                <div className="mt-1 text-xs text-amber-700">
                   {t(
-                    'rejected_transaction_warning',
-                    'This transaction was rejected and requires review',
-                  )}
-                  {isTemporaryWorkflow && (
-                    <div className="mt-1 text-xs text-amber-700">
-                      {t(
-                        'temporary_workflow_hint',
-                        'Temporary workflow in progress – verify before posting.',
-                      )}
-                    </div>
+                    'temporary_workflow_hint',
+                    'Temporary workflow in progress – verify before posting.',
                   )}
                 </div>
               )}
-              {renderHeaderTable(headerCols)}
-              {renderMainTable(mainCols)}
-              {renderSection('Footer', footerCols)}
-            {table === 'companies' && !row && seedOptions.length > 0 && (
-              <div className="mt-4">
-                <h3 className="font-semibold mb-2">Seed Tables</h3>
-                <div className="space-y-2">
-                  {seedOptions.map((t) => (
-                    <div key={t.tableName} className="border rounded">
-                      <button
-                        type="button"
-                        onClick={() => toggleSeedOpen(t.tableName)}
-                        className="w-full flex items-center justify-between p-2 bg-gray-100"
-                      >
-                        <label
-                          className="flex items-center space-x-2"
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          <input
-                            type="checkbox"
-                            checked={(extraVals.seedTables || []).includes(t.tableName)}
-                            onChange={() => toggleSeedTable(t.tableName)}
-                          />
-                          <span>{t.tableName}</span>
-                        </label>
-                        <span>{openSeed[t.tableName] ? '▾' : '▸'}</span>
-                      </button>
-                      {openSeed[t.tableName] && (
-                        seedRecordOptions[t.tableName]?.loading ? (
-                          <div className="p-2 text-sm text-gray-500">Loading...</div>
-                        ) : (
-                          renderSeedTable(t.tableName)
-                        )
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-            <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-              <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                {posApiEnabled && canPost && (
-                  <label className="inline-flex items-center space-x-2 text-sm text-gray-700">
-                    <input
-                      type="checkbox"
-                      className="rounded"
-                      checked={issueEbarimtEnabled}
-                      onChange={(e) => setIssueEbarimtEnabled(e.target.checked)}
-                      disabled={isReadOnly || formBusy}
-                    />
-                    <span>{t('issue_ebarimt_toggle', 'Issue Ebarimt (POSAPI)')}</span>
-                  </label>
-                )}
-                {showPosApiTypeSelect && (
-                  <label className="flex items-center space-x-2 text-sm text-gray-700">
-                    <span>{t('posapi_type_label', 'POSAPI Type')}</span>
-                    <select
-                      className="border border-gray-300 rounded px-2 py-1 text-sm"
-                      value={currentPosApiType}
-                      onChange={handlePosApiTypeChange}
-                      disabled={isReadOnly || formBusy}
-                    >
-                      {posApiTypeOptions.map((opt) => (
-                        <option key={opt.value} value={opt.value}>
-                          {opt.label}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                )}
-                {posApiEnabled &&
-                  quickInfoEndpoints.map((endpoint) => (
-                    <button
-                      key={`info-quick-${endpoint.id}`}
-                      type="button"
-                      onClick={() => handleQuickInfoAction(endpoint)}
-                      disabled={isReadOnly || formBusy}
-                      className="px-3 py-1 text-sm rounded border border-indigo-300 bg-indigo-100 text-indigo-800"
-                    >
-                      {endpoint.quickActionLabel}
-                    </button>
-                  ))}
-                {posApiEnabled && infoEndpoints.length > 0 && (
+            </div>
+          )}
+          {renderHeaderTable(headerCols)}
+          {renderMainTable(mainCols)}
+          {renderSection('Footer', footerCols)}
+        {table === 'companies' && !row && seedOptions.length > 0 && (
+          <div className="mt-4">
+            <h3 className="font-semibold mb-2">Seed Tables</h3>
+            <div className="space-y-2">
+              {seedOptions.map((t) => (
+                <div key={t.tableName} className="border rounded">
                   <button
                     type="button"
-                    onClick={openInfoModal}
-                    disabled={isReadOnly || formBusy}
-                    className="px-3 py-1 text-sm rounded border border-indigo-200 bg-indigo-50 text-indigo-700"
+                    onClick={() => toggleSeedOpen(t.tableName)}
+                    className="w-full flex items-center justify-between p-2 bg-gray-100"
                   >
-                    {t('posapi_open_info_lookup', 'POSAPI Lookups')}
+                    <label
+                      className="flex items-center space-x-2"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={(extraVals.seedTables || []).includes(t.tableName)}
+                        onChange={() => toggleSeedTable(t.tableName)}
+                      />
+                      <span>{t.tableName}</span>
+                    </label>
+                    <span>{openSeed[t.tableName] ? '▾' : '▸'}</span>
                   </button>
-                )}
-                {posApiEnabled && posApiEndpointMeta && (
-                  <span className="text-xs text-gray-500">
-                    {(posApiEndpointMeta.method || 'POST').toUpperCase()} {posApiEndpointMeta.path || ''}
-                  </span>
-                )}
-              </div>
-              <div className="text-right space-x-2">
-                <button
-                  type="button"
-                  onClick={() => handlePrint('emp')}
-                  className="px-3 py-1 bg-gray-200 rounded"
-                  disabled={formBusy}
+                  {openSeed[t.tableName] && (
+                    seedRecordOptions[t.tableName]?.loading ? (
+                      <div className="p-2 text-sm text-gray-500">Loading...</div>
+                    ) : (
+                      renderSeedTable(t.tableName)
+                    )
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+        <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+            {posApiEnabled && canPost && (
+              <label className="inline-flex items-center space-x-2 text-sm text-gray-700">
+                <input
+                  type="checkbox"
+                  className="rounded"
+                  checked={issueEbarimtEnabled}
+                  onChange={(e) => setIssueEbarimtEnabled(e.target.checked)}
+                  disabled={isReadOnly}
+                />
+                <span>{t('issue_ebarimt_toggle', 'Issue Ebarimt (POSAPI)')}</span>
+              </label>
+            )}
+            {showPosApiTypeSelect && (
+              <label className="flex items-center space-x-2 text-sm text-gray-700">
+                <span>{t('posapi_type_label', 'POSAPI Type')}</span>
+                <select
+                  className="border border-gray-300 rounded px-2 py-1 text-sm"
+                  value={currentPosApiType}
+                  onChange={handlePosApiTypeChange}
+                  disabled={isReadOnly}
                 >
-                  {t('printEmp', 'Print Emp')}
-                </button>
+                  {posApiTypeOptions.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+            {posApiEnabled &&
+              quickInfoEndpoints.map((endpoint) => (
                 <button
+                  key={`info-quick-${endpoint.id}`}
                   type="button"
-                  onClick={() => handlePrint('cust')}
-                  className="px-3 py-1 bg-gray-200 rounded"
-                  disabled={formBusy}
+                  onClick={() => handleQuickInfoAction(endpoint)}
+                  disabled={isReadOnly}
+                  className="px-3 py-1 text-sm rounded border border-indigo-300 bg-indigo-100 text-indigo-800"
                 >
-                  {t('printCust', 'Print Cust')}
+                  {endpoint.quickActionLabel}
                 </button>
               ))}
             {posApiEnabled && infoEndpoints.length > 0 && (
@@ -3980,11 +3934,11 @@ const RowFormModal = function RowFormModal({
               'temporary_post_hint',
               'This form currently only allows temporary submissions.',
             )}
-            <div className="text-sm text-gray-600">
-              Press <strong>Enter</strong> to move to next field. The field will be automatically selected. Use arrow keys to navigate selections.
-            </div>
-            </div>
           </div>
+        )}
+        <div className="text-sm text-gray-600">
+          Press <strong>Enter</strong> to move to next field. The field will be automatically selected. Use arrow keys to navigate selections.
+        </div>
         </form>
       </Modal>
       {infoModalOpen && (
