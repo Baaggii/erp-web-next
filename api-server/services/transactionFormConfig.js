@@ -804,8 +804,9 @@ export async function listTransactionNames(
 
     if (workplaceValue !== null && workplaceValue !== undefined) {
       const resolved = resolveWorkplacePosition(workplaceValue);
-      if (resolved === null) return false;
-      return matchesScope(allowedPositions, resolved);
+      if (resolved !== null) {
+        return matchesScope(allowedPositions, resolved);
+      }
     }
 
     return matchesScope(allowedPositions, value);
