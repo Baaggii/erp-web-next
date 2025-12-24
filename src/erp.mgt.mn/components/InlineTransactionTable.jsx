@@ -520,7 +520,7 @@ function InlineTransactionTable(
         if (!candidate.table && typeof rel.table === 'string') {
           candidate.table = rel.table;
         }
-        const srcId = rel.idField || rel.column || column;
+        const srcId = rel.idField || rel.column;
         if (!candidate.idField && typeof srcId === 'string') {
           candidate.idField = srcId;
         }
@@ -641,7 +641,6 @@ function InlineTransactionTable(
         );
         const score =
           (hasCombination ? (combinationReady ? 3 : -1) : 0) +
-          (entry.idField ? 1 : 0) +
           (entry.filterColumn ? 1 : 0) +
           (entry.filterValue ? 1 : 0) +
           (combinationReady ? 1 : 0);
@@ -2356,26 +2355,6 @@ function InlineTransactionTable(
       const combinationReady =
         resolvedAutoConfig?.combinationReady ??
         isCombinationFilterReady(hasCombination, conf?.combinationTargetColumn, comboFilters);
-      let effectiveIdField = conf.idField || conf.column;
-      let effectiveDisplayFields = conf.displayFields || [];
-      if (conf.table) {
-        const matchedDisplay = selectDisplayFieldsForRelation(
-          tableDisplayFields,
-          conf.table,
-          {
-            ...conf,
-            ...(conf.filterColumn && comboFilters?.[conf.filterColumn] !== undefined
-              ? { filterValue: comboFilters[conf.filterColumn] }
-              : {}),
-          },
-        );
-        if (matchedDisplay) {
-          if (matchedDisplay.idField) effectiveIdField = matchedDisplay.idField;
-          if (Array.isArray(matchedDisplay.displayFields)) {
-            effectiveDisplayFields = matchedDisplay.displayFields;
-          }
-        }
-      }
       const inputVal = typeof val === 'object' ? val.value : val;
       return (
         <AsyncSearchSelect
