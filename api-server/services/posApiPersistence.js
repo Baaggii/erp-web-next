@@ -53,13 +53,15 @@ export function createColumnLookup(source) {
 function tokenizePath(path) {
   if (typeof path !== 'string' || !path) return [];
   const tokens = [];
-  const regex = /([^\.\[\]]+)|(\[(\d+)\])/g;
+  const regex = /([^\.\[\]]+)|(\[(\d+)\])|(\[\])/g;
   let match;
   while ((match = regex.exec(path))) {
     if (match[1]) {
       tokens.push(match[1]);
     } else if (match[3] !== undefined) {
       tokens.push(Number(match[3]));
+    } else if (match[0] === '[]') {
+      tokens.push('[]');
     }
   }
   return tokens;
@@ -76,6 +78,11 @@ export function extractPosApiFieldValue(response, path) {
     if (typeof token === 'number') {
       if (!Array.isArray(current)) return undefined;
       current = current[token];
+      continue;
+    }
+    if (token === '[]') {
+      if (!Array.isArray(current)) return undefined;
+      current = current[0];
       continue;
     }
     if (typeof current !== 'object') return undefined;
@@ -171,6 +178,10 @@ export function computePosApiUpdates(columnLookup, response, options = {}) {
   const fieldsFromPosApi = Array.isArray(options.fieldsFromPosApi)
     ? options.fieldsFromPosApi.filter((field) => typeof field === 'string' && field.trim())
     : [];
+  const responseFieldMapping =
+    options.responseFieldMapping && typeof options.responseFieldMapping === 'object'
+      ? options.responseFieldMapping
+      : {};
   const entries = [];
 
   const pushEntry = (key, value) => {
@@ -197,13 +208,22 @@ export function computePosApiUpdates(columnLookup, response, options = {}) {
     pushEntry(key, value);
   });
 
+  Object.entries(responseFieldMapping).forEach(([fieldPath, targetColumn]) => {
+    if (typeof fieldPath !== 'string' || !fieldPath.trim()) return;
+    const value = extractPosApiFieldValue(response, fieldPath.trim());
+    if (value === undefined) return;
+    const columnName = typeof targetColumn === 'string' ? targetColumn.trim() : '';
+    const mappedColumn = findColumnForField(columnLookup, columnName || fieldPath.trim()) || columnName || fieldPath.trim();
+    if (!mappedColumn) return;
+    pushEntry(mappedColumn, value);
+  });
+
   const updates = {};
   entries.forEach(({ key, value }) => {
-    const column = findColumnForField(columnLookup, key);
+    const column = findColumnForField(columnLookup, key) || key;
     if (!column) return;
     if (Object.prototype.hasOwnProperty.call(updates, column)) return;
     updates[column] = normalizePersistValue(value);
   });
   return updates;
 }
-
