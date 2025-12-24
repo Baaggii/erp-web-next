@@ -14,13 +14,24 @@ router.get('/', requireAuth, async (req, res, next) => {
     const companyId = Number(req.query.companyId ?? req.user.companyId);
     const table = req.query.table;
     if (table) {
-      const { config, entries, isDefault } = await getDisplayFields(
+      const filterColumn = req.query.filterColumn ?? req.query.filter_column;
+      const filterValue = req.query.filterValue ?? req.query.filter_value;
+      const idField =
+        req.query.idField ??
+        req.query.id_field ??
+        req.query.targetColumn ??
+        req.query.target_column;
+      const matchesOnly =
+        req.query.matchesOnly === 'true' ||
+        req.query.matches_only === 'true' ||
+        req.query.includeAllMatches === 'true' ||
+        req.query.include_all_matches === 'true';
+      const { config, entries, matches, isDefault } = await getDisplayFields(
         table,
         companyId,
-        req.query.filterColumn ?? req.query.filter_column,
-        req.query.filterValue ?? req.query.filter_value,
+        { filterColumn, filterValue, idField, includeAllMatches: matchesOnly },
       );
-      res.json({ ...config, entries, isDefault });
+      res.json({ ...config, entries, matches, isDefault });
     } else {
       const { config, isDefault } = await getAllDisplayFields(companyId);
       res.json({ entries: config, isDefault });
