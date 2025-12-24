@@ -98,6 +98,7 @@ const RowFormModal = function RowFormModal({
   isAdding = false,
   isEditingTemporaryDraft = false,
   canPost = true,
+  workflowHint = {},
   forceEditable = false,
   posApiEnabled = false,
   posApiTypeField = '',
@@ -176,6 +177,10 @@ const RowFormModal = function RowFormModal({
     console.warn(`⚠️ Excessive renders: RowFormModal ${renderCount.current}`);
     warned.current = true;
   }
+
+  const workflowState = workflowHint || {};
+  const isRejectedWorkflow = Boolean(workflowState.isRejected);
+  const isTemporaryWorkflow = Boolean(workflowState.isTemporary);
 
   useEffect(() => {
     if (!mounted.current) {
@@ -3760,9 +3765,25 @@ const RowFormModal = function RowFormModal({
           }}
           className={fitted ? 'p-4 space-y-2' : 'p-4 space-y-4'}
         >
-        {renderHeaderTable(headerCols)}
-        {renderMainTable(mainCols)}
-        {renderSection('Footer', footerCols)}
+          {isRejectedWorkflow && (
+            <div className="rounded border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800">
+              {t(
+                'rejected_transaction_warning',
+                'This transaction was rejected and requires review',
+              )}
+              {isTemporaryWorkflow && (
+                <div className="mt-1 text-xs text-amber-700">
+                  {t(
+                    'temporary_workflow_hint',
+                    'Temporary workflow in progress – verify before posting.',
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+          {renderHeaderTable(headerCols)}
+          {renderMainTable(mainCols)}
+          {renderSection('Footer', footerCols)}
         {table === 'companies' && !row && seedOptions.length > 0 && (
           <div className="mt-4">
             <h3 className="font-semibold mb-2">Seed Tables</h3>

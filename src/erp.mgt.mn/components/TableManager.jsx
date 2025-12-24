@@ -386,6 +386,12 @@ function normalizeLockStatus(value) {
   return normalized || null;
 }
 
+function normalizeWorkflowStatus(value) {
+  if (value === undefined || value === null) return null;
+  const normalized = String(value).trim().toLowerCase();
+  return normalized || null;
+}
+
 function isTruthyFlag(value) {
   if (value === undefined || value === null) return false;
   if (typeof value === 'boolean') return value;
@@ -489,6 +495,10 @@ const TableManager = forwardRef(function TableManager({
   const [temporaryChainModalError, setTemporaryChainModalError] = useState('');
   const [temporaryChainModalLoading, setTemporaryChainModalLoading] =
     useState(false);
+  const [workflowState, setWorkflowState] = useState({
+    isTemporary: false,
+    status: null,
+  });
   const setTemporaryRowRef = useCallback((id, node) => {
     if (id == null) return;
     const key = String(id);
@@ -711,7 +721,17 @@ const TableManager = forwardRef(function TableManager({
       formConfig?.supportsTemporary ??
       false,
   );
-  const canCreateTemporary = Boolean(accessEvaluation.allowTemporary);
+  const permission = useMemo(
+    () => ({
+      canPost:
+        accessEvaluation.canPost === undefined
+          ? true
+          : accessEvaluation.canPost === true,
+      canSaveTemporary: Boolean(accessEvaluation.allowTemporary),
+    }),
+    [accessEvaluation],
+  );
+  const canCreateTemporary = Boolean(permission.canSaveTemporary);
   const isSenior =
     Boolean(user?.empid) && (!hasTransactionSenior || temporaryReviewer);
   const canReviewTemporary =
@@ -723,10 +743,7 @@ const TableManager = forwardRef(function TableManager({
     (canCreateTemporary || canReviewTemporary || temporaryReviewer);
   const isEditingTemporaryDraft = activeTemporaryDraftId != null;
   const canSaveTemporaryDraft = canCreateTemporary || isEditingTemporaryDraft;
-  const canPostTransactions =
-    accessEvaluation.canPost === undefined
-      ? true
-      : Boolean(accessEvaluation.canPost);
+  const canPostTransactions = permission.canPost;
 
   const availableTemporaryScopes = useMemo(() => {
     const scopes = [];
@@ -2347,7 +2364,12 @@ const TableManager = forwardRef(function TableManager({
     return columnMeta;
   }
 
+  const resetWorkflowState = useCallback(() => {
+    setWorkflowState({ isTemporary: false, status: null });
+  }, []);
+
   async function openAdd() {
+    resetWorkflowState();
     const meta = await ensureColumnMeta();
     const cols = Array.isArray(meta) && meta.length > 0 ? meta : columnMeta;
     const defaults = {};
@@ -2413,6 +2435,7 @@ const TableManager = forwardRef(function TableManager({
       );
       return;
     }
+    resetWorkflowState();
     const meta = await ensureColumnMeta();
     const cols = Array.isArray(meta) && meta.length > 0 ? meta : columnMeta;
     const localCaseMap =
@@ -3496,6 +3519,7 @@ const TableManager = forwardRef(function TableManager({
           setGridRows([]);
           setRequestType(null);
           setActiveTemporaryDraftId(null);
+          resetWorkflowState();
         } else if (res.status === 409) {
           addToast(
             t('similar_request_pending', 'A similar request is already pending'),
@@ -3542,6 +3566,7 @@ const TableManager = forwardRef(function TableManager({
         setRequestType(null);
         setPendingTemporaryPromotion(null);
         setActiveTemporaryDraftId(null);
+        resetWorkflowState();
         if (nextEntry) {
           setTimeout(() => {
             openTemporaryPromotion(nextEntry, { resetQueue: false });
@@ -4111,6 +4136,7 @@ const TableManager = forwardRef(function TableManager({
         setEditing(null);
         setIsAdding(false);
         setGridRows([]);
+        resetWorkflowState();
       }
     }
 
@@ -5841,6 +5867,13 @@ const TableManager = forwardRef(function TableManager({
     isTemporaryReviewMode && requestType === 'temporary-promote';
   const temporarySaveEnabled =
     canSaveTemporaryDraft && (!isTemporaryReviewMode || shouldShowForwardTemporaryLabel);
+  const workflowHint = useMemo(
+    () => ({
+      isRejected: workflowState.status === 'rejected',
+      isTemporary: Boolean(workflowState.isTemporary),
+    }),
+    [workflowState],
+  );
 
   const temporaryDetailColumns = useMemo(() => {
     const valueKeys = new Set();
@@ -7020,6 +7053,7 @@ const TableManager = forwardRef(function TableManager({
           setPendingTemporaryPromotion(null);
           setTemporaryPromotionQueue([]);
           setActiveTemporaryDraftId(null);
+          resetWorkflowState();
         }}
         onSubmit={handleSubmit}
         onSaveTemporary={temporarySaveEnabled ? handleSaveTemporary : null}
