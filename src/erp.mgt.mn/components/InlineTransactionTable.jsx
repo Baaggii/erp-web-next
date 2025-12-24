@@ -520,7 +520,7 @@ function InlineTransactionTable(
         if (!candidate.table && typeof rel.table === 'string') {
           candidate.table = rel.table;
         }
-        const srcId = rel.idField || rel.column || column;
+        const srcId = rel.idField || rel.column;
         if (!candidate.idField && typeof srcId === 'string') {
           candidate.idField = srcId;
         }
@@ -641,7 +641,6 @@ function InlineTransactionTable(
         );
         const score =
           (hasCombination ? (combinationReady ? 3 : -1) : 0) +
-          (entry.idField ? 1 : 0) +
           (entry.filterColumn ? 1 : 0) +
           (entry.filterValue ? 1 : 0) +
           (combinationReady ? 1 : 0);
