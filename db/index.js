@@ -1177,6 +1177,23 @@ function mapEmploymentRow(row) {
 }
 
 let employmentScheduleColumnCache = null;
+let companyMerchantColumnCache = null;
+
+async function getCompanyMerchantTinColumnInfo() {
+  if (companyMerchantColumnCache) return companyMerchantColumnCache;
+  try {
+    const columns = await getTableColumnsSafe("companies");
+    const lower = new Set(columns.map((c) => String(c).toLowerCase()));
+    companyMerchantColumnCache = { hasMerchantTin: lower.has("merchant_tin") };
+  } catch (err) {
+    if (err?.code === "ER_NO_SUCH_TABLE") {
+      companyMerchantColumnCache = { hasMerchantTin: false };
+    } else {
+      throw err;
+    }
+  }
+  return companyMerchantColumnCache;
+}
 
 async function getEmploymentScheduleColumnInfo() {
   if (employmentScheduleColumnCache) return employmentScheduleColumnCache;
@@ -1219,12 +1236,14 @@ export async function getEmploymentSessions(empid, options = {}) {
     deptCfgRaw,
     empCfgRaw,
     relationCfg,
+    companyMerchantInfo,
   ] = await Promise.all([
     getDisplayCfg("companies", configCompanyId),
     getDisplayCfg("code_branches", configCompanyId),
     getDisplayCfg("code_department", configCompanyId),
     getDisplayCfg("tbl_employee", configCompanyId),
     listCustomRelations("tbl_employment", configCompanyId),
+    getCompanyMerchantTinColumnInfo(),
   ]);
 
   const companyCfg = unwrapDisplayConfig(companyCfgRaw);
@@ -1232,6 +1251,9 @@ export async function getEmploymentSessions(empid, options = {}) {
   const deptCfg = unwrapDisplayConfig(deptCfgRaw);
   const empCfg = unwrapDisplayConfig(empCfgRaw);
   const relationConfig = relationCfg?.config || {};
+  const merchantTinExpr = companyMerchantInfo?.hasMerchantTin
+    ? "c.merchant_tin"
+    : "NULL";
   const scheduleInfo = await getEmploymentScheduleColumnInfo();
   const posNoExpr = scheduleInfo.hasPosNo ? "es.pos_no" : "NULL";
   const merchantExpr = scheduleInfo.hasMerchantId ? "es.merchant_id" : "NULL";
@@ -1289,7 +1311,7 @@ export async function getEmploymentSessions(empid, options = {}) {
 
   const sql = `SELECT
           e.employment_company_id AS company_id,
-          c.merchant_tin AS merchant_tin,
+          ${merchantTinExpr} AS merchant_tin,
           ${companyRel.nameExpr} AS company_name,
           e.employment_branch_id AS branch_id,
           ${branchRel.nameExpr} AS branch_name,
@@ -1378,16 +1400,15 @@ export async function getEmploymentSessions(empid, options = {}) {
   } catch (err) {
     if (
       err?.code === "ER_BAD_FIELD_ERROR" &&
-      /\b(pos_no|merchant_id)\b/i.test(err.message || "")
+      /\b(pos_no|merchant_id|merchant_tin)\b/i.test(err.message || "")
     ) {
       employmentScheduleColumnCache = { hasPosNo: false, hasMerchantId: false };
+      companyMerchantColumnCache = { hasMerchantTin: false };
       const replaceExpr = (text, target, replacement) =>
         text.split(target).join(replacement);
-      const fallbackSql = replaceExpr(
-        replaceExpr(normalizedSql, posNoExpr, "NULL"),
-        merchantExpr,
-        "NULL",
-      );
+      const withoutPos = replaceExpr(normalizedSql, posNoExpr, "NULL");
+      const withoutMerchantId = replaceExpr(withoutPos, merchantExpr, "NULL");
+      const fallbackSql = replaceExpr(withoutMerchantId, merchantTinExpr, "NULL");
       [rows] = await pool.query(fallbackSql, params);
     } else {
       throw err;
@@ -1447,18 +1468,20 @@ export async function getEmploymentSession(empid, companyId, options = {}) {
     const configCompanyId = Number.isFinite(Number(companyId))
       ? Number(companyId)
       : GLOBAL_COMPANY_ID;
-    const [
-      companyCfgRaw,
-      branchCfgRaw,
-      deptCfgRaw,
-      empCfgRaw,
-      relationCfg,
+  const [
+    companyCfgRaw,
+    branchCfgRaw,
+    deptCfgRaw,
+    empCfgRaw,
+    relationCfg,
+    companyMerchantInfo,
   ] = await Promise.all([
     getDisplayCfg("companies", configCompanyId),
     getDisplayCfg("code_branches", configCompanyId),
     getDisplayCfg("code_department", configCompanyId),
     getDisplayCfg("tbl_employee", configCompanyId),
     listCustomRelations("tbl_employment", configCompanyId),
+    getCompanyMerchantTinColumnInfo(),
   ]);
 
   const companyCfg = unwrapDisplayConfig(companyCfgRaw);
@@ -1466,6 +1489,9 @@ export async function getEmploymentSession(empid, companyId, options = {}) {
   const deptCfg = unwrapDisplayConfig(deptCfgRaw);
   const empCfg = unwrapDisplayConfig(empCfgRaw);
   const relationConfig = relationCfg?.config || {};
+  const merchantTinExpr = companyMerchantInfo?.hasMerchantTin
+    ? "c.merchant_tin"
+    : "NULL";
   const scheduleInfo = await getEmploymentScheduleColumnInfo();
   const posNoExpr = scheduleInfo.hasPosNo ? "es.pos_no" : "NULL";
   const merchantExpr = scheduleInfo.hasMerchantId ? "es.merchant_id" : "NULL";
@@ -1544,7 +1570,7 @@ export async function getEmploymentSession(empid, companyId, options = {}) {
 
   const baseSql = `SELECT
             e.employment_company_id AS company_id,
-            c.merchant_tin AS merchant_tin,
+            ${merchantTinExpr} AS merchant_tin,
             ${companyRel.nameExpr} AS company_name,
             e.employment_branch_id AS branch_id,
             ${branchRel.nameExpr} AS branch_name,
@@ -1614,7 +1640,7 @@ export async function getEmploymentSession(empid, companyId, options = {}) {
          LEFT JOIN user_level_permissions up ON up.userlevel_id = ul.userlevel_id AND up.action = 'permission' AND up.company_id IN (${GLOBAL_COMPANY_ID}, e.employment_company_id)
          WHERE e.employment_emp_id = ? AND e.employment_company_id = ?
          GROUP BY e.employment_company_id, company_name,
-                   c.merchant_tin,
+                   ${merchantTinExpr},
                    e.employment_branch_id, branch_name,
                    e.employment_department_id, department_name,
                    es.workplace_id, cw.workplace_name,
@@ -1633,16 +1659,15 @@ export async function getEmploymentSession(empid, companyId, options = {}) {
     } catch (err) {
       if (
         err?.code === "ER_BAD_FIELD_ERROR" &&
-        /\b(pos_no|merchant_id)\b/i.test(err.message || "")
+        /\b(pos_no|merchant_id|merchant_tin)\b/i.test(err.message || "")
       ) {
         employmentScheduleColumnCache = { hasPosNo: false, hasMerchantId: false };
+        companyMerchantColumnCache = { hasMerchantTin: false };
         const replaceExpr = (text, target, replacement) =>
           text.split(target).join(replacement);
-        const fallbackSql = replaceExpr(
-          replaceExpr(normalizedSql, posNoExpr, "NULL"),
-          merchantExpr,
-          "NULL",
-        );
+        const withoutPos = replaceExpr(normalizedSql, posNoExpr, "NULL");
+        const withoutMerchantId = replaceExpr(withoutPos, merchantExpr, "NULL");
+        const fallbackSql = replaceExpr(withoutMerchantId, merchantTinExpr, "NULL");
         [rows] = await pool.query(fallbackSql, queryParams);
       } else {
         throw err;
