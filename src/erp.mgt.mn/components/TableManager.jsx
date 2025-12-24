@@ -3517,6 +3517,7 @@ const TableManager = forwardRef(function TableManager({
         silent: false,
         overrideValues: cleaned,
         promoteAsTemporary: !canPostTransactions,
+        forcePromote: canPostTransactions,
       });
       if (ok) {
         const [nextEntry, ...remainingQueue] = temporaryPromotionQueue;
@@ -4710,6 +4711,7 @@ const TableManager = forwardRef(function TableManager({
       silent = false,
       overrideValues = null,
       promoteAsTemporary = false,
+      forcePromote = false,
     } = {},
   ) {
     if (!canReviewTemporary) return false;
@@ -4723,13 +4725,19 @@ const TableManager = forwardRef(function TableManager({
         overrideValues && typeof overrideValues === 'object'
           ? stripTemporaryLabelValue(overrideValues)
           : null;
-      const hasPayload = payload && Object.keys(payload).length > 0;
-      const requestBody = promoteAsTemporary || hasPayload
-        ? {
-            ...(hasPayload ? { cleanedValues: payload } : {}),
-            promoteAsTemporary,
-          }
-        : null;
+      const payloadWithForcePromote =
+        payload || forcePromote
+          ? { ...(payload || {}), ...(forcePromote ? { forcePromote: true } : {}) }
+          : null;
+      const hasPayload = payloadWithForcePromote && Object.keys(payloadWithForcePromote).length > 0;
+      const requestBody =
+        promoteAsTemporary || hasPayload || forcePromote
+          ? {
+              ...(hasPayload ? { cleanedValues: payloadWithForcePromote } : {}),
+              promoteAsTemporary,
+              ...(forcePromote ? { forcePromote: true } : {}),
+            }
+          : null;
       const res = await fetch(
         `${API_BASE}/transaction_temporaries/${encodeURIComponent(id)}/promote`,
         {
