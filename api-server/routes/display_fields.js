@@ -19,6 +19,7 @@ router.get('/', requireAuth, async (req, res, next) => {
         companyId,
         req.query.filterColumn ?? req.query.filter_column,
         req.query.filterValue ?? req.query.filter_value,
+        req.query.targetColumn ?? req.query.target_column,
       );
       res.json({ ...config, entries, isDefault });
     } else {
