@@ -3,6 +3,7 @@ import { AuthContext } from '../context/AuthContext.jsx';
 import { debugLog } from '../utils/debug.js';
 import { useCompanyModules } from './useCompanyModules.js';
 import { hasTransactionFormAccess } from '../utils/transactionFormAccess.js';
+import { resolveWorkplacePositionForContext } from '../utils/workplaceResolver.js';
 
 // Cache the raw transaction-form payload so we can re-derive module visibility
 // whenever permissions, licensing, or scope change without re-fetching.
@@ -158,8 +159,17 @@ export function useTxnModules() {
       session?.position_id ??
       session?.position ??
       null;
+    const resolvedWorkplacePosition =
+      resolveWorkplacePositionForContext({
+        workplaceId,
+        session,
+        workplacePositionMap,
+      }) || {};
     const workplacePositionId =
-      session?.workplace_position_id ?? session?.workplacePositionId ?? null;
+      resolvedWorkplacePosition.positionId ??
+      session?.workplace_position_id ??
+      session?.workplacePositionId ??
+      null;
     const workplacePositions = session?.workplace_assignments;
     const workplacePositionsMap = workplacePositionMap || {};
     const derived = deriveTxnModuleState(
@@ -207,7 +217,14 @@ export function useTxnModules() {
       session?.position ??
       null;
     const currentWorkplacePosition =
-      session?.workplace_position_id ?? session?.workplacePositionId ?? null;
+      resolveWorkplacePositionForContext({
+        workplaceId: currentWorkplace,
+        session,
+        workplacePositionMap,
+      })?.positionId ??
+      session?.workplace_position_id ??
+      session?.workplacePositionId ??
+      null;
 
     try {
       const params = new URLSearchParams();
@@ -277,6 +294,15 @@ export function useTxnModules() {
 
   useEffect(() => {
     debugLog('useTxnModules effect: initial fetch');
+    const expectedWorkplacePositionId =
+      resolveWorkplacePositionForContext({
+        workplaceId: workplace ?? session?.workplace_id ?? session?.workplaceId ?? null,
+        session,
+        workplacePositionMap,
+      })?.positionId ??
+      session?.workplace_position_id ??
+      session?.workplacePositionId ??
+      null;
     if (
       !cache.forms ||
       cache.branchId !== branch ||
@@ -303,7 +329,8 @@ export function useTxnModules() {
           session?.employment_position_id ??
           session?.position_id ??
           session?.position ??
-          null)
+          null) ||
+      cache.workplacePositionId !== expectedWorkplacePositionId
     ) {
       setState((prev) => (prev.keys.size === 0 && Object.keys(prev.labels).length === 0 ? prev : createEmptyState()));
       fetchForms();

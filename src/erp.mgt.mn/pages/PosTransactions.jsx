@@ -21,6 +21,7 @@ import { preserveManualChangesAfterRecalc } from '../utils/preserveManualChanges
 import { fetchTriggersForTables } from '../utils/fetchTriggersForTables.js';
 import { valuesEqual } from '../utils/generatedColumns.js';
 import { hasTransactionFormAccess } from '../utils/transactionFormAccess.js';
+import { resolveWorkplacePositionForContext } from '../utils/workplaceResolver.js';
 import {
   isModuleLicensed,
   isModulePermissionGranted,
@@ -1406,13 +1407,20 @@ export default function PosTransactionsPage() {
       user?.userlevel_name ??
       user?.userlevelName ??
       null;
-    const workplaceId =
-      workplace ??
-      session?.workplace_id ??
-      session?.workplaceId ??
-      null;
-    const workplacePositionId =
-      session?.workplace_position_id ?? session?.workplacePositionId ?? null;
+  const workplaceId =
+    workplace ??
+    session?.workplace_id ??
+    session?.workplaceId ??
+    null;
+  const workplacePositionId =
+    resolveWorkplacePositionForContext({
+      workplaceId,
+      session,
+      workplacePositionMap,
+    })?.positionId ??
+    session?.workplace_position_id ??
+    session?.workplacePositionId ??
+    null;
     const positionId =
       session?.employment_position_id ??
       session?.position_id ??
