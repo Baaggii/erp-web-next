@@ -131,7 +131,16 @@ export default function FinanceTransactions({ moduleKey = 'finance_transactions'
   const [reportResult, setReportResult] = useState(null);
   const [manualParams, setManualParams] = useState({});
   const [externalTemporaryTrigger, setExternalTemporaryTrigger] = useState(null);
-  const { company, branch, department, user, permissions: perms, session, workplace } =
+  const {
+    company,
+    branch,
+    department,
+    user,
+    permissions: perms,
+    session,
+    workplace,
+    workplacePositionMap,
+  } =
     useContext(AuthContext);
   const buttonPerms = useButtonPerms();
   const generalConfig = useGeneralConfig();
@@ -473,6 +482,7 @@ useEffect(() => {
               positionId,
               workplacePositions: session?.workplace_assignments,
               workplacePositionId,
+              workplacePositionMap,
             })
           )
             return;
@@ -492,7 +502,18 @@ useEffect(() => {
         addToast('Failed to load transaction forms', 'error');
         setConfigs({});
       });
-  }, [moduleKey, company, branch, department, perms, licensed, session, user, workplace]);
+  }, [
+    moduleKey,
+    company,
+    branch,
+    department,
+    perms,
+    licensed,
+    session,
+    user,
+    workplace,
+    workplacePositionMap,
+  ]);
 
   useEffect(() => {
     console.log('FinanceTransactions table sync effect');

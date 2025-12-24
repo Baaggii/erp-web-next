@@ -572,7 +572,16 @@ const TableManager = forwardRef(function TableManager({
     const str = String(value).trim();
     return str ? str.toUpperCase() : '';
   }, []);
-  const { user, company, branch, department, session, position, workplace } = useContext(AuthContext);
+  const {
+    user,
+    company,
+    branch,
+    department,
+    session,
+    position,
+    workplace,
+    workplacePositionMap,
+  } = useContext(AuthContext);
   const hasSenior = (value) => {
     if (value === null || value === undefined) return false;
     const numeric = Number(value);
@@ -710,9 +719,19 @@ const TableManager = forwardRef(function TableManager({
             session?.position ??
             user?.position ??
             null,
+          workplacePositionMap,
         },
       ),
-    [formConfig, branchScopeId, departmentScopeId, session, user, position, workplace],
+    [
+      formConfig,
+      branchScopeId,
+      departmentScopeId,
+      session,
+      user,
+      position,
+      workplace,
+      workplacePositionMap,
+    ],
   );
 
   const formSupportsTemporary = Boolean(

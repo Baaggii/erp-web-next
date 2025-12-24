@@ -8,6 +8,10 @@ import { refreshTxnModules } from '../hooks/useTxnModules.js';
 import { useNavigate } from 'react-router-dom';
 import I18nContext from '../context/I18nContext.jsx';
 import normalizeEmploymentSession from '../utils/normalizeEmploymentSession.js';
+import {
+  deriveWorkplacePositionsFromAssignments,
+  resolveWorkplacePositionMap,
+} from '../utils/workplaceResolver.js';
 
 export default function LoginForm() {
   // login using employee ID only
@@ -26,6 +30,7 @@ export default function LoginForm() {
     setDepartment,
     setPosition,
     setWorkplace,
+    setWorkplacePositionMap,
     setPermissions,
   } = useContext(AuthContext);
   const { t } = useContext(I18nContext);
@@ -107,6 +112,17 @@ export default function LoginForm() {
         loggedIn.workplace ?? normalizedSession?.workplace_id ?? null,
       );
       setPermissions(loggedIn.permissions || null);
+      const derivedWorkplaceMap =
+        deriveWorkplacePositionsFromAssignments(normalizedSession);
+      setWorkplacePositionMap(derivedWorkplaceMap);
+      try {
+        const resolvedWorkplaceMap = await resolveWorkplacePositionMap({
+          session: normalizedSession,
+        });
+        setWorkplacePositionMap(resolvedWorkplaceMap);
+      } catch (err) {
+        console.warn('Failed to resolve workplace positions after login', err);
+      }
       refreshCompanyModules(loggedIn.company);
       refreshModules();
       refreshTxnModules();

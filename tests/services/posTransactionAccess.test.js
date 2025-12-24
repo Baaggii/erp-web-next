@@ -20,6 +20,15 @@ test('hasPosTransactionAccess enforces workplace position precedence', () => {
 
   assert.equal(
     hasPosTransactionAccess(config, null, null, {
+      positionId: '999',
+      workplaceId: '10',
+      workplacePositionMap: { 10: { positionId: '200', positionName: 'Manager' } },
+    }),
+    true,
+  );
+
+  assert.equal(
+    hasPosTransactionAccess(config, null, null, {
       positionId: '200',
       workplaceId: '10',
       workplacePositionMap: { 10: '300' },
