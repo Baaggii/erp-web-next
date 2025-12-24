@@ -11,6 +11,7 @@ import {
   pickScopeValue,
 } from '../services/posTransactionConfig.js';
 import { getEmploymentSession, getUserLevelActions } from '../../db/index.js';
+import { buildWorkplacePositionMap } from '../utils/workplacePositionResolver.js';
 
 const router = express.Router();
 
@@ -62,6 +63,9 @@ router.get('/', requireAuth, async (req, res, next) => {
       req.session?.workplaceId ??
       req.session?.workplace;
     const workplacePositions = session?.workplace_assignments;
+    const workplacePositionMap =
+      session?.workplace_position_map ??
+      buildWorkplacePositionMap(workplacePositions);
 
     const branchId = pickScopeValue(req.query.branchId, sessionBranch);
     const departmentId = pickScopeValue(req.query.departmentId, sessionDepartment);
@@ -81,6 +85,7 @@ router.get('/', requireAuth, async (req, res, next) => {
           workplaceId,
           positionId,
           workplacePositions,
+          workplacePositionMap,
         })
       ) {
         res.status(403).json({ message: 'Access denied', isDefault });
@@ -94,6 +99,7 @@ router.get('/', requireAuth, async (req, res, next) => {
         workplaceId,
         positionId,
         workplacePositions,
+        workplacePositionMap,
       });
       res.json({ ...filtered, isDefault });
     }
