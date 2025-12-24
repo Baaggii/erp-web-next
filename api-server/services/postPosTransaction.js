@@ -1539,12 +1539,10 @@ export async function postPosTransactionWithEbarimt(
   const response = await sendReceipt(payload, { endpoint });
   await persistPosApiResponse(masterTable, masterId, response, {
     fieldsFromPosApi: formCfg.fieldsFromPosApi,
-    responseFieldMapping: formCfg.posApiResponseMapping,
   });
   if (invoiceId) {
     await persistEbarimtInvoiceResponse(invoiceId, response, {
       fieldsFromPosApi: formCfg.fieldsFromPosApi,
-      responseFieldMapping: formCfg.posApiResponseMapping,
     });
   }
 
@@ -1673,12 +1671,10 @@ export async function issueSavedPosTransactionEbarimt(
   const response = await sendReceipt(payload, { endpoint });
   await persistPosApiResponse(masterTable, recordId, response, {
     fieldsFromPosApi: formCfg.fieldsFromPosApi,
-    responseFieldMapping: formCfg.posApiResponseMapping,
   });
   if (invoiceId) {
     await persistEbarimtInvoiceResponse(invoiceId, response, {
       fieldsFromPosApi: formCfg.fieldsFromPosApi,
-      responseFieldMapping: formCfg.posApiResponseMapping,
     });
     await linkInvoiceToIncomeRecords({
       invoiceId,

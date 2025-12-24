@@ -2003,7 +2003,6 @@ export async function promoteTemporarySubmission(
                 const lookup = createColumnLookup(columnNames);
                 const updates = computePosApiUpdates(lookup, posApiResponse, {
                   fieldsFromPosApi: formCfg.fieldsFromPosApi,
-                  responseFieldMapping: formCfg.posApiResponseMapping,
                 });
                 const entries = Object.entries(updates || {});
                 if (entries.length > 0) {
@@ -2026,10 +2025,9 @@ export async function promoteTemporarySubmission(
                   }
                 }
                 if (invoiceId) {
-              await persistEbarimtInvoiceResponse(invoiceId, posApiResponse, {
-                fieldsFromPosApi: formCfg.fieldsFromPosApi,
-                responseFieldMapping: formCfg.posApiResponseMapping,
-              });
+                  await persistEbarimtInvoiceResponse(invoiceId, posApiResponse, {
+                    fieldsFromPosApi: formCfg.fieldsFromPosApi,
+                  });
                 }
               }
             } catch (posErr) {

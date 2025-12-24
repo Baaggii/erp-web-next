@@ -72,7 +72,6 @@ const emptyConfig = {
   posApiEnablePaymentMethods: undefined,
   fieldsFromPosApi: [],
   posApiMapping: {},
-  posApiResponseMapping: {},
 };
 
 export default function PosTxnConfig() {
@@ -140,10 +139,6 @@ export default function PosTxnConfig() {
     typeof config.posApiMapping.paymentMethods === 'object' &&
     !Array.isArray(config.posApiMapping.paymentMethods)
       ? config.posApiMapping.paymentMethods
-      : {};
-  const responseFieldMapping =
-    config.posApiResponseMapping && typeof config.posApiResponseMapping === 'object' && !Array.isArray(config.posApiResponseMapping)
-      ? config.posApiResponseMapping
       : {};
 
   const procPrefix = generalConfig?.general?.reportProcPrefix || '';
@@ -2244,7 +2239,6 @@ export default function PosTxnConfig() {
           receiptFieldMapping={receiptFieldMapping}
           receiptGroupMapping={receiptGroupMapping}
           paymentMethodMapping={paymentMethodMapping}
-          responseFieldMapping={responseFieldMapping}
           onEnsureColumnsLoaded={ensureColumnsLoadedFor}
         />
 
