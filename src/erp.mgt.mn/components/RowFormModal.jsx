@@ -1733,6 +1733,7 @@ const RowFormModal = function RowFormModal({
   const [issueEbarimtEnabled, setIssueEbarimtEnabled] = useState(() =>
     Boolean(posApiEnabled),
   );
+  const formProcessing = submitLocked || temporaryLocked;
   const prevVisibleRef = useRef(visible);
   const tableRef = useRef(null);
   const [gridRows, setGridRows] = useState(() => (Array.isArray(rows) ? rows : []));
@@ -3726,6 +3727,20 @@ const RowFormModal = function RowFormModal({
     onSaveTemporary &&
     (isAdding || isEditingTemporaryDraft) &&
     (!isReadOnly || temporarySaveLabel);
+  const postButtonLabel = submitLocked ? t('posting', 'Posting...') : t('post', 'Post');
+  const ebarimtButtonLabel = submitLocked
+    ? t('posting', 'Posting...')
+    : t('ebarimt_post', 'Ebarimt Post');
+  const temporaryButtonLabel = temporaryLocked
+    ? temporarySaveLabel || t('saving_temporary', 'Saving temporary...')
+    : temporarySaveLabel || t('save_temporary', 'Save as Temporary');
+  const processingText = temporaryLocked
+    ? t('saving_temporary_progress', 'Saving temporary submission...')
+    : t('posting_transaction_progress', 'Posting transaction...');
+  const handleClose = () => {
+    if (formProcessing) return;
+    onCancel();
+  };
 
   if (inline) {
     return (
@@ -3745,18 +3760,26 @@ const RowFormModal = function RowFormModal({
       <Modal
         visible={visible}
         title={row ? 'Мөр засах' : 'Мөр нэмэх'}
-        onClose={onCancel}
+        onClose={handleClose}
         width="70vw"
       >
-        <form
-          ref={wrapRef}
-          style={{ transform: `scale(${zoom})`, transformOrigin: '0 0', padding: fitted ? 0 : undefined }}
-          onSubmit={(e) => {
-            e.preventDefault();
-            submitForm();
-          }}
-          className={fitted ? 'p-4 space-y-2' : 'p-4 space-y-4'}
-        >
+        <div className="relative">
+          {formProcessing && (
+            <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-white/70 backdrop-blur-sm">
+              <div className="h-10 w-10 rounded-full border-2 border-blue-200 border-t-blue-600 animate-spin" />
+              <p className="mt-3 text-sm font-medium text-gray-700 text-center px-4">{processingText}</p>
+            </div>
+          )}
+          <form
+            ref={wrapRef}
+            style={{ transform: `scale(${zoom})`, transformOrigin: '0 0', padding: fitted ? 0 : undefined }}
+            onSubmit={(e) => {
+              e.preventDefault();
+              submitForm();
+            }}
+            className={`${fitted ? 'p-4 space-y-2' : 'p-4 space-y-4'} ${formProcessing ? 'opacity-60 pointer-events-none' : ''}`}
+            aria-busy={formProcessing}
+          >
           {isRejectedWorkflow && (
             <div className="rounded border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800">
               {t(
@@ -3894,7 +3917,7 @@ const RowFormModal = function RowFormModal({
                 disabled={temporaryLocked}
                 className="px-3 py-1 bg-yellow-400 text-gray-900 rounded"
               >
-                {temporarySaveLabel || t('save_temporary', 'Save as Temporary')}
+                {temporaryButtonLabel}
               </button>
             )}
             <button
@@ -3914,7 +3937,7 @@ const RowFormModal = function RowFormModal({
                 className="px-3 py-1 bg-green-600 text-white rounded"
                 disabled={!issueEbarimtEnabled || submitLocked}
               >
-                {t('ebarimt_post', 'Ebarimt Post')}
+                {ebarimtButtonLabel}
               </button>
             )}
             {canPost && (
@@ -3923,7 +3946,7 @@ const RowFormModal = function RowFormModal({
                 className="px-3 py-1 bg-blue-600 text-white rounded"
                 disabled={submitLocked}
               >
-                {t('post', 'Post')}
+                {postButtonLabel}
               </button>
             )}
           </div>
@@ -3939,7 +3962,8 @@ const RowFormModal = function RowFormModal({
         <div className="text-sm text-gray-600">
           Press <strong>Enter</strong> to move to next field. The field will be automatically selected. Use arrow keys to navigate selections.
         </div>
-        </form>
+          </form>
+        </div>
       </Modal>
       {infoModalOpen && (
         <Modal
