@@ -3616,45 +3616,29 @@ const TableManager = forwardRef(function TableManager({
       });
       const savedRow = res.ok ? await res.json().catch(() => ({})) : {};
       if (res.ok) {
-        const params = new URLSearchParams({ page, perPage });
-        if (company != null && columns.has('company_id'))
-          params.set('company_id', company);
-        if (sort.column) {
-          params.set('sort', sort.column);
-          params.set('dir', sort.dir);
-        }
-        Object.entries(filters).forEach(([k, v]) => {
-          if (v) params.set(k, v);
-        });
-        const data = await fetch(`/api/tables/${encodeURIComponent(table)}?${params.toString()}`, {
-          credentials: 'include',
-        }).then((r) => r.json());
-        const rows = data.rows || [];
-        setRows(rows);
-        setCount(data.total ?? data.count ?? 0);
-        logRowsMemory(rows);
-        setSelectedRows(new Set());
-        setShowForm(false);
-        setEditing(null);
-        setIsAdding(false);
-        setGridRows([]);
         const msg = isAdding
           ? t('transaction_posted', 'Transaction posted')
           : t('transaction_updated', 'Transaction updated');
         const targetRecordId = isAdding ? savedRow?.id ?? null : getRowId(editing);
         const shouldIssueEbarimt = issueEbarimt && formConfig?.posApiEnabled;
+        setShowForm(false);
+        setEditing(null);
+        setIsAdding(false);
+        setGridRows([]);
+        setRequestType(null);
+        setPendingTemporaryPromotion(null);
+        resetWorkflowState();
         if (activeTemporaryDraftId) {
-          await cleanupActiveTemporaryDraft();
+          void cleanupActiveTemporaryDraft().catch((err) =>
+            console.error('Failed to cleanup temporary draft', err),
+          );
         } else {
           setActiveTemporaryDraftId(null);
         }
         if (isAdding && (formConfig?.imagenameField || []).length) {
-          const inserted = rows.find(
-            (r) => String(getRowId(r)) === String(savedRow.id),
-          );
-          const rowForName = inserted || {
+          const rowForName = {
             ...merged,
-            [formConfig.imageIdField]: savedRow[formConfig.imageIdField],
+            ...(savedRow && typeof savedRow === 'object' ? savedRow : {}),
           };
           const nameFields = Array.from(
             new Set(
@@ -3674,57 +3658,61 @@ const TableManager = forwardRef(function TableManager({
             newImageName &&
             (oldImageName !== newImageName || folder !== table)
           ) {
-            const renameUrl =
-              `/api/transaction_images/${table}/${encodeURIComponent(oldImageName)}` +
-              `/rename/${encodeURIComponent(newImageName)}?folder=${encodeURIComponent(folder)}`;
-            await fetch(renameUrl, { method: 'POST', credentials: 'include' });
-            const verifyUrl =
-              `/api/transaction_images/${table}/${encodeURIComponent(newImageName)}?folder=${encodeURIComponent(folder)}`;
-            const res2 = await fetch(verifyUrl, { credentials: 'include' });
-            const imgs = res2.ok ? await res2.json().catch(() => []) : [];
-            if (!Array.isArray(imgs) || imgs.length === 0) {
-              await fetch(renameUrl, { method: 'POST', credentials: 'include' });
-            }
-          }
-        }
-        let ebarimtResult = null;
-        if (shouldIssueEbarimt) {
-          try {
-            ebarimtResult = await issueTransactionEbarimt(targetRecordId);
-          } catch (err) {
-            const detailParts = [];
-            const missingEnv = Array.isArray(err.details?.missingEnvVars)
-              ? err.details.missingEnvVars
-              : [];
-            if (missingEnv.length) {
-              detailParts.push(`missing config: ${missingEnv.join(', ')}`);
-            }
-            const missingMapping = Array.isArray(err.details?.missingMapping)
-              ? err.details.missingMapping
-              : [];
-            if (missingMapping.length) {
-              detailParts.push(`missing mapping: ${missingMapping.join(', ')}`);
-            }
-            if (err.details?.field && err.details?.column) {
-              detailParts.push(`${err.details.field} (column ${err.details.column})`);
-            }
-            const detailSuffix = detailParts.length ? ` (${detailParts.join('; ')})` : '';
-            addToast(
-              t('ebarimt_post_failed', 'Ebarimt post failed: {{message}}', {
-                message: `${err.message}${detailSuffix}`,
-              }),
-              'error',
-            );
+            void (async () => {
+              try {
+                const renameUrl =
+                  `/api/transaction_images/${table}/${encodeURIComponent(oldImageName)}` +
+                  `/rename/${encodeURIComponent(newImageName)}?folder=${encodeURIComponent(folder)}`;
+                await fetch(renameUrl, { method: 'POST', credentials: 'include' });
+                const verifyUrl =
+                  `/api/transaction_images/${table}/${encodeURIComponent(newImageName)}?folder=${encodeURIComponent(folder)}`;
+                const res2 = await fetch(verifyUrl, { credentials: 'include' });
+                const imgs = res2.ok ? await res2.json().catch(() => []) : [];
+                if (!Array.isArray(imgs) || imgs.length === 0) {
+                  await fetch(renameUrl, { method: 'POST', credentials: 'include' });
+                }
+              } catch (err) {
+                console.error('Failed to rename transaction image', err);
+              }
+            })();
           }
         }
         addToast(msg, 'success');
-        if (shouldIssueEbarimt) {
-          await issueTransactionEbarimt(targetRecordId);
-        }
-        refreshRows();
-        if (isAdding) {
-          setTimeout(() => openAdd(), 0);
-        }
+        void (async () => {
+          if (shouldIssueEbarimt) {
+            try {
+              await issueTransactionEbarimt(targetRecordId);
+            } catch (err) {
+              const detailParts = [];
+              const missingEnv = Array.isArray(err.details?.missingEnvVars)
+                ? err.details.missingEnvVars
+                : [];
+              if (missingEnv.length) {
+                detailParts.push(`missing config: ${missingEnv.join(', ')}`);
+              }
+              const missingMapping = Array.isArray(err.details?.missingMapping)
+                ? err.details.missingMapping
+                : [];
+              if (missingMapping.length) {
+                detailParts.push(`missing mapping: ${missingMapping.join(', ')}`);
+              }
+              if (err.details?.field && err.details?.column) {
+                detailParts.push(`${err.details.field} (column ${err.details.column})`);
+              }
+              const detailSuffix = detailParts.length ? ` (${detailParts.join('; ')})` : '';
+              addToast(
+                t('ebarimt_post_failed', 'Ebarimt post failed: {{message}}', {
+                  message: `${err.message}${detailSuffix}`,
+                }),
+                'error',
+              );
+            }
+          }
+          refreshRows();
+          if (isAdding) {
+            setTimeout(() => openAdd(), 0);
+          }
+        })();
         return true;
       } else {
         let message = 'Хадгалахад алдаа гарлаа';

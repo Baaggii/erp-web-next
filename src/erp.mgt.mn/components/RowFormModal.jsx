@@ -1728,6 +1728,7 @@ const RowFormModal = function RowFormModal({
     errorsRef.current = errors;
   }, [errors]);
   const [submitLocked, setSubmitLocked] = useState(false);
+  const [temporaryLocked, setTemporaryLocked] = useState(false);
   const [issueEbarimtEnabled, setIssueEbarimtEnabled] = useState(() =>
     Boolean(posApiEnabled),
   );
@@ -1742,6 +1743,7 @@ const RowFormModal = function RowFormModal({
   const [seedRecordOptions, setSeedRecordOptions] = useState({});
   const [openSeed, setOpenSeed] = useState({});
   const alreadyRequestedRef = useRef(new Set());
+  const formBusy = submitLocked || temporaryLocked;
 
   useEffect(() => {
     if (visible) {
@@ -1755,6 +1757,13 @@ const RowFormModal = function RowFormModal({
     }
     prevVisibleRef.current = visible;
   }, [visible, posApiEnabled]);
+
+  useEffect(() => {
+    if (!visible) {
+      setSubmitLocked(false);
+      setTemporaryLocked(false);
+    }
+  }, [visible]);
 
   useEffect(() => {
     if (!useGrid) return;
@@ -2826,114 +2835,119 @@ const RowFormModal = function RowFormModal({
   }
 
   async function handleTemporarySave() {
-    if (!allowTemporarySave || !onSaveTemporary) return;
-    if (useGrid && tableRef.current) {
-      if (tableRef.current.hasInvalid && tableRef.current.hasInvalid()) {
-        alert('Тэмдэглэсэн талбаруудыг засна уу.');
-        return;
-      }
-      const rows = tableRef.current.getRows();
-      const cleanedRows = [];
-      const rawRows = [];
-      let hasMissing = false;
-      let hasInvalid = false;
-      rows.forEach((r) => {
-        const hasValue = Object.values(r).some((v) => {
-          if (v === null || v === undefined || v === '') return false;
-          if (typeof v === 'object' && 'value' in v) return v.value !== '';
-          return true;
+    if (!allowTemporarySave || !onSaveTemporary || temporaryLocked) return;
+    setTemporaryLocked(true);
+    try {
+      if (useGrid && tableRef.current) {
+        if (tableRef.current.hasInvalid && tableRef.current.hasInvalid()) {
+          alert('Тэмдэглэсэн талбаруудыг засна уу.');
+          return;
+        }
+        const rows = tableRef.current.getRows();
+        const cleanedRows = [];
+        const rawRows = [];
+        let hasMissing = false;
+        let hasInvalid = false;
+        rows.forEach((r) => {
+          const hasValue = Object.values(r).some((v) => {
+            if (v === null || v === undefined || v === '') return false;
+            if (typeof v === 'object' && 'value' in v) return v.value !== '';
+            return true;
+          });
+          if (!hasValue) return;
+          const normalized = {};
+          Object.entries(r).forEach(([k, v]) => {
+            const raw = typeof v === 'object' && v !== null && 'value' in v ? v.value : v;
+            let val = normalizeDateInput(raw, placeholders[k]);
+            if (totalAmountSet.has(k) || totalCurrencySet.has(k)) {
+              val = normalizeNumberInput(val);
+            }
+            normalized[k] = val;
+          });
+          requiredFields.forEach((f) => {
+            if (
+              normalized[f] === '' ||
+              normalized[f] === null ||
+              normalized[f] === undefined
+            )
+              hasMissing = true;
+            if (
+              (totalAmountSet.has(f) || totalCurrencySet.has(f)) &&
+              normalized[f] !== '' &&
+              !/code/i.test(f) &&
+              isNaN(Number(normalizeNumberInput(normalized[f])))
+            )
+              hasInvalid = true;
+            const ph = placeholders[f];
+            if (ph && !isValidDate(normalized[f], ph)) hasInvalid = true;
+          });
+          cleanedRows.push(normalized);
+          rawRows.push(r);
         });
-        if (!hasValue) return;
-        const normalized = {};
-        Object.entries(r).forEach(([k, v]) => {
-          const raw = typeof v === 'object' && v !== null && 'value' in v ? v.value : v;
-          let val = normalizeDateInput(raw, placeholders[k]);
+        if (hasMissing) {
+          alert('Шаардлагатай талбаруудыг бөглөнө үү.');
+          return;
+        }
+        if (hasInvalid) {
+          alert('Буруу утгуудыг засна уу.');
+          return;
+        }
+        if (cleanedRows.length === 0) {
+          return;
+        }
+        const mergedExtra = { ...extraVals };
+        if (mergedExtra.seedRecords && mergedExtra.seedTables) {
+          const set = new Set(mergedExtra.seedTables);
+          const filtered = {};
+          Object.entries(mergedExtra.seedRecords).forEach(([tbl, recs]) => {
+            if (set.has(tbl)) filtered[tbl] = recs;
+          });
+          mergedExtra.seedRecords = filtered;
+        }
+        const normalizedExtra = {};
+        Object.entries(mergedExtra).forEach(([k, v]) => {
+          let val = normalizeDateInput(v, placeholders[k]);
           if (totalAmountSet.has(k) || totalCurrencySet.has(k)) {
             val = normalizeNumberInput(val);
           }
-          normalized[k] = val;
+          normalizedExtra[k] = val;
         });
-        requiredFields.forEach((f) => {
-          if (
-            normalized[f] === '' ||
-            normalized[f] === null ||
-            normalized[f] === undefined
-          )
-            hasMissing = true;
-          if (
-            (totalAmountSet.has(f) || totalCurrencySet.has(f)) &&
-            normalized[f] !== '' &&
-            !/code/i.test(f) &&
-            isNaN(Number(normalizeNumberInput(normalized[f])))
-          )
-            hasInvalid = true;
-          const ph = placeholders[f];
-          if (ph && !isValidDate(normalized[f], ph)) hasInvalid = true;
-        });
-        cleanedRows.push(normalized);
-        rawRows.push(r);
-      });
-      if (hasMissing) {
-        alert('Шаардлагатай талбаруудыг бөглөнө үү.');
+        try {
+          await Promise.resolve(
+            onSaveTemporary({
+              values: { ...normalizedExtra, rows: cleanedRows },
+              rawRows,
+            }),
+          );
+        } catch (err) {
+          console.error('Temporary save failed', err);
+        }
         return;
       }
-      if (hasInvalid) {
-        alert('Буруу утгуудыг засна уу.');
-        return;
-      }
-      if (cleanedRows.length === 0) {
-        return;
-      }
-      const mergedExtra = { ...extraVals };
-      if (mergedExtra.seedRecords && mergedExtra.seedTables) {
-        const set = new Set(mergedExtra.seedTables);
+      const merged = { ...extraVals, ...formVals };
+      if (merged.seedRecords && merged.seedTables) {
+        const set = new Set(merged.seedTables);
         const filtered = {};
-        Object.entries(mergedExtra.seedRecords).forEach(([tbl, recs]) => {
+        Object.entries(merged.seedRecords).forEach(([tbl, recs]) => {
           if (set.has(tbl)) filtered[tbl] = recs;
         });
-        mergedExtra.seedRecords = filtered;
+        merged.seedRecords = filtered;
       }
-      const normalizedExtra = {};
-      Object.entries(mergedExtra).forEach(([k, v]) => {
+      const normalized = {};
+      Object.entries(merged).forEach(([k, v]) => {
         let val = normalizeDateInput(v, placeholders[k]);
         if (totalAmountSet.has(k) || totalCurrencySet.has(k)) {
           val = normalizeNumberInput(val);
         }
-        normalizedExtra[k] = val;
+        normalized[k] = val;
       });
       try {
-        await Promise.resolve(
-          onSaveTemporary({
-            values: { ...normalizedExtra, rows: cleanedRows },
-            rawRows,
-          }),
-        );
+        await Promise.resolve(onSaveTemporary({ values: normalized }));
       } catch (err) {
         console.error('Temporary save failed', err);
       }
-      return;
-    }
-    const merged = { ...extraVals, ...formVals };
-    if (merged.seedRecords && merged.seedTables) {
-      const set = new Set(merged.seedTables);
-      const filtered = {};
-      Object.entries(merged.seedRecords).forEach(([tbl, recs]) => {
-        if (set.has(tbl)) filtered[tbl] = recs;
-      });
-      merged.seedRecords = filtered;
-    }
-    const normalized = {};
-    Object.entries(merged).forEach(([k, v]) => {
-      let val = normalizeDateInput(v, placeholders[k]);
-      if (totalAmountSet.has(k) || totalCurrencySet.has(k)) {
-        val = normalizeNumberInput(val);
-      }
-      normalized[k] = val;
-    });
-    try {
-      await Promise.resolve(onSaveTemporary({ values: normalized }));
-    } catch (err) {
-      console.error('Temporary save failed', err);
+    } finally {
+      setTemporaryLocked(false);
     }
   }
 
@@ -3741,188 +3755,205 @@ const RowFormModal = function RowFormModal({
             e.preventDefault();
             submitForm();
           }}
+          aria-busy={formBusy}
           className={fitted ? 'p-4 space-y-2' : 'p-4 space-y-4'}
         >
-          {isRejectedWorkflow && (
-            <div className="rounded border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800">
-              {t(
-                'rejected_transaction_warning',
-                'This transaction was rejected and requires review',
-              )}
-              {isTemporaryWorkflow && (
-                <div className="mt-1 text-xs text-amber-700">
+          <div className="relative">
+            {formBusy && (
+              <div className="absolute inset-0 z-10 flex items-center justify-center rounded bg-white/70">
+                <div className="flex items-center gap-2 text-sm text-gray-700">
+                  <span className="h-4 w-4 animate-spin rounded-full border-2 border-blue-500 border-t-transparent" />
+                  <span>{t('submitting_transaction', 'Submitting transaction...')}</span>
+                </div>
+              </div>
+            )}
+            <div className={formBusy ? 'pointer-events-none opacity-60' : undefined}>
+              {isRejectedWorkflow && (
+                <div className="rounded border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800">
                   {t(
-                    'temporary_workflow_hint',
-                    'Temporary workflow in progress – verify before posting.',
+                    'rejected_transaction_warning',
+                    'This transaction was rejected and requires review',
+                  )}
+                  {isTemporaryWorkflow && (
+                    <div className="mt-1 text-xs text-amber-700">
+                      {t(
+                        'temporary_workflow_hint',
+                        'Temporary workflow in progress – verify before posting.',
+                      )}
+                    </div>
                   )}
                 </div>
               )}
-            </div>
-          )}
-          {renderHeaderTable(headerCols)}
-          {renderMainTable(mainCols)}
-          {renderSection('Footer', footerCols)}
-        {table === 'companies' && !row && seedOptions.length > 0 && (
-          <div className="mt-4">
-            <h3 className="font-semibold mb-2">Seed Tables</h3>
-            <div className="space-y-2">
-              {seedOptions.map((t) => (
-                <div key={t.tableName} className="border rounded">
+              {renderHeaderTable(headerCols)}
+              {renderMainTable(mainCols)}
+              {renderSection('Footer', footerCols)}
+            {table === 'companies' && !row && seedOptions.length > 0 && (
+              <div className="mt-4">
+                <h3 className="font-semibold mb-2">Seed Tables</h3>
+                <div className="space-y-2">
+                  {seedOptions.map((t) => (
+                    <div key={t.tableName} className="border rounded">
+                      <button
+                        type="button"
+                        onClick={() => toggleSeedOpen(t.tableName)}
+                        className="w-full flex items-center justify-between p-2 bg-gray-100"
+                      >
+                        <label
+                          className="flex items-center space-x-2"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={(extraVals.seedTables || []).includes(t.tableName)}
+                            onChange={() => toggleSeedTable(t.tableName)}
+                          />
+                          <span>{t.tableName}</span>
+                        </label>
+                        <span>{openSeed[t.tableName] ? '▾' : '▸'}</span>
+                      </button>
+                      {openSeed[t.tableName] && (
+                        seedRecordOptions[t.tableName]?.loading ? (
+                          <div className="p-2 text-sm text-gray-500">Loading...</div>
+                        ) : (
+                          renderSeedTable(t.tableName)
+                        )
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                {posApiEnabled && canPost && (
+                  <label className="inline-flex items-center space-x-2 text-sm text-gray-700">
+                    <input
+                      type="checkbox"
+                      className="rounded"
+                      checked={issueEbarimtEnabled}
+                      onChange={(e) => setIssueEbarimtEnabled(e.target.checked)}
+                      disabled={isReadOnly || formBusy}
+                    />
+                    <span>{t('issue_ebarimt_toggle', 'Issue Ebarimt (POSAPI)')}</span>
+                  </label>
+                )}
+                {showPosApiTypeSelect && (
+                  <label className="flex items-center space-x-2 text-sm text-gray-700">
+                    <span>{t('posapi_type_label', 'POSAPI Type')}</span>
+                    <select
+                      className="border border-gray-300 rounded px-2 py-1 text-sm"
+                      value={currentPosApiType}
+                      onChange={handlePosApiTypeChange}
+                      disabled={isReadOnly || formBusy}
+                    >
+                      {posApiTypeOptions.map((opt) => (
+                        <option key={opt.value} value={opt.value}>
+                          {opt.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                )}
+                {posApiEnabled &&
+                  quickInfoEndpoints.map((endpoint) => (
+                    <button
+                      key={`info-quick-${endpoint.id}`}
+                      type="button"
+                      onClick={() => handleQuickInfoAction(endpoint)}
+                      disabled={isReadOnly || formBusy}
+                      className="px-3 py-1 text-sm rounded border border-indigo-300 bg-indigo-100 text-indigo-800"
+                    >
+                      {endpoint.quickActionLabel}
+                    </button>
+                  ))}
+                {posApiEnabled && infoEndpoints.length > 0 && (
                   <button
                     type="button"
-                    onClick={() => toggleSeedOpen(t.tableName)}
-                    className="w-full flex items-center justify-between p-2 bg-gray-100"
+                    onClick={openInfoModal}
+                    disabled={isReadOnly || formBusy}
+                    className="px-3 py-1 text-sm rounded border border-indigo-200 bg-indigo-50 text-indigo-700"
                   >
-                    <label
-                      className="flex items-center space-x-2"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={(extraVals.seedTables || []).includes(t.tableName)}
-                        onChange={() => toggleSeedTable(t.tableName)}
-                      />
-                      <span>{t.tableName}</span>
-                    </label>
-                    <span>{openSeed[t.tableName] ? '▾' : '▸'}</span>
+                    {t('posapi_open_info_lookup', 'POSAPI Lookups')}
                   </button>
-                  {openSeed[t.tableName] && (
-                    seedRecordOptions[t.tableName]?.loading ? (
-                      <div className="p-2 text-sm text-gray-500">Loading...</div>
-                    ) : (
-                      renderSeedTable(t.tableName)
-                    )
-                  )}
-                </div>
-              ))}
+                )}
+                {posApiEnabled && posApiEndpointMeta && (
+                  <span className="text-xs text-gray-500">
+                    {(posApiEndpointMeta.method || 'POST').toUpperCase()} {posApiEndpointMeta.path || ''}
+                  </span>
+                )}
+              </div>
+              <div className="text-right space-x-2">
+                <button
+                  type="button"
+                  onClick={() => handlePrint('emp')}
+                  className="px-3 py-1 bg-gray-200 rounded"
+                  disabled={formBusy}
+                >
+                  {t('printEmp', 'Print Emp')}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handlePrint('cust')}
+                  className="px-3 py-1 bg-gray-200 rounded"
+                  disabled={formBusy}
+                >
+                  {t('printCust', 'Print Cust')}
+                </button>
+                {showTemporarySaveButton && (
+                  <button
+                    type="button"
+                    onClick={handleTemporarySave}
+                    disabled={temporaryLocked}
+                    className="px-3 py-1 bg-yellow-400 text-gray-900 rounded"
+                  >
+                    {temporarySaveLabel || t('save_temporary', 'Save as Temporary')}
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={onCancel}
+                  className="px-3 py-1 bg-gray-200 rounded"
+                  disabled={formBusy}
+                >
+                  {t('cancel', 'Cancel')}
+                </button>
+                {posApiEnabled && canPost && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!issueEbarimtEnabled) return;
+                      submitForm({ issueEbarimt: true });
+                    }}
+                    className="px-3 py-1 bg-green-600 text-white rounded"
+                    disabled={!issueEbarimtEnabled || submitLocked}
+                  >
+                    {t('ebarimt_post', 'Ebarimt Post')}
+                  </button>
+                )}
+                {canPost && (
+                  <button
+                    type="submit"
+                    className="px-3 py-1 bg-blue-600 text-white rounded"
+                    disabled={submitLocked}
+                  >
+                    {t('post', 'Post')}
+                  </button>
+                )}
+              </div>
+            </div>
+            {!canPost && allowTemporarySave && (
+              <div className="mt-2 text-sm text-gray-600">
+                {t(
+                  'temporary_post_hint',
+                  'This form currently only allows temporary submissions.',
+                )}
+              </div>
+            )}
+            <div className="text-sm text-gray-600">
+              Press <strong>Enter</strong> to move to next field. The field will be automatically selected. Use arrow keys to navigate selections.
+            </div>
             </div>
           </div>
-        )}
-        <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-            {posApiEnabled && canPost && (
-              <label className="inline-flex items-center space-x-2 text-sm text-gray-700">
-                <input
-                  type="checkbox"
-                  className="rounded"
-                  checked={issueEbarimtEnabled}
-                  onChange={(e) => setIssueEbarimtEnabled(e.target.checked)}
-                  disabled={isReadOnly}
-                />
-                <span>{t('issue_ebarimt_toggle', 'Issue Ebarimt (POSAPI)')}</span>
-              </label>
-            )}
-            {showPosApiTypeSelect && (
-              <label className="flex items-center space-x-2 text-sm text-gray-700">
-                <span>{t('posapi_type_label', 'POSAPI Type')}</span>
-                <select
-                  className="border border-gray-300 rounded px-2 py-1 text-sm"
-                  value={currentPosApiType}
-                  onChange={handlePosApiTypeChange}
-                  disabled={isReadOnly}
-                >
-                  {posApiTypeOptions.map((opt) => (
-                    <option key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            )}
-            {posApiEnabled &&
-              quickInfoEndpoints.map((endpoint) => (
-                <button
-                  key={`info-quick-${endpoint.id}`}
-                  type="button"
-                  onClick={() => handleQuickInfoAction(endpoint)}
-                  disabled={isReadOnly}
-                  className="px-3 py-1 text-sm rounded border border-indigo-300 bg-indigo-100 text-indigo-800"
-                >
-                  {endpoint.quickActionLabel}
-                </button>
-              ))}
-            {posApiEnabled && infoEndpoints.length > 0 && (
-              <button
-                type="button"
-                onClick={openInfoModal}
-                disabled={isReadOnly}
-                className="px-3 py-1 text-sm rounded border border-indigo-200 bg-indigo-50 text-indigo-700"
-              >
-                {t('posapi_open_info_lookup', 'POSAPI Lookups')}
-              </button>
-            )}
-            {posApiEnabled && posApiEndpointMeta && (
-              <span className="text-xs text-gray-500">
-                {(posApiEndpointMeta.method || 'POST').toUpperCase()} {posApiEndpointMeta.path || ''}
-              </span>
-            )}
-          </div>
-          <div className="text-right space-x-2">
-            <button
-              type="button"
-              onClick={() => handlePrint('emp')}
-              className="px-3 py-1 bg-gray-200 rounded"
-            >
-              {t('printEmp', 'Print Emp')}
-            </button>
-            <button
-              type="button"
-              onClick={() => handlePrint('cust')}
-              className="px-3 py-1 bg-gray-200 rounded"
-            >
-              {t('printCust', 'Print Cust')}
-            </button>
-            {showTemporarySaveButton && (
-              <button
-                type="button"
-                onClick={handleTemporarySave}
-                className="px-3 py-1 bg-yellow-400 text-gray-900 rounded"
-              >
-                {temporarySaveLabel || t('save_temporary', 'Save as Temporary')}
-              </button>
-            )}
-            <button
-              type="button"
-              onClick={onCancel}
-              className="px-3 py-1 bg-gray-200 rounded"
-            >
-              {t('cancel', 'Cancel')}
-            </button>
-            {posApiEnabled && canPost && (
-              <button
-                type="button"
-                onClick={() => {
-                  if (!issueEbarimtEnabled) return;
-                  submitForm({ issueEbarimt: true });
-                }}
-                className="px-3 py-1 bg-green-600 text-white rounded"
-                disabled={!issueEbarimtEnabled || submitLocked}
-              >
-                {t('ebarimt_post', 'Ebarimt Post')}
-              </button>
-            )}
-            {canPost && (
-              <button
-                type="submit"
-                className="px-3 py-1 bg-blue-600 text-white rounded"
-                disabled={submitLocked}
-              >
-                {t('post', 'Post')}
-              </button>
-            )}
-          </div>
-        </div>
-        {!canPost && allowTemporarySave && (
-          <div className="mt-2 text-sm text-gray-600">
-            {t(
-              'temporary_post_hint',
-              'This form currently only allows temporary submissions.',
-            )}
-          </div>
-        )}
-        <div className="text-sm text-gray-600">
-          Press <strong>Enter</strong> to move to next field. The field will be automatically selected. Use arrow keys to navigate selections.
-        </div>
         </form>
       </Modal>
       {infoModalOpen && (
