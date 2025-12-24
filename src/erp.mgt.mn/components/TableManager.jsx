@@ -691,6 +691,13 @@ const TableManager = forwardRef(function TableManager({
             session?.user_level ??
             session?.userlevel_id ??
             session?.userlevelId,
+          userRightName:
+            user?.userLevelName ??
+            user?.userlevel_name ??
+            user?.userlevelName ??
+            session?.user_level_name ??
+            session?.userLevelName ??
+            null,
           workplaceId:
             workplace ??
             session?.workplace_id ??
@@ -3612,8 +3619,9 @@ const TableManager = forwardRef(function TableManager({
         setEditing(null);
         setIsAdding(false);
         setGridRows([]);
-        resetWorkflowState();
-        const msg = isAdding ? 'Шинэ гүйлгээ хадгалагдлаа' : 'Хадгалагдлаа';
+        const msg = isAdding
+          ? t('transaction_posted', 'Transaction posted')
+          : t('transaction_updated', 'Transaction updated');
         const targetRecordId = isAdding ? savedRow?.id ?? null : getRowId(editing);
         const shouldIssueEbarimt = issueEbarimt && formConfig?.posApiEnabled;
         if (activeTemporaryDraftId) {
