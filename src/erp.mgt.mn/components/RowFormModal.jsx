@@ -3247,9 +3247,9 @@ const RowFormModal = function RowFormModal({
             <AsyncSearchSelect
               title={tip}
               table={conf.table}
-              searchColumn={effectiveIdField}
-              searchColumns={[effectiveIdField, ...(effectiveDisplayFields || [])]}
-              labelFields={effectiveDisplayFields || []}
+              searchColumn={conf.idField || conf.column}
+              searchColumns={[conf.idField || conf.column, ...(conf.displayFields || [])]}
+              labelFields={conf.displayFields || []}
               value={typeof formVals[c] === 'object' ? formVals[c].value : formVals[c]}
               onChange={(val) => {
                 notifyAutoResetGuardOnEdit(c);
