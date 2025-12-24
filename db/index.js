@@ -8034,31 +8034,41 @@ async function getPosSessionColumnInfo() {
     const lower = new Set(columns.map((c) => String(c).toLowerCase()));
     posSessionColumnInfo = {
       exists: true,
+      hasDeviceId: lower.has("device_id"),
       hasDeviceUuid: lower.has("device_uuid"),
       hasCurrentUserId: lower.has("current_user_id"),
+      hasMerchantId: lower.has("merchant_id"),
       hasMerchantTin: lower.has("merchant_tin"),
       hasDepartmentId: lower.has("department_id"),
       hasWorkplaceId: lower.has("workplace_id"),
       hasSeniorId: lower.has("senior_id"),
       hasPlanSeniorId: lower.has("plan_senior_id"),
       hasPosNo: lower.has("pos_no"),
+      hasPosTerminalNo: lower.has("pos_terminal_no"),
       hasDeviceMac: lower.has("device_mac"),
       hasLocation: lower.has("location"),
+      hasLocationLat: lower.has("location_lat"),
+      hasLocationLon: lower.has("location_lon"),
     };
   } catch (err) {
     if (err?.code === "ER_NO_SUCH_TABLE") {
       posSessionColumnInfo = {
         exists: false,
+        hasDeviceId: false,
         hasDeviceUuid: false,
         hasCurrentUserId: false,
+        hasMerchantId: false,
         hasMerchantTin: false,
         hasDepartmentId: false,
         hasWorkplaceId: false,
         hasSeniorId: false,
         hasPlanSeniorId: false,
         hasPosNo: false,
+        hasPosTerminalNo: false,
         hasDeviceMac: false,
         hasLocation: false,
+        hasLocationLat: false,
+        hasLocationLon: false,
       };
     } else {
       throw err;
@@ -8083,6 +8093,47 @@ function normalizePosSessionLocation(location) {
   return { value: location };
 }
 
+function normalizePosSessionCoordinates(location, explicitCoords = {}) {
+  const normalized = normalizePosSessionLocation(location);
+  const coerceNumber = (value) => {
+    if (value === undefined || value === null) return null;
+    const num = Number(value);
+    return Number.isFinite(num) ? num : null;
+  };
+  const arrayCandidate = Array.isArray(location) ? location : null;
+  const latCandidates = [
+    explicitCoords.locationLat,
+    normalized.lat,
+    normalized.latitude,
+    normalized.lat_deg,
+    normalized.latDeg,
+    normalized.coords?.lat,
+    normalized.coords?.latitude,
+    arrayCandidate?.[0],
+  ];
+  const lonCandidates = [
+    explicitCoords.locationLon,
+    normalized.lon,
+    normalized.lng,
+    normalized.long,
+    normalized.longitude,
+    normalized.coords?.lon,
+    normalized.coords?.lng,
+    normalized.coords?.longitude,
+    arrayCandidate?.[1],
+  ];
+  const lat = latCandidates.map(coerceNumber).find((v) => v !== null) ?? null;
+  const lon = lonCandidates.map(coerceNumber).find((v) => v !== null) ?? null;
+  const normalizedLocation = { ...normalized };
+  if (lat !== null && normalizedLocation.lat === undefined) {
+    normalizedLocation.lat = lat;
+  }
+  if (lon !== null && (normalizedLocation.lon === undefined && normalizedLocation.lng === undefined)) {
+    normalizedLocation.lon = lon;
+  }
+  return { lat, lon, normalizedLocation };
+}
+
 function normalizeDeviceMac(value) {
   if (value === undefined || value === null) return "unknown";
   const trimmed = String(value).trim();
@@ -8096,11 +8147,16 @@ export async function logPosSessionStart(
     branchId,
     departmentId = null,
     workplaceId = null,
+    merchantId = null,
     merchantTin = null,
+    posTerminalNo,
     posNo,
     deviceMac,
+    deviceId,
     deviceUuid = null,
     location = {},
+    locationLat = null,
+    locationLon = null,
     startedAt = new Date(),
     currentUserId = null,
     seniorId = null,
@@ -8120,33 +8176,52 @@ export async function logPosSessionStart(
     cols.push("workplace_id");
     params.push(workplaceId ?? null);
   }
+  if (info.hasMerchantId) {
+    cols.push("merchant_id");
+    params.push(merchantId ?? null);
+  }
   if (info.hasMerchantTin) {
     cols.push("merchant_tin");
     params.push(merchantTin ?? null);
   }
-  if (info.hasPosNo) {
-    const normalizedPosNo =
-      posNo === undefined || posNo === null ? null : String(posNo).trim() || null;
+  const normalizePosField = (value) =>
+    value === undefined || value === null ? null : String(value).trim() || null;
+  if (info.hasPosTerminalNo) {
+    cols.push("pos_terminal_no");
+    params.push(normalizePosField(posTerminalNo ?? posNo));
+  } else if (info.hasPosNo) {
     cols.push("pos_no");
-    params.push(normalizedPosNo);
+    params.push(normalizePosField(posNo ?? posTerminalNo));
   }
-  if (info.hasDeviceUuid) {
+  if (info.hasDeviceId) {
+    cols.push("device_id");
+    params.push(deviceId ?? deviceUuid ?? null);
+  } else if (info.hasDeviceUuid) {
     cols.push("device_uuid");
-    params.push(deviceUuid ?? null);
+    params.push(deviceUuid ?? deviceId ?? null);
   }
   if (info.hasDeviceMac) {
     cols.push("device_mac");
     params.push(normalizeDeviceMac(deviceMac));
   }
+  const { lat, lon, normalizedLocation } = normalizePosSessionCoordinates(
+    location,
+    { locationLat, locationLon },
+  );
+  if (info.hasLocationLat) {
+    cols.push("location_lat");
+    params.push(lat);
+  }
+  if (info.hasLocationLon) {
+    cols.push("location_lon");
+    params.push(lon);
+  }
   if (info.hasLocation) {
     cols.push("location");
-    params.push(JSON.stringify(normalizePosSessionLocation(location)));
+    params.push(JSON.stringify(normalizedLocation));
   }
   cols.push("started_at");
   params.push(normalizeDateTimeInput(startedAt) ?? new Date());
-  if (info.hasDeviceUuid) {
-    // already added above; keep placeholder alignment
-  }
   if (info.hasCurrentUserId) {
     cols.push("current_user_id");
     params.push(currentUserId ?? null);
@@ -8173,17 +8248,30 @@ export async function logPosSessionStart(
   if (info.hasWorkplaceId) {
     updateCols.push("workplace_id = VALUES(workplace_id)");
   }
+  if (info.hasMerchantId) {
+    updateCols.push("merchant_id = VALUES(merchant_id)");
+  }
   if (info.hasMerchantTin) {
     updateCols.push("merchant_tin = VALUES(merchant_tin)");
   }
-  if (info.hasPosNo) {
+  if (info.hasPosTerminalNo) {
+    updateCols.push("pos_terminal_no = VALUES(pos_terminal_no)");
+  } else if (info.hasPosNo) {
     updateCols.push("pos_no = VALUES(pos_no)");
   }
-  if (info.hasDeviceUuid) {
+  if (info.hasDeviceId) {
+    updateCols.push("device_id = VALUES(device_id)");
+  } else if (info.hasDeviceUuid) {
     updateCols.push("device_uuid = VALUES(device_uuid)");
   }
   if (info.hasDeviceMac) {
     updateCols.push("device_mac = VALUES(device_mac)");
+  }
+  if (info.hasLocationLat) {
+    updateCols.push("location_lat = VALUES(location_lat)");
+  }
+  if (info.hasLocationLon) {
+    updateCols.push("location_lon = VALUES(location_lon)");
   }
   if (info.hasLocation) {
     updateCols.push("location = VALUES(location)");
