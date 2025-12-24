@@ -2359,9 +2359,9 @@ function InlineTransactionTable(
       return (
         <AsyncSearchSelect
           table={conf.table}
-          searchColumn={conf.idField || conf.column}
-          searchColumns={[conf.idField || conf.column, ...(conf.displayFields || [])]}
-          labelFields={conf.displayFields || []}
+          searchColumn={effectiveIdField}
+          searchColumns={[effectiveIdField, ...(effectiveDisplayFields || [])]}
+          labelFields={effectiveDisplayFields || []}
           value={inputVal}
           onChange={(v, label) =>
             handleChange(idx, f, label ? { value: v, label } : v)
