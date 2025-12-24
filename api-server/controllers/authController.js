@@ -148,6 +148,8 @@ export async function login(req, res, next) {
             workplace_id,
             workplace_name,
             workplace_session_id,
+            workplace_position_id,
+            workplace_position_name,
           }) => ({
             company_id: company_id ?? null,
             company_name: company_name ?? null,
@@ -158,6 +160,8 @@ export async function login(req, res, next) {
             workplace_id: workplace_id ?? null,
             workplace_name: workplace_name ?? null,
             workplace_session_id: workplace_session_id ?? null,
+            workplace_position_id: workplace_position_id ?? null,
+            workplace_position_name: workplace_position_name ?? null,
           }),
         );
 
@@ -305,6 +309,8 @@ export async function getProfile(req, res) {
             workplace_id,
             workplace_name,
             workplace_session_id,
+            workplace_position_id,
+            workplace_position_name,
           }) => ({
             branch_id: branch_id ?? null,
             branch_name: branch_name ?? null,
@@ -313,9 +319,11 @@ export async function getProfile(req, res) {
             workplace_id: workplace_id ?? null,
             workplace_name: workplace_name ?? null,
             workplace_session_id: workplace_session_id ?? null,
+            workplace_position_id: workplace_position_id ?? null,
+            workplace_position_name: workplace_position_name ?? null,
           }),
-        )
-    : [];
+          )
+      : [];
 
   const sessionPayload = session
     ? normalizeEmploymentSession(session, workplaceAssignments)
