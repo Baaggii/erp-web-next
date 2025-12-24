@@ -489,7 +489,6 @@ const TableManager = forwardRef(function TableManager({
   const [temporaryChainModalError, setTemporaryChainModalError] = useState('');
   const [temporaryChainModalLoading, setTemporaryChainModalLoading] =
     useState(false);
-  const [formActionInProgress, setFormActionInProgress] = useState(false);
   const setTemporaryRowRef = useCallback((id, node) => {
     if (id == null) return;
     const key = String(id);
@@ -3688,16 +3687,11 @@ const TableManager = forwardRef(function TableManager({
     } catch (err) {
       console.error('Save failed', err);
       return false;
-    } finally {
-      setFormActionInProgress(false);
     }
   }
 
   async function handleSaveTemporary(submission) {
     if (!canSaveTemporaryDraft) return false;
-    if (formActionInProgress) return false;
-    setFormActionInProgress(true);
-    try {
     if (!submission || typeof submission !== 'object') return false;
     const cloneValue = (value) => {
       if (value === undefined) return undefined;
@@ -4151,9 +4145,6 @@ const TableManager = forwardRef(function TableManager({
         // ignore json errors
       }
       addToast(message, 'error');
-    }
-    } finally {
-      setFormActionInProgress(false);
     }
   }
 
@@ -7064,7 +7055,6 @@ const TableManager = forwardRef(function TableManager({
         allowTemporarySave={temporarySaveEnabled}
         readOnly={isTemporaryReadOnlyMode}
         isAdding={isAdding}
-        actionInProgress={formActionInProgress}
         canPost={canPostTransactions}
         forceEditable={guardOverridesActive}
         posApiEnabled={Boolean(formConfig?.posApiEnabled)}
