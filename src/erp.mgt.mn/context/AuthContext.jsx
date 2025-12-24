@@ -3,6 +3,10 @@ import React, { createContext, useState, useEffect, useContext, useMemo } from '
 import { debugLog, trackSetState } from '../utils/debug.js';
 import { API_BASE } from '../utils/apiBase.js';
 import normalizeEmploymentSession from '../utils/normalizeEmploymentSession.js';
+import {
+  deriveWorkplacePositionsFromAssignments,
+  resolveWorkplacePositionMap,
+} from '../utils/workplaceResolver.js';
 
 // Create the AuthContext
 export const AuthContext = createContext({
@@ -20,6 +24,8 @@ export const AuthContext = createContext({
   setPosition: () => {},
   workplace: null,
   setWorkplace: () => {},
+  workplacePositionMap: {},
+  setWorkplacePositionMap: () => {},
   permissions: null,
   setPermissions: () => {},
   userSettings: {},
@@ -36,6 +42,7 @@ export default function AuthContextProvider({ children }) {
   const [department, setDepartment] = useState(null);
   const [position, setPosition] = useState(null);
   const [workplace, setWorkplace] = useState(null);
+  const [workplacePositionMap, setWorkplacePositionMap] = useState({});
   const [permissions, setPermissions] = useState(null);
   const [userSettings, setUserSettings] = useState(() => {
     try {
@@ -172,6 +179,9 @@ export default function AuthContextProvider({ children }) {
           setWorkplace(data.workplace ?? normalizedSession?.workplace_id ?? null);
           trackSetState('AuthContext.setPermissions');
           setPermissions(data.permissions || null);
+          const derivedWorkplaceMap = deriveWorkplacePositionsFromAssignments(normalizedSession);
+          trackSetState('AuthContext.setWorkplacePositionMap');
+          setWorkplacePositionMap(derivedWorkplaceMap);
           try {
             const resSettings = await fetch(`${API_BASE}/user/settings`, {
               credentials: 'include',
@@ -212,6 +222,8 @@ export default function AuthContextProvider({ children }) {
           setWorkplace(null);
           trackSetState('AuthContext.setPermissions');
           setPermissions(null);
+          trackSetState('AuthContext.setWorkplacePositionMap');
+          setWorkplacePositionMap({});
           trackSetState('AuthContext.setUserSettings');
           setUserSettings({});
         }
@@ -259,13 +271,15 @@ export default function AuthContextProvider({ children }) {
       trackSetState('AuthContext.setDepartment');
       setDepartment(null);
       trackSetState('AuthContext.setPosition');
-      setPosition(null);
-      trackSetState('AuthContext.setWorkplace');
-      setWorkplace(null);
-      trackSetState('AuthContext.setPermissions');
-      setPermissions(null);
-      trackSetState('AuthContext.setUserSettings');
-      setUserSettings(lang ? { lang } : {});
+        setPosition(null);
+        trackSetState('AuthContext.setWorkplace');
+        setWorkplace(null);
+        trackSetState('AuthContext.setPermissions');
+        setPermissions(null);
+        trackSetState('AuthContext.setWorkplacePositionMap');
+        setWorkplacePositionMap({});
+        trackSetState('AuthContext.setUserSettings');
+        setUserSettings(lang ? { lang } : {});
       try {
         if (lang) {
           localStorage.setItem('erp_user_settings', JSON.stringify({ lang }));
@@ -321,6 +335,8 @@ export default function AuthContextProvider({ children }) {
       setWorkplace,
       permissions,
       setPermissions,
+      workplacePositionMap,
+      setWorkplacePositionMap,
       userSettings,
       updateUserSettings,
     }),
@@ -333,9 +349,57 @@ export default function AuthContextProvider({ children }) {
       position,
       workplace,
       permissions,
+      workplacePositionMap,
       userSettings,
     ],
   );
+
+  useEffect(() => {
+    let isMounted = true;
+    const controller = new AbortController();
+
+    async function loadWorkplacePositions() {
+      if (!session) {
+        if (isMounted) {
+          trackSetState('AuthContext.setWorkplacePositionMap');
+          setWorkplacePositionMap({});
+        }
+        return;
+      }
+
+      const derived = deriveWorkplacePositionsFromAssignments(session);
+      if (isMounted) {
+        trackSetState('AuthContext.setWorkplacePositionMap');
+        setWorkplacePositionMap(derived);
+      }
+
+      try {
+        const resolved = await resolveWorkplacePositionMap({
+          session,
+          signal: controller.signal,
+        });
+        if (!isMounted || controller.signal.aborted) return;
+        trackSetState('AuthContext.setWorkplacePositionMap');
+        setWorkplacePositionMap(resolved);
+      } catch (err) {
+        if (controller.signal.aborted) return;
+        console.warn('Failed to resolve workplace positions', err);
+      }
+    }
+
+    loadWorkplacePositions();
+
+    return () => {
+      isMounted = false;
+      controller.abort();
+    };
+  }, [
+    session?.company_id,
+    session?.companyId,
+    session?.workplace_assignments,
+    session?.workplace_id,
+    session?.workplaceId,
+  ]);
 
   return (
     <AuthContext.Provider value={value}>

@@ -1367,6 +1367,7 @@ export default function PosTransactionsPage() {
     permissions: perms,
     session,
     workplace,
+    workplacePositionMap,
   } = useContext(AuthContext);
   const generalConfig = useGeneralConfig();
   const licensed = useCompanyModules(company);
@@ -1429,13 +1430,24 @@ export default function PosTransactionsPage() {
           positionId,
           workplacePositions: session?.workplace_assignments,
           workplacePositionId,
+          workplacePositionMap,
         })
       ) {
         filtered[cfgName] = cfgValue;
       }
     });
     return filtered;
-  }, [rawConfigs, branch, department, perms, licensed, session, user, workplace]);
+  }, [
+    rawConfigs,
+    branch,
+    department,
+    perms,
+    licensed,
+    session,
+    user,
+    workplace,
+    workplacePositionMap,
+  ]);
   const [name, setName] = useState('');
   const [config, setConfig] = useState(null);
   const [formConfigs, setFormConfigs] = useState({});

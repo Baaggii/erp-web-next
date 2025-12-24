@@ -18,7 +18,16 @@ import {
 export default function FormsIndex() {
   const [transactions, setTransactions] = useState({});
   const modules = useModules();
-  const { company, branch, department, permissions: perms, session, user, workplace } =
+  const {
+    company,
+    branch,
+    department,
+    permissions: perms,
+    session,
+    user,
+    workplace,
+    workplacePositionMap,
+  } =
     useContext(AuthContext);
   const licensed = useCompanyModules(company);
   const txnModules = useTxnModules();
@@ -114,6 +123,7 @@ export default function FormsIndex() {
               positionId,
               workplacePositions: session?.workplace_assignments,
               workplacePositionId,
+              workplacePositionMap,
             })
           )
             return;

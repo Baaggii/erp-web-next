@@ -28,6 +28,7 @@ function deriveTxnModuleState(
   positionId,
   workplacePositionId,
   workplacePositions,
+  workplacePositionMap,
   perms,
   licensed,
 ) {
@@ -55,6 +56,7 @@ function deriveTxnModuleState(
           positionId: position,
           workplacePositionId: workplacePosition,
           workplacePositions,
+          workplacePositionMap,
         })
       )
         return;
@@ -127,6 +129,7 @@ export function useTxnModules() {
     user,
     workplace,
     position,
+    workplacePositionMap,
   } = useContext(AuthContext);
   const licensed = useCompanyModules(company);
   const [state, setState] = useState(() => createEmptyState());
@@ -158,6 +161,7 @@ export function useTxnModules() {
     const workplacePositionId =
       session?.workplace_position_id ?? session?.workplacePositionId ?? null;
     const workplacePositions = session?.workplace_assignments;
+    const workplacePositionsMap = workplacePositionMap || {};
     const derived = deriveTxnModuleState(
       data,
       branch,
@@ -168,6 +172,7 @@ export function useTxnModules() {
       positionId,
       workplacePositionId,
       workplacePositions,
+      workplacePositionsMap,
       perms,
       licensed,
     );
@@ -203,7 +208,6 @@ export function useTxnModules() {
       null;
     const currentWorkplacePosition =
       session?.workplace_position_id ?? session?.workplacePositionId ?? null;
-    const currentWorkplaceAssignments = session?.workplace_assignments;
 
     try {
       const params = new URLSearchParams();
@@ -306,14 +310,25 @@ export function useTxnModules() {
     } else {
       applyDerivedState(cache.forms);
     }
-  }, [branch, department, company, perms, licensed, session, user, workplace, position]);
+  }, [
+    branch,
+    department,
+    company,
+    perms,
+    licensed,
+    session,
+    user,
+    workplace,
+    position,
+    workplacePositionMap,
+  ]);
 
   useEffect(() => {
     debugLog('useTxnModules effect: refresh listener');
     const handler = () => fetchForms();
     emitter.addEventListener('refresh', handler);
     return () => emitter.removeEventListener('refresh', handler);
-  }, [branch, department, company, perms, licensed, session, user, workplace]);
+  }, [branch, department, company, perms, licensed, session, user, workplace, workplacePositionMap]);
 
   return state;
 }
