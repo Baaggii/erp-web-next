@@ -455,8 +455,23 @@ function InlineTransactionTable(
     if (!tableName) return {};
     const sources = [generalConfig?.tableRelations, general?.tableRelations, cfg?.tableRelations];
     const lowerTable = String(tableName).toLowerCase();
-    for (const src of sources) {
-      if (!src || typeof src !== 'object') continue;
+    const aggregate = {};
+    const addEntry = (column, value) => {
+      if (!column) return;
+      const mapped = columnCaseMap[String(column).toLowerCase()] || column;
+      if (!mapped) return;
+      const existing = aggregate[mapped] || [];
+      const normalizedList = Array.isArray(value) ? value : [value];
+      normalizedList.forEach((rel) => {
+        if (rel && typeof rel === 'object' && Object.keys(rel).length > 0) {
+          existing.push(rel);
+        }
+      });
+      if (existing.length > 0) aggregate[mapped] = existing;
+    };
+
+    sources.forEach((src) => {
+      if (!src || typeof src !== 'object') return;
       let entry = src[tableName];
       if (!entry) {
         const match = Object.keys(src).find(
@@ -464,20 +479,10 @@ function InlineTransactionTable(
         );
         if (match) entry = src[match];
       }
-      if (!entry || typeof entry !== 'object' || Array.isArray(entry)) continue;
-      const normalized = {};
-      Object.keys(entry).forEach((col) => {
-        if (typeof col !== 'string') return;
-        const mapped = columnCaseMap[col.toLowerCase()] || col;
-        if (typeof mapped === 'string') {
-          normalized[mapped] = entry[col];
-        }
-      });
-      if (Object.keys(normalized).length > 0) {
-        return normalized;
-      }
-    }
-    return {};
+      if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return;
+      Object.keys(entry).forEach((col) => addEntry(col, entry[col]));
+    });
+    return aggregate;
   }, [generalConfig, general, cfg, tableName, columnCaseMap, columnCaseMapKey]);
 
   const tableRelationsKey = React.useMemo(
@@ -503,103 +508,85 @@ function InlineTransactionTable(
     return set;
   }, [relationConfigMapKey, relationsKey, tableRelationsKey, columnCaseMapKey, columnCaseMap]);
 
-  // Only columns present in columnCaseMap are evaluated, preventing cross-table false positives.
+  // Only columns present in relatedColumns are evaluated, preventing cross-table false positives.
   const autoSelectConfigs = React.useMemo(() => {
     const map = {};
-    const ensureConfig = (field) => {
-      if (!map[field]) {
-        map[field] = {};
-      }
-      return map[field];
-    };
-    const mergeSource = (target, source) => {
+    const addCandidate = (column, source) => {
       if (!source || typeof source !== 'object') return;
-      if (!target.table && typeof source.table === 'string') {
-        target.table = source.table;
-      }
-      const srcId = source.idField || source.column;
-      if (!target.idField && typeof srcId === 'string') {
-        target.idField = srcId;
-      }
-      const srcDisplay = Array.isArray(source.displayFields)
-        ? source.displayFields.filter((f) => typeof f === 'string')
-        : [];
-      if ((!target.displayFields || target.displayFields.length === 0) && srcDisplay.length > 0) {
-        target.displayFields = srcDisplay;
-      }
-      if (
-        !target.combinationSourceColumn &&
-        typeof source.combinationSourceColumn === 'string' &&
-        source.combinationSourceColumn.trim()
-      ) {
-        target.combinationSourceColumn = source.combinationSourceColumn;
-      }
-      if (
-        !target.combinationTargetColumn &&
-        typeof source.combinationTargetColumn === 'string' &&
-        source.combinationTargetColumn.trim()
-      ) {
-        target.combinationTargetColumn = source.combinationTargetColumn;
-      }
-      if (
-        !target.filterColumn &&
-        typeof source.filterColumn === 'string' &&
-        source.filterColumn.trim()
-      ) {
-        target.filterColumn = source.filterColumn;
-      }
-      if (target.filterValue === undefined || target.filterValue === null || target.filterValue === '') {
-        const rawFilterValue = source.filterValue ?? source.filter_value;
-        if (rawFilterValue !== undefined && rawFilterValue !== null) {
-          const normalized = String(rawFilterValue).trim();
-          if (normalized) {
-            target.filterValue = normalized;
+      const list = Array.isArray(source) ? source : [source];
+      list.forEach((rel) => {
+        if (!rel || typeof rel !== 'object') return;
+        const candidate = { ...rel };
+        if (!candidate.table && typeof rel.table === 'string') {
+          candidate.table = rel.table;
+        }
+        const srcId = rel.idField || rel.column || column;
+        if (!candidate.idField && typeof srcId === 'string') {
+          candidate.idField = srcId;
+        }
+        const srcDisplay = Array.isArray(rel.displayFields)
+          ? rel.displayFields.filter((f) => typeof f === 'string')
+          : [];
+        if ((!candidate.displayFields || candidate.displayFields.length === 0) && srcDisplay.length > 0) {
+          candidate.displayFields = srcDisplay;
+        }
+        if (
+          !candidate.combinationSourceColumn &&
+          typeof rel.combinationSourceColumn === 'string' &&
+          rel.combinationSourceColumn.trim()
+        ) {
+          candidate.combinationSourceColumn = rel.combinationSourceColumn;
+        }
+        if (
+          !candidate.combinationTargetColumn &&
+          typeof rel.combinationTargetColumn === 'string' &&
+          rel.combinationTargetColumn.trim()
+        ) {
+          candidate.combinationTargetColumn = rel.combinationTargetColumn;
+        }
+        if (!candidate.filterColumn && typeof rel.filterColumn === 'string' && rel.filterColumn.trim()) {
+          candidate.filterColumn = rel.filterColumn;
+        }
+        if (candidate.filterValue === undefined || candidate.filterValue === null || candidate.filterValue === '') {
+          const rawFilterValue = rel.filterValue ?? rel.filter_value;
+          if (rawFilterValue !== undefined && rawFilterValue !== null) {
+            const normalized = String(rawFilterValue).trim();
+            if (normalized) {
+              candidate.filterValue = normalized;
+            }
           }
         }
-      }
+        if (
+          candidate.table &&
+          (!candidate.displayFields || candidate.displayFields.length === 0 || !candidate.idField)
+        ) {
+          const matchedDisplay = selectDisplayFieldsForRelation(
+            tableDisplayFields,
+            candidate.table,
+            candidate,
+          );
+          if (matchedDisplay) {
+            if (!candidate.idField && matchedDisplay.idField) {
+              candidate.idField = matchedDisplay.idField;
+            }
+            if (!candidate.displayFields || candidate.displayFields.length === 0) {
+              candidate.displayFields = matchedDisplay.displayFields || [];
+            }
+          }
+        }
+        if (!candidate.table || !candidate.idField) return;
+        if (!map[column]) map[column] = [];
+        map[column].push(candidate);
+      });
     };
 
-    Object.entries(columnCaseMap || {}).forEach(([lower, column]) => {
-      if (!relatedColumns.has(column)) return;
-      const target = ensureConfig(column);
-      mergeSource(target, relationConfigMap[column]);
-
-      const tableRelation = tableRelationsConfig[column];
-      if (Array.isArray(tableRelation)) {
-        tableRelation.forEach((rel) => mergeSource(target, rel));
-      } else {
-        mergeSource(target, tableRelation);
-      }
-
-      if (
-        target.table &&
-        (!target.displayFields || target.displayFields.length === 0 || !target.idField)
-      ) {
-        const matchedDisplay = selectDisplayFieldsForRelation(
-          tableDisplayFields,
-          target.table,
-          target,
-        );
-        if (matchedDisplay) {
-          if (!target.idField && matchedDisplay.idField) {
-            target.idField = matchedDisplay.idField;
-          }
-          if (!target.displayFields || target.displayFields.length === 0) {
-            target.displayFields = matchedDisplay.displayFields || [];
-          }
-        }
-      }
-
-      if (!target.table || !target.idField) {
-        delete map[column];
-      } else if (!target.displayFields) {
-        target.displayFields = [];
-      }
+    Array.from(relatedColumns || []).forEach((column) => {
+      addCandidate(column, relationConfigMap[column]);
+      addCandidate(column, tableRelationsConfig[column]);
     });
 
     return map;
   }, [
-    columnCaseMapKey,
     relatedColumns,
     relationConfigMapKey,
     tableRelationsKey,
@@ -618,7 +605,9 @@ function InlineTransactionTable(
   const resolveCombinationFilters = useCallback(
     (rowObj, column, overrideConfig = null) => {
       if (!column) return null;
-      const config = overrideConfig || relationConfigMap[column] || autoSelectConfigs[column];
+      const autoCandidates = autoSelectConfigs[column];
+      const autoDefault = Array.isArray(autoCandidates) ? autoCandidates[0] : autoCandidates;
+      const config = overrideConfig || relationConfigMap[column] || autoDefault;
       const sourceField = config?.combinationSourceColumn;
       const targetField = config?.combinationTargetColumn;
       if (!sourceField || !targetField) return null;
@@ -633,6 +622,45 @@ function InlineTransactionTable(
     [relationConfigMap, autoSelectConfigs, columnCaseMap, getRowValueCaseInsensitive],
   );
 
+  const getAutoSelectConfig = React.useCallback(
+    (column, rowObj = null) => {
+      const entries = autoSelectConfigs[column];
+      if (!Array.isArray(entries) || entries.length === 0) return null;
+      let best = null;
+      let bestScore = -Infinity;
+      entries.forEach((entry) => {
+        if (!entry || typeof entry !== 'object') return;
+        const filters = resolveCombinationFilters(rowObj, column, entry);
+        const hasCombination = Boolean(
+          entry?.combinationSourceColumn && entry?.combinationTargetColumn,
+        );
+        const combinationReady = isCombinationFilterReady(
+          hasCombination,
+          entry?.combinationTargetColumn,
+          filters,
+        );
+        const score =
+          (hasCombination ? (combinationReady ? 3 : -1) : 0) +
+          (entry.idField ? 1 : 0) +
+          (entry.filterColumn ? 1 : 0) +
+          (entry.filterValue ? 1 : 0) +
+          (combinationReady ? 1 : 0);
+        if (best === null || score > bestScore) {
+          best = { config: entry, filters, combinationReady };
+          bestScore = score;
+        }
+      });
+      if (best) return best;
+      const fallback = entries[0];
+      return {
+        config: fallback,
+        filters: resolveCombinationFilters(rowObj, column, fallback),
+        combinationReady: true,
+      };
+    },
+    [autoSelectConfigs, resolveCombinationFilters],
+  );
+
   const isCombinationFilterReady = (hasCombination, targetColumn, filters) => {
     if (!hasCombination) return true;
     if (!targetColumn || !filters) return false;
@@ -643,11 +671,12 @@ function InlineTransactionTable(
   const filterRelationOptions = useCallback(
     (rowObj, column, options) => {
       if (!Array.isArray(options) || options.length === 0) return options;
-      const config = relationConfigMap[column] || autoSelectConfigs[column];
+      const resolved = getAutoSelectConfig(column, rowObj);
+      const config = resolved?.config;
       const hasCombination = Boolean(
         config?.combinationSourceColumn && config?.combinationTargetColumn,
       );
-      const filters = resolveCombinationFilters(rowObj, column);
+      const filters = resolved?.filters || resolveCombinationFilters(rowObj, column, config);
       if (!filters) return hasCombination ? [] : options;
       const targetColumn = config?.combinationTargetColumn;
       if (!targetColumn) return hasCombination ? [] : options;
@@ -671,19 +700,14 @@ function InlineTransactionTable(
         return String(targetValue) === normalizedFilter;
       });
     },
-    [
-      relationConfigMap,
-      autoSelectConfigs,
-      getRelationRowMap,
-      resolveCombinationFilters,
-      getRowValueCaseInsensitive,
-    ],
+    [getAutoSelectConfig, getRelationRowMap, resolveCombinationFilters, getRowValueCaseInsensitive],
   );
 
   const combinedViewSource = React.useMemo(() => {
     const map = { ...viewSourceMap };
     Object.entries(autoSelectConfigs).forEach(([k, cfg]) => {
-      if (!map[k]) map[k] = cfg.table;
+      const entry = Array.isArray(cfg) ? cfg[0] : cfg;
+      if (entry?.table && !map[k]) map[k] = entry.table;
     });
     return map;
   }, [viewSourceMap, autoSelectConfigs]);
@@ -1687,13 +1711,13 @@ function InlineTransactionTable(
 
   async function openRelationPreview(col, val) {
     if (val && typeof val === 'object') val = val.value;
-    const conf = relationConfigMap[col];
-    const auto = autoSelectConfigs[col];
-    const viewTbl = viewSourceMap[col] || auto?.table;
+    const auto = getAutoSelectConfig(col);
+    const conf = relationConfigMap[col] || auto?.config;
+    const viewTbl = viewSourceMap[col] || auto?.config?.table;
     const table = conf ? conf.table : viewTbl;
     const idField = conf
       ? conf.idField || conf.column
-      : auto?.idField || viewDisplays[viewTbl]?.idField || col;
+      : auto?.config?.idField || viewDisplays[viewTbl]?.idField || col;
     if (!table || val === undefined || val === '') return;
     let row = getRelationRow(col, val);
     if (!row) {
@@ -2170,7 +2194,7 @@ function InlineTransactionTable(
     const isLookupField =
       !!relationConfigMap[field] ||
       !!viewSourceMap[field] ||
-      !!autoSelectConfigs[field];
+      (Array.isArray(autoSelectConfigs[field]) && autoSelectConfigs[field].length > 0);
     if (isLookupField && e.lookupMatched === false) {
       const label = labels[field] || field;
       const message = `${label} талбарт тохирох утга олдсонгүй.`;
@@ -2268,13 +2292,15 @@ function InlineTransactionTable(
     const val = rows[idx]?.[f] ?? '';
     const fieldDisabled = isFieldDisabled(f);
     const invalid = invalidCell && invalidCell.row === idx && invalidCell.field === f;
+    const resolvedAutoConfig = getAutoSelectConfig(f, rows[idx]);
+    const resolvedConfig = relationConfigMap[f] || resolvedAutoConfig?.config;
     if (fieldDisabled) {
       let display = typeof val === 'object' ? val.label || val.value : val;
       const rawVal = typeof val === 'object' ? val.value : val;
       const relationRow = rawVal !== undefined ? getRelationRow(f, rawVal) : null;
-      if (relationConfigMap[f] && relationRow) {
+      if (resolvedConfig && relationRow) {
         const parts = [rawVal];
-        (relationConfigMap[f].displayFields || []).forEach((df) => {
+        (resolvedConfig.displayFields || []).forEach((df) => {
           if (relationRow[df] !== undefined) parts.push(relationRow[df]);
         });
         display = parts.join(' - ');
@@ -2285,14 +2311,7 @@ function InlineTransactionTable(
           if (relationRow[df] !== undefined) parts.push(relationRow[df]);
         });
         display = parts.join(' - ');
-      } else if (autoSelectConfigs[f] && relationRow) {
-        const cfg = autoSelectConfigs[f];
-        const parts = [rawVal];
-        (cfg.displayFields || []).forEach((df) => {
-          if (relationRow[df] !== undefined) parts.push(relationRow[df]);
-        });
-        display = parts.join(' - ');
-      }
+      } 
       const readonlyStyle = {
         ...inputStyle,
         width: 'fit-content',
@@ -2327,17 +2346,16 @@ function InlineTransactionTable(
       }
       return displayVal;
     }
-    if (relationConfigMap[f]) {
-      const conf = relationConfigMap[f];
-      const comboFilters = resolveCombinationFilters(rows[idx], f, conf);
+    if (resolvedConfig) {
+      const conf = resolvedConfig;
+      const comboFilters =
+        resolvedAutoConfig?.filters ?? resolveCombinationFilters(rows[idx], f, conf);
       const hasCombination = Boolean(
         conf?.combinationSourceColumn && conf?.combinationTargetColumn,
       );
-      const combinationReady = isCombinationFilterReady(
-        hasCombination,
-        conf?.combinationTargetColumn,
-        comboFilters,
-      );
+      const combinationReady =
+        resolvedAutoConfig?.combinationReady ??
+        isCombinationFilterReady(hasCombination, conf?.combinationTargetColumn, comboFilters);
       const inputVal = typeof val === 'object' ? val.value : val;
       return (
         <AsyncSearchSelect
@@ -2406,41 +2424,6 @@ function InlineTransactionTable(
           searchColumns={[idField, ...labelFields]}
           labelFields={labelFields}
           idField={idField}
-          value={inputVal}
-          onChange={(v, label) =>
-            handleChange(idx, f, label ? { value: v, label } : v)
-          }
-          onSelect={(opt) => handleOptionSelect(idx, colIdx, opt)}
-          inputRef={(el) => (inputRefs.current[`${idx}-${colIdx}`] = el)}
-          onKeyDown={(e) => handleKeyDown(e, idx, colIdx)}
-          onFocus={() => handleFocusField(f)}
-          className={invalid ? 'border-red-500 bg-red-100' : ''}
-          inputStyle={inputStyle}
-          companyId={company}
-          filters={comboFilters || undefined}
-          shouldFetch={combinationReady}
-        />
-      );
-    }
-    if (autoSelectConfigs[f]) {
-      const cfg = autoSelectConfigs[f];
-      const comboFilters = resolveCombinationFilters(rows[idx], f, cfg);
-      const hasCombination = Boolean(
-        cfg?.combinationSourceColumn && cfg?.combinationTargetColumn,
-      );
-      const combinationReady = isCombinationFilterReady(
-        hasCombination,
-        cfg?.combinationTargetColumn,
-        comboFilters,
-      );
-      const inputVal = typeof val === 'object' ? val.value : val;
-      return (
-        <AsyncSearchSelect
-          table={cfg.table}
-          searchColumn={cfg.idField}
-          searchColumns={[cfg.idField, ...(cfg.displayFields || [])]}
-          labelFields={cfg.displayFields || []}
-          idField={cfg.idField}
           value={inputVal}
           onChange={(v, label) =>
             handleChange(idx, f, label ? { value: v, label } : v)
