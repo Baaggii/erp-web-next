@@ -19,7 +19,7 @@ function mockQuery(handler) {
   };
 }
 
-function createStubConnection({ temporaryRow, chainIds = [] } = {}) {
+function createStubConnection({ temporaryRow, chainIds = [], pendingRows = [] } = {}) {
   const queries = [];
   const conn = {
     released: false,
@@ -62,7 +62,11 @@ function createStubConnection({ temporaryRow, chainIds = [] } = {}) {
         return [[temporaryRow]];
       }
       if (sql.includes("WHERE chain_id = ? AND status = 'pending'")) {
-        return [[]];
+        const [chainParam, excludeId] = params;
+        const filteredPending = pendingRows
+          .filter((row) => (chainParam ? row.chain_id === chainParam : true))
+          .filter((row) => (excludeId ? row.id !== excludeId : true));
+        return [filteredPending];
       }
       if (sql.includes('SELECT id FROM `transaction_temporaries` WHERE id IN')) {
         const rows = chainIds
@@ -71,7 +75,17 @@ function createStubConnection({ temporaryRow, chainIds = [] } = {}) {
         return [rows];
       }
       if (sql.startsWith('SELECT DISTINCT created_by FROM `transaction_temporaries` WHERE chain_id = ?')) {
-        return [[{ created_by: temporaryRow?.created_by || null }]];
+        const chainParam = params?.[0];
+        const creators = new Set();
+        if (temporaryRow?.created_by && (!chainParam || temporaryRow.chain_id === chainParam)) {
+          creators.add(temporaryRow.created_by);
+        }
+        pendingRows.forEach((row) => {
+          if (row?.created_by && (!chainParam || row.chain_id === chainParam)) {
+            creators.add(row.created_by);
+          }
+        });
+        return [[...creators].map((creator) => ({ created_by: creator }))];
       }
       if (sql.startsWith('INSERT INTO `transaction_temporaries`')) {
         return [[{ insertId: 202 }]];
@@ -1012,6 +1026,113 @@ test('promoteTemporarySubmission blocks when another pending temporary exists in
 
   assert.ok(queries.some(({ sql }) => sql.includes('status = \'pending\'')));
   assert.ok(conn.released);
+});
+
+test('promoteTemporarySubmission force-promotes and resolves other pending temporaries in the chain', async () => {
+  const temporaryRow = {
+    id: 16,
+    company_id: 1,
+    chain_id: 16,
+    table_name: 'transactions_test',
+    form_name: null,
+    config_name: null,
+    module_key: null,
+    payload_json: '{}',
+    cleaned_values_json: '{}',
+    raw_values_json: '{}',
+    created_by: 'EMP150',
+    plan_senior_empid: 'EMP200',
+    branch_id: null,
+    department_id: null,
+    status: 'pending',
+  };
+  const pendingRows = [
+    { id: 99, chain_id: 16, created_by: 'EMP151', plan_senior_empid: 'EMP200' },
+    { id: 100, chain_id: 16, created_by: 'EMP152', plan_senior_empid: 'EMP200' },
+  ];
+  const chainUpdates = [];
+  const notifications = [];
+  const { conn, queries } = createStubConnection({
+    temporaryRow,
+    chainIds: [16],
+    pendingRows,
+  });
+  const runtimeDeps = {
+    connectionFactory: async () => conn,
+    columnLister: async () => [{ name: 'amount', type: 'int', maxLength: null }],
+    tableInserter: async () => ({ id: 321 }),
+    chainStatusUpdater: async (_c, chainId, payload) => {
+      chainUpdates.push({ chainId, payload });
+      return 1;
+    },
+    notificationInserter: async (_c, payload) => notifications.push(payload),
+    activityLogger: async () => {},
+  };
+
+  const result = await promoteTemporarySubmission(
+    16,
+    { reviewerEmpId: 'EMP200', cleanedValues: { amount: 15 }, forcePromote: true },
+    runtimeDeps,
+  );
+
+  assert.equal(result.promotedRecordId, '321');
+  const rejectedUpdates = chainUpdates.filter(({ payload }) => payload.status === 'rejected');
+  assert.equal(rejectedUpdates.length, 2);
+  rejectedUpdates.forEach((update) => {
+    assert.equal(update.payload.pendingOnly, true);
+    assert.equal(update.payload.temporaryOnly, true);
+    assert.equal(update.payload.applyToChain, false);
+    assert.equal(update.payload.reviewerEmpId, 'EMP200');
+    assert.ok([99, 100].includes(update.payload.temporaryId));
+  });
+  const historyInserts = queries.filter(({ sql }) =>
+    sql.includes('INSERT INTO `transaction_temporary_review_history`'),
+  );
+  const rejectedHistoryCount = historyInserts.filter(
+    ({ params }) => params?.[2] === 'rejected',
+  ).length;
+  assert.ok(rejectedHistoryCount >= 2);
+  assert.ok(notifications.some((payload) => payload.relatedId === 99));
+  assert.ok(notifications.some((payload) => payload.relatedId === 100));
+});
+
+test('promoteTemporarySubmission does not allow force promotion for non-direct reviewers', async () => {
+  const temporaryRow = {
+    id: 17,
+    company_id: 1,
+    chain_id: 17,
+    table_name: 'transactions_test',
+    form_name: null,
+    config_name: null,
+    module_key: null,
+    payload_json: '{}',
+    cleaned_values_json: '{}',
+    raw_values_json: '{}',
+    created_by: 'EMP201',
+    plan_senior_empid: 'EMP300',
+    branch_id: null,
+    department_id: null,
+    status: 'pending',
+  };
+  const pendingRows = [{ id: 77, chain_id: 17, created_by: 'EMP202', plan_senior_empid: 'EMP300' }];
+  const { conn } = createStubConnection({ temporaryRow, pendingRows });
+  const runtimeDeps = {
+    connectionFactory: async () => conn,
+    columnLister: async () => [{ name: 'amount', type: 'int', maxLength: null }],
+    tableInserter: async () => ({ id: 404 }),
+    notificationInserter: async () => {},
+    activityLogger: async () => {},
+  };
+
+  await assert.rejects(
+    () =>
+      promoteTemporarySubmission(
+        17,
+        { reviewerEmpId: 'EMP201', cleanedValues: { amount: 25 }, forcePromote: true },
+        runtimeDeps,
+      ),
+    (err) => err && err.status === 409,
+  );
 });
 
 test('getTemporaryChainHistory returns chainId and history rows', async () => {

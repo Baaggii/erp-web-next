@@ -107,6 +107,7 @@ const RowFormModal = function RowFormModal({
   posApiInfoEndpointConfig = {},
   posApiReceiptTypes = [],
   posApiPaymentMethods = [],
+  extraFooterContent = null,
 }) {
   const mounted = useRef(false);
   const renderCount = useRef(0);
@@ -3851,6 +3852,7 @@ const RowFormModal = function RowFormModal({
                 {t('posapi_open_info_lookup', 'POSAPI Lookups')}
               </button>
             )}
+            {extraFooterContent}
             {posApiEnabled && posApiEndpointMeta && (
               <span className="text-xs text-gray-500">
                 {(posApiEndpointMeta.method || 'POST').toUpperCase()} {posApiEndpointMeta.path || ''}
