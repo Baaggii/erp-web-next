@@ -1430,6 +1430,7 @@ export async function promoteTemporarySubmission(
     notes,
     io,
     cleanedValues: cleanedOverride,
+    forcePromote: forcePromoteFlag = false,
   },
   runtimeDeps = {},
 ) {
@@ -1487,12 +1488,23 @@ export async function promoteTemporarySubmission(
       normalizeTemporaryId(ensuredChainId) || normalizeTemporaryId(row.id) || null;
     const isDirectReviewer = normalizeEmpId(row.plan_senior_empid) === normalizedReviewer;
     const applyToChain = Boolean(effectiveChainId) && isDirectReviewer;
+    const requestedForcePromote =
+      forcePromoteFlag === true ||
+      shouldForcePromote(
+        cleanedOverride?.forcePromote ?? payloadJson?.forcePromote ?? false,
+        payloadJson,
+      );
+    const allowForcePromote = requestedForcePromote && isDirectReviewer;
+    let otherPendingRows = [];
     if (effectiveChainId) {
       const [pendingRows] = await conn.query(
-        `SELECT id FROM \`${TEMP_TABLE}\` WHERE chain_id = ? AND status = 'pending' AND id <> ? FOR UPDATE`,
+        `SELECT id, created_by, plan_senior_empid
+           FROM \`${TEMP_TABLE}\`
+          WHERE chain_id = ? AND status = 'pending' AND id <> ? FOR UPDATE`,
         [effectiveChainId, id],
       );
-      if (Array.isArray(pendingRows) && pendingRows.length > 0) {
+      otherPendingRows = Array.isArray(pendingRows) ? pendingRows : [];
+      if (otherPendingRows.length > 0 && !allowForcePromote) {
         const err = new Error('Another temporary submission in this chain is pending');
         err.status = 409;
         throw err;
@@ -1658,10 +1670,7 @@ export async function promoteTemporarySubmission(
       forwardReviewerEmpId = null;
     }
     const forcePromote =
-      shouldForcePromote(
-        cleanedOverride?.forcePromote ?? payloadJson?.forcePromote ?? false,
-        payloadJson,
-      ) || normalizeEmpId(row.last_promoter_empid) === normalizedReviewer;
+      allowForcePromote || normalizeEmpId(row.last_promoter_empid) === normalizedReviewer;
 
     const mutationContext = {
       companyId: row.company_id ?? null,
@@ -1697,6 +1706,34 @@ export async function promoteTemporarySubmission(
         reviewNotesValue = reviewNotesValue
           ? `${reviewNotesValue}\n\n${autoNote}`
           : autoNote;
+      }
+    }
+    const forceResolutionNote =
+      'Auto-resolved other pending drafts in this chain before promotion.';
+    let resolvedPendingRows = [];
+    if (allowForcePromote && otherPendingRows.length > 0) {
+      const bulkResolutionNotes = reviewNotesValue
+        ? `${reviewNotesValue}\n\n${forceResolutionNote}`
+        : forceResolutionNote;
+      for (const pendingRow of otherPendingRows) {
+        // eslint-disable-next-line no-await-in-loop
+        const resolvedCount = await chainStatusUpdater(conn, effectiveChainId, {
+          status: 'rejected',
+          reviewerEmpId: normalizedReviewer,
+          notes: bulkResolutionNotes,
+          promotedRecordId: null,
+          clearReviewerAssignment: true,
+          pendingOnly: true,
+          temporaryId: pendingRow.id,
+          temporaryOnly: true,
+          applyToChain: false,
+        });
+        if (Number(resolvedCount) > 0) {
+          resolvedPendingRows.push(pendingRow);
+        }
+      }
+      if (resolvedPendingRows.length > 0) {
+        reviewNotesValue = bulkResolutionNotes;
       }
     }
     let skipSessionEnabled = false;
@@ -2054,6 +2091,18 @@ export async function promoteTemporarySubmission(
       notes: reviewNotesValue ?? null,
       chainId: effectiveChainId,
     });
+    if (resolvedPendingRows.length > 0) {
+      for (const resolvedRow of resolvedPendingRows) {
+        // eslint-disable-next-line no-await-in-loop
+        await recordTemporaryReviewHistory(conn, {
+          temporaryId: resolvedRow.id,
+          action: 'rejected',
+          reviewerEmpId: normalizedReviewer,
+          notes: reviewNotesValue ?? null,
+          chainId: effectiveChainId,
+        });
+      }
+    }
     await activityLogger(
       {
         emp_id: normalizedReviewer,
@@ -2106,6 +2155,22 @@ export async function promoteTemporarySubmission(
         type: 'response',
       });
     }
+    if (resolvedPendingRows.length > 0) {
+      const resolutionMessage = `Temporary submission auto-resolved due to promotion in chain #${effectiveChainId}`;
+      for (const resolvedRow of resolvedPendingRows) {
+        const resolvedCreator = normalizeEmpId(resolvedRow.created_by);
+        if (resolvedCreator) {
+          await notificationInserter(conn, {
+            companyId: row.company_id,
+            recipientEmpId: resolvedCreator,
+            createdBy: normalizedReviewer,
+            relatedId: resolvedRow.id,
+            message: resolutionMessage,
+            type: 'response',
+          });
+        }
+      }
+    }
     await notificationInserter(conn, {
       companyId: row.company_id,
       recipientEmpId: normalizedReviewer,
@@ -2126,6 +2191,17 @@ export async function promoteTemporarySubmission(
           warnings: sanitationWarnings,
         });
       });
+      if (resolvedPendingRows.length > 0) {
+        resolvedPendingRows.forEach((resolvedRow) => {
+          const resolvedCreator = normalizeEmpId(resolvedRow.created_by);
+          if (resolvedCreator) {
+            io.to(`user:${resolvedCreator}`).emit('temporaryReviewed', {
+              id: resolvedRow.id,
+              status: 'rejected',
+            });
+          }
+        });
+      }
     }
     return { id, promotedRecordId: promotedId, warnings: sanitationWarnings };
   } catch (err) {
