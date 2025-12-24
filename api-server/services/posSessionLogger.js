@@ -167,27 +167,25 @@ async function recordLoginSessionImpl(req, sessionPayload, user) {
     location.lon = locationLon;
   }
 
-  Promise.resolve(
-    logPosSessionStart({
-      sessionUuid,
-      companyId,
-      branchId,
-      departmentId,
-      workplaceId,
-      merchantId,
-      merchantTin,
-      posTerminalNo,
-      deviceMac,
-      deviceId,
-      deviceUuid,
-      location,
-      locationLat,
-      locationLon,
-      currentUserId: user?.id ?? null,
-      seniorId,
-      planSeniorId,
-    }),
-  ).catch((error) => {
+  await logPosSessionStart({
+    sessionUuid,
+    companyId,
+    branchId,
+    departmentId,
+    workplaceId,
+    merchantId,
+    merchantTin,
+    posTerminalNo,
+    deviceMac,
+    deviceId,
+    deviceUuid,
+    location,
+    locationLat,
+    locationLon,
+    currentUserId: user?.id ?? null,
+    seniorId,
+    planSeniorId,
+  }).catch((error) => {
     console.warn('POS session logging skipped', { error });
   });
 
@@ -201,9 +199,11 @@ async function recordLogoutSessionImpl(req) {
   const sessionUuid =
     req.cookies?.[getPosSessionCookieName()] ?? req.body?.session_uuid ?? null;
   if (!sessionUuid) return false;
-  Promise.resolve(closePosSession(sessionUuid)).catch((error) => {
+  try {
+    await closePosSession(sessionUuid);
+  } catch (error) {
     console.warn('POS session close skipped', { error });
-  });
+  }
   return true;
 }
 
