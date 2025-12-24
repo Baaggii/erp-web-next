@@ -114,21 +114,14 @@ export default function LoginForm() {
       setPermissions(loggedIn.permissions || null);
       const derivedWorkplaceMap =
         deriveWorkplacePositionsFromAssignments(normalizedSession);
-      const resolvedWorkplaceMap =
-        (normalizedSession?.workplace_position_map &&
-          Object.keys(normalizedSession.workplace_position_map).length > 0
-          ? normalizedSession.workplace_position_map
-          : null) || derivedWorkplaceMap;
-      setWorkplacePositionMap(resolvedWorkplaceMap);
-      if (!normalizedSession?.workplace_position_map) {
-        try {
-          const refreshedWorkplaceMap = await resolveWorkplacePositionMap({
-            session: normalizedSession,
-          });
-          setWorkplacePositionMap(refreshedWorkplaceMap);
-        } catch (err) {
-          console.warn('Failed to resolve workplace positions after login', err);
-        }
+      setWorkplacePositionMap(derivedWorkplaceMap);
+      try {
+        const resolvedWorkplaceMap = await resolveWorkplacePositionMap({
+          session: normalizedSession,
+        });
+        setWorkplacePositionMap(resolvedWorkplaceMap);
+      } catch (err) {
+        console.warn('Failed to resolve workplace positions after login', err);
       }
       refreshCompanyModules(loggedIn.company);
       refreshModules();

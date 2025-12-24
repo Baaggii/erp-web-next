@@ -180,13 +180,8 @@ export default function AuthContextProvider({ children }) {
           trackSetState('AuthContext.setPermissions');
           setPermissions(data.permissions || null);
           const derivedWorkplaceMap = deriveWorkplacePositionsFromAssignments(normalizedSession);
-          const resolvedWorkplaceMap =
-            (normalizedSession?.workplace_position_map &&
-              Object.keys(normalizedSession.workplace_position_map).length > 0
-              ? normalizedSession.workplace_position_map
-              : null) || derivedWorkplaceMap;
           trackSetState('AuthContext.setWorkplacePositionMap');
-          setWorkplacePositionMap(resolvedWorkplaceMap);
+          setWorkplacePositionMap(derivedWorkplaceMap);
           try {
             const resSettings = await fetch(`${API_BASE}/user/settings`, {
               credentials: 'include',
@@ -373,19 +368,9 @@ export default function AuthContextProvider({ children }) {
       }
 
       const derived = deriveWorkplacePositionsFromAssignments(session);
-      const sessionMap =
-        session?.workplace_position_map &&
-        Object.keys(session.workplace_position_map).length > 0
-          ? session.workplace_position_map
-          : null;
-      const nextMap = sessionMap || derived;
       if (isMounted) {
         trackSetState('AuthContext.setWorkplacePositionMap');
-        setWorkplacePositionMap(nextMap);
-      }
-
-      if (sessionMap && Object.keys(sessionMap).length > 0) {
-        return;
+        setWorkplacePositionMap(derived);
       }
 
       try {
@@ -414,7 +399,6 @@ export default function AuthContextProvider({ children }) {
     session?.workplace_assignments,
     session?.workplace_id,
     session?.workplaceId,
-    session?.workplace_position_map,
   ]);
 
   return (
