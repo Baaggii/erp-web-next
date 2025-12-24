@@ -12,7 +12,11 @@ function normalizeDisplayFieldList(list) {
   return normalized.slice(0, MAX_DISPLAY_FIELDS);
 }
 
-function normalizeEntry(entry = {}) {
+function normalizeEntry(entry = {}, tableName = '') {
+  const table =
+    typeof entry.table === 'string' && entry.table.trim()
+      ? entry.table.trim()
+      : tableName;
   const idField =
     typeof entry.idField === 'string' && entry.idField.trim()
       ? entry.idField.trim()
@@ -34,6 +38,7 @@ function normalizeEntry(entry = {}) {
       : String(rawFilterValue).trim();
 
   const normalized = {
+    table,
     idField: idField || undefined,
     displayFields: normalizeDisplayFieldList(entry.displayFields ?? entry.display_fields),
   };
@@ -44,36 +49,55 @@ function normalizeEntry(entry = {}) {
   return normalized;
 }
 
-function normalizeTableConfig(entry = {}) {
-  if (!entry || typeof entry !== 'object') {
-    return { idField: undefined, displayFields: [], filters: [] };
+function normalizeTableEntries(tableConfigs = {}, tableName) {
+  if (!tableName) return [];
+  if (Array.isArray(tableConfigs)) {
+    return tableConfigs
+      .map((entry) => normalizeEntry(entry, tableName))
+      .filter(
+        (entry) =>
+          entry.table === tableName &&
+          entry.idField &&
+          Array.isArray(entry.displayFields) &&
+          entry.displayFields.length > 0,
+      );
   }
-
-  const base = normalizeEntry(entry);
-  const filters = Array.isArray(entry.filters)
-    ? entry.filters
-        .map((filter) => normalizeEntry(filter))
-        .filter(
-          (filter) =>
-            filter.idField ||
-            (Array.isArray(filter.displayFields) && filter.displayFields.length > 0) ||
-            filter.filterColumn ||
-            filter.filterValue,
-        )
-    : [];
-
-  return { ...base, filters };
+  if (!tableConfigs || typeof tableConfigs !== 'object') return [];
+  const tableEntry = tableConfigs[tableName];
+  if (!tableEntry || typeof tableEntry !== 'object') return [];
+  const entries = [];
+  const base = normalizeEntry({ ...tableEntry, table: tableName }, tableName);
+  if (base.idField && Array.isArray(base.displayFields) && base.displayFields.length > 0) {
+    entries.push(base);
+  }
+  if (Array.isArray(tableEntry.filters)) {
+    tableEntry.filters.forEach((filter) => {
+      const normalized = normalizeEntry(
+        {
+          ...filter,
+          table: tableName,
+          idField: filter?.idField || filter?.id_field || base.idField,
+          displayFields:
+            filter?.displayFields ?? filter?.display_fields ?? base.displayFields ?? [],
+        },
+        tableName,
+      );
+      if (normalized.idField && normalized.displayFields.length > 0) {
+        entries.push(normalized);
+      }
+    });
+  }
+  return entries;
 }
 
 export function selectDisplayFieldsForRelation(tableConfigs = {}, tableName, relation = {}) {
-  if (!tableName) return null;
-  const tableEntry = tableConfigs[tableName];
-  if (!tableEntry || typeof tableEntry !== 'object') return null;
-
-  const normalized = normalizeTableConfig(tableEntry);
+  const entries = normalizeTableEntries(tableConfigs, tableName);
+  if (entries.length === 0) return null;
   const targetColumn = relation.idField ?? relation.column ?? relation.targetColumn;
   const normalizedTarget =
-    typeof targetColumn === 'string' && targetColumn.trim() ? targetColumn.trim().toLowerCase() : '';
+    typeof targetColumn === 'string' && targetColumn.trim()
+      ? targetColumn.trim().toLowerCase()
+      : '';
   if (!normalizedTarget) return null;
 
   const relFilterColumn =
@@ -88,20 +112,17 @@ export function selectDisplayFieldsForRelation(tableConfigs = {}, tableName, rel
       ? ''
       : String(rawFilterValue).trim();
 
-  const candidates = [];
-  const addCandidate = (cfg) => {
-    if (!cfg?.idField || cfg.idField.trim().toLowerCase() !== normalizedTarget) return;
-    candidates.push({
+  const candidates = entries
+    .filter((cfg) => cfg?.idField && cfg.idField.trim().toLowerCase() === normalizedTarget)
+    .map((cfg) => ({
       idField: cfg.idField,
       displayFields: Array.isArray(cfg.displayFields) ? cfg.displayFields : [],
       filterColumn: cfg.filterColumn || '',
       filterValue:
-        cfg.filterValue === null || cfg.filterValue === undefined ? '' : String(cfg.filterValue).trim(),
-    });
-  };
-
-  addCandidate(normalized);
-  (normalized.filters || []).forEach(addCandidate);
+        cfg.filterValue === null || cfg.filterValue === undefined
+          ? ''
+          : String(cfg.filterValue).trim(),
+    }));
 
   if (candidates.length === 0) return null;
 
@@ -131,12 +152,12 @@ export function selectDisplayFieldsForRelation(tableConfigs = {}, tableName, rel
   return candidates[0];
 }
 
-export function __normalizeDisplayFieldTableConfig(entry = {}) {
-  return normalizeTableConfig(entry);
+export function __normalizeDisplayFieldTableConfig(entry = {}, tableName = '') {
+  return normalizeTableEntries(entry, tableName);
 }
 
-export function __normalizeDisplayFieldEntry(entry = {}) {
-  return normalizeEntry(entry);
+export function __normalizeDisplayFieldEntry(entry = {}, tableName = '') {
+  return normalizeEntry(entry, tableName);
 }
 
 export default selectDisplayFieldsForRelation;

@@ -61,6 +61,22 @@ async function collectConfigs() {
   return { transactionForms, tableDisplayFields };
 }
 
+function findDisplayConfig(tableDisplayFields, table) {
+  if (!table) return null;
+  if (Array.isArray(tableDisplayFields)) {
+    const entries = tableDisplayFields.filter((cfg) => cfg?.table === table);
+    return (
+      entries.find((cfg) => !cfg.filterColumn && !cfg.filterValue) ||
+      entries[0] ||
+      null
+    );
+  }
+  if (tableDisplayFields && typeof tableDisplayFields === 'object') {
+    return tableDisplayFields[table] || null;
+  }
+  return null;
+}
+
 async function fileExists(file) {
   try {
     await fs.access(file);
@@ -133,18 +149,12 @@ async function generateManualForModule(module, translate, configs, options) {
     md += '\n';
   }
 
-  const tableCfg = configs.tableDisplayFields[module.module_key];
+  const tableCfg = findDisplayConfig(configs.tableDisplayFields, module.module_key);
   if (tableCfg) {
     md += `### ${await translateLabel(lang, 'tableDisplay', 'Table Display')}\n`;
     md += `- ${await translateLabel(lang, 'idField', 'ID Field')}: ${await translate(tableCfg.idField)}\n`;
     const display = await Promise.all(tableCfg.displayFields.map((f) => translate(f)));
     md += `- ${await translateLabel(lang, 'displayFields', 'Display Fields')}: ${display.join(', ')}\n`;
-    if (tableCfg.tooltips) {
-      const tipsArr = await Promise.all(
-        Object.entries(tableCfg.tooltips).map(async ([k, v]) => `${await translate(k)}: ${await translate(v)}`),
-      );
-      md += `- ${await translateLabel(lang, 'tooltips', 'Tooltips')}: ${tipsArr.join(', ')}\n`;
-    }
     md += '\n';
   }
 
@@ -207,4 +217,3 @@ main().catch((err) => {
   console.error(err);
   process.exit(1);
 });
-
