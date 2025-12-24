@@ -8,8 +8,6 @@ import {
   findTableByProcedure,
 } from '../services/transactionFormConfig.js';
 import { requireAuth } from '../middlewares/auth.js';
-import { getEmploymentSession } from '../../db/index.js';
-import { normalizeSessionWithPositions } from '../utils/workplacePositions.js';
 
 const router = express.Router();
 
@@ -29,14 +27,7 @@ router.get('/', requireAuth, async (req, res, next) => {
       workplacePositionId,
     } =
       req.query;
-    const baseSession =
-      req.session && Number(req.session?.company_id) === companyId
-        ? req.session
-        : await getEmploymentSession(req.user.empid, companyId);
-    const normalizedContext = baseSession
-      ? await normalizeSessionWithPositions(baseSession, baseSession?.workplace_assignments)
-      : { session: null };
-    const session = normalizedContext.session || baseSession || {};
+    const session = req.session || {};
     const resolvedWorkplacePositionId =
       workplacePositionId ??
       session?.workplace_position_id ??
@@ -63,7 +54,6 @@ router.get('/', requireAuth, async (req, res, next) => {
           positionId,
           workplacePositionId: resolvedWorkplacePositionId,
           workplacePositions: session?.workplace_assignments,
-          workplacePositionMap: session?.workplace_positions,
         },
         companyId,
       );

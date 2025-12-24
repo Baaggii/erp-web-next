@@ -179,13 +179,7 @@ export default function AuthContextProvider({ children }) {
           setWorkplace(data.workplace ?? normalizedSession?.workplace_id ?? null);
           trackSetState('AuthContext.setPermissions');
           setPermissions(data.permissions || null);
-          const derivedWorkplaceMap =
-            (normalizedSession?.workplace_positions &&
-            typeof normalizedSession.workplace_positions === 'object' &&
-            Object.keys(normalizedSession.workplace_positions).length
-              ? normalizedSession.workplace_positions
-              : null) ||
-            deriveWorkplacePositionsFromAssignments(normalizedSession);
+          const derivedWorkplaceMap = deriveWorkplacePositionsFromAssignments(normalizedSession);
           trackSetState('AuthContext.setWorkplacePositionMap');
           setWorkplacePositionMap(derivedWorkplaceMap);
           try {
@@ -373,21 +367,10 @@ export default function AuthContextProvider({ children }) {
         return;
       }
 
-      const sessionMap =
-        session?.workplace_positions &&
-        typeof session.workplace_positions === 'object' &&
-        Object.keys(session.workplace_positions).length
-          ? session.workplace_positions
-          : null;
-      const derived =
-        sessionMap || deriveWorkplacePositionsFromAssignments(session);
+      const derived = deriveWorkplacePositionsFromAssignments(session);
       if (isMounted) {
         trackSetState('AuthContext.setWorkplacePositionMap');
         setWorkplacePositionMap(derived);
-      }
-
-      if (sessionMap) {
-        return;
       }
 
       try {
