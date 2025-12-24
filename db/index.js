@@ -1177,6 +1177,23 @@ function mapEmploymentRow(row) {
 }
 
 let employmentScheduleColumnCache = null;
+let companyMerchantColumnCache = null;
+
+async function getCompanyMerchantTinColumnInfo() {
+  if (companyMerchantColumnCache) return companyMerchantColumnCache;
+  try {
+    const columns = await getTableColumnsSafe("companies");
+    const lower = new Set(columns.map((c) => String(c).toLowerCase()));
+    companyMerchantColumnCache = { hasMerchantTin: lower.has("merchant_tin") };
+  } catch (err) {
+    if (err?.code === "ER_NO_SUCH_TABLE") {
+      companyMerchantColumnCache = { hasMerchantTin: false };
+    } else {
+      throw err;
+    }
+  }
+  return companyMerchantColumnCache;
+}
 
 async function getEmploymentScheduleColumnInfo() {
   if (employmentScheduleColumnCache) return employmentScheduleColumnCache;
@@ -1219,12 +1236,14 @@ export async function getEmploymentSessions(empid, options = {}) {
     deptCfgRaw,
     empCfgRaw,
     relationCfg,
+    companyMerchantInfo,
   ] = await Promise.all([
     getDisplayCfg("companies", configCompanyId),
     getDisplayCfg("code_branches", configCompanyId),
     getDisplayCfg("code_department", configCompanyId),
     getDisplayCfg("tbl_employee", configCompanyId),
     listCustomRelations("tbl_employment", configCompanyId),
+    getCompanyMerchantTinColumnInfo(),
   ]);
 
   const companyCfg = unwrapDisplayConfig(companyCfgRaw);
@@ -1232,6 +1251,9 @@ export async function getEmploymentSessions(empid, options = {}) {
   const deptCfg = unwrapDisplayConfig(deptCfgRaw);
   const empCfg = unwrapDisplayConfig(empCfgRaw);
   const relationConfig = relationCfg?.config || {};
+  const merchantTinExpr = companyMerchantInfo?.hasMerchantTin
+    ? "c.merchant_tin"
+    : "NULL";
   const scheduleInfo = await getEmploymentScheduleColumnInfo();
   const posNoExpr = scheduleInfo.hasPosNo ? "es.pos_no" : "NULL";
   const merchantExpr = scheduleInfo.hasMerchantId ? "es.merchant_id" : "NULL";
@@ -1289,7 +1311,7 @@ export async function getEmploymentSessions(empid, options = {}) {
 
   const sql = `SELECT
           e.employment_company_id AS company_id,
-          c.merchant_tin AS merchant_tin,
+          ${merchantTinExpr} AS merchant_tin,
           ${companyRel.nameExpr} AS company_name,
           e.employment_branch_id AS branch_id,
           ${branchRel.nameExpr} AS branch_name,
@@ -1347,7 +1369,7 @@ export async function getEmploymentSessions(empid, options = {}) {
          ON es.emp_id = e.employment_emp_id
         AND es.company_id = e.employment_company_id
         AND es.branch_id = e.employment_branch_id
-        AND es.department_id = e.employment_department_id
+       AND es.department_id = e.employment_department_id
        LEFT JOIN tbl_workplace tw
          ON tw.company_id = e.employment_company_id
         AND tw.branch_id = e.employment_branch_id
@@ -1359,7 +1381,7 @@ export async function getEmploymentSessions(empid, options = {}) {
        LEFT JOIN user_level_permissions up ON up.userlevel_id = ul.userlevel_id AND up.action = 'permission' AND up.company_id IN (${GLOBAL_COMPANY_ID}, e.employment_company_id)
        WHERE e.employment_emp_id = ?
       GROUP BY e.employment_company_id, company_name,
-                c.merchant_tin,
+                ${merchantTinExpr},
                 e.employment_branch_id, branch_name,
                 e.employment_department_id, department_name,
                 es.workplace_id, cw.workplace_name,
@@ -1378,19 +1400,21 @@ export async function getEmploymentSessions(empid, options = {}) {
   } catch (err) {
     if (
       err?.code === "ER_BAD_FIELD_ERROR" &&
-      /\b(pos_no|merchant_id)\b/i.test(err.message || "")
+      /\b(pos_no|merchant_id|merchant_tin)\b/i.test(err.message || "")
     ) {
       employmentScheduleColumnCache = { hasPosNo: false, hasMerchantId: false };
+      companyMerchantColumnCache = { hasMerchantTin: false };
       const replaceExpr = (text, target, replacement) =>
         text.split(target).join(replacement);
-      const fallbackSql = replaceExpr(
-        replaceExpr(normalizedSql, posNoExpr, "NULL"),
-        merchantExpr,
-        "NULL",
-      );
+      const withoutPos = replaceExpr(normalizedSql, posNoExpr, "NULL");
+      const withoutMerchantId = replaceExpr(withoutPos, merchantExpr, "NULL");
+      const fallbackSql = replaceExpr(withoutMerchantId, merchantTinExpr, "NULL");
       [rows] = await pool.query(fallbackSql, params);
     } else {
-      throw err;
+      console.warn("Employment sessions query failed; returning empty list", {
+        error: err?.message || err,
+      });
+      rows = [];
     }
   }
   const sessions = rows.map(mapEmploymentRow);
@@ -1447,18 +1471,20 @@ export async function getEmploymentSession(empid, companyId, options = {}) {
     const configCompanyId = Number.isFinite(Number(companyId))
       ? Number(companyId)
       : GLOBAL_COMPANY_ID;
-    const [
-      companyCfgRaw,
-      branchCfgRaw,
-      deptCfgRaw,
-      empCfgRaw,
-      relationCfg,
+  const [
+    companyCfgRaw,
+    branchCfgRaw,
+    deptCfgRaw,
+    empCfgRaw,
+    relationCfg,
+    companyMerchantInfo,
   ] = await Promise.all([
     getDisplayCfg("companies", configCompanyId),
     getDisplayCfg("code_branches", configCompanyId),
     getDisplayCfg("code_department", configCompanyId),
     getDisplayCfg("tbl_employee", configCompanyId),
     listCustomRelations("tbl_employment", configCompanyId),
+    getCompanyMerchantTinColumnInfo(),
   ]);
 
   const companyCfg = unwrapDisplayConfig(companyCfgRaw);
@@ -1466,6 +1492,9 @@ export async function getEmploymentSession(empid, companyId, options = {}) {
   const deptCfg = unwrapDisplayConfig(deptCfgRaw);
   const empCfg = unwrapDisplayConfig(empCfgRaw);
   const relationConfig = relationCfg?.config || {};
+  const merchantTinExpr = companyMerchantInfo?.hasMerchantTin
+    ? "c.merchant_tin"
+    : "NULL";
   const scheduleInfo = await getEmploymentScheduleColumnInfo();
   const posNoExpr = scheduleInfo.hasPosNo ? "es.pos_no" : "NULL";
   const merchantExpr = scheduleInfo.hasMerchantId ? "es.merchant_id" : "NULL";
@@ -1544,7 +1573,7 @@ export async function getEmploymentSession(empid, companyId, options = {}) {
 
   const baseSql = `SELECT
             e.employment_company_id AS company_id,
-            c.merchant_tin AS merchant_tin,
+            ${merchantTinExpr} AS merchant_tin,
             ${companyRel.nameExpr} AS company_name,
             e.employment_branch_id AS branch_id,
             ${branchRel.nameExpr} AS branch_name,
@@ -1614,7 +1643,7 @@ export async function getEmploymentSession(empid, companyId, options = {}) {
          LEFT JOIN user_level_permissions up ON up.userlevel_id = ul.userlevel_id AND up.action = 'permission' AND up.company_id IN (${GLOBAL_COMPANY_ID}, e.employment_company_id)
          WHERE e.employment_emp_id = ? AND e.employment_company_id = ?
          GROUP BY e.employment_company_id, company_name,
-                   c.merchant_tin,
+                   ${merchantTinExpr},
                    e.employment_branch_id, branch_name,
                    e.employment_department_id, department_name,
                    es.workplace_id, cw.workplace_name,
@@ -1633,19 +1662,21 @@ export async function getEmploymentSession(empid, companyId, options = {}) {
     } catch (err) {
       if (
         err?.code === "ER_BAD_FIELD_ERROR" &&
-        /\b(pos_no|merchant_id)\b/i.test(err.message || "")
+        /\b(pos_no|merchant_id|merchant_tin)\b/i.test(err.message || "")
       ) {
         employmentScheduleColumnCache = { hasPosNo: false, hasMerchantId: false };
+        companyMerchantColumnCache = { hasMerchantTin: false };
         const replaceExpr = (text, target, replacement) =>
           text.split(target).join(replacement);
-        const fallbackSql = replaceExpr(
-          replaceExpr(normalizedSql, posNoExpr, "NULL"),
-          merchantExpr,
-          "NULL",
-        );
+        const withoutPos = replaceExpr(normalizedSql, posNoExpr, "NULL");
+        const withoutMerchantId = replaceExpr(withoutPos, merchantExpr, "NULL");
+        const fallbackSql = replaceExpr(withoutMerchantId, merchantTinExpr, "NULL");
         [rows] = await pool.query(fallbackSql, queryParams);
       } else {
-        throw err;
+        console.warn("Employment session query failed; returning null", {
+          error: err?.message || err,
+        });
+        return null;
       }
     }
     if (rows.length === 0) return null;
@@ -8034,31 +8065,41 @@ async function getPosSessionColumnInfo() {
     const lower = new Set(columns.map((c) => String(c).toLowerCase()));
     posSessionColumnInfo = {
       exists: true,
+      hasDeviceId: lower.has("device_id"),
       hasDeviceUuid: lower.has("device_uuid"),
       hasCurrentUserId: lower.has("current_user_id"),
+      hasMerchantId: lower.has("merchant_id"),
       hasMerchantTin: lower.has("merchant_tin"),
       hasDepartmentId: lower.has("department_id"),
       hasWorkplaceId: lower.has("workplace_id"),
       hasSeniorId: lower.has("senior_id"),
       hasPlanSeniorId: lower.has("plan_senior_id"),
       hasPosNo: lower.has("pos_no"),
+      hasPosTerminalNo: lower.has("pos_terminal_no"),
       hasDeviceMac: lower.has("device_mac"),
       hasLocation: lower.has("location"),
+      hasLocationLat: lower.has("location_lat"),
+      hasLocationLon: lower.has("location_lon"),
     };
   } catch (err) {
     if (err?.code === "ER_NO_SUCH_TABLE") {
       posSessionColumnInfo = {
         exists: false,
+        hasDeviceId: false,
         hasDeviceUuid: false,
         hasCurrentUserId: false,
+        hasMerchantId: false,
         hasMerchantTin: false,
         hasDepartmentId: false,
         hasWorkplaceId: false,
         hasSeniorId: false,
         hasPlanSeniorId: false,
         hasPosNo: false,
+        hasPosTerminalNo: false,
         hasDeviceMac: false,
         hasLocation: false,
+        hasLocationLat: false,
+        hasLocationLon: false,
       };
     } else {
       throw err;
@@ -8083,6 +8124,47 @@ function normalizePosSessionLocation(location) {
   return { value: location };
 }
 
+function normalizePosSessionCoordinates(location, explicitCoords = {}) {
+  const normalized = normalizePosSessionLocation(location);
+  const coerceNumber = (value) => {
+    if (value === undefined || value === null) return null;
+    const num = Number(value);
+    return Number.isFinite(num) ? num : null;
+  };
+  const arrayCandidate = Array.isArray(location) ? location : null;
+  const latCandidates = [
+    explicitCoords.locationLat,
+    normalized.lat,
+    normalized.latitude,
+    normalized.lat_deg,
+    normalized.latDeg,
+    normalized.coords?.lat,
+    normalized.coords?.latitude,
+    arrayCandidate?.[0],
+  ];
+  const lonCandidates = [
+    explicitCoords.locationLon,
+    normalized.lon,
+    normalized.lng,
+    normalized.long,
+    normalized.longitude,
+    normalized.coords?.lon,
+    normalized.coords?.lng,
+    normalized.coords?.longitude,
+    arrayCandidate?.[1],
+  ];
+  const lat = latCandidates.map(coerceNumber).find((v) => v !== null) ?? null;
+  const lon = lonCandidates.map(coerceNumber).find((v) => v !== null) ?? null;
+  const normalizedLocation = { ...normalized };
+  if (lat !== null && normalizedLocation.lat === undefined) {
+    normalizedLocation.lat = lat;
+  }
+  if (lon !== null && (normalizedLocation.lon === undefined && normalizedLocation.lng === undefined)) {
+    normalizedLocation.lon = lon;
+  }
+  return { lat, lon, normalizedLocation };
+}
+
 function normalizeDeviceMac(value) {
   if (value === undefined || value === null) return "unknown";
   const trimmed = String(value).trim();
@@ -8096,11 +8178,16 @@ export async function logPosSessionStart(
     branchId,
     departmentId = null,
     workplaceId = null,
+    merchantId = null,
     merchantTin = null,
+    posTerminalNo,
     posNo,
     deviceMac,
+    deviceId,
     deviceUuid = null,
     location = {},
+    locationLat = null,
+    locationLon = null,
     startedAt = new Date(),
     currentUserId = null,
     seniorId = null,
@@ -8120,33 +8207,52 @@ export async function logPosSessionStart(
     cols.push("workplace_id");
     params.push(workplaceId ?? null);
   }
+  if (info.hasMerchantId) {
+    cols.push("merchant_id");
+    params.push(merchantId ?? null);
+  }
   if (info.hasMerchantTin) {
     cols.push("merchant_tin");
     params.push(merchantTin ?? null);
   }
-  if (info.hasPosNo) {
-    const normalizedPosNo =
-      posNo === undefined || posNo === null ? null : String(posNo).trim() || null;
+  const normalizePosField = (value) =>
+    value === undefined || value === null ? null : String(value).trim() || null;
+  if (info.hasPosTerminalNo) {
+    cols.push("pos_terminal_no");
+    params.push(normalizePosField(posTerminalNo ?? posNo));
+  } else if (info.hasPosNo) {
     cols.push("pos_no");
-    params.push(normalizedPosNo);
+    params.push(normalizePosField(posNo ?? posTerminalNo));
   }
-  if (info.hasDeviceUuid) {
+  if (info.hasDeviceId) {
+    cols.push("device_id");
+    params.push(deviceId ?? deviceUuid ?? null);
+  } else if (info.hasDeviceUuid) {
     cols.push("device_uuid");
-    params.push(deviceUuid ?? null);
+    params.push(deviceUuid ?? deviceId ?? null);
   }
   if (info.hasDeviceMac) {
     cols.push("device_mac");
     params.push(normalizeDeviceMac(deviceMac));
   }
+  const { lat, lon, normalizedLocation } = normalizePosSessionCoordinates(
+    location,
+    { locationLat, locationLon },
+  );
+  if (info.hasLocationLat) {
+    cols.push("location_lat");
+    params.push(lat);
+  }
+  if (info.hasLocationLon) {
+    cols.push("location_lon");
+    params.push(lon);
+  }
   if (info.hasLocation) {
     cols.push("location");
-    params.push(JSON.stringify(normalizePosSessionLocation(location)));
+    params.push(JSON.stringify(normalizedLocation));
   }
   cols.push("started_at");
   params.push(normalizeDateTimeInput(startedAt) ?? new Date());
-  if (info.hasDeviceUuid) {
-    // already added above; keep placeholder alignment
-  }
   if (info.hasCurrentUserId) {
     cols.push("current_user_id");
     params.push(currentUserId ?? null);
@@ -8173,17 +8279,30 @@ export async function logPosSessionStart(
   if (info.hasWorkplaceId) {
     updateCols.push("workplace_id = VALUES(workplace_id)");
   }
+  if (info.hasMerchantId) {
+    updateCols.push("merchant_id = VALUES(merchant_id)");
+  }
   if (info.hasMerchantTin) {
     updateCols.push("merchant_tin = VALUES(merchant_tin)");
   }
-  if (info.hasPosNo) {
+  if (info.hasPosTerminalNo) {
+    updateCols.push("pos_terminal_no = VALUES(pos_terminal_no)");
+  } else if (info.hasPosNo) {
     updateCols.push("pos_no = VALUES(pos_no)");
   }
-  if (info.hasDeviceUuid) {
+  if (info.hasDeviceId) {
+    updateCols.push("device_id = VALUES(device_id)");
+  } else if (info.hasDeviceUuid) {
     updateCols.push("device_uuid = VALUES(device_uuid)");
   }
   if (info.hasDeviceMac) {
     updateCols.push("device_mac = VALUES(device_mac)");
+  }
+  if (info.hasLocationLat) {
+    updateCols.push("location_lat = VALUES(location_lat)");
+  }
+  if (info.hasLocationLon) {
+    updateCols.push("location_lon = VALUES(location_lon)");
   }
   if (info.hasLocation) {
     updateCols.push("location = VALUES(location)");
