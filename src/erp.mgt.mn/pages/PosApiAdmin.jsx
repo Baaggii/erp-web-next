@@ -1703,33 +1703,6 @@ function buildRequestFieldDisplayFromState(state) {
   return { state: 'ok', items, error: '' };
 }
 
-function deriveNestedObjectsFromFields(fields = []) {
-  const nested = new Map();
-  fields.forEach((entry) => {
-    const field = typeof entry?.field === 'string' ? entry.field.trim() : '';
-    if (!field) return;
-    const segments = field.split('.');
-    const parts = [];
-    segments.forEach((segment) => {
-      if (!segment) return;
-      const isArray = /\[\]$/.test(segment);
-      const normalized = `${segment.replace(/\[\]$/, '')}${isArray ? '[]' : ''}`;
-      parts.push(normalized);
-      if (isArray) {
-        const path = parts.join('.');
-        if (!nested.has(path)) {
-          nested.set(path, {
-            path,
-            label: parts.map((part) => part.replace(/\[\]$/, '')).join(' → '),
-            repeatable: true,
-          });
-        }
-      }
-    });
-  });
-  return Array.from(nested.values());
-}
-
 function deriveRequestFieldSelections({ requestSampleText, requestEnvMap, displayItems }) {
   const seenFields = new Set();
   let parsedSample = {};
@@ -6864,7 +6837,6 @@ export default function PosApiAdmin() {
       ...(Object.keys(responseFieldMappings).length
         ? { responseFieldMappings }
         : {}),
-      nestedObjects: deriveNestedObjectsFromFields(combinedRequestFields),
       examples,
       scripts,
       testable: Boolean(formState.testable),
