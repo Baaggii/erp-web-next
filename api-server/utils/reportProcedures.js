@@ -2,30 +2,16 @@ import { listTransactionNames } from '../services/transactionFormConfig.js';
 import { listAllowedReports } from '../services/reportAccessConfig.js';
 import { getProcTriggers } from '../services/procTriggers.js';
 import { getEmploymentSession, listReportProcedures } from '../../db/index.js';
-import { normalizeEmploymentSession } from './employmentSession.js';
-import { deriveWorkplacePositionsFromAssignments } from './workplacePositions.js';
 
 async function getUserContext(user, companyId) {
-  const rawSession = await getEmploymentSession(user.empid, companyId);
-  const session = normalizeEmploymentSession(
-    rawSession,
-    rawSession ? [rawSession] : [],
-  );
-  const workplacePositions = Array.isArray(session?.workplace_assignments)
-    ? session.workplace_assignments
-    : [];
-  const workplacePositionMap =
-    session?.workplace_position_map ??
-    session?.workplacePositionMap ??
-    deriveWorkplacePositionsFromAssignments(workplacePositions);
+  const session = await getEmploymentSession(user.empid, companyId);
   return {
     branchId: session?.branch_id,
     departmentId: session?.department_id,
     userLevelId: session?.user_level,
     workplaceId: session?.workplace_id,
     workplacePositionId: session?.workplace_position_id,
-    workplacePositions,
-    workplacePositionMap,
+    workplacePositions: session?.workplace_assignments,
     positionId: session?.position_id ?? session?.employment_position_id,
   };
 }
@@ -45,7 +31,6 @@ export async function listPermittedProcedures(
       positionId: userCtx.positionId,
       workplacePositionId: userCtx.workplacePositionId,
       workplacePositions: userCtx.workplacePositions,
-      workplacePositionMap: userCtx.workplacePositionMap,
     },
     companyId,
   );
