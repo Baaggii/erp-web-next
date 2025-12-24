@@ -27,102 +27,6 @@ const DEFAULT_MAPPING_HINTS = {
   registerNo: 'session.register_no',
 };
 
-function humanizeSegment(segment = '') {
-  const cleaned = segment.replace(/\[\]$/, '').replace(/[_-]+/g, ' ').replace(/([a-z0-9])([A-Z])/g, '$1 $2');
-  if (!cleaned.trim()) return segment;
-  const normalized = cleaned.trim().split(/\s+/).map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join(' ');
-  return normalized;
-}
-
-function deriveNestedObjectsFromFields(fields = []) {
-  const nested = new Map();
-
-  fields.forEach((entry) => {
-    const field = typeof entry?.field === 'string' ? entry.field.trim() : '';
-    if (!field) return;
-    const segments = field.split('.');
-    const parts = [];
-    segments.forEach((segment) => {
-      if (!segment) return;
-      const isArray = /\[\]$/.test(segment);
-      const normalized = `${segment.replace(/\[\]$/, '')}${isArray ? '[]' : ''}`;
-      parts.push(normalized);
-      if (isArray) {
-        const path = parts.join('.');
-        if (!nested.has(path)) {
-          const labelParts = parts.map((part) => humanizeSegment(part));
-          nested.set(path, {
-            path,
-            label: labelParts.join(' → ') || path,
-            repeatable: true,
-          });
-        }
-      }
-    });
-  });
-
-  return Array.from(nested.values());
-}
-
-function assignRequestSampleValue(target, key, value) {
-  if (Object.prototype.hasOwnProperty.call(target, key)) return;
-  target[key] = value;
-}
-
-function ensureArrayObject(container, key) {
-  if (!Array.isArray(container[key])) {
-    container[key] = [];
-  }
-  if (!container[key][0] || typeof container[key][0] !== 'object') {
-    container[key][0] = {};
-  }
-  return container[key][0];
-}
-
-function buildRequestSampleFromFields(fields = [], defaults = {}, example = undefined) {
-  const baseSample = example && typeof example === 'object' && !Array.isArray(example)
-    ? JSON.parse(JSON.stringify(example))
-    : {};
-
-  fields.forEach((entry) => {
-    const field = typeof entry?.field === 'string' ? entry.field.trim() : '';
-    if (!field) return;
-    const segments = field.split('.');
-    let cursor = baseSample;
-    segments.forEach((segment, index) => {
-      if (!segment) return;
-      const isArray = /\[\]$/.test(segment);
-      const key = segment.replace(/\[\]$/, '');
-      const isLast = index === segments.length - 1;
-
-      if (isArray) {
-        const arrayItem = ensureArrayObject(cursor, key);
-        if (isLast) {
-          const value = defaults[field];
-          if (value !== undefined) {
-            cursor[key][0] = value;
-          } else if (cursor[key][0] && typeof cursor[key][0] === 'object' && Object.keys(cursor[key][0]).length === 0) {
-            cursor[key][0] = null;
-          }
-          cursor = typeof cursor[key][0] === 'object' ? cursor[key][0] : cursor;
-        } else {
-          cursor = arrayItem;
-        }
-      } else if (isLast) {
-        const value = defaults[field] ?? null;
-        assignRequestSampleValue(cursor, key, value);
-      } else {
-        if (!cursor[key] || typeof cursor[key] !== 'object') {
-          cursor[key] = {};
-        }
-        cursor = cursor[key];
-      }
-    });
-  });
-
-  return baseSample;
-}
-
 const router = express.Router();
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -1347,31 +1251,8 @@ function collectFieldDefaults(fields = []) {
   fields.forEach((entry) => {
     const key = typeof entry?.field === 'string' ? entry.field.trim() : '';
     if (!key) return;
-    const baseDefault = entry.defaultValue;
-    if (baseDefault !== undefined && baseDefault !== null && baseDefault !== '') {
-      defaults[key] = baseDefault;
-    }
-  });
-  return defaults;
-}
-
-function collectVariationDefaults(fields = [], variationName = '') {
-  if (!variationName) return {};
-  const defaults = {};
-  fields.forEach((entry) => {
-    const key = typeof entry?.field === 'string' ? entry.field.trim() : '';
-    if (!key) return;
-    const variationMap =
-      entry && typeof entry.defaultVariations === 'object' && entry.defaultVariations !== null
-        ? entry.defaultVariations
-        : {};
-    if (
-      Object.prototype.hasOwnProperty.call(variationMap, variationName) &&
-      variationMap[variationName] !== undefined &&
-      variationMap[variationName] !== null &&
-      variationMap[variationName] !== ''
-    ) {
-      defaults[key] = variationMap[variationName];
+    if (entry.defaultValue !== undefined && entry.defaultValue !== null && entry.defaultValue !== '') {
+      defaults[key] = entry.defaultValue;
     }
   });
   return defaults;
@@ -1379,7 +1260,6 @@ function collectVariationDefaults(fields = [], variationName = '') {
 
 function deriveMappingHintsFromFields(fields = []) {
   const hints = {};
-  const nestedObjects = deriveNestedObjectsFromFields(fields);
   fields.forEach((entry) => {
     const key = typeof entry?.field === 'string' ? entry.field.trim() : '';
     if (!key) return;
@@ -1387,7 +1267,7 @@ function deriveMappingHintsFromFields(fields = []) {
       hints[key] = DEFAULT_MAPPING_HINTS[key];
     }
   });
-  return { mappingHints: hints, nestedObjects };
+  return hints;
 }
 
 function pickEnumValues(node) {
@@ -1694,15 +1574,6 @@ function extractOperationsFromOpenApi(spec, meta = {}, metaLookup = {}) {
           resolvedResponse = { status: undefined, body: {} };
           variationWarnings.push('Variation missing response definition; inserted empty object.');
         }
-        const variationDefaults = {
-          ...collectFieldDefaults(variationRequestFields),
-          ...collectVariationDefaults(variationRequestFields, variationName),
-        };
-        const requestSample = buildRequestSampleFromFields(
-          variationRequestFields,
-          variationDefaults,
-          resolvedRequest?.body,
-        );
         return {
           key: key || `variation-${index + 1}`,
           name: variationName,
@@ -1711,7 +1582,6 @@ function extractOperationsFromOpenApi(spec, meta = {}, metaLookup = {}) {
           response: resolvedResponse,
           requestFields: variationRequestFields,
           responseFields: variationResponseFields,
-          requestSample,
         };
       });
       const variations = applyVariationFieldMetadata([
@@ -1720,8 +1590,7 @@ function extractOperationsFromOpenApi(spec, meta = {}, metaLookup = {}) {
       ]);
 
       const fieldDefaults = collectFieldDefaults(requestFields);
-      const requestSample = buildRequestSampleFromFields(requestFields, fieldDefaults, requestExample);
-      const { mappingHints, nestedObjects } = deriveMappingHintsFromFields(requestFields);
+      const mappingHints = deriveMappingHintsFromFields(requestFields);
 
       entries.push({
         id: id || `${method}-${entries.length + 1}`,
@@ -1743,9 +1612,7 @@ function extractOperationsFromOpenApi(spec, meta = {}, metaLookup = {}) {
         responseExamples: responseExampleEntries,
         variations,
         ...(Object.keys(fieldDefaults).length ? { fieldDefaults } : {}),
-        requestSample,
         ...(Object.keys(mappingHints).length ? { mappingHints } : {}),
-        ...(nestedObjects.length ? { nestedObjects } : {}),
         ...(Array.isArray(resolvedReceiptTypes) && resolvedReceiptTypes.length
           ? { receiptTypes: resolvedReceiptTypes }
           : {}),
@@ -2109,9 +1976,6 @@ function extractOperationsFromPostman(spec, meta = {}) {
       const hasRequestPayload = Boolean(
         requestSchema || requestExample !== undefined || (examples && examples.length),
       );
-      const derivedMapping = deriveMappingHintsFromFields(combinedRequestFields);
-      const fieldDefaults = collectFieldDefaults(combinedRequestFields);
-      const requestSample = buildRequestSampleFromFields(combinedRequestFields, fieldDefaults, requestExample);
       const variations = Array.isArray(examples)
         ? examples.map((example) => {
           const exampleRequestFields = flattenFieldsFromExample(example?.request?.body || example?.request || {});
@@ -2148,19 +2012,12 @@ function extractOperationsFromPostman(spec, meta = {}) {
           if (!example.response) {
             variationWarnings.push('Variation missing explicit response example; inserted placeholder response.');
           }
-          const variationDefaults = collectFieldDefaults(requestFields);
-          const requestSample = buildRequestSampleFromFields(
-            requestFields,
-            variationDefaults,
-            resolvedRequest?.body,
-          );
           return {
             ...example,
             request: resolvedRequest,
             response: resolvedResponse,
             requestFields,
             responseFields,
-            requestSample,
           };
         })
         : [];
@@ -2196,9 +2053,12 @@ function extractOperationsFromPostman(spec, meta = {}) {
         requestFields: combinedRequestFields,
         responseFields: responseDetails.responseFields,
         variations,
-        ...(Object.keys(fieldDefaults).length ? { fieldDefaults } : {}),
-        requestSample,
-        ...(Object.keys(derivedMapping.mappingHints).length ? derivedMapping : {}),
+        ...(Object.keys(collectFieldDefaults(combinedRequestFields)).length
+          ? { fieldDefaults: collectFieldDefaults(combinedRequestFields) }
+          : {}),
+        ...(Object.keys(deriveMappingHintsFromFields(combinedRequestFields)).length
+          ? { mappingHints: deriveMappingHintsFromFields(combinedRequestFields) }
+          : {}),
         ...(parseWarnings.length || variationWarnings.length
           ? { parseWarnings: [...parseWarnings, ...variationWarnings] }
           : {}),
