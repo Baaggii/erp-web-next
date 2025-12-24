@@ -1369,7 +1369,7 @@ export async function getEmploymentSessions(empid, options = {}) {
          ON es.emp_id = e.employment_emp_id
         AND es.company_id = e.employment_company_id
         AND es.branch_id = e.employment_branch_id
-        AND es.department_id = e.employment_department_id
+       AND es.department_id = e.employment_department_id
        LEFT JOIN tbl_workplace tw
          ON tw.company_id = e.employment_company_id
         AND tw.branch_id = e.employment_branch_id
@@ -1381,7 +1381,7 @@ export async function getEmploymentSessions(empid, options = {}) {
        LEFT JOIN user_level_permissions up ON up.userlevel_id = ul.userlevel_id AND up.action = 'permission' AND up.company_id IN (${GLOBAL_COMPANY_ID}, e.employment_company_id)
        WHERE e.employment_emp_id = ?
       GROUP BY e.employment_company_id, company_name,
-                c.merchant_tin,
+                ${merchantTinExpr},
                 e.employment_branch_id, branch_name,
                 e.employment_department_id, department_name,
                 es.workplace_id, cw.workplace_name,
@@ -1411,7 +1411,10 @@ export async function getEmploymentSessions(empid, options = {}) {
       const fallbackSql = replaceExpr(withoutMerchantId, merchantTinExpr, "NULL");
       [rows] = await pool.query(fallbackSql, params);
     } else {
-      throw err;
+      console.warn("Employment sessions query failed; returning empty list", {
+        error: err?.message || err,
+      });
+      rows = [];
     }
   }
   const sessions = rows.map(mapEmploymentRow);
@@ -1670,7 +1673,10 @@ export async function getEmploymentSession(empid, companyId, options = {}) {
         const fallbackSql = replaceExpr(withoutMerchantId, merchantTinExpr, "NULL");
         [rows] = await pool.query(fallbackSql, queryParams);
       } else {
-        throw err;
+        console.warn("Employment session query failed; returning null", {
+          error: err?.message || err,
+        });
+        return null;
       }
     }
     if (rows.length === 0) return null;
