@@ -113,66 +113,35 @@ async function writeConfig(cfg, companyId = 0) {
   await fs.writeFile(filePath, JSON.stringify(cfg, null, 2));
 }
 
-function selectConfigForFilter(tableEntries, filterColumn, filterValue, targetColumn) {
+function selectConfigForFilter(tableEntries, filterColumn, filterValue) {
   const normalizedColumn =
-    typeof filterColumn === 'string' && filterColumn.trim()
-      ? filterColumn.trim().toLowerCase()
-      : '';
+    typeof filterColumn === 'string' && filterColumn.trim() ? filterColumn.trim() : '';
   const normalizedValue =
     filterValue === null || filterValue === undefined
       ? ''
       : String(filterValue).trim();
-  const normalizedTarget =
-    typeof targetColumn === 'string' && targetColumn.trim()
-      ? targetColumn.trim().toLowerCase()
-      : '';
 
   if (tableEntries.length === 0) return null;
 
-  const candidates = normalizedTarget
-    ? tableEntries.filter(
-        (entry) =>
-          typeof entry.idField === 'string' &&
-          entry.idField.trim().toLowerCase() === normalizedTarget,
-      )
-    : tableEntries;
-
-  if (candidates.length === 0) return null;
-
   if (normalizedColumn) {
-    const exact = candidates.find((entry) => {
-      const entryColumn =
-        typeof entry.filterColumn === 'string' && entry.filterColumn.trim()
-          ? entry.filterColumn.trim().toLowerCase()
-          : '';
-      if (!entryColumn || entryColumn !== normalizedColumn) return false;
-      const entryValue =
-        entry.filterValue === null || entry.filterValue === undefined
-          ? ''
-          : String(entry.filterValue).trim();
-      return entryValue === normalizedValue;
-    });
+    const exact = tableEntries.find(
+      (entry) =>
+        entry.filterColumn === normalizedColumn && (entry.filterValue ?? '') === normalizedValue,
+    );
     if (exact) return exact;
 
-    const columnOnly = candidates.find((entry) => {
-      const entryColumn =
-        typeof entry.filterColumn === 'string' && entry.filterColumn.trim()
-          ? entry.filterColumn.trim().toLowerCase()
-          : '';
-      if (!entryColumn || entryColumn !== normalizedColumn) return false;
-      const entryValue =
-        entry.filterValue === null || entry.filterValue === undefined
-          ? ''
-          : String(entry.filterValue).trim();
-      return !entryValue && !normalizedValue;
-    });
-    if (columnOnly) return columnOnly;
+    const columnOnly = tableEntries.find(
+      (entry) => entry.filterColumn === normalizedColumn && !entry.filterValue,
+    );
+    if (columnOnly && !normalizedValue) return columnOnly;
   }
 
-  const defaultEntry = candidates.find((entry) => !entry.filterColumn && !entry.filterValue);
+  const defaultEntry = tableEntries.find(
+    (entry) => !entry.filterColumn && !entry.filterValue,
+  );
   if (defaultEntry) return defaultEntry;
 
-  return candidates[0];
+  return tableEntries[0];
 }
 
 function makeKey(entry) {
@@ -205,17 +174,11 @@ export function validateDisplayFieldConfig(newCfg, existingCfgs) {
   }
 }
 
-export async function getDisplayFields(
-  table,
-  companyId = 0,
-  filterColumn,
-  filterValue,
-  targetColumn,
-) {
+export async function getDisplayFields(table, companyId = 0, filterColumn, filterValue) {
   const normalizedTable = typeof table === 'string' ? table.trim() : '';
   const { cfg, isDefault } = await readConfig(companyId);
   const entries = cfg.filter((entry) => entry.table === normalizedTable);
-  const matched = selectConfigForFilter(entries, filterColumn, filterValue, targetColumn);
+  const matched = selectConfigForFilter(entries, filterColumn, filterValue);
 
   if (matched) {
     return { config: matched, entries, isDefault };
