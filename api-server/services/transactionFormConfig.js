@@ -75,11 +75,16 @@ function deriveFieldDescriptions(requestFields, responseFields) {
 function deriveMappingHints(endpoint) {
   if (!endpoint || typeof endpoint !== 'object') return undefined;
   const requestFields = Array.isArray(endpoint.requestFields) ? endpoint.requestFields : [];
+  const nestedObjects =
+    Array.isArray(endpoint.nestedObjects) && endpoint.nestedObjects.length
+      ? endpoint.nestedObjects
+      : [];
   const result = {};
 
   const topLevelFields = [];
   const receiptFields = [];
   const itemFields = [];
+  const paymentFields = [];
 
   requestFields.forEach((entry) => {
     const field = typeof entry?.field === 'string' ? entry.field.trim() : '';
@@ -91,6 +96,14 @@ function deriveMappingHints(endpoint) {
     };
     if (field.startsWith('receipts[].items[].')) {
       itemFields.push({ ...base, field: field.replace('receipts[].items[].', '') });
+      return;
+    }
+    if (field.startsWith('receipts[].payments[].')) {
+      paymentFields.push({ ...base, field: field.replace('receipts[].payments[].', '') });
+      return;
+    }
+    if (field.startsWith('payments[].')) {
+      paymentFields.push({ ...base, field: field.replace('payments[].', '') });
       return;
     }
     if (field.startsWith('receipts[].')) {
@@ -113,6 +126,7 @@ function deriveMappingHints(endpoint) {
     if (types.length) {
       result.receiptGroups = types.map((type) => ({ type, fields: receiptFields }));
     }
+    result.receiptFields = receiptFields;
   }
 
   if (endpoint.paymentMethodFields && typeof endpoint.paymentMethodFields === 'object') {
@@ -142,6 +156,10 @@ function deriveMappingHints(endpoint) {
     }
   }
 
+  if (paymentFields.length) {
+    result.paymentFields = paymentFields;
+  }
+
   const hasReceiptContent = requestFields.some((entry) => typeof entry?.field === 'string' && entry.field.includes('receipts'));
   const hasPaymentContent = requestFields.some(
     (entry) => typeof entry?.field === 'string' && entry.field.includes('payments'),
@@ -151,6 +169,10 @@ function deriveMappingHints(endpoint) {
       ...(hasReceiptContent ? { receipts: 'receipts', items: 'receipts[].items' } : {}),
       ...(hasPaymentContent ? { payments: 'payments' } : {}),
     };
+  }
+
+  if (nestedObjects.length) {
+    result.nestedObjects = nestedObjects;
   }
 
   return Object.keys(result).length ? result : undefined;
@@ -404,6 +426,19 @@ function sanitizeEndpointForClient(endpoint) {
   const derivedHints = deriveMappingHints({ ...sanitized, receiptTypes: endpoint.receiptTypes });
   if (derivedHints) {
     sanitized.mappingHints = derivedHints;
+  }
+  const nestedObjects =
+    Array.isArray(endpoint.nestedObjects) && endpoint.nestedObjects.length
+      ? endpoint.nestedObjects
+      : derivedHints?.nestedObjects;
+  if (Array.isArray(nestedObjects) && nestedObjects.length) {
+    sanitized.nestedObjects = nestedObjects;
+  }
+  if (endpoint.requestSample && typeof endpoint.requestSample === 'object') {
+    sanitized.requestSample = endpoint.requestSample;
+  }
+  if (endpoint.fieldDefaults && typeof endpoint.fieldDefaults === 'object') {
+    sanitized.fieldDefaults = endpoint.fieldDefaults;
   }
 
   const parameters = sanitizeParameters(endpoint.parameters);
