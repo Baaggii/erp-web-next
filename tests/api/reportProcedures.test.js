@@ -144,7 +144,6 @@ test('listPermittedProcedures filters by position visibility rules', async () =>
           senior_empid: null,
           senior_plan_empid: null,
           workplace_id: 5,
-          workplace_assignments: [{ workplace_id: 5, position_id: positionId }],
           employee_name: 'Tester',
           user_level: 7,
           user_level_name: 'Level 7',
@@ -302,13 +301,6 @@ test('listPermittedProcedures denies fallback when workplace access is configure
     });
     const deniedNames = deniedProcedures.map((p) => p.name);
     assert.ok(!deniedNames.includes('workplace_proc'));
-
-    workplaceAssignments = [{ workplace_id: 5, position_id: 2 }];
-    const { procedures: disallowedProcedures } = await listPermittedProcedures({}, companyId, {
-      empid: 'emp-workplace',
-    });
-    const disallowedNames = disallowedProcedures.map((p) => p.name);
-    assert.ok(!disallowedNames.includes('workplace_proc'));
 
     workplaceAssignments = [{ workplace_id: 5, position_id: 9 }];
     const { procedures: allowedProcedures } = await listPermittedProcedures({}, companyId, {

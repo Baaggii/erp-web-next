@@ -1,8 +1,3 @@
-import {
-  resolveEffectivePositions,
-  resolveWorkplaceAssignmentsFromOptions,
-} from '../../../utils/accessControl.js';
-
 export function normalizeAccessValue(value) {
   if (value === undefined || value === null) return null;
   const str = String(value).trim();
@@ -30,6 +25,82 @@ function matchesScope(list, value) {
   }
   if (value === null) return true;
   return list.includes(value);
+}
+
+function resolveWorkplacePositions(options, workplaceValue) {
+  if (!options || typeof options !== 'object') return [];
+  const workplaces = Array.isArray(workplaceValue) ? workplaceValue : [workplaceValue];
+  const resolved = [];
+  const addPosition = (position) => {
+    const normalized = normalizeAccessValue(position);
+    if (normalized !== null && !resolved.includes(normalized)) {
+      resolved.push(normalized);
+    }
+  };
+
+  for (const wp of workplaces) {
+    const normalizedWorkplace = normalizeAccessValue(wp);
+    if (normalizedWorkplace === null) continue;
+
+    const mapCandidates = [
+      options.workplacePositionMap,
+      options.workplacePositionById,
+      options.workplacePositionsMap,
+    ];
+    for (const map of mapCandidates) {
+      if (map && typeof map === 'object' && !Array.isArray(map)) {
+        addPosition(map[normalizedWorkplace]);
+      }
+    }
+
+    const listCandidates = [
+      options.workplacePositions,
+      options.workplacesWithPositions,
+    ];
+    for (const list of listCandidates) {
+      if (!Array.isArray(list)) continue;
+      for (const entry of list) {
+        const entryWorkplace = normalizeAccessValue(
+          entry?.workplaceId ?? entry?.workplace_id ?? entry?.workplace ?? entry?.id,
+        );
+        if (entryWorkplace !== normalizedWorkplace) continue;
+        addPosition(
+          entry?.positionId ??
+            entry?.position_id ??
+            entry?.position ??
+            entry?.workplacePositionId ??
+            entry?.workplace_position_id,
+        );
+      }
+    }
+
+    addPosition(
+      options.workplacePositionId ??
+        options.workplacePosition ??
+        options.workplace_position_id ??
+        options.workplace_position,
+    );
+  }
+
+  return resolved;
+}
+
+function isPositionAllowed(allowedPositions, positionValue, workplaceValue, options) {
+  if (!Array.isArray(allowedPositions) || allowedPositions.length === 0) return true;
+
+  const hasWorkplace = workplaceValue !== null && workplaceValue !== undefined;
+
+  if (hasWorkplace) {
+    const workplacePositions = resolveWorkplacePositions(options, workplaceValue);
+
+    if (!Array.isArray(workplacePositions) || workplacePositions.length === 0) {
+      return false;
+    }
+
+    return matchesScope(allowedPositions, workplacePositions);
+  }
+
+  return matchesScope(allowedPositions, positionValue);
 }
 
 function hasRegularAccessUserRight(options = {}) {
@@ -82,27 +153,6 @@ export function hasTransactionFormAccess(
   const hasRegularAccess = hasRegularAccessUserRight({ ...options, userRightValue });
   const effectiveWorkplace =
     options.workplaceId ?? (Array.isArray(options.workplaces) ? options.workplaces : null);
-  const workplaceAssignments = resolveWorkplaceAssignmentsFromOptions(
-    effectiveWorkplace,
-    options,
-    normalizeAccessValue,
-  );
-  const resolvedPositions = resolveEffectivePositions({
-    workplaceId: effectiveWorkplace,
-    employmentPositionId: positionValues ?? positionValue,
-    workplaceAssignments,
-    normalizeValue: normalizeAccessValue,
-    logger: options?.logger,
-    userId: options?.userId ?? options?.empid ?? options?.employeeId,
-  });
-  const positionAllowedFor = (allowedPositions) => {
-    if (resolvedPositions.mode === 'deny') {
-      return Array.isArray(allowedPositions) &&
-        allowedPositions.length === 0 &&
-        !resolvedPositions.hasWorkplace;
-    }
-    return matchesScope(allowedPositions, resolvedPositions.positions);
-  };
 
   const allowedBranches = normalizeAccessList(info.allowedBranches);
   const allowedDepartments = normalizeAccessList(info.allowedDepartments);
@@ -116,7 +166,12 @@ export function hasTransactionFormAccess(
     matchesScope(allowedDepartments, departmentValue) &&
     matchesScope(allowedUserRights, userRightValues ?? userRightValue) &&
     matchesScope(allowedWorkplaces, workplaceValues ?? workplaceValue) &&
-    positionAllowedFor(allowedPositions) &&
+    isPositionAllowed(
+      allowedPositions,
+      positionValues ?? positionValue,
+      effectiveWorkplace,
+      options,
+    ) &&
     matchesScope(allowedProcedures, procedureValue);
 
   if (generalAllowed || hasRegularAccess) return true;
@@ -145,7 +200,12 @@ export function hasTransactionFormAccess(
     matchesScope(temporaryDepartments, departmentValue) &&
     matchesScope(temporaryUserRights, userRightValues ?? userRightValue) &&
     matchesScope(temporaryWorkplaces, workplaceValues ?? workplaceValue) &&
-    positionAllowedFor(temporaryPositions) &&
+    isPositionAllowed(
+      temporaryPositions,
+      positionValues ?? positionValue,
+      effectiveWorkplace,
+      options,
+    ) &&
     matchesScope(temporaryProcedures, procedureValue)
   );
 }
@@ -185,27 +245,6 @@ export function evaluateTransactionFormAccess(
   const hasRegularAccess = hasRegularAccessUserRight({ ...options, userRightValue });
   const effectiveWorkplace =
     options.workplaceId ?? (Array.isArray(options.workplaces) ? options.workplaces : null);
-  const workplaceAssignments = resolveWorkplaceAssignmentsFromOptions(
-    effectiveWorkplace,
-    options,
-    normalizeAccessValue,
-  );
-  const resolvedPositions = resolveEffectivePositions({
-    workplaceId: effectiveWorkplace,
-    employmentPositionId: positionValues ?? positionValue,
-    workplaceAssignments,
-    normalizeValue: normalizeAccessValue,
-    logger: options?.logger,
-    userId: options?.userId ?? options?.empid ?? options?.employeeId,
-  });
-  const positionAllowedFor = (allowedPositions) => {
-    if (resolvedPositions.mode === 'deny') {
-      return Array.isArray(allowedPositions) &&
-        allowedPositions.length === 0 &&
-        !resolvedPositions.hasWorkplace;
-    }
-    return matchesScope(allowedPositions, resolvedPositions.positions);
-  };
 
   const allowedBranches = normalizeAccessList(info.allowedBranches);
   const allowedDepartments = normalizeAccessList(info.allowedDepartments);
@@ -220,7 +259,12 @@ export function evaluateTransactionFormAccess(
       matchesScope(allowedDepartments, departmentValue) &&
       matchesScope(allowedUserRights, userRightValues ?? userRightValue) &&
       matchesScope(allowedWorkplaces, workplaceValues ?? workplaceValue) &&
-      positionAllowedFor(allowedPositions) &&
+      isPositionAllowed(
+        allowedPositions,
+        positionValues ?? positionValue,
+        effectiveWorkplace,
+        options,
+      ) &&
       matchesScope(allowedProcedures, procedureValue));
 
   const temporaryEnabled = Boolean(
@@ -245,10 +289,15 @@ export function evaluateTransactionFormAccess(
       allowTemporary =
         matchesScope(temporaryBranches, branchValue) &&
         matchesScope(temporaryDepartments, departmentValue) &&
-        matchesScope(temporaryUserRights, userRightValues ?? userRightValue) &&
-        matchesScope(temporaryWorkplaces, workplaceValues ?? workplaceValue) &&
-        positionAllowedFor(temporaryPositions) &&
-        matchesScope(temporaryProcedures, procedureValue);
+      matchesScope(temporaryUserRights, userRightValues ?? userRightValue) &&
+      matchesScope(temporaryWorkplaces, workplaceValues ?? workplaceValue) &&
+      isPositionAllowed(
+        temporaryPositions,
+        positionValues ?? positionValue,
+        effectiveWorkplace,
+        options,
+      ) &&
+      matchesScope(temporaryProcedures, procedureValue);
     }
   }
 

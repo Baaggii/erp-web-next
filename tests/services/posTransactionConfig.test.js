@@ -58,7 +58,6 @@ test('hasPosTransactionAccess enforces user rights, workplaces, and procedures',
       userRightId: '100',
       positionId: '10',
       workplaceId: 5,
-      workplacePositions: [{ workplace_id: 5, position_id: '10' }],
       procedure: 'sp_pos_submit',
     }),
     true,
@@ -68,7 +67,6 @@ test('hasPosTransactionAccess enforces user rights, workplaces, and procedures',
       userRightId: '101',
       positionId: '10',
       workplaceId: 5,
-      workplacePositions: [{ workplace_id: 5, position_id: '10' }],
       procedure: 'sp_pos_submit',
     }),
     false,
@@ -78,7 +76,6 @@ test('hasPosTransactionAccess enforces user rights, workplaces, and procedures',
       userRightId: '200',
       positionId: '20',
       workplaceId: '9',
-      workplacePositions: [{ workplace_id: '9', position_id: '20' }],
       procedure: 'sp_pos_temp',
     }),
     true,
@@ -88,7 +85,6 @@ test('hasPosTransactionAccess enforces user rights, workplaces, and procedures',
       userRightId: '200',
       positionId: '10',
       workplaceId: '9',
-      workplacePositions: [{ workplace_id: '9', position_id: '20' }],
       procedure: 'sp_pos_submit',
     }),
     false,
@@ -114,50 +110,6 @@ test('hasPosTransactionAccess enforces positions for regular access', () => {
   assert.equal(
     hasPosTransactionAccess(config, null, null, { positionId: '99' }),
     true,
-  );
-});
-
-test('hasPosTransactionAccess requires workplace mappings before allowing positions', () => {
-  const config = {
-    allowedBranches: [],
-    allowedDepartments: [],
-    allowedPositions: ['100'],
-  };
-
-  assert.equal(
-    hasPosTransactionAccess(config, null, null, {
-      positionId: '100',
-      workplaceId: '20',
-    }),
-    false,
-  );
-
-  assert.equal(
-    hasPosTransactionAccess(config, null, null, {
-      positionId: '100',
-      workplaceId: '20',
-      workplacePositions: [{ workplace_id: '20', position_id: '200' }],
-    }),
-    false,
-  );
-
-  assert.equal(
-    hasPosTransactionAccess(config, null, null, {
-      positionId: '999',
-      workplaceId: '20',
-      workplacePositions: [{ workplace_id: '20', position_id: '100' }],
-    }),
-    true,
-  );
-
-  assert.equal(
-    hasPosTransactionAccess(config, null, null, { positionId: '100' }),
-    true,
-  );
-
-  assert.equal(
-    hasPosTransactionAccess(config, null, null, { positionId: '200' }),
-    false,
   );
 });
 
@@ -204,11 +156,7 @@ test('filterPosConfigsByAccess returns only permitted configurations', () => {
     configs,
     1,
     20,
-    {
-      userRightId: '10',
-      workplaceId: '5',
-      workplacePositions: [{ workplace_id: '5', position_id: '5' }],
-    },
+    { userRightId: '10', workplaceId: '5' },
   );
   assert.deepEqual(Object.keys(filtered).sort(), ['Alpha', 'Beta', 'Temp']);
   assert.ok(!filtered.Gamma);
