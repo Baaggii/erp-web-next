@@ -4761,6 +4761,7 @@ const TableManager = forwardRef(function TableManager({
       overrideValues = null,
       promoteAsTemporary = false,
       forcePromote = false,
+      forceRetry = false,
     } = {},
   ) {
     if (!canReviewTemporary) return false;
@@ -4807,6 +4808,32 @@ const TableManager = forwardRef(function TableManager({
           data?.message ||
           data?.error ||
           t('temporary_promote_failed', 'Failed to promote temporary');
+        const canForceResolveNow =
+          !forcePromote &&
+          !forceRetry &&
+          showForceResolvePendingToggle &&
+          res.status === 409 &&
+          typeof message === 'string' &&
+          message.toLowerCase().includes('another temporary submission in this chain is pending');
+        if (canForceResolveNow) {
+          const confirmForce = window.confirm(
+            t(
+              'temporary_force_resolve_confirm',
+              'Another draft in this chain is pending. Resolve other pending drafts and continue?',
+            ),
+          );
+          if (confirmForce) {
+            setForceResolvePendingDrafts(true);
+            return promoteTemporary(id, {
+              skipConfirm: true,
+              silent,
+              overrideValues,
+              promoteAsTemporary,
+              forcePromote: true,
+              forceRetry: true,
+            });
+          }
+        }
         if (!silent) {
           addToast(message, 'error');
         }
