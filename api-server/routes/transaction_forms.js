@@ -8,7 +8,6 @@ import {
   findTableByProcedure,
 } from '../services/transactionFormConfig.js';
 import { requireAuth } from '../middlewares/auth.js';
-import { buildWorkplacePositionMap } from '../utils/workplacePositionResolver.js';
 
 const router = express.Router();
 
@@ -53,11 +52,8 @@ router.get('/', requireAuth, async (req, res, next) => {
           userRightId,
           workplaceId,
           positionId,
-      workplacePositionId: resolvedWorkplacePositionId,
+          workplacePositionId: resolvedWorkplacePositionId,
           workplacePositions: session?.workplace_assignments,
-          workplacePositionMap:
-            session?.workplace_position_map ??
-            buildWorkplacePositionMap(session?.workplace_assignments),
         },
         companyId,
       );

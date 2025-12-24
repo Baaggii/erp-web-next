@@ -2,10 +2,6 @@ import {
   normalizeNumericId,
   normalizeWorkplaceAssignments,
 } from './workplaceAssignments.js';
-import {
-  applyWorkplacePosition,
-  buildWorkplacePositionMap,
-} from './workplacePositionResolver.js';
 
 function trimOrNull(value) {
   if (value === undefined || value === null) return null;
@@ -112,11 +108,7 @@ function buildNormalizedAssignment(source = {}, defaults = {}, options = {}) {
   };
 }
 
-export function normalizeEmploymentSession(
-  session,
-  assignments = [],
-  workplacePositionMap = null,
-) {
+export function normalizeEmploymentSession(session, assignments = []) {
   if (!session || typeof session !== 'object') {
     return session ?? null;
   }
@@ -131,11 +123,6 @@ export function normalizeEmploymentSession(
       null);
   const fallbackSessionId =
     normalizedSessionId ?? (sessionIds.length ? sessionIds[0] : null);
-
-  const basePositionMap = buildWorkplacePositionMap(
-    normalizedAssignments,
-    workplacePositionMap || {},
-  );
 
   const fallbackDefaults = {
     ...session,
@@ -161,9 +148,7 @@ export function normalizeEmploymentSession(
     }`;
     if (assignmentKeys.has(key)) return;
     assignmentKeys.add(key);
-    hydratedAssignments.push(
-      applyWorkplacePosition(normalizedAssignment, basePositionMap),
-    );
+    hydratedAssignments.push(normalizedAssignment);
   });
 
   if (hydratedAssignments.length === 0 && fallbackSessionId !== null) {
@@ -178,9 +163,7 @@ export function normalizeEmploymentSession(
       }`;
       if (!assignmentKeys.has(key)) {
         assignmentKeys.add(key);
-        hydratedAssignments.push(
-          applyWorkplacePosition(fallbackAssignment, basePositionMap),
-        );
+        hydratedAssignments.push(fallbackAssignment);
       }
     }
   }
@@ -193,23 +176,11 @@ export function normalizeEmploymentSession(
     combinedSessionIds.push(fallbackSessionId);
   }
 
-  const finalPositionMap = buildWorkplacePositionMap(
-    hydratedAssignments,
-    basePositionMap,
-  );
-  const resolvedWorkplacePositionId =
-    finalPositionMap[fallbackWorkplaceId]?.positionId ?? null;
-  const resolvedWorkplacePositionName =
-    finalPositionMap[fallbackWorkplaceId]?.positionName ?? null;
-
   return {
     ...session,
     workplace_id: fallbackWorkplaceId,
     workplace_session_id: fallbackSessionId,
     workplace_assignments: hydratedAssignments,
     workplace_session_ids: combinedSessionIds,
-    workplace_position_id: resolvedWorkplacePositionId,
-    workplace_position_name: resolvedWorkplacePositionName ?? null,
-    workplace_position_map: finalPositionMap,
   };
 }

@@ -1,7 +1,6 @@
 import * as db from '../../db/index.js';
 import { normalizeEmploymentSession } from '../utils/employmentSession.js';
 import { normalizeNumericId } from '../utils/workplaceAssignments.js';
-import { resolveWorkplacePositionsForAssignments } from '../utils/workplacePositionResolver.js';
 
 let getEmploymentSessionsImpl = db.getEmploymentSessions;
 
@@ -185,27 +184,8 @@ export async function listReportWorkplaces(req, res, next) {
 
     const defaultSession = pickDefaultSession(filtered);
 
-    let hydratedAssignments = workplaceAssignments;
-    let workplacePositionMap = null;
-    try {
-      const resolved = await resolveWorkplacePositionsForAssignments(
-        workplaceAssignments,
-        {
-          companyId: defaultSession?.company_id ?? defaultSession?.companyId ?? null,
-        },
-      );
-      hydratedAssignments = resolved.assignments;
-      workplacePositionMap = resolved.workplacePositionMap;
-    } catch (err) {
-      console.warn('Failed to resolve workplace positions for reports', err);
-    }
-
     const sessionPayload = defaultSession
-      ? normalizeEmploymentSession(
-          defaultSession,
-          hydratedAssignments,
-          workplacePositionMap,
-        )
+      ? normalizeEmploymentSession(defaultSession, workplaceAssignments)
       : null;
 
     const assignmentsForResponse = Array.isArray(
