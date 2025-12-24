@@ -1,3 +1,5 @@
+import { deriveWorkplacePositionsFromAssignments } from './workplaceResolver.js';
+
 // src/erp.mgt.mn/utils/normalizeEmploymentSession.js
 function normalizeNumericId(value) {
   if (value === undefined || value === null) return null;
@@ -25,6 +27,12 @@ function collectUnique(values) {
   return result;
 }
 
+function normalizeText(value) {
+  if (value === undefined || value === null) return null;
+  const trimmed = String(value).trim();
+  return trimmed || null;
+}
+
 export default function normalizeEmploymentSession(session) {
   if (!session || typeof session !== 'object') {
     return session ?? null;
@@ -49,10 +57,29 @@ export default function normalizeEmploymentSession(session) {
       return list;
     }
 
+    const positionId = normalizeNumericId(
+      assignment.workplace_position_id ??
+        assignment.workplacePositionId ??
+        assignment.position_id ??
+        assignment.positionId ??
+        assignment.position,
+    );
+    const positionName =
+      normalizeText(
+        assignment.workplace_position_name ??
+          assignment.workplacePositionName ??
+          assignment.position_name ??
+          assignment.positionName,
+      ) ?? null;
+
     const normalizedAssignment = {
       ...assignment,
       workplace_id: workplaceId,
       workplace_session_id: sessionId,
+      workplace_position_id: positionId,
+      workplacePositionId: positionId,
+      workplace_position_name: positionName,
+      workplacePositionName: positionName,
     };
     list.push(normalizedAssignment);
     return list;
@@ -82,11 +109,43 @@ export default function normalizeEmploymentSession(session) {
     normalizedSessionId ??
     (assignmentSessionIds.length ? assignmentSessionIds[0] : null);
 
+  const normalizedPositionId = normalizeNumericId(
+    session.workplace_position_id ??
+      session.workplacePositionId ??
+      session.position_id ??
+      session.positionId,
+  );
+  const normalizedPositionName = normalizeText(
+    session.workplace_position_name ?? session.workplacePositionName,
+  );
+  const matchedAssignment =
+    normalizedAssignments.find(
+      (assignment) =>
+        assignment.workplace_session_id === fallbackSessionId ||
+        assignment.workplace_id === fallbackWorkplaceId,
+    ) || null;
+  const fallbackPositionId =
+    normalizedPositionId ??
+    normalizeNumericId(matchedAssignment?.workplace_position_id);
+  const fallbackPositionName =
+    normalizedPositionName ??
+    normalizeText(matchedAssignment?.workplace_position_name) ??
+    null;
+  const workplacePositionMap = deriveWorkplacePositionsFromAssignments({
+    workplace_assignments: normalizedAssignments,
+  });
+
   return {
     ...session,
     workplace_id: fallbackWorkplaceId,
     workplace_session_id: fallbackSessionId,
+    workplace_position_id: fallbackPositionId,
+    workplacePositionId: fallbackPositionId,
+    workplace_position_name: fallbackPositionName,
+    workplacePositionName: fallbackPositionName,
     workplace_assignments: normalizedAssignments,
     workplace_session_ids: assignmentSessionIds,
+    workplace_position_map: workplacePositionMap,
+    workplacePositionMap: workplacePositionMap,
   };
 }

@@ -2,6 +2,7 @@ import {
   normalizeNumericId,
   normalizeWorkplaceAssignments,
 } from './workplaceAssignments.js';
+import { deriveWorkplacePositionsFromAssignments } from './workplacePositions.js';
 
 function trimOrNull(value) {
   if (value === undefined || value === null) return null;
@@ -72,6 +73,35 @@ function buildNormalizedAssignment(source = {}, defaults = {}, options = {}) {
         fallbackMeta ? defaults.workplace_name ?? defaults.workplaceName : null,
       ),
     ) ?? null;
+  const workplacePositionId = normalizeNumericId(
+    coalesce(
+      source.workplace_position_id ??
+        source.workplacePositionId ??
+        source.position_id ??
+        source.positionId,
+      fallbackMeta
+        ? defaults.workplace_position_id ??
+            defaults.workplacePositionId ??
+            defaults.position_id ??
+            defaults.positionId
+        : null,
+    ),
+  );
+  const workplacePositionName =
+    trimOrNull(
+      coalesce(
+        source.workplace_position_name ??
+          source.workplacePositionName ??
+          source.position_name ??
+          source.positionName,
+        fallbackMeta
+          ? defaults.workplace_position_name ??
+              defaults.workplacePositionName ??
+              defaults.position_name ??
+              defaults.positionName
+          : null,
+      ),
+    ) ?? null;
   const workplaceSessionId = normalizeNumericId(
     coalesce(
       source.workplace_session_id ?? source.workplaceSessionId,
@@ -105,6 +135,10 @@ function buildNormalizedAssignment(source = {}, defaults = {}, options = {}) {
     workplaceName: workplaceName,
     workplace_session_id: workplaceSessionId,
     workplaceSessionId: workplaceSessionId,
+    workplace_position_id: workplacePositionId,
+    workplacePositionId: workplacePositionId,
+    workplace_position_name: workplacePositionName,
+    workplacePositionName: workplacePositionName,
   };
 }
 
@@ -123,6 +157,12 @@ export function normalizeEmploymentSession(session, assignments = []) {
       null);
   const fallbackSessionId =
     normalizedSessionId ?? (sessionIds.length ? sessionIds[0] : null);
+  const normalizedPositionId = normalizeNumericId(
+    session.workplace_position_id ?? session.workplacePositionId,
+  );
+  const normalizedPositionName = trimOrNull(
+    session.workplace_position_name ?? session.workplacePositionName,
+  );
 
   const fallbackDefaults = {
     ...session,
@@ -130,6 +170,10 @@ export function normalizeEmploymentSession(session, assignments = []) {
     workplaceId: fallbackWorkplaceId,
     workplace_session_id: fallbackSessionId,
     workplaceSessionId: fallbackSessionId,
+    workplace_position_id: normalizedPositionId,
+    workplacePositionId: normalizedPositionId,
+    workplace_position_name: normalizedPositionName,
+    workplacePositionName: normalizedPositionName,
   };
 
   const hydratedAssignments = [];
@@ -176,11 +220,34 @@ export function normalizeEmploymentSession(session, assignments = []) {
     combinedSessionIds.push(fallbackSessionId);
   }
 
+  const matchedAssignment =
+    hydratedAssignments.find(
+      (assignment) =>
+        assignment.workplace_session_id === fallbackSessionId ||
+        assignment.workplace_id === fallbackWorkplaceId,
+    ) || null;
+  const resolvedPositionId =
+    normalizedPositionId ??
+    normalizeNumericId(matchedAssignment?.workplace_position_id);
+  const resolvedPositionName =
+    normalizedPositionName ??
+    trimOrNull(matchedAssignment?.workplace_position_name) ??
+    null;
+  const workplacePositionMap = deriveWorkplacePositionsFromAssignments(
+    hydratedAssignments,
+  );
+
   return {
     ...session,
     workplace_id: fallbackWorkplaceId,
     workplace_session_id: fallbackSessionId,
+    workplace_position_id: resolvedPositionId,
+    workplacePositionId: resolvedPositionId,
+    workplace_position_name: resolvedPositionName,
+    workplacePositionName: resolvedPositionName,
     workplace_assignments: hydratedAssignments,
     workplace_session_ids: combinedSessionIds,
+    workplace_position_map: workplacePositionMap,
+    workplacePositionMap: workplacePositionMap,
   };
 }

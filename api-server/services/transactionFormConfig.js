@@ -752,6 +752,22 @@ export async function listTransactionNames(
     return list.includes(normalizedValue);
   };
 
+  const extractPositionId = (entry) => {
+    if (entry === undefined || entry === null) return null;
+    if (typeof entry === 'object' && !Array.isArray(entry)) {
+      return (
+        entry.positionId ??
+        entry.position_id ??
+        entry.position ??
+        entry.workplacePositionId ??
+        entry.workplace_position_id ??
+        entry.id ??
+        null
+      );
+    }
+    return entry;
+  };
+
   const resolveWorkplacePosition = (workplaceValue) => {
     const workplaces = Array.isArray(workplaceValue) ? workplaceValue : [workplaceValue];
     for (const wp of workplaces) {
@@ -765,8 +781,9 @@ export async function listTransactionNames(
       ];
       for (const map of mapCandidates) {
         if (map && typeof map === 'object' && !Array.isArray(map)) {
-          const mapped = normalizeAccessValue(map[normalizedWorkplace]);
-          if (mapped !== null) return mapped;
+          const mapped = extractPositionId(map[normalizedWorkplace]);
+          const normalizedMapped = normalizeAccessValue(mapped);
+          if (normalizedMapped !== null) return normalizedMapped;
         }
       }
 
@@ -778,23 +795,26 @@ export async function listTransactionNames(
             entry?.workplaceId ?? entry?.workplace_id ?? entry?.workplace ?? entry?.id,
           );
           if (entryWorkplace !== normalizedWorkplace) continue;
-          const position = normalizeAccessValue(
+          const position = extractPositionId(
             entry?.positionId ??
               entry?.position_id ??
               entry?.position ??
               entry?.workplacePositionId ??
-              entry?.workplace_position_id,
+              entry?.workplace_position_id ??
+              entry,
           );
-          if (position !== null) return position;
+          const normalizedPosition = normalizeAccessValue(position);
+          if (normalizedPosition !== null) return normalizedPosition;
         }
       }
 
-      const direct = normalizeAccessValue(
+      const direct = extractPositionId(
         workplacePositionId ??
           workplacePositionMap?.[normalizedWorkplace] ??
           workplacePositionById?.[normalizedWorkplace],
       );
-      if (direct !== null) return direct;
+      const normalizedDirect = normalizeAccessValue(direct);
+      if (normalizedDirect !== null) return normalizedDirect;
     }
     return null;
   };
@@ -804,9 +824,10 @@ export async function listTransactionNames(
 
     if (workplaceValue !== null && workplaceValue !== undefined) {
       const resolved = resolveWorkplacePosition(workplaceValue);
-      if (resolved !== null) {
-        return matchesScope(allowedPositions, resolved);
+      if (resolved === null) {
+        return false;
       }
+      return matchesScope(allowedPositions, resolved);
     }
 
     return matchesScope(allowedPositions, value);

@@ -36,10 +36,19 @@ export function normalizeWorkplaceAssignments(assignments = []) {
     if (seen.has(key)) return;
     seen.add(key);
 
+    const workplacePositionId = normalizeNumericId(
+      assignment.workplace_position_id ??
+        assignment.workplacePositionId ??
+        assignment.position_id ??
+        assignment.positionId,
+    );
+
     const normalizedAssignment = {
       ...assignment,
       workplace_id: workplaceId,
       workplace_session_id: workplaceSessionId,
+      workplace_position_id: workplacePositionId,
+      workplacePositionId: workplacePositionId,
     };
     normalized.push(normalizedAssignment);
     if (!sessionIds.includes(workplaceSessionId)) {
