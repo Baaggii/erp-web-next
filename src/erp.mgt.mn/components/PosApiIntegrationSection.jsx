@@ -119,7 +119,6 @@ export default function PosApiIntegrationSection({
   receiptFieldMapping = {},
   receiptGroupMapping = {},
   paymentMethodMapping = {},
-  responseFieldMapping = {},
   onEnsureColumnsLoaded = () => {},
   onPosApiOptionsChange = () => {},
 }) {
@@ -654,12 +653,6 @@ export default function PosApiIntegrationSection({
     return Array.isArray(config.fieldsFromPosApi) ? config.fieldsFromPosApi.join('\n') : '';
   }, [config.fieldsFromPosApi]);
 
-  const unmappedResponseFields = useMemo(() => {
-    if (!responseMappingFields.length) return [];
-    const mappedKeys = new Set(Object.keys(responseMapping || {}));
-    return responseMappingFields.filter((field) => !mappedKeys.has(field.key));
-  }, [responseMappingFields, responseMapping]);
-
   const handleInfoEndpointChange = (event) => {
     const selected = Array.from(event.target.selectedOptions || [])
       .map((opt) => opt.value)
@@ -689,19 +682,6 @@ export default function PosApiIntegrationSection({
         next[field] = trimmed;
       }
       return { ...c, posApiMapping: next };
-    });
-  };
-
-  const updatePosApiResponseMapping = (field, value) => {
-    setConfig((c) => {
-      const next = { ...(c.posApiResponseMapping || {}) };
-      const trimmed = typeof value === 'string' ? value.trim() : value;
-      if (!trimmed) {
-        delete next[field];
-      } else {
-        next[field] = trimmed;
-      }
-      return { ...c, posApiResponseMapping: next };
     });
   };
 
@@ -1348,66 +1328,6 @@ export default function PosApiIntegrationSection({
           One field path per line (e.g., receipts[0].billId) to persist on the transaction record.
         </small>
       </label>
-      {responseMappingFields.length > 0 && (
-        <div style={{ marginBottom: '1rem' }}>
-          <strong>Response field mapping</strong>
-          <p style={{ fontSize: '0.85rem', color: '#555' }}>
-            Map POSAPI response fields to columns. Unmapped fields remain unchanged.
-          </p>
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
-              gap: '0.75rem',
-              marginTop: '0.5rem',
-            }}
-          >
-            {responseMappingFields.map((field) => {
-              const listId = `posapi-response-${field.key}-columns`;
-              const hint = responseFieldHints[field.key] || {};
-              return (
-                <label
-                  key={`response-${field.key}`}
-                  style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}
-                >
-                  <span
-                    style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 600 }}
-                  >
-                    {field.label}
-                    <span
-                      style={{
-                        ...BADGE_BASE_STYLE,
-                        ...(hint.required ? REQUIRED_BADGE_STYLE : OPTIONAL_BADGE_STYLE),
-                      }}
-                    >
-                      {hint.required ? 'Required' : 'Optional'}
-                    </span>
-                  </span>
-                  <input
-                    type="text"
-                    list={listId}
-                    value={responseMapping[field.key] || ''}
-                    onChange={(e) => updatePosApiResponseMapping(field.key, e.target.value)}
-                    placeholder="Column name"
-                    disabled={!config.posApiEnabled}
-                  />
-                  {hint.description && <small style={{ color: '#555' }}>{hint.description}</small>}
-                  <datalist id={listId}>
-                    {columnOptions.map((col) => (
-                      <option key={`response-${field.key}-${col}`} value={col} />
-                    ))}
-                  </datalist>
-                </label>
-              );
-            })}
-          </div>
-          {unmappedResponseFields.length > 0 && (
-            <small style={{ color: '#555' }}>
-              Unmapped: {unmappedResponseFields.map((f) => f.label || f.key).join(', ')}
-            </small>
-          )}
-        </div>
-      )}
       <div>
         <strong>Field mapping</strong>
         <p style={{ fontSize: '0.85rem', color: '#555' }}>
