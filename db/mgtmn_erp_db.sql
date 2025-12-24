@@ -1676,22 +1676,48 @@ CREATE TABLE `pending_request` (
 DROP TABLE IF EXISTS `pos_session`;
 CREATE TABLE `pos_session` (
   `id` bigint UNSIGNED NOT NULL,
-  `session_uuid` varchar(36) NOT NULL,
-  `company_id` int NOT NULL,
-  `department_id` int NOT NULL,
-  `branch_id` int NOT NULL,
-  `workplace_id` int DEFAULT NULL,
-  `merchant_tin` varchar(50) NOT NULL,
-  `pos_no` varchar(32) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci DEFAULT NULL,
-  `device_uuid` varchar(64) DEFAULT NULL,
+  `session_uuid` char(36) NOT NULL,
+  `company_id` bigint NOT NULL,
+  `branch_id` bigint NOT NULL,
+  `department_id` bigint DEFAULT NULL,
+  `workplace_id` bigint DEFAULT NULL,
+  `merchant_id` bigint DEFAULT NULL,
+  `pos_terminal_no` varchar(64) DEFAULT NULL,
+  `device_id` varchar(64) DEFAULT NULL,
+  `device_mac` varchar(64) DEFAULT NULL,
+  `location_lat` decimal(9,6) DEFAULT NULL,
+  `location_lon` decimal(9,6) DEFAULT NULL,
   `started_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  `device_mac` varchar(50) NOT NULL,
-  `location` json NOT NULL,
   `ended_at` datetime DEFAULT NULL,
-  `current_user_id` varchar(10) DEFAULT NULL,
-  `senior_id` varchar(10) DEFAULT NULL,
-  `plan_senior_id` varchar(10) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci DEFAULT NULL
+  `current_user_id` bigint DEFAULT NULL,
+  `senior_id` bigint DEFAULT NULL,
+  `plan_senior_id` bigint DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+--
+-- Legacy compatibility for renamed POS session columns
+--
+DROP VIEW IF EXISTS `pos_session_legacy`;
+CREATE ALGORITHM=UNDEFINED SQL SECURITY DEFINER VIEW `pos_session_legacy` AS
+SELECT
+  ps.id,
+  ps.session_uuid,
+  ps.company_id,
+  ps.branch_id,
+  ps.department_id,
+  ps.workplace_id,
+  m.tax_registration_no AS merchant_tin,
+  ps.pos_terminal_no AS pos_no,
+  ps.device_id AS device_uuid,
+  JSON_OBJECT('lat', ps.location_lat, 'lon', ps.location_lon, 'mac', ps.device_mac) AS location,
+  ps.started_at,
+  ps.device_mac,
+  ps.ended_at,
+  ps.current_user_id,
+  ps.senior_id,
+  ps.plan_senior_id
+FROM pos_session ps
+LEFT JOIN merchant m ON m.id = ps.merchant_id;
 
 -- --------------------------------------------------------
 
@@ -5760,7 +5786,7 @@ ALTER TABLE `pending_request`
 ALTER TABLE `pos_session`
   ADD PRIMARY KEY (`id`),
   ADD UNIQUE KEY `uniq_pos_session_uuid` (`session_uuid`),
-  ADD KEY `idx_pos_session_lookup` (`company_id`,`branch_id`,`merchant_tin`);
+  ADD KEY `idx_pos_session_lookup` (`company_id`,`branch_id`,`merchant_id`);
 
 --
 -- Indexes for table `report_approvals`
