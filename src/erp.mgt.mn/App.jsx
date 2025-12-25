@@ -19,7 +19,7 @@ import CompaniesPage from './pages/Companies.jsx';
 import RolePermissionsPage from './pages/RolePermissions.jsx';
 import CompanyLicensesPage from './pages/CompanyLicenses.jsx';
 import TablesManagementPage from './pages/TablesManagement.jsx';
-import CodingTablesPage from './pages/CodingTables.jsx';
+import CodingTablesPage from './pages/CodingTablesWithJson.jsx';
 import FormsManagementPage from './pages/FormsManagement.jsx';
 import ReportManagementPage from './pages/ReportManagement.jsx';
 import ReportBuilderPage from './pages/ReportBuilder.jsx';
