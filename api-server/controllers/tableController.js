@@ -27,6 +27,7 @@ import {
   removeCustomRelationAtIndex,
   removeCustomRelationMatching,
 } from '../services/tableRelationsConfig.js';
+import { getConversionLogMap } from '../services/jsonConversion.js';
 let bcrypt;
 try {
   const mod = await import('bcryptjs');
@@ -340,8 +341,16 @@ export async function deleteCustomTableRelation(req, res, next) {
 
 export async function getTableColumnsMeta(req, res, next) {
   try {
-    const companyId = Number(req.query.companyId ?? req.user?.companyId ?? 0);
+    const companyId = Number(req.query?.companyId ?? req.user?.companyId ?? 0);
     const cols = await listTableColumnMeta(req.params.table, companyId);
+    let logMap = new Map();
+    try {
+      logMap = await getConversionLogMap();
+    } catch {
+      logMap = new Map();
+    }
+    const loggedColumns =
+      logMap.get(String(req.params.table || '').toLowerCase()) || new Set();
     let candidateKey = [];
     try {
       candidateKey = await getPrimaryKeyColumns(req.params.table);
@@ -367,10 +376,13 @@ export async function getTableColumnsMeta(req, res, next) {
         candidateOrdinalRaw != null && Number.isFinite(Number(candidateOrdinalRaw))
           ? Number(candidateOrdinalRaw)
           : null;
+      const rawType = (col.dataType || col.columnType || '').toLowerCase();
+      const jsonFromLog = loggedColumns.has(String(col.name || '').toLowerCase());
       return {
         ...col,
         primaryKeyOrdinal: primaryOrdinal,
         candidateKeyOrdinal,
+        isJson: rawType.includes('json') || jsonFromLog,
       };
     });
     res.json(normalized);
@@ -440,7 +452,11 @@ export async function addRow(req, res, next) {
       row.created_at = formatDateForDb(new Date());
     }
     if (columns.includes('company_id')) {
-      row.company_id = req.user.companyId;
+      if (req.user?.companyId !== undefined) {
+        row.company_id = req.user.companyId;
+      } else if (row.company_id === undefined) {
+        row.company_id = req.body?.company_id;
+      }
     }
     if (req.params.table === 'users' && row.password) {
       row.password = await bcrypt.hash(row.password, 10);
@@ -458,7 +474,7 @@ export async function addRow(req, res, next) {
       {
         mutationContext: {
           changedBy: req.user?.empid ?? null,
-          companyId: req.user.companyId,
+          companyId: req.user?.companyId ?? null,
         },
       },
     );
