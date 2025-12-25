@@ -16,7 +16,8 @@ export default function HeaderMenu({ onOpen }) {
   const generalConfig = useGeneralConfig();
   const items = filterHeaderModules(modules, perms, txnModules);
   const headerMap = useHeaderMappings(items.map((m) => m.module_key));
-  const { hasNew, anyHasNew, notificationColors } = usePendingRequests();
+  const { hasNew, anyHasNew, notificationColors, temporary } = usePendingRequests();
+  const hasTemporaryNew = Boolean(temporary?.hasNew);
 
   const menuNotificationColors = useMemo(() => {
     if (notificationColors?.length) return notificationColors;
@@ -25,19 +26,28 @@ export default function HeaderMenu({ onOpen }) {
   }, [anyHasNew, hasNew, notificationColors]);
 
   // Build a quick lookup map so we can resolve module paths
-  const moduleMap = {};
-  modules.forEach((m) => {
-    moduleMap[m.module_key] = m;
-  });
+  const moduleMap = useMemo(() => {
+    const map = {};
+    modules.forEach((m) => {
+      map[m.module_key] = m;
+    });
+    return map;
+  }, [modules]);
 
-  const badgeKeys = new Set();
-  if (menuNotificationColors.length > 0 && moduleMap['requests']) {
-    let cur = moduleMap['requests'];
-    while (cur) {
-      badgeKeys.add(cur.module_key);
-      cur = cur.parent_key ? moduleMap[cur.parent_key] : null;
-    }
-  }
+  const badgeKeys = useMemo(() => {
+    const keys = new Set();
+    if (menuNotificationColors.length === 0) return keys;
+    const addTrail = (targetKey) => {
+      let cur = moduleMap[targetKey];
+      while (cur) {
+        keys.add(cur.module_key);
+        cur = cur.parent_key ? moduleMap[cur.parent_key] : null;
+      }
+    };
+    if (moduleMap['requests']) addTrail('requests');
+    if (hasTemporaryNew && moduleMap['forms']) addTrail('forms');
+    return keys;
+  }, [hasTemporaryNew, menuNotificationColors.length, moduleMap]);
 
   if (!perms) return null;
 
