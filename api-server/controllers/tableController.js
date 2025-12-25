@@ -13,6 +13,7 @@ import {
   getPrimaryKeyColumns,
   getEmploymentSession,
   getTableRowById,
+  listJsonConversionLogs,
 } from '../../db/index.js';
 import { moveImagesToDeleted } from '../services/transactionImageService.js';
 import { addMappings } from '../services/headerMappings.js';
@@ -342,6 +343,17 @@ export async function getTableColumnsMeta(req, res, next) {
   try {
     const companyId = Number(req.query.companyId ?? req.user?.companyId ?? 0);
     const cols = await listTableColumnMeta(req.params.table, companyId);
+    let jsonLogs = [];
+    try {
+      jsonLogs = await listJsonConversionLogs(req.params.table);
+    } catch {
+      jsonLogs = [];
+    }
+    const jsonColumns = new Set(
+      jsonLogs
+        .filter((log) => log?.columnName)
+        .map((log) => String(log.columnName).toLowerCase()),
+    );
     let candidateKey = [];
     try {
       candidateKey = await getPrimaryKeyColumns(req.params.table);
@@ -371,6 +383,7 @@ export async function getTableColumnsMeta(req, res, next) {
         ...col,
         primaryKeyOrdinal: primaryOrdinal,
         candidateKeyOrdinal,
+        jsonLogged: jsonColumns.has(String(col.name || '').toLowerCase()),
       };
     });
     res.json(normalized);

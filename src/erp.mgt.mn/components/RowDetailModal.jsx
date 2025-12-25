@@ -69,6 +69,16 @@ export default function RowDetailModal({
                       : safeRow[c];
                     const str = String(raw ?? '');
                     let display;
+                    if (fieldTypeMap[c] === 'json') {
+                      try {
+                        const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
+                        if (Array.isArray(parsed)) {
+                          display = parsed.join(', ');
+                        }
+                      } catch {
+                        /* ignore */
+                      }
+                    }
                     if (placeholders[c]) {
                       display = normalizeDateInput(str, placeholders[c]);
                     } else if (/^\d{4}-\d{2}-\d{2}T/.test(str)) {
