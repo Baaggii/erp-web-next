@@ -39,6 +39,8 @@ import { isPlainRecord } from '../utils/transactionValues.js';
 import { extractRowIndex, sortRowsByIndex } from '../utils/sortRowsByIndex.js';
 import { resolveDisabledFieldState } from './tableManagerDisabledFields.js';
 import { computeTemporaryPromotionOptions } from '../utils/temporaryPromotionOptions.js';
+import NotificationDots, { DEFAULT_NOTIFICATION_COLOR } from './NotificationDots.jsx';
+import { usePendingRequests } from '../context/PendingRequestContext.jsx';
 
 const TEMPORARY_FILTER_CACHE_KEY = 'temporary-transaction-filter';
 
@@ -63,6 +65,15 @@ if (typeof window !== 'undefined' && typeof window.canPostTransactions === 'unde
 function ch(n) {
   return Math.round(n * 8);
 }
+
+const NOTIFICATION_STATUS_COLORS = {
+  pending: '#fbbf24',
+  accepted: '#34d399',
+  declined: '#ef4444',
+  promoted: '#34d399',
+  forwarded: '#2563eb',
+  rejected: '#ef4444',
+};
 
 function logRowsMemory(rows) {
     if (process.env.NODE_ENV === 'production') return;
@@ -442,6 +453,8 @@ const TableManager = forwardRef(function TableManager({
   externalTemporaryTrigger = null,
 }, ref) {
   const { t } = useTranslation(['translation', 'tooltip']);
+  const { temporary: pendingTemporary, notificationColors: globalNotificationColors } =
+    usePendingRequests() || {};
   const mounted = useRef(false);
   const renderCount = useRef(0);
   const warned = useRef(false);
@@ -4642,12 +4655,13 @@ const TableManager = forwardRef(function TableManager({
           entryId: id,
           formLabel: entry?.formLabel || entry?.formName || '',
         });
+        pendingTemporary?.markScopeSeen?.('review');
       } catch (err) {
         console.error('Failed to load temporary chain', err);
         setTemporaryChainModalError(
           err?.message ||
             t('temporary_chain_load_failed', 'Failed to load review chain'),
-        );
+      );
       } finally {
         setTemporaryChainModalLoading(false);
       }
@@ -5141,6 +5155,17 @@ const TableManager = forwardRef(function TableManager({
     pendingReviewIds.length > 0 &&
     pendingReviewIds.every((id) => temporarySelection.has(id));
   const hasReviewSelection = canSelectTemporaries && temporarySelection.size > 0;
+
+  const colorsForStatus = useCallback((status) => {
+    const key = status ? String(status).trim().toLowerCase() : 'pending';
+    return [NOTIFICATION_STATUS_COLORS[key] || DEFAULT_NOTIFICATION_COLOR];
+  }, []);
+
+  const temporaryNotificationColors = useMemo(() => {
+    if (globalNotificationColors?.length) return globalNotificationColors;
+    if (pendingTemporary?.hasNew) return [NOTIFICATION_STATUS_COLORS.pending];
+    return [];
+  }, [globalNotificationColors, pendingTemporary?.hasNew]);
 
   const temporaryChainStats = useMemo(() => {
     const chain = Array.isArray(temporaryChainModalData?.chain)
@@ -7858,7 +7883,7 @@ const TableManager = forwardRef(function TableManager({
                 const normalizedStatus = (row?.status || '')
                   .toString()
                   .trim()
-                          .toLowerCase();
+                  .toLowerCase();
                         const statusLabel =
                           normalizedStatus === 'pending'
                             ? t('temporary_pending_status', 'Pending')
@@ -7895,6 +7920,9 @@ const TableManager = forwardRef(function TableManager({
                           row?.reviewed_by ||
                           reviewer;
                         const rowKey = row?.id || idx;
+                        const showNotificationDot =
+                          temporaryNotificationColors.length > 0 &&
+                          normalizedStatus === 'pending';
                         return (
                           <tr key={`chain-${rowKey}`}>
                             <td style={{ padding: '0.5rem', borderBottom: '1px solid #f3f4f6' }}>
@@ -7907,7 +7935,17 @@ const TableManager = forwardRef(function TableManager({
                               {reviewer}
                             </td>
                             <td style={{ padding: '0.5rem', borderBottom: '1px solid #f3f4f6' }}>
-                              <div style={{ fontWeight: 600 }}>{actionLabel || '—'}</div>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                                {showNotificationDot && (
+                                  <NotificationDots
+                                    colors={colorsForStatus(normalizedStatus)}
+                                    size="0.45rem"
+                                    gap="0.15rem"
+                                    marginRight="0"
+                                  />
+                                )}
+                                <span style={{ fontWeight: 600 }}>{actionLabel || '—'}</span>
+                              </div>
                               <div style={{ fontSize: '0.8rem', color: '#6b7280' }}>
                                 {actionActor || '—'}
                               </div>
