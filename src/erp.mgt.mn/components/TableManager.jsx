@@ -1000,6 +1000,10 @@ const TableManager = forwardRef(function TableManager({
     columnMeta.forEach((c) => {
       const typ = (c.type || c.columnType || c.dataType || c.DATA_TYPE || '')
         .toLowerCase();
+      if (typ.includes('json') || c.isJson) {
+        map[c.name] = 'json';
+        return;
+      }
       if (typ.match(/int|decimal|numeric|double|float|real|number|bigint/)) {
         map[c.name] = 'number';
       } else if (typ.includes('timestamp') || typ.includes('datetime')) {
@@ -1014,6 +1018,19 @@ const TableManager = forwardRef(function TableManager({
     });
     return map;
   }, [columnMeta]);
+
+  const jsonColumnSet = useMemo(
+    () =>
+      new Set(
+        columnMeta
+          .filter((c) => {
+            const typ = (c.type || c.columnType || c.dataType || c.DATA_TYPE || '').toLowerCase();
+            return typ.includes('json') || c.isJson;
+          })
+          .map((c) => c.name),
+      ),
+    [columnMeta],
+  );
 
   const generatedCols = useMemo(
     () =>
@@ -5533,6 +5550,26 @@ const TableManager = forwardRef(function TableManager({
     }),
     [],
   );
+  const jsonValueStyle = useMemo(
+    () => ({
+      display: 'flex',
+      gap: '0.25rem',
+      flexWrap: 'wrap',
+      alignItems: 'center',
+    }),
+    [],
+  );
+  const jsonChipStyle = useMemo(
+    () => ({
+      background: '#eef2ff',
+      color: '#1f2937',
+      padding: '0.15rem 0.35rem',
+      borderRadius: '12px',
+      border: '1px solid #c7d2fe',
+      fontSize: '0.75rem',
+    }),
+    [],
+  );
 
   const openTemporaryPreview = useCallback(
     (column, value) => {
@@ -5664,15 +5701,33 @@ const TableManager = forwardRef(function TableManager({
 
       let value = parseMaybeJson(rawValue);
       value = mapRelationValue(value);
+      const isJsonColumn = jsonColumnSet.has(column) || fieldTypeMap[column] === 'json';
 
       if (Array.isArray(value)) {
         const primitives = value.filter(
           (item) => item !== null && item !== undefined && typeof item !== 'object',
         );
         if (primitives.length === value.length) {
-          const display = primitives
-            .map((item) => (typeof item === 'string' ? item : String(item)))
-            .join(', ');
+          const items = primitives.map((item) =>
+            typeof item === 'string' ? item : String(item),
+          );
+          if (isJsonColumn) {
+            return (
+              <div style={jsonValueStyle}>
+                <span aria-label="JSON field" title="JSON field">
+                  🧩
+                </span>
+                {items.length === 0
+                  ? '—'
+                  : items.map((item, idx) => (
+                      <span key={`${column}-${idx}-${item}`} style={jsonChipStyle}>
+                        {item}
+                      </span>
+                    ))}
+              </div>
+            );
+          }
+          const display = items.join(', ');
           return display || '—';
         }
         const objectItems = value.filter((item) => isPlainValueObject(item));
@@ -6525,6 +6580,11 @@ const TableManager = forwardRef(function TableManager({
                 >
                   {labels[c] || c}
                 </TooltipWrapper>
+                {jsonColumnSet.has(c) && (
+                  <span aria-label="JSON" title="JSON field" style={{ marginLeft: '0.25rem' }}>
+                    🧩
+                  </span>
+                )}
                 {sort.column === c ? (sort.dir === 'asc' ? ' \u2191' : ' \u2193') : ''}
               </th>
             ))}
