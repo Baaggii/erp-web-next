@@ -3,14 +3,11 @@ import fsPromises from 'fs/promises';
 import os from 'os';
 import path from 'path';
 import crypto from 'crypto';
-import { fileURLToPath } from 'url';
 import { spawn } from 'child_process';
 import { pool } from '../../db/index.js';
 import { splitSqlStatements } from './generatedSql.js';
 
-const repoRoot = await fsPromises
-  .realpath(path.resolve(fileURLToPath(new URL('../../', import.meta.url))))
-  .catch(() => path.resolve(fileURLToPath(new URL('../../', import.meta.url))));
+const projectRoot = process.cwd();
 
 async function commandExists(cmd) {
   try {
@@ -85,12 +82,6 @@ function runCommand(command, args, options = {}) {
 
     child.on('error', (err) => {
       cleanup();
-      if (err.code === 'ENOENT') {
-        const friendly = new Error(`Command not found: ${command}`);
-        friendly.status = 400;
-        reject(friendly);
-        return;
-      }
       reject(err);
     });
 
@@ -109,19 +100,22 @@ function runCommand(command, args, options = {}) {
   });
 }
 
-async function resolveSchemaFile({ schemaPath, schemaFile }) {
+function resolveSchemaFile({ schemaPath, schemaFile }) {
   const combined = schemaFile
-    ? path.resolve(schemaPath || '.', schemaFile)
-    : path.resolve(schemaPath || '.');
+    ? path.join(schemaPath || '.', schemaFile)
+    : schemaPath;
   if (!combined) {
     const err = new Error('schemaPath or schemaFile is required');
     err.status = 400;
     throw err;
   }
-  const realCombined = await fsPromises.realpath(combined).catch(() => combined);
-  const relative = path.relative(repoRoot, realCombined);
-  const insideRepo = relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative));
-  return { resolvedPath: realCombined, insideRepo };
+  const resolved = path.resolve(projectRoot, combined);
+  if (!resolved.startsWith(projectRoot)) {
+    const err = new Error('Schema path must stay within the repository root');
+    err.status = 400;
+    throw err;
+  }
+  return resolved;
 }
 
 async function dumpCurrentSchema(outputPath, signal) {
@@ -314,13 +308,7 @@ export async function buildSchemaDiff(options = {}) {
   }
   const toolAvailable = await commandExists('mysqldbcompare');
   const warnings = [];
-  const { resolvedPath: resolvedSchema, insideRepo } = await resolveSchemaFile({
-    schemaPath,
-    schemaFile,
-  });
-  if (!insideRepo) {
-    warnings.push(`Schema file is outside the repo root (${repoRoot}); proceeding with caution.`);
-  }
+  const resolvedSchema = resolveSchemaFile({ schemaPath, schemaFile });
   const schemaExists = await fsPromises
     .stat(resolvedSchema)
     .then((st) => st.isFile())
