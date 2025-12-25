@@ -13,32 +13,11 @@ function JsonConverter() {
   const [scripts, setScripts] = useState([]);
 
   useEffect(() => {
-    let canceled = false;
-    async function loadTables() {
-      try {
-        const res = await fetch('/api/json_conversion/tables', { credentials: 'include' });
-        let data = res.ok ? await res.json() : [];
-        if (!Array.isArray(data) || data.length === 0) {
-          const fallback = await fetch('/api/tables', { credentials: 'include' }).catch(() => null);
-          if (fallback?.ok) {
-            const alt = await fallback.json().catch(() => []);
-            data = Array.isArray(alt) ? alt : data;
-          }
-        }
-        if (!canceled) setTables(Array.isArray(data) ? data : []);
-      } catch (err) {
-        console.error('Failed to load tables', err);
-        if (!canceled) {
-          setTables([]);
-          addToast('Failed to load tables', 'error');
-        }
-      }
-    }
-    loadTables();
-    return () => {
-      canceled = true;
-    };
-  }, [addToast]);
+    fetch('/api/json_conversion/tables', { credentials: 'include' })
+      .then((res) => (res.ok ? res.json() : []))
+      .then((data) => setTables(Array.isArray(data) ? data : []))
+      .catch(() => setTables([]));
+  }, []);
 
   useEffect(() => {
     if (!selectedTable) return;
