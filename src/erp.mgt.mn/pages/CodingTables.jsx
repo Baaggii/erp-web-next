@@ -3,6 +3,7 @@ import * as XLSX from 'xlsx';
 import { translateToMn } from '../utils/translateToMn.js';
 import { useToast } from '../context/ToastContext.jsx';
 import formatTimestamp from '../utils/formatTimestamp.js';
+import CodingTablesJsonConverter from './CodingTablesJsonConverter.jsx';
 
 function cleanIdentifier(name) {
   return String(name).replace(/[^A-Za-z0-9_]+/g, '');
@@ -2789,9 +2790,43 @@ export default function CodingTablesPage() {
       .catch(() => {});
   }, [tableName, configNames]);
 
+  const [activeTab, setActiveTab] = useState('coding');
+
   return (
     <div>
-      <h2>Coding Table Upload</h2>
+      <h2>Coding Tables</h2>
+      <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
+        <button
+          type="button"
+          onClick={() => setActiveTab('coding')}
+          style={{
+            padding: '0.5rem 1rem',
+            backgroundColor: activeTab === 'coding' ? '#2563eb' : '#e5e7eb',
+            color: activeTab === 'coding' ? '#fff' : '#111827',
+            border: '1px solid #d1d5db',
+            borderRadius: '4px',
+            cursor: 'pointer',
+          }}
+        >
+          Coding Tables
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab('json')}
+          style={{
+            padding: '0.5rem 1rem',
+            backgroundColor: activeTab === 'json' ? '#2563eb' : '#e5e7eb',
+            color: activeTab === 'json' ? '#fff' : '#111827',
+            border: '1px solid #d1d5db',
+            borderRadius: '4px',
+            cursor: 'pointer',
+          }}
+        >
+          JSON Converter
+        </button>
+      </div>
+      {activeTab === 'coding' ? (
+        <>
       <input type="file" accept=".xlsx,.xls,.xlsb" onChange={handleFile} ref={fileInputRef} />
       {selectedFile && (
         <button onClick={refreshFile} style={{ marginLeft: '0.5rem' }}>Refresh File</button>
@@ -3322,6 +3357,8 @@ export default function CodingTablesPage() {
             </>
           )}
         </div>
+      ) : (
+        <CodingTablesJsonConverter />
       )}
     </div>
   );
