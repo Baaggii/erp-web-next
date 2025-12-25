@@ -946,43 +946,6 @@ export default function PosApiIntegrationSection({
     });
   };
 
-  const updateNestedObjectSource = (path, sourceValue, repeatValue) => {
-    setConfig((c) => {
-      const base = { ...(c.posApiMapping || {}) };
-      const allSources =
-        base.nestedSources && typeof base.nestedSources === 'object' && !Array.isArray(base.nestedSources)
-          ? { ...base.nestedSources }
-          : {};
-      const existing =
-        allSources[path] && typeof allSources[path] === 'object' && !Array.isArray(allSources[path])
-          ? { ...allSources[path] }
-          : {};
-      const next = { ...existing };
-      if (sourceValue !== undefined) {
-        const normalizedSource = typeof sourceValue === 'string' ? sourceValue.trim() : sourceValue;
-        if (normalizedSource) {
-          next.source = normalizedSource;
-        } else {
-          delete next.source;
-        }
-      }
-      if (repeatValue !== undefined) {
-        next.repeat = repeatValue;
-      }
-      if (Object.keys(next).length) {
-        allSources[path] = next;
-      } else {
-        delete allSources[path];
-      }
-      if (Object.keys(allSources).length) {
-        base.nestedSources = allSources;
-      } else {
-        delete base.nestedSources;
-      }
-      return { ...c, posApiMapping: base };
-    });
-  };
-
   const updateReceiptGroupMapping = (type, field, value) => {
     setConfig((c) => {
       const base = { ...(c.posApiMapping || {}) };
