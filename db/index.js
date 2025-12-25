@@ -4951,7 +4951,6 @@ export async function listTableColumnMeta(tableName, companyId = 0) {
             c.COLUMN_KEY,
             c.EXTRA,
             c.GENERATION_EXPRESSION,
-            c.DATA_TYPE,
             c.COLUMN_TYPE,
             pk.SEQ_IN_INDEX AS PRIMARY_KEY_ORDINAL
        FROM information_schema.COLUMNS c
@@ -4995,94 +4994,10 @@ export async function listTableColumnMeta(tableName, companyId = 0) {
       extra: r.EXTRA,
       label: labels[r.COLUMN_NAME] || headerMap[r.COLUMN_NAME] || r.COLUMN_NAME,
       generationExpression: r.GENERATION_EXPRESSION ?? null,
-      dataType: r.DATA_TYPE,
       primaryKeyOrdinal: Number.isFinite(ordinal) ? ordinal : null,
       enumValues,
     };
   });
-}
-
-export async function ensureJsonConversionLogTable() {
-  await pool.query(`CREATE TABLE IF NOT EXISTS json_conversion_log (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    table_name VARCHAR(255) NOT NULL,
-    column_name VARCHAR(255) NOT NULL,
-    script_text MEDIUMTEXT NOT NULL,
-    run_at DATETIME DEFAULT NULL,
-    run_by VARCHAR(255) DEFAULT NULL,
-    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    KEY idx_table_column (table_name, column_name)
-  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
-}
-
-export async function insertJsonConversionLog(entry) {
-  if (!entry || !entry.tableName || !entry.columnName || !entry.scriptText) {
-    throw new Error('Invalid json conversion log entry');
-  }
-  await ensureJsonConversionLogTable();
-  const runBy = entry.runBy ?? null;
-  const runAt = entry.runAt ?? new Date();
-  const [res] = await pool.query(
-    `INSERT INTO json_conversion_log (table_name, column_name, script_text, run_at, run_by)
-     VALUES (?, ?, ?, ?, ?)` ,
-    [entry.tableName, entry.columnName, entry.scriptText, runAt, runBy],
-  );
-  return { id: res.insertId, ...entry, runAt, runBy };
-}
-
-export async function listJsonConversionLogs(tableName = null) {
-  await ensureJsonConversionLogTable();
-  const params = [];
-  let sql = 'SELECT id, table_name, column_name, script_text, run_at, run_by, created_at FROM json_conversion_log';
-  if (tableName) {
-    sql += ' WHERE table_name = ?';
-    params.push(tableName);
-  }
-  sql += ' ORDER BY created_at DESC, id DESC';
-  const [rows] = await pool.query(sql, params);
-  return rows.map((r) => ({
-    id: r.id,
-    tableName: r.table_name,
-    columnName: r.column_name,
-    scriptText: r.script_text,
-    runAt: r.run_at,
-    runBy: r.run_by,
-    createdAt: r.created_at,
-  }));
-}
-
-export async function getJsonConversionLog(id) {
-  if (!id) return null;
-  await ensureJsonConversionLogTable();
-  const [rows] = await pool.query(
-    `SELECT id, table_name, column_name, script_text, run_at, run_by, created_at
-       FROM json_conversion_log
-      WHERE id = ?
-      LIMIT 1`,
-    [id],
-  );
-  if (!rows || !rows.length) return null;
-  const r = rows[0];
-  return {
-    id: r.id,
-    tableName: r.table_name,
-    columnName: r.column_name,
-    scriptText: r.script_text,
-    runAt: r.run_at,
-    runBy: r.run_by,
-    createdAt: r.created_at,
-  };
-}
-
-export async function touchJsonConversionLogRun(id, runBy = null) {
-  if (!id) return null;
-  await ensureJsonConversionLogTable();
-  const runAt = new Date();
-  await pool.query(
-    `UPDATE json_conversion_log SET run_at = ?, run_by = ? WHERE id = ?`,
-    [runAt, runBy, id],
-  );
-  return { id, runAt, runBy };
 }
 
 export async function getPrimaryKeyColumns(tableName) {
