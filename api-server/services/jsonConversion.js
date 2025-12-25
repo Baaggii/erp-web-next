@@ -36,22 +36,18 @@ export async function listColumns(table) {
   }));
 }
 
-function buildColumnStatements(table, columnName, columnMeta, options, existingColumns = []) {
+function buildColumnStatements(table, columnName, columnMeta, options) {
   const tableId = escapeId(table);
   const columnId = escapeId(columnName);
   const backupName = options.backup ? `${columnName}_scalar_backup` : null;
   const backupId = backupName ? escapeId(backupName) : null;
   const baseType = columnMeta?.type || 'TEXT';
   const statements = [];
-  const existing = new Set(existingColumns.map((c) => String(c).toLowerCase()));
-  const backupExists = backupName ? existing.has(backupName.toLowerCase()) : false;
 
-  if (backupId && !backupExists) {
-    statements.push(
-      `ALTER TABLE ${tableId} ADD COLUMN ${backupId} ${baseType} NULL`,
-    );
-  }
   if (backupId) {
+    statements.push(
+      `ALTER TABLE ${tableId} ADD COLUMN IF NOT EXISTS ${backupId} ${baseType} NULL`,
+    );
     statements.push(`UPDATE ${tableId} SET ${backupId} = ${columnId}`);
   }
 
@@ -68,49 +64,30 @@ function buildColumnStatements(table, columnName, columnMeta, options, existingC
     exampleAfter: '["123"]',
     backupColumn: backupName,
     notes: backupName
-      ? backupExists
-        ? `Existing backup column ${backupName} will be reused before conversion.`
-        : `Original values will be stored in ${backupName} before conversion.`
+      ? `Original values will be stored in ${backupName} before conversion.`
       : 'Conversion will run without keeping a dedicated backup column.',
   };
 
   return { statements, preview };
 }
 
-function normalizeStatement(stmt = '') {
-  return String(stmt).replace(/\bADD\s+COLUMN\s+IF\s+NOT\s+EXISTS\b/gi, 'ADD COLUMN');
-}
-
-function normalizeStatements(statements = []) {
-  return statements.map((stmt) => normalizeStatement(stmt));
-}
-
 export function buildConversionPlan(table, columns, metadata, options = {}) {
   const plan = { statements: [], previews: [] };
-  const existingColumnNames = metadata.map((m) => m.name);
   columns.forEach((col) => {
     const meta = metadata.find((m) => m.name === col) || {};
-    const { statements, preview } = buildColumnStatements(
-      table,
-      col,
-      meta,
-      options,
-      existingColumnNames,
-    );
+    const { statements, preview } = buildColumnStatements(table, col, meta, options);
     plan.statements.push(...statements);
     plan.previews.push(preview);
   });
-  plan.statements = normalizeStatements(plan.statements);
   plan.scriptText = plan.statements.map((s) => `${s};`).join('\n');
   return plan;
 }
 
 export async function runPlanStatements(statements) {
-  const normalized = normalizeStatements(statements);
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();
-    for (const stmt of normalized) {
+    for (const stmt of statements) {
       await conn.query(stmt);
     }
     await conn.commit();
@@ -174,10 +151,9 @@ export async function touchScriptRun(id, runBy) {
 }
 
 export function splitStatements(scriptText) {
-  const raw = String(scriptText || '')
+  return String(scriptText || '')
     .split(';')
     .map((part) => part.trim())
     .filter(Boolean)
     .map((stmt) => `${stmt};`);
-  return normalizeStatements(raw);
 }

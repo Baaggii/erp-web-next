@@ -3770,6 +3770,14 @@ const TableManager = forwardRef(function TableManager({
   async function handleSaveTemporary(submission) {
     if (!canSaveTemporaryDraft) return false;
     if (!submission || typeof submission !== 'object') return false;
+    const { forwardingExistingTemporary } = computeTemporaryPromotionOptions({
+      requestType,
+      submitIntent: 'temporary',
+      pendingPromotionHasSeniorAbove,
+      pendingTemporaryPromotionId: pendingTemporaryPromotion?.id ?? null,
+      canPostTransactions,
+      forceResolvePendingDrafts,
+    });
     const cloneValue = (value) => {
       if (value === undefined) return undefined;
       if (value === null) return null;
