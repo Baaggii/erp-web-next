@@ -48,7 +48,6 @@ export default function CodingTablesPage() {
   const [schemaDiff, setSchemaDiff] = useState(null);
   const [selectedTables, setSelectedTables] = useState(new Set());
   const [tableFilter, setTableFilter] = useState('');
-  const [schemaBaseDir, setSchemaBaseDir] = useState('');
   const [allowDrops, setAllowDrops] = useState(false);
   const [dryRun, setDryRun] = useState(true);
   const [applyResult, setApplyResult] = useState(null);
@@ -234,10 +233,7 @@ export default function CodingTablesPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({
-          tables,
-          baseDir: schemaBaseDir,
-        }),
+        body: JSON.stringify({ tables }),
       });
       if (!res.ok) {
         const msg = await res.text().catch(() => res.statusText);
@@ -2913,16 +2909,6 @@ export default function CodingTablesPage() {
             onChange={(e) => setTableFilter(e.target.value)}
             placeholder="table_a, table_b"
             style={{ marginLeft: '0.25rem', width: '16rem' }}
-          />
-        </label>
-        <label style={{ marginRight: '0.5rem' }}>
-          Schema root (optional):
-          <input
-            type="text"
-            value={schemaBaseDir}
-            onChange={(e) => setSchemaBaseDir(e.target.value)}
-            placeholder="/opt/erp-web-next/db or relative path"
-            style={{ marginLeft: '0.25rem', width: '18rem' }}
           />
         </label>
         <button onClick={runSchemaDiff} disabled={diffLoading}>
