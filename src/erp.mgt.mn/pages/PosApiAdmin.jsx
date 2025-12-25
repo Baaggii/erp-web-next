@@ -3,10 +3,10 @@ import { API_BASE } from '../utils/apiBase.js';
 import { useToast } from '../context/ToastContext.jsx';
 
 const POSAPI_TRANSACTION_TYPES = [
-  { value: 'B2C', label: 'B2C receipt' },
-  { value: 'B2B_SALE', label: 'B2B sale invoice' },
-  { value: 'B2B_PURCHASE', label: 'B2B purchase invoice' },
-  { value: 'STOCK_QR', label: 'Stock QR' },
+  { value: 'B2C', label: 'B2C' },
+  { value: 'B2B_SALE', label: 'B2B sale' },
+  { value: 'B2B_PURCHASE', label: 'B2B purchase' },
+  { value: 'STOCK_QR', label: 'STOCK_QR' },
 ];
 
 const POSAPI_INFO_TYPES = [{ value: 'LOOKUP', label: 'Information lookup' }];
@@ -995,8 +995,10 @@ function normaliseBuilderForType(builder, type, withItems = true, withPayments =
 
 function formatTypeLabel(type) {
   if (!type) return '';
-  const hit = ALL_POSAPI_TYPES.find((opt) => opt.value === type);
-  return hit ? hit.label : type;
+  if (typeof type === 'string') {
+    return type.replace(/_/g, ' ').trim();
+  }
+  return String(type);
 }
 
 function formatUsageLabel(usage) {
@@ -2950,12 +2952,6 @@ export default function PosApiAdmin() {
             if (usage === 'transaction' && ep.supportsItems === false) {
               preview.push('Service-only: no receipt items');
             }
-            if (Array.isArray(ep.receiptTypes) && ep.receiptTypes.length > 0) {
-              preview.push(`Receipt types: ${ep.receiptTypes.join(', ')}`);
-            }
-            if (Array.isArray(ep.paymentMethods) && ep.paymentMethods.length > 0) {
-              preview.push(`Payment methods: ${ep.paymentMethods.join(', ')}`);
-            }
             return {
               ...ep,
               _preview: preview.join('\n'),
@@ -3424,8 +3420,6 @@ export default function PosApiAdmin() {
     }
     return DEFAULT_PAYMENT_METHODS;
   }, [formState.paymentMethods, paymentMethodsEnabled]);
-
-  const formSupportsItems = supportsItems;
 
   const requestFieldHints = useMemo(
     () =>
@@ -4162,11 +4156,6 @@ export default function PosApiAdmin() {
   };
 
   const supportsMultipleReceipts = isTransactionUsage && Boolean(formState.supportsMultipleReceipts);
-  const receiptTypeOptions = receiptTypesEnabled && formReceiptTypes.length > 0
-    ? POSAPI_TRANSACTION_TYPES.filter((type) => formReceiptTypes.includes(type.value))
-    : POSAPI_TRANSACTION_TYPES;
-  const taxTypeOptions = allowedTaxTypes.length > 0 ? allowedTaxTypes : TAX_TYPES;
-  const paymentTypeOptions = allowedPaymentTypes.length > 0 ? allowedPaymentTypes : PAYMENT_TYPES;
 
   useEffect(() => {
     if (!isTransactionUsage) {
@@ -8033,75 +8022,6 @@ export default function PosApiAdmin() {
                         {ep.category && (
                           <div style={styles.listButtonCategory}>{ep.category}</div>
                         )}
-                        {ep._usage === 'transaction' && (
-                          <div style={styles.listMeta}>
-                            <div style={styles.listMetaRow}>
-                              <span style={styles.listMetaLabel}>Receipt types</span>
-                              {(Array.isArray(ep.receiptTypes) && ep.receiptTypes.length > 0
-                                ? ep.receiptTypes
-                                : ['ALL_SUPPORTED']
-                              ).map((type) => {
-                                const badgeColor =
-                                  type === 'ALL_SUPPORTED'
-                                    ? '#475569'
-                                    : TYPE_BADGES[type] || '#1f2937';
-                                const label =
-                                  type === 'ALL_SUPPORTED'
-                                    ? 'All supported'
-                                    : formatTypeLabel(type) || type;
-                                return (
-                                  <span
-                                    key={`${ep.id}-receipt-${type}`}
-                                    style={{
-                                      ...badgeStyle(badgeColor),
-                                      textTransform: 'none',
-                                    }}
-                                  >
-                                    {label}
-                                  </span>
-                                );
-                              })}
-                            </div>
-                            <div style={styles.listMetaRow}>
-                              <span style={styles.listMetaLabel}>Payments</span>
-                              {(Array.isArray(ep.paymentMethods) && ep.paymentMethods.length > 0
-                                ? ep.paymentMethods
-                                : ['ALL_SUPPORTED']
-                              ).map((method) => {
-                                const badgeColor =
-                                  method === 'ALL_SUPPORTED'
-                                    ? '#475569'
-                                    : PAYMENT_BADGES[method] || '#475569';
-                                const label =
-                                  method === 'ALL_SUPPORTED'
-                                    ? 'All supported'
-                                    : method.replace(/_/g, ' ');
-                                return (
-                                  <span
-                                    key={`${ep.id}-payment-${method}`}
-                                    style={{
-                                      ...badgeStyle(badgeColor),
-                                      textTransform: 'none',
-                                    }}
-                                  >
-                                    {label}
-                                  </span>
-                                );
-                              })}
-                            </div>
-                            <div style={styles.listMetaRow}>
-                              <span style={styles.listMetaLabel}>Items</span>
-                              <span
-                                style={{
-                                  ...badgeStyle(ep.supportsItems !== false ? '#15803d' : '#475569'),
-                                  textTransform: 'none',
-                                }}
-                              >
-                                {ep.supportsItems !== false ? 'Includes items' : 'Service only'}
-                              </span>
-                            </div>
-                          </div>
-                        )}
                         {ep.notes && <div style={styles.notesText}>{ep.notes}</div>}
                         {ep._preview && (
                           <div style={styles.previewText}>
@@ -8482,52 +8402,6 @@ export default function PosApiAdmin() {
                 )}
               </div>
             </details>
-            {formState.usage === 'transaction' && (
-              <div style={styles.capabilitiesBox}>
-                <div style={styles.capabilitiesRow}>
-                  <span style={styles.capabilitiesLabel}>Supports items</span>
-                  <span
-                    style={{
-                      ...badgeStyle(formSupportsItems ? '#15803d' : '#475569'),
-                      textTransform: 'none',
-                    }}
-                  >
-                    {formSupportsItems ? 'Includes items' : 'Service only'}
-                  </span>
-                </div>
-                <div style={styles.capabilitiesRow}>
-                  <span style={styles.capabilitiesLabel}>Receipt types</span>
-                  {formReceiptTypes.map((type) => (
-                    <span
-                      key={`form-receipt-${type}`}
-                      style={{
-                        ...badgeStyle(TYPE_BADGES[type] || '#1f2937'),
-                        textTransform: 'none',
-                      }}
-                    >
-                      {formatTypeLabel(type) || type}
-                    </span>
-                  ))}
-                </div>
-                <div style={styles.capabilitiesRow}>
-                  <span style={styles.capabilitiesLabel}>Payment methods</span>
-                  {formPaymentMethods.map((method) => (
-                    <span
-                      key={`form-payment-${method}`}
-                      style={{
-                        ...badgeStyle(PAYMENT_BADGES[method] || '#475569'),
-                        textTransform: 'none',
-                      }}
-                    >
-                      {method.replace(/_/g, ' ')}
-                    </span>
-                  ))}
-                </div>
-                {formState.notes && (
-                  <div style={{ fontSize: '0.85rem', color: '#475569' }}>{formState.notes}</div>
-                )}
-              </div>
-            )}
             <div style={styles.formGrid}>
           <label style={styles.label}>
             Endpoint ID
@@ -8546,7 +8420,7 @@ export default function PosApiAdmin() {
               value={formState.name}
               onChange={(e) => handleChange('name', e.target.value)}
               style={styles.input}
-              placeholder="Save B2C/B2B Receipt"
+              placeholder="Save POSAPI submission"
             />
           </label>
           <label style={styles.label}>
