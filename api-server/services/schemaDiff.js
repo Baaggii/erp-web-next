@@ -3,46 +3,19 @@ import fsPromises from 'fs/promises';
 import path from 'path';
 import crypto from 'crypto';
 import { spawn } from 'child_process';
-import { fileURLToPath } from 'url';
 import { pool } from '../../db/index.js';
 import { splitSqlStatements } from './generatedSql.js';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-function resolveProjectRoot(baseDir) {
-  const resolvedBase = baseDir
-    ? path.isAbsolute(baseDir)
-      ? baseDir
-      : path.resolve(path.join(__dirname, '../..'), baseDir)
-    : null;
-
-  const candidates = [
-    path.resolve(__dirname, '../..'), // repo root when inside api-server
-    resolvedBase,
-    process.cwd(),
-    path.resolve(__dirname, '..'),
-  ].filter(Boolean);
-
-  for (const candidate of candidates) {
-    const marker = path.join(candidate, 'db', 'mgtmn_erp_db.sql');
-    if (fs.existsSync(marker)) {
-      return candidate;
-    }
-  }
-
-  // fallback to default repo root location
-  return path.resolve(__dirname, '../..');
-}
-
-function resolveSchemaPaths(baseDir) {
-  const projectRoot = resolveProjectRoot(baseDir);
-  return {
-    projectRoot,
-    referencePath: path.join(projectRoot, 'db', 'mgtmn_erp_db.sql'),
-    currentPath: path.join(projectRoot, 'db', 'current_schema.sql'),
-  };
-}
+const REFERENCE_SCHEMA_PATH = path.resolve(
+  process.cwd(),
+  'db',
+  'mgtmn_erp_db.sql',
+);
+const CURRENT_SCHEMA_PATH = path.resolve(
+  process.cwd(),
+  'db',
+  'current_schema.sql',
+);
 
 function mysqlEnv(password) {
   return {
@@ -154,18 +127,12 @@ function buildDiffPreview(currentSql, referenceSql) {
   return previews.join('\n');
 }
 
-async function dumpCurrentSchema(currentSchemaPath) {
+async function dumpCurrentSchema() {
   const hasMysqldump = await checkToolAvailability('mysqldump');
   if (!hasMysqldump) {
     throw new Error('mysqldump is not available on this server');
   }
-  try {
-    await fsPromises.mkdir(path.dirname(currentSchemaPath), { recursive: true });
-  } catch (err) {
-    if (err && err.code !== 'EEXIST') {
-      throw err;
-    }
-  }
+  await fsPromises.mkdir(path.dirname(CURRENT_SCHEMA_PATH), { recursive: true });
   const args = [
     ...mysqlBaseArgs(),
     '--no-data',
@@ -177,13 +144,13 @@ async function dumpCurrentSchema(currentSchemaPath) {
   ];
   const result = await runCommand('mysqldump', args, {
     env: mysqlEnv(),
-    outputFile: currentSchemaPath,
+    outputFile: CURRENT_SCHEMA_PATH,
   });
   if (result.code !== 0) {
     throw new Error(result.stderr || 'mysqldump failed');
   }
   return {
-    path: currentSchemaPath,
+    path: CURRENT_SCHEMA_PATH,
     completedAt: new Date().toISOString(),
   };
 }
@@ -263,12 +230,11 @@ function markDropRisk(sql) {
   return /\bDROP\s+TABLE\b/i.test(sql) || /\bDROP\s+DATABASE\b/i.test(sql);
 }
 
-export async function compareSchemas({ tables = [], baseDir } = {}) {
-  const paths = resolveSchemaPaths(baseDir);
-  const dumpMeta = await dumpCurrentSchema(paths.currentPath);
+export async function compareSchemas({ tables = [] } = {}) {
+  const dumpMeta = await dumpCurrentSchema();
   const [referenceSql, currentSql] = await Promise.all([
-    fsPromises.readFile(paths.referencePath, 'utf8'),
-    fsPromises.readFile(paths.currentPath, 'utf8'),
+    fsPromises.readFile(REFERENCE_SCHEMA_PATH, 'utf8'),
+    fsPromises.readFile(CURRENT_SCHEMA_PATH, 'utf8'),
   ]);
 
   const referenceTables = extractTableStatements(referenceSql);
@@ -337,9 +303,8 @@ export async function compareSchemas({ tables = [], baseDir } = {}) {
   }
 
   return {
-    currentSchemaPath: paths.currentPath,
-    referenceSchemaPath: paths.referencePath,
-    projectRoot: paths.projectRoot,
+    currentSchemaPath: CURRENT_SCHEMA_PATH,
+    referenceSchemaPath: REFERENCE_SCHEMA_PATH,
     generatedAt: dumpMeta.completedAt,
     tables: results,
   };

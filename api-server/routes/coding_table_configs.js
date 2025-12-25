@@ -53,11 +53,7 @@ router.delete('/', requireAuth, async (req, res, next) => {
 router.post('/schema-diff/run', requireAuth, async (req, res, next) => {
   try {
     const tables = Array.isArray(req.body?.tables) ? req.body.tables : [];
-    const baseDir =
-      typeof req.body?.baseDir === 'string' && req.body.baseDir.trim()
-        ? req.body.baseDir.trim()
-        : undefined;
-    const diff = await compareSchemas({ tables, baseDir });
+    const diff = await compareSchemas({ tables });
     res.json(diff);
   } catch (err) {
     next(err);
