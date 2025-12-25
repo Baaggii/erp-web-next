@@ -13,6 +13,7 @@ import {
   resolveFeatureToggle,
   withPosApiEndpointMetadata,
   formatPosApiTypeLabel,
+  formatPosApiTypeLabelText,
 } from '../utils/posApiConfig.js';
 import { parseFieldSource, buildFieldSource } from '../utils/posApiFieldSource.js';
 
@@ -431,6 +432,11 @@ export default function PosApiIntegrationSection({
     return [];
   }, [selectedEndpoint, receiptTypesFeatureEnabled]);
 
+  const configuredReceiptTypes = useMemo(() => {
+    if (!receiptTypesFeatureEnabled) return [];
+    return sanitizeSelectionList(config.posApiReceiptTypes, receiptTypesAllowMultiple);
+  }, [config.posApiReceiptTypes, receiptTypesFeatureEnabled, receiptTypesAllowMultiple]);
+
   const endpointReceiptTaxTypes = useMemo(() => {
     if (!receiptTaxTypesFeatureEnabled) return [];
     if (
@@ -455,10 +461,23 @@ export default function PosApiIntegrationSection({
     receiptTaxTypesAllowMultiple,
   ]);
 
+  const effectiveReceiptTypes = useMemo(() => {
+    if (!receiptTypesFeatureEnabled) return [];
+    return configuredReceiptTypes.length ? configuredReceiptTypes : endpointReceiptTypes;
+  }, [configuredReceiptTypes, endpointReceiptTypes, receiptTypesFeatureEnabled]);
+
   const receiptTypeUniverse = useMemo(() => {
     if (!receiptTypesFeatureEnabled) return [];
+    const allowed = new Set((endpointReceiptTypes || []).filter(Boolean));
+    const combined = Array.from(
+      new Set([...endpointReceiptTypes, ...configuredReceiptTypes].filter((value) => value)),
+    );
+    const filtered = combined.filter(
+      (value) => allowed.has(value) || configuredReceiptTypes.includes(value),
+    );
+    if (filtered.length) return filtered;
     return endpointReceiptTypes;
-  }, [endpointReceiptTypes, receiptTypesFeatureEnabled]);
+  }, [endpointReceiptTypes, configuredReceiptTypes, receiptTypesFeatureEnabled]);
 
   const effectiveReceiptTaxTypes = useMemo(() => {
     if (!receiptTaxTypesFeatureEnabled) return [];
@@ -505,6 +524,19 @@ export default function PosApiIntegrationSection({
     if (!paymentMethodsFeatureEnabled) return [];
     return configuredPaymentMethods.length ? configuredPaymentMethods : endpointPaymentMethods;
   }, [configuredPaymentMethods, endpointPaymentMethods, paymentMethodsFeatureEnabled]);
+
+  const paymentMethodUniverse = useMemo(() => {
+    if (!paymentMethodsFeatureEnabled) return [];
+    const allowed = new Set((endpointPaymentMethods || []).filter(Boolean));
+    const combined = Array.from(
+      new Set([...endpointPaymentMethods, ...configuredPaymentMethods].filter((value) => value)),
+    );
+    const filtered = combined.filter(
+      (value) => allowed.has(value) || configuredPaymentMethods.includes(value),
+    );
+    if (filtered.length) return filtered;
+    return endpointPaymentMethods;
+  }, [endpointPaymentMethods, configuredPaymentMethods, paymentMethodsFeatureEnabled]);
 
   useEffect(() => {
     if (typeof onPosApiOptionsChange !== 'function') return;
@@ -976,6 +1008,33 @@ export default function PosApiIntegrationSection({
     });
   };
 
+  const toggleReceiptTypeSelection = (value) => {
+    if (!receiptTypesFeatureEnabled) return;
+    const normalized = typeof value === 'string' ? value.trim() : '';
+    if (!normalized) return;
+    setConfig((c) => {
+      const current = Array.isArray(c.posApiReceiptTypes)
+        ? c.posApiReceiptTypes.filter((entry) => typeof entry === 'string' && entry.trim())
+        : [];
+      const selectedSet = new Set(current);
+      if (selectedSet.has(normalized)) {
+        selectedSet.delete(normalized);
+      } else {
+        if (receiptTypesAllowMultiple) {
+          selectedSet.add(normalized);
+        } else {
+          selectedSet.clear();
+          selectedSet.add(normalized);
+        }
+      }
+      const ordered = endpointReceiptTypes.filter((entry) => selectedSet.has(entry));
+      const leftovers = Array.from(selectedSet).filter(
+        (entry) => !endpointReceiptTypes.includes(entry),
+      );
+      return { ...c, posApiReceiptTypes: [...ordered, ...leftovers] };
+    });
+  };
+
   const toggleReceiptTaxTypeSelection = (value) => {
     if (!receiptTaxTypesFeatureEnabled) return;
     const normalized = typeof value === 'string' ? value.trim() : '';
@@ -1000,6 +1059,33 @@ export default function PosApiIntegrationSection({
         (entry) => !endpointReceiptTaxTypes.includes(entry),
       );
       return { ...c, posApiReceiptTaxTypes: [...ordered, ...leftovers] };
+    });
+  };
+
+  const togglePaymentMethodSelection = (value) => {
+    if (!paymentMethodsFeatureEnabled) return;
+    const normalized = typeof value === 'string' ? value.trim() : '';
+    if (!normalized) return;
+    setConfig((c) => {
+      const current = Array.isArray(c.posApiPaymentMethods)
+        ? c.posApiPaymentMethods.filter((entry) => typeof entry === 'string' && entry.trim())
+        : [];
+      const selectedSet = new Set(current);
+      if (selectedSet.has(normalized)) {
+        selectedSet.delete(normalized);
+      } else {
+        if (paymentMethodsAllowMultiple) {
+          selectedSet.add(normalized);
+        } else {
+          selectedSet.clear();
+          selectedSet.add(normalized);
+        }
+      }
+      const ordered = endpointPaymentMethods.filter((entry) => selectedSet.has(entry));
+      const leftovers = Array.from(selectedSet).filter(
+        (entry) => !endpointPaymentMethods.includes(entry),
+      );
+      return { ...c, posApiPaymentMethods: [...ordered, ...leftovers] };
     });
   };
 
@@ -1115,12 +1201,12 @@ export default function PosApiIntegrationSection({
                 <option key={`fallback-type-${type}`} value={type}>
                   {formatPosApiTypeLabel(type)}
                 </option>
-            ))}
-          </select>
-          <small style={{ color: '#666' }}>
-            Automatically switches between POSAPI transaction types based on the provided customer
-            identifiers.
-          </small>
+              ))}
+            </select>
+            <small style={{ color: '#666' }}>
+              Automatically switches to B2B when a customer TIN is provided and to B2C when a
+              consumer number is present.
+            </small>
           </label>
           <div
             style={{
@@ -1170,15 +1256,15 @@ export default function PosApiIntegrationSection({
               <input
                 type="text"
                 placeholder="Column name"
-              value={config.posApiTypeField}
-              onChange={(e) => setConfig((c) => ({ ...c, posApiTypeField: e.target.value }))}
-              disabled={!config.posApiEnabled}
-            />
-            <small style={{ color: '#666' }}>
-                Optional column containing the POSAPI type code.
+                value={config.posApiTypeField}
+                onChange={(e) => setConfig((c) => ({ ...c, posApiTypeField: e.target.value }))}
+                disabled={!config.posApiEnabled}
+              />
+              <small style={{ color: '#666' }}>
+                Optional column containing the POSAPI type (e.g., B2C).
               </small>
-          </label>
-        </div>
+            </label>
+          </div>
           <details
             open={showAdvanced}
             onToggle={(event) => setShowAdvanced(event.target.open)}
@@ -1218,7 +1304,7 @@ export default function PosApiIntegrationSection({
                     }
                     disabled={!endpointReceiptTypesEnabled}
                   />
-                  <span>Enable POSAPI type detection</span>
+                  <span>Enable receipt types</span>
                 </label>
                 <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                   <input
@@ -1256,11 +1342,11 @@ export default function PosApiIntegrationSection({
                       setConfig((c) => ({
                         ...c,
                         posApiEnablePaymentMethods: e.target.checked,
-                    }))
+                      }))
                     }
                     disabled={!endpointPaymentMethodsEnabled}
                   />
-                  <span>Enable payment capture</span>
+                  <span>Enable payment methods</span>
                 </label>
               </div>
               <div
@@ -1283,7 +1369,7 @@ export default function PosApiIntegrationSection({
                       }
                       disabled={!receiptTypesFeatureEnabled}
                     />
-                    <span>Allow multiple POSAPI types</span>
+                    <span>Allow multiple receipt types</span>
                   </label>
                 )}
                 {receiptTaxTypesFeatureEnabled && (
@@ -1327,6 +1413,152 @@ export default function PosApiIntegrationSection({
       )}
       {config.posApiEnabled && (
         <>
+      {config.posApiEnabled && selectedEndpoint && (
+        <div
+          style={{
+            border: '1px solid #cbd5f5',
+            background: '#f8fafc',
+            borderRadius: '8px',
+            padding: '0.75rem',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '0.5rem',
+          }}
+        >
+          <strong>Endpoint capabilities</strong>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+            <span
+              style={{
+                ...BADGE_BASE_STYLE,
+                background: supportsItems ? '#dcfce7' : '#fee2e2',
+                color: supportsItems ? '#047857' : '#b91c1c',
+              }}
+            >
+              {supportsItems ? 'Supports items' : 'Service only'}
+            </span>
+            {selectedEndpoint.supportsMultipleReceipts && (
+              <span
+                style={{
+                  ...BADGE_BASE_STYLE,
+                  background: '#ede9fe',
+                  color: '#5b21b6',
+                }}
+              >
+                Multiple receipts
+              </span>
+            )}
+            {selectedEndpoint.supportsMultiplePayments && (
+              <span
+                style={{
+                  ...BADGE_BASE_STYLE,
+                  background: '#cffafe',
+                  color: '#0e7490',
+                }}
+              >
+                Multiple payments
+              </span>
+            )}
+          </div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1.5rem' }}>
+            <div>
+              <div style={{ fontSize: '0.75rem', textTransform: 'uppercase', color: '#475569' }}>
+                Receipt types
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                {(selectedEndpoint.receiptTypes || []).map((type) => (
+                  <span key={`endpoint-receipt-${type}`}>{formatPosApiTypeLabelText(type)}</span>
+                ))}
+              </div>
+            </div>
+            <div>
+              <div style={{ fontSize: '0.75rem', textTransform: 'uppercase', color: '#475569' }}>
+                Payment methods
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                {(selectedEndpoint.paymentMethods || []).map((method) => (
+                  <span key={`endpoint-payment-${method}`}>
+                    {PAYMENT_METHOD_LABELS[method] || method.replace(/_/g, ' ')}
+                  </span>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+      {receiptTypesFeatureEnabled && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+          <div>
+            <strong>Receipt types</strong>
+            <p style={{ fontSize: '0.85rem', color: '#555' }}>
+              Enable the POSAPI receipt types available for this form. Leave all selected to allow
+              automatic detection.
+            </p>
+            <div
+              style={{
+                display: 'flex',
+                flexWrap: 'wrap',
+                gap: '0.75rem',
+                alignItems: 'flex-start',
+              }}
+            >
+              {receiptTypeUniverse.map((type) => {
+                const checked = effectiveReceiptTypes.includes(type);
+                const inputType = receiptTypesAllowMultiple ? 'checkbox' : 'radio';
+                return (
+                  <label
+                    key={`pos-receipt-type-${type}`}
+                    style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+                  >
+                    <input
+                      type={inputType}
+                      checked={checked}
+                      onChange={() => toggleReceiptTypeSelection(type)}
+                      disabled={!config.posApiEnabled}
+                    />
+                    <span>{formatPosApiTypeLabelText(type)}</span>
+                  </label>
+                );
+              })}
+            </div>
+          </div>
+          {paymentMethodsFeatureEnabled && (
+            <div>
+              <strong>Payment methods</strong>
+              <p style={{ fontSize: '0.85rem', color: '#555' }}>
+                Enable the POSAPI payment methods allowed for this form. Leave all selected to allow
+                automatic detection.
+              </p>
+              <div
+                style={{
+                  display: 'flex',
+                  flexWrap: 'wrap',
+                  gap: '0.75rem',
+                  alignItems: 'flex-start',
+                }}
+              >
+                {paymentMethodUniverse.map((method) => {
+                  const checked = effectivePaymentMethods.includes(method);
+                  const inputType = paymentMethodsAllowMultiple ? 'checkbox' : 'radio';
+                  return (
+                    <label
+                      key={`pos-payment-method-${method}`}
+                      style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+                    >
+                      <input
+                        type={inputType}
+                        checked={checked}
+                        onChange={() => togglePaymentMethodSelection(method)}
+                        disabled={!config.posApiEnabled}
+                      />
+                      <span>{PAYMENT_METHOD_LABELS[method] || method.replace(/_/g, ' ')}</span>
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
       {receiptTaxTypesFeatureEnabled && (
         <div style={{ marginTop: '1rem' }}>
           <strong>Receipt tax types</strong>
@@ -2035,11 +2267,11 @@ export default function PosApiIntegrationSection({
         )}
         {paymentMethodsFeatureEnabled && servicePaymentMethodCodes.length > 0 && (
           <div style={{ marginTop: '1rem' }}>
-            <strong>{supportsItems ? 'Payment mapping overrides' : 'Service payment mappings'}</strong>
+            <strong>{supportsItems ? 'Payment method overrides' : 'Service payment methods'}</strong>
             <p style={{ fontSize: '0.85rem', color: '#555' }}>
               {supportsItems
                 ? 'Map stored payment breakdowns to the POSAPI method codes returned by the endpoint.'
-                : 'Map payment information captured on the transaction record to each available POSAPI method code.'}
+                : 'Map payment information captured on the transaction record to each available POSAPI payment method.'}
             </p>
             <div className="space-y-4" style={{ marginTop: '0.5rem' }}>
               {servicePaymentMethodCodes.map((method) => {
@@ -2126,7 +2358,8 @@ export default function PosApiIntegrationSection({
               })}
             </div>
           </div>
-        )}
+          )}
+        </div>
       </>
     )}
     </section>

@@ -188,10 +188,13 @@ export function withPosApiEndpointMetadata(endpoint) {
 
 export function formatPosApiTypeLabel(type) {
   if (!type) return '';
-  if (typeof type === 'string') {
-    return type.replace(/_/g, ' ').trim();
-  }
-  return String(type);
+  const lookup = {
+    B2C: 'B2C Receipt',
+    B2B_SALE: 'B2B Sale Invoice',
+    B2B_PURCHASE: 'B2B Purchase Invoice',
+    STOCK_QR: 'Stock QR Receipt',
+  };
+  return lookup[type] || type.replace(/_/g, ' ');
 }
 
 export function formatPosApiTypeLabelText(type) {
