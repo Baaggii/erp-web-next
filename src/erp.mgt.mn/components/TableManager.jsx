@@ -985,7 +985,9 @@ const TableManager = forwardRef(function TableManager({
     columnMeta.forEach((c) => {
       const typ = (c.type || c.columnType || c.dataType || c.DATA_TYPE || '')
         .toLowerCase();
-      if (typ.match(/int|decimal|numeric|double|float|real|number|bigint/)) {
+      if (typ.includes('json') || c.jsonLogged) {
+        map[c.name] = 'json';
+      } else if (typ.match(/int|decimal|numeric|double|float|real|number|bigint/)) {
         map[c.name] = 'number';
       } else if (typ.includes('timestamp') || typ.includes('datetime')) {
         map[c.name] = 'datetime';
@@ -6489,7 +6491,7 @@ const TableManager = forwardRef(function TableManager({
                     defaultValue: labels[c] || c,
                   })}
                 >
-                  {labels[c] || c}
+                  {labels[c] || c} {fieldTypeMap[c] === 'json' ? '🧩' : ''}
                 </TooltipWrapper>
                 {sort.column === c ? (sort.dir === 'asc' ? ' \u2191' : ' \u2193') : ''}
               </th>
@@ -6738,6 +6740,16 @@ const TableManager = forwardRef(function TableManager({
                   ? labelMap[c][r[c]] || String(r[c])
                   : String(r[c]);
                 let display = raw;
+                if (fieldTypeMap[c] === 'json') {
+                  try {
+                    const parsed = JSON.parse(r[c]);
+                    if (Array.isArray(parsed)) {
+                      display = parsed.join(', ');
+                    }
+                  } catch {
+                    if (Array.isArray(r[c])) display = r[c].join(', ');
+                  }
+                }
                 if (c === 'TotalCur' || totalCurrencySet.has(c)) {
                   display = currencyFmt.format(Number(r[c] || 0));
                 } else if (
