@@ -4952,9 +4952,6 @@ export async function listTableColumnMeta(tableName, companyId = 0) {
             c.EXTRA,
             c.GENERATION_EXPRESSION,
             c.COLUMN_TYPE,
-            c.DATA_TYPE,
-            c.IS_NULLABLE,
-            c.COLUMN_DEFAULT,
             pk.SEQ_IN_INDEX AS PRIMARY_KEY_ORDINAL
        FROM information_schema.COLUMNS c
        LEFT JOIN information_schema.STATISTICS pk
@@ -4982,8 +4979,8 @@ export async function listTableColumnMeta(tableName, companyId = 0) {
     headerMap = {};
   }
   return rows.map((r) => {
-      const ordinal =
-        r.PRIMARY_KEY_ORDINAL != null ? Number(r.PRIMARY_KEY_ORDINAL) : null;
+    const ordinal =
+      r.PRIMARY_KEY_ORDINAL != null ? Number(r.PRIMARY_KEY_ORDINAL) : null;
     const enumValues =
       typeof r.COLUMN_TYPE === 'string' && /^enum\(/i.test(r.COLUMN_TYPE)
         ? r.COLUMN_TYPE
@@ -4991,99 +4988,16 @@ export async function listTableColumnMeta(tableName, companyId = 0) {
             .split(',')
             .map((v) => v.trim().slice(1, -1))
         : [];
-      return {
-        name: r.COLUMN_NAME,
-        key: r.COLUMN_KEY,
-        extra: r.EXTRA,
-        type: r.DATA_TYPE,
-        columnType: r.COLUMN_TYPE,
-        isNullable: r.IS_NULLABLE,
-        defaultValue: r.COLUMN_DEFAULT,
-        label: labels[r.COLUMN_NAME] || headerMap[r.COLUMN_NAME] || r.COLUMN_NAME,
-        generationExpression: r.GENERATION_EXPRESSION ?? null,
-        primaryKeyOrdinal: Number.isFinite(ordinal) ? ordinal : null,
-        enumValues,
-      };
+    return {
+      name: r.COLUMN_NAME,
+      key: r.COLUMN_KEY,
+      extra: r.EXTRA,
+      label: labels[r.COLUMN_NAME] || headerMap[r.COLUMN_NAME] || r.COLUMN_NAME,
+      generationExpression: r.GENERATION_EXPRESSION ?? null,
+      primaryKeyOrdinal: Number.isFinite(ordinal) ? ordinal : null,
+      enumValues,
+    };
   });
-}
-
-export async function ensureJsonConversionLogTable() {
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS json_conversion_log (
-      id INT NOT NULL AUTO_INCREMENT,
-      table_name VARCHAR(191) NOT NULL,
-      column_name VARCHAR(191) NOT NULL,
-      script_text LONGTEXT NOT NULL,
-      run_at DATETIME NOT NULL,
-      run_by VARCHAR(191) NOT NULL,
-      PRIMARY KEY (id),
-      KEY json_conversion_table_col_idx (table_name, column_name)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-  `);
-}
-
-export async function insertJsonConversionLog(entry) {
-  if (!entry?.tableName || !entry?.columnName || !entry?.scriptText || !entry?.runBy) {
-    throw new Error('Invalid json conversion log entry');
-  }
-  await ensureJsonConversionLogTable();
-  await pool.query(
-    `INSERT INTO json_conversion_log (table_name, column_name, script_text, run_at, run_by)
-     VALUES (?, ?, ?, NOW(), ?);`,
-    [entry.tableName, entry.columnName, entry.scriptText, entry.runBy],
-  );
-}
-
-export async function listJsonConversionLogs(tableName = null) {
-  await ensureJsonConversionLogTable();
-  const args = [];
-  let query = 'SELECT id, table_name, column_name, script_text, run_at, run_by FROM json_conversion_log';
-  if (tableName) {
-    query += ' WHERE table_name = ?';
-    args.push(tableName);
-  }
-  query += ' ORDER BY run_at DESC, id DESC';
-  const [rows] = await pool.query(query, args);
-  return rows.map((r) => ({
-    id: r.id,
-    tableName: r.table_name,
-    columnName: r.column_name,
-    scriptText: r.script_text,
-    runAt: r.run_at,
-    runBy: r.run_by,
-  }));
-}
-
-export async function listJsonConvertedColumns(tableName) {
-  await ensureJsonConversionLogTable();
-  if (!tableName) return new Set();
-  const [rows] = await pool.query(
-    'SELECT DISTINCT column_name FROM json_conversion_log WHERE table_name = ?',
-    [tableName],
-  );
-  return new Set(rows.map((r) => r.column_name));
-}
-
-export async function getColumnDefinition(tableName, columnName) {
-  if (!tableName || !columnName) return null;
-  const [rows] = await pool.query(
-    `SELECT COLUMN_NAME, COLUMN_TYPE, DATA_TYPE, COLUMN_DEFAULT, IS_NULLABLE
-       FROM information_schema.COLUMNS
-      WHERE TABLE_SCHEMA = DATABASE()
-        AND TABLE_NAME = ?
-        AND COLUMN_NAME = ?
-      LIMIT 1`,
-    [tableName, columnName],
-  );
-  if (!rows || rows.length === 0) return null;
-  const r = rows[0];
-  return {
-    name: r.COLUMN_NAME,
-    columnType: r.COLUMN_TYPE,
-    dataType: r.DATA_TYPE,
-    defaultValue: r.COLUMN_DEFAULT,
-    isNullable: r.IS_NULLABLE,
-  };
 }
 
 export async function getPrimaryKeyColumns(tableName) {
