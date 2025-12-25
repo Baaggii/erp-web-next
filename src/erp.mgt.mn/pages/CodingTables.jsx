@@ -3,6 +3,7 @@ import * as XLSX from 'xlsx';
 import { translateToMn } from '../utils/translateToMn.js';
 import { useToast } from '../context/ToastContext.jsx';
 import formatTimestamp from '../utils/formatTimestamp.js';
+import JsonConversionPanel from '../components/JsonConversionPanel.jsx';
 
 function cleanIdentifier(name) {
   return String(name).replace(/[^A-Za-z0-9_]+/g, '');
@@ -14,6 +15,7 @@ function normalizeField(name) {
 
 export default function CodingTablesPage() {
   const { addToast } = useToast();
+  const [activeTab, setActiveTab] = useState('upload');
   const [sheets, setSheets] = useState([]);
   const [workbook, setWorkbook] = useState(null);
   const [sheet, setSheet] = useState('');
@@ -2789,7 +2791,7 @@ export default function CodingTablesPage() {
       .catch(() => {});
   }, [tableName, configNames]);
 
-  return (
+  const uploadTab = (
     <div>
       <h2>Coding Table Upload</h2>
       <input type="file" accept=".xlsx,.xls,.xlsb" onChange={handleFile} ref={fileInputRef} />
@@ -3323,6 +3325,38 @@ export default function CodingTablesPage() {
           )}
         </div>
       )}
+    </div>
+  );
+
+  return (
+    <div>
+      <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
+        <button
+          type="button"
+          onClick={() => setActiveTab('upload')}
+          style={{
+            padding: '0.5rem 0.75rem',
+            borderBottom: activeTab === 'upload' ? '3px solid #0f62fe' : '1px solid #ccc',
+            background: activeTab === 'upload' ? '#eef5ff' : '#fff',
+            fontWeight: activeTab === 'upload' ? 'bold' : 'normal',
+          }}
+        >
+          Coding Table Upload
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab('json')}
+          style={{
+            padding: '0.5rem 0.75rem',
+            borderBottom: activeTab === 'json' ? '3px solid #0f62fe' : '1px solid #ccc',
+            background: activeTab === 'json' ? '#eef5ff' : '#fff',
+            fontWeight: activeTab === 'json' ? 'bold' : 'normal',
+          }}
+        >
+          JSON Converter
+        </button>
+      </div>
+      {activeTab === 'upload' ? uploadTab : <JsonConversionPanel />}
     </div>
   );
 }
