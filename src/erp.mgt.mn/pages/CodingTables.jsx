@@ -48,7 +48,6 @@ export default function CodingTablesPage() {
   const [schemaDiff, setSchemaDiff] = useState(null);
   const [selectedTables, setSelectedTables] = useState(new Set());
   const [tableFilter, setTableFilter] = useState('');
-  const [schemaBaseDir, setSchemaBaseDir] = useState('');
   const [allowDrops, setAllowDrops] = useState(false);
   const [dryRun, setDryRun] = useState(true);
   const [applyResult, setApplyResult] = useState(null);
@@ -234,10 +233,7 @@ export default function CodingTablesPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({
-          tables,
-          baseDir: schemaBaseDir,
-        }),
+        body: JSON.stringify({ tables }),
       });
       if (!res.ok) {
         const msg = await res.text().catch(() => res.statusText);
@@ -2904,20 +2900,8 @@ export default function CodingTablesPage() {
 
   const renderSchemaDiffSection = () => (
     <div style={{ marginTop: '0.5rem' }}>
-      <h3>Schema Diff</h3>
-      <div
-        style={{
-          marginBottom: '0.5rem',
-          display: 'flex',
-          gap: '0.5rem',
-          flexWrap: 'wrap',
-          padding: '0.5rem',
-          border: '1px solid #ccc',
-          borderRadius: '4px',
-          background: '#fafafa',
-        }}
-      >
-        <label style={{ marginRight: '0.5rem', minWidth: '18rem' }}>
+      <div style={{ marginBottom: '0.5rem' }}>
+        <label style={{ marginRight: '0.5rem' }}>
           Tables (comma-separated, optional):
           <input
             type="text"
@@ -2927,24 +2911,9 @@ export default function CodingTablesPage() {
             style={{ marginLeft: '0.25rem', width: '16rem' }}
           />
         </label>
-        <label style={{ marginRight: '0.5rem', minWidth: '20rem' }}>
-          <strong>Schema root (required when db not under API path):</strong>
-          <input
-            type="text"
-            value={schemaBaseDir}
-            onChange={(e) => setSchemaBaseDir(e.target.value)}
-            placeholder="erp-web-next/db or absolute path"
-            style={{ marginLeft: '0.25rem', width: '18rem' }}
-          />
-        </label>
-        <div style={{ display: 'flex', alignItems: 'center' }}>
-          <button onClick={runSchemaDiff} disabled={diffLoading}>
-            {diffLoading ? 'Running…' : 'Run Diff'}
-          </button>
-        </div>
-      </div>
-      <div style={{ marginBottom: '0.5rem', color: '#555' }}>
-        If your db folder lives outside the API working directory, enter its root (e.g., <code>erp-web-next/db</code> or <code>/opt/erp-web-next/db</code>).
+        <button onClick={runSchemaDiff} disabled={diffLoading}>
+          {diffLoading ? 'Running…' : 'Run Diff'}
+        </button>
       </div>
       {schemaDiff && (
         <>
