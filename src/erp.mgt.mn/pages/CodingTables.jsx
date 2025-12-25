@@ -3,7 +3,6 @@ import * as XLSX from 'xlsx';
 import { translateToMn } from '../utils/translateToMn.js';
 import { useToast } from '../context/ToastContext.jsx';
 import formatTimestamp from '../utils/formatTimestamp.js';
-import JsonConverterTab from '../components/JsonConverterTab.jsx';
 
 function cleanIdentifier(name) {
   return String(name).replace(/[^A-Za-z0-9_]+/g, '');
@@ -23,7 +22,6 @@ export default function CodingTablesPage() {
   const [idFilterMode, setIdFilterMode] = useState('contains');
   const [headerRow, setHeaderRow] = useState(1);
   const [mnHeaderRow, setMnHeaderRow] = useState('');
-  const [activeTab, setActiveTab] = useState('coding');
   const [tableName, setTableName] = useState('');
   const [idColumn, setIdColumn] = useState('');
   const [nameColumn, setNameColumn] = useState('');
@@ -2793,76 +2791,48 @@ export default function CodingTablesPage() {
 
   return (
     <div>
-      <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
-        <button
-          type="button"
-          onClick={() => setActiveTab('coding')}
-          style={{
-            padding: '0.5rem 0.75rem',
-            border: '1px solid #ccc',
-            background: activeTab === 'coding' ? '#eef6ff' : '#fff',
-          }}
-        >
-          Coding Tables
-        </button>
-        <button
-          type="button"
-          onClick={() => setActiveTab('json')}
-          style={{
-            padding: '0.5rem 0.75rem',
-            border: '1px solid #ccc',
-            background: activeTab === 'json' ? '#eef6ff' : '#fff',
-          }}
-        >
-          JSON Converter
-        </button>
-      </div>
-      {activeTab === 'json' ? (
-        <JsonConverterTab />
-      ) : (
-        <>
-          <h2>Coding Table Upload</h2>
-          <input type="file" accept=".xlsx,.xls,.xlsb" onChange={handleFile} ref={fileInputRef} />
-          {selectedFile && (
-            <button onClick={refreshFile} style={{ marginLeft: '0.5rem' }}>Refresh File</button>
-          )}
-          {loadingWorkbook && (
-            <div style={{ marginTop: '0.5rem' }}>
-              <progress value={loadProgress} max="100" /> Loading workbook...
-            </div>
-          )}
-          {sheets.length > 0 && (
-            <div>
-              <div>
-                Sheet:
-                <select value={sheet} onChange={handleSheetChange}>
-                  {sheets.map((s) => (
-                    <option key={s} value={s}>
-                      {s}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                Field Name Row:
-                <input
-                  type="number"
-                  inputMode="decimal"
-                  min="1"
-                  value={headerRow}
-                  onChange={handleHeaderRowChange}
-                />
-                Mongolian Field Name Row:
-                <input
-                  type="number"
-                  inputMode="decimal"
-                  min="1"
-                  value={mnHeaderRow}
-                  onChange={handleMnHeaderRowChange}
-                  style={{ marginLeft: '0.5rem' }}
-                />
-                <button onClick={handleExtract}>Read Columns</button>
-              </div>
+      <h2>Coding Table Upload</h2>
+      <input type="file" accept=".xlsx,.xls,.xlsb" onChange={handleFile} ref={fileInputRef} />
+      {selectedFile && (
+        <button onClick={refreshFile} style={{ marginLeft: '0.5rem' }}>Refresh File</button>
+      )}
+      {loadingWorkbook && (
+        <div style={{ marginTop: '0.5rem' }}>
+          <progress value={loadProgress} max="100" /> Loading workbook...
+        </div>
+      )}
+      {sheets.length > 0 && (
+        <div>
+          <div>
+            Sheet:
+            <select value={sheet} onChange={handleSheetChange}>
+              {sheets.map((s) => (
+                <option key={s} value={s}>
+                  {s}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            Field Name Row:
+            <input
+              type="number"
+              inputMode="decimal"
+              min="1"
+              value={headerRow}
+              onChange={handleHeaderRowChange}
+            />
+            Mongolian Field Name Row:
+            <input
+              type="number"
+              inputMode="decimal"
+              min="1"
+              value={mnHeaderRow}
+              onChange={handleMnHeaderRowChange}
+              style={{ marginLeft: '0.5rem' }}
+            />
+            <button onClick={handleExtract}>Read Columns</button>
+          </div>
           <div>
             <label style={{ marginRight: '1rem' }}>
               <input
