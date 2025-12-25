@@ -5,6 +5,9 @@ import path from 'path';
 import { uploadCodingTable } from '../controllers/codingTableController.js';
 import { upsertCodingTableRow } from '../services/codingTableRowUpsert.js';
 import { requireAuth } from '../middlewares/auth.js';
+import { buildSchemaDiff, applySchemaDiffStatements } from '../services/schemaDiff.js';
+import { getEmploymentSession } from '../../db/index.js';
+import hasAction from '../utils/hasAction.js';
 
 const router = express.Router();
 
@@ -50,6 +53,46 @@ router.post('/upsert-row', requireAuth, async (req, res, next) => {
     const result = await upsertCodingTableRow(table, row);
     res.json(result);
   } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/schema-diff/compare', requireAuth, async (req, res, next) => {
+  try {
+    const session = await getEmploymentSession(req.user.empid, req.user.companyId);
+    if (!(await hasAction(session, 'system_settings'))) return res.sendStatus(403);
+    const { schemaPath, schemaFile, allowDrops = false } = req.body || {};
+    const result = await buildSchemaDiff({
+      schemaPath,
+      schemaFile,
+      allowDrops: Boolean(allowDrops),
+    });
+    res.json(result);
+  } catch (err) {
+    if (err?.name === 'AbortError' || err?.aborted) {
+      return res.status(err.status || 499).json({ message: err.message, aborted: true });
+    }
+    next(err);
+  }
+});
+
+router.post('/schema-diff/apply', requireAuth, async (req, res, next) => {
+  try {
+    const session = await getEmploymentSession(req.user.empid, req.user.companyId);
+    if (!(await hasAction(session, 'system_settings'))) return res.sendStatus(403);
+    const { statements, allowDrops = false, dryRun = false } = req.body || {};
+    if (!Array.isArray(statements) || statements.length === 0) {
+      return res.status(400).json({ message: 'statements array is required' });
+    }
+    const result = await applySchemaDiffStatements(statements, {
+      allowDrops: Boolean(allowDrops),
+      dryRun: Boolean(dryRun),
+    });
+    res.json(result);
+  } catch (err) {
+    if (err?.name === 'AbortError' || err?.aborted) {
+      return res.status(err.status || 499).json({ message: err.message, aborted: true });
+    }
     next(err);
   }
 });
