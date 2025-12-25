@@ -38,13 +38,6 @@ export default function HeaderMenu({ onOpen }) {
       cur = cur.parent_key ? moduleMap[cur.parent_key] : null;
     }
   }
-  if (temporary?.hasNew && moduleMap['forms']) {
-    let cur = moduleMap['forms'];
-    while (cur) {
-      badgeKeys.add(cur.module_key);
-      cur = cur.parent_key ? moduleMap[cur.parent_key] : null;
-    }
-  }
 
   if (!perms) return null;
 

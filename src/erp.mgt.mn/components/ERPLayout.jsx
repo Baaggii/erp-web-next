@@ -3709,7 +3709,7 @@ export function Header({
 }) {
   const { session, workplacePositionMap } = useContext(AuthContext);
   const { lang, setLang, t } = useContext(LangContext);
-  const { anyHasNew, notificationColors, temporary } = useContext(PendingRequestContext);
+  const { anyHasNew, notificationColors } = useContext(PendingRequestContext);
   const handleRefresh = () => {
     if (typeof window === 'undefined' || !window?.location) return;
     try {
@@ -4174,14 +4174,13 @@ function Sidebar({ onOpen, open, isMobile }) {
   const txnModules = useTxnModules();
   const generalConfig = useGeneralConfig();
   const headerMap = useHeaderMappings(modules.map((m) => m.module_key));
-  const { hasNew, anyHasNew, notificationColors, temporary } = useContext(PendingRequestContext);
+  const { hasNew, anyHasNew, notificationColors } = useContext(PendingRequestContext);
 
   const sidebarNotificationColors = useMemo(() => {
     if (notificationColors?.length) return notificationColors;
     if (anyHasNew) return [NOTIFICATION_STATUS_COLORS.pending];
     return [];
   }, [anyHasNew, notificationColors]);
-  const temporaryHasNew = Boolean(temporary?.hasNew);
 
   if (!perms) return null;
 
@@ -4253,13 +4252,6 @@ function Sidebar({ onOpen, open, isMobile }) {
   const badgeKeys = new Set();
   if (hasNotificationTrail && allMap['requests']) {
     let cur = allMap['requests'];
-    while (cur) {
-      badgeKeys.add(cur.module_key);
-      cur = cur.parent_key ? allMap[cur.parent_key] : null;
-    }
-  }
-  if (temporaryHasNew && allMap['forms']) {
-    let cur = allMap['forms'];
     while (cur) {
       badgeKeys.add(cur.module_key);
       cur = cur.parent_key ? allMap[cur.parent_key] : null;
@@ -4489,7 +4481,6 @@ function MainWindow({ title }) {
       paths.add('/');
       paths.add('/requests');
       paths.add('/notifications');
-      paths.add('/forms');
     }
     return paths;
   }, [tabNotificationColors]);
