@@ -472,6 +472,7 @@ const TableManager = forwardRef(function TableManager({
   const [columnMeta, setColumnMeta] = useState([]);
   const [autoInc, setAutoInc] = useState(new Set());
   const [showForm, setShowForm] = useState(false);
+  const showFormRef = useRef(false);
   const [editing, setEditing] = useState(null);
   const [rowDefaults, setRowDefaults] = useState({});
   const [pendingTemporaryPromotion, setPendingTemporaryPromotion] = useState(null);
@@ -681,6 +682,10 @@ const TableManager = forwardRef(function TableManager({
     return () => window.removeEventListener('click', hideMenu);
   }, []);
 
+  useEffect(() => {
+    showFormRef.current = showForm;
+  }, [showForm]);
+
   const branchScopeId = useMemo(() => resolveScopeId(branch), [branch]);
   const departmentScopeId = useMemo(
     () => resolveScopeId(department),
@@ -874,24 +879,28 @@ const TableManager = forwardRef(function TableManager({
         availableTemporaryScopes.includes('review') && reviewPending > 0
           ? 'review'
           : defaultTemporaryScope;
-      setTemporaryScope((prev) => {
-        if (!availableTemporaryScopes.includes(prev)) return preferredScope;
-        if (
-          preferredScope === 'review' &&
-          prev !== 'review' &&
-          availableTemporaryScopes.includes('review')
-        ) {
-          return 'review';
-        }
-        return prev;
-      });
+      if (!showFormRef.current) {
+        setTemporaryScope((prev) => {
+          if (!availableTemporaryScopes.includes(prev)) return preferredScope;
+          if (
+            preferredScope === 'review' &&
+            prev !== 'review' &&
+            availableTemporaryScopes.includes('review')
+          ) {
+            return 'review';
+          }
+          return prev;
+        });
+      }
     } catch {
       setTemporarySummary((prev) => prev || { createdPending: 0, reviewPending: 0 });
-      setTemporaryScope((prev) =>
-        availableTemporaryScopes.includes(prev)
-          ? prev
-          : defaultTemporaryScope,
-      );
+      if (!showFormRef.current) {
+        setTemporaryScope((prev) =>
+          availableTemporaryScopes.includes(prev)
+            ? prev
+            : defaultTemporaryScope,
+        );
+      }
     }
   }, [
     formSupportsTemporary,
@@ -985,7 +994,9 @@ const TableManager = forwardRef(function TableManager({
     columnMeta.forEach((c) => {
       const typ = (c.type || c.columnType || c.dataType || c.DATA_TYPE || '')
         .toLowerCase();
-      if (typ.match(/int|decimal|numeric|double|float|real|number|bigint/)) {
+      if (typ.includes('json') || c.jsonLogged) {
+        map[c.name] = 'json';
+      } else if (typ.match(/int|decimal|numeric|double|float|real|number|bigint/)) {
         map[c.name] = 'number';
       } else if (typ.includes('timestamp') || typ.includes('datetime')) {
         map[c.name] = 'datetime';
@@ -4543,7 +4554,9 @@ const TableManager = forwardRef(function TableManager({
           setTemporaryFocusId(null);
         }
         if (!preserveScope || targetScope === temporaryScope) {
-          setTemporaryScope(targetScope);
+          if (!showFormRef.current) {
+            setTemporaryScope(targetScope);
+          }
           setTemporaryList(nextRows);
         }
       } catch (err) {
@@ -6489,7 +6502,7 @@ const TableManager = forwardRef(function TableManager({
                     defaultValue: labels[c] || c,
                   })}
                 >
-                  {labels[c] || c}
+                  {labels[c] || c} {fieldTypeMap[c] === 'json' ? '🧩' : ''}
                 </TooltipWrapper>
                 {sort.column === c ? (sort.dir === 'asc' ? ' \u2191' : ' \u2193') : ''}
               </th>
@@ -6738,6 +6751,16 @@ const TableManager = forwardRef(function TableManager({
                   ? labelMap[c][r[c]] || String(r[c])
                   : String(r[c]);
                 let display = raw;
+                if (fieldTypeMap[c] === 'json') {
+                  try {
+                    const parsed = JSON.parse(r[c]);
+                    if (Array.isArray(parsed)) {
+                      display = parsed.join(', ');
+                    }
+                  } catch {
+                    if (Array.isArray(r[c])) display = r[c].join(', ');
+                  }
+                }
                 if (c === 'TotalCur' || totalCurrencySet.has(c)) {
                   display = currencyFmt.format(Number(r[c] || 0));
                 } else if (

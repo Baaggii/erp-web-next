@@ -5,11 +5,12 @@ import { promisify } from 'util';
 import { execFile } from 'child_process';
 import { pool } from '../../db/index.js';
 import { getTableStructure } from './generatedSql.js';
+import { getConfigBasePath } from '../utils/configPaths.js';
 
 const execFileAsync = promisify(execFile);
 
 const SCHEMA_FILE_PATH = path.resolve(process.cwd(), 'db', 'mgtmn_erp_db.sql');
-const SCHEMA_DIFF_DIR = path.resolve(process.cwd(), 'db', 'schema-diff');
+const SCHEMA_DIFF_DIR = path.join(getConfigBasePath(), 'schema-diff');
 const CURRENT_SCHEMA_PATH = path.join(SCHEMA_DIFF_DIR, 'current_schema.sql');
 
 function normalizeSqlForCompare(sql = '') {
