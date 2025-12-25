@@ -3458,18 +3458,18 @@ export default function ERPLayout() {
     () => {
       const totals = { pending: 0, accepted: 0, declined: 0 };
       REQUEST_STATUS_KEYS.forEach((status) => {
-        const incomingCount = Number(aggregatedIncoming?.[status]?.count) || 0;
-        const outgoingCount = Number(aggregatedOutgoing?.[status]?.count) || 0;
-        totals[status] = incomingCount + outgoingCount;
+        const incomingNew = Number(aggregatedIncoming?.[status]?.newCount) || 0;
+        const outgoingNew = Number(aggregatedOutgoing?.[status]?.newCount) || 0;
+        totals[status] = incomingNew + outgoingNew;
       });
-      totals.pending += temporaryCreatedCount + temporaryReviewCount;
+      totals.pending += temporaryCreatedNewCount + temporaryReviewNewCount;
       return totals;
     },
     [
       aggregatedIncoming,
       aggregatedOutgoing,
-      temporaryCreatedCount,
-      temporaryReviewCount,
+      temporaryCreatedNewCount,
+      temporaryReviewNewCount,
     ],
   );
 
@@ -4174,7 +4174,8 @@ function Sidebar({ onOpen, open, isMobile }) {
   const txnModules = useTxnModules();
   const generalConfig = useGeneralConfig();
   const headerMap = useHeaderMappings(modules.map((m) => m.module_key));
-  const { hasNew, anyHasNew, notificationColors } = useContext(PendingRequestContext);
+  const { hasNew, anyHasNew, notificationColors, temporary } = useContext(PendingRequestContext);
+  const hasTemporaryNew = Boolean(temporary?.hasNew);
 
   const sidebarNotificationColors = useMemo(() => {
     if (notificationColors?.length) return notificationColors;
@@ -4248,14 +4249,18 @@ function Sidebar({ onOpen, open, isMobile }) {
     });
   }
 
-  const hasNotificationTrail = sidebarNotificationColors.length > 0 || hasNew;
+  const hasNotificationTrail = sidebarNotificationColors.length > 0 || hasNew || hasTemporaryNew;
   const badgeKeys = new Set();
-  if (hasNotificationTrail && allMap['requests']) {
-    let cur = allMap['requests'];
-    while (cur) {
-      badgeKeys.add(cur.module_key);
-      cur = cur.parent_key ? allMap[cur.parent_key] : null;
-    }
+  if (hasNotificationTrail) {
+    const addTrail = (targetKey) => {
+      let cur = allMap[targetKey];
+      while (cur) {
+        badgeKeys.add(cur.module_key);
+        cur = cur.parent_key ? allMap[cur.parent_key] : null;
+      }
+    };
+    if (allMap['requests']) addTrail('requests');
+    if (hasTemporaryNew && allMap['forms']) addTrail('forms');
   }
 
   async function handleExit() {
@@ -4444,7 +4449,8 @@ function MainWindow({ title }) {
   const outlet = useOutlet();
   const navigate = useNavigate();
   const { tabs, activeKey, switchTab, closeTab, setTabContent, cache } = useTabs();
-  const { hasNew, anyHasNew, notificationColors } = useContext(PendingRequestContext);
+  const { hasNew, anyHasNew, notificationColors, temporary } = useContext(PendingRequestContext);
+  const hasTemporaryNew = Boolean(temporary?.hasNew);
   const {
     startTour,
     getTourForPath,
@@ -4481,9 +4487,10 @@ function MainWindow({ title }) {
       paths.add('/');
       paths.add('/requests');
       paths.add('/notifications');
+      if (hasTemporaryNew) paths.add('/forms');
     }
     return paths;
-  }, [tabNotificationColors]);
+  }, [hasTemporaryNew, tabNotificationColors]);
 
   const derivedPageKey = useMemo(() => derivePageKey(location.pathname), [location.pathname]);
 
@@ -4717,7 +4724,8 @@ function MainWindow({ title }) {
               const tabHasBadge =
                 badgePaths.has(t.key) ||
                 (t.key.startsWith('/requests') && badgePaths.has('/requests')) ||
-                (t.key.startsWith('/notifications') && badgePaths.has('/notifications'));
+                (t.key.startsWith('/notifications') && badgePaths.has('/notifications')) ||
+                (t.key.startsWith('/forms') && badgePaths.has('/forms'));
               if (!tabHasBadge) return null;
               return (
                 <NotificationDots

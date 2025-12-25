@@ -11,6 +11,7 @@ import React, {
 } from 'react';
 import { AuthContext } from '../context/AuthContext.jsx';
 import { useToast } from '../context/ToastContext.jsx';
+import { usePendingRequests } from '../context/PendingRequestContext.jsx';
 import RowFormModal from './RowFormModal.jsx';
 import CascadeDeleteModal from './CascadeDeleteModal.jsx';
 import RowDetailModal from './RowDetailModal.jsx';
@@ -39,6 +40,7 @@ import { isPlainRecord } from '../utils/transactionValues.js';
 import { extractRowIndex, sortRowsByIndex } from '../utils/sortRowsByIndex.js';
 import { resolveDisabledFieldState } from './tableManagerDisabledFields.js';
 import { computeTemporaryPromotionOptions } from '../utils/temporaryPromotionOptions.js';
+import NotificationDots from './NotificationDots.jsx';
 
 const TEMPORARY_FILTER_CACHE_KEY = 'temporary-transaction-filter';
 
@@ -516,6 +518,10 @@ const TableManager = forwardRef(function TableManager({
   const [temporaryFocusId, setTemporaryFocusId] = useState(null);
   const [temporarySelection, setTemporarySelection] = useState(() => new Set());
   const [temporaryValuePreview, setTemporaryValuePreview] = useState(null);
+  const pendingRequests = usePendingRequests();
+  const markTemporaryScopeSeen = pendingRequests?.temporary?.markScopeSeen;
+  const temporaryHasNew = Boolean(pendingRequests?.temporary?.hasNew);
+  const notificationDots = pendingRequests?.notificationColors || [];
   const temporaryRowRefs = useRef(new Map());
   const autoTemporaryLoadScopesRef = useRef(new Set());
   const promotionHydrationNeededRef = useRef(false);
@@ -4773,8 +4779,12 @@ const TableManager = forwardRef(function TableManager({
         ? queuedTemporaryTrigger.id
         : null;
     fetchTemporaryList(scopeToOpen, focusId ? { focusId } : undefined);
+    if (typeof markTemporaryScopeSeen === 'function' && scopeToOpen) {
+      markTemporaryScopeSeen(scopeToOpen);
+    }
   }, [
     fetchTemporaryList,
+    markTemporaryScopeSeen,
     queuedTemporaryTrigger,
     supportsTemporary,
     table,
@@ -6095,13 +6105,26 @@ const TableManager = forwardRef(function TableManager({
             <button
               onClick={() => {
                 setShowTemporaryModal(true);
-                fetchTemporaryList(
-                  temporarySummary?.reviewPending > 0 ? 'review' : 'created',
-                );
+                const targetScope =
+                  temporarySummary?.reviewPending > 0 ? 'review' : 'created';
+                fetchTemporaryList(targetScope);
+                if (typeof markTemporaryScopeSeen === 'function') {
+                  markTemporaryScopeSeen(targetScope);
+                }
               }}
               style={{ marginRight: '0.5rem', position: 'relative' }}
             >
-              {t('temporaries', 'Temporaries')}
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
+                {temporaryHasNew && (
+                  <NotificationDots
+                    colors={notificationDots}
+                    size="0.35rem"
+                    gap="0.12rem"
+                    marginRight={0}
+                  />
+                )}
+                {t('temporaries', 'Temporaries')}
+              </span>
               {(reviewPendingCount > 0 || createdPendingCount > 0) && (
                 <span
                   style={{

@@ -7,9 +7,6 @@ import {
   SERVICE_RECEIPT_FIELDS,
   SERVICE_PAYMENT_FIELDS,
   PAYMENT_METHOD_LABELS,
-  DEFAULT_ENDPOINT_RECEIPT_TYPES,
-  DEFAULT_ENDPOINT_TAX_TYPES,
-  DEFAULT_ENDPOINT_PAYMENT_METHODS,
   BADGE_BASE_STYLE,
   REQUIRED_BADGE_STYLE,
   OPTIONAL_BADGE_STYLE,
@@ -196,6 +193,7 @@ export default function PosApiIntegrationSection({
   receiptFieldMapping = {},
   receiptGroupMapping = {},
   paymentMethodMapping = {},
+  responseFieldMapping = {},
   onEnsureColumnsLoaded = () => {},
   onPosApiOptionsChange = () => {},
 }) {
@@ -431,7 +429,7 @@ export default function PosApiIntegrationSection({
     ) {
       return selectedEndpoint.receiptTypes.map((value) => String(value));
     }
-    return DEFAULT_ENDPOINT_RECEIPT_TYPES;
+    return [];
   }, [selectedEndpoint, receiptTypesFeatureEnabled]);
 
   const configuredReceiptTypes = useMemo(() => {
@@ -448,7 +446,7 @@ export default function PosApiIntegrationSection({
     ) {
       return selectedEndpoint.receiptTaxTypes.map((value) => String(value));
     }
-    return DEFAULT_ENDPOINT_TAX_TYPES;
+    return [];
   }, [selectedEndpoint, receiptTaxTypesFeatureEnabled]);
 
   const configuredReceiptTaxTypes = useMemo(() => {
@@ -514,7 +512,7 @@ export default function PosApiIntegrationSection({
     ) {
       return selectedEndpoint.paymentMethods.map((value) => String(value));
     }
-    return DEFAULT_ENDPOINT_PAYMENT_METHODS;
+    return [];
   }, [selectedEndpoint, paymentMethodsFeatureEnabled]);
 
   const configuredPaymentMethods = useMemo(() => {
@@ -883,6 +881,19 @@ export default function PosApiIntegrationSection({
         next[field] = trimmed;
       }
       return { ...c, posApiMapping: next };
+    });
+  };
+
+  const updatePosApiResponseMapping = (field, value) => {
+    setConfig((c) => {
+      const next = { ...(c.posApiResponseMapping || {}) };
+      const trimmed = typeof value === 'string' ? value.trim() : value;
+      if (!trimmed) {
+        delete next[field];
+      } else {
+        next[field] = trimmed;
+      }
+      return { ...c, posApiResponseMapping: next };
     });
   };
 
