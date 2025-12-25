@@ -30,6 +30,7 @@ import derivePageKey from "../utils/derivePageKey.js";
 import { findVisibleFallbackSelector } from "../utils/findVisibleTourStep.js";
 import { playNotificationSound } from "../utils/playNotificationSound.js";
 import { buildOptionsForRows } from "../utils/buildAsyncSelectOptions.js";
+import NotificationDots from "./NotificationDots.jsx";
 
 export const TourContext = React.createContext({
   startTour: () => false,
@@ -3696,25 +3697,6 @@ export default function ERPLayout() {
 }
 
 /** Top header bar **/
-function NotificationDots({ colors, size = '0.55rem', gap = '0.25rem', marginRight = '0.25rem' }) {
-  if (!colors || colors.length === 0) return null;
-  return (
-    <span style={{ ...styles.notificationDotGroup, gap, marginRight }}>
-      {colors.map((color, idx) => (
-        <span
-          key={`${color}-${idx}`}
-          style={{
-            ...styles.notificationDot,
-            backgroundColor: color,
-            width: size,
-            height: size,
-          }}
-        />
-      ))}
-    </span>
-  );
-}
-
 export function Header({
   user,
   onLogout,
@@ -4266,8 +4248,9 @@ function Sidebar({ onOpen, open, isMobile }) {
     });
   }
 
+  const hasNotificationTrail = sidebarNotificationColors.length > 0 || hasNew;
   const badgeKeys = new Set();
-  if (hasNew && allMap['requests']) {
+  if (hasNotificationTrail && allMap['requests']) {
     let cur = allMap['requests'];
     while (cur) {
       badgeKeys.add(cur.module_key);
@@ -4315,6 +4298,7 @@ function Sidebar({ onOpen, open, isMobile }) {
               badgeKeys={badgeKeys}
               generalConfig={generalConfig}
               headerMap={headerMap}
+              sidebarNotificationColors={sidebarNotificationColors}
             />
           ) : (
             <button
@@ -4334,7 +4318,14 @@ function Sidebar({ onOpen, open, isMobile }) {
               className="menu-item"
               style={styles.menuItem({ isActive: location.pathname === modulePath(m, allMap) })}
             >
-              {badgeKeys.has(m.module_key) && <span style={styles.badge} />}
+              {badgeKeys.has(m.module_key) && (
+                <NotificationDots
+                  colors={sidebarNotificationColors}
+                  size="0.45rem"
+                  gap="0.15rem"
+                  marginRight="0.35rem"
+                />
+              )}
               {t(
                 m.module_key,
                 generalConfig.general?.procLabels?.[m.module_key] ||
@@ -4354,7 +4345,17 @@ function Sidebar({ onOpen, open, isMobile }) {
   );
 }
 
-function SidebarGroup({ mod, map, allMap, level, onOpen, badgeKeys, generalConfig, headerMap }) {
+function SidebarGroup({
+  mod,
+  map,
+  allMap,
+  level,
+  onOpen,
+  badgeKeys,
+  generalConfig,
+  headerMap,
+  sidebarNotificationColors,
+}) {
   const [open, setOpen] = useState(false);
   const { t } = useContext(LangContext);
   const groupClass =
@@ -4362,7 +4363,14 @@ function SidebarGroup({ mod, map, allMap, level, onOpen, badgeKeys, generalConfi
   return (
     <div className={groupClass} style={{ ...styles.menuGroup, paddingLeft: level ? '1rem' : 0 }}>
       <button className="menu-item" style={styles.groupBtn} onClick={() => setOpen((o) => !o)}>
-        {badgeKeys.has(mod.module_key) && <span style={styles.badge} />}
+        {badgeKeys.has(mod.module_key) && (
+          <NotificationDots
+            colors={sidebarNotificationColors}
+            size="0.45rem"
+            gap="0.15rem"
+            marginRight="0.35rem"
+          />
+        )}
         {t(
           mod.module_key,
           generalConfig.general?.procLabels?.[mod.module_key] ||
@@ -4384,6 +4392,7 @@ function SidebarGroup({ mod, map, allMap, level, onOpen, badgeKeys, generalConfi
               badgeKeys={badgeKeys}
               generalConfig={generalConfig}
               headerMap={headerMap}
+              sidebarNotificationColors={sidebarNotificationColors}
             />
           ) : (
             <button
@@ -4406,7 +4415,14 @@ function SidebarGroup({ mod, map, allMap, level, onOpen, badgeKeys, generalConfi
               }}
               className="menu-item"
             >
-              {badgeKeys.has(c.module_key) && <span style={styles.badge} />}
+              {badgeKeys.has(c.module_key) && (
+                <NotificationDots
+                  colors={sidebarNotificationColors}
+                  size="0.45rem"
+                  gap="0.15rem"
+                  marginRight="0.35rem"
+                />
+              )}
               {t(
                 c.module_key,
                 generalConfig.general?.procLabels?.[c.module_key] ||
@@ -4428,7 +4444,7 @@ function MainWindow({ title }) {
   const outlet = useOutlet();
   const navigate = useNavigate();
   const { tabs, activeKey, switchTab, closeTab, setTabContent, cache } = useTabs();
-  const { hasNew, anyHasNew } = useContext(PendingRequestContext);
+  const { hasNew, anyHasNew, notificationColors } = useContext(PendingRequestContext);
   const {
     startTour,
     getTourForPath,
@@ -4454,17 +4470,20 @@ function MainWindow({ title }) {
     },
     [toastApi],
   );
+  const tabNotificationColors = useMemo(() => {
+    if (notificationColors?.length) return notificationColors;
+    if (anyHasNew || hasNew) return [NOTIFICATION_STATUS_COLORS.pending];
+    return [];
+  }, [anyHasNew, hasNew, notificationColors]);
   const badgePaths = useMemo(() => {
     const paths = new Set();
-    if (hasNew) {
+    if (tabNotificationColors.length > 0) {
       paths.add('/');
       paths.add('/requests');
-    }
-    if (anyHasNew) {
       paths.add('/notifications');
     }
     return paths;
-  }, [anyHasNew, hasNew]);
+  }, [tabNotificationColors]);
 
   const derivedPageKey = useMemo(() => derivePageKey(location.pathname), [location.pathname]);
 
@@ -4694,7 +4713,21 @@ function MainWindow({ title }) {
             style={activeKey === t.key ? styles.activeTab : styles.tab}
             onClick={() => handleSwitch(t.key)}
           >
-            {badgePaths.has(t.key) && <span style={styles.badge} />}
+            {(() => {
+              const tabHasBadge =
+                badgePaths.has(t.key) ||
+                (t.key.startsWith('/requests') && badgePaths.has('/requests')) ||
+                (t.key.startsWith('/notifications') && badgePaths.has('/notifications'));
+              if (!tabHasBadge) return null;
+              return (
+                <NotificationDots
+                  colors={tabNotificationColors}
+                  size="0.4rem"
+                  gap="0.12rem"
+                  marginRight="0.35rem"
+                />
+              );
+            })()}
             <span>{t.label}</span>
             {tabs.length > 1 && t.key !== '/' && (
               <button
@@ -4818,19 +4851,6 @@ const styles = {
     display: "inline-flex",
     alignItems: "center",
     gap: "0.35rem",
-  },
-  notificationDotGroup: {
-    display: "inline-flex",
-    alignItems: "center",
-    gap: "0.25rem",
-    marginRight: "0.25rem",
-  },
-  notificationDot: {
-    display: "inline-block",
-    width: "0.55rem",
-    height: "0.55rem",
-    borderRadius: "50%",
-    backgroundColor: NOTIFICATION_STATUS_COLORS.pending,
   },
   userSection: {
     display: "flex",
@@ -5004,14 +5024,6 @@ const styles = {
     background: "transparent",
     border: "none",
     cursor: "pointer",
-  },
-  badge: {
-    backgroundColor: "red",
-    borderRadius: "50%",
-    width: "8px",
-    height: "8px",
-    display: "inline-block",
-    marginRight: "4px",
   },
   tourButtonGroup: {
     display: "inline-flex",
