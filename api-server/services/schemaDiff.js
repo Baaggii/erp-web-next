@@ -1,0 +1,540 @@
+import fs from 'fs';
+import fsPromises from 'fs/promises';
+import os from 'os';
+import path from 'path';
+import crypto from 'crypto';
+import { fileURLToPath } from 'url';
+import { spawn } from 'child_process';
+import { pool } from '../../db/index.js';
+import { splitSqlStatements, getTableStructure } from './generatedSql.js';
+
+const repoRoot = await fsPromises
+  .realpath(path.resolve(fileURLToPath(new URL('../../', import.meta.url))))
+  .catch(() => path.resolve(fileURLToPath(new URL('../../', import.meta.url))));
+
+async function commandExists(cmd) {
+  try {
+    await runCommand('which', [cmd], { captureStdout: false, captureStderr: false });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function runCommand(command, args, options = {}) {
+  const {
+    cwd,
+    env,
+    signal,
+    stdinFilePath,
+    captureStdout = true,
+    captureStderr = true,
+  } = options;
+  return new Promise((resolve, reject) => {
+    let stdout = '';
+    let stderr = '';
+    const child = spawn(command, args, {
+      cwd,
+      env,
+      stdio: ['pipe', captureStdout ? 'pipe' : 'ignore', captureStderr ? 'pipe' : 'ignore'],
+    });
+
+    const cleanup = () => {
+      if (signal) {
+        signal.removeEventListener('abort', onAbort);
+      }
+    };
+
+    const onAbort = () => {
+      child.kill('SIGTERM');
+      const abortErr = new Error(`${command} aborted`);
+      abortErr.name = 'AbortError';
+      abortErr.aborted = true;
+      cleanup();
+      reject(abortErr);
+    };
+
+    if (signal) {
+      if (signal.aborted) return onAbort();
+      signal.addEventListener('abort', onAbort, { once: true });
+    }
+
+    if (captureStdout) {
+      child.stdout.on('data', (chunk) => {
+        stdout += chunk.toString();
+      });
+    }
+
+    if (captureStderr) {
+      child.stderr.on('data', (chunk) => {
+        stderr += chunk.toString();
+      });
+    }
+
+    if (stdinFilePath) {
+      const stream = fs.createReadStream(stdinFilePath);
+      stream.on('error', (err) => {
+        child.kill('SIGTERM');
+        cleanup();
+        reject(err);
+      });
+      stream.pipe(child.stdin);
+    } else if (child.stdin) {
+      child.stdin.end();
+    }
+
+    child.on('error', (err) => {
+      cleanup();
+      if (err.code === 'ENOENT') {
+        const friendly = new Error(`Command not found: ${command}`);
+        friendly.status = 400;
+        reject(friendly);
+        return;
+      }
+      reject(err);
+    });
+
+    child.on('close', (code) => {
+      cleanup();
+      if (code === 0 || code === null) {
+        resolve({ stdout, stderr, code: code ?? 0 });
+      } else {
+        const err = new Error(`${command} exited with code ${code}`);
+        err.code = code;
+        err.stdout = stdout;
+        err.stderr = stderr;
+        reject(err);
+      }
+    });
+  });
+}
+
+async function resolveSchemaFile({ schemaPath, schemaFile }) {
+  const combined = schemaFile
+    ? path.resolve(schemaPath || '.', schemaFile)
+    : path.resolve(schemaPath || '.');
+  if (!combined) {
+    const err = new Error('schemaPath or schemaFile is required');
+    err.status = 400;
+    throw err;
+  }
+  const realCombined = await fsPromises.realpath(combined).catch(() => combined);
+  const relative = path.relative(repoRoot, realCombined);
+  const insideRepo = relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative));
+  return { resolvedPath: realCombined, insideRepo };
+}
+
+async function dumpCurrentSchemaWithMysqlDump(outputPath, signal) {
+  const host = process.env.DB_HOST || 'localhost';
+  const user = process.env.DB_USER || '';
+  const pass = process.env.DB_PASS || '';
+  const dbName = process.env.DB_NAME;
+  const port = process.env.DB_PORT;
+  if (!dbName) {
+    const err = new Error('DB_NAME env is required to dump schema');
+    err.status = 500;
+    throw err;
+  }
+  const args = ['--no-data', '--routines', '--triggers', '--events', '-h', host];
+  if (port) args.push('--port', String(port));
+  if (user) args.push('-u', user);
+  args.push(dbName);
+  const env = { ...process.env };
+  if (pass) env.MYSQL_PWD = pass;
+  const { stdout } = await runCommand('mysqldump', args, { env, signal });
+  await fsPromises.writeFile(outputPath, stdout, 'utf8');
+  return { outputPath, sql: stdout };
+}
+
+async function dumpCurrentSchemaViaPool(outputPath, signal) {
+  if (signal?.aborted) {
+    const err = new Error('Schema dump aborted');
+    err.name = 'AbortError';
+    err.aborted = true;
+    throw err;
+  }
+  const conn = await pool.getConnection();
+  try {
+    const [[{ dbName }]] = await conn.query('SELECT DATABASE() AS dbName');
+    if (!dbName) {
+      const err = new Error('No active database selected for schema dump');
+      err.status = 500;
+      throw err;
+    }
+    const [tables] = await conn.query(
+      'SHOW FULL TABLES WHERE Table_Type IN ("BASE TABLE","VIEW")',
+    );
+    const nameKey = Object.keys(tables[0] || {}).find((k) => k.startsWith('Tables_in_')) || 'Table';
+    const schemaParts = [];
+    for (const row of tables) {
+      if (signal?.aborted) {
+        const err = new Error('Schema dump aborted');
+        err.name = 'AbortError';
+        err.aborted = true;
+        throw err;
+      }
+      const tbl = row[nameKey];
+      if (!tbl) continue;
+      const sql = await getTableStructure(tbl);
+      if (sql) schemaParts.push(sql);
+    }
+    const schemaText = schemaParts.join('\n\n');
+    await fsPromises.writeFile(outputPath, schemaText, 'utf8');
+    return { outputPath, sql: schemaText, warnings: tables.length === 0 ? ['No tables found for schema dump'] : [] };
+  } finally {
+    conn.release();
+  }
+}
+
+function stripCommentLines(sqlText) {
+  return sqlText
+    .split(/\r?\n/)
+    .filter((line) => !/^\s*(#|--)/.test(line))
+    .join('\n')
+    .trim();
+}
+
+function extractTableName(statement) {
+  const tableMatch = statement.match(
+    /\b(?:TABLE|VIEW)\s+`?([A-Za-z0-9_]+)`?/i,
+  );
+  if (tableMatch) return tableMatch[1];
+  const triggerMatch = statement.match(/\bTRIGGER\s+`?([A-Za-z0-9_]+)`?/i);
+  if (triggerMatch) return triggerMatch[1];
+  return null;
+}
+
+function classifyStatement(statement) {
+  const trimmed = statement.trim().toUpperCase();
+  if (trimmed.startsWith('DROP ')) return 'drop';
+  if (trimmed.startsWith('CREATE ')) return 'create';
+  if (trimmed.startsWith('ALTER ')) return 'alter';
+  return 'other';
+}
+
+function groupStatements(diffSql) {
+  const statements = splitSqlStatements(stripCommentLines(diffSql));
+  const tableMap = new Map();
+  const generalStatements = [];
+  let dropStatements = 0;
+
+  for (const stmt of statements) {
+    const name = extractTableName(stmt);
+    const type = classifyStatement(stmt);
+    if (type === 'drop') dropStatements += 1;
+    if (name) {
+      if (!tableMap.has(name)) {
+        tableMap.set(name, { name, statements: [], hasDrops: false });
+      }
+      const entry = tableMap.get(name);
+      entry.statements.push({ sql: stmt, type });
+      if (type === 'drop') entry.hasDrops = true;
+    } else {
+      generalStatements.push({ sql: stmt, type });
+    }
+  }
+
+  const tables = Array.from(tableMap.values()).sort((a, b) =>
+    a.name.localeCompare(b.name),
+  );
+
+  return {
+    tables,
+    generalStatements,
+    stats: {
+      statementCount: statements.length,
+      tableCount: tables.length,
+      dropStatements,
+    },
+  };
+}
+
+function basicDiffFromDumps(currentSql, targetSql, allowDrops = false) {
+  const createRegex = /CREATE\s+TABLE\s+[`"]?([A-Za-z0-9_]+)[`"]?\s*[\s\S]*?;/gi;
+  const currentTables = new Map();
+  const targetTables = new Map();
+
+  let m;
+  while ((m = createRegex.exec(currentSql))) {
+    currentTables.set(m[1], m[0]);
+  }
+  while ((m = createRegex.exec(targetSql))) {
+    targetTables.set(m[1], m[0]);
+  }
+
+  const statements = [];
+  const warnings = [];
+
+  for (const [name, stmt] of targetTables.entries()) {
+    if (!currentTables.has(name)) {
+      statements.push(stmt);
+    } else if (
+      stripCommentLines(stmt).replace(/\s+/g, ' ').trim() !==
+      stripCommentLines(currentTables.get(name)).replace(/\s+/g, ' ').trim()
+    ) {
+      warnings.push(`Table ${name} definitions differ and require manual review.`);
+    }
+  }
+
+  if (allowDrops) {
+    for (const name of currentTables.keys()) {
+      if (!targetTables.has(name)) {
+        statements.push(`DROP TABLE IF EXISTS \`${name}\`;`);
+      }
+    }
+  }
+
+  return { statements, warnings };
+}
+
+async function importSchemaFile(schemaFilePath, tempDbName, signal) {
+  const pass = process.env.DB_PASS || '';
+  const env = { ...process.env };
+  if (pass) env.MYSQL_PWD = pass;
+  const host = process.env.DB_HOST || 'localhost';
+  const user = process.env.DB_USER || '';
+  const port = process.env.DB_PORT;
+  const mysqlArgs = ['-h', host];
+  if (port) mysqlArgs.push('-P', String(port));
+  if (user) mysqlArgs.push('-u', user);
+
+  const hasMysql = await commandExists('mysql');
+  if (hasMysql) {
+    await runCommand(
+      'mysql',
+      [...mysqlArgs, '-e', `DROP DATABASE IF EXISTS \`${tempDbName}\`; CREATE DATABASE \`${tempDbName}\`;`],
+      { env, signal },
+    );
+    await runCommand(
+      'mysql',
+      [...mysqlArgs, tempDbName],
+      { env, signal, stdinFilePath: schemaFilePath },
+    );
+    return { importedWithCli: true };
+  }
+
+  // Fallback: apply statements via pooled connection
+  const sqlText = await fsPromises.readFile(schemaFilePath, 'utf8');
+  const statements = splitSqlStatements(sqlText);
+  const conn = await pool.getConnection();
+  try {
+    await conn.query(`DROP DATABASE IF EXISTS \`${tempDbName}\``);
+    await conn.query(`CREATE DATABASE \`${tempDbName}\``);
+    await conn.query(`USE \`${tempDbName}\``);
+    for (const stmt of statements) {
+      if (signal?.aborted) {
+        const abortErr = new Error('Schema import aborted');
+        abortErr.name = 'AbortError';
+        abortErr.aborted = true;
+        throw abortErr;
+      }
+      if (stmt) await conn.query(stmt);
+    }
+    return { importedWithCli: false };
+  } finally {
+    conn.release();
+  }
+}
+
+async function dropTempDatabase(name) {
+  try {
+    await pool.query(`DROP DATABASE IF EXISTS \`${name}\``);
+  } catch {
+    // ignore cleanup errors
+  }
+}
+
+export async function buildSchemaDiff(options = {}) {
+  const { schemaPath, schemaFile, allowDrops = false, signal } = options;
+  const hasDumpTool = await commandExists('mysqldump');
+  const toolAvailable = await commandExists('mysqldbcompare');
+  const warnings = [];
+  const { resolvedPath: resolvedSchema, insideRepo } = await resolveSchemaFile({
+    schemaPath,
+    schemaFile,
+  });
+  if (!insideRepo) {
+    warnings.push(`Schema file is outside the repo root (${repoRoot}); proceeding with caution.`);
+  }
+  const schemaExists = await fsPromises
+    .stat(resolvedSchema)
+    .then((st) => st.isFile())
+    .catch(() => false);
+  if (!schemaExists) {
+    const err = new Error(`Schema file not found: ${resolvedSchema}`);
+    err.status = 400;
+    throw err;
+  }
+
+  const tempDir = await fsPromises.mkdtemp(path.join(os.tmpdir(), 'schema-diff-'));
+  const dumpPath = path.join(tempDir, 'current_schema.sql');
+
+  let currentSql = '';
+  if (hasDumpTool) {
+    try {
+      const { sql, warnings: dumpWarnings = [] } = await dumpCurrentSchemaWithMysqlDump(
+        dumpPath,
+        signal,
+      );
+      currentSql = sql;
+      warnings.push(...dumpWarnings);
+    } catch (err) {
+      warnings.push(
+        `mysqldump failed (${err.message}). Falling back to SHOW CREATE TABLE schema dump.`,
+      );
+      const fallback = await dumpCurrentSchemaViaPool(dumpPath, signal);
+      currentSql = fallback.sql;
+      warnings.push(...(fallback.warnings || []));
+    }
+  } else {
+    warnings.push('mysqldump not found; using SHOW CREATE TABLE schema dump.');
+    const fallback = await dumpCurrentSchemaViaPool(dumpPath, signal);
+    currentSql = fallback.sql;
+    warnings.push(...(fallback.warnings || []));
+  }
+  const targetSql = await fsPromises.readFile(resolvedSchema, 'utf8');
+
+  let diffSql = '';
+  let tool = 'mysqldbcompare';
+  let tempDbName = '';
+  let importedWithCli = false;
+
+  if (toolAvailable) {
+    tempDbName = `schema_diff_${crypto.randomBytes(5).toString('hex')}`;
+    try {
+      const { importedWithCli: viaCli } = await importSchemaFile(
+        resolvedSchema,
+        tempDbName,
+        signal,
+      );
+      importedWithCli = viaCli;
+      const host = process.env.DB_HOST || 'localhost';
+      const user = process.env.DB_USER || '';
+      const pass = process.env.DB_PASS || '';
+      const port = process.env.DB_PORT;
+      const dbName = process.env.DB_NAME;
+      const env = { ...process.env };
+      if (pass) env.MYSQL_PWD = pass;
+      const serverConn = port ? `${user}@${host}:${port}` : `${user}@${host}`;
+      const args = [
+        `--server1=${serverConn}`,
+        `--server2=${serverConn}`,
+        `${tempDbName}:${dbName}`,
+        '--difftype=sql',
+        '--run-all-tests',
+        '--changes-for=server2',
+      ];
+      const { stdout, stderr } = await runCommand('mysqldbcompare', args, {
+        env,
+        signal,
+      });
+      diffSql = stripCommentLines([stdout, stderr].filter(Boolean).join('\n'));
+    } finally {
+      if (tempDbName) {
+        await dropTempDatabase(tempDbName);
+      }
+    }
+  } else {
+    tool = 'basic';
+    warnings.push(
+      'mysqldbcompare is not available on this server; using a basic CREATE TABLE diff instead.',
+    );
+    const fallback = basicDiffFromDumps(currentSql, targetSql, allowDrops);
+    diffSql = fallback.statements.join('\n\n');
+    warnings.push(...fallback.warnings);
+  }
+
+  const diffPath = path.join(tempDir, 'schema_diff.sql');
+  await fsPromises.writeFile(diffPath, diffSql || '-- Schemas already match', 'utf8');
+  const grouped = groupStatements(diffSql);
+
+  return {
+    tool,
+    toolAvailable,
+    importedWithCli,
+    allowDrops,
+    warnings,
+    diffPath,
+    currentSchemaPath: dumpPath,
+    targetSchemaPath: resolvedSchema,
+    generatedAt: new Date().toISOString(),
+    diffText: diffSql,
+    ...grouped,
+  };
+}
+
+export async function applySchemaDiffStatements(statements, options = {}) {
+  const { allowDrops = false, dryRun = false, signal } = options;
+  if (!Array.isArray(statements) || statements.length === 0) {
+    const err = new Error('At least one statement is required');
+    err.status = 400;
+    throw err;
+  }
+  const cleaned = statements.map((s) => s.trim()).filter(Boolean);
+  const dropStatements = cleaned.filter((s) => /^DROP\s+/i.test(s));
+  if (dropStatements.length && !allowDrops) {
+    const err = new Error(
+      'Drop statements detected. Enable "include drops" to apply them.',
+    );
+    err.status = 400;
+    err.details = { dropStatements };
+    throw err;
+  }
+
+  if (dryRun) {
+    return {
+      applied: 0,
+      failed: [],
+      dropStatements: dropStatements.length,
+      dryRun: true,
+      statements: cleaned,
+      durationMs: 0,
+    };
+  }
+
+  const conn = await pool.getConnection();
+  let applied = 0;
+  const failed = [];
+  const started = Date.now();
+  try {
+    await conn.beginTransaction();
+    for (const stmt of cleaned) {
+      if (signal?.aborted) {
+        const abortErr = new Error('Schema diff application aborted');
+        abortErr.name = 'AbortError';
+        abortErr.aborted = true;
+        throw abortErr;
+      }
+      try {
+        await conn.query(stmt);
+        applied += 1;
+      } catch (err) {
+        failed.push({ statement: stmt, error: err.message });
+        const wrapped = new Error('Failed to apply schema diff statement');
+        wrapped.status = 400;
+        wrapped.details = { applied, failed };
+        throw wrapped;
+      }
+    }
+    await conn.commit();
+    return {
+      applied,
+      failed,
+      dropStatements: dropStatements.length,
+      dryRun: false,
+      durationMs: Date.now() - started,
+    };
+  } catch (err) {
+    try {
+      await conn.rollback();
+    } catch {
+      // ignore rollback errors
+    }
+    if (err.status) throw err;
+    err.status = err.aborted ? 499 : 500;
+    err.details = err.details || { applied, failed };
+    throw err;
+  } finally {
+    conn.release();
+  }
+}

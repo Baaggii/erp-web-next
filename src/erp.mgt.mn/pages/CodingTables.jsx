@@ -4,6 +4,7 @@ import { translateToMn } from '../utils/translateToMn.js';
 import { useToast } from '../context/ToastContext.jsx';
 import formatTimestamp from '../utils/formatTimestamp.js';
 import JsonConversionPanel from '../components/JsonConversionPanel.jsx';
+import SchemaDiffPanel from '../components/SchemaDiffPanel.jsx';
 
 function cleanIdentifier(name) {
   return String(name).replace(/[^A-Za-z0-9_]+/g, '');
@@ -3355,8 +3356,26 @@ export default function CodingTablesPage() {
         >
           JSON Converter
         </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab('schema')}
+          style={{
+            padding: '0.5rem 0.75rem',
+            borderBottom: activeTab === 'schema' ? '3px solid #0f62fe' : '1px solid #ccc',
+            background: activeTab === 'schema' ? '#eef5ff' : '#fff',
+            fontWeight: activeTab === 'schema' ? 'bold' : 'normal',
+          }}
+        >
+          Schema Diff
+        </button>
       </div>
-      {activeTab === 'upload' ? uploadTab : <JsonConversionPanel />}
+      {activeTab === 'upload' ? (
+        uploadTab
+      ) : activeTab === 'json' ? (
+        <JsonConversionPanel />
+      ) : (
+        <SchemaDiffPanel />
+      )}
     </div>
   );
 }
