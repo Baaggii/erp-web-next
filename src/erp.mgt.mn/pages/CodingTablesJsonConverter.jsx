@@ -16,35 +16,6 @@ function normalizeColumns(rawCols = []) {
     .filter(Boolean);
 }
 
-function normalizeTables(rawTables = []) {
-  if (!Array.isArray(rawTables)) return [];
-  return rawTables
-    .map((t) => {
-      if (typeof t === 'string') {
-        return { value: t, label: t };
-      }
-      if (t && typeof t === 'object') {
-        const value =
-          t.value ||
-          t.table ||
-          t.table_name ||
-          t.tableName ||
-          t.name ||
-          t.label;
-        if (!value) return null;
-        const label =
-          t.label ||
-          t.name ||
-          t.table_name ||
-          t.tableName ||
-          value;
-        return { value: String(value), label: String(label) };
-      }
-      return null;
-    })
-    .filter(Boolean);
-}
-
 function buildScript(table, column, withBackup = true) {
   const safeTable = `\`${table}\``;
   const safeColumn = `\`${column}\``;
@@ -114,9 +85,7 @@ export default function CodingTablesJsonConverter() {
 
   const sortedTables = useMemo(
     () =>
-      [...tables].sort((a, b) =>
-        String(a.label || a.value || a).localeCompare(String(b.label || b.value || b)),
-      ),
+      [...tables].sort((a, b) => String(a.label || a.value || a).localeCompare(String(b.label || b.value || b))),
     [tables],
   );
 
@@ -125,14 +94,14 @@ export default function CodingTablesJsonConverter() {
       setLoadingTables(true);
       try {
         const res = await fetch('/api/tenant_tables/options', { credentials: 'include' });
-        let data = [];
         if (res.ok) {
-          data = await res.json();
+          const data = await res.json();
+          setTables(Array.isArray(data) ? data : []);
         } else {
           const fallback = await fetch('/api/tenant_tables', { credentials: 'include' });
-          data = fallback.ok ? await fallback.json() : [];
+          const data = fallback.ok ? await fallback.json() : [];
+          setTables(Array.isArray(data) ? data : []);
         }
-        setTables(normalizeTables(data));
       } catch (err) {
         console.error('Failed to load tables', err);
         addToast('Unable to load tables for JSON conversion.', 'error');
@@ -316,8 +285,8 @@ export default function CodingTablesJsonConverter() {
               {loadingTables ? 'Loading tables...' : 'Select table'}
             </option>
             {sortedTables.map((tbl) => {
-              const value = tbl.value;
-              const label = tbl.label || tbl.value;
+              const value = tbl.value || tbl.table || tbl;
+              const label = tbl.label || tbl.name || value;
               return (
                 <option key={value} value={value}>
                   {label}
