@@ -27,6 +27,7 @@ import headerMappingRoutes from "./routes/header_mappings.js";
 import displayFieldRoutes from "./routes/display_fields.js";
 import codingTableConfigRoutes from "./routes/coding_table_configs.js";
 import generatedSqlRoutes from "./routes/generated_sql.js";
+import jsonConversionRoutes from "./routes/json_conversion.js";
 import transactionFormRoutes from "./routes/transaction_forms.js";
 import posTxnConfigRoutes from "./routes/pos_txn_config.js";
 import posTxnLayoutRoutes from "./routes/pos_txn_layout.js";
@@ -149,6 +150,7 @@ app.use("/api/ai_inventory", featureToggle("aiInventoryApiEnabled"), aiInventory
 app.use("/api/display_fields", displayFieldRoutes);
 app.use("/api/coding_table_configs", codingTableConfigRoutes);
 app.use("/api/generated_sql", generatedSqlRoutes);
+app.use("/api/json_conversion", requireAuth, jsonConversionRoutes);
 app.use("/api/transaction_forms", transactionFormRoutes);
 app.use("/api/pos_txn_config", posTxnConfigRoutes);
 app.use("/api/pos_txn_layout", posTxnLayoutRoutes);
