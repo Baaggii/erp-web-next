@@ -60,6 +60,7 @@ const emptyConfig = {
   posApiReceiptTypes: [],
   posApiReceiptTaxTypes: [],
   posApiPaymentMethods: [],
+  posApiRequestVariation: '',
   posApiEnableReceiptTypes: undefined,
   posApiEnableReceiptItems: undefined,
   posApiEnableReceiptTaxTypes: undefined,

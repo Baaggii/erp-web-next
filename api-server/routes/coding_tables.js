@@ -58,6 +58,10 @@ router.post('/upsert-row', requireAuth, async (req, res, next) => {
 });
 
 router.post('/schema-diff/compare', requireAuth, async (req, res, next) => {
+  const controller = new AbortController();
+  const handleAbort = () => controller.abort();
+  req.on('close', handleAbort);
+  res.on('close', handleAbort);
   try {
     const session = await getEmploymentSession(req.user.empid, req.user.companyId);
     if (!(await hasAction(session, 'system_settings'))) return res.sendStatus(403);
@@ -66,17 +70,28 @@ router.post('/schema-diff/compare', requireAuth, async (req, res, next) => {
       schemaPath,
       schemaFile,
       allowDrops: Boolean(allowDrops),
+      signal: controller.signal,
     });
+    if (controller.signal.aborted) {
+      return res.status(499).json({ message: 'Schema diff aborted', aborted: true });
+    }
     res.json(result);
   } catch (err) {
-    if (err?.name === 'AbortError' || err?.aborted) {
-      return res.status(err.status || 499).json({ message: err.message, aborted: true });
+    if (controller.signal.aborted) {
+      return res.status(499).json({ message: 'Schema diff aborted', aborted: true });
     }
     next(err);
+  } finally {
+    req.off('close', handleAbort);
+    res.off('close', handleAbort);
   }
 });
 
 router.post('/schema-diff/apply', requireAuth, async (req, res, next) => {
+  const controller = new AbortController();
+  const handleAbort = () => controller.abort();
+  req.on('close', handleAbort);
+  res.on('close', handleAbort);
   try {
     const session = await getEmploymentSession(req.user.empid, req.user.companyId);
     if (!(await hasAction(session, 'system_settings'))) return res.sendStatus(403);
@@ -87,13 +102,22 @@ router.post('/schema-diff/apply', requireAuth, async (req, res, next) => {
     const result = await applySchemaDiffStatements(statements, {
       allowDrops: Boolean(allowDrops),
       dryRun: Boolean(dryRun),
+      signal: controller.signal,
     });
+    if (controller.signal.aborted || result?.aborted) {
+      return res
+        .status(499)
+        .json({ ...(result || {}), message: 'Schema diff apply aborted' });
+    }
     res.json(result);
   } catch (err) {
-    if (err?.name === 'AbortError' || err?.aborted) {
-      return res.status(err.status || 499).json({ message: err.message, aborted: true });
+    if (controller.signal.aborted) {
+      return res.status(499).json({ message: 'Schema diff apply aborted', aborted: true });
     }
     next(err);
+  } finally {
+    req.off('close', handleAbort);
+    res.off('close', handleAbort);
   }
 });
 

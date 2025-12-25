@@ -3,14 +3,11 @@ import fsPromises from 'fs/promises';
 import os from 'os';
 import path from 'path';
 import crypto from 'crypto';
-import { fileURLToPath } from 'url';
 import { spawn } from 'child_process';
 import { pool } from '../../db/index.js';
-import { splitSqlStatements, getTableStructure } from './generatedSql.js';
+import { splitSqlStatements } from './generatedSql.js';
 
-const repoRoot = await fsPromises
-  .realpath(path.resolve(fileURLToPath(new URL('../../', import.meta.url))))
-  .catch(() => path.resolve(fileURLToPath(new URL('../../', import.meta.url))));
+const projectRoot = process.cwd();
 
 async function commandExists(cmd) {
   try {
@@ -85,12 +82,6 @@ function runCommand(command, args, options = {}) {
 
     child.on('error', (err) => {
       cleanup();
-      if (err.code === 'ENOENT') {
-        const friendly = new Error(`Command not found: ${command}`);
-        friendly.status = 400;
-        reject(friendly);
-        return;
-      }
       reject(err);
     });
 
@@ -109,22 +100,25 @@ function runCommand(command, args, options = {}) {
   });
 }
 
-async function resolveSchemaFile({ schemaPath, schemaFile }) {
+function resolveSchemaFile({ schemaPath, schemaFile }) {
   const combined = schemaFile
-    ? path.resolve(schemaPath || '.', schemaFile)
-    : path.resolve(schemaPath || '.');
+    ? path.join(schemaPath || '.', schemaFile)
+    : schemaPath;
   if (!combined) {
     const err = new Error('schemaPath or schemaFile is required');
     err.status = 400;
     throw err;
   }
-  const realCombined = await fsPromises.realpath(combined).catch(() => combined);
-  const relative = path.relative(repoRoot, realCombined);
-  const insideRepo = relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative));
-  return { resolvedPath: realCombined, insideRepo };
+  const resolved = path.resolve(projectRoot, combined);
+  if (!resolved.startsWith(projectRoot)) {
+    const err = new Error('Schema path must stay within the repository root');
+    err.status = 400;
+    throw err;
+  }
+  return resolved;
 }
 
-async function dumpCurrentSchemaWithMysqlDump(outputPath, signal) {
+async function dumpCurrentSchema(outputPath, signal) {
   const host = process.env.DB_HOST || 'localhost';
   const user = process.env.DB_USER || '';
   const pass = process.env.DB_PASS || '';
@@ -144,46 +138,6 @@ async function dumpCurrentSchemaWithMysqlDump(outputPath, signal) {
   const { stdout } = await runCommand('mysqldump', args, { env, signal });
   await fsPromises.writeFile(outputPath, stdout, 'utf8');
   return { outputPath, sql: stdout };
-}
-
-async function dumpCurrentSchemaViaPool(outputPath, signal) {
-  if (signal?.aborted) {
-    const err = new Error('Schema dump aborted');
-    err.name = 'AbortError';
-    err.aborted = true;
-    throw err;
-  }
-  const conn = await pool.getConnection();
-  try {
-    const [[{ dbName }]] = await conn.query('SELECT DATABASE() AS dbName');
-    if (!dbName) {
-      const err = new Error('No active database selected for schema dump');
-      err.status = 500;
-      throw err;
-    }
-    const [tables] = await conn.query(
-      'SHOW FULL TABLES WHERE Table_Type IN ("BASE TABLE","VIEW")',
-    );
-    const nameKey = Object.keys(tables[0] || {}).find((k) => k.startsWith('Tables_in_')) || 'Table';
-    const schemaParts = [];
-    for (const row of tables) {
-      if (signal?.aborted) {
-        const err = new Error('Schema dump aborted');
-        err.name = 'AbortError';
-        err.aborted = true;
-        throw err;
-      }
-      const tbl = row[nameKey];
-      if (!tbl) continue;
-      const sql = await getTableStructure(tbl);
-      if (sql) schemaParts.push(sql);
-    }
-    const schemaText = schemaParts.join('\n\n');
-    await fsPromises.writeFile(outputPath, schemaText, 'utf8');
-    return { outputPath, sql: schemaText, warnings: tables.length === 0 ? ['No tables found for schema dump'] : [] };
-  } finally {
-    conn.release();
-  }
 }
 
 function stripCommentLines(sqlText) {
@@ -347,15 +301,14 @@ async function dropTempDatabase(name) {
 export async function buildSchemaDiff(options = {}) {
   const { schemaPath, schemaFile, allowDrops = false, signal } = options;
   const hasDumpTool = await commandExists('mysqldump');
+  if (!hasDumpTool) {
+    const err = new Error('mysqldump is required to extract the current schema.');
+    err.status = 400;
+    throw err;
+  }
   const toolAvailable = await commandExists('mysqldbcompare');
   const warnings = [];
-  const { resolvedPath: resolvedSchema, insideRepo } = await resolveSchemaFile({
-    schemaPath,
-    schemaFile,
-  });
-  if (!insideRepo) {
-    warnings.push(`Schema file is outside the repo root (${repoRoot}); proceeding with caution.`);
-  }
+  const resolvedSchema = resolveSchemaFile({ schemaPath, schemaFile });
   const schemaExists = await fsPromises
     .stat(resolvedSchema)
     .then((st) => st.isFile())
@@ -369,29 +322,7 @@ export async function buildSchemaDiff(options = {}) {
   const tempDir = await fsPromises.mkdtemp(path.join(os.tmpdir(), 'schema-diff-'));
   const dumpPath = path.join(tempDir, 'current_schema.sql');
 
-  let currentSql = '';
-  if (hasDumpTool) {
-    try {
-      const { sql, warnings: dumpWarnings = [] } = await dumpCurrentSchemaWithMysqlDump(
-        dumpPath,
-        signal,
-      );
-      currentSql = sql;
-      warnings.push(...dumpWarnings);
-    } catch (err) {
-      warnings.push(
-        `mysqldump failed (${err.message}). Falling back to SHOW CREATE TABLE schema dump.`,
-      );
-      const fallback = await dumpCurrentSchemaViaPool(dumpPath, signal);
-      currentSql = fallback.sql;
-      warnings.push(...(fallback.warnings || []));
-    }
-  } else {
-    warnings.push('mysqldump not found; using SHOW CREATE TABLE schema dump.');
-    const fallback = await dumpCurrentSchemaViaPool(dumpPath, signal);
-    currentSql = fallback.sql;
-    warnings.push(...(fallback.warnings || []));
-  }
+  const { sql: currentSql } = await dumpCurrentSchema(dumpPath, signal);
   const targetSql = await fsPromises.readFile(resolvedSchema, 'utf8');
 
   let diffSql = '';
