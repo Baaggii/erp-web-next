@@ -6,17 +6,6 @@ import { loadEndpoints, saveEndpoints } from '../services/posApiRegistry.js';
 import { invokePosApiEndpoint } from '../services/posApiService.js';
 import { getEmploymentSession } from '../../db/index.js';
 
-const DEFAULT_RECEIPT_TYPES = ['B2C', 'B2B_SALE', 'B2B_PURCHASE', 'STOCK_QR'];
-const DEFAULT_TAX_TYPES = ['VAT_ABLE', 'VAT_FREE', 'VAT_ZERO', 'NO_VAT'];
-const DEFAULT_PAYMENT_METHODS = [
-  'CASH',
-  'PAYMENT_CARD',
-  'BANK_TRANSFER',
-  'MOBILE_WALLET',
-  'EASY_BANK_CARD',
-  'SERVICE_PAYMENT',
-];
-
 const DEFAULT_MAPPING_HINTS = {
   branchNo: 'session.branch_id',
   branchId: 'session.branch_id',
