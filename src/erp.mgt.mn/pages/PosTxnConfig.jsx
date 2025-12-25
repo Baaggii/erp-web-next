@@ -4,13 +4,7 @@ import { refreshTxnModules } from '../hooks/useTxnModules.js';
 import { refreshModules } from '../hooks/useModules.js';
 import { AuthContext } from '../context/AuthContext.jsx';
 import useGeneralConfig from '../hooks/useGeneralConfig.js';
-import {
-  DEFAULT_ENDPOINT_RECEIPT_TYPES,
-  DEFAULT_ENDPOINT_TAX_TYPES,
-  DEFAULT_ENDPOINT_PAYMENT_METHODS,
-  resolveFeatureToggle,
-  withPosApiEndpointMetadata,
-} from '../utils/posApiConfig.js';
+import { resolveFeatureToggle, withPosApiEndpointMetadata } from '../utils/posApiConfig.js';
 import { parseFieldSource } from '../utils/posApiFieldSource.js';
 import PosApiIntegrationSection from '../components/PosApiIntegrationSection.jsx';
  
@@ -72,6 +66,7 @@ const emptyConfig = {
   posApiEnablePaymentMethods: undefined,
   fieldsFromPosApi: [],
   posApiMapping: {},
+  posApiResponseMapping: {},
 };
 
 export default function PosTxnConfig() {
@@ -139,6 +134,10 @@ export default function PosTxnConfig() {
     typeof config.posApiMapping.paymentMethods === 'object' &&
     !Array.isArray(config.posApiMapping.paymentMethods)
       ? config.posApiMapping.paymentMethods
+      : {};
+  const responseFieldMapping =
+    config.posApiResponseMapping && typeof config.posApiResponseMapping === 'object' && !Array.isArray(config.posApiResponseMapping)
+      ? config.posApiResponseMapping
       : {};
 
   const procPrefix = generalConfig?.general?.reportProcPrefix || '';
@@ -373,7 +372,7 @@ export default function PosTxnConfig() {
     ) {
       return selectedEndpoint.receiptTypes.map((value) => String(value));
     }
-    return DEFAULT_ENDPOINT_RECEIPT_TYPES;
+    return [];
   }, [selectedEndpoint, receiptTypesFeatureEnabled]);
 
   const configuredReceiptTypes = useMemo(() => {
@@ -416,7 +415,7 @@ export default function PosTxnConfig() {
     ) {
       return selectedEndpoint.paymentMethods.map((value) => String(value));
     }
-    return DEFAULT_ENDPOINT_PAYMENT_METHODS;
+    return [];
   }, [selectedEndpoint, paymentMethodsFeatureEnabled]);
 
   const configuredPaymentMethods = useMemo(() => {
@@ -461,7 +460,7 @@ export default function PosTxnConfig() {
     ) {
       return selectedEndpoint.receiptTaxTypes.map((value) => String(value));
     }
-    return DEFAULT_ENDPOINT_TAX_TYPES;
+    return [];
   }, [selectedEndpoint, receiptTaxTypesFeatureEnabled]);
 
   const topLevelFieldHints = useMemo(() => {
@@ -2239,6 +2238,7 @@ export default function PosTxnConfig() {
           receiptFieldMapping={receiptFieldMapping}
           receiptGroupMapping={receiptGroupMapping}
           paymentMethodMapping={paymentMethodMapping}
+          responseFieldMapping={responseFieldMapping}
           onEnsureColumnsLoaded={ensureColumnsLoadedFor}
         />
 
