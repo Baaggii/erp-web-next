@@ -1063,19 +1063,19 @@ export default function NotificationsPage() {
 
   const notificationTrailColors = useMemo(() => {
     if (notificationColors?.length) return notificationColors;
-    const hasAnyCounts =
-      reportPending > 0 ||
-      changePending > 0 ||
-      temporaryReviewTotal > 0 ||
-      temporaryCreatedTotal > 0;
-    if (hasAnyCounts) return [DEFAULT_NOTIFICATION_COLOR];
+    const hasNewCounts =
+      reportNew > 0 ||
+      changeNew > 0 ||
+      temporaryReviewNew > 0 ||
+      temporaryCreatedNew > 0;
+    if (hasNewCounts) return [DEFAULT_NOTIFICATION_COLOR];
     return [];
   }, [
-    changePending,
+    changeNew,
     notificationColors,
-    reportPending,
-    temporaryCreatedTotal,
-    temporaryReviewTotal,
+    reportNew,
+    temporaryCreatedNew,
+    temporaryReviewNew,
   ]);
 
   const colorsForStatus = useCallback(

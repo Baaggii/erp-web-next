@@ -19,8 +19,6 @@ export default function CodingTablesPage() {
   const [workbook, setWorkbook] = useState(null);
   const [sheet, setSheet] = useState('');
   const [headers, setHeaders] = useState([]);
-  const [mainTab, setMainTab] = useState('coding');
-  const [codingTab, setCodingTab] = useState('upload');
   const [idCandidates, setIdCandidates] = useState([]);
   const [idFilterMode, setIdFilterMode] = useState('contains');
   const [headerRow, setHeaderRow] = useState(1);
@@ -45,14 +43,6 @@ export default function CodingTablesPage() {
   const foreignKeySqlTouchedRef = useRef(false);
   const foreignKeySqlLoadedRef = useRef('');
   const foreignKeySqlTableRef = useRef('');
-  const [diffLoading, setDiffLoading] = useState(false);
-  const [applyLoading, setApplyLoading] = useState(false);
-  const [schemaDiff, setSchemaDiff] = useState(null);
-  const [selectedTables, setSelectedTables] = useState(new Set());
-  const [tableFilter, setTableFilter] = useState('');
-  const [allowDrops, setAllowDrops] = useState(false);
-  const [dryRun, setDryRun] = useState(true);
-  const [applyResult, setApplyResult] = useState(null);
 
   const setTriggerSql = React.useCallback((value) => {
     setTriggerSqlState((prev) => {
@@ -195,14 +185,6 @@ export default function CodingTablesPage() {
     return () => document.removeEventListener('keydown', onKey);
   }, [uploading, loadingWorkbook]);
 
-  useEffect(() => {
-    if (!schemaDiff?.tables) return;
-    const defaults = schemaDiff.tables
-      .filter((t) => t.status && t.status !== 'match')
-      .map((t) => t.name);
-    setSelectedTables(new Set(defaults));
-  }, [schemaDiff]);
-
   const allFields = useMemo(() => {
     // keep duplicates so user can easily spot them and clean extras the same way
     return [
@@ -217,98 +199,6 @@ export default function CodingTablesPage() {
     () => allFields.some((h) => /year|month|date/i.test(h)),
     [allFields]
   );
-
-  const parseTableFilter = React.useCallback((value) => {
-    if (!value) return [];
-    return value
-      .split(',')
-      .map((v) => v.trim())
-      .filter(Boolean);
-  }, []);
-
-  const runSchemaDiff = React.useCallback(async () => {
-    setDiffLoading(true);
-    setApplyResult(null);
-    try {
-      const tables = parseTableFilter(tableFilter);
-      const res = await fetch('/api/coding_table_configs/schema-diff/run', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ tables }),
-      });
-      if (!res.ok) {
-        const msg = await res.text().catch(() => res.statusText);
-        throw new Error(msg || 'Failed to run schema diff');
-      }
-      const data = await res.json();
-      setSchemaDiff(data);
-      addToast('Schema diff generated', 'success');
-    } catch (err) {
-      console.error('Schema diff failed', err);
-      addToast(err.message || 'Schema diff failed', 'error');
-    } finally {
-      setDiffLoading(false);
-    }
-  }, [addToast, parseTableFilter, tableFilter]);
-
-  const toggleTableSelection = React.useCallback((name) => {
-    setSelectedTables((prev) => {
-      const next = new Set(prev);
-      if (next.has(name)) next.delete(name);
-      else next.add(name);
-      return next;
-    });
-  }, []);
-
-  const selectAllDiff = React.useCallback(() => {
-    if (!schemaDiff?.tables) return;
-    setSelectedTables(new Set(schemaDiff.tables.map((t) => t.name)));
-  }, [schemaDiff]);
-
-  const clearSelection = React.useCallback(() => {
-    setSelectedTables(new Set());
-  }, []);
-
-  const applySchemaDiff = React.useCallback(async () => {
-    if (!schemaDiff?.tables) {
-      addToast('Run schema diff first', 'error');
-      return;
-    }
-    const chosen = schemaDiff.tables.filter((t) => selectedTables.has(t.name));
-    if (chosen.length === 0) {
-      addToast('Select at least one table', 'error');
-      return;
-    }
-    setApplyLoading(true);
-    setApplyResult(null);
-    try {
-      const payload = {
-        changes: chosen.map((t) => ({ table: t.name, sql: t.script })),
-        allowDrops,
-        dryRun,
-      };
-      const res = await fetch('/api/coding_table_configs/schema-diff/apply', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify(payload),
-      });
-      if (!res.ok) {
-        const msg = await res.text().catch(() => res.statusText);
-        throw new Error(msg || 'Failed to apply schema changes');
-      }
-      const data = await res.json();
-      setApplyResult(data);
-      const label = dryRun ? 'Preview ready' : 'Schema updated';
-      addToast(label, 'success');
-    } catch (err) {
-      console.error('Schema apply failed', err);
-      addToast(err.message || 'Schema apply failed', 'error');
-    } finally {
-      setApplyLoading(false);
-    }
-  }, [schemaDiff, selectedTables, allowDrops, dryRun, addToast]);
 
   useEffect(() => {
     if (
@@ -2900,168 +2790,8 @@ export default function CodingTablesPage() {
       .catch(() => {});
   }, [tableName, configNames]);
 
-  const renderSchemaDiffSection = () => (
-    <div style={{ marginTop: '0.5rem' }}>
-      <div style={{ marginBottom: '0.5rem' }}>
-        <label style={{ marginRight: '0.5rem' }}>
-          Tables (comma-separated, optional):
-          <input
-            type="text"
-            value={tableFilter}
-            onChange={(e) => setTableFilter(e.target.value)}
-            placeholder="table_a, table_b"
-            style={{ marginLeft: '0.25rem', width: '16rem' }}
-          />
-        </label>
-        <button onClick={runSchemaDiff} disabled={diffLoading}>
-          {diffLoading ? 'Running…' : 'Run Diff'}
-        </button>
-      </div>
-      {schemaDiff && (
-        <>
-          <div style={{ marginBottom: '0.5rem' }}>
-            <div>
-              Reference: <code>{schemaDiff.referenceSchemaPath}</code>
-            </div>
-            <div>
-              Current dump: <code>{schemaDiff.currentSchemaPath}</code>
-            </div>
-            <div>Generated at: {schemaDiff.generatedAt}</div>
-          </div>
-          <div style={{ marginBottom: '0.5rem' }}>
-            <button onClick={selectAllDiff} style={{ marginRight: '0.5rem' }}>
-              Select all
-            </button>
-            <button onClick={clearSelection}>Clear</button>
-          </div>
-          <div style={{ display: 'flex', gap: '0.5rem', flexDirection: 'column' }}>
-            {schemaDiff.tables?.map((t) => (
-              <div
-                key={t.name}
-                style={{
-                  border: '1px solid #ccc',
-                  padding: '0.5rem',
-                  borderRadius: '4px',
-                  background: t.status === 'match' ? '#f6f6f6' : 'white',
-                }}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  <input
-                    type="checkbox"
-                    checked={selectedTables.has(t.name)}
-                    onChange={() => toggleTableSelection(t.name)}
-                    disabled={!t.script}
-                  />
-                  <strong>{t.name}</strong>
-                  <span>({t.status || 'unknown'})</span>
-                  {t.hasDrop && (
-                    <span style={{ color: 'red' }} title="Script contains DROP statements">
-                      DROP
-                    </span>
-                  )}
-                  {t.source && <span style={{ color: '#666' }}>source: {t.source}</span>}
-                </div>
-                {t.preview && (
-                  <pre
-                    style={{
-                      background: '#f7f7f7',
-                      padding: '0.5rem',
-                      whiteSpace: 'pre-wrap',
-                      marginTop: '0.25rem',
-                    }}
-                  >
-                    {t.preview}
-                  </pre>
-                )}
-                {t.script && (
-                  <details style={{ marginTop: '0.25rem' }}>
-                    <summary>Script</summary>
-                    <textarea
-                      readOnly
-                      value={t.script}
-                      style={{ width: '100%', minHeight: '8rem', marginTop: '0.25rem' }}
-                    />
-                  </details>
-                )}
-              </div>
-            ))}
-          </div>
-          <div style={{ marginTop: '0.5rem' }}>
-            <label style={{ marginRight: '0.5rem' }}>
-              <input
-                type="checkbox"
-                checked={dryRun}
-                onChange={(e) => setDryRun(e.target.checked)}
-              />{' '}
-              Dry-run only
-            </label>
-            <label style={{ marginRight: '0.5rem' }}>
-              <input
-                type="checkbox"
-                checked={allowDrops}
-                onChange={(e) => setAllowDrops(e.target.checked)}
-              />{' '}
-              Allow DROP statements
-            </label>
-            <button onClick={applySchemaDiff} disabled={applyLoading}>
-              {applyLoading ? 'Applying…' : dryRun ? 'Preview selected' : 'Apply selected'}
-            </button>
-          </div>
-          {applyResult && (
-            <div style={{ marginTop: '0.5rem' }}>
-              <div>Applied: {applyResult.applied}</div>
-              <pre
-                style={{
-                  background: '#f7f7f7',
-                  padding: '0.5rem',
-                  whiteSpace: 'pre-wrap',
-                }}
-              >
-                {JSON.stringify(applyResult, null, 2)}
-              </pre>
-            </div>
-          )}
-        </>
-      )}
-    </div>
-  );
-
   return (
     <div>
-      <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '0.75rem' }}>
-        <button
-          onClick={() => setMainTab('coding')}
-          style={{ fontWeight: mainTab === 'coding' ? 'bold' : 'normal' }}
-        >
-          Coding Tables
-        </button>
-        <button
-          onClick={() => setMainTab('json')}
-          style={{ fontWeight: mainTab === 'json' ? 'bold' : 'normal' }}
-        >
-          JSON Converter
-        </button>
-      </div>
-      {mainTab === 'json' && <JsonConverterTab />}
-      {mainTab === 'coding' && (
-        <>
-          <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem' }}>
-            <button
-              onClick={() => setCodingTab('upload')}
-              style={{ fontWeight: codingTab === 'upload' ? 'bold' : 'normal' }}
-            >
-              Coding Table Upload
-            </button>
-            <button
-              onClick={() => setCodingTab('schemaDiff')}
-              style={{ fontWeight: codingTab === 'schemaDiff' ? 'bold' : 'normal' }}
-            >
-              Schema Diff
-            </button>
-          </div>
-          {codingTab === 'schemaDiff' && renderSchemaDiffSection()}
-          {codingTab === 'upload' && (
-            <>
       <h2>Coding Table Upload</h2>
       <input type="file" accept=".xlsx,.xls,.xlsb" onChange={handleFile} ref={fileInputRef} />
       {selectedFile && (
@@ -3592,7 +3322,7 @@ export default function CodingTablesPage() {
               )}
             </>
           )}
-        </>
+        </div>
       )}
     </div>
   );
