@@ -3,32 +3,19 @@ import fsPromises from 'fs/promises';
 import path from 'path';
 import crypto from 'crypto';
 import { spawn } from 'child_process';
-import { fileURLToPath } from 'url';
 import { pool } from '../../db/index.js';
 import { splitSqlStatements } from './generatedSql.js';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-function resolveProjectRoot() {
-  const candidates = [
-    process.cwd(),
-    path.resolve(__dirname, '../..'),
-    path.resolve(__dirname, '..'),
-  ];
-  for (const candidate of candidates) {
-    const marker = path.join(candidate, 'db', 'mgtmn_erp_db.sql');
-    if (fs.existsSync(marker)) {
-      return candidate;
-    }
-  }
-  // fallback to cwd even if marker not found
-  return process.cwd();
-}
-
-const PROJECT_ROOT = resolveProjectRoot();
-const REFERENCE_SCHEMA_PATH = path.join(PROJECT_ROOT, 'db', 'mgtmn_erp_db.sql');
-const CURRENT_SCHEMA_PATH = path.join(PROJECT_ROOT, 'db', 'current_schema.sql');
+const REFERENCE_SCHEMA_PATH = path.resolve(
+  process.cwd(),
+  'db',
+  'mgtmn_erp_db.sql',
+);
+const CURRENT_SCHEMA_PATH = path.resolve(
+  process.cwd(),
+  'db',
+  'current_schema.sql',
+);
 
 function mysqlEnv(password) {
   return {
@@ -145,13 +132,7 @@ async function dumpCurrentSchema() {
   if (!hasMysqldump) {
     throw new Error('mysqldump is not available on this server');
   }
-  try {
-    await fsPromises.mkdir(path.dirname(CURRENT_SCHEMA_PATH), { recursive: true });
-  } catch (err) {
-    if (err && err.code !== 'EEXIST') {
-      throw err;
-    }
-  }
+  await fsPromises.mkdir(path.dirname(CURRENT_SCHEMA_PATH), { recursive: true });
   const args = [
     ...mysqlBaseArgs(),
     '--no-data',
