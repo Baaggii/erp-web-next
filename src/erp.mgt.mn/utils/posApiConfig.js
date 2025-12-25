@@ -135,32 +135,37 @@ export function withEndpointMetadata(endpoint) {
   if (!endpoint || typeof endpoint !== 'object') return endpoint;
   const usage = normaliseEndpointUsage(endpoint.usage);
   const isTransaction = usage === 'transaction';
-  const receiptTypesEnabled = isTransaction ? endpoint.enableReceiptTypes !== false : false;
-  const receiptTaxTypesEnabled = isTransaction ? endpoint.enableReceiptTaxTypes !== false : false;
-  const paymentMethodsEnabled = isTransaction ? endpoint.enablePaymentMethods !== false : false;
-  const receiptItemsEnabled = isTransaction ? endpoint.enableReceiptItems !== false : false;
-  const allowMultipleReceiptTypes = receiptTypesEnabled
-    ? endpoint.allowMultipleReceiptTypes !== false
-    : true;
-  const allowMultipleReceiptTaxTypes = receiptTaxTypesEnabled
-    ? endpoint.allowMultipleReceiptTaxTypes !== false
-    : true;
-  const allowMultiplePaymentMethods = paymentMethodsEnabled
-    ? endpoint.allowMultiplePaymentMethods !== false
-    : true;
-  const allowMultipleReceiptItems = receiptItemsEnabled
-    ? endpoint.allowMultipleReceiptItems !== false
-    : true;
+  const inferredReceiptTypes = Array.isArray(endpoint.receiptTypes) ? endpoint.receiptTypes : [];
+  const inferredTaxTypes = Array.isArray(endpoint.taxTypes)
+    ? endpoint.taxTypes
+    : Array.isArray(endpoint.receiptTaxTypes)
+      ? endpoint.receiptTaxTypes
+      : [];
+  const inferredPaymentMethods = Array.isArray(endpoint.paymentMethods) ? endpoint.paymentMethods : [];
+  const receiptTypesEnabled = isTransaction
+    ? endpoint.enableReceiptTypes === true || inferredReceiptTypes.length > 0
+    : false;
+  const receiptTaxTypesEnabled = isTransaction
+    ? endpoint.enableReceiptTaxTypes === true || inferredTaxTypes.length > 0
+    : false;
+  const paymentMethodsEnabled = isTransaction
+    ? endpoint.enablePaymentMethods === true || inferredPaymentMethods.length > 0
+    : false;
+  const receiptItemsEnabled = isTransaction && endpoint.supportsItems === true && endpoint.enableReceiptItems !== false;
+  const allowMultipleReceiptTypes = receiptTypesEnabled && endpoint.allowMultipleReceiptTypes !== false;
+  const allowMultipleReceiptTaxTypes = receiptTaxTypesEnabled && endpoint.allowMultipleReceiptTaxTypes !== false;
+  const allowMultiplePaymentMethods = paymentMethodsEnabled && endpoint.allowMultiplePaymentMethods !== false;
+  const allowMultipleReceiptItems = receiptItemsEnabled && endpoint.allowMultipleReceiptItems !== false;
   const receiptTypes = receiptTypesEnabled
-    ? normaliseEndpointList(endpoint.receiptTypes, [])
+    ? normaliseEndpointList(inferredReceiptTypes, [])
     : [];
   const receiptTaxTypes = receiptTaxTypesEnabled
-    ? normaliseEndpointList(endpoint.taxTypes || endpoint.receiptTaxTypes, [])
+    ? normaliseEndpointList(inferredTaxTypes, [])
     : [];
   const paymentMethods = paymentMethodsEnabled
-    ? normaliseEndpointList(endpoint.paymentMethods, [])
+    ? normaliseEndpointList(inferredPaymentMethods, [])
     : [];
-  const supportsItems = isTransaction && receiptItemsEnabled && endpoint.supportsItems === true;
+  const supportsItems = isTransaction && endpoint.supportsItems === true;
   return {
     ...endpoint,
     usage,

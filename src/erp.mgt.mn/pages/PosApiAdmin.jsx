@@ -531,32 +531,35 @@ function withEndpointMetadata(endpoint) {
       ? 'info'
       : normalizeUsage(endpoint.usage);
   const isTransaction = usage === 'transaction';
-  const enableReceiptTypes = isTransaction ? endpoint.enableReceiptTypes !== false : false;
-  const enableReceiptTaxTypes = isTransaction ? endpoint.enableReceiptTaxTypes !== false : false;
-  const enablePaymentMethods = isTransaction ? endpoint.enablePaymentMethods !== false : false;
-  const enableReceiptItems = isTransaction ? endpoint.enableReceiptItems !== false : false;
-  const allowMultipleReceiptTypes = enableReceiptTypes ? endpoint.allowMultipleReceiptTypes !== false : false;
-  const allowMultipleReceiptTaxTypes = enableReceiptTaxTypes
-    ? endpoint.allowMultipleReceiptTaxTypes !== false
+  const inferredReceiptTypes = Array.isArray(endpoint.receiptTypes) ? endpoint.receiptTypes : [];
+  const inferredTaxTypes = Array.isArray(endpoint.taxTypes)
+    ? endpoint.taxTypes
+    : Array.isArray(endpoint.receiptTaxTypes)
+      ? endpoint.receiptTaxTypes
+      : [];
+  const inferredPaymentMethods = Array.isArray(endpoint.paymentMethods) ? endpoint.paymentMethods : [];
+  const enableReceiptTypes = isTransaction
+    ? endpoint.enableReceiptTypes === true || inferredReceiptTypes.length > 0
     : false;
-  const allowMultiplePaymentMethods = enablePaymentMethods
-    ? endpoint.allowMultiplePaymentMethods !== false
+  const enableReceiptTaxTypes = isTransaction
+    ? endpoint.enableReceiptTaxTypes === true || inferredTaxTypes.length > 0
     : false;
-  const allowMultipleReceiptItems = enableReceiptItems
-    ? endpoint.allowMultipleReceiptItems !== false
+  const enablePaymentMethods = isTransaction
+    ? endpoint.enablePaymentMethods === true || inferredPaymentMethods.length > 0
     : false;
+  const enableReceiptItems = isTransaction && endpoint.supportsItems === true && endpoint.enableReceiptItems !== false;
+  const allowMultipleReceiptTypes = enableReceiptTypes && endpoint.allowMultipleReceiptTypes !== false;
+  const allowMultipleReceiptTaxTypes = enableReceiptTaxTypes && endpoint.allowMultipleReceiptTaxTypes !== false;
+  const allowMultiplePaymentMethods = enablePaymentMethods && endpoint.allowMultiplePaymentMethods !== false;
+  const allowMultipleReceiptItems = enableReceiptItems && endpoint.allowMultipleReceiptItems !== false;
   const receiptTypes = enableReceiptTypes
-    ? sanitizeCodeList(endpoint.receiptTypes, DEFAULT_RECEIPT_TYPES, VALID_RECEIPT_TYPES)
+    ? sanitizeCodeList(inferredReceiptTypes, [], VALID_RECEIPT_TYPES)
     : [];
   const taxTypes = enableReceiptTaxTypes
-    ? sanitizeCodeList(
-        endpoint.taxTypes || endpoint.receiptTaxTypes,
-        DEFAULT_TAX_TYPES,
-        VALID_TAX_TYPES,
-      )
+    ? sanitizeCodeList(inferredTaxTypes, [], VALID_TAX_TYPES)
     : [];
   const paymentMethods = enablePaymentMethods
-    ? sanitizeCodeList(endpoint.paymentMethods, DEFAULT_PAYMENT_METHODS, VALID_PAYMENT_METHODS)
+    ? sanitizeCodeList(inferredPaymentMethods, [], VALID_PAYMENT_METHODS)
     : [];
   const receiptTypeTemplates = enableReceiptTypes
     ? sanitizeTemplateMap(endpoint.receiptTypeTemplates, VALID_RECEIPT_TYPES)
@@ -571,14 +574,8 @@ function withEndpointMetadata(endpoint) {
     ? buildTemplateList(endpoint.receiptItemTemplates, allowMultipleReceiptItems)
     : [];
   let supportsItems = false;
-  if (isTransaction) {
-    if (endpoint.supportsItems === false) {
-      supportsItems = false;
-    } else if (endpoint.supportsItems === true) {
-      supportsItems = true;
-    } else {
-      supportsItems = endpoint.posApiType === 'STOCK_QR' ? false : true;
-    }
+  if (isTransaction && endpoint.supportsItems === true) {
+    supportsItems = true;
   }
   return {
     ...endpoint,
@@ -734,22 +731,22 @@ const EMPTY_ENDPOINT = {
   defaultForForm: false,
   supportsMultipleReceipts: false,
   supportsMultiplePayments: false,
-  supportsItems: true,
-  enableReceiptTypes: true,
+  supportsItems: false,
+  enableReceiptTypes: false,
   allowMultipleReceiptTypes: true,
   receiptTypeTemplates: {},
-  enableReceiptTaxTypes: true,
+  enableReceiptTaxTypes: false,
   allowMultipleReceiptTaxTypes: true,
   taxTypeTemplates: {},
-  enablePaymentMethods: true,
+  enablePaymentMethods: false,
   allowMultiplePaymentMethods: true,
   paymentMethodTemplates: {},
-  enableReceiptItems: true,
+  enableReceiptItems: false,
   allowMultipleReceiptItems: true,
-  receiptItemTemplates: [''],
-  receiptTypes: DEFAULT_RECEIPT_TYPES.slice(),
-  taxTypes: DEFAULT_TAX_TYPES.slice(),
-  paymentMethods: DEFAULT_PAYMENT_METHODS.slice(),
+  receiptItemTemplates: [],
+  receiptTypes: [],
+  taxTypes: [],
+  paymentMethods: [],
   topLevelFieldsText: '[]',
   nestedPathsText: '{}',
   notes: '',
@@ -2837,7 +2834,7 @@ export default function PosApiAdmin() {
   const [tokenMeta, setTokenMeta] = useState({ lastFetchedAt: null, expiresAt: null });
   const [paymentDataDrafts, setPaymentDataDrafts] = useState({});
   const [paymentDataErrors, setPaymentDataErrors] = useState({});
-  const [taxTypeListText, setTaxTypeListText] = useState(DEFAULT_TAX_TYPES.join(', '));
+  const [taxTypeListText, setTaxTypeListText] = useState('');
   const [taxTypeListError, setTaxTypeListError] = useState('');
   const taxTypeInputDirtyRef = useRef(false);
   const importAuthSelectionDirtyRef = useRef(false);
@@ -2946,15 +2943,6 @@ export default function PosApiAdmin() {
             }
             if (ep.supportsMultiplePayments) {
               preview.push('Handles multiple payments[] entries');
-            }
-            if (usage === 'transaction' && ep.supportsItems === false) {
-              preview.push('Service-only: no receipt items');
-            }
-            if (Array.isArray(ep.receiptTypes) && ep.receiptTypes.length > 0) {
-              preview.push(`Receipt types: ${ep.receiptTypes.join(', ')}`);
-            }
-            if (Array.isArray(ep.paymentMethods) && ep.paymentMethods.length > 0) {
-              preview.push(`Payment methods: ${ep.paymentMethods.join(', ')}`);
             }
             return {
               ...ep,
@@ -3406,7 +3394,7 @@ export default function PosApiAdmin() {
     if (Array.isArray(formState.receiptTypes) && formState.receiptTypes.length > 0) {
       return formState.receiptTypes;
     }
-    return DEFAULT_RECEIPT_TYPES;
+    return [];
   }, [formState.receiptTypes, receiptTypesEnabled]);
 
   const formTaxTypes = useMemo(() => {
@@ -3414,7 +3402,7 @@ export default function PosApiAdmin() {
     if (Array.isArray(formState.taxTypes) && formState.taxTypes.length > 0) {
       return formState.taxTypes;
     }
-    return DEFAULT_TAX_TYPES;
+    return [];
   }, [formState.taxTypes, receiptTaxTypesEnabled]);
 
   const formPaymentMethods = useMemo(() => {
@@ -3422,10 +3410,8 @@ export default function PosApiAdmin() {
     if (Array.isArray(formState.paymentMethods) && formState.paymentMethods.length > 0) {
       return formState.paymentMethods;
     }
-    return DEFAULT_PAYMENT_METHODS;
+    return [];
   }, [formState.paymentMethods, paymentMethodsEnabled]);
-
-  const formSupportsItems = supportsItems;
 
   const requestFieldHints = useMemo(
     () =>
@@ -3944,20 +3930,20 @@ export default function PosApiAdmin() {
     if (taxTypeInputDirtyRef.current) {
       return;
     }
-    const source = selectedTaxTypes.length > 0 ? selectedTaxTypes : DEFAULT_TAX_TYPES;
+    const source = selectedTaxTypes.length > 0 ? selectedTaxTypes : [];
     setTaxTypeListText(source.join(', '));
   }, [receiptTaxTypesEnabled, selectedTaxTypes]);
 
   const allowedTaxTypes = useMemo(() => {
     if (!receiptTaxTypesEnabled) return [];
-    const values = selectedTaxTypes.length > 0 ? selectedTaxTypes : DEFAULT_TAX_TYPES;
+    const values = selectedTaxTypes.length > 0 ? selectedTaxTypes : [];
     const unique = Array.from(new Set(values));
     return TAX_TYPES.filter((tax) => unique.includes(tax.value));
   }, [receiptTaxTypesEnabled, selectedTaxTypes]);
 
   const allowedPaymentTypes = useMemo(() => {
     if (!paymentMethodsEnabled) return [];
-    const values = selectedPaymentMethods.length > 0 ? selectedPaymentMethods : DEFAULT_PAYMENT_METHODS;
+    const values = selectedPaymentMethods.length > 0 ? selectedPaymentMethods : [];
     const unique = Array.from(new Set(values));
     return PAYMENT_TYPES.filter((payment) => unique.includes(payment.value));
   }, [paymentMethodsEnabled, selectedPaymentMethods]);
@@ -4316,7 +4302,7 @@ export default function PosApiAdmin() {
       } else {
         current = index >= 0 ? [] : [code];
       }
-      const nextValues = sanitizeCodeList(current, DEFAULT_RECEIPT_TYPES, VALID_RECEIPT_TYPES);
+      const nextValues = sanitizeCodeList(current, [], VALID_RECEIPT_TYPES);
       return { ...prev, receiptTypes: nextValues };
     });
   };
@@ -5023,7 +5009,7 @@ export default function PosApiAdmin() {
       } else {
         current = index >= 0 ? [] : [code];
       }
-      const nextValues = sanitizeCodeList(current, DEFAULT_TAX_TYPES, VALID_TAX_TYPES);
+      const nextValues = sanitizeCodeList(current, [], VALID_TAX_TYPES);
       return { ...prev, taxTypes: nextValues };
     });
     taxTypeInputDirtyRef.current = false;
@@ -5046,7 +5032,7 @@ export default function PosApiAdmin() {
       } else {
         current = index >= 0 ? [] : [code];
       }
-      const nextValues = sanitizeCodeList(current, DEFAULT_PAYMENT_METHODS, VALID_PAYMENT_METHODS);
+      const nextValues = sanitizeCodeList(current, [], VALID_PAYMENT_METHODS);
       return { ...prev, paymentMethods: nextValues };
     });
   };
@@ -5637,35 +5623,6 @@ export default function PosApiAdmin() {
       if (field === 'supportsMultiplePayments' && value === false) {
         next.enablePaymentMethods = false;
         next.paymentMethods = [];
-      }
-      if (field === 'enableReceiptTypes' && value === true) {
-        if (!Array.isArray(next.receiptTypes) || next.receiptTypes.length === 0) {
-          next.receiptTypes = DEFAULT_RECEIPT_TYPES.slice(
-            0,
-            next.allowMultipleReceiptTypes === false ? 1 : DEFAULT_RECEIPT_TYPES.length,
-          );
-        }
-      }
-      if (field === 'enableReceiptTaxTypes' && value === true) {
-        if (!Array.isArray(next.taxTypes) || next.taxTypes.length === 0) {
-          next.taxTypes = DEFAULT_TAX_TYPES.slice(
-            0,
-            next.allowMultipleReceiptTaxTypes === false ? 1 : DEFAULT_TAX_TYPES.length,
-          );
-        }
-      }
-      if (field === 'enablePaymentMethods' && value === true) {
-        if (!Array.isArray(next.paymentMethods) || next.paymentMethods.length === 0) {
-          next.paymentMethods = DEFAULT_PAYMENT_METHODS.slice(
-            0,
-            next.allowMultiplePaymentMethods === false ? 1 : DEFAULT_PAYMENT_METHODS.length,
-          );
-        }
-      }
-      if (field === 'enableReceiptItems' && value === true) {
-        if (!Array.isArray(next.receiptItemTemplates) || next.receiptItemTemplates.length === 0) {
-          next.receiptItemTemplates = [''];
-        }
       }
       if (field === 'allowMultipleReceiptTypes' && value === false) {
         next.receiptTypes = Array.isArray(next.receiptTypes) ? next.receiptTypes.slice(0, 1) : [];
@@ -6714,13 +6671,13 @@ export default function PosApiAdmin() {
       ? Boolean(formState.allowMultipleReceiptItems)
       : false;
     const uniqueReceiptTypes = receiptTypesEnabled
-      ? sanitizeCodeList(formState.receiptTypes, DEFAULT_RECEIPT_TYPES, VALID_RECEIPT_TYPES)
+      ? sanitizeCodeList(formState.receiptTypes, [], VALID_RECEIPT_TYPES)
       : [];
     const uniqueTaxTypes = receiptTaxTypesEnabled
-      ? sanitizeCodeList(formState.taxTypes, DEFAULT_TAX_TYPES, VALID_TAX_TYPES)
+      ? sanitizeCodeList(formState.taxTypes, [], VALID_TAX_TYPES)
       : [];
     const uniquePaymentMethods = paymentMethodsEnabled
-      ? sanitizeCodeList(formState.paymentMethods, DEFAULT_PAYMENT_METHODS, VALID_PAYMENT_METHODS)
+      ? sanitizeCodeList(formState.paymentMethods, [], VALID_PAYMENT_METHODS)
       : [];
     const receiptTypeTemplates = receiptTypesEnabled
       ? buildTemplateMap(formState.receiptTypeTemplates, VALID_RECEIPT_TYPES)
@@ -7638,7 +7595,7 @@ export default function PosApiAdmin() {
     setSelectedVariationKey('');
     setPaymentDataDrafts({});
     setPaymentDataErrors({});
-    setTaxTypeListText(DEFAULT_TAX_TYPES.join(', '));
+    setTaxTypeListText('');
     setTaxTypeListError('');
     setAdminSelectionId('');
     setAdminParamValues({});
@@ -8003,20 +7960,15 @@ export default function PosApiAdmin() {
                               </span>
                             )}
                             {ep._type && (
-                              <span style={{ ...badgeStyle(typeColor), textTransform: 'none' }}>
-                                {typeLabel || ep._type}
-                              </span>
-                            )}
-                            {ep._usage === 'transaction' && ep.supportsItems === false && (
-                              <span style={{ ...badgeStyle('#475569'), textTransform: 'none' }}>
-                                Service only
-                              </span>
-                            )}
-                            {ep.defaultForForm && (
-                              <span style={{ ...badgeStyle('#059669'), textTransform: 'none' }}>
-                                Default form
-                              </span>
-                            )}
+                          <span style={{ ...badgeStyle(typeColor), textTransform: 'none' }}>
+                            {typeLabel || ep._type}
+                          </span>
+                        )}
+                        {ep.defaultForForm && (
+                          <span style={{ ...badgeStyle('#059669'), textTransform: 'none' }}>
+                            Default form
+                          </span>
+                        )}
                             {ep.supportsMultipleReceipts && (
                               <span style={{ ...badgeStyle('#f97316'), textTransform: 'none' }}>
                                 Multi receipt
@@ -8032,75 +7984,6 @@ export default function PosApiAdmin() {
                         <div style={styles.listButtonSubtle}>{ep.id}</div>
                         {ep.category && (
                           <div style={styles.listButtonCategory}>{ep.category}</div>
-                        )}
-                        {ep._usage === 'transaction' && (
-                          <div style={styles.listMeta}>
-                            <div style={styles.listMetaRow}>
-                              <span style={styles.listMetaLabel}>Receipt types</span>
-                              {(Array.isArray(ep.receiptTypes) && ep.receiptTypes.length > 0
-                                ? ep.receiptTypes
-                                : ['ALL_SUPPORTED']
-                              ).map((type) => {
-                                const badgeColor =
-                                  type === 'ALL_SUPPORTED'
-                                    ? '#475569'
-                                    : TYPE_BADGES[type] || '#1f2937';
-                                const label =
-                                  type === 'ALL_SUPPORTED'
-                                    ? 'All supported'
-                                    : formatTypeLabel(type) || type;
-                                return (
-                                  <span
-                                    key={`${ep.id}-receipt-${type}`}
-                                    style={{
-                                      ...badgeStyle(badgeColor),
-                                      textTransform: 'none',
-                                    }}
-                                  >
-                                    {label}
-                                  </span>
-                                );
-                              })}
-                            </div>
-                            <div style={styles.listMetaRow}>
-                              <span style={styles.listMetaLabel}>Payments</span>
-                              {(Array.isArray(ep.paymentMethods) && ep.paymentMethods.length > 0
-                                ? ep.paymentMethods
-                                : ['ALL_SUPPORTED']
-                              ).map((method) => {
-                                const badgeColor =
-                                  method === 'ALL_SUPPORTED'
-                                    ? '#475569'
-                                    : PAYMENT_BADGES[method] || '#475569';
-                                const label =
-                                  method === 'ALL_SUPPORTED'
-                                    ? 'All supported'
-                                    : method.replace(/_/g, ' ');
-                                return (
-                                  <span
-                                    key={`${ep.id}-payment-${method}`}
-                                    style={{
-                                      ...badgeStyle(badgeColor),
-                                      textTransform: 'none',
-                                    }}
-                                  >
-                                    {label}
-                                  </span>
-                                );
-                              })}
-                            </div>
-                            <div style={styles.listMetaRow}>
-                              <span style={styles.listMetaLabel}>Items</span>
-                              <span
-                                style={{
-                                  ...badgeStyle(ep.supportsItems !== false ? '#15803d' : '#475569'),
-                                  textTransform: 'none',
-                                }}
-                              >
-                                {ep.supportsItems !== false ? 'Includes items' : 'Service only'}
-                              </span>
-                            </div>
-                          </div>
                         )}
                         {ep.notes && <div style={styles.notesText}>{ep.notes}</div>}
                         {ep._preview && (
@@ -8482,52 +8365,6 @@ export default function PosApiAdmin() {
                 )}
               </div>
             </details>
-            {formState.usage === 'transaction' && (
-              <div style={styles.capabilitiesBox}>
-                <div style={styles.capabilitiesRow}>
-                  <span style={styles.capabilitiesLabel}>Supports items</span>
-                  <span
-                    style={{
-                      ...badgeStyle(formSupportsItems ? '#15803d' : '#475569'),
-                      textTransform: 'none',
-                    }}
-                  >
-                    {formSupportsItems ? 'Includes items' : 'Service only'}
-                  </span>
-                </div>
-                <div style={styles.capabilitiesRow}>
-                  <span style={styles.capabilitiesLabel}>Receipt types</span>
-                  {formReceiptTypes.map((type) => (
-                    <span
-                      key={`form-receipt-${type}`}
-                      style={{
-                        ...badgeStyle(TYPE_BADGES[type] || '#1f2937'),
-                        textTransform: 'none',
-                      }}
-                    >
-                      {formatTypeLabel(type) || type}
-                    </span>
-                  ))}
-                </div>
-                <div style={styles.capabilitiesRow}>
-                  <span style={styles.capabilitiesLabel}>Payment methods</span>
-                  {formPaymentMethods.map((method) => (
-                    <span
-                      key={`form-payment-${method}`}
-                      style={{
-                        ...badgeStyle(PAYMENT_BADGES[method] || '#475569'),
-                        textTransform: 'none',
-                      }}
-                    >
-                      {method.replace(/_/g, ' ')}
-                    </span>
-                  ))}
-                </div>
-                {formState.notes && (
-                  <div style={{ fontSize: '0.85rem', color: '#475569' }}>{formState.notes}</div>
-                )}
-              </div>
-            )}
             <div style={styles.formGrid}>
           <label style={styles.label}>
             Endpoint ID
