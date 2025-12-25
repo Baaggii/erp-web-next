@@ -90,11 +90,6 @@ test('getTableColumnsMeta returns metadata with primary key ordinals', async () 
       generationExpression: null,
       primaryKeyOrdinal: 2,
       candidateKeyOrdinal: 2,
-      enumValues: [],
-      dataType: null,
-      columnType: null,
-      isNullable: null,
-      isJson: false,
     },
     {
       name: 'code',
@@ -104,11 +99,6 @@ test('getTableColumnsMeta returns metadata with primary key ordinals', async () 
       generationExpression: null,
       primaryKeyOrdinal: 1,
       candidateKeyOrdinal: 1,
-      enumValues: [],
-      dataType: null,
-      columnType: null,
-      isNullable: null,
-      isJson: false,
     },
     {
       name: 'description',
@@ -118,11 +108,6 @@ test('getTableColumnsMeta returns metadata with primary key ordinals', async () 
       generationExpression: null,
       primaryKeyOrdinal: null,
       candidateKeyOrdinal: null,
-      enumValues: [],
-      dataType: null,
-      columnType: null,
-      isNullable: null,
-      isJson: false,
     },
   ]);
 });
