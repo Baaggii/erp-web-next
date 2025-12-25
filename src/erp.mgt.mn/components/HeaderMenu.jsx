@@ -16,7 +16,7 @@ export default function HeaderMenu({ onOpen }) {
   const generalConfig = useGeneralConfig();
   const items = filterHeaderModules(modules, perms, txnModules);
   const headerMap = useHeaderMappings(items.map((m) => m.module_key));
-  const { hasNew, anyHasNew, notificationColors, temporary } = usePendingRequests();
+  const { hasNew, anyHasNew, notificationColors } = usePendingRequests();
 
   const menuNotificationColors = useMemo(() => {
     if (notificationColors?.length) return notificationColors;

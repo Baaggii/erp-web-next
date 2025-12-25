@@ -3458,18 +3458,18 @@ export default function ERPLayout() {
     () => {
       const totals = { pending: 0, accepted: 0, declined: 0 };
       REQUEST_STATUS_KEYS.forEach((status) => {
-        const incomingNew = Number(aggregatedIncoming?.[status]?.newCount) || 0;
-        const outgoingNew = Number(aggregatedOutgoing?.[status]?.newCount) || 0;
-        totals[status] = incomingNew + outgoingNew;
+        const incomingCount = Number(aggregatedIncoming?.[status]?.count) || 0;
+        const outgoingCount = Number(aggregatedOutgoing?.[status]?.count) || 0;
+        totals[status] = incomingCount + outgoingCount;
       });
-      totals.pending += temporaryCreatedNewCount + temporaryReviewNewCount;
+      totals.pending += temporaryCreatedCount + temporaryReviewCount;
       return totals;
     },
     [
       aggregatedIncoming,
       aggregatedOutgoing,
-      temporaryCreatedNewCount,
-      temporaryReviewNewCount,
+      temporaryCreatedCount,
+      temporaryReviewCount,
     ],
   );
 
@@ -4452,7 +4452,7 @@ function MainWindow({ title }) {
   const outlet = useOutlet();
   const navigate = useNavigate();
   const { tabs, activeKey, switchTab, closeTab, setTabContent, cache } = useTabs();
-  const { hasNew, anyHasNew, notificationColors, temporary } = useContext(PendingRequestContext);
+  const { hasNew, anyHasNew, notificationColors } = useContext(PendingRequestContext);
   const {
     startTour,
     getTourForPath,

@@ -485,6 +485,7 @@ const TableManager = forwardRef(function TableManager({
   const [columnMeta, setColumnMeta] = useState([]);
   const [autoInc, setAutoInc] = useState(new Set());
   const [showForm, setShowForm] = useState(false);
+  const showFormRef = useRef(false);
   const [editing, setEditing] = useState(null);
   const [rowDefaults, setRowDefaults] = useState({});
   const [pendingTemporaryPromotion, setPendingTemporaryPromotion] = useState(null);
@@ -694,6 +695,10 @@ const TableManager = forwardRef(function TableManager({
     return () => window.removeEventListener('click', hideMenu);
   }, []);
 
+  useEffect(() => {
+    showFormRef.current = showForm;
+  }, [showForm]);
+
   const branchScopeId = useMemo(() => resolveScopeId(branch), [branch]);
   const departmentScopeId = useMemo(
     () => resolveScopeId(department),
@@ -887,24 +892,28 @@ const TableManager = forwardRef(function TableManager({
         availableTemporaryScopes.includes('review') && reviewPending > 0
           ? 'review'
           : defaultTemporaryScope;
-      setTemporaryScope((prev) => {
-        if (!availableTemporaryScopes.includes(prev)) return preferredScope;
-        if (
-          preferredScope === 'review' &&
-          prev !== 'review' &&
-          availableTemporaryScopes.includes('review')
-        ) {
-          return 'review';
-        }
-        return prev;
-      });
+      if (!showFormRef.current) {
+        setTemporaryScope((prev) => {
+          if (!availableTemporaryScopes.includes(prev)) return preferredScope;
+          if (
+            preferredScope === 'review' &&
+            prev !== 'review' &&
+            availableTemporaryScopes.includes('review')
+          ) {
+            return 'review';
+          }
+          return prev;
+        });
+      }
     } catch {
       setTemporarySummary((prev) => prev || { createdPending: 0, reviewPending: 0 });
-      setTemporaryScope((prev) =>
-        availableTemporaryScopes.includes(prev)
-          ? prev
-          : defaultTemporaryScope,
-      );
+      if (!showFormRef.current) {
+        setTemporaryScope((prev) =>
+          availableTemporaryScopes.includes(prev)
+            ? prev
+            : defaultTemporaryScope,
+        );
+      }
     }
   }, [
     formSupportsTemporary,
@@ -4556,7 +4565,9 @@ const TableManager = forwardRef(function TableManager({
           setTemporaryFocusId(null);
         }
         if (!preserveScope || targetScope === temporaryScope) {
-          setTemporaryScope(targetScope);
+          if (!showFormRef.current) {
+            setTemporaryScope(targetScope);
+          }
           setTemporaryList(nextRows);
         }
       } catch (err) {
