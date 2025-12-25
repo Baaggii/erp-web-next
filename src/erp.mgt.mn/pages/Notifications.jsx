@@ -4,6 +4,7 @@ import { usePendingRequests } from '../context/PendingRequestContext.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
 import LangContext from '../context/I18nContext.jsx';
 import formatTimestamp from '../utils/formatTimestamp.js';
+import NotificationDots, { DEFAULT_NOTIFICATION_COLOR } from '../components/NotificationDots.jsx';
 
 const SECTION_LIMIT = 5;
 const TEMPORARY_PAGE_SIZE = 10;
@@ -80,7 +81,7 @@ function createEmptyTemporaryScope() {
 }
 
 export default function NotificationsPage() {
-  const { workflows, markWorkflowSeen, temporary } = usePendingRequests();
+  const { workflows, markWorkflowSeen, temporary, notificationColors } = usePendingRequests();
   const { user, session } = useAuth();
   const { t } = useContext(LangContext);
   const navigate = useNavigate();
@@ -748,6 +749,12 @@ export default function NotificationsPage() {
           {summary && <div style={styles.listSummary}>{summary}</div>}
         </div>
         <button style={styles.listAction} onClick={() => openRequest(primary, tab, group.status)}>
+          <NotificationDots
+            colors={notificationTrailColors}
+            size="0.4rem"
+            gap="0.12rem"
+            marginRight="0.35rem"
+          />
           {t('notifications_view_request', 'View request')}
         </button>
       </li>
@@ -817,6 +824,12 @@ export default function NotificationsPage() {
           {summary && <div style={styles.listSummary}>{summary}</div>}
         </div>
         <button style={styles.listAction} onClick={() => openRequest(primary, 'outgoing', group.status)}>
+          <NotificationDots
+            colors={notificationTrailColors}
+            size="0.4rem"
+            gap="0.12rem"
+            marginRight="0.35rem"
+          />
           {t('notifications_view_request', 'View request')}
         </button>
       </li>
@@ -1037,6 +1050,23 @@ export default function NotificationsPage() {
 
   const temporaryCreatedTotal = temporaryCreatedPending;
 
+  const notificationTrailColors = useMemo(() => {
+    if (notificationColors?.length) return notificationColors;
+    const hasAnyCounts =
+      reportPending > 0 ||
+      changePending > 0 ||
+      temporaryReviewTotal > 0 ||
+      temporaryCreatedTotal > 0;
+    if (hasAnyCounts) return [DEFAULT_NOTIFICATION_COLOR];
+    return [];
+  }, [
+    changePending,
+    notificationColors,
+    reportPending,
+    temporaryCreatedTotal,
+    temporaryReviewTotal,
+  ]);
+
   const renderTemporaryGroup = (group, scope) => (
     <li
       key={`${scope}-${group.statusKey}-${group.user}-${group.transactionType}-${group.dateKey}`}
@@ -1076,6 +1106,12 @@ export default function NotificationsPage() {
         style={styles.listAction}
         onClick={() => openTemporary(scope, group.sampleEntry || group.entries?.[0])}
       >
+        <NotificationDots
+          colors={notificationTrailColors}
+          size="0.4rem"
+          gap="0.12rem"
+          marginRight="0.35rem"
+        />
         {t('notifications_open_group_forms', 'Open forms')}
       </button>
     </li>
@@ -1083,7 +1119,15 @@ export default function NotificationsPage() {
 
   return (
     <div style={styles.page}>
-      <h1 style={styles.pageTitle}>{t('notifications', 'Notifications')}</h1>
+      <h1 style={styles.pageTitle}>
+        {t('notifications', 'Notifications')}{' '}
+        <NotificationDots
+          colors={notificationTrailColors}
+          size="0.55rem"
+          gap="0.2rem"
+          marginRight={0}
+        />
+      </h1>
 
       <section style={styles.section}>
         <header style={styles.sectionHeader}>
@@ -1290,6 +1334,12 @@ export default function NotificationsPage() {
                   )
                 }
               >
+                <NotificationDots
+                  colors={notificationTrailColors}
+                  size="0.4rem"
+                  gap="0.12rem"
+                  marginRight="0.35rem"
+                />
                 {t('notifications_open_review', 'Open review workspace')}
               </button>
             </div>
@@ -1324,6 +1374,12 @@ export default function NotificationsPage() {
                   )
                 }
               >
+                <NotificationDots
+                  colors={notificationTrailColors}
+                  size="0.4rem"
+                  gap="0.12rem"
+                  marginRight="0.35rem"
+                />
                 {t('notifications_open_drafts', 'Open drafts workspace')}
               </button>
             </div>
