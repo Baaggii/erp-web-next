@@ -40,6 +40,12 @@ function normalizeNumericId(value) {
   return Number.isFinite(num) && num > 0 ? num : null;
 }
 
+function normalizeCoordinate(value) {
+  if (value === undefined || value === null) return null;
+  const num = Number(value);
+  return Number.isFinite(num) ? num : null;
+}
+
 async function recordLoginSessionImpl(req, sessionPayload, user) {
   const devicePayload =
     req.body?.device ||
@@ -61,10 +67,16 @@ async function recordLoginSessionImpl(req, sessionPayload, user) {
     sessionPayload?.merchant_tin ??
     sessionPayload?.merchantTin ??
     null;
-  const posNo =
+  const merchantTin =
+    sessionPayload?.merchant_tin ?? sessionPayload?.merchantTin ?? null;
+  const posTerminalNo =
+    sessionPayload?.pos_terminal_no ??
+    sessionPayload?.posTerminalNo ??
     sessionPayload?.pos_no ??
     sessionPayload?.posNo ??
     sessionPayload?.pos_number ??
+    req.body?.pos_terminal_no ??
+    req.body?.posTerminalNo ??
     req.body?.pos_no ??
     req.body?.posNo ??
     null;
@@ -89,6 +101,17 @@ async function recordLoginSessionImpl(req, sessionPayload, user) {
         req.headers?.['x-device-uuid'] ??
         req.headers?.['x-device-id'],
     ) || null;
+  const deviceId =
+    normalizeValue(
+      req.body?.device_id ??
+        req.body?.deviceId ??
+        devicePayload?.device_id ??
+        devicePayload?.deviceId ??
+        devicePayload?.device_id ??
+        devicePayload?.id ??
+        req.headers?.['x-device-id'] ??
+        req.headers?.['x-device-uuid'],
+    ) || deviceUuid;
   const seniorId = normalizeText(
     sessionPayload?.senior_empid ??
       sessionPayload?.seniorEmpid ??
@@ -110,6 +133,39 @@ async function recordLoginSessionImpl(req, sessionPayload, user) {
       devicePayload?.coordinates ??
       req.headers?.['x-device-location'],
   );
+  const locationLat =
+    normalizeCoordinate(
+      req.body?.location_lat ??
+        req.body?.lat ??
+        req.body?.latitude ??
+        devicePayload?.location_lat ??
+        devicePayload?.lat ??
+        devicePayload?.latitude ??
+        location?.lat ??
+        location?.latitude,
+    ) ?? null;
+  const locationLon =
+    normalizeCoordinate(
+      req.body?.location_lon ??
+        req.body?.lng ??
+        req.body?.lon ??
+        req.body?.long ??
+        req.body?.longitude ??
+        devicePayload?.location_lon ??
+        devicePayload?.lng ??
+        devicePayload?.lon ??
+        devicePayload?.long ??
+        devicePayload?.longitude ??
+        location?.lon ??
+        location?.lng ??
+        location?.longitude,
+    ) ?? null;
+  if (locationLat !== null && location.lat === undefined) {
+    location.lat = locationLat;
+  }
+  if (locationLon !== null && location.lon === undefined && location.lng === undefined) {
+    location.lon = locationLon;
+  }
 
   await logPosSessionStart({
     sessionUuid,
@@ -118,13 +174,19 @@ async function recordLoginSessionImpl(req, sessionPayload, user) {
     departmentId,
     workplaceId,
     merchantId,
-    posNo,
+    merchantTin,
+    posTerminalNo,
     deviceMac,
+    deviceId,
     deviceUuid,
     location,
+    locationLat,
+    locationLon,
     currentUserId: user?.id ?? null,
     seniorId,
     planSeniorId,
+  }).catch((error) => {
+    console.warn('POS session logging skipped', { error });
   });
 
   return {
@@ -137,7 +199,11 @@ async function recordLogoutSessionImpl(req) {
   const sessionUuid =
     req.cookies?.[getPosSessionCookieName()] ?? req.body?.session_uuid ?? null;
   if (!sessionUuid) return false;
-  await closePosSession(sessionUuid);
+  try {
+    await closePosSession(sessionUuid);
+  } catch (error) {
+    console.warn('POS session close skipped', { error });
+  }
   return true;
 }
 

@@ -47,6 +47,7 @@ import generalConfigRoutes from "./routes/general_config.js";
 import permissionsRoutes from "./routes/permissions.js";
 import tenantTablesRoutes from "./routes/tenant_tables.js";
 import reportAccessRoutes from "./routes/report_access.js";
+import jsonConversionRoutes from "./routes/json_conversions.js";
 import { requireAuth } from "./middlewares/auth.js";
 import featureToggle from "./middlewares/featureToggle.js";
 import reportBuilderRoutes from "./routes/report_builder.js";
@@ -181,6 +182,7 @@ app.use("/api/translations", translationRoutes);
 app.use("/api/posapi/endpoints", posApiEndpointRoutes);
 app.use("/api/posapi/proxy", posApiProxyRoutes);
 app.use("/api/posapi/reference-codes", posApiReferenceCodeRoutes);
+app.use("/api/json-conversions", jsonConversionRoutes);
 
 // Serve static React build and fallback to index.html
 const buildDir = path.resolve(__dirname, "../../../erp.mgt.mn");

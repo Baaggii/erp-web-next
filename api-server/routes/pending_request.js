@@ -37,11 +37,37 @@ router.post('/', requireAuth, async (req, res, next) => {
     });
     const io = req.app.get('io');
     if (io && result.senior_empid) {
-      io.to(`user:${result.senior_empid}`).emit('newRequest', {
-        requestId: result.request_id,
-        tableName: table_name,
-        recordId: record_id,
-        requestType: request_type,
+      const recipients = [];
+      if (Array.isArray(result.senior_empid)) {
+        recipients.push(...result.senior_empid);
+      } else if (typeof result.senior_empid === 'string') {
+        try {
+          const parsed = JSON.parse(result.senior_empid);
+          if (Array.isArray(parsed)) {
+            recipients.push(...parsed);
+          } else if (parsed) {
+            recipients.push(parsed);
+          }
+        } catch {
+          recipients.push(result.senior_empid);
+        }
+      } else {
+        recipients.push(result.senior_empid);
+      }
+      const normalized = Array.from(
+        new Set(
+          recipients
+            .map((id) => (id === null || id === undefined ? '' : String(id).trim()))
+            .filter(Boolean),
+        ),
+      );
+      normalized.forEach((id) => {
+        io.to(`user:${id}`).emit('newRequest', {
+          requestId: result.request_id,
+          tableName: table_name,
+          recordId: record_id,
+          requestType: request_type,
+        });
       });
     }
     res.status(201).json(result);

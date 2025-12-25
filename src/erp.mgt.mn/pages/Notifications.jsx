@@ -4,9 +4,15 @@ import { usePendingRequests } from '../context/PendingRequestContext.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
 import LangContext from '../context/I18nContext.jsx';
 import formatTimestamp from '../utils/formatTimestamp.js';
+import NotificationDots, { DEFAULT_NOTIFICATION_COLOR } from '../components/NotificationDots.jsx';
 
 const SECTION_LIMIT = 5;
 const TEMPORARY_PAGE_SIZE = 10;
+const STATUS_COLORS = {
+  pending: '#fbbf24',
+  accepted: '#34d399',
+  declined: '#ef4444',
+};
 
 function dedupeRequests(list) {
   const map = new Map();
@@ -80,7 +86,7 @@ function createEmptyTemporaryScope() {
 }
 
 export default function NotificationsPage() {
-  const { workflows, markWorkflowSeen, temporary } = usePendingRequests();
+  const { workflows, markWorkflowSeen, temporary, notificationColors } = usePendingRequests();
   const { user, session } = useAuth();
   const { t } = useContext(LangContext);
   const navigate = useNavigate();
@@ -594,9 +600,15 @@ export default function NotificationsPage() {
         params.set('date_to', createdDate);
       }
       params.set('requestId', req?.request_id);
+      if (typeof markWorkflowSeen === 'function') {
+        const workflowKey =
+          req?.request_type === 'report_approval' ? 'report_approval' : 'change_requests';
+        const scope = tab === 'incoming' ? 'incoming' : 'outgoing';
+        markWorkflowSeen(workflowKey, scope, [normalizedStatus]);
+      }
       navigate(`/requests?${params.toString()}`);
     },
-    [navigate],
+    [markWorkflowSeen, navigate],
   );
 
   const openTemporary = useCallback(
@@ -748,6 +760,12 @@ export default function NotificationsPage() {
           {summary && <div style={styles.listSummary}>{summary}</div>}
         </div>
         <button style={styles.listAction} onClick={() => openRequest(primary, tab, group.status)}>
+          <NotificationDots
+            colors={colorsForStatus(group.status || 'pending')}
+            size="0.4rem"
+            gap="0.12rem"
+            marginRight="0.35rem"
+          />
           {t('notifications_view_request', 'View request')}
         </button>
       </li>
@@ -817,6 +835,12 @@ export default function NotificationsPage() {
           {summary && <div style={styles.listSummary}>{summary}</div>}
         </div>
         <button style={styles.listAction} onClick={() => openRequest(primary, 'outgoing', group.status)}>
+          <NotificationDots
+            colors={colorsForStatus(group.status || 'pending')}
+            size="0.4rem"
+            gap="0.12rem"
+            marginRight="0.35rem"
+          />
           {t('notifications_view_request', 'View request')}
         </button>
       </li>
@@ -1037,6 +1061,31 @@ export default function NotificationsPage() {
 
   const temporaryCreatedTotal = temporaryCreatedPending;
 
+  const notificationTrailColors = useMemo(() => {
+    if (notificationColors?.length) return notificationColors;
+    const hasNewCounts =
+      reportNew > 0 ||
+      changeNew > 0 ||
+      temporaryReviewNew > 0 ||
+      temporaryCreatedNew > 0;
+    if (hasNewCounts) return [DEFAULT_NOTIFICATION_COLOR];
+    return [];
+  }, [
+    changeNew,
+    notificationColors,
+    reportNew,
+    temporaryCreatedNew,
+    temporaryReviewNew,
+  ]);
+
+  const colorsForStatus = useCallback(
+    (status) => {
+      const key = status ? String(status).trim().toLowerCase() : 'pending';
+      return [STATUS_COLORS[key] || DEFAULT_NOTIFICATION_COLOR];
+    },
+    [],
+  );
+
   const renderTemporaryGroup = (group, scope) => (
     <li
       key={`${scope}-${group.statusKey}-${group.user}-${group.transactionType}-${group.dateKey}`}
@@ -1076,6 +1125,12 @@ export default function NotificationsPage() {
         style={styles.listAction}
         onClick={() => openTemporary(scope, group.sampleEntry || group.entries?.[0])}
       >
+        <NotificationDots
+          colors={colorsForStatus(group.statusKey || group.statusLabel || 'pending')}
+          size="0.4rem"
+          gap="0.12rem"
+          marginRight="0.35rem"
+        />
         {t('notifications_open_group_forms', 'Open forms')}
       </button>
     </li>
@@ -1083,7 +1138,15 @@ export default function NotificationsPage() {
 
   return (
     <div style={styles.page}>
-      <h1 style={styles.pageTitle}>{t('notifications', 'Notifications')}</h1>
+      <h1 style={styles.pageTitle}>
+        {t('notifications', 'Notifications')}{' '}
+        <NotificationDots
+          colors={notificationTrailColors}
+          size="0.55rem"
+          gap="0.2rem"
+          marginRight={0}
+        />
+      </h1>
 
       <section style={styles.section}>
         <header style={styles.sectionHeader}>
@@ -1290,6 +1353,12 @@ export default function NotificationsPage() {
                   )
                 }
               >
+                <NotificationDots
+                  colors={notificationTrailColors}
+                  size="0.4rem"
+                  gap="0.12rem"
+                  marginRight="0.35rem"
+                />
                 {t('notifications_open_review', 'Open review workspace')}
               </button>
             </div>
@@ -1324,6 +1393,12 @@ export default function NotificationsPage() {
                   )
                 }
               >
+                <NotificationDots
+                  colors={notificationTrailColors}
+                  size="0.4rem"
+                  gap="0.12rem"
+                  marginRight="0.35rem"
+                />
                 {t('notifications_open_drafts', 'Open drafts workspace')}
               </button>
             </div>

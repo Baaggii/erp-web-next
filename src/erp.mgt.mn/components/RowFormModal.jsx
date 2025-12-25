@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useContext, memo, useCallback } from 'react';
 import AsyncSearchSelect from './AsyncSearchSelect.jsx';
+import MultiReferenceInput from './MultiReferenceInput.jsx';
 import Modal from './Modal.jsx';
 import InlineTransactionTable from './InlineTransactionTable.jsx';
 import RowDetailModal from './RowDetailModal.jsx';
@@ -19,6 +20,12 @@ import useGeneralConfig from '../hooks/useGeneralConfig.js';
 import { API_BASE } from '../utils/apiBase.js';
 
 const DEFAULT_RECEIPT_TYPES = ['B2C', 'B2B_SALE', 'B2B_PURCHASE', 'STOCK_QR'];
+
+function toArray(value) {
+  if (Array.isArray(value)) return value;
+  if (value === null || value === undefined || value === '') return [];
+  return [value];
+}
 
 function normalizeRelationOptionKey(value) {
   if (value === undefined || value === null) return null;
@@ -113,6 +120,7 @@ const RowFormModal = function RowFormModal({
   const renderCount = useRef(0);
   const warned = useRef(false);
   const procCache = useRef({});
+  const submitIntentRef = useRef(null);
   const [tableDisplayFields, setTableDisplayFields] = useState([]);
   useEffect(() => {
     fetch('/api/display_fields', { credentials: 'include' })
@@ -1733,6 +1741,7 @@ const RowFormModal = function RowFormModal({
   const [issueEbarimtEnabled, setIssueEbarimtEnabled] = useState(() =>
     Boolean(posApiEnabled),
   );
+  const formProcessing = submitLocked || temporaryLocked;
   const prevVisibleRef = useRef(visible);
   const tableRef = useRef(null);
   const [gridRows, setGridRows] = useState(() => (Array.isArray(rows) ? rows : []));
@@ -2020,13 +2029,29 @@ const RowFormModal = function RowFormModal({
     if (!visible) return;
     const vals = {};
     columns.forEach((c) => {
+      const isJsonField = fieldTypeMap[c] === 'json';
       const rowValue = row ? getRowValueCaseInsensitive(row, c) : undefined;
       const sourceValue =
         rowValue !== undefined ? rowValue : defaultValues[c];
       const missing =
         !row || rowValue === undefined || rowValue === '';
       let v;
-      if (placeholders[c]) {
+      if (isJsonField) {
+        if (Array.isArray(sourceValue)) {
+          v = sourceValue;
+        } else if (sourceValue === null || sourceValue === undefined || sourceValue === '') {
+          v = [];
+        } else if (typeof sourceValue === 'string') {
+          try {
+            const parsed = JSON.parse(sourceValue);
+            v = Array.isArray(parsed) ? parsed : [parsed];
+          } catch {
+            v = [sourceValue];
+          }
+        } else {
+          v = [sourceValue];
+        }
+      } else if (placeholders[c]) {
         v = normalizeDateInput(String(sourceValue ?? ''), placeholders[c]);
       } else if (fieldTypeMap[c] === 'number') {
         v = formatNumericValue(c, sourceValue);
@@ -2059,7 +2084,7 @@ const RowFormModal = function RowFormModal({
       } else {
         v = String(v);
       }
-      vals[c] = v;
+      vals[c] = isJsonField ? (Array.isArray(v) ? v : toArray(v)) : v;
     });
     inputRefs.current = {};
     if (errorsRef.current && Object.keys(errorsRef.current).length > 0) {
@@ -2858,9 +2883,15 @@ const RowFormModal = function RowFormModal({
           const normalized = {};
           Object.entries(r).forEach(([k, v]) => {
             const raw = typeof v === 'object' && v !== null && 'value' in v ? v.value : v;
-            let val = normalizeDateInput(raw, placeholders[k]);
-            if (totalAmountSet.has(k) || totalCurrencySet.has(k)) {
-              val = normalizeNumberInput(val);
+            const isJsonField = fieldTypeMap[k] === 'json';
+            let val = raw;
+            if (isJsonField) {
+              val = toArray(raw);
+            } else {
+              val = normalizeDateInput(raw, placeholders[k]);
+              if (totalAmountSet.has(k) || totalCurrencySet.has(k)) {
+                val = normalizeNumberInput(val);
+              }
             }
             normalized[k] = val;
           });
@@ -2868,7 +2899,8 @@ const RowFormModal = function RowFormModal({
             if (
               normalized[f] === '' ||
               normalized[f] === null ||
-              normalized[f] === undefined
+              normalized[f] === undefined ||
+              (fieldTypeMap[f] === 'json' && Array.isArray(normalized[f]) && normalized[f].length === 0)
             )
               hasMissing = true;
             if (
@@ -2935,9 +2967,15 @@ const RowFormModal = function RowFormModal({
       }
       const normalized = {};
       Object.entries(merged).forEach(([k, v]) => {
-        let val = normalizeDateInput(v, placeholders[k]);
-        if (totalAmountSet.has(k) || totalCurrencySet.has(k)) {
-          val = normalizeNumberInput(val);
+        const isJsonField = fieldTypeMap[k] === 'json';
+        let val = v;
+        if (isJsonField) {
+          val = toArray(v);
+        } else {
+          val = normalizeDateInput(v, placeholders[k]);
+          if (totalAmountSet.has(k) || totalCurrencySet.has(k)) {
+            val = normalizeNumberInput(val);
+          }
         }
         normalized[k] = val;
       });
@@ -2953,6 +2991,9 @@ const RowFormModal = function RowFormModal({
 
   async function submitForm(options = {}) {
     const submitOptions = options || {};
+    const submitIntent = submitOptions.submitIntent || submitIntentRef.current || 'post';
+    submitOptions.submitIntent = submitIntent;
+    submitIntentRef.current = null;
     if (!canPost) {
       alert(
         t(
@@ -2985,9 +3026,15 @@ const RowFormModal = function RowFormModal({
         const normalized = {};
         Object.entries(r).forEach(([k, v]) => {
           const raw = typeof v === 'object' && v !== null && 'value' in v ? v.value : v;
-          let val = normalizeDateInput(raw, placeholders[k]);
-          if (totalAmountSet.has(k) || totalCurrencySet.has(k)) {
-            val = normalizeNumberInput(val);
+          const isJsonField = fieldTypeMap[k] === 'json';
+          let val = raw;
+          if (isJsonField) {
+            val = toArray(raw);
+          } else {
+            val = normalizeDateInput(raw, placeholders[k]);
+            if (totalAmountSet.has(k) || totalCurrencySet.has(k)) {
+              val = normalizeNumberInput(val);
+            }
           }
           normalized[k] = val;
         });
@@ -2995,7 +3042,10 @@ const RowFormModal = function RowFormModal({
           if (
             normalized[f] === '' ||
             normalized[f] === null ||
-            normalized[f] === undefined
+            normalized[f] === undefined ||
+            (fieldTypeMap[f] === 'json' &&
+              Array.isArray(normalized[f]) &&
+              normalized[f].length === 0)
           )
             hasMissing = true;
           if (
@@ -3072,16 +3122,21 @@ const RowFormModal = function RowFormModal({
       procCache.current = {};
       setSubmitLocked(false);
       return;
+  }
+  const errs = {};
+  requiredFields.forEach((f) => {
+    if (
+      columns.includes(f) &&
+      (formVals[f] === '' ||
+        formVals[f] === null ||
+        formVals[f] === undefined ||
+        (fieldTypeMap[f] === 'json' &&
+          Array.isArray(formVals[f]) &&
+          formVals[f].length === 0))
+    ) {
+      errs[f] = 'Утга оруулна уу';
     }
-    const errs = {};
-    requiredFields.forEach((f) => {
-      if (
-        columns.includes(f) &&
-        (formVals[f] === '' || formVals[f] === null || formVals[f] === undefined)
-      ) {
-        errs[f] = 'Утга оруулна уу';
-      }
-    });
+  });
     setErrors(errs);
     if (Object.keys(errs).length === 0) {
       const merged = { ...extraVals, ...formVals };
@@ -3095,9 +3150,15 @@ const RowFormModal = function RowFormModal({
       }
       const normalized = {};
       Object.entries(merged).forEach(([k, v]) => {
-        let val = normalizeDateInput(v, placeholders[k]);
-        if (totalAmountSet.has(k) || totalCurrencySet.has(k)) {
-          val = normalizeNumberInput(val);
+        const isJsonField = fieldTypeMap[k] === 'json';
+        let val = v;
+        if (isJsonField) {
+          val = toArray(v);
+        } else {
+          val = normalizeDateInput(v, placeholders[k]);
+          if (totalAmountSet.has(k) || totalCurrencySet.has(k)) {
+            val = normalizeNumberInput(val);
+          }
         }
         normalized[k] = val;
       });
@@ -3122,6 +3183,7 @@ const RowFormModal = function RowFormModal({
     const inputClass = `w-full border rounded ${err ? 'border-red-500' : 'border-gray-300'}`;
     const isColumn = columns.includes(c);
     const disabled = disabledSet.has(c.toLowerCase()) || !isColumn;
+    const isJsonField = fieldTypeMap[c] === 'json';
     const tip = t(c.toLowerCase(), { ns: 'tooltip', defaultValue: labels[c] || c });
     const formVisible =
       (inline && visible) || (typeof document !== 'undefined' && !document.hidden);
@@ -3256,6 +3318,31 @@ const RowFormModal = function RowFormModal({
         const combinationReady =
           autoSelectForField?.combinationReady ??
           isCombinationFilterReady(hasCombination, conf?.combinationTargetColumn, comboFilters);
+        if (isJsonField) {
+          const optionLabels =
+            relationOptionLabelLookup[c] ||
+            relationOptionLabelLookup[String(c).toLowerCase()] ||
+            {};
+          return (
+            formVisible && (
+              <MultiReferenceInput
+                relationConfig={conf}
+                value={formVals[c]}
+                onChange={(vals) => {
+                  notifyAutoResetGuardOnEdit(c);
+                  setFormValuesWithGenerated((prev) => {
+                    if (valuesEqual(prev[c], vals)) return prev;
+                    return { ...prev, [c]: vals };
+                  });
+                  setErrors((er) => ({ ...er, [c]: undefined }));
+                }}
+                disabled={disabled}
+                companyId={company}
+                labelMap={optionLabels}
+              />
+            )
+          );
+        }
         return (
           formVisible && (
             <AsyncSearchSelect
@@ -3311,6 +3398,31 @@ const RowFormModal = function RowFormModal({
           cfg?.combinationTargetColumn,
           comboFilters,
         );
+        if (isJsonField) {
+          const optionLabels =
+            relationOptionLabelLookup[c] ||
+            relationOptionLabelLookup[String(c).toLowerCase()] ||
+            {};
+          return (
+            formVisible && (
+              <MultiReferenceInput
+                relationConfig={{ table: view, idField: cfg.idField || c, displayFields: cfg.displayFields || [] }}
+                value={formVals[c]}
+                onChange={(vals) => {
+                  notifyAutoResetGuardOnEdit(c);
+                  setFormValuesWithGenerated((prev) => {
+                    if (valuesEqual(prev[c], vals)) return prev;
+                    return { ...prev, [c]: vals };
+                  });
+                  setErrors((er) => ({ ...er, [c]: undefined }));
+                }}
+                disabled={disabled}
+                companyId={company}
+                labelMap={optionLabels}
+              />
+            )
+          );
+        }
         return (
           formVisible && (
             <AsyncSearchSelect
@@ -3354,6 +3466,22 @@ const RowFormModal = function RowFormModal({
           )
         );
       })()
+    ) : isJsonField ? (
+      <MultiReferenceInput
+        value={formVals[c]}
+        onChange={(vals) => {
+          notifyAutoResetGuardOnEdit(c);
+          setFormValuesWithGenerated((prev) => ({ ...prev, [c]: vals }));
+          setErrors((er) => ({ ...er, [c]: undefined }));
+        }}
+        disabled={disabled}
+        placeholder={labels[c] || c}
+        labelMap={
+          relationOptionLabelLookup[c] ||
+          relationOptionLabelLookup[String(c).toLowerCase()] ||
+          {}
+        }
+      />
     ) : Array.isArray(relations[c]) ? (
       (() => {
         const filteredOptions = filterRelationOptions(c, relations[c]);
@@ -3726,6 +3854,23 @@ const RowFormModal = function RowFormModal({
     onSaveTemporary &&
     (isAdding || isEditingTemporaryDraft) &&
     (!isReadOnly || temporarySaveLabel);
+  const postButtonLabel = submitLocked ? t('posting', 'Posting...') : t('post', 'Post');
+  const ebarimtButtonLabel = submitLocked
+    ? t('posting', 'Posting...')
+    : t('ebarimt_post', 'Ebarimt Post');
+  const temporaryButtonLabel = temporaryLocked
+    ? temporarySaveLabel || t('saving_temporary', 'Saving temporary...')
+    : temporarySaveLabel || t('save_temporary', 'Save as Temporary');
+  const processingText = temporaryLocked
+    ? t('saving_temporary_progress', 'Saving temporary submission...')
+    : t('posting_transaction_progress', 'Posting transaction...');
+  const handleClose = () => {
+    if (formProcessing) return;
+    onCancel();
+  };
+  const markSubmitIntent = (intent) => {
+    submitIntentRef.current = intent || 'post';
+  };
 
   if (inline) {
     return (
@@ -3745,18 +3890,26 @@ const RowFormModal = function RowFormModal({
       <Modal
         visible={visible}
         title={row ? 'Мөр засах' : 'Мөр нэмэх'}
-        onClose={onCancel}
+        onClose={handleClose}
         width="70vw"
       >
-        <form
-          ref={wrapRef}
-          style={{ transform: `scale(${zoom})`, transformOrigin: '0 0', padding: fitted ? 0 : undefined }}
-          onSubmit={(e) => {
-            e.preventDefault();
-            submitForm();
-          }}
-          className={fitted ? 'p-4 space-y-2' : 'p-4 space-y-4'}
-        >
+        <div className="relative">
+          {formProcessing && (
+            <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-white/70 backdrop-blur-sm">
+              <div className="h-10 w-10 rounded-full border-2 border-blue-200 border-t-blue-600 animate-spin" />
+              <p className="mt-3 text-sm font-medium text-gray-700 text-center px-4">{processingText}</p>
+            </div>
+          )}
+          <form
+            ref={wrapRef}
+            style={{ transform: `scale(${zoom})`, transformOrigin: '0 0', padding: fitted ? 0 : undefined }}
+            onSubmit={(e) => {
+              e.preventDefault();
+              submitForm();
+            }}
+            className={`${fitted ? 'p-4 space-y-2' : 'p-4 space-y-4'} ${formProcessing ? 'opacity-60 pointer-events-none' : ''}`}
+            aria-busy={formProcessing}
+          >
           {isRejectedWorkflow && (
             <div className="rounded border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800">
               {t(
@@ -3894,7 +4047,7 @@ const RowFormModal = function RowFormModal({
                 disabled={temporaryLocked}
                 className="px-3 py-1 bg-yellow-400 text-gray-900 rounded"
               >
-                {temporarySaveLabel || t('save_temporary', 'Save as Temporary')}
+                {temporaryButtonLabel}
               </button>
             )}
             <button
@@ -3909,12 +4062,13 @@ const RowFormModal = function RowFormModal({
                 type="button"
                 onClick={() => {
                   if (!issueEbarimtEnabled) return;
-                  submitForm({ issueEbarimt: true });
+                  markSubmitIntent('post');
+                  submitForm({ issueEbarimt: true, submitIntent: 'post' });
                 }}
                 className="px-3 py-1 bg-green-600 text-white rounded"
                 disabled={!issueEbarimtEnabled || submitLocked}
               >
-                {t('ebarimt_post', 'Ebarimt Post')}
+                {ebarimtButtonLabel}
               </button>
             )}
             {canPost && (
@@ -3922,8 +4076,9 @@ const RowFormModal = function RowFormModal({
                 type="submit"
                 className="px-3 py-1 bg-blue-600 text-white rounded"
                 disabled={submitLocked}
+                onMouseDown={() => markSubmitIntent('post')}
               >
-                {t('post', 'Post')}
+                {postButtonLabel}
               </button>
             )}
           </div>
@@ -3939,7 +4094,8 @@ const RowFormModal = function RowFormModal({
         <div className="text-sm text-gray-600">
           Press <strong>Enter</strong> to move to next field. The field will be automatically selected. Use arrow keys to navigate selections.
         </div>
-        </form>
+          </form>
+        </div>
       </Modal>
       {infoModalOpen && (
         <Modal

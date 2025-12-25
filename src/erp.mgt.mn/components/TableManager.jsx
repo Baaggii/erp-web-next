@@ -11,6 +11,7 @@ import React, {
 } from 'react';
 import { AuthContext } from '../context/AuthContext.jsx';
 import { useToast } from '../context/ToastContext.jsx';
+import { usePendingRequests } from '../context/PendingRequestContext.jsx';
 import RowFormModal from './RowFormModal.jsx';
 import CascadeDeleteModal from './CascadeDeleteModal.jsx';
 import RowDetailModal from './RowDetailModal.jsx';
@@ -38,6 +39,8 @@ import {
 import { isPlainRecord } from '../utils/transactionValues.js';
 import { extractRowIndex, sortRowsByIndex } from '../utils/sortRowsByIndex.js';
 import { resolveDisabledFieldState } from './tableManagerDisabledFields.js';
+import { computeTemporaryPromotionOptions } from '../utils/temporaryPromotionOptions.js';
+import NotificationDots from './NotificationDots.jsx';
 
 const TEMPORARY_FILTER_CACHE_KEY = 'temporary-transaction-filter';
 
@@ -471,6 +474,7 @@ const TableManager = forwardRef(function TableManager({
   const [columnMeta, setColumnMeta] = useState([]);
   const [autoInc, setAutoInc] = useState(new Set());
   const [showForm, setShowForm] = useState(false);
+  const showFormRef = useRef(false);
   const [editing, setEditing] = useState(null);
   const [rowDefaults, setRowDefaults] = useState({});
   const [pendingTemporaryPromotion, setPendingTemporaryPromotion] = useState(null);
@@ -514,6 +518,10 @@ const TableManager = forwardRef(function TableManager({
   const [temporaryFocusId, setTemporaryFocusId] = useState(null);
   const [temporarySelection, setTemporarySelection] = useState(() => new Set());
   const [temporaryValuePreview, setTemporaryValuePreview] = useState(null);
+  const pendingRequests = usePendingRequests();
+  const markTemporaryScopeSeen = pendingRequests?.temporary?.markScopeSeen;
+  const temporaryHasNew = Boolean(pendingRequests?.temporary?.hasNew);
+  const notificationDots = pendingRequests?.notificationColors || [];
   const temporaryRowRefs = useRef(new Map());
   const autoTemporaryLoadScopesRef = useRef(new Set());
   const promotionHydrationNeededRef = useRef(false);
@@ -679,6 +687,10 @@ const TableManager = forwardRef(function TableManager({
     window.addEventListener('click', hideMenu);
     return () => window.removeEventListener('click', hideMenu);
   }, []);
+
+  useEffect(() => {
+    showFormRef.current = showForm;
+  }, [showForm]);
 
   const branchScopeId = useMemo(() => resolveScopeId(branch), [branch]);
   const departmentScopeId = useMemo(
@@ -873,24 +885,28 @@ const TableManager = forwardRef(function TableManager({
         availableTemporaryScopes.includes('review') && reviewPending > 0
           ? 'review'
           : defaultTemporaryScope;
-      setTemporaryScope((prev) => {
-        if (!availableTemporaryScopes.includes(prev)) return preferredScope;
-        if (
-          preferredScope === 'review' &&
-          prev !== 'review' &&
-          availableTemporaryScopes.includes('review')
-        ) {
-          return 'review';
-        }
-        return prev;
-      });
+      if (!showFormRef.current) {
+        setTemporaryScope((prev) => {
+          if (!availableTemporaryScopes.includes(prev)) return preferredScope;
+          if (
+            preferredScope === 'review' &&
+            prev !== 'review' &&
+            availableTemporaryScopes.includes('review')
+          ) {
+            return 'review';
+          }
+          return prev;
+        });
+      }
     } catch {
       setTemporarySummary((prev) => prev || { createdPending: 0, reviewPending: 0 });
-      setTemporaryScope((prev) =>
-        availableTemporaryScopes.includes(prev)
-          ? prev
-          : defaultTemporaryScope,
-      );
+      if (!showFormRef.current) {
+        setTemporaryScope((prev) =>
+          availableTemporaryScopes.includes(prev)
+            ? prev
+            : defaultTemporaryScope,
+        );
+      }
     }
   }, [
     formSupportsTemporary,
@@ -984,6 +1000,10 @@ const TableManager = forwardRef(function TableManager({
     columnMeta.forEach((c) => {
       const typ = (c.type || c.columnType || c.dataType || c.DATA_TYPE || '')
         .toLowerCase();
+      if (typ.includes('json') || c.isJson) {
+        map[c.name] = 'json';
+        return;
+      }
       if (typ.match(/int|decimal|numeric|double|float|real|number|bigint/)) {
         map[c.name] = 'number';
       } else if (typ.includes('timestamp') || typ.includes('datetime')) {
@@ -998,6 +1018,19 @@ const TableManager = forwardRef(function TableManager({
     });
     return map;
   }, [columnMeta]);
+
+  const jsonColumnSet = useMemo(
+    () =>
+      new Set(
+        columnMeta
+          .filter((c) => {
+            const typ = (c.type || c.columnType || c.dataType || c.DATA_TYPE || '').toLowerCase();
+            return typ.includes('json') || c.isJson;
+          })
+          .map((c) => c.name),
+      ),
+    [columnMeta],
+  );
 
   const generatedCols = useMemo(
     () =>
@@ -3432,7 +3465,7 @@ const TableManager = forwardRef(function TableManager({
   }
 
   async function handleSubmit(values, options = {}) {
-    const { issueEbarimt = false } = options || {};
+    const { issueEbarimt = false, submitIntent = 'post' } = options || {};
     if (requestType !== 'temporary-promote' && !canPostTransactions) {
       addToast(
         t(
@@ -3443,6 +3476,19 @@ const TableManager = forwardRef(function TableManager({
       );
       return false;
     }
+    const {
+      forcePostFromTemporary,
+      forwardingExistingTemporary,
+      promoteAsTemporary,
+      shouldForcePromote,
+    } = computeTemporaryPromotionOptions({
+      requestType,
+      submitIntent,
+      pendingPromotionHasSeniorAbove,
+      pendingTemporaryPromotionId: pendingTemporaryPromotion?.id ?? null,
+      canPostTransactions,
+      forceResolvePendingDrafts,
+    });
     const columns = new Set(allColumns);
     const mergedSource = { ...(editing || {}) };
     Object.entries(values).forEach(([k, v]) => {
@@ -3582,8 +3628,8 @@ const TableManager = forwardRef(function TableManager({
         skipConfirm: true,
         silent: false,
         overrideValues: cleaned,
-        promoteAsTemporary: !canPostTransactions,
-        forcePromote: forceResolvePendingDrafts,
+        promoteAsTemporary,
+        forcePromote: shouldForcePromote,
       });
       if (ok) {
         const [nextEntry, ...remainingQueue] = temporaryPromotionQueue;
@@ -3838,10 +3884,6 @@ const TableManager = forwardRef(function TableManager({
     const nextSeniorEmpId = hasSenior(session?.senior_plan_empid)
       ? session?.senior_plan_empid
       : null;
-    const forwardingExistingTemporary =
-      requestType === 'temporary-promote' &&
-      pendingPromotionHasSeniorAbove &&
-      pendingTemporaryPromotion?.id;
     const isReviewForwarding =
       forwardingExistingTemporary && canReviewTemporary && temporaryScope === 'review';
 
@@ -4141,9 +4183,25 @@ const TableManager = forwardRef(function TableManager({
             })
           : t('temporary_saved', 'Saved as temporary draft');
       addToast(message, 'success');
-      await refreshTemporarySummary();
+      const backgroundTasks = [
+        (async () => {
+          try {
+            await refreshTemporarySummary();
+          } catch (err) {
+            console.error('Failed to refresh temporary summary after save', err);
+          }
+        })(),
+      ];
       if (activeTemporaryDraftId) {
-        await cleanupActiveTemporaryDraft();
+        backgroundTasks.push(
+          (async () => {
+            try {
+              await cleanupActiveTemporaryDraft();
+            } catch (err) {
+              console.error('Failed to cleanup temporary draft after save', err);
+            }
+          })(),
+        );
       }
       if (failureCount === 0) {
         setShowForm(false);
@@ -4152,6 +4210,9 @@ const TableManager = forwardRef(function TableManager({
         setGridRows([]);
         resetWorkflowState();
       }
+      Promise.allSettled(backgroundTasks).catch((err) => {
+        console.error('Unexpected error finishing temporary save tasks', err);
+      });
     }
 
     return failureCount === 0 && successCount > 0;
@@ -4514,7 +4575,9 @@ const TableManager = forwardRef(function TableManager({
           setTemporaryFocusId(null);
         }
         if (!preserveScope || targetScope === temporaryScope) {
-          setTemporaryScope(targetScope);
+          if (!showFormRef.current) {
+            setTemporaryScope(targetScope);
+          }
           setTemporaryList(nextRows);
         }
       } catch (err) {
@@ -4716,8 +4779,12 @@ const TableManager = forwardRef(function TableManager({
         ? queuedTemporaryTrigger.id
         : null;
     fetchTemporaryList(scopeToOpen, focusId ? { focusId } : undefined);
+    if (typeof markTemporaryScopeSeen === 'function' && scopeToOpen) {
+      markTemporaryScopeSeen(scopeToOpen);
+    }
   }, [
     fetchTemporaryList,
+    markTemporaryScopeSeen,
     queuedTemporaryTrigger,
     supportsTemporary,
     table,
@@ -4761,6 +4828,7 @@ const TableManager = forwardRef(function TableManager({
       overrideValues = null,
       promoteAsTemporary = false,
       forcePromote = false,
+      forceRetry = false,
     } = {},
   ) {
     if (!canReviewTemporary) return false;
@@ -4807,6 +4875,32 @@ const TableManager = forwardRef(function TableManager({
           data?.message ||
           data?.error ||
           t('temporary_promote_failed', 'Failed to promote temporary');
+        const canForceResolveNow =
+          !forcePromote &&
+          !forceRetry &&
+          showForceResolvePendingToggle &&
+          res.status === 409 &&
+          typeof message === 'string' &&
+          message.toLowerCase().includes('another temporary submission in this chain is pending');
+        if (canForceResolveNow) {
+          const confirmForce = window.confirm(
+            t(
+              'temporary_force_resolve_confirm',
+              'Another draft in this chain is pending. Resolve other pending drafts and continue?',
+            ),
+          );
+          if (confirmForce) {
+            setForceResolvePendingDrafts(true);
+            return promoteTemporary(id, {
+              skipConfirm: true,
+              silent,
+              overrideValues,
+              promoteAsTemporary,
+              forcePromote: true,
+              forceRetry: true,
+            });
+          }
+        }
         if (!silent) {
           addToast(message, 'error');
         }
@@ -5456,6 +5550,26 @@ const TableManager = forwardRef(function TableManager({
     }),
     [],
   );
+  const jsonValueStyle = useMemo(
+    () => ({
+      display: 'flex',
+      gap: '0.25rem',
+      flexWrap: 'wrap',
+      alignItems: 'center',
+    }),
+    [],
+  );
+  const jsonChipStyle = useMemo(
+    () => ({
+      background: '#eef2ff',
+      color: '#1f2937',
+      padding: '0.15rem 0.35rem',
+      borderRadius: '12px',
+      border: '1px solid #c7d2fe',
+      fontSize: '0.75rem',
+    }),
+    [],
+  );
 
   const openTemporaryPreview = useCallback(
     (column, value) => {
@@ -5587,15 +5701,33 @@ const TableManager = forwardRef(function TableManager({
 
       let value = parseMaybeJson(rawValue);
       value = mapRelationValue(value);
+      const isJsonColumn = jsonColumnSet.has(column) || fieldTypeMap[column] === 'json';
 
       if (Array.isArray(value)) {
         const primitives = value.filter(
           (item) => item !== null && item !== undefined && typeof item !== 'object',
         );
         if (primitives.length === value.length) {
-          const display = primitives
-            .map((item) => (typeof item === 'string' ? item : String(item)))
-            .join(', ');
+          const items = primitives.map((item) =>
+            typeof item === 'string' ? item : String(item),
+          );
+          if (isJsonColumn) {
+            return (
+              <div style={jsonValueStyle}>
+                <span aria-label="JSON field" title="JSON field">
+                  🧩
+                </span>
+                {items.length === 0
+                  ? '—'
+                  : items.map((item, idx) => (
+                      <span key={`${column}-${idx}-${item}`} style={jsonChipStyle}>
+                        {item}
+                      </span>
+                    ))}
+              </div>
+            );
+          }
+          const display = items.join(', ');
           return display || '—';
         }
         const objectItems = value.filter((item) => isPlainValueObject(item));
@@ -5973,13 +6105,26 @@ const TableManager = forwardRef(function TableManager({
             <button
               onClick={() => {
                 setShowTemporaryModal(true);
-                fetchTemporaryList(
-                  temporarySummary?.reviewPending > 0 ? 'review' : 'created',
-                );
+                const targetScope =
+                  temporarySummary?.reviewPending > 0 ? 'review' : 'created';
+                fetchTemporaryList(targetScope);
+                if (typeof markTemporaryScopeSeen === 'function') {
+                  markTemporaryScopeSeen(targetScope);
+                }
               }}
               style={{ marginRight: '0.5rem', position: 'relative' }}
             >
-              {t('temporaries', 'Temporaries')}
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
+                {temporaryHasNew && (
+                  <NotificationDots
+                    colors={notificationDots}
+                    size="0.35rem"
+                    gap="0.12rem"
+                    marginRight={0}
+                  />
+                )}
+                {t('temporaries', 'Temporaries')}
+              </span>
               {(reviewPendingCount > 0 || createdPendingCount > 0) && (
                 <span
                   style={{
@@ -6435,6 +6580,11 @@ const TableManager = forwardRef(function TableManager({
                 >
                   {labels[c] || c}
                 </TooltipWrapper>
+                {jsonColumnSet.has(c) && (
+                  <span aria-label="JSON" title="JSON field" style={{ marginLeft: '0.25rem' }}>
+                    🧩
+                  </span>
+                )}
                 {sort.column === c ? (sort.dir === 'asc' ? ' \u2191' : ' \u2193') : ''}
               </th>
             ))}
