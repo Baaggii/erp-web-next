@@ -3,6 +3,7 @@ import * as XLSX from 'xlsx';
 import { translateToMn } from '../utils/translateToMn.js';
 import { useToast } from '../context/ToastContext.jsx';
 import formatTimestamp from '../utils/formatTimestamp.js';
+import JsonConverterTab from './JsonConverterTab.jsx';
 
 function cleanIdentifier(name) {
   return String(name).replace(/[^A-Za-z0-9_]+/g, '');
@@ -18,7 +19,8 @@ export default function CodingTablesPage() {
   const [workbook, setWorkbook] = useState(null);
   const [sheet, setSheet] = useState('');
   const [headers, setHeaders] = useState([]);
-  const [activeTab, setActiveTab] = useState('upload');
+  const [mainTab, setMainTab] = useState('coding');
+  const [codingTab, setCodingTab] = useState('upload');
   const [idCandidates, setIdCandidates] = useState([]);
   const [idFilterMode, setIdFilterMode] = useState('contains');
   const [headerRow, setHeaderRow] = useState(1);
@@ -3026,23 +3028,40 @@ export default function CodingTablesPage() {
 
   return (
     <div>
-      <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem' }}>
+      <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '0.75rem' }}>
         <button
-          onClick={() => setActiveTab('upload')}
-          style={{ fontWeight: activeTab === 'upload' ? 'bold' : 'normal' }}
+          onClick={() => setMainTab('coding')}
+          style={{ fontWeight: mainTab === 'coding' ? 'bold' : 'normal' }}
         >
-          Coding Table Upload
+          Coding Tables
         </button>
         <button
-          onClick={() => setActiveTab('schemaDiff')}
-          style={{ fontWeight: activeTab === 'schemaDiff' ? 'bold' : 'normal' }}
+          onClick={() => setMainTab('json')}
+          style={{ fontWeight: mainTab === 'json' ? 'bold' : 'normal' }}
         >
-          Schema Diff
+          JSON Converter
         </button>
       </div>
-      {activeTab === 'schemaDiff' && renderSchemaDiffSection()}
-      {activeTab === 'upload' && (
+      {mainTab === 'json' && <JsonConverterTab />}
+      {mainTab === 'coding' && (
         <>
+          <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem' }}>
+            <button
+              onClick={() => setCodingTab('upload')}
+              style={{ fontWeight: codingTab === 'upload' ? 'bold' : 'normal' }}
+            >
+              Coding Table Upload
+            </button>
+            <button
+              onClick={() => setCodingTab('schemaDiff')}
+              style={{ fontWeight: codingTab === 'schemaDiff' ? 'bold' : 'normal' }}
+            >
+              Schema Diff
+            </button>
+          </div>
+          {codingTab === 'schemaDiff' && renderSchemaDiffSection()}
+          {codingTab === 'upload' && (
+            <>
       <h2>Coding Table Upload</h2>
       <input type="file" accept=".xlsx,.xls,.xlsb" onChange={handleFile} ref={fileInputRef} />
       {selectedFile && (
@@ -3573,8 +3592,6 @@ export default function CodingTablesPage() {
               )}
             </>
           )}
-        </div>
-      )}
         </>
       )}
     </div>
