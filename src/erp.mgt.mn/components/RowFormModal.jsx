@@ -17,8 +17,26 @@ import selectDisplayFieldsForRelation from '../utils/selectDisplayFieldsForRelat
 import extractCombinationFilterValue from '../utils/extractCombinationFilterValue.js';
 import useGeneralConfig from '../hooks/useGeneralConfig.js';
 import { API_BASE } from '../utils/apiBase.js';
+import MultiReferenceInput from './MultiReferenceInput.jsx';
 
 const DEFAULT_RECEIPT_TYPES = ['B2C', 'B2B_SALE', 'B2B_PURCHASE', 'STOCK_QR'];
+
+function normalizeJsonArrayValue(value) {
+  if (Array.isArray(value)) return value;
+  if (value === undefined || value === null || value === '') return [];
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!trimmed) return [];
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (Array.isArray(parsed)) return parsed;
+    } catch {
+      /* ignore */
+    }
+    return trimmed.split(',').map((v) => v.trim()).filter(Boolean);
+  }
+  return [value];
+}
 
 function normalizeRelationOptionKey(value) {
   if (value === undefined || value === null) return null;
@@ -3250,7 +3268,26 @@ const RowFormModal = function RowFormModal({
       );
     }
 
-    const control = resolvedRelationConfig ? (
+    const isJsonField = fieldTypeMap[c] === 'json';
+    const control = isJsonField ? (
+      <MultiReferenceInput
+        title={tip}
+        value={normalizeJsonArrayValue(formVals[c])}
+        onChange={(vals) => {
+          notifyAutoResetGuardOnEdit(c);
+          setFormValuesWithGenerated((prev) => {
+            if (valuesEqual(prev[c], vals)) return prev;
+            return { ...prev, [c]: vals };
+          });
+          setErrors((er) => ({ ...er, [c]: undefined }));
+        }}
+        relationConfig={resolvedRelationConfig}
+        labelFields={resolvedRelationConfig?.displayFields || []}
+        companyId={company}
+        disabled={disabled}
+        inputStyle={inputStyle}
+      />
+    ) : resolvedRelationConfig ? (
       (() => {
         const conf = resolvedRelationConfig;
         const comboFilters =

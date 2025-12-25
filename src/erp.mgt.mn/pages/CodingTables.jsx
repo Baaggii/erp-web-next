@@ -3,6 +3,7 @@ import * as XLSX from 'xlsx';
 import { translateToMn } from '../utils/translateToMn.js';
 import { useToast } from '../context/ToastContext.jsx';
 import formatTimestamp from '../utils/formatTimestamp.js';
+import JsonConverter from './JsonConverter.jsx';
 
 function cleanIdentifier(name) {
   return String(name).replace(/[^A-Za-z0-9_]+/g, '');
@@ -12,7 +13,7 @@ function normalizeField(name) {
   return cleanIdentifier(name).toLowerCase();
 }
 
-export default function CodingTablesPage() {
+function CodingTablesUploadTab() {
   const { addToast } = useToast();
   const [sheets, setSheets] = useState([]);
   const [workbook, setWorkbook] = useState(null);
@@ -3323,6 +3324,40 @@ export default function CodingTablesPage() {
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+export default function CodingTablesPage() {
+  const [activeTab, setActiveTab] = useState('coding');
+  const tabs = [
+    { key: 'coding', label: 'Coding Tables' },
+    { key: 'json', label: 'JSON Converter' },
+  ];
+
+  return (
+    <div>
+      <div style={{ display: 'flex', borderBottom: '1px solid #e5e7eb', marginBottom: '1rem' }}>
+        {tabs.map((tab) => (
+          <button
+            key={tab.key}
+            onClick={() => setActiveTab(tab.key)}
+            style={{
+              padding: '0.5rem 1rem',
+              border: 'none',
+              borderBottom:
+                activeTab === tab.key ? '2px solid #2563eb' : '2px solid transparent',
+              background: 'none',
+              cursor: 'pointer',
+              fontWeight: activeTab === tab.key ? 700 : 500,
+            }}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+      {activeTab === 'coding' && <CodingTablesUploadTab />}
+      {activeTab === 'json' && <JsonConverter />}
     </div>
   );
 }
