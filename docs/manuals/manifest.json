@@ -1,1 +1,6 @@
-{}
+{
+  "temporary-posting-checklist.md": {
+    "title": "Temporary posting with senior reviewers",
+    "summary": "Ensure Post bypasses forwarding even when a reviewer has a senior."
+  }
+}

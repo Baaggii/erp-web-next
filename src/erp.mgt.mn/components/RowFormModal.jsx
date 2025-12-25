@@ -113,6 +113,7 @@ const RowFormModal = function RowFormModal({
   const renderCount = useRef(0);
   const warned = useRef(false);
   const procCache = useRef({});
+  const submitIntentRef = useRef(null);
   const [tableDisplayFields, setTableDisplayFields] = useState([]);
   useEffect(() => {
     fetch('/api/display_fields', { credentials: 'include' })
@@ -2954,6 +2955,9 @@ const RowFormModal = function RowFormModal({
 
   async function submitForm(options = {}) {
     const submitOptions = options || {};
+    const submitIntent = submitOptions.submitIntent || submitIntentRef.current || 'post';
+    submitOptions.submitIntent = submitIntent;
+    submitIntentRef.current = null;
     if (!canPost) {
       alert(
         t(
@@ -3741,6 +3745,9 @@ const RowFormModal = function RowFormModal({
     if (formProcessing) return;
     onCancel();
   };
+  const markSubmitIntent = (intent) => {
+    submitIntentRef.current = intent || 'post';
+  };
 
   if (inline) {
     return (
@@ -3932,7 +3939,8 @@ const RowFormModal = function RowFormModal({
                 type="button"
                 onClick={() => {
                   if (!issueEbarimtEnabled) return;
-                  submitForm({ issueEbarimt: true });
+                  markSubmitIntent('post');
+                  submitForm({ issueEbarimt: true, submitIntent: 'post' });
                 }}
                 className="px-3 py-1 bg-green-600 text-white rounded"
                 disabled={!issueEbarimtEnabled || submitLocked}
@@ -3945,6 +3953,7 @@ const RowFormModal = function RowFormModal({
                 type="submit"
                 className="px-3 py-1 bg-blue-600 text-white rounded"
                 disabled={submitLocked}
+                onMouseDown={() => markSubmitIntent('post')}
               >
                 {postButtonLabel}
               </button>

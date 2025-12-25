@@ -38,6 +38,7 @@ import {
 import { isPlainRecord } from '../utils/transactionValues.js';
 import { extractRowIndex, sortRowsByIndex } from '../utils/sortRowsByIndex.js';
 import { resolveDisabledFieldState } from './tableManagerDisabledFields.js';
+import { computeTemporaryPromotionOptions } from '../utils/temporaryPromotionOptions.js';
 
 const TEMPORARY_FILTER_CACHE_KEY = 'temporary-transaction-filter';
 
@@ -3432,7 +3433,7 @@ const TableManager = forwardRef(function TableManager({
   }
 
   async function handleSubmit(values, options = {}) {
-    const { issueEbarimt = false } = options || {};
+    const { issueEbarimt = false, submitIntent = 'post' } = options || {};
     if (requestType !== 'temporary-promote' && !canPostTransactions) {
       addToast(
         t(
@@ -3443,6 +3444,19 @@ const TableManager = forwardRef(function TableManager({
       );
       return false;
     }
+    const {
+      forcePostFromTemporary,
+      forwardingExistingTemporary,
+      promoteAsTemporary,
+      shouldForcePromote,
+    } = computeTemporaryPromotionOptions({
+      requestType,
+      submitIntent,
+      pendingPromotionHasSeniorAbove,
+      pendingTemporaryPromotionId: pendingTemporaryPromotion?.id ?? null,
+      canPostTransactions,
+      forceResolvePendingDrafts,
+    });
     const columns = new Set(allColumns);
     const mergedSource = { ...(editing || {}) };
     Object.entries(values).forEach(([k, v]) => {
@@ -3582,8 +3596,8 @@ const TableManager = forwardRef(function TableManager({
         skipConfirm: true,
         silent: false,
         overrideValues: cleaned,
-        promoteAsTemporary: !canPostTransactions,
-        forcePromote: forceResolvePendingDrafts,
+        promoteAsTemporary,
+        forcePromote: shouldForcePromote,
       });
       if (ok) {
         const [nextEntry, ...remainingQueue] = temporaryPromotionQueue;
@@ -3838,10 +3852,6 @@ const TableManager = forwardRef(function TableManager({
     const nextSeniorEmpId = hasSenior(session?.senior_plan_empid)
       ? session?.senior_plan_empid
       : null;
-    const forwardingExistingTemporary =
-      requestType === 'temporary-promote' &&
-      pendingPromotionHasSeniorAbove &&
-      pendingTemporaryPromotion?.id;
     const isReviewForwarding =
       forwardingExistingTemporary && canReviewTemporary && temporaryScope === 'review';
 
