@@ -17,6 +17,7 @@ export default function CodingTablesPage() {
   const [sheets, setSheets] = useState([]);
   const [workbook, setWorkbook] = useState(null);
   const [sheet, setSheet] = useState('');
+  const [activeTab, setActiveTab] = useState('upload');
   const [headers, setHeaders] = useState([]);
   const [idCandidates, setIdCandidates] = useState([]);
   const [idFilterMode, setIdFilterMode] = useState('contains');
@@ -42,6 +43,14 @@ export default function CodingTablesPage() {
   const foreignKeySqlTouchedRef = useRef(false);
   const foreignKeySqlLoadedRef = useRef('');
   const foreignKeySqlTableRef = useRef('');
+  const [schemaStatus, setSchemaStatus] = useState(null);
+  const [schemaDiff, setSchemaDiff] = useState(null);
+  const [schemaLoading, setSchemaLoading] = useState(false);
+  const [schemaError, setSchemaError] = useState('');
+  const [schemaSelection, setSchemaSelection] = useState(new Set());
+  const [allowDrops, setAllowDrops] = useState(false);
+  const [applyResult, setApplyResult] = useState(null);
+  const [applyLoading, setApplyLoading] = useState(false);
 
   const setTriggerSql = React.useCallback((value) => {
     setTriggerSqlState((prev) => {
@@ -161,6 +170,12 @@ export default function CodingTablesPage() {
         setConfigMap({});
       });
   }, []);
+
+  useEffect(() => {
+    if (activeTab !== 'schemaDiff') return;
+    if (schemaStatus) return;
+    fetchSchemaStatus();
+  }, [activeTab, schemaStatus]);
 
   useEffect(() => {
     function onKey(e) {
@@ -2688,6 +2703,145 @@ export default function CodingTablesPage() {
   }, [allFields, idFilterMode, notNullMap, renameMap]);
 
   useEffect(() => {
+    if (!schemaDiff) return;
+    const next = new Set(
+      schemaDiff.tables
+        .filter((t) => t.status !== 'match')
+        .map((t) => t.name),
+    );
+    setSchemaSelection(next);
+  }, [schemaDiff]);
+
+  const selectedStatements = useMemo(() => {
+    if (!schemaDiff) return [];
+    return schemaDiff.tables
+      .filter((t) => schemaSelection.has(t.name))
+      .flatMap((t) => {
+        if (t.toolStatements && t.toolStatements.length > 0) {
+          return t.toolStatements;
+        }
+        return t.statements || [];
+      })
+      .map((s) => (s.trim().endsWith(';') ? s.trim() : `${s.trim()};`));
+  }, [schemaDiff, schemaSelection]);
+
+  const selectedSqlPreview = useMemo(
+    () => selectedStatements.join('\n\n'),
+    [selectedStatements],
+  );
+
+  async function fetchSchemaStatus() {
+    setSchemaLoading(true);
+    setSchemaError('');
+    try {
+      const res = await fetch('/api/schema_diff/status', {
+        credentials: 'include',
+      });
+      if (!res.ok) {
+        throw new Error('Failed to load schema status');
+      }
+      const data = await res.json();
+      setSchemaStatus(data);
+    } catch (err) {
+      setSchemaError(err?.message || 'Failed to load schema status');
+    } finally {
+      setSchemaLoading(false);
+    }
+  }
+
+  async function generateSchemaDiff(useTool = false) {
+    setSchemaLoading(true);
+    setSchemaError('');
+    setApplyResult(null);
+    try {
+      const res = await fetch('/api/schema_diff/build', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ useCompareTool: useTool }),
+      });
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(text || 'Failed to build schema diff');
+      }
+      const data = await res.json();
+      setSchemaDiff(data);
+      addToast('Schema diff generated', 'success');
+    } catch (err) {
+      setSchemaError(err?.message || 'Failed to build schema diff');
+      addToast('Schema diff failed', 'error');
+    } finally {
+      setSchemaLoading(false);
+    }
+  }
+
+  function toggleTableSelection(name) {
+    setSchemaSelection((prev) => {
+      const next = new Set(prev);
+      if (next.has(name)) next.delete(name);
+      else next.add(name);
+      return next;
+    });
+  }
+
+  function selectAllTables() {
+    if (!schemaDiff) return;
+    setSchemaSelection(new Set(schemaDiff.tables.map((t) => t.name)));
+  }
+
+  function selectChangedTables() {
+    if (!schemaDiff) return;
+    setSchemaSelection(
+      new Set(
+        schemaDiff.tables
+          .filter((t) => t.status !== 'match')
+          .map((t) => t.name),
+      ),
+    );
+  }
+
+  function clearTableSelection() {
+    setSchemaSelection(new Set());
+  }
+
+  async function applySelected({ dryRun = false } = {}) {
+    if (!selectedStatements.length) {
+      addToast('Select at least one table', 'warning');
+      return;
+    }
+    setApplyLoading(true);
+    setSchemaError('');
+    setApplyResult(null);
+    try {
+      const res = await fetch('/api/schema_diff/apply', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          statements: selectedStatements,
+          allowDrops,
+          dryRun,
+        }),
+      });
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(text || 'Failed to apply schema changes');
+      }
+      const data = await res.json();
+      setApplyResult(data);
+      addToast(dryRun ? 'Dry run prepared' : 'Schema changes applied', 'success');
+      if (!dryRun && data.failed?.length === 0) {
+        fetchSchemaStatus();
+      }
+    } catch (err) {
+      setSchemaError(err?.message || 'Schema update failed');
+      addToast('Schema update failed', 'error');
+    } finally {
+      setApplyLoading(false);
+    }
+  }
+
+  useEffect(() => {
     if (!tableName) return;
     if (!configNames.includes(tableName)) {
       if (workbook && sheet) {
@@ -2791,537 +2945,749 @@ export default function CodingTablesPage() {
 
   return (
     <div>
-      <h2>Coding Table Upload</h2>
-      <input type="file" accept=".xlsx,.xls,.xlsb" onChange={handleFile} ref={fileInputRef} />
-      {selectedFile && (
-        <button onClick={refreshFile} style={{ marginLeft: '0.5rem' }}>Refresh File</button>
-      )}
-      {loadingWorkbook && (
-        <div style={{ marginTop: '0.5rem' }}>
-          <progress value={loadProgress} max="100" /> Loading workbook...
-        </div>
-      )}
-      {sheets.length > 0 && (
+      <div style={{ marginBottom: '1rem' }}>
+        <button
+          type="button"
+          onClick={() => setActiveTab('upload')}
+          disabled={activeTab === 'upload'}
+          style={{ marginRight: '0.5rem' }}
+        >
+          Coding Table Upload
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab('schemaDiff')}
+          disabled={activeTab === 'schemaDiff'}
+        >
+          Schema Diff
+        </button>
+      </div>
+
+      {activeTab === 'schemaDiff' ? (
         <div>
-          <div>
-            Sheet:
-            <select value={sheet} onChange={handleSheetChange}>
-              {sheets.map((s) => (
-                <option key={s} value={s}>
-                  {s}
-                </option>
-              ))}
-            </select>
+          <h2>Schema Diff</h2>
+          {schemaError && (
+            <div style={{ color: 'red', marginBottom: '0.5rem' }}>{schemaError}</div>
+          )}
+          <div style={{ marginBottom: '0.75rem' }}>
+            <button
+              type="button"
+              onClick={fetchSchemaStatus}
+              disabled={schemaLoading}
+              style={{ marginRight: '0.5rem' }}
+            >
+              Refresh Status
+            </button>
+            <button
+              type="button"
+              onClick={() => generateSchemaDiff(false)}
+              disabled={schemaLoading}
+              style={{ marginRight: '0.5rem' }}
+            >
+              Generate Diff (current schema)
+            </button>
+            <button
+              type="button"
+              onClick={() => generateSchemaDiff(true)}
+              disabled={schemaLoading || schemaStatus?.tools?.mysqldbcompare === false}
+            >
+              Generate Diff (mysqldbcompare)
+            </button>
+            {schemaStatus?.tools && (
+              <span style={{ marginLeft: '0.75rem' }}>
+                mysqldump: {schemaStatus.tools.mysqldump ? 'available' : 'missing'} |{' '}
+                mysqldbcompare: {schemaStatus.tools.mysqldbcompare ? 'available' : 'missing'}
+              </span>
+            )}
           </div>
-          <div>
-            Field Name Row:
-            <input
-              type="number"
-              inputMode="decimal"
-              min="1"
-              value={headerRow}
-              onChange={handleHeaderRowChange}
-            />
-            Mongolian Field Name Row:
-            <input
-              type="number"
-              inputMode="decimal"
-              min="1"
-              value={mnHeaderRow}
-              onChange={handleMnHeaderRowChange}
-              style={{ marginLeft: '0.5rem' }}
-            />
-            <button onClick={handleExtract}>Read Columns</button>
-          </div>
-          <div>
-            <label style={{ marginRight: '1rem' }}>
-              <input
-                type="radio"
-                name="idFilterMode"
-                value="contains"
-                checked={idFilterMode === 'contains'}
-                onChange={(e) => setIdFilterMode(e.target.value)}
-              />
-              id column should have "id" text
-            </label>
-            <label>
-              <input
-                type="radio"
-                name="idFilterMode"
-                value="all"
-                checked={idFilterMode === 'all'}
-                onChange={(e) => setIdFilterMode(e.target.value)}
-              />
-              pull all columns
-            </label>
-          </div>
-          {allFields.length > 0 && (
+          {schemaStatus && (
+            <div style={{ marginBottom: '0.75rem' }}>
+              <div>
+                Schema file: <code>{schemaStatus.schemaPath}</code>{' '}
+                {schemaStatus.schemaExists ? `(updated ${schemaStatus.schemaModifiedAt})` : '(missing)'}
+              </div>
+              <div>
+                Last dump: <code>{schemaStatus.dumpPath}</code>{' '}
+                {schemaStatus.dumpExists ? `(updated ${schemaStatus.dumpModifiedAt})` : '(not generated)'}
+              </div>
+            </div>
+          )}
+          {schemaDiff && (
             <>
-              <div>
-                Table Name:
-                <select
-                  value={tableName}
-                  onChange={(e) => setTableName(e.target.value)}
-                  style={{ marginRight: '0.5rem' }}
-                >
-                  <option value="">-- new --</option>
-                  {configNames.map((n) => (
-                    <option key={n} value={n}>
-                      {n}
-                    </option>
-                  ))}
-                </select>
-                <input
-                  value={tableName}
-                  onChange={(e) => setTableName(e.target.value)}
-                  placeholder="Table name"
-                />
-                {tableName && configNames.includes(tableName) && (
-                  <button
-                    type="button"
-                    onClick={deleteConfig}
-                    style={{ marginLeft: '0.5rem' }}
-                  >
-                    Delete
-                  </button>
-                )}
-              </div>
-              <div>
-                Additional Fields:
-                <div>
-                  {extraFields.map((f, idx) => (
-                    <span key={idx} style={{ marginRight: '0.5rem' }}>
-                      <input
-                        value={f}
-                        placeholder={`Field ${idx + 1}`}
-                        onChange={(e) => {
-                          const vals = [...extraFields];
-                          vals[idx] = e.target.value;
-                          setExtraFields(vals);
-                        }}
-                        style={{ marginRight: '0.25rem' }}
-                      />
-                      <button type="button" onClick={() => removeExtraField(idx)}>
-                        x
-                      </button>
-                    </span>
-                  ))}
-                  <button type="button" onClick={addExtraField}>Add Field</button>
-                </div>
-              </div>
-              <div>
-                <h4>Mongolian Field Names</h4>
-                {initialDuplicates.size > 0 && (
-                  <div style={{ marginBottom: '0.25rem' }}>
-                    {duplicateHeaders.size > 0 ? (
-                      <span style={{ color: 'red' }}>
-                        Duplicate fields: {Array.from(duplicateHeaders).join(', ')}
-                      </span>
-                    ) : (
-                      <span style={{ color: 'green' }}>
-                        Duplicates renamed: {Array.from(initialDuplicates).join(', ')}
-                      </span>
-                    )}
-                  </div>
-                )}
-                {allFields.map((h) => (
-                  <div
-                    key={h}
-                    style={{
-                      marginBottom: '0.25rem',
-                      color: duplicateHeaders.has(h) ? 'red' : 'inherit',
-                    }}
-                  >
-                    <code>{h}</code>
-                    {' → '}
-                    <input
-                      value={renameMap[h] || ''}
-                      placeholder={h}
-                      onChange={(e) => {
-                        setRenameMap({ ...renameMap, [h]: e.target.value });
-                        setDuplicateHeaders((d) => {
-                          const next = new Set(d);
-                          next.delete(h);
-                          return next;
-                        });
-                      }}
-                      style={{ marginRight: '0.5rem' }}
-                    />
-                    <input
-                      value={headerMap[h] || ''}
-                      onChange={(e) =>
-                        setHeaderMap({ ...headerMap, [h]: e.target.value })
-                      }
-                    />
-                  </div>
-                ))}
-                <button type="button" onClick={saveMappings} style={{ marginTop: '0.5rem' }}>
-                  Add Mappings
-                </button>
-              </div>
-              {hasDateField && (
-                <div>
-                  <div style={{ marginTop: '0.5rem' }}>
-                    <label style={{ marginRight: '0.5rem' }}>
-                      <input
-                        type="radio"
-                        name="populateRange"
-                        value="no"
-                        checked={!populateRange}
-                        onChange={() => setPopulateRange(false)}
-                      />
-                      No Range
-                    </label>
-                    <label>
-                      <input
-                        type="radio"
-                        name="populateRange"
-                        value="yes"
-                        checked={populateRange}
-                        onChange={() => setPopulateRange(true)}
-                      />
-                      Populate Range
-                    </label>
-                  </div>
-                  {populateRange && (
-                    <div style={{ marginTop: '0.5rem' }}>
-                      Start Year:{' '}
-                      <input
-                        type="number"
-                        inputMode="decimal"
-                        value={startYear}
-                        onChange={(e) => setStartYear(e.target.value)}
-                        style={{ marginRight: '0.5rem' }}
-                      />
-                      End Year:{' '}
-                      <input
-                        type="number"
-                        inputMode="decimal"
-                        value={endYear}
-                        onChange={(e) => setEndYear(e.target.value)}
-                      />
-                    </div>
-                  )}
-                </div>
-              )}
-              <div>
-                ID Column:
-                <select value={idColumn} onChange={(e) => setIdColumn(e.target.value)}>
-                  <option value="">--none--</option>
-                  {uniqueRenamedFields(idCandidates, undefined, false).map((o) => (
-                    <option key={o.value} value={o.value}>
-                      {o.label}
-                    </option>
-                  ))}
-                </select>
-                {idColumn && (
-                  <span style={{ marginLeft: '0.5rem' }}>
-                    Start Value:{' '}
-                    <input
-                      type="number"
-                      inputMode="decimal"
-                      value={autoIncStart}
-                      onChange={(e) => setAutoIncStart(e.target.value)}
-                      style={{ width: '6rem' }}
-                    />
+              <div style={{ marginBottom: '0.5rem' }}>
+                <strong>Summary:</strong>{' '}
+                {schemaDiff.summary.missing} missing, {schemaDiff.summary.different} changed,{' '}
+                {schemaDiff.summary.matching} matching, {schemaDiff.summary.extra} extra tables in DB.
+                {schemaDiff.toolError && (
+                  <span style={{ color: 'red', marginLeft: '0.5rem' }}>
+                    Tool error: {schemaDiff.toolError}
                   </span>
                 )}
               </div>
-              <div>
-                Name Column:
-                <select value={nameColumn} onChange={(e) => setNameColumn(e.target.value)}>
-                  <option value="">--select--</option>
-                  {uniqueRenamedFields().map((o) => (
-                    <option key={o.value} value={o.value}>
-                      {o.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                Unique Fields:
-                <div>
-                  {uniqueRenamedFields().map(({ value: h, label }) => (
-                    <label key={h} style={{ marginRight: '0.5rem' }}>
-                      <input
-                        type="checkbox"
-                        checked={uniqueFields.includes(h)}
-                        onChange={(e) => {
-                          if (e.target.checked) {
-                            setUniqueFields([...uniqueFields, h]);
-                            setOtherColumns(otherColumns.filter((c) => c !== h));
-                          } else {
-                            setUniqueFields(uniqueFields.filter((c) => c !== h));
-                          }
-                        }}
-                      />
-                      {label}
-                    </label>
-                  ))}
+              {schemaDiff.extraTables.length > 0 && (
+                <div style={{ marginBottom: '0.5rem' }}>
+                  <strong>Extra tables on server:</strong>{' '}
+                  {schemaDiff.extraTables.join(', ')}
                 </div>
-              </div>
-              <div>
-                Other Columns:
-                <div>
-                  {uniqueRenamedFields().map(({ value: h, label }) => (
-                    <label key={h} style={{ marginRight: '0.5rem' }}>
-                      <input
-                        type="checkbox"
-                        checked={otherColumns.includes(h)}
-                        onChange={(e) => {
-                          if (e.target.checked) {
-                            setOtherColumns([...otherColumns, h]);
-                            setUniqueFields(uniqueFields.filter((c) => c !== h));
-                          } else {
-                            setOtherColumns(otherColumns.filter((c) => c !== h));
-                          }
-                        }}
-                      />
-                      {label}
-                    </label>
-                  ))}
-                </div>
-              </div>
-              <div>
-                Group By Column:
-                <select value={groupByField} onChange={(e) => setGroupByField(e.target.value)}>
-                  <option value="">--none--</option>
-                  {allFields.map((h) => (
-                    <option key={h} value={h}>
-                      {renameMap[h] || h}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                Column Types:
-                <div>
-                  {uniqueRenamedFields().map(({ value: h, label }) => (
-                    <div key={h} style={{ marginBottom: '0.25rem' }}>
-                      {label}:{' '}
-                      <input
-                        value={columnTypes[h] || ''}
-                        onChange={(e) =>
-                          setColumnTypes({
-                            ...columnTypes,
-                            [h]: e.target.value,
-                          })
-                        }
-                      />
-                      <label style={{ marginLeft: '0.5rem' }}>
-                        <input
-                          type="checkbox"
-                          checked={!notNullMap[h]}
-                          onChange={(e) =>
-                            setNotNullMap({
-                              ...notNullMap,
-                              [h]: !e.target.checked,
-                            })
-                          }
-                        />
-                        Allow Null
-                      </label>
-                      <label style={{ marginLeft: '0.5rem' }}>
-                        <input
-                          type="checkbox"
-                          checked={allowZeroMap[h] || false}
-                          onChange={(e) =>
-                            setAllowZeroMap({
-                              ...allowZeroMap,
-                              [h]: e.target.checked,
-                            })
-                          }
-                        />
-                        Allow 0
-                      </label>
-                      <input
-                        style={{ marginLeft: '0.5rem', width: '8rem' }}
-                        placeholder="Default if blank/0"
-                        value={defaultValues[h] || ''}
-                        onChange={(e) =>
-                          setDefaultValues({
-                            ...defaultValues,
-                            [h]: e.target.value,
-                          })
-                        }
-                      />
-                      <select
-                        value={defaultFrom[h] || ''}
-                        onChange={(e) =>
-                          setDefaultFrom({
-                            ...defaultFrom,
-                            [h]: e.target.value,
-                          })
-                        }
-                        style={{ marginLeft: '0.25rem' }}
-                      >
-                        <option value="">from field...</option>
-                        {uniqueRenamedFields(allFields, h).map((o) => (
-                          <option key={o.value} value={o.value}>
-                            {o.label}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  ))}
-                </div>
-              </div>
-              <div>
-                Calculated Fields (name: description):
-                <textarea
-                  rows={3}
-                  cols={40}
-                  value={calcText}
-                  onChange={(e) => setCalcText(e.target.value)}
-                />
-              </div>
-              <div>
-                Group Size:
-                <input
-                  type="number"
-                  inputMode="decimal"
-                  min="1"
-                  value={groupSize}
-                  onChange={(e) =>
-                    setGroupSize(parseInt(e.target.value, 10) || 1)
-                  }
-                />
-              </div>
-              <div>
-                Foreign Keys / Indexes:
-                <textarea
-                  rows={3}
-                  cols={40}
-                  value={foreignKeySql}
-                  onChange={(e) => setForeignKeySql(e.target.value)}
-                />
-              </div>
-              <div>
-                Triggers (use <code>---</code> line to separate):
-                <textarea
-                  rows={5}
-                  cols={80}
-                  value={triggerSql}
-                  onChange={(e) => setTriggerSql(e.target.value)}
-                />
-              </div>
-            <div>
-              <button onClick={handleGenerateSql}>Populate SQL</button>
-              <button onClick={handleGenerateRecords} style={{ marginLeft: '0.5rem' }}>
-                Populate Records
-              </button>
-              <button onClick={loadFromSql} style={{ marginLeft: '0.5rem' }}>
-                Fill Config from SQL
-              </button>
-              <button onClick={loadTableStructure} style={{ marginLeft: '0.5rem' }}>
-                Load Structure
-              </button>
-              <button onClick={saveConfig} style={{ marginLeft: '0.5rem' }}>
-                Save Config
-              </button>
-              <button onClick={executeGeneratedSql} style={{ marginLeft: '0.5rem' }}>
-                Create Coding Table
-              </button>
-              <button onClick={executeOtherSql} style={{ marginLeft: '0.5rem' }}>
-                Create _other Table
-              </button>
-              <button onClick={executeSeparateSql} style={{ marginLeft: '0.5rem' }}>
-                Create Tables & Records
-              </button>
-              {(recordsSql || recordsSqlOther || requiresRowUpload) && (
-                <button onClick={executeRecordsSql} style={{ marginLeft: '0.5rem' }}>
-                  Insert Records
+              )}
+              <div style={{ marginBottom: '0.5rem' }}>
+                <button type="button" onClick={selectAllTables} style={{ marginRight: '0.5rem' }}>
+                  Select all
                 </button>
-              )}
-            </div>
-              {(structSql || recordsSql) && (
-                <div style={{ marginTop: '0.5rem', display: 'flex', gap: '0.5rem' }}>
-                  <div>
-                  <div>Main table structure:</div>
-                  <textarea
-                    value={structSql}
-                    onChange={(e) => setStructSql(e.target.value)}
-                    rows={10}
-                    cols={40}
-                  />
-                </div>
-                <div>
-                  <div>Main table records: {mainCount}</div>
-                  <textarea
-                    value={recordsSql}
-                    onChange={(e) => setRecordsSql(e.target.value)}
-                    rows={10}
-                    cols={40}
-                    placeholder={
-                      requiresRowUpload
-                        ? 'Rows will be uploaded via the coding table API'
-                        : 'No records generated'
-                    }
-                  />
-                </div>
-                </div>
-              )}
-              {(structSqlOther || recordsSqlOther) && (
-              <div style={{ marginTop: '0.5rem', display: 'flex', gap: '0.5rem' }}>
-                <div>
-                  <div>_other table structure:</div>
-                  <textarea
-                    value={structSqlOther}
-                    onChange={(e) => setStructSqlOther(e.target.value)}
-                    rows={10}
-                    cols={40}
-                  />
-                </div>
-                <div>
-                  <div>_other table records: {otherCount + dupCount}</div>
-                  <textarea
-                    value={recordsSqlOther}
-                    onChange={(e) => setRecordsSqlOther(e.target.value)}
-                    rows={10}
-                    cols={40}
-                    placeholder="No records generated"
-                  />
-                </div>
+                <button type="button" onClick={selectChangedTables} style={{ marginRight: '0.5rem' }}>
+                  Select differences
+                </button>
+                <button type="button" onClick={clearTableSelection}>
+                  Clear selection
+                </button>
+                <span style={{ marginLeft: '0.75rem' }}>
+                  Selected: {schemaSelection.size} tables
+                </span>
               </div>
-              )}
-              {sqlMove && (
-                <div style={{ marginTop: '0.5rem' }}>
-                  <div>SQL to move unsuccessful rows: {countSqlRows(sqlMove)}</div>
-                  <textarea
-                    value={sqlMove}
-                    onChange={(e) => setSqlMove(e.target.value)}
-                    rows={4}
-                    cols={80}
-                  />
-                </div>
-              )}
-              {duplicateInfo && (
-                <div style={{ marginTop: '0.5rem' }}>
-                  <div>Duplicate keys: {duplicateInfo.split('\n').length}</div>
-                  <textarea value={duplicateInfo} readOnly rows={3} cols={80} />
-                </div>
-              )}
-              {duplicateRecords && (
-                <div style={{ marginTop: '0.5rem' }}>
-                  <div>Duplicate records: {duplicateRecords.split('\n').length}</div>
-                  <textarea value={duplicateRecords} readOnly rows={3} cols={80} />
-                </div>
-              )}
-              {summaryInfo && (
-                <div style={{ marginTop: '0.5rem' }}>{summaryInfo}</div>
-              )}
-              {uploading && (
-                <div style={{ marginTop: '1rem' }}>
-                  <progress
-                    value={uploadProgress.done}
-                    max={uploadProgress.total || 1}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                {schemaDiff.tables.map((t) => (
+                  <div
+                    key={t.name}
+                    style={{
+                      border: '1px solid #ccc',
+                      padding: '0.5rem',
+                      borderRadius: '4px',
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <label>
+                        <input
+                          type="checkbox"
+                          checked={schemaSelection.has(t.name)}
+                          onChange={() => toggleTableSelection(t.name)}
+                        />{' '}
+                        <strong>{t.name}</strong>
+                      </label>
+                      <span
+                        style={{
+                          color:
+                            t.status === 'match' ? 'green' : t.status === 'missing' ? '#b58900' : '#d2691e',
+                        }}
+                      >
+                        {t.status}
+                      </span>
+                      {t.hasDrop && (
+                        <span style={{ color: 'red' }}>includes DROP TABLE</span>
+                      )}
+                    </div>
+                    <details style={{ marginTop: '0.35rem' }}>
+                      <summary>Preview statements</summary>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '0.5rem', marginTop: '0.35rem' }}>
+                        <div>
+                          <div>Target</div>
+                          <textarea value={t.targetSql} readOnly rows={6} cols={40} style={{ width: '100%' }} />
+                        </div>
+                        <div>
+                          <div>Current</div>
+                          <textarea value={t.currentSql || ''} readOnly rows={6} cols={40} style={{ width: '100%' }} />
+                        </div>
+                        <div>
+                          <div>Planned statements</div>
+                          <textarea
+                            value={(t.toolStatements?.length ? t.toolStatements : t.statements || []).join('\n\n')}
+                            readOnly
+                            rows={6}
+                            cols={40}
+                            style={{ width: '100%' }}
+                          />
+                        </div>
+                      </div>
+                    </details>
+                  </div>
+                ))}
+              </div>
+              <div style={{ marginTop: '0.75rem' }}>
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={allowDrops}
+                    onChange={(e) => setAllowDrops(e.target.checked)}
                   />{' '}
-                  {groupMessage || 'Creating table...'}
+                  Allow DROP TABLE statements (dangerous)
+                </label>
+              </div>
+              <div style={{ marginTop: '0.5rem', marginBottom: '0.5rem' }}>
+                <button
+                  type="button"
+                  onClick={() => applySelected({ dryRun: true })}
+                  disabled={applyLoading || selectedStatements.length === 0}
+                  style={{ marginRight: '0.5rem' }}
+                >
+                  Preview apply (dry run)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => applySelected({ dryRun: false })}
+                  disabled={applyLoading || selectedStatements.length === 0}
+                >
+                  Apply selected changes
+                </button>
+                {applyLoading && <span style={{ marginLeft: '0.5rem' }}>Working...</span>}
+              </div>
+              <div>
+                <div>Selected SQL ({selectedStatements.length} statements)</div>
+                <textarea value={selectedSqlPreview} readOnly rows={12} cols={120} style={{ width: '100%' }} />
+              </div>
+              {applyResult && (
+                <div style={{ marginTop: '0.5rem' }}>
+                  <div>
+                    Applied: {applyResult.applied}, Skipped drops: {applyResult.skippedDrops}, Failed:{' '}
+                    {applyResult.failed?.length || 0} {applyResult.dryRun ? '(dry run)' : ''}
+                  </div>
+                  {applyResult.failed && applyResult.failed.length > 0 && (
+                    <ul>
+                      {applyResult.failed.map((f, idx) => (
+                        <li key={idx}>
+                          <code>{f.sql}</code> — {f.error}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
                 </div>
               )}
             </>
           )}
         </div>
+      ) : (
+        <>
+          <h2>Coding Table Upload</h2>
+          <input type="file" accept=".xlsx,.xls,.xlsb" onChange={handleFile} ref={fileInputRef} />
+          {selectedFile && (
+            <button onClick={refreshFile} style={{ marginLeft: '0.5rem' }}>Refresh File</button>
+          )}
+          {loadingWorkbook && (
+            <div style={{ marginTop: '0.5rem' }}>
+              <progress value={loadProgress} max="100" /> Loading workbook...
+            </div>
+          )}
+          {sheets.length > 0 && (
+            <div>
+              <div>
+                Sheet:
+                <select value={sheet} onChange={handleSheetChange}>
+                  {sheets.map((s) => (
+                    <option key={s} value={s}>
+                      {s}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                Field Name Row:
+                <input
+                  type="number"
+                  inputMode="decimal"
+                  min="1"
+                  value={headerRow}
+                  onChange={handleHeaderRowChange}
+                />
+                Mongolian Field Name Row:
+                <input
+                  type="number"
+                  inputMode="decimal"
+                  min="1"
+                  value={mnHeaderRow}
+                  onChange={handleMnHeaderRowChange}
+                  style={{ marginLeft: '0.5rem' }}
+                />
+                <button onClick={handleExtract}>Read Columns</button>
+              </div>
+              <div>
+                <label style={{ marginRight: '1rem' }}>
+                  <input
+                    type="radio"
+                    name="idFilterMode"
+                    value="contains"
+                    checked={idFilterMode === 'contains'}
+                    onChange={(e) => setIdFilterMode(e.target.value)}
+                  />
+                  id column should have "id" text
+                </label>
+                <label>
+                  <input
+                    type="radio"
+                    name="idFilterMode"
+                    value="all"
+                    checked={idFilterMode === 'all'}
+                    onChange={(e) => setIdFilterMode(e.target.value)}
+                  />
+                  pull all columns
+                </label>
+              </div>
+              {allFields.length > 0 && (
+                <>
+                  <div>
+                    Table Name:
+                    <select
+                      value={tableName}
+                      onChange={(e) => setTableName(e.target.value)}
+                      style={{ marginRight: '0.5rem' }}
+                    >
+                      <option value="">-- new --</option>
+                      {configNames.map((n) => (
+                        <option key={n} value={n}>
+                          {n}
+                        </option>
+                      ))}
+                    </select>
+                    <input
+                      value={tableName}
+                      onChange={(e) => setTableName(e.target.value)}
+                      placeholder="Table name"
+                    />
+                    {tableName && configNames.includes(tableName) && (
+                      <button
+                        type="button"
+                        onClick={deleteConfig}
+                        style={{ marginLeft: '0.5rem' }}
+                      >
+                        Delete
+                      </button>
+                    )}
+                  </div>
+                  <div>
+                    Additional Fields:
+                    <div>
+                      {extraFields.map((f, idx) => (
+                        <span key={idx} style={{ marginRight: '0.5rem' }}>
+                          <input
+                            value={f}
+                            placeholder={`Field ${idx + 1}`}
+                            onChange={(e) => {
+                              const vals = [...extraFields];
+                              vals[idx] = e.target.value;
+                              setExtraFields(vals);
+                            }}
+                            style={{ marginRight: '0.25rem' }}
+                          />
+                          <button type="button" onClick={() => removeExtraField(idx)}>
+                            x
+                          </button>
+                        </span>
+                      ))}
+                      <button type="button" onClick={addExtraField}>Add Field</button>
+                    </div>
+                  </div>
+                  <div>
+                    <h4>Mongolian Field Names</h4>
+                    {initialDuplicates.size > 0 && (
+                      <div style={{ marginBottom: '0.25rem' }}>
+                        {duplicateHeaders.size > 0 ? (
+                          <span style={{ color: 'red' }}>
+                            Duplicate fields: {Array.from(duplicateHeaders).join(', ')}
+                          </span>
+                        ) : (
+                          <span style={{ color: 'green' }}>
+                            Duplicates renamed: {Array.from(initialDuplicates).join(', ')}
+                          </span>
+                        )}
+                      </div>
+                    )}
+                    {allFields.map((h) => (
+                      <div
+                        key={h}
+                        style={{
+                          marginBottom: '0.25rem',
+                          color: duplicateHeaders.has(h) ? 'red' : 'inherit',
+                        }}
+                      >
+                        <code>{h}</code>
+                        {' → '}
+                        <input
+                          value={renameMap[h] || ''}
+                          placeholder={h}
+                          onChange={(e) => {
+                            setRenameMap({ ...renameMap, [h]: e.target.value });
+                            setDuplicateHeaders((d) => {
+                              const next = new Set(d);
+                              next.delete(h);
+                              return next;
+                            });
+                          }}
+                          style={{ marginRight: '0.5rem' }}
+                        />
+                        <input
+                          value={headerMap[h] || ''}
+                          onChange={(e) =>
+                            setHeaderMap({ ...headerMap, [h]: e.target.value })
+                          }
+                        />
+                      </div>
+                    ))}
+                    <button type="button" onClick={saveMappings} style={{ marginTop: '0.5rem' }}>
+                      Add Mappings
+                    </button>
+                  </div>
+                  {hasDateField && (
+                    <div>
+                      <div style={{ marginTop: '0.5rem' }}>
+                        <label style={{ marginRight: '0.5rem' }}>
+                          <input
+                            type="radio"
+                            name="populateRange"
+                            value="no"
+                            checked={!populateRange}
+                            onChange={() => setPopulateRange(false)}
+                          />
+                          No Range
+                        </label>
+                        <label>
+                          <input
+                            type="radio"
+                            name="populateRange"
+                            value="yes"
+                            checked={populateRange}
+                            onChange={() => setPopulateRange(true)}
+                          />
+                          Populate Range
+                        </label>
+                      </div>
+                      {populateRange && (
+                        <div style={{ marginTop: '0.5rem' }}>
+                          Start Year:{' '}
+                          <input
+                            type="number"
+                            inputMode="decimal"
+                            value={startYear}
+                            onChange={(e) => setStartYear(e.target.value)}
+                            style={{ marginRight: '0.5rem' }}
+                          />
+                          End Year:{' '}
+                          <input
+                            type="number"
+                            inputMode="decimal"
+                            value={endYear}
+                            onChange={(e) => setEndYear(e.target.value)}
+                          />
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  <div>
+                    ID Column:
+                    <select value={idColumn} onChange={(e) => setIdColumn(e.target.value)}>
+                      <option value="">--none--</option>
+                      {uniqueRenamedFields(idCandidates, undefined, false).map((o) => (
+                        <option key={o.value} value={o.value}>
+                          {o.label}
+                        </option>
+                      ))}
+                    </select>
+                    {idColumn && (
+                      <span style={{ marginLeft: '0.5rem' }}>
+                        Start Value:{' '}
+                        <input
+                          type="number"
+                          inputMode="decimal"
+                          value={autoIncStart}
+                          onChange={(e) => setAutoIncStart(e.target.value)}
+                          style={{ width: '6rem' }}
+                        />
+                      </span>
+                    )}
+                  </div>
+                  <div>
+                    Name Column:
+                    <select value={nameColumn} onChange={(e) => setNameColumn(e.target.value)}>
+                      <option value="">--select--</option>
+                      {uniqueRenamedFields().map((o) => (
+                        <option key={o.value} value={o.value}>
+                          {o.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    Unique Fields:
+                    <div>
+                      {uniqueRenamedFields().map(({ value: h, label }) => (
+                        <label key={h} style={{ marginRight: '0.5rem' }}>
+                          <input
+                            type="checkbox"
+                            checked={uniqueFields.includes(h)}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setUniqueFields([...uniqueFields, h]);
+                                setOtherColumns(otherColumns.filter((c) => c !== h));
+                              } else {
+                                setUniqueFields(uniqueFields.filter((c) => c !== h));
+                              }
+                            }}
+                          />
+                          {label}
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                  <div>
+                    Other Columns:
+                    <div>
+                      {uniqueRenamedFields().map(({ value: h, label }) => (
+                        <label key={h} style={{ marginRight: '0.5rem' }}>
+                          <input
+                            type="checkbox"
+                            checked={otherColumns.includes(h)}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setOtherColumns([...otherColumns, h]);
+                                setUniqueFields(uniqueFields.filter((c) => c !== h));
+                              } else {
+                                setOtherColumns(otherColumns.filter((c) => c !== h));
+                              }
+                            }}
+                          />
+                          {label}
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                  <div>
+                    Group By Column:
+                    <select value={groupByField} onChange={(e) => setGroupByField(e.target.value)}>
+                      <option value="">--none--</option>
+                      {allFields.map((h) => (
+                        <option key={h} value={h}>
+                          {renameMap[h] || h}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    Column Types:
+                    <div>
+                      {uniqueRenamedFields().map(({ value: h, label }) => (
+                        <div key={h} style={{ marginBottom: '0.25rem' }}>
+                          {label}:{' '}
+                          <input
+                            value={columnTypes[h] || ''}
+                            onChange={(e) =>
+                              setColumnTypes({
+                                ...columnTypes,
+                                [h]: e.target.value,
+                              })
+                            }
+                          />
+                          <label style={{ marginLeft: '0.5rem' }}>
+                            <input
+                              type="checkbox"
+                              checked={!notNullMap[h]}
+                              onChange={(e) =>
+                                setNotNullMap({
+                                  ...notNullMap,
+                                  [h]: !e.target.checked,
+                                })
+                              }
+                            />
+                            Allow Null
+                          </label>
+                          <label style={{ marginLeft: '0.5rem' }}>
+                            <input
+                              type="checkbox"
+                              checked={allowZeroMap[h] || false}
+                              onChange={(e) =>
+                                setAllowZeroMap({
+                                  ...allowZeroMap,
+                                  [h]: e.target.checked,
+                                })
+                              }
+                            />
+                            Allow 0
+                          </label>
+                          <input
+                            style={{ marginLeft: '0.5rem', width: '8rem' }}
+                            placeholder="Default if blank/0"
+                            value={defaultValues[h] || ''}
+                            onChange={(e) =>
+                              setDefaultValues({
+                                ...defaultValues,
+                                [h]: e.target.value,
+                              })
+                            }
+                          />
+                          <select
+                            value={defaultFrom[h] || ''}
+                            onChange={(e) =>
+                              setDefaultFrom({
+                                ...defaultFrom,
+                                [h]: e.target.value,
+                              })
+                            }
+                            style={{ marginLeft: '0.25rem' }}
+                          >
+                            <option value="">from field...</option>
+                            {uniqueRenamedFields(allFields, h).map((o) => (
+                              <option key={o.value} value={o.value}>
+                                {o.label}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  <div>
+                    Calculated Fields (name: description):
+                    <textarea
+                      rows={3}
+                      cols={40}
+                      value={calcText}
+                      onChange={(e) => setCalcText(e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    Group Size:
+                    <input
+                      type="number"
+                      inputMode="decimal"
+                      min="1"
+                      value={groupSize}
+                      onChange={(e) =>
+                        setGroupSize(parseInt(e.target.value, 10) || 1)
+                      }
+                    />
+                  </div>
+                  <div>
+                    Foreign Keys / Indexes:
+                    <textarea
+                      rows={3}
+                      cols={40}
+                      value={foreignKeySql}
+                      onChange={(e) => setForeignKeySql(e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    Triggers (use <code>---</code> line to separate):
+                    <textarea
+                      rows={5}
+                      cols={80}
+                      value={triggerSql}
+                      onChange={(e) => setTriggerSql(e.target.value)}
+                    />
+                  </div>
+                <div>
+                  <button onClick={handleGenerateSql}>Populate SQL</button>
+                  <button onClick={handleGenerateRecords} style={{ marginLeft: '0.5rem' }}>
+                    Populate Records
+                  </button>
+                  <button onClick={loadFromSql} style={{ marginLeft: '0.5rem' }}>
+                    Fill Config from SQL
+                  </button>
+                  <button onClick={loadTableStructure} style={{ marginLeft: '0.5rem' }}>
+                    Load Structure
+                  </button>
+                  <button onClick={saveConfig} style={{ marginLeft: '0.5rem' }}>
+                    Save Config
+                  </button>
+                  <button onClick={executeGeneratedSql} style={{ marginLeft: '0.5rem' }}>
+                    Create Coding Table
+                  </button>
+                  <button onClick={executeOtherSql} style={{ marginLeft: '0.5rem' }}>
+                    Create _other Table
+                  </button>
+                  <button onClick={executeSeparateSql} style={{ marginLeft: '0.5rem' }}>
+                    Create Tables & Records
+                  </button>
+                  {(recordsSql || recordsSqlOther || requiresRowUpload) && (
+                    <button onClick={executeRecordsSql} style={{ marginLeft: '0.5rem' }}>
+                      Insert Records
+                    </button>
+                  )}
+                </div>
+                  {(structSql || recordsSql) && (
+                    <div style={{ marginTop: '0.5rem', display: 'flex', gap: '0.5rem' }}>
+                      <div>
+                      <div>Main table structure:</div>
+                      <textarea
+                        value={structSql}
+                        onChange={(e) => setStructSql(e.target.value)}
+                        rows={10}
+                        cols={40}
+                      />
+                    </div>
+                    <div>
+                      <div>Main table records: {mainCount}</div>
+                      <textarea
+                        value={recordsSql}
+                        onChange={(e) => setRecordsSql(e.target.value)}
+                        rows={10}
+                        cols={40}
+                        placeholder={
+                          requiresRowUpload
+                            ? 'Rows will be uploaded via the coding table API'
+                            : 'No records generated'
+                        }
+                      />
+                    </div>
+                    </div>
+                  )}
+                  {(structSqlOther || recordsSqlOther) && (
+                  <div style={{ marginTop: '0.5rem', display: 'flex', gap: '0.5rem' }}>
+                    <div>
+                      <div>_other table structure:</div>
+                      <textarea
+                        value={structSqlOther}
+                        onChange={(e) => setStructSqlOther(e.target.value)}
+                        rows={10}
+                        cols={40}
+                      />
+                    </div>
+                    <div>
+                      <div>_other table records: {otherCount + dupCount}</div>
+                      <textarea
+                        value={recordsSqlOther}
+                        onChange={(e) => setRecordsSqlOther(e.target.value)}
+                        rows={10}
+                        cols={40}
+                        placeholder="No records generated"
+                      />
+                    </div>
+                  </div>
+                  )}
+                  {sqlMove && (
+                    <div style={{ marginTop: '0.5rem' }}>
+                      <div>SQL to move unsuccessful rows: {countSqlRows(sqlMove)}</div>
+                      <textarea
+                        value={sqlMove}
+                        onChange={(e) => setSqlMove(e.target.value)}
+                        rows={4}
+                        cols={80}
+                      />
+                    </div>
+                  )}
+                  {duplicateInfo && (
+                    <div style={{ marginTop: '0.5rem' }}>
+                      <div>Duplicate keys: {duplicateInfo.split('\n').length}</div>
+                      <textarea value={duplicateInfo} readOnly rows={3} cols={80} />
+                    </div>
+                  )}
+                  {duplicateRecords && (
+                    <div style={{ marginTop: '0.5rem' }}>
+                      <div>Duplicate records: {duplicateRecords.split('\n').length}</div>
+                      <textarea value={duplicateRecords} readOnly rows={3} cols={80} />
+                    </div>
+                  )}
+                  {summaryInfo && (
+                    <div style={{ marginTop: '0.5rem' }}>{summaryInfo}</div>
+                  )}
+                  {uploading && (
+                    <div style={{ marginTop: '1rem' }}>
+                      <progress
+                        value={uploadProgress.done}
+                        max={uploadProgress.total || 1}
+                      />{' '}
+                      {groupMessage || 'Creating table...'}
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          )}
+        </>
       )}
     </div>
   );
