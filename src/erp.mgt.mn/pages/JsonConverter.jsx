@@ -13,43 +13,11 @@ function JsonConverter() {
   const [scripts, setScripts] = useState([]);
 
   useEffect(() => {
-    let canceled = false;
-    const normalizeTables = (input) => {
-      if (!input) return [];
-      if (Array.isArray(input)) return input;
-      if (Array.isArray(input?.tables)) return input.tables;
-      if (typeof input === 'object') {
-        const values = Object.values(input).filter((v) => typeof v === 'string');
-        if (values.length) return values;
-      }
-      return [];
-    };
-    async function loadTables() {
-      try {
-        const res = await fetch('/api/json_conversion/tables', { credentials: 'include' });
-        let data = res.ok ? await res.json() : [];
-        let list = normalizeTables(data);
-        if (!list.length) {
-          const fallback = await fetch('/api/tables', { credentials: 'include' }).catch(() => null);
-          if (fallback?.ok) {
-            const alt = await fallback.json().catch(() => []);
-            list = normalizeTables(alt);
-          }
-        }
-        if (!canceled) setTables(list);
-      } catch (err) {
-        console.error('Failed to load tables', err);
-        if (!canceled) {
-          setTables([]);
-          addToast('Failed to load tables', 'error');
-        }
-      }
-    }
-    loadTables();
-    return () => {
-      canceled = true;
-    };
-  }, [addToast]);
+    fetch('/api/json_conversion/tables', { credentials: 'include' })
+      .then((res) => (res.ok ? res.json() : []))
+      .then((data) => setTables(Array.isArray(data) ? data : []))
+      .catch(() => setTables([]));
+  }, []);
 
   useEffect(() => {
     if (!selectedTable) return;
@@ -179,7 +147,7 @@ function JsonConverter() {
             value={selectedTable}
             onChange={(e) => setSelectedTable(e.target.value)}
           >
-            <option value="">{tables.length ? '-- choose --' : 'No tables found'}</option>
+            <option value="">-- choose --</option>
             {tables.map((t) => (
               <option key={t} value={t}>
                 {t}
