@@ -7,9 +7,6 @@ import {
   SERVICE_RECEIPT_FIELDS,
   SERVICE_PAYMENT_FIELDS,
   PAYMENT_METHOD_LABELS,
-  DEFAULT_ENDPOINT_RECEIPT_TYPES,
-  DEFAULT_ENDPOINT_TAX_TYPES,
-  DEFAULT_ENDPOINT_PAYMENT_METHODS,
   BADGE_BASE_STYLE,
   REQUIRED_BADGE_STYLE,
   OPTIONAL_BADGE_STYLE,
@@ -196,6 +193,7 @@ export default function PosApiIntegrationSection({
   receiptFieldMapping = {},
   receiptGroupMapping = {},
   paymentMethodMapping = {},
+  responseFieldMapping = {},
   onEnsureColumnsLoaded = () => {},
   onPosApiOptionsChange = () => {},
 }) {
@@ -431,7 +429,7 @@ export default function PosApiIntegrationSection({
     ) {
       return selectedEndpoint.receiptTypes.map((value) => String(value));
     }
-    return DEFAULT_ENDPOINT_RECEIPT_TYPES;
+    return [];
   }, [selectedEndpoint, receiptTypesFeatureEnabled]);
 
   const configuredReceiptTypes = useMemo(() => {
@@ -448,7 +446,7 @@ export default function PosApiIntegrationSection({
     ) {
       return selectedEndpoint.receiptTaxTypes.map((value) => String(value));
     }
-    return DEFAULT_ENDPOINT_TAX_TYPES;
+    return [];
   }, [selectedEndpoint, receiptTaxTypesFeatureEnabled]);
 
   const configuredReceiptTaxTypes = useMemo(() => {
@@ -514,7 +512,7 @@ export default function PosApiIntegrationSection({
     ) {
       return selectedEndpoint.paymentMethods.map((value) => String(value));
     }
-    return DEFAULT_ENDPOINT_PAYMENT_METHODS;
+    return [];
   }, [selectedEndpoint, paymentMethodsFeatureEnabled]);
 
   const configuredPaymentMethods = useMemo(() => {
@@ -886,6 +884,19 @@ export default function PosApiIntegrationSection({
     });
   };
 
+  const updatePosApiResponseMapping = (field, value) => {
+    setConfig((c) => {
+      const next = { ...(c.posApiResponseMapping || {}) };
+      const trimmed = typeof value === 'string' ? value.trim() : value;
+      if (!trimmed) {
+        delete next[field];
+      } else {
+        next[field] = trimmed;
+      }
+      return { ...c, posApiResponseMapping: next };
+    });
+  };
+
   const updatePosApiNestedMapping = (section, field, value) => {
     const targetObjectId =
       section === 'itemFields'
@@ -896,6 +907,43 @@ export default function PosApiIntegrationSection({
             ? receiptsObject?.id || 'receipts'
             : section;
     updateObjectFieldMapping(targetObjectId, field, value, section);
+  };
+
+  const updateNestedObjectSource = (path, sourceValue, repeatValue) => {
+    setConfig((c) => {
+      const base = { ...(c.posApiMapping || {}) };
+      const allSources =
+        base.nestedSources && typeof base.nestedSources === 'object' && !Array.isArray(base.nestedSources)
+          ? { ...base.nestedSources }
+          : {};
+      const existing =
+        allSources[path] && typeof allSources[path] === 'object' && !Array.isArray(allSources[path])
+          ? { ...allSources[path] }
+          : {};
+      const next = { ...existing };
+      if (sourceValue !== undefined) {
+        const normalizedSource = typeof sourceValue === 'string' ? sourceValue.trim() : sourceValue;
+        if (normalizedSource) {
+          next.source = normalizedSource;
+        } else {
+          delete next.source;
+        }
+      }
+      if (repeatValue !== undefined) {
+        next.repeat = repeatValue;
+      }
+      if (Object.keys(next).length) {
+        allSources[path] = next;
+      } else {
+        delete allSources[path];
+      }
+      if (Object.keys(allSources).length) {
+        base.nestedSources = allSources;
+      } else {
+        delete base.nestedSources;
+      }
+      return { ...c, posApiMapping: base };
+    });
   };
 
   const updateNestedObjectSource = (path, sourceValue, repeatValue) => {

@@ -152,27 +152,15 @@ export function withEndpointMetadata(endpoint) {
     ? endpoint.allowMultipleReceiptItems !== false
     : true;
   const receiptTypes = receiptTypesEnabled
-    ? normaliseEndpointList(endpoint.receiptTypes, DEFAULT_ENDPOINT_RECEIPT_TYPES)
+    ? normaliseEndpointList(endpoint.receiptTypes, [])
     : [];
   const receiptTaxTypes = receiptTaxTypesEnabled
-    ? normaliseEndpointList(endpoint.taxTypes || endpoint.receiptTaxTypes, DEFAULT_ENDPOINT_TAX_TYPES)
+    ? normaliseEndpointList(endpoint.taxTypes || endpoint.receiptTaxTypes, [])
     : [];
   const paymentMethods = paymentMethodsEnabled
-    ? normaliseEndpointList(endpoint.paymentMethods, DEFAULT_ENDPOINT_PAYMENT_METHODS)
+    ? normaliseEndpointList(endpoint.paymentMethods, [])
     : [];
-  let supportsItems = false;
-  if (isTransaction) {
-    if (endpoint.supportsItems === false) {
-      supportsItems = false;
-    } else if (endpoint.supportsItems === true) {
-      supportsItems = true;
-    } else {
-      supportsItems = endpoint.posApiType === 'STOCK_QR' ? false : true;
-    }
-  }
-  if (!receiptItemsEnabled) {
-    supportsItems = false;
-  }
+  const supportsItems = isTransaction && receiptItemsEnabled && endpoint.supportsItems === true;
   return {
     ...endpoint,
     usage,
