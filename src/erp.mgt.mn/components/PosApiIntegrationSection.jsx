@@ -1802,8 +1802,7 @@ export default function PosApiIntegrationSection({
             const isRequired = Boolean(hint.required);
             const description = hint.description;
             const mappedValue = config.posApiMapping?.[field.key];
-            const unmapped = !isMappingProvided(mappedValue);
-            const missingRequired = isRequired && unmapped;
+            const missingRequired = isRequired && !isMappingProvided(mappedValue);
             return (
               <label
                 key={field.key}
@@ -1840,17 +1839,6 @@ export default function PosApiIntegrationSection({
                         ...BADGE_BASE_STYLE,
                         background: '#fef2f2',
                         color: '#991b1b',
-                      }}
-                    >
-                      Not mapped
-                    </span>
-                  )}
-                  {!missingRequired && unmapped && (
-                    <span
-                      style={{
-                        ...BADGE_BASE_STYLE,
-                        background: '#f8fafc',
-                        color: '#475569',
                       }}
                     >
                       Not mapped
@@ -1962,9 +1950,6 @@ export default function PosApiIntegrationSection({
                   return null;
                 }
                 const mapping = getObjectFieldMapping(obj, {});
-                const missingCount = filteredFields.filter((field) =>
-                  !isMappingProvided(mapping[field.key]),
-                ).length;
                 const tableChoices = Array.from(
                   new Set([primaryTableName, ...itemTableOptions.filter(Boolean)]),
                 ).filter(Boolean);
@@ -1985,17 +1970,6 @@ export default function PosApiIntegrationSection({
                       {obj.path && (
                         <span style={{ fontSize: '0.9rem', color: '#4b5563' }}>
                           Path: <code>{obj.path}</code>
-                        </span>
-                      )}
-                      {missingCount > 0 && (
-                        <span
-                          style={{
-                            ...BADGE_BASE_STYLE,
-                            background: '#f8fafc',
-                            color: '#0f172a',
-                          }}
-                        >
-                          Not mapped: {missingCount}
                         </span>
                       )}
                     </div>
@@ -2080,8 +2054,7 @@ export default function PosApiIntegrationSection({
                   const itemRequired = Boolean(itemHint.required);
                   const itemDescription = itemHint.description;
                   const mappedValue = resolvedItemFieldMapping[field.key];
-                  const unmapped = !isMappingProvided(mappedValue);
-                  const missingRequired = itemRequired && unmapped;
+                  const missingRequired = itemRequired && !isMappingProvided(mappedValue);
                   return (
                     <div
                       key={`item-${field.key}`}
@@ -2118,17 +2091,6 @@ export default function PosApiIntegrationSection({
                               ...BADGE_BASE_STYLE,
                               background: '#fef2f2',
                               color: '#991b1b',
-                            }}
-                          >
-                            Not mapped
-                          </span>
-                        )}
-                        {!missingRequired && unmapped && (
-                          <span
-                            style={{
-                              ...BADGE_BASE_STYLE,
-                              background: '#f8fafc',
-                              color: '#475569',
                             }}
                           >
                             Not mapped
@@ -2174,8 +2136,7 @@ export default function PosApiIntegrationSection({
                   const listId = `posapi-payment-${field.key}-columns`;
                   const hint = paymentFieldHints[field.key] || {};
                   const mappedValue = resolvedPaymentFieldMapping[field.key];
-                  const unmapped = !isMappingProvided(mappedValue);
-                  const missingRequired = hint.required && unmapped;
+                  const missingRequired = hint.required && !isMappingProvided(mappedValue);
                   return (
                     <label
                       key={`payment-${field.key}`}
@@ -2206,17 +2167,6 @@ export default function PosApiIntegrationSection({
                               ...BADGE_BASE_STYLE,
                               background: '#fef2f2',
                               color: '#991b1b',
-                            }}
-                          >
-                            Not mapped
-                          </span>
-                        )}
-                        {!missingRequired && unmapped && (
-                          <span
-                            style={{
-                              ...BADGE_BASE_STYLE,
-                              background: '#f8fafc',
-                              color: '#475569',
                             }}
                           >
                             Not mapped
@@ -2257,8 +2207,7 @@ export default function PosApiIntegrationSection({
                   const listId = `posapi-receipt-${field.key}-columns`;
                   const hint = receiptFieldHints[field.key] || {};
                   const mappedValue = resolvedReceiptFieldMapping[field.key];
-                  const unmapped = !isMappingProvided(mappedValue);
-                  const missingRequired = hint.required && unmapped;
+                  const missingRequired = hint.required && !isMappingProvided(mappedValue);
                   return (
                     <label
                       key={`receipt-${field.key}`}
@@ -2289,17 +2238,6 @@ export default function PosApiIntegrationSection({
                               ...BADGE_BASE_STYLE,
                               background: '#fef2f2',
                               color: '#991b1b',
-                            }}
-                          >
-                            Not mapped
-                          </span>
-                        )}
-                        {!missingRequired && unmapped && (
-                          <span
-                            style={{
-                              ...BADGE_BASE_STYLE,
-                              background: '#f8fafc',
-                              color: '#475569',
                             }}
                           >
                             Not mapped
