@@ -1468,6 +1468,16 @@ function analysePosApiRequest(requestSchema, example) {
   const resolvedReceiptTypes = receiptTypes.length ? receiptTypes : [];
   const resolvedTaxTypes = taxTypes.length ? taxTypes : [];
   const resolvedPaymentMethods = paymentMethods.length ? paymentMethods : [];
+  const nestedPaths = {};
+  if (receiptsNode) {
+    nestedPaths.receipts = receiptsNode.type === 'array' ? 'receipts[]' : 'receipts';
+    if (supportsItems) {
+      nestedPaths.items = 'items[]';
+    }
+  }
+  if (paymentsNode) {
+    nestedPaths.payments = paymentsNode.type === 'array' ? 'payments[]' : 'payments';
+  }
 
   return {
     receiptTypes: resolvedReceiptTypes,
@@ -1477,6 +1487,7 @@ function analysePosApiRequest(requestSchema, example) {
     supportsMultipleReceipts,
     supportsMultiplePayments,
     posApiType: resolvedReceiptTypes[0] || '',
+    ...(Object.keys(nestedPaths).length ? { nestedPaths } : {}),
   };
 }
 
