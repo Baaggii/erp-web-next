@@ -26,7 +26,9 @@ sudo rm -rf /www/wwwroot/www.mgt.mn/*
 sudo cp -r dist-home/* /www/wwwroot/www.mgt.mn/
 
 echo "[7] Restarting backend API with PM2..."
-pm2 restart erp-api || pm2 start api-server/server.js --name erp-api
+cd /opt/erp-web-next/api-server
+sudo npm install
+pm2 restart erp-api || pm2 start server.js --name erp-api
 pm2 save
 
 echo ""
