@@ -708,10 +708,6 @@ const EMPTY_ENDPOINT = {
   examplesText: '[]',
   variations: [],
   requestFieldVariations: [],
-  requestObjects: {},
-  variationFieldValues: {},
-  variationScoped: false,
-  aggregations: {},
   preRequestScript: '',
   testScript: '',
   testable: false,
@@ -1994,10 +1990,6 @@ function createFormState(definition) {
       '[]',
     ),
     responseFieldsText: toPrettyJson(definition.responseFields, '[]'),
-    requestObjects: definition.requestObjects || {},
-    variationFieldValues: definition.variationFieldValues || {},
-    variationScoped: definition.variationScoped || false,
-    aggregations: definition.aggregations || {},
     examplesText: toPrettyJson(definition.examples, '[]'),
     variations,
     preRequestScript:
@@ -6799,10 +6791,6 @@ export default function PosApiAdmin() {
       responseFields: responseFieldsWithMapping,
       requestSample,
       requestSampleNotes: formState.requestSampleNotes || '',
-      requestObjects: formState.requestObjects || {},
-      variationFieldValues: formState.variationFieldValues || {},
-      variationScoped: formState.variationScoped || false,
-      aggregations: formState.aggregations || {},
       ...(Object.keys(responseFieldMappings).length
         ? { responseFieldMappings }
         : {}),
