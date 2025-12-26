@@ -18,6 +18,31 @@ async function commandExists(cmd) {
   }
 }
 
+export async function getSchemaDiffPrerequisites() {
+  const [mysqldumpAvailable, mysqldbcompareAvailable, mysqlAvailable] = await Promise.all([
+    commandExists('mysqldump'),
+    commandExists('mysqldbcompare'),
+    commandExists('mysql'),
+  ]);
+  const env = {
+    DB_NAME: Boolean(process.env.DB_NAME),
+    DB_USER: Boolean(process.env.DB_USER),
+    DB_PASS: Boolean(process.env.DB_PASS),
+    DB_HOST: Boolean(process.env.DB_HOST),
+  };
+  const missing = [];
+  if (!mysqldumpAvailable) missing.push('mysqldump');
+  if (!env.DB_NAME) missing.push('DB_NAME');
+
+  return {
+    mysqldumpAvailable,
+    mysqldbcompareAvailable,
+    mysqlAvailable,
+    env,
+    missing,
+  };
+}
+
 function runCommand(command, args, options = {}) {
   const {
     cwd,
@@ -300,13 +325,20 @@ async function dropTempDatabase(name) {
 
 export async function buildSchemaDiff(options = {}) {
   const { schemaPath, schemaFile, allowDrops = false, signal } = options;
-  const hasDumpTool = await commandExists('mysqldump');
-  if (!hasDumpTool) {
+  const prereq = await getSchemaDiffPrerequisites();
+  if (!prereq.mysqldumpAvailable) {
     const err = new Error('mysqldump is required to extract the current schema.');
-    err.status = 400;
+    err.status = 500;
+    err.details = { prerequisite: 'mysqldump', checks: prereq };
     throw err;
   }
-  const toolAvailable = await commandExists('mysqldbcompare');
+  if (!prereq.env.DB_NAME) {
+    const err = new Error('DB_NAME environment variable must be set for schema diff.');
+    err.status = 500;
+    err.details = { prerequisite: 'DB_NAME', checks: prereq };
+    throw err;
+  }
+  const toolAvailable = prereq.mysqldbcompareAvailable;
   const warnings = [];
   const resolvedSchema = resolveSchemaFile({ schemaPath, schemaFile });
   const schemaExists = await fsPromises
@@ -382,6 +414,7 @@ export async function buildSchemaDiff(options = {}) {
   return {
     tool,
     toolAvailable,
+    prerequisites: prereq,
     importedWithCli,
     allowDrops,
     warnings,
