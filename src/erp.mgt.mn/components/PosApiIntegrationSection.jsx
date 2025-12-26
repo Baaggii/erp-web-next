@@ -1047,6 +1047,12 @@ export default function PosApiIntegrationSection({
     !Array.isArray(config.posApiMapping.nestedSelection)
       ? config.posApiMapping.nestedSelection
       : {};
+  const aggregationMapping =
+    config.posApiMapping &&
+    typeof config.posApiMapping.aggregations === 'object' &&
+    !Array.isArray(config.posApiMapping.aggregations)
+      ? config.posApiMapping.aggregations
+      : {};
 
   const fieldsFromPosApiText = useMemo(() => {
     return Array.isArray(config.fieldsFromPosApi) ? config.fieldsFromPosApi.join('\n') : '';
@@ -1243,6 +1249,30 @@ export default function PosApiIntegrationSection({
         base.nestedSelection = selection;
       } else {
         delete base.nestedSelection;
+      }
+      return { ...c, posApiMapping: base };
+    });
+  };
+
+  const updateAggregationSelection = (path, fn) => {
+    const normalizedPath = typeof path === 'string' ? path.trim() : '';
+    if (!normalizedPath) return;
+    const normalizedFn = typeof fn === 'string' ? fn.trim().toLowerCase() : '';
+    setConfig((c) => {
+      const base = { ...(c.posApiMapping || {}) };
+      const aggregations =
+        base.aggregations && typeof base.aggregations === 'object' && !Array.isArray(base.aggregations)
+          ? { ...base.aggregations }
+          : {};
+      if (!normalizedFn) {
+        delete aggregations[normalizedPath];
+      } else {
+        aggregations[normalizedPath] = normalizedFn;
+      }
+      if (Object.keys(aggregations).length) {
+        base.aggregations = aggregations;
+      } else {
+        delete base.aggregations;
       }
       return { ...c, posApiMapping: base };
     });
@@ -2113,6 +2143,24 @@ export default function PosApiIntegrationSection({
                         disabled={!config.posApiEnabled}
                         sessionVariables={DEFAULT_SESSION_VARIABLES}
                       />
+                      {showAggregation && (
+                        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                          <span style={{ fontSize: '0.85rem', color: '#444' }}>Aggregation</span>
+                          <select
+                            value={selectedAggregation}
+                            onChange={(e) => updateAggregationSelection(pathKey, e.target.value)}
+                            disabled={!config.posApiEnabled}
+                            style={{ minWidth: '140px' }}
+                          >
+                            <option value="">Use default</option>
+                            {aggregationOptions.map((fn) => (
+                              <option key={`${pathKey}-agg-${fn}`} value={fn}>
+                                {fn}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      )}
                       {itemDescription && <small style={{ color: '#555' }}>{itemDescription}</small>}
                     </div>
                   );

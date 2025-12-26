@@ -1,6 +1,12 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { API_BASE } from '../utils/apiBase.js';
 import { useToast } from '../context/ToastContext.jsx';
+import {
+  POS_API_FIELDS,
+  POS_API_ITEM_FIELDS,
+  POS_API_PAYMENT_FIELDS,
+  POS_API_RECEIPT_FIELDS,
+} from '../utils/posApiConfig.js';
 
 const POSAPI_TRANSACTION_TYPES = [
   { value: 'B2C', label: 'B2C receipt' },
@@ -83,6 +89,8 @@ const TYPE_BADGES = {
   LOOKUP: '#0ea5e9',
   ADMIN: '#7f1d1d',
 };
+
+const AGGREGATION_FUNCTIONS = ['sum', 'count', 'min', 'max'];
 
 const TAX_PRODUCT_OPTIONS = [
   { value: 'A12345', label: 'Example – VAT exemption (A12345)' },
@@ -233,6 +241,37 @@ function sanitizeTemplateMap(value, allowedValues) {
     normalized[code] = text;
   });
   return normalized;
+}
+
+function sanitizeAggregationRules(value) {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((entry) => {
+      const field =
+        typeof entry?.field === 'string'
+          ? entry.field.trim()
+          : typeof entry?.path === 'string'
+            ? entry.path.trim()
+            : '';
+      if (!field) return null;
+      const allowed = Array.isArray(entry?.allowed)
+        ? entry.allowed
+            .map((fn) => (typeof fn === 'string' ? fn.trim().toLowerCase() : ''))
+            .filter((fn) => AGGREGATION_FUNCTIONS.includes(fn))
+        : [];
+      const defaultFn =
+        typeof entry?.default === 'string' && AGGREGATION_FUNCTIONS.includes(entry.default.toLowerCase())
+          ? entry.default.toLowerCase()
+          : '';
+      return {
+        field,
+        allowed: allowed.length ? allowed : AGGREGATION_FUNCTIONS,
+        ...(entry?.label ? { label: entry.label } : {}),
+        ...(entry?.description ? { description: entry.description } : {}),
+        ...(defaultFn ? { default: defaultFn } : {}),
+      };
+    })
+    .filter(Boolean);
 }
 
 function hasObjectEntries(value) {
@@ -704,6 +743,7 @@ const EMPTY_ENDPOINT = {
   responseSchemaText: '',
   fieldDescriptionsText: '',
   requestFieldsText: '[]',
+  aggregationRulesText: '[]',
   responseFieldsText: '[]',
   examplesText: '[]',
   variations: [],
@@ -1488,6 +1528,216 @@ function toSamplePayload(raw) {
   return parseExamplePayload(raw);
 }
 
+function normalizeNestedPathsMap(nestedPaths = {}, supportsItems = false) {
+  const defaults = {};
+  if (supportsItems) {
+    defaults.items = 'receipts[].items[]';
+  }
+  defaults.payments = supportsItems ? 'receipts[].payments[]' : 'payments[]';
+  defaults.receipts = 'receipts[]';
+  const map = { ...defaults };
+  if (nestedPaths && typeof nestedPaths === 'object' && !Array.isArray(nestedPaths)) {
+    Object.entries(nestedPaths).forEach(([key, value]) => {
+      if (typeof value !== 'string') return;
+      const normalized = value.trim();
+      if (!normalized) return;
+      map[key] = normalized;
+    });
+  }
+  return map;
+}
+
+function normalizeRequestFieldForSample(entry) {
+  const fieldPath = typeof entry?.field === 'string' ? entry.field.trim() : '';
+  if (!fieldPath) return null;
+  return {
+    path: fieldPath,
+    key: fieldPath,
+    label:
+      typeof entry?.label === 'string' && entry.label.trim()
+        ? entry.label.trim()
+        : normalizeHintEntry(entry).label || fieldPath,
+    required: Boolean(entry?.required || entry?.requiredCommon),
+    defaultValue:
+      entry?.defaultValue !== undefined && entry?.defaultValue !== null
+        ? entry.defaultValue
+        : null,
+  };
+}
+
+function applyFieldDefaults(target, fields = []) {
+  if (!target || typeof target !== 'object') return;
+  fields.forEach((field) => {
+    const key = field?.key || field?.path || '';
+    if (!key) return;
+    if (!Object.prototype.hasOwnProperty.call(target, key)) {
+      const fallback =
+        field?.defaultValue !== undefined && field?.defaultValue !== null
+          ? field.defaultValue
+          : null;
+      target[key] = fallback;
+    }
+  });
+}
+
+function ensurePathWithFields(target, path, fields = []) {
+  if (!path) {
+    applyFieldDefaults(target, fields);
+    return target;
+  }
+  const segments = path.split('.').filter(Boolean);
+  let cursor = target;
+  segments.forEach((segment, idx) => {
+    const isArray = segment.endsWith('[]');
+    const key = isArray ? segment.slice(0, -2) : segment;
+    if (!key) return;
+    if (isArray) {
+      if (!Array.isArray(cursor[key])) {
+        cursor[key] = [{}];
+      }
+      if (cursor[key].length === 0) cursor[key].push({});
+      cursor = cursor[key][0];
+    } else {
+      if (!cursor[key] || typeof cursor[key] !== 'object' || Array.isArray(cursor[key])) {
+        cursor[key] = {};
+      }
+      cursor = cursor[key];
+    }
+    if (idx === segments.length - 1) {
+      applyFieldDefaults(cursor, fields);
+    }
+  });
+  return target;
+}
+
+function mergeSamples(skeleton, sample) {
+  if (Array.isArray(sample) || Array.isArray(skeleton)) {
+    const sourceArray = Array.isArray(sample) ? sample : Array.isArray(skeleton) ? skeleton : [];
+    if (sourceArray.length === 0 && Array.isArray(skeleton)) return skeleton;
+    return sourceArray.map((entry, idx) => mergeSamples(skeleton?.[idx] || {}, entry));
+  }
+  if (sample && typeof sample === 'object') {
+    const base = skeleton && typeof skeleton === 'object' ? { ...skeleton } : {};
+    Object.entries(sample).forEach(([key, val]) => {
+      base[key] = mergeSamples(base[key], val);
+    });
+    return base;
+  }
+  if (sample === undefined) return skeleton;
+  return sample;
+}
+
+function buildRequestStructureForSample(requestFields = [], supportsItems = false, nestedPaths = {}) {
+  const nestedPathMap = normalizeNestedPathsMap(nestedPaths, supportsItems);
+  const normalizedFields = (Array.isArray(requestFields) ? requestFields : [])
+    .map((entry) => normalizeRequestFieldForSample(entry))
+    .filter(Boolean);
+  const objectMap = new Map();
+  const registerField = (objectPath, field) => {
+    const key = objectPath || '';
+    const existing = objectMap.get(key) || {
+      id: objectPath || key || 'root',
+      key: objectPath ? objectPath.split('.').pop()?.replace(/\[\]/g, '') || key : 'root',
+      path: objectPath,
+      label: objectPath ? objectPath.replace(/\[\]/g, '') : 'Request',
+      repeatable: objectPath.includes('[]'),
+      fields: [],
+    };
+    existing.fields.push(field);
+    objectMap.set(key, existing);
+  };
+
+  normalizedFields.forEach((field) => {
+    const parts = field.path.split('.');
+    const fieldKey = parts.pop() || field.path;
+    const objectPath = parts.join('.');
+    registerField(objectPath, { ...field, key: fieldKey, label: field.label });
+  });
+
+  const rootFields = objectMap.get('')?.fields || [];
+  const otherObjects = Array.from(objectMap.entries())
+    .filter(([path]) => path !== '')
+    .map(([, value]) => value);
+
+  if (rootFields.length || otherObjects.length) {
+    return { rootFields, objects: otherObjects };
+  }
+
+  const fallbackObjects = [];
+  if (supportsItems) {
+    const itemPath = nestedPathMap.items || 'receipts[].items[]';
+    fallbackObjects.push({
+      id: itemPath,
+      key: 'items',
+      path: itemPath,
+      label: itemPath.replace(/\[\]/g, ''),
+      repeatable: itemPath.includes('[]'),
+      fields: POS_API_ITEM_FIELDS.map((field) => ({
+        ...field,
+        path: `${itemPath}.${field.key}`,
+      })),
+    });
+  }
+
+  const paymentsPath = nestedPathMap.payments || 'payments[]';
+  fallbackObjects.push({
+    id: paymentsPath,
+    key: 'payments',
+    path: paymentsPath,
+    label: paymentsPath.replace(/\[\]/g, ''),
+    repeatable: paymentsPath.includes('[]'),
+    fields: POS_API_PAYMENT_FIELDS.map((field) => ({
+      ...field,
+      path: `${paymentsPath}.${field.key}`,
+    })),
+  });
+
+  const receiptsPath = nestedPathMap.receipts || 'receipts[]';
+  fallbackObjects.push({
+    id: receiptsPath,
+    key: 'receipts',
+    path: receiptsPath,
+    label: receiptsPath.replace(/\[\]/g, ''),
+    repeatable: receiptsPath.includes('[]'),
+    fields: POS_API_RECEIPT_FIELDS.map((field) => ({
+      ...field,
+      path: `${receiptsPath}.${field.key}`,
+    })),
+  });
+
+  return {
+    rootFields: POS_API_FIELDS.map((field) => ({
+      ...field,
+      path: field.key,
+    })),
+    objects: fallbackObjects,
+  };
+}
+
+function buildHierarchicalRequestSample(formState, baseSample) {
+  const supportsItems = formState?.supportsItems !== false;
+  let nestedPaths = {};
+  try {
+    nestedPaths = JSON.parse(formState?.nestedPathsText || '{}');
+  } catch {
+    nestedPaths = {};
+  }
+  let requestFields = [];
+  try {
+    const parsed = JSON.parse(formState?.requestFieldsText || '[]');
+    if (Array.isArray(parsed)) requestFields = parsed;
+  } catch {
+    requestFields = [];
+  }
+  const structure = buildRequestStructureForSample(requestFields, supportsItems, nestedPaths);
+  const skeleton = {};
+  applyFieldDefaults(skeleton, structure.rootFields || []);
+  (structure.objects || []).forEach((obj) => {
+    ensurePathWithFields(skeleton, obj.path || obj.id || obj.key, obj.fields || []);
+  });
+  return mergeSamples(skeleton, baseSample || {});
+}
+
 function cleanSampleText(text) {
   if (!text) return {};
   try {
@@ -1989,6 +2239,7 @@ function createFormState(definition) {
       ),
       '[]',
     ),
+    aggregationRulesText: toPrettyJson(definition.aggregationRules, '[]'),
     responseFieldsText: toPrettyJson(definition.responseFields, '[]'),
     examplesText: toPrettyJson(definition.examples, '[]'),
     variations,
@@ -5564,8 +5815,16 @@ export default function PosApiAdmin() {
       const resolvedSample = sanitizeRequestExampleForSample(
         parseExamplePayload(nextFormState.requestSampleText),
       );
-      formattedSample = Object.keys(resolvedSample).length > 0
-        ? JSON.stringify(resolvedSample, null, 2)
+      const hierarchicalSample = buildHierarchicalRequestSample(
+        nextFormState,
+        resolvedSample,
+      );
+      const finalSample =
+        hierarchicalSample && Object.keys(hierarchicalSample).length > 0
+          ? hierarchicalSample
+          : resolvedSample;
+      formattedSample = Object.keys(finalSample).length > 0
+        ? JSON.stringify(finalSample, null, 2)
         : (nextFormState.requestSampleText || '');
     } catch (err) {
       console.error('Failed to parse request sample for selected endpoint', err);
@@ -6400,6 +6659,15 @@ export default function PosApiAdmin() {
       throw new Error('Request field hints must be a JSON array');
     }
 
+    const hierarchicalRequestSample = buildHierarchicalRequestSample(
+      formState,
+      requestSample: normalizedRequestSample,
+    );
+    const normalizedRequestSample =
+      hierarchicalRequestSample && Object.keys(hierarchicalRequestSample).length > 0
+        ? hierarchicalRequestSample
+        : requestSample;
+
     const responseFields = parseJsonInput(
       'Response field hints',
       formState.responseFieldsText,
@@ -6408,6 +6676,16 @@ export default function PosApiAdmin() {
     if (!Array.isArray(responseFields)) {
       throw new Error('Response field hints must be a JSON array');
     }
+
+    const aggregationRulesRaw = parseJsonInput(
+      'Aggregation rules',
+      formState.aggregationRulesText,
+      [],
+    );
+    if (!Array.isArray(aggregationRulesRaw)) {
+      throw new Error('Aggregation rules must be a JSON array');
+    }
+    const aggregationRules = sanitizeAggregationRules(aggregationRulesRaw);
 
     const responseFieldMappings = sanitizeResponseFieldMappings(formState.responseFieldMappings);
     const responseFieldsWithMapping = responseFields.map((entry) => {
@@ -6788,8 +7066,9 @@ export default function PosApiAdmin() {
       requestFields: combinedRequestFields,
       requestFieldVariations: sanitizedRequestFieldVariations,
       variations: sanitizedVariations,
+      aggregationRules,
       responseFields: responseFieldsWithMapping,
-      requestSample,
+      requestSample: normalizedRequestSample,
       requestSampleNotes: formState.requestSampleNotes || '',
       ...(Object.keys(responseFieldMappings).length
         ? { responseFieldMappings }
@@ -8522,6 +8801,20 @@ export default function PosApiAdmin() {
             style={styles.textarea}
             rows={3}
             placeholder="Explain how the base sample should be used or modified."
+          />
+        </label>
+        <label style={styles.labelFull}>
+          Aggregation rules (JSON array)
+          <span style={styles.fieldHelp}>
+            Specify allowed aggregations for numeric fields (sum, count, min, max). Example:
+            [{"field":"receipts[].items[].totalAmount","allowed":["sum","max"],"default":"sum"}]
+          </span>
+          <textarea
+            value={formState.aggregationRulesText}
+            onChange={(e) => handleChange('aggregationRulesText', e.target.value)}
+            style={styles.textarea}
+            rows={4}
+            placeholder='[{"field":"receipts[].items[].totalAmount","allowed":["sum","max"],"default":"sum"}]'
           />
         </label>
         

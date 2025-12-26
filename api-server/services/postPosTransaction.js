@@ -1536,15 +1536,17 @@ export async function postPosTransactionWithEbarimt(
     merchantInfo,
   });
 
+  const responseFieldMapping =
+    formCfg.posApiResponseMapping || endpoint?.responseFieldMappings || {};
   const response = await sendReceipt(payload, { endpoint });
   await persistPosApiResponse(masterTable, masterId, response, {
     fieldsFromPosApi: formCfg.fieldsFromPosApi,
-    responseFieldMapping: formCfg.posApiResponseMapping,
+    responseFieldMapping,
   });
   if (invoiceId) {
     await persistEbarimtInvoiceResponse(invoiceId, response, {
       fieldsFromPosApi: formCfg.fieldsFromPosApi,
-      responseFieldMapping: formCfg.posApiResponseMapping,
+      responseFieldMapping,
     });
   }
 
@@ -1670,15 +1672,17 @@ export async function issueSavedPosTransactionEbarimt(
     merchantInfo,
   });
 
+  const responseFieldMapping =
+    formCfg.posApiResponseMapping || endpoint?.responseFieldMappings || {};
   const response = await sendReceipt(payload, { endpoint });
   await persistPosApiResponse(masterTable, recordId, response, {
     fieldsFromPosApi: formCfg.fieldsFromPosApi,
-    responseFieldMapping: formCfg.posApiResponseMapping,
+    responseFieldMapping,
   });
   if (invoiceId) {
     await persistEbarimtInvoiceResponse(invoiceId, response, {
       fieldsFromPosApi: formCfg.fieldsFromPosApi,
-      responseFieldMapping: formCfg.posApiResponseMapping,
+      responseFieldMapping,
     });
     await linkInvoiceToIncomeRecords({
       invoiceId,
