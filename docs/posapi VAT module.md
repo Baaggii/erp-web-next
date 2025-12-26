@@ -99,13 +99,6 @@ Example entry:
 
 The registry allows administrators to add or modify endpoints without changing application code. The backend will load this file and, given an endpointId, will know how to construct the request and parse the response.
 
-Each endpoint entry can additionally declare:
-
-- **nestedPaths** – overrides for where logical objects live in the payload. Setting `"items": "items[]"` exposes item mappings at the root even if the API nests them under `receipts[].items[]`.
-- **responseFields** – list of response paths with labels and optional `destField` hints so response values can be mapped back into transactions.
-- **aggregations** – derived values (operation + source path) that can be mapped to transaction columns, e.g., summing `items[].measureUnitPrice` into `totalAmount`.
-- **defaultVariation** and **variationDefaults** – identify the default variation key and any per-variation field defaults (such as `type` and `taxType`). Only defaults for the selected variation are applied.
-
 Dynamic UI behaviour
 
 The UI must support two user roles:
@@ -125,16 +118,6 @@ Displays the response in a modal window, using fieldDescriptions to show tooltip
 Persists any returned values (e.g., lottery number, QR code) back into the transaction record.
 
 For testable endpoints, the UI should provide a Test button. When clicked, it prompts the user to confirm they wish to use the test server and then sends the request to the testServerUrl instead of production.
-
-## Variation examples
-
-The POS endpoint registry now supports multiple request variations with per-variation defaults. For example, a `saveReceipt`
-entry can define both `B2C_RECEIPT` and `B2B_RECEIPT` variations with `variationDefaults.type` mapping each variation to
-the correct `type` code. When the user selects a variation, only the defaults for that variation are applied to the
-request sample and payload builder.
-
-Response handling is also defined in the registry via `responseFields` and `aggregations`, allowing front-end forms to map
-return values (IDs, QR payloads, lottery numbers) and computed totals into transaction columns consistently.
 
 Reference for further integration
 

@@ -84,9 +84,9 @@ function splitFieldPath(path) {
 function normalizeNestedPathsMap(nestedPaths = {}, supportsItems = false) {
   const defaults = {};
   if (supportsItems) {
-    defaults.items = 'items[]';
+    defaults.items = 'receipts[].items[]';
   }
-  defaults.payments = 'payments[]';
+  defaults.payments = supportsItems ? 'receipts[].payments[]' : 'payments[]';
   defaults.receipts = 'receipts[]';
   const map = { ...defaults };
   if (nestedPaths && typeof nestedPaths === 'object' && !Array.isArray(nestedPaths)) {
@@ -641,35 +641,9 @@ export default function PosApiIntegrationSection({
     return {};
   }, [selectedEndpoint]);
 
-  const requestVariations = useMemo(() => {
-    if (!selectedEndpoint || !Array.isArray(selectedEndpoint.variations)) return [];
-    return selectedEndpoint.variations.filter((variation) => variation && variation.enabled !== false);
-  }, [selectedEndpoint]);
-
-  const selectedVariationKey = config.posApiRequestVariation || selectedEndpoint?.defaultVariation || '';
-  const selectedVariation =
-    requestVariations.find((variation) => variation.key === selectedVariationKey) || null;
-  const variationDefaultValues = useMemo(() => {
-    if (!selectedVariationKey) return {};
-    const defaults = selectedEndpoint?.variationDefaults;
-    if (!defaults || typeof defaults !== 'object' || Array.isArray(defaults)) return {};
-    const result = {};
-    Object.entries(defaults).forEach(([field, byVariation]) => {
-      if (!byVariation || typeof byVariation !== 'object') return;
-      if (Object.prototype.hasOwnProperty.call(byVariation, selectedVariationKey)) {
-        result[field] = byVariation[selectedVariationKey];
-      }
-    });
-    return result;
-  }, [selectedEndpoint, selectedVariationKey]);
-
   const hierarchicalRequestSample = useMemo(
-    () =>
-      buildHierarchicalSample(
-        requestStructure,
-        mergeSamples(baseRequestSample || {}, variationDefaultValues || {}),
-      ),
-    [requestStructure, baseRequestSample, variationDefaultValues],
+    () => buildHierarchicalSample(requestStructure, baseRequestSample || {}),
+    [requestStructure, baseRequestSample],
   );
 
   const requestSampleText = useMemo(() => {
@@ -679,6 +653,15 @@ export default function PosApiIntegrationSection({
       return '{}';
     }
   }, [hierarchicalRequestSample]);
+
+  const requestVariations = useMemo(() => {
+    if (!selectedEndpoint || !Array.isArray(selectedEndpoint.variations)) return [];
+    return selectedEndpoint.variations.filter((variation) => variation && variation.enabled !== false);
+  }, [selectedEndpoint]);
+
+  const selectedVariationKey = config.posApiRequestVariation || '';
+  const selectedVariation =
+    requestVariations.find((variation) => variation.key === selectedVariationKey) || null;
   const variationSampleText = useMemo(() => {
     let payload = selectedVariation?.requestExample || selectedVariation?.request;
     if (!payload) {
@@ -691,16 +674,13 @@ export default function PosApiIntegrationSection({
         }
       }
     }
-    const merged = buildHierarchicalSample(
-      requestStructure,
-      mergeSamples(payload || {}, variationDefaultValues || {}),
-    );
+    const merged = buildHierarchicalSample(requestStructure, payload || {});
     try {
       return JSON.stringify(merged || {}, null, 2);
     } catch {
       return selectedVariation?.requestExampleText || '';
     }
-  }, [selectedVariation, requestStructure, variationDefaultValues]);
+  }, [selectedVariation, requestStructure]);
 
   const receiptTypesAllowMultiple = receiptTypesFeatureEnabled
     ? selectedEndpoint?.allowMultipleReceiptTypes !== false
@@ -904,59 +884,6 @@ export default function PosApiIntegrationSection({
       };
     });
     return map;
-  }, [selectedEndpoint]);
-
-  const responseFields = useMemo(() => {
-    const source = Array.isArray(selectedEndpoint?.responseFields)
-      ? selectedEndpoint.responseFields
-      : [];
-    return source
-      .map((entry) => {
-        if (!entry || typeof entry !== 'object') return null;
-        const path =
-          typeof entry.path === 'string' && entry.path.trim()
-            ? entry.path.trim()
-            : typeof entry.field === 'string'
-              ? entry.field.trim()
-              : '';
-        if (!path) return null;
-        return {
-          path,
-          label:
-            typeof entry.label === 'string' && entry.label.trim()
-              ? entry.label.trim()
-              : humanizeFieldLabel(path),
-          destField: typeof entry.destField === 'string' ? entry.destField.trim() : '',
-          required: Boolean(entry.required),
-          type: typeof entry.type === 'string' ? entry.type.trim() : '',
-          description: typeof entry.description === 'string' ? entry.description : '',
-        };
-      })
-      .filter(Boolean);
-  }, [selectedEndpoint]);
-
-  const aggregationFields = useMemo(() => {
-    const list = Array.isArray(selectedEndpoint?.aggregations)
-      ? selectedEndpoint.aggregations
-      : [];
-    return list
-      .map((entry) => {
-        if (!entry || typeof entry !== 'object') return null;
-        const target = typeof entry.target === 'string' ? entry.target.trim() : '';
-        const source = typeof entry.source === 'string' ? entry.source.trim() : '';
-        const operation = typeof entry.operation === 'string' ? entry.operation.trim() : '';
-        if (!target || !source || !operation) return null;
-        return {
-          target,
-          source,
-          operation,
-          label:
-            typeof entry.label === 'string' && entry.label.trim()
-              ? entry.label.trim()
-              : humanizeFieldLabel(target),
-        };
-      })
-      .filter(Boolean);
   }, [selectedEndpoint]);
 
   const receiptGroupHints = useMemo(() => {
@@ -1251,52 +1178,6 @@ export default function PosApiIntegrationSection({
     });
   };
 
-  const updatePosApiResponseMapping = (fieldPath, value) => {
-    setConfig((c) => {
-      const next = { ...(c.posApiResponseMapping || {}) };
-      const trimmed =
-        typeof value === 'string'
-          ? value.trim()
-          : value && typeof value === 'object'
-            ? value
-            : value;
-      if (
-        trimmed === undefined ||
-        trimmed === null ||
-        (typeof trimmed === 'string' && trimmed.trim() === '') ||
-        (typeof trimmed === 'object' && !Object.keys(trimmed).length)
-      ) {
-        delete next[fieldPath];
-      } else {
-        next[fieldPath] = trimmed;
-      }
-      return { ...c, posApiResponseMapping: next };
-    });
-  };
-
-  const updatePosApiAggregationMapping = (target, value) => {
-    setConfig((c) => {
-      const next = { ...(c.posApiAggregations || {}) };
-      const trimmed =
-        typeof value === 'string'
-          ? value.trim()
-          : value && typeof value === 'object'
-            ? value
-            : value;
-      if (
-        trimmed === undefined ||
-        trimmed === null ||
-        (typeof trimmed === 'string' && trimmed.trim() === '') ||
-        (typeof trimmed === 'object' && !Object.keys(trimmed).length)
-      ) {
-        delete next[target];
-      } else {
-        next[target] = trimmed;
-      }
-      return { ...c, posApiAggregations: next };
-    });
-  };
-
   const updatePosApiNestedMapping = (section, field, value) => {
     const targetObjectId =
       section === 'itemFields'
@@ -1523,20 +1404,6 @@ export default function PosApiIntegrationSection({
     [receiptsObject, receiptFieldMapping, objectFieldMappings],
   );
 
-  const resolvedResponseFieldMapping =
-    config.posApiResponseMapping &&
-    typeof config.posApiResponseMapping === 'object' &&
-    !Array.isArray(config.posApiResponseMapping)
-      ? config.posApiResponseMapping
-      : responseFieldMapping;
-
-  const resolvedAggregationMapping =
-    config.posApiAggregations &&
-    typeof config.posApiAggregations === 'object' &&
-    !Array.isArray(config.posApiAggregations)
-      ? config.posApiAggregations
-      : {};
-
   const primaryTableLabel = primaryTableName ? `${primaryTableName} (master)` : 'Master table';
 
   return (
@@ -1652,11 +1519,6 @@ export default function PosApiIntegrationSection({
                   </option>
                 ))}
               </select>
-              {Object.keys(variationDefaultValues || {}).length > 0 && (
-                <small style={{ color: '#475569' }}>
-                  Variation-specific defaults are applied only for the selected variation.
-                </small>
-              )}
               {selectedVariation && (
                 <>
                   {selectedVariation.description && (
@@ -1910,150 +1772,6 @@ export default function PosApiIntegrationSection({
           One field path per line (e.g., receipts[0].billId) to persist on the transaction record.
         </small>
       </label>
-      {responseFields.length > 0 && (
-        <div style={{ marginBottom: '1rem' }}>
-          <strong>Response field mapping</strong>
-          <p style={{ fontSize: '0.85rem', color: '#555' }}>
-            Map common POSAPI response values to transaction columns, literals or variables. Required
-            fields show a warning when not mapped.
-          </p>
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
-              gap: '0.75rem',
-            }}
-          >
-            {responseFields.map((field) => {
-              const mappedValue = resolvedResponseFieldMapping[field.path];
-              const isRequired = Boolean(field.required);
-              const missingRequired = isRequired && !isMappingProvided(mappedValue);
-              return (
-                <div
-                  key={`response-${field.path}`}
-                  style={{
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: '0.35rem',
-                    border: missingRequired ? '1px solid #ef4444' : '1px solid transparent',
-                    borderRadius: '8px',
-                    padding: missingRequired ? '0.5rem' : 0,
-                  }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                    <span style={{ fontWeight: 700 }}>{field.label}</span>
-                    <span
-                      style={{
-                        ...BADGE_BASE_STYLE,
-                        ...(isRequired ? REQUIRED_BADGE_STYLE : OPTIONAL_BADGE_STYLE),
-                      }}
-                    >
-                      {isRequired ? 'Required' : 'Optional'}
-                    </span>
-                    {missingRequired && (
-                      <span
-                        style={{
-                          ...BADGE_BASE_STYLE,
-                          background: '#fef2f2',
-                          color: '#991b1b',
-                        }}
-                      >
-                        Not mapped
-                      </span>
-                    )}
-                  </div>
-                  <small style={{ color: '#475569' }}>
-                    Path: <code>{field.path}</code>
-                  </small>
-                  <MappingFieldSelector
-                    value={mappedValue}
-                    onChange={(val) => updatePosApiResponseMapping(field.path, val)}
-                    primaryTableName={primaryTableName}
-                    masterColumns={columnOptions}
-                    columnsByTable={tableColumns}
-                    tableOptions={itemTableOptions}
-                    datalistIdBase={`posapi-response-${field.path}`}
-                    disabled={!config.posApiEnabled}
-                    sessionVariables={DEFAULT_SESSION_VARIABLES}
-                  />
-                  {field.destField && (
-                    <small style={{ color: '#4b5563' }}>
-                      Suggested destination: <code>{field.destField}</code>
-                    </small>
-                  )}
-                  {field.description && <small style={{ color: '#555' }}>{field.description}</small>}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-      {aggregationFields.length > 0 && (
-        <div style={{ marginBottom: '1rem' }}>
-          <strong>Aggregated fields</strong>
-          <p style={{ fontSize: '0.85rem', color: '#555' }}>
-            Aggregations are computed from the request payload (for example summing item totals).
-            Choose where to store each derived value.
-          </p>
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
-              gap: '0.75rem',
-            }}
-          >
-            {aggregationFields.map((agg) => {
-              const mappedValue = resolvedAggregationMapping[agg.target];
-              const missingRequired = !isMappingProvided(mappedValue);
-              return (
-                <div
-                  key={`aggregation-${agg.target}`}
-                  style={{
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: '0.35rem',
-                    border: missingRequired ? '1px solid #e2e8f0' : '1px solid transparent',
-                    borderRadius: '8px',
-                    padding: '0.25rem',
-                  }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                    <span style={{ fontWeight: 700 }}>{agg.label || agg.target}</span>
-                    <span style={{ ...BADGE_BASE_STYLE, background: '#ecfeff', color: '#0e7490' }}>
-                      {agg.operation.toUpperCase()} {agg.source}
-                    </span>
-                    {missingRequired && (
-                      <span
-                        style={{
-                          ...BADGE_BASE_STYLE,
-                          background: '#fef2f2',
-                          color: '#991b1b',
-                        }}
-                      >
-                        Not mapped
-                      </span>
-                    )}
-                  </div>
-                  <small style={{ color: '#475569' }}>
-                    Target key: <code>{agg.target}</code>
-                  </small>
-                  <MappingFieldSelector
-                    value={mappedValue}
-                    onChange={(val) => updatePosApiAggregationMapping(agg.target, val)}
-                    primaryTableName={primaryTableName}
-                    masterColumns={columnOptions}
-                    columnsByTable={tableColumns}
-                    tableOptions={itemTableOptions}
-                    datalistIdBase={`posapi-aggregation-${agg.target}`}
-                    disabled={!config.posApiEnabled}
-                    sessionVariables={DEFAULT_SESSION_VARIABLES}
-                  />
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
       <div>
         <strong>Field mapping</strong>
         <p style={{ fontSize: '0.85rem', color: '#555' }}>

@@ -107,19 +107,3 @@ posted with `{ table, name, config }` in the request body and can be removed via
 Saving a configuration does **not** create or update any modules. The optional
 `moduleKey` and `moduleLabel` values are stored with the form entry but must be
 managed separately in the modules table.
-
-## POS API-specific configuration
-
-Forms that submit POSAPI payloads use a handful of additional keys:
-
-- **posApiMapping** – request field mappings for the POS endpoint.
-- **posApiResponseMapping** – mappings for POSAPI response fields (e.g., `id`, `qrData`, `receipts[].lottery`).
-  Each entry can target a column, literal, environment variable, session variable or expression.
-- **posApiAggregations** – destination columns for aggregated values defined on the endpoint (for example `totalAmount`
-  derived from summing `items[].measureUnitPrice`).
-- **posApiRequestVariation** – default request variation key to apply when the endpoint exposes multiple variations.
-  If omitted, the endpoint’s `defaultVariation` hint is used.
-
-Variation-specific defaults are defined on the endpoint (see `config/posApiEndpoints.json`) under `variationDefaults`.
-Only the defaults matching the selected variation are applied when building request samples or payloads, preventing
-values from unrelated variations from leaking into a transaction.
