@@ -1176,6 +1176,55 @@ function setValueAtPath(target, path, value) {
   return current !== null;
 }
 
+function ensureNestedPathsInSample(sample, nestedObjects = []) {
+  const base =
+    sample && typeof sample === 'object' && !Array.isArray(sample)
+      ? { ...sample }
+      : {};
+  const entries = Array.isArray(nestedObjects) ? nestedObjects : [];
+  entries.forEach((entry) => {
+    const path = typeof entry?.path === 'string' ? entry.path.trim() : '';
+    if (!path) return;
+    const tokens = tokenizeFieldPath(path);
+    if (!tokens.length) return;
+    const existing = readValueAtPath(base, path);
+    if (existing !== undefined) {
+      if (existing === null || typeof existing !== 'object') {
+        const lastToken = tokens[tokens.length - 1];
+        setValueAtPath(base, path, lastToken?.isArray ? [{}] : {});
+      }
+      return;
+    }
+
+    let cursor = base;
+    tokens.forEach((token, index) => {
+      const isLast = index === tokens.length - 1;
+      if (token.isArray) {
+        cursor[token.key] = Array.isArray(cursor[token.key]) ? cursor[token.key] : [];
+        if (!cursor[token.key].length) {
+          cursor[token.key].push({});
+        }
+        if (isLast) {
+          if (typeof cursor[token.key][0] !== 'object' || cursor[token.key][0] === null) {
+            cursor[token.key][0] = {};
+          }
+          return;
+        }
+        cursor = cursor[token.key][0];
+        return;
+      }
+
+      if (cursor[token.key] === undefined || cursor[token.key] === null || typeof cursor[token.key] !== 'object' || Array.isArray(cursor[token.key])) {
+        cursor[token.key] = {};
+      }
+      if (!isLast) {
+        cursor = cursor[token.key];
+      }
+    });
+  });
+  return base;
+}
+
 function buildRequestSampleFromSelections(
   baseSample,
   selections,
@@ -1942,10 +1991,17 @@ function createFormState(definition) {
   );
 
   const sanitizedRequestSample = sanitizeRequestExampleForSample(rawRequestSample);
-  const requestSamplePayload =
+  const nestedSampleObjects = Array.isArray(definition.nestedObjects)
+    ? definition.nestedObjects
+    : Array.isArray(definition.mappingHints?.nestedObjects)
+      ? definition.mappingHints.nestedObjects
+      : [];
+  const requestSamplePayload = ensureNestedPathsInSample(
     sanitizedRequestSample && Object.keys(sanitizedRequestSample).length > 0
       ? sanitizedRequestSample
-      : stripRequestDecorations(rawRequestSample);
+      : stripRequestDecorations(rawRequestSample),
+    nestedSampleObjects,
+  );
 
   const buildUrlFieldState = (key) => {
     const literalCandidate = definition[key];
