@@ -221,6 +221,34 @@ function setValueAtTokens(target, tokens, value) {
   return true;
 }
 
+function ensureNestedPath(target, tokens) {
+  if (!target || typeof target !== 'object' || !tokens.length) return;
+  let current = target;
+  tokens.forEach((token, index) => {
+    const isLast = index === tokens.length - 1;
+    if (token.isArray) {
+      current[token.key] = Array.isArray(current[token.key]) ? current[token.key] : [];
+      if (!current[token.key].length || typeof current[token.key][0] !== 'object' || current[token.key][0] === null) {
+        current[token.key] = current[token.key].length ? current[token.key] : [{}];
+        if (!current[token.key].length) current[token.key].push({});
+        if (typeof current[token.key][0] !== 'object' || current[token.key][0] === null) {
+          current[token.key][0] = {};
+        }
+      }
+      if (isLast) return;
+      current = current[token.key][0];
+      return;
+    }
+
+    if (current[token.key] === undefined || current[token.key] === null || typeof current[token.key] !== 'object' || Array.isArray(current[token.key])) {
+      current[token.key] = {};
+    }
+    if (!isLast) {
+      current = current[token.key];
+    }
+  });
+}
+
 function parseEnvValue(rawValue) {
   if (rawValue === undefined || rawValue === null) return rawValue;
   if (typeof rawValue !== 'string') return rawValue;
@@ -1333,7 +1361,7 @@ function deriveNestedObjectsFromFields(fields = []) {
   return Array.from(nested.values());
 }
 
-function buildRequestSampleFromFields(fields = [], defaults = {}, example) {
+function buildRequestSampleFromFields(fields = [], defaults = {}, example, nestedObjects = []) {
   const sample = {};
   const defaultMap = defaults && typeof defaults === 'object' ? defaults : {};
   const exampleValues = Array.isArray(example)
@@ -1358,6 +1386,15 @@ function buildRequestSampleFromFields(fields = [], defaults = {}, example) {
           ? defaultMap[fieldPath]
           : null;
     setValueAtTokens(sample, tokens, defaultValue);
+  });
+
+  const nestedList = Array.isArray(nestedObjects) ? nestedObjects : [];
+  nestedList.forEach((entry) => {
+    const path = typeof entry?.path === 'string' ? entry.path.trim() : '';
+    if (!path) return;
+    const tokens = tokenizeFieldPath(path);
+    if (!tokens.length) return;
+    ensureNestedPath(sample, tokens);
   });
 
   return Object.keys(sample).length ? sample : undefined;
@@ -1692,6 +1729,7 @@ function extractOperationsFromOpenApi(spec, meta = {}, metaLookup = {}) {
         requestFields,
         fieldDefaults,
         requestExample && typeof requestExample === 'object' ? requestExample : undefined,
+        nestedObjects,
       );
 
       entries.push({
@@ -2143,6 +2181,7 @@ function extractOperationsFromPostman(spec, meta = {}) {
         combinedRequestFields,
         fieldDefaults,
         requestExample && typeof requestExample === 'object' ? requestExample : undefined,
+        nestedObjects,
       );
 
       entries.push({
