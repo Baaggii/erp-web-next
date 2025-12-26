@@ -5,11 +5,43 @@ import path from 'path';
 import { uploadCodingTable } from '../controllers/codingTableController.js';
 import { upsertCodingTableRow } from '../services/codingTableRowUpsert.js';
 import { requireAuth } from '../middlewares/auth.js';
-import { buildSchemaDiff, applySchemaDiffStatements } from '../services/schemaDiff.js';
+import {
+  buildSchemaDiff,
+  applySchemaDiffStatements,
+  getSchemaDiffPrerequisites,
+} from '../services/schemaDiff.js';
 import { getEmploymentSession } from '../../db/index.js';
 import hasAction from '../utils/hasAction.js';
 
 const router = express.Router();
+const LONG_RUNNING_TIMEOUT_MS = 5 * 60 * 1000;
+
+function extendTimeouts(req, res) {
+  if (req.setTimeout) req.setTimeout(LONG_RUNNING_TIMEOUT_MS);
+  if (res.setTimeout) res.setTimeout(LONG_RUNNING_TIMEOUT_MS);
+}
+
+function sendAborted(res, err, fallbackMessage) {
+  const message =
+    typeof err === 'string' ? err : err?.message || fallbackMessage || 'Request aborted';
+  return res.status(499).json({
+    message,
+    aborted: true,
+    details: typeof err === 'object' ? err?.details : undefined,
+  });
+}
+
+function sendKnownError(res, err, fallbackStatus = 500) {
+  const status = err?.status || fallbackStatus;
+  const body = {
+    message: err?.message || 'Schema diff failed',
+  };
+  if (err?.details) body.details = err.details;
+  if (err?.stderr && !body.details) body.details = { stderr: err.stderr };
+  if (err?.stdout && !body.details) body.details = { stdout: err.stdout };
+  if (err?.code && !body.code) body.code = err.code;
+  return res.status(status).json(body);
+}
 
 const storage = multer.diskStorage({
   destination(req, file, cb) {
@@ -57,11 +89,31 @@ router.post('/upsert-row', requireAuth, async (req, res, next) => {
   }
 });
 
+router.get('/schema-diff/check', requireAuth, async (req, res, next) => {
+  try {
+    const session = await getEmploymentSession(req.user.empid, req.user.companyId);
+    if (!(await hasAction(session, 'system_settings'))) return res.sendStatus(403);
+    const checks = await getSchemaDiffPrerequisites();
+    const issues = [];
+    if (!checks.mysqldumpAvailable) issues.push('mysqldump is not available in PATH');
+    if (!checks.env.DB_NAME) issues.push('DB_NAME environment variable is not set');
+    res.json({
+      ok: issues.length === 0,
+      issues,
+      ...checks,
+    });
+  } catch (err) {
+    if (err.status) return sendKnownError(res, err);
+    next(err);
+  }
+});
+
 router.post('/schema-diff/compare', requireAuth, async (req, res, next) => {
   const controller = new AbortController();
   const handleAbort = () => controller.abort();
   req.on('close', handleAbort);
   res.on('close', handleAbort);
+  extendTimeouts(req, res);
   try {
     const session = await getEmploymentSession(req.user.empid, req.user.companyId);
     if (!(await hasAction(session, 'system_settings'))) return res.sendStatus(403);
@@ -73,13 +125,18 @@ router.post('/schema-diff/compare', requireAuth, async (req, res, next) => {
       signal: controller.signal,
     });
     if (controller.signal.aborted) {
-      return res.status(499).json({ message: 'Schema diff aborted', aborted: true });
+      return sendAborted(
+        res,
+        new Error('Schema diff aborted by client disconnect'),
+        'Schema diff aborted by client disconnect',
+      );
     }
     res.json(result);
   } catch (err) {
     if (controller.signal.aborted) {
-      return res.status(499).json({ message: 'Schema diff aborted', aborted: true });
+      return sendAborted(res, err, 'Schema diff aborted');
     }
+    if (err.status) return sendKnownError(res, err);
     next(err);
   } finally {
     req.off('close', handleAbort);
@@ -92,6 +149,7 @@ router.post('/schema-diff/apply', requireAuth, async (req, res, next) => {
   const handleAbort = () => controller.abort();
   req.on('close', handleAbort);
   res.on('close', handleAbort);
+  extendTimeouts(req, res);
   try {
     const session = await getEmploymentSession(req.user.empid, req.user.companyId);
     if (!(await hasAction(session, 'system_settings'))) return res.sendStatus(403);
@@ -105,15 +163,14 @@ router.post('/schema-diff/apply', requireAuth, async (req, res, next) => {
       signal: controller.signal,
     });
     if (controller.signal.aborted || result?.aborted) {
-      return res
-        .status(499)
-        .json({ ...(result || {}), message: 'Schema diff apply aborted' });
+      return sendAborted(res, { ...result, message: 'Schema diff apply aborted' }, 'Schema diff apply aborted');
     }
     res.json(result);
   } catch (err) {
     if (controller.signal.aborted) {
-      return res.status(499).json({ message: 'Schema diff apply aborted', aborted: true });
+      return sendAborted(res, err, 'Schema diff apply aborted');
     }
+    if (err.status) return sendKnownError(res, err);
     next(err);
   } finally {
     req.off('close', handleAbort);
