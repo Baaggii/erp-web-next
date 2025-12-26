@@ -437,6 +437,18 @@ function sanitizeEndpointForClient(endpoint) {
   if (endpoint.requestSample && typeof endpoint.requestSample === 'object') {
     sanitized.requestSample = endpoint.requestSample;
   }
+  if (endpoint.requestObjects && typeof endpoint.requestObjects === 'object') {
+    sanitized.requestObjects = endpoint.requestObjects;
+  }
+  if (endpoint.variationFieldValues && typeof endpoint.variationFieldValues === 'object') {
+    sanitized.variationFieldValues = endpoint.variationFieldValues;
+  }
+  if (endpoint.variationScoped !== undefined) {
+    sanitized.variationScoped = Boolean(endpoint.variationScoped);
+  }
+  if (endpoint.aggregations && typeof endpoint.aggregations === 'object') {
+    sanitized.aggregations = endpoint.aggregations;
+  }
   if (endpoint.fieldDefaults && typeof endpoint.fieldDefaults === 'object') {
     sanitized.fieldDefaults = endpoint.fieldDefaults;
   }

@@ -86,6 +86,9 @@ export function normalizeMappingSelection(value, primaryTableName = '') {
   if (type === 'expression') {
     return { type, expression: parsed.expression || parsed.value || parsed.raw };
   }
+  if (type === 'variation') {
+    return { type, value: parsed.value || parsed.column || '' };
+  }
   return {
     type: 'column',
     table: parsed.table,
@@ -118,6 +121,12 @@ export function buildMappingValue(selection = {}, { preserveType = false } = {})
     const trimmed = typeof expression === 'string' ? expression.trim() : expression;
     if (!trimmed && !preserveType) return '';
     return { type: 'expression', expression: trimmed || '' };
+  }
+  if (type === 'variation') {
+    const variationValue = selection.value || '';
+    const trimmed = typeof variationValue === 'string' ? variationValue.trim() : variationValue;
+    if (!trimmed && !preserveType) return '';
+    return { type: 'variation', value: trimmed || '' };
   }
   const table = typeof selection.table === 'string' ? selection.table.trim() : '';
   const column = typeof selection.column === 'string' ? selection.column.trim() : '';
