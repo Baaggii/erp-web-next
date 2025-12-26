@@ -162,15 +162,17 @@ export async function issueDynamicTransactionEbarimt(
     merchantInfo,
   });
 
+  const responseFieldMapping =
+    formCfg.posApiResponseMapping || endpoint?.responseFieldMappings || {};
   const response = await sendReceipt(payload, { endpoint });
   await persistPosApiDetails(tableName, pkColumn, recordId, response, record, {
     fieldsFromPosApi: formCfg.fieldsFromPosApi,
-    responseFieldMapping: formCfg.posApiResponseMapping,
+    responseFieldMapping,
   });
   if (invoiceId) {
     await persistEbarimtInvoiceResponse(invoiceId, response, {
       fieldsFromPosApi: formCfg.fieldsFromPosApi,
-      responseFieldMapping: formCfg.posApiResponseMapping,
+      responseFieldMapping,
     });
   }
 
