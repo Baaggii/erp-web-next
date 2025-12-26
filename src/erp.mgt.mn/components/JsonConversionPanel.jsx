@@ -64,7 +64,6 @@ export default function JsonConversionPanel() {
 
   function defaultActionForColumn(meta) {
     if (meta?.isPrimaryKey) return 'companion';
-    if (meta?.hasBlockingConstraint) return 'manual';
     return 'convert';
   }
 
@@ -182,8 +181,18 @@ export default function JsonConversionPanel() {
           runNow: true,
         }),
       });
-      if (!res.ok) throw new Error('Conversion failed');
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setPreviews(data.previews || []);
+        setScriptText(data.scriptText || '');
+        setBlockedColumns(data.blockedColumns || []);
+        const reason = data?.message || 'Conversion failed';
+        if (data?.error?.statement) {
+          console.error('Failed statement', data.error.statementIndex, data.error.statement);
+        }
+        addToast(reason, 'error');
+        return;
+      }
       setPreviews(data.previews || []);
       setScriptText(data.scriptText || '');
       setBlockedColumns(data.blockedColumns || []);
@@ -388,7 +397,7 @@ export default function JsonConversionPanel() {
                           )}
                           {action === 'convert' && col.hasBlockingConstraint && (
                             <div style={{ color: '#b45309', fontSize: '0.9rem' }}>
-                              Constraints will be dropped and re-applied in the generated script.
+                              Constraints will be dropped and re-applied in the generated script (handleConstraints enabled).
                             </div>
                           )}
                           {action === 'companion' && (
@@ -427,6 +436,20 @@ export default function JsonConversionPanel() {
               <li key={p.column}>
                 <strong>{p.column}</strong> ({p.originalType}): {p.exampleBefore} →{' '}
                 {p.exampleAfter}. {p.notes}
+                {Array.isArray(p.diagnosticQueries) && p.diagnosticQueries.length > 0 && (
+                  <div style={{ marginTop: '0.35rem', fontSize: '0.9rem' }}>
+                    <div style={{ fontWeight: 600, color: '#0f172a' }}>
+                      Diagnostic queries to uncover hidden constraints/triggers:
+                    </div>
+                    <ol style={{ paddingLeft: '1.25rem' }}>
+                      {p.diagnosticQueries.map((q) => (
+                        <li key={q} style={{ wordBreak: 'break-all' }}>
+                          <code>{q}</code>
+                        </li>
+                      ))}
+                    </ol>
+                  </div>
+                )}
               </li>
             ))}
           </ul>
