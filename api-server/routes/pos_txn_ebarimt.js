@@ -10,7 +10,9 @@ const router = express.Router();
 router.post('/', requireAuth, async (req, res, next) => {
   try {
     const companyId = Number(req.query.companyId ?? req.user.companyId);
-    const { name, data, session, recordId } = req.body || {};
+    const { name, data, session, recordId, posApiRequestVariation } = req.body || {};
+    const variationOverride =
+      typeof posApiRequestVariation === 'string' ? posApiRequestVariation.trim() : null;
     const hasRecordId =
       recordId !== undefined && recordId !== null && `${recordId}`.trim() !== '';
     if (hasRecordId) {
@@ -18,6 +20,7 @@ router.post('/', requireAuth, async (req, res, next) => {
         name,
         recordId,
         companyId,
+        { posApiRequestVariation: variationOverride },
       );
       res.json(result);
       return;
@@ -29,6 +32,7 @@ router.post('/', requireAuth, async (req, res, next) => {
       data,
       info,
       companyId,
+      { posApiRequestVariation: variationOverride },
     );
     res.json(result);
   } catch (err) {
