@@ -1,6 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { API_BASE } from '../utils/apiBase.js';
 import { useToast } from '../context/ToastContext.jsx';
+import { MappingFieldSelector } from '../components/PosApiIntegrationSection.jsx';
+import { buildMappingValue, normalizeMappingSelection } from '../utils/posApiFieldSource.js';
 
 const POSAPI_TRANSACTION_TYPES = [
   { value: 'B2C', label: 'B2C receipt' },
@@ -120,6 +122,17 @@ const BASE_COMPLEX_REQUEST_SCHEMA = createReceiptTemplate('B2C');
 const TRANSACTION_POSAPI_TYPES = new Set(['B2C', 'B2B_SALE', 'B2B_PURCHASE', 'TRANSACTION', 'STOCK_QR']);
 
 const DEFAULT_ENV_RESOLVER = () => ({ found: false, value: '', error: '' });
+
+const REQUEST_SESSION_VARIABLES = [
+  'currentUserId',
+  'userId',
+  'username',
+  'branchId',
+  'departmentId',
+  'companyId',
+  'sessionId',
+  'userRole',
+];
 
 function extractUserParameters(values) {
   if (!values || typeof values !== 'object') return {};
@@ -751,6 +764,7 @@ const EMPTY_ENDPOINT = {
   nestedPathsText: '{}',
   notes: '',
   requestEnvMap: {},
+  requestFieldMappings: {},
   responseFieldMappings: {},
   responseTables: [],
 };
@@ -1241,7 +1255,10 @@ function buildRequestSampleFromSelections(
     : {};
   Object.entries(selections || {}).forEach(([fieldPath, entry]) => {
     if (!fieldPath) return;
-    const mode = entry?.mode || 'literal';
+    const mode =
+      entry?.type
+      || entry?.mode
+      || (entry?.envVar ? 'env' : entry?.sessionVar ? 'session' : entry?.expression ? 'expression' : 'literal');
     const placeholder = entry?.envVar ? `{{${entry.envVar}}}` : '';
     if (mode === 'env' && entry?.envVar) {
       if (!resolveEnv) {
@@ -1249,7 +1266,9 @@ function buildRequestSampleFromSelections(
           ? placeholder
           : entry?.literal !== undefined && entry.literal !== null
             ? entry.literal
-            : '';
+            : entry?.value !== undefined && entry.value !== null
+              ? entry.value
+              : '';
         setValueAtPath(result, fieldPath, sampleValue);
         return;
       }
@@ -1293,20 +1312,138 @@ function buildRequestSampleFromSelections(
       return;
     }
     if (mode === 'literal') {
-      const raw = entry?.literal ?? '';
+      const raw = entry?.value ?? entry?.literal ?? '';
       const parsedValue = typeof raw === 'string' ? parseScalarValue(raw) : raw;
       if (!setValueAtPath(result, fieldPath, parsedValue) && typeof onError === 'function') {
         onError(`Could not assign value for ${fieldPath}.`);
       }
+      return;
     }
+    if (mode === 'session') {
+      const sessionValue = entry?.sessionVar ? `{{session.${entry.sessionVar}}}` : entry?.value ?? '';
+      if (!setValueAtPath(result, fieldPath, sessionValue) && typeof onError === 'function') {
+        onError(`Could not assign session value for ${fieldPath}.`);
+      }
+      return;
+    }
+    if (mode === 'expression') {
+      const expressionValue = entry?.expression ?? entry?.value ?? '';
+      if (!setValueAtPath(result, fieldPath, expressionValue) && typeof onError === 'function') {
+        onError(`Could not assign expression for ${fieldPath}.`);
+      }
+      return;
+    }
+
+    const columnValue = entry?.column || entry?.value || '';
+    const tablePrefix = entry?.table ? `${entry.table}.` : '';
+    const sampleValue = columnValue ? `${tablePrefix}${columnValue}` : entry?.value ?? '';
+    setValueAtPath(result, fieldPath, sampleValue);
   });
   return result;
 }
 
+function hasMappingValue(selection = {}) {
+  if (selection === undefined || selection === null) return false;
+  if (typeof selection === 'string') return selection.trim() !== '';
+  if (typeof selection !== 'object') return false;
+  const type = selection.type || selection.mode;
+  if (type === 'literal') {
+    const value = selection.value ?? selection.literal;
+    return value !== undefined && value !== null && `${value}`.trim() !== '';
+  }
+  if (type === 'env') return Boolean(selection.envVar || selection.value);
+  if (type === 'session') return Boolean(selection.sessionVar || selection.value);
+  if (type === 'expression') return Boolean(selection.expression || selection.value);
+  return Boolean(selection.column || selection.value || selection.table);
+}
+
+function normalizeRequestFieldMappingEntry(entry, { defaultApplyToBody = true } = {}) {
+  if (entry === undefined || entry === null) return null;
+  const applyToBody =
+    typeof entry?.applyToBody === 'boolean' ? entry.applyToBody : defaultApplyToBody;
+  const source = entry && typeof entry === 'object' && 'selection' in entry ? entry.selection : entry;
+  const coerced =
+    source && typeof source === 'object' && source.type === 'literal' && source.value === undefined
+      ? { ...source, value: source.literal }
+      : source;
+  const normalized = normalizeMappingSelection(coerced || {});
+  const selectionType =
+    coerced?.type
+    || coerced?.mode
+    || normalized.type
+    || (coerced?.envVar ? 'env' : coerced?.sessionVar ? 'session' : coerced?.expression ? 'expression' : 'column');
+  const withValue = { ...normalized, type: selectionType };
+  if (selectionType === 'literal' && withValue.value === undefined && coerced?.literal !== undefined) {
+    withValue.value = coerced.literal;
+  }
+  if (selectionType === 'env' && !withValue.envVar && typeof coerced?.value === 'string') {
+    withValue.envVar = coerced.value.trim();
+  }
+  return { ...withValue, applyToBody };
+}
+
+function serializeRequestFieldSelections(selections = {}, { defaultApplyToBody = true } = {}) {
+  return Object.entries(selections || {}).reduce((acc, [fieldPath, entry]) => {
+    const normalized = normalizeRequestFieldMappingEntry(entry, { defaultApplyToBody });
+    if (!normalized || !hasMappingValue(normalized)) return acc;
+    const storedValue = buildMappingValue(normalized, { preserveType: true });
+    const payload =
+      typeof storedValue === 'object' && storedValue !== null
+        ? { ...storedValue }
+        : { type: normalized.type || 'column', value: storedValue };
+    const applyToBody = normalized.applyToBody !== false;
+    acc[fieldPath] = applyToBody ? payload : { ...payload, applyToBody: false };
+    return acc;
+  }, {});
+}
+
+function normalizeRequestFieldMappingMap(map, requestEnvMap = {}, { defaultApplyToBody = true } = {}) {
+  const normalizedEnvMap =
+    requestEnvMap && typeof requestEnvMap === 'object' && !Array.isArray(requestEnvMap)
+      ? { ...requestEnvMap }
+      : {};
+  const normalizedMappings = {};
+  const entries = map && typeof map === 'object' && !Array.isArray(map) ? Object.entries(map) : [];
+  if (entries.length === 0) {
+    Object.entries(normalizedEnvMap).forEach(([fieldPath, envEntry]) => {
+      const envVar = typeof envEntry === 'string' ? envEntry : envEntry?.envVar;
+      if (!envVar) return;
+      normalizedMappings[fieldPath] = {
+        type: 'env',
+        envVar,
+        applyToBody:
+          envEntry && typeof envEntry === 'object' && 'applyToBody' in envEntry
+            ? Boolean(envEntry.applyToBody)
+            : defaultApplyToBody,
+      };
+    });
+    return { mappings: normalizedMappings, envMap: normalizedEnvMap };
+  }
+
+  entries.forEach(([fieldPath, entry]) => {
+    if (!fieldPath) return;
+    const normalized = normalizeRequestFieldMappingEntry(entry, { defaultApplyToBody });
+    if (!normalized || !hasMappingValue(normalized)) return;
+    normalizedMappings[fieldPath] = normalized;
+    if (normalized.type === 'env' && normalized.envVar) {
+      normalizedEnvMap[fieldPath] = {
+        envVar: normalized.envVar,
+        applyToBody: normalized.applyToBody !== false,
+      };
+    }
+  });
+
+  return { mappings: normalizedMappings, envMap: normalizedEnvMap };
+}
+
 function buildRequestEnvMap(selections = {}) {
   return Object.entries(selections || {}).reduce((acc, [fieldPath, entry]) => {
-    if (entry?.mode === 'env' && entry.envVar) {
-      acc[fieldPath] = { envVar: entry.envVar, applyToBody: entry.applyToBody !== false };
+    const normalized = normalizeRequestFieldMappingEntry(entry);
+    if (normalized?.type === 'env' && normalized.envVar) {
+      acc[fieldPath] = {
+        envVar: normalized.envVar,
+        applyToBody: normalized.applyToBody !== false,
+      };
     }
     return acc;
   }, {});
@@ -1749,7 +1886,12 @@ function buildRequestFieldDisplayFromState(state) {
   return { state: 'ok', items, error: '' };
 }
 
-function deriveRequestFieldSelections({ requestSampleText, requestEnvMap, displayItems }) {
+function deriveRequestFieldSelections({
+  requestSampleText,
+  requestEnvMap,
+  requestFieldMappings,
+  displayItems,
+}) {
   const seenFields = new Set();
   let parsedSample = {};
   try {
@@ -1769,6 +1911,17 @@ function deriveRequestFieldSelections({ requestSampleText, requestEnvMap, displa
     const currentValue = readValueAtPath(parsedSample, fieldPath);
     const defaultValue = entry.defaultValue;
     const applyToBodyDefault = entry.source !== 'parameter';
+    const mappingEntry = normalizeRequestFieldMappingEntry(
+      requestFieldMappings?.[fieldPath],
+      { defaultApplyToBody: applyToBodyDefault },
+    );
+    if (mappingEntry && hasMappingValue(mappingEntry)) {
+      derivedSelections[fieldPath] = {
+        ...mappingEntry,
+        applyToBody: mappingEntry.applyToBody !== undefined ? mappingEntry.applyToBody : applyToBodyDefault,
+      };
+      return;
+    }
     const envEntry = requestEnvMap?.[fieldPath];
     const envVar = typeof envEntry === 'string' ? envEntry : envEntry?.envVar;
     const applyToBody = envEntry && typeof envEntry.applyToBody === 'boolean'
@@ -1776,25 +1929,25 @@ function deriveRequestFieldSelections({ requestSampleText, requestEnvMap, displa
       : applyToBodyDefault;
     if (envVar) {
       derivedSelections[fieldPath] = {
-        mode: 'env',
+        type: 'env',
         envVar,
-        literal: currentValue === undefined || currentValue === null ? '' : String(currentValue),
+        value: currentValue === undefined || currentValue === null ? '' : String(currentValue),
         applyToBody,
       };
       return;
     }
 
     if (currentValue !== undefined && currentValue !== null) {
-      derivedSelections[fieldPath] = { mode: 'literal', literal: String(currentValue), applyToBody };
+      derivedSelections[fieldPath] = { type: 'literal', value: String(currentValue), applyToBody };
       return;
     }
 
     if (defaultValue !== undefined && defaultValue !== null) {
-      derivedSelections[fieldPath] = { mode: 'literal', literal: String(defaultValue), applyToBody };
+      derivedSelections[fieldPath] = { type: 'literal', value: String(defaultValue), applyToBody };
       return;
     }
 
-    derivedSelections[fieldPath] = { mode: 'literal', literal: '', applyToBody };
+    derivedSelections[fieldPath] = { type: 'literal', value: '', applyToBody };
   });
 
   return derivedSelections;
@@ -2019,6 +2172,8 @@ function createFormState(definition) {
   const testServerUrlField = buildUrlFieldState('testServerUrl');
   const productionServerUrlField = buildUrlFieldState('productionServerUrl');
   const testServerUrlProductionField = buildUrlFieldState('testServerUrlProduction');
+  const { mappings: requestFieldMappings, envMap: normalizedRequestEnvMap } =
+    normalizeRequestFieldMappingMap(definition.requestFieldMappings, definition.requestEnvMap);
 
   return {
     id: definition.id || '',
@@ -2107,7 +2262,8 @@ function createFormState(definition) {
     topLevelFieldsText: toPrettyJson(definition.mappingHints?.topLevelFields, '[]'),
     nestedPathsText: toPrettyJson(definition.mappingHints?.nestedPaths, '{}'),
     notes: definition.notes || '',
-    requestEnvMap: definition.requestEnvMap || {},
+    requestEnvMap: normalizedRequestEnvMap,
+    requestFieldMappings,
     requestFieldVariations,
     responseFieldMappings: extractResponseFieldMappings(definition),
     responseTables: sanitizeTableSelection(
@@ -3199,6 +3355,35 @@ export default function PosApiAdmin() {
     return options;
   }, [formState.responseTables, tableFields]);
 
+  const requestTableColumns = useMemo(
+    () =>
+      Object.entries(tableFields || {}).reduce((acc, [table, fields]) => {
+        acc[table] = (fields || []).map((field) => extractFieldName(field)).filter(Boolean);
+        return acc;
+      }, {}),
+    [tableFields],
+  );
+
+  const requestTableOptions = useMemo(() => {
+    const fieldTables = Object.keys(requestTableColumns);
+    const optionTables = tableOptions.map((option) => option?.value).filter(Boolean);
+    const responseTables = Array.isArray(formState.responseTables) ? formState.responseTables : [];
+    return Array.from(new Set([...responseTables, ...fieldTables, ...optionTables])).filter(Boolean);
+  }, [formState.responseTables, requestTableColumns, tableOptions]);
+
+  const primaryRequestTable = useMemo(
+    () =>
+      formState.responseTables && formState.responseTables.length
+        ? formState.responseTables[0]
+        : requestTableOptions[0] || '',
+    [formState.responseTables, requestTableOptions],
+  );
+
+  const primaryRequestColumns = useMemo(
+    () => (primaryRequestTable ? requestTableColumns[primaryRequestTable] || [] : []),
+    [primaryRequestTable, requestTableColumns],
+  );
+
   useEffect(() => {
     let removedTables = 0;
     setFormState((prev) => {
@@ -3865,6 +4050,7 @@ export default function PosApiAdmin() {
     const derivedSelections = deriveRequestFieldSelections({
       requestSampleText,
       requestEnvMap: formState.requestEnvMap,
+      requestFieldMappings: formState.requestFieldMappings,
       displayItems: requestFieldDisplay.items,
     });
 
@@ -3872,16 +4058,22 @@ export default function PosApiAdmin() {
       const next = { ...prev };
       let changed = false;
 
-      const isSameSelection = (a = {}, b = {}) =>
-        a.mode === b.mode
-        && (a.literal ?? '') === (b.literal ?? '')
-        && (a.envVar ?? '') === (b.envVar ?? '')
-        && (a.applyToBody ?? true) === (b.applyToBody ?? true);
+      const isSameSelection = (a = {}, b = {}) => {
+        const left = normalizeRequestFieldMappingEntry(a) || {};
+        const right = normalizeRequestFieldMappingEntry(b) || {};
+        return JSON.stringify(left) === JSON.stringify(right);
+      };
 
       Object.entries(derivedSelections).forEach(([fieldPath, selection]) => {
         const existing = prev[fieldPath];
         const mergedSelection = existing
-          ? { ...selection, ...existing, applyToBody: selection.applyToBody }
+          ? {
+              ...selection,
+              ...existing,
+              applyToBody:
+                existing.applyToBody !== undefined ? existing.applyToBody : selection.applyToBody,
+              type: existing.type ?? existing.mode ?? selection.type ?? selection.mode,
+            }
           : selection;
 
         if (existing && isSameSelection(existing, mergedSelection)) return;
@@ -3909,7 +4101,13 @@ export default function PosApiAdmin() {
 
       return prev;
     });
-  }, [formState.requestSchemaText, formState.requestEnvMap, requestFieldDisplay.items, requestSampleText]);
+  }, [
+    formState.requestSchemaText,
+    formState.requestEnvMap,
+    formState.requestFieldMappings,
+    requestFieldDisplay.items,
+    requestSampleText,
+  ]);
 
   useEffect(() => {
     if (selectedVariationKey && !variationColumns.some((entry) => entry.key === selectedVariationKey)) {
@@ -3927,6 +4125,7 @@ export default function PosApiAdmin() {
     const selectionsFromSample = deriveRequestFieldSelections({
       requestSampleText: formattedSample,
       requestEnvMap: formState.requestEnvMap,
+      requestFieldMappings: formState.requestFieldMappings,
       displayItems: requestFieldDisplay.items,
     });
     const variationSelections = buildSelectionsForVariation(selectedVariationKey);
@@ -3935,6 +4134,7 @@ export default function PosApiAdmin() {
     setFormState((prev) => ({
       ...prev,
       requestEnvMap: buildRequestEnvMap(mergedSelections),
+      requestFieldMappings: serializeRequestFieldSelections(mergedSelections),
     }));
   }, [
     selectedVariationKey,
@@ -6841,6 +7041,7 @@ export default function PosApiAdmin() {
       },
       responseTables: sanitizeTableSelection(formState.responseTables, responseTableOptions),
       requestEnvMap: buildRequestEnvMap(requestFieldValues),
+      requestFieldMappings: serializeRequestFieldSelections(requestFieldValues),
       requestFields: combinedRequestFields,
       requestFieldVariations: sanitizedRequestFieldVariations,
       variations: sanitizedVariations,
@@ -7120,9 +7321,8 @@ export default function PosApiAdmin() {
         ?? normalized.defaultByVariation?.[variationKey];
       if (defaultValue === undefined || defaultValue === '') return;
       selections[fieldPath] = {
-        mode: 'literal',
-        literal: String(defaultValue),
-        envVar: '',
+        type: 'literal',
+        value: String(defaultValue),
         applyToBody: entry.source !== 'parameter',
       };
     });
@@ -7368,27 +7568,72 @@ export default function PosApiAdmin() {
     return pickPayloadFields(payloadCandidate, allowedFields);
   }
 
-  function handleRequestFieldValueChange(fieldPath, updates) {
+  function handleRequestFieldValueChange(fieldPath, updates, { defaultApplyToBody = true } = {}) {
     if (!fieldPath) return;
     setRequestFieldValues((prev) => {
-      const current = prev[fieldPath] || { mode: 'literal', literal: '', envVar: '' };
-      const trimmedEnvVar = typeof updates.envVar === 'string' ? updates.envVar.trim() : updates.envVar;
-      const nextEntry = {
-        ...current,
-        ...updates,
-        mode: updates.mode || current.mode || 'literal',
-        ...(trimmedEnvVar !== undefined ? { envVar: trimmedEnvVar } : {}),
-      };
-
-      if (updates.mode === 'literal') {
-        nextEntry.envVar = trimmedEnvVar !== undefined ? trimmedEnvVar : '';
+      const current = prev[fieldPath] || {};
+      const selectionProvided =
+        typeof updates === 'string'
+        || (updates
+          && typeof updates === 'object'
+          && (updates.selection !== undefined
+            || updates.type !== undefined
+            || updates.mode !== undefined
+            || updates.value !== undefined
+            || updates.literal !== undefined
+            || updates.envVar !== undefined
+            || updates.sessionVar !== undefined
+            || updates.expression !== undefined
+            || updates.table !== undefined
+            || updates.column !== undefined));
+      const selectionInput =
+        updates && typeof updates === 'object' && 'selection' in updates
+          ? updates.selection
+          : selectionProvided
+            ? updates
+            : current;
+      const applyToBody =
+        updates && typeof updates === 'object' && 'applyToBody' in updates
+          ? updates.applyToBody
+          : current.applyToBody !== undefined
+            ? current.applyToBody
+            : defaultApplyToBody;
+      const selectionPayload =
+        typeof selectionInput === 'string'
+          ? { selection: selectionInput, applyToBody }
+          : { ...selectionInput, applyToBody };
+      const normalizedSelection = normalizeRequestFieldMappingEntry(
+        selectionPayload,
+        { defaultApplyToBody },
+      );
+      const nextSelections = { ...prev };
+      let changed = false;
+      if (normalizedSelection && hasMappingValue(normalizedSelection)) {
+        const previousNormalized = normalizeRequestFieldMappingEntry(current, { defaultApplyToBody });
+        const alreadyEqual = JSON.stringify(previousNormalized || {}) === JSON.stringify(normalizedSelection);
+        nextSelections[fieldPath] = normalizedSelection;
+        changed = !alreadyEqual;
+      } else if (
+        updates
+        && typeof updates === 'object'
+        && 'applyToBody' in updates
+        && current.applyToBody !== applyToBody
+      ) {
+        nextSelections[fieldPath] = { ...current, applyToBody };
+        changed = true;
+      } else if (selectionProvided && fieldPath in nextSelections) {
+        delete nextSelections[fieldPath];
+        changed = true;
       }
 
-      const nextSelections = { ...prev, [fieldPath]: nextEntry };
+      if (!changed) return prev;
+
       syncRequestSampleFromSelections(nextSelections);
+      const serialized = serializeRequestFieldSelections(nextSelections, { defaultApplyToBody });
       setFormState((prevState) => ({
         ...prevState,
         requestEnvMap: buildRequestEnvMap(nextSelections),
+        requestFieldMappings: serialized,
       }));
       return nextSelections;
     });
@@ -8891,17 +9136,18 @@ export default function PosApiAdmin() {
                 {visibleRequestFieldItems.map((entry, index) => {
                   const normalized = normalizeHintEntry(entry);
                   const fieldPath = normalized.field;
-                  const selection = requestFieldValues[fieldPath] || {
-                    mode: 'literal',
-                    literal: '',
-                    envVar: '',
-                    applyToBody: entry.source !== 'parameter',
-                  };
-                  const mode = selection.mode === 'env' ? 'env' : 'literal';
-                  const envMode = mode === 'env';
-                  const envVarValue = selection.envVar || '';
-                  const literalValue = selection.literal || '';
+                  const defaultApplyToBody = entry.source !== 'parameter';
+                  const selection =
+                    normalizeRequestFieldMappingEntry(requestFieldValues[fieldPath], {
+                      defaultApplyToBody,
+                    })
+                    || {
+                      type: 'literal',
+                      value: '',
+                      applyToBody: defaultApplyToBody,
+                    };
                   const applyToBody = selection.applyToBody !== false;
+                  const { applyToBody: _ignoredApply, ...selectorValue } = selection || {};
                   return (
                     <div key={`${fieldPath || 'field'}-${index}`} style={styles.requestValueRow}>
                       <div style={styles.requestValueFieldMeta}>
@@ -8912,77 +9158,48 @@ export default function PosApiAdmin() {
                               {entry.location === 'path' ? 'Path parameter' : 'Query parameter'}
                             </span>
                           )}
-                        </div>
-                        {normalized.description && (
-                          <div style={styles.hintDescription}>{normalized.description}</div>
-                        )}
-                      </div>
-                      <div style={styles.requestFieldModes}>
-                        <label style={styles.radioLabel}>
-                          <input
-                            type="radio"
-                            name={`request-value-mode-${index}`}
-                            checked={!envMode}
-                            onChange={() => handleRequestFieldValueChange(fieldPath, { mode: 'literal' })}
-                          />
-                          Literal value
-                        </label>
-                        <label style={styles.radioLabel}>
-                          <input
-                            type="radio"
-                            name={`request-value-mode-${index}`}
-                            checked={envMode}
-                            onChange={() => handleRequestFieldValueChange(fieldPath, { mode: 'env' })}
-                          />
-                          Environment variable
-                        </label>
-                      </div>
-                      <div style={styles.requestValueInputs}>
-                        <label style={styles.label}>
-                          <span>Literal / test value</span>
-                          <input
-                            type="text"
-                            value={literalValue}
-                            onChange={(e) =>
-                              handleRequestFieldValueChange(fieldPath, { literal: e.target.value })
-                            }
-                            style={styles.input}
-                            placeholder="Sample request value"
-                          />
-                        </label>
-                        <label style={styles.label}>
-                          <span>Environment variable</span>
-                          <input
-                            type="text"
-                            list={`env-options-${index}`}
-                            value={envVarValue}
-                            onChange={(e) =>
-                              handleRequestFieldValueChange(fieldPath, { envVar: e.target.value, mode: 'env' })
-                            }
-                            style={styles.input}
-                            placeholder="ENV_VAR_NAME"
-                          />
-                          <datalist id={`env-options-${index}`}>
-                            {envVariableOptions.map((opt) => (
-                              <option key={`env-opt-${opt}`} value={opt} />
-                            ))}
-                          </datalist>
-                        </label>
-                        <label style={{ ...styles.checkboxLabel, marginTop: '0.35rem' }}>
-                          <input
-                            type="checkbox"
-                            checked={applyToBody}
-                            onChange={(e) =>
-                              handleRequestFieldValueChange(fieldPath, { applyToBody: e.target.checked })
-                            }
-                          />
-                          <span>Apply to request body</span>
-                        </label>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
+                         </div>
+                         {normalized.description && (
+                           <div style={styles.hintDescription}>{normalized.description}</div>
+                         )}
+                       </div>
+                       <div style={styles.requestFieldModes}>
+                         <MappingFieldSelector
+                           value={selectorValue}
+                           onChange={(val) =>
+                             handleRequestFieldValueChange(fieldPath, val, {
+                               defaultApplyToBody,
+                             })
+                           }
+                           primaryTableName={primaryRequestTable}
+                           masterColumns={primaryRequestColumns}
+                           columnsByTable={requestTableColumns}
+                           tableOptions={requestTableOptions}
+                           datalistIdBase={`request-map-${index}`}
+                           defaultTableLabel="Select table"
+                           sessionVariables={REQUEST_SESSION_VARIABLES}
+                         />
+                       </div>
+                       <div style={styles.requestValueInputs}>
+                         <label style={{ ...styles.checkboxLabel, marginTop: '0.35rem' }}>
+                           <input
+                             type="checkbox"
+                             checked={applyToBody}
+                             onChange={(e) =>
+                               handleRequestFieldValueChange(
+                                 fieldPath,
+                                 { applyToBody: e.target.checked },
+                                 { defaultApplyToBody },
+                               )
+                             }
+                           />
+                           <span>Apply to request body</span>
+                         </label>
+                       </div>
+                     </div>
+                   );
+                 })}
+               </div>
             )}
           </div>
           <div style={styles.hintCard}>
