@@ -30,8 +30,6 @@ const DEFAULT_SESSION_VARIABLES = [
   'userRole',
 ];
 
-const AGGREGATION_FUNCTIONS = ['sum', 'count', 'min', 'max'];
-
 function humanizeFieldLabel(key) {
   if (!key) return '';
   return String(key)
@@ -617,38 +615,6 @@ export default function PosApiIntegrationSection({
       return matchesObject || matchesChild;
     });
   }, [requestObjects, normalizedFieldFilter]);
-
-  const aggregationRules = useMemo(
-    () => (Array.isArray(selectedEndpoint?.aggregationRules) ? selectedEndpoint.aggregationRules : []),
-    [selectedEndpoint],
-  );
-
-  const aggregationRuleMap = useMemo(() => {
-    const map = {};
-    aggregationRules.forEach((rule) => {
-      const field =
-        typeof rule?.field === 'string'
-          ? rule.field.trim()
-          : typeof rule?.path === 'string'
-            ? rule.path.trim()
-            : '';
-      if (!field) return;
-      const allowed = Array.isArray(rule?.allowed)
-        ? rule.allowed
-            .map((fn) => (typeof fn === 'string' ? fn.trim().toLowerCase() : ''))
-            .filter((fn) => AGGREGATION_FUNCTIONS.includes(fn))
-        : [];
-      const defaultFn =
-        typeof rule?.default === 'string' && AGGREGATION_FUNCTIONS.includes(rule.default.toLowerCase())
-          ? rule.default.toLowerCase()
-          : '';
-      map[field] = {
-        allowed: allowed.length ? allowed : AGGREGATION_FUNCTIONS,
-        default: defaultFn,
-      };
-    });
-    return map;
-  }, [aggregationRules]);
 
   const endpointSupportsItems = selectedEndpoint?.supportsItems !== false;
   const endpointReceiptItemsEnabled =
@@ -2117,23 +2083,6 @@ export default function PosApiIntegrationSection({
                   const itemHint = itemFieldHints[field.key] || {};
                   const itemRequired = Boolean(itemHint.required);
                   const itemDescription = itemHint.description;
-                  const pathKey =
-                    itemsObject?.path
-                      ? `${itemsObject.path}.${field.key}`
-                      : field.path || field.key;
-                  const rule = aggregationRuleMap[pathKey] || aggregationRuleMap[field.key];
-                  const aggregationOptions =
-                    rule && Array.isArray(rule.allowed) && rule.allowed.length
-                      ? rule.allowed
-                      : AGGREGATION_FUNCTIONS;
-                  const defaultAggregation = rule?.default || '';
-                  const selectedAggregation =
-                    aggregationMapping[pathKey] ||
-                    aggregationMapping[field.key] ||
-                    defaultAggregation ||
-                    '';
-                  const showAggregation =
-                    (itemsObject?.path || '').includes('[]') || itemsObject?.repeatable;
                   const mappedValue = resolvedItemFieldMapping[field.key];
                   const missingRequired = itemRequired && !isMappingProvided(mappedValue);
                   return (
