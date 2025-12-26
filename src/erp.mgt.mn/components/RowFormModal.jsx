@@ -108,6 +108,7 @@ const RowFormModal = function RowFormModal({
   posApiReceiptTypes = [],
   posApiPaymentMethods = [],
   extraFooterContent = null,
+  allowTemporaryOnly = false,
 }) {
   const mounted = useRef(false);
   const renderCount = useRef(0);
@@ -1558,8 +1559,13 @@ const RowFormModal = function RowFormModal({
     }
     return String(raw);
   }, [posApiTypeBinding, formVals, extraVals]);
-  const showPosApiTypeSelect =
-    Boolean(posApiEnabled && canPost && posApiTypeBinding && posApiTypeBinding.key);
+  const canUsePosApi = React.useMemo(
+    () => Boolean(posApiEnabled && canPost && !allowTemporaryOnly),
+    [posApiEnabled, canPost, allowTemporaryOnly],
+  );
+  const showPosApiTypeSelect = Boolean(
+    canUsePosApi && posApiTypeBinding && posApiTypeBinding.key,
+  );
   useEffect(() => {
     if (pendingManualOverrideRef.current.size === 0) return;
     const pending = Array.from(pendingManualOverrideRef.current);
@@ -1732,7 +1738,7 @@ const RowFormModal = function RowFormModal({
   const [submitLocked, setSubmitLocked] = useState(false);
   const [temporaryLocked, setTemporaryLocked] = useState(false);
   const [issueEbarimtEnabled, setIssueEbarimtEnabled] = useState(() =>
-    Boolean(posApiEnabled),
+    Boolean(posApiEnabled && !allowTemporaryOnly),
   );
   const formProcessing = submitLocked || temporaryLocked;
   const prevVisibleRef = useRef(visible);
@@ -1755,10 +1761,10 @@ const RowFormModal = function RowFormModal({
 
   useEffect(() => {
     if (visible && !prevVisibleRef.current) {
-      setIssueEbarimtEnabled(Boolean(posApiEnabled));
+      setIssueEbarimtEnabled(Boolean(posApiEnabled && !allowTemporaryOnly));
     }
     prevVisibleRef.current = visible;
-  }, [visible, posApiEnabled]);
+  }, [visible, posApiEnabled, allowTemporaryOnly]);
 
   useEffect(() => {
     if (!visible) {
@@ -3844,7 +3850,7 @@ const RowFormModal = function RowFormModal({
         )}
         <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-            {posApiEnabled && canPost && (
+            {canUsePosApi && (
               <label className="inline-flex items-center space-x-2 text-sm text-gray-700">
                 <input
                   type="checkbox"
@@ -3873,7 +3879,7 @@ const RowFormModal = function RowFormModal({
                 </select>
               </label>
             )}
-            {posApiEnabled &&
+            {canUsePosApi &&
               quickInfoEndpoints.map((endpoint) => (
                 <button
                   key={`info-quick-${endpoint.id}`}
@@ -3885,7 +3891,7 @@ const RowFormModal = function RowFormModal({
                   {endpoint.quickActionLabel}
                 </button>
               ))}
-            {posApiEnabled && infoEndpoints.length > 0 && (
+            {canUsePosApi && infoEndpoints.length > 0 && (
               <button
                 type="button"
                 onClick={openInfoModal}
@@ -3896,7 +3902,7 @@ const RowFormModal = function RowFormModal({
               </button>
             )}
             {extraFooterContent}
-            {posApiEnabled && posApiEndpointMeta && (
+            {canUsePosApi && posApiEndpointMeta && (
               <span className="text-xs text-gray-500">
                 {(posApiEndpointMeta.method || 'POST').toUpperCase()} {posApiEndpointMeta.path || ''}
               </span>
@@ -3934,7 +3940,7 @@ const RowFormModal = function RowFormModal({
             >
               {t('cancel', 'Cancel')}
             </button>
-            {posApiEnabled && canPost && (
+            {canUsePosApi && (
               <button
                 type="button"
                 onClick={() => {
