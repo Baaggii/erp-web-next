@@ -10,6 +10,7 @@ import {
   applySchemaDiffStatements,
   getSchemaDiffPrerequisites,
 } from '../services/schemaDiff.js';
+import { enqueueSchemaDiffJob, getSchemaDiffJob } from '../services/schemaDiffJobs.js';
 import { getEmploymentSession } from '../../db/index.js';
 import hasAction from '../utils/hasAction.js';
 
@@ -107,38 +108,28 @@ router.get('/schema-diff/check', requireAuth, async (req, res, next) => {
 });
 
 router.post('/schema-diff/compare', requireAuth, async (req, res, next) => {
-  const controller = new AbortController();
-  const handleAbort = () => controller.abort();
-  req.on('close', handleAbort);
-  res.on('close', handleAbort);
   extendTimeouts(req, res);
   try {
     const session = await getEmploymentSession(req.user.empid, req.user.companyId);
     if (!(await hasAction(session, 'system_settings'))) return res.sendStatus(403);
     const { schemaPath, schemaFile, allowDrops = false } = req.body || {};
-    const result = await buildSchemaDiff({
+    const job = enqueueSchemaDiffJob({
+      userId: req.user.empid,
       schemaPath,
       schemaFile,
       allowDrops: Boolean(allowDrops),
-      signal: controller.signal,
+      onProgress: (message) => {
+        req.app.get('io')?.to(req.user.empid?.toString()).emit('schema-diff-progress', {
+          jobId: message.jobId,
+          message: message.message,
+          at: message.at,
+        });
+      },
     });
-    if (controller.signal.aborted) {
-      return sendAborted(
-        res,
-        new Error('Schema diff aborted by client disconnect'),
-        'Schema diff aborted by client disconnect',
-      );
-    }
-    res.json(result);
+    res.status(202).json({ jobId: job.id });
   } catch (err) {
-    if (controller.signal.aborted) {
-      return sendAborted(res, err, 'Schema diff aborted');
-    }
     if (err.status) return sendKnownError(res, err);
     next(err);
-  } finally {
-    req.off('close', handleAbort);
-    res.off('close', handleAbort);
   }
 });
 
@@ -173,6 +164,20 @@ router.post('/schema-diff/apply', requireAuth, async (req, res, next) => {
   } finally {
     req.off('close', handleAbort);
     res.off('close', handleAbort);
+  }
+});
+
+router.get('/schema-diff/jobs/:jobId', requireAuth, async (req, res, next) => {
+  try {
+    const session = await getEmploymentSession(req.user.empid, req.user.companyId);
+    if (!(await hasAction(session, 'system_settings'))) return res.sendStatus(403);
+    const job = getSchemaDiffJob(req.params.jobId);
+    if (!job || (job.userId && job.userId !== req.user.empid)) {
+      return res.status(404).json({ message: 'Job not found' });
+    }
+    res.json(job.serialize());
+  } catch (err) {
+    next(err);
   }
 });
 
