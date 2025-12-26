@@ -107,27 +107,3 @@ posted with `{ table, name, config }` in the request body and can be removed via
 Saving a configuration does **not** create or update any modules. The optional
 `moduleKey` and `moduleLabel` values are stored with the form entry but must be
 managed separately in the modules table.
-
-## POS API-specific configuration
-
-Forms that submit POSAPI payloads use a handful of additional keys:
-
-- **posApiMapping** – request field mappings for the POS endpoint. When present, the values are also recorded in
-  **posApiRequestMappings** to persist the exact mapping type/variable selected in the UI.
-- **posApiResponseMapping** – mappings for POSAPI response fields (e.g., `id`, `qrData`, `receipts[].lottery`).
-  Each entry can target a column, literal, environment variable, session variable or expression. Defaults supplied by
-  the endpoint live in **posApiResponseFieldMappings** and are merged automatically when a form is bound to an endpoint.
-- **posApiAggregations** – destination columns for aggregated values defined on the endpoint (for example `totalAmount`
-  derived from summing `items[].measureUnitPrice`). Custom aggregation definitions are stored in
-  **posApiAggregationDefinitions** (each entry contains `target`, `operation`, `source`, and optional `label`).
-- **posApiRequestVariation** – default request variation key to apply when the endpoint exposes multiple variations.
-  If omitted, the endpoint’s `defaultVariation` hint is used.
-- **posApiVariationDefaults** – overrides for variation-specific default values keyed by field name and variation key.
-- **posApiCustomResponseFields** – list of extra response fields (path, label, destination hint, description) that should
-  be available for mapping even if they are not present in the endpoint metadata.
-
-Variation-specific defaults are defined on the endpoint (see `config/posApiEndpoints.json`) under `variationDefaults`
-and can be overridden per form via `posApiVariationDefaults`. Only the defaults matching the selected variation are
-applied when building request samples or payloads, preventing values from unrelated variations from leaking into a
-transaction. Request fields marked as `variationSpecific` in endpoint metadata are surfaced explicitly in the UI so
-that users know those values will not be reused across variations.
