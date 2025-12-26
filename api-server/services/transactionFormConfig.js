@@ -166,13 +166,20 @@ function deriveMappingHints(endpoint) {
   );
   if (hasReceiptContent || hasPaymentContent) {
     result.nestedPaths = {
-      ...(hasReceiptContent ? { receipts: 'receipts', items: 'receipts[].items' } : {}),
-      ...(hasPaymentContent ? { payments: 'payments' } : {}),
+      ...(hasReceiptContent ? { receipts: 'receipts[]', items: 'items[]' } : {}),
+      ...(hasPaymentContent ? { payments: 'payments[]' } : {}),
     };
   }
 
   if (nestedObjects.length) {
     result.nestedObjects = nestedObjects;
+  }
+  if (
+    endpoint.nestedPaths &&
+    typeof endpoint.nestedPaths === 'object' &&
+    !Array.isArray(endpoint.nestedPaths)
+  ) {
+    result.nestedPaths = endpoint.nestedPaths;
   }
 
   return Object.keys(result).length ? result : undefined;
@@ -356,19 +363,36 @@ function sanitizeEndpointForClient(endpoint) {
         .map((value) => (typeof value === 'string' ? value.trim() : ''))
         .filter((value) => value)
     : [];
-  const sanitizeFieldList = (list) =>
+  const sanitizeFieldList = (list, { allowPath = false } = {}) =>
     Array.isArray(list)
       ? list
           .map((entry) => {
             if (!entry || typeof entry !== 'object') return null;
-            const field = typeof entry.field === 'string' ? entry.field.trim() : '';
+            const rawField =
+              typeof entry.field === 'string'
+                ? entry.field
+                : allowPath && typeof entry.path === 'string'
+                  ? entry.path
+                  : '';
+            const field = rawField.trim();
             if (!field) return null;
-            return {
+            const base = {
               field,
+              ...(allowPath ? { path: field } : {}),
               required: Boolean(entry.required),
               description:
                 typeof entry.description === 'string' ? entry.description : undefined,
             };
+            if (allowPath && typeof entry.destField === 'string' && entry.destField.trim()) {
+              base.destField = entry.destField.trim();
+            }
+            if (allowPath && typeof entry.label === 'string' && entry.label.trim()) {
+              base.label = entry.label.trim();
+            }
+            if (allowPath && typeof entry.type === 'string' && entry.type.trim()) {
+              base.type = entry.type.trim();
+            }
+            return base;
           })
           .filter(Boolean)
       : [];
@@ -407,6 +431,7 @@ function sanitizeEndpointForClient(endpoint) {
     method: typeof endpoint.method === 'string' ? endpoint.method : 'GET',
     path: typeof endpoint.path === 'string' ? endpoint.path : '/',
     usage: typeof endpoint.usage === 'string' ? endpoint.usage : undefined,
+    posApiType: typeof endpoint.posApiType === 'string' ? endpoint.posApiType : undefined,
     supportsItems: endpoint.supportsItems !== false,
     supportsMultipleReceipts: Boolean(endpoint.supportsMultipleReceipts),
     supportsMultiplePayments: Boolean(endpoint.supportsMultiplePayments),
@@ -415,10 +440,63 @@ function sanitizeEndpointForClient(endpoint) {
     mappingHints: undefined,
   };
 
+  if (
+    endpoint.nestedPaths &&
+    typeof endpoint.nestedPaths === 'object' &&
+    !Array.isArray(endpoint.nestedPaths)
+  ) {
+    sanitized.nestedPaths = endpoint.nestedPaths;
+  }
+
+  if (typeof endpoint.defaultVariation === 'string') {
+    sanitized.defaultVariation = endpoint.defaultVariation;
+  }
+
+  if (
+    endpoint.variationDefaults &&
+    typeof endpoint.variationDefaults === 'object' &&
+    !Array.isArray(endpoint.variationDefaults)
+  ) {
+    sanitized.variationDefaults = endpoint.variationDefaults;
+  }
+
+  if (Array.isArray(endpoint.variations)) {
+    sanitized.variations = endpoint.variations
+      .map((variation) => {
+        if (!variation || typeof variation !== 'object') return null;
+        const key = typeof variation.key === 'string' ? variation.key.trim() : '';
+        if (!key) return null;
+        const entry = {
+          key,
+          name: typeof variation.name === 'string' ? variation.name : undefined,
+          enabled: variation.enabled !== false,
+        };
+        if (variation.requestExample !== undefined) entry.requestExample = variation.requestExample;
+        if (variation.request !== undefined) entry.request = variation.request;
+        if (variation.responseExample !== undefined) entry.responseExample = variation.responseExample;
+        return entry;
+      })
+      .filter(Boolean);
+  }
+
   const requestFields = sanitizeFieldList(endpoint.requestFields);
   if (requestFields.length) sanitized.requestFields = requestFields;
-  const responseFields = sanitizeFieldList(endpoint.responseFields);
+  const responseFields = sanitizeFieldList(endpoint.responseFields, { allowPath: true });
   if (responseFields.length) sanitized.responseFields = responseFields;
+  if (Array.isArray(endpoint.aggregations)) {
+    sanitized.aggregations = endpoint.aggregations
+      .map((agg) => {
+        if (!agg || typeof agg !== 'object') return null;
+        const target = typeof agg.target === 'string' ? agg.target.trim() : '';
+        const source = typeof agg.source === 'string' ? agg.source.trim() : '';
+        const operation = typeof agg.operation === 'string' ? agg.operation.trim() : '';
+        if (!target || !source || !operation) return null;
+        const sanitizedAgg = { target, source, operation };
+        if (typeof agg.label === 'string' && agg.label.trim()) sanitizedAgg.label = agg.label.trim();
+        return sanitizedAgg;
+      })
+      .filter(Boolean);
+  }
   const derivedDescriptions = deriveFieldDescriptions(requestFields, responseFields);
   if (Object.keys(derivedDescriptions).length) {
     sanitized.fieldDescriptions = derivedDescriptions;
@@ -555,6 +633,11 @@ function parseEntry(raw = {}) {
         .map((value) => (typeof value === 'string' ? value.trim() : ''))
         .filter((value) => value)
     : [];
+  const aggregations = sanitizePosApiMapping(raw.posApiAggregations);
+  const posApiRequestVariation =
+    typeof raw.posApiRequestVariation === 'string' && raw.posApiRequestVariation.trim()
+      ? raw.posApiRequestVariation.trim()
+      : '';
   return {
     visibleFields: Array.isArray(raw.visibleFields)
       ? raw.visibleFields.map(String)
@@ -662,6 +745,8 @@ function parseEntry(raw = {}) {
       : [],
     posApiMapping: mapping,
     posApiResponseMapping: responseMapping,
+    posApiAggregations: aggregations,
+    posApiRequestVariation,
     infoEndpoints,
     infoEndpointConfig,
   };

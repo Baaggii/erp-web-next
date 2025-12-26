@@ -68,6 +68,7 @@ const emptyConfig = {
   fieldsFromPosApi: [],
   posApiMapping: {},
   posApiResponseMapping: {},
+  posApiAggregations: {},
 };
 
 export default function PosTxnConfig() {
@@ -1011,6 +1012,22 @@ export default function PosTxnConfig() {
         !Array.isArray(loaded.posApiMapping)
           ? { ...loaded.posApiMapping }
           : {};
+      loaded.posApiResponseMapping =
+        loaded.posApiResponseMapping &&
+        typeof loaded.posApiResponseMapping === 'object' &&
+        !Array.isArray(loaded.posApiResponseMapping)
+          ? { ...loaded.posApiResponseMapping }
+          : {};
+      loaded.posApiAggregations =
+        loaded.posApiAggregations &&
+        typeof loaded.posApiAggregations === 'object' &&
+        !Array.isArray(loaded.posApiAggregations)
+          ? { ...loaded.posApiAggregations }
+          : {};
+      loaded.posApiRequestVariation =
+        typeof loaded.posApiRequestVariation === 'string'
+          ? loaded.posApiRequestVariation
+          : '';
       if (loaded.posApiEndpointMeta && typeof loaded.posApiEndpointMeta === 'object') {
         loaded.posApiEndpointMeta = { ...loaded.posApiEndpointMeta };
       } else {
