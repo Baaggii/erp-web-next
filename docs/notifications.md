@@ -22,7 +22,11 @@ the API at the configured interval (`requestPollingIntervalSeconds`, default
 30&nbsp;seconds).
 
 Set the WebSocket endpoint with the `VITE_SOCKET_URL` environment variable. If
-undefined the client connects to the same origin as the page.
+undefined the client connects to the same host as the REST API (`VITE_API_BASE`,
+with the `/api` suffix removed). Socket handshakes are served from
+`/api/socket.io` by default; override this path with `VITE_SOCKET_PATH` on the
+client and `SOCKET_IO_PATH` on the server when your reverse proxy expects a
+different prefix.
 
 ## Local storage keys
 
