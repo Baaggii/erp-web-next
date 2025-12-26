@@ -6,10 +6,14 @@ import { uploadCodingTable } from '../controllers/codingTableController.js';
 import { upsertCodingTableRow } from '../services/codingTableRowUpsert.js';
 import { requireAuth } from '../middlewares/auth.js';
 import {
-  buildSchemaDiff,
   applySchemaDiffStatements,
   getSchemaDiffPrerequisites,
 } from '../services/schemaDiff.js';
+import {
+  startSchemaDiffJob,
+  getSchemaDiffJob,
+  cancelSchemaDiffJob,
+} from '../services/schemaDiffJobs.js';
 import { getEmploymentSession } from '../../db/index.js';
 import hasAction from '../utils/hasAction.js';
 
@@ -107,38 +111,48 @@ router.get('/schema-diff/check', requireAuth, async (req, res, next) => {
 });
 
 router.post('/schema-diff/compare', requireAuth, async (req, res, next) => {
-  const controller = new AbortController();
-  const handleAbort = () => controller.abort();
-  req.on('close', handleAbort);
-  res.on('close', handleAbort);
-  extendTimeouts(req, res);
   try {
     const session = await getEmploymentSession(req.user.empid, req.user.companyId);
     if (!(await hasAction(session, 'system_settings'))) return res.sendStatus(403);
     const { schemaPath, schemaFile, allowDrops = false } = req.body || {};
-    const result = await buildSchemaDiff({
+    if (!schemaPath || !schemaFile) {
+      return res.status(400).json({ message: 'schemaPath and schemaFile are required' });
+    }
+    const job = startSchemaDiffJob({
       schemaPath,
       schemaFile,
       allowDrops: Boolean(allowDrops),
-      signal: controller.signal,
     });
-    if (controller.signal.aborted) {
-      return sendAborted(
-        res,
-        new Error('Schema diff aborted by client disconnect'),
-        'Schema diff aborted by client disconnect',
-      );
-    }
-    res.json(result);
+    res.status(202).json(job);
   } catch (err) {
-    if (controller.signal.aborted) {
-      return sendAborted(res, err, 'Schema diff aborted');
-    }
     if (err.status) return sendKnownError(res, err);
     next(err);
-  } finally {
-    req.off('close', handleAbort);
-    res.off('close', handleAbort);
+  }
+});
+
+router.get('/schema-diff/job/:jobId', requireAuth, async (req, res, next) => {
+  try {
+    const session = await getEmploymentSession(req.user.empid, req.user.companyId);
+    if (!(await hasAction(session, 'system_settings'))) return res.sendStatus(403);
+    const job = getSchemaDiffJob(req.params.jobId);
+    if (!job) return res.status(404).json({ message: 'Job not found' });
+    res.json(job);
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/schema-diff/job/:jobId/cancel', requireAuth, async (req, res, next) => {
+  try {
+    const session = await getEmploymentSession(req.user.empid, req.user.companyId);
+    if (!(await hasAction(session, 'system_settings'))) return res.sendStatus(403);
+    const result = cancelSchemaDiffJob(req.params.jobId);
+    if (!result.cancelled) {
+      return res.status(400).json({ message: result.reason || 'Unable to cancel job' });
+    }
+    res.json({ cancelled: true });
+  } catch (err) {
+    next(err);
   }
 });
 

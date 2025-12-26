@@ -52,6 +52,8 @@ export default function SchemaDiffPanel() {
   const [applying, setApplying] = useState(false);
   const [dryRun, setDryRun] = useState(true);
   const [preflight, setPreflight] = useState({ loading: true, ok: false, issues: [], data: null });
+  const [jobInfo, setJobInfo] = useState(null);
+  const [cancellingJob, setCancellingJob] = useState(false);
 
   useEffect(() => {
     setError('');
@@ -94,6 +96,67 @@ export default function SchemaDiffPanel() {
     };
   }, []);
 
+  useEffect(() => {
+    if (!jobInfo?.id || !jobActive) return () => {};
+    let cancelled = false;
+    let timeoutId;
+    async function poll() {
+      if (cancelled) return;
+      try {
+        const res = await fetch(`/api/coding_tables/schema-diff/job/${jobInfo.id}`);
+        const data = await res.json();
+        if (cancelled) return;
+        if (!res.ok) {
+          throw new Error(data?.message || 'Unable to fetch schema diff job status.');
+        }
+        setJobInfo(data);
+        if (['succeeded', 'failed', 'cancelled'].includes(data.status)) {
+          return;
+        }
+      } catch (err) {
+        if (cancelled) return;
+        setError(err.message || 'Unable to fetch schema diff job status.');
+        setLoading(false);
+        addToast(err.message || 'Unable to fetch schema diff job status.', 'error');
+        setJobInfo((prev) =>
+          prev
+            ? { ...prev, status: 'failed', error: { message: err.message } }
+            : { status: 'failed', error: { message: err.message } },
+        );
+        return;
+      }
+      if (!cancelled) {
+        timeoutId = setTimeout(poll, 1200);
+      }
+    }
+    poll();
+    return () => {
+      cancelled = true;
+      if (timeoutId) clearTimeout(timeoutId);
+    };
+  }, [jobInfo?.id, jobActive, addToast]);
+
+  useEffect(() => {
+    if (!jobInfo) return;
+    if (jobInfo.status === 'running' || jobInfo.status === 'queued') return;
+    setLoading(false);
+    if (jobInfo.status === 'succeeded' && jobInfo.result) {
+      const data = jobInfo.result;
+      setDiff(data);
+      setApplyResult(null);
+      setSelectedTables(new Set((data.tables || []).map((t) => t.name)));
+      setActiveTable(data.tables?.[0]?.name || '');
+      addToast('Schema diff generated', 'success');
+    } else if (jobInfo.status === 'failed') {
+      const message = jobInfo.error?.message || 'Failed to generate schema diff';
+      setError(message);
+      addToast(message, 'error');
+    } else if (jobInfo.status === 'cancelled') {
+      setError('Schema diff job cancelled');
+      addToast('Schema diff job cancelled', 'info');
+    }
+  }, [jobInfo, addToast]);
+
   const selectedSql = useMemo(() => {
     if (!diff) return [];
     const sql = [];
@@ -120,17 +183,29 @@ export default function SchemaDiffPanel() {
 
   const hasValidSchemaInputs =
     Boolean(schemaPath && schemaPath.trim()) && Boolean(schemaFile && schemaFile.trim());
+  const missingDbName = preflight.data?.env && preflight.data.env.DB_NAME === false;
+  const jobActive =
+    jobInfo && !['succeeded', 'failed', 'cancelled'].includes(jobInfo.status);
+  const jobProgress = jobInfo?.progress || '';
   const disableGenerate =
-    loading || preflight.loading || !preflight.ok || !hasValidSchemaInputs;
+    loading || jobActive || preflight.loading || missingDbName || !hasValidSchemaInputs;
+  const generateLabel = jobActive ? 'Generating...' : loading ? 'Starting...' : 'Generate Diff';
 
   async function generateDiff() {
     setLoading(true);
     setError('');
     setDiff(null);
     setApplyResult(null);
+    setJobInfo(null);
     try {
       if (!hasValidSchemaInputs) {
         setError('Provide both a schema path and a filename to compare.');
+        setLoading(false);
+        return;
+      }
+      if (missingDbName) {
+        setError('DB_NAME is required to run a schema diff.');
+        setLoading(false);
         return;
       }
       const res = await fetch('/api/coding_tables/schema-diff/compare', {
@@ -140,16 +215,37 @@ export default function SchemaDiffPanel() {
       });
       const data = await res.json();
       if (!res.ok) {
-        throw new Error(data?.message || 'Failed to generate schema diff');
+        throw new Error(data?.message || 'Failed to start schema diff job');
       }
-      setDiff(data);
-      setSelectedTables(new Set((data.tables || []).map((t) => t.name)));
-      setActiveTable(data.tables?.[0]?.name || '');
-      addToast('Schema diff generated', 'success');
+      setJobInfo(data);
+      addToast('Schema diff job started', 'info');
     } catch (err) {
       setError(err.message || 'Failed to generate schema diff');
       addToast(err.message || 'Failed to generate schema diff', 'error');
+      setLoading(false);
+    }
+  }
+
+  async function cancelDiffJob() {
+    if (!jobInfo?.id) return;
+    setCancellingJob(true);
+    try {
+      const res = await fetch(`/api/coding_tables/schema-diff/job/${jobInfo.id}/cancel`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data?.message || 'Unable to cancel schema diff job');
+      }
+      setJobInfo((prev) =>
+        prev && prev.id === jobInfo.id ? { ...prev, status: 'cancelled', progress: 'Cancelled' } : prev,
+      );
+    } catch (err) {
+      setError(err.message || 'Unable to cancel schema diff job');
+      addToast(err.message || 'Unable to cancel schema diff job', 'error');
     } finally {
+      setCancellingJob(false);
       setLoading(false);
     }
   }
@@ -176,6 +272,10 @@ export default function SchemaDiffPanel() {
   async function applySelected() {
     if (!diff) {
       setError('Generate a diff before applying changes.');
+      return;
+    }
+    if (jobActive || loading) {
+      setError('Wait for the schema diff job to finish before applying changes.');
       return;
     }
     if (selectedSql.length === 0) {
@@ -250,7 +350,7 @@ export default function SchemaDiffPanel() {
         </label>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
           <button type="button" onClick={generateDiff} disabled={disableGenerate}>
-            {loading ? 'Generating...' : 'Generate Diff'}
+            {generateLabel}
           </button>
           <label style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
             <input
@@ -297,20 +397,37 @@ export default function SchemaDiffPanel() {
           {error}
         </div>
       )}
-      {loading && (
+      {(loading || jobActive) && (
         <div
           role="status"
           style={{
             display: 'flex',
             alignItems: 'center',
-            gap: '0.5rem',
+            gap: '0.75rem',
             padding: '0.5rem',
             background: '#eef5ff',
             border: '1px solid #cce5ff',
+            flexWrap: 'wrap',
           }}
         >
-          <span style={{ fontWeight: 'bold' }}>⏳ Generating schema diff...</span>
-          <span style={{ color: '#555' }}>This may take a few seconds for large schemas.</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+            <span style={{ fontWeight: 'bold' }}>⏳ {jobProgress || 'Generating schema diff...'}</span>
+            <span style={{ color: '#555' }}>
+              This may take a few seconds for large schemas. Do not close this tab.
+            </span>
+          </div>
+          {jobInfo?.warnings?.length ? (
+            <ul style={{ margin: 0, paddingLeft: '1.25rem', color: '#b58900' }}>
+              {jobInfo.warnings.map((w, idx) => (
+                <li key={idx}>{w}</li>
+              ))}
+            </ul>
+          ) : null}
+          {jobActive ? (
+            <button type="button" onClick={cancelDiffJob} disabled={cancellingJob}>
+              {cancellingJob ? 'Cancelling...' : 'Cancel'}
+            </button>
+          ) : null}
         </div>
       )}
 
@@ -331,6 +448,9 @@ export default function SchemaDiffPanel() {
               {!diff.toolAvailable && (
                 <span style={{ color: '#d00' }}>(mysqldbcompare not available; basic diff used)</span>
               )}
+            </div>
+            <div>
+              <strong>Dump method:</strong> {diff.dumpMethod || 'unknown'}
             </div>
             <div>
               <strong>Generated:</strong>{' '}
@@ -450,7 +570,11 @@ export default function SchemaDiffPanel() {
                   <button type="button" onClick={copySelectedSql} disabled={!selectedSql.length}>
                     Copy selected SQL
                   </button>
-                  <button type="button" onClick={applySelected} disabled={applying || !selectedSql.length}>
+                  <button
+                    type="button"
+                    onClick={applySelected}
+                    disabled={applying || !selectedSql.length || jobActive || loading}
+                  >
                     {applying ? 'Applying...' : dryRun ? 'Preview Selected' : 'Apply Selected'}
                   </button>
                 </div>
