@@ -112,6 +112,7 @@ export default function CodingTablesPage() {
   const [extraFields, setExtraFields] = useState(['']);
   const [headerMap, setHeaderMap] = useState({});
   const [renameMap, setRenameMap] = useState({});
+  const [jsonFields, setJsonFields] = useState([]);
   const [duplicateHeaders, setDuplicateHeaders] = useState(new Set());
   const [initialDuplicates, setInitialDuplicates] = useState(new Set());
   const [populateRange, setPopulateRange] = useState(false);
@@ -2510,6 +2511,9 @@ export default function CodingTablesPage() {
         if (typeof v !== 'boolean') return `${k} allowZero must be true/false`;
       }
     }
+    if (cfg.jsonFields && !Array.isArray(cfg.jsonFields)) {
+      return 'jsonFields must be an array';
+    }
     if (cfg.triggers && typeof cfg.triggers !== 'string') {
       return 'triggers must be a string';
     }
@@ -2549,6 +2553,7 @@ export default function CodingTablesPage() {
       defaultFrom: filterMap(defaultFrom),
       renameMap: filterMap(renameMap),
       extraFields: extraFields.filter((f) => f.trim() !== ''),
+      jsonFields: jsonFields.map((f) => cleanIdentifier(f)).filter((f) => f),
       populateRange,
       startYear,
       endYear,
@@ -2692,14 +2697,15 @@ export default function CodingTablesPage() {
 
   useEffect(() => {
     if (!tableName) return;
-    if (!configNames.includes(tableName)) {
-      if (workbook && sheet) {
-        extractHeaders(workbook, sheet, headerRow, mnHeaderRow);
+      if (!configNames.includes(tableName)) {
+        if (workbook && sheet) {
+          extractHeaders(workbook, sheet, headerRow, mnHeaderRow);
+        }
+        replaceForeignKeySql('', { table: tableName, force: true });
+        replaceTriggerSql('', { table: tableName, force: true });
+        setJsonFields([]);
+        return;
       }
-      replaceForeignKeySql('', { table: tableName, force: true });
-      replaceTriggerSql('', { table: tableName, force: true });
-      return;
-    }
     fetch(`/api/coding_table_configs?table=${encodeURIComponent(tableName)}`, {
       credentials: 'include',
     })
@@ -2711,6 +2717,7 @@ export default function CodingTablesPage() {
           }
           replaceForeignKeySql('', { table: tableName, force: true });
           replaceTriggerSql('', { table: tableName, force: true });
+          setJsonFields([]);
           return;
         }
         if (!sheetSelectedManuallyRef.current) {
@@ -2735,6 +2742,7 @@ export default function CodingTablesPage() {
         setUniqueFields(cfg.uniqueFields ?? []);
         setCalcText(cfg.calcText ?? '');
         setColumnTypes(cfg.columnTypes ?? {});
+        setJsonFields(cfg.jsonFields ?? []);
         if (cfg.columnTypes) {
           const baseHeaders = Object.keys(cfg.columnTypes || {});
           const merged = Array.from(
@@ -3176,6 +3184,22 @@ export default function CodingTablesPage() {
                   cols={40}
                   value={calcText}
                   onChange={(e) => setCalcText(e.target.value)}
+                />
+              </div>
+              <div>
+                JSON array fields (comma separated):
+                <input
+                  style={{ width: '100%', marginTop: '0.25rem' }}
+                  value={jsonFields.join(',')}
+                  onChange={(e) =>
+                    setJsonFields(
+                      e.target.value
+                        .split(',')
+                        .map((f) => cleanIdentifier(f.trim()))
+                        .filter((f) => f),
+                    )
+                  }
+                  placeholder="example: sellerid, approver_ids"
                 />
               </div>
               <div>
