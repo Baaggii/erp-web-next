@@ -31,7 +31,13 @@ export async function getSchemaDiffPrerequisites() {
     DB_HOST: Boolean(process.env.DB_HOST),
   };
   const missing = [];
+  const warnings = [];
   if (!mysqldumpAvailable) missing.push('mysqldump');
+  if (!mysqldbcompareAvailable) {
+    warnings.push(
+      'mysqldbcompare is not available; schema diffs will fall back to basic comparisons without ALTER statements.',
+    );
+  }
   if (!env.DB_NAME) missing.push('DB_NAME');
 
   return {
@@ -40,6 +46,7 @@ export async function getSchemaDiffPrerequisites() {
     mysqlAvailable,
     env,
     missing,
+    warnings,
   };
 }
 
@@ -309,18 +316,31 @@ async function dumpCurrentSchemaWithFallback(outputPath, signal, onProgress) {
 function stripCommentLines(sqlText) {
   return sqlText
     .split(/\r?\n/)
-    .filter((line) => !/^\s*(#|--)/.test(line))
+    .filter((line) => !/^\s*(#|--)/.test(line) && !/^\s*DELIMITER\b/i.test(line))
     .join('\n')
     .trim();
 }
 
-function extractTableName(statement) {
-  const tableMatch = statement.match(
-    /\b(?:TABLE|VIEW)\s+`?([A-Za-z0-9_]+)`?/i,
-  );
-  if (tableMatch) return tableMatch[1];
-  const triggerMatch = statement.match(/\bTRIGGER\s+`?([A-Za-z0-9_]+)`?/i);
-  if (triggerMatch) return triggerMatch[1];
+const OBJECT_PATTERNS = [
+  { type: 'table', regex: /\bTABLE\s+`?([A-Za-z0-9_]+)`?/i },
+  {
+    type: 'view',
+    regex:
+      /\bCREATE\s+(?:OR\s+REPLACE\s+)?(?:ALGORITHM=\w+\s+)?(?:DEFINER=`?[^`]+`?@`?[^`]+`?\s+)?(?:SQL\s+SECURITY\s+\w+\s+)?VIEW\s+`?([A-Za-z0-9_]+)`?/i,
+  },
+  { type: 'trigger', regex: /\bTRIGGER\s+`?([A-Za-z0-9_]+)`?/i },
+  { type: 'procedure', regex: /\bPROCEDURE\s+`?([A-Za-z0-9_]+)`?/i },
+  { type: 'function', regex: /\bFUNCTION\s+`?([A-Za-z0-9_]+)`?/i },
+  { type: 'event', regex: /\bEVENT\s+`?([A-Za-z0-9_]+)`?/i },
+];
+
+function extractObject(statement) {
+  for (const pattern of OBJECT_PATTERNS) {
+    const match = statement.match(pattern.regex);
+    if (match) {
+      return { name: match[1], type: pattern.type };
+    }
+  }
   return null;
 }
 
@@ -334,19 +354,20 @@ function classifyStatement(statement) {
 
 function groupStatements(diffSql) {
   const statements = splitSqlStatements(stripCommentLines(diffSql));
-  const tableMap = new Map();
+  const objectMap = new Map();
   const generalStatements = [];
   let dropStatements = 0;
 
   for (const stmt of statements) {
-    const name = extractTableName(stmt);
+    const objectInfo = extractObject(stmt);
     const type = classifyStatement(stmt);
     if (type === 'drop') dropStatements += 1;
-    if (name) {
-      if (!tableMap.has(name)) {
-        tableMap.set(name, { name, statements: [], hasDrops: false });
+    if (objectInfo?.name) {
+      const key = `${objectInfo.type}:${objectInfo.name}`;
+      if (!objectMap.has(key)) {
+        objectMap.set(key, { key, name: objectInfo.name, type: objectInfo.type, statements: [], hasDrops: false });
       }
-      const entry = tableMap.get(name);
+      const entry = objectMap.get(key);
       entry.statements.push({ sql: stmt, type });
       if (type === 'drop') entry.hasDrops = true;
     } else {
@@ -354,52 +375,95 @@ function groupStatements(diffSql) {
     }
   }
 
-  const tables = Array.from(tableMap.values()).sort((a, b) =>
-    a.name.localeCompare(b.name),
-  );
+  const tables = Array.from(objectMap.values()).sort((a, b) => {
+    const typeCompare = (a.type || '').localeCompare(b.type || '');
+    if (typeCompare !== 0) return typeCompare;
+    return a.name.localeCompare(b.name);
+  });
 
   return {
     tables,
     generalStatements,
     stats: {
       statementCount: statements.length,
+      objectCount: tables.length,
       tableCount: tables.length,
       dropStatements,
     },
   };
 }
 
-function basicDiffFromDumps(currentSql, targetSql, allowDrops = false) {
-  const createRegex = /CREATE\s+TABLE\s+[`"]?([A-Za-z0-9_]+)[`"]?\s*[\s\S]*?;/gi;
-  const currentTables = new Map();
-  const targetTables = new Map();
+function buildDropStatement(type, name) {
+  const lowered = (type || '').toLowerCase();
+  switch (lowered) {
+    case 'table':
+      return `DROP TABLE IF EXISTS \`${name}\`;`;
+    case 'view':
+      return `DROP VIEW IF EXISTS \`${name}\`;`;
+    case 'trigger':
+      return `DROP TRIGGER IF EXISTS \`${name}\`;`;
+    case 'procedure':
+      return `DROP PROCEDURE IF EXISTS \`${name}\`;`;
+    case 'function':
+      return `DROP FUNCTION IF EXISTS \`${name}\`;`;
+    case 'event':
+      return `DROP EVENT IF EXISTS \`${name}\`;`;
+    default:
+      return '';
+  }
+}
 
-  let m;
-  while ((m = createRegex.exec(currentSql))) {
-    currentTables.set(m[1], m[0]);
+function normalizeDefinition(stmt) {
+  return stripCommentLines(stmt).replace(/\s+/g, ' ').trim();
+}
+
+function parseDefinitions(sqlText) {
+  const statements = splitSqlStatements(stripCommentLines(sqlText));
+  const map = new Map();
+  for (const stmt of statements) {
+    if (!/^CREATE\s+/i.test(stmt)) continue;
+    const info = extractObject(stmt);
+    if (!info?.name) continue;
+    const key = `${info.type}:${info.name}`;
+    map.set(key, { ...info, statement: stmt });
   }
-  while ((m = createRegex.exec(targetSql))) {
-    targetTables.set(m[1], m[0]);
-  }
+  return map;
+}
+
+function basicDiffFromDumps(currentSql, targetSql, allowDrops = false) {
+  const currentObjects = parseDefinitions(currentSql);
+  const targetObjects = parseDefinitions(targetSql);
 
   const statements = [];
   const warnings = [];
 
-  for (const [name, stmt] of targetTables.entries()) {
-    if (!currentTables.has(name)) {
-      statements.push(stmt);
-    } else if (
-      stripCommentLines(stmt).replace(/\s+/g, ' ').trim() !==
-      stripCommentLines(currentTables.get(name)).replace(/\s+/g, ' ').trim()
-    ) {
-      warnings.push(`Table ${name} definitions differ and require manual review.`);
+  for (const [key, targetObj] of targetObjects.entries()) {
+    const currentObj = currentObjects.get(key);
+    if (!currentObj) {
+      statements.push(targetObj.statement);
+      continue;
+    }
+    if (normalizeDefinition(targetObj.statement) !== normalizeDefinition(currentObj.statement)) {
+      if (targetObj.type === 'table') {
+        warnings.push(
+          `Table ${targetObj.name} definitions differ and require manual review. Install mysqldbcompare for full ALTER scripting.`,
+        );
+      } else {
+        const dropStmt = buildDropStatement(targetObj.type, targetObj.name);
+        if (dropStmt) statements.push(dropStmt);
+        statements.push(targetObj.statement);
+        warnings.push(
+          `${targetObj.type} ${targetObj.name} definitions differ; generated DROP/CREATE statements to refresh the object.`,
+        );
+      }
     }
   }
 
   if (allowDrops) {
-    for (const name of currentTables.keys()) {
-      if (!targetTables.has(name)) {
-        statements.push(`DROP TABLE IF EXISTS \`${name}\`;`);
+    for (const [key, currentObj] of currentObjects.entries()) {
+      if (!targetObjects.has(key)) {
+        const dropStmt = buildDropStatement(currentObj.type, currentObj.name);
+        if (dropStmt) statements.push(dropStmt);
       }
     }
   }
@@ -492,7 +556,7 @@ export async function buildSchemaDiff(options = {}) {
     throw err;
   }
   const toolAvailable = prereq.mysqldbcompareAvailable;
-  const warnings = [];
+  const warnings = [...(prereq.warnings || [])];
   const resolvedSchema = resolveSchemaFile({ schemaPath, schemaFile });
   if (onProgress) onProgress('Validating schema file path');
   const schemaExists = await fsPromises

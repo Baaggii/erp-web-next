@@ -94,11 +94,13 @@ router.get('/schema-diff/check', requireAuth, async (req, res, next) => {
     if (!(await hasAction(session, 'system_settings'))) return res.sendStatus(403);
     const checks = await getSchemaDiffPrerequisites();
     const issues = [];
+    const warnings = [...(checks.warnings || [])];
     if (!checks.mysqldumpAvailable) issues.push('mysqldump is not available in PATH');
     if (!checks.env.DB_NAME) issues.push('DB_NAME environment variable is not set');
     res.json({
       ok: issues.length === 0,
       issues,
+      warnings,
       ...checks,
     });
   } catch (err) {
