@@ -60,3 +60,11 @@ The script loads module definitions from `db/defaultModules.js` and compares the
 to the available React routes. It prints `All sidebar modules have matching routes.`
 when every module has a corresponding route, or lists the missing ones so you can
 correct them.
+
+### JSON conversion and constraint safety
+
+* Before converting scalar columns into JSON, use the **Coding Tables → JSON Converter** tab to inspect any foreign keys, unique constraints, or triggers tied to that field. Columns with blocking constraints must be handled (drop/alter) before conversion will proceed.
+* Always keep the generated scalar backup column (e.g., `sellerid_scalar_backup`) until you have validated the JSON data path in staging.
+* Prefer adding a new JSON column instead of converting primary/foreign keys directly. If you must convert a constrained column, let the converter generate drop/recreate statements and save the migration script so you can replay it in production.
+* Add JSON field hints to `codingTableConfigs.json` via the new `jsonFields` array so the UI automatically renders JSON-aware controls and relation lookups.
+* Use the saved script history in the converter to re-run the exact migration in another environment; every run records the full SQL (including constraint handling and validation checks) for auditability.
