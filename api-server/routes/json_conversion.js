@@ -65,8 +65,6 @@ router.post('/convert', requireAuth, async (req, res, next) => {
           message: err?.message,
           code: err?.code,
           sqlState: err?.sqlState || err?.sqlstate,
-          statement: err?.statement,
-          statementIndex: err?.statementIndex,
         };
       }
     }

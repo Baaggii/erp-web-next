@@ -122,27 +122,8 @@ async function loadColumnUsage(table, columnNames = []) {
   });
   const likePatterns = normalizedColumns.map((col) => `%${col}%`);
   if (likePatterns.length === 0) {
-    return {
-      keyUsage,
-      checkUsage,
-      triggers,
-      routineRefs: [],
-      viewRefs: [],
-      checkClauses: [],
-      columnNames,
-    };
+    return { keyUsage, checkUsage, triggers, routineRefs: [], viewRefs: [], columnNames };
   }
-  const [checkClauses] = await pool.query(
-    `SELECT tc.CONSTRAINT_NAME, cc.CHECK_CLAUSE
-       FROM information_schema.TABLE_CONSTRAINTS tc
-       JOIN information_schema.CHECK_CONSTRAINTS cc
-         ON cc.CONSTRAINT_NAME = tc.CONSTRAINT_NAME
-        AND cc.CONSTRAINT_SCHEMA = tc.CONSTRAINT_SCHEMA
-      WHERE tc.TABLE_SCHEMA = DATABASE()
-        AND tc.TABLE_NAME = ?
-        AND tc.CONSTRAINT_TYPE = 'CHECK'`,
-    [table],
-  );
   const [routineRefs] = await pool.query(
     `SELECT ROUTINE_NAME, ROUTINE_TYPE, ROUTINE_DEFINITION
        FROM information_schema.ROUTINES
@@ -159,7 +140,7 @@ async function loadColumnUsage(table, columnNames = []) {
         AND (${likePatterns.map(() => 'VIEW_DEFINITION LIKE ?').join(' OR ')})`,
     likePatterns,
   );
-  return { keyUsage, checkUsage, triggers, routineRefs, viewRefs, checkClauses, columnNames };
+  return { keyUsage, checkUsage, triggers, routineRefs, viewRefs, columnNames };
 }
 
 function buildConstraintMap(table, columnNames = [], usage = {}) {
@@ -234,9 +215,6 @@ function buildConstraintMap(table, columnNames = [], usage = {}) {
   const routineRegexes = columnNames.map(
     (col) => [col, new RegExp(`\\b${escapeRegex(col)}\\b`, 'i')],
   );
-  const checkClauseRegexes = columnNames.map(
-    (col) => [col, new RegExp(`\\b${escapeRegex(col)}\\b`, 'i')],
-  );
   (usage.triggers || []).forEach((row) => {
     const statement = String(row.ACTION_STATEMENT || '');
     triggerRegexes.forEach(([col, regex]) => {
@@ -257,30 +235,10 @@ function buildConstraintMap(table, columnNames = [], usage = {}) {
       entry.blockingReasons.add(`Trigger ${row.TRIGGER_NAME}${locationNote} references this column.`);
     });
   });
-  (usage.checkClauses || []).forEach((row) => {
-    const clause = String(row.CHECK_CLAUSE || '');
-    checkClauseRegexes.forEach(([col, regex]) => {
-      if (!regex.test(clause) && !matchesColumnRef(clause, col)) return;
-      const entry = ensureEntry(col);
-      entry.constraints.push({
-        name: row.CONSTRAINT_NAME,
-        type: 'CHECK',
-        table,
-        column: col,
-        direction: 'check',
-        checkClause: clause,
-      });
-      entry.hasBlockingConstraint = true;
-      entry.constraintTypes.add('CHECK');
-      entry.blockingReasons.add(
-        `Check constraint ${row.CONSTRAINT_NAME || ''} references ${col} (clause snippet: ${clause.slice(0, 120)}...)`,
-      );
-    });
-  });
   (usage.routineRefs || []).forEach((row) => {
     const body = String(row.ROUTINE_DEFINITION || '');
     routineRegexes.forEach(([col, regex]) => {
-      if (!regex.test(body) && !matchesColumnRef(body, col)) return;
+      if (!regex.test(body)) return;
       const entry = ensureEntry(col);
       entry.hasBlockingConstraint = true;
       entry.blockingReasons.add(
@@ -291,7 +249,7 @@ function buildConstraintMap(table, columnNames = [], usage = {}) {
   (usage.viewRefs || []).forEach((row) => {
     const body = String(row.VIEW_DEFINITION || '');
     routineRegexes.forEach(([col, regex]) => {
-      if (!regex.test(body) && !matchesColumnRef(body, col)) return;
+      if (!regex.test(body)) return;
       const entry = ensureEntry(col);
       entry.hasBlockingConstraint = true;
       entry.blockingReasons.add(
