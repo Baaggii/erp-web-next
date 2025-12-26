@@ -700,11 +700,6 @@ const EMPTY_ENDPOINT = {
   requestSchemaText: '{}',
   requestSampleText: '{}',
   requestSampleNotes: '',
-  requestObjectsText: '{}',
-  aggregationsText: '{}',
-  objectSourcesText: '{}',
-  variationFieldValuesText: '{}',
-  variationScoped: false,
   responseDescription: '',
   responseSchemaText: '',
   fieldDescriptionsText: '',
@@ -1984,11 +1979,6 @@ function createFormState(definition) {
       requestSchemaFallback,
     ),
     requestSampleNotes: definition.requestSampleNotes || '',
-    requestObjectsText: toPrettyJson(definition.requestObjects, '{}'),
-    aggregationsText: toPrettyJson(definition.aggregations, '{}'),
-    objectSourcesText: toPrettyJson(definition.objectSources, '{}'),
-    variationFieldValuesText: toPrettyJson(definition.variationFieldValues, '{}'),
-    variationScoped: Boolean(definition.variationScoped),
     requestSchemaText: toPrettyJson(requestSchema, requestSchemaFallback),
     responseDescription: definition.responseBody?.description || '',
     responseSchemaText: toPrettyJson(definition.responseBody?.schema, '{}'),
@@ -6396,26 +6386,6 @@ export default function PosApiAdmin() {
       baseRequestJson,
       {},
     );
-    const requestObjects = parseJsonInput(
-      'Request objects',
-      formState.requestObjectsText,
-      {},
-    );
-    const aggregations = parseJsonInput(
-      'Aggregations',
-      formState.aggregationsText,
-      {},
-    );
-    const objectSources = parseJsonInput(
-      'Object data sources',
-      formState.objectSourcesText,
-      {},
-    );
-    const variationFieldValues = parseJsonInput(
-      'Variation field values',
-      formState.variationFieldValuesText,
-      {},
-    );
     const responseSchema = parseJsonInput(
       'Response body schema',
       formState.responseSchemaText,
@@ -6821,11 +6791,6 @@ export default function PosApiAdmin() {
       responseFields: responseFieldsWithMapping,
       requestSample,
       requestSampleNotes: formState.requestSampleNotes || '',
-      requestObjects,
-      aggregations,
-      objectSources,
-      variationFieldValues,
-      variationScoped: Boolean(formState.variationScoped),
       ...(Object.keys(responseFieldMappings).length
         ? { responseFieldMappings }
         : {}),
@@ -8558,66 +8523,6 @@ export default function PosApiAdmin() {
             rows={3}
             placeholder="Explain how the base sample should be used or modified."
           />
-        </label>
-        <label style={styles.labelFull}>
-          Request objects (JSON)
-          <span style={styles.fieldHelp}>
-            Declare repeatable objects like receipts, items, and payments so the request tree, samples, and builder stay aligned.
-          </span>
-          <textarea
-            value={formState.requestObjectsText}
-            onChange={(e) => handleChange('requestObjectsText', e.target.value)}
-            style={styles.textarea}
-            rows={6}
-            placeholder='{\n  "receipts": {"path": "receipts[]", "repeatable": true}\n}'
-          />
-        </label>
-        <label style={styles.labelFull}>
-          Object data sources (JSON)
-          <span style={styles.fieldHelp}>
-            Bind request objects to ERP tables (e.g., receipts[].items[] from transactions_inventory).
-          </span>
-          <textarea
-            value={formState.objectSourcesText}
-            onChange={(e) => handleChange('objectSourcesText', e.target.value)}
-            style={styles.textarea}
-            rows={4}
-            placeholder='{\n  "receipts[].items[]": {"source": "transactions_inventory", "repeatPerRow": true}\n}'
-          />
-        </label>
-        <label style={styles.labelFull}>
-          Aggregations (JSON)
-          <span style={styles.fieldHelp}>
-            Automatically calculate totals (sum, count, min, max, expression) before submit.
-          </span>
-          <textarea
-            value={formState.aggregationsText}
-            onChange={(e) => handleChange('aggregationsText', e.target.value)}
-            style={styles.textarea}
-            rows={6}
-            placeholder='{\n  "receipts[].totalAmount": {"sumOf": "receipts[].items[].totalAmount"},\n  "totalAmount": {"sumOf": "receipts[].totalAmount"}\n}'
-          />
-        </label>
-        <label style={styles.labelFull}>
-          Variation default field values (JSON)
-          <span style={styles.fieldHelp}>
-            Provide variation-scoped defaults separate from test data (e.g., type or taxType per variation).
-          </span>
-          <textarea
-            value={formState.variationFieldValuesText}
-            onChange={(e) => handleChange('variationFieldValuesText', e.target.value)}
-            style={styles.textarea}
-            rows={5}
-            placeholder='{\n  "B2C_RECEIPT": {"type": "B2C_RECEIPT", "taxType": "VAT_ABLE"}\n}'
-          />
-        </label>
-        <label style={styles.checkboxLabel}>
-          <input
-            type="checkbox"
-            checked={Boolean(formState.variationScoped)}
-            onChange={(e) => handleChange('variationScoped', e.target.checked)}
-          />
-          <span>Variation-scoped defaults only (keep demo/test data out of live requests)</span>
         </label>
         
         <div style={styles.hintCard}>

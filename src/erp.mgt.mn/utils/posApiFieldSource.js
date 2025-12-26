@@ -30,20 +30,17 @@ export function parseFieldSource(value = '', primaryTableName = '') {
   if (value && typeof value === 'object' && !Array.isArray(value)) {
     const table = typeof value.table === 'string' ? value.table.trim() : '';
     const column = typeof value.column === 'string' ? value.column.trim() : '';
-    const path = typeof value.path === 'string' ? value.path.trim() : '';
-    const resolvedSourceType = (() => {
-      if (typeof value.sourceType === 'string' && value.sourceType.trim()) {
-        return value.sourceType.trim();
-      }
-      if (typeof value.type === 'string' && value.type.trim()) {
-        return value.type.trim();
-      }
-      if (value.envVar) return 'env';
-      if (value.sessionVar) return 'session';
-      if (value.expression) return 'expression';
-      if (value.value !== undefined) return 'literal';
-      return 'column';
-    })();
+    const type = typeof value.type === 'string'
+      ? value.type
+      : value.envVar
+        ? 'env'
+        : value.sessionVar
+          ? 'session'
+          : value.expression
+            ? 'expression'
+            : value.value
+              ? 'literal'
+              : 'column';
     const literal = typeof value.value === 'string' ? value.value.trim() : '';
     const envVar = typeof value.envVar === 'string' ? value.envVar.trim() : '';
     const sessionVar = typeof value.sessionVar === 'string' ? value.sessionVar.trim() : '';
@@ -51,11 +48,9 @@ export function parseFieldSource(value = '', primaryTableName = '') {
     const raw = column || literal || envVar || sessionVar || expression || table;
     return {
       table,
-      column: column || path || (type === 'literal' ? literal : ''),
-      path: path || column,
-      raw: path || raw,
-      type: resolvedSourceType || 'column',
-      sourceType: resolvedSourceType || 'column',
+      column: column || (type === 'literal' ? literal : ''),
+      raw,
+      type,
       envVar,
       sessionVar,
       expression,
@@ -78,71 +73,57 @@ export function buildFieldSource(tableName, columnName) {
 
 export function normalizeMappingSelection(value, primaryTableName = '') {
   const parsed = parseFieldSource(value, primaryTableName);
-  const type = parsed.type || parsed.sourceType || 'column';
+  const type = parsed.type || 'column';
   if (type === 'literal') {
-    return { type, sourceType: type, value: parsed.value ?? parsed.column ?? '' };
+    return { type, value: parsed.value ?? parsed.column ?? '' };
   }
   if (type === 'env') {
-    return { type, sourceType: type, envVar: parsed.envVar || parsed.value || parsed.raw };
+    return { type, envVar: parsed.envVar || parsed.value || parsed.raw };
   }
   if (type === 'session') {
-    return {
-      type,
-      sourceType: type,
-      sessionVar: parsed.sessionVar || parsed.value || parsed.raw,
-    };
+    return { type, sessionVar: parsed.sessionVar || parsed.value || parsed.raw };
   }
   if (type === 'expression') {
-    return {
-      type,
-      sourceType: type,
-      expression: parsed.expression || parsed.value || parsed.raw,
-    };
+    return { type, expression: parsed.expression || parsed.value || parsed.raw };
   }
   return {
     type: 'column',
-    sourceType: 'column',
     table: parsed.table,
     column: parsed.column || parsed.value || '',
-    path: parsed.path || parsed.column || parsed.value || '',
   };
 }
 
 export function buildMappingValue(selection = {}, { preserveType = false } = {}) {
-  const type = selection.sourceType || selection.type || 'column';
+  const type = selection.type || 'column';
   if (type === 'literal') {
     const literal = selection.value ?? selection.literal ?? '';
     const trimmed = `${literal}`.trim();
     if (!trimmed && !preserveType) return '';
-    return { type: 'literal', sourceType: 'literal', value: String(trimmed) };
+    return { type: 'literal', value: String(trimmed) };
   }
   if (type === 'env') {
     const envVar = selection.envVar || selection.value || '';
     const trimmed = typeof envVar === 'string' ? envVar.trim() : envVar;
     if (!trimmed && !preserveType) return '';
-    return { type: 'env', sourceType: 'env', envVar: trimmed || '' };
+    return { type: 'env', envVar: trimmed || '' };
   }
   if (type === 'session') {
     const sessionVar = selection.sessionVar || selection.value || '';
     const trimmed = typeof sessionVar === 'string' ? sessionVar.trim() : sessionVar;
     if (!trimmed && !preserveType) return '';
-    return { type: 'session', sourceType: 'session', sessionVar: trimmed || '' };
+    return { type: 'session', sessionVar: trimmed || '' };
   }
   if (type === 'expression') {
     const expression = selection.expression || selection.value || '';
     const trimmed = typeof expression === 'string' ? expression.trim() : expression;
     if (!trimmed && !preserveType) return '';
-    return { type: 'expression', sourceType: 'expression', expression: trimmed || '' };
+    return { type: 'expression', expression: trimmed || '' };
   }
   const table = typeof selection.table === 'string' ? selection.table.trim() : '';
   const column = typeof selection.column === 'string' ? selection.column.trim() : '';
   if (!column && !table && !preserveType) return '';
-  const path = buildFieldSource(table, column || selection.value || '');
-  return {
-    type: 'column',
-    sourceType: 'column',
-    table,
-    column: column || selection.value || '',
-    path,
-  };
+  if (column) {
+    return buildFieldSource(table, column || selection.value || '');
+  }
+  return { type: 'column', table, column: column || selection.value || '' };
 }
