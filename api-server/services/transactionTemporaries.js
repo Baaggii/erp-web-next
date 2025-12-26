@@ -2004,6 +2004,7 @@ export async function promoteTemporarySubmission(
                 const updates = computePosApiUpdates(lookup, posApiResponse, {
                   fieldsFromPosApi: formCfg.fieldsFromPosApi,
                   responseFieldMapping: formCfg.posApiResponseMapping,
+                  targetTable: row.table_name,
                 });
                 const entries = Object.entries(updates || {});
                 if (entries.length > 0) {

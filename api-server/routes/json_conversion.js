@@ -61,32 +61,15 @@ router.post('/convert', requireAuth, async (req, res, next) => {
         await runPlanStatements(plan.statements);
         executed = true;
       } catch (err) {
-        const statement = err?.statement;
-        const statementIndex = Number.isInteger(err?.statementIndex)
-          ? err.statementIndex
-          : null;
-        const message =
-          statementIndex !== null && statement
-            ? `${err?.message || 'Conversion failed'} at statement ${statementIndex + 1}: ${statement}`
-            : err?.message || 'Conversion failed while applying statements.';
         runError = {
-          message,
+          message: err?.message,
           code: err?.code,
           sqlState: err?.sqlState || err?.sqlstate,
-          statement,
-          statementIndex,
         };
       }
     }
     const logId = await recordConversionLog(table, logColumns, plan.scriptText, runBy);
     if (runError) {
-      const diagnosticQueries = plan.previews
-        .map((p) =>
-          Array.isArray(p?.diagnosticQueries)
-            ? p.diagnosticQueries.map((q) => ({ column: p.column, query: q }))
-            : [],
-        )
-        .flat();
       return res.status(409).json({
         message:
           runError.message ||
@@ -97,7 +80,6 @@ router.post('/convert', requireAuth, async (req, res, next) => {
         executed: false,
         logId,
         blockedColumns: blocked.map((p) => p.column),
-        diagnosticQueries,
       });
     }
     res.json({

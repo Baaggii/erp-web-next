@@ -18,7 +18,6 @@ export default function JsonConversionPanel() {
   const [backupEnabled, setBackupEnabled] = useState(true);
   const [blockedColumns, setBlockedColumns] = useState([]);
   const [errorDetails, setErrorDetails] = useState(null);
-  const [diagnosticQueries, setDiagnosticQueries] = useState([]);
 
   const selectedColumns = useMemo(
     () =>
@@ -188,12 +187,7 @@ export default function JsonConversionPanel() {
         setPreviews(data.previews || []);
         setScriptText(data.scriptText || '');
         setBlockedColumns(data.blockedColumns || []);
-        setErrorDetails(data.error || data || null);
-        setDiagnosticQueries(data.diagnosticQueries || []);
         const reason = data?.message || 'Conversion failed';
-        if (data?.error?.statement) {
-          console.error('Failed statement', data.error.statementIndex, data.error.statement);
-        }
         addToast(reason, 'error');
         return;
       }
@@ -201,7 +195,6 @@ export default function JsonConversionPanel() {
       setScriptText(data.scriptText || '');
       setBlockedColumns(data.blockedColumns || []);
       setErrorDetails(null);
-      setDiagnosticQueries([]);
       addToast('Conversion script generated', 'success');
       const scripts = await fetch('/api/json_conversion/scripts', { credentials: 'include' })
         .then((r) => (r.ok ? r.json() : { scripts: [] }))
@@ -485,18 +478,6 @@ export default function JsonConversionPanel() {
           <div style={{ marginTop: '0.35rem', color: '#7c2d12' }}>
             Review constraints/triggers on the column, drop them, and rerun with “convert” + handleConstraints enabled.
           </div>
-          {diagnosticQueries.length > 0 && (
-            <div style={{ marginTop: '0.5rem' }}>
-              <div style={{ fontWeight: 600, color: '#7c2d12' }}>Helpful diagnostic queries:</div>
-              <ol style={{ paddingLeft: '1.25rem', color: '#0f172a', wordBreak: 'break-all' }}>
-                {diagnosticQueries.map((dq, idx) => (
-                  <li key={`${dq.column}-${idx}`}>
-                    <code>{dq.query}</code> {dq.column ? `(column: ${dq.column})` : ''}
-                  </li>
-                ))}
-              </ol>
-            </div>
-          )}
         </div>
       )}
 
