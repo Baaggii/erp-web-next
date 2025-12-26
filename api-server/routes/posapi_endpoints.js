@@ -1333,8 +1333,7 @@ function deriveNestedObjectsFromFields(fields = []) {
   return Array.from(nested.values());
 }
 
-function buildRequestSampleFromFields(fields = [], defaults = {}, example, options = {}) {
-  const { supportsItems = true, supportsPayments = true } = options;
+function buildRequestSampleFromFields(fields = [], defaults = {}, example) {
   const sample = {};
   const defaultMap = defaults && typeof defaults === 'object' ? defaults : {};
   const exampleValues = Array.isArray(example)
@@ -1360,31 +1359,6 @@ function buildRequestSampleFromFields(fields = [], defaults = {}, example, optio
           : null;
     setValueAtTokens(sample, tokens, defaultValue);
   });
-
-  const ensureArrayTemplate = (target, key, template) => {
-    if (!Array.isArray(target[key]) || target[key].length === 0) {
-      target[key] = [template];
-      return;
-    }
-    const first = target[key][0] || {};
-    target[key][0] = { ...template, ...first };
-  };
-
-  if (supportsItems) {
-    sample.receipts = Array.isArray(sample.receipts) ? sample.receipts : [{}];
-    ensureArrayTemplate(sample, 'receipts', {});
-    const receiptTemplate = { items: [{ name: '', qty: 0 }] };
-    ensureArrayTemplate(sample, 'receipts', receiptTemplate);
-    if (supportsPayments) {
-      const baseReceipt = sample.receipts[0] || {};
-      if (!Array.isArray(baseReceipt.payments) || baseReceipt.payments.length === 0) {
-        baseReceipt.payments = [{}];
-      }
-      sample.receipts[0] = baseReceipt;
-    }
-  } else if (supportsPayments) {
-    ensureArrayTemplate(sample, 'payments', {});
-  }
 
   return Object.keys(sample).length ? sample : undefined;
 }
@@ -1718,10 +1692,6 @@ function extractOperationsFromOpenApi(spec, meta = {}, metaLookup = {}) {
         requestFields,
         fieldDefaults,
         requestExample && typeof requestExample === 'object' ? requestExample : undefined,
-        {
-          supportsItems: inferredPosApiType !== 'STOCK_QR',
-          supportsPayments: true,
-        },
       );
 
       entries.push({
@@ -2173,10 +2143,6 @@ function extractOperationsFromPostman(spec, meta = {}) {
         combinedRequestFields,
         fieldDefaults,
         requestExample && typeof requestExample === 'object' ? requestExample : undefined,
-        {
-          supportsItems: posApiType !== 'STOCK_QR',
-          supportsPayments: true,
-        },
       );
 
       entries.push({
