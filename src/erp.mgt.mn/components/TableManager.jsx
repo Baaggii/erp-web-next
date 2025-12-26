@@ -760,6 +760,7 @@ const TableManager = forwardRef(function TableManager({
           ? true
           : accessEvaluation.canPost === true,
       canSaveTemporary: Boolean(accessEvaluation.allowTemporary),
+      allowTemporaryOnly: Boolean(accessEvaluation.allowTemporaryOnly),
     }),
     [accessEvaluation],
   );
@@ -776,6 +777,7 @@ const TableManager = forwardRef(function TableManager({
   const isEditingTemporaryDraft = activeTemporaryDraftId != null;
   const canSaveTemporaryDraft = canCreateTemporary || isEditingTemporaryDraft;
   const canPostTransactions = permission.canPost;
+  const allowTemporaryOnly = Boolean(permission.allowTemporaryOnly);
 
   const availableTemporaryScopes = useMemo(() => {
     const scopes = [];
@@ -7233,6 +7235,7 @@ const TableManager = forwardRef(function TableManager({
         readOnly={isTemporaryReadOnlyMode}
         isAdding={isAdding}
         canPost={canPostTransactions}
+        allowTemporaryOnly={allowTemporaryOnly}
         forceEditable={guardOverridesActive}
         extraFooterContent={forceResolveFooterContent}
         posApiEnabled={Boolean(formConfig?.posApiEnabled)}
