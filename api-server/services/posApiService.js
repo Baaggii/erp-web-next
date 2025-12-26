@@ -54,7 +54,6 @@ function toStringValue(value) {
 }
 
 const ENV_PLACEHOLDER_REGEX = /^\s*\{\{\s*(POSAPI_[A-Z0-9_]+)\s*}}\s*$/;
-const AGGREGATION_FUNCTIONS = new Set(['sum', 'count', 'min', 'max']);
 
 function tokenizeFieldPath(path) {
   if (typeof path !== 'string' || !path.trim()) return [];
@@ -578,22 +577,6 @@ function normalizeMapping(mapping) {
       const methods = normalizePaymentMethodsMapping(value);
       if (Object.keys(methods).length) {
         normalized[key] = methods;
-      }
-      return;
-    }
-    if (key === 'aggregations') {
-      if (value && typeof value === 'object' && !Array.isArray(value)) {
-        const cleaned = {};
-        Object.entries(value).forEach(([path, fn]) => {
-          if (typeof path !== 'string') return;
-          const normalizedFn = typeof fn === 'string' ? fn.trim().toLowerCase() : '';
-          if (AGGREGATION_FUNCTIONS.has(normalizedFn)) {
-            cleaned[path] = normalizedFn;
-          }
-        });
-        if (Object.keys(cleaned).length) {
-          normalized[key] = cleaned;
-        }
       }
       return;
     }
