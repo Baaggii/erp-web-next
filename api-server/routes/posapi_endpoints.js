@@ -1250,6 +1250,7 @@ function collectFieldDefaults(fields = []) {
 function deriveMappingHintsFromFields(fields = []) {
   const hints = {};
   const topLevelFields = [];
+  const seenTopLevel = new Set();
   const receiptFields = [];
   const itemFields = [];
   const paymentFields = [];
@@ -1264,6 +1265,10 @@ function deriveMappingHintsFromFields(fields = []) {
       description: typeof entry?.description === 'string' ? entry.description : undefined,
     };
     if (key.startsWith('receipts[].items[].')) {
+      if (!seenTopLevel.has('items[]')) {
+        topLevelFields.push({ field: 'items[]', required: false, description: 'Item list' });
+        seenTopLevel.add('items[]');
+      }
       itemFields.push({ ...base, field: key.replace('receipts[].items[].', '') });
       return;
     }
@@ -1468,6 +1473,16 @@ function analysePosApiRequest(requestSchema, example) {
   const resolvedReceiptTypes = receiptTypes.length ? receiptTypes : [];
   const resolvedTaxTypes = taxTypes.length ? taxTypes : [];
   const resolvedPaymentMethods = paymentMethods.length ? paymentMethods : [];
+  const nestedPaths = {};
+  if (receiptsNode) {
+    nestedPaths.receipts = receiptsNode.type === 'array' ? 'receipts[]' : 'receipts';
+    if (supportsItems) {
+      nestedPaths.items = 'items[]';
+    }
+  }
+  if (paymentsNode) {
+    nestedPaths.payments = paymentsNode.type === 'array' ? 'payments[]' : 'payments';
+  }
 
   return {
     receiptTypes: resolvedReceiptTypes,
@@ -1477,6 +1492,7 @@ function analysePosApiRequest(requestSchema, example) {
     supportsMultipleReceipts,
     supportsMultiplePayments,
     posApiType: resolvedReceiptTypes[0] || '',
+    ...(Object.keys(nestedPaths).length ? { nestedPaths } : {}),
   };
 }
 

@@ -68,6 +68,11 @@ const emptyConfig = {
   fieldsFromPosApi: [],
   posApiMapping: {},
   posApiResponseMapping: {},
+  posApiRequestMappings: {},
+  posApiResponseFieldMappings: {},
+  posApiAggregationDefinitions: [],
+  posApiVariationDefaults: {},
+  posApiCustomResponseFields: [],
 };
 
 export default function PosTxnConfig() {
@@ -1011,6 +1016,12 @@ export default function PosTxnConfig() {
         !Array.isArray(loaded.posApiMapping)
           ? { ...loaded.posApiMapping }
           : {};
+      loaded.posApiRequestMappings =
+        loaded.posApiRequestMappings &&
+        typeof loaded.posApiRequestMappings === 'object' &&
+        !Array.isArray(loaded.posApiRequestMappings)
+          ? { ...loaded.posApiRequestMappings }
+          : {};
       if (loaded.posApiEndpointMeta && typeof loaded.posApiEndpointMeta === 'object') {
         loaded.posApiEndpointMeta = { ...loaded.posApiEndpointMeta };
       } else {
@@ -1018,6 +1029,24 @@ export default function PosTxnConfig() {
       }
       loaded.posApiInfoEndpointMeta = Array.isArray(loaded.posApiInfoEndpointMeta)
         ? loaded.posApiInfoEndpointMeta.filter((entry) => entry && typeof entry === 'object')
+        : [];
+      loaded.posApiResponseFieldMappings =
+        loaded.posApiResponseFieldMappings &&
+        typeof loaded.posApiResponseFieldMappings === 'object' &&
+        !Array.isArray(loaded.posApiResponseFieldMappings)
+          ? { ...loaded.posApiResponseFieldMappings }
+          : {};
+      loaded.posApiAggregationDefinitions = Array.isArray(loaded.posApiAggregationDefinitions)
+        ? loaded.posApiAggregationDefinitions
+        : [];
+      loaded.posApiVariationDefaults =
+        loaded.posApiVariationDefaults &&
+        typeof loaded.posApiVariationDefaults === 'object' &&
+        !Array.isArray(loaded.posApiVariationDefaults)
+          ? loaded.posApiVariationDefaults
+          : {};
+      loaded.posApiCustomResponseFields = Array.isArray(loaded.posApiCustomResponseFields)
+        ? loaded.posApiCustomResponseFields
         : [];
 
       setIsDefault(!!def);
