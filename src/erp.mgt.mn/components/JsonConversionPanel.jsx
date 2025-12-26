@@ -10,21 +10,14 @@ export default function JsonConversionPanel() {
   const [tables, setTables] = useState([]);
   const [selectedTable, setSelectedTable] = useState('');
   const [columns, setColumns] = useState([]);
-  const [columnConfigs, setColumnConfigs] = useState({});
+  const [selectedColumns, setSelectedColumns] = useState([]);
   const [previews, setPreviews] = useState([]);
   const [scriptText, setScriptText] = useState('');
   const [savedScripts, setSavedScripts] = useState([]);
   const [loading, setLoading] = useState(false);
   const [backupEnabled, setBackupEnabled] = useState(true);
+  const [constraintOverrides, setConstraintOverrides] = useState({});
   const [blockedColumns, setBlockedColumns] = useState([]);
-
-  const selectedColumns = useMemo(
-    () =>
-      Object.entries(columnConfigs)
-        .filter(([, cfg]) => cfg?.selected)
-        .map(([name]) => name),
-    [columnConfigs],
-  );
 
   useEffect(() => {
     fetch('/api/json_conversion/tables', { credentials: 'include' })
@@ -43,7 +36,8 @@ export default function JsonConversionPanel() {
   useEffect(() => {
     if (!selectedTable) {
       setColumns([]);
-      setColumnConfigs({});
+      setSelectedColumns([]);
+      setConstraintOverrides({});
       return;
     }
     setLoading(true);
@@ -53,68 +47,35 @@ export default function JsonConversionPanel() {
       .then((res) => (res.ok ? res.json() : { columns: [] }))
       .then((data) => {
         setColumns(data.columns || []);
-        setColumnConfigs({});
+        setSelectedColumns([]);
+        setConstraintOverrides({});
       })
       .catch(() => {
         setColumns([]);
-        setColumnConfigs({});
+        setSelectedColumns([]);
+        setConstraintOverrides({});
       })
       .finally(() => setLoading(false));
   }, [selectedTable]);
 
-  function defaultActionForColumn(meta) {
-    if (meta?.isPrimaryKey) return 'companion';
-    if (meta?.hasBlockingConstraint) return 'manual';
-    return 'convert';
-  }
-
   function toggleColumn(name) {
     const meta = columns.find((c) => c.name === name);
-    setColumnConfigs((prev) => {
-      const existing = prev[name] || {};
-      const nextSelected = !existing.selected;
-      return {
-        ...prev,
-        [name]: {
-          selected: nextSelected,
-          action: nextSelected ? existing.action || defaultActionForColumn(meta) : 'skip',
-          handleConstraints:
-            nextSelected && (existing.handleConstraints ?? Boolean(meta?.hasBlockingConstraint)),
-          customSql: existing.customSql || '',
-        },
-      };
+    if (meta?.hasBlockingConstraint && !constraintOverrides[name]) {
+      addToast('Resolve constraints first: drop/adjust them or skip this column.', 'warning');
+      return;
+    }
+    setSelectedColumns((prev) => {
+      if (prev.includes(name)) {
+        return prev.filter((c) => c !== name);
+      }
+      return [...prev, name];
     });
   }
 
-  function updateAction(name, action) {
-    const meta = columns.find((c) => c.name === name);
-    if (meta?.isPrimaryKey && action === 'convert') {
-      addToast(
-        'Primary key columns should remain scalar. Prefer the companion JSON column option.',
-        'warning',
-      );
-    }
-    setColumnConfigs((prev) => ({
+  function toggleConstraintOverride(name) {
+    setConstraintOverrides((prev) => ({
       ...prev,
-      [name]: {
-        ...(prev[name] || { selected: true }),
-        selected: true,
-        action,
-        handleConstraints: action === 'convert',
-        customSql: action === 'manual' ? prev[name]?.customSql || '' : prev[name]?.customSql || '',
-      },
-    }));
-  }
-
-  function updateCustomSql(name, value) {
-    setColumnConfigs((prev) => ({
-      ...prev,
-      [name]: {
-        ...(prev[name] || { selected: true }),
-        selected: true,
-        action: prev[name]?.action || 'manual',
-        customSql: value,
-      },
+      [name]: !prev[name],
     }));
   }
 
@@ -133,44 +94,23 @@ export default function JsonConversionPanel() {
       addToast('Pick a table and at least one column', 'warning');
       return;
     }
-
-    const missingManualSql = [];
-    const criticalConflicts = [];
-    const payloadColumns = selectedColumns.map((col) => {
+    const unresolved = selectedColumns.filter((col) => {
       const meta = columns.find((c) => c.name === col);
-      const cfg = columnConfigs[col] || {};
-      const action = cfg.action || defaultActionForColumn(meta);
-      if (meta?.isPrimaryKey && action === 'convert') {
-        criticalConflicts.push(col);
-      }
-      if (action === 'manual' && meta?.hasBlockingConstraint && !(cfg.customSql || '').trim()) {
-        missingManualSql.push(col);
-      }
-      return {
-        name: col,
-        action,
-        handleConstraints: action === 'convert',
-        customSql: (cfg.customSql || '').trim() || undefined,
-      };
+      return meta?.hasBlockingConstraint && !constraintOverrides[col];
     });
-
-    if (criticalConflicts.length > 0) {
+    if (unresolved.length > 0) {
       addToast(
-        `Do not convert critical keys directly: ${criticalConflicts.join(', ')}. Use the companion JSON option instead.`,
+        `Resolve constraints for: ${unresolved.join(', ')} (drop/adjust or skip the column).`,
         'warning',
       );
       return;
     }
-    if (missingManualSql.length > 0) {
-      addToast(
-        `Provide SQL steps for manual constraint handling: ${missingManualSql.join(', ')}`,
-        'warning',
-      );
-      return;
-    }
-
     setLoading(true);
     try {
+      const payloadColumns = selectedColumns.map((col) => ({
+        name: col,
+        handleConstraints: Boolean(constraintOverrides[col]),
+      }));
       const res = await fetch('/api/json_conversion/convert', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -223,36 +163,21 @@ export default function JsonConversionPanel() {
   }
 
   const selectedPreviewText = useMemo(
-    () => {
-      if (selectedColumns.length === 0) return 'No columns selected';
-      const summary = selectedColumns.map((name) => {
-        const meta = columns.find((c) => c.name === name);
-        const action = (columnConfigs[name] || {}).action || defaultActionForColumn(meta);
-        return `${name} (${action})`;
-      });
-      return `Selected: ${toCsv(summary)}`;
-    },
-    [selectedColumns, columnConfigs, columns],
+    () =>
+      selectedColumns.length > 0
+        ? `Selected: ${toCsv(selectedColumns)}`
+        : 'No columns selected',
+    [selectedColumns],
   );
 
   function renderConstraintSummary(col) {
     const constraints = col.constraints || [];
     const triggers = col.triggers || [];
-    const warnings = [];
-    if (col.isPrimaryKey) {
-      warnings.push('Primary key column: prefer keeping scalar.');
-    }
-    (col.blockingReasons || []).forEach((reason) => warnings.push(reason));
-    if (constraints.length === 0 && triggers.length === 0 && warnings.length === 0) {
+    if (constraints.length === 0 && triggers.length === 0) {
       return <span style={{ color: '#166534' }}>No dependent constraints detected</span>;
     }
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', marginTop: '0.25rem' }}>
-        {warnings.map((warning) => (
-          <div key={warning} style={{ color: '#b45309', fontSize: '0.85rem' }}>
-            {warning}
-          </div>
-        ))}
         {constraints.map((c) => (
           <div key={`${c.name}-${c.table}-${c.type}`} style={{ fontSize: '0.85rem' }}>
             <strong>{c.type}</strong> — {c.table}.{c.column}
@@ -323,97 +248,54 @@ export default function JsonConversionPanel() {
                   minWidth: '14rem',
                 }}
               >
-                {(() => {
-                  const isSelected = selectedColumns.includes(col.name);
-                  const config = columnConfigs[col.name] || {};
-                  const action = config.action || defaultActionForColumn(col);
-                  return (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-                        <input
-                          type="checkbox"
-                          checked={isSelected}
-                          onChange={() => toggleColumn(col.name)}
-                          disabled={loading}
-                        />{' '}
-                        <div>
-                          <div>
-                            {col.name}{' '}
-                            <span style={{ color: '#666' }}>({col.type})</span>
-                            {col.hasBlockingConstraint && (
-                              <span
-                                style={{ color: '#b45309', marginLeft: '0.35rem', fontWeight: 600 }}
-                              >
-                                ⚠️ Constraints detected
-                              </span>
-                            )}
-                            {col.isPrimaryKey && (
-                              <span
-                                style={{ color: '#b91c1c', marginLeft: '0.35rem', fontWeight: 700 }}
-                              >
-                                Primary key
-                              </span>
-                            )}
-                          </div>
-                          {renderConstraintSummary(col)}
-                        </div>
-                      </div>
-                      {isSelected && (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
-                          <label>
-                            Action:{' '}
-                            <select
-                              value={action}
-                              onChange={(e) => updateAction(col.name, e.target.value)}
-                              disabled={loading}
-                            >
-                              <option value="convert">Convert (drop/reapply constraints)</option>
-                              <option value="manual">
-                                Manual SQL required before conversion (provide snippet)
-                              </option>
-                              <option value="companion">
-                                Add companion JSON column, keep scalar column
-                              </option>
-                              <option value="skip">Skip this column</option>
-                            </select>
-                          </label>
-                          {action === 'manual' && (
-                            <textarea
-                              rows={3}
-                              placeholder="SQL steps to drop or adjust constraints manually before conversion"
-                              value={config.customSql || ''}
-                              onChange={(e) => updateCustomSql(col.name, e.target.value)}
-                              disabled={loading}
-                            />
-                          )}
-                          {action === 'convert' && col.hasBlockingConstraint && (
-                            <div style={{ color: '#b45309', fontSize: '0.9rem' }}>
-                              Constraints will be dropped and re-applied in the generated script.
-                            </div>
-                          )}
-                          {action === 'companion' && (
-                            <div style={{ color: '#0f172a', fontSize: '0.9rem' }}>
-                              A new JSON column will be added to store multi-value data while the
-                              original scalar column remains untouched.
-                            </div>
-                          )}
-                          {action === 'skip' && (
-                            <div style={{ color: '#475569', fontSize: '0.9rem' }}>
-                              This column will be left unchanged.
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })()}
+                <input
+                  type="checkbox"
+                  checked={selectedColumns.includes(col.name)}
+                  onChange={() => toggleColumn(col.name)}
+                  disabled={loading}
+                />{' '}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.15rem' }}>
+                  <div>
+                    {col.name}{' '}
+                    <span style={{ color: '#666' }}>({col.type})</span>
+                    {col.hasBlockingConstraint && !constraintOverrides[col.name] && (
+                      <span style={{ color: '#b45309', marginLeft: '0.35rem', fontWeight: 600 }}>
+                        ⚠️ Constraints detected
+                      </span>
+                    )}
+                    {constraintOverrides[col.name] && (
+                      <span style={{ color: '#16a34a', marginLeft: '0.35rem', fontWeight: 600 }}>
+                        Constraints handled
+                      </span>
+                    )}
+                  </div>
+                  {renderConstraintSummary(col)}
+                  {col.hasBlockingConstraint && (
+                    <button
+                      type="button"
+                      onClick={() => toggleConstraintOverride(col.name)}
+                      style={{
+                        width: 'fit-content',
+                        padding: '0.25rem 0.5rem',
+                        borderRadius: '4px',
+                        border: '1px solid #0f172a',
+                        background: constraintOverrides[col.name] ? '#dcfce7' : '#fff',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      {constraintOverrides[col.name]
+                        ? 'Include drop/recreate steps'
+                        : 'Mark constraints handled'}
+                    </button>
+                  )}
+                </div>
               </label>
             ))}
           </div>
           <div style={{ marginTop: '0.5rem', color: '#555' }}>{selectedPreviewText}</div>
           {blockedColumns.length > 0 && (
             <div style={{ marginTop: '0.5rem', color: '#b45309' }}>
-              Skipped columns awaiting manual constraint handling: {blockedColumns.join(', ')}
+              Skipped columns with constraints: {blockedColumns.join(', ')}
             </div>
           )}
         </div>

@@ -13,30 +13,19 @@ export function normalizeColumnsInput(columns = []) {
   return columns
     .map((col) => {
       if (typeof col === 'string') {
-        return { name: col, handleConstraints: true, action: 'convert', customSql: '' };
+        return { name: col, handleConstraints: false, action: 'convert' };
       }
       if (col && typeof col === 'object') {
         const name = col.name || col.column || col.field;
         if (!name) return null;
         const normalized = String(name);
-        const allowedActions = new Set(['convert', 'skip', 'manual', 'companion']);
-        const action = allowedActions.has(col.action) ? col.action : 'convert';
+        const action = col.action === 'skip' ? 'skip' : 'convert';
         const handleConstraints =
-          action === 'convert' &&
-          col.handleConstraints !== false &&
-          col.handle_constraints !== false &&
-          col.resolveConstraints !== false;
-        const customSql =
-          typeof col.customSql === 'string'
-            ? col.customSql
-            : typeof col.custom_sql === 'string'
-              ? col.custom_sql
-              : '';
+          col.handleConstraints || col.handle_constraints || col.resolveConstraints;
         return {
           name: normalized,
           handleConstraints: Boolean(handleConstraints),
           action,
-          customSql,
         };
       }
       return null;
@@ -110,9 +99,6 @@ function buildConstraintMap(table, columnNames = [], usage = {}) {
         constraints: [],
         triggers: [],
         hasBlockingConstraint: false,
-        constraintTypes: new Set(),
-        blockingReasons: new Set(),
-        primaryKey: false,
       };
     }
     return map[col];
@@ -124,7 +110,6 @@ function buildConstraintMap(table, columnNames = [], usage = {}) {
     if (!targetColumn) return;
     const entry = ensureEntry(targetColumn);
     const type = row.CONSTRAINT_TYPE || '';
-    if (type) entry.constraintTypes.add(type);
     entry.constraints.push({
       name: row.CONSTRAINT_NAME,
       type,
@@ -134,15 +119,7 @@ function buildConstraintMap(table, columnNames = [], usage = {}) {
       referencedColumn: row.REFERENCED_COLUMN_NAME,
       direction,
     });
-    if (blockingTypes.has(type)) {
-      entry.hasBlockingConstraint = true;
-      entry.blockingReasons.add(
-        type === 'PRIMARY KEY'
-          ? 'Part of a PRIMARY KEY; consider companion JSON column instead of conversion.'
-          : `Constraint ${row.CONSTRAINT_NAME || type} must be handled before conversion.`,
-      );
-      if (type === 'PRIMARY KEY') entry.primaryKey = true;
-    }
+    if (blockingTypes.has(type)) entry.hasBlockingConstraint = true;
   });
   (usage.checkUsage || []).forEach((row) => {
     if (!row.COLUMN_NAME) return;
@@ -155,8 +132,6 @@ function buildConstraintMap(table, columnNames = [], usage = {}) {
       direction: 'check',
     });
     entry.hasBlockingConstraint = true;
-    entry.constraintTypes.add(row.CONSTRAINT_TYPE || 'CHECK');
-    entry.blockingReasons.add(`Check constraint ${row.CONSTRAINT_NAME || ''} impacts this column.`);
   });
   const triggerRegexes = columnNames.map(
     (col) => [col, new RegExp(`\\b${escapeRegex(col)}\\b`, 'i')],
@@ -173,7 +148,6 @@ function buildConstraintMap(table, columnNames = [], usage = {}) {
         statementPreview: statement.slice(0, 160),
       });
       entry.hasBlockingConstraint = true;
-      entry.blockingReasons.add(`Trigger ${row.TRIGGER_NAME} references this column.`);
     });
   });
   return map;
@@ -206,18 +180,14 @@ export async function listColumns(table) {
     constraints: constraintMap[row.Field]?.constraints || [],
     triggers: constraintMap[row.Field]?.triggers || [],
     hasBlockingConstraint: Boolean(constraintMap[row.Field]?.hasBlockingConstraint),
-    blockingReasons: Array.from(constraintMap[row.Field]?.blockingReasons || []),
-    constraintTypes: Array.from(constraintMap[row.Field]?.constraintTypes || []),
-    isPrimaryKey: Boolean(constraintMap[row.Field]?.primaryKey || row.Key === 'PRI'),
   }));
 }
 
-function buildConstraintHandling(table, columnName, constraintInfo = {}, backupId) {
+function buildConstraintHandling(table, columnName, constraintInfo = {}) {
   const tableId = escapeId(table);
   const columnId = escapeId(columnName);
   const dropStatements = new Set();
   const recreateStatements = new Set();
-  const postStatements = new Set();
   const warnings = [];
   const seen = new Set();
   (constraintInfo.constraints || []).forEach((c) => {
@@ -226,6 +196,10 @@ function buildConstraintHandling(table, columnName, constraintInfo = {}, backupI
     seen.add(constraintKey);
     const constraintName = c.name ? escapeId(c.name) : null;
     if ((c.type || '').toUpperCase() === 'PRIMARY KEY') {
+      dropStatements.add(`ALTER TABLE ${tableId} DROP PRIMARY KEY`);
+      recreateStatements.add(
+        `-- TODO: Recreate PRIMARY KEY for ${columnId} or introduce surrogate key after JSON migration`,
+      );
       warnings.push(
         `Primary key ${c.name || ''} will block conversion. Consider introducing a surrogate key before migrating ${columnName} to JSON.`,
       );
@@ -234,15 +208,9 @@ function buildConstraintHandling(table, columnName, constraintInfo = {}, backupI
     if ((c.type || '').toUpperCase() === 'UNIQUE') {
       if (constraintName) {
         dropStatements.add(`ALTER TABLE ${tableId} DROP INDEX ${constraintName}`);
-        if (backupId) {
-          postStatements.add(
-            `ALTER TABLE ${tableId} ADD CONSTRAINT ${constraintName} UNIQUE (${backupId})`,
-          );
-        } else {
-          recreateStatements.add(
-            `-- Recreate UNIQUE constraint ${constraintName} with JSON-aware validation for ${columnId}`,
-          );
-        }
+        recreateStatements.add(
+          `-- Recreate UNIQUE constraint ${constraintName} with JSON-aware validation for ${columnId}`,
+        );
       }
       return;
     }
@@ -252,17 +220,7 @@ function buildConstraintHandling(table, columnName, constraintInfo = {}, backupI
       if (constraintName) {
         dropStatements.add(`ALTER TABLE ${targetId} DROP FOREIGN KEY ${constraintName}`);
       }
-      if (
-        backupId &&
-        c.direction !== 'incoming' &&
-        c.referencedTable &&
-        c.referencedColumn &&
-        constraintName
-      ) {
-        postStatements.add(
-          `ALTER TABLE ${tableId} ADD CONSTRAINT ${constraintName} FOREIGN KEY (${backupId}) REFERENCES ${escapeId(c.referencedTable)} (${escapeId(c.referencedColumn)})`,
-        );
-      } else if (c.referencedTable && c.referencedColumn) {
+      if (c.referencedTable && c.referencedColumn) {
         recreateStatements.add(
           `-- Validate JSON values for ${columnId} against ${escapeId(c.referencedTable)}.${escapeId(c.referencedColumn)} using JSON_TABLE before recreating referential rules`,
         );
@@ -289,7 +247,6 @@ function buildConstraintHandling(table, columnName, constraintInfo = {}, backupI
   return {
     dropStatements: Array.from(dropStatements),
     recreateStatements: Array.from(recreateStatements),
-    postStatements: Array.from(postStatements),
     warnings,
   };
 }
@@ -300,76 +257,8 @@ function buildColumnStatements(table, columnName, columnMeta, options, constrain
   const backupName = options.backup ? `${columnName}_scalar_backup` : null;
   const backupId = backupName ? escapeId(backupName) : null;
   const baseType = columnMeta?.type || 'TEXT';
-  const action = options.action || 'convert';
-  const manualSql = options.customSql || '';
   const statements = [];
   const previewNotes = [];
-  const postStatements = [];
-
-  if (constraintInfo.primaryKey && action !== 'companion') {
-    return {
-      statements,
-      preview: {
-        column: columnName,
-        originalType: columnMeta?.type || 'UNKNOWN',
-        exampleBefore: '123',
-        exampleAfter: 'unchanged',
-        backupColumn: null,
-        blocked: true,
-        notes:
-          'Primary key columns should remain scalar. Use the companion JSON option to preserve the key while adding multi-value storage.',
-      },
-      skipped: true,
-      manualSql,
-    };
-  }
-
-  if (action === 'manual') {
-    return {
-      statements,
-      preview: {
-        column: columnName,
-        originalType: columnMeta?.type || 'UNKNOWN',
-        exampleBefore: '123',
-        exampleAfter: 'awaiting manual constraint drop/alter',
-        backupColumn: backupName,
-        blocked: true,
-        notes:
-          manualSql?.trim().length > 0
-            ? `Manual SQL provided for constraints. Run before converting: ${manualSql}`
-            : 'Manual SQL required to drop or alter constraints before conversion.',
-      },
-      skipped: true,
-      manualSql,
-    };
-  }
-
-  if (action === 'companion') {
-    const companionName = `${columnName}_json_multi`;
-    const companionId = escapeId(companionName);
-    statements.push(`ALTER TABLE ${tableId} ADD COLUMN IF NOT EXISTS ${companionId} JSON NULL`);
-    statements.push(
-      `UPDATE ${tableId} SET ${companionId} = JSON_ARRAY(${columnId}) WHERE ${columnId} IS NOT NULL`,
-    );
-    statements.push(
-      `ALTER TABLE ${tableId} DROP CHECK IF EXISTS ${escapeId(`${companionName}_check`)}`,
-    );
-    statements.push(
-      `ALTER TABLE ${tableId} ADD CONSTRAINT ${escapeId(
-        `${companionName}_check`,
-      )} CHECK (JSON_VALID(${companionId}) AND JSON_TYPE(${companionId}) = 'ARRAY')`,
-    );
-    const preview = {
-      column: columnName,
-      originalType: columnMeta?.type || 'UNKNOWN',
-      exampleBefore: '123',
-      exampleAfter: '["123"] (companion column)',
-      backupColumn: companionName,
-      notes:
-        'Scalar column retained. A companion JSON column will store multi-value data for this field.',
-    };
-    return { statements, preview, manualSql };
-  }
 
   if (constraintInfo.hasBlockingConstraint && !options.handleConstraints) {
     return {
@@ -389,17 +278,14 @@ function buildColumnStatements(table, columnName, columnMeta, options, constrain
   }
 
   if (constraintInfo.hasBlockingConstraint && options.handleConstraints) {
-    const { dropStatements, recreateStatements, warnings, postStatements: afterStatements } =
-      buildConstraintHandling(
-        table,
-        columnName,
-        constraintInfo,
-        backupId,
-      );
+    const { dropStatements, recreateStatements, warnings } = buildConstraintHandling(
+      table,
+      columnName,
+      constraintInfo,
+    );
     statements.push(...dropStatements);
     if (warnings.length > 0) previewNotes.push(...warnings);
     if (recreateStatements.length > 0) previewNotes.push(...recreateStatements);
-    if (afterStatements.length > 0) postStatements.push(...afterStatements);
   }
 
   if (backupId) {
@@ -435,9 +321,6 @@ function buildColumnStatements(table, columnName, columnMeta, options, constrain
       validationName,
     )} CHECK (JSON_VALID(${columnId}) AND JSON_TYPE(${columnId}) = 'ARRAY')`,
   );
-  if (postStatements.length > 0) {
-    statements.push(...postStatements);
-  }
   if (constraintInfo?.constraints?.length || constraintInfo?.triggers?.length) {
     preview.notes =
       (preview.notes ? `${preview.notes} ` : '') +
@@ -447,13 +330,12 @@ function buildColumnStatements(table, columnName, columnMeta, options, constrain
     preview.notes = `${preview.notes || ''} ${previewNotes.join(' ')}`.trim();
   }
 
-  return { statements, preview, manualSql };
+  return { statements, preview };
 }
 
 export function buildConversionPlan(table, columns, metadata, options = {}) {
   const normalizedColumns = normalizeColumnsInput(columns);
   const plan = { statements: [], previews: [] };
-  const scriptLines = [];
   const metadataMap = new Map(metadata.map((m) => [m.name, m]));
   normalizedColumns.forEach((col) => {
     const meta = metadataMap.get(col.name) || {};
@@ -463,7 +345,6 @@ export function buildConversionPlan(table, columns, metadata, options = {}) {
           constraints: constraintMeta.constraints,
           triggers: constraintMeta.triggers,
           hasBlockingConstraint: constraintMeta.hasBlockingConstraint,
-          primaryKey: constraintMeta.isPrimaryKey,
         }
       : {};
     if (col.action === 'skip') {
@@ -476,38 +357,21 @@ export function buildConversionPlan(table, columns, metadata, options = {}) {
         blocked: Boolean(constraintInfo?.hasBlockingConstraint),
         notes: 'Skipped by admin. Column was left unchanged.',
       });
-      scriptLines.push(`-- ${col.name} skipped per admin selection`);
       return;
     }
     const { statements, preview, skipped } = buildColumnStatements(
       table,
       col.name,
       meta,
-      {
-        ...options,
-        handleConstraints: Boolean(col.handleConstraints),
-        action: col.action,
-        customSql: col.customSql,
-      },
+      { ...options, handleConstraints: Boolean(col.handleConstraints) },
       constraintInfo,
     );
-    if (col.customSql) {
-      scriptLines.push(`-- Manual SQL for ${col.name}: ${col.customSql}`);
-    }
     if (!skipped) {
       plan.statements.push(...statements);
-      scriptLines.push(...statements);
     }
     plan.previews.push(preview);
   });
-  plan.scriptText = scriptLines
-    .map((s) => {
-      const text = String(s || '').trim();
-      if (!text) return null;
-      return text.startsWith('--') ? text : `${text};`;
-    })
-    .filter(Boolean)
-    .join('\n');
+  plan.scriptText = plan.statements.map((s) => `${s};`).join('\n');
   return plan;
 }
 
