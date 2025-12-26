@@ -120,7 +120,27 @@ async function loadColumnUsage(table, columnNames = []) {
     );
     return row.EVENT_OBJECT_TABLE === table || matchesColumn;
   });
-  return { keyUsage, checkUsage, triggers, columnNames };
+  const likePatterns = normalizedColumns.map((col) => `%${col}%`);
+  if (likePatterns.length === 0) {
+    return { keyUsage, checkUsage, triggers, routineRefs: [], viewRefs: [], columnNames };
+  }
+  const [routineRefs] = await pool.query(
+    `SELECT ROUTINE_NAME, ROUTINE_TYPE, ROUTINE_DEFINITION
+       FROM information_schema.ROUTINES
+      WHERE ROUTINE_SCHEMA = DATABASE()
+        AND ROUTINE_DEFINITION IS NOT NULL
+        AND (${likePatterns.map(() => 'ROUTINE_DEFINITION LIKE ?').join(' OR ')})`,
+    likePatterns,
+  );
+  const [viewRefs] = await pool.query(
+    `SELECT TABLE_NAME, VIEW_DEFINITION
+       FROM information_schema.VIEWS
+      WHERE TABLE_SCHEMA = DATABASE()
+        AND VIEW_DEFINITION IS NOT NULL
+        AND (${likePatterns.map(() => 'VIEW_DEFINITION LIKE ?').join(' OR ')})`,
+    likePatterns,
+  );
+  return { keyUsage, checkUsage, triggers, routineRefs, viewRefs, columnNames };
 }
 
 function buildConstraintMap(table, columnNames = [], usage = {}) {
@@ -182,6 +202,9 @@ function buildConstraintMap(table, columnNames = [], usage = {}) {
   const triggerRegexes = columnNames.map(
     (col) => [col, new RegExp(`\\b${escapeRegex(col)}\\b`, 'i')],
   );
+  const routineRegexes = columnNames.map(
+    (col) => [col, new RegExp(`\\b${escapeRegex(col)}\\b`, 'i')],
+  );
   (usage.triggers || []).forEach((row) => {
     const statement = String(row.ACTION_STATEMENT || '');
     triggerRegexes.forEach(([col, regex]) => {
@@ -200,6 +223,28 @@ function buildConstraintMap(table, columnNames = [], usage = {}) {
           ? ` on table ${row.EVENT_OBJECT_TABLE}`
           : '';
       entry.blockingReasons.add(`Trigger ${row.TRIGGER_NAME}${locationNote} references this column.`);
+    });
+  });
+  (usage.routineRefs || []).forEach((row) => {
+    const body = String(row.ROUTINE_DEFINITION || '');
+    routineRegexes.forEach(([col, regex]) => {
+      if (!regex.test(body)) return;
+      const entry = ensureEntry(col);
+      entry.hasBlockingConstraint = true;
+      entry.blockingReasons.add(
+        `Routine ${row.ROUTINE_NAME} (${row.ROUTINE_TYPE}) references this column; review for dynamic constraint/trigger logic.`,
+      );
+    });
+  });
+  (usage.viewRefs || []).forEach((row) => {
+    const body = String(row.VIEW_DEFINITION || '');
+    routineRegexes.forEach(([col, regex]) => {
+      if (!regex.test(body)) return;
+      const entry = ensureEntry(col);
+      entry.hasBlockingConstraint = true;
+      entry.blockingReasons.add(
+        `View ${row.TABLE_NAME} references this column; check for downstream constraints or dependencies.`,
+      );
     });
   });
   return map;
