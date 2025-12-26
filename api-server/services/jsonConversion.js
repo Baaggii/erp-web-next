@@ -8,6 +8,17 @@ function escapeRegex(str) {
   return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+function buildDiagnosticQueries(table, column) {
+  const safeColumn = String(column || '').replace(/'/g, "''");
+  const safeTable = String(table || '').replace(/'/g, "''");
+  return [
+    `SELECT * FROM information_schema.triggers WHERE trigger_schema = DATABASE() AND action_statement LIKE '%${safeColumn}%'`,
+    `SELECT * FROM information_schema.table_constraints WHERE table_schema = DATABASE() AND table_name = '${safeTable}' AND constraint_type='CHECK'`,
+    `SELECT * FROM information_schema.routines WHERE routine_schema = DATABASE() AND routine_definition LIKE '%${safeColumn}%'`,
+    `SELECT * FROM information_schema.views WHERE table_schema = DATABASE() AND view_definition LIKE '%${safeColumn}%'`,
+  ];
+}
+
 export function normalizeColumnsInput(columns = []) {
   if (!Array.isArray(columns)) return [];
   return columns
@@ -314,6 +325,7 @@ function buildColumnStatements(table, columnName, columnMeta, options, constrain
   const columnId = escapeId(columnName);
   const backupName = options.backup ? `${columnName}_scalar_backup` : null;
   const backupId = backupName ? escapeId(backupName) : null;
+  const diagnosticQueries = buildDiagnosticQueries(table, columnName);
   const baseType = columnMeta?.type || 'TEXT';
   const action = options.action || 'convert';
   const manualSql = options.customSql || '';
@@ -333,6 +345,7 @@ function buildColumnStatements(table, columnName, columnMeta, options, constrain
         blocked: true,
         notes:
           'Primary key columns should remain scalar. Use the companion JSON option to preserve the key while adding multi-value storage.',
+        diagnosticQueries,
       },
       skipped: true,
       manualSql,
@@ -353,6 +366,7 @@ function buildColumnStatements(table, columnName, columnMeta, options, constrain
           manualSql?.trim().length > 0
             ? `Manual SQL provided for constraints. Run before converting: ${manualSql}`
             : 'Manual SQL required to drop or alter constraints before conversion.',
+        diagnosticQueries,
       },
       skipped: true,
       manualSql,
@@ -378,10 +392,11 @@ function buildColumnStatements(table, columnName, columnMeta, options, constrain
       column: columnName,
       originalType: columnMeta?.type || 'UNKNOWN',
       exampleBefore: '123',
-      exampleAfter: '["123"] (companion column)',
-      backupColumn: companionName,
-      notes:
-        'Scalar column retained. A companion JSON column will store multi-value data for this field.',
+        exampleAfter: '["123"] (companion column)',
+        backupColumn: companionName,
+        notes:
+          'Scalar column retained. A companion JSON column will store multi-value data for this field.',
+        diagnosticQueries,
     };
     return { statements, preview, manualSql };
   }
@@ -398,6 +413,7 @@ function buildColumnStatements(table, columnName, columnMeta, options, constrain
         blocked: true,
         notes:
           'Skipped: column has constraints or triggers. Enable constraint handling to generate drop/recreate statements.',
+        diagnosticQueries,
       },
       skipped: true,
     };
@@ -439,6 +455,7 @@ function buildColumnStatements(table, columnName, columnMeta, options, constrain
     notes: backupName
       ? `Original values will be stored in ${backupName} before conversion.`
       : 'Conversion will run without keeping a dedicated backup column.',
+    diagnosticQueries,
   };
 
   const validationName = `${columnName}_json_check`;
