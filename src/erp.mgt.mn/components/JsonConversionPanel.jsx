@@ -17,6 +17,7 @@ export default function JsonConversionPanel() {
   const [loading, setLoading] = useState(false);
   const [backupEnabled, setBackupEnabled] = useState(true);
   const [blockedColumns, setBlockedColumns] = useState([]);
+  const [errorDetails, setErrorDetails] = useState(null);
 
   const selectedColumns = useMemo(
     () =>
@@ -193,6 +194,7 @@ export default function JsonConversionPanel() {
       setPreviews(data.previews || []);
       setScriptText(data.scriptText || '');
       setBlockedColumns(data.blockedColumns || []);
+      setErrorDetails(null);
       addToast('Conversion script generated', 'success');
       const scripts = await fetch('/api/json_conversion/scripts', { credentials: 'include' })
         .then((r) => (r.ok ? r.json() : { scripts: [] }))
@@ -450,6 +452,32 @@ export default function JsonConversionPanel() {
               </li>
             ))}
           </ul>
+        </div>
+      )}
+
+      {errorDetails && (
+        <div style={{ marginTop: '1rem', padding: '0.75rem', background: '#fff7ed', border: '1px solid #fdba74' }}>
+          <strong style={{ color: '#9a3412' }}>Conversion error</strong>
+          <div style={{ marginTop: '0.35rem', color: '#7c2d12' }}>
+            {errorDetails.message || 'Conversion failed during execution.'}
+          </div>
+          {errorDetails.statement && (
+            <div style={{ marginTop: '0.35rem', fontFamily: 'monospace', whiteSpace: 'pre-wrap', color: '#0f172a' }}>
+              {errorDetails.statementIndex !== undefined && errorDetails.statementIndex !== null
+                ? `Statement #${errorDetails.statementIndex + 1}: `
+                : 'Statement: '}
+              {errorDetails.statement}
+            </div>
+          )}
+          {errorDetails.code && (
+            <div style={{ marginTop: '0.2rem', color: '#7c2d12' }}>SQL Code: {errorDetails.code}</div>
+          )}
+          {errorDetails.sqlState && (
+            <div style={{ marginTop: '0.2rem', color: '#7c2d12' }}>SQL State: {errorDetails.sqlState}</div>
+          )}
+          <div style={{ marginTop: '0.35rem', color: '#7c2d12' }}>
+            Review constraints/triggers on the column, drop them, and rerun with “convert” + handleConstraints enabled.
+          </div>
         </div>
       )}
 
