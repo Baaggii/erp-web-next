@@ -160,9 +160,22 @@ async function dumpCurrentSchema(outputPath, signal) {
   args.push(dbName);
   const env = { ...process.env };
   if (pass) env.MYSQL_PWD = pass;
-  const { stdout } = await runCommand('mysqldump', args, { env, signal });
-  await fsPromises.writeFile(outputPath, stdout, 'utf8');
-  return { outputPath, sql: stdout };
+  try {
+    const { stdout } = await runCommand('mysqldump', args, { env, signal });
+    await fsPromises.writeFile(outputPath, stdout, 'utf8');
+    return { outputPath, sql: stdout };
+  } catch (err) {
+    if (err.aborted) {
+      err.status = err.status || 499;
+      err.message = err.message || 'mysqldump aborted by abort signal';
+    } else {
+      err.status = err.status || 500;
+      const stderrMsg = err.stderr?.trim();
+      err.message = stderrMsg ? `mysqldump failed: ${stderrMsg}` : err.message || 'mysqldump failed';
+    }
+    err.details = err.details || { code: err.code, stderr: err.stderr, stdout: err.stdout };
+    throw err;
+  }
 }
 
 function stripCommentLines(sqlText) {
@@ -279,17 +292,31 @@ async function importSchemaFile(schemaFilePath, tempDbName, signal) {
 
   const hasMysql = await commandExists('mysql');
   if (hasMysql) {
-    await runCommand(
-      'mysql',
-      [...mysqlArgs, '-e', `DROP DATABASE IF EXISTS \`${tempDbName}\`; CREATE DATABASE \`${tempDbName}\`;`],
-      { env, signal },
-    );
-    await runCommand(
-      'mysql',
-      [...mysqlArgs, tempDbName],
-      { env, signal, stdinFilePath: schemaFilePath },
-    );
-    return { importedWithCli: true };
+    try {
+      await runCommand(
+        'mysql',
+        [...mysqlArgs, '-e', `DROP DATABASE IF EXISTS \`${tempDbName}\`; CREATE DATABASE \`${tempDbName}\`;`],
+        { env, signal },
+      );
+      await runCommand(
+        'mysql',
+        [...mysqlArgs, tempDbName],
+        { env, signal, stdinFilePath: schemaFilePath },
+      );
+      return { importedWithCli: true };
+    } catch (err) {
+      if (err.aborted) {
+        err.status = err.status || 499;
+      } else {
+        err.status = err.status || 500;
+      }
+      const stderrMsg = err.stderr?.trim();
+      if (stderrMsg) {
+        err.message = `${err.message || 'mysql import failed'}: ${stderrMsg}`;
+      }
+      err.details = err.details || { code: err.code, stderr: err.stderr, stdout: err.stdout };
+      throw err;
+    }
   }
 
   // Fallback: apply statements via pooled connection
