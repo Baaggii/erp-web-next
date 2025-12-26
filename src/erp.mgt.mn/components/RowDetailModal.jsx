@@ -14,28 +14,6 @@ export default function RowDetailModal({
   fieldTypeMap = {},
 }) {
   const { t } = useTranslation();
-  const normalizeJsonArrayValue = React.useCallback((value) => {
-    if (value === undefined || value === null || value === '') return [];
-    if (Array.isArray(value)) return value;
-    if (typeof value === 'string') {
-      const trimmed = value.trim();
-      if (!trimmed) return [];
-      try {
-        const parsed = JSON.parse(trimmed);
-        if (Array.isArray(parsed)) return parsed;
-      } catch {
-        // ignore parse errors
-      }
-      if (trimmed.includes(',')) {
-        return trimmed
-          .split(',')
-          .map((v) => v.trim())
-          .filter((v) => v.length > 0);
-      }
-      return [trimmed];
-    }
-    return [value];
-  }, []);
   const safeRow = row || {};
   const cols = columns.length > 0 ? columns : Object.keys(safeRow);
   const placeholders = React.useMemo(() => {
@@ -86,11 +64,6 @@ export default function RowDetailModal({
                   }}
                 >
                   {(() => {
-                    const isJsonField = fieldTypeMap[c] === 'json';
-                    if (isJsonField) {
-                      const values = normalizeJsonArrayValue(safeRow[c]);
-                      return values.length ? values.join(', ') : '—';
-                    }
                     const raw = relations[c]
                       ? labelMap[c][safeRow[c]] || safeRow[c]
                       : safeRow[c];

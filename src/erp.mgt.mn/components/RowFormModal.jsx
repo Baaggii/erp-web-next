@@ -76,7 +76,6 @@ const RowFormModal = function RowFormModal({
   imagenameField = [],
   imageIdField = '',
   scope = 'forms',
-  jsonColumns = [],
   labelFontSize,
   boxWidth,
   boxHeight,
@@ -111,42 +110,6 @@ const RowFormModal = function RowFormModal({
   extraFooterContent = null,
   allowTemporaryOnly = false,
 }) {
-  const jsonFieldSet = React.useMemo(
-    () => new Set((jsonColumns || []).map((f) => String(f).toLowerCase())),
-    [jsonColumns],
-  );
-  const normalizeJsonArrayValue = useCallback((value) => {
-    if (value === undefined || value === null || value === '') return [];
-    if (Array.isArray(value)) return value;
-    if (typeof value === 'string') {
-      const trimmed = value.trim();
-      if (!trimmed) return [];
-      try {
-        const parsed = JSON.parse(trimmed);
-        if (Array.isArray(parsed)) return parsed;
-      } catch {
-        // ignore parse errors
-      }
-      if (trimmed.includes(',')) {
-        return trimmed
-          .split(',')
-          .map((v) => v.trim())
-          .filter((v) => v.length > 0);
-      }
-      return [trimmed];
-    }
-    return [value];
-  }, []);
-  const unwrapJsonValue = useCallback((value) => {
-    if (value && typeof value === 'object' && !Array.isArray(value)) {
-      if (Object.prototype.hasOwnProperty.call(value, 'value')) return value.value;
-      if (Object.prototype.hasOwnProperty.call(value, 'id')) return value.id;
-      if (Object.prototype.hasOwnProperty.call(value, 'key')) return value.key;
-      if (Object.prototype.hasOwnProperty.call(value, 'code')) return value.code;
-    }
-    return value;
-  }, []);
-
   const mounted = useRef(false);
   const renderCount = useRef(0);
   const warned = useRef(false);
@@ -715,7 +678,6 @@ const RowFormModal = function RowFormModal({
     const now = new Date();
     columns.forEach((c) => {
       const typ = fieldTypeMap[c];
-      const isJsonField = typ === 'json' || jsonFieldSet.has(String(c).toLowerCase());
       let placeholder = '';
       if (typ === 'time') {
         placeholder = 'HH:MM:SS';
@@ -728,12 +690,7 @@ const RowFormModal = function RowFormModal({
       const missing =
         !row || rowValue === undefined || rowValue === '';
       let val;
-      if (isJsonField) {
-        const normalized = normalizeJsonArrayValue(sourceValue).map((v) => unwrapJsonValue(v));
-        val = normalized;
-        init[c] = Array.isArray(val) ? val : [];
-        return;
-      } else if (placeholder) {
+      if (placeholder) {
         val = normalizeDateInput(String(sourceValue ?? ''), placeholder);
       } else if (typ === 'number') {
         val = formatNumericValue(c, sourceValue);
@@ -786,7 +743,6 @@ const RowFormModal = function RowFormModal({
     });
     return extras;
   });
-  const [jsonDrafts, setJsonDrafts] = useState({});
 
   const resolveCombinationFilters = useCallback(
     (column, overrideConfig = null) => {
@@ -3188,87 +3144,11 @@ const RowFormModal = function RowFormModal({
         ? '1'
         : (1 / 10 ** numericScale).toFixed(numericScale);
     const isNumericField = fieldTypeMap[c] === 'number';
-    const isJsonField = fieldTypeMap[c] === 'json' || jsonFieldSet.has(String(c).toLowerCase());
     const autoSelectForField = getAutoSelectConfig(c);
     const resolvedRelationConfig = relationConfigMap[c] || autoSelectForField?.config;
 
     if (disabled) {
       const raw = isColumn ? formVals[c] : extraVals[c];
-      if (isJsonField) {
-        const values = normalizeJsonArrayValue(raw).map((v) => unwrapJsonValue(v));
-        const labelForValue = (val) => {
-          const normalizedVal = unwrapJsonValue(val);
-          const normalizedKey = normalizeRelationOptionKey(normalizedVal);
-          const optionLabels =
-            relationOptionLabelLookup[c] || relationOptionLabelLookup[String(c).toLowerCase()];
-          if (normalizedKey && optionLabels && optionLabels[normalizedKey] !== undefined) {
-            return optionLabels[normalizedKey];
-          }
-          if (Array.isArray(relations[c])) {
-            const match = relations[c].find((opt) => String(opt.value) === String(normalizedVal));
-            if (match) return match.label ?? normalizedVal;
-          }
-          const row = relationData[c]?.[normalizedVal];
-          const cfg = resolvedRelationConfig || relationConfigMap[c] || {};
-          if (row && cfg) {
-            const parts = [];
-            const identifier = getRowValueCaseInsensitive(row, cfg.idField || cfg.column);
-            if (identifier !== undefined && identifier !== null) parts.push(identifier);
-            (cfg.displayFields || []).forEach((df) => {
-              if (row[df] !== undefined) parts.push(row[df]);
-            });
-            if (parts.length > 0) return parts.join(' - ');
-          }
-          return normalizedVal ?? '';
-        };
-        const chips =
-          values.length === 0
-            ? '—'
-            : values.map((val, idx) => (
-                <span
-                  key={`${val}-${idx}`}
-                  style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '0.35rem',
-                    padding: '0.15rem 0.35rem',
-                    backgroundColor: '#eef2ff',
-                    border: '1px solid #c7d2fe',
-                    borderRadius: '999px',
-                    marginRight: '0.25rem',
-                  }}
-                >
-                  {labelForValue(val)}
-                </span>
-              ));
-        const content = (
-          <div
-            className="border rounded bg-gray-100 px-2 py-1"
-            style={readonlyBoxStyle}
-            ref={(el) => (readonlyRefs.current[c] = el)}
-            tabIndex={0}
-            role="textbox"
-            aria-readonly="true"
-            onFocus={() => handleFocusField(c)}
-          >
-            {chips}
-          </div>
-        );
-        if (!withLabel) return <TooltipWrapper title={tip}>{content}</TooltipWrapper>;
-        return (
-          <TooltipWrapper key={c} title={tip}>
-            <div className={fitted ? 'mb-1' : 'mb-3'}>
-              <label className="block mb-1 font-medium" style={labelStyle}>
-                {labels[c] || c}
-                {requiredFields.includes(c) && (
-                  <span className="text-red-500">*</span>
-                )}
-              </label>
-              {content}
-            </div>
-          </TooltipWrapper>
-        );
-      }
       const val = typeof raw === 'object' && raw !== null ? raw.value : raw;
       let display = typeof raw === 'object' && raw !== null ? raw.label || val : val;
       const normalizedValueKey = normalizeRelationOptionKey(val);
@@ -3371,255 +3251,6 @@ const RowFormModal = function RowFormModal({
               )}
             </label>
             {content}
-          </div>
-        </TooltipWrapper>
-      );
-    }
-
-    if (isJsonField) {
-      const currentValues = normalizeJsonArrayValue(formVals[c]).map((v) => unwrapJsonValue(v));
-      const labelForValue = (val) => {
-        const normalizedVal = unwrapJsonValue(val);
-        const normalizedKey = normalizeRelationOptionKey(normalizedVal);
-        const optionLabels =
-          relationOptionLabelLookup[c] || relationOptionLabelLookup[String(c).toLowerCase()];
-        if (normalizedKey && optionLabels && optionLabels[normalizedKey] !== undefined) {
-          return optionLabels[normalizedKey];
-        }
-        if (Array.isArray(relations[c])) {
-          const match = relations[c].find((opt) => String(opt.value) === String(normalizedVal));
-          if (match) return match.label ?? normalizedVal;
-        }
-        const row = relationData[c]?.[normalizedVal];
-        const cfg = resolvedRelationConfig || relationConfigMap[c] || {};
-        if (row && cfg) {
-          const parts = [];
-          const identifier = getRowValueCaseInsensitive(row, cfg.idField || cfg.column);
-          if (identifier !== undefined && identifier !== null) parts.push(identifier);
-          (cfg.displayFields || []).forEach((df) => {
-            if (row[df] !== undefined) parts.push(row[df]);
-          });
-          if (parts.length > 0) return parts.join(' - ');
-        }
-        return normalizedVal ?? '';
-      };
-      const removeValue = (index) => {
-        setFormValuesWithGenerated((prev) => {
-          const existing = normalizeJsonArrayValue(prev[c]).map((v) => unwrapJsonValue(v));
-          const next = existing.filter((_, idx) => idx !== index);
-          return { ...prev, [c]: next };
-        });
-      };
-      const addValue = (val) => {
-        if (val === undefined || val === null || val === '') return;
-        notifyAutoResetGuardOnEdit(c);
-        setFormValuesWithGenerated((prev) => {
-          const existing = normalizeJsonArrayValue(prev[c]).map((v) => unwrapJsonValue(v));
-          if (existing.some((item) => String(item) === String(val))) return prev;
-          return { ...prev, [c]: [...existing, val] };
-        });
-        setErrors((er) => ({ ...er, [c]: undefined }));
-      };
-      const chips =
-        currentValues.length === 0
-          ? '—'
-          : currentValues.map((val, idx) => (
-              <span
-                key={`${val}-${idx}`}
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '0.35rem',
-                  padding: '0.15rem 0.35rem',
-                  backgroundColor: '#eef2ff',
-                  border: '1px solid #c7d2fe',
-                  borderRadius: '999px',
-                  marginRight: '0.25rem',
-                }}
-              >
-                {labelForValue(val)}
-                <button
-                  type="button"
-                  onClick={() => removeValue(idx)}
-                  style={{
-                    border: 'none',
-                    background: 'transparent',
-                    cursor: 'pointer',
-                    color: '#991b1b',
-                  }}
-                >
-                  ×
-                </button>
-              </span>
-            ));
-
-      const renderJsonSelector = () => {
-        const draftVal = jsonDrafts[c] ?? '';
-        const commonAdd = (val) => {
-          addValue(val);
-          setJsonDrafts((prev) => ({ ...prev, [c]: '' }));
-        };
-        if (resolvedRelationConfig) {
-          const conf = resolvedRelationConfig;
-          const comboFilters =
-            autoSelectForField?.filters ?? resolveCombinationFilters(c, conf);
-          const hasCombination = Boolean(
-            conf?.combinationSourceColumn && conf?.combinationTargetColumn,
-          );
-          const combinationReady =
-            autoSelectForField?.combinationReady ??
-            isCombinationFilterReady(hasCombination, conf?.combinationTargetColumn, comboFilters);
-          return (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
-              <AsyncSearchSelect
-                title={tip}
-                table={conf.table}
-                searchColumn={conf.idField || conf.column}
-                searchColumns={[conf.idField || conf.column, ...(conf.displayFields || [])]}
-                labelFields={conf.displayFields || []}
-                value={draftVal}
-                onChange={(val) => setJsonDrafts((prev) => ({ ...prev, [c]: val }))}
-                onSelect={(opt) => commonAdd(opt?.value ?? '')}
-                disabled={disabled}
-                onKeyDown={(e) => handleKeyDown(e, c)}
-                onFocus={(e) => {
-                  e.target.select();
-                  handleFocusField(c);
-                }}
-                inputRef={(el) => (inputRefs.current[c] = el)}
-                inputStyle={inputStyle}
-                companyId={company}
-                filters={comboFilters || undefined}
-                shouldFetch={combinationReady}
-              />
-              <button
-                type="button"
-                onClick={() => commonAdd(draftVal)}
-                style={{ alignSelf: 'flex-start' }}
-              >
-                Add selection
-              </button>
-            </div>
-          );
-        }
-        if (viewSourceMap[c]) {
-          const view = viewSourceMap[c];
-          const cfg = viewDisplays[view] || {};
-          const comboFilters = resolveCombinationFilters(c, cfg);
-          const hasCombination = Boolean(
-            cfg?.combinationSourceColumn && cfg?.combinationTargetColumn,
-          );
-          const combinationReady = isCombinationFilterReady(
-            hasCombination,
-            cfg?.combinationTargetColumn,
-            comboFilters,
-          );
-          return (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
-              <AsyncSearchSelect
-                title={tip}
-                table={view}
-                searchColumn={cfg.idField || c}
-                searchColumns={[cfg.idField || c, ...(cfg.displayFields || [])]}
-                labelFields={cfg.displayFields || []}
-                idField={cfg.idField || c}
-                value={draftVal}
-                onChange={(val) => setJsonDrafts((prev) => ({ ...prev, [c]: val }))}
-                onSelect={(opt) => commonAdd(opt?.value ?? '')}
-                disabled={disabled}
-                onKeyDown={(e) => handleKeyDown(e, c)}
-                onFocus={(e) => {
-                  e.target.select();
-                  handleFocusField(c);
-                }}
-                inputRef={(el) => (inputRefs.current[c] = el)}
-                inputStyle={inputStyle}
-                companyId={company}
-                filters={comboFilters || undefined}
-                shouldFetch={combinationReady}
-              />
-              <button
-                type="button"
-                onClick={() => commonAdd(draftVal)}
-                style={{ alignSelf: 'flex-start' }}
-              >
-                Add selection
-              </button>
-            </div>
-          );
-        }
-        if (Array.isArray(relations[c])) {
-          const filteredOptions = filterRelationOptions(c, relations[c]);
-          return (
-            <select
-              multiple
-              title={tip}
-              ref={(el) => (inputRefs.current[c] = el)}
-              value={currentValues.map((v) => String(v))}
-              onFocus={() => handleFocusField(c)}
-              onChange={(e) => {
-                notifyAutoResetGuardOnEdit(c);
-                const selected = Array.from(e.target.selectedOptions).map((opt) =>
-                  unwrapJsonValue(opt.value),
-                );
-                setFormValuesWithGenerated((prev) => ({ ...prev, [c]: selected }));
-                setErrors((er) => ({ ...er, [c]: undefined }));
-              }}
-              disabled={disabled}
-              className={inputClass}
-              style={inputStyle}
-            >
-              {filteredOptions.map((opt) => (
-                <option key={opt.value} value={opt.value}>
-                  {opt.label}
-                </option>
-              ))}
-            </select>
-          );
-        }
-        return (
-          <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap' }}>
-            <input
-              title={tip}
-              ref={(el) => (inputRefs.current[c] = el)}
-              value={draftVal}
-              onChange={(e) => setJsonDrafts((prev) => ({ ...prev, [c]: e.target.value }))}
-              onFocus={(e) => {
-                e.target.select();
-                handleFocusField(c);
-              }}
-              onKeyDown={(e) => handleKeyDown(e, c)}
-              className={inputClass}
-              style={{ ...inputStyle, width: '12rem' }}
-              placeholder="Add value"
-            />
-            <button type="button" onClick={() => commonAdd(draftVal)}>
-              Add
-            </button>
-          </div>
-        );
-      };
-
-      const control = (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.25rem' }}>{chips}</div>
-          {renderJsonSelector()}
-        </div>
-      );
-
-      if (!withLabel) return <TooltipWrapper title={tip}>{control}</TooltipWrapper>;
-
-      return (
-        <TooltipWrapper key={c} title={tip}>
-          <div className={fitted ? 'mb-1' : 'mb-3'}>
-            <label className="block mb-1 font-medium" style={labelStyle}>
-              {labels[c] || c}
-              {requiredFields.includes(c) && (
-                <span className="text-red-500">*</span>
-              )}
-            </label>
-            {control}
-            {err && <div className="text-red-500 text-sm">{err}</div>}
           </div>
         </TooltipWrapper>
       );
@@ -3880,7 +3511,6 @@ const RowFormModal = function RowFormModal({
             relationConfigs={relationConfigMap}
             relationData={relationData}
             fieldTypeMap={fieldTypeMap}
-            jsonColumns={jsonColumns}
             labels={labels}
             totalAmountFields={totalAmountFields}
             totalCurrencyFields={totalCurrencyFields}

@@ -37,39 +37,6 @@ function normalizeNumberInput(value) {
   return value.replace(',', '.');
 }
 
-function normalizeJsonArrayValue(value) {
-  if (value === undefined || value === null || value === '') return [];
-  if (Array.isArray(value)) return value;
-  if (typeof value === 'string') {
-    const trimmed = value.trim();
-    if (!trimmed) return [];
-    try {
-      const parsed = JSON.parse(trimmed);
-      if (Array.isArray(parsed)) return parsed;
-    } catch {
-      // ignore parse errors
-    }
-    if (trimmed.includes(',')) {
-      return trimmed
-        .split(',')
-        .map((v) => v.trim())
-        .filter((v) => v.length > 0);
-    }
-    return [trimmed];
-  }
-  return [value];
-}
-
-function unwrapJsonValue(value) {
-  if (value && typeof value === 'object' && !Array.isArray(value)) {
-    if (Object.prototype.hasOwnProperty.call(value, 'value')) return value.value;
-    if (Object.prototype.hasOwnProperty.call(value, 'id')) return value.id;
-    if (Object.prototype.hasOwnProperty.call(value, 'key')) return value.key;
-    if (Object.prototype.hasOwnProperty.call(value, 'code')) return value.code;
-  }
-  return value;
-}
-
 function InlineTransactionTable(
   {
     fields = [],
@@ -119,7 +86,6 @@ function InlineTransactionTable(
     numericScaleMap = {},
     disabledFieldReasons = {},
     readOnly = false,
-    jsonColumns = [],
   },
   ref,
 ) {
@@ -135,7 +101,6 @@ function InlineTransactionTable(
     return row[ROW_OVERRIDE_ID];
   }
   const [tableDisplayFields, setTableDisplayFields] = useState([]);
-  const [jsonDrafts, setJsonDrafts] = useState({});
   useEffect(() => {
     fetch('/api/display_fields', { credentials: 'include' })
       .then((res) => (res.ok ? res.json() : {}))
@@ -189,10 +154,6 @@ function InlineTransactionTable(
     }
     return base;
   }, [allFields, disabledFields, fields, readOnly]);
-  const jsonColumnSet = React.useMemo(
-    () => new Set((jsonColumns || []).map((f) => String(f).toLowerCase())),
-    [jsonColumns],
-  );
   const guardReasonLookup = React.useMemo(() => {
     const map = {};
     Object.entries(disabledFieldReasons || {}).forEach(([key, value]) => {
@@ -1001,10 +962,6 @@ function InlineTransactionTable(
     fields.forEach((f) => {
       const lower = f.toLowerCase();
       const typ = fieldTypeMap[f] || columnTypeMap[f] || '';
-      if (jsonColumnSet.has(lower) || typ === 'json') {
-        map[f] = 'json';
-        return;
-      }
       if (typ === 'time' || placeholders[f] === 'HH:MM:SS') {
         map[f] = 'time';
       } else if (
@@ -1041,10 +998,6 @@ function InlineTransactionTable(
       if (!row || typeof row !== 'object') return row;
       const updated = fillSessionDefaults(row);
       Object.entries(updated).forEach(([k, v]) => {
-        if (jsonColumnSet.has(String(k).toLowerCase())) {
-          updated[k] = normalizeJsonArrayValue(v).map((val) => unwrapJsonValue(val));
-          return;
-        }
         if (placeholders[k]) {
           updated[k] = normalizeDateInput(String(v ?? ''), placeholders[k]);
         } else if (fieldTypeMap[k] === 'number') {
@@ -2340,34 +2293,11 @@ function InlineTransactionTable(
     const invalid = invalidCell && invalidCell.row === idx && invalidCell.field === f;
     const resolvedAutoConfig = getAutoSelectConfig(f, rows[idx]);
     const resolvedConfig = relationConfigMap[f] || resolvedAutoConfig?.config;
-    const fieldType = fieldInputTypes[f];
-    const isJsonField = fieldType === 'json' || jsonColumnSet.has(String(f).toLowerCase());
     if (fieldDisabled) {
       let display = typeof val === 'object' ? val.label || val.value : val;
       const rawVal = typeof val === 'object' ? val.value : val;
       const relationRow = rawVal !== undefined ? getRelationRow(f, rawVal) : null;
-      if (isJsonField) {
-        const mapLabel = (input) => {
-          const normalized = unwrapJsonValue(input);
-          if (Array.isArray(relations[f])) {
-            const match = relations[f].find((opt) => String(opt.value) === String(normalized));
-            if (match) return match.label ?? normalized;
-          }
-          const row = relationData[f]?.[normalized];
-          if (row && resolvedConfig) {
-            const parts = [];
-            const idField = resolvedConfig.idField || resolvedConfig.column;
-            if (row[idField] !== undefined) parts.push(row[idField]);
-            (resolvedConfig.displayFields || []).forEach((df) => {
-              if (row[df] !== undefined) parts.push(row[df]);
-            });
-            if (parts.length > 0) return parts.join(' - ');
-          }
-          return normalized ?? '';
-        };
-        const values = normalizeJsonArrayValue(val).map((v) => mapLabel(v));
-        display = values.length ? values.join(', ') : '—';
-      } else if (resolvedConfig && relationRow) {
+      if (resolvedConfig && relationRow) {
         const parts = [rawVal];
         (resolvedConfig.displayFields || []).forEach((df) => {
           if (relationRow[df] !== undefined) parts.push(relationRow[df]);
@@ -2380,7 +2310,7 @@ function InlineTransactionTable(
           if (relationRow[df] !== undefined) parts.push(relationRow[df]);
         });
         display = parts.join(' - ');
-      }
+      } 
       const readonlyStyle = {
         ...inputStyle,
         width: 'fit-content',
@@ -2406,10 +2336,6 @@ function InlineTransactionTable(
     if (rows[idx]?._saved && !collectRows) {
       const isoDatePattern = /^\d{4}-\d{2}-\d{2}(?:T.*)?$/;
       const displayVal = typeof val === 'object' ? val.label ?? val.value : val;
-      if (isJsonField) {
-        const normalized = normalizeJsonArrayValue(displayVal).map((v) => unwrapJsonValue(v));
-        return normalized.join(', ');
-      }
       if (
         typeof displayVal === 'string' &&
         isoDatePattern.test(displayVal) &&
@@ -2418,185 +2344,6 @@ function InlineTransactionTable(
         return normalizeDateInput(displayVal, 'YYYY-MM-DD');
       }
       return displayVal;
-    }
-    if (isJsonField) {
-      const currentValues = normalizeJsonArrayValue(val).map((v) => unwrapJsonValue(v));
-      const draftKey = `${idx}-${f}`;
-      const draftVal = jsonDrafts[draftKey] ?? '';
-      const addValue = (nextVal) => {
-        if (nextVal === undefined || nextVal === null || nextVal === '') return;
-        const existing = normalizeJsonArrayValue(rows[idx]?.[f]).map((v) => unwrapJsonValue(v));
-        if (existing.some((item) => String(item) === String(nextVal))) return;
-        handleChange(idx, f, [...existing, nextVal]);
-        setJsonDrafts((prev) => ({ ...prev, [draftKey]: '' }));
-      };
-      const removeValue = (removeIdx) => {
-        const existing = normalizeJsonArrayValue(rows[idx]?.[f]).map((v) => unwrapJsonValue(v));
-        const next = existing.filter((_, i) => i !== removeIdx);
-        handleChange(idx, f, next);
-      };
-      const chips =
-        currentValues.length === 0
-          ? '—'
-          : currentValues.map((val, chipIdx) => (
-              <span
-                key={`${val}-${chipIdx}`}
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '0.25rem',
-                  padding: '0.1rem 0.3rem',
-                  backgroundColor: '#eef2ff',
-                  border: '1px solid #c7d2fe',
-                  borderRadius: '999px',
-                }}
-              >
-                {Array.isArray(relations[f])
-                  ? relations[f].find((opt) => String(opt.value) === String(val))?.label ?? val
-                  : val}
-                <button
-                  type="button"
-                  onClick={() => removeValue(chipIdx)}
-                  style={{
-                    border: 'none',
-                    background: 'transparent',
-                    cursor: 'pointer',
-                    color: '#991b1b',
-                  }}
-                >
-                  ×
-                </button>
-              </span>
-            ));
-
-      const renderJsonSelector = () => {
-        if (resolvedConfig) {
-          const conf = resolvedConfig;
-          const comboFilters =
-            resolvedAutoConfig?.filters ?? resolveCombinationFilters(rows[idx], f, conf);
-          const hasCombination = Boolean(
-            conf?.combinationSourceColumn && conf?.combinationTargetColumn,
-          );
-          const combinationReady =
-            resolvedAutoConfig?.combinationReady ??
-            isCombinationFilterReady(hasCombination, conf?.combinationTargetColumn, comboFilters);
-          return (
-            <AsyncSearchSelect
-              table={conf.table}
-              searchColumn={conf.idField || conf.column}
-              searchColumns={[conf.idField || conf.column, ...(conf.displayFields || [])]}
-              labelFields={conf.displayFields || []}
-              value={draftVal}
-              onChange={(valChange) =>
-                setJsonDrafts((prev) => ({ ...prev, [draftKey]: valChange }))
-              }
-              onSelect={(opt) => addValue(opt?.value ?? '')}
-              disabled={fieldDisabled}
-              inputRef={(el) => (inputRefs.current[`${idx}-${colIdx}`] = el)}
-              onKeyDown={(e) => handleKeyDown(e, idx, colIdx)}
-              onFocus={(e) => {
-                e.target.select();
-                handleFocusField(f);
-              }}
-              inputStyle={inputStyle}
-              companyId={company}
-              filters={comboFilters || undefined}
-              shouldFetch={combinationReady}
-            />
-          );
-        }
-        if (viewSourceMap[f]) {
-          const view = viewSourceMap[f];
-          const cfg = viewDisplays[view] || {};
-          const comboFilters = resolveCombinationFilters(rows[idx], f, cfg);
-          const hasCombination = Boolean(
-            cfg?.combinationSourceColumn && cfg?.combinationTargetColumn,
-          );
-          const combinationReady = isCombinationFilterReady(
-            hasCombination,
-            cfg?.combinationTargetColumn,
-            comboFilters,
-          );
-          const idField = cfg.idField || f;
-          return (
-            <AsyncSearchSelect
-              table={view}
-              searchColumn={idField}
-              searchColumns={[idField, ...(cfg.displayFields || [])]}
-              labelFields={cfg.displayFields || []}
-              idField={idField}
-              value={draftVal}
-              onChange={(valChange) =>
-                setJsonDrafts((prev) => ({ ...prev, [draftKey]: valChange }))
-              }
-              onSelect={(opt) => addValue(opt?.value ?? '')}
-              disabled={fieldDisabled}
-              inputRef={(el) => (inputRefs.current[`${idx}-${colIdx}`] = el)}
-              onKeyDown={(e) => handleKeyDown(e, idx, colIdx)}
-              onFocus={(e) => {
-                e.target.select();
-                handleFocusField(f);
-              }}
-              inputStyle={inputStyle}
-              companyId={company}
-              filters={comboFilters || undefined}
-              shouldFetch={combinationReady}
-            />
-          );
-        }
-        if (Array.isArray(relations[f])) {
-          const filteredOptions = filterRelationOptions(rows[idx], f, relations[f]);
-          return (
-            <select
-              multiple
-              className={`w-full border px-1 ${invalid ? 'border-red-500 bg-red-100' : ''}`}
-              style={inputStyle}
-              value={currentValues.map((v) => String(v))}
-              onChange={(e) => {
-                const selected = Array.from(e.target.selectedOptions).map((opt) =>
-                  unwrapJsonValue(opt.value),
-                );
-                handleChange(idx, f, selected);
-              }}
-              ref={(el) => (inputRefs.current[`${idx}-${colIdx}`] = el)}
-              onKeyDown={(e) => handleKeyDown(e, idx, colIdx)}
-              onFocus={() => handleFocusField(f)}
-            >
-              {filteredOptions.map((opt) => (
-                <option key={opt.value} value={opt.value}>
-                  {opt.label}
-                </option>
-              ))}
-            </select>
-          );
-        }
-        return (
-          <div className="flex gap-1 items-center">
-            <input
-              className={`border px-1 ${invalid ? 'border-red-500 bg-red-100' : ''}`}
-              style={{ ...inputStyle, width: '8rem' }}
-              value={draftVal}
-              onChange={(e) =>
-                setJsonDrafts((prev) => ({ ...prev, [draftKey]: e.target.value }))
-              }
-              ref={(el) => (inputRefs.current[`${idx}-${colIdx}`] = el)}
-              onKeyDown={(e) => handleKeyDown(e, idx, colIdx)}
-              onFocus={(e) => handleFocusField(f)}
-              title={draftVal}
-            />
-            <button type="button" onClick={() => addValue(draftVal)}>
-              +
-            </button>
-          </div>
-        );
-      };
-
-      return (
-        <div className="flex flex-col gap-1">
-          <div className="flex flex-wrap gap-1">{chips}</div>
-          {renderJsonSelector()}
-        </div>
-      );
     }
     if (resolvedConfig) {
       const conf = resolvedConfig;
@@ -2692,6 +2439,7 @@ function InlineTransactionTable(
         />
       );
     }
+    const fieldType = fieldInputTypes[f];
     const rawVal = typeof val === 'object' ? val.value : val;
     const normalizedVal =
       fieldType === 'date'

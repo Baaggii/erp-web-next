@@ -16,8 +16,6 @@ export default function JsonConversionPanel() {
   const [savedScripts, setSavedScripts] = useState([]);
   const [loading, setLoading] = useState(false);
   const [backupEnabled, setBackupEnabled] = useState(true);
-  const [constraintOverrides, setConstraintOverrides] = useState({});
-  const [blockedColumns, setBlockedColumns] = useState([]);
 
   useEffect(() => {
     fetch('/api/json_conversion/tables', { credentials: 'include' })
@@ -37,7 +35,6 @@ export default function JsonConversionPanel() {
     if (!selectedTable) {
       setColumns([]);
       setSelectedColumns([]);
-      setConstraintOverrides({});
       return;
     }
     setLoading(true);
@@ -48,35 +45,21 @@ export default function JsonConversionPanel() {
       .then((data) => {
         setColumns(data.columns || []);
         setSelectedColumns([]);
-        setConstraintOverrides({});
       })
       .catch(() => {
         setColumns([]);
         setSelectedColumns([]);
-        setConstraintOverrides({});
       })
       .finally(() => setLoading(false));
   }, [selectedTable]);
 
   function toggleColumn(name) {
-    const meta = columns.find((c) => c.name === name);
-    if (meta?.hasBlockingConstraint && !constraintOverrides[name]) {
-      addToast('Resolve constraints first: drop/adjust them or skip this column.', 'warning');
-      return;
-    }
     setSelectedColumns((prev) => {
       if (prev.includes(name)) {
         return prev.filter((c) => c !== name);
       }
       return [...prev, name];
     });
-  }
-
-  function toggleConstraintOverride(name) {
-    setConstraintOverrides((prev) => ({
-      ...prev,
-      [name]: !prev[name],
-    }));
   }
 
   function handleDownload(script) {
@@ -94,30 +77,15 @@ export default function JsonConversionPanel() {
       addToast('Pick a table and at least one column', 'warning');
       return;
     }
-    const unresolved = selectedColumns.filter((col) => {
-      const meta = columns.find((c) => c.name === col);
-      return meta?.hasBlockingConstraint && !constraintOverrides[col];
-    });
-    if (unresolved.length > 0) {
-      addToast(
-        `Resolve constraints for: ${unresolved.join(', ')} (drop/adjust or skip the column).`,
-        'warning',
-      );
-      return;
-    }
     setLoading(true);
     try {
-      const payloadColumns = selectedColumns.map((col) => ({
-        name: col,
-        handleConstraints: Boolean(constraintOverrides[col]),
-      }));
       const res = await fetch('/api/json_conversion/convert', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({
           table: selectedTable,
-          columns: payloadColumns,
+          columns: selectedColumns,
           backup: backupEnabled,
           runNow: true,
         }),
@@ -126,7 +94,6 @@ export default function JsonConversionPanel() {
       const data = await res.json();
       setPreviews(data.previews || []);
       setScriptText(data.scriptText || '');
-      setBlockedColumns(data.blockedColumns || []);
       addToast('Conversion script generated', 'success');
       const scripts = await fetch('/api/json_conversion/scripts', { credentials: 'include' })
         .then((r) => (r.ok ? r.json() : { scripts: [] }))
@@ -138,11 +105,6 @@ export default function JsonConversionPanel() {
     } finally {
       setLoading(false);
     }
-  }
-
-  function handleLoadScript(script) {
-    setScriptText(script || '');
-    addToast('Loaded script into preview', 'info');
   }
 
   async function handleRunScript(id) {
@@ -169,32 +131,6 @@ export default function JsonConversionPanel() {
         : 'No columns selected',
     [selectedColumns],
   );
-
-  function renderConstraintSummary(col) {
-    const constraints = col.constraints || [];
-    const triggers = col.triggers || [];
-    if (constraints.length === 0 && triggers.length === 0) {
-      return <span style={{ color: '#166534' }}>No dependent constraints detected</span>;
-    }
-    return (
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', marginTop: '0.25rem' }}>
-        {constraints.map((c) => (
-          <div key={`${c.name}-${c.table}-${c.type}`} style={{ fontSize: '0.85rem' }}>
-            <strong>{c.type}</strong> — {c.table}.{c.column}
-            {c.referencedTable && c.referencedColumn
-              ? ` → ${c.referencedTable}.${c.referencedColumn}`
-              : ''}{' '}
-            {c.direction === 'incoming' ? '(referenced by another table)' : ''}
-          </div>
-        ))}
-        {triggers.map((t) => (
-          <div key={t.name} style={{ fontSize: '0.85rem' }}>
-            Trigger <strong>{t.name}</strong> ({t.timing} {t.event})
-          </div>
-        ))}
-      </div>
-    );
-  }
 
   return (
     <div>
@@ -226,7 +162,7 @@ export default function JsonConversionPanel() {
             onChange={(e) => setBackupEnabled(e.target.checked)}
             disabled={loading}
           />{' '}
-          Keep scalar backup column (recommended)
+          Keep scalar backup column
         </label>
         <button type="button" onClick={handleConvert} disabled={loading}>
           Convert
@@ -245,7 +181,6 @@ export default function JsonConversionPanel() {
                   borderRadius: '4px',
                   padding: '0.35rem 0.5rem',
                   backgroundColor: selectedColumns.includes(col.name) ? '#eef5ff' : '#fff',
-                  minWidth: '14rem',
                 }}
               >
                 <input
@@ -254,50 +189,11 @@ export default function JsonConversionPanel() {
                   onChange={() => toggleColumn(col.name)}
                   disabled={loading}
                 />{' '}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.15rem' }}>
-                  <div>
-                    {col.name}{' '}
-                    <span style={{ color: '#666' }}>({col.type})</span>
-                    {col.hasBlockingConstraint && !constraintOverrides[col.name] && (
-                      <span style={{ color: '#b45309', marginLeft: '0.35rem', fontWeight: 600 }}>
-                        ⚠️ Constraints detected
-                      </span>
-                    )}
-                    {constraintOverrides[col.name] && (
-                      <span style={{ color: '#16a34a', marginLeft: '0.35rem', fontWeight: 600 }}>
-                        Constraints handled
-                      </span>
-                    )}
-                  </div>
-                  {renderConstraintSummary(col)}
-                  {col.hasBlockingConstraint && (
-                    <button
-                      type="button"
-                      onClick={() => toggleConstraintOverride(col.name)}
-                      style={{
-                        width: 'fit-content',
-                        padding: '0.25rem 0.5rem',
-                        borderRadius: '4px',
-                        border: '1px solid #0f172a',
-                        background: constraintOverrides[col.name] ? '#dcfce7' : '#fff',
-                        cursor: 'pointer',
-                      }}
-                    >
-                      {constraintOverrides[col.name]
-                        ? 'Include drop/recreate steps'
-                        : 'Mark constraints handled'}
-                    </button>
-                  )}
-                </div>
+                {col.name} <span style={{ color: '#666' }}>({col.type})</span>
               </label>
             ))}
           </div>
           <div style={{ marginTop: '0.5rem', color: '#555' }}>{selectedPreviewText}</div>
-          {blockedColumns.length > 0 && (
-            <div style={{ marginTop: '0.5rem', color: '#b45309' }}>
-              Skipped columns with constraints: {blockedColumns.join(', ')}
-            </div>
-          )}
         </div>
       )}
 
@@ -352,13 +248,6 @@ export default function JsonConversionPanel() {
                   <td>
                     <button type="button" onClick={() => handleRunScript(s.id)} disabled={loading}>
                       Run
-                    </button>{' '}
-                    <button
-                      type="button"
-                      onClick={() => handleLoadScript(s.script_text)}
-                      disabled={loading}
-                    >
-                      Load
                     </button>{' '}
                     <button
                       type="button"

@@ -35,10 +35,6 @@ function parseConfig(raw = {}) {
     raw && typeof raw.columnTypes === 'object' && raw.columnTypes !== null
       ? raw.columnTypes
       : {};
-  const jsonFields =
-    Array.isArray(raw?.jsonFields) && raw.jsonFields.length > 0
-      ? raw.jsonFields.map(String)
-      : [];
   return {
     sheet: typeof raw.sheet === 'string' ? raw.sheet : '',
     headerRow: Number(raw.headerRow) || 1,
@@ -80,7 +76,6 @@ function parseConfig(raw = {}) {
     autoIncStart: raw.autoIncStart ? String(raw.autoIncStart) : '1',
     triggers: typeof raw.triggers === 'string' ? raw.triggers : '',
     foreignKeys: typeof raw.foreignKeys === 'string' ? raw.foreignKeys : '',
-    jsonFields,
   };
 }
 
