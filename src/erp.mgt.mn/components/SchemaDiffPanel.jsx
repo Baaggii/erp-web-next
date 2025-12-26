@@ -1,6 +1,18 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useToast } from '../context/ToastContext.jsx';
 
+const GROUP_ORDER = ['table', 'view', 'procedure', 'function', 'trigger', 'index'];
+const GROUP_LABELS = {
+  table: 'Tables',
+  view: 'Views',
+  procedure: 'Procedures',
+  function: 'Functions',
+  trigger: 'Triggers',
+  index: 'Indexes',
+  other: 'Other',
+  general: 'General',
+};
+
 function summarizePath(p) {
   if (!p) return '';
   const parts = p.split(/[\\/]+/);
@@ -19,7 +31,12 @@ function StatementList({ statements }) {
           key={`${stmt.sql.slice(0, 20)}-${idx}`}
           style={{
             border: '1px solid #ddd',
-            borderLeft: stmt.type === 'drop' ? '4px solid #d00' : '4px solid #0f62fe',
+            borderLeft:
+              stmt.type === 'drop'
+                ? '4px solid #d00'
+                : stmt.type === 'alter'
+                  ? '4px solid #ffb000'
+                  : '4px solid #0f62fe',
             padding: '0.5rem',
             background: stmt.type === 'drop' ? '#fff5f5' : '#f9fbff',
             whiteSpace: 'pre-wrap',
@@ -27,14 +44,36 @@ function StatementList({ statements }) {
             fontSize: '0.9rem',
           }}
         >
-          <div style={{ marginBottom: '0.25rem', fontWeight: 'bold' }}>
-            {stmt.type?.toUpperCase() || 'SQL'}
+          <div style={{ marginBottom: '0.25rem', fontWeight: 'bold', display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+            <span>{stmt.type?.toUpperCase() || 'SQL'}</span>
+            {stmt.risk ? (
+              <span
+                style={{
+                  fontSize: '0.8rem',
+                  color: stmt.risk === 'high' ? '#b00' : stmt.risk === 'medium' ? '#b58900' : '#0b8457',
+                }}
+              >
+                {stmt.risk === 'high' ? 'High risk' : stmt.risk === 'medium' ? 'Medium risk' : 'Low risk'}
+              </span>
+            ) : null}
           </div>
           {stmt.sql}
         </div>
       ))}
     </div>
   );
+}
+
+function buildGroupsFromDiff(diff) {
+  if (!diff?.groups) return [];
+  const entries = GROUP_ORDER.map((id) => ({
+    id,
+    label: GROUP_LABELS[id],
+    items: diff.groups[id] || [],
+  })).filter((g) => g.items?.length);
+  const otherItems = diff.groups.other || [];
+  if (otherItems.length) entries.push({ id: 'other', label: GROUP_LABELS.other, items: otherItems });
+  return entries;
 }
 
 export default function SchemaDiffPanel() {
@@ -48,18 +87,26 @@ export default function SchemaDiffPanel() {
   const [error, setError] = useState('');
   const [selectedObjects, setSelectedObjects] = useState(new Set());
   const [activeObject, setActiveObject] = useState('');
+  const [activeGroup, setActiveGroup] = useState('table');
   const [applyResult, setApplyResult] = useState(null);
   const [applying, setApplying] = useState(false);
   const [dryRun, setDryRun] = useState(true);
+  const [alterPreviewed, setAlterPreviewed] = useState(false);
+  const [routineAcknowledged, setRoutineAcknowledged] = useState(false);
   const [preflight, setPreflight] = useState({ loading: true, ok: false, issues: [], warnings: [], data: null });
   const [dumpStatus, setDumpStatus] = useState('');
   const [jobId, setJobId] = useState(null);
   const [jobStatus, setJobStatus] = useState(null);
+  const [markingBaseline, setMarkingBaseline] = useState(false);
   const socketRef = useRef(null);
 
   useEffect(() => {
     setError('');
   }, [schemaPath, schemaFile]);
+
+  useEffect(() => {
+    setAlterPreviewed(false);
+  }, [diff, includeDrops, includeGeneral, selectedObjects, activeGroup]);
 
   useEffect(() => {
     if (!window.io) return undefined;
@@ -125,29 +172,55 @@ export default function SchemaDiffPanel() {
     };
   }, []);
 
-  const selectedSql = useMemo(() => {
+  const groups = useMemo(() => buildGroupsFromDiff(diff), [diff]);
+
+  const selectedStatements = useMemo(() => {
     if (!diff) return [];
     const sql = [];
     if (includeGeneral && diff.generalStatements) {
       diff.generalStatements.forEach((stmt) => {
-        if (includeDrops || stmt.type !== 'drop') sql.push(stmt.sql);
+        if (includeDrops || stmt.type !== 'drop') {
+          sql.push({ ...stmt, objectType: 'general', objectName: 'General' });
+        }
       });
     }
-    (diff.tables || []).forEach((t) => {
-      if (selectedObjects.has(t.key)) {
-        t.statements.forEach((stmt) => {
-          if (includeDrops || stmt.type !== 'drop') sql.push(stmt.sql);
-        });
-      }
+    groups.forEach((group) => {
+      group.items.forEach((item) => {
+        if (selectedObjects.has(item.key)) {
+          item.statements.forEach((stmt) => {
+            if (includeDrops || stmt.type !== 'drop') {
+              sql.push({
+                ...stmt,
+                objectType: item.type,
+                objectName: item.name,
+              });
+            }
+          });
+        }
+      });
     });
     return sql;
-  }, [diff, selectedObjects, includeDrops, includeGeneral]);
+  }, [diff, selectedObjects, includeDrops, includeGeneral, groups]);
+
+  const selectedSql = useMemo(() => selectedStatements.map((s) => s.sql), [selectedStatements]);
+
+  const selectedRiskSummary = useMemo(() => {
+    const counts = { low: 0, medium: 0, high: 0 };
+    selectedStatements.forEach((stmt) => {
+      if (stmt.risk === 'medium') counts.medium += 1;
+      else if (stmt.risk === 'high') counts.high += 1;
+      else counts.low += 1;
+    });
+    return counts;
+  }, [selectedStatements]);
 
   const activeTableData = useMemo(() => {
     if (!diff) return null;
-    if (!activeObject && diff.tables?.length) return diff.tables[0];
-    return diff.tables?.find((t) => t.key === activeObject) || null;
-  }, [diff, activeObject]);
+    const group = groups.find((g) => g.id === activeGroup);
+    if (!group) return null;
+    if (!activeObject && group.items.length) return group.items[0];
+    return group.items.find((t) => t.key === activeObject) || null;
+  }, [diff, activeObject, activeGroup, groups]);
 
   const criticalPrereqIssues = useMemo(
     () => (preflight.issues || []).filter((issue) => /db_name/i.test(issue)),
@@ -161,6 +234,18 @@ export default function SchemaDiffPanel() {
     !hasValidSchemaInputs ||
     jobId ||
     criticalPrereqIssues.length > 0;
+
+  useEffect(() => {
+    if (!groups.length) return;
+    const currentGroup = groups.find((g) => g.id === activeGroup && g.items?.length);
+    if (!currentGroup) {
+      const next = groups.find((g) => g.items?.length);
+      if (next) {
+        setActiveGroup(next.id);
+        setActiveObject(next.items?.[0]?.key || '');
+      }
+    }
+  }, [groups, activeGroup]);
 
   useEffect(() => {
     if (!jobId) return undefined;
@@ -178,8 +263,16 @@ export default function SchemaDiffPanel() {
         const status = data.status;
         if (status === 'completed' && data.result) {
           setDiff(data.result);
-          setSelectedObjects(new Set((data.result.tables || []).map((t) => t.key)));
-          setActiveObject(data.result.tables?.[0]?.key || '');
+          const newGroups = buildGroupsFromDiff(data.result);
+          const keys = [];
+          newGroups.forEach((g) => g.items.forEach((item) => keys.push(item.key)));
+          setSelectedObjects(new Set(keys));
+          const defaultGroup = newGroups.find((g) => g.items.length)?.id || 'table';
+          setActiveGroup(defaultGroup);
+          const defaultObject = newGroups.find((g) => g.id === defaultGroup)?.items?.[0]?.key || '';
+          setActiveObject(defaultObject);
+          setAlterPreviewed(false);
+          setRoutineAcknowledged(false);
           setApplyResult(null);
           setError('');
           setJobStatus(null);
@@ -230,6 +323,10 @@ export default function SchemaDiffPanel() {
     setError('');
     setDiff(null);
     setApplyResult(null);
+    setActiveObject('');
+    setActiveGroup('table');
+    setAlterPreviewed(false);
+    setRoutineAcknowledged(false);
     setJobStatus(null);
     setDumpStatus('Queueing schema diff job...');
     try {
@@ -273,8 +370,11 @@ export default function SchemaDiffPanel() {
   }
 
   function selectAll() {
-    if (!diff?.tables) return;
-    setSelectedObjects(new Set(diff.tables.map((t) => t.key)));
+    const keys = [];
+    groups.forEach((g) => {
+      g.items.forEach((t) => keys.push(t.key));
+    });
+    setSelectedObjects(new Set(keys));
   }
 
   function clearSelection() {
@@ -286,8 +386,20 @@ export default function SchemaDiffPanel() {
       setError('Generate a diff before applying changes.');
       return;
     }
-    if (selectedSql.length === 0) {
+    if (selectedStatements.length === 0) {
       setError('Select at least one object or statement to apply.');
+      return;
+    }
+    const hasAlters = selectedStatements.some((s) => s.type === 'alter');
+    const hasRoutines = selectedStatements.some(
+      (s) => s.objectType === 'procedure' || s.objectType === 'trigger',
+    );
+    if (!dryRun && hasAlters && !alterPreviewed) {
+      setError('Review ALTER statements in a preview before applying.');
+      return;
+    }
+    if (!dryRun && hasRoutines && !routineAcknowledged) {
+      setError('Routine changes require explicit acknowledgement.');
       return;
     }
     setApplying(true);
@@ -298,9 +410,11 @@ export default function SchemaDiffPanel() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          statements: selectedSql,
+          statements: selectedStatements,
           allowDrops: includeDrops,
           dryRun,
+          alterPreviewed,
+          routineAcknowledged,
         }),
       });
       const data = await res.json();
@@ -308,6 +422,9 @@ export default function SchemaDiffPanel() {
         throw new Error(data?.message || 'Failed to apply schema diff');
       }
       setApplyResult(data);
+      if (data.dryRun && hasAlters) {
+        setAlterPreviewed(true);
+      }
       const statusMsg = dryRun
         ? 'Diff preview generated'
         : `Applied ${data.applied || 0} statements`;
@@ -321,11 +438,49 @@ export default function SchemaDiffPanel() {
   }
 
   function copySelectedSql() {
-    const payload = selectedSql.join('\n\n');
+    const payload = selectedStatements.map((s) => s.sql).join('\n\n');
     navigator.clipboard
       .writeText(payload)
       .then(() => addToast('SQL copied to clipboard', 'success'))
       .catch(() => addToast('Unable to copy SQL to clipboard', 'error'));
+  }
+
+  async function markBaseline() {
+    if (!schemaPath || !schemaFile) {
+      setError('Provide a schema path and filename before marking a baseline.');
+      return;
+    }
+    setMarkingBaseline(true);
+    try {
+      const res = await fetch('/api/coding_tables/schema-diff/baseline', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ schemaPath, schemaFile }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data?.message || 'Failed to mark baseline');
+      }
+      setDiff((prev) =>
+        prev
+          ? {
+              ...prev,
+              baseline: {
+                ...(prev.baseline || {}),
+                ...(data.baseline || {}),
+                inSync: true,
+                outOfSyncObjects: 0,
+              },
+            }
+          : prev,
+      );
+      addToast('Baseline saved', 'success');
+    } catch (err) {
+      setError(err.message || 'Failed to mark baseline');
+      addToast(err.message || 'Failed to mark baseline', 'error');
+    } finally {
+      setMarkingBaseline(false);
+    }
   }
 
   return (
@@ -386,9 +541,9 @@ export default function SchemaDiffPanel() {
           ) : preflight.ok ? (
             <span>
               mysqldump and DB_NAME are available.
-              {preflight.data?.mysqldbcompareAvailable
-                ? ' mysqldbcompare is available for full schema diffs.'
-                : ' mysqldbcompare is missing; using the limited fallback diff.'}
+              {preflight.data?.liquibaseAvailable
+                ? ' Liquibase detected for ALTER-aware diffs.'
+                : ' Liquibase is missing; using the limited bootstrap diff.'}
             </span>
           ) : (
             <span>
@@ -461,7 +616,7 @@ export default function SchemaDiffPanel() {
             <div>
               <strong>Tool:</strong> {diff.tool}{' '}
               {!diff.toolAvailable && (
-                <span style={{ color: '#d00' }}>(mysqldbcompare not available; basic diff used)</span>
+                <span style={{ color: '#d00' }}>(Liquibase not available; bootstrap diff used)</span>
               )}
             </div>
             <div>
@@ -474,12 +629,28 @@ export default function SchemaDiffPanel() {
             </div>
             <div>
               <strong>Statements:</strong> {diff.stats?.statementCount || 0} across{' '}
-              {diff.stats?.tableCount || 0} objects
+              {diff.stats?.objectCount || 0} objects
+            </div>
+            <div>
+              <strong>Risk:</strong>{' '}
+              {`Low ${diff.stats?.riskCounts?.low || 0} • Medium ${diff.stats?.riskCounts?.medium || 0} • High ${diff.stats?.riskCounts?.high || 0}`}
             </div>
             {diff.stats?.dropStatements ? (
               <div style={{ color: '#b00', fontWeight: 'bold' }}>
                 Drop statements detected: {diff.stats.dropStatements}. They will be skipped unless
                 "Include DROP statements" is enabled.
+              </div>
+            ) : null}
+            {diff.baseline ? (
+              <div style={{ color: diff.baseline.inSync ? '#0b8457' : '#b58900' }}>
+                Baseline: {diff.baseline.path || 'Not set'}{' '}
+                {diff.baseline.recordedAt
+                  ? `(recorded ${new Date(diff.baseline.recordedAt).toLocaleDateString()})`
+                  : '(unrecorded)'}{' '}
+                | Current DB:{' '}
+                {diff.baseline.inSync
+                  ? 'in sync'
+                  : `out of sync (${diff.baseline.outOfSyncObjects || 0} objects)`}
               </div>
             ) : null}
             <div style={{ color: '#b58900' }}>
@@ -493,6 +664,16 @@ export default function SchemaDiffPanel() {
                 ))}
               </ul>
             ) : null}
+            <div>
+              <button
+                type="button"
+                onClick={markBaseline}
+                disabled={markingBaseline}
+                style={{ marginTop: '0.5rem' }}
+              >
+                {markingBaseline ? 'Saving baseline...' : 'Mark schema as baseline'}
+              </button>
+            </div>
           </div>
 
           <div style={{ display: 'flex', gap: '1rem', alignItems: 'flex-start' }}>
@@ -519,60 +700,89 @@ export default function SchemaDiffPanel() {
                   </button>
                 </div>
               </div>
-              <div style={{ maxHeight: '320px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                {diff.generalStatements?.length ? (
-                  <label
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '0.5rem',
-                      padding: '0.35rem',
-                      border: '1px solid #eee',
-                      background: activeObject === '__general__' ? '#eef5ff' : '#fff',
-                      cursor: 'pointer',
-                    }}
-                    onClick={() => setActiveObject('__general__')}
-                  >
-                    <input type="checkbox" checked={includeGeneral} disabled />
-                    <span style={{ flex: 1, fontWeight: 'bold' }}>General statements</span>
-                    <span style={{ fontSize: '0.85rem', color: '#666' }}>
-                      {diff.generalStatements.length} stmt
-                    </span>
-                  </label>
-                ) : null}
-                {diff.tables?.length ? (
-                  diff.tables.map((t) => (
-                    <label
-                      key={t.name}
+              {diff.generalStatements?.length ? (
+                <label
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.5rem',
+                    padding: '0.35rem',
+                    border: '1px solid #eee',
+                    background: includeGeneral ? '#eef5ff' : '#fff',
+                    cursor: 'pointer',
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={includeGeneral}
+                    onChange={(e) => setIncludeGeneral(e.target.checked)}
+                  />
+                  <span style={{ flex: 1, fontWeight: 'bold' }}>General statements</span>
+                  <span style={{ fontSize: '0.85rem', color: '#666' }}>
+                    {diff.generalStatements.length} stmt
+                  </span>
+                </label>
+              ) : null}
+              <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap' }}>
+                {GROUP_ORDER.map((id) => {
+                  const label = GROUP_LABELS[id];
+                  const count = groups.find((g) => g.id === id)?.items?.length || 0;
+                  const isActive = activeGroup === id;
+                  return (
+                    <button
+                      key={id}
+                      type="button"
+                      onClick={() => setActiveGroup(id)}
+                      disabled={count === 0}
                       style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '0.5rem',
-                        padding: '0.35rem',
-                        border: '1px solid #eee',
-                        background: activeObject === t.key ? '#eef5ff' : '#fff',
-                        cursor: 'pointer',
+                        padding: '0.25rem 0.75rem',
+                        background: isActive ? '#0f62fe' : '#fff',
+                        color: isActive ? '#fff' : '#333',
+                        border: '1px solid #0f62fe',
+                        opacity: count === 0 ? 0.6 : 1,
                       }}
                     >
-                      <input
-                        type="checkbox"
-                        checked={selectedObjects.has(t.key)}
-                        onChange={() => toggleTable(t.key)}
-                      />
-                      <span
-                        onClick={() => setActiveObject(t.key)}
-                        style={{ flex: 1, fontWeight: 'bold' }}
+                      {label} ({count})
+                    </button>
+                  );
+                })}
+              </div>
+              <div style={{ maxHeight: '320px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                {groups.find((g) => g.id === activeGroup)?.items?.length ? (
+                  groups
+                    .find((g) => g.id === activeGroup)
+                    ?.items.map((t) => (
+                      <label
+                        key={t.key}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '0.5rem',
+                          padding: '0.35rem',
+                          border: '1px solid #eee',
+                          background: activeObject === t.key ? '#eef5ff' : '#fff',
+                          cursor: 'pointer',
+                        }}
                       >
-                        {t.type ? `${t.type}: ${t.name}` : t.name}
-                      </span>
-                      <span style={{ fontSize: '0.85rem', color: '#666' }}>
-                        {t.statements.length} stmt{t.statements.length !== 1 ? 's' : ''}
-                        {t.hasDrops ? ' • DROP' : ''}
-                      </span>
-                    </label>
-                  ))
+                        <input
+                          type="checkbox"
+                          checked={selectedObjects.has(t.key)}
+                          onChange={() => toggleTable(t.key)}
+                        />
+                        <span
+                          onClick={() => setActiveObject(t.key)}
+                          style={{ flex: 1, fontWeight: 'bold' }}
+                        >
+                          {t.name}
+                        </span>
+                        <span style={{ fontSize: '0.85rem', color: '#666', textAlign: 'right' }}>
+                          {t.statements.length} stmt{t.statements.length !== 1 ? 's' : ''}
+                          {t.hasDrops ? ' • DROP' : ''}
+                        </span>
+                      </label>
+                    ))
                 ) : (
-                  <div style={{ fontStyle: 'italic' }}>No schema changes detected.</div>
+                  <div style={{ fontStyle: 'italic' }}>No changes in this category.</div>
                 )}
               </div>
             </div>
@@ -581,14 +791,14 @@ export default function SchemaDiffPanel() {
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <h3 style={{ margin: 0 }}>
                   {activeTableData
-                    ? `Changes for ${activeTableData.type ? `${activeTableData.type}: ` : ''}${activeTableData.name}`
-                    : 'No object selected'}
+                    ? `Changes for ${GROUP_LABELS[activeTableData.type] || activeTableData.type}: ${activeTableData.name}`
+                    : 'No object selected in this tab'}
                 </h3>
                 <div style={{ display: 'flex', gap: '0.5rem' }}>
-                  <button type="button" onClick={copySelectedSql} disabled={!selectedSql.length}>
+                  <button type="button" onClick={copySelectedSql} disabled={!selectedStatements.length}>
                     Copy selected SQL
                   </button>
-                  <button type="button" onClick={applySelected} disabled={applying || !selectedSql.length}>
+                  <button type="button" onClick={applySelected} disabled={applying || !selectedStatements.length}>
                     {applying ? 'Applying...' : dryRun ? 'Preview Selected' : 'Apply Selected'}
                   </button>
                 </div>
@@ -599,11 +809,34 @@ export default function SchemaDiffPanel() {
                     ? activeTableData.statements.filter(
                         (s) => includeDrops || s.type !== 'drop',
                       )
-                    : (diff.generalStatements || []).filter(
+                    : (includeGeneral ? diff.generalStatements || [] : []).filter(
                         (s) => includeDrops || s.type !== 'drop',
                       )
                 }
               />
+              <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                <label style={{ display: 'flex', gap: '0.35rem', alignItems: 'center' }}>
+                  <input
+                    type="checkbox"
+                    checked={routineAcknowledged}
+                    onChange={(e) => setRoutineAcknowledged(e.target.checked)}
+                    disabled={dryRun}
+                  />
+                  <span> I understand this will replace existing routines (procedures/triggers)</span>
+                </label>
+                <label style={{ display: 'flex', gap: '0.35rem', alignItems: 'center' }}>
+                  <input
+                    type="checkbox"
+                    checked={alterPreviewed}
+                    readOnly
+                    disabled
+                  />
+                  <span> I reviewed ALTER statements in the preview</span>
+                </label>
+                <span style={{ fontSize: '0.85rem', color: '#555' }}>
+                  Run a dry-run with ALTER changes to unlock production apply.
+                </span>
+              </div>
             </div>
           </div>
 
@@ -613,6 +846,9 @@ export default function SchemaDiffPanel() {
               <span style={{ color: '#666' }}>
                 {selectedSql.length} statement{selectedSql.length === 1 ? '' : 's'} ready
               </span>
+            </div>
+            <div style={{ color: '#555' }}>
+              Risk summary — Low: {selectedRiskSummary.low} • Medium: {selectedRiskSummary.medium} • High: {selectedRiskSummary.high}
             </div>
             <textarea
               rows={8}

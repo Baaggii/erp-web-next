@@ -8,6 +8,7 @@ import { pool } from '../../db/index.js';
 import { splitSqlStatements } from './generatedSql.js';
 
 const projectRoot = process.cwd();
+const BASELINE_RECORD_PATH = path.join(projectRoot, 'db', 'schema-baseline.json');
 
 async function commandExists(cmd) {
   try {
@@ -19,9 +20,9 @@ async function commandExists(cmd) {
 }
 
 export async function getSchemaDiffPrerequisites() {
-  const [mysqldumpAvailable, mysqldbcompareAvailable, mysqlAvailable] = await Promise.all([
+  const [mysqldumpAvailable, liquibaseAvailable, mysqlAvailable] = await Promise.all([
     commandExists('mysqldump'),
-    commandExists('mysqldbcompare'),
+    commandExists('liquibase'),
     commandExists('mysql'),
   ]);
   const env = {
@@ -33,16 +34,16 @@ export async function getSchemaDiffPrerequisites() {
   const missing = [];
   const warnings = [];
   if (!mysqldumpAvailable) missing.push('mysqldump');
-  if (!mysqldbcompareAvailable) {
+  if (!liquibaseAvailable) {
     warnings.push(
-      'mysqldbcompare is not available; schema diffs will fall back to basic comparisons without ALTER statements.',
+      'Liquibase is not available; schema diffs will fall back to bootstrap (CREATE) scripts without ALTER coverage.',
     );
   }
   if (!env.DB_NAME) missing.push('DB_NAME');
 
   return {
     mysqldumpAvailable,
-    mysqldbcompareAvailable,
+    liquibaseAvailable,
     mysqlAvailable,
     env,
     missing,
@@ -352,43 +353,92 @@ function classifyStatement(statement) {
   return 'other';
 }
 
-function groupStatements(diffSql) {
+function classifyRisk(changeType, objectType) {
+  if (changeType === 'drop') return 'high';
+  if (changeType === 'alter' || changeType === 'update') return 'medium';
+  if (objectType === 'procedure' || objectType === 'trigger') return 'medium';
+  return 'low';
+}
+
+function groupStatements(diffSql, metadata = []) {
   const statements = splitSqlStatements(stripCommentLines(diffSql));
   const objectMap = new Map();
   const generalStatements = [];
   let dropStatements = 0;
 
+  const metadataLookup = new Map();
+  metadata.forEach((m) => {
+    if (m?.type && m?.name) {
+      metadataLookup.set(`${m.type}:${m.name}`, m);
+    }
+  });
+
   for (const stmt of statements) {
     const objectInfo = extractObject(stmt);
     const type = classifyStatement(stmt);
+    const risk = classifyRisk(type, objectInfo?.type);
     if (type === 'drop') dropStatements += 1;
     if (objectInfo?.name) {
       const key = `${objectInfo.type}:${objectInfo.name}`;
       if (!objectMap.has(key)) {
-        objectMap.set(key, { key, name: objectInfo.name, type: objectInfo.type, statements: [], hasDrops: false });
+        const meta = metadataLookup.get(key);
+        objectMap.set(key, {
+          key,
+          name: objectInfo.name,
+          type: objectInfo.type,
+          statements: [],
+          hasDrops: false,
+          details: meta?.message,
+          state: meta?.state,
+        });
       }
       const entry = objectMap.get(key);
-      entry.statements.push({ sql: stmt, type });
+      entry.statements.push({ sql: stmt, type, risk });
       if (type === 'drop') entry.hasDrops = true;
     } else {
-      generalStatements.push({ sql: stmt, type });
+      generalStatements.push({ sql: stmt, type, risk });
     }
   }
 
-  const tables = Array.from(objectMap.values()).sort((a, b) => {
-    const typeCompare = (a.type || '').localeCompare(b.type || '');
-    if (typeCompare !== 0) return typeCompare;
+  const typeOrder = ['table', 'view', 'procedure', 'function', 'trigger', 'index', 'other'];
+  const groupedObjects = Array.from(objectMap.values()).sort((a, b) => {
+    const at = typeOrder.indexOf(a.type);
+    const bt = typeOrder.indexOf(b.type);
+    if (at !== bt) return at - bt;
     return a.name.localeCompare(b.name);
   });
 
+  const groups = {
+    table: [],
+    view: [],
+    procedure: [],
+    function: [],
+    trigger: [],
+    index: [],
+    other: [],
+  };
+  groupedObjects.forEach((obj) => {
+    const bucket = groups[obj.type] || groups.other;
+    bucket.push(obj);
+  });
+
+  const riskCounts = { low: 0, medium: 0, high: 0 };
+  statements.forEach((stmt) => {
+    const riskLevel = classifyRisk(classifyStatement(stmt), extractObject(stmt)?.type);
+    riskCounts[riskLevel] += 1;
+  });
+
   return {
-    tables,
+    groups,
     generalStatements,
     stats: {
       statementCount: statements.length,
-      objectCount: tables.length,
-      tableCount: tables.length,
+      objectCount: groupedObjects.length,
+      tableCount: groups.table.length,
+      viewCount: groups.view.length,
+      routineCount: groups.procedure.length + groups.function.length + groups.trigger.length,
       dropStatements,
+      riskCounts,
     },
   };
 }
@@ -446,7 +496,7 @@ function basicDiffFromDumps(currentSql, targetSql, allowDrops = false) {
     if (normalizeDefinition(targetObj.statement) !== normalizeDefinition(currentObj.statement)) {
       if (targetObj.type === 'table') {
         warnings.push(
-          `Table ${targetObj.name} definitions differ and require manual review. Install mysqldbcompare for full ALTER scripting.`,
+          `Table ${targetObj.name} definitions differ and require manual review. Install Liquibase for full ALTER scripting.`,
         );
       } else {
         const dropStmt = buildDropStatement(targetObj.type, targetObj.name);
@@ -469,6 +519,67 @@ function basicDiffFromDumps(currentSql, targetSql, allowDrops = false) {
   }
 
   return { statements, warnings };
+}
+
+async function loadBaselines() {
+  try {
+    const payload = await fsPromises.readFile(BASELINE_RECORD_PATH, 'utf8');
+    const parsed = JSON.parse(payload);
+    if (parsed && typeof parsed === 'object') return parsed;
+  } catch {
+    // ignore missing/invalid baseline file
+  }
+  return { baselines: {} };
+}
+
+async function saveBaselines(data) {
+  const dir = path.dirname(BASELINE_RECORD_PATH);
+  await fsPromises.mkdir(dir, { recursive: true });
+  await fsPromises.writeFile(BASELINE_RECORD_PATH, JSON.stringify(data, null, 2), 'utf8');
+}
+
+function computeSchemaHash(sqlText) {
+  return crypto.createHash('sha256').update(sqlText || '', 'utf8').digest('hex');
+}
+
+async function getBaselineStatus(resolvedSchemaPath, targetSql) {
+  const store = await loadBaselines();
+  const key = path.relative(projectRoot, resolvedSchemaPath);
+  const entry = store.baselines?.[key];
+  const hash = computeSchemaHash(targetSql);
+  if (!entry) {
+    return {
+      path: key,
+      inSync: false,
+      recordedAt: null,
+      hash,
+    };
+  }
+  return {
+    ...entry,
+    path: key,
+    hash,
+    inSync: entry.hash === hash,
+  };
+}
+
+async function markBaseline(resolvedSchemaPath, targetSql) {
+  const store = await loadBaselines();
+  const key = path.relative(projectRoot, resolvedSchemaPath);
+  const now = new Date().toISOString();
+  const hash = computeSchemaHash(targetSql);
+  const next = {
+    baselines: {
+      ...(store.baselines || {}),
+      [key]: {
+        hash,
+        recordedAt: now,
+        schemaFile: key,
+      },
+    },
+  };
+  await saveBaselines(next);
+  return next.baselines[key];
 }
 
 async function importSchemaFile(schemaFilePath, tempDbName, signal, onProgress) {
@@ -538,6 +649,94 @@ async function importSchemaFile(schemaFilePath, tempDbName, signal, onProgress) 
   }
 }
 
+function summarizeLiquibaseDifference(diffJson) {
+  const items = [];
+  const diffResult = diffJson?.differences || diffJson?.diffResult || [];
+  const diffArray = Array.isArray(diffResult) ? diffResult : [];
+  for (const entry of diffArray) {
+    if (!entry) continue;
+    const name = entry.objectName || entry.name || entry.referenceObject?.name || entry.targetObject?.name;
+    const type = (entry.objectType || entry.type || entry?.comparisonControl?.type || '').toString().toLowerCase();
+    const message = entry.message || entry.differences || entry.reason;
+    if (name || type || message) {
+      items.push({
+        name: name || 'unnamed',
+        type: type || 'object',
+        message: typeof message === 'string' ? message : undefined,
+        state: entry.state || entry.status || entry.operation,
+      });
+    }
+  }
+  return items;
+}
+
+function mapLiquibaseObjects(diffItems) {
+  const metadata = [];
+  for (const item of diffItems) {
+    const normalizedType = (item.type || '').toLowerCase();
+    let objectType = normalizedType;
+    if (/table/.test(normalizedType)) objectType = 'table';
+    else if (/view/.test(normalizedType)) objectType = 'view';
+    else if (/trigger/.test(normalizedType)) objectType = 'trigger';
+    else if (/procedure/.test(normalizedType)) objectType = 'procedure';
+    else if (/function/.test(normalizedType)) objectType = 'function';
+    else if (/index/.test(normalizedType)) objectType = 'index';
+    else if (/sequence/.test(normalizedType)) objectType = 'sequence';
+    if (objectType) {
+      metadata.push({
+        name: item.name,
+        type: objectType,
+        state: item.state || item.status || 'changed',
+        message: item.message,
+      });
+    }
+  }
+  return metadata;
+}
+
+function buildActionableWarnings(grouped) {
+  const warnings = [];
+  const typeLabel = {
+    table: 'Table',
+    view: 'View',
+    trigger: 'Trigger',
+    procedure: 'Procedure',
+    function: 'Function',
+    index: 'Index',
+    other: 'Object',
+  };
+  Object.values(grouped.groups || {}).forEach((objs = []) => {
+    objs.forEach((obj) => {
+      const hasAlter = obj.statements.some((s) => s.type === 'alter');
+      const hasDrop = obj.statements.some((s) => s.type === 'drop');
+      const label = typeLabel[obj.type] || 'Object';
+      if (hasDrop) {
+        warnings.push(`❌ ${label} ${obj.name} will be dropped and recreated.`);
+      } else if (hasAlter) {
+        warnings.push(`❌ ${label} ${obj.name} includes ALTER changes; review carefully.`);
+      } else if (obj.details) {
+        warnings.push(`⚠️ ${label} ${obj.name}: ${obj.details}`);
+      }
+    });
+  });
+  return warnings;
+}
+
+function buildApplyPlan(statements) {
+  const order = ['general', 'table', 'index', 'view', 'procedure', 'function', 'trigger', 'other'];
+  const sorted = [...statements].sort((a, b) => {
+    const aOrder = order.indexOf(a.objectType || 'other');
+    const bOrder = order.indexOf(b.objectType || 'other');
+    if (aOrder !== bOrder) return aOrder - bOrder;
+    const riskWeight = { low: 0, medium: 1, high: 2 };
+    const aRisk = riskWeight[a.risk || 'low'];
+    const bRisk = riskWeight[b.risk || 'low'];
+    if (aRisk !== bRisk) return aRisk - bRisk;
+    return 0;
+  });
+  return sorted;
+}
+
 async function dropTempDatabase(name) {
   try {
     await pool.query(`DROP DATABASE IF EXISTS \`${name}\``);
@@ -555,7 +754,6 @@ export async function buildSchemaDiff(options = {}) {
     err.details = { prerequisite: 'DB_NAME', checks: prereq };
     throw err;
   }
-  const toolAvailable = prereq.mysqldbcompareAvailable;
   const warnings = [...(prereq.warnings || [])];
   const resolvedSchema = resolveSchemaFile({ schemaPath, schemaFile });
   if (onProgress) onProgress('Validating schema file path');
@@ -575,14 +773,17 @@ export async function buildSchemaDiff(options = {}) {
   const dumpResult = await dumpCurrentSchemaWithFallback(dumpPath, signal, onProgress);
   const { sql: currentSql } = dumpResult;
   const targetSql = await fsPromises.readFile(resolvedSchema, 'utf8');
+  const baselineStatus = await getBaselineStatus(resolvedSchema, targetSql);
 
   let diffSql = '';
-  let tool = 'mysqldbcompare';
+  let tool = 'liquibase';
   let tempDbName = '';
   let importedWithCli = false;
   const processWarnings = [...(dumpResult.warnings || [])];
+  let grouped = { groups: {}, generalStatements: [], stats: {} };
+  let diffItems = [];
 
-  if (toolAvailable) {
+  if (prereq.liquibaseAvailable) {
     tempDbName = `schema_diff_${crypto.randomBytes(5).toString('hex')}`;
     try {
       const { importedWithCli: viaCli } = await importSchemaFile(
@@ -598,45 +799,85 @@ export async function buildSchemaDiff(options = {}) {
       const port = process.env.DB_PORT;
       const dbName = process.env.DB_NAME;
       const env = { ...process.env };
-      if (pass) env.MYSQL_PWD = pass;
-      const serverConn = port ? `${user}@${host}:${port}` : `${user}@${host}`;
-      const args = [
-        `--server1=${serverConn}`,
-        `--server2=${serverConn}`,
-        `${tempDbName}:${dbName}`,
-        '--difftype=sql',
-        '--run-all-tests',
-        '--changes-for=server2',
+      const jdbcHost = port ? `${host}:${port}` : host;
+      const changelogPath = path.join(tempDir, 'liquibase-diff.changelog.xml');
+      const baseArgs = [
+        `--url=jdbc:mysql://${jdbcHost}/${dbName}`,
+        `--username=${user}`,
+        `--password=${pass}`,
+        `--referenceUrl=jdbc:mysql://${jdbcHost}/${tempDbName}`,
+        `--referenceUsername=${user}`,
+        `--referencePassword=${pass}`,
+        `--changeLogFile=${changelogPath}`,
+        '--log-level=warning',
       ];
-      if (onProgress) onProgress('Comparing schemas with mysqldbcompare');
-      const { stdout, stderr } = await runCommand('mysqldbcompare', args, {
+      if (onProgress) onProgress('Generating Liquibase diff changelog');
+      await runCommand('liquibase', [...baseArgs, 'diffChangelog'], {
         env,
         signal,
       });
-      diffSql = stripCommentLines([stdout, stderr].filter(Boolean).join('\n'));
+      if (onProgress) onProgress('Preparing Liquibase SQL preview');
+      const { stdout } = await runCommand(
+        'liquibase',
+        [...baseArgs, 'updateSql'],
+        { env, signal },
+      );
+      diffSql = stripCommentLines(stdout);
+
+      let liquibaseJson = null;
+      try {
+        const { stdout: jsonOut } = await runCommand(
+          'liquibase',
+          [...baseArgs, '--format=json', 'diff'],
+          { env, signal },
+        );
+        const jsonStart = jsonOut.indexOf('{');
+        const payload = jsonStart >= 0 ? jsonOut.slice(jsonStart) : jsonOut;
+        liquibaseJson = JSON.parse(payload);
+      } catch (err) {
+        processWarnings.push(
+          err?.message
+            ? `Liquibase JSON diff parsing failed: ${err.message}`
+            : 'Liquibase JSON diff unavailable; using SQL-only output.',
+        );
+      }
+      diffItems = liquibaseJson ? summarizeLiquibaseDifference(liquibaseJson) : [];
+      grouped = groupStatements(diffSql, mapLiquibaseObjects(diffItems));
+      const actionableWarnings = buildActionableWarnings(grouped);
+      warnings.push(...actionableWarnings);
+    } catch (err) {
+      if (err?.aborted) throw err;
+      warnings.push(`Liquibase diff failed; falling back to bootstrap diff. Reason: ${err.message}`);
+      tool = 'basic';
+      const fallback = basicDiffFromDumps(currentSql, targetSql, allowDrops);
+      diffSql = fallback.statements.join('\n\n');
+      warnings.push(...fallback.warnings);
+      grouped = groupStatements(diffSql);
     } finally {
       if (tempDbName) {
         await dropTempDatabase(tempDbName);
       }
     }
   } else {
-    if (onProgress) onProgress('mysqldbcompare not available; using basic diff.');
+    if (onProgress) onProgress('Liquibase not available; using basic diff.');
     tool = 'basic';
     warnings.push(
-      'mysqldbcompare is not available on this server; using a basic CREATE TABLE diff instead.',
+      'Liquibase is not available on this server; using a bootstrap CREATE diff only. ALTER, DROP, and routine changes will not be scripted.',
     );
     const fallback = basicDiffFromDumps(currentSql, targetSql, allowDrops);
     diffSql = fallback.statements.join('\n\n');
     warnings.push(...fallback.warnings);
+    grouped = groupStatements(diffSql);
   }
 
   const diffPath = path.join(tempDir, 'schema_diff.sql');
   await fsPromises.writeFile(diffPath, diffSql || '-- Schemas already match', 'utf8');
-  const grouped = groupStatements(diffSql);
 
+  const inSyncWithBaseline =
+    baselineStatus.inSync && (grouped.stats?.statementCount || 0) === 0;
   return {
     tool,
-    toolAvailable,
+    toolAvailable: prereq.liquibaseAvailable,
     prerequisites: prereq,
     importedWithCli,
     allowDrops,
@@ -646,27 +887,94 @@ export async function buildSchemaDiff(options = {}) {
     targetSchemaPath: resolvedSchema,
     generatedAt: new Date().toISOString(),
     diffText: diffSql,
-    ...grouped,
+    groups: grouped.groups,
+    generalStatements: grouped.generalStatements,
+    stats: grouped.stats,
+    baseline: {
+      ...baselineStatus,
+      inSync: inSyncWithBaseline,
+      outOfSyncObjects: grouped.stats?.objectCount || 0,
+    },
+    diffItems,
+  };
+}
+
+export async function recordSchemaBaseline(options = {}) {
+  const { schemaPath, schemaFile } = options;
+  const resolvedSchema = resolveSchemaFile({ schemaPath, schemaFile });
+  const schemaExists = await fsPromises
+    .stat(resolvedSchema)
+    .then((st) => st.isFile())
+    .catch(() => false);
+  if (!schemaExists) {
+    const err = new Error(`Schema file not found: ${resolvedSchema}`);
+    err.status = 400;
+    throw err;
+  }
+  const targetSql = await fsPromises.readFile(resolvedSchema, 'utf8');
+  const baseline = await markBaseline(resolvedSchema, targetSql);
+  return {
+    path: path.relative(projectRoot, resolvedSchema),
+    recordedAt: baseline.recordedAt,
+    hash: baseline.hash,
   };
 }
 
 export async function applySchemaDiffStatements(statements, options = {}) {
-  const { allowDrops = false, dryRun = false, signal } = options;
+  const {
+    allowDrops = false,
+    dryRun = false,
+    signal,
+    alterPreviewed = false,
+    routineAcknowledged = false,
+  } = options;
   if (!Array.isArray(statements) || statements.length === 0) {
     const err = new Error('At least one statement is required');
     err.status = 400;
     throw err;
   }
-  const cleaned = statements.map((s) => s.trim()).filter(Boolean);
-  const dropStatements = cleaned.filter((s) => /^DROP\s+/i.test(s));
+  const normalized = statements
+    .map((s) => (typeof s === 'string' ? { sql: s } : s))
+    .map((s) => ({
+      ...s,
+      sql: (s.sql || '').trim(),
+      type: s.type || classifyStatement(s.sql || ''),
+      objectType: s.objectType || extractObject(s.sql || '')?.type || 'other',
+      risk: s.risk || classifyRisk(s.type || classifyStatement(s.sql || ''), s.objectType),
+    }))
+    .filter((s) => Boolean(s.sql));
+  if (!normalized.length) {
+    const err = new Error('At least one statement is required');
+    err.status = 400;
+    throw err;
+  }
+  const dropStatements = normalized.filter((s) => /^DROP\s+/i.test(s.sql));
+  const hasAlters = normalized.some((s) => s.type === 'alter');
+  const routineStatements = normalized.filter(
+    (s) => s.objectType === 'procedure' || s.objectType === 'trigger',
+  );
   if (dropStatements.length && !allowDrops) {
     const err = new Error(
       'Drop statements detected. Enable "include drops" to apply them.',
     );
     err.status = 400;
-    err.details = { dropStatements };
+    err.details = { dropStatements: dropStatements.map((s) => s.sql) };
     throw err;
   }
+  if (!dryRun && hasAlters && !alterPreviewed) {
+    const err = new Error('ALTER statements require preview confirmation before apply.');
+    err.status = 400;
+    err.details = { alters: normalized.filter((s) => s.type === 'alter').map((s) => s.sql) };
+    throw err;
+  }
+  if (!dryRun && routineStatements.length && !routineAcknowledged) {
+    const err = new Error('Routine changes require explicit acknowledgement.');
+    err.status = 400;
+    err.details = { routines: routineStatements.map((s) => s.sql) };
+    throw err;
+  }
+
+  const ordered = buildApplyPlan(normalized);
 
   if (dryRun) {
     return {
@@ -674,7 +982,7 @@ export async function applySchemaDiffStatements(statements, options = {}) {
       failed: [],
       dropStatements: dropStatements.length,
       dryRun: true,
-      statements: cleaned,
+      statements: ordered.map((s) => s.sql),
       durationMs: 0,
     };
   }
@@ -685,7 +993,7 @@ export async function applySchemaDiffStatements(statements, options = {}) {
   const started = Date.now();
   try {
     await conn.beginTransaction();
-    for (const stmt of cleaned) {
+    for (const stmt of ordered) {
       if (signal?.aborted) {
         const abortErr = new Error('Schema diff application aborted');
         abortErr.name = 'AbortError';
@@ -693,10 +1001,10 @@ export async function applySchemaDiffStatements(statements, options = {}) {
         throw abortErr;
       }
       try {
-        await conn.query(stmt);
+        await conn.query(stmt.sql);
         applied += 1;
       } catch (err) {
-        failed.push({ statement: stmt, error: err.message });
+        failed.push({ statement: stmt.sql, error: err.message });
         const wrapped = new Error('Failed to apply schema diff statement');
         wrapped.status = 400;
         wrapped.details = { applied, failed };
@@ -710,6 +1018,8 @@ export async function applySchemaDiffStatements(statements, options = {}) {
       dropStatements: dropStatements.length,
       dryRun: false,
       durationMs: Date.now() - started,
+      alterPreviewed,
+      routineAcknowledged,
     };
   } catch (err) {
     try {
