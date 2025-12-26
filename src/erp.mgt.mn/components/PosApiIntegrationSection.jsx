@@ -24,9 +24,19 @@ const DEFAULT_SESSION_VARIABLES = [
   'userId',
   'username',
   'branchId',
+  'branch_id',
+  'emp_id',
+  'employeeId',
+  'employee_id',
   'departmentId',
+  'department_id',
   'companyId',
+  'company_id',
+  'pos_no',
+  'posNo',
+  'posNumber',
   'sessionId',
+  'session_id',
   'userRole',
 ];
 
@@ -81,6 +91,63 @@ function splitFieldPath(path) {
   return { objectPath, fieldKey };
 }
 
+function normalizeRequestObjects(rawObjects = {}, { supportsItems = false, nestedPathMap = {} } = {}) {
+  const list = [];
+  const register = (key, definition = {}, parentPath = '') => {
+    if (!key) return;
+    const explicitPath = typeof definition.path === 'string' ? definition.path.trim() : '';
+    const path = explicitPath || (parentPath ? `${parentPath}.${key}` : key);
+    const repeatable =
+      definition.repeatable !== undefined
+        ? Boolean(definition.repeatable)
+        : path.includes('[]');
+    const existing = list.find((entry) => entry.path === path);
+    if (existing) return;
+    const normalized = {
+      id: path || key,
+      key,
+      path,
+      label: definition.label || humanizeFieldLabel(path.replace(/\[\]/g, '')),
+      repeatable,
+      template:
+        definition.template && typeof definition.template === 'object'
+          ? definition.template
+          : undefined,
+    };
+    list.push(normalized);
+    if (definition.children && typeof definition.children === 'object') {
+      Object.entries(definition.children).forEach(([childKey, childDef]) =>
+        register(childKey, childDef || {}, path),
+      );
+    }
+  };
+
+  if (rawObjects && typeof rawObjects === 'object') {
+    Object.entries(rawObjects).forEach(([key, def]) => register(key, def || {}, ''));
+  }
+
+  const hasPath = (candidate) =>
+    list.some(
+      (entry) =>
+        entry.path === candidate ||
+        entry.path === `${candidate}[]` ||
+        entry.path.replace(/\[\]/g, '') === candidate.replace(/\[\]/g, ''),
+    );
+
+  const resolvedNested = normalizeNestedPathsMap(nestedPathMap, supportsItems);
+  if (supportsItems && !hasPath(resolvedNested.items)) {
+    register('items', { path: resolvedNested.items, repeatable: true });
+  }
+  if (!hasPath(resolvedNested.payments)) {
+    register('payments', { path: resolvedNested.payments, repeatable: true });
+  }
+  if (!hasPath(resolvedNested.receipts)) {
+    register('receipts', { path: resolvedNested.receipts, repeatable: true });
+  }
+
+  return list;
+}
+
 function normalizeNestedPathsMap(nestedPaths = {}, supportsItems = false) {
   const defaults = {};
   if (supportsItems) {
@@ -100,12 +167,24 @@ function normalizeNestedPathsMap(nestedPaths = {}, supportsItems = false) {
   return map;
 }
 
-function buildRequestFieldStructure(requestFields = [], supportsItems = false, nestedPaths = {}) {
+function buildRequestFieldStructure(
+  requestFields = [],
+  supportsItems = false,
+  nestedPaths = {},
+  requestObjects = {},
+) {
   const nestedPathMap = normalizeNestedPathsMap(nestedPaths, supportsItems);
+  const normalizedRequestObjects = normalizeRequestObjects(requestObjects, {
+    supportsItems,
+    nestedPathMap,
+  });
   const normalizedFields = (Array.isArray(requestFields) ? requestFields : [])
     .map((entry) => normalizeRequestField(entry))
     .filter(Boolean);
   const objectMap = new Map();
+  normalizedRequestObjects.forEach((obj) => {
+    objectMap.set(obj.path, { ...obj, fields: obj.fields ? [...obj.fields] : [] });
+  });
   const registerField = (objectPath, field) => {
     const key = objectPath || '';
     const existing = objectMap.get(key) || {
@@ -122,7 +201,20 @@ function buildRequestFieldStructure(requestFields = [], supportsItems = false, n
 
   normalizedFields.forEach((field) => {
     const { objectPath, fieldKey } = splitFieldPath(field.path);
-    registerField(objectPath, { ...field, key: fieldKey, label: field.label || humanizeFieldLabel(fieldKey) });
+    let targetPath = objectPath;
+    if (objectMap.size > 0) {
+      const candidates = Array.from(objectMap.keys()).filter(
+        (path) => path && (field.path === path || field.path.startsWith(`${path}.`)),
+      );
+      if (candidates.length) {
+        targetPath = candidates.sort((a, b) => b.length - a.length)[0];
+      }
+    }
+    registerField(targetPath, {
+      ...field,
+      key: fieldKey,
+      label: field.label || humanizeFieldLabel(fieldKey),
+    });
   });
 
   const rootFields = objectMap.get('')?.fields || [];
@@ -224,9 +316,26 @@ function applyFieldDefaults(target, fields = []) {
   });
 }
 
-function ensurePathWithFields(target, path, fields = []) {
+function mergeInto(target, source) {
+  if (!target || !source || typeof source !== 'object') return;
+  Object.entries(source).forEach(([key, value]) => {
+    if (value && typeof value === 'object' && !Array.isArray(value)) {
+      if (!target[key] || typeof target[key] !== 'object' || Array.isArray(target[key])) {
+        target[key] = {};
+      }
+      mergeInto(target[key], value);
+    } else {
+      target[key] = value;
+    }
+  });
+}
+
+function ensurePathWithFields(target, path, fields = [], template = null) {
   if (!path) {
     applyFieldDefaults(target, fields);
+    if (template) {
+      mergeInto(target, template);
+    }
     return target;
   }
   const segments = path.split('.').filter(Boolean);
@@ -249,6 +358,9 @@ function ensurePathWithFields(target, path, fields = []) {
     }
     if (idx === segments.length - 1) {
       applyFieldDefaults(cursor, fields);
+      if (template) {
+        mergeInto(cursor, template);
+      }
     }
   });
   return target;
@@ -275,9 +387,127 @@ function buildHierarchicalSample(structure, baseSample) {
   const skeleton = {};
   applyFieldDefaults(skeleton, structure?.rootFields || []);
   (structure?.objects || []).forEach((obj) => {
-    ensurePathWithFields(skeleton, obj.path || obj.id || obj.key, obj.fields || []);
+    ensurePathWithFields(
+      skeleton,
+      obj.path || obj.id || obj.key,
+      obj.fields || [],
+      obj.template || null,
+    );
   });
   return mergeSamples(skeleton, baseSample);
+}
+
+function setValueAtPath(target, path, value) {
+  if (!target || !path) return;
+  const segments = path.split('.').filter(Boolean);
+  let cursor = target;
+  segments.forEach((segment, idx) => {
+    const isArray = segment.endsWith('[]');
+    const key = isArray ? segment.slice(0, -2) : segment;
+    const isLast = idx === segments.length - 1;
+    if (isArray) {
+      if (!Array.isArray(cursor[key])) cursor[key] = [];
+      if (!cursor[key].length) cursor[key].push(isLast ? value : {});
+      if (isLast) {
+        cursor[key][0] = value;
+        return;
+      }
+      if (!cursor[key][0] || typeof cursor[key][0] !== 'object') {
+        cursor[key][0] = {};
+      }
+      cursor = cursor[key][0];
+    } else {
+      if (isLast) {
+        cursor[key] = value;
+        return;
+      }
+      if (!cursor[key] || typeof cursor[key] !== 'object' || Array.isArray(cursor[key])) {
+        cursor[key] = {};
+      }
+      cursor = cursor[key];
+    }
+  });
+}
+
+function applyFieldValueMap(target, valueMap = {}) {
+  if (!target || typeof target !== 'object') return target;
+  Object.entries(valueMap || {}).forEach(([path, val]) => {
+    if (!path) return;
+    setValueAtPath(target, path, val);
+  });
+  return target;
+}
+
+function collectValuesAtPath(source, path) {
+  if (!path) return [];
+  const segments = path.split('.').filter(Boolean);
+  const recurse = (node, index) => {
+    if (index >= segments.length) return [node];
+    const segment = segments[index];
+    const isArray = segment.endsWith('[]');
+    const key = isArray ? segment.slice(0, -2) : segment;
+    if (isArray) {
+      const arr = (node && typeof node === 'object' && Array.isArray(node[key])) ? node[key] : [];
+      return arr.flatMap((child) => recurse(child, index + 1));
+    }
+    if (!node || typeof node !== 'object') return [];
+    return recurse(node[key], index + 1);
+  };
+  return recurse(source, 0).filter((value) => value !== undefined);
+}
+
+function applyAggregations(source, aggregations = {}) {
+  if (!source || typeof source !== 'object') return source;
+  const cloned = mergeSamples({}, source);
+  const entries = aggregations && typeof aggregations === 'object' ? Object.entries(aggregations) : [];
+  entries.forEach(([path, rule]) => {
+    if (!path || !rule || typeof rule !== 'object') return;
+    const { sumOf, countOf, minOf, maxOf, expression, type } = rule;
+    const targetPath = path;
+    const resolveNumeric = (values) =>
+      values
+        .map((val) => {
+          const num = Number(val);
+          return Number.isFinite(num) ? num : null;
+        })
+        .filter((val) => val !== null);
+    const applySimpleAggregation = (values, op) => {
+      const numbers = resolveNumeric(values);
+      if (!numbers.length) return undefined;
+      if (op === 'sum') return numbers.reduce((acc, cur) => acc + cur, 0);
+      if (op === 'count') return numbers.length;
+      if (op === 'min') return Math.min(...numbers);
+      if (op === 'max') return Math.max(...numbers);
+      return undefined;
+    };
+
+    let computed;
+    if (sumOf) {
+      computed = applySimpleAggregation(collectValuesAtPath(cloned, sumOf), 'sum');
+    } else if (countOf) {
+      computed = applySimpleAggregation(collectValuesAtPath(cloned, countOf), 'count');
+    } else if (minOf) {
+      computed = applySimpleAggregation(collectValuesAtPath(cloned, minOf), 'min');
+    } else if (maxOf) {
+      computed = applySimpleAggregation(collectValuesAtPath(cloned, maxOf), 'max');
+    } else if (expression) {
+      const match = /^\s*(sum|count|min|max)\((.+)\)\s*$/i.exec(expression);
+      if (match) {
+        const op = match[1].toLowerCase();
+        const exprPath = match[2].trim();
+        computed = applySimpleAggregation(collectValuesAtPath(cloned, exprPath), op);
+      }
+    } else if (type && rule.of) {
+      const op = String(type || '').toLowerCase();
+      computed = applySimpleAggregation(collectValuesAtPath(cloned, rule.of), op);
+    }
+
+    if (computed !== undefined) {
+      setValueAtPath(cloned, targetPath, computed);
+    }
+  });
+
+  return cloned;
 }
 
 function MappingFieldSelector({
@@ -295,7 +525,7 @@ function MappingFieldSelector({
   sessionVariables = [],
 }) {
   const selection = normalizeMappingSelection(value, primaryTableName);
-  const currentType = selection.type || 'column';
+  const currentType = selection.sourceType || selection.type || 'column';
   const selectedTable = currentType === 'column' ? selection.table || '' : '';
   const columns = currentType === 'column'
     ? selectedTable
@@ -306,7 +536,7 @@ function MappingFieldSelector({
   const sessionListId = `${datalistIdBase}-session`;
 
   const handleTypeChange = (nextType) => {
-    const base = { ...selection, type: nextType };
+    const base = { ...selection, type: nextType, sourceType: nextType };
     if (nextType !== 'column') {
       base.table = '';
       base.column = '';
@@ -336,7 +566,7 @@ function MappingFieldSelector({
   };
 
   const handleScalarChange = (key, val) => {
-    const base = { ...selection, type: currentType, [key]: val };
+    const base = { ...selection, type: currentType, sourceType: currentType, [key]: val };
     onChange(buildMappingValue(base, { preserveType: true }));
   };
 
@@ -577,6 +807,7 @@ export default function PosApiIntegrationSection({
         selectedEndpoint?.requestFields || [],
         selectedEndpoint?.supportsItems !== false,
         selectedEndpoint?.mappingHints?.nestedPaths || {},
+        selectedEndpoint?.requestObjects || {},
       ),
     [selectedEndpoint],
   );
@@ -646,13 +877,40 @@ export default function PosApiIntegrationSection({
     [requestStructure, baseRequestSample],
   );
 
+  const variationDefaultMap = useMemo(() => {
+    if (!selectedVariation) return {};
+    const defaults = {
+      ...(selectedVariation.defaultValues || {}),
+    };
+    if (
+      selectedEndpoint &&
+      selectedEndpoint.variationFieldValues &&
+      typeof selectedEndpoint.variationFieldValues === 'object'
+    ) {
+      const scoped = selectedEndpoint.variationFieldValues[selectedVariation.key];
+      if (scoped && typeof scoped === 'object') {
+        Object.assign(defaults, scoped);
+      }
+    }
+    return defaults;
+  }, [selectedVariation, selectedEndpoint]);
+
+  const aggregatedRequestSample = useMemo(() => {
+    const base = mergeSamples({}, hierarchicalRequestSample || {});
+    const applyVariationDefaults = selectedEndpoint?.variationScoped
+      ? Boolean(selectedVariation)
+      : Boolean(selectedVariation);
+    const withDefaults = applyVariationDefaults ? applyFieldValueMap(base, variationDefaultMap) : base;
+    return applyAggregations(withDefaults, selectedEndpoint?.aggregations || {});
+  }, [hierarchicalRequestSample, selectedEndpoint, selectedVariation, variationDefaultMap]);
+
   const requestSampleText = useMemo(() => {
     try {
-      return JSON.stringify(hierarchicalRequestSample || {}, null, 2);
+      return JSON.stringify(aggregatedRequestSample || {}, null, 2);
     } catch {
       return '{}';
     }
-  }, [hierarchicalRequestSample]);
+  }, [aggregatedRequestSample]);
 
   const requestVariations = useMemo(() => {
     if (!selectedEndpoint || !Array.isArray(selectedEndpoint.variations)) return [];
@@ -675,12 +933,14 @@ export default function PosApiIntegrationSection({
       }
     }
     const merged = buildHierarchicalSample(requestStructure, payload || {});
+    const withDefaults = selectedVariation ? applyFieldValueMap(merged, variationDefaultMap) : merged;
+    const aggregated = applyAggregations(withDefaults, selectedEndpoint?.aggregations || {});
     try {
-      return JSON.stringify(merged || {}, null, 2);
+      return JSON.stringify(aggregated || {}, null, 2);
     } catch {
       return selectedVariation?.requestExampleText || '';
     }
-  }, [selectedVariation, requestStructure]);
+  }, [selectedVariation, requestStructure, selectedEndpoint, variationDefaultMap]);
 
   const receiptTypesAllowMultiple = receiptTypesFeatureEnabled
     ? selectedEndpoint?.allowMultipleReceiptTypes !== false
