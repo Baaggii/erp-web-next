@@ -26,6 +26,7 @@ import {
   isModuleLicensed,
   isModulePermissionGranted,
 } from '../utils/moduleAccess.js';
+import { withPosApiEndpointMetadata } from '../utils/posApiConfig.js';
 import {
   isPlainRecord,
   assignArrayMetadata,
@@ -1490,6 +1491,8 @@ export default function PosTransactionsPage() {
   const [isPostingEbarimt, setIsPostingEbarimt] = useState(false);
   const [ebarimtPreview, setEbarimtPreview] = useState(null);
   const [ebarimtQrImage, setEbarimtQrImage] = useState('');
+  const [posApiEndpoints, setPosApiEndpoints] = useState([]);
+  const [selectedRequestVariation, setSelectedRequestVariation] = useState('');
   const canIssueEbarimt = Boolean(
     config?.masterTable &&
       memoFormConfigs[config.masterTable]?.posApiEnabled,
@@ -1508,6 +1511,51 @@ export default function PosTransactionsPage() {
     });
     return map;
   }, [config]);
+  const transactionEndpoint = useMemo(() => {
+    if (!config?.posApiEnabled) return null;
+    const endpointId =
+      (typeof config.posApiEndpointId === 'string' && config.posApiEndpointId.trim()) ||
+      (typeof config.posApiEndpointMeta?.id === 'string' ? config.posApiEndpointMeta.id.trim() : '');
+    if (endpointId) {
+      const fromList = posApiEndpoints.find((endpoint) => endpoint?.id === endpointId) || null;
+      if (fromList) return fromList;
+    }
+    if (config?.posApiEndpointMeta) {
+      return withPosApiEndpointMetadata(config.posApiEndpointMeta);
+    }
+    return null;
+  }, [config, posApiEndpoints]);
+  const requestVariations = useMemo(() => {
+    if (!transactionEndpoint || !Array.isArray(transactionEndpoint.variations)) return [];
+    return transactionEndpoint.variations.filter((variation) => variation && variation.enabled !== false);
+  }, [transactionEndpoint]);
+  const userSelectedVariationRef = useRef(false);
+  useEffect(() => {
+    if (!config?.posApiEnabled) {
+      setSelectedRequestVariation('');
+      userSelectedVariationRef.current = false;
+      return;
+    }
+    const defaultKey =
+      typeof config.posApiRequestVariation === 'string'
+        ? config.posApiRequestVariation.trim()
+        : '';
+    setSelectedRequestVariation((prev) => {
+      const prevKey = typeof prev === 'string' ? prev : '';
+      const hasPrevOption =
+        prevKey === '' || requestVariations.some((variation) => variation?.key === prevKey);
+      if (userSelectedVariationRef.current && hasPrevOption) {
+        return prevKey;
+      }
+      if (hasPrevOption && prevKey) {
+        return prevKey;
+      }
+      if (defaultKey && requestVariations.some((variation) => variation?.key === defaultKey)) {
+        return defaultKey;
+      }
+      return hasPrevOption ? prevKey : '';
+    });
+  }, [config?.posApiEnabled, config?.posApiRequestVariation, requestVariations]);
   const clearEbarimtPreview = useCallback(() => {
     setEbarimtPreview(null);
     setEbarimtQrImage('');
@@ -1524,6 +1572,28 @@ export default function PosTransactionsPage() {
     const url = `https://quickchart.io/qr?size=220&margin=1&text=${encodeURIComponent(qrValue)}`;
     setEbarimtQrImage(url);
   }, [ebarimtPreview?.qrData]);
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/posapi/endpoints', { credentials: 'include' })
+      .then((res) => (res.ok ? res.json() : []))
+      .then((data) => {
+        if (cancelled) return;
+        if (Array.isArray(data)) {
+          setPosApiEndpoints(data.map(withPosApiEndpointMetadata));
+        } else {
+          setPosApiEndpoints([]);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setPosApiEndpoints([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  useEffect(() => {
+    userSelectedVariationRef.current = false;
+  }, [name]);
   const sessionFieldsKey = useMemo(() => {
     if (!sessionFields || sessionFields.length === 0) return '';
     return sessionFields
@@ -3238,7 +3308,11 @@ export default function PosTransactionsPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ name, recordId: postedId }),
+        body: JSON.stringify({
+          name,
+          recordId: postedId,
+          posApiRequestVariation: selectedRequestVariation,
+        }),
       });
       if (res.ok) {
         const js = await res.json().catch(() => ({}));
@@ -3389,6 +3463,36 @@ export default function PosTransactionsPage() {
             <button onClick={handleLoadPending} style={{ marginRight: '0.5rem' }} disabled={!name}>Load</button>
             <button onClick={handleDeletePending} style={{ marginRight: '0.5rem' }} disabled={!pendingId}>Delete</button>
             <button onClick={handlePostAll} disabled={!name}>POST</button>
+            {canIssueEbarimt && requestVariations.length > 0 && (
+              <label
+                style={{
+                  marginLeft: '0.5rem',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '0.35rem',
+                }}
+              >
+                <span style={{ fontWeight: 600 }}>Request variation</span>
+                <select
+                  value={selectedRequestVariation}
+                  onChange={(e) => {
+                    userSelectedVariationRef.current = true;
+                    setSelectedRequestVariation(e.target.value);
+                  }}
+                  disabled={isPostingEbarimt}
+                >
+                  <option value="">Base request</option>
+                  {requestVariations.map((variation, index) => {
+                    const value = variation?.key || variation?.name || `variation-${index + 1}`;
+                    return (
+                      <option key={value} value={value}>
+                        {variation?.name || variation?.key || value}
+                      </option>
+                    );
+                  })}
+                </select>
+              </label>
+            )}
             {canIssueEbarimt && (
               <button
                 onClick={handlePostEbarimt}

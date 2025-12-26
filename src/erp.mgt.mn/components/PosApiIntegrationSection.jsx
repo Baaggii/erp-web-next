@@ -864,6 +864,17 @@ export default function PosApiIntegrationSection({
     return selectedEndpoint.variations.filter((variation) => variation && variation.enabled !== false);
   }, [selectedEndpoint]);
 
+  useEffect(() => {
+    setConfig((prev) => {
+      if (!prev.posApiEnabled) return prev;
+      const current = typeof prev.posApiRequestVariation === 'string' ? prev.posApiRequestVariation : '';
+      if (!current) return prev;
+      const exists = requestVariations.some((variation) => variation?.key === current);
+      if (exists) return prev;
+      return { ...prev, posApiRequestVariation: '' };
+    });
+  }, [requestVariations, setConfig]);
+
   const selectedVariationKey = config.posApiRequestVariation || '';
   const selectedVariation =
     requestVariations.find((variation) => variation.key === selectedVariationKey) || null;

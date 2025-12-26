@@ -1588,6 +1588,7 @@ export async function postPosTransactionWithEbarimt(
   data,
   sessionInfo = {},
   companyId = 0,
+  options = {},
 ) {
   const layoutName = typeof name === 'string' ? name.trim() : '';
   if (!layoutName) {
@@ -1620,6 +1621,10 @@ export async function postPosTransactionWithEbarimt(
     err.status = 400;
     throw err;
   }
+  const variationOverride =
+    typeof options?.posApiRequestVariation === 'string'
+      ? options.posApiRequestVariation.trim()
+      : null;
 
   const masterId = await postPosTransaction(
     layoutName,
@@ -1680,9 +1685,11 @@ export async function postPosTransactionWithEbarimt(
     throw err;
   }
   const variationKey =
-    typeof formCfg.posApiRequestVariation === 'string'
-      ? formCfg.posApiRequestVariation.trim()
-      : '';
+    variationOverride !== null
+      ? variationOverride
+      : typeof formCfg.posApiRequestVariation === 'string'
+        ? formCfg.posApiRequestVariation.trim()
+        : '';
   const variationDefaults = collectVariationDefaults(formCfg, endpoint, variationKey);
   const payloadWithDefaults = applyVariationDefaults(payload, variationDefaults);
 
@@ -1715,6 +1722,7 @@ export async function issueSavedPosTransactionEbarimt(
   name,
   recordId,
   companyId = 0,
+  options = {},
 ) {
   const layoutName = typeof name === 'string' ? name.trim() : '';
   if (!layoutName) {
@@ -1751,6 +1759,10 @@ export async function issueSavedPosTransactionEbarimt(
     err.status = 400;
     throw err;
   }
+  const variationOverride =
+    typeof options?.posApiRequestVariation === 'string'
+      ? options.posApiRequestVariation.trim()
+      : null;
 
   const [rows] = await pool.query(
     `SELECT * FROM \`${masterTable}\` WHERE id = ? LIMIT 1`,
@@ -1822,9 +1834,11 @@ export async function issueSavedPosTransactionEbarimt(
     throw err;
   }
   const variationKey =
-    typeof formCfg.posApiRequestVariation === 'string'
-      ? formCfg.posApiRequestVariation.trim()
-      : '';
+    variationOverride !== null
+      ? variationOverride
+      : typeof formCfg.posApiRequestVariation === 'string'
+        ? formCfg.posApiRequestVariation.trim()
+        : '';
   const variationDefaults = collectVariationDefaults(formCfg, endpoint, variationKey);
   const payloadWithDefaults = applyVariationDefaults(payload, variationDefaults);
 
