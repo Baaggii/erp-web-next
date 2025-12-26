@@ -68,6 +68,7 @@ const emptyConfig = {
   posApiReceiptTaxTypes: [],
   posApiPaymentMethods: [],
   posApiRequestVariation: '',
+  posApiVariationDefaults: {},
   posApiEnableReceiptTypes: undefined,
   posApiEnableReceiptItems: undefined,
   posApiEnableReceiptTaxTypes: undefined,
@@ -134,6 +135,18 @@ function stripPrefix(tokens = [], prefixTokens = []) {
 
 function normalizeFieldKeyForMatch(path = '') {
   return path.replace(/\[\]/g, '');
+}
+
+function normalizeVariationDefaults(map = {}) {
+  if (!map || typeof map !== 'object' || Array.isArray(map)) return {};
+  const normalized = {};
+  Object.entries(map).forEach(([path, value]) => {
+    const key = typeof path === 'string' ? path.trim() : '';
+    if (!key) return;
+    if (value === undefined) return;
+    normalized[key] = value;
+  });
+  return normalized;
 }
 
 function hasMappingProvidedValue(value) {
@@ -1223,6 +1236,9 @@ export default function PosTxnConfig() {
       loaded.posApiEndpointId =
         typeof loaded.posApiEndpointId === 'string' ? loaded.posApiEndpointId : '';
       loaded.posApiType = typeof loaded.posApiType === 'string' ? loaded.posApiType : '';
+      loaded.posApiRequestVariation =
+        typeof loaded.posApiRequestVariation === 'string' ? loaded.posApiRequestVariation : '';
+      loaded.posApiVariationDefaults = normalizeVariationDefaults(loaded.posApiVariationDefaults);
       loaded.posApiTypeField =
         typeof loaded.posApiTypeField === 'string' ? loaded.posApiTypeField : '';
       loaded.posApiInfoEndpointIds = Array.isArray(loaded.posApiInfoEndpointIds)
@@ -1419,6 +1435,11 @@ export default function PosTxnConfig() {
       calcFields: normalizedCalcFields,
       posFields: normalizedPosFields,
       statusField: normalizedStatusField,
+      posApiRequestVariation:
+        typeof config.posApiRequestVariation === 'string'
+          ? config.posApiRequestVariation.trim()
+          : '',
+      posApiVariationDefaults: normalizeVariationDefaults(config.posApiVariationDefaults),
       procedures: normalizeProcedureList(config.procedures),
       temporaryProcedures: normalizeProcedureList(config.temporaryProcedures),
       posApiResponseMapping:

@@ -328,6 +328,21 @@ function ensureNestedPath(target, tokens) {
   });
 }
 
+function mergeVariationDefaultMap(field = {}) {
+  const defaults = {};
+  const mergeMap = (map) => {
+    if (!map || typeof map !== 'object' || Array.isArray(map)) return;
+    Object.entries(map).forEach(([key, value]) => {
+      if (!key) return;
+      if (value === undefined) return;
+      defaults[key] = value;
+    });
+  };
+  mergeMap(field.defaultVariations);
+  mergeMap(field.defaultByVariation);
+  return defaults;
+}
+
 function parseEnvValue(rawValue) {
   if (rawValue === undefined || rawValue === null) return rawValue;
   if (typeof rawValue !== 'string') return rawValue;
@@ -1228,12 +1243,17 @@ function parseTabbedRequestVariations(markdown, flags = {}) {
           const variationKey = entry.title || `variation-${index + 1}`;
           const requestFields = flattenFieldsFromExample(requestExample).map((field) => {
             const valueEntry = exampleFields.find((item) => item.field === field.field);
+            const variationDefaults =
+              valueEntry?.field && valueEntry.value !== undefined
+                ? { [variationKey]: valueEntry.value }
+                : {};
             return {
               ...field,
               required: true,
               requiredCommon: false,
               requiredVariations: { [variationKey]: true },
-              defaultVariations: valueEntry?.field ? { [variationKey]: valueEntry.value } : {},
+              defaultVariations: variationDefaults,
+              defaultByVariation: variationDefaults,
             };
           });
 
@@ -1312,7 +1332,7 @@ function buildVariationFieldMetadata(variations = []) {
       const isRequired = field.required !== false;
       meta.required[variationName] = isRequired;
       if (isRequired) meta.requiredCount += 1;
-      const defaultMap = field?.defaultVariations || {};
+      const defaultMap = mergeVariationDefaultMap(field);
       if (Object.prototype.hasOwnProperty.call(defaultMap, variationName)) {
         meta.defaults[variationName] = defaultMap[variationName];
       }
@@ -1342,7 +1362,7 @@ function applyVariationFieldMetadata(variations = []) {
     lookup.forEach((meta, fieldPath) => {
       const current = existingMap.get(fieldPath) || { field: fieldPath, required: false };
       const requiredMap = { ...(current.requiredVariations || {}) };
-      const defaultMap = { ...(current.defaultVariations || {}) };
+      const defaultMap = mergeVariationDefaultMap(current);
 
       requiredMap[variationName] = Boolean(meta.required?.[variationName]);
       if (Object.prototype.hasOwnProperty.call(meta.defaults, variationName)) {
@@ -1356,6 +1376,7 @@ function applyVariationFieldMetadata(variations = []) {
         requiredCommon: meta.requiredCount === totalVariations,
         requiredVariations: requiredMap,
         defaultVariations: defaultMap,
+        defaultByVariation: defaultMap,
       });
     });
 
@@ -1843,25 +1864,24 @@ function extractOperationsFromOpenApi(spec, meta = {}, metaLookup = {}) {
         ]).map((field) => {
           const required = field?.required !== false;
           const value = exampleValueMap[field.field];
-          const defaultMap =
-            field && typeof field.defaultVariations === 'object' && field.defaultVariations !== null
-              ? field.defaultVariations
-              : {};
+          const defaultMap = mergeVariationDefaultMap(field);
           const requiredMap =
             field && typeof field.requiredVariations === 'object' && field.requiredVariations !== null
               ? field.requiredVariations
               : {};
+          const mergedDefaults =
+            value !== undefined
+              ? { ...defaultMap, [variationName]: value }
+              : Object.keys(defaultMap).length
+                ? defaultMap
+                : {};
           return {
             ...field,
             required,
             requiredCommon: Boolean(field.requiredCommon),
             requiredVariations: { ...requiredMap, [variationName]: required },
-            defaultVariations:
-              value !== undefined
-                ? { ...defaultMap, [variationName]: value }
-                : Object.keys(defaultMap).length
-                  ? defaultMap
-                  : {},
+            defaultVariations: mergedDefaults,
+            defaultByVariation: mergedDefaults,
           };
         });
         const variationResponseFields = dedupeFieldEntries([

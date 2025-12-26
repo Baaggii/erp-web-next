@@ -135,6 +135,158 @@ function setValue(target, field, value) {
   }
 }
 
+function tokenizeFieldPath(path) {
+  if (typeof path !== 'string' || !path.trim()) return [];
+  return path
+    .split('.')
+    .map((segment) => {
+      const trimmed = segment.trim();
+      if (!trimmed) return null;
+      const arrayMatch = /^(.*)\[\]$/.exec(trimmed);
+      if (arrayMatch) {
+        return { key: arrayMatch[1], isArray: true };
+      }
+      return { key: trimmed, isArray: false };
+    })
+    .filter(Boolean);
+}
+
+function getValueAtTokens(source, tokens) {
+  if (!source || typeof source !== 'object' || !tokens.length) return undefined;
+  let current = source;
+  for (const token of tokens) {
+    if (current === undefined || current === null) return undefined;
+    if (token.isArray) {
+      if (!Array.isArray(current[token.key]) || !current[token.key].length) return undefined;
+      current = current[token.key][0];
+    } else {
+      current = current[token.key];
+    }
+  }
+  return current;
+}
+
+function setValueAtTokens(target, tokens, value) {
+  if (!target || typeof target !== 'object' || !tokens.length) return false;
+  let current = target;
+  tokens.forEach((token, index) => {
+    if (!token?.key) return;
+    const isLast = index === tokens.length - 1;
+    if (isLast) {
+      if (token.isArray) {
+        current[token.key] = Array.isArray(current[token.key]) ? current[token.key] : [];
+        if (!current[token.key].length) {
+          current[token.key].push(value);
+        } else {
+          current[token.key][0] = value;
+        }
+      } else {
+        current[token.key] = value;
+      }
+      return;
+    }
+
+    const nextContainer = token.isArray ? [] : {};
+    if (current[token.key] === undefined || current[token.key] === null) {
+      current[token.key] = token.isArray ? [nextContainer] : nextContainer;
+    }
+    if (token.isArray) {
+      current[token.key] = Array.isArray(current[token.key]) ? current[token.key] : [];
+      if (!current[token.key].length) {
+        current[token.key].push(nextContainer);
+      }
+      current = current[token.key][0];
+    } else {
+      if (typeof current[token.key] !== 'object') {
+        current[token.key] = nextContainer;
+      }
+      current = current[token.key];
+    }
+  });
+  return true;
+}
+
+function normalizeVariationDefaults(map = {}) {
+  if (!map || typeof map !== 'object' || Array.isArray(map)) return {};
+  const normalized = {};
+  Object.entries(map).forEach(([path, value]) => {
+    const key = typeof path === 'string' ? path.trim() : '';
+    if (!key) return;
+    if (value === undefined) return;
+    normalized[key] = value;
+  });
+  return normalized;
+}
+
+function collectVariationDefaults(config = {}, endpoint = {}, variationKey = '') {
+  if (!variationKey) return {};
+  const defaults = {};
+  const mergeMap = (map) => {
+    if (!map || typeof map !== 'object' || Array.isArray(map)) return;
+    Object.entries(map).forEach(([path, value]) => {
+      const key = typeof path === 'string' ? path.trim() : '';
+      if (!key) return;
+      if (value === undefined) return;
+      defaults[key] = value;
+    });
+  };
+
+  mergeMap(config.posApiVariationDefaults);
+
+  if (Array.isArray(endpoint.requestFieldVariations)) {
+    const variationMeta = endpoint.requestFieldVariations.find((entry) => entry?.key === variationKey);
+    if (variationMeta) {
+      mergeMap(variationMeta.defaultValues);
+    }
+  }
+
+  const variationEntry = Array.isArray(endpoint.variations)
+    ? endpoint.variations.find(
+        (entry) => entry && (entry.key === variationKey || entry.name === variationKey),
+      )
+    : null;
+  if (variationEntry) {
+    mergeMap(variationEntry.defaultValues);
+    if (Array.isArray(variationEntry.requestFields)) {
+      variationEntry.requestFields.forEach((field) => {
+        const path = typeof field?.field === 'string' ? field.field.trim() : '';
+        if (!path) return;
+        const variationDefaults = field?.defaultByVariation || field?.defaultVariations || {};
+        if (Object.prototype.hasOwnProperty.call(variationDefaults, variationKey)) {
+          defaults[path] = variationDefaults[variationKey];
+        }
+      });
+    }
+  }
+
+  if (Array.isArray(endpoint.requestFields)) {
+    endpoint.requestFields.forEach((field) => {
+      const path = typeof field?.field === 'string' ? field.field.trim() : '';
+      if (!path) return;
+      const variationDefaults = field?.defaultByVariation || field?.defaultVariations || {};
+      if (Object.prototype.hasOwnProperty.call(variationDefaults, variationKey)) {
+        defaults[path] = variationDefaults[variationKey];
+      }
+    });
+  }
+
+  return defaults;
+}
+
+function applyVariationDefaults(payload, defaults = {}) {
+  if (!payload || typeof payload !== 'object') return payload;
+  const normalizedDefaults = normalizeVariationDefaults(defaults);
+  Object.entries(normalizedDefaults).forEach(([path, value]) => {
+    const tokens = tokenizeFieldPath(path);
+    if (!tokens.length) return;
+    const existing = getValueAtTokens(payload, tokens);
+    if (existing !== undefined && existing !== null && `${existing}` !== '') return;
+    setValueAtTokens(payload, tokens, value);
+  });
+  return payload;
+}
+
+
 function extractArrayMetadata(value) {
   if (!value || typeof value !== 'object') return null;
   const metadata = {};
@@ -1527,16 +1679,22 @@ export async function postPosTransactionWithEbarimt(
     err.status = 400;
     throw err;
   }
+  const variationKey =
+    typeof formCfg.posApiRequestVariation === 'string'
+      ? formCfg.posApiRequestVariation.trim()
+      : '';
+  const variationDefaults = collectVariationDefaults(formCfg, endpoint, variationKey);
+  const payloadWithDefaults = applyVariationDefaults(payload, variationDefaults);
 
   const invoiceId = await saveEbarimtInvoiceSnapshot({
     masterTable,
     masterId,
     record,
-    payload,
+    payload: payloadWithDefaults,
     merchantInfo,
   });
 
-  const response = await sendReceipt(payload, { endpoint });
+  const response = await sendReceipt(payloadWithDefaults, { endpoint });
   await persistPosApiResponse(masterTable, masterId, response, {
     fieldsFromPosApi: formCfg.fieldsFromPosApi,
     responseFieldMapping: formCfg.posApiResponseMapping,
@@ -1550,7 +1708,7 @@ export async function postPosTransactionWithEbarimt(
     });
   }
 
-  return { id: masterId, ebarimtInvoiceId: invoiceId, posApi: { payload, response } };
+  return { id: masterId, ebarimtInvoiceId: invoiceId, posApi: { payload: payloadWithDefaults, response } };
 }
 
 export async function issueSavedPosTransactionEbarimt(
@@ -1663,16 +1821,22 @@ export async function issueSavedPosTransactionEbarimt(
     err.status = 400;
     throw err;
   }
+  const variationKey =
+    typeof formCfg.posApiRequestVariation === 'string'
+      ? formCfg.posApiRequestVariation.trim()
+      : '';
+  const variationDefaults = collectVariationDefaults(formCfg, endpoint, variationKey);
+  const payloadWithDefaults = applyVariationDefaults(payload, variationDefaults);
 
   const invoiceId = await saveEbarimtInvoiceSnapshot({
     masterTable,
     masterId: recordId,
     record: aggregatedRecord,
-    payload,
+    payload: payloadWithDefaults,
     merchantInfo,
   });
 
-  const response = await sendReceipt(payload, { endpoint });
+  const response = await sendReceipt(payloadWithDefaults, { endpoint });
   await persistPosApiResponse(masterTable, recordId, response, {
     fieldsFromPosApi: formCfg.fieldsFromPosApi,
     responseFieldMapping: formCfg.posApiResponseMapping,
@@ -1704,7 +1868,7 @@ export async function issueSavedPosTransactionEbarimt(
     billId,
     errorMessage,
     invoice: invoiceRecord,
-    posApi: { payload, response },
+    posApi: { payload: payloadWithDefaults, response },
   };
 }
 
