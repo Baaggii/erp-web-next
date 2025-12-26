@@ -166,11 +166,13 @@ export async function issueDynamicTransactionEbarimt(
   await persistPosApiDetails(tableName, pkColumn, recordId, response, record, {
     fieldsFromPosApi: formCfg.fieldsFromPosApi,
     responseFieldMapping: formCfg.posApiResponseMapping,
+    targetTable: tableName,
   });
   if (invoiceId) {
     await persistEbarimtInvoiceResponse(invoiceId, response, {
       fieldsFromPosApi: formCfg.fieldsFromPosApi,
       responseFieldMapping: formCfg.posApiResponseMapping,
+      targetTable: 'ebarimt_invoice',
     });
   }
 

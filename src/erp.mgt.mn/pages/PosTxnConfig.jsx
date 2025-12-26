@@ -1258,6 +1258,12 @@ export default function PosTxnConfig() {
             .map((value) => (typeof value === 'string' ? value.trim() : ''))
             .filter((value) => value)
         : [];
+      loaded.posApiResponseMapping =
+        loaded.posApiResponseMapping &&
+        typeof loaded.posApiResponseMapping === 'object' &&
+        !Array.isArray(loaded.posApiResponseMapping)
+          ? { ...loaded.posApiResponseMapping }
+          : {};
       loaded.posApiMapping =
         loaded.posApiMapping &&
         typeof loaded.posApiMapping === 'object' &&
@@ -1415,6 +1421,12 @@ export default function PosTxnConfig() {
       statusField: normalizedStatusField,
       procedures: normalizeProcedureList(config.procedures),
       temporaryProcedures: normalizeProcedureList(config.temporaryProcedures),
+      posApiResponseMapping:
+        config.posApiResponseMapping &&
+        typeof config.posApiResponseMapping === 'object' &&
+        !Array.isArray(config.posApiResponseMapping)
+          ? { ...config.posApiResponseMapping }
+          : {},
     };
 
     cleanedConfig.supportsTemporarySubmission = Boolean(
