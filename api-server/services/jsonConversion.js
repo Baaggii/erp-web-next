@@ -8,6 +8,17 @@ function escapeRegex(str) {
   return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+function buildDiagnosticQueries(table, column) {
+  const safeColumn = String(column || '').replace(/'/g, "''");
+  const safeTable = String(table || '').replace(/'/g, "''");
+  return [
+    `SELECT * FROM information_schema.triggers WHERE trigger_schema = DATABASE() AND action_statement LIKE '%${safeColumn}%'`,
+    `SELECT * FROM information_schema.table_constraints WHERE table_schema = DATABASE() AND table_name = '${safeTable}' AND constraint_type='CHECK'`,
+    `SELECT * FROM information_schema.routines WHERE routine_schema = DATABASE() AND routine_definition LIKE '%${safeColumn}%'`,
+    `SELECT * FROM information_schema.views WHERE table_schema = DATABASE() AND view_definition LIKE '%${safeColumn}%'`,
+  ];
+}
+
 export function normalizeColumnsInput(columns = []) {
   if (!Array.isArray(columns)) return [];
   return columns
@@ -109,7 +120,27 @@ async function loadColumnUsage(table, columnNames = []) {
     );
     return row.EVENT_OBJECT_TABLE === table || matchesColumn;
   });
-  return { keyUsage, checkUsage, triggers, columnNames };
+  const likePatterns = normalizedColumns.map((col) => `%${col}%`);
+  if (likePatterns.length === 0) {
+    return { keyUsage, checkUsage, triggers, routineRefs: [], viewRefs: [], columnNames };
+  }
+  const [routineRefs] = await pool.query(
+    `SELECT ROUTINE_NAME, ROUTINE_TYPE, ROUTINE_DEFINITION
+       FROM information_schema.ROUTINES
+      WHERE ROUTINE_SCHEMA = DATABASE()
+        AND ROUTINE_DEFINITION IS NOT NULL
+        AND (${likePatterns.map(() => 'ROUTINE_DEFINITION LIKE ?').join(' OR ')})`,
+    likePatterns,
+  );
+  const [viewRefs] = await pool.query(
+    `SELECT TABLE_NAME, VIEW_DEFINITION
+       FROM information_schema.VIEWS
+      WHERE TABLE_SCHEMA = DATABASE()
+        AND VIEW_DEFINITION IS NOT NULL
+        AND (${likePatterns.map(() => 'VIEW_DEFINITION LIKE ?').join(' OR ')})`,
+    likePatterns,
+  );
+  return { keyUsage, checkUsage, triggers, routineRefs, viewRefs, columnNames };
 }
 
 function buildConstraintMap(table, columnNames = [], usage = {}) {
@@ -126,6 +157,16 @@ function buildConstraintMap(table, columnNames = [], usage = {}) {
       };
     }
     return map[col];
+  };
+  const matchesColumnRef = (text, col) => {
+    if (!text) return false;
+    const normalized = String(text).toLowerCase();
+    const needle = String(col || '').toLowerCase();
+    return (
+      normalized.includes(needle) ||
+      new RegExp(`\\b${escapeRegex(col)}\\b`, 'i').test(text) ||
+      normalized.includes(`\`${needle}\``)
+    );
   };
   const blockingTypes = new Set(['PRIMARY KEY', 'UNIQUE', 'FOREIGN KEY', 'CHECK']);
   (usage.keyUsage || []).forEach((row) => {
@@ -171,10 +212,13 @@ function buildConstraintMap(table, columnNames = [], usage = {}) {
   const triggerRegexes = columnNames.map(
     (col) => [col, new RegExp(`\\b${escapeRegex(col)}\\b`, 'i')],
   );
+  const routineRegexes = columnNames.map(
+    (col) => [col, new RegExp(`\\b${escapeRegex(col)}\\b`, 'i')],
+  );
   (usage.triggers || []).forEach((row) => {
     const statement = String(row.ACTION_STATEMENT || '');
     triggerRegexes.forEach(([col, regex]) => {
-      if (!regex.test(statement) && !statement.includes(`\`${col}\``)) return;
+      if (!regex.test(statement) && !statement.includes(`\`${col}\``) && !matchesColumnRef(statement, col)) return;
       const entry = ensureEntry(col);
       entry.triggers.push({
         name: row.TRIGGER_NAME,
@@ -189,6 +233,28 @@ function buildConstraintMap(table, columnNames = [], usage = {}) {
           ? ` on table ${row.EVENT_OBJECT_TABLE}`
           : '';
       entry.blockingReasons.add(`Trigger ${row.TRIGGER_NAME}${locationNote} references this column.`);
+    });
+  });
+  (usage.routineRefs || []).forEach((row) => {
+    const body = String(row.ROUTINE_DEFINITION || '');
+    routineRegexes.forEach(([col, regex]) => {
+      if (!regex.test(body)) return;
+      const entry = ensureEntry(col);
+      entry.hasBlockingConstraint = true;
+      entry.blockingReasons.add(
+        `Routine ${row.ROUTINE_NAME} (${row.ROUTINE_TYPE}) references this column; review for dynamic constraint/trigger logic.`,
+      );
+    });
+  });
+  (usage.viewRefs || []).forEach((row) => {
+    const body = String(row.VIEW_DEFINITION || '');
+    routineRegexes.forEach(([col, regex]) => {
+      if (!regex.test(body)) return;
+      const entry = ensureEntry(col);
+      entry.hasBlockingConstraint = true;
+      entry.blockingReasons.add(
+        `View ${row.TABLE_NAME} references this column; check for downstream constraints or dependencies.`,
+      );
     });
   });
   return map;
@@ -314,6 +380,7 @@ function buildColumnStatements(table, columnName, columnMeta, options, constrain
   const columnId = escapeId(columnName);
   const backupName = options.backup ? `${columnName}_scalar_backup` : null;
   const backupId = backupName ? escapeId(backupName) : null;
+  const diagnosticQueries = buildDiagnosticQueries(table, columnName);
   const baseType = columnMeta?.type || 'TEXT';
   const action = options.action || 'convert';
   const manualSql = options.customSql || '';
@@ -333,6 +400,7 @@ function buildColumnStatements(table, columnName, columnMeta, options, constrain
         blocked: true,
         notes:
           'Primary key columns should remain scalar. Use the companion JSON option to preserve the key while adding multi-value storage.',
+        diagnosticQueries,
       },
       skipped: true,
       manualSql,
@@ -353,6 +421,7 @@ function buildColumnStatements(table, columnName, columnMeta, options, constrain
           manualSql?.trim().length > 0
             ? `Manual SQL provided for constraints. Run before converting: ${manualSql}`
             : 'Manual SQL required to drop or alter constraints before conversion.',
+        diagnosticQueries,
       },
       skipped: true,
       manualSql,
@@ -378,10 +447,11 @@ function buildColumnStatements(table, columnName, columnMeta, options, constrain
       column: columnName,
       originalType: columnMeta?.type || 'UNKNOWN',
       exampleBefore: '123',
-      exampleAfter: '["123"] (companion column)',
-      backupColumn: companionName,
-      notes:
-        'Scalar column retained. A companion JSON column will store multi-value data for this field.',
+        exampleAfter: '["123"] (companion column)',
+        backupColumn: companionName,
+        notes:
+          'Scalar column retained. A companion JSON column will store multi-value data for this field.',
+        diagnosticQueries,
     };
     return { statements, preview, manualSql };
   }
@@ -398,6 +468,7 @@ function buildColumnStatements(table, columnName, columnMeta, options, constrain
         blocked: true,
         notes:
           'Skipped: column has constraints or triggers. Enable constraint handling to generate drop/recreate statements.',
+        diagnosticQueries,
       },
       skipped: true,
     };
@@ -439,6 +510,7 @@ function buildColumnStatements(table, columnName, columnMeta, options, constrain
     notes: backupName
       ? `Original values will be stored in ${backupName} before conversion.`
       : 'Conversion will run without keeping a dedicated backup column.',
+    diagnosticQueries,
   };
 
   const validationName = `${columnName}_json_check`;
@@ -530,8 +602,15 @@ export async function runPlanStatements(statements) {
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();
-    for (const stmt of statements) {
-      await conn.query(stmt);
+    for (let i = 0; i < statements.length; i += 1) {
+      const stmt = statements[i];
+      try {
+        await conn.query(stmt);
+      } catch (err) {
+        err.statement = stmt;
+        err.statementIndex = i;
+        throw err;
+      }
     }
     await conn.commit();
   } catch (err) {

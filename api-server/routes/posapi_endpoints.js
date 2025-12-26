@@ -53,11 +53,76 @@ function validateEndpointDefinition(endpoint, index = 0) {
   return issues;
 }
 
+function normaliseResponseFieldMappings(endpoint = {}) {
+  const mappings = {};
+  const addMapping = (field, target) => {
+    const normalizedField = typeof field === 'string' ? field.trim() : '';
+    if (!normalizedField) return;
+    if (target && typeof target === 'object' && !Array.isArray(target)) {
+      const table = typeof target.table === 'string' ? target.table.trim() : '';
+      const column = typeof target.column === 'string' ? target.column.trim() : '';
+      const value = Object.prototype.hasOwnProperty.call(target, 'value') ? target.value : undefined;
+      if (!column) return;
+      mappings[normalizedField] = {
+        ...(table ? { table } : {}),
+        column,
+        ...(value !== undefined && value !== '' ? { value } : {}),
+      };
+      return;
+    }
+    const column = typeof target === 'string' ? target.trim() : '';
+    if (column) {
+      mappings[normalizedField] = column;
+    }
+  };
+
+  const responseFields = Array.isArray(endpoint.responseFields) ? endpoint.responseFields : [];
+  responseFields.forEach((entry) => {
+    const field = typeof entry?.field === 'string' ? entry.field : typeof entry === 'string' ? entry : '';
+    const mapping = entry?.mapTo || entry?.mapping || entry?.target;
+    if (field && mapping) addMapping(field, mapping);
+  });
+
+  if (endpoint.responseFieldMappings && typeof endpoint.responseFieldMappings === 'object') {
+    Object.entries(endpoint.responseFieldMappings).forEach(([field, target]) => addMapping(field, target));
+  }
+
+  return mappings;
+}
+
+function attachResponseMappings(endpoint) {
+  if (!endpoint || typeof endpoint !== 'object') return endpoint;
+  const mappings = normaliseResponseFieldMappings(endpoint);
+  const responseFields = Array.isArray(endpoint.responseFields)
+    ? endpoint.responseFields.map((entry) => {
+      if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
+        const field = typeof entry === 'string' ? entry.trim() : '';
+        if (!field) return entry;
+        const mapped = mappings[field];
+        return mapped ? { field, mapTo: mapped } : { field };
+      }
+      const field = typeof entry.field === 'string' ? entry.field.trim() : '';
+      if (!field) return entry;
+      if (entry.mapTo || entry.mapping || entry.target) return entry;
+      const mapped = mappings[field];
+      return mapped ? { ...entry, mapTo: mapped } : entry;
+    })
+    : endpoint.responseFields;
+
+  if (!responseFields && Object.keys(mappings).length === 0) return endpoint;
+
+  return {
+    ...endpoint,
+    ...(responseFields ? { responseFields } : {}),
+    ...(Object.keys(mappings).length ? { responseFieldMappings: mappings } : {}),
+  };
+}
+
 router.get('/', requireAuth, async (req, res, next) => {
   try {
     const guard = await requireSystemSettings(req, res);
     if (!guard) return;
-    const endpoints = await loadEndpoints();
+    const endpoints = (await loadEndpoints()).map(attachResponseMappings);
     res.json(endpoints);
   } catch (err) {
     next(err);
@@ -73,7 +138,8 @@ router.put('/', requireAuth, async (req, res, next) => {
       res.status(400).json({ message: 'endpoints array is required' });
       return;
     }
-    const validationIssues = payload
+    const normalized = payload.map((endpoint) => attachResponseMappings(endpoint));
+    const validationIssues = normalized
       .map((endpoint, index) => validateEndpointDefinition(endpoint, index))
       .flat();
     if (validationIssues.length) {

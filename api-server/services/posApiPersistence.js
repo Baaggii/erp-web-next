@@ -91,6 +91,17 @@ export function extractPosApiFieldValue(response, path) {
   return current;
 }
 
+function normalizeResponseMappingTarget(target) {
+  if (!target || typeof target !== 'object' || Array.isArray(target)) {
+    const column = typeof target === 'string' ? target.trim() : '';
+    return { table: '', column, value: undefined };
+  }
+  const table = typeof target.table === 'string' ? target.table.trim() : '';
+  const column = typeof target.column === 'string' ? target.column.trim() : '';
+  const value = Object.prototype.hasOwnProperty.call(target, 'value') ? target.value : undefined;
+  return { table, column, value };
+}
+
 const SPECIAL_FIELD_CANDIDATES = new Map([
   ['lottery', ['lottery', 'lottery_no', 'lottery_number', 'ddtd']],
   ['qrdata', ['qr_data', 'qrdata', 'qr_code']],
@@ -175,6 +186,7 @@ function getLastToken(path) {
 export function computePosApiUpdates(columnLookup, response, options = {}) {
   if (!(columnLookup instanceof Map)) return {};
   if (!response || typeof response !== 'object') return {};
+  const targetTable = typeof options.targetTable === 'string' ? options.targetTable.trim() : '';
   const fieldsFromPosApi = Array.isArray(options.fieldsFromPosApi)
     ? options.fieldsFromPosApi.filter((field) => typeof field === 'string' && field.trim())
     : [];
@@ -212,10 +224,17 @@ export function computePosApiUpdates(columnLookup, response, options = {}) {
     if (typeof fieldPath !== 'string' || !fieldPath.trim()) return;
     const value = extractPosApiFieldValue(response, fieldPath.trim());
     if (value === undefined) return;
-    const columnName = typeof targetColumn === 'string' ? targetColumn.trim() : '';
-    const mappedColumn = findColumnForField(columnLookup, columnName || fieldPath.trim()) || columnName || fieldPath.trim();
-    if (!mappedColumn) return;
-    pushEntry(mappedColumn, value);
+    const targets = Array.isArray(targetColumn) ? targetColumn : [targetColumn];
+    targets.forEach((target) => {
+      const { table, column, value: overrideValue } = normalizeResponseMappingTarget(target);
+      if (table && targetTable && table !== targetTable) return;
+      const mappedColumn = findColumnForField(columnLookup, column || fieldPath.trim())
+        || column
+        || fieldPath.trim();
+      if (!mappedColumn) return;
+      const nextValue = overrideValue !== undefined ? overrideValue : value;
+      pushEntry(mappedColumn, nextValue);
+    });
   });
 
   const updates = {};

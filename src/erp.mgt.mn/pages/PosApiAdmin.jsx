@@ -4072,7 +4072,6 @@ export default function PosApiAdmin() {
               ...existing,
               applyToBody:
                 existing.applyToBody !== undefined ? existing.applyToBody : selection.applyToBody,
-              type: existing.type ?? existing.mode ?? selection.type ?? selection.mode,
             }
           : selection;
 
@@ -7598,12 +7597,8 @@ export default function PosApiAdmin() {
           : current.applyToBody !== undefined
             ? current.applyToBody
             : defaultApplyToBody;
-      const selectionPayload =
-        typeof selectionInput === 'string'
-          ? { selection: selectionInput, applyToBody }
-          : { ...selectionInput, applyToBody };
       const normalizedSelection = normalizeRequestFieldMappingEntry(
-        selectionPayload,
+        { ...selectionInput, applyToBody },
         { defaultApplyToBody },
       );
       const nextSelections = { ...prev };
