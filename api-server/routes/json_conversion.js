@@ -6,6 +6,7 @@ import {
   listColumns,
   listSavedScripts,
   listTables,
+  normalizeColumnsInput,
   recordConversionLog,
   runPlanStatements,
   splitStatements,
@@ -44,22 +45,25 @@ router.get('/scripts', requireAuth, async (req, res, next) => {
 router.post('/convert', requireAuth, async (req, res, next) => {
   try {
     const { table, columns, backup = true, runNow = true } = req.body || {};
-    if (!table || !Array.isArray(columns) || columns.length === 0) {
+    const normalizedColumns = normalizeColumnsInput(columns);
+    if (!table || normalizedColumns.length === 0) {
       return res.status(400).json({ message: 'table and columns are required' });
     }
-    const colNames = columns.map((c) => String(c));
     const metadata = await listColumns(table);
-    const plan = buildConversionPlan(table, colNames, metadata, { backup });
-    if (runNow) {
+    const plan = buildConversionPlan(table, normalizedColumns, metadata, { backup });
+    if (runNow && plan.statements.length > 0) {
       await runPlanStatements(plan.statements);
     }
     const runBy = req.user?.empid || req.user?.id || 'unknown';
-    const logId = await recordConversionLog(table, colNames, plan.scriptText, runBy);
+    const logColumns = normalizedColumns.map((c) => c.name);
+    const logId = await recordConversionLog(table, logColumns, plan.scriptText, runBy);
+    const blocked = plan.previews.filter((p) => p.blocked);
     res.json({
       scriptText: plan.scriptText,
       previews: plan.previews,
       executed: Boolean(runNow),
       logId,
+      blockedColumns: blocked.map((p) => p.column),
     });
   } catch (err) {
     next(err);
