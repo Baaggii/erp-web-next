@@ -334,7 +334,7 @@ function buildHierarchicalSample(structure, baseSample) {
   return mergeSamples(skeleton, baseSample);
 }
 
-function MappingFieldSelector({
+export function MappingFieldSelector({
   value,
   onChange,
   primaryTableName,

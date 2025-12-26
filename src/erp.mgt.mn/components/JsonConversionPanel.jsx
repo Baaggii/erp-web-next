@@ -181,8 +181,15 @@ export default function JsonConversionPanel() {
           runNow: true,
         }),
       });
-      if (!res.ok) throw new Error('Conversion failed');
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setPreviews(data.previews || []);
+        setScriptText(data.scriptText || '');
+        setBlockedColumns(data.blockedColumns || []);
+        const reason = data?.message || 'Conversion failed';
+        addToast(reason, 'error');
+        return;
+      }
       setPreviews(data.previews || []);
       setScriptText(data.scriptText || '');
       setBlockedColumns(data.blockedColumns || []);
