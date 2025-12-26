@@ -158,6 +158,16 @@ function buildConstraintMap(table, columnNames = [], usage = {}) {
     }
     return map[col];
   };
+  const matchesColumnRef = (text, col) => {
+    if (!text) return false;
+    const normalized = String(text).toLowerCase();
+    const needle = String(col || '').toLowerCase();
+    return (
+      normalized.includes(needle) ||
+      new RegExp(`\\b${escapeRegex(col)}\\b`, 'i').test(text) ||
+      normalized.includes(`\`${needle}\``)
+    );
+  };
   const blockingTypes = new Set(['PRIMARY KEY', 'UNIQUE', 'FOREIGN KEY', 'CHECK']);
   (usage.keyUsage || []).forEach((row) => {
     const direction = row.TABLE_NAME === table ? 'outgoing' : 'incoming';
@@ -208,7 +218,7 @@ function buildConstraintMap(table, columnNames = [], usage = {}) {
   (usage.triggers || []).forEach((row) => {
     const statement = String(row.ACTION_STATEMENT || '');
     triggerRegexes.forEach(([col, regex]) => {
-      if (!regex.test(statement) && !statement.includes(`\`${col}\``)) return;
+      if (!regex.test(statement) && !statement.includes(`\`${col}\``) && !matchesColumnRef(statement, col)) return;
       const entry = ensureEntry(col);
       entry.triggers.push({
         name: row.TRIGGER_NAME,
