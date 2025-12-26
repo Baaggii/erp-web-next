@@ -46,12 +46,12 @@ export default function SchemaDiffPanel() {
   const [diff, setDiff] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [selectedTables, setSelectedTables] = useState(new Set());
-  const [activeTable, setActiveTable] = useState('');
+  const [selectedObjects, setSelectedObjects] = useState(new Set());
+  const [activeObject, setActiveObject] = useState('');
   const [applyResult, setApplyResult] = useState(null);
   const [applying, setApplying] = useState(false);
   const [dryRun, setDryRun] = useState(true);
-  const [preflight, setPreflight] = useState({ loading: true, ok: false, issues: [], data: null });
+  const [preflight, setPreflight] = useState({ loading: true, ok: false, issues: [], warnings: [], data: null });
   const [dumpStatus, setDumpStatus] = useState('');
   const [jobId, setJobId] = useState(null);
   const [jobStatus, setJobStatus] = useState(null);
@@ -99,10 +99,13 @@ export default function SchemaDiffPanel() {
           loading: false,
           ok: data.ok !== false && (!data.issues || data.issues.length === 0),
           issues: data.issues || [],
+          warnings: data.warnings || [],
           data,
         });
         if (data.issues?.length) {
           setError(data.issues.join('; '));
+        } else {
+          setError('');
         }
       } catch (err) {
         if (!active) return;
@@ -110,6 +113,7 @@ export default function SchemaDiffPanel() {
           loading: false,
           ok: false,
           issues: [err.message || 'Unable to check schema diff prerequisites.'],
+          warnings: [],
           data: null,
         });
         setError(err.message || 'Unable to check schema diff prerequisites.');
@@ -130,20 +134,20 @@ export default function SchemaDiffPanel() {
       });
     }
     (diff.tables || []).forEach((t) => {
-      if (selectedTables.has(t.name)) {
+      if (selectedObjects.has(t.key)) {
         t.statements.forEach((stmt) => {
           if (includeDrops || stmt.type !== 'drop') sql.push(stmt.sql);
         });
       }
     });
     return sql;
-  }, [diff, selectedTables, includeDrops, includeGeneral]);
+  }, [diff, selectedObjects, includeDrops, includeGeneral]);
 
   const activeTableData = useMemo(() => {
     if (!diff) return null;
-    if (!activeTable && diff.tables?.length) return diff.tables[0];
-    return diff.tables?.find((t) => t.name === activeTable) || null;
-  }, [diff, activeTable]);
+    if (!activeObject && diff.tables?.length) return diff.tables[0];
+    return diff.tables?.find((t) => t.key === activeObject) || null;
+  }, [diff, activeObject]);
 
   const criticalPrereqIssues = useMemo(
     () => (preflight.issues || []).filter((issue) => /db_name/i.test(issue)),
@@ -174,8 +178,8 @@ export default function SchemaDiffPanel() {
         const status = data.status;
         if (status === 'completed' && data.result) {
           setDiff(data.result);
-          setSelectedTables(new Set((data.result.tables || []).map((t) => t.name)));
-          setActiveTable(data.result.tables?.[0]?.name || '');
+          setSelectedObjects(new Set((data.result.tables || []).map((t) => t.key)));
+          setActiveObject(data.result.tables?.[0]?.key || '');
           setApplyResult(null);
           setError('');
           setJobStatus(null);
@@ -258,23 +262,23 @@ export default function SchemaDiffPanel() {
     }
   }
 
-  function toggleTable(name) {
-    setSelectedTables((prev) => {
+  function toggleTable(key) {
+    setSelectedObjects((prev) => {
       const next = new Set(prev);
-      if (next.has(name)) next.delete(name);
-      else next.add(name);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
       return next;
     });
-    setActiveTable(name);
+    setActiveObject(key);
   }
 
   function selectAll() {
     if (!diff?.tables) return;
-    setSelectedTables(new Set(diff.tables.map((t) => t.name)));
+    setSelectedObjects(new Set(diff.tables.map((t) => t.key)));
   }
 
   function clearSelection() {
-    setSelectedTables(new Set());
+    setSelectedObjects(new Set());
   }
 
   async function applySelected() {
@@ -283,7 +287,7 @@ export default function SchemaDiffPanel() {
       return;
     }
     if (selectedSql.length === 0) {
-      setError('Select at least one table or statement to apply.');
+      setError('Select at least one object or statement to apply.');
       return;
     }
     setApplying(true);
@@ -380,13 +384,24 @@ export default function SchemaDiffPanel() {
           {preflight.loading ? (
             <span>Checking prerequisites...</span>
           ) : preflight.ok ? (
-            <span>mysqldump and DB_NAME are available.</span>
+            <span>
+              mysqldump and DB_NAME are available.
+              {preflight.data?.mysqldbcompareAvailable
+                ? ' mysqldbcompare is available for full schema diffs.'
+                : ' mysqldbcompare is missing; using the limited fallback diff.'}
+            </span>
           ) : (
             <span>
               Prerequisite issues detected: {preflight.issues.join('; ') || 'Unknown issue'}
             </span>
           )}
         </div>
+        {!preflight.loading && preflight.warnings?.length ? (
+          <div style={{ color: '#b58900', display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+            <strong>Warnings:</strong>
+            <span>{preflight.warnings.join('; ')}</span>
+          </div>
+        ) : null}
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
           <label style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
             <input
@@ -459,7 +474,7 @@ export default function SchemaDiffPanel() {
             </div>
             <div>
               <strong>Statements:</strong> {diff.stats?.statementCount || 0} across{' '}
-              {diff.stats?.tableCount || 0} tables
+              {diff.stats?.tableCount || 0} objects
             </div>
             {diff.stats?.dropStatements ? (
               <div style={{ color: '#b00', fontWeight: 'bold' }}>
@@ -467,6 +482,10 @@ export default function SchemaDiffPanel() {
                 "Include DROP statements" is enabled.
               </div>
             ) : null}
+            <div style={{ color: '#b58900' }}>
+              Review the generated SQL before applying it to production data. Run a preview first and
+              double-check DROP or ALTER statements.
+            </div>
             {diff.warnings?.length ? (
               <ul style={{ margin: 0, paddingLeft: '1.25rem', color: '#b58900' }}>
                 {diff.warnings.map((w, idx) => (
@@ -490,7 +509,7 @@ export default function SchemaDiffPanel() {
               }}
             >
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <strong>Tables</strong>
+                <strong>Objects</strong>
                 <div style={{ display: 'flex', gap: '0.5rem' }}>
                   <button type="button" onClick={selectAll}>
                     Select all
@@ -509,10 +528,10 @@ export default function SchemaDiffPanel() {
                       gap: '0.5rem',
                       padding: '0.35rem',
                       border: '1px solid #eee',
-                      background: activeTable === '__general__' ? '#eef5ff' : '#fff',
+                      background: activeObject === '__general__' ? '#eef5ff' : '#fff',
                       cursor: 'pointer',
                     }}
-                    onClick={() => setActiveTable('__general__')}
+                    onClick={() => setActiveObject('__general__')}
                   >
                     <input type="checkbox" checked={includeGeneral} disabled />
                     <span style={{ flex: 1, fontWeight: 'bold' }}>General statements</span>
@@ -531,20 +550,20 @@ export default function SchemaDiffPanel() {
                         gap: '0.5rem',
                         padding: '0.35rem',
                         border: '1px solid #eee',
-                        background: activeTable === t.name ? '#eef5ff' : '#fff',
+                        background: activeObject === t.key ? '#eef5ff' : '#fff',
                         cursor: 'pointer',
                       }}
                     >
                       <input
                         type="checkbox"
-                        checked={selectedTables.has(t.name)}
-                        onChange={() => toggleTable(t.name)}
+                        checked={selectedObjects.has(t.key)}
+                        onChange={() => toggleTable(t.key)}
                       />
                       <span
-                        onClick={() => setActiveTable(t.name)}
+                        onClick={() => setActiveObject(t.key)}
                         style={{ flex: 1, fontWeight: 'bold' }}
                       >
-                        {t.name}
+                        {t.type ? `${t.type}: ${t.name}` : t.name}
                       </span>
                       <span style={{ fontSize: '0.85rem', color: '#666' }}>
                         {t.statements.length} stmt{t.statements.length !== 1 ? 's' : ''}
@@ -553,7 +572,7 @@ export default function SchemaDiffPanel() {
                     </label>
                   ))
                 ) : (
-                  <div style={{ fontStyle: 'italic' }}>No table changes detected.</div>
+                  <div style={{ fontStyle: 'italic' }}>No schema changes detected.</div>
                 )}
               </div>
             </div>
@@ -561,7 +580,9 @@ export default function SchemaDiffPanel() {
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <h3 style={{ margin: 0 }}>
-                  {activeTableData ? `Changes for ${activeTableData.name}` : 'No table selected'}
+                  {activeTableData
+                    ? `Changes for ${activeTableData.type ? `${activeTableData.type}: ` : ''}${activeTableData.name}`
+                    : 'No object selected'}
                 </h3>
                 <div style={{ display: 'flex', gap: '0.5rem' }}>
                   <button type="button" onClick={copySelectedSql} disabled={!selectedSql.length}>
