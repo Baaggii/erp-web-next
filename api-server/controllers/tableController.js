@@ -16,7 +16,6 @@ import {
 } from '../../db/index.js';
 import { moveImagesToDeleted } from '../services/transactionImageService.js';
 import { addMappings } from '../services/headerMappings.js';
-import { getConfig as getCodingTableConfig } from '../services/codingTableConfig.js';
 import { hasAction } from '../utils/hasAction.js';
 import { createCompanyHandler } from './companyController.js';
 import {
@@ -343,23 +342,6 @@ export async function getTableColumnsMeta(req, res, next) {
   try {
     const companyId = Number(req.query.companyId ?? req.user?.companyId ?? 0);
     const cols = await listTableColumnMeta(req.params.table, companyId);
-    let jsonFieldSet = new Set();
-    try {
-      const { config: codingCfg } = await getCodingTableConfig(
-        req.params.table,
-        companyId,
-      );
-      if (Array.isArray(codingCfg?.jsonFields)) {
-        jsonFieldSet = new Set(
-          codingCfg.jsonFields.map((field) => String(field).toLowerCase()),
-        );
-      }
-    } catch (err) {
-      if (process.env.NODE_ENV !== 'production') {
-        // eslint-disable-next-line no-console
-        console.warn('Failed to load coding table JSON metadata', err);
-      }
-    }
     let candidateKey = [];
     try {
       candidateKey = await getPrimaryKeyColumns(req.params.table);
@@ -385,17 +367,10 @@ export async function getTableColumnsMeta(req, res, next) {
         candidateOrdinalRaw != null && Number.isFinite(Number(candidateOrdinalRaw))
           ? Number(candidateOrdinalRaw)
           : null;
-      const isJson =
-        col.isJson ||
-        (typeof col.dataType === 'string' &&
-          col.dataType.toLowerCase() === 'json') ||
-        jsonFieldSet.has(col.name.toLowerCase());
       return {
         ...col,
         primaryKeyOrdinal: primaryOrdinal,
         candidateKeyOrdinal,
-        isJson,
-        jsonSource: jsonFieldSet.has(col.name.toLowerCase()) ? 'config' : col.isJson ? 'database' : null,
       };
     });
     res.json(normalized);

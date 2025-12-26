@@ -4952,7 +4952,6 @@ export async function listTableColumnMeta(tableName, companyId = 0) {
             c.EXTRA,
             c.GENERATION_EXPRESSION,
             c.COLUMN_TYPE,
-            c.DATA_TYPE,
             pk.SEQ_IN_INDEX AS PRIMARY_KEY_ORDINAL
        FROM information_schema.COLUMNS c
        LEFT JOIN information_schema.STATISTICS pk
@@ -4989,11 +4988,6 @@ export async function listTableColumnMeta(tableName, companyId = 0) {
             .split(',')
             .map((v) => v.trim().slice(1, -1))
         : [];
-    const dataType = r.DATA_TYPE || '';
-    const isJson =
-      (typeof dataType === 'string' && dataType.toLowerCase() === 'json') ||
-      (typeof r.COLUMN_TYPE === 'string' &&
-        r.COLUMN_TYPE.toLowerCase().includes('json'));
     return {
       name: r.COLUMN_NAME,
       key: r.COLUMN_KEY,
@@ -5002,9 +4996,6 @@ export async function listTableColumnMeta(tableName, companyId = 0) {
       generationExpression: r.GENERATION_EXPRESSION ?? null,
       primaryKeyOrdinal: Number.isFinite(ordinal) ? ordinal : null,
       enumValues,
-      dataType,
-      columnType: r.COLUMN_TYPE,
-      isJson,
     };
   });
 }
