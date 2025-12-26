@@ -17,6 +17,8 @@ export default function JsonConversionPanel() {
   const [loading, setLoading] = useState(false);
   const [backupEnabled, setBackupEnabled] = useState(true);
   const [blockedColumns, setBlockedColumns] = useState([]);
+  const [errorDetails, setErrorDetails] = useState(null);
+  const [diagnosticQueries, setDiagnosticQueries] = useState([]);
 
   const selectedColumns = useMemo(
     () =>
@@ -64,7 +66,6 @@ export default function JsonConversionPanel() {
 
   function defaultActionForColumn(meta) {
     if (meta?.isPrimaryKey) return 'companion';
-    if (meta?.hasBlockingConstraint) return 'manual';
     return 'convert';
   }
 
@@ -182,11 +183,25 @@ export default function JsonConversionPanel() {
           runNow: true,
         }),
       });
-      if (!res.ok) throw new Error('Conversion failed');
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setPreviews(data.previews || []);
+        setScriptText(data.scriptText || '');
+        setBlockedColumns(data.blockedColumns || []);
+        setErrorDetails(data.error || data || null);
+        setDiagnosticQueries(data.diagnosticQueries || []);
+        const reason = data?.message || 'Conversion failed';
+        if (data?.error?.statement) {
+          console.error('Failed statement', data.error.statementIndex, data.error.statement);
+        }
+        addToast(reason, 'error');
+        return;
+      }
       setPreviews(data.previews || []);
       setScriptText(data.scriptText || '');
       setBlockedColumns(data.blockedColumns || []);
+      setErrorDetails(null);
+      setDiagnosticQueries([]);
       addToast('Conversion script generated', 'success');
       const scripts = await fetch('/api/json_conversion/scripts', { credentials: 'include' })
         .then((r) => (r.ok ? r.json() : { scripts: [] }))
@@ -388,7 +403,7 @@ export default function JsonConversionPanel() {
                           )}
                           {action === 'convert' && col.hasBlockingConstraint && (
                             <div style={{ color: '#b45309', fontSize: '0.9rem' }}>
-                              Constraints will be dropped and re-applied in the generated script.
+                              Constraints will be dropped and re-applied in the generated script (handleConstraints enabled).
                             </div>
                           )}
                           {action === 'companion' && (
@@ -427,9 +442,61 @@ export default function JsonConversionPanel() {
               <li key={p.column}>
                 <strong>{p.column}</strong> ({p.originalType}): {p.exampleBefore} →{' '}
                 {p.exampleAfter}. {p.notes}
+                {Array.isArray(p.diagnosticQueries) && p.diagnosticQueries.length > 0 && (
+                  <div style={{ marginTop: '0.35rem', fontSize: '0.9rem' }}>
+                    <div style={{ fontWeight: 600, color: '#0f172a' }}>
+                      Diagnostic queries to uncover hidden constraints/triggers:
+                    </div>
+                    <ol style={{ paddingLeft: '1.25rem' }}>
+                      {p.diagnosticQueries.map((q) => (
+                        <li key={q} style={{ wordBreak: 'break-all' }}>
+                          <code>{q}</code>
+                        </li>
+                      ))}
+                    </ol>
+                  </div>
+                )}
               </li>
             ))}
           </ul>
+        </div>
+      )}
+
+      {errorDetails && (
+        <div style={{ marginTop: '1rem', padding: '0.75rem', background: '#fff7ed', border: '1px solid #fdba74' }}>
+          <strong style={{ color: '#9a3412' }}>Conversion error</strong>
+          <div style={{ marginTop: '0.35rem', color: '#7c2d12' }}>
+            {errorDetails.message || 'Conversion failed during execution.'}
+          </div>
+          {errorDetails.statement && (
+            <div style={{ marginTop: '0.35rem', fontFamily: 'monospace', whiteSpace: 'pre-wrap', color: '#0f172a' }}>
+              {errorDetails.statementIndex !== undefined && errorDetails.statementIndex !== null
+                ? `Statement #${errorDetails.statementIndex + 1}: `
+                : 'Statement: '}
+              {errorDetails.statement}
+            </div>
+          )}
+          {errorDetails.code && (
+            <div style={{ marginTop: '0.2rem', color: '#7c2d12' }}>SQL Code: {errorDetails.code}</div>
+          )}
+          {errorDetails.sqlState && (
+            <div style={{ marginTop: '0.2rem', color: '#7c2d12' }}>SQL State: {errorDetails.sqlState}</div>
+          )}
+          <div style={{ marginTop: '0.35rem', color: '#7c2d12' }}>
+            Review constraints/triggers on the column, drop them, and rerun with “convert” + handleConstraints enabled.
+          </div>
+          {diagnosticQueries.length > 0 && (
+            <div style={{ marginTop: '0.5rem' }}>
+              <div style={{ fontWeight: 600, color: '#7c2d12' }}>Helpful diagnostic queries:</div>
+              <ol style={{ paddingLeft: '1.25rem', color: '#0f172a', wordBreak: 'break-all' }}>
+                {diagnosticQueries.map((dq, idx) => (
+                  <li key={`${dq.column}-${idx}`}>
+                    <code>{dq.query}</code> {dq.column ? `(column: ${dq.column})` : ''}
+                  </li>
+                ))}
+              </ol>
+            </div>
+          )}
         </div>
       )}
 

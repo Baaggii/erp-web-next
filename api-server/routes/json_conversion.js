@@ -51,17 +51,59 @@ router.post('/convert', requireAuth, async (req, res, next) => {
     }
     const metadata = await listColumns(table);
     const plan = buildConversionPlan(table, normalizedColumns, metadata, { backup });
-    if (runNow && plan.statements.length > 0) {
-      await runPlanStatements(plan.statements);
-    }
     const runBy = req.user?.empid || req.user?.id || 'unknown';
     const logColumns = normalizedColumns.map((c) => c.name);
-    const logId = await recordConversionLog(table, logColumns, plan.scriptText, runBy);
     const blocked = plan.previews.filter((p) => p.blocked);
+    let executed = false;
+    let runError = null;
+    if (runNow && plan.statements.length > 0) {
+      try {
+        await runPlanStatements(plan.statements);
+        executed = true;
+      } catch (err) {
+        const statement = err?.statement;
+        const statementIndex = Number.isInteger(err?.statementIndex)
+          ? err.statementIndex
+          : null;
+        const message =
+          statementIndex !== null && statement
+            ? `${err?.message || 'Conversion failed'} at statement ${statementIndex + 1}: ${statement}`
+            : err?.message || 'Conversion failed while applying statements.';
+        runError = {
+          message,
+          code: err?.code,
+          sqlState: err?.sqlState || err?.sqlstate,
+          statement,
+          statementIndex,
+        };
+      }
+    }
+    const logId = await recordConversionLog(table, logColumns, plan.scriptText, runBy);
+    if (runError) {
+      const diagnosticQueries = plan.previews
+        .map((p) =>
+          Array.isArray(p?.diagnosticQueries)
+            ? p.diagnosticQueries.map((q) => ({ column: p.column, query: q }))
+            : [],
+        )
+        .flat();
+      return res.status(409).json({
+        message:
+          runError.message ||
+          'Conversion failed while applying statements. Please inspect constraints and rerun.',
+        error: runError,
+        scriptText: plan.scriptText,
+        previews: plan.previews,
+        executed: false,
+        logId,
+        blockedColumns: blocked.map((p) => p.column),
+        diagnosticQueries,
+      });
+    }
     res.json({
       scriptText: plan.scriptText,
       previews: plan.previews,
-      executed: Boolean(runNow),
+      executed: Boolean(executed),
       logId,
       blockedColumns: blocked.map((p) => p.column),
     });
