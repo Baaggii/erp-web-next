@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useToast } from '../context/ToastContext.jsx';
 
 function summarizePath(p) {
@@ -52,10 +52,37 @@ export default function SchemaDiffPanel() {
   const [applying, setApplying] = useState(false);
   const [dryRun, setDryRun] = useState(true);
   const [preflight, setPreflight] = useState({ loading: true, ok: false, issues: [], data: null });
+  const [dumpStatus, setDumpStatus] = useState('');
+  const [jobId, setJobId] = useState(null);
+  const [jobStatus, setJobStatus] = useState(null);
+  const socketRef = useRef(null);
 
   useEffect(() => {
     setError('');
   }, [schemaPath, schemaFile]);
+
+  useEffect(() => {
+    if (!window.io) return undefined;
+    if (!socketRef.current) {
+      socketRef.current = window.io();
+    }
+    const socket = socketRef.current;
+    const handler = (payload) => {
+      if (payload?.jobId && payload.jobId !== jobId) return;
+      if (payload?.message) setDumpStatus(payload.message);
+    };
+    socket.on('schema-diff-progress', handler);
+    return () => {
+      socket.off('schema-diff-progress', handler);
+    };
+  }, [jobId]);
+
+  useEffect(
+    () => () => {
+      socketRef.current?.disconnect();
+    },
+    [],
+  );
 
   useEffect(() => {
     let active = true;
@@ -118,19 +145,94 @@ export default function SchemaDiffPanel() {
     return diff.tables?.find((t) => t.name === activeTable) || null;
   }, [diff, activeTable]);
 
+  const criticalPrereqIssues = useMemo(
+    () => (preflight.issues || []).filter((issue) => /db_name/i.test(issue)),
+    [preflight.issues],
+  );
   const hasValidSchemaInputs =
     Boolean(schemaPath && schemaPath.trim()) && Boolean(schemaFile && schemaFile.trim());
   const disableGenerate =
-    loading || preflight.loading || !preflight.ok || !hasValidSchemaInputs;
+    loading ||
+    preflight.loading ||
+    !hasValidSchemaInputs ||
+    jobId ||
+    criticalPrereqIssues.length > 0;
+
+  useEffect(() => {
+    if (!jobId) return undefined;
+    let cancelled = false;
+    let intervalId;
+    async function poll() {
+      try {
+        const res = await fetch(`/api/coding_tables/schema-diff/jobs/${jobId}`);
+        const data = await res.json();
+        if (cancelled) return;
+        if (!res.ok) {
+          throw new Error(data?.message || 'Failed to check schema diff job status');
+        }
+        setJobStatus(data);
+        const status = data.status;
+        if (status === 'completed' && data.result) {
+          setDiff(data.result);
+          setSelectedTables(new Set((data.result.tables || []).map((t) => t.name)));
+          setActiveTable(data.result.tables?.[0]?.name || '');
+          setApplyResult(null);
+          setError('');
+          setJobStatus(null);
+          setJobId(null);
+          setLoading(false);
+          setDumpStatus('');
+          addToast('Schema diff generated', 'success');
+          return;
+        }
+        if (status === 'failed' || status === 'cancelled') {
+          const msg = data.error?.message || `Schema diff ${status}.`;
+          setError(msg);
+          addToast(msg, 'error');
+          setJobStatus(data);
+          setJobId(null);
+          setLoading(false);
+          setDumpStatus('');
+          return;
+        }
+        if (status === 'running') {
+          const started = data.startedAt ? new Date(data.startedAt).getTime() : null;
+          if (started && Date.now() - started > 60_000) {
+            setDumpStatus('Schema dump is taking longer than expected. Please stay on this tab or cancel the request.');
+          }
+        }
+        setLoading(true);
+      } catch (err) {
+        if (cancelled) return;
+        const msg = err.message || 'Failed to check schema diff job status';
+        setError(msg);
+        addToast(msg, 'error');
+        setJobStatus(null);
+        setJobId(null);
+        setLoading(false);
+        setDumpStatus('');
+      }
+    }
+    poll();
+    intervalId = setInterval(poll, 2000);
+    return () => {
+      cancelled = true;
+      clearInterval(intervalId);
+    };
+  }, [jobId, addToast]);
 
   async function generateDiff() {
     setLoading(true);
     setError('');
     setDiff(null);
     setApplyResult(null);
+    setJobStatus(null);
+    setDumpStatus('Queueing schema diff job...');
     try {
       if (!hasValidSchemaInputs) {
         setError('Provide both a schema path and a filename to compare.');
+        setLoading(false);
+        setDumpStatus('');
         return;
       }
       const res = await fetch('/api/coding_tables/schema-diff/compare', {
@@ -140,17 +242,19 @@ export default function SchemaDiffPanel() {
       });
       const data = await res.json();
       if (!res.ok) {
-        throw new Error(data?.message || 'Failed to generate schema diff');
+        throw new Error(data?.message || 'Failed to start schema diff job');
       }
-      setDiff(data);
-      setSelectedTables(new Set((data.tables || []).map((t) => t.name)));
-      setActiveTable(data.tables?.[0]?.name || '');
-      addToast('Schema diff generated', 'success');
+      if (!data.jobId) {
+        throw new Error('Unable to start schema diff job: missing job id');
+      }
+      setJobId(data.jobId);
+      setDumpStatus('Dump job queued. Waiting for progress...');
+      addToast('Schema diff job started', 'info');
     } catch (err) {
       setError(err.message || 'Failed to generate schema diff');
       addToast(err.message || 'Failed to generate schema diff', 'error');
-    } finally {
       setLoading(false);
+      setDumpStatus('');
     }
   }
 
@@ -261,6 +365,17 @@ export default function SchemaDiffPanel() {
             Include DROP statements when applying
           </label>
         </div>
+        {jobId ? (
+          <div style={{ color: '#0f62fe', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+            <strong>Job {jobId}:</strong>
+            <span>
+              {jobStatus?.status || 'queued'}
+              {jobStatus?.status === 'running' && jobStatus?.progress?.length
+                ? ` — ${jobStatus.progress[jobStatus.progress.length - 1]?.message || ''}`
+                : ''}
+            </span>
+          </div>
+        ) : null}
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', color: preflight.ok ? '#0b8457' : '#b00' }}>
           {preflight.loading ? (
             <span>Checking prerequisites...</span>
@@ -310,7 +425,9 @@ export default function SchemaDiffPanel() {
           }}
         >
           <span style={{ fontWeight: 'bold' }}>⏳ Generating schema diff...</span>
-          <span style={{ color: '#555' }}>This may take a few seconds for large schemas.</span>
+          <span style={{ color: '#555' }}>
+            {dumpStatus || 'This may take a few seconds for large schemas.'}
+          </span>
         </div>
       )}
 
