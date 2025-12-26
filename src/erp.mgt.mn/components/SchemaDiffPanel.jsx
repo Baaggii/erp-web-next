@@ -51,10 +51,48 @@ export default function SchemaDiffPanel() {
   const [applyResult, setApplyResult] = useState(null);
   const [applying, setApplying] = useState(false);
   const [dryRun, setDryRun] = useState(true);
+  const [preflight, setPreflight] = useState({ loading: true, ok: false, issues: [], data: null });
 
   useEffect(() => {
     setError('');
   }, [schemaPath, schemaFile]);
+
+  useEffect(() => {
+    let active = true;
+    async function checkPrerequisites() {
+      setPreflight((prev) => ({ ...prev, loading: true }));
+      try {
+        const res = await fetch('/api/coding_tables/schema-diff/check');
+        const data = await res.json();
+        if (!res.ok) {
+          throw new Error(data?.message || 'Unable to check schema diff prerequisites.');
+        }
+        if (!active) return;
+        setPreflight({
+          loading: false,
+          ok: data.ok !== false && (!data.issues || data.issues.length === 0),
+          issues: data.issues || [],
+          data,
+        });
+        if (data.issues?.length) {
+          setError(data.issues.join('; '));
+        }
+      } catch (err) {
+        if (!active) return;
+        setPreflight({
+          loading: false,
+          ok: false,
+          issues: [err.message || 'Unable to check schema diff prerequisites.'],
+          data: null,
+        });
+        setError(err.message || 'Unable to check schema diff prerequisites.');
+      }
+    }
+    checkPrerequisites();
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const selectedSql = useMemo(() => {
     if (!diff) return [];
@@ -80,14 +118,19 @@ export default function SchemaDiffPanel() {
     return diff.tables?.find((t) => t.name === activeTable) || null;
   }, [diff, activeTable]);
 
+  const hasValidSchemaInputs =
+    Boolean(schemaPath && schemaPath.trim()) && Boolean(schemaFile && schemaFile.trim());
+  const disableGenerate =
+    loading || preflight.loading || !preflight.ok || !hasValidSchemaInputs;
+
   async function generateDiff() {
     setLoading(true);
     setError('');
     setDiff(null);
     setApplyResult(null);
     try {
-      if (!schemaPath && !schemaFile) {
-        setError('Provide a schema path or filename to compare.');
+      if (!hasValidSchemaInputs) {
+        setError('Provide both a schema path and a filename to compare.');
         return;
       }
       const res = await fetch('/api/coding_tables/schema-diff/compare', {
@@ -206,7 +249,7 @@ export default function SchemaDiffPanel() {
           />
         </label>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-          <button type="button" onClick={generateDiff} disabled={loading}>
+          <button type="button" onClick={generateDiff} disabled={disableGenerate}>
             {loading ? 'Generating...' : 'Generate Diff'}
           </button>
           <label style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
@@ -217,6 +260,17 @@ export default function SchemaDiffPanel() {
             />
             Include DROP statements when applying
           </label>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', color: preflight.ok ? '#0b8457' : '#b00' }}>
+          {preflight.loading ? (
+            <span>Checking prerequisites...</span>
+          ) : preflight.ok ? (
+            <span>mysqldump and DB_NAME are available.</span>
+          ) : (
+            <span>
+              Prerequisite issues detected: {preflight.issues.join('; ') || 'Unknown issue'}
+            </span>
+          )}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
           <label style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
@@ -241,6 +295,22 @@ export default function SchemaDiffPanel() {
       {error && (
         <div style={{ color: 'red', background: '#fff5f5', padding: '0.5rem' }}>
           {error}
+        </div>
+      )}
+      {loading && (
+        <div
+          role="status"
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.5rem',
+            padding: '0.5rem',
+            background: '#eef5ff',
+            border: '1px solid #cce5ff',
+          }}
+        >
+          <span style={{ fontWeight: 'bold' }}>⏳ Generating schema diff...</span>
+          <span style={{ color: '#555' }}>This may take a few seconds for large schemas.</span>
         </div>
       )}
 
