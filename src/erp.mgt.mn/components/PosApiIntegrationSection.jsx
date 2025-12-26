@@ -100,44 +100,12 @@ function normalizeNestedPathsMap(nestedPaths = {}, supportsItems = false) {
   return map;
 }
 
-function flattenRequestObjects(requestObjects = {}) {
-  const entries = [];
-  const visit = (node, key) => {
-    if (!node || typeof node !== 'object') return;
-    const path = typeof node.path === 'string' ? node.path.trim() : '';
-    const id = path || key || 'root';
-    const objKey = key || (path ? path.split('.').pop()?.replace(/\[\]/g, '') : 'root');
-    if (path || key) {
-      entries.push({
-        id,
-        key: objKey || id,
-        path,
-        repeatable: Boolean(node.repeatable) || (path ? path.includes('[]') : false),
-        fields: [],
-      });
-    }
-    Object.entries(node.children || {}).forEach(([childKey, child]) => visit(child, childKey));
-  };
-  Object.entries(requestObjects || {}).forEach(([key, node]) => visit(node, key));
-  return entries;
-}
-
-function findRequestObjectForField(fieldPath, requestObjects = []) {
-  if (!fieldPath || !requestObjects.length) return '';
-  const normalized = fieldPath.trim();
-  const candidates = requestObjects
-    .filter((obj) => obj.path && normalized.startsWith(obj.path))
-    .sort((a, b) => b.path.length - a.path.length);
-  return candidates[0]?.path || '';
-}
-
-function buildRequestFieldStructure(requestFields = [], supportsItems = false, nestedPaths = {}, requestObjects = {}) {
+function buildRequestFieldStructure(requestFields = [], supportsItems = false, nestedPaths = {}) {
   const nestedPathMap = normalizeNestedPathsMap(nestedPaths, supportsItems);
   const normalizedFields = (Array.isArray(requestFields) ? requestFields : [])
     .map((entry) => normalizeRequestField(entry))
     .filter(Boolean);
   const objectMap = new Map();
-  const requestObjectEntries = flattenRequestObjects(requestObjects);
   const registerField = (objectPath, field) => {
     const key = objectPath || '';
     const existing = objectMap.get(key) || {
@@ -152,21 +120,9 @@ function buildRequestFieldStructure(requestFields = [], supportsItems = false, n
     objectMap.set(key, existing);
   };
 
-  requestObjectEntries.forEach((entry) => {
-    const key = entry.path || entry.id || entry.key;
-    if (!key) return;
-    const labelSource = (entry.path || entry.id || entry.key || '').replace(/\[\]/g, '') || 'request';
-    objectMap.set(entry.path || entry.id || entry.key, {
-      ...entry,
-      label: humanizeFieldLabel(labelSource) || 'Request',
-      fields: [],
-    });
-  });
-
   normalizedFields.forEach((field) => {
     const { objectPath, fieldKey } = splitFieldPath(field.path);
-    const mappedObjectPath = findRequestObjectForField(field.path, requestObjectEntries) || objectPath;
-    registerField(mappedObjectPath, { ...field, key: fieldKey, label: field.label || humanizeFieldLabel(fieldKey) });
+    registerField(objectPath, { ...field, key: fieldKey, label: field.label || humanizeFieldLabel(fieldKey) });
   });
 
   const rootFields = objectMap.get('')?.fields || [];
@@ -397,7 +353,6 @@ function MappingFieldSelector({
           <option value="literal">Literal value</option>
           <option value="env">Environment variable</option>
           <option value="session">Session variable</option>
-          <option value="variation">Variation value</option>
           {allowExpression && <option value="expression">Expression</option>}
         </select>
         {currentType === 'column' ? (
@@ -450,15 +405,6 @@ function MappingFieldSelector({
             value={selection.envVar || ''}
             onChange={(e) => handleScalarChange('envVar', e.target.value)}
             placeholder="ENV_VAR_NAME"
-            disabled={disabled}
-            style={{ flex: '1 1 200px', minWidth: '200px' }}
-          />
-        ) : currentType === 'variation' ? (
-          <input
-            type="text"
-            value={selection.value || ''}
-            onChange={(e) => handleScalarChange('value', e.target.value)}
-            placeholder="Variation field (e.g., type)"
             disabled={disabled}
             style={{ flex: '1 1 200px', minWidth: '200px' }}
           />
@@ -631,7 +577,6 @@ export default function PosApiIntegrationSection({
         selectedEndpoint?.requestFields || [],
         selectedEndpoint?.supportsItems !== false,
         selectedEndpoint?.mappingHints?.nestedPaths || {},
-        selectedEndpoint?.requestObjects || {},
       ),
     [selectedEndpoint],
   );

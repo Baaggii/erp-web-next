@@ -1333,150 +1333,30 @@ function deriveNestedObjectsFromFields(fields = []) {
   return Array.from(nested.values());
 }
 
-function deriveRequestObjectsFromFields(fields = []) {
-  const root = {};
+function buildRequestSampleFromFields(fields = [], defaults = {}, example) {
+  const sample = {};
+  const defaultMap = defaults && typeof defaults === 'object' ? defaults : {};
+  const exampleValues = Array.isArray(example)
+    ? []
+    : example && typeof example === 'object'
+      ? flattenFieldsWithValues(example)
+      : [];
+  const exampleLookup = new Map(
+    exampleValues
+      .map((entry) => [entry.field, entry.value])
+      .filter(([field]) => typeof field === 'string' && field),
+  );
 
   fields.forEach((entry) => {
     const fieldPath = typeof entry?.field === 'string' ? entry.field.trim() : '';
     if (!fieldPath) return;
     const tokens = tokenizeFieldPath(fieldPath);
-    if (!tokens.length) return;
-    let parent = root;
-    const pathParts = [];
-    tokens.forEach((token, index) => {
-      const isLeaf = index === tokens.length - 1;
-      if (isLeaf && !token.isArray) return;
-      const segment = `${token.key}${token.isArray ? '[]' : ''}`;
-      pathParts.push(segment);
-      const path = pathParts.join('.');
-      const existing = parent[token.key] || { path, repeatable: Boolean(token.isArray), children: {} };
-      existing.path = existing.path || path;
-      existing.repeatable = existing.repeatable || Boolean(token.isArray);
-      parent[token.key] = existing;
-      parent = existing.children;
-    });
-  });
-
-  return root;
-}
-
-function collectRequestObjectPaths(requestObjects = {}) {
-  const paths = new Set();
-  const walk = (node) => {
-    if (!node || typeof node !== 'object') return;
-    const path = typeof node.path === 'string' ? node.path.trim() : '';
-    if (path) paths.add(path);
-    Object.values(node.children || {}).forEach((child) => walk(child));
-  };
-  Object.values(requestObjects || {}).forEach((entry) => walk(entry));
-  return paths;
-}
-
-function collectVariationFieldValues(variations = []) {
-  const result = {};
-  variations.forEach((variation, index) => {
-    const key = variation?.key || variation?.name || `variation-${index + 1}`;
-    if (!key) return;
-    const defaults = {};
-    const fields = Array.isArray(variation?.requestFields) ? variation.requestFields : [];
-    fields.forEach((field) => {
-      const fieldPath = typeof field?.field === 'string' ? field.field.trim() : '';
-      if (!fieldPath) return;
-      const variationDefaults = field?.defaultVariations || field?.defaultByVariation || {};
-      if (Object.prototype.hasOwnProperty.call(variationDefaults, key)) {
-        defaults[fieldPath] = variationDefaults[key];
-      }
-    });
-    flattenFieldsWithValues(variation?.requestExample || variation?.request?.body || variation?.request || {})
-      .forEach(({ field, value }) => {
-        if (field && defaults[field] === undefined) {
-          defaults[field] = value;
-        }
-      });
-    if (Object.keys(defaults).length) {
-      result[key] = defaults;
-    }
-  });
-  return result;
-}
-
-function pickDefaultVariationValues(variationFieldValues = {}) {
-  const merged = {};
-  Object.values(variationFieldValues).forEach((defaults) => {
-    Object.entries(defaults || {}).forEach(([field, value]) => {
-      if (merged[field] === undefined) {
-        merged[field] = value;
-      }
-    });
-  });
-  return merged;
-}
-
-function buildAggregationsFromFields(fields = []) {
-  const aggregations = {};
-  const hasField = (path) => fields.some((entry) => typeof entry?.field === 'string' && entry.field.trim() === path);
-
-  const receiptItemsTotal = 'receipts[].items[].totalAmount';
-  const receiptTotal = 'receipts[].totalAmount';
-  const overallTotal = 'totalAmount';
-
-  if (hasField(receiptItemsTotal) && hasField(receiptTotal)) {
-    aggregations[receiptTotal] = { sumOf: receiptItemsTotal };
-  }
-  if (hasField(receiptTotal) && hasField(overallTotal)) {
-    aggregations[overallTotal] = { sumOf: receiptTotal };
-  }
-
-  return aggregations;
-}
-
-function buildRequestSampleFromFields(
-  fields = [],
-  defaults = {},
-  example,
-  requestObjects = {},
-  variationDefaults = {},
-  variationScoped = false,
-) {
-  const sample = {};
-  const objectPaths = collectRequestObjectPaths(requestObjects);
-  const defaultMap = defaults && typeof defaults === 'object' ? defaults : {};
-  const variationDefaultMap = variationDefaults && typeof variationDefaults === 'object' ? variationDefaults : {};
-  const exampleValues =
-    variationScoped || !example || typeof example !== 'object' || Array.isArray(example)
-      ? []
-      : flattenFieldsWithValues(example);
-  const exampleLookup = new Map(exampleValues.map((entry) => [entry.field, entry.value]));
-
-  const applyRequestObjects = (nodes = {}) => {
-    Object.values(nodes || {}).forEach((node) => {
-      if (!node || typeof node !== 'object') return;
-      const path = typeof node.path === 'string' ? node.path.trim() : '';
-      if (path) {
-        const tokens = tokenizeFieldPath(path);
-        const placeholder = node.repeatable ? [{}] : {};
-        setValueAtTokens(sample, tokens, placeholder);
-      }
-      if (node.children) {
-        applyRequestObjects(node.children);
-      }
-    });
-  };
-
-  applyRequestObjects(requestObjects);
-
-  fields.forEach((entry) => {
-    const fieldPath = typeof entry?.field === 'string' ? entry.field.trim() : '';
-    if (!fieldPath || objectPaths.has(fieldPath)) return;
-    const tokens = tokenizeFieldPath(fieldPath);
     const defaultValue =
-      variationDefaultMap[fieldPath] !== undefined
-        ? variationDefaultMap[fieldPath]
+      exampleLookup.has(fieldPath) && exampleLookup.get(fieldPath) !== undefined
+        ? exampleLookup.get(fieldPath)
         : defaultMap[fieldPath] !== undefined
           ? defaultMap[fieldPath]
-          : exampleLookup.has(fieldPath) && exampleLookup.get(fieldPath) !== undefined && !variationScoped
-            ? exampleLookup.get(fieldPath)
-            : null;
+          : null;
     setValueAtTokens(sample, tokens, defaultValue);
   });
 
@@ -1804,22 +1684,15 @@ function extractOperationsFromOpenApi(spec, meta = {}, metaLookup = {}) {
 
       const fieldDefaults = collectFieldDefaults(requestFields);
       const mappingHints = deriveMappingHintsFromFields(requestFields);
-      const derivedRequestObjects = deriveRequestObjectsFromFields(requestFields);
       const nestedObjects =
         Array.isArray(mappingHints?.nestedObjects) && mappingHints.nestedObjects.length
           ? mappingHints.nestedObjects
           : deriveNestedObjectsFromFields(requestFields);
-      const variationFieldValues = collectVariationFieldValues(variations);
-      const defaultVariationValues = pickDefaultVariationValues(variationFieldValues);
       const requestSample = buildRequestSampleFromFields(
         requestFields,
         fieldDefaults,
         requestExample && typeof requestExample === 'object' ? requestExample : undefined,
-        derivedRequestObjects,
-        defaultVariationValues,
-        true,
       );
-      const aggregations = buildAggregationsFromFields(requestFields);
 
       entries.push({
         id: id || `${method}-${entries.length + 1}`,
@@ -1843,9 +1716,7 @@ function extractOperationsFromOpenApi(spec, meta = {}, metaLookup = {}) {
         ...(Object.keys(fieldDefaults).length ? { fieldDefaults } : {}),
         ...(requestSample ? { requestSample } : {}),
         ...(Object.keys(mappingHints).length ? { mappingHints } : {}),
-        ...(Object.keys(derivedRequestObjects).length ? { requestObjects: derivedRequestObjects } : {}),
         ...(nestedObjects.length ? { nestedObjects } : {}),
-        ...(Object.keys(aggregations).length ? { aggregations } : {}),
         ...(Array.isArray(resolvedReceiptTypes) && resolvedReceiptTypes.length
           ? { receiptTypes: resolvedReceiptTypes }
           : {}),
@@ -1873,9 +1744,6 @@ function extractOperationsFromOpenApi(spec, meta = {}, metaLookup = {}) {
         validation: validationIssues.length
           ? { state: hasPartialSchema ? 'partial' : 'incomplete', issues: validationIssues }
           : { state: 'ok' },
-        ...(Object.keys(variationFieldValues).length
-          ? { variationFieldValues, variationScoped: true }
-          : {}),
         ...((hasPartialSchema || parseWarnings.length)
           ? {
             parseWarnings: [
@@ -2267,22 +2135,15 @@ function extractOperationsFromPostman(spec, meta = {}) {
 
       const fieldDefaults = collectFieldDefaults(combinedRequestFields);
       const mappingHints = deriveMappingHintsFromFields(combinedRequestFields);
-      const derivedRequestObjects = deriveRequestObjectsFromFields(combinedRequestFields);
       const nestedObjects =
         Array.isArray(mappingHints?.nestedObjects) && mappingHints.nestedObjects.length
           ? mappingHints.nestedObjects
           : deriveNestedObjectsFromFields(combinedRequestFields);
-      const variationFieldValues = collectVariationFieldValues(variations);
-      const defaultVariationValues = pickDefaultVariationValues(variationFieldValues);
       const requestSample = buildRequestSampleFromFields(
         combinedRequestFields,
         fieldDefaults,
         requestExample && typeof requestExample === 'object' ? requestExample : undefined,
-        derivedRequestObjects,
-        defaultVariationValues,
-        true,
       );
-      const aggregations = buildAggregationsFromFields(combinedRequestFields);
 
       entries.push({
         id: id || `${method}-${entries.length + 1}`,
@@ -2311,9 +2172,7 @@ function extractOperationsFromPostman(spec, meta = {}) {
         ...(Object.keys(fieldDefaults).length ? { fieldDefaults } : {}),
         ...(requestSample ? { requestSample } : {}),
         ...(Object.keys(mappingHints).length ? { mappingHints } : {}),
-        ...(Object.keys(derivedRequestObjects).length ? { requestObjects: derivedRequestObjects } : {}),
         ...(nestedObjects.length ? { nestedObjects } : {}),
-        ...(Object.keys(aggregations).length ? { aggregations } : {}),
         ...(parseWarnings.length || variationWarnings.length
           ? { parseWarnings: [...parseWarnings, ...variationWarnings] }
           : {}),
@@ -2343,9 +2202,6 @@ function extractOperationsFromPostman(spec, meta = {}) {
           state: 'incomplete',
           issues: ['POSAPI type could not be determined automatically.'],
         },
-        ...(Object.keys(variationFieldValues).length
-          ? { variationFieldValues, variationScoped: true }
-          : {}),
         sourceName: meta.sourceName || '',
         isBundled: Boolean(meta.isBundled),
         variables,
