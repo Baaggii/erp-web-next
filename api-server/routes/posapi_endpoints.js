@@ -1473,8 +1473,11 @@ function dedupeFieldEntries(fields) {
     }
     const candidateScore = entry.field.split('.').length + (entry.field.endsWith('[]') ? 0.5 : 0);
     const currentScore = current.field.split('.').length + (current.field.endsWith('[]') ? 0.5 : 0);
+    const mergedAggregation = entry?.aggregation || current?.aggregation;
     if (candidateScore > currentScore) {
-      seen.set(key, entry);
+      seen.set(key, mergedAggregation ? { ...entry, aggregation: mergedAggregation } : entry);
+    } else if (mergedAggregation && !current?.aggregation) {
+      seen.set(key, { ...current, aggregation: mergedAggregation });
     }
   });
   return Array.from(seen.values());
@@ -1507,6 +1510,7 @@ function deriveMappingHintsFromFields(fields = []) {
       field: key,
       required: Boolean(entry?.required),
       description: typeof entry?.description === 'string' ? entry.description : undefined,
+      ...(entry?.aggregation ? { aggregation: entry.aggregation } : {}),
     };
     if (key.startsWith('receipts[].items[].')) {
       itemFields.push({ ...base, field: key.replace('receipts[].items[].', '') });
