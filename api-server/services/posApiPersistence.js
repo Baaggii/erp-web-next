@@ -187,6 +187,7 @@ export function computePosApiUpdates(columnLookup, response, options = {}) {
   if (!(columnLookup instanceof Map)) return {};
   if (!response || typeof response !== 'object') return {};
   const targetTable = typeof options.targetTable === 'string' ? options.targetTable.trim() : '';
+  const requireExplicitMapping = Boolean(options.requireExplicitMapping);
   const fieldsFromPosApi = Array.isArray(options.fieldsFromPosApi)
     ? options.fieldsFromPosApi.filter((field) => typeof field === 'string' && field.trim())
     : [];
@@ -203,22 +204,24 @@ export function computePosApiUpdates(columnLookup, response, options = {}) {
 
   const firstReceipt = Array.isArray(response.receipts) ? response.receipts[0] : null;
 
-  if (response.status !== undefined) pushEntry('status', response.status);
-  if (response.id !== undefined) pushEntry('id', response.id);
-  if (response.billId !== undefined) pushEntry('billId', response.billId);
+  if (!requireExplicitMapping) {
+    if (response.status !== undefined) pushEntry('status', response.status);
+    if (response.id !== undefined) pushEntry('id', response.id);
+    if (response.billId !== undefined) pushEntry('billId', response.billId);
 
-  if (firstReceipt && typeof firstReceipt === 'object') {
-    if (firstReceipt.billId !== undefined) pushEntry('billId', firstReceipt.billId);
-    if (firstReceipt.id !== undefined) pushEntry('receiptId', firstReceipt.id);
-    if (firstReceipt.status !== undefined) pushEntry('receiptStatus', firstReceipt.status);
+    if (firstReceipt && typeof firstReceipt === 'object') {
+      if (firstReceipt.billId !== undefined) pushEntry('billId', firstReceipt.billId);
+      if (firstReceipt.id !== undefined) pushEntry('receiptId', firstReceipt.id);
+      if (firstReceipt.status !== undefined) pushEntry('receiptStatus', firstReceipt.status);
+    }
+
+    fieldsFromPosApi.forEach((fieldPath) => {
+      const value = extractPosApiFieldValue(response, fieldPath);
+      if (value === undefined) return;
+      const key = getLastToken(fieldPath) || fieldPath;
+      pushEntry(key, value);
+    });
   }
-
-  fieldsFromPosApi.forEach((fieldPath) => {
-    const value = extractPosApiFieldValue(response, fieldPath);
-    if (value === undefined) return;
-    const key = getLastToken(fieldPath) || fieldPath;
-    pushEntry(key, value);
-  });
 
   Object.entries(responseFieldMapping).forEach(([fieldPath, targetColumn]) => {
     if (typeof fieldPath !== 'string' || !fieldPath.trim()) return;
@@ -245,4 +248,41 @@ export function computePosApiUpdates(columnLookup, response, options = {}) {
     updates[column] = normalizePersistValue(value);
   });
   return updates;
+}
+
+export function groupResponseMappingByTable(responseFieldMapping = {}, defaultTable = '') {
+  const grouped = new Map();
+  if (!responseFieldMapping || typeof responseFieldMapping !== 'object') {
+    return grouped;
+  }
+
+  const addMapping = (table, fieldPath, target) => {
+    if (!table || !fieldPath) return;
+    const existing = grouped.get(table) || {};
+    const currentTargets = existing[fieldPath];
+    if (currentTargets === undefined) {
+      existing[fieldPath] = [target];
+    } else if (Array.isArray(currentTargets)) {
+      existing[fieldPath] = [...currentTargets, target];
+    } else {
+      existing[fieldPath] = [currentTargets, target];
+    }
+    grouped.set(table, existing);
+  };
+
+  Object.entries(responseFieldMapping).forEach(([fieldPath, mappingTarget]) => {
+    if (typeof fieldPath !== 'string' || !fieldPath.trim()) return;
+    const targets = Array.isArray(mappingTarget) ? mappingTarget : [mappingTarget];
+    targets.forEach((target) => {
+      const normalized = normalizeResponseMappingTarget(target);
+      const table = normalized.table || defaultTable;
+      if (!table) return;
+      addMapping(table, fieldPath.trim(), {
+        ...normalized,
+        ...(normalized.table ? { table: normalized.table } : {}),
+      });
+    });
+  });
+
+  return grouped;
 }

@@ -14,6 +14,7 @@ import {
 import {
   computePosApiUpdates,
   createColumnLookup,
+  groupResponseMappingByTable,
 } from './posApiPersistence.js';
 import { parseLocalizedNumber } from '../../utils/parseLocalizedNumber.js';
 import {
@@ -332,25 +333,118 @@ function assignArrayMetadata(target, source) {
   return target;
 }
 
+async function resolveResponseUpdateTarget(tableName, options = {}) {
+  const foreignKeyMap = options.foreignKeyMap instanceof Map ? options.foreignKeyMap : null;
+  const masterRecord = options.masterRecord && typeof options.masterRecord === 'object' ? options.masterRecord : null;
+  if (foreignKeyMap && masterRecord && foreignKeyMap.has(tableName)) {
+    const refs = foreignKeyMap.get(tableName) || [];
+    for (const ref of refs) {
+      if (!ref?.column || !ref?.referencedColumn) continue;
+      const value = getRecordValue(masterRecord, ref.referencedColumn);
+      if (value === undefined || value === null) continue;
+      return { column: ref.column, value };
+    }
+  }
+  const sessionValue =
+    options.sessionId !== undefined
+      ? options.sessionId
+      : masterRecord
+        ? resolveSessionId(masterRecord)
+        : null;
+  if (sessionValue !== undefined && sessionValue !== null) {
+    const sessionColumn = await findSessionColumnForTable(tableName);
+    if (sessionColumn) {
+      return { column: sessionColumn, value: sessionValue };
+    }
+  }
+  return null;
+}
+
+async function persistMappedResponseToTable(tableName, updates, options = {}) {
+  const entries = Object.entries(updates || {});
+  if (!entries.length) return;
+  const target = await resolveResponseUpdateTarget(tableName, options);
+  if (!target) return;
+  const setClause = entries.map(() => '?? = ?').join(', ');
+  const params = [tableName];
+  entries.forEach(([col, value]) => {
+    params.push(col, value);
+  });
+  params.push(target.column, target.value);
+  try {
+    await pool.query(`UPDATE ?? SET ${setClause} WHERE ?? = ?`, params);
+  } catch (err) {
+    console.error('Failed to persist POSAPI response details', {
+      table: tableName,
+      target,
+      error: err,
+    });
+  }
+}
+
 async function persistPosApiResponse(table, id, response, options = {}) {
   if (!table || id === undefined || id === null) return;
   if (!response || typeof response !== 'object') return;
-  const columnMap = await getTableColumnNameMap(table);
-  if (!columnMap || columnMap.size === 0) return;
-  const lookup = createColumnLookup(columnMap);
-  const updates = computePosApiUpdates(lookup, response, options);
-  const entries = Object.entries(updates || {});
-  if (!entries.length) return;
-  const setClause = entries.map(([col]) => `\`${col}\` = ?`).join(', ');
-  const params = entries.map(([, value]) => value);
-  params.push(id);
-  try {
-    await pool.query(`UPDATE \`${table}\` SET ${setClause} WHERE id = ?`, params);
-  } catch (err) {
-    console.error('Failed to persist POSAPI response details', {
-      table,
-      id,
-      error: err,
+  const defaultTargetTable =
+    typeof options.targetTable === 'string' && options.targetTable.trim()
+      ? options.targetTable.trim()
+      : table;
+  const allowCrossTableMapping = options.allowCrossTableMapping !== false;
+  const responseFieldMapping =
+    options.responseFieldMapping && typeof options.responseFieldMapping === 'object'
+      ? options.responseFieldMapping
+      : {};
+  const tableMappings = allowCrossTableMapping
+    ? groupResponseMappingByTable(responseFieldMapping, defaultTargetTable)
+    : new Map();
+  if (!tableMappings.has(defaultTargetTable)) {
+    tableMappings.set(defaultTargetTable, responseFieldMapping);
+  }
+  const tablesToUpdate = Array.from(new Set(tableMappings.keys()));
+  const masterRecord = options.masterRecord && typeof options.masterRecord === 'object' ? options.masterRecord : null;
+  const foreignKeyMap =
+    allowCrossTableMapping && options.foreignKeyMap instanceof Map
+      ? options.foreignKeyMap
+      : allowCrossTableMapping
+        ? await getMasterForeignKeyMap(pool, table)
+        : null;
+  const sessionId =
+    options.sessionId !== undefined ? options.sessionId : masterRecord ? resolveSessionId(masterRecord) : null;
+
+  for (const targetTable of tablesToUpdate) {
+    const columnMap = await getTableColumnNameMap(targetTable);
+    if (!columnMap || columnMap.size === 0) continue;
+    const lookup = createColumnLookup(columnMap);
+    const updates = computePosApiUpdates(lookup, response, {
+      ...options,
+      targetTable,
+      fieldsFromPosApi: targetTable === defaultTargetTable ? options.fieldsFromPosApi : [],
+      responseFieldMapping: tableMappings.get(targetTable) || {},
+      requireExplicitMapping: targetTable !== defaultTargetTable,
+    });
+    const updateEntries = Object.entries(updates || {});
+    if (!updateEntries.length) continue;
+    if (targetTable === defaultTargetTable) {
+      const setClause = updateEntries.map(() => '?? = ?').join(', ');
+      const params = [targetTable];
+      updateEntries.forEach(([col, value]) => params.push(col, value));
+      params.push('id', id);
+      try {
+        await pool.query(`UPDATE ?? SET ${setClause} WHERE ?? = ?`, params);
+      } catch (err) {
+        console.error('Failed to persist POSAPI response details', {
+          table: targetTable,
+          id,
+          error: err,
+        });
+      }
+      continue;
+    }
+    if (!allowCrossTableMapping) continue;
+    await persistMappedResponseToTable(targetTable, updates, {
+      foreignKeyMap,
+      masterRecord,
+      sessionId,
     });
   }
 }
@@ -1702,10 +1796,17 @@ export async function postPosTransactionWithEbarimt(
   });
 
   const response = await sendReceipt(payloadWithDefaults, { endpoint });
+  const mergedResponseMapping = {
+    ...(formCfg.posApiResponseMapping && typeof formCfg.posApiResponseMapping === 'object' ? formCfg.posApiResponseMapping : {}),
+    ...(layout.posApiResponseMapping && typeof layout.posApiResponseMapping === 'object' ? layout.posApiResponseMapping : {}),
+  };
+  const foreignKeyMap = await getMasterForeignKeyMap(pool, masterTable);
   await persistPosApiResponse(masterTable, masterId, response, {
     fieldsFromPosApi: formCfg.fieldsFromPosApi,
-    responseFieldMapping: formCfg.posApiResponseMapping,
+    responseFieldMapping: mergedResponseMapping,
     targetTable: masterTable,
+    masterRecord: record,
+    foreignKeyMap,
   });
   if (invoiceId) {
     await persistEbarimtInvoiceResponse(invoiceId, response, {
@@ -1851,16 +1952,24 @@ export async function issueSavedPosTransactionEbarimt(
   });
 
   const response = await sendReceipt(payloadWithDefaults, { endpoint });
+  const mergedResponseMapping = {
+    ...(formCfg.posApiResponseMapping && typeof formCfg.posApiResponseMapping === 'object' ? formCfg.posApiResponseMapping : {}),
+    ...(layout.posApiResponseMapping && typeof layout.posApiResponseMapping === 'object' ? layout.posApiResponseMapping : {}),
+  };
+  const foreignKeyMap = await getMasterForeignKeyMap(pool, masterTable);
   await persistPosApiResponse(masterTable, recordId, response, {
     fieldsFromPosApi: formCfg.fieldsFromPosApi,
-    responseFieldMapping: formCfg.posApiResponseMapping,
+    responseFieldMapping: mergedResponseMapping,
     targetTable: masterTable,
+    masterRecord: aggregatedRecord,
+    foreignKeyMap,
   });
   if (invoiceId) {
     await persistEbarimtInvoiceResponse(invoiceId, response, {
       fieldsFromPosApi: formCfg.fieldsFromPosApi,
       responseFieldMapping: formCfg.posApiResponseMapping,
       targetTable: 'ebarimt_invoice',
+      allowCrossTableMapping: false,
     });
     await linkInvoiceToIncomeRecords({
       invoiceId,
