@@ -602,8 +602,15 @@ export async function runPlanStatements(statements) {
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();
-    for (const stmt of statements) {
-      await conn.query(stmt);
+    for (let i = 0; i < statements.length; i += 1) {
+      const stmt = statements[i];
+      try {
+        await conn.query(stmt);
+      } catch (err) {
+        err.statement = stmt;
+        err.statementIndex = i;
+        throw err;
+      }
     }
     await conn.commit();
   } catch (err) {
