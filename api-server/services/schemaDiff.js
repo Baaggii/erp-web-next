@@ -163,14 +163,11 @@ async function dumpCurrentSchema(outputPath, signal) {
   try {
     const { stdout } = await runCommand('mysqldump', args, { env, signal });
     await fsPromises.writeFile(outputPath, stdout, 'utf8');
-    return { outputPath, sql: stdout, method: 'mysqldump', warnings: [] };
+    return { outputPath, sql: stdout };
   } catch (err) {
-    if (err?.code === 'ENOENT') {
-      err.message = 'mysqldump is required to extract the current schema.';
-      err.status = err.status || 500;
-    } else if (err.aborted) {
+    if (err.aborted) {
       err.status = err.status || 499;
-      err.message = 'Database schema dump aborted due to request cancellation.';
+      err.message = err.message || 'mysqldump aborted by abort signal';
     } else {
       err.status = err.status || 500;
       const stderrMsg = err.stderr?.trim();
@@ -187,76 +184,6 @@ function stripCommentLines(sqlText) {
     .filter((line) => !/^\s*(#|--)/.test(line))
     .join('\n')
     .trim();
-}
-
-async function dumpSchemaViaNode(signal) {
-  const dbName = process.env.DB_NAME;
-  if (!dbName) {
-    const err = new Error('DB_NAME env is required to dump schema');
-    err.status = 500;
-    throw err;
-  }
-  const conn = await pool.getConnection();
-  try {
-    await conn.query(`USE \`${dbName}\``);
-    const [rows] = await conn.query('SHOW FULL TABLES');
-    const nameKey = rows?.length
-      ? Object.keys(rows[0]).find((k) => k.toLowerCase().startsWith('tables_in'))
-      : null;
-    const typeKey = rows?.length
-      ? Object.keys(rows[0]).find((k) => k.toLowerCase().includes('table_type'))
-      : null;
-    if (!nameKey) {
-      return { sql: '-- No tables found for schema dump', method: 'node' };
-    }
-    const statements = [];
-    for (const row of rows || []) {
-      if (signal?.aborted) {
-        const abortErr = new Error('Schema dump aborted by cancellation');
-        abortErr.name = 'AbortError';
-        abortErr.aborted = true;
-        throw abortErr;
-      }
-      const tableName = row[nameKey];
-      if (!tableName) continue;
-      const tableType = (row[typeKey] || '').toUpperCase();
-      const [createRows] = await conn.query(`SHOW CREATE TABLE \`${tableName}\``);
-      const createRow = createRows?.[0] || {};
-      const createStmt = createRow['Create Table'] || createRow['Create View'];
-      if (createStmt) {
-        const dropPrefix =
-          tableType === 'VIEW'
-            ? `DROP VIEW IF EXISTS \`${tableName}\`;\n`
-            : `DROP TABLE IF EXISTS \`${tableName}\`;\n`;
-        statements.push(`${dropPrefix}${createStmt};`);
-      }
-    }
-    const sql = statements.join('\n\n');
-    return { sql, method: 'node' };
-  } finally {
-    conn.release();
-  }
-}
-
-async function dumpCurrentSchemaWithFallback(outputPath, signal, onProgress) {
-  try {
-    onProgress?.('Dumping current schema with mysqldump...');
-    const result = await dumpCurrentSchema(outputPath, signal);
-    return result;
-  } catch (err) {
-    if (err.aborted || err?.name === 'AbortError') throw err;
-    onProgress?.('mysqldump failed; falling back to node-level dump...');
-    onProgress?.('Collecting schema via node-level queries...');
-    const fallback = await dumpSchemaViaNode(signal);
-    await fsPromises.writeFile(outputPath, fallback.sql, 'utf8');
-    fallback.outputPath = outputPath;
-    const primaryWarning = err.message || 'mysqldump failed; using node-level dump instead.';
-    fallback.warnings = [
-      primaryWarning,
-      'Fell back to node-level schema dump; install mysqldump for full fidelity.',
-    ];
-    return fallback;
-  }
 }
 
 function extractTableName(statement) {
@@ -424,8 +351,14 @@ async function dropTempDatabase(name) {
 }
 
 export async function buildSchemaDiff(options = {}) {
-  const { schemaPath, schemaFile, allowDrops = false, signal, onProgress } = options;
+  const { schemaPath, schemaFile, allowDrops = false, signal } = options;
   const prereq = await getSchemaDiffPrerequisites();
+  if (!prereq.mysqldumpAvailable) {
+    const err = new Error('mysqldump is required to extract the current schema.');
+    err.status = 500;
+    err.details = { prerequisite: 'mysqldump', checks: prereq };
+    throw err;
+  }
   if (!prereq.env.DB_NAME) {
     const err = new Error('DB_NAME environment variable must be set for schema diff.');
     err.status = 500;
@@ -445,16 +378,10 @@ export async function buildSchemaDiff(options = {}) {
     throw err;
   }
 
-  onProgress?.('Preparing schema diff job...');
   const tempDir = await fsPromises.mkdtemp(path.join(os.tmpdir(), 'schema-diff-'));
   const dumpPath = path.join(tempDir, 'current_schema.sql');
 
-  const { sql: currentSql, method: dumpMethod, warnings: dumpWarnings = [] } =
-    await dumpCurrentSchemaWithFallback(dumpPath, signal, onProgress);
-  if (!prereq.mysqldumpAvailable) {
-    warnings.push('mysqldump is unavailable; schema dump is limited to node-level introspection.');
-  }
-  warnings.push(...(dumpWarnings || []));
+  const { sql: currentSql } = await dumpCurrentSchema(dumpPath, signal);
   const targetSql = await fsPromises.readFile(resolvedSchema, 'utf8');
 
   let diffSql = '';
@@ -465,14 +392,12 @@ export async function buildSchemaDiff(options = {}) {
   if (toolAvailable) {
     tempDbName = `schema_diff_${crypto.randomBytes(5).toString('hex')}`;
     try {
-      onProgress?.('Importing target schema into temporary database...');
       const { importedWithCli: viaCli } = await importSchemaFile(
         resolvedSchema,
         tempDbName,
         signal,
       );
       importedWithCli = viaCli;
-      onProgress?.('Running mysqldbcompare between current and target schemas...');
       const host = process.env.DB_HOST || 'localhost';
       const user = process.env.DB_USER || '';
       const pass = process.env.DB_PASS || '';
@@ -504,7 +429,6 @@ export async function buildSchemaDiff(options = {}) {
     warnings.push(
       'mysqldbcompare is not available on this server; using a basic CREATE TABLE diff instead.',
     );
-    onProgress?.('Using basic diff from captured CREATE TABLE statements...');
     const fallback = basicDiffFromDumps(currentSql, targetSql, allowDrops);
     diffSql = fallback.statements.join('\n\n');
     warnings.push(...fallback.warnings);
@@ -519,7 +443,6 @@ export async function buildSchemaDiff(options = {}) {
     toolAvailable,
     prerequisites: prereq,
     importedWithCli,
-    dumpMethod,
     allowDrops,
     warnings,
     diffPath,
