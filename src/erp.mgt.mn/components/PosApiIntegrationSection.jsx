@@ -1048,10 +1048,6 @@ export default function PosApiIntegrationSection({
       ? config.posApiMapping.nestedSelection
       : {};
 
-  const fieldsFromPosApiText = useMemo(() => {
-    return Array.isArray(config.fieldsFromPosApi) ? config.fieldsFromPosApi.join('\n') : '';
-  }, [config.fieldsFromPosApi]);
-
   const getObjectFieldMapping = (object, legacyFallback = {}) => {
     if (!object) return legacyFallback || {};
     const candidates = [
@@ -1145,14 +1141,6 @@ export default function PosApiIntegrationSection({
       posApiInfoEndpointIds: selected,
       infoEndpoints: selected,
     }));
-  };
-
-  const handleFieldsFromPosApiChange = (value) => {
-    const entries = value
-      .split(/\r?\n/)
-      .map((item) => item.trim())
-      .filter((item) => item);
-    setConfig((c) => ({ ...c, fieldsFromPosApi: entries }));
   };
 
   const updatePosApiMapping = (field, value) => {
@@ -1751,27 +1739,6 @@ export default function PosApiIntegrationSection({
           </div>
         </div>
       )}
-      <label
-        style={{
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '0.25rem',
-          marginBottom: '0.75rem',
-        }}
-      >
-        <span style={{ fontWeight: 600 }}>Capture response fields</span>
-        <textarea
-          rows={3}
-          value={fieldsFromPosApiText}
-          onChange={(e) => handleFieldsFromPosApiChange(e.target.value)}
-          placeholder={'id\nlottery\nqrData'}
-          disabled={!config.posApiEnabled}
-          style={{ fontFamily: 'monospace', resize: 'vertical' }}
-        />
-        <small style={{ color: '#666' }}>
-          One field path per line (e.g., receipts[0].billId) to persist on the transaction record.
-        </small>
-      </label>
       <div>
         <strong>Field mapping</strong>
         <p style={{ fontSize: '0.85rem', color: '#555' }}>
