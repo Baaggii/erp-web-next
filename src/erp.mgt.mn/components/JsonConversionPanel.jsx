@@ -187,11 +187,7 @@ export default function JsonConversionPanel() {
         setPreviews(data.previews || []);
         setScriptText(data.scriptText || '');
         setBlockedColumns(data.blockedColumns || []);
-        setErrorDetails(data.error || null);
         const reason = data?.message || 'Conversion failed';
-        if (data?.error?.statement) {
-          console.error('Failed statement', data.error.statementIndex, data.error.statement);
-        }
         addToast(reason, 'error');
         return;
       }

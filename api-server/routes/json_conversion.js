@@ -61,20 +61,10 @@ router.post('/convert', requireAuth, async (req, res, next) => {
         await runPlanStatements(plan.statements);
         executed = true;
       } catch (err) {
-        const statement = err?.statement;
-        const statementIndex = Number.isInteger(err?.statementIndex)
-          ? err.statementIndex
-          : null;
-        const message =
-          statementIndex !== null && statement
-            ? `${err?.message || 'Conversion failed'} at statement ${statementIndex + 1}: ${statement}`
-            : err?.message || 'Conversion failed while applying statements.';
         runError = {
-          message,
+          message: err?.message,
           code: err?.code,
           sqlState: err?.sqlState || err?.sqlstate,
-          statement,
-          statementIndex,
         };
       }
     }

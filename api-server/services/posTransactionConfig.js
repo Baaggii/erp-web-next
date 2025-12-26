@@ -267,6 +267,16 @@ export async function setConfig(name, config = {}, companyId = 0) {
   const { cfg } = await readConfig(companyId);
   const normalizedConfig = {
     ...config,
+    posApiMapping:
+      config.posApiMapping && typeof config.posApiMapping === 'object' && !Array.isArray(config.posApiMapping)
+        ? { ...config.posApiMapping }
+        : {},
+    posApiResponseMapping:
+      config.posApiResponseMapping &&
+      typeof config.posApiResponseMapping === 'object' &&
+      !Array.isArray(config.posApiResponseMapping)
+        ? { ...config.posApiResponseMapping }
+        : {},
     allowedBranches: normalizeStoredAccessList(config.allowedBranches),
     allowedDepartments: normalizeStoredAccessList(config.allowedDepartments),
     allowedUserRights: normalizeStoredAccessList(config.allowedUserRights),
