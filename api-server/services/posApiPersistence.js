@@ -212,18 +212,7 @@ export function computePosApiUpdates(columnLookup, response, options = {}) {
     if (typeof fieldPath !== 'string' || !fieldPath.trim()) return;
     const value = extractPosApiFieldValue(response, fieldPath.trim());
     if (value === undefined) return;
-    const columnName =
-      typeof targetColumn === 'string'
-        ? targetColumn.trim()
-        : targetColumn && typeof targetColumn === 'object'
-          ? String(
-              targetColumn.column ||
-                targetColumn.value ||
-                targetColumn.path ||
-                targetColumn.field ||
-                '',
-            ).trim()
-          : '';
+    const columnName = typeof targetColumn === 'string' ? targetColumn.trim() : '';
     const mappedColumn = findColumnForField(columnLookup, columnName || fieldPath.trim()) || columnName || fieldPath.trim();
     if (!mappedColumn) return;
     pushEntry(mappedColumn, value);
