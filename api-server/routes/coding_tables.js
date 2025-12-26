@@ -37,8 +37,6 @@ function sendKnownError(res, err, fallbackStatus = 500) {
     message: err?.message || 'Schema diff failed',
   };
   if (err?.details) body.details = err.details;
-  if (err?.stderr && !body.details) body.details = { stderr: err.stderr };
-  if (err?.stdout && !body.details) body.details = { stdout: err.stdout };
   if (err?.code && !body.code) body.code = err.code;
   return res.status(status).json(body);
 }
