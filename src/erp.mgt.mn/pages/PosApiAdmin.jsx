@@ -134,6 +134,15 @@ const REQUEST_SESSION_VARIABLES = [
   'userRole',
 ];
 
+const AGGREGATION_OPTIONS = [
+  { value: '', label: 'No aggregation' },
+  { value: 'sum', label: 'Sum' },
+  { value: 'count', label: 'Count' },
+  { value: 'min', label: 'Minimum' },
+  { value: 'max', label: 'Maximum' },
+  { value: 'avg', label: 'Average' },
+];
+
 function extractUserParameters(values) {
   if (!values || typeof values !== 'object') return {};
   const entries = Object.entries(values).filter(([key, value]) => {
@@ -1461,10 +1470,10 @@ function buildUrlEnvMap(selections = {}) {
 
 function normalizeHintEntry(entry) {
   if (entry === null || entry === undefined) {
-    return { field: '', required: undefined, description: '' };
+    return { field: '', required: undefined, description: '', aggregation: '' };
   }
   if (typeof entry === 'string') {
-    return { field: entry, required: undefined, description: '' };
+    return { field: entry, required: undefined, description: '', aggregation: '' };
   }
   if (typeof entry === 'object') {
     return {
@@ -1478,12 +1487,14 @@ function normalizeHintEntry(entry) {
         entry.requiredByVariation || entry.requiredVariations,
       ),
       defaultByVariation: normalizeFieldValueMap(entry.defaultByVariation || entry.defaultVariations),
+      aggregation: typeof entry.aggregation === 'string' ? entry.aggregation : '',
     };
   }
   return {
     field: String(entry),
     required: undefined,
     description: '',
+    aggregation: '',
   };
 }
 
@@ -1770,6 +1781,7 @@ function mergeRequestFieldHints(existing = [], variationFields = []) {
     map.set(field, {
       field,
       description: normalized.description || current.description,
+      aggregation: normalized.aggregation || current.aggregation || '',
       requiredCommon,
       requiredByVariation,
       defaultByVariation,
@@ -2048,6 +2060,9 @@ function createFormState(definition) {
       };
       if (normalized.location) {
         hint.location = normalized.location;
+      }
+      if (normalized.aggregation) {
+        hint.aggregation = normalized.aggregation;
       }
       if (normalized.defaultValue !== undefined) {
         hint.defaultValue = normalized.defaultValue;
@@ -3829,7 +3844,7 @@ export default function PosApiAdmin() {
   }, [combinationBaseKey, enabledRequestFieldVariations, variationColumns]);
   const requestFieldColumnTemplate = useMemo(
     () => {
-      const baseColumns = ['150px', '250px', '80px'];
+      const baseColumns = ['150px', '250px', '150px', '80px'];
       const variationCells = variationColumns.map(() => '200px');
       return [...baseColumns, ...variationCells].join(' ');
     },
@@ -3930,6 +3945,7 @@ export default function PosApiAdmin() {
           requiredCommon,
           requiredByVariation,
           defaultByVariation,
+          aggregation: normalized.aggregation || existing.aggregation || '',
         };
       });
       return next;
@@ -4072,7 +4088,6 @@ export default function PosApiAdmin() {
               ...existing,
               applyToBody:
                 existing.applyToBody !== undefined ? existing.applyToBody : selection.applyToBody,
-              type: existing.type ?? existing.mode ?? selection.type ?? selection.mode,
             }
           : selection;
 
@@ -6697,6 +6712,7 @@ export default function PosApiAdmin() {
 
     const buildFieldWithMeta = (normalized, fallbackRequired) => {
       const meta = getFieldMeta(normalized.field);
+      const aggregation = meta.aggregation || normalized.aggregation || '';
       const requiredCommon =
         typeof meta.requiredCommon === 'boolean'
           ? meta.requiredCommon
@@ -6728,6 +6744,9 @@ export default function PosApiAdmin() {
       };
       if (normalized.location) {
         hint.location = normalized.location;
+      }
+      if (aggregation) {
+        hint.aggregation = aggregation;
       }
       if (normalized.defaultValue !== undefined) {
         hint.defaultValue = normalized.defaultValue;
@@ -6775,6 +6794,8 @@ export default function PosApiAdmin() {
     const variationRequirementByKey = {};
     const variationDefaultsByKey = {};
 
+    const variationDefaultsByField = {};
+
     if (requestFieldDisplay.state === 'ok') {
       variationColumns.forEach((variation) => {
         const key = variation.key;
@@ -6817,10 +6838,28 @@ export default function PosApiAdmin() {
           }
           if (defaultValue !== undefined && defaultValue !== '') {
             variationDefaultsByKey[key][fieldLabel] = defaultValue;
+            if (!variationDefaultsByField[fieldLabel]) {
+              variationDefaultsByField[fieldLabel] = {};
+            }
+            variationDefaultsByField[fieldLabel][key] = defaultValue;
           }
         });
       });
     }
+
+    const requestFieldsWithVariationDefaults = combinedRequestFields.map((field) => {
+      const defaultsForField = field.field ? variationDefaultsByField[field.field] : null;
+      if (!defaultsForField) return field;
+      const mergedDefaults = {
+        ...(field.defaultByVariation || field.defaultVariations || {}),
+        ...defaultsForField,
+      };
+      return {
+        ...field,
+        defaultByVariation: mergedDefaults,
+        defaultVariations: mergedDefaults,
+      };
+    });
 
     const sanitizedRequestFieldVariations = (requestFieldVariations || [])
       .filter((entry) => entry && entry.key)
@@ -7042,7 +7081,7 @@ export default function PosApiAdmin() {
       responseTables: sanitizeTableSelection(formState.responseTables, responseTableOptions),
       requestEnvMap: buildRequestEnvMap(requestFieldValues),
       requestFieldMappings: serializeRequestFieldSelections(requestFieldValues),
-      requestFields: combinedRequestFields,
+      requestFields: requestFieldsWithVariationDefaults,
       requestFieldVariations: sanitizedRequestFieldVariations,
       variations: sanitizedVariations,
       responseFields: responseFieldsWithMapping,
@@ -7572,7 +7611,6 @@ export default function PosApiAdmin() {
     if (!fieldPath) return;
     setRequestFieldValues((prev) => {
       const current = prev[fieldPath] || {};
-      const previousNormalized = normalizeRequestFieldMappingEntry(current, { defaultApplyToBody });
       const selectionProvided =
         typeof updates === 'string'
         || (updates
@@ -7596,31 +7634,17 @@ export default function PosApiAdmin() {
       const applyToBody =
         updates && typeof updates === 'object' && 'applyToBody' in updates
           ? updates.applyToBody
-            : current.applyToBody !== undefined
-              ? current.applyToBody
-              : defaultApplyToBody;
-      const selectionPayload =
-        typeof selectionInput === 'string'
-          ? { selection: selectionInput, applyToBody }
-          : { ...selectionInput, applyToBody };
+          : current.applyToBody !== undefined
+            ? current.applyToBody
+            : defaultApplyToBody;
       const normalizedSelection = normalizeRequestFieldMappingEntry(
-        selectionPayload,
+        { ...selectionInput, applyToBody },
         { defaultApplyToBody },
       );
-      const explicitTypeProvided =
-        updates
-        && typeof updates === 'object'
-        && (updates.type !== undefined
-          || updates.mode !== undefined
-          || (updates.selection && (updates.selection.type !== undefined || updates.selection.mode !== undefined)));
-      const shouldPersistSelection =
-        normalizedSelection
-        && (hasMappingValue(normalizedSelection)
-          || explicitTypeProvided
-          || (previousNormalized && normalizedSelection.type !== previousNormalized.type));
       const nextSelections = { ...prev };
       let changed = false;
-      if (shouldPersistSelection) {
+      if (normalizedSelection && hasMappingValue(normalizedSelection)) {
+        const previousNormalized = normalizeRequestFieldMappingEntry(current, { defaultApplyToBody });
         const alreadyEqual = JSON.stringify(previousNormalized || {}) === JSON.stringify(normalizedSelection);
         nextSelections[fieldPath] = normalizedSelection;
         changed = !alreadyEqual;
@@ -7655,6 +7679,14 @@ export default function PosApiAdmin() {
     setRequestFieldMeta((prev) => {
       const current = prev[fieldPath] || { requiredByVariation: {}, defaultByVariation: {} };
       return { ...prev, [fieldPath]: { ...current, description: value } };
+    });
+  }
+
+  function handleRequestFieldAggregationChange(fieldPath, value) {
+    if (!fieldPath) return;
+    setRequestFieldMeta((prev) => {
+      const current = prev[fieldPath] || { requiredByVariation: {}, defaultByVariation: {} };
+      return { ...prev, [fieldPath]: { ...current, aggregation: value } };
     });
   }
 
@@ -9017,6 +9049,7 @@ export default function PosApiAdmin() {
                   >
                     <span style={styles.requestFieldHeaderCell}>Field</span>
                     <span style={styles.requestFieldHeaderCell}>Description</span>
+                    <span style={styles.requestFieldHeaderCell}>Aggregation</span>
                     <span style={styles.requestFieldHeaderCell}>Common required</span>
                     {variationColumns.map((variation) => (
                       <span
@@ -9043,6 +9076,7 @@ export default function PosApiAdmin() {
                           ? normalized.requiredCommon
                           : Boolean(normalized.required);
                     const descriptionValue = meta.description || normalized.description || '';
+                    const aggregationValue = meta.aggregation || normalized.aggregation || '';
                     return (
                       <div
                         key={`request-hint-${fieldLabel}-${index}`}
@@ -9069,6 +9103,19 @@ export default function PosApiAdmin() {
                             style={{ ...styles.textarea, minHeight: '60px' }}
                             placeholder="Describe the field"
                           />
+                        </div>
+                        <div style={styles.requestFieldDescriptionCell}>
+                          <select
+                            value={aggregationValue}
+                            onChange={(e) => handleRequestFieldAggregationChange(fieldLabel, e.target.value)}
+                            style={styles.input}
+                          >
+                            {AGGREGATION_OPTIONS.map((option) => (
+                              <option key={`agg-${fieldLabel}-${option.value || 'none'}`} value={option.value}>
+                                {option.label}
+                              </option>
+                            ))}
+                          </select>
                         </div>
                         <div style={styles.requestFieldRequiredCell}>
                           <label style={styles.checkboxLabel}>

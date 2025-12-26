@@ -73,57 +73,84 @@ export function buildFieldSource(tableName, columnName) {
 
 export function normalizeMappingSelection(value, primaryTableName = '') {
   const parsed = parseFieldSource(value, primaryTableName);
+  const aggregation =
+    value && typeof value === 'object' && !Array.isArray(value) && typeof value.aggregation === 'string'
+      ? value.aggregation
+      : '';
   const type = parsed.type || 'column';
   if (type === 'literal') {
-    return { type, value: parsed.value ?? parsed.column ?? '' };
+    return { type, value: parsed.value ?? parsed.column ?? '', ...(aggregation ? { aggregation } : {}) };
   }
   if (type === 'env') {
-    return { type, envVar: parsed.envVar || parsed.value || parsed.raw };
+    return { type, envVar: parsed.envVar || parsed.value || parsed.raw, ...(aggregation ? { aggregation } : {}) };
   }
   if (type === 'session') {
-    return { type, sessionVar: parsed.sessionVar || parsed.value || parsed.raw };
+    return {
+      type,
+      sessionVar: parsed.sessionVar || parsed.value || parsed.raw,
+      ...(aggregation ? { aggregation } : {}),
+    };
   }
   if (type === 'expression') {
-    return { type, expression: parsed.expression || parsed.value || parsed.raw };
+    return {
+      type,
+      expression: parsed.expression || parsed.value || parsed.raw,
+      ...(aggregation ? { aggregation } : {}),
+    };
   }
   return {
     type: 'column',
     table: parsed.table,
     column: parsed.column || parsed.value || '',
+    ...(aggregation ? { aggregation } : {}),
   };
 }
 
 export function buildMappingValue(selection = {}, { preserveType = false } = {}) {
   const type = selection.type || 'column';
+  const aggregation = typeof selection.aggregation === 'string' ? selection.aggregation : '';
   if (type === 'literal') {
     const literal = selection.value ?? selection.literal ?? '';
     const trimmed = `${literal}`.trim();
     if (!trimmed && !preserveType) return '';
-    return { type: 'literal', value: String(trimmed) };
+    const result = { type: 'literal', value: String(trimmed) };
+    if (aggregation) result.aggregation = aggregation;
+    return result;
   }
   if (type === 'env') {
     const envVar = selection.envVar || selection.value || '';
     const trimmed = typeof envVar === 'string' ? envVar.trim() : envVar;
     if (!trimmed && !preserveType) return '';
-    return { type: 'env', envVar: trimmed || '' };
+    const result = { type: 'env', envVar: trimmed || '' };
+    if (aggregation) result.aggregation = aggregation;
+    return result;
   }
   if (type === 'session') {
     const sessionVar = selection.sessionVar || selection.value || '';
     const trimmed = typeof sessionVar === 'string' ? sessionVar.trim() : sessionVar;
     if (!trimmed && !preserveType) return '';
-    return { type: 'session', sessionVar: trimmed || '' };
+    const result = { type: 'session', sessionVar: trimmed || '' };
+    if (aggregation) result.aggregation = aggregation;
+    return result;
   }
   if (type === 'expression') {
     const expression = selection.expression || selection.value || '';
     const trimmed = typeof expression === 'string' ? expression.trim() : expression;
     if (!trimmed && !preserveType) return '';
-    return { type: 'expression', expression: trimmed || '' };
+    const result = { type: 'expression', expression: trimmed || '' };
+    if (aggregation) result.aggregation = aggregation;
+    return result;
   }
   const table = typeof selection.table === 'string' ? selection.table.trim() : '';
   const column = typeof selection.column === 'string' ? selection.column.trim() : '';
   if (!column && !table && !preserveType) return '';
-  if (column) {
+  const base = { type: 'column', table, column: column || selection.value || '' };
+  if (aggregation) base.aggregation = aggregation;
+  if (column && !aggregation && !table && !preserveType) {
+    return column;
+  }
+  if (column && !aggregation && table && !preserveType) {
     return buildFieldSource(table, column || selection.value || '');
   }
-  return { type: 'column', table, column: column || selection.value || '' };
+  return base;
 }

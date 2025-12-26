@@ -53,11 +53,76 @@ function validateEndpointDefinition(endpoint, index = 0) {
   return issues;
 }
 
+function normaliseResponseFieldMappings(endpoint = {}) {
+  const mappings = {};
+  const addMapping = (field, target) => {
+    const normalizedField = typeof field === 'string' ? field.trim() : '';
+    if (!normalizedField) return;
+    if (target && typeof target === 'object' && !Array.isArray(target)) {
+      const table = typeof target.table === 'string' ? target.table.trim() : '';
+      const column = typeof target.column === 'string' ? target.column.trim() : '';
+      const value = Object.prototype.hasOwnProperty.call(target, 'value') ? target.value : undefined;
+      if (!column) return;
+      mappings[normalizedField] = {
+        ...(table ? { table } : {}),
+        column,
+        ...(value !== undefined && value !== '' ? { value } : {}),
+      };
+      return;
+    }
+    const column = typeof target === 'string' ? target.trim() : '';
+    if (column) {
+      mappings[normalizedField] = column;
+    }
+  };
+
+  const responseFields = Array.isArray(endpoint.responseFields) ? endpoint.responseFields : [];
+  responseFields.forEach((entry) => {
+    const field = typeof entry?.field === 'string' ? entry.field : typeof entry === 'string' ? entry : '';
+    const mapping = entry?.mapTo || entry?.mapping || entry?.target;
+    if (field && mapping) addMapping(field, mapping);
+  });
+
+  if (endpoint.responseFieldMappings && typeof endpoint.responseFieldMappings === 'object') {
+    Object.entries(endpoint.responseFieldMappings).forEach(([field, target]) => addMapping(field, target));
+  }
+
+  return mappings;
+}
+
+function attachResponseMappings(endpoint) {
+  if (!endpoint || typeof endpoint !== 'object') return endpoint;
+  const mappings = normaliseResponseFieldMappings(endpoint);
+  const responseFields = Array.isArray(endpoint.responseFields)
+    ? endpoint.responseFields.map((entry) => {
+      if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
+        const field = typeof entry === 'string' ? entry.trim() : '';
+        if (!field) return entry;
+        const mapped = mappings[field];
+        return mapped ? { field, mapTo: mapped } : { field };
+      }
+      const field = typeof entry.field === 'string' ? entry.field.trim() : '';
+      if (!field) return entry;
+      if (entry.mapTo || entry.mapping || entry.target) return entry;
+      const mapped = mappings[field];
+      return mapped ? { ...entry, mapTo: mapped } : entry;
+    })
+    : endpoint.responseFields;
+
+  if (!responseFields && Object.keys(mappings).length === 0) return endpoint;
+
+  return {
+    ...endpoint,
+    ...(responseFields ? { responseFields } : {}),
+    ...(Object.keys(mappings).length ? { responseFieldMappings: mappings } : {}),
+  };
+}
+
 router.get('/', requireAuth, async (req, res, next) => {
   try {
     const guard = await requireSystemSettings(req, res);
     if (!guard) return;
-    const endpoints = await loadEndpoints();
+    const endpoints = (await loadEndpoints()).map(attachResponseMappings);
     res.json(endpoints);
   } catch (err) {
     next(err);
@@ -73,7 +138,8 @@ router.put('/', requireAuth, async (req, res, next) => {
       res.status(400).json({ message: 'endpoints array is required' });
       return;
     }
-    const validationIssues = payload
+    const normalized = payload.map((endpoint) => attachResponseMappings(endpoint));
+    const validationIssues = normalized
       .map((endpoint, index) => validateEndpointDefinition(endpoint, index))
       .flat();
     if (validationIssues.length) {
@@ -260,6 +326,21 @@ function ensureNestedPath(target, tokens) {
       current = current[token.key];
     }
   });
+}
+
+function mergeVariationDefaultMap(field = {}) {
+  const defaults = {};
+  const mergeMap = (map) => {
+    if (!map || typeof map !== 'object' || Array.isArray(map)) return;
+    Object.entries(map).forEach(([key, value]) => {
+      if (!key) return;
+      if (value === undefined) return;
+      defaults[key] = value;
+    });
+  };
+  mergeMap(field.defaultVariations);
+  mergeMap(field.defaultByVariation);
+  return defaults;
 }
 
 function parseEnvValue(rawValue) {
@@ -1162,12 +1243,17 @@ function parseTabbedRequestVariations(markdown, flags = {}) {
           const variationKey = entry.title || `variation-${index + 1}`;
           const requestFields = flattenFieldsFromExample(requestExample).map((field) => {
             const valueEntry = exampleFields.find((item) => item.field === field.field);
+            const variationDefaults =
+              valueEntry?.field && valueEntry.value !== undefined
+                ? { [variationKey]: valueEntry.value }
+                : {};
             return {
               ...field,
               required: true,
               requiredCommon: false,
               requiredVariations: { [variationKey]: true },
-              defaultVariations: valueEntry?.field ? { [variationKey]: valueEntry.value } : {},
+              defaultVariations: variationDefaults,
+              defaultByVariation: variationDefaults,
             };
           });
 
@@ -1246,7 +1332,7 @@ function buildVariationFieldMetadata(variations = []) {
       const isRequired = field.required !== false;
       meta.required[variationName] = isRequired;
       if (isRequired) meta.requiredCount += 1;
-      const defaultMap = field?.defaultVariations || {};
+      const defaultMap = mergeVariationDefaultMap(field);
       if (Object.prototype.hasOwnProperty.call(defaultMap, variationName)) {
         meta.defaults[variationName] = defaultMap[variationName];
       }
@@ -1276,7 +1362,7 @@ function applyVariationFieldMetadata(variations = []) {
     lookup.forEach((meta, fieldPath) => {
       const current = existingMap.get(fieldPath) || { field: fieldPath, required: false };
       const requiredMap = { ...(current.requiredVariations || {}) };
-      const defaultMap = { ...(current.defaultVariations || {}) };
+      const defaultMap = mergeVariationDefaultMap(current);
 
       requiredMap[variationName] = Boolean(meta.required?.[variationName]);
       if (Object.prototype.hasOwnProperty.call(meta.defaults, variationName)) {
@@ -1290,6 +1376,7 @@ function applyVariationFieldMetadata(variations = []) {
         requiredCommon: meta.requiredCount === totalVariations,
         requiredVariations: requiredMap,
         defaultVariations: defaultMap,
+        defaultByVariation: defaultMap,
       });
     });
 
@@ -1386,8 +1473,11 @@ function dedupeFieldEntries(fields) {
     }
     const candidateScore = entry.field.split('.').length + (entry.field.endsWith('[]') ? 0.5 : 0);
     const currentScore = current.field.split('.').length + (current.field.endsWith('[]') ? 0.5 : 0);
+    const mergedAggregation = entry?.aggregation || current?.aggregation;
     if (candidateScore > currentScore) {
-      seen.set(key, entry);
+      seen.set(key, mergedAggregation ? { ...entry, aggregation: mergedAggregation } : entry);
+    } else if (mergedAggregation && !current?.aggregation) {
+      seen.set(key, { ...current, aggregation: mergedAggregation });
     }
   });
   return Array.from(seen.values());
@@ -1420,6 +1510,7 @@ function deriveMappingHintsFromFields(fields = []) {
       field: key,
       required: Boolean(entry?.required),
       description: typeof entry?.description === 'string' ? entry.description : undefined,
+      ...(entry?.aggregation ? { aggregation: entry.aggregation } : {}),
     };
     if (key.startsWith('receipts[].items[].')) {
       itemFields.push({ ...base, field: key.replace('receipts[].items[].', '') });
@@ -1777,25 +1868,24 @@ function extractOperationsFromOpenApi(spec, meta = {}, metaLookup = {}) {
         ]).map((field) => {
           const required = field?.required !== false;
           const value = exampleValueMap[field.field];
-          const defaultMap =
-            field && typeof field.defaultVariations === 'object' && field.defaultVariations !== null
-              ? field.defaultVariations
-              : {};
+          const defaultMap = mergeVariationDefaultMap(field);
           const requiredMap =
             field && typeof field.requiredVariations === 'object' && field.requiredVariations !== null
               ? field.requiredVariations
               : {};
+          const mergedDefaults =
+            value !== undefined
+              ? { ...defaultMap, [variationName]: value }
+              : Object.keys(defaultMap).length
+                ? defaultMap
+                : {};
           return {
             ...field,
             required,
             requiredCommon: Boolean(field.requiredCommon),
             requiredVariations: { ...requiredMap, [variationName]: required },
-            defaultVariations:
-              value !== undefined
-                ? { ...defaultMap, [variationName]: value }
-                : Object.keys(defaultMap).length
-                  ? defaultMap
-                  : {},
+            defaultVariations: mergedDefaults,
+            defaultByVariation: mergedDefaults,
           };
         });
         const variationResponseFields = dedupeFieldEntries([
