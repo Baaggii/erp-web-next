@@ -1,4 +1,4 @@
-import React, { useMemo, useEffect, useState } from 'react';
+import React, { useMemo, useEffect, useState, useCallback } from 'react';
 import {
   POS_API_FIELDS,
   POS_API_ITEM_FIELDS,
@@ -18,6 +18,17 @@ import {
   buildMappingValue,
   normalizeMappingSelection,
 } from '../utils/posApiFieldSource.js';
+
+const DEFAULT_SESSION_VARIABLES = [
+  'currentUserId',
+  'userId',
+  'username',
+  'branchId',
+  'departmentId',
+  'companyId',
+  'sessionId',
+  'userRole',
+];
 
 function humanizeFieldLabel(key) {
   if (!key) return '';
@@ -178,6 +189,97 @@ function buildRequestFieldStructure(requestFields = [], supportsItems = false, n
   };
 }
 
+function isMappingProvided(value) {
+  if (value === undefined || value === null) return false;
+  if (typeof value === 'string') return value.trim() !== '';
+  if (typeof value !== 'object') return false;
+  const keys = Object.keys(value);
+  if (keys.length === 0) return false;
+  if (value.value || value.envVar || value.sessionVar || value.expression) return true;
+  if (value.column) return true;
+  if (value.table) return true;
+  if (typeof value.type === 'string') return true;
+  return false;
+}
+
+function fieldMatchesFilter(field, filterText) {
+  if (!filterText) return true;
+  const haystack = `${field.label || ''} ${field.key || ''} ${field.path || ''}`
+    .toLowerCase();
+  return haystack.includes(filterText);
+}
+
+function applyFieldDefaults(target, fields = []) {
+  if (!target || typeof target !== 'object') return;
+  fields.forEach((field) => {
+    const key = field?.key || field?.path || '';
+    if (!key) return;
+    if (!Object.prototype.hasOwnProperty.call(target, key)) {
+      const fallback =
+        field?.defaultValue !== undefined && field?.defaultValue !== null
+          ? field.defaultValue
+          : null;
+      target[key] = fallback;
+    }
+  });
+}
+
+function ensurePathWithFields(target, path, fields = []) {
+  if (!path) {
+    applyFieldDefaults(target, fields);
+    return target;
+  }
+  const segments = path.split('.').filter(Boolean);
+  let cursor = target;
+  segments.forEach((segment, idx) => {
+    const isArray = segment.endsWith('[]');
+    const key = isArray ? segment.slice(0, -2) : segment;
+    if (!key) return;
+    if (isArray) {
+      if (!Array.isArray(cursor[key])) {
+        cursor[key] = [{}];
+      }
+      if (cursor[key].length === 0) cursor[key].push({});
+      cursor = cursor[key][0];
+    } else {
+      if (!cursor[key] || typeof cursor[key] !== 'object' || Array.isArray(cursor[key])) {
+        cursor[key] = {};
+      }
+      cursor = cursor[key];
+    }
+    if (idx === segments.length - 1) {
+      applyFieldDefaults(cursor, fields);
+    }
+  });
+  return target;
+}
+
+function mergeSamples(skeleton, sample) {
+  if (Array.isArray(sample) || Array.isArray(skeleton)) {
+    const sourceArray = Array.isArray(sample) ? sample : Array.isArray(skeleton) ? skeleton : [];
+    if (sourceArray.length === 0 && Array.isArray(skeleton)) return skeleton;
+    return sourceArray.map((entry, idx) => mergeSamples(skeleton?.[idx] || {}, entry));
+  }
+  if (sample && typeof sample === 'object') {
+    const base = skeleton && typeof skeleton === 'object' ? { ...skeleton } : {};
+    Object.entries(sample).forEach(([key, val]) => {
+      base[key] = mergeSamples(base[key], val);
+    });
+    return base;
+  }
+  if (sample === undefined) return skeleton;
+  return sample;
+}
+
+function buildHierarchicalSample(structure, baseSample) {
+  const skeleton = {};
+  applyFieldDefaults(skeleton, structure?.rootFields || []);
+  (structure?.objects || []).forEach((obj) => {
+    ensurePathWithFields(skeleton, obj.path || obj.id || obj.key, obj.fields || []);
+  });
+  return mergeSamples(skeleton, baseSample);
+}
+
 function MappingFieldSelector({
   value,
   onChange,
@@ -190,6 +292,7 @@ function MappingFieldSelector({
   disabled = false,
   allowExpression = true,
   onTableSelect = () => {},
+  sessionVariables = [],
 }) {
   const selection = normalizeMappingSelection(value, primaryTableName);
   const currentType = selection.type || 'column';
@@ -200,6 +303,7 @@ function MappingFieldSelector({
       : masterColumns
     : [];
   const listId = `${datalistIdBase}-${selectedTable || 'master'}`;
+  const sessionListId = `${datalistIdBase}-session`;
 
   const handleTypeChange = (nextType) => {
     const base = { ...selection, type: nextType };
@@ -207,7 +311,7 @@ function MappingFieldSelector({
       base.table = '';
       base.column = '';
     }
-    onChange(buildMappingValue(base));
+    onChange(buildMappingValue(base, { preserveType: true }));
   };
 
   const handleTableChange = (tbl) => {
@@ -217,7 +321,7 @@ function MappingFieldSelector({
         type: 'column',
         table: tbl,
         column: selection.column,
-      }),
+      }, { preserveType: true }),
     );
   };
 
@@ -227,13 +331,13 @@ function MappingFieldSelector({
         type: 'column',
         table: selectedTable,
         column: col,
-      }),
+      }, { preserveType: true }),
     );
   };
 
   const handleScalarChange = (key, val) => {
     const base = { ...selection, type: currentType, [key]: val };
-    onChange(buildMappingValue(base));
+    onChange(buildMappingValue(base, { preserveType: true }));
   };
 
   return (
@@ -248,6 +352,7 @@ function MappingFieldSelector({
           <option value="column">Transaction field</option>
           <option value="literal">Literal value</option>
           <option value="env">Environment variable</option>
+          <option value="session">Session variable</option>
           {allowExpression && <option value="expression">Expression</option>}
         </select>
         {currentType === 'column' ? (
@@ -303,6 +408,23 @@ function MappingFieldSelector({
             disabled={disabled}
             style={{ flex: '1 1 200px', minWidth: '200px' }}
           />
+        ) : currentType === 'session' ? (
+          <>
+            <input
+              type="text"
+              list={sessionListId}
+              value={selection.sessionVar || ''}
+              onChange={(e) => handleScalarChange('sessionVar', e.target.value)}
+              placeholder="currentUserId"
+              disabled={disabled}
+              style={{ flex: '1 1 200px', minWidth: '200px' }}
+            />
+            <datalist id={sessionListId}>
+              {sessionVariables.map((variable) => (
+                <option key={`${sessionListId}-${variable}`} value={variable} />
+              ))}
+            </datalist>
+          </>
         ) : (
           <input
             type="text"
@@ -458,6 +580,15 @@ export default function PosApiIntegrationSection({
       ),
     [selectedEndpoint],
   );
+  const [fieldFilter, setFieldFilter] = useState('');
+  const normalizedFieldFilter = fieldFilter.trim().toLowerCase();
+  const filterFieldList = useCallback(
+    (fields = []) => {
+      if (!normalizedFieldFilter) return fields;
+      return (fields || []).filter((field) => fieldMatchesFilter(field, normalizedFieldFilter));
+    },
+    [normalizedFieldFilter],
+  );
   const requestObjects = requestStructure.objects || [];
   const itemsObject =
     selectedEndpoint?.supportsItems === false
@@ -474,6 +605,16 @@ export default function PosApiIntegrationSection({
   const additionalObjects = requestObjects.filter(
     (obj) => !['items', 'payments', 'receipts'].includes(obj.key),
   );
+  const filteredRequestObjects = useMemo(() => {
+    if (!normalizedFieldFilter) return requestObjects;
+    return requestObjects.filter((obj) => {
+      const matchesObject = fieldMatchesFilter(obj, normalizedFieldFilter);
+      const matchesChild = (obj.fields || []).some((field) =>
+        fieldMatchesFilter(field, normalizedFieldFilter),
+      );
+      return matchesObject || matchesChild;
+    });
+  }, [requestObjects, normalizedFieldFilter]);
 
   const endpointSupportsItems = selectedEndpoint?.supportsItems !== false;
   const endpointReceiptItemsEnabled =
@@ -500,13 +641,18 @@ export default function PosApiIntegrationSection({
     return {};
   }, [selectedEndpoint]);
 
+  const hierarchicalRequestSample = useMemo(
+    () => buildHierarchicalSample(requestStructure, baseRequestSample || {}),
+    [requestStructure, baseRequestSample],
+  );
+
   const requestSampleText = useMemo(() => {
     try {
-      return JSON.stringify(baseRequestSample || {}, null, 2);
+      return JSON.stringify(hierarchicalRequestSample || {}, null, 2);
     } catch {
       return '{}';
     }
-  }, [baseRequestSample]);
+  }, [hierarchicalRequestSample]);
 
   const requestVariations = useMemo(() => {
     if (!selectedEndpoint || !Array.isArray(selectedEndpoint.variations)) return [];
@@ -517,17 +663,24 @@ export default function PosApiIntegrationSection({
   const selectedVariation =
     requestVariations.find((variation) => variation.key === selectedVariationKey) || null;
   const variationSampleText = useMemo(() => {
-    const payload = selectedVariation?.requestExample || selectedVariation?.request;
+    let payload = selectedVariation?.requestExample || selectedVariation?.request;
     if (!payload) {
       const raw = selectedVariation?.requestExampleText || selectedVariation?.request;
-      if (typeof raw === 'string') return raw;
+      if (typeof raw === 'string') {
+        try {
+          payload = JSON.parse(raw);
+        } catch {
+          return raw;
+        }
+      }
     }
+    const merged = buildHierarchicalSample(requestStructure, payload || {});
     try {
-      return JSON.stringify(payload || {}, null, 2);
+      return JSON.stringify(merged || {}, null, 2);
     } catch {
       return selectedVariation?.requestExampleText || '';
     }
-  }, [selectedVariation]);
+  }, [selectedVariation, requestStructure]);
 
   const receiptTypesAllowMultiple = receiptTypesFeatureEnabled
     ? selectedEndpoint?.allowMultipleReceiptTypes !== false
@@ -670,12 +823,12 @@ export default function PosApiIntegrationSection({
     });
   }, [
     onPosApiOptionsChange,
-    transactionEndpointOptions,
-    endpointReceiptTypes,
-    endpointPaymentMethods,
-    receiptTypesAllowMultiple,
-    paymentMethodsAllowMultiple,
-  ]);
+      transactionEndpointOptions,
+      endpointReceiptTypes,
+      endpointPaymentMethods,
+      receiptTypesAllowMultiple,
+      paymentMethodsAllowMultiple,
+    ]);
 
   const topLevelFieldHints = useMemo(() => {
     const hints = selectedEndpoint?.mappingHints?.topLevelFields;
@@ -861,6 +1014,27 @@ export default function PosApiIntegrationSection({
     }));
   }, [receiptsObject]);
 
+  const filteredRootFields = useMemo(
+    () => filterFieldList(requestStructure.rootFields || []),
+    [requestStructure.rootFields, filterFieldList],
+  );
+  const filteredPrimaryFields = useMemo(
+    () => filterFieldList(primaryPosApiFields),
+    [primaryPosApiFields, filterFieldList],
+  );
+  const filteredItemFields = useMemo(
+    () => filterFieldList(itemMappingFields),
+    [itemMappingFields, filterFieldList],
+  );
+  const filteredPaymentFields = useMemo(
+    () => filterFieldList(paymentMappingFields),
+    [paymentMappingFields, filterFieldList],
+  );
+  const filteredReceiptFields = useMemo(
+    () => filterFieldList(receiptMappingFields),
+    [receiptMappingFields, filterFieldList],
+  );
+
   const nestedSourceMapping =
     config.posApiMapping &&
     typeof config.posApiMapping.nestedSources === 'object' &&
@@ -877,41 +1051,6 @@ export default function PosApiIntegrationSection({
   const fieldsFromPosApiText = useMemo(() => {
     return Array.isArray(config.fieldsFromPosApi) ? config.fieldsFromPosApi.join('\n') : '';
   }, [config.fieldsFromPosApi]);
-
-  const responseFields = useMemo(() => {
-    const source = Array.isArray(selectedEndpoint?.responseFields)
-      ? selectedEndpoint.responseFields
-      : [];
-    return source
-      .map((entry) => {
-        const field = typeof entry?.field === 'string' ? entry.field.trim() : '';
-        if (!field) return null;
-        return {
-          key: field,
-          path: field,
-          label: entry?.label || humanizeFieldLabel(field),
-          required: Boolean(entry?.required || entry?.requiredCommon),
-          description: typeof entry?.description === 'string' ? entry.description : '',
-        };
-      })
-      .filter(Boolean);
-  }, [selectedEndpoint]);
-
-  const responseFieldMappings =
-    config.posApiMapping &&
-    typeof config.posApiMapping.responseFieldMappings === 'object' &&
-    !Array.isArray(config.posApiMapping.responseFieldMappings)
-      ? config.posApiMapping.responseFieldMappings
-      : {};
-
-  const unmappedResponseFields = Array.isArray(config.posApiMapping?.unmappedResponseFields)
-    ? config.posApiMapping.unmappedResponseFields.filter((value) => typeof value === 'string' && value.trim())
-    : [];
-
-  const unmappedResponseFieldsText = useMemo(
-    () => unmappedResponseFields.join('\n'),
-    [unmappedResponseFields],
-  );
 
   const getObjectFieldMapping = (object, legacyFallback = {}) => {
     if (!object) return legacyFallback || {};
@@ -1036,19 +1175,6 @@ export default function PosApiIntegrationSection({
         next[field] = trimmed;
       }
       return { ...c, posApiMapping: next };
-    });
-  };
-
-  const updatePosApiResponseMapping = (field, value) => {
-    setConfig((c) => {
-      const next = { ...(c.posApiResponseMapping || {}) };
-      const trimmed = typeof value === 'string' ? value.trim() : value;
-      if (!trimmed) {
-        delete next[field];
-      } else {
-        next[field] = trimmed;
-      }
-      return { ...c, posApiResponseMapping: next };
     });
   };
 
@@ -1265,78 +1391,6 @@ export default function PosApiIntegrationSection({
     });
   };
 
-  const updateResponseFieldMapping = (fieldKey, value) => {
-    setConfig((c) => {
-      const base = { ...(c.posApiMapping || {}) };
-      const mappings =
-        base.responseFieldMappings &&
-        typeof base.responseFieldMappings === 'object' &&
-        !Array.isArray(base.responseFieldMappings)
-          ? { ...base.responseFieldMappings }
-          : {};
-      const trimmed = typeof value === 'string' ? value.trim() : value;
-      if (!trimmed) {
-        delete mappings[fieldKey];
-      } else {
-        mappings[fieldKey] = trimmed;
-      }
-      if (Object.keys(mappings).length) {
-        base.responseFieldMappings = mappings;
-      } else {
-        delete base.responseFieldMappings;
-      }
-      return { ...c, posApiMapping: base };
-    });
-  };
-
-  const toggleResponseFieldIgnored = (fieldKey, ignored) => {
-    setConfig((c) => {
-      const base = { ...(c.posApiMapping || {}) };
-      const current =
-        Array.isArray(base.unmappedResponseFields) && base.unmappedResponseFields.length
-          ? base.unmappedResponseFields.filter((entry) => typeof entry === 'string' && entry.trim())
-          : [];
-      const set = new Set(current);
-      if (ignored) {
-        set.add(fieldKey);
-        if (base.responseFieldMappings) {
-          const mappings = { ...(base.responseFieldMappings || {}) };
-          delete mappings[fieldKey];
-          if (Object.keys(mappings).length) {
-            base.responseFieldMappings = mappings;
-          } else {
-            delete base.responseFieldMappings;
-          }
-        }
-      } else {
-        set.delete(fieldKey);
-      }
-      const updated = Array.from(set);
-      if (updated.length) {
-        base.unmappedResponseFields = updated;
-      } else {
-        delete base.unmappedResponseFields;
-      }
-      return { ...c, posApiMapping: base };
-    });
-  };
-
-  const handleUnmappedResponseFieldsChange = (value) => {
-    const entries = value
-      .split(/\r?\n/)
-      .map((line) => line.trim())
-      .filter((line) => line);
-    setConfig((c) => {
-      const base = { ...(c.posApiMapping || {}) };
-      if (entries.length) {
-        base.unmappedResponseFields = entries;
-      } else {
-        delete base.unmappedResponseFields;
-      }
-      return { ...c, posApiMapping: base };
-    });
-  };
-
   const resolvedItemFieldMapping = useMemo(
     () => getObjectFieldMapping(itemsObject, itemFieldMapping),
     [itemsObject, itemFieldMapping, objectFieldMappings],
@@ -1479,6 +1533,109 @@ export default function PosApiIntegrationSection({
                 </>
               )}
             </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+              <strong>Request object tree</strong>
+              <p style={{ fontSize: '0.85rem', color: '#555', margin: 0 }}>
+                Review the hierarchical payload structure (including nested arrays). Toggle whether
+                an object can repeat.
+              </p>
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
+                  gap: '0.75rem',
+                }}
+              >
+                <div
+                  style={{
+                    border: '1px solid #e5e7eb',
+                    borderRadius: '8px',
+                    padding: '0.75rem',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '0.35rem',
+                  }}
+                >
+                  <span style={{ fontWeight: 700 }}>Root</span>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.35rem' }}>
+                    {filteredRootFields.map((field) => (
+                      <span
+                        key={`root-${field.path || field.key}`}
+                        style={{
+                          ...BADGE_BASE_STYLE,
+                          background: '#eef2ff',
+                          color: '#312e81',
+                        }}
+                      >
+                        {field.label || field.key}
+                      </span>
+                    ))}
+                    {filteredRootFields.length === 0 && (
+                      <small style={{ color: '#666' }}>No root-level fields matched.</small>
+                    )}
+                  </div>
+                </div>
+                {filteredRequestObjects.map((obj) => {
+                  const repeatable = parseBooleanFlag(
+                    nestedSourceMapping?.[obj.path]?.repeat,
+                    obj.repeatable,
+                  );
+                  const filteredFields = filterFieldList(obj.fields || []);
+                  return (
+                    <div
+                      key={`tree-${obj.path}`}
+                      style={{
+                        border: '1px solid #e5e7eb',
+                        borderRadius: '8px',
+                        padding: '0.75rem',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '0.4rem',
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        <span style={{ fontWeight: 700 }}>{obj.label || obj.path}</span>
+                        <span
+                          style={{
+                            ...BADGE_BASE_STYLE,
+                            background: repeatable ? '#dcfce7' : '#e2e8f0',
+                            color: repeatable ? '#15803d' : '#334155',
+                          }}
+                        >
+                          {repeatable ? 'Allow multiple' : 'Single'}
+                        </span>
+                      </div>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                        <input
+                          type="checkbox"
+                          checked={repeatable}
+                          onChange={(e) => updateNestedObjectSource(obj.path, undefined, e.target.checked)}
+                          disabled={!config.posApiEnabled}
+                        />
+                        <span>Allow multiple instances</span>
+                      </label>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.35rem' }}>
+                        {filteredFields.map((field) => (
+                          <span
+                            key={`tree-${obj.path}-${field.path || field.key}`}
+                            style={{
+                              ...BADGE_BASE_STYLE,
+                              background: '#f0f9ff',
+                              color: '#075985',
+                            }}
+                          >
+                            {field.label || field.key}
+                          </span>
+                        ))}
+                        {filteredFields.length === 0 && (
+                          <small style={{ color: '#666' }}>No matching fields.</small>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
           </div>
         </>
       )}
@@ -1615,97 +1772,22 @@ export default function PosApiIntegrationSection({
           One field path per line (e.g., receipts[0].billId) to persist on the transaction record.
         </small>
       </label>
-      {responseFields.length > 0 && (
-        <div style={{ marginBottom: '1rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-          <strong>Response field mappings</strong>
-          <p style={{ fontSize: '0.85rem', color: '#555' }}>
-            Map POSAPI response fields to transaction columns or mark them as intentionally not
-            mapped.
-          </p>
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
-              gap: '0.75rem',
-            }}
-          >
-            {responseFields.map((field) => {
-              const listId = `posapi-response-${field.key}`;
-              const mappedValue = responseFieldMappings[field.key] || '';
-              const isIgnored = unmappedResponseFields.includes(field.key);
-              return (
-                <label
-                  key={`response-${field.key}`}
-                  style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}
-                >
-                  <span
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '0.5rem',
-                      fontWeight: 600,
-                      color: '#0f172a',
-                    }}
-                  >
-                    {field.label}
-                    <span
-                      style={{
-                        ...BADGE_BASE_STYLE,
-                        ...(field.required ? REQUIRED_BADGE_STYLE : OPTIONAL_BADGE_STYLE),
-                      }}
-                    >
-                      {field.required ? 'Required' : 'Optional'}
-                    </span>
-                  </span>
-                  <input
-                    type="text"
-                    list={listId}
-                    value={mappedValue}
-                    onChange={(e) => updateResponseFieldMapping(field.key, e.target.value)}
-                    placeholder="Column name"
-                    disabled={!config.posApiEnabled || isIgnored}
-                  />
-                  <datalist id={listId}>
-                    {columnOptions.map((col) => (
-                      <option key={`response-${field.key}-${col}`} value={col} />
-                    ))}
-                  </datalist>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-                    <input
-                      type="checkbox"
-                      checked={isIgnored}
-                      onChange={(e) => toggleResponseFieldIgnored(field.key, e.target.checked)}
-                      disabled={!config.posApiEnabled}
-                    />
-                    <span>Mark as not mapped</span>
-                  </label>
-                  {field.description && <small style={{ color: '#555' }}>{field.description}</small>}
-                </label>
-              );
-            })}
-          </div>
-          <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-            <span style={{ fontWeight: 600 }}>Not mapped response fields</span>
-            <textarea
-              rows={3}
-              value={unmappedResponseFieldsText}
-              onChange={(e) => handleUnmappedResponseFieldsChange(e.target.value)}
-              placeholder="customField\nlegacyValue"
-              disabled={!config.posApiEnabled}
-              style={{ fontFamily: 'monospace', resize: 'vertical' }}
-            />
-            <small style={{ color: '#666' }}>
-              One field per line that should be ignored when processing the response payload.
-            </small>
-          </label>
-        </div>
-      )}
       <div>
         <strong>Field mapping</strong>
         <p style={{ fontSize: '0.85rem', color: '#555' }}>
           Map POSAPI fields to columns in the master transaction table. Leave blank to skip optional
           fields.
         </p>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+          <input
+            type="text"
+            value={fieldFilter}
+            onChange={(e) => setFieldFilter(e.target.value)}
+            placeholder="Search fields or paths"
+            style={{ flex: '1 1 220px', minWidth: '220px' }}
+          />
+          <small style={{ color: '#666' }}>Filters across top-level and nested objects.</small>
+        </div>
         <div
           style={{
             display: 'grid',
@@ -1714,13 +1796,25 @@ export default function PosApiIntegrationSection({
             marginTop: '0.5rem',
           }}
         >
-          {primaryPosApiFields.map((field) => {
+          {filteredPrimaryFields.map((field) => {
             const listId = `posapi-${field.key}-columns`;
             const hint = topLevelFieldHints[field.key] || {};
             const isRequired = Boolean(hint.required);
             const description = hint.description;
+            const mappedValue = config.posApiMapping?.[field.key];
+            const missingRequired = isRequired && !isMappingProvided(mappedValue);
             return (
-              <label key={field.key} style={{ display: 'flex', flexDirection: 'column' }}>
+              <label
+                key={field.key}
+                style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '0.25rem',
+                  border: missingRequired ? '1px solid #ef4444' : '1px solid transparent',
+                  borderRadius: '8px',
+                  padding: missingRequired ? '0.5rem' : 0,
+                }}
+              >
                 <span
                   style={{
                     display: 'flex',
@@ -1739,9 +1833,20 @@ export default function PosApiIntegrationSection({
                   >
                     {isRequired ? 'Required' : 'Optional'}
                   </span>
+                  {missingRequired && (
+                    <span
+                      style={{
+                        ...BADGE_BASE_STYLE,
+                        background: '#fef2f2',
+                        color: '#991b1b',
+                      }}
+                    >
+                      Not mapped
+                    </span>
+                  )}
                 </span>
                 <MappingFieldSelector
-                  value={config.posApiMapping?.[field.key]}
+                  value={mappedValue}
                   onChange={(val) => updatePosApiMapping(field.key, val)}
                   primaryTableName={primaryTableName}
                   masterColumns={columnOptions}
@@ -1749,6 +1854,7 @@ export default function PosApiIntegrationSection({
                   tableOptions={itemTableOptions}
                   datalistIdBase={listId}
                   disabled={!config.posApiEnabled}
+                  sessionVariables={DEFAULT_SESSION_VARIABLES}
                 />
                 {description && <small style={{ color: '#555' }}>{description}</small>}
               </label>
@@ -1835,6 +1941,14 @@ export default function PosApiIntegrationSection({
             </p>
             <div className="space-y-4">
               {additionalObjects.map((obj) => {
+                const filteredFields = filterFieldList(obj.fields || []);
+                if (
+                  normalizedFieldFilter &&
+                  filteredFields.length === 0 &&
+                  !fieldMatchesFilter(obj, normalizedFieldFilter)
+                ) {
+                  return null;
+                }
                 const mapping = getObjectFieldMapping(obj, {});
                 const tableChoices = Array.from(
                   new Set([primaryTableName, ...itemTableOptions.filter(Boolean)]),
@@ -1866,7 +1980,7 @@ export default function PosApiIntegrationSection({
                         gap: '0.75rem',
                       }}
                     >
-                      {obj.fields.map((field) => {
+                      {filteredFields.map((field) => {
                         return (
                           <div
                             key={`obj-${obj.id}-${field.key}`}
@@ -1889,6 +2003,7 @@ export default function PosApiIntegrationSection({
                               datalistIdBase={`posapi-object-${obj.id}-${field.key}`}
                               defaultTableLabel={primaryTableLabel}
                               disabled={!config.posApiEnabled}
+                              sessionVariables={DEFAULT_SESSION_VARIABLES}
                             />
                             {field.description && (
                               <small style={{ color: '#555' }}>{field.description}</small>
@@ -1916,10 +2031,10 @@ export default function PosApiIntegrationSection({
                   display: 'grid',
                   gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
                   gap: '0.75rem',
-              marginTop: '0.5rem',
-            }}
-          >
-            {itemMappingFields.map((field) => {
+                  marginTop: '0.5rem',
+                }}
+              >
+                {filteredItemFields.map((field) => {
                   const filteredChoices = (itemTableOptions || [])
                     .filter((tbl) => {
                       if (!tbl) return false;
@@ -1938,10 +2053,19 @@ export default function PosApiIntegrationSection({
                   const itemHint = itemFieldHints[field.key] || {};
                   const itemRequired = Boolean(itemHint.required);
                   const itemDescription = itemHint.description;
+                  const mappedValue = resolvedItemFieldMapping[field.key];
+                  const missingRequired = itemRequired && !isMappingProvided(mappedValue);
                   return (
                     <div
                       key={`item-${field.key}`}
-                      style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}
+                      style={{
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '0.5rem',
+                        border: missingRequired ? '1px solid #ef4444' : '1px solid transparent',
+                        borderRadius: '8px',
+                        padding: missingRequired ? '0.5rem' : 0,
+                      }}
                     >
                       <span
                         style={{
@@ -1956,14 +2080,25 @@ export default function PosApiIntegrationSection({
                         <span
                           style={{
                             ...BADGE_BASE_STYLE,
-                          ...(itemRequired ? REQUIRED_BADGE_STYLE : OPTIONAL_BADGE_STYLE),
-                        }}
-                      >
-                        {itemRequired ? 'Required' : 'Optional'}
+                            ...(itemRequired ? REQUIRED_BADGE_STYLE : OPTIONAL_BADGE_STYLE),
+                          }}
+                        >
+                          {itemRequired ? 'Required' : 'Optional'}
+                        </span>
+                        {missingRequired && (
+                          <span
+                            style={{
+                              ...BADGE_BASE_STYLE,
+                              background: '#fef2f2',
+                              color: '#991b1b',
+                            }}
+                          >
+                            Not mapped
+                          </span>
+                        )}
                       </span>
-                    </span>
                       <MappingFieldSelector
-                        value={resolvedItemFieldMapping[field.key]}
+                        value={mappedValue}
                         onChange={(val) => {
                           const parsedSelection = normalizeMappingSelection(val, primaryTableName);
                           if (parsedSelection.table) onEnsureColumnsLoaded(parsedSelection.table);
@@ -1976,6 +2111,7 @@ export default function PosApiIntegrationSection({
                         datalistIdBase={`posapi-item-${field.key}`}
                         defaultTableLabel={primaryTableLabel}
                         disabled={!config.posApiEnabled}
+                        sessionVariables={DEFAULT_SESSION_VARIABLES}
                       />
                       {itemDescription && <small style={{ color: '#555' }}>{itemDescription}</small>}
                     </div>
@@ -1996,13 +2132,22 @@ export default function PosApiIntegrationSection({
                   marginTop: '0.5rem',
                 }}
               >
-                {paymentMappingFields.map((field) => {
+                {filteredPaymentFields.map((field) => {
                   const listId = `posapi-payment-${field.key}-columns`;
                   const hint = paymentFieldHints[field.key] || {};
+                  const mappedValue = resolvedPaymentFieldMapping[field.key];
+                  const missingRequired = hint.required && !isMappingProvided(mappedValue);
                   return (
                     <label
                       key={`payment-${field.key}`}
-                      style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}
+                      style={{
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '0.25rem',
+                        border: missingRequired ? '1px solid #ef4444' : '1px solid transparent',
+                        borderRadius: '8px',
+                        padding: missingRequired ? '0.5rem' : 0,
+                      }}
                     >
                       <span
                         style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.5rem' }}
@@ -2010,15 +2155,26 @@ export default function PosApiIntegrationSection({
                         {field.label}
                         <span
                           style={{
-                            ...BADGE_BASE_STYLE,
-                          ...(hint.required ? REQUIRED_BADGE_STYLE : OPTIONAL_BADGE_STYLE),
-                        }}
-                      >
+                          ...BADGE_BASE_STYLE,
+                        ...(hint.required ? REQUIRED_BADGE_STYLE : OPTIONAL_BADGE_STYLE),
+                      }}
+                    >
                         {hint.required ? 'Required' : 'Optional'}
                       </span>
+                        {missingRequired && (
+                          <span
+                            style={{
+                              ...BADGE_BASE_STYLE,
+                              background: '#fef2f2',
+                              color: '#991b1b',
+                            }}
+                          >
+                            Not mapped
+                          </span>
+                        )}
                     </span>
                       <MappingFieldSelector
-                        value={resolvedPaymentFieldMapping[field.key]}
+                        value={mappedValue}
                         onChange={(val) => updatePosApiNestedMapping('paymentFields', field.key, val)}
                         primaryTableName={primaryTableName}
                         masterColumns={columnOptions}
@@ -2026,6 +2182,7 @@ export default function PosApiIntegrationSection({
                         tableOptions={itemTableOptions}
                         datalistIdBase={listId}
                         disabled={!config.posApiEnabled}
+                        sessionVariables={DEFAULT_SESSION_VARIABLES}
                       />
                       {hint.description && <small style={{ color: '#555' }}>{hint.description}</small>}
                     </label>
@@ -2046,13 +2203,22 @@ export default function PosApiIntegrationSection({
                   marginTop: '0.5rem',
                 }}
               >
-                {receiptMappingFields.map((field) => {
+                {filteredReceiptFields.map((field) => {
                   const listId = `posapi-receipt-${field.key}-columns`;
                   const hint = receiptFieldHints[field.key] || {};
+                  const mappedValue = resolvedReceiptFieldMapping[field.key];
+                  const missingRequired = hint.required && !isMappingProvided(mappedValue);
                   return (
                     <label
                       key={`receipt-${field.key}`}
-                      style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}
+                      style={{
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '0.25rem',
+                        border: missingRequired ? '1px solid #ef4444' : '1px solid transparent',
+                        borderRadius: '8px',
+                        padding: missingRequired ? '0.5rem' : 0,
+                      }}
                     >
                       <span
                         style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.5rem' }}
@@ -2060,15 +2226,26 @@ export default function PosApiIntegrationSection({
                         {field.label}
                         <span
                           style={{
-                            ...BADGE_BASE_STYLE,
-                          ...(hint.required ? REQUIRED_BADGE_STYLE : OPTIONAL_BADGE_STYLE),
-                        }}
-                      >
+                          ...BADGE_BASE_STYLE,
+                        ...(hint.required ? REQUIRED_BADGE_STYLE : OPTIONAL_BADGE_STYLE),
+                      }}
+                    >
                         {hint.required ? 'Required' : 'Optional'}
                       </span>
+                        {missingRequired && (
+                          <span
+                            style={{
+                              ...BADGE_BASE_STYLE,
+                              background: '#fef2f2',
+                              color: '#991b1b',
+                            }}
+                          >
+                            Not mapped
+                          </span>
+                        )}
                     </span>
                       <MappingFieldSelector
-                        value={resolvedReceiptFieldMapping[field.key]}
+                        value={mappedValue}
                         onChange={(val) => updatePosApiNestedMapping('receiptFields', field.key, val)}
                         primaryTableName={primaryTableName}
                         masterColumns={columnOptions}
@@ -2076,6 +2253,7 @@ export default function PosApiIntegrationSection({
                         tableOptions={itemTableOptions}
                         datalistIdBase={listId}
                         disabled={!config.posApiEnabled}
+                        sessionVariables={DEFAULT_SESSION_VARIABLES}
                       />
                       {hint.description && <small style={{ color: '#555' }}>{hint.description}</small>}
                     </label>
