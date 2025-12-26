@@ -9,6 +9,7 @@ import {
   buildSchemaDiff,
   applySchemaDiffStatements,
   getSchemaDiffPrerequisites,
+  recordSchemaBaseline,
 } from '../services/schemaDiff.js';
 import { enqueueSchemaDiffJob, getSchemaDiffJob } from '../services/schemaDiffJobs.js';
 import { getEmploymentSession } from '../../db/index.js';
@@ -97,6 +98,7 @@ router.get('/schema-diff/check', requireAuth, async (req, res, next) => {
     const warnings = [...(checks.warnings || [])];
     if (!checks.mysqldumpAvailable) issues.push('mysqldump is not available in PATH');
     if (!checks.env.DB_NAME) issues.push('DB_NAME environment variable is not set');
+    if (!checks.liquibaseAvailable) warnings.push('Liquibase missing: advanced ALTER/routine diffs unavailable.');
     res.json({
       ok: issues.length === 0,
       issues,
@@ -135,6 +137,22 @@ router.post('/schema-diff/compare', requireAuth, async (req, res, next) => {
   }
 });
 
+router.post('/schema-diff/baseline', requireAuth, async (req, res, next) => {
+  try {
+    const session = await getEmploymentSession(req.user.empid, req.user.companyId);
+    if (!(await hasAction(session, 'system_settings'))) return res.sendStatus(403);
+    const { schemaPath, schemaFile } = req.body || {};
+    if (!schemaPath || !schemaFile) {
+      return res.status(400).json({ message: 'schemaPath and schemaFile are required' });
+    }
+    const baseline = await recordSchemaBaseline({ schemaPath, schemaFile });
+    res.json({ baseline });
+  } catch (err) {
+    if (err.status) return sendKnownError(res, err);
+    next(err);
+  }
+});
+
 router.post('/schema-diff/apply', requireAuth, async (req, res, next) => {
   const controller = new AbortController();
   const handleAbort = () => controller.abort();
@@ -144,13 +162,21 @@ router.post('/schema-diff/apply', requireAuth, async (req, res, next) => {
   try {
     const session = await getEmploymentSession(req.user.empid, req.user.companyId);
     if (!(await hasAction(session, 'system_settings'))) return res.sendStatus(403);
-    const { statements, allowDrops = false, dryRun = false } = req.body || {};
+    const {
+      statements,
+      allowDrops = false,
+      dryRun = false,
+      alterPreviewed = false,
+      routineAcknowledged = false,
+    } = req.body || {};
     if (!Array.isArray(statements) || statements.length === 0) {
       return res.status(400).json({ message: 'statements array is required' });
     }
     const result = await applySchemaDiffStatements(statements, {
       allowDrops: Boolean(allowDrops),
       dryRun: Boolean(dryRun),
+      alterPreviewed: Boolean(alterPreviewed),
+      routineAcknowledged: Boolean(routineAcknowledged),
       signal: controller.signal,
     });
     if (controller.signal.aborted || result?.aborted) {
