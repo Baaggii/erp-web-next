@@ -382,37 +382,92 @@ function getColumnValue(columnLookup, record, columnName) {
   return getValueFromTokens(baseValue, rest);
 }
 
+function resolveMappingValue(record, columnLookup, descriptor, options = {}) {
+  const normalized = normalizeMappingDescriptor(descriptor);
+  if (!normalized || normalized === '') return undefined;
+  const sourceType = normalized.sourceType || normalized.type || 'column';
+  if (sourceType === 'literal') {
+    return normalized.value ?? '';
+  }
+  if (sourceType === 'env') {
+    const envKey = normalized.envVar || normalized.value;
+    if (!envKey) return undefined;
+    const envVal = readEnvVar(String(envKey), { trim: false });
+    return parseEnvValue(envVal);
+  }
+  if (sourceType === 'session') {
+    const sessionKey = normalized.sessionVar || normalized.value;
+    if (!sessionKey) return undefined;
+    const session = options.session || {};
+    return session?.[sessionKey] ?? session?.[String(sessionKey)];
+  }
+  if (sourceType === 'expression') {
+    return normalized.expression || normalized.value;
+  }
+  const path =
+    normalized.path ||
+    (normalized.table && normalized.column ? `${normalized.table}.${normalized.column}` : '') ||
+    normalized.column ||
+    normalized.value;
+  if (!path) return undefined;
+  const lookup = columnLookup || (record ? createColumnLookup(record) : null);
+  const columnValue = getColumnValue(lookup, record, path);
+  if (columnValue !== undefined) return columnValue;
+  return getValueAtPath(record, path);
+}
+
 const COMPLEX_ARRAY_KEYS = new Set(['itemsField', 'paymentsField', 'receiptsField']);
 const FIELD_MAP_KEYS = new Set(['itemFields', 'paymentFields', 'receiptFields']);
 const RECEIPT_GROUP_MAPPING_KEY = 'receiptGroups';
 const PAYMENT_METHOD_MAPPING_KEY = 'paymentMethods';
 
-function coerceFieldMapValue(value) {
+function normalizeMappingDescriptor(value) {
   if (value === undefined || value === null) return '';
+  if (typeof value === 'object' && !Array.isArray(value)) {
+    const inferredSource =
+      value.sourceType ||
+      value.type ||
+      (value.envVar ? 'env' : null) ||
+      (value.sessionVar ? 'session' : null) ||
+      (value.expression ? 'expression' : null) ||
+      (value.value !== undefined ? 'literal' : null) ||
+      'column';
+    const sourceType = typeof inferredSource === 'string' ? inferredSource : 'column';
+    const descriptor = { sourceType, type: sourceType };
+    if (value.table) descriptor.table = String(value.table).trim();
+    if (value.column) descriptor.column = String(value.column).trim();
+    if (value.path) descriptor.path = String(value.path).trim();
+    if (value.value !== undefined) descriptor.value = value.value;
+    if (value.envVar) descriptor.envVar = String(value.envVar).trim();
+    if (value.sessionVar) descriptor.sessionVar = String(value.sessionVar).trim();
+    if (value.expression) descriptor.expression = String(value.expression).trim();
+    return descriptor;
+  }
   if (typeof value === 'string') {
     const trimmed = value.trim();
-    return trimmed;
+    if (!trimmed) return '';
+    const envMatch = /^\{\{\s*([A-Z0-9_]+)\s*\}\}$/.exec(trimmed);
+    if (envMatch) {
+      return { sourceType: 'env', type: 'env', envVar: envMatch[1], value: envMatch[1] };
+    }
+    return { sourceType: 'column', type: 'column', path: trimmed, value: trimmed };
   }
   if (typeof value === 'number' || typeof value === 'bigint') {
-    return String(value);
+    return { sourceType: 'literal', type: 'literal', value: String(value) };
   }
   if (typeof value === 'boolean') {
-    return value ? 'true' : 'false';
-  }
-  if (typeof value === 'object') {
-    if (typeof value.path === 'string' && value.path.trim()) {
-      return value.path.trim();
-    }
-    const tablePart = typeof value.table === 'string' ? value.table.trim() : '';
-    const columnPart = typeof value.column === 'string' ? value.column.trim() : '';
-    if (tablePart && columnPart) return `${tablePart}.${columnPart}`;
-    if (columnPart) return columnPart;
-    if (tablePart) return tablePart;
+    return { sourceType: 'literal', type: 'literal', value: value ? 'true' : 'false' };
   }
   const str = String(value);
   const trimmed = str.trim();
-  if (trimmed && trimmed !== '[object Object]') return trimmed;
+  if (trimmed && trimmed !== '[object Object]') {
+    return { sourceType: 'literal', type: 'literal', value: trimmed };
+  }
   return '';
+}
+
+function coerceFieldMapValue(value) {
+  return normalizeMappingDescriptor(value);
 }
 
 function normalizeFieldMap(value) {
@@ -438,8 +493,8 @@ function normalizeReceiptGroupsMapping(value) {
       ['totalAmount', 'totalVAT', 'totalCityTax', 'taxType'].forEach((field) => {
         const val = config[field];
         if (val === undefined || val === null) return;
-        const str = typeof val === 'string' ? val.trim() : String(val).trim();
-        if (str) entry[field] = str;
+        const mapped = normalizeMappingDescriptor(val);
+        if (mapped && mapped !== '') entry[field] = mapped;
       });
     }
     if (Object.keys(entry).length) normalized[type] = entry;
@@ -457,7 +512,7 @@ function normalizePaymentMethodsMapping(value) {
     if (typeof config === 'string' || typeof config === 'number' || typeof config === 'bigint') {
       const str = String(config).trim();
       if (str) {
-        normalized[code] = { amount: str };
+        normalized[code] = { amount: normalizeMappingDescriptor(str) };
       }
       return;
     }
@@ -478,8 +533,8 @@ function normalizePaymentMethodsMapping(value) {
     allowedFields.forEach((field) => {
       const val = config[field];
       if (val === undefined || val === null) return;
-      const str = typeof val === 'string' ? val.trim() : String(val).trim();
-      if (str) entry[field] = str;
+      const mapped = normalizeMappingDescriptor(val);
+      if (mapped && mapped !== '') entry[field] = mapped;
     });
     if (Object.keys(entry).length) normalized[code] = entry;
   });
@@ -580,24 +635,9 @@ function normalizeMapping(mapping) {
       }
       return;
     }
-    if (typeof value === 'string') {
-      const trimmed = value.trim();
-      if (trimmed) normalized[key] = trimmed;
-      return;
-    }
-    if (typeof value === 'number' || typeof value === 'bigint') {
-      normalized[key] = String(value);
-      return;
-    }
-    if (typeof value === 'boolean') {
-      normalized[key] = value ? 'true' : 'false';
-      return;
-    }
-    if (typeof value === 'object') {
-      const jsonValue = JSON.stringify(value);
-      if (jsonValue && jsonValue !== '{}') {
-        normalized[key] = jsonValue;
-      }
+    const descriptor = normalizeMappingDescriptor(value);
+    if (descriptor && descriptor !== '') {
+      normalized[key] = descriptor;
     }
   });
   return normalized;
@@ -699,14 +739,16 @@ function setValueAtPath(target, path, value) {
   }
 }
 
-function applyFieldMap(entry, fieldMap = {}) {
+function applyFieldMap(entry, fieldMap = {}, options = {}) {
   if (!entry || typeof entry !== 'object') return entry;
   const mapEntries = Object.entries(fieldMap);
   if (!mapEntries.length) return entry;
   const next = { ...entry };
   mapEntries.forEach(([target, sourcePath]) => {
     if (typeof target !== 'string') return;
-    const value = getValueAtPath(entry, sourcePath);
+    const value = resolveMappingValue(entry, options.columnLookup, sourcePath, {
+      session: options.session,
+    });
     if (value === undefined) return;
     if (target.includes('.') || Array.isArray(target)) {
       setValueAtPath(next, target, value);
@@ -717,15 +759,19 @@ function applyFieldMap(entry, fieldMap = {}) {
   return next;
 }
 
-function extractArrayFromDescriptor(record, columnLookup, descriptor) {
+function extractArrayFromDescriptor(record, columnLookup, descriptor, options = {}) {
   if (!descriptor) return [];
-  if (typeof descriptor === 'string') {
-    const value = getColumnValue(columnLookup, record, descriptor);
+  if (typeof descriptor === 'string' || typeof descriptor === 'number' || typeof descriptor === 'boolean') {
+    const value = resolveMappingValue(record, columnLookup, descriptor, {
+      session: options.session,
+    });
     return parseJsonArray(value);
   }
   if (descriptor && typeof descriptor === 'object') {
     const { path, itemsPath } = descriptor;
-    let value = path ? getColumnValue(columnLookup, record, path) : undefined;
+    let value = path
+      ? resolveMappingValue(record, columnLookup, path, { session: options.session })
+      : undefined;
     if (itemsPath) {
       value = getValueAtPath(value, itemsPath);
     }
@@ -1518,6 +1564,7 @@ export async function buildReceiptFromDynamicTransaction(
   if (!record || typeof record !== 'object') return null;
   const normalizedMapping = normalizeMapping(mapping);
   const columnLookup = createColumnLookup(record);
+  const sessionInfo = options.sessionInfo || options.session || {};
   const merchantInfo = options.merchantInfo || null;
   const receiptGroupMapping =
     normalizedMapping[RECEIPT_GROUP_MAPPING_KEY] || {};
@@ -1527,7 +1574,9 @@ export async function buildReceiptFromDynamicTransaction(
   delete normalizedMapping[PAYMENT_METHOD_MAPPING_KEY];
 
   const totalAmountColumn = normalizedMapping.totalAmount;
-  const totalAmountValue = getColumnValue(columnLookup, record, totalAmountColumn);
+  const totalAmountValue = resolveMappingValue(record, columnLookup, totalAmountColumn, {
+    session: sessionInfo,
+  });
   const totalAmount = toNumber(totalAmountValue);
   if (totalAmount === null) {
     const err = new Error(
@@ -1538,29 +1587,40 @@ export async function buildReceiptFromDynamicTransaction(
     throw err;
   }
 
-  const totalVatValue = getColumnValue(columnLookup, record, normalizedMapping.totalVAT);
+  const totalVatValue = resolveMappingValue(record, columnLookup, normalizedMapping.totalVAT, {
+    session: sessionInfo,
+  });
   const totalVAT = toNumber(totalVatValue);
-  const totalCityTaxValue = getColumnValue(
-    columnLookup,
+  const totalCityTaxValue = resolveMappingValue(
     record,
+    columnLookup,
     normalizedMapping.totalCityTax,
+    { session: sessionInfo },
   );
   const totalCityTax = toNumber(totalCityTaxValue);
 
   const customerTin = toStringValue(
-    getColumnValue(columnLookup, record, normalizedMapping.customerTin),
+    resolveMappingValue(record, columnLookup, normalizedMapping.customerTin, {
+      session: sessionInfo,
+    }),
   );
   const consumerNo = toStringValue(
-    getColumnValue(columnLookup, record, normalizedMapping.consumerNo),
+    resolveMappingValue(record, columnLookup, normalizedMapping.consumerNo, {
+      session: sessionInfo,
+    }),
   );
 
   const taxTypeField = normalizedMapping.taxTypeField || normalizedMapping.taxType;
-  let taxType = toStringValue(getColumnValue(columnLookup, record, taxTypeField));
+  let taxType = toStringValue(
+    resolveMappingValue(record, columnLookup, taxTypeField, { session: sessionInfo }),
+  );
 
   const descriptionField = normalizedMapping.description || normalizedMapping.itemDescription;
   let description = '';
   if (descriptionField) {
-    const descValue = getColumnValue(columnLookup, record, descriptionField);
+    const descValue = resolveMappingValue(record, columnLookup, descriptionField, {
+      session: sessionInfo,
+    });
     if (descValue !== undefined && descValue !== null) {
       description = descValue;
     }
@@ -1570,14 +1630,18 @@ export async function buildReceiptFromDynamicTransaction(
   }
 
   const lotNo = toStringValue(
-    getColumnValue(columnLookup, record, normalizedMapping.lotNo),
+    resolveMappingValue(record, columnLookup, normalizedMapping.lotNo, { session: sessionInfo }),
   );
 
   const branchNo =
     toStringValue(
       merchantInfo?.branch_no ?? merchantInfo?.branchNo ?? merchantInfo?.branch,
     ) ||
-    toStringValue(getColumnValue(columnLookup, record, normalizedMapping.branchNo)) ||
+    toStringValue(
+      resolveMappingValue(record, columnLookup, normalizedMapping.branchNo, {
+        session: sessionInfo,
+      }),
+    ) ||
     toStringValue(readEnvVar('POSAPI_BRANCH_NO'));
   const merchantTin =
     toStringValue(
@@ -1586,17 +1650,29 @@ export async function buildReceiptFromDynamicTransaction(
         merchantInfo?.taxRegistrationNo ??
         merchantInfo?.tin,
     ) ||
-    toStringValue(getColumnValue(columnLookup, record, normalizedMapping.merchantTin)) ||
+    toStringValue(
+      resolveMappingValue(record, columnLookup, normalizedMapping.merchantTin, {
+        session: sessionInfo,
+      }),
+    ) ||
     toStringValue(readEnvVar('POSAPI_MERCHANT_TIN'));
   const posNo =
     toStringValue(
       merchantInfo?.pos_no ?? merchantInfo?.pos_registration_no ?? merchantInfo?.posNo,
     ) ||
-    toStringValue(getColumnValue(columnLookup, record, normalizedMapping.posNo)) ||
+    toStringValue(
+      resolveMappingValue(record, columnLookup, normalizedMapping.posNo, {
+        session: sessionInfo,
+      }),
+    ) ||
     toStringValue(readEnvVar('POSAPI_POS_NO'));
   const districtCode =
     toStringValue(merchantInfo?.district_code ?? merchantInfo?.districtCode) ||
-    toStringValue(getColumnValue(columnLookup, record, normalizedMapping.districtCode)) ||
+    toStringValue(
+      resolveMappingValue(record, columnLookup, normalizedMapping.districtCode, {
+        session: sessionInfo,
+      }),
+    ) ||
     toStringValue(readEnvVar('POSAPI_DISTRICT_CODE'));
 
   const missingEnv = [];
@@ -1614,7 +1690,7 @@ export async function buildReceiptFromDynamicTransaction(
 
   const classificationField = normalizedMapping.classificationCodeField;
   const headerClassificationCode = toStringValue(
-    getColumnValue(columnLookup, record, classificationField),
+    resolveMappingValue(record, columnLookup, classificationField, { session: sessionInfo }),
   );
 
   const itemsDescriptor = normalizedMapping.itemsField || normalizedMapping.items;
@@ -1638,8 +1714,10 @@ export async function buildReceiptFromDynamicTransaction(
     extractDescriptorFieldMap(receiptsDescriptor, 'receiptFields'),
   );
 
-  let items = extractArrayFromDescriptor(record, columnLookup, itemsDescriptor)
-    .map((item) => applyFieldMap(item, itemFieldMap))
+  let items = extractArrayFromDescriptor(record, columnLookup, itemsDescriptor, {
+    session: sessionInfo,
+  })
+    .map((item) => applyFieldMap(item, itemFieldMap, { session: sessionInfo }))
     .map((item) =>
       normalizeItemEntry(item, {
         classificationField,
@@ -1654,9 +1732,10 @@ export async function buildReceiptFromDynamicTransaction(
     record,
     columnLookup,
     paymentsDescriptor,
+    { session: sessionInfo },
   );
   let payments = rawPayments
-    .map((entry) => applyFieldMap(entry, paymentFieldMap))
+    .map((entry) => applyFieldMap(entry, paymentFieldMap, { session: sessionInfo }))
     .map((entry) => normalizePaymentEntry(entry))
     .filter(Boolean);
 
@@ -1666,19 +1745,25 @@ export async function buildReceiptFromDynamicTransaction(
       const amountColumn = config.amount;
       if (!amountColumn) return null;
       const amountValue = toNumber(
-        getColumnValue(columnLookup, record, amountColumn),
+        resolveMappingValue(record, columnLookup, amountColumn, {
+          session: sessionInfo,
+        }),
       );
       if (amountValue === null) return null;
       const payment = { type: method, amount: amountValue };
       if (config.currency) {
         const currencyValue = toStringValue(
-          getColumnValue(columnLookup, record, config.currency),
+          resolveMappingValue(record, columnLookup, config.currency, {
+            session: sessionInfo,
+          }),
         );
         if (currencyValue) payment.currency = currencyValue;
       }
       if (config.reference) {
         const referenceValue = toStringValue(
-          getColumnValue(columnLookup, record, config.reference),
+          resolveMappingValue(record, columnLookup, config.reference, {
+            session: sessionInfo,
+          }),
         );
         if (referenceValue) payment.reference = referenceValue;
       }
@@ -1716,6 +1801,7 @@ export async function buildReceiptFromDynamicTransaction(
     record,
     columnLookup,
     receiptsDescriptor,
+    { session: sessionInfo },
   );
   let receipts = rawReceipts
     .map((entry) =>
@@ -1738,20 +1824,28 @@ export async function buildReceiptFromDynamicTransaction(
     .map(([typeKey, config]) => {
       if (!config || typeof config !== 'object') return null;
       const amountValue = toNumber(
-        getColumnValue(columnLookup, record, config.totalAmount),
+        resolveMappingValue(record, columnLookup, config.totalAmount, {
+          session: sessionInfo,
+        }),
       );
       if (amountValue === null) return null;
       const entry = { totalAmount: amountValue };
       const vatValue = toNumber(
-        getColumnValue(columnLookup, record, config.totalVAT),
+        resolveMappingValue(record, columnLookup, config.totalVAT, {
+          session: sessionInfo,
+        }),
       );
       if (vatValue !== null) entry.totalVAT = vatValue;
       const cityValue = toNumber(
-        getColumnValue(columnLookup, record, config.totalCityTax),
+        resolveMappingValue(record, columnLookup, config.totalCityTax, {
+          session: sessionInfo,
+        }),
       );
       if (cityValue !== null) entry.totalCityTax = cityValue;
       const taxTypeValue = toStringValue(
-        getColumnValue(columnLookup, record, config.taxType),
+        resolveMappingValue(record, columnLookup, config.taxType, {
+          session: sessionInfo,
+        }),
       );
       const resolvedType = taxTypeValue || typeKey;
       if (resolvedType) entry.taxType = resolvedType;
@@ -1882,7 +1976,9 @@ export async function buildReceiptFromDynamicTransaction(
 
   if (!payments.length) {
     const defaultPaymentType = toStringValue(
-      getColumnValue(columnLookup, record, normalizedMapping.paymentType),
+      resolveMappingValue(record, columnLookup, normalizedMapping.paymentType, {
+        session: sessionInfo,
+      }),
     );
     payments = [
       {
