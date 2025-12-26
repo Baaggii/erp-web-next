@@ -80,7 +80,20 @@ router.put('/', requireAuth, async (req, res, next) => {
       res.status(400).json({ message: 'Endpoint validation failed', issues: validationIssues });
       return;
     }
-    const sanitized = JSON.parse(JSON.stringify(payload));
+    const sanitized = JSON.parse(JSON.stringify(payload)).map((endpoint) => {
+      const normalized = { ...endpoint };
+      const { map: requestFieldMappings, envMap } = normalizeRequestFieldMappings(
+        endpoint.requestFieldMappings,
+        endpoint.requestEnvMap,
+      );
+      if (Object.keys(requestFieldMappings).length) {
+        normalized.requestFieldMappings = requestFieldMappings;
+      } else {
+        delete normalized.requestFieldMappings;
+      }
+      normalized.requestEnvMap = envMap;
+      return normalized;
+    });
     const saved = await saveEndpoints(sanitized);
     res.json(saved);
   } catch (err) {
@@ -221,6 +234,34 @@ function setValueAtTokens(target, tokens, value) {
   return true;
 }
 
+function ensureNestedPath(target, tokens) {
+  if (!target || typeof target !== 'object' || !tokens.length) return;
+  let current = target;
+  tokens.forEach((token, index) => {
+    const isLast = index === tokens.length - 1;
+    if (token.isArray) {
+      current[token.key] = Array.isArray(current[token.key]) ? current[token.key] : [];
+      if (!current[token.key].length || typeof current[token.key][0] !== 'object' || current[token.key][0] === null) {
+        current[token.key] = current[token.key].length ? current[token.key] : [{}];
+        if (!current[token.key].length) current[token.key].push({});
+        if (typeof current[token.key][0] !== 'object' || current[token.key][0] === null) {
+          current[token.key][0] = {};
+        }
+      }
+      if (isLast) return;
+      current = current[token.key][0];
+      return;
+    }
+
+    if (current[token.key] === undefined || current[token.key] === null || typeof current[token.key] !== 'object' || Array.isArray(current[token.key])) {
+      current[token.key] = {};
+    }
+    if (!isLast) {
+      current = current[token.key];
+    }
+  });
+}
+
 function parseEnvValue(rawValue) {
   if (rawValue === undefined || rawValue === null) return rawValue;
   if (typeof rawValue !== 'string') return rawValue;
@@ -233,6 +274,123 @@ function parseEnvValue(rawValue) {
     }
   }
   return trimmed;
+}
+
+function hasRequestFieldMappingValue(entry) {
+  if (!entry) return false;
+  if (typeof entry === 'string') return entry.trim() !== '';
+  if (typeof entry !== 'object') return false;
+  const type = entry.type || entry.mode;
+  if (type === 'literal') {
+    const value = entry.value ?? entry.literal;
+    return value !== undefined && value !== null && `${value}`.trim() !== '';
+  }
+  if (type === 'env') return Boolean(entry.envVar);
+  if (type === 'session') return Boolean(entry.sessionVar);
+  if (type === 'expression') return Boolean(entry.expression);
+  return Boolean(entry.column || entry.value || entry.table);
+}
+
+function normalizeRequestFieldMappingEntry(entry, defaultApplyToBody = true) {
+  if (!entry) return null;
+  const applyToBody =
+    entry && typeof entry === 'object' && 'applyToBody' in entry
+      ? Boolean(entry.applyToBody)
+      : defaultApplyToBody;
+  const source = entry && typeof entry === 'object' && 'selection' in entry ? entry.selection : entry;
+  const ENV_VAR_REGEX = /^\s*\{\{\s*([A-Z0-9_]+)\s*}}\s*$/i;
+  if (typeof source === 'string') {
+    const normalized = source.trim();
+    if (!normalized) return null;
+    const envMatch = ENV_VAR_REGEX.exec(normalized);
+    if (envMatch) {
+      return { type: 'env', envVar: envMatch[1], applyToBody };
+    }
+    const parts = normalized.split('.');
+    if (parts.length > 1) {
+      return { type: 'column', table: parts.shift(), column: parts.join('.'), applyToBody };
+    }
+    return { type: 'column', column: normalized, applyToBody };
+  }
+
+  const type = typeof source?.type === 'string'
+    ? source.type
+    : source?.mode === 'env'
+      ? 'env'
+      : source?.mode === 'literal'
+        ? 'literal'
+        : source?.envVar
+          ? 'env'
+          : source?.sessionVar
+            ? 'session'
+            : source?.expression
+              ? 'expression'
+              : source?.value !== undefined
+                ? 'literal'
+                : 'column';
+
+  if (type === 'literal') {
+    const value = source?.value ?? source?.literal;
+    if (value === undefined || value === null || `${value}`.trim() === '') return null;
+    return { type, value, applyToBody };
+  }
+  if (type === 'env') {
+    const envVar = source?.envVar || (typeof source?.value === 'string' ? source.value.trim() : '');
+    if (!envVar) return null;
+    return { type, envVar, applyToBody };
+  }
+  if (type === 'session') {
+    const sessionVar = source?.sessionVar || (typeof source?.value === 'string' ? source.value.trim() : '');
+    if (!sessionVar) return null;
+    return { type, sessionVar, applyToBody };
+  }
+  if (type === 'expression') {
+    const expression = source?.expression || (typeof source?.value === 'string' ? source.value.trim() : '');
+    if (!expression) return null;
+    return { type, expression, applyToBody };
+  }
+
+  const table = typeof source?.table === 'string' ? source.table.trim() : '';
+  const column = typeof source?.column === 'string' ? source.column.trim() : '';
+  const value = column || (typeof source?.value === 'string' ? source.value.trim() : '');
+  if (!value && !table) return null;
+  return { type: 'column', table, column: value, applyToBody };
+}
+
+function normalizeRequestFieldMappings(map, requestEnvMap = {}, { defaultApplyToBody = true } = {}) {
+  const envMap =
+    requestEnvMap && typeof requestEnvMap === 'object' && !Array.isArray(requestEnvMap)
+      ? { ...requestEnvMap }
+      : {};
+  const normalized = {};
+  const entries = map && typeof map === 'object' && !Array.isArray(map) ? Object.entries(map) : [];
+  if (!entries.length) {
+    Object.entries(envMap).forEach(([fieldPath, envEntry]) => {
+      const envVar = typeof envEntry === 'string' ? envEntry : envEntry?.envVar;
+      if (!envVar) return;
+      normalized[fieldPath] = {
+        type: 'env',
+        envVar,
+        applyToBody:
+          envEntry && typeof envEntry === 'object' && 'applyToBody' in envEntry
+            ? Boolean(envEntry.applyToBody)
+            : defaultApplyToBody,
+      };
+    });
+    return { map: normalized, envMap };
+  }
+
+  entries.forEach(([fieldPath, value]) => {
+    if (!fieldPath) return;
+    const normalizedEntry = normalizeRequestFieldMappingEntry(value, defaultApplyToBody);
+    if (!normalizedEntry || !hasRequestFieldMappingValue(normalizedEntry)) return;
+    normalized[fieldPath] = normalizedEntry;
+    if (normalizedEntry.type === 'env' && normalizedEntry.envVar) {
+      envMap[fieldPath] = { envVar: normalizedEntry.envVar, applyToBody: normalizedEntry.applyToBody !== false };
+    }
+  });
+
+  return { map: normalized, envMap };
 }
 
 function applyEnvMapToPayload(payload, envMap = {}) {
@@ -1333,7 +1491,7 @@ function deriveNestedObjectsFromFields(fields = []) {
   return Array.from(nested.values());
 }
 
-function buildRequestSampleFromFields(fields = [], defaults = {}, example) {
+function buildRequestSampleFromFields(fields = [], defaults = {}, example, nestedObjects = []) {
   const sample = {};
   const defaultMap = defaults && typeof defaults === 'object' ? defaults : {};
   const exampleValues = Array.isArray(example)
@@ -1358,6 +1516,15 @@ function buildRequestSampleFromFields(fields = [], defaults = {}, example) {
           ? defaultMap[fieldPath]
           : null;
     setValueAtTokens(sample, tokens, defaultValue);
+  });
+
+  const nestedList = Array.isArray(nestedObjects) ? nestedObjects : [];
+  nestedList.forEach((entry) => {
+    const path = typeof entry?.path === 'string' ? entry.path.trim() : '';
+    if (!path) return;
+    const tokens = tokenizeFieldPath(path);
+    if (!tokens.length) return;
+    ensureNestedPath(sample, tokens);
   });
 
   return Object.keys(sample).length ? sample : undefined;
@@ -1692,6 +1859,7 @@ function extractOperationsFromOpenApi(spec, meta = {}, metaLookup = {}) {
         requestFields,
         fieldDefaults,
         requestExample && typeof requestExample === 'object' ? requestExample : undefined,
+        nestedObjects,
       );
 
       entries.push({
@@ -2143,6 +2311,7 @@ function extractOperationsFromPostman(spec, meta = {}) {
         combinedRequestFields,
         fieldDefaults,
         requestExample && typeof requestExample === 'object' ? requestExample : undefined,
+        nestedObjects,
       );
 
       entries.push({
@@ -2408,6 +2577,10 @@ router.post('/test', requireAuth, async (req, res, next) => {
     }
 
     const environment = req.body?.environment === 'production' ? 'production' : 'staging';
+    const { envMap: normalizedRequestEnvMap } = normalizeRequestFieldMappings(
+      definition.requestFieldMappings,
+      definition.requestEnvMap,
+    );
     const urlEnvMap = definition.urlEnvMap || {};
     const warnings = [];
     const testBaseUrl = pickTestBaseUrl(definition, environment, urlEnvMap, warnings);
@@ -2439,7 +2612,7 @@ router.post('/test', requireAuth, async (req, res, next) => {
 
     const { payload: mappedPayload, warnings: envWarnings } = applyEnvMapToPayload(
       payload,
-      definition.requestEnvMap,
+      normalizedRequestEnvMap,
     );
     const combinedWarnings = [...warnings, ...envWarnings];
 
@@ -2452,7 +2625,7 @@ router.post('/test', requireAuth, async (req, res, next) => {
 
     try {
       const result = await invokePosApiEndpoint(definition.id || 'draftEndpoint', mappedPayload, {
-        endpoint: definition,
+        endpoint: { ...definition, requestEnvMap: normalizedRequestEnvMap },
         baseUrl: testBaseUrl,
         debug: true,
         authEndpointId: selectedAuthEndpoint,
@@ -2488,6 +2661,10 @@ router.post('/import/test', requireAuth, async (req, res, next) => {
       res.status(400).json({ message: 'endpoint object is required' });
       return;
     }
+    const { map: requestFieldMappings, envMap: normalizedRequestEnvMap } = normalizeRequestFieldMappings(
+      endpoint.requestFieldMappings,
+      endpoint.requestEnvMap,
+    );
     const sanitized = {
       id: endpoint.id || 'draftEndpoint',
       name: endpoint.name || endpoint.id || 'Draft endpoint',
@@ -2497,13 +2674,16 @@ router.post('/import/test', requireAuth, async (req, res, next) => {
         ? endpoint.parameters.filter(Boolean)
         : [],
       posApiType: endpoint.posApiType || undefined,
-      requestEnvMap: endpoint.requestEnvMap || {},
+      requestEnvMap: normalizedRequestEnvMap,
       urlEnvMap: endpoint.urlEnvMap || {},
       testServerUrl: endpoint.testServerUrl || baseUrl,
       productionServerUrl: endpoint.productionServerUrl,
       testServerUrlProduction: endpoint.testServerUrlProduction,
       serverUrl: endpoint.serverUrl,
     };
+    if (Object.keys(requestFieldMappings).length) {
+      sanitized.requestFieldMappings = requestFieldMappings;
+    }
     const inputPayload = payload && typeof payload === 'object' ? payload : {};
     const paramsBag = inputPayload.params && typeof inputPayload.params === 'object'
       ? inputPayload.params
