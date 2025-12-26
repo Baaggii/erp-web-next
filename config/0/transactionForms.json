@@ -1787,15 +1787,6 @@
         "MOBILE_WALLET",
         "EASY_BANK_CARD"
       ],
-      "posApiRequestVariation": "B2C_RECEIPT",
-      "posApiVariationDefaults": {
-        "type": {
-          "B2C_RECEIPT": "B2C_RECEIPT"
-        },
-        "taxType": {
-          "B2C_RECEIPT": "VAT_ABLE"
-        }
-      },
       "fieldsFromPosApi": [
         "receipts[].billId"
       ],
