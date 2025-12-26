@@ -1488,6 +1488,166 @@ function toSamplePayload(raw) {
   return parseExamplePayload(raw);
 }
 
+function normalizeNestedPathsMap(nestedPaths = {}, supportsItems = false) {
+  const defaults = {
+    receipts: 'receipts[]',
+    payments: supportsItems ? 'receipts[].payments[]' : 'payments[]',
+  };
+  if (supportsItems) {
+    defaults.items = 'receipts[].items[]';
+  }
+  const map = { ...defaults };
+  if (nestedPaths && typeof nestedPaths === 'object' && !Array.isArray(nestedPaths)) {
+    Object.entries(nestedPaths).forEach(([key, value]) => {
+      if (typeof value !== 'string') return;
+      const normalized = value.trim();
+      if (!normalized) return;
+      map[key] = normalized;
+    });
+  }
+  return map;
+}
+
+function ensurePathWithDefaults(target, path, defaultValue = null) {
+  if (!path) return target;
+  const segments = path.split('.').filter(Boolean);
+  let cursor = target;
+  segments.forEach((segment, idx) => {
+    const isArray = segment.endsWith('[]');
+    const key = isArray ? segment.slice(0, -2) : segment;
+    if (!cursor[key] || typeof cursor[key] !== 'object') {
+      cursor[key] = isArray ? [{}] : {};
+    }
+    if (Array.isArray(cursor[key]) && cursor[key].length === 0) {
+      cursor[key].push({});
+    }
+    cursor = Array.isArray(cursor[key]) ? cursor[key][0] : cursor[key];
+    if (idx === segments.length - 1 && defaultValue !== undefined) {
+      if (cursor && typeof cursor === 'object' && !Array.isArray(cursor)) {
+        Object.assign(cursor, defaultValue && typeof defaultValue === 'object' ? defaultValue : {});
+      }
+    }
+  });
+  return target;
+}
+
+function applyRequestFieldDefaults(target, fields = []) {
+  if (!target || typeof target !== 'object') return target;
+  fields.forEach((field) => {
+    const path = field?.field || field?.path;
+    if (!path) return;
+    const segments = path.split('.').filter(Boolean);
+    let cursor = target;
+    segments.forEach((segment, idx) => {
+      const isArray = segment.endsWith('[]');
+      const key = isArray ? segment.slice(0, -2) : segment;
+      const isLeaf = idx === segments.length - 1;
+      if (isLeaf) {
+        const defaultValue =
+          field?.defaultValue !== undefined && field?.defaultValue !== null
+            ? field.defaultValue
+            : null;
+        if (isArray) {
+          if (!Array.isArray(cursor[key])) cursor[key] = [{}];
+          if (cursor[key].length === 0) cursor[key].push({});
+          cursor[key][0] = defaultValue && typeof defaultValue === 'object'
+            ? { ...cursor[key][0], ...defaultValue }
+            : defaultValue;
+        } else {
+          cursor[key] = defaultValue;
+        }
+        return;
+      }
+      if (!cursor[key] || typeof cursor[key] !== 'object') {
+        cursor[key] = isArray ? [{}] : {};
+      }
+      if (Array.isArray(cursor[key]) && cursor[key].length === 0) {
+        cursor[key].push({});
+      }
+      cursor = Array.isArray(cursor[key]) ? cursor[key][0] : cursor[key];
+    });
+  });
+  return target;
+}
+
+function mergeRequestSamples(skeleton, sample) {
+  if (Array.isArray(sample) || Array.isArray(skeleton)) {
+    const sourceArray = Array.isArray(sample)
+      ? sample
+      : Array.isArray(skeleton)
+        ? skeleton
+        : [];
+    return sourceArray.map((entry, idx) =>
+      mergeRequestSamples(skeleton?.[idx] || {}, entry || {}));
+  }
+  if (sample && typeof sample === 'object') {
+    const base = skeleton && typeof skeleton === 'object' ? { ...skeleton } : {};
+    Object.entries(sample).forEach(([key, val]) => {
+      base[key] = mergeRequestSamples(base[key], val);
+    });
+    return base;
+  }
+  if (sample === undefined) return skeleton;
+  return sample;
+}
+
+function buildHierarchicalRequestSample({
+  baseSample,
+  requestFields = [],
+  nestedPaths = {},
+  supportsItems = false,
+  supportsMultipleReceipts = false,
+}) {
+  const normalizedNestedPaths = normalizeNestedPathsMap(nestedPaths, supportsItems);
+  const skeleton = {};
+  const mappedFields = Array.isArray(requestFields)
+    ? requestFields
+    : [];
+  applyRequestFieldDefaults(skeleton, mappedFields);
+  Object.values(normalizedNestedPaths).forEach((path) => {
+    ensurePathWithDefaults(skeleton, path);
+  });
+  if (supportsMultipleReceipts && normalizedNestedPaths.receipts) {
+    ensurePathWithDefaults(skeleton, normalizedNestedPaths.receipts, { items: [{}], payments: [{}] });
+  }
+  return mergeRequestSamples(skeleton, baseSample || {});
+}
+
+function safeParseObject(text, fallback) {
+  try {
+    const parsed = JSON.parse(text || '');
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function safeParseArray(text, fallback) {
+  try {
+    const parsed = JSON.parse(text || '');
+    return Array.isArray(parsed) ? parsed : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function buildFormRequestSampleSnapshot(formState) {
+  const baseSample = sanitizeRequestExampleForSample(
+    parseExamplePayload(formState.requestSampleText),
+  );
+  const supportsItems = formState.supportsItems !== false;
+  const supportsMultipleReceipts = Boolean(formState.supportsMultipleReceipts);
+  const nestedPaths = safeParseObject(formState.nestedPathsText, {});
+  const requestFields = safeParseArray(formState.requestFieldsText, []);
+  return buildHierarchicalRequestSample({
+    baseSample,
+    requestFields,
+    nestedPaths,
+    supportsItems,
+    supportsMultipleReceipts,
+  });
+}
+
 function cleanSampleText(text) {
   if (!text) return {};
   try {
@@ -1946,6 +2106,10 @@ function createFormState(definition) {
     sanitizedRequestSample && Object.keys(sanitizedRequestSample).length > 0
       ? sanitizedRequestSample
       : stripRequestDecorations(rawRequestSample);
+  const normalizedNestedPaths = normalizeNestedPathsMap(
+    definition.mappingHints?.nestedPaths,
+    supportsItems,
+  );
 
   const buildUrlFieldState = (key) => {
     const literalCandidate = definition[key];
@@ -2049,7 +2213,7 @@ function createFormState(definition) {
     allowMultipleReceiptItems,
     receiptItemTemplates,
     topLevelFieldsText: toPrettyJson(definition.mappingHints?.topLevelFields, '[]'),
-    nestedPathsText: toPrettyJson(definition.mappingHints?.nestedPaths, '{}'),
+    nestedPathsText: toPrettyJson(normalizedNestedPaths, '{}'),
     notes: definition.notes || '',
     requestEnvMap: definition.requestEnvMap || {},
     requestFieldVariations,
@@ -5561,10 +5725,8 @@ export default function PosApiAdmin() {
     }
 
     try {
-      const resolvedSample = sanitizeRequestExampleForSample(
-        parseExamplePayload(nextFormState.requestSampleText),
-      );
-      formattedSample = Object.keys(resolvedSample).length > 0
+      const resolvedSample = buildFormRequestSampleSnapshot(nextFormState);
+      formattedSample = Object.keys(resolvedSample || {}).length > 0
         ? JSON.stringify(resolvedSample, null, 2)
         : (nextFormState.requestSampleText || '');
     } catch (err) {
@@ -6381,7 +6543,7 @@ export default function PosApiAdmin() {
       formState.requestSchemaText,
       {},
     );
-    const requestSample = parseJsonInput(
+    const baseRequestSample = parseJsonInput(
       'Base request sample',
       baseRequestJson,
       {},
@@ -6396,6 +6558,14 @@ export default function PosApiAdmin() {
       formState.requestFieldsText,
       [],
     );
+    const topLevelMappingHints = parseJsonInput(
+      'Top-level mapping hints',
+      formState.topLevelFieldsText,
+      [],
+    );
+    if (!Array.isArray(topLevelMappingHints)) {
+      throw new Error('Top-level mapping hints must be a JSON array');
+    }
     if (!Array.isArray(requestFieldsRaw)) {
       throw new Error('Request field hints must be a JSON array');
     }
@@ -6691,6 +6861,15 @@ export default function PosApiAdmin() {
     const receiptItemTemplates = receiptItemsEnabled
       ? buildTemplateList(formState.receiptItemTemplates, allowMultipleReceiptItems)
       : [];
+    const nestedPaths = parseJsonInput('Nested mapping paths', formState.nestedPathsText, {});
+    const normalizedNestedPaths = normalizeNestedPathsMap(nestedPaths, supportsItems);
+    const requestSample = buildHierarchicalRequestSample({
+      baseSample: sanitizeRequestExampleForSample(baseRequestSample),
+      requestFields: combinedRequestFields,
+      nestedPaths: normalizedNestedPaths,
+      supportsItems,
+      supportsMultipleReceipts: Boolean(formState.supportsMultipleReceipts),
+    });
     const settingsId = usage === 'transaction' ? 'defaultTransaction' : '';
 
     if (requestSchema && typeof requestSchema === 'object' && resolvedPosApiType) {
@@ -6789,6 +6968,10 @@ export default function PosApiAdmin() {
       requestFieldVariations: sanitizedRequestFieldVariations,
       variations: sanitizedVariations,
       responseFields: responseFieldsWithMapping,
+      mappingHints: {
+        topLevelFields: topLevelMappingHints,
+        nestedPaths: normalizedNestedPaths,
+      },
       requestSample,
       requestSampleNotes: formState.requestSampleNotes || '',
       ...(Object.keys(responseFieldMappings).length
