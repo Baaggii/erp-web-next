@@ -51,6 +51,78 @@ function parseBooleanFlag(value, fallback = false) {
   return fallback;
 }
 
+function normalizeVariationDefaultMap(map = {}) {
+  if (!map || typeof map !== 'object' || Array.isArray(map)) return {};
+  const normalized = {};
+  Object.entries(map).forEach(([path, value]) => {
+    const key = typeof path === 'string' ? path.trim() : '';
+    if (!key) return;
+    if (value === undefined) return;
+    normalized[key] = value;
+  });
+  return normalized;
+}
+
+function collectVariationDefaultsFromEndpoint(endpoint, variationKey) {
+  if (!variationKey || !endpoint || typeof endpoint !== 'object') return {};
+  const defaults = {};
+  const mergeMap = (map) => {
+    if (!map || typeof map !== 'object' || Array.isArray(map)) return;
+    Object.entries(map).forEach(([path, value]) => {
+      const key = typeof path === 'string' ? path.trim() : '';
+      if (!key) return;
+      if (value === undefined) return;
+      defaults[key] = value;
+    });
+  };
+
+  const variationEntry = Array.isArray(endpoint.variations)
+    ? endpoint.variations.find(
+        (entry) => entry && (entry.key === variationKey || entry.name === variationKey),
+      )
+    : null;
+  if (variationEntry) {
+    mergeMap(variationEntry.defaultValues);
+    if (Array.isArray(variationEntry.requestFields)) {
+      variationEntry.requestFields.forEach((field) => {
+        const path = typeof field?.field === 'string' ? field.field.trim() : '';
+        if (!path) return;
+        const variationDefaults = field?.defaultByVariation || field?.defaultVariations || {};
+        if (Object.prototype.hasOwnProperty.call(variationDefaults, variationKey)) {
+          defaults[path] = variationDefaults[variationKey];
+        }
+      });
+    }
+  }
+
+  if (Array.isArray(endpoint.requestFieldVariations)) {
+    const variationMeta = endpoint.requestFieldVariations.find((entry) => entry?.key === variationKey);
+    if (variationMeta) {
+      mergeMap(variationMeta.defaultValues);
+    }
+  }
+
+  if (Array.isArray(endpoint.requestFields)) {
+    endpoint.requestFields.forEach((field) => {
+      const path = typeof field?.field === 'string' ? field.field.trim() : '';
+      if (!path) return;
+      const variationDefaults = field?.defaultByVariation || field?.defaultVariations || {};
+      if (Object.prototype.hasOwnProperty.call(variationDefaults, variationKey)) {
+        defaults[path] = variationDefaults[variationKey];
+      }
+    });
+  }
+
+  return defaults;
+}
+
+function areVariationDefaultsEqual(a = {}, b = {}) {
+  const aKeys = Object.keys(a);
+  const bKeys = Object.keys(b);
+  if (aKeys.length !== bKeys.length) return false;
+  return aKeys.every((key) => Object.prototype.hasOwnProperty.call(b, key) && b[key] === a[key]);
+}
+
 function sanitizeResponseFieldMappings(mappings = {}) {
   if (!mappings || typeof mappings !== 'object') return {};
   const normalized = {};
@@ -785,6 +857,32 @@ export default function PosApiIntegrationSection({
   const selectedVariationKey = config.posApiRequestVariation || '';
   const selectedVariation =
     requestVariations.find((variation) => variation.key === selectedVariationKey) || null;
+  const derivedVariationDefaults = useMemo(() => {
+    if (!selectedVariationKey) return {};
+    const endpointDefaults = collectVariationDefaultsFromEndpoint(
+      selectedEndpoint || {},
+      selectedVariationKey,
+    );
+    const normalizedEndpointDefaults = normalizeVariationDefaultMap(endpointDefaults);
+    if (Object.keys(normalizedEndpointDefaults).length) return normalizedEndpointDefaults;
+    return normalizeVariationDefaultMap(config.posApiVariationDefaults);
+  }, [config.posApiVariationDefaults, selectedVariationKey, selectedEndpoint]);
+
+  useEffect(() => {
+    const normalizedDefaults = normalizeVariationDefaultMap(derivedVariationDefaults);
+    setConfig((prev) => {
+      const nextVariation = selectedVariationKey;
+      const prevVariation = prev.posApiRequestVariation || '';
+      const prevDefaults = normalizeVariationDefaultMap(prev.posApiVariationDefaults);
+      const defaultsChanged = !areVariationDefaultsEqual(prevDefaults, normalizedDefaults);
+      if (prevVariation === nextVariation && !defaultsChanged) return prev;
+      return {
+        ...prev,
+        posApiRequestVariation: nextVariation,
+        posApiVariationDefaults: normalizedDefaults,
+      };
+    });
+  }, [derivedVariationDefaults, selectedVariationKey, setConfig]);
   const variationSampleText = useMemo(() => {
     let payload = selectedVariation?.requestExample || selectedVariation?.request;
     if (!payload) {

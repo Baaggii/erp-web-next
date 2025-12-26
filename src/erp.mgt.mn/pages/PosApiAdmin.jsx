@@ -6774,6 +6774,8 @@ export default function PosApiAdmin() {
     const variationRequirementByKey = {};
     const variationDefaultsByKey = {};
 
+    const variationDefaultsByField = {};
+
     if (requestFieldDisplay.state === 'ok') {
       variationColumns.forEach((variation) => {
         const key = variation.key;
@@ -6816,10 +6818,28 @@ export default function PosApiAdmin() {
           }
           if (defaultValue !== undefined && defaultValue !== '') {
             variationDefaultsByKey[key][fieldLabel] = defaultValue;
+            if (!variationDefaultsByField[fieldLabel]) {
+              variationDefaultsByField[fieldLabel] = {};
+            }
+            variationDefaultsByField[fieldLabel][key] = defaultValue;
           }
         });
       });
     }
+
+    const requestFieldsWithVariationDefaults = combinedRequestFields.map((field) => {
+      const defaultsForField = field.field ? variationDefaultsByField[field.field] : null;
+      if (!defaultsForField) return field;
+      const mergedDefaults = {
+        ...(field.defaultByVariation || field.defaultVariations || {}),
+        ...defaultsForField,
+      };
+      return {
+        ...field,
+        defaultByVariation: mergedDefaults,
+        defaultVariations: mergedDefaults,
+      };
+    });
 
     const sanitizedRequestFieldVariations = (requestFieldVariations || [])
       .filter((entry) => entry && entry.key)
@@ -7041,7 +7061,7 @@ export default function PosApiAdmin() {
       responseTables: sanitizeTableSelection(formState.responseTables, responseTableOptions),
       requestEnvMap: buildRequestEnvMap(requestFieldValues),
       requestFieldMappings: serializeRequestFieldSelections(requestFieldValues),
-      requestFields: combinedRequestFields,
+      requestFields: requestFieldsWithVariationDefaults,
       requestFieldVariations: sanitizedRequestFieldVariations,
       variations: sanitizedVariations,
       responseFields: responseFieldsWithMapping,
