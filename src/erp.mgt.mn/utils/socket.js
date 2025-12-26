@@ -1,9 +1,18 @@
 import { io } from 'socket.io-client';
+import { API_ROOT } from './apiBase.js';
 
 let socket;
 let refs = 0;
 let wired = false;
 const listeners = new Set();
+const socketPath = import.meta.env.VITE_SOCKET_PATH || '/api/socket.io';
+
+function resolveSocketUrl() {
+  if (import.meta.env.VITE_SOCKET_URL) {
+    return import.meta.env.VITE_SOCKET_URL;
+  }
+  return API_ROOT;
+}
 
 function notifyListeners(connected) {
   listeners.forEach((listener) => {
@@ -26,8 +35,8 @@ function wireSocketEvents() {
 
 export function connectSocket() {
   if (!socket) {
-    const url = import.meta.env.VITE_SOCKET_URL || '';
-    socket = io(url, { withCredentials: true });
+    const url = resolveSocketUrl();
+    socket = io(url, { withCredentials: true, path: socketPath });
   }
   wireSocketEvents();
   refs += 1;

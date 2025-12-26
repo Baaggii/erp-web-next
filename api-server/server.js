@@ -84,8 +84,10 @@ app.get("/api/csrf-token", (req, res) => {
 
 // Create HTTP server and attach Socket.IO
 const server = http.createServer(app);
+const socketPath = process.env.SOCKET_IO_PATH || "/api/socket.io";
 const io = new SocketIOServer(server, {
   cors: { origin: true, credentials: true },
+  path: socketPath,
 });
 
 // Authenticate sockets via JWT cookie and join per-user room
