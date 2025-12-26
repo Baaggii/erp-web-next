@@ -58,6 +58,7 @@ async function ensureLogTable() {
 }
 
 async function loadColumnUsage(table, columnNames = []) {
+  const normalizedColumns = (columnNames || []).filter(Boolean).map(String);
   const [keyUsage] = await pool.query(
     `SELECT kcu.TABLE_NAME,
             kcu.COLUMN_NAME,
@@ -89,16 +90,25 @@ async function loadColumnUsage(table, columnNames = []) {
         AND ccu.TABLE_NAME = ?`,
     [table],
   );
-  const [triggers] = await pool.query(
+  const [allTriggers] = await pool.query(
     `SELECT TRIGGER_NAME,
+            EVENT_OBJECT_TABLE,
             EVENT_MANIPULATION,
             ACTION_TIMING,
             ACTION_STATEMENT
        FROM information_schema.TRIGGERS
-      WHERE TRIGGER_SCHEMA = DATABASE()
-        AND EVENT_OBJECT_TABLE = ?`,
-    [table],
+      WHERE TRIGGER_SCHEMA = DATABASE()`,
   );
+  const triggerRegexes = normalizedColumns.map(
+    (col) => [col, new RegExp(`\\b${escapeRegex(col)}\\b`, 'i')],
+  );
+  const triggers = allTriggers.filter((row) => {
+    const statement = String(row.ACTION_STATEMENT || '');
+    const matchesColumn = triggerRegexes.some(
+      ([col, regex]) => regex.test(statement) || statement.includes(`\`${col}\``),
+    );
+    return row.EVENT_OBJECT_TABLE === table || matchesColumn;
+  });
   return { keyUsage, checkUsage, triggers, columnNames };
 }
 
@@ -168,12 +178,17 @@ function buildConstraintMap(table, columnNames = [], usage = {}) {
       const entry = ensureEntry(col);
       entry.triggers.push({
         name: row.TRIGGER_NAME,
+        table: row.EVENT_OBJECT_TABLE,
         timing: row.ACTION_TIMING,
         event: row.EVENT_MANIPULATION,
         statementPreview: statement.slice(0, 160),
       });
       entry.hasBlockingConstraint = true;
-      entry.blockingReasons.add(`Trigger ${row.TRIGGER_NAME} references this column.`);
+      const locationNote =
+        row.EVENT_OBJECT_TABLE && row.EVENT_OBJECT_TABLE !== table
+          ? ` on table ${row.EVENT_OBJECT_TABLE}`
+          : '';
+      entry.blockingReasons.add(`Trigger ${row.TRIGGER_NAME}${locationNote} references this column.`);
     });
   });
   return map;
