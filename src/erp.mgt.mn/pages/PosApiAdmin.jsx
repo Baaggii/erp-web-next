@@ -4072,7 +4072,6 @@ export default function PosApiAdmin() {
               ...existing,
               applyToBody:
                 existing.applyToBody !== undefined ? existing.applyToBody : selection.applyToBody,
-              type: existing.type ?? existing.mode ?? selection.type ?? selection.mode,
             }
           : selection;
 
