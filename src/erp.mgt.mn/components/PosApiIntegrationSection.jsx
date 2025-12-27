@@ -40,6 +40,8 @@ const AGGREGATION_OPTIONS = [
   { value: 'avg', label: 'Average' },
 ];
 
+const LEGACY_ARRAY_POINTER_FIELDS = new Set(['itemsField', 'paymentsField', 'receiptsField']);
+
 function humanizeFieldLabel(key) {
   if (!key) return '';
   return String(key)
@@ -282,8 +284,11 @@ function buildRequestFieldStructure(requestFields = [], supportsItems = false, n
     })),
   });
 
+  const filteredRootFields = POS_API_FIELDS.filter(
+    (field) => !LEGACY_ARRAY_POINTER_FIELDS.has(field.key),
+  );
   return {
-    rootFields: POS_API_FIELDS.map((field) => ({
+    rootFields: filteredRootFields.map((field) => ({
       ...field,
       path: field.key,
       label: field.label || humanizeFieldLabel(field.key),

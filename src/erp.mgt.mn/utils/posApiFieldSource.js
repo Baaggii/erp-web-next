@@ -120,6 +120,7 @@ export function resetMappingFieldsForType(selection = {}, nextType = selection?.
   if (type !== 'literal') {
     delete next.value;
     delete next.literal;
+    delete next.literalValue;
   }
   if (type !== 'env') {
     delete next.envVar;
