@@ -4963,6 +4963,8 @@ export async function listTableColumnMeta(tableName, companyId = 0) {
             c.EXTRA,
             c.GENERATION_EXPRESSION,
             c.COLUMN_TYPE,
+            c.DATA_TYPE,
+            c.COLUMN_COMMENT,
             pk.SEQ_IN_INDEX AS PRIMARY_KEY_ORDINAL
        FROM information_schema.COLUMNS c
        LEFT JOIN information_schema.STATISTICS pk
@@ -5007,6 +5009,10 @@ export async function listTableColumnMeta(tableName, companyId = 0) {
       generationExpression: r.GENERATION_EXPRESSION ?? null,
       primaryKeyOrdinal: Number.isFinite(ordinal) ? ordinal : null,
       enumValues,
+      type: r.DATA_TYPE || null,
+      dataType: r.DATA_TYPE || null,
+      columnType: r.COLUMN_TYPE || null,
+      columnComment: r.COLUMN_COMMENT || '',
     };
   });
 }

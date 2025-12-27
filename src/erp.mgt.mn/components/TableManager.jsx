@@ -1032,7 +1032,10 @@ const TableManager = forwardRef(function TableManager({
     columnMeta.forEach((c) => {
       const typ = (c.type || c.columnType || c.dataType || c.DATA_TYPE || '')
         .toLowerCase();
-      if (typ.match(/int|decimal|numeric|double|float|real|number|bigint/)) {
+      const comment = (c.columnComment || '').toLowerCase();
+      if (typ.includes('json') || comment.includes('json_array')) {
+        map[c.name] = 'json';
+      } else if (typ.match(/int|decimal|numeric|double|float|real|number|bigint/)) {
         map[c.name] = 'number';
       } else if (typ.includes('timestamp') || typ.includes('datetime')) {
         map[c.name] = 'datetime';
@@ -1943,6 +1946,7 @@ const TableManager = forwardRef(function TableManager({
           ...(filterConfig
             ? { filterColumn: filterConfig.column, filterValue: filterConfig.value }
             : {}),
+          ...(rel.isArray ? { isArray: true } : {}),
           ...(Object.keys(nestedDisplayLookups || {}).length > 0
             ? { nestedLookups: nestedDisplayLookups }
             : {}),
@@ -2028,6 +2032,7 @@ const TableManager = forwardRef(function TableManager({
             ...(r.filterValue !== undefined && r.filterValue !== null
               ? { filterValue: r.filterValue }
               : {}),
+            ...(r.isArray ? { isArray: true } : {}),
           };
         });
         setRelations(relationMap);
@@ -6843,7 +6848,60 @@ const TableManager = forwardRef(function TableManager({
                   ? labelMap[c][r[c]] || String(r[c])
                   : String(r[c]);
                 let display = raw;
-                if (c === 'TotalCur' || totalCurrencySet.has(c)) {
+                if (fieldTypeMap[c] === 'json') {
+                  let parsed = null;
+                  try {
+                    parsed = JSON.parse(r[c]);
+                  } catch {
+                    parsed = r[c];
+                  }
+                  const arr = Array.isArray(parsed)
+                    ? parsed
+                    : parsed === undefined || parsed === null || parsed === ''
+                    ? []
+                    : [parsed];
+                  const relationConfig = relationConfigs[c];
+                  if (relationConfig?.table && arr.length > 0) {
+                    const rowsMap = refRows[c] || {};
+                    const parts = [];
+                    arr.forEach((val) => {
+                      const key = val ?? '';
+                      const row = rowsMap[key] || rowsMap[String(key)];
+                      if (row && typeof row === 'object') {
+                        const idField = relationConfig.idField || relationConfig.column || c;
+                        const keyMap = {};
+                        Object.keys(row).forEach((k) => {
+                          keyMap[k.toLowerCase()] = k;
+                        });
+                        const idKey = keyMap[idField.toLowerCase()] || idField;
+                        const identifier =
+                          idKey && row[idKey] !== undefined && row[idKey] !== null
+                            ? row[idKey]
+                            : key;
+                        const extraParts = [];
+                        (relationConfig.displayFields || []).forEach((df) => {
+                          const dfKey = keyMap[df.toLowerCase()] || df;
+                          if (row[dfKey] !== undefined && row[dfKey] !== null) {
+                            extraParts.push(row[dfKey]);
+                          }
+                        });
+                        parts.push(
+                          [identifier, ...extraParts]
+                            .filter((p) => p !== undefined && p !== null && p !== '')
+                            .join(' - '),
+                        );
+                      } else {
+                        parts.push(String(key));
+                      }
+                    });
+                    display = parts.join(', ');
+                  } else {
+                    display = arr
+                      .filter((item) => item !== undefined && item !== null)
+                      .map((item) => (typeof item === 'string' ? item : String(item)))
+                      .join(', ');
+                  }
+                } else if (c === 'TotalCur' || totalCurrencySet.has(c)) {
                   display = currencyFmt.format(Number(r[c] || 0));
                 } else if (
                   fieldTypeMap[c] === 'date' ||

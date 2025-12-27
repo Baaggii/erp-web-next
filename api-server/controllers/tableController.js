@@ -133,6 +133,7 @@ export async function getTableRelations(req, res, next) {
             ...(relation.filterValue !== undefined && relation.filterValue !== null
               ? { filterValue: relation.filterValue }
               : {}),
+            ...(relation.isArray ? { isArray: true } : {}),
           });
         });
       }
@@ -195,6 +196,11 @@ export async function saveCustomTableRelation(req, res, next) {
       return res.status(400).json({ message: 'column is required' });
     }
     const { targetTable, targetColumn, idField, displayFields } = req.body || {};
+    const isArray =
+      req.body?.isArray ??
+      req.body?.is_array ??
+      req.body?.jsonField ??
+      req.body?.json_field;
     const combinationSource =
       req.body?.combinationSourceColumn ?? req.body?.combination_source_column;
     const combinationTarget =
@@ -207,7 +213,13 @@ export async function saveCustomTableRelation(req, res, next) {
     if (!targetColumn) {
       return res.status(400).json({ message: 'targetColumn is required' });
     }
-    const relationInput = { table: targetTable, column: targetColumn, idField, displayFields };
+    const relationInput = {
+      table: targetTable,
+      column: targetColumn,
+      idField,
+      displayFields,
+      ...(isArray ? { isArray: true } : {}),
+    };
     if (
       typeof combinationSource === 'string' &&
       combinationSource.trim() &&

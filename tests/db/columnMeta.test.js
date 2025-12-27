@@ -46,6 +46,10 @@ test('listTableColumnMeta uses header mappings when DB labels missing', async ()
       generationExpression: null,
       primaryKeyOrdinal: null,
       enumValues: [],
+      type: null,
+      dataType: null,
+      columnType: null,
+      columnComment: '',
     },
   ]);
 });
@@ -86,6 +90,10 @@ test('listTableColumnMeta includes primary key ordinal when available', async ()
       generationExpression: null,
       primaryKeyOrdinal: 2,
       enumValues: [],
+      type: null,
+      dataType: null,
+      columnType: null,
+      columnComment: '',
     },
     {
       name: 'tenant_id',
@@ -95,6 +103,10 @@ test('listTableColumnMeta includes primary key ordinal when available', async ()
       generationExpression: null,
       primaryKeyOrdinal: 1,
       enumValues: [],
+      type: null,
+      dataType: null,
+      columnType: null,
+      columnComment: '',
     },
   ]);
 });
@@ -152,6 +164,10 @@ test('listTableColumnMeta reads company-specific header mappings', async () => {
       generationExpression: null,
       primaryKeyOrdinal: null,
       enumValues: [],
+      type: null,
+      dataType: null,
+      columnType: null,
+      columnComment: '',
     },
   ]);
 });

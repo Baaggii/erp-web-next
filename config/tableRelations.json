@@ -1,0 +1,16 @@
+{
+  "transactions_plan": {
+    "sellerid": [
+      {
+        "table": "tbl_employee",
+        "column": "emp_id",
+        "idField": "emp_id",
+        "displayFields": [
+          "emp_fname",
+          "emp_lname"
+        ],
+        "isArray": true
+      }
+    ]
+  }
+}
