@@ -63,8 +63,16 @@ export default function JsonConversionPanel() {
       .finally(() => setLoading(false));
   }, [selectedTable]);
 
+  const hasForeignKeyConstraint = (meta) =>
+    Array.isArray(meta?.constraintTypes) &&
+    meta.constraintTypes.some((type) => String(type || '').toUpperCase() === 'FOREIGN KEY');
+
+  const shouldHandleConstraintsByDefault = (meta) =>
+    Boolean(meta?.hasBlockingConstraint) || hasForeignKeyConstraint(meta);
+
   function defaultActionForColumn(meta) {
     if (meta?.isPrimaryKey) return 'companion';
+    if (hasForeignKeyConstraint(meta)) return 'convert';
     return 'convert';
   }
 
@@ -73,13 +81,16 @@ export default function JsonConversionPanel() {
     setColumnConfigs((prev) => {
       const existing = prev[name] || {};
       const nextSelected = !existing.selected;
+      const nextAction = nextSelected ? existing.action || defaultActionForColumn(meta) : 'skip';
+      const defaultHandleConstraints =
+        existing.handleConstraints ??
+        (shouldHandleConstraintsByDefault(meta) || nextAction === 'convert');
       return {
         ...prev,
         [name]: {
           selected: nextSelected,
-          action: nextSelected ? existing.action || defaultActionForColumn(meta) : 'skip',
-          handleConstraints:
-            nextSelected && (existing.handleConstraints ?? Boolean(meta?.hasBlockingConstraint)),
+          action: nextAction,
+          handleConstraints: nextSelected && defaultHandleConstraints,
           customSql: existing.customSql || '',
         },
       };
@@ -242,6 +253,20 @@ export default function JsonConversionPanel() {
     },
     [selectedColumns, columnConfigs, columns],
   );
+
+  const aggregatedDiagnostics = useMemo(() => {
+    const seen = new Set();
+    const queries = [];
+    previews.forEach((p) => {
+      (p.diagnosticQueries || []).forEach((q) => {
+        const trimmed = String(q || '').trim();
+        if (!trimmed || seen.has(trimmed)) return;
+        seen.add(trimmed);
+        queries.push(trimmed);
+      });
+    });
+    return queries;
+  }, [previews]);
 
   function renderConstraintSummary(col) {
     const constraints = col.constraints || [];
@@ -429,6 +454,28 @@ export default function JsonConversionPanel() {
 
       {previews.length > 0 && (
         <div style={{ marginTop: '1rem' }}>
+          {aggregatedDiagnostics.length > 0 && (
+            <div
+              style={{
+                padding: '0.75rem',
+                border: '1px solid #bfdbfe',
+                background: '#eff6ff',
+                marginBottom: '0.75rem',
+                borderRadius: '4px',
+              }}
+            >
+              <div style={{ fontWeight: 700, color: '#0f172a' }}>
+                Run diagnostic queries to uncover hidden constraints/triggers before converting:
+              </div>
+              <ol style={{ paddingLeft: '1.25rem', marginTop: '0.35rem' }}>
+                {aggregatedDiagnostics.map((q) => (
+                  <li key={q} style={{ wordBreak: 'break-all' }}>
+                    <code>{q}</code>
+                  </li>
+                ))}
+              </ol>
+            </div>
+          )}
           <h4>Preview</h4>
           <ul>
             {previews.map((p) => (
