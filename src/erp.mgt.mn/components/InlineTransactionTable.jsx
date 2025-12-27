@@ -9,7 +9,6 @@ import React, {
 import { useTranslation } from 'react-i18next';
 import useGeneralConfig from '../hooks/useGeneralConfig.js';
 import AsyncSearchSelect from './AsyncSearchSelect.jsx';
-import JsonMultiSelect from './JsonMultiSelect.jsx';
 import RowDetailModal from './RowDetailModal.jsx';
 import RowImageUploadModal from './RowImageUploadModal.jsx';
 import buildImageName from '../utils/buildImageName.js';
@@ -36,30 +35,6 @@ const ROW_OVERRIDE_ID = Symbol('transactionRowOverrideId');
 function normalizeNumberInput(value) {
   if (typeof value !== 'string') return value;
   return value.replace(',', '.');
-}
-
-function parseJsonArrayValue(value) {
-  if (Array.isArray(value)) return value.filter((v) => v !== undefined);
-  if (value === null || value === undefined || value === '') return [];
-  if (typeof value === 'string') {
-    const trimmed = value.trim();
-    if (!trimmed) return [];
-    try {
-      const parsed = JSON.parse(trimmed);
-      if (Array.isArray(parsed)) return parsed;
-      if (parsed === null || parsed === undefined || parsed === '') return [];
-      return [parsed];
-    } catch {
-      if (trimmed.includes(',')) {
-        return trimmed
-          .split(',')
-          .map((entry) => entry.trim())
-          .filter(Boolean);
-      }
-      return [trimmed];
-    }
-  }
-  return [value];
 }
 
 function InlineTransactionTable(
@@ -475,95 +450,6 @@ function InlineTransactionTable(
   );
 
   const relationsKey = React.useMemo(() => JSON.stringify(relations || {}), [relations]);
-  const relationOptionLabelLookup = React.useMemo(() => {
-    const lookup = {};
-    Object.entries(relations || {}).forEach(([rawKey, options]) => {
-      if (!Array.isArray(options) || options.length === 0) return;
-      const canonicalKey = columnCaseMap[String(rawKey).toLowerCase()] || rawKey;
-      if (!canonicalKey) return;
-      const optionLabels = {};
-      options.forEach((opt) => {
-        if (!opt || typeof opt !== 'object') return;
-        const candidateValue =
-          opt.value !== undefined
-            ? opt.value
-            : opt.id !== undefined
-            ? opt.id
-            : opt.key !== undefined
-            ? opt.key
-            : undefined;
-        const normalizedValue = candidateValue === undefined ? null : String(candidateValue);
-        if (!normalizedValue) return;
-        const label =
-          typeof opt.label === 'string'
-            ? opt.label
-            : typeof opt.display === 'string'
-            ? opt.display
-            : typeof opt.name === 'string'
-            ? opt.name
-            : typeof opt.text === 'string'
-            ? opt.text
-            : undefined;
-        if (label === undefined) return;
-        optionLabels[normalizedValue] = label;
-      });
-      if (Object.keys(optionLabels).length === 0) return;
-      lookup[canonicalKey] = optionLabels;
-      lookup[canonicalKey.toLowerCase()] = optionLabels;
-    });
-    return lookup;
-  }, [relationsKey, columnCaseMapKey]);
-
-  const resolveRelationLabel = React.useCallback(
-    (field, value, overrideConfig = null) => {
-      if (value === undefined || value === null) return '';
-      const labelMap =
-        relationOptionLabelLookup[field] ||
-        relationOptionLabelLookup[String(field).toLowerCase()];
-      const normalizedValueKey = value === undefined || value === null ? null : String(value);
-      if (normalizedValueKey && labelMap && labelMap[normalizedValueKey] !== undefined) {
-        return labelMap[normalizedValueKey];
-      }
-      const cfg = overrideConfig || relationConfigMap[field];
-      const relRow = getRelationRow(field, value);
-      if (cfg && relRow) {
-        const parts = [];
-        const identifier = getRowValueCaseInsensitive(relRow, cfg.idField || cfg.column);
-        if (identifier !== undefined && identifier !== null) {
-          parts.push(identifier);
-        }
-        (cfg.displayFields || []).forEach((df) => {
-          if (relRow[df] !== undefined && relRow[df] !== null && relRow[df] !== '') {
-            parts.push(relRow[df]);
-          }
-        });
-        if (parts.length > 0) return parts.join(' - ');
-      }
-      if (viewSourceMap[field] && relRow) {
-        const cfg = viewDisplays[viewSourceMap[field]] || {};
-        const parts = [];
-        const identifier = getRowValueCaseInsensitive(relRow, cfg.idField || field);
-        if (identifier !== undefined && identifier !== null) {
-          parts.push(identifier);
-        }
-        (cfg.displayFields || []).forEach((df) => {
-          if (relRow[df] !== undefined && relRow[df] !== null && relRow[df] !== '') {
-            parts.push(relRow[df]);
-          }
-        });
-        if (parts.length > 0) return parts.join(' - ');
-      }
-      return typeof value === 'object' ? JSON.stringify(value) : String(value);
-    },
-    [
-      relationOptionLabelLookup,
-      relationConfigMap,
-      getRelationRow,
-      viewSourceMap,
-      viewDisplays,
-      getRowValueCaseInsensitive,
-    ],
-  );
 
   const tableRelationsConfig = React.useMemo(() => {
     if (!tableName) return {};
@@ -1076,9 +962,7 @@ function InlineTransactionTable(
     fields.forEach((f) => {
       const lower = f.toLowerCase();
       const typ = fieldTypeMap[f] || columnTypeMap[f] || '';
-      if (typ.includes && typ.includes('json')) {
-        map[f] = 'json';
-      } else if (typ === 'time' || placeholders[f] === 'HH:MM:SS') {
+      if (typ === 'time' || placeholders[f] === 'HH:MM:SS') {
         map[f] = 'time';
       } else if (
         typ === 'date' ||
@@ -1114,9 +998,7 @@ function InlineTransactionTable(
       if (!row || typeof row !== 'object') return row;
       const updated = fillSessionDefaults(row);
       Object.entries(updated).forEach(([k, v]) => {
-        if (fieldTypeMap[k] === 'json' || (columnTypeMap[k] || '').includes('json')) {
-          updated[k] = parseJsonArrayValue(v);
-        } else if (placeholders[k]) {
+        if (placeholders[k]) {
           updated[k] = normalizeDateInput(String(v ?? ''), placeholders[k]);
         } else if (fieldTypeMap[k] === 'number') {
           const formatted = formatNumericValue(k, v);
@@ -2160,21 +2042,13 @@ function InlineTransactionTable(
     const row = rows[idx] || {};
     for (const f of requiredFields) {
       let val = row[f];
-      if (fieldTypeMap[f] === 'json' || (columnTypeMap[f] || '').includes('json')) {
-        val = parseJsonArrayValue(val);
-      } else if (placeholders[f]) {
+      if (placeholders[f]) {
         val = normalizeDateInput(val, placeholders[f]);
       }
       if (totalCurrencySet.has(f)) {
         val = normalizeNumberInput(val);
       }
-      if (
-        val === '' ||
-        val === null ||
-        val === undefined ||
-        ((fieldTypeMap[f] === 'json' || (columnTypeMap[f] || '').includes('json')) &&
-          parseJsonArrayValue(val).length === 0)
-      ) {
+      if (val === '' || val === null || val === undefined) {
         setErrorMsg(`${labels[f] || f} талбарыг бөглөнө үү.`);
         setInvalidCell({ row: idx, field: f });
         const el = inputRefs.current[`${idx}-${fields.indexOf(f)}`];
@@ -2419,35 +2293,24 @@ function InlineTransactionTable(
     const invalid = invalidCell && invalidCell.row === idx && invalidCell.field === f;
     const resolvedAutoConfig = getAutoSelectConfig(f, rows[idx]);
     const resolvedConfig = relationConfigMap[f] || resolvedAutoConfig?.config;
-    const fieldType = fieldInputTypes[f];
-    const isJsonField = fieldType === 'json';
     if (fieldDisabled) {
-      let display;
-      if (isJsonField) {
-        const values = parseJsonArrayValue(val);
-        const labels = values
-          .map((item) => resolveRelationLabel(f, item, resolvedConfig))
-          .filter((item) => item !== undefined && item !== null && item !== '');
-        display = labels.length ? labels.join(', ') : values.join(', ');
-      } else {
-        display = typeof val === 'object' ? val.label || val.value : val;
-        const rawVal = typeof val === 'object' ? val.value : val;
-        const relationRow = rawVal !== undefined ? getRelationRow(f, rawVal) : null;
-        if (resolvedConfig && relationRow) {
-          const parts = [rawVal];
-          (resolvedConfig.displayFields || []).forEach((df) => {
-            if (relationRow[df] !== undefined) parts.push(relationRow[df]);
-          });
-          display = parts.join(' - ');
-        } else if (viewSourceMap[f] && relationRow) {
-          const cfg = viewDisplays[viewSourceMap[f]] || {};
-          const parts = [rawVal];
-          (cfg.displayFields || []).forEach((df) => {
-            if (relationRow[df] !== undefined) parts.push(relationRow[df]);
-          });
-          display = parts.join(' - ');
-        }
-      }
+      let display = typeof val === 'object' ? val.label || val.value : val;
+      const rawVal = typeof val === 'object' ? val.value : val;
+      const relationRow = rawVal !== undefined ? getRelationRow(f, rawVal) : null;
+      if (resolvedConfig && relationRow) {
+        const parts = [rawVal];
+        (resolvedConfig.displayFields || []).forEach((df) => {
+          if (relationRow[df] !== undefined) parts.push(relationRow[df]);
+        });
+        display = parts.join(' - ');
+      } else if (viewSourceMap[f] && relationRow) {
+        const cfg = viewDisplays[viewSourceMap[f]] || {};
+        const parts = [rawVal];
+        (cfg.displayFields || []).forEach((df) => {
+          if (relationRow[df] !== undefined) parts.push(relationRow[df]);
+        });
+        display = parts.join(' - ');
+      } 
       const readonlyStyle = {
         ...inputStyle,
         width: 'fit-content',
@@ -2515,20 +2378,6 @@ function InlineTransactionTable(
         />
       );
     }
-    if (isJsonField) {
-      const options = Array.isArray(relations[f]) ? relations[f] : [];
-      const valueArray = parseJsonArrayValue(val);
-      return (
-        <JsonMultiSelect
-          value={valueArray}
-          options={options}
-          onChange={(vals) => handleChange(idx, f, vals)}
-          resolveLabel={(v) => resolveRelationLabel(f, v, resolvedConfig)}
-          allowCustomValues={options.length === 0}
-          disabled={readOnly}
-        />
-      );
-    }
     if (Array.isArray(relations[f])) {
       const inputVal = typeof val === 'object' ? val.value : val;
       const filteredOptions = filterRelationOptions(rows[idx], f, relations[f]);
@@ -2590,6 +2439,7 @@ function InlineTransactionTable(
         />
       );
     }
+    const fieldType = fieldInputTypes[f];
     const rawVal = typeof val === 'object' ? val.value : val;
     const normalizedVal =
       fieldType === 'date'

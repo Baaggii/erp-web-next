@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef, useContext, memo, useCallback } from 'react';
 import AsyncSearchSelect from './AsyncSearchSelect.jsx';
-import JsonMultiSelect from './JsonMultiSelect.jsx';
 import Modal from './Modal.jsx';
 import InlineTransactionTable from './InlineTransactionTable.jsx';
 import RowDetailModal from './RowDetailModal.jsx';
@@ -439,57 +438,6 @@ const RowFormModal = function RowFormModal({
     return lookup;
   }, [relationsKey, columnCaseMapKey]);
 
-  const resolveRelationLabel = React.useCallback(
-    (column, value, overrideConfig = null) => {
-      if (value === undefined || value === null) return '';
-      const labelMap =
-        relationOptionLabelLookup[column] ||
-        relationOptionLabelLookup[String(column).toLowerCase()];
-      const normalizedValueKey = normalizeRelationOptionKey(value);
-      if (normalizedValueKey && labelMap && labelMap[normalizedValueKey] !== undefined) {
-        return labelMap[normalizedValueKey];
-      }
-      const cfg = overrideConfig || relationConfigMap[column];
-      const relRow = relationData[column]?.[value];
-      if (cfg && relRow) {
-        const parts = [];
-        const identifier = getRowValueCaseInsensitive(relRow, cfg.idField || cfg.column);
-        if (identifier !== undefined && identifier !== null) {
-          parts.push(identifier);
-        }
-        (cfg.displayFields || []).forEach((df) => {
-          if (relRow[df] !== undefined && relRow[df] !== null && relRow[df] !== '') {
-            parts.push(relRow[df]);
-          }
-        });
-        if (parts.length > 0) return parts.join(' - ');
-      }
-      if (viewSourceMap[column] && relRow) {
-        const cfg = viewDisplays[viewSourceMap[column]] || {};
-        const parts = [];
-        const identifier = getRowValueCaseInsensitive(relRow, cfg.idField || column);
-        if (identifier !== undefined && identifier !== null) {
-          parts.push(identifier);
-        }
-        (cfg.displayFields || []).forEach((df) => {
-          if (relRow[df] !== undefined && relRow[df] !== null && relRow[df] !== '') {
-            parts.push(relRow[df]);
-          }
-        });
-        if (parts.length > 0) return parts.join(' - ');
-      }
-      return typeof value === 'object' ? JSON.stringify(value) : String(value);
-    },
-    [
-      relationOptionLabelLookup,
-      relationConfigMap,
-      relationData,
-      viewSourceMap,
-      viewDisplays,
-      getRowValueCaseInsensitive,
-    ],
-  );
-
   const tableRelationsConfig = React.useMemo(() => {
     if (!table) return {};
     const sources = [generalConfig?.tableRelations, general?.tableRelations, cfg?.tableRelations];
@@ -725,36 +673,6 @@ const RowFormModal = function RowFormModal({
     });
     return map;
   }, [tableColumns, columnCaseMap, columnCaseMapKey]);
-
-  const parseJsonArrayValue = (value) => {
-    if (Array.isArray(value)) return value.filter((v) => v !== undefined);
-    if (value === null || value === undefined || value === '') return [];
-    if (typeof value === 'string') {
-      const trimmed = value.trim();
-      if (!trimmed) return [];
-      try {
-        const parsed = JSON.parse(trimmed);
-        if (Array.isArray(parsed)) return parsed;
-        if (parsed === null || parsed === undefined || parsed === '') return [];
-        return [parsed];
-      } catch {
-        if (trimmed.includes(',')) {
-          return trimmed
-            .split(',')
-            .map((entry) => entry.trim())
-            .filter(Boolean);
-        }
-        return [trimmed];
-      }
-    }
-    return [value];
-  };
-
-  const serializeJsonValue = (value) => {
-    if (value === undefined || value === null || value === '') return '';
-    if (Array.isArray(value)) return JSON.stringify(value);
-    return JSON.stringify(parseJsonArrayValue(value));
-  };
   const [formVals, setFormVals] = useState(() => {
     const init = {};
     const now = new Date();
@@ -772,9 +690,7 @@ const RowFormModal = function RowFormModal({
       const missing =
         !row || rowValue === undefined || rowValue === '';
       let val;
-      if (typ === 'json') {
-        val = parseJsonArrayValue(sourceValue);
-      } else if (placeholder) {
+      if (placeholder) {
         val = normalizeDateInput(String(sourceValue ?? ''), placeholder);
       } else if (typ === 'number') {
         val = formatNumericValue(c, sourceValue);
@@ -797,9 +713,7 @@ const RowFormModal = function RowFormModal({
         else if (companyIdSet.has(c) && company !== undefined)
           val = company;
       }
-      if (typ === 'json') {
-        val = Array.isArray(val) ? val : parseJsonArrayValue(val);
-      } else if (typ === 'number') {
+      if (typ === 'number') {
         val = formatNumericValue(c, val);
       } else if (placeholder) {
         val = normalizeDateInput(String(val ?? ''), placeholder);
@@ -2952,10 +2866,6 @@ const RowFormModal = function RowFormModal({
           const normalized = {};
           Object.entries(r).forEach(([k, v]) => {
             const raw = typeof v === 'object' && v !== null && 'value' in v ? v.value : v;
-            if (fieldTypeMap[k] === 'json') {
-              normalized[k] = serializeJsonValue(raw);
-              return;
-            }
             let val = normalizeDateInput(raw, placeholders[k]);
             if (totalAmountSet.has(k) || totalCurrencySet.has(k)) {
               val = normalizeNumberInput(val);
@@ -2963,13 +2873,10 @@ const RowFormModal = function RowFormModal({
             normalized[k] = val;
           });
           requiredFields.forEach((f) => {
-            const isJsonField = fieldTypeMap[f] === 'json';
-            const value = normalized[f];
             if (
               normalized[f] === '' ||
               normalized[f] === null ||
-              normalized[f] === undefined ||
-              (isJsonField && parseJsonArrayValue(value).length === 0)
+              normalized[f] === undefined
             )
               hasMissing = true;
             if (
@@ -3007,10 +2914,6 @@ const RowFormModal = function RowFormModal({
         }
         const normalizedExtra = {};
         Object.entries(mergedExtra).forEach(([k, v]) => {
-          if (fieldTypeMap[k] === 'json') {
-            normalizedExtra[k] = serializeJsonValue(v);
-            return;
-          }
           let val = normalizeDateInput(v, placeholders[k]);
           if (totalAmountSet.has(k) || totalCurrencySet.has(k)) {
             val = normalizeNumberInput(val);
@@ -3040,10 +2943,6 @@ const RowFormModal = function RowFormModal({
       }
       const normalized = {};
       Object.entries(merged).forEach(([k, v]) => {
-        if (fieldTypeMap[k] === 'json') {
-          normalized[k] = serializeJsonValue(v);
-          return;
-        }
         let val = normalizeDateInput(v, placeholders[k]);
         if (totalAmountSet.has(k) || totalCurrencySet.has(k)) {
           val = normalizeNumberInput(val);
@@ -3097,10 +2996,6 @@ const RowFormModal = function RowFormModal({
         const normalized = {};
         Object.entries(r).forEach(([k, v]) => {
           const raw = typeof v === 'object' && v !== null && 'value' in v ? v.value : v;
-          if (fieldTypeMap[k] === 'json') {
-            normalized[k] = serializeJsonValue(raw);
-            return;
-          }
           let val = normalizeDateInput(raw, placeholders[k]);
           if (totalAmountSet.has(k) || totalCurrencySet.has(k)) {
             val = normalizeNumberInput(val);
@@ -3108,13 +3003,10 @@ const RowFormModal = function RowFormModal({
           normalized[k] = val;
         });
         requiredFields.forEach((f) => {
-          const isJsonField = fieldTypeMap[f] === 'json';
-          const value = normalized[f];
           if (
             normalized[f] === '' ||
             normalized[f] === null ||
-            normalized[f] === undefined ||
-            (isJsonField && parseJsonArrayValue(value).length === 0)
+            normalized[f] === undefined
           )
             hasMissing = true;
           if (
@@ -3196,10 +3088,7 @@ const RowFormModal = function RowFormModal({
     requiredFields.forEach((f) => {
       if (
         columns.includes(f) &&
-        (formVals[f] === '' ||
-          formVals[f] === null ||
-          formVals[f] === undefined ||
-          (fieldTypeMap[f] === 'json' && parseJsonArrayValue(formVals[f]).length === 0))
+        (formVals[f] === '' || formVals[f] === null || formVals[f] === undefined)
       ) {
         errs[f] = 'Утга оруулна уу';
       }
@@ -3217,10 +3106,6 @@ const RowFormModal = function RowFormModal({
       }
       const normalized = {};
       Object.entries(merged).forEach(([k, v]) => {
-        if (fieldTypeMap[k] === 'json') {
-          normalized[k] = serializeJsonValue(v);
-          return;
-        }
         let val = normalizeDateInput(v, placeholders[k]);
         if (totalAmountSet.has(k) || totalCurrencySet.has(k)) {
           val = normalizeNumberInput(val);
@@ -3259,56 +3144,84 @@ const RowFormModal = function RowFormModal({
         ? '1'
         : (1 / 10 ** numericScale).toFixed(numericScale);
     const isNumericField = fieldTypeMap[c] === 'number';
-    const isJsonField = fieldTypeMap[c] === 'json';
     const autoSelectForField = getAutoSelectConfig(c);
     const resolvedRelationConfig = relationConfigMap[c] || autoSelectForField?.config;
-    const jsonValue = isJsonField ? parseJsonArrayValue(formVals[c]) : null;
 
     if (disabled) {
       const raw = isColumn ? formVals[c] : extraVals[c];
-      const val = typeof raw === 'object' && raw !== null && !Array.isArray(raw) ? raw.value : raw;
-      let display;
-      if (isJsonField) {
-        const values = parseJsonArrayValue(raw);
-        const labels = values
-          .map((item) => resolveRelationLabel(c, item, resolvedRelationConfig))
-          .filter((item) => item !== undefined && item !== null && item !== '');
-        display = labels.length ? labels.join(', ') : values.join(', ');
-      } else {
-        display = typeof raw === 'object' && raw !== null ? raw.label || val : val;
-        const normalizedValueKey = normalizeRelationOptionKey(val);
-        let resolvedOptionLabel = false;
-        const labelMap =
-          relationOptionLabelLookup[c] || relationOptionLabelLookup[String(c).toLowerCase()];
-        if (normalizedValueKey && labelMap) {
-          const optionLabel = labelMap[normalizedValueKey];
-          if (optionLabel !== undefined) {
-            display = optionLabel;
-            resolvedOptionLabel = true;
-          }
+      const val = typeof raw === 'object' && raw !== null ? raw.value : raw;
+      let display = typeof raw === 'object' && raw !== null ? raw.label || val : val;
+      const normalizedValueKey = normalizeRelationOptionKey(val);
+      let resolvedOptionLabel = false;
+      const labelMap =
+        relationOptionLabelLookup[c] || relationOptionLabelLookup[String(c).toLowerCase()];
+      if (normalizedValueKey && labelMap) {
+        const optionLabel = labelMap[normalizedValueKey];
+        if (optionLabel !== undefined) {
+          display = optionLabel;
+          resolvedOptionLabel = true;
         }
-        if (
-          !resolvedOptionLabel &&
-          resolvedRelationConfig &&
-          val !== undefined &&
-          relationData[c]?.[val]
-        ) {
-          display = resolveRelationLabel(c, val, resolvedRelationConfig);
-        } else if (
-          !resolvedOptionLabel &&
-          viewSourceMap[c] &&
-          val !== undefined &&
-          relationData[c]?.[val]
-        ) {
-          display = resolveRelationLabel(c, val, resolvedRelationConfig);
-        } else if (
-          !resolvedOptionLabel &&
-          autoSelectForField?.config &&
-          val !== undefined &&
-          relationData[c]?.[val]
-        ) {
-          display = resolveRelationLabel(c, val, autoSelectForField?.config || {});
+      }
+      if (
+        !resolvedOptionLabel &&
+        resolvedRelationConfig &&
+        val !== undefined &&
+        relationData[c]?.[val]
+      ) {
+        const row = relationData[c][val];
+        const cfg = resolvedRelationConfig;
+        const parts = [];
+        const identifier = getRowValueCaseInsensitive(
+          row,
+          cfg.idField || cfg.column,
+        );
+        if (identifier !== undefined && identifier !== null) {
+          parts.push(identifier);
         }
+        if (parts.length === 0) parts.push(val);
+        (cfg.displayFields || []).forEach((df) => {
+          if (row[df] !== undefined) parts.push(row[df]);
+        });
+        display = parts.join(' - ');
+      } else if (
+        !resolvedOptionLabel &&
+        viewSourceMap[c] &&
+        val !== undefined &&
+        relationData[c]?.[val]
+      ) {
+        const row = relationData[c][val];
+        const cfg = viewDisplays[viewSourceMap[c]] || {};
+        const parts = [];
+        const identifier = getRowValueCaseInsensitive(
+          row,
+          cfg.idField || c,
+        );
+        if (identifier !== undefined && identifier !== null) {
+          parts.push(identifier);
+        }
+        if (parts.length === 0) parts.push(val);
+        (cfg.displayFields || []).forEach((df) => {
+          if (row[df] !== undefined) parts.push(row[df]);
+        });
+        display = parts.join(' - ');
+      } else if (
+        !resolvedOptionLabel &&
+        autoSelectForField?.config &&
+        val !== undefined &&
+        relationData[c]?.[val]
+      ) {
+        const row = relationData[c][val];
+        const cfg = autoSelectForField?.config || {};
+        const parts = [];
+        const identifier = getRowValueCaseInsensitive(row, cfg.idField);
+        if (identifier !== undefined && identifier !== null) {
+          parts.push(identifier);
+        }
+        if (parts.length === 0) parts.push(val);
+        (cfg.displayFields || []).forEach((df) => {
+          if (row[df] !== undefined) parts.push(row[df]);
+        });
+        display = parts.join(' - ');
       }
       if (isNumericField && display !== undefined && display !== null && display !== '') {
         display = formatNumericValue(c, display);
@@ -3343,21 +3256,7 @@ const RowFormModal = function RowFormModal({
       );
     }
 
-    const control = isJsonField ? (
-      <JsonMultiSelect
-        value={jsonValue}
-        options={Array.isArray(relations[c]) ? relations[c] : []}
-        onChange={(vals) => {
-          notifyAutoResetGuardOnEdit(c);
-          setFormValuesWithGenerated((prev) => ({ ...prev, [c]: vals }));
-          setErrors((er) => ({ ...er, [c]: undefined }));
-        }}
-        allowCustomValues={!Array.isArray(relations[c]) || relations[c].length === 0}
-        resolveLabel={(val) => resolveRelationLabel(c, val, resolvedRelationConfig)}
-        disabled={disabled}
-        placeholder={tip}
-      />
-    ) : resolvedRelationConfig ? (
+    const control = resolvedRelationConfig ? (
       (() => {
         const conf = resolvedRelationConfig;
         const comboFilters =
