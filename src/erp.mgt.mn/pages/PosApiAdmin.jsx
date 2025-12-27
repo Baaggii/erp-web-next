@@ -3961,6 +3961,14 @@ export default function PosApiAdmin() {
     });
   }, [requestFieldDisplay, variationColumns, variationFieldSets]);
 
+  const visibleRequestFieldPaths = useMemo(
+    () =>
+      visibleRequestFieldItems
+        .map((entry) => normalizeHintEntry(entry).field)
+        .filter(Boolean),
+    [visibleRequestFieldItems],
+  );
+
   const aggregationFieldOptions = useMemo(() => {
     if (requestFieldDisplay.state !== 'ok') return [];
     const seen = new Set();
@@ -7777,7 +7785,7 @@ export default function PosApiAdmin() {
         normalizedSelection
         && normalizedSelection.type
         && normalizedSelection.type !== (previousNormalized?.type || current.type || current.mode);
-      if (normalizedSelection && (hasMappingValue(normalizedSelection) || typeChanged)) {
+      if (normalizedSelection && (hasMappingValue(normalizedSelection) || typeChanged || aggregationUpdated)) {
         const previousNormalized = normalizeRequestFieldMappingEntry(current, { defaultApplyToBody });
         const alreadyEqual = JSON.stringify(previousNormalized || {}) === JSON.stringify(normalizedSelection);
         nextSelections[fieldPath] = normalizedSelection;
@@ -7799,6 +7807,36 @@ export default function PosApiAdmin() {
 
       syncRequestSampleFromSelections(nextSelections);
       const serialized = serializeRequestFieldSelections(nextSelections, { defaultApplyToBody });
+      setFormState((prevState) => ({
+        ...prevState,
+        requestEnvMap: buildRequestEnvMap(nextSelections),
+        requestFieldMappings: serialized,
+        requestMappings: serializeRequestMappings(nextSelections),
+      }));
+      return nextSelections;
+    });
+  }
+
+  function setApplyToBodyForAll(applyToBody) {
+    setRequestFieldValues((prev) => {
+      const nextSelections = { ...prev };
+      let changed = false;
+      visibleRequestFieldItems.forEach((entry) => {
+        const normalized = normalizeHintEntry(entry);
+        const fieldPath = normalized.field;
+        if (!fieldPath) return;
+        const defaultApplyToBody = entry.source !== 'parameter';
+        const existing = nextSelections[fieldPath] || {};
+        const normalizedExisting = normalizeRequestFieldMappingEntry(existing, { defaultApplyToBody });
+        const currentApply = normalizedExisting?.applyToBody ?? defaultApplyToBody;
+        if (currentApply === applyToBody) return;
+        nextSelections[fieldPath] = { ...existing, applyToBody };
+        changed = true;
+      });
+      if (!changed) return prev;
+
+      syncRequestSampleFromSelections(nextSelections);
+      const serialized = serializeRequestFieldSelections(nextSelections);
       setFormState((prevState) => ({
         ...prevState,
         requestEnvMap: buildRequestEnvMap(nextSelections),
@@ -7944,9 +7982,7 @@ export default function PosApiAdmin() {
     setRequestFieldMeta((prev) => {
       let changed = false;
       const next = { ...prev };
-      visibleRequestFieldItems.forEach((entry) => {
-        const normalized = normalizeHintEntry(entry);
-        const fieldPath = normalized.field;
+      visibleRequestFieldPaths.forEach((fieldPath) => {
         if (!fieldPath) return;
         const existing = next[fieldPath] || { requiredByVariation: {}, defaultByVariation: {} };
         const requiredByVariation = { ...(existing.requiredByVariation || {}) };
@@ -7966,11 +8002,10 @@ export default function PosApiAdmin() {
         if (!entry || typeof entry !== 'object') return entry;
         if ((entry.key || entry.name) !== variationKey) return entry;
         const requiredFields = entry.requiredFields ? { ...entry.requiredFields } : {};
-        visibleRequestFieldItems.forEach((item) => {
-          const normalized = normalizeHintEntry(item);
-          const fieldPath = normalized.field;
+        visibleRequestFieldPaths.forEach((fieldPath) => {
           if (!fieldPath) return;
-          if (required === false && normalized.requiredCommon) return;
+          const meta = requestFieldMeta[fieldPath] || {};
+          if (required === false && meta.requiredCommon) return;
           requiredFields[fieldPath] = required;
         });
         changed = true;
@@ -7982,13 +8017,169 @@ export default function PosApiAdmin() {
           if (!entry || typeof entry !== 'object') return entry;
           if (entry.key !== variationKey) return entry;
           const requiredFields = entry.requiredFields ? { ...entry.requiredFields } : {};
-          visibleRequestFieldItems.forEach((item) => {
-            const normalized = normalizeHintEntry(item);
-            const fieldPath = normalized.field;
+          visibleRequestFieldPaths.forEach((fieldPath) => {
             if (!fieldPath) return;
-            if (required === false && normalized.requiredCommon) return;
+            const meta = requestFieldMeta[fieldPath] || {};
+            if (required === false && meta.requiredCommon) return;
             requiredFields[fieldPath] = required;
           });
+          changed = true;
+          return { ...entry, requiredFields };
+        })
+        : [];
+
+      return changed ? { ...prev, variations, requestFieldVariations } : prev;
+    });
+  }
+
+  function setUseInTransactionForAll(value) {
+    setRequestFieldMeta((prev) => {
+      let changed = false;
+      const next = { ...prev };
+      visibleRequestFieldPaths.forEach((fieldPath) => {
+        if (!fieldPath) return;
+        const current = next[fieldPath] || { requiredByVariation: {}, defaultByVariation: {} };
+        const defaultByVariation = { ...current.defaultByVariation };
+        Object.entries(defaultByVariation).forEach(([variationKey, entry]) => {
+          const parsed = parseDefaultValueEntry(entry);
+          const nextEntry = buildDefaultValueEntry(parsed.value, value);
+          if (nextEntry !== undefined) {
+            defaultByVariation[variationKey] = nextEntry;
+          } else {
+            delete defaultByVariation[variationKey];
+          }
+        });
+        if (
+          current.useInTransaction === value
+          && JSON.stringify(defaultByVariation) === JSON.stringify(current.defaultByVariation || {})
+        ) {
+          return;
+        }
+        next[fieldPath] = {
+          ...current,
+          useInTransaction: value,
+          defaultByVariation,
+        };
+        changed = true;
+      });
+      return changed ? next : prev;
+    });
+
+    setFormState((prev) => {
+      let changed = false;
+      const variations = Array.isArray(prev.variations) ? prev.variations.map((entry) => {
+        if (!entry || typeof entry !== 'object') return entry;
+        const defaults = entry.defaultValues ? { ...entry.defaultValues } : {};
+        let defaultsChanged = false;
+        visibleRequestFieldPaths.forEach((fieldPath) => {
+          if (!fieldPath) return;
+          if (!Object.prototype.hasOwnProperty.call(defaults, fieldPath)) return;
+          const parsed = parseDefaultValueEntry(defaults[fieldPath]);
+          const nextEntry = buildDefaultValueEntry(parsed.value, value);
+          if (nextEntry !== undefined) {
+            if (JSON.stringify(defaults[fieldPath]) !== JSON.stringify(nextEntry)) {
+              defaults[fieldPath] = nextEntry;
+              defaultsChanged = true;
+            }
+          } else if (fieldPath in defaults) {
+            delete defaults[fieldPath];
+            defaultsChanged = true;
+          }
+        });
+        if (!defaultsChanged) return entry;
+        changed = true;
+        return { ...entry, defaultValues: defaults };
+      }) : [];
+
+      const requestFieldVariations = Array.isArray(prev.requestFieldVariations)
+        ? prev.requestFieldVariations.map((entry) => {
+          if (!entry || typeof entry !== 'object') return entry;
+          const defaults = entry.defaultValues ? { ...entry.defaultValues } : {};
+          let defaultsChanged = false;
+          visibleRequestFieldPaths.forEach((fieldPath) => {
+            if (!fieldPath) return;
+            if (!Object.prototype.hasOwnProperty.call(defaults, fieldPath)) return;
+            const parsed = parseDefaultValueEntry(defaults[fieldPath]);
+            const nextEntry = buildDefaultValueEntry(parsed.value, value);
+            if (nextEntry !== undefined) {
+              if (JSON.stringify(defaults[fieldPath]) !== JSON.stringify(nextEntry)) {
+                defaults[fieldPath] = nextEntry;
+                defaultsChanged = true;
+              }
+            } else if (fieldPath in defaults) {
+              delete defaults[fieldPath];
+              defaultsChanged = true;
+            }
+          });
+          if (!defaultsChanged) return entry;
+          changed = true;
+          return { ...entry, defaultValues: defaults };
+        })
+        : [];
+
+      return changed ? { ...prev, variations, requestFieldVariations } : prev;
+    });
+  }
+
+  function setCommonRequiredForAll(required) {
+    setRequestFieldMeta((prev) => {
+      let changed = false;
+      const next = { ...prev };
+      visibleRequestFieldPaths.forEach((fieldPath) => {
+        if (!fieldPath) return;
+        const current = next[fieldPath] || { requiredByVariation: {}, defaultByVariation: {} };
+        const requiredByVariation = {};
+        variationColumns.forEach((variation) => {
+          if (!variation.key) return;
+          requiredByVariation[variation.key] = required;
+        });
+        if (
+          current.requiredCommon === required
+          && JSON.stringify(requiredByVariation) === JSON.stringify(current.requiredByVariation || {})
+        ) {
+          return;
+        }
+        next[fieldPath] = {
+          ...current,
+          requiredCommon: required,
+          requiredByVariation,
+        };
+        changed = true;
+      });
+      return changed ? next : prev;
+    });
+
+    setFormState((prev) => {
+      let changed = false;
+      const variations = Array.isArray(prev.variations) ? prev.variations.map((entry) => {
+        if (!entry || typeof entry !== 'object') return entry;
+        const requiredFields = entry.requiredFields ? { ...entry.requiredFields } : {};
+        let localChanged = false;
+        visibleRequestFieldPaths.forEach((fieldPath) => {
+          if (!fieldPath) return;
+          if (requiredFields[fieldPath] !== required) {
+            requiredFields[fieldPath] = required;
+            localChanged = true;
+          }
+        });
+        if (!localChanged) return entry;
+        changed = true;
+        return { ...entry, requiredFields };
+      }) : [];
+
+      const requestFieldVariations = Array.isArray(prev.requestFieldVariations)
+        ? prev.requestFieldVariations.map((entry) => {
+          if (!entry || typeof entry !== 'object') return entry;
+          const requiredFields = entry.requiredFields ? { ...entry.requiredFields } : {};
+          let localChanged = false;
+          visibleRequestFieldPaths.forEach((fieldPath) => {
+            if (!fieldPath) return;
+            if (requiredFields[fieldPath] !== required) {
+              requiredFields[fieldPath] = required;
+              localChanged = true;
+            }
+          });
+          if (!localChanged) return entry;
           changed = true;
           return { ...entry, requiredFields };
         })
@@ -9328,8 +9519,48 @@ export default function PosApiAdmin() {
                   >
                     <span style={styles.requestFieldHeaderCell}>Field</span>
                     <span style={styles.requestFieldHeaderCell}>Description</span>
-                    <span style={styles.requestFieldHeaderCell}>Use in transaction</span>
-                    <span style={styles.requestFieldHeaderCell}>Common required</span>
+                    <span style={{ ...styles.requestFieldHeaderCell, display: 'flex', gap: '0.35rem', alignItems: 'center' }}>
+                      <span>Use in transaction</span>
+                      <div style={{ display: 'flex', gap: '0.25rem' }}>
+                        <button
+                          type="button"
+                          style={styles.miniToggleButton}
+                          onClick={() => setUseInTransactionForAll(true)}
+                          title="Apply variation defaults for all fields"
+                        >
+                          All
+                        </button>
+                        <button
+                          type="button"
+                          style={styles.miniToggleButton}
+                          onClick={() => setUseInTransactionForAll(false)}
+                          title="Disable variation defaults for all fields"
+                        >
+                          None
+                        </button>
+                      </div>
+                    </span>
+                    <span style={{ ...styles.requestFieldHeaderCell, display: 'flex', gap: '0.35rem', alignItems: 'center' }}>
+                      <span>Common required</span>
+                      <div style={{ display: 'flex', gap: '0.25rem' }}>
+                        <button
+                          type="button"
+                          style={styles.miniToggleButton}
+                          onClick={() => setCommonRequiredForAll(true)}
+                          title="Mark all fields as required"
+                        >
+                          All
+                        </button>
+                        <button
+                          type="button"
+                          style={styles.miniToggleButton}
+                          onClick={() => setCommonRequiredForAll(false)}
+                          title="Clear required flag for all fields"
+                        >
+                          None
+                        </button>
+                      </div>
+                    </span>
                     {variationColumns.map((variation) => (
                       <span
                         key={`variation-head-${variation.key}`}
