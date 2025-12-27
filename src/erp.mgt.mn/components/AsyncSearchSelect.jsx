@@ -40,13 +40,42 @@ export default function AsyncSearchSelect({
   companyId,
   shouldFetch = true,
   filters = {},
+  isMulti = false,
   ...rest
 }) {
   const { company } = useContext(AuthContext);
   const effectiveCompanyId = companyId ?? company;
-  const initialVal = toInputString(extractPrimitiveValue(value));
+  const normalizeMultiValues = useCallback((raw) => {
+    if (!Array.isArray(raw)) return [];
+    return raw
+      .filter((item) => item !== undefined && item !== null && item !== '')
+      .map((item) => {
+        if (typeof item === 'object' && item !== null) {
+          if (Object.prototype.hasOwnProperty.call(item, 'value')) {
+            return {
+              value: item.value,
+              label:
+                item.label ??
+                (item.value !== undefined && item.value !== null
+                  ? String(item.value)
+                  : ''),
+            };
+          }
+          if (Object.prototype.hasOwnProperty.call(item, 'id')) {
+            return {
+              value: item.id,
+              label:
+                item.label ??
+                (item.id !== undefined && item.id !== null ? String(item.id) : ''),
+            };
+          }
+        }
+        return { value: item, label: String(item) };
+      });
+  }, []);
+  const initialVal = isMulti ? '' : toInputString(extractPrimitiveValue(value));
   const initialLabel =
-    typeof value === 'object' && value !== null ? value.label ?? '' : '';
+    !isMulti && typeof value === 'object' && value !== null ? value.label ?? '' : '';
   const [input, setInput] = useState(initialVal);
   const [label, setLabel] = useState(initialLabel);
   const [options, setOptions] = useState([]);
@@ -59,6 +88,10 @@ export default function AsyncSearchSelect({
   const listRef = useRef(null);
   const match = options.find((o) => String(o.value) === String(input));
   const displayLabel = match ? match.label : label;
+  const selectedList = useMemo(
+    () => normalizeMultiValues(value),
+    [normalizeMultiValues, value],
+  );
   const internalRef = useRef(null);
   const chosenRef = useRef(null);
   const actionRef = useRef(null);
@@ -413,6 +446,12 @@ export default function AsyncSearchSelect({
   }
 
   useEffect(() => {
+    if (isMulti) {
+      setInput('');
+      setLabel('');
+      forcedLocalSearchRef.current = '';
+      return;
+    }
     const primitiveValue = extractPrimitiveValue(value);
     if (typeof value === 'object' && value !== null) {
       setInput(toInputString(primitiveValue));
@@ -424,7 +463,7 @@ export default function AsyncSearchSelect({
     if (isEmptyInputValue(primitiveValue)) {
       forcedLocalSearchRef.current = '';
     }
-  }, [value]);
+  }, [isMulti, value]);
 
   useEffect(() => {
     if (!show) {
@@ -640,15 +679,25 @@ export default function AsyncSearchSelect({
     const optIndex = options.indexOf(opt);
     if (optIndex >= 0) setHighlight(optIndex);
     e.preventDefault();
-    onChange(opt.value, opt.label);
-    setInput(String(opt.value));
-    setLabel(opt.label || '');
-    if (internalRef.current) internalRef.current.value = String(opt.value);
-    chosenRef.current = opt;
-    actionRef.current = { type: 'enter', matched: true, option: opt, query };
-    setShow(false);
-    if (onSelect) {
-      setTimeout(() => onSelect(opt), 0);
+    if (isMulti) {
+      const existingSet = new Set(selectedList.map((item) => String(item.value)));
+      if (!existingSet.has(String(opt.value))) {
+        const next = [...selectedList.map((item) => item.value), opt.value];
+        onChange(next, opt.label);
+      }
+      setInput('');
+      setLabel('');
+    } else {
+      onChange(opt.value, opt.label);
+      setInput(String(opt.value));
+      setLabel(opt.label || '');
+      if (internalRef.current) internalRef.current.value = String(opt.value);
+      chosenRef.current = opt;
+      actionRef.current = { type: 'enter', matched: true, option: opt, query };
+      setShow(false);
+      if (onSelect) {
+        setTimeout(() => onSelect(opt), 0);
+      }
     }
   }
 
@@ -705,15 +754,27 @@ export default function AsyncSearchSelect({
                     key={opt.value}
                     onMouseDown={(event) => {
                       event.preventDefault();
-                      onChange(opt.value, opt.label);
-                      setInput(String(opt.value));
-                      setLabel(opt.label || '');
-                      if (internalRef.current)
-                        internalRef.current.value = String(opt.value);
-                      chosenRef.current = opt;
-                      setShow(false);
-                      if (onSelect) {
-                        setTimeout(() => onSelect(opt), 0);
+                      if (isMulti) {
+                        const existingSet = new Set(
+                          selectedList.map((item) => String(item.value)),
+                        );
+                        if (!existingSet.has(String(opt.value))) {
+                          const next = [...selectedList.map((item) => item.value), opt.value];
+                          onChange(next, opt.label);
+                        }
+                        setInput('');
+                        setLabel('');
+                      } else {
+                        onChange(opt.value, opt.label);
+                        setInput(String(opt.value));
+                        setLabel(opt.label || '');
+                        if (internalRef.current)
+                          internalRef.current.value = String(opt.value);
+                        chosenRef.current = opt;
+                        setShow(false);
+                        if (onSelect) {
+                          setTimeout(() => onSelect(opt), 0);
+                        }
                       }
                     }}
                     onMouseEnter={() => setHighlight(idx)}
@@ -764,7 +825,7 @@ export default function AsyncSearchSelect({
           forcedLocalSearchRef.current = '';
           setInput(e.target.value);
           setLabel('');
-          onChange(e.target.value);
+          if (!isMulti) onChange(e.target.value);
           setShow(true);
           setHighlight(-1);
         }}
@@ -815,8 +876,47 @@ export default function AsyncSearchSelect({
         title={input}
         {...rest}
       />
+      {isMulti && selectedList.length > 0 && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.25rem', marginTop: '0.25rem' }}>
+          {selectedList.map((item) => (
+            <span
+              key={String(item.value)}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '0.25rem',
+                padding: '0.1rem 0.4rem',
+                background: '#e5e7eb',
+                borderRadius: '9999px',
+                fontSize: '0.85rem',
+              }}
+            >
+              {item.label || item.value}
+              <button
+                type="button"
+                onClick={() => {
+                  const next = selectedList
+                    .filter((opt) => String(opt.value) !== String(item.value))
+                    .map((opt) => opt.value);
+                  onChange(next);
+                }}
+                style={{
+                  border: 'none',
+                  background: 'transparent',
+                  cursor: 'pointer',
+                  padding: 0,
+                  lineHeight: 1,
+                }}
+                aria-label="Remove"
+              >
+                ×
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
       {dropdown}
-      {displayLabel && (
+      {!isMulti && displayLabel && (
         <div style={{ fontSize: '0.8rem', color: '#555' }}>{displayLabel}</div>
       )}
     </div>

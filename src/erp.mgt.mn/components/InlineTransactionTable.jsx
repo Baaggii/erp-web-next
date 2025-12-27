@@ -11,6 +11,7 @@ import useGeneralConfig from '../hooks/useGeneralConfig.js';
 import AsyncSearchSelect from './AsyncSearchSelect.jsx';
 import RowDetailModal from './RowDetailModal.jsx';
 import RowImageUploadModal from './RowImageUploadModal.jsx';
+import TagMultiInput from './TagMultiInput.jsx';
 import buildImageName from '../utils/buildImageName.js';
 import slugify from '../utils/slugify.js';
 import formatTimestamp from '../utils/formatTimestamp.js';
@@ -977,6 +978,8 @@ function InlineTransactionTable(
         totalCurrencySet.has(f)
       ) {
         map[f] = 'number';
+      } else if (typ === 'json') {
+        map[f] = 'json';
       } else if (lower.includes('email')) map[f] = 'email';
       else if (lower.includes('phone')) map[f] = 'tel';
       else map[f] = 'text';
@@ -2293,11 +2296,23 @@ function InlineTransactionTable(
     const invalid = invalidCell && invalidCell.row === idx && invalidCell.field === f;
     const resolvedAutoConfig = getAutoSelectConfig(f, rows[idx]);
     const resolvedConfig = relationConfigMap[f] || resolvedAutoConfig?.config;
+    const isJsonField =
+      fieldTypeMap[f] === 'json' || fieldInputTypes[f] === 'json';
     if (fieldDisabled) {
       let display = typeof val === 'object' ? val.label || val.value : val;
       const rawVal = typeof val === 'object' ? val.value : val;
       const relationRow = rawVal !== undefined ? getRelationRow(f, rawVal) : null;
-      if (resolvedConfig && relationRow) {
+      if (isJsonField) {
+        const arr = Array.isArray(val)
+          ? val
+          : val === undefined || val === null || val === ''
+          ? []
+          : [val];
+        display = arr
+          .filter((item) => item !== undefined && item !== null && item !== '')
+          .map((item) => (typeof item === 'string' ? item : String(item)))
+          .join(', ');
+      } else if (resolvedConfig && relationRow) {
         const parts = [rawVal];
         (resolvedConfig.displayFields || []).forEach((df) => {
           if (relationRow[df] !== undefined) parts.push(relationRow[df]);
@@ -2344,6 +2359,52 @@ function InlineTransactionTable(
         return normalizeDateInput(displayVal, 'YYYY-MM-DD');
       }
       return displayVal;
+    }
+    if (isJsonField) {
+      const currentValues = Array.isArray(val)
+        ? val
+        : val === undefined || val === null || val === ''
+        ? []
+        : [val];
+      if (resolvedConfig) {
+        const comboFilters =
+          resolvedAutoConfig?.filters ?? resolveCombinationFilters(rows[idx], f, resolvedConfig);
+        const hasCombination = Boolean(
+          resolvedConfig?.combinationSourceColumn && resolvedConfig?.combinationTargetColumn,
+        );
+        const combinationReady =
+          resolvedAutoConfig?.combinationReady ??
+          isCombinationFilterReady(hasCombination, resolvedConfig?.combinationTargetColumn, comboFilters);
+        return (
+          <AsyncSearchSelect
+            table={resolvedConfig.table}
+            searchColumn={resolvedConfig.idField || resolvedConfig.column}
+            searchColumns={[resolvedConfig.idField || resolvedConfig.column, ...(resolvedConfig.displayFields || [])]}
+            labelFields={resolvedConfig.displayFields || []}
+            value={currentValues}
+            onChange={(v) => handleChange(idx, f, Array.isArray(v) ? v : [])}
+            onSelect={(opt) => handleOptionSelect(idx, colIdx, opt)}
+            inputRef={(el) => (inputRefs.current[`${idx}-${colIdx}`] = el)}
+            onKeyDown={(e) => handleKeyDown(e, idx, colIdx)}
+            onFocus={() => handleFocusField(f)}
+            className={invalid ? 'border-red-500 bg-red-100' : ''}
+            inputStyle={inputStyle}
+            companyId={company}
+            filters={comboFilters || undefined}
+            shouldFetch={combinationReady}
+            isMulti
+          />
+        );
+      }
+      return (
+        <TagMultiInput
+          value={currentValues}
+          onChange={(vals) => handleChange(idx, f, Array.isArray(vals) ? vals : [])}
+          placeholder={labels[f] || f}
+          inputStyle={inputStyle}
+          onFocus={() => handleFocusField(f)}
+        />
+      );
     }
     if (resolvedConfig) {
       const conf = resolvedConfig;
