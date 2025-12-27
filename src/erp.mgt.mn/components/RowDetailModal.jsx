@@ -12,7 +12,6 @@ export default function RowDetailModal({
   references = [],
   labels = {},
   fieldTypeMap = {},
-  jsonFields = [],
 }) {
   const { t } = useTranslation();
   const safeRow = row || {};
@@ -29,38 +28,6 @@ export default function RowDetailModal({
     });
     return map;
   }, [cols, fieldTypeMap]);
-  const jsonFieldSet = React.useMemo(
-    () => new Set((jsonFields || []).map((f) => String(f))),
-    [jsonFields],
-  );
-  const parseMaybeJson = React.useCallback((value) => {
-    if (typeof value !== 'string') return value;
-    const trimmed = value.trim();
-    if (!trimmed) return value;
-    const first = trimmed[0];
-    const last = trimmed[trimmed.length - 1];
-    if (
-      (first === '[' && last === ']') ||
-      (first === '{' && last === '}') ||
-      (first === '"' && last === '"')
-    ) {
-      try {
-        return JSON.parse(trimmed);
-      } catch {
-        return value;
-      }
-    }
-    return value;
-  }, []);
-  const normalizeJsonArray = React.useCallback(
-    (column, value) => {
-      const parsed = jsonFieldSet.has(column) ? parseMaybeJson(value) : value;
-      if (Array.isArray(parsed)) return parsed;
-      if (parsed === undefined || parsed === null || parsed === '') return [];
-      return [parsed];
-    },
-    [jsonFieldSet, parseMaybeJson],
-  );
 
   if (!visible) return null;
 
@@ -69,21 +36,8 @@ export default function RowDetailModal({
     labelMap[col] = {};
     opts.forEach((o) => {
       labelMap[col][o.value] = o.label;
-      labelMap[col][String(o.value)] = o.label;
     });
   });
-  const resolveRelationValue = React.useCallback(
-    (column, value) => {
-      if (!relations[column]) return value;
-      const map = labelMap[column] || {};
-      if (Array.isArray(value)) {
-        return value.map((item) => resolveRelationValue(column, item));
-      }
-      const key = typeof value === 'string' || typeof value === 'number' ? value : String(value);
-      return map[key] !== undefined ? map[key] : value;
-    },
-    [labelMap, relations],
-  );
 
   return (
     <Modal visible={visible} title={t('row_details', 'Row Details')} onClose={onClose}>
@@ -110,28 +64,19 @@ export default function RowDetailModal({
                   }}
                 >
                   {(() => {
-                    const baseValue = jsonFieldSet.has(c)
-                      ? parseMaybeJson(safeRow[c])
+                    const raw = relations[c]
+                      ? labelMap[c][safeRow[c]] || safeRow[c]
                       : safeRow[c];
-                    const resolved = resolveRelationValue(c, baseValue);
-                    const listValue = Array.isArray(resolved)
-                      ? resolved
-                      : normalizeJsonArray(c, resolved);
-                    if (jsonFieldSet.has(c) || Array.isArray(resolved)) {
-                      const parts = listValue
-                        .map((item) => resolveRelationValue(c, item))
-                        .map((item) => (item === null || item === undefined ? '' : String(item)))
-                        .filter((item) => item);
-                      return parts.length ? parts.join(', ') : '—';
-                    }
-                    const str = String(resolved ?? '');
+                    const str = String(raw ?? '');
+                    let display;
                     if (placeholders[c]) {
-                      return normalizeDateInput(str, placeholders[c]);
+                      display = normalizeDateInput(str, placeholders[c]);
+                    } else if (/^\d{4}-\d{2}-\d{2}T/.test(str)) {
+                      display = normalizeDateInput(str, 'YYYY-MM-DD');
+                    } else {
+                      display = str;
                     }
-                    if (/^\d{4}-\d{2}-\d{2}T/.test(str)) {
-                      return normalizeDateInput(str, 'YYYY-MM-DD');
-                    }
-                    return str;
+                    return display;
                   })()}
                 </td>
               </tr>
