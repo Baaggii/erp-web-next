@@ -387,9 +387,6 @@ export function normalizeRequestMappingValue(source) {
       expression: typeof source.expression === 'string' ? source.expression.trim() : '',
       aggregation: typeof source.aggregation === 'string' ? source.aggregation : undefined,
     };
-    if (typeof source.applyToBody === 'boolean') {
-      base.applyToBody = source.applyToBody;
-    }
     if (type === 'literal' && (base.value === undefined || base.value === null)) return null;
     if (type === 'env' && !base.envVar) return null;
     if (type === 'session' && !base.sessionVar) return null;
