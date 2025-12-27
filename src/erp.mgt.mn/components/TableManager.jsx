@@ -3451,6 +3451,7 @@ const TableManager = forwardRef(function TableManager({
 
   async function handleSubmit(values, options = {}) {
     const { issueEbarimt = false, submitIntent = 'post' } = options || {};
+    const normalizedSubmitIntent = submitIntent === 'ebarimt' ? 'post' : submitIntent;
     if (requestType !== 'temporary-promote' && !canPostTransactions) {
       addToast(
         t(
@@ -3468,7 +3469,7 @@ const TableManager = forwardRef(function TableManager({
       shouldForcePromote,
     } = computeTemporaryPromotionOptions({
       requestType,
-      submitIntent,
+      submitIntent: normalizedSubmitIntent,
       pendingPromotionHasSeniorAbove,
       pendingTemporaryPromotionId: pendingTemporaryPromotion?.id ?? null,
       canPostTransactions,
@@ -3668,7 +3669,8 @@ const TableManager = forwardRef(function TableManager({
           ? t('transaction_posted', 'Transaction posted')
           : t('transaction_updated', 'Transaction updated');
         const targetRecordId = isAdding ? savedRow?.id ?? null : getRowId(editing);
-        const shouldIssueEbarimt = issueEbarimt && formConfig?.posApiEnabled;
+        const shouldIssueEbarimt =
+          submitIntent === 'ebarimt' && issueEbarimt && formConfig?.posApiEnabled;
         setShowForm(false);
         setEditing(null);
         setIsAdding(false);
