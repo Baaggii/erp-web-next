@@ -60,6 +60,20 @@ function parseBooleanFlag(value, fallback = false) {
   return fallback;
 }
 
+function shouldUseDefaultValue(entry) {
+  if (entry && typeof entry === 'object' && !Array.isArray(entry)) {
+    return entry.useInTransaction !== false;
+  }
+  return true;
+}
+
+function extractDefaultValue(entry) {
+  if (entry && typeof entry === 'object' && !Array.isArray(entry) && Object.prototype.hasOwnProperty.call(entry, 'value')) {
+    return entry.value;
+  }
+  return entry;
+}
+
 function normalizeVariationDefaultMap(map = {}) {
   if (!map || typeof map !== 'object' || Array.isArray(map)) return {};
   const normalized = {};
@@ -67,7 +81,8 @@ function normalizeVariationDefaultMap(map = {}) {
     const key = typeof path === 'string' ? path.trim() : '';
     if (!key) return;
     if (value === undefined) return;
-    normalized[key] = value;
+    if (!shouldUseDefaultValue(value)) return;
+    normalized[key] = extractDefaultValue(value);
   });
   return normalized;
 }
@@ -81,7 +96,8 @@ function collectVariationDefaultsFromEndpoint(endpoint, variationKey) {
       const key = typeof path === 'string' ? path.trim() : '';
       if (!key) return;
       if (value === undefined) return;
-      defaults[key] = value;
+      if (!shouldUseDefaultValue(value)) return;
+      defaults[key] = extractDefaultValue(value);
     });
   };
 
@@ -98,7 +114,9 @@ function collectVariationDefaultsFromEndpoint(endpoint, variationKey) {
         if (!path) return;
         const variationDefaults = field?.defaultByVariation || field?.defaultVariations || {};
         if (Object.prototype.hasOwnProperty.call(variationDefaults, variationKey)) {
-          defaults[path] = variationDefaults[variationKey];
+          const value = variationDefaults[variationKey];
+          if (!shouldUseDefaultValue(value)) return;
+          defaults[path] = extractDefaultValue(value);
         }
       });
     }
@@ -117,7 +135,9 @@ function collectVariationDefaultsFromEndpoint(endpoint, variationKey) {
       if (!path) return;
       const variationDefaults = field?.defaultByVariation || field?.defaultVariations || {};
       if (Object.prototype.hasOwnProperty.call(variationDefaults, variationKey)) {
-        defaults[path] = variationDefaults[variationKey];
+        const value = variationDefaults[variationKey];
+        if (!shouldUseDefaultValue(value)) return;
+        defaults[path] = extractDefaultValue(value);
       }
     });
   }
@@ -647,6 +667,34 @@ export default function PosApiIntegrationSection({
     }
     return next;
   }, [endpointCandidates, config.posApiEndpointId, config.posApiEndpointMeta, config.posApiMapping]);
+
+  useEffect(() => {
+    if (!config.posApiEnabled) return;
+    const mappings =
+      selectedEndpoint && typeof selectedEndpoint.requestMappings === 'object' && !Array.isArray(selectedEndpoint.requestMappings)
+        ? selectedEndpoint.requestMappings
+        : null;
+    if (!mappings) return;
+    setConfig((prev) => {
+      const baseMapping =
+        prev.posApiMapping && typeof prev.posApiMapping === 'object' && !Array.isArray(prev.posApiMapping)
+          ? { ...prev.posApiMapping }
+          : {};
+      let changed = false;
+      Object.entries(mappings).forEach(([field, value]) => {
+        const normalizedField = typeof field === 'string' ? field.trim() : '';
+        if (!normalizedField) return;
+        if (baseMapping[normalizedField]) return;
+        const selection = normalizeMappingSelection(value, primaryTableName);
+        const nextValue = buildMappingValue(selection, { preserveType: true });
+        if (nextValue === '' || nextValue === undefined) return;
+        baseMapping[normalizedField] = nextValue;
+        changed = true;
+      });
+      if (!changed) return prev;
+      return { ...prev, posApiMapping: baseMapping };
+    });
+  }, [config.posApiEnabled, primaryTableName, selectedEndpoint, setConfig]);
 
   const nestedObjects = useMemo(
     () => (Array.isArray(selectedEndpoint?.nestedObjects) ? selectedEndpoint.nestedObjects : []),

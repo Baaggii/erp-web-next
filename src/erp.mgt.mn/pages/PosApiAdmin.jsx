@@ -774,6 +774,8 @@ const EMPTY_ENDPOINT = {
   notes: '',
   requestEnvMap: {},
   requestFieldMappings: {},
+  requestMappings: {},
+  aggregations: [],
   responseFieldMappings: {},
   responseTables: [],
 };
@@ -1406,6 +1408,22 @@ function serializeRequestFieldSelections(selections = {}, { defaultApplyToBody =
   }, {});
 }
 
+function serializeRequestMappings(selections = {}) {
+  return Object.entries(selections || {}).reduce((acc, [fieldPath, entry]) => {
+    const normalized = normalizeRequestFieldMappingEntry(entry, { defaultApplyToBody: true });
+    if (!normalized || !hasMappingValue(normalized)) return acc;
+    const storedValue = buildMappingValue(normalized, { preserveType: true });
+    if (!storedValue || (typeof storedValue === 'string' && !storedValue.trim())) return acc;
+    if (typeof storedValue === 'object' && storedValue !== null) {
+      const { applyToBody, ...rest } = storedValue;
+      acc[fieldPath] = rest;
+    } else {
+      acc[fieldPath] = storedValue;
+    }
+    return acc;
+  }, {});
+}
+
 function normalizeRequestFieldMappingMap(map, requestEnvMap = {}, { defaultApplyToBody = true } = {}) {
   const normalizedEnvMap =
     requestEnvMap && typeof requestEnvMap === 'object' && !Array.isArray(requestEnvMap)
@@ -1562,6 +1580,23 @@ function normalizeFieldValueMap(map = {}) {
     result[normalizedField] = value;
   });
   return result;
+}
+
+function parseDefaultValueEntry(value) {
+  if (value && typeof value === 'object' && !Array.isArray(value)) {
+    const hasValue = Object.prototype.hasOwnProperty.call(value, 'value');
+    return {
+      value: hasValue ? value.value : value,
+      useInTransaction: value.useInTransaction !== false,
+    };
+  }
+  return { value, useInTransaction: true };
+}
+
+function buildDefaultValueEntry(value, useInTransaction = true) {
+  if (value === undefined || value === null || value === '') return undefined;
+  if (useInTransaction === false) return { value, useInTransaction: false };
+  return { value };
 }
 
 function parseExampleBody(body) {
@@ -1902,6 +1937,7 @@ function deriveRequestFieldSelections({
   requestSampleText,
   requestEnvMap,
   requestFieldMappings,
+  requestMappings,
   displayItems,
 }) {
   const seenFields = new Set();
@@ -1947,6 +1983,15 @@ function deriveRequestFieldSelections({
         applyToBody,
       };
       return;
+    }
+
+    const mappingFromEndpoint = requestMappings?.[fieldPath];
+    if (mappingFromEndpoint) {
+      const normalizedMapping = normalizeMappingSelection(mappingFromEndpoint);
+      if (hasMappingValue(normalizedMapping)) {
+        derivedSelections[fieldPath] = { ...normalizedMapping, applyToBody };
+        return;
+      }
     }
 
     if (currentValue !== undefined && currentValue !== null) {
@@ -2279,6 +2324,11 @@ function createFormState(definition) {
     notes: definition.notes || '',
     requestEnvMap: normalizedRequestEnvMap,
     requestFieldMappings,
+    requestMappings:
+      definition.requestMappings && typeof definition.requestMappings === 'object'
+        ? JSON.parse(JSON.stringify(definition.requestMappings))
+        : {},
+    aggregations: Array.isArray(definition.aggregations) ? definition.aggregations.slice() : [],
     requestFieldVariations,
     responseFieldMappings: extractResponseFieldMappings(definition),
     responseTables: sanitizeTableSelection(
@@ -4067,6 +4117,7 @@ export default function PosApiAdmin() {
       requestSampleText,
       requestEnvMap: formState.requestEnvMap,
       requestFieldMappings: formState.requestFieldMappings,
+      requestMappings: formState.requestMappings,
       displayItems: requestFieldDisplay.items,
     });
 
@@ -4141,6 +4192,7 @@ export default function PosApiAdmin() {
       requestSampleText: formattedSample,
       requestEnvMap: formState.requestEnvMap,
       requestFieldMappings: formState.requestFieldMappings,
+      requestMappings: formState.requestMappings,
       displayItems: requestFieldDisplay.items,
     });
     const variationSelections = buildSelectionsForVariation(selectedVariationKey);
@@ -4150,6 +4202,7 @@ export default function PosApiAdmin() {
       ...prev,
       requestEnvMap: buildRequestEnvMap(mergedSelections),
       requestFieldMappings: serializeRequestFieldSelections(mergedSelections),
+      requestMappings: serializeRequestMappings(mergedSelections),
     }));
   }, [
     selectedVariationKey,
@@ -4851,6 +4904,12 @@ export default function PosApiAdmin() {
     if (!variationKey || !fieldPath) return;
     const segments = parsePathSegments(fieldPath);
     if (segments.length === 0) return;
+    const parsedEntry = parseDefaultValueEntry(value);
+    const resolvedValue = parsedEntry.value;
+    const storedValue =
+      resolvedValue !== undefined && parsedEntry.useInTransaction === false
+        ? { value: resolvedValue, useInTransaction: false }
+        : resolvedValue;
 
     setFormState((prev) => {
       let changed = false;
@@ -4867,9 +4926,11 @@ export default function PosApiAdmin() {
         );
         const beforeState = JSON.stringify(examplePayload);
         const beforeDefaults = JSON.stringify(defaultValues);
-        if (value !== '' && value !== undefined && value !== null) {
-          setNestedValue(examplePayload, segments, value);
-          defaultValues[fieldPath] = value;
+        if (storedValue !== '' && storedValue !== undefined && storedValue !== null) {
+          if (resolvedValue !== undefined && resolvedValue !== null) {
+            setNestedValue(examplePayload, segments, resolvedValue);
+          }
+          defaultValues[fieldPath] = storedValue;
         } else {
           removeNestedValue(examplePayload, segments);
           delete defaultValues[fieldPath];
@@ -4898,12 +4959,12 @@ export default function PosApiAdmin() {
         const defaultExists = Object.prototype.hasOwnProperty.call(defaultValues, fieldPath);
         const requiredExists = Object.prototype.hasOwnProperty.call(requiredFields, fieldPath);
 
-        if (value !== '' && value !== undefined && value !== null) {
-          defaultValues[fieldPath] = value;
+        if (storedValue !== '' && storedValue !== undefined && storedValue !== null) {
+          defaultValues[fieldPath] = storedValue;
         } else {
           delete defaultValues[fieldPath];
         }
-        if (requiredExists && !value) {
+        if (requiredExists && !storedValue) {
           delete requiredFields[fieldPath];
         }
 
@@ -5812,14 +5873,16 @@ export default function PosApiAdmin() {
       if (nextDisplay.state === 'error') {
         setError(nextDisplay.error || 'Unable to load endpoint details.');
       }
-      if (nextDisplay.state === 'ok') {
-        nextRequestFieldValues = deriveRequestFieldSelections({
-          requestSampleText: nextFormState.requestSampleText,
-          requestEnvMap: nextFormState.requestEnvMap,
-          displayItems: nextDisplay.items,
-        });
-      }
-    } catch (err) {
+        if (nextDisplay.state === 'ok') {
+          nextRequestFieldValues = deriveRequestFieldSelections({
+            requestSampleText: nextFormState.requestSampleText,
+            requestEnvMap: nextFormState.requestEnvMap,
+            requestFieldMappings: nextFormState.requestFieldMappings,
+            requestMappings: nextFormState.requestMappings,
+            displayItems: nextDisplay.items,
+          });
+        }
+      } catch (err) {
       console.error('Failed to select endpoint', err);
       setError('Failed to load the selected endpoint. Please review its configuration.');
       nextFormState = pruneUnavailableControls({
@@ -7081,9 +7144,15 @@ export default function PosApiAdmin() {
       responseTables: sanitizeTableSelection(formState.responseTables, responseTableOptions),
       requestEnvMap: buildRequestEnvMap(requestFieldValues),
       requestFieldMappings: serializeRequestFieldSelections(requestFieldValues),
+      requestMappings: serializeRequestMappings(requestFieldValues),
       requestFields: requestFieldsWithVariationDefaults,
       requestFieldVariations: sanitizedRequestFieldVariations,
       variations: sanitizedVariations,
+      aggregations: Array.isArray(formState.aggregations)
+        ? formState.aggregations.filter(
+            (entry) => entry && (entry.field || entry.key) && (entry.formula || entry.expression),
+          )
+        : [],
       responseFields: responseFieldsWithMapping,
       requestSample,
       requestSampleNotes: formState.requestSampleNotes || '',
@@ -7669,6 +7738,7 @@ export default function PosApiAdmin() {
         ...prevState,
         requestEnvMap: buildRequestEnvMap(nextSelections),
         requestFieldMappings: serialized,
+        requestMappings: serializeRequestMappings(nextSelections),
       }));
       return nextSelections;
     });
@@ -7730,19 +7800,51 @@ export default function PosApiAdmin() {
     ensureVariationFieldSelection(variationKey, fieldPath);
   }
 
-  function handleVariationDefaultUpdate(fieldPath, variationKey, value) {
+  function handleVariationDefaultUpdate(fieldPath, variationKey, value, useInTransaction) {
     if (!fieldPath || !variationKey) return;
+    let syncEntry = null;
     setRequestFieldMeta((prev) => {
       const current = prev[fieldPath] || { requiredByVariation: {}, defaultByVariation: {} };
       const defaultByVariation = { ...current.defaultByVariation };
-      if (value !== '' && value !== undefined && value !== null) {
-        defaultByVariation[variationKey] = value;
+      const currentEntry = parseDefaultValueEntry(defaultByVariation[variationKey]);
+      const nextValue = value !== undefined ? value : currentEntry.value;
+      const nextUse = useInTransaction === undefined ? currentEntry.useInTransaction : useInTransaction;
+      const nextEntry = buildDefaultValueEntry(nextValue, nextUse);
+      syncEntry = nextEntry !== undefined ? nextEntry : nextValue;
+      if (nextEntry !== undefined) {
+        defaultByVariation[variationKey] = nextEntry;
       } else {
         delete defaultByVariation[variationKey];
       }
       return { ...prev, [fieldPath]: { ...current, defaultByVariation } };
     });
-    syncVariationDefaultChange(variationKey, fieldPath, value);
+    syncVariationDefaultChange(variationKey, fieldPath, syncEntry);
+  }
+
+  function handleAddAggregation() {
+    setFormState((prev) => {
+      const list = Array.isArray(prev.aggregations) ? prev.aggregations.slice() : [];
+      list.push({ field: '', formula: '', applyTo: 'both' });
+      return { ...prev, aggregations: list };
+    });
+  }
+
+  function handleAggregationChange(index, updates) {
+    setFormState((prev) => {
+      const list = Array.isArray(prev.aggregations) ? prev.aggregations.slice() : [];
+      if (!list[index]) return prev;
+      list[index] = { ...list[index], ...updates };
+      return { ...prev, aggregations: list };
+    });
+  }
+
+  function handleRemoveAggregation(index) {
+    setFormState((prev) => {
+      const list = Array.isArray(prev.aggregations) ? prev.aggregations.slice() : [];
+      if (!list[index]) return prev;
+      list.splice(index, 1);
+      return { ...prev, aggregations: list };
+    });
   }
 
   function handleAdminParamChange(name, value) {
@@ -9134,10 +9236,13 @@ export default function PosApiAdmin() {
                             : meta.requiredByVariation?.[variationKey]
                               ?? normalized.requiredByVariation?.[variationKey]
                               ?? false;
-                          const defaultValue =
+                          const defaultEntry = parseDefaultValueEntry(
                             meta.defaultByVariation?.[variationKey]
-                            ?? normalized.defaultByVariation?.[variationKey]
-                            ?? '';
+                              ?? normalized.defaultByVariation?.[variationKey]
+                              ?? '',
+                          );
+                          const defaultValue = defaultEntry.value ?? '';
+                          const useInTransaction = defaultEntry.useInTransaction !== false;
                           return (
                             <div
                               key={`variation-toggle-${variationKey}-${fieldLabel}`}
@@ -9162,11 +9267,31 @@ export default function PosApiAdmin() {
                                 type="text"
                                 value={defaultValue}
                                 onChange={(e) =>
-                                  handleVariationDefaultUpdate(fieldLabel, variationKey, e.target.value)
+                                  handleVariationDefaultUpdate(
+                                    fieldLabel,
+                                    variationKey,
+                                    e.target.value,
+                                    useInTransaction,
+                                  )
                                 }
                                 placeholder="Default value"
                                 style={styles.input}
                               />
+                              <label style={{ ...styles.checkboxLabel, marginTop: '0.35rem' }}>
+                                <input
+                                  type="checkbox"
+                                  checked={useInTransaction}
+                                  onChange={(e) =>
+                                    handleVariationDefaultUpdate(
+                                      fieldLabel,
+                                      variationKey,
+                                      defaultValue,
+                                      e.target.checked,
+                                    )
+                                  }
+                                />
+                                <span>Use in transaction</span>
+                              </label>
                             </div>
                           );
                         })}
@@ -9256,8 +9381,82 @@ export default function PosApiAdmin() {
                        </div>
                      </div>
                    );
-                 })}
-               </div>
+                })}
+              </div>
+           )}
+         </div>
+          <div style={styles.hintCard}>
+            <div style={styles.hintHeader}>
+              <h3 style={styles.hintTitle}>Aggregations</h3>
+            </div>
+            <p style={{ marginTop: '0.35rem' }}>
+              Compute derived values using formulas. Aggregations run when building requests and when parsing responses.
+            </p>
+            <button type="button" onClick={handleAddAggregation} style={styles.smallSecondaryButton}>
+              Add aggregation
+            </button>
+            {(!Array.isArray(formState.aggregations) || formState.aggregations.length === 0) && (
+              <p style={styles.hintEmpty}>No aggregations configured yet.</p>
+            )}
+            {Array.isArray(formState.aggregations) && formState.aggregations.length > 0 && (
+              <div className="space-y-3" style={{ marginTop: '0.5rem' }}>
+                {formState.aggregations.map((agg, index) => (
+                  <div
+                    key={`aggregation-${index}`}
+                    style={{
+                      border: '1px solid #e5e7eb',
+                      borderRadius: '8px',
+                      padding: '0.75rem',
+                      display: 'grid',
+                      gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+                      gap: '0.75rem',
+                      alignItems: 'flex-start',
+                    }}
+                  >
+                    <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                      <span style={{ fontWeight: 600 }}>Field path</span>
+                      <input
+                        type="text"
+                        value={agg.field || ''}
+                        onChange={(e) => handleAggregationChange(index, { field: e.target.value })}
+                        placeholder="totalAmount"
+                        style={styles.input}
+                      />
+                    </label>
+                    <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                      <span style={{ fontWeight: 600 }}>Formula</span>
+                      <input
+                        type="text"
+                        value={agg.formula || agg.expression || ''}
+                        onChange={(e) => handleAggregationChange(index, { formula: e.target.value })}
+                        placeholder="sum(receipts[].items[].unitPrice * receipts[].items[].qty)"
+                        style={styles.input}
+                      />
+                    </label>
+                    <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                      <span style={{ fontWeight: 600 }}>Applies to</span>
+                      <select
+                        value={agg.applyTo || 'both'}
+                        onChange={(e) => handleAggregationChange(index, { applyTo: e.target.value })}
+                        style={styles.input}
+                      >
+                        <option value="both">Requests and responses</option>
+                        <option value="request">Requests only</option>
+                        <option value="response">Responses only</option>
+                      </select>
+                    </label>
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center' }}>
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveAggregation(index)}
+                        style={styles.smallSecondaryButton}
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
             )}
           </div>
           <div style={styles.hintCard}>

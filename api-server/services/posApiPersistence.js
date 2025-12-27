@@ -186,6 +186,7 @@ function getLastToken(path) {
 export function computePosApiUpdates(columnLookup, response, options = {}) {
   if (!(columnLookup instanceof Map)) return {};
   if (!response || typeof response !== 'object') return {};
+  const responseData = applyAggregations(response, options.aggregations || [], { phase: 'response' });
   const targetTable = typeof options.targetTable === 'string' ? options.targetTable.trim() : '';
   const requireExplicitMapping = Boolean(options.requireExplicitMapping);
   const fieldsFromPosApi = Array.isArray(options.fieldsFromPosApi)
@@ -202,12 +203,12 @@ export function computePosApiUpdates(columnLookup, response, options = {}) {
     entries.push({ key, value });
   };
 
-  const firstReceipt = Array.isArray(response.receipts) ? response.receipts[0] : null;
+  const firstReceipt = Array.isArray(responseData.receipts) ? responseData.receipts[0] : null;
 
   if (!requireExplicitMapping) {
-    if (response.status !== undefined) pushEntry('status', response.status);
-    if (response.id !== undefined) pushEntry('id', response.id);
-    if (response.billId !== undefined) pushEntry('billId', response.billId);
+    if (responseData.status !== undefined) pushEntry('status', responseData.status);
+    if (responseData.id !== undefined) pushEntry('id', responseData.id);
+    if (responseData.billId !== undefined) pushEntry('billId', responseData.billId);
 
     if (firstReceipt && typeof firstReceipt === 'object') {
       if (firstReceipt.billId !== undefined) pushEntry('billId', firstReceipt.billId);
@@ -216,7 +217,7 @@ export function computePosApiUpdates(columnLookup, response, options = {}) {
     }
 
     fieldsFromPosApi.forEach((fieldPath) => {
-      const value = extractPosApiFieldValue(response, fieldPath);
+      const value = extractPosApiFieldValue(responseData, fieldPath);
       if (value === undefined) return;
       const key = getLastToken(fieldPath) || fieldPath;
       pushEntry(key, value);
@@ -225,7 +226,7 @@ export function computePosApiUpdates(columnLookup, response, options = {}) {
 
   Object.entries(responseFieldMapping).forEach(([fieldPath, targetColumn]) => {
     if (typeof fieldPath !== 'string' || !fieldPath.trim()) return;
-    const value = extractPosApiFieldValue(response, fieldPath.trim());
+    const value = extractPosApiFieldValue(responseData, fieldPath.trim());
     if (value === undefined) return;
     const targets = Array.isArray(targetColumn) ? targetColumn : [targetColumn];
     targets.forEach((target) => {
@@ -337,3 +338,4 @@ export function collectEndpointResponseMappings(endpoint = {}) {
 
   return mappings;
 }
+import { applyAggregations } from './posApiAggregations.js';

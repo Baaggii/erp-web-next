@@ -5,6 +5,7 @@ import { requireAuth } from '../middlewares/auth.js';
 import { loadEndpoints, saveEndpoints } from '../services/posApiRegistry.js';
 import { invokePosApiEndpoint } from '../services/posApiService.js';
 import { getEmploymentSession } from '../../db/index.js';
+import { normalizeRequestMappingValue } from '../services/posApiAggregations.js';
 
 const DEFAULT_MAPPING_HINTS = {
   branchNo: 'session.branch_id',
@@ -152,10 +153,16 @@ router.put('/', requireAuth, async (req, res, next) => {
         endpoint.requestFieldMappings,
         endpoint.requestEnvMap,
       );
+      const requestMappings = normalizeRequestMappings(endpoint.requestMappings);
       if (Object.keys(requestFieldMappings).length) {
         normalized.requestFieldMappings = requestFieldMappings;
       } else {
         delete normalized.requestFieldMappings;
+      }
+      if (Object.keys(requestMappings).length) {
+        normalized.requestMappings = requestMappings;
+      } else {
+        delete normalized.requestMappings;
       }
       normalized.requestEnvMap = envMap;
       return normalized;
@@ -472,6 +479,36 @@ function normalizeRequestFieldMappings(map, requestEnvMap = {}, { defaultApplyTo
   });
 
   return { map: normalized, envMap };
+}
+
+function normalizeRequestMappings(map) {
+  const normalized = {};
+  if (Array.isArray(map)) {
+    map.forEach((entry) => {
+      const field =
+        typeof entry?.field === 'string'
+          ? entry.field.trim()
+          : typeof entry?.key === 'string'
+            ? entry.key.trim()
+            : '';
+      if (!field) return;
+      const mapping =
+        normalizeRequestMappingValue(entry?.mapping ?? entry?.value ?? entry?.source ?? entry?.target)
+        || normalizeRequestMappingValue(entry);
+      if (!mapping) return;
+      normalized[field] = mapping;
+    });
+    return normalized;
+  }
+  if (map && typeof map === 'object') {
+    Object.entries(map).forEach(([field, value]) => {
+      const normalizedField = typeof field === 'string' ? field.trim() : '';
+      const mapping = normalizeRequestMappingValue(value);
+      if (!normalizedField || !mapping) return;
+      normalized[normalizedField] = mapping;
+    });
+  }
+  return normalized;
 }
 
 function applyEnvMapToPayload(payload, envMap = {}) {
