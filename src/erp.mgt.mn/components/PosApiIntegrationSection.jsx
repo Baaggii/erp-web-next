@@ -1816,7 +1816,27 @@ export default function PosApiIntegrationSection({
             </small>
           </label>
           <div>
-            <strong>Field mapping</strong>
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: '0.5rem',
+                flexWrap: 'wrap',
+              }}
+            >
+              <strong>Field mapping</strong>
+              {endpointRequestMappingDefaults && (
+                <button
+                  type="button"
+                  onClick={handleResetFieldMappings}
+                  disabled={!config.posApiEnabled}
+                  style={{ padding: '0.4rem 0.75rem', borderRadius: '6px' }}
+                >
+                  Reset to endpoint mappings
+                </button>
+              )}
+            </div>
             <p style={{ fontSize: '0.85rem', color: '#555' }}>
               Map POSAPI fields to columns in the master transaction table. Leave blank to skip optional
               fields.
