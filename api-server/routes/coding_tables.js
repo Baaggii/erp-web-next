@@ -99,6 +99,7 @@ router.get('/schema-diff/check', requireAuth, async (req, res, next) => {
     // Admin-only: schema diff inspects database structure using admin credentials.
     if (!ensureAdminResponse(req, res)) return;
     const session = await getEmploymentSession(req.user.empid, req.user.companyId);
+    if (!ensureAdminResponse(req, res, { sessionPermissions: session?.permissions })) return;
     if (!(await hasAction(session, 'system_settings'))) return res.sendStatus(403);
     const checks = await getSchemaDiffPrerequisites({ user: req.user });
     const issues = [];
@@ -124,6 +125,7 @@ router.post('/schema-diff/compare', requireAuth, async (req, res, next) => {
     // Admin-only: generates schema diff and uses DB admin capabilities; block non-admins.
     if (!ensureAdminResponse(req, res)) return;
     const session = await getEmploymentSession(req.user.empid, req.user.companyId);
+    if (!ensureAdminResponse(req, res, { sessionPermissions: session?.permissions })) return;
     if (!(await hasAction(session, 'system_settings'))) return res.sendStatus(403);
     const { schemaPath, schemaFile, allowDrops = false } = req.body || {};
     const job = enqueueSchemaDiffJob({
@@ -152,6 +154,7 @@ router.post('/schema-diff/baseline', requireAuth, async (req, res, next) => {
     // Admin-only: records schema baseline affecting future migrations.
     if (!ensureAdminResponse(req, res)) return;
     const session = await getEmploymentSession(req.user.empid, req.user.companyId);
+    if (!ensureAdminResponse(req, res, { sessionPermissions: session?.permissions })) return;
     if (!(await hasAction(session, 'system_settings'))) return res.sendStatus(403);
     const { schemaPath, schemaFile } = req.body || {};
     if (!schemaPath || !schemaFile) {
@@ -175,6 +178,7 @@ router.post('/schema-diff/apply', requireAuth, async (req, res, next) => {
     // Admin-only: applies schema diff statements which can drop/alter tables.
     if (!ensureAdminResponse(req, res)) return;
     const session = await getEmploymentSession(req.user.empid, req.user.companyId);
+    if (!ensureAdminResponse(req, res, { sessionPermissions: session?.permissions })) return;
     if (!(await hasAction(session, 'system_settings'))) return res.sendStatus(403);
     const {
       statements,
@@ -215,6 +219,7 @@ router.get('/schema-diff/jobs/:jobId', requireAuth, async (req, res, next) => {
     // Admin-only: exposes status for schema diff jobs that alter database structure.
     if (!ensureAdminResponse(req, res)) return;
     const session = await getEmploymentSession(req.user.empid, req.user.companyId);
+    if (!ensureAdminResponse(req, res, { sessionPermissions: session?.permissions })) return;
     if (!(await hasAction(session, 'system_settings'))) return res.sendStatus(403);
     const job = getSchemaDiffJob(req.params.jobId);
     if (!job || (job.userId && job.userId !== req.user.empid)) {
