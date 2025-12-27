@@ -3341,6 +3341,9 @@ export default function PosApiAdmin() {
   const requestSampleSyncRef = useRef(false);
   const refreshInfoSyncLogsRef = useRef(() => Promise.resolve());
   const mountedRef = useRef(true);
+  useEffect(() => {
+    formStateRef.current = formState;
+  }, [formState]);
 
   useEffect(() => () => {
     mountedRef.current = false;
