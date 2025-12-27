@@ -265,17 +265,13 @@ export async function getAllConfigs(companyId = 0) {
 
 export async function setConfig(name, config = {}, companyId = 0) {
   const { cfg } = await readConfig(companyId);
+  const configWithoutResponseMapping = { ...config };
+  delete configWithoutResponseMapping.posApiResponseMapping;
   const normalizedConfig = {
-    ...config,
+    ...configWithoutResponseMapping,
     posApiMapping:
       config.posApiMapping && typeof config.posApiMapping === 'object' && !Array.isArray(config.posApiMapping)
         ? { ...config.posApiMapping }
-        : {},
-    posApiResponseMapping:
-      config.posApiResponseMapping &&
-      typeof config.posApiResponseMapping === 'object' &&
-      !Array.isArray(config.posApiResponseMapping)
-        ? { ...config.posApiResponseMapping }
         : {},
     allowedBranches: normalizeStoredAccessList(config.allowedBranches),
     allowedDepartments: normalizeStoredAccessList(config.allowedDepartments),

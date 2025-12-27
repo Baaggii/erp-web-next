@@ -132,60 +132,6 @@ function areVariationDefaultsEqual(a = {}, b = {}) {
   return aKeys.every((key) => Object.prototype.hasOwnProperty.call(b, key) && b[key] === a[key]);
 }
 
-function sanitizeResponseFieldMappings(mappings = {}) {
-  if (!mappings || typeof mappings !== 'object') return {};
-  const normalized = {};
-  Object.entries(mappings).forEach(([field, target]) => {
-    const key = typeof field === 'string' ? field.trim() : '';
-    if (!key) return;
-    if (target && typeof target === 'object' && !Array.isArray(target)) {
-      const table = typeof target.table === 'string' ? target.table.trim() : '';
-      const column = typeof target.column === 'string' ? target.column.trim() : '';
-      const value = Object.prototype.hasOwnProperty.call(target, 'value') ? target.value : undefined;
-      if (!column) return;
-      normalized[key] = {
-        ...(table ? { table } : {}),
-        column,
-        ...(value !== undefined && value !== '' ? { value } : {}),
-      };
-      return;
-    }
-    const column = typeof target === 'string' ? target.trim() : '';
-    if (column) {
-      normalized[key] = column;
-    }
-  });
-  return normalized;
-}
-
-function normalizeResponseMappingValue(value) {
-  if (value && typeof value === 'object' && !Array.isArray(value)) {
-    const table = typeof value.table === 'string' ? value.table : '';
-    const column = typeof value.column === 'string' ? value.column : '';
-    const overrideValue = Object.prototype.hasOwnProperty.call(value, 'value') ? value.value : '';
-    return { table, column, value: overrideValue };
-  }
-  const column = typeof value === 'string' ? value : '';
-  return { table: '', column, value: '' };
-}
-
-function sanitizeResponseMappingSelection(selection) {
-  const column = typeof selection.column === 'string' ? selection.column.trim() : '';
-  const table = typeof selection.table === 'string' ? selection.table.trim() : '';
-  const overrideValueRaw =
-    selection && Object.prototype.hasOwnProperty.call(selection, 'value') ? selection.value : undefined;
-  const overrideValue =
-    overrideValueRaw !== undefined && overrideValueRaw !== null && `${overrideValueRaw}`.trim() !== ''
-      ? overrideValueRaw
-      : undefined;
-  if (!column) return null;
-  return {
-    ...(table ? { table } : {}),
-    column,
-    ...(overrideValue !== undefined ? { value: overrideValue } : {}),
-  };
-}
-
 function sanitizeSelectionList(list, allowMultiple) {
   const values = Array.isArray(list)
     ? list.map((value) => (typeof value === 'string' ? value.trim() : '')).filter(Boolean)
@@ -593,7 +539,6 @@ export default function PosApiIntegrationSection({
   receiptFieldMapping = {},
   receiptGroupMapping = {},
   paymentMethodMapping = {},
-  responseFieldMapping = {},
   onEnsureColumnsLoaded = () => {},
   onPosApiOptionsChange = () => {},
 }) {
@@ -702,75 +647,6 @@ export default function PosApiIntegrationSection({
     }
     return next;
   }, [endpointCandidates, config.posApiEndpointId, config.posApiEndpointMeta, config.posApiMapping]);
-
-  const responseMappingFromConfig = useMemo(
-    () => sanitizeResponseFieldMappings(config.posApiResponseMapping || responseFieldMapping),
-    [config.posApiResponseMapping, responseFieldMapping],
-  );
-
-  const endpointResponseMappings = useMemo(
-    () => sanitizeResponseFieldMappings(selectedEndpoint?.responseFieldMappings),
-    [selectedEndpoint],
-  );
-
-  useEffect(() => {
-    if (!config.posApiEnabled) return;
-    const defaults = endpointResponseMappings;
-    if (!defaults || !Object.keys(defaults).length) return;
-    setConfig((prev) => {
-      const current = sanitizeResponseFieldMappings(prev.posApiResponseMapping);
-      if (Object.keys(current).length) return prev;
-      return { ...prev, posApiResponseMapping: defaults };
-    });
-  }, [endpointResponseMappings, config.posApiEnabled, setConfig]);
-
-  const responseFieldHints = useMemo(() => {
-    const hints = new Map();
-    const fields = Array.isArray(selectedEndpoint?.responseFields) ? selectedEndpoint.responseFields : [];
-    fields.forEach((entry) => {
-      const field = typeof entry?.field === 'string' ? entry.field.trim() : typeof entry === 'string' ? entry.trim() : '';
-      if (!field) return;
-      const description = typeof entry?.description === 'string' ? entry.description : '';
-      const required = Boolean(entry?.required || entry?.requiredCommon);
-      hints.set(field, {
-        field,
-        label: entry?.label || humanizeFieldLabel(field),
-        description,
-        required,
-      });
-    });
-    Object.entries(endpointResponseMappings).forEach(([field, mapping]) => {
-      if (hints.has(field)) return;
-      hints.set(field, {
-        field,
-        label: humanizeFieldLabel(field),
-        description: '',
-        required: false,
-        mapping,
-      });
-    });
-    Object.entries(responseMappingFromConfig).forEach(([field, mapping]) => {
-      if (hints.has(field)) return;
-      hints.set(field, {
-        field,
-        label: humanizeFieldLabel(field),
-        description: '',
-        required: false,
-        mapping,
-      });
-    });
-    return Array.from(hints.values());
-  }, [endpointResponseMappings, responseMappingFromConfig, selectedEndpoint]);
-
-  const responseTableOptions = useMemo(() => {
-    const options = new Set();
-    if (primaryTableName) options.add(primaryTableName);
-    (config.tables || []).forEach((entry) => {
-      const tbl = typeof entry?.table === 'string' ? entry.table.trim() : '';
-      if (tbl) options.add(tbl);
-    });
-    return Array.from(options);
-  }, [config.tables, primaryTableName]);
 
   const nestedObjects = useMemo(
     () => (Array.isArray(selectedEndpoint?.nestedObjects) ? selectedEndpoint.nestedObjects : []),
@@ -1433,20 +1309,6 @@ export default function PosApiIntegrationSection({
     [primaryTableName],
   );
 
-  const updateResponseFieldMapping = (field, selection) => {
-    setConfig((c) => {
-      const current = sanitizeResponseFieldMappings(c.posApiResponseMapping);
-      const sanitized = sanitizeResponseMappingSelection(selection);
-      const next = { ...current };
-      if (!sanitized) {
-        delete next[field];
-      } else {
-        next[field] = sanitized;
-      }
-      return { ...c, posApiResponseMapping: next };
-    });
-  };
-
   const updatePosApiNestedMapping = (section, field, value) => {
     const targetObjectId =
       section === 'itemFields'
@@ -2044,114 +1906,9 @@ export default function PosApiIntegrationSection({
       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginBottom: '0.75rem' }}>
         <strong>Response field mapping</strong>
         <p style={{ fontSize: '0.85rem', color: '#555' }}>
-          Map POSAPI response fields to transaction columns. Defaults from the selected endpoint are
-          applied automatically when available.
+          Response fields are mapped according to the POSAPI endpoint definition. Configure mappings
+          from the POS API endpoints screen.
         </p>
-        {responseFieldHints.length === 0 ? (
-          <small style={{ color: '#666' }}>No response field hints available for this endpoint.</small>
-        ) : (
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
-              gap: '0.75rem',
-            }}
-          >
-            {responseFieldHints.map((field) => {
-              const endpointMapping = endpointResponseMappings[field.field];
-              const mappingSource =
-                responseMappingFromConfig[field.field] ??
-                endpointMapping ??
-                { table: primaryTableName || '', column: '' };
-              const mapping = normalizeResponseMappingValue(mappingSource);
-              const selectedTable = mapping.table || primaryTableName || '';
-              const availableColumns = selectedTable
-                ? tableColumns[selectedTable] || []
-                : primaryTableColumns;
-              const datalistId = `posapi-response-${field.field}-columns-${selectedTable || 'master'}`;
-              const required = Boolean(field.required);
-              return (
-                <div
-                  key={`response-map-${field.field}`}
-                  style={{
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: '0.35rem',
-                    border: '1px solid #e2e8f0',
-                    borderRadius: '8px',
-                    padding: '0.75rem',
-                  }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
-                    <span style={{ fontWeight: 600 }}>{field.label || field.field}</span>
-                    <span
-                      style={{
-                        ...BADGE_BASE_STYLE,
-                        ...(required ? REQUIRED_BADGE_STYLE : OPTIONAL_BADGE_STYLE),
-                      }}
-                    >
-                      {required ? 'Required' : 'Optional'}
-                    </span>
-                  </div>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', alignItems: 'center' }}>
-                    <select
-                      value={selectedTable}
-                      onChange={(e) => {
-                        const table = e.target.value;
-                        if (table) onEnsureColumnsLoaded(table);
-                        updateResponseFieldMapping(field.field, { ...mapping, table });
-                      }}
-                      disabled={!config.posApiEnabled}
-                      style={{ minWidth: '140px' }}
-                    >
-                      <option value="">{primaryTableName ? `Default (${primaryTableName})` : '-- select table --'}</option>
-                      {responseTableOptions.map((tbl) => (
-                        <option key={`resp-table-${field.field}-${tbl}`} value={tbl}>
-                          {tbl}
-                        </option>
-                      ))}
-                    </select>
-                    <input
-                      type="text"
-                      list={datalistId}
-                      value={mapping.column || ''}
-                      onChange={(e) =>
-                        updateResponseFieldMapping(field.field, { ...mapping, column: e.target.value })
-                      }
-                      placeholder="Column"
-                      disabled={!config.posApiEnabled}
-                      style={{ flex: '1 1 160px', minWidth: '160px' }}
-                    />
-                    <datalist id={datalistId}>
-                      {(availableColumns || []).map((col) => (
-                        <option key={`${datalistId}-${col}`} value={col} />
-                      ))}
-                    </datalist>
-                    <input
-                      type="text"
-                      value={mapping.value ?? ''}
-                      onChange={(e) =>
-                        updateResponseFieldMapping(field.field, { ...mapping, value: e.target.value })
-                      }
-                      placeholder="Override value (optional)"
-                      disabled={!config.posApiEnabled}
-                      style={{ flex: '1 1 160px', minWidth: '160px' }}
-                    />
-                  </div>
-                  {field.description && <small style={{ color: '#555' }}>{field.description}</small>}
-                  {endpointMapping && (
-                    <small style={{ color: '#666' }}>
-                      Endpoint default:{' '}
-                      {typeof endpointMapping === 'string'
-                        ? endpointMapping
-                        : [endpointMapping.table, endpointMapping.column].filter(Boolean).join('.')}
-                    </small>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        )}
       </div>
       <div>
         <strong>Field mapping</strong>

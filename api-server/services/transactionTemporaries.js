@@ -13,6 +13,7 @@ import {
 import {
   computePosApiUpdates,
   createColumnLookup,
+  collectEndpointResponseMappings,
 } from './posApiPersistence.js';
 import { logUserAction } from './userActivityLog.js';
 import {
@@ -1976,6 +1977,7 @@ export async function promoteTemporarySubmission(
           }
           const receiptType =
             formCfg.posApiType || process.env.POSAPI_RECEIPT_TYPE || '';
+          const responseFieldMapping = collectEndpointResponseMappings(endpoint);
           const payload = await buildReceiptFromDynamicTransaction(
             masterRecord,
             mapping,
@@ -2003,7 +2005,7 @@ export async function promoteTemporarySubmission(
                 const lookup = createColumnLookup(columnNames);
                 const updates = computePosApiUpdates(lookup, posApiResponse, {
                   fieldsFromPosApi: formCfg.fieldsFromPosApi,
-                  responseFieldMapping: formCfg.posApiResponseMapping,
+                  responseFieldMapping,
                   targetTable: row.table_name,
                 });
                 const entries = Object.entries(updates || {});
@@ -2027,10 +2029,11 @@ export async function promoteTemporarySubmission(
                   }
                 }
                 if (invoiceId) {
-              await persistEbarimtInvoiceResponse(invoiceId, posApiResponse, {
-                fieldsFromPosApi: formCfg.fieldsFromPosApi,
-                responseFieldMapping: formCfg.posApiResponseMapping,
-              });
+                  await persistEbarimtInvoiceResponse(invoiceId, posApiResponse, {
+                    fieldsFromPosApi: formCfg.fieldsFromPosApi,
+                    responseFieldMapping,
+                    allowCrossTableMapping: false,
+                  });
                 }
               }
             } catch (posErr) {

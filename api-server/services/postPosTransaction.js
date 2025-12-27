@@ -15,6 +15,7 @@ import {
   computePosApiUpdates,
   createColumnLookup,
   groupResponseMappingByTable,
+  collectEndpointResponseMappings,
 } from './posApiPersistence.js';
 import { parseLocalizedNumber } from '../../utils/parseLocalizedNumber.js';
 import {
@@ -1766,6 +1767,7 @@ export async function postPosTransactionWithEbarimt(
 
   const mapping = formCfg.posApiMapping || {};
   const endpoint = await resolvePosApiEndpoint(formCfg.posApiEndpointId);
+  const endpointResponseMapping = collectEndpointResponseMappings(endpoint);
   const receiptType = formCfg.posApiType || process.env.POSAPI_RECEIPT_TYPE || '';
   const payload = await buildReceiptFromDynamicTransaction(
     record,
@@ -1796,14 +1798,10 @@ export async function postPosTransactionWithEbarimt(
   });
 
   const response = await sendReceipt(payloadWithDefaults, { endpoint });
-  const mergedResponseMapping = {
-    ...(formCfg.posApiResponseMapping && typeof formCfg.posApiResponseMapping === 'object' ? formCfg.posApiResponseMapping : {}),
-    ...(layout.posApiResponseMapping && typeof layout.posApiResponseMapping === 'object' ? layout.posApiResponseMapping : {}),
-  };
   const foreignKeyMap = await getMasterForeignKeyMap(pool, masterTable);
   await persistPosApiResponse(masterTable, masterId, response, {
     fieldsFromPosApi: formCfg.fieldsFromPosApi,
-    responseFieldMapping: mergedResponseMapping,
+    responseFieldMapping: endpointResponseMapping,
     targetTable: masterTable,
     masterRecord: record,
     foreignKeyMap,
@@ -1811,8 +1809,9 @@ export async function postPosTransactionWithEbarimt(
   if (invoiceId) {
     await persistEbarimtInvoiceResponse(invoiceId, response, {
       fieldsFromPosApi: formCfg.fieldsFromPosApi,
-      responseFieldMapping: formCfg.posApiResponseMapping,
+      responseFieldMapping: endpointResponseMapping,
       targetTable: 'ebarimt_invoice',
+      allowCrossTableMapping: false,
     });
   }
 
@@ -1922,6 +1921,7 @@ export async function issueSavedPosTransactionEbarimt(
 
   const mapping = formCfg.posApiMapping || {};
   const endpoint = await resolvePosApiEndpoint(formCfg.posApiEndpointId);
+  const endpointResponseMapping = collectEndpointResponseMappings(endpoint);
   const receiptType = formCfg.posApiType || process.env.POSAPI_RECEIPT_TYPE || '';
   const payload = await buildReceiptFromDynamicTransaction(
     aggregatedRecord,
@@ -1952,14 +1952,10 @@ export async function issueSavedPosTransactionEbarimt(
   });
 
   const response = await sendReceipt(payloadWithDefaults, { endpoint });
-  const mergedResponseMapping = {
-    ...(formCfg.posApiResponseMapping && typeof formCfg.posApiResponseMapping === 'object' ? formCfg.posApiResponseMapping : {}),
-    ...(layout.posApiResponseMapping && typeof layout.posApiResponseMapping === 'object' ? layout.posApiResponseMapping : {}),
-  };
   const foreignKeyMap = await getMasterForeignKeyMap(pool, masterTable);
   await persistPosApiResponse(masterTable, recordId, response, {
     fieldsFromPosApi: formCfg.fieldsFromPosApi,
-    responseFieldMapping: mergedResponseMapping,
+    responseFieldMapping: endpointResponseMapping,
     targetTable: masterTable,
     masterRecord: aggregatedRecord,
     foreignKeyMap,
@@ -1967,7 +1963,7 @@ export async function issueSavedPosTransactionEbarimt(
   if (invoiceId) {
     await persistEbarimtInvoiceResponse(invoiceId, response, {
       fieldsFromPosApi: formCfg.fieldsFromPosApi,
-      responseFieldMapping: formCfg.posApiResponseMapping,
+      responseFieldMapping: endpointResponseMapping,
       targetTable: 'ebarimt_invoice',
       allowCrossTableMapping: false,
     });

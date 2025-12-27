@@ -8,6 +8,7 @@ import {
 import {
   computePosApiUpdates,
   createColumnLookup,
+  collectEndpointResponseMappings,
 } from './posApiPersistence.js';
 import {
   saveEbarimtInvoiceSnapshot,
@@ -143,6 +144,7 @@ export async function issueDynamicTransactionEbarimt(
 
   const mapping = formCfg.posApiMapping || {};
   const endpoint = await resolvePosApiEndpoint(formCfg.posApiEndpointId);
+  const responseFieldMapping = collectEndpointResponseMappings(endpoint);
   const receiptType = formCfg.posApiType || process.env.POSAPI_RECEIPT_TYPE || '';
   const payload = await buildReceiptFromDynamicTransaction(record, mapping, receiptType, {
     typeField: formCfg.posApiTypeField,
@@ -165,14 +167,15 @@ export async function issueDynamicTransactionEbarimt(
   const response = await sendReceipt(payload, { endpoint });
   await persistPosApiDetails(tableName, pkColumn, recordId, response, record, {
     fieldsFromPosApi: formCfg.fieldsFromPosApi,
-    responseFieldMapping: formCfg.posApiResponseMapping,
+    responseFieldMapping,
     targetTable: tableName,
   });
   if (invoiceId) {
     await persistEbarimtInvoiceResponse(invoiceId, response, {
       fieldsFromPosApi: formCfg.fieldsFromPosApi,
-      responseFieldMapping: formCfg.posApiResponseMapping,
+      responseFieldMapping,
       targetTable: 'ebarimt_invoice',
+      allowCrossTableMapping: false,
     });
   }
 

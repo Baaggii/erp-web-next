@@ -531,7 +531,6 @@ function parseEntry(raw = {}) {
       false,
   );
   const mapping = sanitizePosApiMapping(raw.posApiMapping);
-  const responseMapping = sanitizePosApiMapping(raw.posApiResponseMapping);
   const parsedInfo = parseInfoEndpointList(raw.infoEndpoints);
   const legacyInfoEndpoints = Array.isArray(raw.posApiInfoEndpointIds)
     ? raw.posApiInfoEndpointIds
@@ -661,7 +660,6 @@ function parseEntry(raw = {}) {
           .filter((value) => value)
       : [],
     posApiMapping: mapping,
-    posApiResponseMapping: responseMapping,
     infoEndpoints,
     infoEndpointConfig,
   };
@@ -1041,7 +1039,6 @@ export async function setFormConfig(
     fieldsFromPosApi = [],
     infoEndpoints = [],
     posApiMapping = {},
-    posApiResponseMapping = {},
     infoEndpointConfig = {},
   } = config || {};
   const uid = arrify(userIdFields.length ? userIdFields : userIdField ? [userIdField] : []);
@@ -1181,7 +1178,6 @@ export async function setFormConfig(
         )
       : [],
     posApiMapping: sanitizePosApiMapping(posApiMapping),
-    posApiResponseMapping: sanitizePosApiMapping(posApiResponseMapping),
     infoEndpointConfig: sanitizeInfoEndpointConfigMap(infoEndpointConfig),
   };
   if (editableFields !== undefined) {
