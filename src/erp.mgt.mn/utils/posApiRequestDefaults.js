@@ -183,6 +183,14 @@ export function buildEndpointRequestMappingDefaults(
   const itemsObjectKey = tokensToPath(itemsPrefixTokens) || 'items';
   const paymentsObjectKey = tokensToPath(paymentsPrefixTokens) || 'payments';
   const receiptsObjectKey = tokensToPath(receiptsPrefixTokens) || 'receipts';
+  const additionalNestedPrefixes = Object.entries(normalizedNestedPaths)
+    .filter(([key]) => !['items', 'payments', 'receipts'].includes(key))
+    .map(([, path]) => tokenizeFieldPath(path))
+    .filter((tokens) => tokens.length)
+    .map((tokens) => ({
+      tokens,
+      objectKey: tokensToPath(tokens),
+    }));
   const rootDefaults = {};
   const objectFields = {};
   const legacyItemFields = {};
@@ -257,6 +265,16 @@ export function buildEndpointRequestMappingDefaults(
           mappingValue,
           RECEIPT_REQUEST_KEYS.has(receiptKey),
         );
+      }
+      return;
+    }
+    for (const { tokens: prefixTokens, objectKey } of additionalNestedPrefixes) {
+      const remainder = stripPrefix(tokens, prefixTokens);
+      if (!remainder) continue;
+      const remainderPath = tokensToPath(remainder);
+      const fieldKey = normalizeFieldKeyForMatch(remainderPath);
+      if (fieldKey) {
+        assignObjectField(objectFields, objectKey, fieldKey, null, mappingValue, false);
       }
       return;
     }
