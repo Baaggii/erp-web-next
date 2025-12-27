@@ -75,7 +75,6 @@ const emptyConfig = {
   posApiEnablePaymentMethods: undefined,
   fieldsFromPosApi: [],
   posApiMapping: {},
-  posApiResponseMapping: {},
 };
 
 const ROOT_REQUEST_KEYS = new Set(POS_API_FIELDS.map((field) => field.key));
@@ -284,10 +283,6 @@ export default function PosTxnConfig() {
     typeof config.posApiMapping.paymentMethods === 'object' &&
     !Array.isArray(config.posApiMapping.paymentMethods)
       ? config.posApiMapping.paymentMethods
-      : {};
-  const responseFieldMapping =
-    config.posApiResponseMapping && typeof config.posApiResponseMapping === 'object' && !Array.isArray(config.posApiResponseMapping)
-      ? config.posApiResponseMapping
       : {};
 
   const procPrefix = generalConfig?.general?.reportProcPrefix || '';
@@ -1274,18 +1269,13 @@ export default function PosTxnConfig() {
             .map((value) => (typeof value === 'string' ? value.trim() : ''))
             .filter((value) => value)
         : [];
-      loaded.posApiResponseMapping =
-        loaded.posApiResponseMapping &&
-        typeof loaded.posApiResponseMapping === 'object' &&
-        !Array.isArray(loaded.posApiResponseMapping)
-          ? { ...loaded.posApiResponseMapping }
-          : {};
       loaded.posApiMapping =
         loaded.posApiMapping &&
         typeof loaded.posApiMapping === 'object' &&
         !Array.isArray(loaded.posApiMapping)
           ? { ...loaded.posApiMapping }
           : {};
+      delete loaded.posApiResponseMapping;
       if (loaded.posApiEndpointMeta && typeof loaded.posApiEndpointMeta === 'object') {
         loaded.posApiEndpointMeta = { ...loaded.posApiEndpointMeta };
       } else {
@@ -1423,9 +1413,11 @@ export default function PosTxnConfig() {
       posted:
         typeof config.statusField?.posted === 'string' ? config.statusField.posted : '',
     };
+    const configWithoutResponseMapping = { ...config };
+    delete configWithoutResponseMapping.posApiResponseMapping;
 
     const cleanedConfig = {
-      ...config,
+      ...configWithoutResponseMapping,
       masterForm: normalizedMasterForm,
       masterTable: normalizedMasterTable,
       masterType: config.masterType === 'multi' ? 'multi' : 'single',
@@ -1442,12 +1434,6 @@ export default function PosTxnConfig() {
       posApiVariationDefaults: normalizeVariationDefaults(config.posApiVariationDefaults),
       procedures: normalizeProcedureList(config.procedures),
       temporaryProcedures: normalizeProcedureList(config.temporaryProcedures),
-      posApiResponseMapping:
-        config.posApiResponseMapping &&
-        typeof config.posApiResponseMapping === 'object' &&
-        !Array.isArray(config.posApiResponseMapping)
-          ? { ...config.posApiResponseMapping }
-          : {},
     };
 
     cleanedConfig.supportsTemporarySubmission = Boolean(
@@ -2525,7 +2511,6 @@ export default function PosTxnConfig() {
           receiptFieldMapping={receiptFieldMapping}
           receiptGroupMapping={receiptGroupMapping}
           paymentMethodMapping={paymentMethodMapping}
-          responseFieldMapping={responseFieldMapping}
           onEnsureColumnsLoaded={ensureColumnsLoadedFor}
         />
 

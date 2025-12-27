@@ -286,3 +286,54 @@ export function groupResponseMappingByTable(responseFieldMapping = {}, defaultTa
 
   return grouped;
 }
+
+export function collectEndpointResponseMappings(endpoint = {}) {
+  const mappings = {};
+  if (!endpoint || typeof endpoint !== 'object') return mappings;
+
+  const addMapping = (field, target) => {
+    const normalizedField = typeof field === 'string' ? field.trim() : '';
+    if (!normalizedField) return;
+    const normalizedTarget = normalizeResponseMappingTarget(target);
+    if (!normalizedTarget.column) return;
+    const normalizedValue = {
+      ...(normalizedTarget.table ? { table: normalizedTarget.table } : {}),
+      column: normalizedTarget.column,
+      ...(normalizedTarget.value !== undefined && normalizedTarget.value !== '' ? { value: normalizedTarget.value } : {}),
+    };
+    const existing = mappings[normalizedField];
+    if (existing === undefined) {
+      mappings[normalizedField] = normalizedValue;
+      return;
+    }
+    const next = Array.isArray(existing) ? [...existing, normalizedValue] : [existing, normalizedValue];
+    mappings[normalizedField] = next;
+  };
+
+  const applyMapping = (field, target) => {
+    if (Array.isArray(target)) {
+      target.forEach((entry) => addMapping(field, entry));
+      return;
+    }
+    addMapping(field, target);
+  };
+
+  const responseFields = Array.isArray(endpoint.responseFields) ? endpoint.responseFields : [];
+  responseFields.forEach((entry) => {
+    const field =
+      typeof entry?.field === 'string'
+        ? entry.field.trim()
+        : typeof entry === 'string'
+          ? entry.trim()
+          : '';
+    if (!field) return;
+    const mapping = entry?.mapTo || entry?.mapping || entry?.target;
+    if (mapping !== undefined) applyMapping(field, mapping);
+  });
+
+  if (endpoint.responseFieldMappings && typeof endpoint.responseFieldMappings === 'object' && !Array.isArray(endpoint.responseFieldMappings)) {
+    Object.entries(endpoint.responseFieldMappings).forEach(([field, target]) => applyMapping(field, target));
+  }
+
+  return mappings;
+}
