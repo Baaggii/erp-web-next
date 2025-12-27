@@ -3879,6 +3879,7 @@ export default function PosApiAdmin() {
   const isTransactionUsage = formState.usage === 'transaction';
   const supportsItems = isTransactionUsage ? formState.supportsItems !== false : false;
   const supportsMultiplePayments = isTransactionUsage && Boolean(formState.supportsMultiplePayments);
+  const supportsMultipleReceipts = isTransactionUsage && Boolean(formState.supportsMultipleReceipts);
   const receiptTypesEnabled = isTransactionUsage && supportsItems && formState.enableReceiptTypes !== false;
   const receiptTaxTypesEnabled = isTransactionUsage && supportsItems && formState.enableReceiptTaxTypes !== false;
   const paymentMethodsEnabled = isTransactionUsage
@@ -4693,7 +4694,6 @@ export default function PosApiAdmin() {
     );
   };
 
-  const supportsMultipleReceipts = isTransactionUsage && Boolean(formState.supportsMultipleReceipts);
   const receiptTypeOptions = receiptTypesEnabled && formReceiptTypes.length > 0
     ? POSAPI_TRANSACTION_TYPES.filter((type) => formReceiptTypes.includes(type.value))
     : POSAPI_TRANSACTION_TYPES;
@@ -9464,10 +9464,131 @@ export default function PosApiAdmin() {
               style={styles.textarea}
               rows={3}
               placeholder="Explain when to use this endpoint"
-            />
-          </label>
+          />
+        </label>
+      </div>
+        <div style={styles.hintCard}>
+          <div style={styles.hintHeader}>
+            <h3 style={styles.hintTitle}>Transaction capabilities</h3>
+          </div>
+          <p style={styles.hintDescription}>
+            Toggle support for receipts, items, and payment breakdowns. Flags are saved with the endpoint and restored when
+            you reopen it.
+          </p>
+          <div style={styles.toggleGrid}>
+            <div style={styles.toggleGroup}>
+              <h4 style={styles.toggleTitle}>Receipts &amp; items</h4>
+              <label style={styles.checkboxLabel}>
+                <input
+                  type="checkbox"
+                  checked={supportsMultipleReceipts}
+                  onChange={(e) => handleChange('supportsMultipleReceipts', e.target.checked)}
+                  disabled={!isTransactionUsage}
+                />
+                <span>Supports multiple receipts[] groups</span>
+              </label>
+              <label style={styles.checkboxLabel}>
+                <input
+                  type="checkbox"
+                  checked={supportsItems}
+                  onChange={(e) => handleChange('supportsItems', e.target.checked)}
+                  disabled={!isTransactionUsage}
+                />
+                <span>Includes receipt items</span>
+              </label>
+              <label style={styles.checkboxLabel}>
+                <input
+                  type="checkbox"
+                  checked={receiptItemsEnabled}
+                  onChange={(e) => handleChange('enableReceiptItems', e.target.checked)}
+                  disabled={!isTransactionUsage || !supportsItems}
+                />
+                <span>Enable receipt items in requests</span>
+              </label>
+              <label style={{ ...styles.checkboxLabel, marginLeft: '1.5rem' }}>
+                <input
+                  type="checkbox"
+                  checked={formState.allowMultipleReceiptItems !== false}
+                  onChange={(e) => handleChange('allowMultipleReceiptItems', e.target.checked)}
+                  disabled={!receiptItemsEnabled}
+                />
+                <span>Allow multiple items per receipt</span>
+              </label>
+              <label style={styles.checkboxLabel}>
+                <input
+                  type="checkbox"
+                  checked={receiptTypesEnabled}
+                  onChange={(e) => handleChange('enableReceiptTypes', e.target.checked)}
+                  disabled={!isTransactionUsage || !supportsItems}
+                />
+                <span>Enable receipt type selection</span>
+              </label>
+              <label style={{ ...styles.checkboxLabel, marginLeft: '1.5rem' }}>
+                <input
+                  type="checkbox"
+                  checked={formState.allowMultipleReceiptTypes !== false}
+                  onChange={(e) => handleChange('allowMultipleReceiptTypes', e.target.checked)}
+                  disabled={!receiptTypesEnabled}
+                />
+                <span>Allow multiple receipt types</span>
+              </label>
+              <label style={styles.checkboxLabel}>
+                <input
+                  type="checkbox"
+                  checked={receiptTaxTypesEnabled}
+                  onChange={(e) => handleChange('enableReceiptTaxTypes', e.target.checked)}
+                  disabled={!isTransactionUsage || !supportsItems}
+                />
+                <span>Enable receipt tax types</span>
+              </label>
+              <label style={{ ...styles.checkboxLabel, marginLeft: '1.5rem' }}>
+                <input
+                  type="checkbox"
+                  checked={formState.allowMultipleReceiptTaxTypes !== false}
+                  onChange={(e) => handleChange('allowMultipleReceiptTaxTypes', e.target.checked)}
+                  disabled={!receiptTaxTypesEnabled}
+                />
+                <span>Allow multiple tax types</span>
+              </label>
+            </div>
+            <div style={styles.toggleGroup}>
+              <h4 style={styles.toggleTitle}>Payments</h4>
+              <label style={styles.checkboxLabel}>
+                <input
+                  type="checkbox"
+                  checked={supportsMultiplePayments}
+                  onChange={(e) => handleChange('supportsMultiplePayments', e.target.checked)}
+                  disabled={!isTransactionUsage}
+                />
+                <span>Supports multiple payments[] entries</span>
+              </label>
+              <label style={styles.checkboxLabel}>
+                <input
+                  type="checkbox"
+                  checked={paymentMethodsEnabled}
+                  onChange={(e) => handleChange('enablePaymentMethods', e.target.checked)}
+                  disabled={!isTransactionUsage || !supportsMultiplePayments}
+                />
+                <span>Enable payment method mapping</span>
+              </label>
+              <label style={{ ...styles.checkboxLabel, marginLeft: '1.5rem' }}>
+                <input
+                  type="checkbox"
+                  checked={formState.allowMultiplePaymentMethods !== false}
+                  onChange={(e) => handleChange('allowMultiplePaymentMethods', e.target.checked)}
+                  disabled={!paymentMethodsEnabled}
+                />
+                <span>Allow multiple payment methods</span>
+              </label>
+            </div>
+          </div>
+          {!isTransactionUsage && (
+            <div style={styles.toggleStateHelper}>
+              Transaction-only flags are disabled for lookup, admin, and auth endpoints. Switch usage to Transaction to edit
+              receipt, item, and payment options.
+            </div>
+          )}
         </div>
-
 
         {formState.usage === 'transaction' && (supportsMultipleReceipts || supportsMultiplePayments) && (
           <div style={styles.multiNotice}>
@@ -11667,6 +11788,22 @@ const styles = {
     gap: '0.35rem',
     fontWeight: 500,
     fontSize: '0.85rem',
+  },
+  toggleGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
+    gap: '1rem',
+    marginTop: '0.35rem',
+  },
+  toggleGroup: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.4rem',
+  },
+  toggleTitle: {
+    fontWeight: 700,
+    fontSize: '0.95rem',
+    color: '#0f172a',
   },
   featureToggleRow: {
     display: 'flex',
