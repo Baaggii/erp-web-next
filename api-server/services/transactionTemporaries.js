@@ -90,6 +90,48 @@ function normalizeEmpId(empid) {
   return trimmed ? trimmed.toUpperCase() : null;
 }
 
+function parseEmpIdList(value) {
+  if (value === undefined || value === null) return [];
+  const rawList = [];
+  if (Array.isArray(value)) {
+    rawList.push(...value);
+  } else if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!trimmed) return [];
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (Array.isArray(parsed)) {
+        rawList.push(...parsed);
+      } else {
+        rawList.push(trimmed);
+      }
+    } catch {
+      rawList.push(trimmed);
+    }
+  } else {
+    rawList.push(value);
+  }
+  const normalized = rawList
+    .map((item) => normalizeEmpId(item))
+    .filter((item) => Boolean(item));
+  return Array.from(new Set(normalized));
+}
+
+function serializeEmpIdList(empIds = []) {
+  if (!Array.isArray(empIds)) return serializeEmpIdList(parseEmpIdList(empIds));
+  const normalized = empIds.map((id) => normalizeEmpId(id)).filter(Boolean);
+  if (normalized.length === 0) return null;
+  if (normalized.length === 1) return normalized[0];
+  return safeJsonStringify(normalized);
+}
+
+function empIdListIncludes(empIds, target) {
+  const normalizedTarget = normalizeEmpId(target);
+  if (!normalizedTarget) return false;
+  const list = parseEmpIdList(empIds);
+  return list.some((id) => id === normalizedTarget);
+}
+
 function normalizeTemporaryId(value) {
   const parsed = Number(value);
   if (Number.isFinite(parsed) && parsed > 0) {
@@ -745,22 +787,26 @@ async function ensureTemporaryTable(conn = pool) {
 
 async function insertNotification(
   conn,
-  { companyId, recipientEmpId, message, createdBy, relatedId, type = 'request' },
+  { companyId, recipientEmpId, recipientEmpIds, message, createdBy, relatedId, type = 'request' },
 ) {
-  const recipient = normalizeEmpId(recipientEmpId);
-  if (!recipient) return;
-  await conn.query(
-    `INSERT INTO notifications (company_id, recipient_empid, type, related_id, message, created_by)
-     VALUES (?, ?, ?, ?, ?, ?)`,
-    [
-      companyId ?? null,
-      recipient,
-      type ?? 'request',
-      relatedId ?? null,
-      message ?? '',
-      createdBy ?? null,
-    ],
-  );
+  const recipients = recipientEmpIds ?? recipientEmpId;
+  const normalizedRecipients = parseEmpIdList(recipients);
+  if (normalizedRecipients.length === 0) return;
+  for (const recipient of normalizedRecipients) {
+    // eslint-disable-next-line no-await-in-loop
+    await conn.query(
+      `INSERT INTO notifications (company_id, recipient_empid, type, related_id, message, created_by)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [
+        companyId ?? null,
+        recipient,
+        type ?? 'request',
+        relatedId ?? null,
+        message ?? '',
+        createdBy ?? null,
+      ],
+    );
+  }
 }
 
 const REVIEW_ACTIONS = new Set(['forwarded', 'promoted', 'rejected']);
@@ -885,7 +931,7 @@ export async function createTemporarySubmission({
         ? { departmentId: normalizedDepartmentPref }
         : {}),
     });
-    const reviewerEmpId = normalizeEmpId(session?.senior_empid);
+    const reviewerEmpIds = parseEmpIdList(session?.senior_empid ?? session?.seniorEmpId);
     const fallbackBranch = normalizeScopePreference(branchId);
     const fallbackDepartment = normalizeScopePreference(departmentId);
     const insertBranchId = branchPrefSpecified
@@ -911,7 +957,7 @@ export async function createTemporarySubmission({
         safeJsonStringify(rawValues),
         safeJsonStringify(cleanedWithCalculated),
         normalizedCreator,
-        reviewerEmpId,
+        serializeEmpIdList(reviewerEmpIds),
         insertBranchId,
         insertDepartmentId,
         normalizedChainId,
@@ -937,21 +983,25 @@ export async function createTemporarySubmission({
       },
       conn,
     );
-    if (reviewerEmpId) {
-      await insertNotification(conn, {
+    const reviewerCount = reviewerEmpIds.length;
+    if (reviewerCount > 0) {
+      await notificationInserter(conn, {
         companyId,
-        recipientEmpId: reviewerEmpId,
+        recipientEmpIds: reviewerEmpIds,
         createdBy: normalizedCreator,
         relatedId: temporaryId,
-        message: `Temporary submission pending review for ${tableName}`,
+        message: `Temporary submission pending review for ${tableName}${
+          reviewerCount > 1 ? ` (shared with ${reviewerCount} senior reviewers)` : ''
+        }`,
         type: 'request',
       });
     }
     await conn.query('COMMIT');
     return {
       id: temporaryId,
-      reviewerEmpId,
-      planSenior: reviewerEmpId,
+      reviewerEmpIds,
+      reviewerEmpId: reviewerEmpIds?.[0] || null,
+      planSenior: reviewerEmpIds?.[0] || null,
       chainId: persistedChainId,
     };
   } catch (err) {
@@ -971,6 +1021,7 @@ function mapTemporaryRow(row) {
   const payload = safeJsonParse(row.payload_json, {});
   const cleanedContainer = safeJsonParse(row.cleaned_values_json, {});
   const rawContainer = safeJsonParse(row.raw_values_json, {});
+  const parsedPlanSeniorEmpIds = parseEmpIdList(row.plan_senior_empid);
   const cleanedValues =
     extractPromotableValues(cleanedContainer) ??
     (isPlainObject(cleanedContainer) ? cleanedContainer : {});
@@ -993,8 +1044,10 @@ function mapTemporaryRow(row) {
     cleanedValues,
     values: promotableValues,
     createdBy: row.created_by,
-    planSeniorEmpId: row.plan_senior_empid,
-    reviewerEmpId: row.plan_senior_empid,
+    planSeniorEmpIds: parsedPlanSeniorEmpIds,
+    planSeniorEmpId: parsedPlanSeniorEmpIds[0] || null,
+    reviewerEmpIds: parsedPlanSeniorEmpIds,
+    reviewerEmpId: parsedPlanSeniorEmpIds[0] || null,
     lastPromoterEmpId: row.last_promoter_empid || null,
     branchId: row.branch_id,
     departmentId: row.department_id,
@@ -1127,8 +1180,10 @@ export async function listTemporarySubmissions({
     params.push(tableName);
   }
   if (scope === 'review') {
-    conditions.push('plan_senior_empid = ?');
-    params.push(normalizedEmp);
+    conditions.push(
+      '((JSON_VALID(plan_senior_empid) AND JSON_CONTAINS(plan_senior_empid, ?, \"$\")) OR plan_senior_empid = ?)',
+    );
+    params.push(`"${normalizedEmp}"`, normalizedEmp);
   } else {
     conditions.push('created_by = ?');
     params.push(normalizedEmp);
@@ -1338,11 +1393,13 @@ export async function getTemporarySummary(
 
 function formatChainHistoryRow(row) {
   if (!row) return null;
+  const parsedPlanSeniorEmpIds = parseEmpIdList(row.plan_senior_empid);
   return {
     id: row.id,
     chainId: row.chainId || row.chain_id || null,
     status: row.status,
-    planSeniorEmpId: row.plan_senior_empid || null,
+    planSeniorEmpIds: parsedPlanSeniorEmpIds,
+    planSeniorEmpId: parsedPlanSeniorEmpIds[0] || row.plan_senior_empid || null,
     reviewedBy: row.reviewed_by || null,
     reviewedAt: row.reviewed_at || null,
     reviewNotes: row.review_notes || null,
@@ -1470,7 +1527,7 @@ export async function promoteTemporarySubmission(
       throw err;
     }
     const allowedReviewer =
-      normalizeEmpId(row.plan_senior_empid) === normalizedReviewer ||
+      empIdListIncludes(row.plan_senior_empid, normalizedReviewer) ||
       normalizeEmpId(row.created_by) === normalizedReviewer;
     if (!allowedReviewer) {
       const err = new Error('Forbidden');
@@ -1487,7 +1544,7 @@ export async function promoteTemporarySubmission(
     const payloadJson = safeJsonParse(row.payload_json, {});
     const effectiveChainId =
       normalizeTemporaryId(ensuredChainId) || normalizeTemporaryId(row.id) || null;
-    const isDirectReviewer = normalizeEmpId(row.plan_senior_empid) === normalizedReviewer;
+    const isDirectReviewer = empIdListIncludes(row.plan_senior_empid, normalizedReviewer);
     const applyToChain = Boolean(effectiveChainId) && isDirectReviewer;
     const requestedForcePromote =
       forcePromoteFlag === true ||
@@ -1648,6 +1705,8 @@ export async function promoteTemporarySubmission(
     const resolvedBranchPref = normalizeScopePreference(row.branch_id);
     const resolvedDepartmentPref = normalizeScopePreference(row.department_id);
     let forwardReviewerEmpId = null;
+    let forwardReviewerEmpIds = [];
+    let reviewerPlanSupervisorIds = [];
     try {
       const reviewerSession = await employmentSessionFetcher(
         normalizedReviewer,
@@ -1659,7 +1718,9 @@ export async function promoteTemporarySubmission(
             : {}),
         },
       );
-      forwardReviewerEmpId = normalizeEmpId(reviewerSession?.senior_empid);
+      forwardReviewerEmpIds = parseEmpIdList(reviewerSession?.senior_empid);
+      reviewerPlanSupervisorIds = parseEmpIdList(reviewerSession?.senior_plan_empid);
+      forwardReviewerEmpId = forwardReviewerEmpIds[0] || null;
     } catch (sessionErr) {
       console.error('Failed to resolve reviewer senior for temporary forward', {
         error: sessionErr,
@@ -1667,8 +1728,9 @@ export async function promoteTemporarySubmission(
         company: row.company_id,
       });
     }
-    if (forwardReviewerEmpId && forwardReviewerEmpId === normalizedReviewer) {
-      forwardReviewerEmpId = null;
+    if (forwardReviewerEmpIds.length > 0) {
+      forwardReviewerEmpIds = forwardReviewerEmpIds.filter((id) => id !== normalizedReviewer);
+      forwardReviewerEmpId = forwardReviewerEmpIds[0] || null;
     }
     const forcePromote =
       allowForcePromote || normalizeEmpId(row.last_promoter_empid) === normalizedReviewer;
@@ -1869,7 +1931,7 @@ export async function promoteTemporarySubmission(
           row.raw_values_json ?? null,
           safeJsonStringify(sanitizedPayloadValues),
           normalizedReviewer,
-          forwardReviewerEmpId,
+          serializeEmpIdList(forwardReviewerEmpIds),
           normalizedReviewer,
           row.branch_id ?? null,
           row.department_id ?? null,
@@ -1904,10 +1966,14 @@ export async function promoteTemporarySubmission(
       );
       await notificationInserter(conn, {
         companyId: row.company_id,
-        recipientEmpId: forwardReviewerEmpId,
+        recipientEmpIds: forwardReviewerEmpIds,
         createdBy: normalizedReviewer,
         relatedId: forwardTemporaryId ?? id,
-        message: `Temporary submission pending review for ${row.table_name}`,
+        message: `Temporary submission pending review for ${row.table_name}${
+          forwardReviewerEmpIds.length > 1
+            ? ` (shared with ${forwardReviewerEmpIds.length} senior reviewers)`
+            : ''
+        }`,
         type: 'request',
       });
       await notificationInserter(conn, {
@@ -2151,6 +2217,10 @@ export async function promoteTemporarySubmission(
     if (creatorRecipient) {
       participantRecipients.add(creatorRecipient);
     }
+    const planReviewerRecipients = new Set(
+      Array.isArray(reviewerPlanSupervisorIds) ? reviewerPlanSupervisorIds : [],
+    );
+    planReviewerRecipients.delete(normalizedReviewer);
     const promotionMessage = `Temporary submission for ${row.table_name} approved`;
     for (const recipientEmpId of participantRecipients) {
       await notificationInserter(conn, {
@@ -2161,6 +2231,19 @@ export async function promoteTemporarySubmission(
         message: promotionMessage,
         type: 'response',
       });
+    }
+    if (planReviewerRecipients.size > 0) {
+      const sharedMessage = `${promotionMessage} (shared with ${planReviewerRecipients.size} senior reviewers)`;
+      for (const recipientEmpId of planReviewerRecipients) {
+        await notificationInserter(conn, {
+          companyId: row.company_id,
+          recipientEmpId,
+          createdBy: normalizedReviewer,
+          relatedId: id,
+          message: sharedMessage,
+          type: 'response',
+        });
+      }
     }
     if (resolvedPendingRows.length > 0) {
       const resolutionMessage = `Temporary submission auto-resolved due to promotion in chain #${effectiveChainId}`;
@@ -2263,7 +2346,7 @@ export async function rejectTemporarySubmission(
       throw err;
     }
     const allowedReviewer =
-      normalizeEmpId(row.plan_senior_empid) === normalizedReviewer ||
+      empIdListIncludes(row.plan_senior_empid, normalizedReviewer) ||
       normalizeEmpId(row.created_by) === normalizedReviewer;
     if (!allowedReviewer) {
       const err = new Error('Forbidden');
@@ -2290,7 +2373,7 @@ export async function rejectTemporarySubmission(
     }
     const effectiveChainId =
       normalizeTemporaryId(ensuredChainId) || normalizeTemporaryId(row.id) || null;
-    const isDirectReviewer = normalizeEmpId(row.plan_senior_empid) === normalizedReviewer;
+    const isDirectReviewer = empIdListIncludes(row.plan_senior_empid, normalizedReviewer);
     const applyToChain = Boolean(effectiveChainId) && isDirectReviewer;
     console.info('Temporary rejection chain update', {
       id,
