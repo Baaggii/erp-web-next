@@ -3636,50 +3636,25 @@ export default function PosApiAdmin() {
     [primaryRequestTable, requestTableColumns],
   );
 
-  const requestFieldPathOptions = useMemo(() => {
+  const requestAggregationFieldOptions = useMemo(() => {
     const seen = new Set();
-    const paths = [];
-
-    (requestFieldDisplay.items || []).forEach((entry) => {
-      const normalized = normalizeHintEntry(entry);
-      if (normalized.field && !seen.has(normalized.field)) {
-        seen.add(normalized.field);
-        paths.push(normalized.field);
-      }
-    });
-
-    try {
-      const parsedSample = cleanSampleText(requestSampleText);
-      flattenExampleFields(parsedSample).forEach((entry) => {
-        if (!entry?.field || seen.has(entry.field)) return;
-        seen.add(entry.field);
-        paths.push(entry.field);
+    const fields = [];
+    Object.entries(requestTableColumns).forEach(([table, cols]) => {
+      (cols || []).forEach((col) => {
+        if (!col) return;
+        const value = table ? `${table}.${col}` : col;
+        if (seen.has(value)) return;
+        seen.add(value);
+        fields.push(value);
       });
-    } catch {
-      // ignore malformed samples; fall back to hint-derived paths only
-    }
-
-    Object.keys(formState.requestFieldMappings || {}).forEach((fieldPath) => {
-      if (!fieldPath || seen.has(fieldPath)) return;
-      seen.add(fieldPath);
-      paths.push(fieldPath);
     });
-
-    if (Array.isArray(formState.aggregations)) {
-      formState.aggregations.forEach((agg) => {
-        if (!agg?.field || seen.has(agg.field)) return;
-        seen.add(agg.field);
-        paths.push(agg.field);
-      });
-    }
-
-    return paths;
-  }, [formState.aggregations, formState.requestFieldMappings, requestFieldDisplay.items, requestSampleText]);
-
-  const requestAggregationFieldOptions = useMemo(
-    () => [...requestFieldPathOptions].sort(),
-    [requestFieldPathOptions],
-  );
+    (primaryRequestColumns || []).forEach((col) => {
+      if (!col || seen.has(col)) return;
+      seen.add(col);
+      fields.push(col);
+    });
+    return fields;
+  }, [primaryRequestColumns, requestTableColumns]);
 
   useEffect(() => {
     let removedTables = 0;

@@ -107,14 +107,6 @@ function attachResponseMappings(endpoint) {
   };
 }
 
-function mergeMappingHints(existing = {}, incoming = {}) {
-  const base =
-    existing && typeof existing === 'object' && !Array.isArray(existing) ? existing : {};
-  const next =
-    incoming && typeof incoming === 'object' && !Array.isArray(incoming) ? incoming : {};
-  return Object.keys({ ...base, ...next }).length ? { ...base, ...next } : {};
-}
-
 router.get('/', requireAuth, requireAdmin, async (req, res, next) => {
   try {
     const endpoints = (await loadEndpoints()).map(attachResponseMappings);
@@ -131,14 +123,7 @@ router.put('/', requireAuth, requireAdmin, async (req, res, next) => {
       res.status(400).json({ message: 'endpoints array is required' });
       return;
     }
-    const existingEndpoints = await loadEndpoints().catch(() => []);
-    const existingById = new Map(
-      existingEndpoints.filter((ep) => ep && ep.id).map((ep) => [ep.id, ep]),
-    );
-    const normalized = payload.map((endpoint) => {
-      const previous = existingById.get(endpoint?.id) || {};
-      return attachResponseMappings({ ...previous, ...endpoint });
-    });
+    const normalized = payload.map((endpoint) => attachResponseMappings(endpoint));
     const validationIssues = normalized
       .map((endpoint, index) => validateEndpointDefinition(endpoint, index))
       .flat();
@@ -147,32 +132,12 @@ router.put('/', requireAuth, requireAdmin, async (req, res, next) => {
       return;
     }
     const sanitized = JSON.parse(JSON.stringify(payload)).map((endpoint) => {
-      const previous = existingById.get(endpoint?.id) || {};
-      const merged = { ...previous, ...endpoint };
-      const normalized = { ...merged };
-      const mergedRequestFieldMappings =
-        endpoint?.requestFieldMappings !== undefined
-          ? endpoint.requestFieldMappings
-          : previous.requestFieldMappings;
-      const mergedRequestEnvMap =
-        endpoint?.requestEnvMap !== undefined ? endpoint.requestEnvMap : previous.requestEnvMap;
+      const normalized = { ...endpoint };
       const { map: requestFieldMappings, envMap } = normalizeRequestFieldMappings(
-        mergedRequestFieldMappings,
-        mergedRequestEnvMap,
+        endpoint.requestFieldMappings,
+        endpoint.requestEnvMap,
       );
-      const mergedRequestMappings =
-        endpoint?.requestMappings !== undefined ? endpoint.requestMappings : previous.requestMappings;
-      const requestMappings = normalizeRequestMappings(mergedRequestMappings);
-      const mappingHints = mergeMappingHints(previous.mappingHints, endpoint.mappingHints);
-      const resolvedNestedObjects = Array.isArray(endpoint?.nestedObjects)
-        ? endpoint.nestedObjects
-        : Array.isArray(endpoint?.mappingHints?.nestedObjects)
-          ? endpoint.mappingHints.nestedObjects
-          : Array.isArray(previous?.nestedObjects)
-            ? previous.nestedObjects
-            : Array.isArray(previous?.mappingHints?.nestedObjects)
-              ? previous.mappingHints.nestedObjects
-              : undefined;
+      const requestMappings = normalizeRequestMappings(endpoint.requestMappings);
       if (Object.keys(requestFieldMappings).length) {
         normalized.requestFieldMappings = requestFieldMappings;
       } else {
@@ -184,16 +149,6 @@ router.put('/', requireAuth, requireAdmin, async (req, res, next) => {
         delete normalized.requestMappings;
       }
       normalized.requestEnvMap = envMap;
-      if (resolvedNestedObjects !== undefined) {
-        normalized.nestedObjects = resolvedNestedObjects;
-      } else {
-        delete normalized.nestedObjects;
-      }
-      if (Object.keys(mappingHints).length) {
-        normalized.mappingHints = mappingHints;
-      } else {
-        delete normalized.mappingHints;
-      }
       return normalized;
     });
     const saved = await saveEndpoints(sanitized);
