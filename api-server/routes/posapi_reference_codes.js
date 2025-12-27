@@ -1,6 +1,6 @@
 import express from 'express';
 import { requireAuth } from '../middlewares/auth.js';
-import { getEmploymentSession } from '../../db/index.js';
+import { requireAdmin } from '../middlewares/admin.js';
 import {
   getUploadMiddleware,
   importStaticCodes,
@@ -15,22 +15,8 @@ import {
 
 const router = express.Router();
 
-async function requireSystemSettings(req, res) {
-  const companyId = Number(req.query.companyId ?? req.user.companyId);
-  const session =
-    (req.session && Number(req.session?.company_id) === companyId && req.session) ||
-    (await getEmploymentSession(req.user.empid, companyId));
-  if (!session?.permissions?.system_settings) {
-    res.status(403).json({ message: 'Admin access required' });
-    return null;
-  }
-  return { session, companyId };
-}
-
-router.get('/', requireAuth, async (req, res, next) => {
+router.get('/', requireAuth, requireAdmin, async (req, res, next) => {
   try {
-    const guard = await requireSystemSettings(req, res);
-    if (!guard) return;
     const [settings, logs] = await Promise.all([loadSyncSettings(), loadSyncLogs(50)]);
     res.json({ settings, logs });
   } catch (err) {
@@ -38,10 +24,8 @@ router.get('/', requireAuth, async (req, res, next) => {
   }
 });
 
-router.post('/sync', requireAuth, async (req, res, next) => {
+router.post('/sync', requireAuth, requireAdmin, async (req, res, next) => {
   try {
-    const guard = await requireSystemSettings(req, res);
-    if (!guard) return;
     const payload = req.body && typeof req.body === 'object' ? req.body : {};
     const result = await runReferenceCodeSync('manual', payload);
     res.json(result);
@@ -54,10 +38,8 @@ router.post('/sync', requireAuth, async (req, res, next) => {
   }
 });
 
-router.put('/settings', requireAuth, async (req, res, next) => {
+router.put('/settings', requireAuth, requireAdmin, async (req, res, next) => {
   try {
-    const guard = await requireSystemSettings(req, res);
-    if (!guard) return;
     const saved = await saveSyncSettings(req.body || {});
     updateSyncSchedule(saved);
     res.json(saved);
@@ -66,10 +48,8 @@ router.put('/settings', requireAuth, async (req, res, next) => {
   }
 });
 
-router.post('/upload', requireAuth, getUploadMiddleware(), async (req, res, next) => {
+router.post('/upload', requireAuth, requireAdmin, getUploadMiddleware(), async (req, res, next) => {
   try {
-    const guard = await requireSystemSettings(req, res);
-    if (!guard) return;
     const codeType = String(req.body?.codeType || '').trim();
     if (!codeType) {
       res.status(400).json({ message: 'codeType is required' });
@@ -86,10 +66,8 @@ router.post('/upload', requireAuth, getUploadMiddleware(), async (req, res, next
   }
 });
 
-router.post('/import-xlsx', requireAuth, getUploadMiddleware(), async (req, res, next) => {
+router.post('/import-xlsx', requireAuth, requireAdmin, getUploadMiddleware(), async (req, res, next) => {
   try {
-    const guard = await requireSystemSettings(req, res);
-    if (!guard) return;
     const codeType = String(req.body?.codeType || '').trim();
     if (!codeType) {
       res.status(400).json({ message: 'codeType is required' });
@@ -116,4 +94,3 @@ initialiseReferenceCodeSync().catch((err) => {
 });
 
 export default router;
-

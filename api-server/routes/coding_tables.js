@@ -5,6 +5,7 @@ import path from 'path';
 import { uploadCodingTable } from '../controllers/codingTableController.js';
 import { upsertCodingTableRow } from '../services/codingTableRowUpsert.js';
 import { requireAuth } from '../middlewares/auth.js';
+import { requireAdmin } from '../middlewares/admin.js';
 import {
   buildSchemaDiff,
   applySchemaDiffStatements,
@@ -12,8 +13,6 @@ import {
   recordSchemaBaseline,
 } from '../services/schemaDiff.js';
 import { enqueueSchemaDiffJob, getSchemaDiffJob } from '../services/schemaDiffJobs.js';
-import { getEmploymentSession } from '../../db/index.js';
-import hasAction from '../utils/hasAction.js';
 
 const router = express.Router();
 const LONG_RUNNING_TIMEOUT_MS = 5 * 60 * 1000;
@@ -61,6 +60,7 @@ const upload = multer({ storage });
 router.post(
   '/upload',
   requireAuth,
+  requireAdmin,
   upload.single('file'),
   async (req, res, next) => {
     const controller = new AbortController();
@@ -89,10 +89,8 @@ router.post('/upsert-row', requireAuth, async (req, res, next) => {
   }
 });
 
-router.get('/schema-diff/check', requireAuth, async (req, res, next) => {
+router.get('/schema-diff/check', requireAuth, requireAdmin, async (req, res, next) => {
   try {
-    const session = await getEmploymentSession(req.user.empid, req.user.companyId);
-    if (!(await hasAction(session, 'system_settings'))) return res.sendStatus(403);
     const checks = await getSchemaDiffPrerequisites();
     const issues = [];
     const warnings = [...(checks.warnings || [])];
@@ -111,11 +109,9 @@ router.get('/schema-diff/check', requireAuth, async (req, res, next) => {
   }
 });
 
-router.post('/schema-diff/compare', requireAuth, async (req, res, next) => {
+router.post('/schema-diff/compare', requireAuth, requireAdmin, async (req, res, next) => {
   extendTimeouts(req, res);
   try {
-    const session = await getEmploymentSession(req.user.empid, req.user.companyId);
-    if (!(await hasAction(session, 'system_settings'))) return res.sendStatus(403);
     const { schemaPath, schemaFile, allowDrops = false } = req.body || {};
     const job = enqueueSchemaDiffJob({
       userId: req.user.empid,
@@ -137,10 +133,8 @@ router.post('/schema-diff/compare', requireAuth, async (req, res, next) => {
   }
 });
 
-router.post('/schema-diff/baseline', requireAuth, async (req, res, next) => {
+router.post('/schema-diff/baseline', requireAuth, requireAdmin, async (req, res, next) => {
   try {
-    const session = await getEmploymentSession(req.user.empid, req.user.companyId);
-    if (!(await hasAction(session, 'system_settings'))) return res.sendStatus(403);
     const { schemaPath, schemaFile } = req.body || {};
     if (!schemaPath || !schemaFile) {
       return res.status(400).json({ message: 'schemaPath and schemaFile are required' });
@@ -153,15 +147,13 @@ router.post('/schema-diff/baseline', requireAuth, async (req, res, next) => {
   }
 });
 
-router.post('/schema-diff/apply', requireAuth, async (req, res, next) => {
+router.post('/schema-diff/apply', requireAuth, requireAdmin, async (req, res, next) => {
   const controller = new AbortController();
   const handleAbort = () => controller.abort();
   req.on('close', handleAbort);
   res.on('close', handleAbort);
   extendTimeouts(req, res);
   try {
-    const session = await getEmploymentSession(req.user.empid, req.user.companyId);
-    if (!(await hasAction(session, 'system_settings'))) return res.sendStatus(403);
     const {
       statements,
       allowDrops = false,
@@ -195,10 +187,8 @@ router.post('/schema-diff/apply', requireAuth, async (req, res, next) => {
   }
 });
 
-router.get('/schema-diff/jobs/:jobId', requireAuth, async (req, res, next) => {
+router.get('/schema-diff/jobs/:jobId', requireAuth, requireAdmin, async (req, res, next) => {
   try {
-    const session = await getEmploymentSession(req.user.empid, req.user.companyId);
-    if (!(await hasAction(session, 'system_settings'))) return res.sendStatus(403);
     const job = getSchemaDiffJob(req.params.jobId);
     if (!job || (job.userId && job.userId !== req.user.empid)) {
       return res.status(404).json({ message: 'Job not found' });
