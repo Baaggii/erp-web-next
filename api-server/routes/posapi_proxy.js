@@ -1,5 +1,6 @@
 import express from 'express';
 import { requireAuth } from '../middlewares/auth.js';
+import { requireAdmin } from '../middlewares/admin.js';
 import { invokePosApiEndpoint, resolvePosApiEndpoint } from '../services/posApiService.js';
 import { logUserAction } from '../services/userActivityLog.js';
 
@@ -18,7 +19,7 @@ function serializeForLog(value, maxLength = 4000) {
   }
 }
 
-router.post('/invoke', requireAuth, async (req, res, next) => {
+router.post('/invoke', requireAuth, requireAdmin, async (req, res, next) => {
   const { endpointId, payload, context, options } = req.body || {};
   if (!endpointId || typeof endpointId !== 'string') {
     res.status(400).json({ message: 'endpointId is required' });

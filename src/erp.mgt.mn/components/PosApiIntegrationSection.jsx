@@ -408,37 +408,62 @@ export function MappingFieldSelector({
   const sessionListId = `${datalistIdBase}-session`;
 
   const handleTypeChange = (nextType) => {
-    const base = { ...selection, type: nextType };
-    if (nextType !== 'column') {
+    const base = {
+      type: nextType,
+      aggregation: selection.aggregation,
+      applyToBody: selection.applyToBody,
+    };
+    if (nextType === 'column') {
       base.table = '';
       base.column = '';
+    } else if (nextType === 'literal') {
+      base.value = '';
+    } else if (nextType === 'env') {
+      base.envVar = '';
+    } else if (nextType === 'session') {
+      base.sessionVar = '';
+    } else if (nextType === 'expression') {
+      base.expression = '';
     }
-    onChange(buildMappingValue(base, { preserveType: true }));
+    onChange({
+      ...buildMappingValue(base, { preserveType: true }),
+      applyToBody: selection.applyToBody,
+    });
   };
 
   const handleTableChange = (tbl) => {
     if (tbl) onTableSelect(tbl);
-    onChange(
-      buildMappingValue({
-        type: 'column',
-        table: tbl,
-        column: selection.column,
-      }, { preserveType: true }),
-    );
+    onChange({
+      ...buildMappingValue(
+        {
+          type: 'column',
+          table: tbl,
+          column: selection.column,
+          aggregation: selection.aggregation,
+        },
+        { preserveType: true },
+      ),
+      applyToBody: selection.applyToBody,
+    });
   };
 
   const handleColumnChange = (col) => {
-    onChange(
-      buildMappingValue({
-        type: 'column',
-        table: selectedTable,
-        column: col,
-      }, { preserveType: true }),
-    );
+    onChange({
+      ...buildMappingValue(
+        {
+          type: 'column',
+          table: selectedTable,
+          column: col,
+          aggregation: selection.aggregation,
+        },
+        { preserveType: true },
+      ),
+      applyToBody: selection.applyToBody,
+    });
   };
 
   const handleScalarChange = (key, val) => {
-    const base = { ...selection, type: currentType, [key]: val };
+    const base = { ...selection, type: currentType, aggregation: selection.aggregation, [key]: val };
     onChange(buildMappingValue(base, { preserveType: true }));
   };
 
@@ -670,18 +695,22 @@ export default function PosApiIntegrationSection({
 
   useEffect(() => {
     if (!config.posApiEnabled) return;
-    const mappings =
+    const requestMappings =
       selectedEndpoint && typeof selectedEndpoint.requestMappings === 'object' && !Array.isArray(selectedEndpoint.requestMappings)
         ? selectedEndpoint.requestMappings
         : null;
-    if (!mappings) return;
+    const requestFieldMappings =
+      selectedEndpoint && typeof selectedEndpoint.requestFieldMappings === 'object' && !Array.isArray(selectedEndpoint.requestFieldMappings)
+        ? selectedEndpoint.requestFieldMappings
+        : null;
+    if (!requestMappings && !requestFieldMappings) return;
     setConfig((prev) => {
       const baseMapping =
         prev.posApiMapping && typeof prev.posApiMapping === 'object' && !Array.isArray(prev.posApiMapping)
           ? { ...prev.posApiMapping }
           : {};
       let changed = false;
-      Object.entries(mappings).forEach(([field, value]) => {
+      const mergeEntry = (field, value) => {
         const normalizedField = typeof field === 'string' ? field.trim() : '';
         if (!normalizedField) return;
         if (baseMapping[normalizedField]) return;
@@ -690,7 +719,9 @@ export default function PosApiIntegrationSection({
         if (nextValue === '' || nextValue === undefined) return;
         baseMapping[normalizedField] = nextValue;
         changed = true;
-      });
+      };
+      Object.entries(requestMappings || {}).forEach(([field, value]) => mergeEntry(field, value));
+      Object.entries(requestFieldMappings || {}).forEach(([field, value]) => mergeEntry(field, value));
       if (!changed) return prev;
       return { ...prev, posApiMapping: baseMapping };
     });
@@ -2253,6 +2284,9 @@ export default function PosApiIntegrationSection({
                 }}
               >
                 {filteredItemFields.map((field) => {
+                  const mappedValue = resolvedItemFieldMapping[field.key];
+                  const normalizedSelection = normalizeMappingSelection(mappedValue, primaryTableName);
+                  const mappedTable = normalizedSelection.table || '';
                   const filteredChoices = (itemTableOptions || [])
                     .filter((tbl) => {
                       if (!tbl) return false;
@@ -2261,21 +2295,18 @@ export default function PosApiIntegrationSection({
                     })
                     .slice();
                   if (
-                    selectedTable &&
-                    selectedTable !== '' &&
-                    (!primaryTableName || selectedTable !== primaryTableName) &&
-                    !filteredChoices.includes(selectedTable)
+                    mappedTable &&
+                    mappedTable !== '' &&
+                    (!primaryTableName || mappedTable !== primaryTableName) &&
+                    !filteredChoices.includes(mappedTable)
                   ) {
-                    filteredChoices.unshift(selectedTable);
+                    filteredChoices.unshift(mappedTable);
                   }
                   const itemHint = itemFieldHints[field.key] || {};
                   const itemRequired = Boolean(itemHint.required);
                   const itemDescription = itemHint.description;
-                  const mappedValue = resolvedItemFieldMapping[field.key];
                   const aggregationValue =
-                    normalizeMappingSelection(mappedValue, primaryTableName).aggregation
-                    || itemHint.aggregation
-                    || '';
+                    normalizedSelection.aggregation || itemHint.aggregation || '';
                   const missingRequired = itemRequired && !isMappingProvided(mappedValue);
                   return (
                     <div

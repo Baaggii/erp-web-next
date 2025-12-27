@@ -73,7 +73,7 @@ async function resolveProcDir(companyId = 0) {
 }
 
 const router = express.Router();
-router.use(requireAuth);
+router.use(requireAuth, requireAdmin);
 
 // List database tables
 router.get('/tables', async (req, res, next) => {
@@ -131,7 +131,7 @@ router.get('/procedures', async (req, res, next) => {
 });
 
 // Save a stored procedure
-router.post('/procedures', requireAdmin, async (req, res, next) => {
+router.post('/procedures', async (req, res, next) => {
   try {
     const { sql } = req.body || {};
     if (!sql) return res.status(400).json({ message: 'sql required' });
@@ -173,7 +173,7 @@ router.post(
 );
 
 // Delete a stored procedure
-router.delete('/procedures/:name', requireAdmin, async (req, res, next) => {
+router.delete('/procedures/:name', async (req, res, next) => {
   try {
     const { name } = req.params;
     if (!name) return res.status(400).json({ message: 'name required' });
@@ -185,7 +185,7 @@ router.delete('/procedures/:name', requireAdmin, async (req, res, next) => {
 });
 
 // Save a view
-router.post('/views', requireAdmin, async (req, res, next) => {
+router.post('/views', async (req, res, next) => {
   try {
     const { sql } = req.body || {};
     if (!sql) return res.status(400).json({ message: 'sql required' });
@@ -218,7 +218,7 @@ router.get('/views/:name', async (req, res, next) => {
   }
 });
 
-router.delete('/views/:name', requireAdmin, async (req, res, next) => {
+router.delete('/views/:name', async (req, res, next) => {
   try {
     const { name } = req.params;
     if (!name) return res.status(400).json({ message: 'name required' });
