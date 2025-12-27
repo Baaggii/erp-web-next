@@ -464,7 +464,6 @@ function buildColumnStatements(table, columnName, columnMeta, options, constrain
   const baseType = columnMeta?.type || 'TEXT';
   const action = options.action || 'convert';
   const handleConstraints = action === 'convert' ? true : Boolean(options.handleConstraints);
-  const dbEngine = options.dbEngine || 'MySQL';
   const manualSql = options.customSql || '';
   const statements = [];
   const previewNotes = [];
@@ -661,7 +660,6 @@ export function buildConversionPlan(table, columns, metadata, options = {}) {
       meta,
       {
         ...options,
-        dbEngine: engine,
         handleConstraints: col.action === 'convert' ? true : Boolean(col.handleConstraints),
         action: col.action,
         customSql: col.customSql,
