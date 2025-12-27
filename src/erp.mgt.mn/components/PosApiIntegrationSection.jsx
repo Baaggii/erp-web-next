@@ -705,6 +705,15 @@ export default function PosApiIntegrationSection({
     [normalizedNestedPaths, selectedEndpoint],
   );
 
+  const handleResetFieldMappings = useCallback(() => {
+    if (!endpointRequestMappingDefaults) return;
+    const clonedDefaults = JSON.parse(JSON.stringify(endpointRequestMappingDefaults));
+    setConfig((prev) => ({
+      ...prev,
+      posApiMapping: clonedDefaults,
+    }));
+  }, [endpointRequestMappingDefaults, setConfig]);
+
   useEffect(() => {
     if (!config.posApiEnabled || !endpointRequestMappingDefaults) return;
     setConfig((prev) => {
@@ -1993,6 +2002,14 @@ export default function PosApiIntegrationSection({
             placeholder="Search fields or paths"
             style={{ flex: '1 1 220px', minWidth: '220px' }}
           />
+          <button
+            type="button"
+            onClick={handleResetFieldMappings}
+            disabled={!config.posApiEnabled || !endpointRequestMappingDefaults}
+            style={{ padding: '0.35rem 0.6rem' }}
+          >
+            Reset to endpoint mappings
+          </button>
           <small style={{ color: '#666' }}>Filters across top-level and nested objects.</small>
         </div>
         <div
