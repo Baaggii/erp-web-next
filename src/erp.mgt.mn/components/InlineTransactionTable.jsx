@@ -24,13 +24,6 @@ import {
 } from '../utils/transactionValues.js';
 import extractCombinationFilterValue from '../utils/extractCombinationFilterValue.js';
 import selectDisplayFieldsForRelation from '../utils/selectDisplayFieldsForRelation.js';
-import {
-  formatJsonDisplay,
-  mergeJsonArray,
-  normalizeJsonArray,
-  removeJsonArrayValue,
-  serializeJsonArray,
-} from '../utils/jsonFieldUtils.js';
 
 const currencyFmt = new Intl.NumberFormat('en-US', {
   minimumFractionDigits: 2,
@@ -108,8 +101,6 @@ function InlineTransactionTable(
     return row[ROW_OVERRIDE_ID];
   }
   const [tableDisplayFields, setTableDisplayFields] = useState([]);
-  const [jsonDrafts, setJsonDrafts] = useState({});
-  const [jsonSearchDrafts, setJsonSearchDrafts] = useState({});
   useEffect(() => {
     fetch('/api/display_fields', { credentials: 'include' })
       .then((res) => (res.ok ? res.json() : {}))
@@ -992,14 +983,6 @@ function InlineTransactionTable(
     });
     return map;
   }, [fieldsKey, columnTypeMap, fieldTypeMapKey, placeholders, defaultValues, totalAmountSet, totalCurrencySet]);
-  const jsonFieldSet = React.useMemo(() => {
-    const set = new Set();
-    fields.forEach((f) => {
-      const typ = (fieldTypeMap[f] || columnTypeMap[f] || '').toLowerCase();
-      if (typ === 'json') set.add(f);
-    });
-    return set;
-  }, [fieldsKey, fieldTypeMapKey, columnTypeMap]);
 
   useEffect(() => {
     if (!Array.isArray(initRows)) return;
@@ -1941,10 +1924,6 @@ function InlineTransactionTable(
     if (isFieldDisabled(field) && !String(field || '').startsWith('_')) {
       return;
     }
-    const normalizedValue =
-      jsonFieldSet.has(field) && !Array.isArray(value)
-        ? normalizeJsonArray(value)
-        : value;
     if (rowIdx != null && rowIdx >= 0 && rowIdx < rows.length) {
       const row = rows[rowIdx];
       const rowId = getOrAssignRowOverrideId(row);
@@ -1952,7 +1931,7 @@ function InlineTransactionTable(
         const lower = typeof field === 'string' ? field.toLowerCase() : String(field || '');
         if (lower) {
           const existing = manualCellOverridesRef.current.get(rowId) || new Map();
-          existing.set(lower, normalizedValue);
+          existing.set(lower, value);
           manualCellOverridesRef.current.set(rowId, existing);
         }
       }
@@ -1961,9 +1940,9 @@ function InlineTransactionTable(
       (r) =>
         r.map((row, i) => {
           if (i !== rowIdx) return row;
-          const updated = { ...row, [field]: normalizedValue };
+          const updated = { ...row, [field]: value };
           const conf = relationConfigMap[field];
-          let val = normalizedValue;
+          let val = value;
           if (val && typeof val === 'object' && 'value' in val) {
             val = val.value;
           }
@@ -2066,11 +2045,10 @@ function InlineTransactionTable(
       if (placeholders[f]) {
         val = normalizeDateInput(val, placeholders[f]);
       }
-      const isEmptyJson = jsonFieldSet.has(f) && normalizeJsonArray(val).length === 0;
       if (totalCurrencySet.has(f)) {
         val = normalizeNumberInput(val);
       }
-      if (val === '' || val === null || val === undefined || isEmptyJson) {
+      if (val === '' || val === null || val === undefined) {
         setErrorMsg(`${labels[f] || f} талбарыг бөглөнө үү.`);
         setInvalidCell({ row: idx, field: f });
         const el = inputRefs.current[`${idx}-${fields.indexOf(f)}`];
@@ -2114,13 +2092,9 @@ function InlineTransactionTable(
       const key = columnCaseMap[k.toLowerCase()];
       if (!key) return;
       let val = typeof v === 'object' && v !== null && 'value' in v ? v.value : v;
-      if (jsonFieldSet.has(key)) {
-        val = serializeJsonArray(val);
-      } else {
-        if (placeholders[key]) val = normalizeDateInput(val, placeholders[key]);
-        if (totalAmountSet.has(key) || totalCurrencySet.has(key)) {
-          val = normalizeNumberInput(val);
-        }
+      if (placeholders[key]) val = normalizeDateInput(val, placeholders[key]);
+      if (totalAmountSet.has(key) || totalCurrencySet.has(key)) {
+        val = normalizeNumberInput(val);
       }
       cleaned[key] = val;
     });
@@ -2315,45 +2289,28 @@ function InlineTransactionTable(
 
   function renderCell(idx, f, colIdx) {
     const val = rows[idx]?.[f] ?? '';
-    const isJsonField = jsonFieldSet.has(f);
     const fieldDisabled = isFieldDisabled(f);
     const invalid = invalidCell && invalidCell.row === idx && invalidCell.field === f;
     const resolvedAutoConfig = getAutoSelectConfig(f, rows[idx]);
     const resolvedConfig = relationConfigMap[f] || resolvedAutoConfig?.config;
     if (fieldDisabled) {
-      const relationLabelLookup = Array.isArray(relations[f])
-        ? relations[f].reduce((acc, opt) => {
-            if (!opt || opt.value === undefined) return acc;
-            acc[String(opt.value)] = opt.label;
-            return acc;
-          }, {})
-        : null;
-      let display;
-      if (isJsonField) {
-        display = formatJsonDisplay(val, {
-          labelLookup: relationLabelLookup,
-          relationLookup: relationData[f],
+      let display = typeof val === 'object' ? val.label || val.value : val;
+      const rawVal = typeof val === 'object' ? val.value : val;
+      const relationRow = rawVal !== undefined ? getRelationRow(f, rawVal) : null;
+      if (resolvedConfig && relationRow) {
+        const parts = [rawVal];
+        (resolvedConfig.displayFields || []).forEach((df) => {
+          if (relationRow[df] !== undefined) parts.push(relationRow[df]);
         });
-      } else {
-        let rawDisplay = typeof val === 'object' ? val.label || val.value : val;
-        const rawVal = typeof val === 'object' ? val.value : val;
-        const relationRow = rawVal !== undefined ? getRelationRow(f, rawVal) : null;
-        if (resolvedConfig && relationRow) {
-          const parts = [rawVal];
-          (resolvedConfig.displayFields || []).forEach((df) => {
-            if (relationRow[df] !== undefined) parts.push(relationRow[df]);
-          });
-          rawDisplay = parts.join(' - ');
-        } else if (viewSourceMap[f] && relationRow) {
-          const cfg = viewDisplays[viewSourceMap[f]] || {};
-          const parts = [rawVal];
-          (cfg.displayFields || []).forEach((df) => {
-            if (relationRow[df] !== undefined) parts.push(relationRow[df]);
-          });
-          rawDisplay = parts.join(' - ');
-        }
-        display = rawDisplay;
-      }
+        display = parts.join(' - ');
+      } else if (viewSourceMap[f] && relationRow) {
+        const cfg = viewDisplays[viewSourceMap[f]] || {};
+        const parts = [rawVal];
+        (cfg.displayFields || []).forEach((df) => {
+          if (relationRow[df] !== undefined) parts.push(relationRow[df]);
+        });
+        display = parts.join(' - ');
+      } 
       const readonlyStyle = {
         ...inputStyle,
         width: 'fit-content',
@@ -2378,11 +2335,7 @@ function InlineTransactionTable(
     }
     if (rows[idx]?._saved && !collectRows) {
       const isoDatePattern = /^\d{4}-\d{2}-\d{2}(?:T.*)?$/;
-      const displayVal = isJsonField
-        ? formatJsonDisplay(val, { relationLookup: relationData[f] })
-        : typeof val === 'object'
-        ? val.label ?? val.value
-        : val;
+      const displayVal = typeof val === 'object' ? val.label ?? val.value : val;
       if (
         typeof displayVal === 'string' &&
         isoDatePattern.test(displayVal) &&
@@ -2403,54 +2356,6 @@ function InlineTransactionTable(
         resolvedAutoConfig?.combinationReady ??
         isCombinationFilterReady(hasCombination, conf?.combinationTargetColumn, comboFilters);
       const inputVal = typeof val === 'object' ? val.value : val;
-      if (isJsonField) {
-        const selectedValues = normalizeJsonArray(val);
-        return (
-          <div className="space-y-1">
-            <div className="flex flex-wrap gap-2">
-              {selectedValues.map((item) => (
-                <span
-                  key={`${idx}-${f}-rel-${item}`}
-                  className="inline-flex items-center gap-1 px-2 py-1 bg-gray-100 rounded-full text-xs"
-                >
-                  {formatJsonDisplay([item], { relationLookup: relationData[f] })}
-                  <button
-                    type="button"
-                    onClick={() => handleChange(idx, f, removeJsonArrayValue(selectedValues, item))}
-                    className="text-gray-500 hover:text-gray-800"
-                    aria-label="Remove"
-                  >
-                    ×
-                  </button>
-                </span>
-              ))}
-            </div>
-            <AsyncSearchSelect
-              table={conf.table}
-              searchColumn={conf.idField || conf.column}
-              searchColumns={[conf.idField || conf.column, ...(conf.displayFields || [])]}
-              labelFields={conf.displayFields || []}
-              value={jsonSearchDrafts[f] || ''}
-              onChange={(v) =>
-                setJsonSearchDrafts((drafts) => ({ ...drafts, [f]: v ?? '' }))
-              }
-              onSelect={(opt) => {
-                const next = mergeJsonArray(selectedValues, opt?.value ?? '');
-                handleChange(idx, f, next);
-                setJsonSearchDrafts((drafts) => ({ ...drafts, [f]: '' }));
-              }}
-              inputRef={(el) => (inputRefs.current[`${idx}-${colIdx}`] = el)}
-              onKeyDown={(e) => handleKeyDown(e, idx, colIdx)}
-              onFocus={() => handleFocusField(f)}
-              className={invalid ? 'border-red-500 bg-red-100' : ''}
-              inputStyle={inputStyle}
-              companyId={company}
-              filters={comboFilters || undefined}
-              shouldFetch={combinationReady}
-            />
-          </div>
-        );
-      }
       return (
         <AsyncSearchSelect
           table={conf.table}
@@ -2476,33 +2381,6 @@ function InlineTransactionTable(
     if (Array.isArray(relations[f])) {
       const inputVal = typeof val === 'object' ? val.value : val;
       const filteredOptions = filterRelationOptions(rows[idx], f, relations[f]);
-      if (isJsonField) {
-        const selectedValues = normalizeJsonArray(val);
-        return (
-          <select
-            className={`w-full border px-1 ${invalid ? 'border-red-500 bg-red-100' : ''}`}
-            style={inputStyle}
-            multiple
-            value={selectedValues.map((item) => String(item))}
-            onChange={(e) =>
-              handleChange(
-                idx,
-                f,
-                Array.from(e.target.selectedOptions).map((opt) => opt.value),
-              )
-            }
-            ref={(el) => (inputRefs.current[`${idx}-${colIdx}`] = el)}
-            onKeyDown={(e) => handleKeyDown(e, idx, colIdx)}
-            onFocus={() => handleFocusField(f)}
-          >
-            {filteredOptions.map((opt) => (
-              <option key={opt.value} value={opt.value}>
-                {opt.label}
-              </option>
-            ))}
-          </select>
-        );
-      }
       return (
         <select
           className={`w-full border px-1 ${invalid ? 'border-red-500 bg-red-100' : ''}`}
@@ -2538,55 +2416,6 @@ function InlineTransactionTable(
       const inputVal = typeof val === 'object' ? val.value : val;
       const idField = cfg.idField || f;
       const labelFields = cfg.displayFields || [];
-      if (isJsonField) {
-        const selectedValues = normalizeJsonArray(val);
-        return (
-          <div className="space-y-1">
-            <div className="flex flex-wrap gap-2">
-              {selectedValues.map((item) => (
-                <span
-                  key={`${idx}-${f}-view-${item}`}
-                  className="inline-flex items-center gap-1 px-2 py-1 bg-gray-100 rounded-full text-xs"
-                >
-                  {formatJsonDisplay([item], { relationLookup: relationData[f] })}
-                  <button
-                    type="button"
-                    onClick={() => handleChange(idx, f, removeJsonArrayValue(selectedValues, item))}
-                    className="text-gray-500 hover:text-gray-800"
-                    aria-label="Remove"
-                  >
-                    ×
-                  </button>
-                </span>
-              ))}
-            </div>
-            <AsyncSearchSelect
-              table={view}
-              searchColumn={idField}
-              searchColumns={[idField, ...labelFields]}
-              labelFields={labelFields}
-              idField={idField}
-              value={jsonSearchDrafts[f] || ''}
-              onChange={(v) =>
-                setJsonSearchDrafts((drafts) => ({ ...drafts, [f]: v ?? '' }))
-              }
-              onSelect={(opt) => {
-                const next = mergeJsonArray(selectedValues, opt?.value ?? '');
-                handleChange(idx, f, next);
-                setJsonSearchDrafts((drafts) => ({ ...drafts, [f]: '' }));
-              }}
-              inputRef={(el) => (inputRefs.current[`${idx}-${colIdx}`] = el)}
-              onKeyDown={(e) => handleKeyDown(e, idx, colIdx)}
-              onFocus={() => handleFocusField(f)}
-              className={invalid ? 'border-red-500 bg-red-100' : ''}
-              inputStyle={inputStyle}
-              companyId={company}
-              filters={comboFilters || undefined}
-              shouldFetch={combinationReady}
-            />
-          </div>
-        );
-      }
       return (
         <AsyncSearchSelect
           table={view}
@@ -2608,54 +2437,6 @@ function InlineTransactionTable(
           filters={comboFilters || undefined}
           shouldFetch={combinationReady}
         />
-      );
-    }
-    if (isJsonField) {
-      const selectedValues = normalizeJsonArray(val);
-      return (
-        <div className="space-y-1">
-          <div className="flex flex-wrap gap-2">
-            {selectedValues.map((item) => (
-              <span
-                key={`${idx}-${f}-json-${item}`}
-                className="inline-flex items-center gap-1 px-2 py-1 bg-gray-100 rounded-full text-xs"
-              >
-                {item}
-                <button
-                  type="button"
-                  onClick={() => handleChange(idx, f, removeJsonArrayValue(selectedValues, item))}
-                  className="text-gray-500 hover:text-gray-800"
-                  aria-label="Remove"
-                >
-                  ×
-                </button>
-              </span>
-            ))}
-          </div>
-          <input
-            className={`w-full border px-1 ${invalid ? 'border-red-500 bg-red-100' : ''}`}
-            style={inputStyle}
-            value={jsonDrafts[f] || ''}
-            onChange={(e) =>
-              setJsonDrafts((drafts) => ({
-                ...drafts,
-                [f]: e.target.value,
-              }))
-            }
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                e.preventDefault();
-                if (!jsonDrafts[f]) return;
-                const merged = mergeJsonArray(selectedValues, jsonDrafts[f]);
-                handleChange(idx, f, merged);
-                setJsonDrafts((drafts) => ({ ...drafts, [f]: '' }));
-                return;
-              }
-              handleKeyDown(e, idx, colIdx);
-            }}
-            onFocus={() => handleFocusField(f)}
-          />
-        </div>
       );
     }
     const fieldType = fieldInputTypes[f];
