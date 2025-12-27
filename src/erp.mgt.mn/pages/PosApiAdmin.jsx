@@ -1361,6 +1361,33 @@ function ensureNestedPathsInSample(sample, nestedObjects = []) {
       }
     });
   });
+
+  ['itemsField', 'paymentsField', 'receiptsField'].forEach((key) => {
+    if (Object.prototype.hasOwnProperty.call(base, key)) {
+      delete base[key];
+    }
+  });
+
+  if (Object.prototype.hasOwnProperty.call(base, 'receipts')) {
+    const receiptsValue = base.receipts;
+    if (Array.isArray(receiptsValue)) {
+      base.receipts = receiptsValue.map((receipt) => {
+        if (!receipt || typeof receipt !== 'object') return receipt;
+        const normalizedReceipt = { ...receipt };
+        if (normalizedReceipt.items && !Array.isArray(normalizedReceipt.items)) {
+          normalizedReceipt.items = [normalizedReceipt.items];
+        }
+        if (normalizedReceipt.payments && !Array.isArray(normalizedReceipt.payments)) {
+          normalizedReceipt.payments = [normalizedReceipt.payments];
+        }
+        return normalizedReceipt;
+      });
+    } else if (receiptsValue && typeof receiptsValue === 'object') {
+      base.receipts = [receiptsValue];
+    } else {
+      delete base.receipts;
+    }
+  }
   return base;
 }
 
@@ -1533,20 +1560,53 @@ function serializeRequestFieldSelections(
   }, {});
 }
 
-function serializeRequestMappings(selections = {}) {
-  return Object.entries(selections || {}).reduce((acc, [fieldPath, entry]) => {
-    const normalized = normalizeRequestFieldMappingEntry(entry, { defaultApplyToBody: true });
-    if (!normalized || !hasMappingValue(normalized)) return acc;
-    const storedValue = buildMappingValue(normalized, { preserveType: true });
-    if (!storedValue || (typeof storedValue === 'string' && !storedValue.trim())) return acc;
-    if (typeof storedValue === 'object' && storedValue !== null) {
-      const { applyToBody, ...rest } = storedValue;
-      acc[fieldPath] = rest;
-    } else {
-      acc[fieldPath] = storedValue;
+function mergeMappingPayload(current, next) {
+  if (!current || typeof current !== 'object' || Array.isArray(current)) return next;
+  if (!next || typeof next !== 'object' || Array.isArray(next)) return next;
+  return { ...current, ...next };
+}
+
+function serializeRequestMappings(
+  selections = {},
+  {
+    defaultApplyToBody = true,
+    defaultApplyToBodyMap = null,
+    existingMappings = {},
+    removedFields = new Set(),
+  } = {},
+) {
+  const removals = new Set(
+    removedFields instanceof Set
+      ? Array.from(removedFields).filter(Boolean)
+      : Array.isArray(removedFields)
+        ? removedFields.filter(Boolean)
+        : [],
+  );
+  const base =
+    existingMappings && typeof existingMappings === 'object' && !Array.isArray(existingMappings)
+      ? { ...existingMappings }
+      : {};
+  removals.forEach((fieldPath) => {
+    if (fieldPath in base) {
+      delete base[fieldPath];
     }
-    return acc;
-  }, {});
+  });
+  Object.entries(selections || {}).forEach(([fieldPath, entry]) => {
+    const applyDefault =
+      defaultApplyToBodyMap && defaultApplyToBodyMap.has(fieldPath)
+        ? defaultApplyToBodyMap.get(fieldPath)
+        : defaultApplyToBody;
+    const normalized = normalizeRequestFieldMappingEntry(entry, { defaultApplyToBody: applyDefault });
+    if (!normalized || !hasMappingValue(normalized)) return;
+    const storedValue = buildMappingValue(normalized, { preserveType: true });
+    const payload =
+      typeof storedValue === 'object' && storedValue !== null
+        ? { ...storedValue }
+        : { type: normalized.type || 'column', value: storedValue };
+    payload.applyToBody = normalized.applyToBody !== false;
+    base[fieldPath] = mergeMappingPayload(base[fieldPath], payload);
+  });
+  return base;
 }
 
 function normalizeRequestFieldMappingMap(
@@ -2153,7 +2213,21 @@ function deriveRequestFieldSelections({
       if (mappingFromEndpoint) {
         const normalizedMapping = normalizeMappingSelection(mappingFromEndpoint);
         if (hasMappingValue(normalizedMapping)) {
-          selection = { ...normalizedMapping, applyToBody };
+          const storedApplyToBody =
+            typeof mappingFromEndpoint?.applyToBody === 'boolean'
+              ? mappingFromEndpoint.applyToBody
+              : undefined;
+          const mappingAggregation =
+            typeof mappingFromEndpoint?.aggregation === 'string'
+              ? mappingFromEndpoint.aggregation
+              : undefined;
+          selection = {
+            ...normalizedMapping,
+            ...(mappingAggregation && !normalizedMapping.aggregation
+              ? { aggregation: mappingAggregation }
+              : {}),
+            applyToBody: storedApplyToBody !== undefined ? storedApplyToBody : applyToBody,
+          };
         }
       }
       if (!selection) {
@@ -4433,7 +4507,10 @@ export default function PosApiAdmin() {
       requestFieldMappings: serializeRequestFieldSelections(mergedSelections, {
         defaultApplyToBodyMap: applyDefaults,
       }),
-      requestMappings: serializeRequestMappings(mergedSelections),
+      requestMappings: serializeRequestMappings(mergedSelections, {
+        defaultApplyToBodyMap: applyDefaults,
+        existingMappings: prev.requestMappings,
+      }),
     }));
   }, [
     selectedVariationKey,
@@ -7335,6 +7412,7 @@ export default function PosApiAdmin() {
           description: formState.requestDescription || '',
         }
       : null;
+    const applyToBodyDefaults = buildApplyToBodyDefaultMap(requestFieldDisplay.items || []);
 
     const endpoint = {
       id: formState.id.trim(),
@@ -7381,9 +7459,12 @@ export default function PosApiAdmin() {
       responseTables: sanitizeTableSelection(formState.responseTables, responseTableOptions),
       requestEnvMap: buildRequestEnvMap(requestFieldValues),
       requestFieldMappings: serializeRequestFieldSelections(requestFieldValues, {
-        defaultApplyToBodyMap: buildApplyToBodyDefaultMap(requestFieldDisplay.items || []),
+        defaultApplyToBodyMap: applyToBodyDefaults,
       }),
-      requestMappings: serializeRequestMappings(requestFieldValues),
+      requestMappings: serializeRequestMappings(requestFieldValues, {
+        defaultApplyToBodyMap: applyToBodyDefaults,
+        existingMappings: formState.requestMappings,
+      }),
       requestFields: requestFieldsWithVariationDefaults,
       requestFieldVariations: sanitizedRequestFieldVariations,
       variations: sanitizedVariations,
@@ -7928,6 +8009,7 @@ export default function PosApiAdmin() {
     if (!fieldPath) return;
     setRequestFieldValues((prev) => {
       const current = prev[fieldPath] || {};
+      const removedFields = new Set();
       const selectionProvided =
         typeof updates === 'string'
         || (updates
@@ -7989,6 +8071,7 @@ export default function PosApiAdmin() {
         changed = true;
       } else if (selectionProvided && fieldPath in nextSelections) {
         delete nextSelections[fieldPath];
+        removedFields.add(fieldPath);
         changed = true;
       }
 
@@ -8004,7 +8087,12 @@ export default function PosApiAdmin() {
         ...prevState,
         requestEnvMap: buildRequestEnvMap(nextSelections),
         requestFieldMappings: serialized,
-        requestMappings: serializeRequestMappings(nextSelections),
+        requestMappings: serializeRequestMappings(nextSelections, {
+          defaultApplyToBody,
+          defaultApplyToBodyMap: applyDefaults,
+          existingMappings: prevState.requestMappings,
+          removedFields,
+        }),
       }));
       return nextSelections;
     });
@@ -8037,7 +8125,10 @@ export default function PosApiAdmin() {
         ...prevState,
         requestEnvMap: buildRequestEnvMap(nextSelections),
         requestFieldMappings: serialized,
-        requestMappings: serializeRequestMappings(nextSelections),
+        requestMappings: serializeRequestMappings(nextSelections, {
+          defaultApplyToBodyMap: applyDefaults,
+          existingMappings: prevState.requestMappings,
+        }),
       }));
       return nextSelections;
     });
