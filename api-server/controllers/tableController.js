@@ -133,6 +133,7 @@ export async function getTableRelations(req, res, next) {
             ...(relation.filterValue !== undefined && relation.filterValue !== null
               ? { filterValue: relation.filterValue }
               : {}),
+            ...(relation.isArray ? { isArray: true } : {}),
           });
         });
       }
