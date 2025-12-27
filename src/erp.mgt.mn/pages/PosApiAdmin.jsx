@@ -1506,6 +1506,8 @@ function normalizeHintEntry(entry) {
       ),
       defaultByVariation: normalizeFieldValueMap(entry.defaultByVariation || entry.defaultVariations),
       aggregation: typeof entry.aggregation === 'string' ? entry.aggregation : '',
+      useInTransaction:
+        typeof entry.useInTransaction === 'boolean' ? entry.useInTransaction : undefined,
     };
   }
   return {
@@ -1597,6 +1599,16 @@ function buildDefaultValueEntry(value, useInTransaction = true) {
   if (value === undefined || value === null || value === '') return undefined;
   if (useInTransaction === false) return { value, useInTransaction: false };
   return { value };
+}
+
+function hasDisabledVariationDefaults(map = {}) {
+  return Object.values(map || {}).some((entry) => parseDefaultValueEntry(entry).useInTransaction === false);
+}
+
+function resolveVariationUsageFlag(metaFlag, normalizedFlag, defaults = {}) {
+  if (typeof metaFlag === 'boolean') return metaFlag;
+  if (typeof normalizedFlag === 'boolean') return normalizedFlag;
+  return !hasDisabledVariationDefaults(defaults);
 }
 
 function parseExampleBody(body) {
@@ -1778,6 +1790,7 @@ function mergeRequestFieldHints(existing = [], variationFields = []) {
       requiredCommon: false,
       requiredByVariation: {},
       defaultByVariation: {},
+      useInTransaction: undefined,
     };
     const requiredByVariation = {
       ...current.requiredByVariation,
@@ -1812,6 +1825,11 @@ function mergeRequestFieldHints(existing = [], variationFields = []) {
           : typeof normalized.required === 'boolean'
             ? normalized.required
             : false;
+    const useInTransaction = resolveVariationUsageFlag(
+      current.useInTransaction,
+      normalized.useInTransaction,
+      defaultByVariation,
+    );
 
     map.set(field, {
       field,
@@ -1820,6 +1838,7 @@ function mergeRequestFieldHints(existing = [], variationFields = []) {
       requiredCommon,
       requiredByVariation,
       defaultByVariation,
+      useInTransaction,
     });
   };
 
@@ -1955,6 +1974,7 @@ function deriveRequestFieldSelections({
     const fieldPath = normalized.field;
     if (!fieldPath || seenFields.has(fieldPath)) return;
     seenFields.add(fieldPath);
+    const aggregation = normalized.aggregation;
 
     const currentValue = readValueAtPath(parsedSample, fieldPath);
     const defaultValue = entry.defaultValue;
@@ -1963,48 +1983,49 @@ function deriveRequestFieldSelections({
       requestFieldMappings?.[fieldPath],
       { defaultApplyToBody: applyToBodyDefault },
     );
-    if (mappingEntry && hasMappingValue(mappingEntry)) {
-      derivedSelections[fieldPath] = {
-        ...mappingEntry,
-        applyToBody: mappingEntry.applyToBody !== undefined ? mappingEntry.applyToBody : applyToBodyDefault,
-      };
-      return;
-    }
     const envEntry = requestEnvMap?.[fieldPath];
     const envVar = typeof envEntry === 'string' ? envEntry : envEntry?.envVar;
     const applyToBody = envEntry && typeof envEntry.applyToBody === 'boolean'
       ? envEntry.applyToBody
       : applyToBodyDefault;
-    if (envVar) {
-      derivedSelections[fieldPath] = {
+
+    let selection = null;
+    if (mappingEntry && hasMappingValue(mappingEntry)) {
+      selection = {
+        ...mappingEntry,
+        applyToBody: mappingEntry.applyToBody !== undefined ? mappingEntry.applyToBody : applyToBodyDefault,
+      };
+    } else if (envVar) {
+      selection = {
         type: 'env',
         envVar,
         value: currentValue === undefined || currentValue === null ? '' : String(currentValue),
         applyToBody,
       };
-      return;
-    }
-
-    const mappingFromEndpoint = requestMappings?.[fieldPath];
-    if (mappingFromEndpoint) {
-      const normalizedMapping = normalizeMappingSelection(mappingFromEndpoint);
-      if (hasMappingValue(normalizedMapping)) {
-        derivedSelections[fieldPath] = { ...normalizedMapping, applyToBody };
-        return;
+    } else {
+      const mappingFromEndpoint = requestMappings?.[fieldPath];
+      if (mappingFromEndpoint) {
+        const normalizedMapping = normalizeMappingSelection(mappingFromEndpoint);
+        if (hasMappingValue(normalizedMapping)) {
+          selection = { ...normalizedMapping, applyToBody };
+        }
+      }
+      if (!selection) {
+        if (currentValue !== undefined && currentValue !== null) {
+          selection = { type: 'literal', value: String(currentValue), applyToBody };
+        } else if (defaultValue !== undefined && defaultValue !== null) {
+          selection = { type: 'literal', value: String(defaultValue), applyToBody };
+        } else {
+          selection = { type: 'literal', value: '', applyToBody };
+        }
       }
     }
 
-    if (currentValue !== undefined && currentValue !== null) {
-      derivedSelections[fieldPath] = { type: 'literal', value: String(currentValue), applyToBody };
-      return;
+    if (selection) {
+      derivedSelections[fieldPath] = aggregation && !selection.aggregation
+        ? { ...selection, aggregation }
+        : selection;
     }
-
-    if (defaultValue !== undefined && defaultValue !== null) {
-      derivedSelections[fieldPath] = { type: 'literal', value: String(defaultValue), applyToBody };
-      return;
-    }
-
-    derivedSelections[fieldPath] = { type: 'literal', value: '', applyToBody };
   });
 
   return derivedSelections;
@@ -2096,6 +2117,9 @@ function createFormState(definition) {
               ? normalized.required
               : false,
         ...(normalized.description ? { description: normalized.description } : {}),
+        ...(typeof normalized.useInTransaction === 'boolean'
+          ? { useInTransaction: normalized.useInTransaction }
+          : {}),
         ...(normalized.defaultByVariation && Object.keys(normalized.defaultByVariation).length
           ? { defaultByVariation: normalized.defaultByVariation }
           : {}),
@@ -3894,7 +3918,7 @@ export default function PosApiAdmin() {
   }, [combinationBaseKey, enabledRequestFieldVariations, variationColumns]);
   const requestFieldColumnTemplate = useMemo(
     () => {
-      const baseColumns = ['150px', '250px', '150px', '80px'];
+      const baseColumns = ['150px', '250px', '170px', '120px'];
       const variationCells = variationColumns.map(() => '200px');
       return [...baseColumns, ...variationCells].join(' ');
     },
@@ -3936,6 +3960,20 @@ export default function PosApiAdmin() {
       });
     });
   }, [requestFieldDisplay, variationColumns, variationFieldSets]);
+
+  const aggregationFieldOptions = useMemo(() => {
+    if (requestFieldDisplay.state !== 'ok') return [];
+    const seen = new Set();
+    const fields = [];
+    requestFieldDisplay.items.forEach((entry) => {
+      const normalized = normalizeHintEntry(entry);
+      const field = normalized.field?.trim();
+      if (!field || seen.has(field)) return;
+      seen.add(field);
+      fields.push(field);
+    });
+    return fields;
+  }, [requestFieldDisplay]);
 
   useEffect(() => {
     if (requestFieldDisplay.state !== 'ok') {
@@ -3996,6 +4034,11 @@ export default function PosApiAdmin() {
           requiredByVariation,
           defaultByVariation,
           aggregation: normalized.aggregation || existing.aggregation || '',
+          useInTransaction: resolveVariationUsageFlag(
+            existing.useInTransaction,
+            normalized.useInTransaction,
+            defaultByVariation,
+          ),
         };
       });
       return next;
@@ -6795,6 +6838,11 @@ export default function PosApiAdmin() {
         ...normalized.defaultByVariation,
         ...meta.defaultByVariation,
       });
+      const useInTransaction = resolveVariationUsageFlag(
+        meta.useInTransaction,
+        normalized.useInTransaction,
+        defaultByVariation,
+      );
       const hint = {
         field: normalized.field,
         required: requiredCommon,
@@ -6804,6 +6852,7 @@ export default function PosApiAdmin() {
         defaultByVariation,
         defaultVariations: defaultByVariation,
         ...(description ? { description } : {}),
+        ...(useInTransaction === false ? { useInTransaction: false } : {}),
       };
       if (normalized.location) {
         hint.location = normalized.location;
@@ -7425,9 +7474,17 @@ export default function PosApiAdmin() {
       const fieldPath = normalized.field;
       if (!fieldPath) return;
       const meta = requestFieldMeta[fieldPath] || {};
-      const defaultValue = meta.defaultByVariation?.[variationKey]
-        ?? normalized.defaultByVariation?.[variationKey];
+      const defaultByVariation = meta.defaultByVariation || normalized.defaultByVariation || {};
+      const allowVariationDefaults = resolveVariationUsageFlag(
+        meta.useInTransaction,
+        normalized.useInTransaction,
+        defaultByVariation,
+      );
+      if (!allowVariationDefaults) return;
+      const parsedDefault = parseDefaultValueEntry(defaultByVariation[variationKey]);
+      const defaultValue = parsedDefault.value;
       if (defaultValue === undefined || defaultValue === '') return;
+      if (parsedDefault.useInTransaction === false) return;
       selections[fieldPath] = {
         type: 'literal',
         value: String(defaultValue),
@@ -7689,6 +7746,7 @@ export default function PosApiAdmin() {
             || updates.mode !== undefined
             || updates.value !== undefined
             || updates.literal !== undefined
+            || updates.aggregation !== undefined
             || updates.envVar !== undefined
             || updates.sessionVar !== undefined
             || updates.expression !== undefined
@@ -7752,14 +7810,6 @@ export default function PosApiAdmin() {
     });
   }
 
-  function handleRequestFieldAggregationChange(fieldPath, value) {
-    if (!fieldPath) return;
-    setRequestFieldMeta((prev) => {
-      const current = prev[fieldPath] || { requiredByVariation: {}, defaultByVariation: {} };
-      return { ...prev, [fieldPath]: { ...current, aggregation: value } };
-    });
-  }
-
   function handleCommonRequiredToggle(fieldPath, value) {
     if (!fieldPath) return;
     setRequestFieldMeta((prev) => {
@@ -7800,6 +7850,61 @@ export default function PosApiAdmin() {
     ensureVariationFieldSelection(variationKey, fieldPath);
   }
 
+  function handleVariationUsageToggle(fieldPath, value) {
+    if (!fieldPath) return;
+    setRequestFieldMeta((prev) => {
+      const current = prev[fieldPath] || { requiredByVariation: {}, defaultByVariation: {} };
+      const defaultByVariation = { ...current.defaultByVariation };
+      Object.entries(defaultByVariation).forEach(([variationKey, entry]) => {
+        const parsed = parseDefaultValueEntry(entry);
+        const nextEntry = buildDefaultValueEntry(parsed.value, value);
+        if (nextEntry !== undefined) {
+          defaultByVariation[variationKey] = nextEntry;
+        } else {
+          delete defaultByVariation[variationKey];
+        }
+      });
+      return { ...prev, [fieldPath]: { ...current, defaultByVariation, useInTransaction: value } };
+    });
+    setFormState((prev) => {
+      const variations = Array.isArray(prev.variations) ? prev.variations.map((entry) => {
+        if (!entry || typeof entry !== 'object') return entry;
+        const defaults = entry.defaultValues ? { ...entry.defaultValues } : {};
+        if (Object.prototype.hasOwnProperty.call(defaults, fieldPath)) {
+          const parsed = parseDefaultValueEntry(defaults[fieldPath]);
+          const nextEntry = buildDefaultValueEntry(parsed.value, value);
+          if (nextEntry !== undefined) {
+            defaults[fieldPath] = nextEntry;
+          } else {
+            delete defaults[fieldPath];
+          }
+          return { ...entry, defaultValues: defaults };
+        }
+        return entry;
+      }) : [];
+
+      const requestFieldVariations = Array.isArray(prev.requestFieldVariations)
+        ? prev.requestFieldVariations.map((entry) => {
+          if (!entry || typeof entry !== 'object') return entry;
+          const defaults = entry.defaultValues ? { ...entry.defaultValues } : {};
+          if (Object.prototype.hasOwnProperty.call(defaults, fieldPath)) {
+            const parsed = parseDefaultValueEntry(defaults[fieldPath]);
+            const nextEntry = buildDefaultValueEntry(parsed.value, value);
+            if (nextEntry !== undefined) {
+              defaults[fieldPath] = nextEntry;
+            } else {
+              delete defaults[fieldPath];
+            }
+            return { ...entry, defaultValues: defaults };
+          }
+          return entry;
+        })
+        : [];
+
+      return { ...prev, variations, requestFieldVariations };
+    });
+  }
+
   function handleVariationDefaultUpdate(fieldPath, variationKey, value, useInTransaction) {
     if (!fieldPath || !variationKey) return;
     let syncEntry = null;
@@ -7808,7 +7913,13 @@ export default function PosApiAdmin() {
       const defaultByVariation = { ...current.defaultByVariation };
       const currentEntry = parseDefaultValueEntry(defaultByVariation[variationKey]);
       const nextValue = value !== undefined ? value : currentEntry.value;
-      const nextUse = useInTransaction === undefined ? currentEntry.useInTransaction : useInTransaction;
+      const variationUsage = resolveVariationUsageFlag(
+        current.useInTransaction,
+        undefined,
+        defaultByVariation,
+      );
+      const nextUse =
+        useInTransaction === undefined ? variationUsage : useInTransaction;
       const nextEntry = buildDefaultValueEntry(nextValue, nextUse);
       syncEntry = nextEntry !== undefined ? nextEntry : nextValue;
       if (nextEntry !== undefined) {
@@ -9151,7 +9262,7 @@ export default function PosApiAdmin() {
                   >
                     <span style={styles.requestFieldHeaderCell}>Field</span>
                     <span style={styles.requestFieldHeaderCell}>Description</span>
-                    <span style={styles.requestFieldHeaderCell}>Aggregation</span>
+                    <span style={styles.requestFieldHeaderCell}>Use in transaction</span>
                     <span style={styles.requestFieldHeaderCell}>Common required</span>
                     {variationColumns.map((variation) => (
                       <span
@@ -9178,7 +9289,11 @@ export default function PosApiAdmin() {
                           ? normalized.requiredCommon
                           : Boolean(normalized.required);
                     const descriptionValue = meta.description || normalized.description || '';
-                    const aggregationValue = meta.aggregation || normalized.aggregation || '';
+                    const useVariationDefaults = resolveVariationUsageFlag(
+                      meta.useInTransaction,
+                      normalized.useInTransaction,
+                      meta.defaultByVariation || normalized.defaultByVariation || {},
+                    );
                     return (
                       <div
                         key={`request-hint-${fieldLabel}-${index}`}
@@ -9206,18 +9321,15 @@ export default function PosApiAdmin() {
                             placeholder="Describe the field"
                           />
                         </div>
-                        <div style={styles.requestFieldDescriptionCell}>
-                          <select
-                            value={aggregationValue}
-                            onChange={(e) => handleRequestFieldAggregationChange(fieldLabel, e.target.value)}
-                            style={styles.input}
-                          >
-                            {AGGREGATION_OPTIONS.map((option) => (
-                              <option key={`agg-${fieldLabel}-${option.value || 'none'}`} value={option.value}>
-                                {option.label}
-                              </option>
-                            ))}
-                          </select>
+                        <div style={styles.requestFieldRequiredCell}>
+                          <label style={styles.checkboxLabel}>
+                            <input
+                              type="checkbox"
+                              checked={useVariationDefaults}
+                              onChange={(e) => handleVariationUsageToggle(fieldLabel, e.target.checked)}
+                            />
+                            <span>Apply variation defaults</span>
+                          </label>
                         </div>
                         <div style={styles.requestFieldRequiredCell}>
                           <label style={styles.checkboxLabel}>
@@ -9242,7 +9354,6 @@ export default function PosApiAdmin() {
                               ?? '',
                           );
                           const defaultValue = defaultEntry.value ?? '';
-                          const useInTransaction = defaultEntry.useInTransaction !== false;
                           return (
                             <div
                               key={`variation-toggle-${variationKey}-${fieldLabel}`}
@@ -9271,27 +9382,11 @@ export default function PosApiAdmin() {
                                     fieldLabel,
                                     variationKey,
                                     e.target.value,
-                                    useInTransaction,
                                   )
                                 }
                                 placeholder="Default value"
                                 style={styles.input}
                               />
-                              <label style={{ ...styles.checkboxLabel, marginTop: '0.35rem' }}>
-                                <input
-                                  type="checkbox"
-                                  checked={useInTransaction}
-                                  onChange={(e) =>
-                                    handleVariationDefaultUpdate(
-                                      fieldLabel,
-                                      variationKey,
-                                      defaultValue,
-                                      e.target.checked,
-                                    )
-                                  }
-                                />
-                                <span>Use in transaction</span>
-                              </label>
                             </div>
                           );
                         })}
@@ -9330,6 +9425,7 @@ export default function PosApiAdmin() {
                       applyToBody: defaultApplyToBody,
                     };
                   const applyToBody = selection.applyToBody !== false;
+                  const aggregation = selection.aggregation || '';
                   const { applyToBody: _ignoredApply, ...selectorValue } = selection || {};
                   return (
                     <div key={`${fieldPath || 'field'}-${index}`} style={styles.requestValueRow}>
@@ -9364,6 +9460,26 @@ export default function PosApiAdmin() {
                          />
                        </div>
                        <div style={styles.requestValueInputs}>
+                         <label style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+                           <span style={{ color: '#475569', fontSize: '0.9rem' }}>Aggregation</span>
+                           <select
+                             value={aggregation}
+                             onChange={(e) =>
+                               handleRequestFieldValueChange(
+                                 fieldPath,
+                                 { ...selection, aggregation: e.target.value },
+                                 { defaultApplyToBody },
+                               )
+                             }
+                             style={styles.input}
+                           >
+                             {AGGREGATION_OPTIONS.map((option) => (
+                               <option key={`agg-${fieldPath}-${option.value || 'none'}`} value={option.value}>
+                                 {option.label}
+                               </option>
+                             ))}
+                           </select>
+                         </label>
                          <label style={{ ...styles.checkboxLabel, marginTop: '0.35rem' }}>
                            <input
                              type="checkbox"
@@ -9395,6 +9511,14 @@ export default function PosApiAdmin() {
             <button type="button" onClick={handleAddAggregation} style={styles.smallSecondaryButton}>
               Add aggregation
             </button>
+            <datalist id="aggregation-field-options">
+              {aggregationFieldOptions.map((field) => (
+                <option key={`aggregation-field-${field}`} value={field} />
+              ))}
+            </datalist>
+            <p style={styles.requestFieldHint}>
+              Pick any request field as the target and reference other fields in the formula to build multiple derived values.
+            </p>
             {(!Array.isArray(formState.aggregations) || formState.aggregations.length === 0) && (
               <p style={styles.hintEmpty}>No aggregations configured yet.</p>
             )}
@@ -9417,6 +9541,7 @@ export default function PosApiAdmin() {
                       <span style={{ fontWeight: 600 }}>Field path</span>
                       <input
                         type="text"
+                        list="aggregation-field-options"
                         value={agg.field || ''}
                         onChange={(e) => handleAggregationChange(index, { field: e.target.value })}
                         placeholder="totalAmount"
