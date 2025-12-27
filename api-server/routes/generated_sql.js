@@ -1,10 +1,11 @@
 import express from 'express';
 import { saveSql, runSql, getTableStructure } from '../services/generatedSql.js';
 import { requireAuth } from '../middlewares/auth.js';
+import { requireAdmin } from '../middlewares/admin.js';
 
 const router = express.Router();
 
-router.post('/', requireAuth, async (req, res, next) => {
+router.post('/', requireAuth, requireAdmin, async (req, res, next) => {
   try {
     const companyId = Number(req.query.companyId ?? req.user.companyId);
     const { table, sql } = req.body;
@@ -18,7 +19,7 @@ router.post('/', requireAuth, async (req, res, next) => {
   }
 });
 
-router.post('/execute', requireAuth, async (req, res, next) => {
+router.post('/execute', requireAuth, requireAdmin, async (req, res, next) => {
   const controller = new AbortController();
   const abortHandler = () => controller.abort();
   req.on('close', abortHandler);
@@ -48,7 +49,7 @@ router.post('/execute', requireAuth, async (req, res, next) => {
   }
 });
 
-router.get('/structure', requireAuth, async (req, res, next) => {
+router.get('/structure', requireAuth, requireAdmin, async (req, res, next) => {
   try {
     const { table } = req.query;
     if (!table) return res.status(400).json({ message: 'table required' });

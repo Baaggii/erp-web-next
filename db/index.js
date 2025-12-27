@@ -1073,6 +1073,17 @@ export const pool = mysql.createPool({
   multipleStatements: true,
 });
 
+export const adminPool = mysql.createPool({
+  host: process.env.DB_HOST,
+  user: process.env.DB_ADMIN_USER || process.env.DB_USER,
+  password: process.env.DB_ADMIN_PASS || process.env.DB_PASS,
+  database: process.env.DB_NAME,
+  waitForConnections: true,
+  connectionLimit: 10,
+  queueLimit: 0,
+  multipleStatements: true,
+});
+
 function normalizeDateTimeInput(value) {
   if (!value) return null;
   const date = value instanceof Date ? value : new Date(value);
@@ -2262,7 +2273,7 @@ export async function getViewSql(name) {
 
 export async function deleteView(name) {
   if (!name) return;
-  await pool.query(`DROP VIEW IF EXISTS \`${name}\``);
+  await adminPool.query(`DROP VIEW IF EXISTS \`${name}\``);
 }
 
 export async function listTableColumns(tableName) {
@@ -4838,9 +4849,9 @@ export async function saveStoredProcedure(sql, { allowProtected = false } = {}) 
     throw new Error('Missing CREATE PROCEDURE statement');
   }
   if (dropMatch) {
-    await pool.query(dropMatch[0]);
+    await adminPool.query(dropMatch[0]);
   }
-  await pool.query(createMatch[0]);
+  await adminPool.query(createMatch[0]);
   const procs = await listReportProcedures(procName);
   if (!procs.includes(procName)) {
     throw new Error('Failed to create procedure');
@@ -4848,7 +4859,7 @@ export async function saveStoredProcedure(sql, { allowProtected = false } = {}) 
 }
 
 export async function saveView(sql) {
-  await pool.query(sql);
+  await adminPool.query(sql);
 }
 
 export async function listReportProcedures(prefix = '') {
@@ -4871,7 +4882,7 @@ export async function deleteProcedure(name, { allowProtected = false } = {}) {
     err.status = 403;
     throw err;
   }
-  await pool.query(`DROP PROCEDURE IF EXISTS \`${name}\``);
+  await adminPool.query(`DROP PROCEDURE IF EXISTS \`${name}\``);
 }
 
 export async function getProcedureSql(name) {

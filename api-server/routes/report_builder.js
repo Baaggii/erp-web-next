@@ -2,6 +2,7 @@ import express from 'express';
 import path from 'path';
 import fs from 'fs/promises';
 import { requireAuth } from '../middlewares/auth.js';
+import { requireAdmin } from '../middlewares/admin.js';
 import {
   listDatabaseTables,
   listTableColumnsDetailed,
@@ -10,7 +11,6 @@ import {
   listReportProcedures,
   deleteProcedure,
   getStoredProcedureSql,
-  getEmploymentSession,
   listDatabaseViews,
   getViewSql,
   deleteView,
@@ -73,9 +73,10 @@ async function resolveProcDir(companyId = 0) {
 }
 
 const router = express.Router();
+router.use(requireAuth, requireAdmin);
 
 // List database tables
-router.get('/tables', requireAuth, async (req, res, next) => {
+router.get('/tables', async (req, res, next) => {
   try {
     const tables = await listDatabaseTables();
     res.json({ tables });
@@ -85,7 +86,7 @@ router.get('/tables', requireAuth, async (req, res, next) => {
 });
 
 // List fields for a specific table
-router.get('/fields', requireAuth, async (req, res, next) => {
+router.get('/fields', async (req, res, next) => {
   try {
     const { table } = req.query;
     if (!table) return res.status(400).json({ message: 'table required' });
@@ -97,26 +98,12 @@ router.get('/fields', requireAuth, async (req, res, next) => {
 });
 
 // List stored procedures
-router.get('/procedures', requireAuth, async (req, res, next) => {
+router.get('/procedures', async (req, res, next) => {
   try {
     const companyId = Number(req.query.companyId ?? req.user.companyId);
     const prefix = req.query.prefix || '';
 
-    const session =
-      req.session || (await getEmploymentSession(req.user.empid, companyId));
-    let isAdmin = session?.permissions?.system_settings;
-    if (!isAdmin) {
-      const rootSession = await getEmploymentSession(req.user.empid, 0);
-      isAdmin = !!rootSession;
-    }
-
-    let names = await listReportProcedures(prefix);
-    if (!isAdmin) {
-      names = names.filter((n) => {
-        const parts = n.split('_');
-        return parts[1] === '0' || parts[1] === String(companyId);
-      });
-    }
+    const names = await listReportProcedures(prefix);
 
     // Determine which procedures are default by checking procedure files
     const tenantDirPath = tenantProcDir(companyId);
@@ -144,22 +131,12 @@ router.get('/procedures', requireAuth, async (req, res, next) => {
 });
 
 // Save a stored procedure
-router.post('/procedures', requireAuth, async (req, res, next) => {
+router.post('/procedures', async (req, res, next) => {
   try {
     const { sql } = req.body || {};
     if (!sql) return res.status(400).json({ message: 'sql required' });
     const name = extractProcedureName(sql);
-    const session =
-      req.session ||
-      (await getEmploymentSession(req.user.empid, req.user.companyId));
-    let isAdmin = session?.permissions?.system_settings;
-    if (!isAdmin) {
-      const rootSession = await getEmploymentSession(req.user.empid, 0);
-      isAdmin = !!rootSession;
-    }
-    if (!isAdmin && (await isProtectedProcedure(name)))
-      return res.status(403).json({ message: 'Procedure not allowed' });
-    await saveStoredProcedure(sql, { allowProtected: isAdmin });
+    await saveStoredProcedure(sql, { allowProtected: true });
     res.json({ ok: true });
   } catch (err) {
     res.status(err.status || 400).json({ message: err.message });
@@ -167,7 +144,7 @@ router.post('/procedures', requireAuth, async (req, res, next) => {
 });
 
 // Get a stored procedure SQL
-router.get('/procedures/:name', requireAuth, async (req, res, next) => {
+router.get('/procedures/:name', async (req, res, next) => {
   try {
     const { name } = req.params;
     const sql = await getStoredProcedureSql(name);
@@ -181,7 +158,6 @@ router.get('/procedures/:name', requireAuth, async (req, res, next) => {
 // Generate and save config from a stored procedure
 router.post(
   '/procedures/:name/config',
-  requireAuth,
   async (req, res, next) => {
     try {
       const { name } = req.params;
@@ -197,21 +173,11 @@ router.post(
 );
 
 // Delete a stored procedure
-router.delete('/procedures/:name', requireAuth, async (req, res, next) => {
+router.delete('/procedures/:name', async (req, res, next) => {
   try {
     const { name } = req.params;
     if (!name) return res.status(400).json({ message: 'name required' });
-    const session =
-      req.session ||
-      (await getEmploymentSession(req.user.empid, req.user.companyId));
-    let isAdmin = session?.permissions?.system_settings;
-    if (!isAdmin) {
-      const rootSession = await getEmploymentSession(req.user.empid, 0);
-      isAdmin = !!rootSession;
-    }
-    if (!isAdmin && (await isProtectedProcedure(name)))
-      return res.status(403).json({ message: 'Procedure not allowed' });
-    await deleteProcedure(name, { allowProtected: isAdmin });
+    await deleteProcedure(name, { allowProtected: true });
     res.json({ ok: true });
   } catch (err) {
     next(err);
@@ -219,7 +185,7 @@ router.delete('/procedures/:name', requireAuth, async (req, res, next) => {
 });
 
 // Save a view
-router.post('/views', requireAuth, async (req, res, next) => {
+router.post('/views', async (req, res, next) => {
   try {
     const { sql } = req.body || {};
     if (!sql) return res.status(400).json({ message: 'sql required' });
@@ -230,7 +196,7 @@ router.post('/views', requireAuth, async (req, res, next) => {
   }
 });
 
-router.get('/views', requireAuth, async (req, res, next) => {
+router.get('/views', async (req, res, next) => {
   try {
     const { prefix = '' } = req.query;
     const names = await listDatabaseViews(prefix);
@@ -240,7 +206,7 @@ router.get('/views', requireAuth, async (req, res, next) => {
   }
 });
 
-router.get('/views/:name', requireAuth, async (req, res, next) => {
+router.get('/views/:name', async (req, res, next) => {
   try {
     const { name } = req.params;
     if (!name) return res.status(400).json({ message: 'name required' });
@@ -252,7 +218,7 @@ router.get('/views/:name', requireAuth, async (req, res, next) => {
   }
 });
 
-router.delete('/views/:name', requireAuth, async (req, res, next) => {
+router.delete('/views/:name', async (req, res, next) => {
   try {
     const { name } = req.params;
     if (!name) return res.status(400).json({ message: 'name required' });
@@ -406,4 +372,3 @@ router.get('/configs/:name', requireAuth, async (req, res, next) => {
 });
 
 export default router;
-
