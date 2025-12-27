@@ -7449,6 +7449,7 @@ export default function PosApiAdmin() {
     const baseSample = cleanSampleText(baseText);
     const activeSelections = Object.entries(nextSelections || {}).reduce((acc, [path, entry]) => {
       if (entry?.applyToBody === false) return acc;
+      if (!hasMappingValue(entry)) return acc;
       acc[path] = entry;
       return acc;
     }, {});
@@ -7770,7 +7771,12 @@ export default function PosApiAdmin() {
       );
       const nextSelections = { ...prev };
       let changed = false;
-      if (normalizedSelection && hasMappingValue(normalizedSelection)) {
+      const previousNormalized = normalizeRequestFieldMappingEntry(current, { defaultApplyToBody });
+      const typeChanged =
+        normalizedSelection
+        && normalizedSelection.type
+        && normalizedSelection.type !== (previousNormalized?.type || current.type || current.mode);
+      if (normalizedSelection && (hasMappingValue(normalizedSelection) || typeChanged)) {
         const previousNormalized = normalizeRequestFieldMappingEntry(current, { defaultApplyToBody });
         const alreadyEqual = JSON.stringify(previousNormalized || {}) === JSON.stringify(normalizedSelection);
         nextSelections[fieldPath] = normalizedSelection;
@@ -7930,6 +7936,65 @@ export default function PosApiAdmin() {
       return { ...prev, [fieldPath]: { ...current, defaultByVariation } };
     });
     syncVariationDefaultChange(variationKey, fieldPath, syncEntry);
+  }
+
+  function setVariationRequirementsForAll(variationKey, required) {
+    if (!variationKey) return;
+    setRequestFieldMeta((prev) => {
+      let changed = false;
+      const next = { ...prev };
+      visibleRequestFieldItems.forEach((entry) => {
+        const normalized = normalizeHintEntry(entry);
+        const fieldPath = normalized.field;
+        if (!fieldPath) return;
+        const existing = next[fieldPath] || { requiredByVariation: {}, defaultByVariation: {} };
+        const requiredByVariation = { ...(existing.requiredByVariation || {}) };
+        if (existing.requiredCommon && required === false) return;
+        if (requiredByVariation[variationKey] !== required) {
+          requiredByVariation[variationKey] = required;
+          next[fieldPath] = { ...existing, requiredByVariation };
+          changed = true;
+        }
+      });
+      return changed ? next : prev;
+    });
+
+    setFormState((prev) => {
+      let changed = false;
+      const variations = Array.isArray(prev.variations) ? prev.variations.map((entry) => {
+        if (!entry || typeof entry !== 'object') return entry;
+        if ((entry.key || entry.name) !== variationKey) return entry;
+        const requiredFields = entry.requiredFields ? { ...entry.requiredFields } : {};
+        visibleRequestFieldItems.forEach((item) => {
+          const normalized = normalizeHintEntry(item);
+          const fieldPath = normalized.field;
+          if (!fieldPath) return;
+          if (required === false && normalized.requiredCommon) return;
+          requiredFields[fieldPath] = required;
+        });
+        changed = true;
+        return { ...entry, requiredFields };
+      }) : [];
+
+      const requestFieldVariations = Array.isArray(prev.requestFieldVariations)
+        ? prev.requestFieldVariations.map((entry) => {
+          if (!entry || typeof entry !== 'object') return entry;
+          if (entry.key !== variationKey) return entry;
+          const requiredFields = entry.requiredFields ? { ...entry.requiredFields } : {};
+          visibleRequestFieldItems.forEach((item) => {
+            const normalized = normalizeHintEntry(item);
+            const fieldPath = normalized.field;
+            if (!fieldPath) return;
+            if (required === false && normalized.requiredCommon) return;
+            requiredFields[fieldPath] = required;
+          });
+          changed = true;
+          return { ...entry, requiredFields };
+        })
+        : [];
+
+      return changed ? { ...prev, variations, requestFieldVariations } : prev;
+    });
   }
 
   function handleAddAggregation() {
@@ -9270,6 +9335,24 @@ export default function PosApiAdmin() {
                         style={{ ...styles.requestFieldHeaderCell, display: 'flex', gap: '0.35rem', alignItems: 'center' }}
                       >
                         <span>{variation.label}</span>
+                        <div style={{ display: 'flex', gap: '0.25rem' }}>
+                          <button
+                            type="button"
+                            style={styles.miniToggleButton}
+                            onClick={() => setVariationRequirementsForAll(variation.key, true)}
+                            title={`Mark all ${variation.label} fields as required`}
+                          >
+                            All
+                          </button>
+                          <button
+                            type="button"
+                            style={styles.miniToggleButton}
+                            onClick={() => setVariationRequirementsForAll(variation.key, false)}
+                            title={`Clear required flags for ${variation.label}`}
+                          >
+                            None
+                          </button>
+                        </div>
                         {variation.type === 'combination' && (
                           <span style={{ ...styles.hintBadge, background: '#eef2ff', color: '#3730a3' }}>
                             Combination
@@ -11424,6 +11507,14 @@ const styles = {
   requestFieldHint: {
     color: '#475569',
     fontSize: '0.85rem',
+  },
+  miniToggleButton: {
+    padding: '0.15rem 0.4rem',
+    border: '1px solid #cbd5e1',
+    borderRadius: '6px',
+    background: '#f8fafc',
+    fontSize: '0.75rem',
+    cursor: 'pointer',
   },
   variationList: {
     display: 'grid',
