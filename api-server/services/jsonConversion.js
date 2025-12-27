@@ -8,6 +8,14 @@ function escapeRegex(str) {
   return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+function buildDropCheckStatement(tableId, constraintName, dbEngine = 'MySQL', { ifExists = true } = {}) {
+  const constraintId = escapeId(constraintName);
+  if (dbEngine === 'MariaDB') {
+    return `ALTER TABLE ${tableId} DROP CONSTRAINT ${constraintId}`;
+  }
+  return `ALTER TABLE ${tableId} DROP CHECK ${ifExists ? 'IF EXISTS ' : ''}${constraintId}`;
+}
+
 function buildDiagnosticQueries(table, column) {
   const safeColumn = String(column || '').replace(/'/g, "''");
   const safeTable = String(table || '').replace(/'/g, "''");
@@ -25,13 +33,20 @@ function buildDiagnosticQueries(table, column) {
         AND tc.CONSTRAINT_TYPE = 'CHECK'
         AND tc.TABLE_NAME = '${safeTable}'
         AND cc.CHECK_CLAUSE LIKE '%${safeColumn}%'`,
-    `SELECT ccu.CONSTRAINT_NAME, ccu.TABLE_NAME, ccu.COLUMN_NAME, tc.CONSTRAINT_TYPE
-       FROM information_schema.CONSTRAINT_COLUMN_USAGE ccu
+    `SELECT
+        kcu.CONSTRAINT_NAME,
+        kcu.TABLE_NAME,
+        kcu.COLUMN_NAME,
+        tc.CONSTRAINT_TYPE,
+        kcu.REFERENCED_TABLE_NAME,
+        kcu.REFERENCED_COLUMN_NAME
+       FROM information_schema.KEY_COLUMN_USAGE kcu
        JOIN information_schema.TABLE_CONSTRAINTS tc
-         ON tc.CONSTRAINT_NAME = ccu.CONSTRAINT_NAME
-        AND tc.TABLE_SCHEMA = ccu.TABLE_SCHEMA
-      WHERE ccu.TABLE_SCHEMA = DATABASE()
-        AND ccu.COLUMN_NAME = '${safeColumn}'`,
+         ON tc.CONSTRAINT_SCHEMA = kcu.CONSTRAINT_SCHEMA
+        AND tc.CONSTRAINT_NAME = kcu.CONSTRAINT_NAME
+      WHERE kcu.CONSTRAINT_SCHEMA = DATABASE()
+        AND kcu.COLUMN_NAME = '${safeColumn}'
+        AND tc.CONSTRAINT_TYPE = 'FOREIGN KEY'`,
   ];
 }
 
@@ -96,26 +111,11 @@ async function loadColumnUsage(table, columnNames = []) {
        FROM information_schema.KEY_COLUMN_USAGE kcu
        LEFT JOIN information_schema.TABLE_CONSTRAINTS tc
          ON tc.CONSTRAINT_NAME = kcu.CONSTRAINT_NAME
-        AND tc.TABLE_SCHEMA = kcu.TABLE_SCHEMA
-        AND tc.TABLE_NAME = kcu.TABLE_NAME
-      WHERE kcu.TABLE_SCHEMA = DATABASE()
+        AND tc.CONSTRAINT_SCHEMA = kcu.CONSTRAINT_SCHEMA
+      WHERE kcu.CONSTRAINT_SCHEMA = DATABASE()
         AND kcu.COLUMN_NAME IS NOT NULL
         AND (kcu.TABLE_NAME = ? OR kcu.REFERENCED_TABLE_NAME = ?)`,
     [table, table],
-  );
-  const [checkUsage] = await pool.query(
-    `SELECT ccu.TABLE_NAME,
-            ccu.COLUMN_NAME,
-            ccu.CONSTRAINT_NAME,
-            tc.CONSTRAINT_TYPE
-       FROM information_schema.CONSTRAINT_COLUMN_USAGE ccu
-       JOIN information_schema.TABLE_CONSTRAINTS tc
-         ON tc.CONSTRAINT_NAME = ccu.CONSTRAINT_NAME
-        AND tc.TABLE_SCHEMA = ccu.TABLE_SCHEMA
-      WHERE ccu.TABLE_SCHEMA = DATABASE()
-        AND ccu.COLUMN_NAME IS NOT NULL
-        AND ccu.TABLE_NAME = ?`,
-    [table],
   );
   const [tableChecks] = await pool.query(
     `SELECT tc.CONSTRAINT_NAME,
@@ -131,21 +131,6 @@ async function loadColumnUsage(table, columnNames = []) {
         AND tc.TABLE_NAME = ?`,
     [table],
   );
-  const [indirectConstraintUsage] = normalizedColumns.length
-    ? await pool.query(
-        `SELECT ccu.CONSTRAINT_NAME,
-                ccu.TABLE_NAME,
-                ccu.COLUMN_NAME,
-                tc.CONSTRAINT_TYPE
-           FROM information_schema.CONSTRAINT_COLUMN_USAGE ccu
-           JOIN information_schema.TABLE_CONSTRAINTS tc
-             ON tc.CONSTRAINT_NAME = ccu.CONSTRAINT_NAME
-            AND tc.TABLE_SCHEMA = ccu.TABLE_SCHEMA
-          WHERE ccu.TABLE_SCHEMA = DATABASE()
-            AND ccu.COLUMN_NAME IN (${normalizedColumns.map(() => '?').join(', ')})`,
-        normalizedColumns,
-      )
-    : [[]];
   const [allTriggers] = await pool.query(
     `SELECT TRIGGER_NAME,
             EVENT_OBJECT_TABLE,
@@ -167,14 +152,21 @@ async function loadColumnUsage(table, columnNames = []) {
   });
   const likePatterns = normalizedColumns.map((col) => `%${col}%`);
   if (likePatterns.length === 0) {
+    const tableForeignKeys = Array.from(
+      new Set(
+        (keyUsage || [])
+          .filter((row) => row.CONSTRAINT_TYPE === 'FOREIGN KEY' && row.TABLE_NAME === table)
+          .map((row) => row.CONSTRAINT_NAME)
+          .filter(Boolean),
+      ),
+    );
     return {
       keyUsage,
-      checkUsage,
       tableChecks,
-      indirectConstraintUsage,
       triggers,
       routineRefs: [],
       viewRefs: [],
+      tableForeignKeys,
       columnNames,
     };
   }
@@ -194,14 +186,21 @@ async function loadColumnUsage(table, columnNames = []) {
        AND (${likePatterns.map(() => 'VIEW_DEFINITION LIKE ?').join(' OR ')})`,
     likePatterns,
   );
+  const tableForeignKeys = Array.from(
+    new Set(
+      (keyUsage || [])
+        .filter((row) => row.CONSTRAINT_TYPE === 'FOREIGN KEY' && row.TABLE_NAME === table)
+        .map((row) => row.CONSTRAINT_NAME)
+        .filter(Boolean),
+    ),
+  );
   return {
     keyUsage,
-    checkUsage,
     tableChecks,
-    indirectConstraintUsage,
     triggers,
     routineRefs,
     viewRefs,
+    tableForeignKeys,
     columnNames,
   };
 }
@@ -258,39 +257,6 @@ function buildConstraintMap(table, columnNames = [], usage = {}) {
       );
       if (type === 'PRIMARY KEY') entry.primaryKey = true;
     }
-  });
-  (usage.checkUsage || []).forEach((row) => {
-    if (!row.COLUMN_NAME) return;
-    const entry = ensureEntry(row.COLUMN_NAME);
-    entry.constraints.push({
-      name: row.CONSTRAINT_NAME,
-      type: row.CONSTRAINT_TYPE || 'CHECK',
-      table,
-      column: row.COLUMN_NAME,
-      direction: 'check',
-    });
-    entry.hasBlockingConstraint = true;
-    entry.constraintTypes.add(row.CONSTRAINT_TYPE || 'CHECK');
-    entry.blockingReasons.add(`Check constraint ${row.CONSTRAINT_NAME || ''} impacts this column.`);
-  });
-  (usage.indirectConstraintUsage || []).forEach((row) => {
-    if (!row.COLUMN_NAME) return;
-    const constraintKey = `${row.TABLE_NAME}|${row.CONSTRAINT_NAME}|${row.COLUMN_NAME}`;
-    if (seenConstraints.has(constraintKey)) return;
-    seenConstraints.add(constraintKey);
-    const entry = ensureEntry(row.COLUMN_NAME);
-    entry.constraints.push({
-      name: row.CONSTRAINT_NAME,
-      type: row.CONSTRAINT_TYPE || 'CONSTRAINT',
-      table: row.TABLE_NAME,
-      column: row.COLUMN_NAME,
-      direction: row.TABLE_NAME === table ? 'table' : 'external',
-    });
-    entry.hasBlockingConstraint = true;
-    entry.constraintTypes.add(row.CONSTRAINT_TYPE || 'CONSTRAINT');
-    entry.blockingReasons.add(
-      `Constraint ${row.CONSTRAINT_NAME || ''} (${row.CONSTRAINT_TYPE || 'constraint'}) references this column in ${row.TABLE_NAME}.`,
-    );
   });
   (usage.tableChecks || []).forEach((row) => {
     if (!row.CHECK_CLAUSE) return;
@@ -376,29 +342,38 @@ export async function listColumns(table) {
   const [rows] = await pool.query('SHOW COLUMNS FROM ??', [table]);
   const columnNames = rows.map((row) => row.Field);
   let constraintMap = {};
+  let tableForeignKeys = [];
   try {
     const usage = await loadColumnUsage(table, columnNames);
     constraintMap = buildConstraintMap(table, columnNames, usage);
+    tableForeignKeys = usage.tableForeignKeys || [];
   } catch {
     constraintMap = {};
   }
-  return rows.map((row) => ({
-    name: row.Field,
-    type: row.Type,
-    nullable: row.Null === 'YES',
-    key: row.Key,
-    defaultValue: row.Default,
-    extra: row.Extra,
-    constraints: constraintMap[row.Field]?.constraints || [],
-    triggers: constraintMap[row.Field]?.triggers || [],
-    hasBlockingConstraint: Boolean(constraintMap[row.Field]?.hasBlockingConstraint),
-    blockingReasons: Array.from(constraintMap[row.Field]?.blockingReasons || []),
-    constraintTypes: Array.from(constraintMap[row.Field]?.constraintTypes || []),
-    isPrimaryKey: Boolean(constraintMap[row.Field]?.primaryKey || row.Key === 'PRI'),
-  }));
+  const [versionRow] = await pool.query('SELECT VERSION() AS version');
+  const versionString = String(versionRow?.[0]?.version || '').toLowerCase();
+  const dbEngine = versionString.includes('mariadb') ? 'MariaDB' : 'MySQL';
+  return {
+    columns: rows.map((row) => ({
+      name: row.Field,
+      type: row.Type,
+      nullable: row.Null === 'YES',
+      key: row.Key,
+      defaultValue: row.Default,
+      extra: row.Extra,
+      constraints: constraintMap[row.Field]?.constraints || [],
+      triggers: constraintMap[row.Field]?.triggers || [],
+      hasBlockingConstraint: Boolean(constraintMap[row.Field]?.hasBlockingConstraint),
+      blockingReasons: Array.from(constraintMap[row.Field]?.blockingReasons || []),
+      constraintTypes: Array.from(constraintMap[row.Field]?.constraintTypes || []),
+      isPrimaryKey: Boolean(constraintMap[row.Field]?.primaryKey || row.Key === 'PRI'),
+    })),
+    tableForeignKeys,
+    dbEngine,
+  };
 }
 
-function buildConstraintHandling(table, columnName, constraintInfo = {}, backupId) {
+function buildConstraintHandling(table, columnName, constraintInfo = {}, backupId, dbEngine = 'MySQL') {
   const tableId = escapeId(table);
   const columnId = escapeId(columnName);
   const dropStatements = new Set();
@@ -457,7 +432,7 @@ function buildConstraintHandling(table, columnName, constraintInfo = {}, backupI
     }
     if ((c.type || '').toUpperCase() === 'CHECK') {
       if (constraintName) {
-        dropStatements.add(`ALTER TABLE ${tableId} DROP CHECK ${constraintName}`);
+        dropStatements.add(buildDropCheckStatement(tableId, c.name, dbEngine, { ifExists: false }));
         recreateStatements.add(
           `-- Reintroduce CHECK ${constraintName} with JSON_VALID(${columnId}) AND JSON_TYPE(${columnId}) = 'ARRAY' once data is validated`,
         );
@@ -488,6 +463,8 @@ function buildColumnStatements(table, columnName, columnMeta, options, constrain
   const diagnosticQueries = buildDiagnosticQueries(table, columnName);
   const baseType = columnMeta?.type || 'TEXT';
   const action = options.action || 'convert';
+  const handleConstraints = action === 'convert' ? true : Boolean(options.handleConstraints);
+  const dbEngine = options.dbEngine || 'MySQL';
   const manualSql = options.customSql || '';
   const statements = [];
   const previewNotes = [];
@@ -541,7 +518,7 @@ function buildColumnStatements(table, columnName, columnMeta, options, constrain
       `UPDATE ${tableId} SET ${companionId} = JSON_ARRAY(${columnId}) WHERE ${columnId} IS NOT NULL`,
     );
     statements.push(
-      `ALTER TABLE ${tableId} DROP CHECK IF EXISTS ${escapeId(`${companionName}_check`)}`,
+      buildDropCheckStatement(tableId, `${companionName}_check`, dbEngine),
     );
     statements.push(
       `ALTER TABLE ${tableId} ADD CONSTRAINT ${escapeId(
@@ -561,7 +538,7 @@ function buildColumnStatements(table, columnName, columnMeta, options, constrain
     return { statements, preview, manualSql };
   }
 
-  if (constraintInfo.hasBlockingConstraint && !options.handleConstraints) {
+  if (constraintInfo.hasBlockingConstraint && !handleConstraints) {
     return {
       statements,
       preview: {
@@ -579,13 +556,21 @@ function buildColumnStatements(table, columnName, columnMeta, options, constrain
     };
   }
 
-  if (constraintInfo.hasBlockingConstraint && options.handleConstraints) {
+  if (action === 'convert' && Array.isArray(options.tableForeignKeys)) {
+    options.tableForeignKeys.forEach((fk) => {
+      if (!fk) return;
+      statements.push(`ALTER TABLE ${tableId} DROP FOREIGN KEY IF EXISTS ${escapeId(fk)}`);
+    });
+  }
+
+  if (constraintInfo.hasBlockingConstraint && handleConstraints) {
     const { dropStatements, recreateStatements, warnings, postStatements: afterStatements } =
       buildConstraintHandling(
         table,
         columnName,
         constraintInfo,
         backupId,
+        dbEngine,
       );
     statements.push(...dropStatements);
     if (warnings.length > 0) previewNotes.push(...warnings);
@@ -619,9 +604,7 @@ function buildColumnStatements(table, columnName, columnMeta, options, constrain
   };
 
   const validationName = `${columnName}_json_check`;
-  statements.push(
-    `ALTER TABLE ${tableId} DROP CHECK IF EXISTS ${escapeId(validationName)}`,
-  );
+  statements.push(buildDropCheckStatement(tableId, validationName, dbEngine));
   statements.push(
     `ALTER TABLE ${tableId} ADD CONSTRAINT ${escapeId(
       validationName,
@@ -647,6 +630,7 @@ export function buildConversionPlan(table, columns, metadata, options = {}) {
   const plan = { statements: [], previews: [] };
   const scriptLines = [];
   const metadataMap = new Map(metadata.map((m) => [m.name, m]));
+  const engine = options?.dbEngine || 'MySQL';
   normalizedColumns.forEach((col) => {
     const meta = metadataMap.get(col.name) || {};
     const constraintMeta = metadataMap.get(col.name);
@@ -677,7 +661,8 @@ export function buildConversionPlan(table, columns, metadata, options = {}) {
       meta,
       {
         ...options,
-        handleConstraints: Boolean(col.handleConstraints),
+        dbEngine: engine,
+        handleConstraints: col.action === 'convert' ? true : Boolean(col.handleConstraints),
         action: col.action,
         customSql: col.customSql,
       },

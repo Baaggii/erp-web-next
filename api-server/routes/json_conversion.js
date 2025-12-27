@@ -27,8 +27,8 @@ router.get('/tables', requireAuth, requireAdmin, async (req, res, next) => {
 
 router.get('/tables/:table/columns', requireAuth, requireAdmin, async (req, res, next) => {
   try {
-    const columns = await listColumns(req.params.table);
-    res.json({ columns });
+    const { columns, tableForeignKeys, dbEngine } = await listColumns(req.params.table);
+    res.json({ columns, tableForeignKeys, dbEngine });
   } catch (err) {
     next(err);
   }
@@ -50,8 +50,12 @@ router.post('/convert', requireAuth, requireAdmin, async (req, res, next) => {
     if (!table || normalizedColumns.length === 0) {
       return res.status(400).json({ message: 'table and columns are required' });
     }
-    const metadata = await listColumns(table);
-    const plan = buildConversionPlan(table, normalizedColumns, metadata, { backup });
+    const { columns: metadata, tableForeignKeys, dbEngine } = await listColumns(table);
+    const plan = buildConversionPlan(table, normalizedColumns, metadata, {
+      backup,
+      tableForeignKeys,
+      dbEngine,
+    });
     const runBy = req.user?.empid || req.user?.id || 'unknown';
     const logColumns = normalizedColumns.map((c) => c.name);
     const blocked = plan.previews.filter((p) => p.blocked);
