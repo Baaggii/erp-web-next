@@ -16,6 +16,22 @@ function buildDiagnosticQueries(table, column) {
     `SELECT * FROM information_schema.table_constraints WHERE table_schema = DATABASE() AND table_name = '${safeTable}' AND constraint_type='CHECK'`,
     `SELECT * FROM information_schema.routines WHERE routine_schema = DATABASE() AND routine_definition LIKE '%${safeColumn}%'`,
     `SELECT * FROM information_schema.views WHERE table_schema = DATABASE() AND view_definition LIKE '%${safeColumn}%'`,
+    `SELECT tc.CONSTRAINT_NAME, tc.CONSTRAINT_TYPE, tc.TABLE_NAME, cc.CHECK_CLAUSE
+       FROM information_schema.TABLE_CONSTRAINTS tc
+       JOIN information_schema.CHECK_CONSTRAINTS cc
+         ON cc.CONSTRAINT_SCHEMA = tc.CONSTRAINT_SCHEMA
+        AND cc.CONSTRAINT_NAME = tc.CONSTRAINT_NAME
+      WHERE tc.CONSTRAINT_SCHEMA = DATABASE()
+        AND tc.CONSTRAINT_TYPE = 'CHECK'
+        AND tc.TABLE_NAME = '${safeTable}'
+        AND cc.CHECK_CLAUSE LIKE '%${safeColumn}%'`,
+    `SELECT ccu.CONSTRAINT_NAME, ccu.TABLE_NAME, ccu.COLUMN_NAME, tc.CONSTRAINT_TYPE
+       FROM information_schema.CONSTRAINT_COLUMN_USAGE ccu
+       JOIN information_schema.TABLE_CONSTRAINTS tc
+         ON tc.CONSTRAINT_NAME = ccu.CONSTRAINT_NAME
+        AND tc.TABLE_SCHEMA = ccu.TABLE_SCHEMA
+      WHERE ccu.TABLE_SCHEMA = DATABASE()
+        AND ccu.COLUMN_NAME = '${safeColumn}'`,
   ];
 }
 
@@ -101,6 +117,35 @@ async function loadColumnUsage(table, columnNames = []) {
         AND ccu.TABLE_NAME = ?`,
     [table],
   );
+  const [tableChecks] = await pool.query(
+    `SELECT tc.CONSTRAINT_NAME,
+            tc.CONSTRAINT_TYPE,
+            tc.TABLE_NAME,
+            cc.CHECK_CLAUSE
+       FROM information_schema.TABLE_CONSTRAINTS tc
+       JOIN information_schema.CHECK_CONSTRAINTS cc
+         ON cc.CONSTRAINT_SCHEMA = tc.CONSTRAINT_SCHEMA
+        AND cc.CONSTRAINT_NAME = tc.CONSTRAINT_NAME
+      WHERE tc.CONSTRAINT_SCHEMA = DATABASE()
+        AND tc.CONSTRAINT_TYPE = 'CHECK'
+        AND tc.TABLE_NAME = ?`,
+    [table],
+  );
+  const [indirectConstraintUsage] = normalizedColumns.length
+    ? await pool.query(
+        `SELECT ccu.CONSTRAINT_NAME,
+                ccu.TABLE_NAME,
+                ccu.COLUMN_NAME,
+                tc.CONSTRAINT_TYPE
+           FROM information_schema.CONSTRAINT_COLUMN_USAGE ccu
+           JOIN information_schema.TABLE_CONSTRAINTS tc
+             ON tc.CONSTRAINT_NAME = ccu.CONSTRAINT_NAME
+            AND tc.TABLE_SCHEMA = ccu.TABLE_SCHEMA
+          WHERE ccu.TABLE_SCHEMA = DATABASE()
+            AND ccu.COLUMN_NAME IN (${normalizedColumns.map(() => '?').join(', ')})`,
+        normalizedColumns,
+      )
+    : [[]];
   const [allTriggers] = await pool.query(
     `SELECT TRIGGER_NAME,
             EVENT_OBJECT_TABLE,
@@ -122,7 +167,16 @@ async function loadColumnUsage(table, columnNames = []) {
   });
   const likePatterns = normalizedColumns.map((col) => `%${col}%`);
   if (likePatterns.length === 0) {
-    return { keyUsage, checkUsage, triggers, routineRefs: [], viewRefs: [], columnNames };
+    return {
+      keyUsage,
+      checkUsage,
+      tableChecks,
+      indirectConstraintUsage,
+      triggers,
+      routineRefs: [],
+      viewRefs: [],
+      columnNames,
+    };
   }
   const [routineRefs] = await pool.query(
     `SELECT ROUTINE_NAME, ROUTINE_TYPE, ROUTINE_DEFINITION
@@ -137,10 +191,19 @@ async function loadColumnUsage(table, columnNames = []) {
        FROM information_schema.VIEWS
       WHERE TABLE_SCHEMA = DATABASE()
         AND VIEW_DEFINITION IS NOT NULL
-        AND (${likePatterns.map(() => 'VIEW_DEFINITION LIKE ?').join(' OR ')})`,
+       AND (${likePatterns.map(() => 'VIEW_DEFINITION LIKE ?').join(' OR ')})`,
     likePatterns,
   );
-  return { keyUsage, checkUsage, triggers, routineRefs, viewRefs, columnNames };
+  return {
+    keyUsage,
+    checkUsage,
+    tableChecks,
+    indirectConstraintUsage,
+    triggers,
+    routineRefs,
+    viewRefs,
+    columnNames,
+  };
 }
 
 function buildConstraintMap(table, columnNames = [], usage = {}) {
@@ -169,6 +232,7 @@ function buildConstraintMap(table, columnNames = [], usage = {}) {
     );
   };
   const blockingTypes = new Set(['PRIMARY KEY', 'UNIQUE', 'FOREIGN KEY', 'CHECK']);
+  const seenConstraints = new Set();
   (usage.keyUsage || []).forEach((row) => {
     const direction = row.TABLE_NAME === table ? 'outgoing' : 'incoming';
     const targetColumn = direction === 'outgoing' ? row.COLUMN_NAME : row.REFERENCED_COLUMN_NAME;
@@ -208,6 +272,47 @@ function buildConstraintMap(table, columnNames = [], usage = {}) {
     entry.hasBlockingConstraint = true;
     entry.constraintTypes.add(row.CONSTRAINT_TYPE || 'CHECK');
     entry.blockingReasons.add(`Check constraint ${row.CONSTRAINT_NAME || ''} impacts this column.`);
+  });
+  (usage.indirectConstraintUsage || []).forEach((row) => {
+    if (!row.COLUMN_NAME) return;
+    const constraintKey = `${row.TABLE_NAME}|${row.CONSTRAINT_NAME}|${row.COLUMN_NAME}`;
+    if (seenConstraints.has(constraintKey)) return;
+    seenConstraints.add(constraintKey);
+    const entry = ensureEntry(row.COLUMN_NAME);
+    entry.constraints.push({
+      name: row.CONSTRAINT_NAME,
+      type: row.CONSTRAINT_TYPE || 'CONSTRAINT',
+      table: row.TABLE_NAME,
+      column: row.COLUMN_NAME,
+      direction: row.TABLE_NAME === table ? 'table' : 'external',
+    });
+    entry.hasBlockingConstraint = true;
+    entry.constraintTypes.add(row.CONSTRAINT_TYPE || 'CONSTRAINT');
+    entry.blockingReasons.add(
+      `Constraint ${row.CONSTRAINT_NAME || ''} (${row.CONSTRAINT_TYPE || 'constraint'}) references this column in ${row.TABLE_NAME}.`,
+    );
+  });
+  (usage.tableChecks || []).forEach((row) => {
+    if (!row.CHECK_CLAUSE) return;
+    columnNames.forEach((col) => {
+      if (!matchesColumnRef(row.CHECK_CLAUSE, col)) return;
+      const constraintKey = `${row.CONSTRAINT_NAME}|${row.TABLE_NAME}|${col}`;
+      if (seenConstraints.has(constraintKey)) return;
+      seenConstraints.add(constraintKey);
+      const entry = ensureEntry(col);
+      entry.constraints.push({
+        name: row.CONSTRAINT_NAME,
+        type: row.CONSTRAINT_TYPE || 'CHECK',
+        table: row.TABLE_NAME,
+        column: col,
+        direction: 'check-clause',
+      });
+      entry.hasBlockingConstraint = true;
+      entry.constraintTypes.add(row.CONSTRAINT_TYPE || 'CHECK');
+      entry.blockingReasons.add(
+        `Check constraint ${row.CONSTRAINT_NAME || ''} references ${col} via its CHECK clause.`,
+      );
+    });
   });
   const triggerRegexes = columnNames.map(
     (col) => [col, new RegExp(`\\b${escapeRegex(col)}\\b`, 'i')],
@@ -447,11 +552,11 @@ function buildColumnStatements(table, columnName, columnMeta, options, constrain
       column: columnName,
       originalType: columnMeta?.type || 'UNKNOWN',
       exampleBefore: '123',
-        exampleAfter: '["123"] (companion column)',
-        backupColumn: companionName,
-        notes:
-          'Scalar column retained. A companion JSON column will store multi-value data for this field.',
-        diagnosticQueries,
+      exampleAfter: '["123"] (companion column)',
+      backupColumn: companionName,
+      notes:
+        'Scalar column retained. A companion JSON column will store multi-value data for this field.',
+      diagnosticQueries,
     };
     return { statements, preview, manualSql };
   }
