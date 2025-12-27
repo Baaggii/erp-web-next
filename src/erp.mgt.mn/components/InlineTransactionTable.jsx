@@ -11,6 +11,7 @@ import useGeneralConfig from '../hooks/useGeneralConfig.js';
 import AsyncSearchSelect from './AsyncSearchSelect.jsx';
 import RowDetailModal from './RowDetailModal.jsx';
 import RowImageUploadModal from './RowImageUploadModal.jsx';
+import TagMultiSelect from './TagMultiSelect.jsx';
 import buildImageName from '../utils/buildImageName.js';
 import slugify from '../utils/slugify.js';
 import formatTimestamp from '../utils/formatTimestamp.js';
@@ -984,6 +985,61 @@ function InlineTransactionTable(
     return map;
   }, [fieldsKey, columnTypeMap, fieldTypeMapKey, placeholders, defaultValues, totalAmountSet, totalCurrencySet]);
 
+  const jsonFieldSet = React.useMemo(() => {
+    const set = new Set();
+    fields.forEach((f) => {
+      const typ = (fieldTypeMap[f] || '').toLowerCase();
+      const colTyp = (columnTypeMap[f] || '').toLowerCase();
+      if (typ === 'json' || colTyp.includes('json')) {
+        set.add(f);
+      }
+    });
+    return set;
+  }, [columnTypeMap, fieldTypeMapKey, fieldsKey]);
+
+  const normalizeJsonValue = useCallback(
+    (field, value) => {
+      if (!jsonFieldSet.has(field)) return value;
+      if (Array.isArray(value)) return value;
+      if (value === undefined || value === null || value === '') return [];
+      if (typeof value === 'string') {
+        const trimmed = value.trim();
+        if (trimmed) {
+          const first = trimmed[0];
+          const last = trimmed[trimmed.length - 1];
+          if (
+            (first === '[' && last === ']') ||
+            (first === '{' && last === '}') ||
+            (first === '"' && last === '"')
+          ) {
+            try {
+              const parsed = JSON.parse(trimmed);
+              if (Array.isArray(parsed)) return parsed;
+              return parsed;
+            } catch {
+              /* ignore */
+            }
+          }
+        }
+      }
+      return [value];
+    },
+    [jsonFieldSet],
+  );
+
+  const serializeJsonValue = useCallback(
+    (field, value) => {
+      if (!jsonFieldSet.has(field)) return value;
+      const normalized = normalizeJsonValue(field, value);
+      try {
+        return JSON.stringify(normalized);
+      } catch {
+        return Array.isArray(normalized) ? normalized.join(',') : String(normalized ?? '');
+      }
+    },
+    [jsonFieldSet, normalizeJsonValue],
+  );
+
   useEffect(() => {
     if (!Array.isArray(initRows)) return;
     const base = Array.isArray(initRows) ? initRows : [];
@@ -998,7 +1054,9 @@ function InlineTransactionTable(
       if (!row || typeof row !== 'object') return row;
       const updated = fillSessionDefaults(row);
       Object.entries(updated).forEach(([k, v]) => {
-        if (placeholders[k]) {
+        if (jsonFieldSet.has(k)) {
+          updated[k] = normalizeJsonValue(k, v);
+        } else if (placeholders[k]) {
           updated[k] = normalizeDateInput(String(v ?? ''), placeholders[k]);
         } else if (fieldTypeMap[k] === 'number') {
           const formatted = formatNumericValue(k, v);
@@ -2042,6 +2100,15 @@ function InlineTransactionTable(
     const row = rows[idx] || {};
     for (const f of requiredFields) {
       let val = row[f];
+      if (jsonFieldSet.has(f)) {
+        const list = normalizeJsonValue(f, val);
+        if (!Array.isArray(list) || list.length === 0) {
+          setErrorMsg(`${labels[f] || f} талбарыг бөглөнө үү.`);
+          setInvalidCell({ row: idx, field: f });
+          return;
+        }
+        continue;
+      }
       if (placeholders[f]) {
         val = normalizeDateInput(val, placeholders[f]);
       }
@@ -2092,9 +2159,13 @@ function InlineTransactionTable(
       const key = columnCaseMap[k.toLowerCase()];
       if (!key) return;
       let val = typeof v === 'object' && v !== null && 'value' in v ? v.value : v;
-      if (placeholders[key]) val = normalizeDateInput(val, placeholders[key]);
-      if (totalAmountSet.has(key) || totalCurrencySet.has(key)) {
-        val = normalizeNumberInput(val);
+      if (jsonFieldSet.has(key)) {
+        val = serializeJsonValue(key, val);
+      } else {
+        if (placeholders[key]) val = normalizeDateInput(val, placeholders[key]);
+        if (totalAmountSet.has(key) || totalCurrencySet.has(key)) {
+          val = normalizeNumberInput(val);
+        }
       }
       cleaned[key] = val;
     });
@@ -2289,28 +2360,42 @@ function InlineTransactionTable(
 
   function renderCell(idx, f, colIdx) {
     const val = rows[idx]?.[f] ?? '';
+    const isJsonField = jsonFieldSet.has(f);
+    const normalizedJson = isJsonField ? normalizeJsonValue(f, val) : val;
     const fieldDisabled = isFieldDisabled(f);
     const invalid = invalidCell && invalidCell.row === idx && invalidCell.field === f;
     const resolvedAutoConfig = getAutoSelectConfig(f, rows[idx]);
     const resolvedConfig = relationConfigMap[f] || resolvedAutoConfig?.config;
     if (fieldDisabled) {
-      let display = typeof val === 'object' ? val.label || val.value : val;
-      const rawVal = typeof val === 'object' ? val.value : val;
-      const relationRow = rawVal !== undefined ? getRelationRow(f, rawVal) : null;
+      const baseValue =
+        typeof normalizedJson === 'object' && normalizedJson !== null && !Array.isArray(normalizedJson)
+          ? normalizedJson.value
+          : normalizedJson;
+      let display =
+        typeof normalizedJson === 'object' && normalizedJson !== null && !Array.isArray(normalizedJson)
+          ? normalizedJson.label || baseValue
+          : baseValue;
+      const relationRow = baseValue !== undefined ? getRelationRow(f, baseValue) : null;
       if (resolvedConfig && relationRow) {
-        const parts = [rawVal];
+        const parts = [baseValue];
         (resolvedConfig.displayFields || []).forEach((df) => {
           if (relationRow[df] !== undefined) parts.push(relationRow[df]);
         });
         display = parts.join(' - ');
       } else if (viewSourceMap[f] && relationRow) {
         const cfg = viewDisplays[viewSourceMap[f]] || {};
-        const parts = [rawVal];
+        const parts = [baseValue];
         (cfg.displayFields || []).forEach((df) => {
           if (relationRow[df] !== undefined) parts.push(relationRow[df]);
         });
         display = parts.join(' - ');
-      } 
+      } else if (isJsonField) {
+        const list = Array.isArray(normalizedJson) ? normalizedJson : normalizeJsonValue(f, normalizedJson);
+        display = list
+          .map((item) => (item === undefined || item === null ? '' : String(item)))
+          .filter((item) => item)
+          .join(', ');
+      }
       const readonlyStyle = {
         ...inputStyle,
         width: 'fit-content',
@@ -2335,7 +2420,27 @@ function InlineTransactionTable(
     }
     if (rows[idx]?._saved && !collectRows) {
       const isoDatePattern = /^\d{4}-\d{2}-\d{2}(?:T.*)?$/;
-      const displayVal = typeof val === 'object' ? val.label ?? val.value : val;
+      const displayVal =
+        typeof normalizedJson === 'object' && normalizedJson !== null && !Array.isArray(normalizedJson)
+          ? normalizedJson.label ?? normalizedJson.value
+          : normalizedJson;
+      if (isJsonField) {
+        const list = Array.isArray(normalizedJson) ? normalizedJson : normalizeJsonValue(f, normalizedJson);
+        const text = list
+          .map((item) => {
+            if (item === undefined || item === null) return '';
+            if (Array.isArray(relations[f])) {
+              const opt = relations[f].find(
+                (o) => String(o.value) === String(item),
+              );
+              if (opt) return opt.label ?? opt.value;
+            }
+            return String(item);
+          })
+          .filter((item) => item)
+          .join(', ');
+        return text;
+      }
       if (
         typeof displayVal === 'string' &&
         isoDatePattern.test(displayVal) &&
@@ -2344,6 +2449,22 @@ function InlineTransactionTable(
         return normalizeDateInput(displayVal, 'YYYY-MM-DD');
       }
       return displayVal;
+    }
+    if (isJsonField) {
+      const options = Array.isArray(relations[f]) ? filterRelationOptions(rows[idx], f, relations[f]) : [];
+      const current = Array.isArray(normalizedJson) ? normalizedJson : normalizeJsonValue(f, normalizedJson);
+      return (
+        <TagMultiSelect
+          value={current}
+          options={options}
+          onChange={(vals) => handleChange(idx, f, vals)}
+          disabled={readOnly}
+          inputRef={(el) => (inputRefs.current[`${idx}-${colIdx}`] = el)}
+          onKeyDown={(e) => handleKeyDown(e, idx, colIdx)}
+          inputStyle={inputStyle}
+          allowCustom={!options.length}
+        />
+      );
     }
     if (resolvedConfig) {
       const conf = resolvedConfig;
@@ -2633,6 +2754,7 @@ function InlineTransactionTable(
         relations={relations}
         labels={labels}
         fieldTypeMap={fieldTypeMap}
+        jsonFields={Array.from(jsonFieldSet)}
       />
       <RowImageUploadModal
         visible={uploadRow !== null}
