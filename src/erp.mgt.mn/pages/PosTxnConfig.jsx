@@ -682,8 +682,18 @@ export default function PosTxnConfig() {
   );
 
   const endpointRequestMappingDefaults = useMemo(() => {
-    if (!selectedEndpoint || !selectedEndpoint.requestFieldMappings) return null;
-    const entries = Object.entries(selectedEndpoint.requestFieldMappings || {});
+    if (!selectedEndpoint) return null;
+    const mappingEntries = Object.entries(selectedEndpoint.requestFieldMappings || {});
+    const envEntries = Object.entries(selectedEndpoint.requestEnvMap || {}).map(([fieldPath, envEntry]) => {
+      if (!fieldPath) return null;
+      const envVar = typeof envEntry === 'string' ? envEntry : envEntry?.envVar;
+      if (!envVar) return null;
+      const applyToBody = envEntry && typeof envEntry === 'object' && envEntry.applyToBody === false
+        ? false
+        : true;
+      return [fieldPath, { type: 'env', envVar, applyToBody }];
+    }).filter(Boolean);
+    const entries = [...mappingEntries, ...envEntries];
     if (!entries.length) return null;
     const itemsPrefixTokens = tokenizeFieldPath(endpointNestedPaths.items || '');
     const paymentsPrefixTokens = tokenizeFieldPath(endpointNestedPaths.payments || '');
