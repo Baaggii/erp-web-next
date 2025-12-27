@@ -408,37 +408,62 @@ export function MappingFieldSelector({
   const sessionListId = `${datalistIdBase}-session`;
 
   const handleTypeChange = (nextType) => {
-    const base = { ...selection, type: nextType };
-    if (nextType !== 'column') {
+    const base = {
+      type: nextType,
+      aggregation: selection.aggregation,
+      applyToBody: selection.applyToBody,
+    };
+    if (nextType === 'column') {
       base.table = '';
       base.column = '';
+    } else if (nextType === 'literal') {
+      base.value = '';
+    } else if (nextType === 'env') {
+      base.envVar = '';
+    } else if (nextType === 'session') {
+      base.sessionVar = '';
+    } else if (nextType === 'expression') {
+      base.expression = '';
     }
-    onChange(buildMappingValue(base, { preserveType: true }));
+    onChange({
+      ...buildMappingValue(base, { preserveType: true }),
+      applyToBody: selection.applyToBody,
+    });
   };
 
   const handleTableChange = (tbl) => {
     if (tbl) onTableSelect(tbl);
-    onChange(
-      buildMappingValue({
-        type: 'column',
-        table: tbl,
-        column: selection.column,
-      }, { preserveType: true }),
-    );
+    onChange({
+      ...buildMappingValue(
+        {
+          type: 'column',
+          table: tbl,
+          column: selection.column,
+          aggregation: selection.aggregation,
+        },
+        { preserveType: true },
+      ),
+      applyToBody: selection.applyToBody,
+    });
   };
 
   const handleColumnChange = (col) => {
-    onChange(
-      buildMappingValue({
-        type: 'column',
-        table: selectedTable,
-        column: col,
-      }, { preserveType: true }),
-    );
+    onChange({
+      ...buildMappingValue(
+        {
+          type: 'column',
+          table: selectedTable,
+          column: col,
+          aggregation: selection.aggregation,
+        },
+        { preserveType: true },
+      ),
+      applyToBody: selection.applyToBody,
+    });
   };
 
   const handleScalarChange = (key, val) => {
-    const base = { ...selection, type: currentType, [key]: val };
+    const base = { ...selection, type: currentType, aggregation: selection.aggregation, [key]: val };
     onChange(buildMappingValue(base, { preserveType: true }));
   };
 
