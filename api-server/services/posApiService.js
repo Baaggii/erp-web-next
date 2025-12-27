@@ -2,6 +2,11 @@ import { getSettings } from '../../db/index.js';
 import { getEndpointById, loadEndpoints } from './posApiRegistry.js';
 import { createColumnLookup } from './posApiPersistence.js';
 import { resolveReferenceCodeValue } from './referenceCodeLookup.js';
+import {
+  applyAggregations,
+  evaluateAggregationExpression,
+  normalizeRequestMappingValue,
+} from './posApiAggregations.js';
 
 function trimEndSlash(url) {
   if (!url) return '';
@@ -228,6 +233,80 @@ function resolveEnvPlaceholders(value, path = '') {
   return value;
 }
 
+function normalizeMappingValueEntry(value) {
+  const normalized = normalizeRequestMappingValue(value);
+  if (normalized) return normalized;
+  if (value && typeof value === 'object' && !Array.isArray(value)) {
+    const aggregation = typeof value.aggregation === 'string' ? value.aggregation : undefined;
+    const base = { ...value };
+    if (aggregation) base.aggregation = aggregation;
+    if (Object.keys(base).length) return base;
+    return null;
+  }
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+    return { type: 'column', column: trimmed };
+  }
+  if (typeof value === 'number' || typeof value === 'bigint' || typeof value === 'boolean') {
+    return { type: 'literal', value };
+  }
+  return null;
+}
+
+function applyAggregationToValue(aggregation, value) {
+  const values = Array.isArray(value) ? value : [value];
+  const numericValues = values
+    .map((entry) => toNumber(entry))
+    .filter((entry) => entry !== null && entry !== undefined);
+  if (!aggregation) return value;
+  if (aggregation === 'sum') return numericValues.reduce((sum, val) => sum + val, 0);
+  if (aggregation === 'count') return numericValues.length;
+  if (aggregation === 'min') return numericValues.length ? Math.min(...numericValues) : null;
+  if (aggregation === 'max') return numericValues.length ? Math.max(...numericValues) : null;
+  if (aggregation === 'avg') {
+    if (!numericValues.length) return null;
+    const total = numericValues.reduce((sum, val) => sum + val, 0);
+    return total / numericValues.length;
+  }
+  return value;
+}
+
+function resolveMappedValue(mappingValue, record, { columnLookup, session = {}, environment = process.env } = {}) {
+  const entry = normalizeMappingValueEntry(mappingValue);
+  if (!entry) return undefined;
+  const type = entry.type || (entry.envVar ? 'env' : entry.sessionVar ? 'session' : entry.expression ? 'expression' : 'column');
+  const aggregation = entry.aggregation;
+  if (type === 'literal') {
+    return aggregation ? applyAggregationToValue(aggregation, entry.value) : entry.value;
+  }
+  if (type === 'env') {
+    const envVar = entry.envVar || entry.value;
+    if (!envVar) return undefined;
+    const raw = environment?.[envVar];
+    if (raw === undefined || raw === null) return undefined;
+    const value = parseEnvValue(String(raw));
+    return aggregation ? applyAggregationToValue(aggregation, value) : value;
+  }
+  if (type === 'session') {
+    const sessionVar = entry.sessionVar || entry.value;
+    const value = session ? session[sessionVar] : undefined;
+    return aggregation ? applyAggregationToValue(aggregation, value) : value;
+  }
+  if (type === 'expression') {
+    const value = evaluateAggregationExpression(entry.expression || entry.value, record);
+    return aggregation ? applyAggregationToValue(aggregation, value) : value;
+  }
+  const table = typeof entry.table === 'string' ? entry.table.trim() : '';
+  const column = typeof entry.column === 'string' ? entry.column.trim() : '';
+  const path = table && column ? `${table}.${column}` : column || table;
+  const value = getColumnValue(columnLookup, record, path);
+  if (Array.isArray(value) && aggregation) {
+    return applyAggregationToValue(aggregation, value);
+  }
+  return value;
+}
+
 let cachedBaseUrl = '';
 let cachedBaseUrlLoaded = false;
 const tokenCache = new Map();
@@ -376,7 +455,20 @@ function getColumnValue(columnLookup, record, columnName) {
   const [firstToken, ...rest] = tokens;
   if (typeof firstToken !== 'string') return undefined;
   const resolved = resolveColumnName(columnLookup, record, firstToken);
-  if (!resolved) return undefined;
+  if (!resolved) {
+    if (rest.length) {
+      const [fallbackFirst, ...fallbackRest] = rest;
+      if (typeof fallbackFirst === 'string') {
+        const altResolved = resolveColumnName(columnLookup, record, fallbackFirst);
+        if (altResolved) {
+          if (!fallbackRest.length) return record[altResolved];
+          const baseValue = record[altResolved];
+          return getValueFromTokens(baseValue, fallbackRest);
+        }
+      }
+    }
+    return undefined;
+  }
   if (!rest.length) return record[resolved];
   const baseValue = record[resolved];
   return getValueFromTokens(baseValue, rest);
@@ -594,9 +686,9 @@ function normalizeMapping(mapping) {
       return;
     }
     if (typeof value === 'object') {
-      const jsonValue = JSON.stringify(value);
-      if (jsonValue && jsonValue !== '{}') {
-        normalized[key] = jsonValue;
+      const normalizedValue = normalizeMappingValueEntry(value);
+      if (normalizedValue && (typeof normalizedValue !== 'object' || Object.keys(normalizedValue).length)) {
+        normalized[key] = normalizedValue;
       }
     }
   });
@@ -1225,7 +1317,7 @@ function applyAdditionalMappings(
 ) {
   Object.entries(normalizedMapping).forEach(([key, columnName]) => {
     if (reservedKeys.has(key)) return;
-    const value = getColumnValue(columnLookup, record, columnName);
+    const value = resolveMappedValue(columnName, record, { columnLookup });
     if (value === undefined || value === null) return;
     if (typeof value === 'string' && !value.trim()) return;
     payload[key] = value;
@@ -1527,7 +1619,7 @@ export async function buildReceiptFromDynamicTransaction(
   delete normalizedMapping[PAYMENT_METHOD_MAPPING_KEY];
 
   const totalAmountColumn = normalizedMapping.totalAmount;
-  const totalAmountValue = getColumnValue(columnLookup, record, totalAmountColumn);
+  const totalAmountValue = resolveMappedValue(totalAmountColumn, record, { columnLookup });
   const totalAmount = toNumber(totalAmountValue);
   if (totalAmount === null) {
     const err = new Error(
@@ -1538,29 +1630,25 @@ export async function buildReceiptFromDynamicTransaction(
     throw err;
   }
 
-  const totalVatValue = getColumnValue(columnLookup, record, normalizedMapping.totalVAT);
+  const totalVatValue = resolveMappedValue(normalizedMapping.totalVAT, record, { columnLookup });
   const totalVAT = toNumber(totalVatValue);
-  const totalCityTaxValue = getColumnValue(
-    columnLookup,
-    record,
-    normalizedMapping.totalCityTax,
-  );
+  const totalCityTaxValue = resolveMappedValue(normalizedMapping.totalCityTax, record, { columnLookup });
   const totalCityTax = toNumber(totalCityTaxValue);
 
   const customerTin = toStringValue(
-    getColumnValue(columnLookup, record, normalizedMapping.customerTin),
+    resolveMappedValue(normalizedMapping.customerTin, record, { columnLookup }),
   );
   const consumerNo = toStringValue(
-    getColumnValue(columnLookup, record, normalizedMapping.consumerNo),
+    resolveMappedValue(normalizedMapping.consumerNo, record, { columnLookup }),
   );
 
   const taxTypeField = normalizedMapping.taxTypeField || normalizedMapping.taxType;
-  let taxType = toStringValue(getColumnValue(columnLookup, record, taxTypeField));
+  let taxType = toStringValue(resolveMappedValue(taxTypeField, record, { columnLookup }));
 
   const descriptionField = normalizedMapping.description || normalizedMapping.itemDescription;
   let description = '';
   if (descriptionField) {
-    const descValue = getColumnValue(columnLookup, record, descriptionField);
+    const descValue = resolveMappedValue(descriptionField, record, { columnLookup });
     if (descValue !== undefined && descValue !== null) {
       description = descValue;
     }
@@ -1570,14 +1658,14 @@ export async function buildReceiptFromDynamicTransaction(
   }
 
   const lotNo = toStringValue(
-    getColumnValue(columnLookup, record, normalizedMapping.lotNo),
+    resolveMappedValue(normalizedMapping.lotNo, record, { columnLookup }),
   );
 
   const branchNo =
     toStringValue(
       merchantInfo?.branch_no ?? merchantInfo?.branchNo ?? merchantInfo?.branch,
     ) ||
-    toStringValue(getColumnValue(columnLookup, record, normalizedMapping.branchNo)) ||
+    toStringValue(resolveMappedValue(normalizedMapping.branchNo, record, { columnLookup })) ||
     toStringValue(readEnvVar('POSAPI_BRANCH_NO'));
   const merchantTin =
     toStringValue(
@@ -1586,17 +1674,17 @@ export async function buildReceiptFromDynamicTransaction(
         merchantInfo?.taxRegistrationNo ??
         merchantInfo?.tin,
     ) ||
-    toStringValue(getColumnValue(columnLookup, record, normalizedMapping.merchantTin)) ||
+    toStringValue(resolveMappedValue(normalizedMapping.merchantTin, record, { columnLookup })) ||
     toStringValue(readEnvVar('POSAPI_MERCHANT_TIN'));
   const posNo =
     toStringValue(
       merchantInfo?.pos_no ?? merchantInfo?.pos_registration_no ?? merchantInfo?.posNo,
     ) ||
-    toStringValue(getColumnValue(columnLookup, record, normalizedMapping.posNo)) ||
+    toStringValue(resolveMappedValue(normalizedMapping.posNo, record, { columnLookup })) ||
     toStringValue(readEnvVar('POSAPI_POS_NO'));
   const districtCode =
     toStringValue(merchantInfo?.district_code ?? merchantInfo?.districtCode) ||
-    toStringValue(getColumnValue(columnLookup, record, normalizedMapping.districtCode)) ||
+    toStringValue(resolveMappedValue(normalizedMapping.districtCode, record, { columnLookup })) ||
     toStringValue(readEnvVar('POSAPI_DISTRICT_CODE'));
 
   const missingEnv = [];
@@ -1614,7 +1702,7 @@ export async function buildReceiptFromDynamicTransaction(
 
   const classificationField = normalizedMapping.classificationCodeField;
   const headerClassificationCode = toStringValue(
-    getColumnValue(columnLookup, record, classificationField),
+    resolveMappedValue(classificationField, record, { columnLookup }),
   );
 
   const itemsDescriptor = normalizedMapping.itemsField || normalizedMapping.items;
@@ -1666,19 +1754,19 @@ export async function buildReceiptFromDynamicTransaction(
       const amountColumn = config.amount;
       if (!amountColumn) return null;
       const amountValue = toNumber(
-        getColumnValue(columnLookup, record, amountColumn),
+        resolveMappedValue(amountColumn, record, { columnLookup }),
       );
       if (amountValue === null) return null;
       const payment = { type: method, amount: amountValue };
       if (config.currency) {
         const currencyValue = toStringValue(
-          getColumnValue(columnLookup, record, config.currency),
+          resolveMappedValue(config.currency, record, { columnLookup }),
         );
         if (currencyValue) payment.currency = currencyValue;
       }
       if (config.reference) {
         const referenceValue = toStringValue(
-          getColumnValue(columnLookup, record, config.reference),
+          resolveMappedValue(config.reference, record, { columnLookup }),
         );
         if (referenceValue) payment.reference = referenceValue;
       }
@@ -1738,20 +1826,20 @@ export async function buildReceiptFromDynamicTransaction(
     .map(([typeKey, config]) => {
       if (!config || typeof config !== 'object') return null;
       const amountValue = toNumber(
-        getColumnValue(columnLookup, record, config.totalAmount),
+        resolveMappedValue(config.totalAmount, record, { columnLookup }),
       );
       if (amountValue === null) return null;
       const entry = { totalAmount: amountValue };
       const vatValue = toNumber(
-        getColumnValue(columnLookup, record, config.totalVAT),
+        resolveMappedValue(config.totalVAT, record, { columnLookup }),
       );
       if (vatValue !== null) entry.totalVAT = vatValue;
       const cityValue = toNumber(
-        getColumnValue(columnLookup, record, config.totalCityTax),
+        resolveMappedValue(config.totalCityTax, record, { columnLookup }),
       );
       if (cityValue !== null) entry.totalCityTax = cityValue;
       const taxTypeValue = toStringValue(
-        getColumnValue(columnLookup, record, config.taxType),
+        resolveMappedValue(config.taxType, record, { columnLookup }),
       );
       const resolvedType = taxTypeValue || typeKey;
       if (resolvedType) entry.taxType = resolvedType;
@@ -1882,7 +1970,7 @@ export async function buildReceiptFromDynamicTransaction(
 
   if (!payments.length) {
     const defaultPaymentType = toStringValue(
-      getColumnValue(columnLookup, record, normalizedMapping.paymentType),
+      resolveMappedValue(normalizedMapping.paymentType, record, { columnLookup }),
     );
     payments = [
       {
@@ -1990,7 +2078,9 @@ export async function buildReceiptFromDynamicTransaction(
   ]);
   applyAdditionalMappings(payload, normalizedMapping, record, columnLookup, reservedMappingKeys);
 
-  return payload;
+  const aggregatedPayload = applyAggregations(payload, options.aggregations || [], { phase: 'request' });
+
+  return aggregatedPayload;
 }
 
 export async function invokePosApiEndpoint(endpointId, payload = {}, options = {}) {

@@ -149,6 +149,7 @@ export async function issueDynamicTransactionEbarimt(
   const payload = await buildReceiptFromDynamicTransaction(record, mapping, receiptType, {
     typeField: formCfg.posApiTypeField,
     merchantInfo,
+    aggregations: endpoint?.aggregations || [],
   });
   if (!payload) {
     const err = new Error('POSAPI receipt payload could not be generated from the transaction');
@@ -169,6 +170,7 @@ export async function issueDynamicTransactionEbarimt(
     fieldsFromPosApi: formCfg.fieldsFromPosApi,
     responseFieldMapping,
     targetTable: tableName,
+    aggregations: endpoint?.aggregations || [],
   });
   if (invoiceId) {
     await persistEbarimtInvoiceResponse(invoiceId, response, {
@@ -176,6 +178,7 @@ export async function issueDynamicTransactionEbarimt(
       responseFieldMapping,
       targetTable: 'ebarimt_invoice',
       allowCrossTableMapping: false,
+      aggregations: endpoint?.aggregations || [],
     });
   }
 

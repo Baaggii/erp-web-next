@@ -1982,7 +1982,7 @@ export async function promoteTemporarySubmission(
             masterRecord,
             mapping,
             receiptType,
-            { typeField: formCfg.posApiTypeField, merchantInfo },
+            { typeField: formCfg.posApiTypeField, merchantInfo, aggregations: endpoint?.aggregations || [] },
           );
           if (payload) {
             try {
@@ -2007,6 +2007,7 @@ export async function promoteTemporarySubmission(
                   fieldsFromPosApi: formCfg.fieldsFromPosApi,
                   responseFieldMapping,
                   targetTable: row.table_name,
+                  aggregations: endpoint?.aggregations || [],
                 });
                 const entries = Object.entries(updates || {});
                 if (entries.length > 0) {

@@ -1773,7 +1773,7 @@ export async function postPosTransactionWithEbarimt(
     record,
     mapping,
     receiptType,
-    { typeField: formCfg.posApiTypeField, merchantInfo },
+    { typeField: formCfg.posApiTypeField, merchantInfo, aggregations: endpoint?.aggregations || [] },
   );
   if (!payload) {
     const err = new Error('POSAPI receipt payload could not be generated from the transaction');
@@ -1805,6 +1805,7 @@ export async function postPosTransactionWithEbarimt(
     targetTable: masterTable,
     masterRecord: record,
     foreignKeyMap,
+    aggregations: endpoint?.aggregations || [],
   });
   if (invoiceId) {
     await persistEbarimtInvoiceResponse(invoiceId, response, {
@@ -1812,6 +1813,7 @@ export async function postPosTransactionWithEbarimt(
       responseFieldMapping: endpointResponseMapping,
       targetTable: 'ebarimt_invoice',
       allowCrossTableMapping: false,
+      aggregations: endpoint?.aggregations || [],
     });
   }
 
@@ -1927,7 +1929,7 @@ export async function issueSavedPosTransactionEbarimt(
     aggregatedRecord,
     mapping,
     receiptType,
-    { typeField: formCfg.posApiTypeField, merchantInfo },
+    { typeField: formCfg.posApiTypeField, merchantInfo, aggregations: endpoint?.aggregations || [] },
   );
   if (!payload) {
     const err = new Error('POSAPI receipt payload could not be generated from the transaction');
@@ -1959,6 +1961,7 @@ export async function issueSavedPosTransactionEbarimt(
     targetTable: masterTable,
     masterRecord: aggregatedRecord,
     foreignKeyMap,
+    aggregations: endpoint?.aggregations || [],
   });
   if (invoiceId) {
     await persistEbarimtInvoiceResponse(invoiceId, response, {
@@ -1966,6 +1969,7 @@ export async function issueSavedPosTransactionEbarimt(
       responseFieldMapping: endpointResponseMapping,
       targetTable: 'ebarimt_invoice',
       allowCrossTableMapping: false,
+      aggregations: endpoint?.aggregations || [],
     });
     await linkInvoiceToIncomeRecords({
       invoiceId,

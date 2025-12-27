@@ -2,6 +2,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import { tenantConfigPath, getConfigPath } from '../utils/configPaths.js';
 import { loadEndpoints } from './posApiRegistry.js';
+import { normalizeRequestMappingValue } from './posApiAggregations.js';
 
   async function readConfig(companyId = 0) {
     const { path: filePath, isDefault } = await getConfigPath(
@@ -439,6 +440,39 @@ function sanitizeEndpointForClient(endpoint) {
   }
   if (endpoint.fieldDefaults && typeof endpoint.fieldDefaults === 'object') {
     sanitized.fieldDefaults = endpoint.fieldDefaults;
+  }
+
+  const requestMappings = {};
+  const addRequestMapping = (field, value) => {
+    const normalizedField = typeof field === 'string' ? field.trim() : '';
+    const normalizedValue = normalizeRequestMappingValue(value);
+    if (!normalizedField || !normalizedValue) return;
+    requestMappings[normalizedField] = normalizedValue;
+  };
+  if (endpoint.requestMappings && typeof endpoint.requestMappings === 'object') {
+    if (Array.isArray(endpoint.requestMappings)) {
+      endpoint.requestMappings.forEach((entry) => {
+        const field = entry?.field || entry?.key;
+        const value = entry?.mapping ?? entry?.value ?? entry?.source ?? entry?.target ?? entry;
+        addRequestMapping(field, value);
+      });
+    } else {
+      Object.entries(endpoint.requestMappings || {}).forEach(([field, value]) => addRequestMapping(field, value));
+    }
+  }
+  if (Object.keys(requestMappings).length) {
+    sanitized.requestMappings = requestMappings;
+  }
+
+  const aggregations = Array.isArray(endpoint.aggregations)
+    ? endpoint.aggregations.filter((entry) => entry && (entry.field || entry.key) && (entry.formula || entry.expression))
+    : [];
+  if (aggregations.length) {
+    sanitized.aggregations = aggregations.map((entry) => ({
+      field: entry.field || entry.key,
+      formula: entry.formula || entry.expression,
+      ...(entry.applyTo ? { applyTo: entry.applyTo } : {}),
+    }));
   }
 
   const parameters = sanitizeParameters(endpoint.parameters);
