@@ -695,18 +695,22 @@ export default function PosApiIntegrationSection({
 
   useEffect(() => {
     if (!config.posApiEnabled) return;
-    const mappings =
+    const requestMappings =
       selectedEndpoint && typeof selectedEndpoint.requestMappings === 'object' && !Array.isArray(selectedEndpoint.requestMappings)
         ? selectedEndpoint.requestMappings
         : null;
-    if (!mappings) return;
+    const requestFieldMappings =
+      selectedEndpoint && typeof selectedEndpoint.requestFieldMappings === 'object' && !Array.isArray(selectedEndpoint.requestFieldMappings)
+        ? selectedEndpoint.requestFieldMappings
+        : null;
+    if (!requestMappings && !requestFieldMappings) return;
     setConfig((prev) => {
       const baseMapping =
         prev.posApiMapping && typeof prev.posApiMapping === 'object' && !Array.isArray(prev.posApiMapping)
           ? { ...prev.posApiMapping }
           : {};
       let changed = false;
-      Object.entries(mappings).forEach(([field, value]) => {
+      const mergeEntry = (field, value) => {
         const normalizedField = typeof field === 'string' ? field.trim() : '';
         if (!normalizedField) return;
         if (baseMapping[normalizedField]) return;
@@ -715,7 +719,9 @@ export default function PosApiIntegrationSection({
         if (nextValue === '' || nextValue === undefined) return;
         baseMapping[normalizedField] = nextValue;
         changed = true;
-      });
+      };
+      Object.entries(requestMappings || {}).forEach(([field, value]) => mergeEntry(field, value));
+      Object.entries(requestFieldMappings || {}).forEach(([field, value]) => mergeEntry(field, value));
       if (!changed) return prev;
       return { ...prev, posApiMapping: baseMapping };
     });

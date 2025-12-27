@@ -7753,6 +7753,7 @@ export default function PosApiAdmin() {
             || updates.expression !== undefined
             || updates.table !== undefined
             || updates.column !== undefined));
+      const aggregationUpdated = updates && typeof updates === 'object' && 'aggregation' in updates;
       const selectionInput =
         updates && typeof updates === 'object' && 'selection' in updates
           ? updates.selection
@@ -9483,6 +9484,26 @@ export default function PosApiAdmin() {
           <div style={styles.hintCard}>
             <div style={styles.hintHeader}>
               <h3 style={styles.hintTitle}>Request values & environment variables</h3>
+              {requestFieldDisplay.state === 'ok' && visibleRequestFieldItems.length > 0 && (
+                <div style={{ display: 'flex', gap: '0.25rem' }}>
+                  <button
+                    type="button"
+                    style={styles.miniToggleButton}
+                    onClick={() => setApplyToBodyForAll(true)}
+                    title="Apply all request field values to request body"
+                  >
+                    Apply all
+                  </button>
+                  <button
+                    type="button"
+                    style={styles.miniToggleButton}
+                    onClick={() => setApplyToBodyForAll(false)}
+                    title="Do not apply any request field values to request body"
+                  >
+                    Apply none
+                  </button>
+                </div>
+              )}
             </div>
             {requestFieldDisplay.state !== 'ok' && (
               <p style={styles.hintEmpty}>
