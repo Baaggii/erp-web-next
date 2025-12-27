@@ -705,6 +705,15 @@ export default function PosApiIntegrationSection({
     [normalizedNestedPaths, selectedEndpoint],
   );
 
+  const handleResetFieldMappings = useCallback(() => {
+    if (!endpointRequestMappingDefaults) return;
+    const clonedDefaults = JSON.parse(JSON.stringify(endpointRequestMappingDefaults));
+    setConfig((prev) => ({
+      ...prev,
+      posApiMapping: clonedDefaults,
+    }));
+  }, [endpointRequestMappingDefaults, setConfig]);
+
   useEffect(() => {
     if (!config.posApiEnabled || !endpointRequestMappingDefaults) return;
     setConfig((prev) => {
@@ -1980,12 +1989,37 @@ export default function PosApiIntegrationSection({
         </p>
       </div>
       <div>
-        <strong>Field mapping</strong>
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.5rem',
+            flexWrap: 'wrap',
+          }}
+        >
+          <strong>Field mapping</strong>
+          <button
+            type="button"
+            onClick={handleResetFieldMappings}
+            disabled={!config.posApiEnabled || !endpointRequestMappingDefaults}
+            style={{ padding: '0.35rem 0.6rem' }}
+          >
+            Reset to endpoint mappings
+          </button>
+        </div>
         <p style={{ fontSize: '0.85rem', color: '#555' }}>
           Map POSAPI fields to columns in the master transaction table. Leave blank to skip optional
           fields.
         </p>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.5rem',
+            marginBottom: '0.5rem',
+            flexWrap: 'wrap',
+          }}
+        >
           <input
             type="text"
             value={fieldFilter}
