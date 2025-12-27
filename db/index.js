@@ -4963,6 +4963,8 @@ export async function listTableColumnMeta(tableName, companyId = 0) {
             c.EXTRA,
             c.GENERATION_EXPRESSION,
             c.COLUMN_TYPE,
+            c.DATA_TYPE,
+            c.COLUMN_COMMENT,
             pk.SEQ_IN_INDEX AS PRIMARY_KEY_ORDINAL
        FROM information_schema.COLUMNS c
        LEFT JOIN information_schema.STATISTICS pk
@@ -5003,6 +5005,10 @@ export async function listTableColumnMeta(tableName, companyId = 0) {
       name: r.COLUMN_NAME,
       key: r.COLUMN_KEY,
       extra: r.EXTRA,
+      type: r.DATA_TYPE,
+      columnType: r.COLUMN_TYPE,
+      dataType: r.DATA_TYPE,
+      comment: r.COLUMN_COMMENT,
       label: labels[r.COLUMN_NAME] || headerMap[r.COLUMN_NAME] || r.COLUMN_NAME,
       generationExpression: r.GENERATION_EXPRESSION ?? null,
       primaryKeyOrdinal: Number.isFinite(ordinal) ? ordinal : null,
