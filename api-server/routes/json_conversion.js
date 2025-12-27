@@ -1,5 +1,6 @@
 import express from 'express';
 import { requireAuth } from '../middlewares/auth.js';
+import { ensureAdminResponse } from '../utils/admin.js';
 import {
   buildConversionPlan,
   getSavedScript,
@@ -17,7 +18,9 @@ const router = express.Router();
 
 router.get('/tables', requireAuth, async (req, res, next) => {
   try {
-    const tables = await listTables();
+    // Admin-only: inspects database columns and may use admin credentials.
+    if (!ensureAdminResponse(req, res)) return;
+    const tables = await listTables({ user: req.user });
     res.json({ tables });
   } catch (err) {
     next(err);
@@ -26,7 +29,9 @@ router.get('/tables', requireAuth, async (req, res, next) => {
 
 router.get('/tables/:table/columns', requireAuth, async (req, res, next) => {
   try {
-    const columns = await listColumns(req.params.table);
+    // Admin-only: exposes schema metadata for arbitrary tables.
+    if (!ensureAdminResponse(req, res)) return;
+    const columns = await listColumns(req.params.table, { user: req.user });
     res.json({ columns });
   } catch (err) {
     next(err);
@@ -35,7 +40,9 @@ router.get('/tables/:table/columns', requireAuth, async (req, res, next) => {
 
 router.get('/scripts', requireAuth, async (req, res, next) => {
   try {
-    const scripts = await listSavedScripts();
+    // Admin-only: manages saved schema-conversion scripts.
+    if (!ensureAdminResponse(req, res)) return;
+    const scripts = await listSavedScripts({ user: req.user });
     res.json({ scripts });
   } catch (err) {
     next(err);
@@ -44,12 +51,14 @@ router.get('/scripts', requireAuth, async (req, res, next) => {
 
 router.post('/convert', requireAuth, async (req, res, next) => {
   try {
+    // Admin-only: generates and optionally applies column conversion SQL.
+    if (!ensureAdminResponse(req, res)) return;
     const { table, columns, backup = true, runNow = true } = req.body || {};
     const normalizedColumns = normalizeColumnsInput(columns);
     if (!table || normalizedColumns.length === 0) {
       return res.status(400).json({ message: 'table and columns are required' });
     }
-    const metadata = await listColumns(table);
+    const metadata = await listColumns(table, { user: req.user });
     const plan = buildConversionPlan(table, normalizedColumns, metadata, { backup });
     const runBy = req.user?.empid || req.user?.id || 'unknown';
     const logColumns = normalizedColumns.map((c) => c.name);
@@ -58,7 +67,7 @@ router.post('/convert', requireAuth, async (req, res, next) => {
     let runError = null;
     if (runNow && plan.statements.length > 0) {
       try {
-        await runPlanStatements(plan.statements);
+        await runPlanStatements(plan.statements, { user: req.user });
         executed = true;
       } catch (err) {
         runError = {
@@ -68,7 +77,7 @@ router.post('/convert', requireAuth, async (req, res, next) => {
         };
       }
     }
-    const logId = await recordConversionLog(table, logColumns, plan.scriptText, runBy);
+    const logId = await recordConversionLog(table, logColumns, plan.scriptText, runBy, { user: req.user });
     if (runError) {
       return res.status(409).json({
         message:
@@ -96,7 +105,9 @@ router.post('/convert', requireAuth, async (req, res, next) => {
 
 router.post('/scripts/:id/run', requireAuth, async (req, res, next) => {
   try {
-    const script = await getSavedScript(req.params.id);
+    // Admin-only: executes stored conversion scripts against database schema.
+    if (!ensureAdminResponse(req, res)) return;
+    const script = await getSavedScript(req.params.id, { user: req.user });
     if (!script) {
       return res.status(404).json({ message: 'Script not found' });
     }
@@ -104,9 +115,9 @@ router.post('/scripts/:id/run', requireAuth, async (req, res, next) => {
     if (statements.length === 0) {
       return res.status(400).json({ message: 'No statements to run' });
     }
-    await runPlanStatements(statements);
+    await runPlanStatements(statements, { user: req.user });
     const runBy = req.user?.empid || req.user?.id || 'unknown';
-    await touchScriptRun(script.id, runBy);
+    await touchScriptRun(script.id, runBy, { user: req.user });
     res.json({ ok: true });
   } catch (err) {
     next(err);
