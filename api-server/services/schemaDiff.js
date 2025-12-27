@@ -6,15 +6,9 @@ import crypto from 'crypto';
 import { spawn } from 'child_process';
 import { pool } from '../../db/index.js';
 import { splitSqlStatements } from './generatedSql.js';
-import { assertAdminUser } from '../utils/admin.js';
 
 const projectRoot = process.cwd();
 const BASELINE_RECORD_PATH = path.join(projectRoot, 'db', 'schema-baseline.json');
-
-function ensureAdmin(options = {}) {
-  // Admin-only: schema diff routines can dump/apply DDL using elevated DB credentials.
-  assertAdminUser(options.user);
-}
 
 async function commandExists(cmd) {
   try {
@@ -25,8 +19,7 @@ async function commandExists(cmd) {
   }
 }
 
-export async function getSchemaDiffPrerequisites(options = {}) {
-  ensureAdmin(options);
+export async function getSchemaDiffPrerequisites() {
   const [mysqldumpAvailable, liquibaseAvailable, mysqlAvailable] = await Promise.all([
     commandExists('mysqldump'),
     commandExists('liquibase'),
@@ -753,9 +746,8 @@ async function dropTempDatabase(name) {
 }
 
 export async function buildSchemaDiff(options = {}) {
-  ensureAdmin(options);
   const { schemaPath, schemaFile, allowDrops = false, signal, onProgress } = options;
-  const prereq = await getSchemaDiffPrerequisites(options);
+  const prereq = await getSchemaDiffPrerequisites();
   if (!prereq.env.DB_NAME) {
     const err = new Error('DB_NAME environment variable must be set for schema diff.');
     err.status = 500;
@@ -908,7 +900,6 @@ export async function buildSchemaDiff(options = {}) {
 }
 
 export async function recordSchemaBaseline(options = {}) {
-  ensureAdmin(options);
   const { schemaPath, schemaFile } = options;
   const resolvedSchema = resolveSchemaFile({ schemaPath, schemaFile });
   const schemaExists = await fsPromises
@@ -930,7 +921,6 @@ export async function recordSchemaBaseline(options = {}) {
 }
 
 export async function applySchemaDiffStatements(statements, options = {}) {
-  ensureAdmin(options);
   const {
     allowDrops = false,
     dryRun = false,

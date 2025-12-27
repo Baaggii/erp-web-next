@@ -1,11 +1,10 @@
-import React, { useState, useEffect, useMemo, useRef, useContext } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import * as XLSX from 'xlsx';
 import { translateToMn } from '../utils/translateToMn.js';
 import { useToast } from '../context/ToastContext.jsx';
 import formatTimestamp from '../utils/formatTimestamp.js';
 import JsonConversionPanel from '../components/JsonConversionPanel.jsx';
 import SchemaDiffPanel from '../components/SchemaDiffPanel.jsx';
-import { AuthContext } from '../context/AuthContext.jsx';
 
 function cleanIdentifier(name) {
   return String(name).replace(/[^A-Za-z0-9_]+/g, '');
@@ -17,7 +16,6 @@ function normalizeField(name) {
 
 export default function CodingTablesPage() {
   const { addToast } = useToast();
-  const { user, session, permissions } = useContext(AuthContext);
   const [activeTab, setActiveTab] = useState('upload');
   const [sheets, setSheets] = useState([]);
   const [workbook, setWorkbook] = useState(null);
@@ -153,18 +151,6 @@ export default function CodingTablesPage() {
       ]),
     [],
   );
-
-  const isAdmin =
-    user?.role === 'admin' ||
-    user?.isAdmin === true ||
-    permissions?.permissions?.system_settings ||
-    session?.permissions?.system_settings;
-
-  useEffect(() => {
-    if (!isAdmin && activeTab !== 'upload') {
-      setActiveTab('upload');
-    }
-  }, [activeTab, isAdmin]);
 
   useEffect(() => {
     fetch('/api/coding_table_configs', { credentials: 'include' })
@@ -3358,41 +3344,37 @@ export default function CodingTablesPage() {
         >
           Coding Table Upload
         </button>
-        {isAdmin ? (
-          <>
-            <button
-              type="button"
-              onClick={() => setActiveTab('json')}
-              style={{
-                padding: '0.5rem 0.75rem',
-                borderBottom: activeTab === 'json' ? '3px solid #0f62fe' : '1px solid #ccc',
-                background: activeTab === 'json' ? '#eef5ff' : '#fff',
-                fontWeight: activeTab === 'json' ? 'bold' : 'normal',
-              }}
-            >
-              JSON Converter
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveTab('schema')}
-              style={{
-                padding: '0.5rem 0.75rem',
-                borderBottom: activeTab === 'schema' ? '3px solid #0f62fe' : '1px solid #ccc',
-                background: activeTab === 'schema' ? '#eef5ff' : '#fff',
-                fontWeight: activeTab === 'schema' ? 'bold' : 'normal',
-              }}
-            >
-              Schema Diff
-            </button>
-          </>
-        ) : null}
+        <button
+          type="button"
+          onClick={() => setActiveTab('json')}
+          style={{
+            padding: '0.5rem 0.75rem',
+            borderBottom: activeTab === 'json' ? '3px solid #0f62fe' : '1px solid #ccc',
+            background: activeTab === 'json' ? '#eef5ff' : '#fff',
+            fontWeight: activeTab === 'json' ? 'bold' : 'normal',
+          }}
+        >
+          JSON Converter
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab('schema')}
+          style={{
+            padding: '0.5rem 0.75rem',
+            borderBottom: activeTab === 'schema' ? '3px solid #0f62fe' : '1px solid #ccc',
+            background: activeTab === 'schema' ? '#eef5ff' : '#fff',
+            fontWeight: activeTab === 'schema' ? 'bold' : 'normal',
+          }}
+        >
+          Schema Diff
+        </button>
       </div>
       {activeTab === 'upload' ? (
         uploadTab
       ) : activeTab === 'json' ? (
-        <JsonConversionPanel isAdmin={isAdmin} />
+        <JsonConversionPanel />
       ) : (
-        <SchemaDiffPanel isAdmin={isAdmin} />
+        <SchemaDiffPanel />
       )}
     </div>
   );

@@ -5,7 +5,7 @@ function toCsv(items) {
   return items.join(', ');
 }
 
-export default function JsonConversionPanel({ isAdmin = false }) {
+export default function JsonConversionPanel() {
   const { addToast } = useToast();
   const [tables, setTables] = useState([]);
   const [selectedTable, setSelectedTable] = useState('');
@@ -18,14 +18,6 @@ export default function JsonConversionPanel({ isAdmin = false }) {
   const [backupEnabled, setBackupEnabled] = useState(true);
   const [blockedColumns, setBlockedColumns] = useState([]);
   const [errorDetails, setErrorDetails] = useState(null);
-
-  if (!isAdmin) {
-    return (
-      <div style={{ padding: '1rem', color: '#b00' }}>
-        Admin privileges required to run JSON Converter. This tool alters columns and constraints.
-      </div>
-    );
-  }
 
   const selectedColumns = useMemo(
     () =>
