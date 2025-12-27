@@ -1002,9 +1002,7 @@ const TableManager = forwardRef(function TableManager({
     columnMeta.forEach((c) => {
       const typ = (c.type || c.columnType || c.dataType || c.DATA_TYPE || '')
         .toLowerCase();
-      if (typ.includes('json')) {
-        map[c.name] = 'json';
-      } else if (typ.match(/int|decimal|numeric|double|float|real|number|bigint/)) {
+      if (typ.match(/int|decimal|numeric|double|float|real|number|bigint/)) {
         map[c.name] = 'number';
       } else if (typ.includes('timestamp') || typ.includes('datetime')) {
         map[c.name] = 'datetime';
@@ -1017,17 +1015,6 @@ const TableManager = forwardRef(function TableManager({
       }
     });
     return map;
-  }, [columnMeta]);
-
-  const jsonFieldSet = useMemo(() => {
-    const set = new Set();
-    columnMeta.forEach((c) => {
-      const typ = (c.type || c.columnType || c.dataType || c.DATA_TYPE || '').toLowerCase();
-      if (typ.includes('json')) {
-        set.add(c.name);
-      }
-    });
-    return set;
   }, [columnMeta]);
 
   const generatedCols = useMemo(
@@ -5507,16 +5494,6 @@ const TableManager = forwardRef(function TableManager({
     return value;
   }, []);
 
-  const parseJsonArray = useCallback(
-    (value) => {
-      const parsed = parseMaybeJson(value);
-      if (Array.isArray(parsed)) return parsed;
-      if (parsed === undefined || parsed === null || parsed === '') return [];
-      return [parsed];
-    },
-    [parseMaybeJson],
-  );
-
   const stringifyPreviewCell = useCallback(
     (value) => {
       const seen = new Set();
@@ -6783,7 +6760,7 @@ const TableManager = forwardRef(function TableManager({
                 </td>
               {columns.map((c) => {
                 const w = columnWidths[c];
-              const style = {
+                const style = {
                   padding: '0.5rem',
                   border: '1px solid #d1d5db',
                   textAlign: columnAlign[c],
@@ -6801,41 +6778,10 @@ const TableManager = forwardRef(function TableManager({
                 }
                 style.overflow = 'hidden';
                 style.textOverflow = 'ellipsis';
-                const rawValue = r[c];
-                const parsedValue = jsonFieldSet.has(c)
-                  ? parseMaybeJson(rawValue)
-                  : rawValue;
-                const relationLabels = relationOpts[c]
-                  ? labelMap[c] || {}
-                  : null;
-                const formatArray = (arr) => {
-                  if (!Array.isArray(arr) || arr.length === 0) return '';
-                  return arr
-                    .map((item) => {
-                      const key = item === null || item === undefined ? '' : String(item);
-                      if (relationLabels && relationLabels[key] !== undefined) {
-                        return relationLabels[key];
-                      }
-                      if (isPlainValueObject(item)) return stringifyPreviewCell(item);
-                      return key;
-                    })
-                    .filter((item) => item !== undefined && item !== null && item !== '')
-                    .join(', ');
-                };
-                let display;
-                if (Array.isArray(parsedValue)) {
-                  display = formatArray(parsedValue);
-                } else if (relationLabels && parsedValue !== undefined && parsedValue !== null) {
-                  const mapped =
-                    relationLabels[parsedValue] !== undefined
-                      ? relationLabels[parsedValue]
-                      : relationLabels[String(parsedValue)];
-                  display = mapped !== undefined ? mapped : String(parsedValue ?? '');
-                } else if (isPlainValueObject(parsedValue)) {
-                  display = stringifyPreviewCell(parsedValue);
-                } else {
-                  display = String(parsedValue ?? '');
-                }
+                const raw = relationOpts[c]
+                  ? labelMap[c][r[c]] || String(r[c])
+                  : String(r[c]);
+                let display = raw;
                 if (c === 'TotalCur' || totalCurrencySet.has(c)) {
                   display = currencyFmt.format(Number(r[c] || 0));
                 } else if (
@@ -6855,8 +6801,8 @@ const TableManager = forwardRef(function TableManager({
                   <td
                     key={c}
                     style={style}
-                    title={display}
-                    onContextMenu={(e) => display && openContextMenu(e, sanitizeName(display))}
+                    title={raw}
+                    onContextMenu={(e) => raw && openContextMenu(e, sanitizeName(raw))}
                   >
                     {display}
                   </td>
