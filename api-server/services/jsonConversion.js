@@ -1,5 +1,26 @@
 import { adminPool as pool } from '../../db/index.js';
 
+let cachedDbEngine = null;
+let dbEnginePromise = null;
+
+export async function getDbEngine(poolInstance = pool) {
+  if (cachedDbEngine) return cachedDbEngine;
+  if (!dbEnginePromise) {
+    dbEnginePromise = (async () => {
+      const [rows] = await (poolInstance || pool).query('SELECT VERSION() AS v');
+      const v = rows?.[0]?.v || rows?.[0]?.version || '';
+      cachedDbEngine = String(v).toLowerCase().includes('mariadb') ? 'mariadb' : 'mysql';
+      return cachedDbEngine;
+    })();
+  }
+  try {
+    return await dbEnginePromise;
+  } catch (err) {
+    dbEnginePromise = null;
+    throw err;
+  }
+}
+
 function escapeId(name) {
   return `\`${String(name).replace(/`/g, '``')}\``;
 }
@@ -335,6 +356,7 @@ export async function listColumns(table) {
   const columnNames = rows.map((row) => row.Field);
   let constraintMap = {};
   let tableForeignKeys = [];
+  let dbEngineRaw = 'mysql';
   try {
     const usage = await loadColumnUsage(table, columnNames);
     constraintMap = buildConstraintMap(table, columnNames, usage);
@@ -342,9 +364,12 @@ export async function listColumns(table) {
   } catch {
     constraintMap = {};
   }
-  const [versionRow] = await pool.query('SELECT VERSION() AS version');
-  const versionString = String(versionRow?.[0]?.version || '').toLowerCase();
-  const dbEngine = versionString.includes('mariadb') ? 'MariaDB' : 'MySQL';
+  try {
+    dbEngineRaw = await getDbEngine();
+  } catch {
+    // default to mysql when detection fails
+  }
+  const dbEngine = dbEngineRaw === 'mariadb' ? 'MariaDB' : 'MySQL';
   return {
     columns: rows.map((row) => ({
       name: row.Field,
@@ -365,9 +390,10 @@ export async function listColumns(table) {
   };
 }
 
-function buildConstraintHandling(table, columnName, constraintInfo = {}, backupId) {
+function buildConstraintHandling(table, columnName, constraintInfo = {}, backupId, dbEngine) {
   const tableId = escapeId(table);
   const columnId = escapeId(columnName);
+  const isMySQL = String(dbEngine || '').toLowerCase() === 'mysql';
   const dropStatements = new Set();
   const recreateStatements = new Set();
   const postStatements = new Set();
@@ -423,6 +449,12 @@ function buildConstraintHandling(table, columnName, constraintInfo = {}, backupI
       return;
     }
     if ((c.type || '').toUpperCase() === 'CHECK') {
+      if (!isMySQL) {
+        warnings.push(
+          `Check constraint ${c.name || ''} kept: MariaDB does not support DROP CHECK, validation should be handled in application or trigger logic.`,
+        );
+        return;
+      }
       if (constraintName) {
         dropStatements.add(`ALTER TABLE ${tableId} DROP CHECK ${constraintName}`);
         recreateStatements.add(
@@ -450,6 +482,9 @@ function buildConstraintHandling(table, columnName, constraintInfo = {}, backupI
 function buildColumnStatements(table, columnName, columnMeta, options, constraintInfo = {}) {
   const tableId = escapeId(table);
   const columnId = escapeId(columnName);
+  const dbEngine = String(options?.dbEngine || '').toLowerCase();
+  const isMySQL = dbEngine === 'mysql';
+  const isMariaDB = dbEngine === 'mariadb';
   const backupName = options.backup ? `${columnName}_scalar_backup` : null;
   const backupId = backupName ? escapeId(backupName) : null;
   const diagnosticQueries = buildDiagnosticQueries(table, columnName);
@@ -508,14 +543,20 @@ function buildColumnStatements(table, columnName, columnMeta, options, constrain
     statements.push(
       `UPDATE ${tableId} SET ${companionId} = JSON_ARRAY(${columnId}) WHERE ${columnId} IS NOT NULL`,
     );
-    statements.push(
-      `ALTER TABLE ${tableId} DROP CHECK IF EXISTS ${escapeId(`${companionName}_check`)}`,
-    );
-    statements.push(
-      `ALTER TABLE ${tableId} ADD CONSTRAINT ${escapeId(
-        `${companionName}_check`,
-      )} CHECK (JSON_VALID(${companionId}) AND JSON_TYPE(${companionId}) = 'ARRAY')`,
-    );
+    if (isMySQL) {
+      statements.push(
+        `ALTER TABLE ${tableId} DROP CHECK IF EXISTS ${escapeId(`${companionName}_check`)}`,
+      );
+      statements.push(
+        `ALTER TABLE ${tableId} ADD CONSTRAINT ${escapeId(
+          `${companionName}_check`,
+        )} CHECK (JSON_VALID(${companionId}) AND JSON_TYPE(${companionId}) = 'ARRAY')`,
+      );
+    } else {
+      previewNotes.push(
+        'CHECK constraints not altered for companion column because MariaDB does not support DROP/ADD CHECK for JSON validation.',
+      );
+    }
     const preview = {
       column: columnName,
       originalType: columnMeta?.type || 'UNKNOWN',
@@ -561,6 +602,7 @@ function buildColumnStatements(table, columnName, columnMeta, options, constrain
         columnName,
         constraintInfo,
         backupId,
+        dbEngine,
       );
     statements.push(...dropStatements);
     if (warnings.length > 0) previewNotes.push(...warnings);
@@ -594,14 +636,20 @@ function buildColumnStatements(table, columnName, columnMeta, options, constrain
   };
 
   const validationName = `${columnName}_json_check`;
-  statements.push(
-    `ALTER TABLE ${tableId} DROP CHECK IF EXISTS ${escapeId(validationName)}`,
-  );
-  statements.push(
-    `ALTER TABLE ${tableId} ADD CONSTRAINT ${escapeId(
-      validationName,
-    )} CHECK (JSON_VALID(${columnId}) AND JSON_TYPE(${columnId}) = 'ARRAY')`,
-  );
+  if (isMySQL) {
+    statements.push(
+      `ALTER TABLE ${tableId} DROP CHECK IF EXISTS ${escapeId(validationName)}`,
+    );
+    statements.push(
+      `ALTER TABLE ${tableId} ADD CONSTRAINT ${escapeId(
+        validationName,
+      )} CHECK (JSON_VALID(${columnId}) AND JSON_TYPE(${columnId}) = 'ARRAY')`,
+    );
+  } else if (isMariaDB) {
+    previewNotes.push(
+      'JSON CHECK constraint skipped on MariaDB; validate arrays in application or trigger logic.',
+    );
+  }
   if (postStatements.length > 0) {
     statements.push(...postStatements);
   }
