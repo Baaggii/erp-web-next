@@ -8,6 +8,7 @@ import { refreshTxnModules } from '../hooks/useTxnModules.js';
 import { useNavigate } from 'react-router-dom';
 import I18nContext from '../context/I18nContext.jsx';
 import normalizeEmploymentSession from '../utils/normalizeEmploymentSession.js';
+import { collectDeviceContext } from '../utils/deviceContext.js';
 import {
   deriveWorkplacePositionsFromAssignments,
   resolveWorkplacePositionMap,
@@ -42,9 +43,10 @@ export default function LoginForm() {
 
     try {
       // Send POST /api/auth/login with credentials: 'include'
+      const deviceContext = await collectDeviceContext();
       const payload = isCompanyStep
-        ? { ...storedCreds, companyId: Number(companyId) }
-        : { empid, password };
+        ? { ...storedCreds, companyId: Number(companyId), ...deviceContext }
+        : { empid, password, ...deviceContext };
       const loggedIn = await login(payload, t);
 
       if (loggedIn.needsCompany) {
