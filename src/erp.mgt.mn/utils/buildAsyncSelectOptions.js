@@ -86,6 +86,8 @@ async function fetchRelationMapForTable(table) {
   try {
     const res = await fetch(`/api/tables/${encodeURIComponent(table)}/relations`, {
       credentials: 'include',
+      skipErrorToast: true,
+      skipLoader: true,
     });
     if (!res.ok) {
       relationMapCache.set(cacheKey, {});
