@@ -95,6 +95,17 @@ function sanitizeName(name) {
     .replace(/[^a-z0-9_-]+/gi, '_');
 }
 
+function getRowValueCaseInsensitive(row, key) {
+  if (!row || key === undefined || key === null) return undefined;
+  const keyMap = {};
+  Object.keys(row || {}).forEach((k) => {
+    keyMap[k.toLowerCase()] = k;
+  });
+  const lookup = keyMap[String(key).toLowerCase()];
+  if (lookup) return row[lookup];
+  return row[key];
+}
+
 function buildColumnCaseMap(columns) {
   const map = {};
   if (!Array.isArray(columns)) return map;
@@ -471,6 +482,9 @@ const TableManager = forwardRef(function TableManager({
   const [refData, setRefData] = useState({});
   const [refRows, setRefRows] = useState({});
   const [relationConfigs, setRelationConfigs] = useState({});
+  const [jsonRelationLabels, setJsonRelationLabels] = useState({});
+  const jsonRelationFetchCache = useRef({});
+  const displayFieldConfigCache = useRef(new Map());
   const [columnMeta, setColumnMeta] = useState([]);
   const [autoInc, setAutoInc] = useState(new Set());
   const [showForm, setShowForm] = useState(false);
@@ -1050,6 +1064,68 @@ const TableManager = forwardRef(function TableManager({
     return map;
   }, [columnMeta]);
 
+  const normalizeJsonArray = useCallback((value) => {
+    if (Array.isArray(value)) return value;
+    if (value && typeof value === 'object' && 'value' in value) {
+      return normalizeJsonArray(value.value);
+    }
+    if (value === undefined || value === null || value === '') return [];
+    if (typeof value === 'string') {
+      try {
+        const parsed = JSON.parse(value);
+        if (Array.isArray(parsed)) return parsed;
+        if (parsed === undefined || parsed === null || parsed === '') return [];
+        return [parsed];
+      } catch {
+        return value ? [value] : [];
+      }
+    }
+    return [value];
+  }, []);
+
+  const fetchRelationDisplayConfig = useCallback(
+    async (tableName, idField) => {
+      if (!tableName) return null;
+      const cacheKey = `${tableName}|${idField || ''}`;
+      if (displayFieldConfigCache.current.has(cacheKey)) {
+        return displayFieldConfigCache.current.get(cacheKey);
+      }
+      const promise = fetch(
+        `/api/display_fields?table=${encodeURIComponent(tableName)}${
+          idField ? `&idField=${encodeURIComponent(idField)}` : ''
+        }`,
+        { credentials: 'include' },
+      )
+        .then((res) => (res.ok ? res.json() : null))
+        .catch(() => null);
+      displayFieldConfigCache.current.set(cacheKey, promise);
+      return promise;
+    },
+    [],
+  );
+
+  const formatRelationDisplay = useCallback((row, config, fallbackValue) => {
+    if (!row || typeof row !== 'object') return fallbackValue ?? '';
+    const cfg = config || {};
+    const parts = [];
+    const idField = cfg.idField || cfg.column;
+    const identifier = idField ? getRowValueCaseInsensitive(row, idField) : undefined;
+    const idValue =
+      identifier !== undefined && identifier !== null && identifier !== ''
+        ? identifier
+        : fallbackValue;
+    if (idValue !== undefined && idValue !== null && idValue !== '') {
+      parts.push(idValue);
+    }
+    (cfg.displayFields || []).forEach((df) => {
+      const val = getRowValueCaseInsensitive(row, df);
+      if (val !== undefined && val !== null && val !== '') {
+        parts.push(val);
+      }
+    });
+    return parts.join(' - ');
+  }, []);
+
   const generatedCols = useMemo(
     () =>
       new Set(
@@ -1153,6 +1229,8 @@ const TableManager = forwardRef(function TableManager({
     setSort({ column: '', dir: 'asc' });
     setRelations({});
     setRefData({});
+    setJsonRelationLabels({});
+    jsonRelationFetchCache.current = {};
     setColumnMeta([]);
     fetch(`/api/tables/${encodeURIComponent(table)}/columns`, {
       credentials: 'include',
@@ -1464,11 +1542,12 @@ const TableManager = forwardRef(function TableManager({
               : {}),
             ...(mapping.combinationTargetColumn
               ? { combinationTargetColumn: mapping.combinationTargetColumn }
-              : {}),
+            : {}),
             ...(mapping.filterColumn ? { filterColumn: mapping.filterColumn } : {}),
             ...(mapping.filterValue !== undefined && mapping.filterValue !== null
               ? { filterValue: mapping.filterValue }
               : {}),
+            ...(mapping.isArray || mapping.jsonField || mapping.json_field ? { isArray: true } : {}),
           });
         });
       });
@@ -5529,6 +5608,118 @@ const TableManager = forwardRef(function TableManager({
     });
   });
 
+  useEffect(() => {
+    let canceled = false;
+    const immediateUpdates = {};
+    const pending = [];
+    rows.forEach((row) => {
+      columns.forEach((column) => {
+        if (fieldTypeMap[column] !== 'json') return;
+        const relationConfig = relationConfigs[column];
+        if (!relationConfig?.table) return;
+        const values = normalizeJsonArray(row?.[column]);
+        if (!Array.isArray(values) || values.length === 0) return;
+        const relationRows = refRows[column] || {};
+        values.forEach((item) => {
+          const relationId = resolveScopeId(item);
+          const key = relationId ?? item;
+          const cacheKey = key === undefined || key === null ? '' : String(key);
+          if (!cacheKey) return;
+          if (jsonRelationLabels[column]?.[cacheKey]) return;
+          const cachedRow =
+            relationRows[cacheKey] ||
+            relationRows[String(relationId ?? '')] ||
+            relationRows[key];
+          if (cachedRow && typeof cachedRow === 'object') {
+            if (!immediateUpdates[column]) immediateUpdates[column] = {};
+            immediateUpdates[column][cacheKey] = formatRelationDisplay(
+              cachedRow,
+              relationConfig,
+              key,
+            );
+            return;
+          }
+          const requestKey = `${column}|${cacheKey}`;
+          if (jsonRelationFetchCache.current[requestKey]) return;
+          jsonRelationFetchCache.current[requestKey] = true;
+          pending.push(
+            (async () => {
+              try {
+                const idField = relationConfig.idField || relationConfig.column || column;
+                const displayCfg =
+                  relationConfig.displayFields && relationConfig.displayFields.length > 0
+                    ? null
+                    : await fetchRelationDisplayConfig(
+                        relationConfig.table,
+                        idField,
+                      );
+                const displayFields =
+                  relationConfig.displayFields && relationConfig.displayFields.length > 0
+                    ? relationConfig.displayFields
+                    : displayCfg?.displayFields || [];
+                const params = new URLSearchParams({ page: 1, perPage: 1 });
+                params.set(idField, key);
+                const res = await fetch(
+                  `/api/tables/${encodeURIComponent(relationConfig.table)}?${params.toString()}`,
+                  { credentials: 'include' },
+                );
+                let fetchedRow = null;
+                if (res.ok) {
+                  const json = await res.json().catch(() => ({}));
+                  fetchedRow = Array.isArray(json.rows) ? json.rows[0] : null;
+                }
+                if (canceled) return;
+                if (fetchedRow && typeof fetchedRow === 'object') {
+                  const label = formatRelationDisplay(
+                    fetchedRow,
+                    { ...relationConfig, displayFields },
+                    key,
+                  );
+                  if (label) {
+                    setJsonRelationLabels((prev) => {
+                      const next = { ...prev };
+                      next[column] = { ...(prev[column] || {}), [cacheKey]: label };
+                      return next;
+                    });
+                  }
+                }
+              } catch {
+                /* ignore */
+              } finally {
+                delete jsonRelationFetchCache.current[requestKey];
+              }
+            })(),
+          );
+        });
+      });
+    });
+    if (Object.keys(immediateUpdates).length > 0) {
+      setJsonRelationLabels((prev) => {
+        const next = { ...prev };
+        Object.entries(immediateUpdates).forEach(([col, map]) => {
+          next[col] = { ...(prev[col] || {}), ...map };
+        });
+        return next;
+      });
+    }
+    if (pending.length > 0) {
+      Promise.all(pending).catch(() => {});
+    }
+    return () => {
+      canceled = true;
+    };
+  }, [
+    rows,
+    columns,
+    fieldTypeMap,
+    relationConfigs,
+    refRows,
+    jsonRelationLabels,
+    normalizeJsonArray,
+    formatRelationDisplay,
+    fetchRelationDisplayConfig,
+  ]);
+
   const isPlainValueObject = useCallback(
     (value) =>
       Boolean(
@@ -6849,47 +7040,31 @@ const TableManager = forwardRef(function TableManager({
                   : String(r[c]);
                 let display = raw;
                 if (fieldTypeMap[c] === 'json') {
-                  let parsed = null;
-                  try {
-                    parsed = JSON.parse(r[c]);
-                  } catch {
-                    parsed = r[c];
-                  }
-                  const arr = Array.isArray(parsed)
-                    ? parsed
-                    : parsed === undefined || parsed === null || parsed === ''
-                    ? []
-                    : [parsed];
+                  const arr = normalizeJsonArray(r[c]);
                   const relationConfig = relationConfigs[c];
                   if (relationConfig?.table && arr.length > 0) {
                     const rowsMap = refRows[c] || {};
                     const parts = [];
                     arr.forEach((val) => {
-                      const key = val ?? '';
-                      const row = rowsMap[key] || rowsMap[String(key)];
+                      const relationId = resolveScopeId(val);
+                      const key = relationId ?? val ?? '';
+                      const cacheKey = key === null || key === undefined ? '' : String(key);
+                      const cachedLabel =
+                        cacheKey && jsonRelationLabels[c]?.[cacheKey]
+                          ? jsonRelationLabels[c][cacheKey]
+                          : null;
+                      if (cachedLabel) {
+                        parts.push(cachedLabel);
+                        return;
+                      }
+                      const row =
+                        rowsMap[key] ||
+                        rowsMap[String(key)] ||
+                        rowsMap[String(relationId ?? '')];
                       if (row && typeof row === 'object') {
-                        const idField = relationConfig.idField || relationConfig.column || c;
-                        const keyMap = {};
-                        Object.keys(row).forEach((k) => {
-                          keyMap[k.toLowerCase()] = k;
-                        });
-                        const idKey = keyMap[idField.toLowerCase()] || idField;
-                        const identifier =
-                          idKey && row[idKey] !== undefined && row[idKey] !== null
-                            ? row[idKey]
-                            : key;
-                        const extraParts = [];
-                        (relationConfig.displayFields || []).forEach((df) => {
-                          const dfKey = keyMap[df.toLowerCase()] || df;
-                          if (row[dfKey] !== undefined && row[dfKey] !== null) {
-                            extraParts.push(row[dfKey]);
-                          }
-                        });
-                        parts.push(
-                          [identifier, ...extraParts]
-                            .filter((p) => p !== undefined && p !== null && p !== '')
-                            .join(' - '),
-                        );
+                        parts.push(formatRelationDisplay(row, relationConfig, key));
+                      } else if (cacheKey) {
+                        parts.push(cacheKey);
                       } else {
                         parts.push(String(key));
                       }

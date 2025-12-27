@@ -691,7 +691,22 @@ const RowFormModal = function RowFormModal({
       const missing =
         !row || rowValue === undefined || rowValue === '';
       let val;
-      if (placeholder) {
+      if (typ === 'json') {
+        if (Array.isArray(sourceValue)) {
+          val = sourceValue;
+        } else if (typeof sourceValue === 'string') {
+          try {
+            const parsed = JSON.parse(sourceValue);
+            val = Array.isArray(parsed) ? parsed : parsed === undefined ? [] : [parsed];
+          } catch {
+            val = sourceValue ? [sourceValue] : [];
+          }
+        } else if (sourceValue === null || sourceValue === undefined || sourceValue === '') {
+          val = [];
+        } else {
+          val = [sourceValue];
+        }
+      } else if (placeholder) {
         val = normalizeDateInput(String(sourceValue ?? ''), placeholder);
       } else if (typ === 'number') {
         val = formatNumericValue(c, sourceValue);
@@ -718,6 +733,8 @@ const RowFormModal = function RowFormModal({
         val = formatNumericValue(c, val);
       } else if (placeholder) {
         val = normalizeDateInput(String(val ?? ''), placeholder);
+      } else if (typ === 'json') {
+        val = ensureJsonArray(val);
       } else if (val === null || val === undefined) {
         val = '';
       } else {
@@ -739,7 +756,11 @@ const RowFormModal = function RowFormModal({
         } else if (typ === 'date' || typ === 'datetime') {
           placeholder = 'YYYY-MM-DD';
         }
-        extras[k] = normalizeDateInput(String(v ?? ''), placeholder);
+        if (typ === 'json') {
+          extras[k] = ensureJsonArray(v);
+        } else {
+          extras[k] = normalizeDateInput(String(v ?? ''), placeholder);
+        }
       }
     });
     return extras;
@@ -1836,11 +1857,15 @@ const RowFormModal = function RowFormModal({
     Object.entries(row || {}).forEach(([k, v]) => {
       const lowerKey = String(k).toLowerCase();
       if (!columnLowerSet.has(lowerKey)) {
-        extras[k] = normalizeDateInput(String(v ?? ''), placeholders[k]);
+        if (fieldTypeMap[k] === 'json') {
+          extras[k] = ensureJsonArray(v);
+        } else {
+          extras[k] = normalizeDateInput(String(v ?? ''), placeholders[k]);
+        }
       }
     });
     setExtraVals(extras);
-  }, [row, columnLowerSet, placeholders]);
+  }, [row, columnLowerSet, placeholders, fieldTypeMap]);
 
   useEffect(() => {
     if (table !== 'companies' || row) return;
@@ -2092,6 +2117,8 @@ const RowFormModal = function RowFormModal({
         v = formatNumericValue(c, v);
       } else if (placeholders[c]) {
         v = normalizeDateInput(String(v ?? ''), placeholders[c]);
+      } else if (fieldTypeMap[c] === 'json') {
+        v = ensureJsonArray(v);
       } else if (v === null || v === undefined) {
         v = '';
       } else {
@@ -2891,29 +2918,39 @@ const RowFormModal = function RowFormModal({
             if (v === null || v === undefined || v === '') return false;
             if (typeof v === 'object' && 'value' in v) return v.value !== '';
             return true;
-          });
-          if (!hasValue) return;
-          const normalized = {};
-          Object.entries(r).forEach(([k, v]) => {
-            const raw = typeof v === 'object' && v !== null && 'value' in v ? v.value : v;
-            let val = normalizeDateInput(raw, placeholders[k]);
+        });
+        if (!hasValue) return;
+        const normalized = {};
+        const jsonValueMap = {};
+        Object.entries(r).forEach(([k, v]) => {
+          const raw = typeof v === 'object' && v !== null && 'value' in v ? v.value : v;
+          let val = raw;
+          if (fieldTypeMap[k] === 'json') {
+            const arr = ensureJsonArray(val);
+            jsonValueMap[k] = arr;
+            val = JSON.stringify(arr);
+          } else {
+            val = normalizeDateInput(val, placeholders[k]);
             if (totalAmountSet.has(k) || totalCurrencySet.has(k)) {
               val = normalizeNumberInput(val);
             }
-            normalized[k] = val;
-          });
-          requiredFields.forEach((f) => {
-            if (
-              normalized[f] === '' ||
-              normalized[f] === null ||
-              normalized[f] === undefined
-            )
-              hasMissing = true;
-            if (
-              (totalAmountSet.has(f) || totalCurrencySet.has(f)) &&
-              normalized[f] !== '' &&
-              !/code/i.test(f) &&
-              isNaN(Number(normalizeNumberInput(normalized[f])))
+          }
+          normalized[k] = val;
+        });
+        requiredFields.forEach((f) => {
+          const missing =
+            normalized[f] === '' ||
+            normalized[f] === null ||
+            normalized[f] === undefined ||
+            (fieldTypeMap[f] === 'json' &&
+              Array.isArray(jsonValueMap[f]) &&
+              jsonValueMap[f].length === 0);
+          if (missing) hasMissing = true;
+          if (
+            (totalAmountSet.has(f) || totalCurrencySet.has(f)) &&
+            normalized[f] !== '' &&
+            !/code/i.test(f) &&
+            isNaN(Number(normalizeNumberInput(normalized[f])))
             )
               hasInvalid = true;
             const ph = placeholders[f];
@@ -2944,9 +2981,14 @@ const RowFormModal = function RowFormModal({
         }
         const normalizedExtra = {};
         Object.entries(mergedExtra).forEach(([k, v]) => {
-          let val = normalizeDateInput(v, placeholders[k]);
-          if (totalAmountSet.has(k) || totalCurrencySet.has(k)) {
-            val = normalizeNumberInput(val);
+          let val = v;
+          if (fieldTypeMap[k] === 'json') {
+            val = JSON.stringify(ensureJsonArray(v));
+          } else {
+            val = normalizeDateInput(v, placeholders[k]);
+            if (totalAmountSet.has(k) || totalCurrencySet.has(k)) {
+              val = normalizeNumberInput(val);
+            }
           }
           normalizedExtra[k] = val;
         });
@@ -2973,11 +3015,14 @@ const RowFormModal = function RowFormModal({
       }
       const normalized = {};
       Object.entries(merged).forEach(([k, v]) => {
-        let val = normalizeDateInput(v, placeholders[k]);
+        let val = v;
         if (fieldTypeMap[k] === 'json') {
-          val = JSON.stringify(ensureJsonArray(val));
-        } else if (totalAmountSet.has(k) || totalCurrencySet.has(k)) {
-          val = normalizeNumberInput(val);
+          val = JSON.stringify(ensureJsonArray(v));
+        } else {
+          val = normalizeDateInput(v, placeholders[k]);
+          if (totalAmountSet.has(k) || totalCurrencySet.has(k)) {
+            val = normalizeNumberInput(val);
+          }
         }
         normalized[k] = val;
       });
@@ -3029,13 +3074,16 @@ const RowFormModal = function RowFormModal({
         const jsonValueMap = {};
         Object.entries(r).forEach(([k, v]) => {
           const raw = typeof v === 'object' && v !== null && 'value' in v ? v.value : v;
-          let val = normalizeDateInput(raw, placeholders[k]);
+          let val = raw;
           if (fieldTypeMap[k] === 'json') {
             const arr = ensureJsonArray(val);
             jsonValueMap[k] = arr;
             val = JSON.stringify(arr);
-          } else if (totalAmountSet.has(k) || totalCurrencySet.has(k)) {
-            val = normalizeNumberInput(val);
+          } else {
+            val = normalizeDateInput(val, placeholders[k]);
+            if (totalAmountSet.has(k) || totalCurrencySet.has(k)) {
+              val = normalizeNumberInput(val);
+            }
           }
           normalized[k] = val;
         });
@@ -3154,9 +3202,14 @@ const RowFormModal = function RowFormModal({
       }
       const normalized = {};
       Object.entries(merged).forEach(([k, v]) => {
-        let val = normalizeDateInput(v, placeholders[k]);
-        if (totalAmountSet.has(k) || totalCurrencySet.has(k)) {
-          val = normalizeNumberInput(val);
+        let val = v;
+        if (fieldTypeMap[k] === 'json') {
+          val = JSON.stringify(ensureJsonArray(v));
+        } else {
+          val = normalizeDateInput(v, placeholders[k]);
+          if (totalAmountSet.has(k) || totalCurrencySet.has(k)) {
+            val = normalizeNumberInput(val);
+          }
         }
         normalized[k] = val;
       });
