@@ -1592,7 +1592,7 @@ const TableManager = forwardRef(function TableManager({
         try {
           const res = await fetch(
             `/api/tenant_tables/${encodeURIComponent(tableName)}`,
-            { credentials: 'include' },
+            { credentials: 'include', skipErrorToast: true, skipLoader: true },
           );
           if (!res.ok) return {};
           const json = await res.json().catch(() => ({}));
@@ -2514,7 +2514,7 @@ const TableManager = forwardRef(function TableManager({
     try {
       const ttRes = await fetch(
         `/api/tenant_tables/${encodeURIComponent(table)}`,
-        { credentials: 'include' },
+        { credentials: 'include', skipErrorToast: true, skipLoader: true },
       );
       if (ttRes.ok) {
         tenantInfo = await ttRes.json().catch(() => null);
@@ -2741,7 +2741,7 @@ const TableManager = forwardRef(function TableManager({
       try {
         const ttRes = await fetch(
           `/api/tenant_tables/${encodeURIComponent(table)}`,
-          { credentials: 'include' },
+          { credentials: 'include', skipErrorToast: true, skipLoader: true },
         );
         if (ttRes.ok) {
           tenantInfo = await ttRes.json().catch(() => null);
