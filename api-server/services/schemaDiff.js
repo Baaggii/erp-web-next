@@ -10,6 +10,13 @@ import { splitSqlStatements } from './generatedSql.js';
 const projectRoot = process.cwd();
 const BASELINE_RECORD_PATH = path.join(projectRoot, 'db', 'schema-baseline.json');
 
+function getAdminCredentials() {
+  return {
+    user: process.env.DB_ADMIN_USER || process.env.DB_USER || '',
+    pass: process.env.DB_ADMIN_PASS || process.env.DB_PASS || '',
+  };
+}
+
 async function commandExists(cmd) {
   try {
     await runCommand('which', [cmd], { captureStdout: false, captureStderr: false });
@@ -25,11 +32,14 @@ export async function getSchemaDiffPrerequisites() {
     commandExists('liquibase'),
     commandExists('mysql'),
   ]);
+  const adminCreds = getAdminCredentials();
   const env = {
     DB_NAME: Boolean(process.env.DB_NAME),
-    DB_USER: Boolean(process.env.DB_USER),
-    DB_PASS: Boolean(process.env.DB_PASS),
+    DB_USER: Boolean(adminCreds.user),
+    DB_PASS: Boolean(adminCreds.pass),
     DB_HOST: Boolean(process.env.DB_HOST),
+    DB_ADMIN_USER: Boolean(process.env.DB_ADMIN_USER),
+    DB_ADMIN_PASS: Boolean(process.env.DB_ADMIN_PASS),
   };
   const missing = [];
   const warnings = [];
@@ -38,6 +48,12 @@ export async function getSchemaDiffPrerequisites() {
     warnings.push(
       'Liquibase is not available; schema diffs will fall back to bootstrap (CREATE) scripts without ALTER coverage.',
     );
+  }
+  if (!process.env.DB_ADMIN_USER) {
+    warnings.push('DB_ADMIN_USER is not set; falling back to DB_USER for admin operations.');
+  }
+  if (!process.env.DB_ADMIN_PASS) {
+    warnings.push('DB_ADMIN_PASS is not set; falling back to DB_PASS for admin operations.');
   }
   if (!env.DB_NAME) missing.push('DB_NAME');
 
@@ -176,8 +192,7 @@ function resolveSchemaFile({ schemaPath, schemaFile }) {
 
 async function dumpCurrentSchema(outputPath, signal, onProgress) {
   const host = process.env.DB_HOST || 'localhost';
-  const user = process.env.DB_USER || '';
-  const pass = process.env.DB_PASS || '';
+  const { user, pass } = getAdminCredentials();
   const dbName = process.env.DB_NAME;
   const port = process.env.DB_PORT;
   ensureNotAborted(signal);
@@ -583,11 +598,10 @@ async function markBaseline(resolvedSchemaPath, targetSql) {
 }
 
 async function importSchemaFile(schemaFilePath, tempDbName, signal, onProgress) {
-  const pass = process.env.DB_PASS || '';
+  const { user, pass } = getAdminCredentials();
   const env = { ...process.env };
   if (pass) env.MYSQL_PWD = pass;
   const host = process.env.DB_HOST || 'localhost';
-  const user = process.env.DB_USER || '';
   const port = process.env.DB_PORT;
   const mysqlArgs = ['-h', host];
   if (port) mysqlArgs.push('-P', String(port));
@@ -794,8 +808,7 @@ export async function buildSchemaDiff(options = {}) {
       );
       importedWithCli = viaCli;
       const host = process.env.DB_HOST || 'localhost';
-      const user = process.env.DB_USER || '';
-      const pass = process.env.DB_PASS || '';
+      const { user, pass } = getAdminCredentials();
       const port = process.env.DB_PORT;
       const dbName = process.env.DB_NAME;
       const env = { ...process.env };
