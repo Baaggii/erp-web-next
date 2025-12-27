@@ -21,12 +21,12 @@ import {
 
 const router = express.Router();
 
-router.get('/', requireAuth, requireAdmin, listTenantTables);
+router.get('/', requireAuth, listTenantTables);
 router.post('/', requireAuth, requireAdmin, createTenantTable);
 router.put('/:table_name', requireAuth, requireAdmin, updateTenantTable);
-router.get('/options', requireAuth, requireAdmin, listTenantTableOptions);
-router.get('/default-snapshots', requireAuth, requireAdmin, listDefaultSnapshots);
-router.get('/:table_name', requireAuth, requireAdmin, getTenantTable);
+router.get('/options', requireAuth, listTenantTableOptions);
+router.get('/default-snapshots', requireAuth, listDefaultSnapshots);
+router.get('/:table_name', requireAuth, getTenantTable);
 router.post('/zero-keys', requireAuth, requireAdmin, resetSharedTenantKeys);
 router.post('/seed-defaults', requireAuth, requireAdmin, seedDefaults);
 router.post('/export-defaults', requireAuth, requireAdmin, exportDefaults);
