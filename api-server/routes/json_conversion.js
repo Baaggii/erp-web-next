@@ -51,7 +51,7 @@ router.post('/convert', requireAuth, requireAdmin, async (req, res, next) => {
       return res.status(400).json({ message: 'table and columns are required' });
     }
     const { columns: metadata, tableForeignKeys, dbEngine } = await listColumns(table);
-    const plan = buildConversionPlan(table, normalizedColumns, metadata, {
+    const plan = await buildConversionPlan(table, normalizedColumns, metadata, {
       backup,
       tableForeignKeys,
       dbEngine,

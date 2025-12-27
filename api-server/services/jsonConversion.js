@@ -3,6 +3,11 @@ import { adminPool as pool } from '../../db/index.js';
 let cachedDbEngine = null;
 let dbEnginePromise = null;
 
+async function columnExists(table, column) {
+  const [cols] = await pool.query('SHOW COLUMNS FROM ?? LIKE ?', [table, column]);
+  return cols.length > 0;
+}
+
 export async function getDbEngine(poolInstance = pool) {
   if (cachedDbEngine) return cachedDbEngine;
   if (!dbEnginePromise) {
@@ -426,10 +431,12 @@ function buildConstraintHandling(table, columnName, constraintInfo = {}, backupI
       return;
     }
     if ((c.type || '').toUpperCase() === 'FOREIGN KEY') {
-      const targetTable = c.direction === 'incoming' && c.table ? c.table : table;
+      const targetTable = c.table || table;
       const targetId = escapeId(targetTable);
       if (constraintName) {
-        dropStatements.add(`ALTER TABLE ${targetId} DROP FOREIGN KEY ${constraintName}`);
+        dropStatements.add(
+          `ALTER TABLE ${targetId} DROP FOREIGN KEY ${constraintName}`,
+        );
       }
       if (
         backupId &&
@@ -479,7 +486,7 @@ function buildConstraintHandling(table, columnName, constraintInfo = {}, backupI
   };
 }
 
-function buildColumnStatements(table, columnName, columnMeta, options, constraintInfo = {}) {
+async function buildColumnStatements(table, columnName, columnMeta, options, constraintInfo = {}) {
   const tableId = escapeId(table);
   const columnId = escapeId(columnName);
   const dbEngine = String(options?.dbEngine || '').toLowerCase();
@@ -539,7 +546,13 @@ function buildColumnStatements(table, columnName, columnMeta, options, constrain
   if (action === 'companion') {
     const companionName = `${columnName}_json_multi`;
     const companionId = escapeId(companionName);
-    statements.push(`ALTER TABLE ${tableId} ADD COLUMN IF NOT EXISTS ${companionId} JSON NULL`);
+    const companionExists = await columnExists(table, companionName);
+    const jsonType = isMariaDB ? 'LONGTEXT' : 'JSON';
+    if (!companionExists) {
+      statements.push(`ALTER TABLE ${tableId} ADD COLUMN ${companionId} ${jsonType} NULL`);
+    } else {
+      previewNotes.push(`Skipped adding ${companionName} because it already exists.`);
+    }
     statements.push(
       `UPDATE ${tableId} SET ${companionId} = JSON_ARRAY(${columnId}) WHERE ${columnId} IS NOT NULL`,
     );
@@ -611,13 +624,17 @@ function buildColumnStatements(table, columnName, columnMeta, options, constrain
   }
 
   if (backupId) {
-    statements.push(
-      `ALTER TABLE ${tableId} ADD COLUMN IF NOT EXISTS ${backupId} ${baseType} NULL`,
-    );
+    const backupExists = await columnExists(table, backupName);
+    if (!backupExists) {
+      statements.push(`ALTER TABLE ${tableId} ADD COLUMN ${backupId} ${baseType} NULL`);
+    } else {
+      previewNotes.push(`Skipped adding backup column ${backupName} because it already exists.`);
+    }
     statements.push(`UPDATE ${tableId} SET ${backupId} = ${columnId}`);
   }
 
-  statements.push(`ALTER TABLE ${tableId} MODIFY COLUMN ${columnId} JSON`);
+  const jsonType = isMariaDB ? 'LONGTEXT' : 'JSON';
+  statements.push(`ALTER TABLE ${tableId} MODIFY COLUMN ${columnId} ${jsonType}`);
   const sourceRef = backupId || columnId;
   statements.push(
     `UPDATE ${tableId} SET ${columnId} = JSON_ARRAY(${sourceRef}) WHERE ${sourceRef} IS NOT NULL`,
@@ -665,12 +682,12 @@ function buildColumnStatements(table, columnName, columnMeta, options, constrain
   return { statements, preview, manualSql };
 }
 
-export function buildConversionPlan(table, columns, metadata, options = {}) {
+export async function buildConversionPlan(table, columns, metadata, options = {}) {
   const normalizedColumns = normalizeColumnsInput(columns);
   const plan = { statements: [], previews: [] };
   const scriptLines = [];
   const metadataMap = new Map(metadata.map((m) => [m.name, m]));
-  normalizedColumns.forEach((col) => {
+  for (const col of normalizedColumns) {
     const meta = metadataMap.get(col.name) || {};
     const constraintMeta = metadataMap.get(col.name);
     const constraintInfo = constraintMeta?.constraints
@@ -692,9 +709,9 @@ export function buildConversionPlan(table, columns, metadata, options = {}) {
         notes: 'Skipped by admin. Column was left unchanged.',
       });
       scriptLines.push(`-- ${col.name} skipped per admin selection`);
-      return;
+      continue;
     }
-    const { statements, preview, skipped } = buildColumnStatements(
+    const { statements, preview, skipped } = await buildColumnStatements(
       table,
       col.name,
       meta,
@@ -714,7 +731,7 @@ export function buildConversionPlan(table, columns, metadata, options = {}) {
       scriptLines.push(...statements);
     }
     plan.previews.push(preview);
-  });
+  }
   plan.scriptText = scriptLines
     .map((s) => {
       const text = String(s || '').trim();
