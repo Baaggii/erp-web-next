@@ -7,7 +7,7 @@ try {
 } catch {
   xlsx = { read: () => ({ SheetNames: [], Sheets: {} }), utils: { sheet_to_json: () => [] } };
 }
-import { pool, setTableColumnLabel } from '../../db/index.js';
+import { adminPool as pool, setTableColumnLabel } from '../../db/index.js';
 
 function cleanIdentifier(name) {
   return String(name).replace(/[^A-Za-z0-9_]+/g, '');
