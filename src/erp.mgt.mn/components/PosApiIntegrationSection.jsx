@@ -40,12 +40,6 @@ const AGGREGATION_OPTIONS = [
   { value: 'avg', label: 'Average' },
 ];
 
-const ENDPOINT_BADGE_STYLE = {
-  ...BADGE_BASE_STYLE,
-  background: '#ecfeff',
-  color: '#0284c7',
-};
-
 function humanizeFieldLabel(key) {
   if (!key) return '';
   return String(key)
@@ -580,8 +574,6 @@ export default function PosApiIntegrationSection({
   paymentMethodMapping = {},
   onEnsureColumnsLoaded = () => {},
   onPosApiOptionsChange = () => {},
-  endpointMappingDefaults = null,
-  onResetToEndpointDefaults = null,
 }) {
   const objectFieldMappings =
     config.posApiMapping &&
@@ -689,67 +681,39 @@ export default function PosApiIntegrationSection({
     return next;
   }, [endpointCandidates, config.posApiEndpointId, config.posApiEndpointMeta, config.posApiMapping]);
 
-  const effectiveEndpointDefaults = useMemo(() => {
-    if (endpointMappingDefaults && typeof endpointMappingDefaults === 'object') {
-      return endpointMappingDefaults;
-    }
-    if (
-      config.posApiMappingMeta &&
-      typeof config.posApiMappingMeta === 'object' &&
-      config.posApiMappingMeta.endpointDefaults &&
-      typeof config.posApiMappingMeta.endpointDefaults === 'object'
-    ) {
-      return config.posApiMappingMeta.endpointDefaults;
-    }
-    return null;
-  }, [config.posApiMappingMeta, endpointMappingDefaults]);
-
-  const endpointDefaultPaths = useMemo(() => {
-    if (
-      config.posApiMappingMeta &&
-      typeof config.posApiMappingMeta === 'object' &&
-      Array.isArray(config.posApiMappingMeta.endpointDerivedPaths)
-    ) {
-      return config.posApiMappingMeta.endpointDerivedPaths;
-    }
-    if (!effectiveEndpointDefaults || typeof effectiveEndpointDefaults !== 'object') return [];
-    const paths = [];
-    Object.entries(effectiveEndpointDefaults || {}).forEach(([key, value]) => {
-      if (['objectFields', 'itemFields', 'paymentFields', 'receiptFields'].includes(key)) return;
-      if (isMappingProvided(value)) paths.push(key);
+  useEffect(() => {
+    if (!config.posApiEnabled) return;
+    const requestMappings =
+      selectedEndpoint && typeof selectedEndpoint.requestMappings === 'object' && !Array.isArray(selectedEndpoint.requestMappings)
+        ? selectedEndpoint.requestMappings
+        : null;
+    const requestFieldMappings =
+      selectedEndpoint && typeof selectedEndpoint.requestFieldMappings === 'object' && !Array.isArray(selectedEndpoint.requestFieldMappings)
+        ? selectedEndpoint.requestFieldMappings
+        : null;
+    if (!requestMappings && !requestFieldMappings) return;
+    setConfig((prev) => {
+      const baseMapping =
+        prev.posApiMapping && typeof prev.posApiMapping === 'object' && !Array.isArray(prev.posApiMapping)
+          ? { ...prev.posApiMapping }
+          : {};
+      let changed = false;
+      const mergeEntry = (field, value) => {
+        const normalizedField = typeof field === 'string' ? field.trim() : '';
+        if (!normalizedField) return;
+        if (baseMapping[normalizedField]) return;
+        const selection = normalizeMappingSelection(value, primaryTableName);
+        const nextValue = buildMappingValue(selection, { preserveType: true });
+        if (nextValue === '' || nextValue === undefined) return;
+        baseMapping[normalizedField] = nextValue;
+        changed = true;
+      };
+      Object.entries(requestMappings || {}).forEach(([field, value]) => mergeEntry(field, value));
+      Object.entries(requestFieldMappings || {}).forEach(([field, value]) => mergeEntry(field, value));
+      if (!changed) return prev;
+      return { ...prev, posApiMapping: baseMapping };
     });
-    if (effectiveEndpointDefaults.objectFields && typeof effectiveEndpointDefaults.objectFields === 'object') {
-      Object.entries(effectiveEndpointDefaults.objectFields).forEach(([objectKey, fields]) => {
-        Object.keys(fields || {}).forEach((fieldKey) => {
-          paths.push(`objectFields.${objectKey}.${fieldKey}`);
-        });
-      });
-    }
-    ['itemFields', 'paymentFields', 'receiptFields'].forEach((section) => {
-      if (!effectiveEndpointDefaults[section] || typeof effectiveEndpointDefaults[section] !== 'object') return;
-      Object.keys(effectiveEndpointDefaults[section]).forEach((fieldKey) => {
-        paths.push(`${section}.${fieldKey}`);
-      });
-    });
-    return paths;
-  }, [config.posApiMappingMeta, effectiveEndpointDefaults]);
-
-  const endpointDerivedPaths = useMemo(
-    () => new Set(endpointDefaultPaths || []),
-    [endpointDefaultPaths],
-  );
-
-  const isEndpointDerived = useCallback(
-    (...paths) => paths.some((path) => path && endpointDerivedPaths.has(path)),
-    [endpointDerivedPaths],
-  );
-
-  const endpointDefaultCount = useMemo(() => endpointDefaultPaths.length, [endpointDefaultPaths]);
-  const hasEndpointDefaults = Boolean(
-    effectiveEndpointDefaults &&
-      typeof effectiveEndpointDefaults === 'object' &&
-      Object.keys(effectiveEndpointDefaults).length,
-  );
+  }, [config.posApiEnabled, primaryTableName, selectedEndpoint, setConfig]);
 
   const nestedObjects = useMemo(
     () => (Array.isArray(selectedEndpoint?.nestedObjects) ? selectedEndpoint.nestedObjects : []),
@@ -2019,15 +1983,7 @@ export default function PosApiIntegrationSection({
           Map POSAPI fields to columns in the master transaction table. Leave blank to skip optional
           fields.
         </p>
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '0.5rem',
-            marginBottom: '0.25rem',
-            flexWrap: 'wrap',
-          }}
-        >
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
           <input
             type="text"
             value={fieldFilter}
@@ -2036,24 +1992,7 @@ export default function PosApiIntegrationSection({
             style={{ flex: '1 1 220px', minWidth: '220px' }}
           />
           <small style={{ color: '#666' }}>Filters across top-level and nested objects.</small>
-          {hasEndpointDefaults && onResetToEndpointDefaults && (
-            <button
-              type="button"
-              onClick={onResetToEndpointDefaults}
-              disabled={!config.posApiEnabled}
-              style={{ marginLeft: 'auto' }}
-            >
-              Reset to endpoint defaults
-            </button>
-          )}
         </div>
-        {hasEndpointDefaults && (
-          <small style={{ color: '#475569', display: 'block', marginBottom: '0.5rem' }}>
-            {endpointDefaultCount > 0
-              ? `${endpointDefaultCount} field${endpointDefaultCount === 1 ? '' : 's'} prefilled from the selected endpoint.`
-              : 'This endpoint defines request mappings; use reset to reapply them.'}
-          </small>
-        )}
         <div
           style={{
             display: 'grid',
@@ -2099,9 +2038,6 @@ export default function PosApiIntegrationSection({
                   >
                     {isRequired ? 'Required' : 'Optional'}
                   </span>
-                  {isEndpointDerived(field.key) && (
-                    <span style={ENDPOINT_BADGE_STYLE}>Endpoint default</span>
-                  )}
                   {missingRequired && (
                     <span
                       style={{
@@ -2222,12 +2158,6 @@ export default function PosApiIntegrationSection({
                 const tableChoices = Array.from(
                   new Set([primaryTableName, ...itemTableOptions.filter(Boolean)]),
                 ).filter(Boolean);
-                const isDerivedField = (fieldKey) =>
-                  isEndpointDerived(
-                    `objectFields.${obj.id}.${fieldKey}`,
-                    obj.path ? `objectFields.${obj.path}.${fieldKey}` : '',
-                    obj.key ? `objectFields.${obj.key}.${fieldKey}` : '',
-                  );
                 return (
                   <div
                     key={`request-object-${obj.id}`}
@@ -2259,7 +2189,6 @@ export default function PosApiIntegrationSection({
                         const normalizedMapping = normalizeMappingSelection(mapping[field.key], primaryTableName);
                         const aggregationValue =
                           normalizedMapping.aggregation || field.aggregation || '';
-                        const derived = isDerivedField(field.key);
                         return (
                           <div
                             key={`obj-${obj.id}-${field.key}`}
@@ -2268,7 +2197,6 @@ export default function PosApiIntegrationSection({
                             <span style={{ fontWeight: 600, color: '#0f172a' }}>
                               {field.label || humanizeFieldLabel(field.key)}
                             </span>
-                            {derived && <span style={ENDPOINT_BADGE_STYLE}>Endpoint default</span>}
                             <MappingFieldSelector
                               value={mapping[field.key]}
                               onChange={(val) => {
@@ -2368,12 +2296,6 @@ export default function PosApiIntegrationSection({
                   const aggregationValue =
                     normalizedSelection.aggregation || itemHint.aggregation || '';
                   const missingRequired = itemRequired && !isMappingProvided(mappedValue);
-                  const derivedFromEndpoint = isEndpointDerived(
-                    `itemFields.${field.key}`,
-                    itemsObject?.id ? `objectFields.${itemsObject.id}.${field.key}` : '',
-                    itemsObject?.path ? `objectFields.${itemsObject.path}.${field.key}` : '',
-                    itemsObject?.key ? `objectFields.${itemsObject.key}.${field.key}` : '',
-                  );
                   return (
                     <div
                       key={`item-${field.key}`}
@@ -2404,9 +2326,6 @@ export default function PosApiIntegrationSection({
                         >
                           {itemRequired ? 'Required' : 'Optional'}
                         </span>
-                        {derivedFromEndpoint && (
-                          <span style={ENDPOINT_BADGE_STYLE}>Endpoint default</span>
-                        )}
                         {missingRequired && (
                           <span
                             style={{
@@ -2488,12 +2407,6 @@ export default function PosApiIntegrationSection({
                     || hint.aggregation
                     || '';
                   const missingRequired = hint.required && !isMappingProvided(mappedValue);
-                  const derivedFromEndpoint = isEndpointDerived(
-                    `paymentFields.${field.key}`,
-                    paymentsObject?.id ? `objectFields.${paymentsObject.id}.${field.key}` : '',
-                    paymentsObject?.path ? `objectFields.${paymentsObject.path}.${field.key}` : '',
-                    paymentsObject?.key ? `objectFields.${paymentsObject.key}.${field.key}` : '',
-                  );
                   return (
                     <label
                       key={`payment-${field.key}`}
@@ -2518,9 +2431,6 @@ export default function PosApiIntegrationSection({
                     >
                         {hint.required ? 'Required' : 'Optional'}
                       </span>
-                        {derivedFromEndpoint && (
-                          <span style={ENDPOINT_BADGE_STYLE}>Endpoint default</span>
-                        )}
                         {missingRequired && (
                           <span
                             style={{
@@ -2600,12 +2510,6 @@ export default function PosApiIntegrationSection({
                     || hint.aggregation
                     || '';
                   const missingRequired = hint.required && !isMappingProvided(mappedValue);
-                  const derivedFromEndpoint = isEndpointDerived(
-                    `receiptFields.${field.key}`,
-                    receiptsObject?.id ? `objectFields.${receiptsObject.id}.${field.key}` : '',
-                    receiptsObject?.path ? `objectFields.${receiptsObject.path}.${field.key}` : '',
-                    receiptsObject?.key ? `objectFields.${receiptsObject.key}.${field.key}` : '',
-                  );
                   return (
                     <label
                       key={`receipt-${field.key}`}
@@ -2624,15 +2528,12 @@ export default function PosApiIntegrationSection({
                         {field.label}
                         <span
                           style={{
-                            ...BADGE_BASE_STYLE,
-                            ...(hint.required ? REQUIRED_BADGE_STYLE : OPTIONAL_BADGE_STYLE),
-                          }}
-                        >
-                          {hint.required ? 'Required' : 'Optional'}
-                        </span>
-                        {derivedFromEndpoint && (
-                          <span style={ENDPOINT_BADGE_STYLE}>Endpoint default</span>
-                        )}
+                          ...BADGE_BASE_STYLE,
+                        ...(hint.required ? REQUIRED_BADGE_STYLE : OPTIONAL_BADGE_STYLE),
+                      }}
+                    >
+                        {hint.required ? 'Required' : 'Optional'}
+                      </span>
                         {missingRequired && (
                           <span
                             style={{
