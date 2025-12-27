@@ -3636,25 +3636,50 @@ export default function PosApiAdmin() {
     [primaryRequestTable, requestTableColumns],
   );
 
-  const requestAggregationFieldOptions = useMemo(() => {
+  const requestFieldPathOptions = useMemo(() => {
     const seen = new Set();
-    const fields = [];
-    Object.entries(requestTableColumns).forEach(([table, cols]) => {
-      (cols || []).forEach((col) => {
-        if (!col) return;
-        const value = table ? `${table}.${col}` : col;
-        if (seen.has(value)) return;
-        seen.add(value);
-        fields.push(value);
+    const paths = [];
+
+    (requestFieldDisplay.items || []).forEach((entry) => {
+      const normalized = normalizeHintEntry(entry);
+      if (normalized.field && !seen.has(normalized.field)) {
+        seen.add(normalized.field);
+        paths.push(normalized.field);
+      }
+    });
+
+    try {
+      const parsedSample = cleanSampleText(requestSampleText);
+      flattenExampleFields(parsedSample).forEach((entry) => {
+        if (!entry?.field || seen.has(entry.field)) return;
+        seen.add(entry.field);
+        paths.push(entry.field);
       });
+    } catch {
+      // ignore malformed samples; fall back to hint-derived paths only
+    }
+
+    Object.keys(formState.requestFieldMappings || {}).forEach((fieldPath) => {
+      if (!fieldPath || seen.has(fieldPath)) return;
+      seen.add(fieldPath);
+      paths.push(fieldPath);
     });
-    (primaryRequestColumns || []).forEach((col) => {
-      if (!col || seen.has(col)) return;
-      seen.add(col);
-      fields.push(col);
-    });
-    return fields;
-  }, [primaryRequestColumns, requestTableColumns]);
+
+    if (Array.isArray(formState.aggregations)) {
+      formState.aggregations.forEach((agg) => {
+        if (!agg?.field || seen.has(agg.field)) return;
+        seen.add(agg.field);
+        paths.push(agg.field);
+      });
+    }
+
+    return paths;
+  }, [formState.aggregations, formState.requestFieldMappings, requestFieldDisplay.items, requestSampleText]);
+
+  const requestAggregationFieldOptions = useMemo(
+    () => [...requestFieldPathOptions].sort(),
+    [requestFieldPathOptions],
+  );
 
   useEffect(() => {
     let removedTables = 0;
