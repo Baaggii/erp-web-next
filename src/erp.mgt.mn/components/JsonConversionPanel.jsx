@@ -10,6 +10,7 @@ export default function JsonConversionPanel() {
   const [tables, setTables] = useState([]);
   const [selectedTable, setSelectedTable] = useState('');
   const [columns, setColumns] = useState([]);
+  const [dbEngine, setDbEngine] = useState('');
   const [columnConfigs, setColumnConfigs] = useState({});
   const [previews, setPreviews] = useState([]);
   const [scriptText, setScriptText] = useState('');
@@ -54,14 +55,25 @@ export default function JsonConversionPanel() {
       .then((res) => (res.ok ? res.json() : { columns: [] }))
       .then((data) => {
         setColumns(data.columns || []);
+        setDbEngine(data.dbEngine || '');
         setColumnConfigs({});
       })
       .catch(() => {
         setColumns([]);
+        setDbEngine('');
         setColumnConfigs({});
       })
       .finally(() => setLoading(false));
   }, [selectedTable]);
+
+  useEffect(() => {
+    if (dbEngine === 'MariaDB') {
+      addToast(
+        'Constraint detection is limited on MariaDB. Foreign keys will be dropped automatically on convert.',
+        'warning',
+      );
+    }
+  }, [dbEngine, addToast]);
 
   const hasForeignKeyConstraint = (meta) =>
     Array.isArray(meta?.constraintTypes) &&
