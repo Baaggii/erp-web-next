@@ -112,7 +112,16 @@ export function normalizeMappingSelection(value, primaryTableName = '') {
 
 export function resetMappingFieldsForType(selection = {}, nextType = selection?.type) {
   const type = nextType || selection?.type || 'column';
+  const previousType = selection?.type || selection?.mode;
+  const typeChanged = previousType && previousType !== type;
   const next = { ...selection, type };
+  if (typeChanged) {
+    delete next.value;
+    delete next.literal;
+    delete next.envVar;
+    delete next.sessionVar;
+    delete next.expression;
+  }
   if (type !== 'column') {
     delete next.table;
     delete next.column;

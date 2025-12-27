@@ -1487,6 +1487,8 @@ function normalizeRequestFieldMappingEntry(entry, { defaultApplyToBody = true } 
   const applyToBody =
     typeof entry?.applyToBody === 'boolean' ? entry.applyToBody : defaultApplyToBody;
   const source = entry && typeof entry === 'object' && 'selection' in entry ? entry.selection : entry;
+  const aggregation =
+    typeof source?.aggregation === 'string' ? source.aggregation : '';
   const coerced =
     source && typeof source === 'object' && source.type === 'literal' && source.value === undefined
       ? { ...source, value: source.literal }
@@ -1504,7 +1506,11 @@ function normalizeRequestFieldMappingEntry(entry, { defaultApplyToBody = true } 
   if (selectionType === 'env' && !withValue.envVar && typeof coerced?.value === 'string') {
     withValue.envVar = coerced.value.trim();
   }
-  return { ...withValue, applyToBody };
+  return {
+    ...withValue,
+    ...(aggregation ? { aggregation } : {}),
+    applyToBody,
+  };
 }
 
 function serializeRequestFieldSelections(
