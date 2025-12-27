@@ -40,15 +40,40 @@ export default function AsyncSearchSelect({
   companyId,
   shouldFetch = true,
   filters = {},
+  isMulti = false,
   ...rest
 }) {
   const { company } = useContext(AuthContext);
   const effectiveCompanyId = companyId ?? company;
-  const initialVal = toInputString(extractPrimitiveValue(value));
+  const toOption = useCallback((entry) => {
+    if (entry && typeof entry === 'object') {
+      if (Object.prototype.hasOwnProperty.call(entry, 'value')) {
+        return {
+          value: entry.value,
+          label: entry.label ?? entry.name ?? entry.display ?? entry.text ?? entry.value,
+        };
+      }
+      if (Object.prototype.hasOwnProperty.call(entry, 'id')) {
+        return { value: entry.id, label: entry.label ?? entry.name ?? entry.id };
+      }
+    }
+    return { value: entry, label: entry == null ? '' : String(entry) };
+  }, []);
+  const normalizeMultiValue = useCallback(
+    (val) => {
+      if (!isMulti) return [];
+      if (!val) return [];
+      if (Array.isArray(val)) return val.map((item) => toOption(item));
+      return [toOption(val)];
+    },
+    [isMulti, toOption],
+  );
+  const initialVal = isMulti ? '' : toInputString(extractPrimitiveValue(value));
   const initialLabel =
-    typeof value === 'object' && value !== null ? value.label ?? '' : '';
+    !isMulti && typeof value === 'object' && value !== null ? value.label ?? '' : '';
   const [input, setInput] = useState(initialVal);
   const [label, setLabel] = useState(initialLabel);
+  const [selected, setSelected] = useState(() => normalizeMultiValue(value));
   const [options, setOptions] = useState([]);
   const [show, setShow] = useState(false);
   const [highlight, setHighlight] = useState(-1);
@@ -413,6 +438,11 @@ export default function AsyncSearchSelect({
   }
 
   useEffect(() => {
+    if (isMulti) {
+      setSelected(normalizeMultiValue(value));
+      forcedLocalSearchRef.current = '';
+      return;
+    }
     const primitiveValue = extractPrimitiveValue(value);
     if (typeof value === 'object' && value !== null) {
       setInput(toInputString(primitiveValue));
@@ -424,7 +454,7 @@ export default function AsyncSearchSelect({
     if (isEmptyInputValue(primitiveValue)) {
       forcedLocalSearchRef.current = '';
     }
-  }, [value]);
+  }, [isMulti, normalizeMultiValue, value]);
 
   useEffect(() => {
     if (!show) {
@@ -454,6 +484,19 @@ export default function AsyncSearchSelect({
       setHighlight(fallbackIndex);
     }
   }, [options, show, input, findBestOption]);
+
+  useEffect(() => {
+    if (!isMulti) return;
+    setSelected((prev) =>
+      prev.map((item) => {
+        const match = options.find((opt) => String(opt.value) === String(item.value));
+        if (match) {
+          return { value: match.value, label: match.label ?? item.label };
+        }
+        return item;
+      }),
+    );
+  }, [isMulti, options]);
 
   useEffect(() => {
     if (!show) return;
@@ -586,16 +629,44 @@ export default function AsyncSearchSelect({
     }
     const opt = findBestOption(pending.query, { allowPartial: false });
     if (opt) {
+      addOptionSelection(opt, pending.query);
+      pendingLookupRef.current = null;
+      return;
+    }
+    pendingLookupRef.current = null;
+  }, [addOptionSelection, loading, options, input, findBestOption]);
+
+  const addOptionSelection = useCallback(
+    (opt, query) => {
+      if (!opt) return;
+      if (isMulti) {
+        setSelected((prev) => {
+          const exists = prev.some((item) => String(item.value) === String(opt.value));
+          if (exists) return prev;
+          const next = [...prev, { value: opt.value, label: opt.label ?? opt.value }];
+          if (onChange) onChange(next.map((item) => item.value));
+          return next;
+        });
+        setInput('');
+        setLabel('');
+        setShow(false);
+        chosenRef.current = opt;
+        actionRef.current = { type: 'enter', matched: true, option: opt, query };
+        return;
+      }
       onChange(opt.value, opt.label);
       setInput(String(opt.value));
       setLabel(opt.label || '');
       if (internalRef.current) internalRef.current.value = String(opt.value);
-      pendingLookupRef.current = null;
+      chosenRef.current = opt;
+      actionRef.current = { type: 'enter', matched: true, option: opt, query };
       setShow(false);
-    } else {
-      pendingLookupRef.current = null;
-    }
-  }, [loading, options, input, findBestOption, onChange]);
+      if (onSelect) {
+        setTimeout(() => onSelect(opt), 0);
+      }
+    },
+    [isMulti, onChange, onSelect],
+  );
 
   function handleSelectKeyDown(e) {
     actionRef.current = null;
@@ -640,16 +711,7 @@ export default function AsyncSearchSelect({
     const optIndex = options.indexOf(opt);
     if (optIndex >= 0) setHighlight(optIndex);
     e.preventDefault();
-    onChange(opt.value, opt.label);
-    setInput(String(opt.value));
-    setLabel(opt.label || '');
-    if (internalRef.current) internalRef.current.value = String(opt.value);
-    chosenRef.current = opt;
-    actionRef.current = { type: 'enter', matched: true, option: opt, query };
-    setShow(false);
-    if (onSelect) {
-      setTimeout(() => onSelect(opt), 0);
-    }
+    addOptionSelection(opt, query);
   }
 
   function handleBlur() {
@@ -705,16 +767,7 @@ export default function AsyncSearchSelect({
                     key={opt.value}
                     onMouseDown={(event) => {
                       event.preventDefault();
-                      onChange(opt.value, opt.label);
-                      setInput(String(opt.value));
-                      setLabel(opt.label || '');
-                      if (internalRef.current)
-                        internalRef.current.value = String(opt.value);
-                      chosenRef.current = opt;
-                      setShow(false);
-                      if (onSelect) {
-                        setTimeout(() => onSelect(opt), 0);
-                      }
+                      addOptionSelection(opt, input);
                     }}
                     onMouseEnter={() => setHighlight(idx)}
                     style={{
@@ -752,6 +805,56 @@ export default function AsyncSearchSelect({
       ref={containerRef}
       style={{ position: 'relative', zIndex: show ? 1 : 'auto', overflow: 'visible' }}
     >
+      {isMulti && selected.length > 0 && (
+        <div
+          style={{
+            display: 'flex',
+            flexWrap: 'wrap',
+            gap: '0.35rem',
+            marginBottom: '0.35rem',
+          }}
+        >
+          {selected.map((item) => (
+            <span
+              key={String(item.value)}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '0.3rem',
+                padding: '0.25rem 0.5rem',
+                background: '#eef2ff',
+                borderRadius: '999px',
+                border: '1px solid #c7d2fe',
+                maxWidth: '100%',
+              }}
+              title={item.label || item.value}
+            >
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {item.label || item.value}
+              </span>
+              {!disabled && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    removeSelection(item.value);
+                  }}
+                  style={{
+                    background: 'transparent',
+                    border: 'none',
+                    color: '#4b5563',
+                    cursor: 'pointer',
+                    padding: 0,
+                  }}
+                  aria-label="Remove selection"
+                >
+                  ×
+                </button>
+              )}
+            </span>
+          ))}
+        </div>
+      )}
       <input
         ref={(el) => {
           internalRef.current = el;
@@ -764,7 +867,9 @@ export default function AsyncSearchSelect({
           forcedLocalSearchRef.current = '';
           setInput(e.target.value);
           setLabel('');
-          onChange(e.target.value);
+          if (!isMulti) {
+            onChange(e.target.value);
+          }
           setShow(true);
           setHighlight(-1);
         }}
@@ -816,7 +921,7 @@ export default function AsyncSearchSelect({
         {...rest}
       />
       {dropdown}
-      {displayLabel && (
+      {!isMulti && displayLabel && (
         <div style={{ fontSize: '0.8rem', color: '#555' }}>{displayLabel}</div>
       )}
     </div>
