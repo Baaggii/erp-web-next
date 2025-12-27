@@ -7777,10 +7777,7 @@ export default function PosApiAdmin() {
         normalizedSelection
         && normalizedSelection.type
         && normalizedSelection.type !== (previousNormalized?.type || current.type || current.mode);
-      if (
-        normalizedSelection
-        && (hasMappingValue(normalizedSelection) || typeChanged || aggregationUpdated)
-      ) {
+      if (normalizedSelection && (hasMappingValue(normalizedSelection) || typeChanged)) {
         const previousNormalized = normalizeRequestFieldMappingEntry(current, { defaultApplyToBody });
         const alreadyEqual = JSON.stringify(previousNormalized || {}) === JSON.stringify(normalizedSelection);
         nextSelections[fieldPath] = normalizedSelection;
@@ -7953,6 +7950,7 @@ export default function PosApiAdmin() {
         if (!fieldPath) return;
         const existing = next[fieldPath] || { requiredByVariation: {}, defaultByVariation: {} };
         const requiredByVariation = { ...(existing.requiredByVariation || {}) };
+        if (existing.requiredCommon && required === false) return;
         if (requiredByVariation[variationKey] !== required) {
           requiredByVariation[variationKey] = required;
           next[fieldPath] = { ...existing, requiredByVariation };
@@ -7988,193 +7986,11 @@ export default function PosApiAdmin() {
             const normalized = normalizeHintEntry(item);
             const fieldPath = normalized.field;
             if (!fieldPath) return;
+            if (required === false && normalized.requiredCommon) return;
             requiredFields[fieldPath] = required;
           });
           changed = true;
           return { ...entry, requiredFields };
-        })
-        : [];
-
-      return changed ? { ...prev, variations, requestFieldVariations } : prev;
-    });
-  }
-
-  function setApplyToBodyForAll(value) {
-    let nextSelections = null;
-    setRequestFieldValues((prev) => {
-      let changed = false;
-      const next = { ...prev };
-      visibleRequestFieldItems.forEach((entry) => {
-        const normalized = normalizeHintEntry(entry);
-        const fieldPath = normalized.field;
-        if (!fieldPath) return;
-        const existing = next[fieldPath] || {};
-        if (existing.applyToBody === value) return;
-        const updated = { ...existing, applyToBody: value };
-        if (!updated.type) {
-          updated.type = 'literal';
-          updated.value = existing.value || '';
-        }
-        next[fieldPath] = updated;
-        changed = true;
-      });
-      nextSelections = changed ? next : null;
-      return changed ? next : prev;
-    });
-
-    if (nextSelections) {
-      syncRequestSampleFromSelections(nextSelections);
-      setFormState((prev) => ({
-        ...prev,
-        requestEnvMap: buildRequestEnvMap(nextSelections),
-        requestFieldMappings: serializeRequestFieldSelections(nextSelections),
-        requestMappings: serializeRequestMappings(nextSelections),
-      }));
-    }
-  }
-
-  function setUseInTransactionForAll(value) {
-    setRequestFieldMeta((prev) => {
-      let changed = false;
-      const next = { ...prev };
-      visibleRequestFieldItems.forEach((entry) => {
-        const normalized = normalizeHintEntry(entry);
-        const fieldPath = normalized.field;
-        if (!fieldPath) return;
-        const existing = next[fieldPath] || { requiredByVariation: {}, defaultByVariation: {} };
-        const defaultByVariation = { ...(existing.defaultByVariation || {}) };
-        Object.entries(defaultByVariation).forEach(([variationKey, entryValue]) => {
-          const parsed = parseDefaultValueEntry(entryValue);
-          const nextEntry = buildDefaultValueEntry(parsed.value, value);
-          if (nextEntry !== undefined) {
-            defaultByVariation[variationKey] = nextEntry;
-          } else {
-            delete defaultByVariation[variationKey];
-          }
-        });
-        if (existing.useInTransaction !== value || JSON.stringify(defaultByVariation) !== JSON.stringify(existing.defaultByVariation || {})) {
-          next[fieldPath] = { ...existing, defaultByVariation, useInTransaction: value };
-          changed = true;
-        }
-      });
-      return changed ? next : prev;
-    });
-
-    setFormState((prev) => {
-      let changed = false;
-      const variations = Array.isArray(prev.variations)
-        ? prev.variations.map((entry) => {
-          if (!entry || typeof entry !== 'object') return entry;
-          const defaults = entry.defaultValues ? { ...entry.defaultValues } : {};
-          let variationChanged = false;
-          visibleRequestFieldItems.forEach((item) => {
-            const normalized = normalizeHintEntry(item);
-            const fieldPath = normalized.field;
-            if (!fieldPath) return;
-            if (Object.prototype.hasOwnProperty.call(defaults, fieldPath)) {
-              const parsed = parseDefaultValueEntry(defaults[fieldPath]);
-              const nextEntry = buildDefaultValueEntry(parsed.value, value);
-              if (nextEntry !== undefined) {
-                if (JSON.stringify(defaults[fieldPath]) !== JSON.stringify(nextEntry)) {
-                  defaults[fieldPath] = nextEntry;
-                  variationChanged = true;
-                }
-              } else {
-                delete defaults[fieldPath];
-                variationChanged = true;
-              }
-            }
-          });
-          if (variationChanged) changed = true;
-          return variationChanged ? { ...entry, defaultValues: defaults } : entry;
-        })
-        : [];
-
-      const requestFieldVariations = Array.isArray(prev.requestFieldVariations)
-        ? prev.requestFieldVariations.map((entry) => {
-          if (!entry || typeof entry !== 'object') return entry;
-          const defaults = entry.defaultValues ? { ...entry.defaultValues } : {};
-          let variationChanged = false;
-          visibleRequestFieldItems.forEach((item) => {
-            const normalized = normalizeHintEntry(item);
-            const fieldPath = normalized.field;
-            if (!fieldPath) return;
-            if (Object.prototype.hasOwnProperty.call(defaults, fieldPath)) {
-              const parsed = parseDefaultValueEntry(defaults[fieldPath]);
-              const nextEntry = buildDefaultValueEntry(parsed.value, value);
-              if (nextEntry !== undefined) {
-                if (JSON.stringify(defaults[fieldPath]) !== JSON.stringify(nextEntry)) {
-                  defaults[fieldPath] = nextEntry;
-                  variationChanged = true;
-                }
-              } else {
-                delete defaults[fieldPath];
-                variationChanged = true;
-              }
-            }
-          });
-          if (variationChanged) changed = true;
-          return variationChanged ? { ...entry, defaultValues: defaults } : entry;
-        })
-        : [];
-
-      return changed ? { ...prev, variations, requestFieldVariations } : prev;
-    });
-  }
-
-  function setCommonRequiredForAll(value) {
-    setRequestFieldMeta((prev) => {
-      const next = { ...prev };
-      let changed = false;
-      visibleRequestFieldItems.forEach((entry) => {
-        const normalized = normalizeHintEntry(entry);
-        const fieldPath = normalized.field;
-        if (!fieldPath) return;
-        const existing = next[fieldPath] || { requiredByVariation: {}, defaultByVariation: {} };
-        if (existing.requiredCommon === value) return;
-        next[fieldPath] = { ...existing, requiredCommon: value };
-        changed = true;
-      });
-      return changed ? next : prev;
-    });
-
-    setFormState((prev) => {
-      let changed = false;
-      const variations = Array.isArray(prev.variations)
-        ? prev.variations.map((entry) => {
-          if (!entry || typeof entry !== 'object') return entry;
-          const requiredFields = entry.requiredFields ? { ...entry.requiredFields } : {};
-          let variationChanged = false;
-          visibleRequestFieldItems.forEach((item) => {
-            const normalized = normalizeHintEntry(item);
-            const fieldPath = normalized.field;
-            if (!fieldPath) return;
-            if (requiredFields[fieldPath] !== value) {
-              requiredFields[fieldPath] = value;
-              variationChanged = true;
-            }
-          });
-          if (variationChanged) changed = true;
-          return variationChanged ? { ...entry, requiredFields } : entry;
-        })
-        : [];
-
-      const requestFieldVariations = Array.isArray(prev.requestFieldVariations)
-        ? prev.requestFieldVariations.map((entry) => {
-          if (!entry || typeof entry !== 'object') return entry;
-          const requiredFields = entry.requiredFields ? { ...entry.requiredFields } : {};
-          let variationChanged = false;
-          visibleRequestFieldItems.forEach((item) => {
-            const normalized = normalizeHintEntry(item);
-            const fieldPath = normalized.field;
-            if (!fieldPath) return;
-            if (requiredFields[fieldPath] !== value) {
-              requiredFields[fieldPath] = value;
-              variationChanged = true;
-            }
-          });
-          if (variationChanged) changed = true;
-          return variationChanged ? { ...entry, requiredFields } : entry;
         })
         : [];
 
@@ -9512,48 +9328,8 @@ export default function PosApiAdmin() {
                   >
                     <span style={styles.requestFieldHeaderCell}>Field</span>
                     <span style={styles.requestFieldHeaderCell}>Description</span>
-                    <span style={{ ...styles.requestFieldHeaderCell, display: 'flex', gap: '0.35rem', alignItems: 'center' }}>
-                      <span>Use in transaction</span>
-                      <div style={{ display: 'flex', gap: '0.25rem' }}>
-                        <button
-                          type="button"
-                          style={styles.miniToggleButton}
-                          onClick={() => setUseInTransactionForAll(true)}
-                          title="Enable variation defaults for all fields"
-                        >
-                          All
-                        </button>
-                        <button
-                          type="button"
-                          style={styles.miniToggleButton}
-                          onClick={() => setUseInTransactionForAll(false)}
-                          title="Disable variation defaults for all fields"
-                        >
-                          None
-                        </button>
-                      </div>
-                    </span>
-                    <span style={{ ...styles.requestFieldHeaderCell, display: 'flex', gap: '0.35rem', alignItems: 'center' }}>
-                      <span>Common required</span>
-                      <div style={{ display: 'flex', gap: '0.25rem' }}>
-                        <button
-                          type="button"
-                          style={styles.miniToggleButton}
-                          onClick={() => setCommonRequiredForAll(true)}
-                          title="Mark all request fields as common required"
-                        >
-                          All
-                        </button>
-                        <button
-                          type="button"
-                          style={styles.miniToggleButton}
-                          onClick={() => setCommonRequiredForAll(false)}
-                          title="Clear common required on all request fields"
-                        >
-                          None
-                        </button>
-                      </div>
-                    </span>
+                    <span style={styles.requestFieldHeaderCell}>Use in transaction</span>
+                    <span style={styles.requestFieldHeaderCell}>Common required</span>
                     {variationColumns.map((variation) => (
                       <span
                         key={`variation-head-${variation.key}`}

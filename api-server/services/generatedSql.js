@@ -1,6 +1,6 @@
 import fs from 'fs/promises';
 import path from 'path';
-import { pool } from '../../db/index.js';
+import { adminPool as pool } from '../../db/index.js';
 import { tenantConfigPath, getConfigPath } from '../utils/configPaths.js';
 
 async function ensureDir(companyId = 0) {

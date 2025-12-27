@@ -2,9 +2,9 @@ import express from 'express';
 import multer from 'multer';
 import { parseYaml } from '../utils/yaml.js';
 import { requireAuth } from '../middlewares/auth.js';
+import { requireAdmin } from '../middlewares/admin.js';
 import { loadEndpoints, saveEndpoints } from '../services/posApiRegistry.js';
 import { invokePosApiEndpoint } from '../services/posApiService.js';
-import { getEmploymentSession } from '../../db/index.js';
 import { normalizeRequestMappingValue } from '../services/posApiAggregations.js';
 
 const DEFAULT_MAPPING_HINTS = {
@@ -22,18 +22,6 @@ const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 5 * 1024 * 1024, files: 10 },
 });
-
-async function requireSystemSettings(req, res) {
-  const companyId = Number(req.query.companyId ?? req.user.companyId);
-  const session =
-    (req.session && Number(req.session?.company_id) === companyId && req.session) ||
-    (await getEmploymentSession(req.user.empid, companyId));
-  if (!session?.permissions?.system_settings) {
-    res.status(403).json({ message: 'Admin access required' });
-    return null;
-  }
-  return { session, companyId };
-}
 
 function validateEndpointDefinition(endpoint, index = 0) {
   const issues = [];
@@ -119,10 +107,8 @@ function attachResponseMappings(endpoint) {
   };
 }
 
-router.get('/', requireAuth, async (req, res, next) => {
+router.get('/', requireAuth, requireAdmin, async (req, res, next) => {
   try {
-    const guard = await requireSystemSettings(req, res);
-    if (!guard) return;
     const endpoints = (await loadEndpoints()).map(attachResponseMappings);
     res.json(endpoints);
   } catch (err) {
@@ -130,10 +116,8 @@ router.get('/', requireAuth, async (req, res, next) => {
   }
 });
 
-router.put('/', requireAuth, async (req, res, next) => {
+router.put('/', requireAuth, requireAdmin, async (req, res, next) => {
   try {
-    const guard = await requireSystemSettings(req, res);
-    if (!guard) return;
     const payload = req.body?.endpoints ?? req.body;
     if (!Array.isArray(payload)) {
       res.status(400).json({ message: 'endpoints array is required' });
@@ -174,10 +158,8 @@ router.put('/', requireAuth, async (req, res, next) => {
   }
 });
 
-router.post('/import/parse', requireAuth, upload.array('files'), async (req, res, next) => {
+router.post('/import/parse', requireAuth, requireAdmin, upload.array('files'), async (req, res, next) => {
   try {
-    const guard = await requireSystemSettings(req, res);
-    if (!guard) return;
     const files = Array.isArray(req.files) ? req.files : [];
     if (files.length === 0) {
       res.status(400).json({ message: 'At least one specification file is required' });
@@ -2573,10 +2555,8 @@ function mergeOperations(operations) {
   return Array.from(merged.values());
 }
 
-router.post('/fetch-doc', requireAuth, async (req, res, next) => {
+router.post('/fetch-doc', requireAuth, requireAdmin, async (req, res, next) => {
   try {
-    const guard = await requireSystemSettings(req, res);
-    if (!guard) return;
     const url = req.body?.url;
     if (!url || typeof url !== 'string') {
       res.status(400).json({ message: 'url is required' });
@@ -2689,10 +2669,8 @@ router.post('/fetch-doc', requireAuth, async (req, res, next) => {
   }
 });
 
-router.post('/test', requireAuth, async (req, res, next) => {
+router.post('/test', requireAuth, requireAdmin, async (req, res, next) => {
   try {
-    const guard = await requireSystemSettings(req, res);
-    if (!guard) return;
     const definition = req.body?.endpoint;
     if (!definition || typeof definition !== 'object') {
       res.status(400).json({ message: 'endpoint definition is required' });
@@ -2774,10 +2752,8 @@ router.post('/test', requireAuth, async (req, res, next) => {
   }
 });
 
-router.post('/import/test', requireAuth, async (req, res, next) => {
+router.post('/import/test', requireAuth, requireAdmin, async (req, res, next) => {
   try {
-    const guard = await requireSystemSettings(req, res);
-    if (!guard) return;
     const endpoint = req.body?.endpoint;
     const payload = req.body?.payload;
     const environment = req.body?.environment === 'production' ? 'production' : 'staging';
