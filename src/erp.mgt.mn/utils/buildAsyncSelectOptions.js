@@ -202,6 +202,8 @@ async function fetchTenantInfo(table) {
   try {
     const res = await fetch(`/api/tenant_tables/${encodeURIComponent(table)}`, {
       credentials: 'include',
+      skipErrorToast: true,
+      skipLoader: true,
     });
     if (!res.ok) {
       tenantInfoCache.set(cacheKey, {});

@@ -511,6 +511,8 @@ export default function AsyncSearchSelect({
     if (!table) return;
     fetch(`/api/tenant_tables/${encodeURIComponent(table)}`, {
       credentials: 'include',
+      skipErrorToast: true,
+      skipLoader: true,
     })
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
