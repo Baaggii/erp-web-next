@@ -40,11 +40,19 @@ export default function AsyncSearchSelect({
   companyId,
   shouldFetch = true,
   filters = {},
+  isMulti = false,
   ...rest
 }) {
   const { company } = useContext(AuthContext);
   const effectiveCompanyId = companyId ?? company;
-  const initialVal = toInputString(extractPrimitiveValue(value));
+  const normalizedMultiValues = useMemo(
+    () =>
+      Array.isArray(value)
+        ? value.filter((v) => v !== undefined && v !== null && v !== '')
+        : [],
+    [value],
+  );
+  const initialVal = isMulti ? '' : toInputString(extractPrimitiveValue(value));
   const initialLabel =
     typeof value === 'object' && value !== null ? value.label ?? '' : '';
   const [input, setInput] = useState(initialVal);
@@ -58,7 +66,19 @@ export default function AsyncSearchSelect({
   const containerRef = useRef(null);
   const listRef = useRef(null);
   const match = options.find((o) => String(o.value) === String(input));
-  const displayLabel = match ? match.label : label;
+  const selectedOptions = useMemo(
+    () =>
+      normalizedMultiValues.map((val) => {
+        const opt = options.find((o) => String(o.value) === String(val));
+        return { value: val, label: opt?.label ?? String(val) };
+      }),
+    [normalizedMultiValues, options],
+  );
+  const displayLabel = isMulti
+    ? selectedOptions.map((o) => o.label || o.value).join(', ')
+    : match
+    ? match.label
+    : label;
   const internalRef = useRef(null);
   const chosenRef = useRef(null);
   const actionRef = useRef(null);
@@ -176,6 +196,31 @@ export default function AsyncSearchSelect({
       sensitivity: 'base',
     });
   }, []);
+
+  const addSelectedValue = useCallback(
+    (opt) => {
+      if (!opt || opt.value === undefined || opt.value === null) return;
+      const exists = normalizedMultiValues.some(
+        (val) => String(val) === String(opt.value),
+      );
+      if (exists) return;
+      const next = [...normalizedMultiValues, opt.value];
+      onChange(next);
+      setInput('');
+      setLabel('');
+    },
+    [normalizedMultiValues, onChange],
+  );
+
+  const removeSelectedValue = useCallback(
+    (val) => {
+      const next = normalizedMultiValues.filter(
+        (current) => String(current) !== String(val),
+      );
+      onChange(next);
+    },
+    [normalizedMultiValues, onChange],
+  );
 
   const normalizeOptions = useCallback(
     (list) => {
@@ -413,6 +458,12 @@ export default function AsyncSearchSelect({
   }
 
   useEffect(() => {
+    if (isMulti) {
+      setInput('');
+      setLabel('');
+      forcedLocalSearchRef.current = '';
+      return;
+    }
     const primitiveValue = extractPrimitiveValue(value);
     if (typeof value === 'object' && value !== null) {
       setInput(toInputString(primitiveValue));
@@ -424,7 +475,7 @@ export default function AsyncSearchSelect({
     if (isEmptyInputValue(primitiveValue)) {
       forcedLocalSearchRef.current = '';
     }
-  }, [value]);
+  }, [isMulti, value]);
 
   useEffect(() => {
     if (!show) {
@@ -640,15 +691,20 @@ export default function AsyncSearchSelect({
     const optIndex = options.indexOf(opt);
     if (optIndex >= 0) setHighlight(optIndex);
     e.preventDefault();
-    onChange(opt.value, opt.label);
-    setInput(String(opt.value));
-    setLabel(opt.label || '');
-    if (internalRef.current) internalRef.current.value = String(opt.value);
-    chosenRef.current = opt;
-    actionRef.current = { type: 'enter', matched: true, option: opt, query };
-    setShow(false);
-    if (onSelect) {
-      setTimeout(() => onSelect(opt), 0);
+    if (isMulti) {
+      addSelectedValue(opt);
+      setShow(false);
+    } else {
+      onChange(opt.value, opt.label);
+      setInput(String(opt.value));
+      setLabel(opt.label || '');
+      if (internalRef.current) internalRef.current.value = String(opt.value);
+      chosenRef.current = opt;
+      actionRef.current = { type: 'enter', matched: true, option: opt, query };
+      setShow(false);
+      if (onSelect) {
+        setTimeout(() => onSelect(opt), 0);
+      }
     }
   }
 
@@ -705,15 +761,20 @@ export default function AsyncSearchSelect({
                     key={opt.value}
                     onMouseDown={(event) => {
                       event.preventDefault();
-                      onChange(opt.value, opt.label);
-                      setInput(String(opt.value));
-                      setLabel(opt.label || '');
-                      if (internalRef.current)
-                        internalRef.current.value = String(opt.value);
-                      chosenRef.current = opt;
-                      setShow(false);
-                      if (onSelect) {
-                        setTimeout(() => onSelect(opt), 0);
+                      if (isMulti) {
+                        addSelectedValue(opt);
+                        setShow(false);
+                      } else {
+                        onChange(opt.value, opt.label);
+                        setInput(String(opt.value));
+                        setLabel(opt.label || '');
+                        if (internalRef.current)
+                          internalRef.current.value = String(opt.value);
+                        chosenRef.current = opt;
+                        setShow(false);
+                        if (onSelect) {
+                          setTimeout(() => onSelect(opt), 0);
+                        }
                       }
                     }}
                     onMouseEnter={() => setHighlight(idx)}
@@ -752,6 +813,48 @@ export default function AsyncSearchSelect({
       ref={containerRef}
       style={{ position: 'relative', zIndex: show ? 1 : 'auto', overflow: 'visible' }}
     >
+      {isMulti && selectedOptions.length > 0 && (
+        <div
+          style={{
+            display: 'flex',
+            flexWrap: 'wrap',
+            gap: '0.25rem',
+            marginBottom: '0.25rem',
+          }}
+        >
+          {selectedOptions.map((opt) => (
+            <span
+              key={opt.value}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                background: '#e5e7eb',
+                borderRadius: '9999px',
+                padding: '0.1rem 0.5rem',
+                fontSize: '0.8rem',
+              }}
+            >
+              <span>{opt.label || opt.value}</span>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.preventDefault();
+                  removeSelectedValue(opt.value);
+                }}
+                style={{
+                  marginLeft: '0.35rem',
+                  background: 'transparent',
+                  border: 'none',
+                  cursor: 'pointer',
+                  color: '#ef4444',
+                }}
+              >
+                ×
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
       <input
         ref={(el) => {
           internalRef.current = el;
@@ -764,7 +867,7 @@ export default function AsyncSearchSelect({
           forcedLocalSearchRef.current = '';
           setInput(e.target.value);
           setLabel('');
-          onChange(e.target.value);
+          if (!isMulti) onChange(e.target.value);
           setShow(true);
           setHighlight(-1);
         }}
