@@ -8011,36 +8011,6 @@ export default function PosApiAdmin() {
     });
   }
 
-  function setApplyToBodyForAll(applyToBody) {
-    setRequestFieldValues((prev) => {
-      const nextSelections = { ...prev };
-      let changed = false;
-      visibleRequestFieldItems.forEach((entry) => {
-        const normalized = normalizeHintEntry(entry);
-        const fieldPath = normalized.field;
-        if (!fieldPath) return;
-        const defaultApplyToBody = entry.source !== 'parameter';
-        const existing = nextSelections[fieldPath] || {};
-        const normalizedExisting = normalizeRequestFieldMappingEntry(existing, { defaultApplyToBody });
-        const currentApply = normalizedExisting?.applyToBody ?? defaultApplyToBody;
-        if (currentApply === applyToBody) return;
-        nextSelections[fieldPath] = { ...existing, applyToBody };
-        changed = true;
-      });
-      if (!changed) return prev;
-
-      syncRequestSampleFromSelections(nextSelections);
-      const serialized = serializeRequestFieldSelections(nextSelections);
-      setFormState((prevState) => ({
-        ...prevState,
-        requestEnvMap: buildRequestEnvMap(nextSelections),
-        requestFieldMappings: serialized,
-        requestMappings: serializeRequestMappings(nextSelections),
-      }));
-      return nextSelections;
-    });
-  }
-
   function handleRequestFieldDescriptionChange(fieldPath, value) {
     if (!fieldPath) return;
     setRequestFieldMeta((prev) => {
