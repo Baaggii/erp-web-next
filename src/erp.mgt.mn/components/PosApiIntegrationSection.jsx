@@ -2205,6 +2205,9 @@ export default function PosApiIntegrationSection({
                 }}
               >
                 {filteredItemFields.map((field) => {
+                  const mappedValue = resolvedItemFieldMapping[field.key];
+                  const normalizedSelection = normalizeMappingSelection(mappedValue, primaryTableName);
+                  const mappedTable = normalizedSelection.table || '';
                   const filteredChoices = (itemTableOptions || [])
                     .filter((tbl) => {
                       if (!tbl) return false;
@@ -2213,21 +2216,18 @@ export default function PosApiIntegrationSection({
                     })
                     .slice();
                   if (
-                    selectedTable &&
-                    selectedTable !== '' &&
-                    (!primaryTableName || selectedTable !== primaryTableName) &&
-                    !filteredChoices.includes(selectedTable)
+                    mappedTable &&
+                    mappedTable !== '' &&
+                    (!primaryTableName || mappedTable !== primaryTableName) &&
+                    !filteredChoices.includes(mappedTable)
                   ) {
-                    filteredChoices.unshift(selectedTable);
+                    filteredChoices.unshift(mappedTable);
                   }
                   const itemHint = itemFieldHints[field.key] || {};
                   const itemRequired = Boolean(itemHint.required);
                   const itemDescription = itemHint.description;
-                  const mappedValue = resolvedItemFieldMapping[field.key];
                   const aggregationValue =
-                    normalizeMappingSelection(mappedValue, primaryTableName).aggregation
-                    || itemHint.aggregation
-                    || '';
+                    normalizedSelection.aggregation || itemHint.aggregation || '';
                   const missingRequired = itemRequired && !isMappingProvided(mappedValue);
                   return (
                     <div
