@@ -3636,6 +3636,19 @@ export default function PosApiAdmin() {
     [primaryRequestTable, requestTableColumns],
   );
 
+  const requestAggregationFieldOptions = useMemo(() => {
+    const seen = new Set();
+    const fields = [];
+    if (requestFieldDisplay.state !== 'ok') return fields;
+    (requestFieldDisplay.items || []).forEach((entry) => {
+      const fieldPath = normalizeHintEntry(entry).field?.trim();
+      if (!fieldPath || seen.has(fieldPath)) return;
+      seen.add(fieldPath);
+      fields.push(fieldPath);
+    });
+    return fields;
+  }, [requestFieldDisplay]);
+
   useEffect(() => {
     let removedTables = 0;
     setFormState((prev) => {
