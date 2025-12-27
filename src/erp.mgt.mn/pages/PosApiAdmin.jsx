@@ -143,6 +143,116 @@ const AGGREGATION_OPTIONS = [
   { value: 'avg', label: 'Average' },
 ];
 
+const AGGREGATION_OPERATORS = ['=', '+', '-', '*', '/', 'SUM', 'AVG'];
+
+function parseAggregationParts(formula = '') {
+  const tokens = `${formula || ''}`
+    .split(/\s+/)
+    .map((token) => token.trim())
+    .filter(Boolean);
+  if (tokens.length === 0) return [{ op: '=', field: '' }];
+  const parts = [];
+  let currentOp = '=';
+  tokens.forEach((token, index) => {
+    if (index === 0) {
+      parts.push({ op: '=', field: token });
+      return;
+    }
+    if (AGGREGATION_OPERATORS.includes(token.toUpperCase()) && token !== '=') {
+      currentOp = token.toUpperCase();
+      return;
+    }
+    parts.push({ op: currentOp, field: token });
+    currentOp = '+';
+  });
+  return parts.length ? parts : [{ op: '=', field: '' }];
+}
+
+function buildAggregationFormula(parts = []) {
+  const cleaned = (parts || []).filter((part) => part && part.field !== undefined);
+  if (cleaned.length === 0) return '';
+  return cleaned
+    .map((part, index) => {
+      const op = index === 0 ? '' : `${part.op || '+'} `;
+      return `${op}${part.field || ''}`.trim();
+    })
+    .filter(Boolean)
+    .join(' ');
+}
+
+function AggregationBuilder({ value, onChange, fieldOptions = [], datalistId }) {
+  const parts = useMemo(() => parseAggregationParts(value), [value]);
+  const updateParts = (nextParts) => {
+    const formula = buildAggregationFormula(nextParts);
+    onChange(formula);
+  };
+  const updatePart = (index, updates) => {
+    const next = parts.map((part, idx) => (idx === index ? { ...part, ...updates } : part));
+    updateParts(next);
+  };
+  const addPart = () => {
+    const op = parts.length === 0 ? '=' : '+';
+    updateParts([...parts, { op, field: '' }]);
+  };
+  const removePart = (index) => {
+    const next = parts.filter((_, idx) => idx !== index);
+    updateParts(next.length > 0 ? next : [{ op: '=', field: '' }]);
+  };
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+      {parts.map((part, index) => (
+        <div
+          key={`agg-part-${index}`}
+          style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', flexWrap: 'wrap' }}
+        >
+          {index > 0 && (
+            <select
+              value={part.op || '+'}
+              onChange={(e) => updatePart(index, { op: e.target.value })}
+              style={{ minWidth: '70px' }}
+            >
+              {AGGREGATION_OPERATORS.filter((op) => op !== '=').map((op) => (
+                <option key={`agg-op-${index}-${op}`} value={op}>
+                  {op}
+                </option>
+              ))}
+            </select>
+          )}
+          {index === 0 && <span style={{ color: '#475569' }}>=</span>}
+          <input
+            type="text"
+            list={datalistId}
+            value={part.field || ''}
+            onChange={(e) => updatePart(index, { field: e.target.value })}
+            placeholder="field or literal"
+            style={{ minWidth: '200px', flex: '1 1 200px' }}
+          />
+          {fieldOptions.length > 0 && (
+            <datalist id={datalistId}>
+              {fieldOptions.map((opt) => (
+                <option key={`${datalistId}-${opt}`} value={opt} />
+              ))}
+            </datalist>
+          )}
+          <button
+            type="button"
+            onClick={() => removePart(index)}
+            style={{ ...styles.miniToggleButton, background: '#fee2e2', borderColor: '#fecdd3' }}
+          >
+            ✕
+          </button>
+        </div>
+      ))}
+      <div>
+        <button type="button" style={styles.smallButton} onClick={addPart}>
+          Add field
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function extractUserParameters(values) {
   if (!values || typeof values !== 'object') return {};
   const entries = Object.entries(values).filter(([key, value]) => {
@@ -1393,9 +1503,16 @@ function normalizeRequestFieldMappingEntry(entry, { defaultApplyToBody = true } 
   return { ...withValue, applyToBody };
 }
 
-function serializeRequestFieldSelections(selections = {}, { defaultApplyToBody = true } = {}) {
+function serializeRequestFieldSelections(
+  selections = {},
+  { defaultApplyToBody = true, defaultApplyToBodyMap = null } = {},
+) {
   return Object.entries(selections || {}).reduce((acc, [fieldPath, entry]) => {
-    const normalized = normalizeRequestFieldMappingEntry(entry, { defaultApplyToBody });
+    const applyDefault =
+      defaultApplyToBodyMap && defaultApplyToBodyMap.has(fieldPath)
+        ? defaultApplyToBodyMap.get(fieldPath)
+        : defaultApplyToBody;
+    const normalized = normalizeRequestFieldMappingEntry(entry, { defaultApplyToBody: applyDefault });
     if (!normalized || !hasMappingValue(normalized)) return acc;
     const storedValue = buildMappingValue(normalized, { preserveType: true });
     const payload =
@@ -1403,7 +1520,11 @@ function serializeRequestFieldSelections(selections = {}, { defaultApplyToBody =
         ? { ...storedValue }
         : { type: normalized.type || 'column', value: storedValue };
     const applyToBody = normalized.applyToBody !== false;
-    acc[fieldPath] = applyToBody ? payload : { ...payload, applyToBody: false };
+    if (applyToBody !== applyDefault) {
+      acc[fieldPath] = { ...payload, applyToBody };
+    } else {
+      acc[fieldPath] = applyToBody ? payload : { ...payload, applyToBody: false };
+    }
     return acc;
   }, {});
 }
@@ -1484,6 +1605,17 @@ function buildUrlEnvMap(selections = {}) {
     }
     return acc;
   }, {});
+}
+
+function buildApplyToBodyDefaultMap(displayItems = []) {
+  const map = new Map();
+  (displayItems || []).forEach((entry) => {
+    const normalized = normalizeHintEntry(entry);
+    const fieldPath = normalized.field;
+    if (!fieldPath) return;
+    map.set(fieldPath, entry.source !== 'parameter');
+  });
+  return map;
 }
 
 function normalizeHintEntry(entry) {
@@ -3473,6 +3605,26 @@ export default function PosApiAdmin() {
     [primaryRequestTable, requestTableColumns],
   );
 
+  const requestAggregationFieldOptions = useMemo(() => {
+    const seen = new Set();
+    const fields = [];
+    Object.entries(requestTableColumns).forEach(([table, cols]) => {
+      (cols || []).forEach((col) => {
+        if (!col) return;
+        const value = table ? `${table}.${col}` : col;
+        if (seen.has(value)) return;
+        seen.add(value);
+        fields.push(value);
+      });
+    });
+    (primaryRequestColumns || []).forEach((col) => {
+      if (!col || seen.has(col)) return;
+      seen.add(col);
+      fields.push(col);
+    });
+    return fields;
+  }, [primaryRequestColumns, requestTableColumns]);
+
   useEffect(() => {
     let removedTables = 0;
     setFormState((prev) => {
@@ -4249,10 +4401,13 @@ export default function PosApiAdmin() {
     const variationSelections = buildSelectionsForVariation(selectedVariationKey);
     const mergedSelections = { ...selectionsFromSample, ...variationSelections };
     setRequestFieldValues(mergedSelections);
+    const applyDefaults = buildApplyToBodyDefaultMap(requestFieldDisplay.items || []);
     setFormState((prev) => ({
       ...prev,
       requestEnvMap: buildRequestEnvMap(mergedSelections),
-      requestFieldMappings: serializeRequestFieldSelections(mergedSelections),
+      requestFieldMappings: serializeRequestFieldSelections(mergedSelections, {
+        defaultApplyToBodyMap: applyDefaults,
+      }),
       requestMappings: serializeRequestMappings(mergedSelections),
     }));
   }, [
@@ -7200,7 +7355,9 @@ export default function PosApiAdmin() {
       },
       responseTables: sanitizeTableSelection(formState.responseTables, responseTableOptions),
       requestEnvMap: buildRequestEnvMap(requestFieldValues),
-      requestFieldMappings: serializeRequestFieldSelections(requestFieldValues),
+      requestFieldMappings: serializeRequestFieldSelections(requestFieldValues, {
+        defaultApplyToBodyMap: buildApplyToBodyDefaultMap(requestFieldDisplay.items || []),
+      }),
       requestMappings: serializeRequestMappings(requestFieldValues),
       requestFields: requestFieldsWithVariationDefaults,
       requestFieldVariations: sanitizedRequestFieldVariations,
@@ -7806,7 +7963,44 @@ export default function PosApiAdmin() {
       if (!changed) return prev;
 
       syncRequestSampleFromSelections(nextSelections);
-      const serialized = serializeRequestFieldSelections(nextSelections, { defaultApplyToBody });
+      const applyDefaults = buildApplyToBodyDefaultMap(requestFieldDisplay.items || []);
+      const serialized = serializeRequestFieldSelections(nextSelections, {
+        defaultApplyToBody,
+        defaultApplyToBodyMap: applyDefaults,
+      });
+      setFormState((prevState) => ({
+        ...prevState,
+        requestEnvMap: buildRequestEnvMap(nextSelections),
+        requestFieldMappings: serialized,
+        requestMappings: serializeRequestMappings(nextSelections),
+      }));
+      return nextSelections;
+    });
+  }
+
+  function setApplyToBodyForAll(applyToBody) {
+    setRequestFieldValues((prev) => {
+      const nextSelections = { ...prev };
+      let changed = false;
+      visibleRequestFieldItems.forEach((entry) => {
+        const normalized = normalizeHintEntry(entry);
+        const fieldPath = normalized.field;
+        if (!fieldPath) return;
+        const defaultApplyToBody = entry.source !== 'parameter';
+        const existing = nextSelections[fieldPath] || {};
+        const normalizedExisting = normalizeRequestFieldMappingEntry(existing, { defaultApplyToBody });
+        const currentApply = normalizedExisting?.applyToBody ?? defaultApplyToBody;
+        if (currentApply === applyToBody) return;
+        nextSelections[fieldPath] = { ...existing, applyToBody };
+        changed = true;
+      });
+      if (!changed) return prev;
+
+      syncRequestSampleFromSelections(nextSelections);
+      const applyDefaults = buildApplyToBodyDefaultMap(requestFieldDisplay.items || []);
+      const serialized = serializeRequestFieldSelections(nextSelections, {
+        defaultApplyToBodyMap: applyDefaults,
+      });
       setFormState((prevState) => ({
         ...prevState,
         requestEnvMap: buildRequestEnvMap(nextSelections),
@@ -9795,26 +9989,21 @@ export default function PosApiAdmin() {
                          />
                        </div>
                        <div style={styles.requestValueInputs}>
-                         <label style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
-                           <span style={{ color: '#475569', fontSize: '0.9rem' }}>Aggregation</span>
-                           <select
-                             value={aggregation}
-                             onChange={(e) =>
-                               handleRequestFieldValueChange(
-                                 fieldPath,
-                                 { ...selection, aggregation: e.target.value },
-                                 { defaultApplyToBody },
-                               )
-                             }
-                             style={styles.input}
-                           >
-                             {AGGREGATION_OPTIONS.map((option) => (
-                               <option key={`agg-${fieldPath}-${option.value || 'none'}`} value={option.value}>
-                                 {option.label}
-                               </option>
-                             ))}
-                           </select>
-                         </label>
+                        <label style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+                          <span style={{ color: '#475569', fontSize: '0.9rem' }}>Aggregation</span>
+                          <AggregationBuilder
+                            value={aggregation}
+                            onChange={(formula) =>
+                              handleRequestFieldValueChange(
+                                fieldPath,
+                                { ...selection, aggregation: formula },
+                                { defaultApplyToBody },
+                              )
+                            }
+                            fieldOptions={requestAggregationFieldOptions}
+                            datalistId={`agg-builder-${index}-${fieldPath}`}
+                          />
+                        </label>
                          <label style={{ ...styles.checkboxLabel, marginTop: '0.35rem' }}>
                            <input
                              type="checkbox"
