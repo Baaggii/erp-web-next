@@ -69,7 +69,11 @@ test('upsertCodingTableRow drops self-updating triggers before insert', async ()
   db.pool.getConnection = async () => conn;
 
   try {
-    const result = await upsertCodingTableRow('transactions_income', { id: 7, TransType: 'TX' });
+    const result = await upsertCodingTableRow(
+      'transactions_income',
+      { id: 7, TransType: 'TX' },
+      { user: { role: 'admin' }, sessionPermissions: { system_settings: true } },
+    );
     assert.equal(result.inserted, 1);
     assert.equal(result.insertId, 42);
     assert.ok(commitCalled);

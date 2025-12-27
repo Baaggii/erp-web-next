@@ -76,7 +76,7 @@ function buildGroupsFromDiff(diff) {
   return entries;
 }
 
-export default function SchemaDiffPanel() {
+export default function SchemaDiffPanel({ isAdmin = false }) {
   const { addToast } = useToast();
   const [schemaPath, setSchemaPath] = useState('db');
   const [schemaFile, setSchemaFile] = useState('schema.sql');
@@ -99,6 +99,14 @@ export default function SchemaDiffPanel() {
   const [jobStatus, setJobStatus] = useState(null);
   const [markingBaseline, setMarkingBaseline] = useState(false);
   const socketRef = useRef(null);
+
+  if (!isAdmin) {
+    return (
+      <div style={{ padding: '1rem', color: '#b00' }}>
+        Admin privileges required to run Schema Diff. This feature compares and applies DDL changes.
+      </div>
+    );
+  }
 
   useEffect(() => {
     setError('');

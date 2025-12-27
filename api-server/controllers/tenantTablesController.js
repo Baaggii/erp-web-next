@@ -17,6 +17,7 @@ import {
 } from '../../db/index.js';
 import { hasAction } from '../utils/hasAction.js';
 import { GLOBAL_COMPANY_ID } from '../../config/0/constants.js';
+import { isAdminUser } from '../utils/admin.js';
 
 const SHARED_SEED_CONFLICT_MESSAGE =
   'Shared tables always read from tenant key 0, so they cannot participate in per-company seeding.';
@@ -58,7 +59,7 @@ export async function getTenantTable(req, res, next) {
 
 async function ensureAdmin(req) {
   const session = await getEmploymentSession(req.user.empid, req.user.companyId);
-  return hasAction(session, 'system_settings');
+  return isAdminUser(req.user, session?.permissions) && hasAction(session, 'system_settings');
 }
 
 export async function createTenantTable(req, res, next) {
