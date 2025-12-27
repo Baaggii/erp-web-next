@@ -151,7 +151,7 @@ test('getTemporarySummary marks reviewers even without pending temporaries', asy
     }
     if (sql.includes('FROM filtered')) {
       const now = new Date().toISOString();
-      if (sql.includes('plan_senior_empid = ?')) {
+      if (sql.includes('JSON_CONTAINS(plan_senior_empid')) {
         return [
           [
             {
@@ -186,7 +186,7 @@ test('getTemporarySummary marks reviewers even without pending temporaries', asy
     if (sql.includes('WHERE created_by = ?')) {
       return [[{ pending_cnt: 0, total_cnt: 1 }]];
     }
-    if (sql.includes('WHERE plan_senior_empid = ?')) {
+    if (sql.includes('JSON_CONTAINS(plan_senior_empid')) {
       return [[{ pending_cnt: 0, total_cnt: 2 }]];
     }
     throw new Error(`Unexpected SQL: ${sql}`);
@@ -466,11 +466,17 @@ test('listTemporarySubmissions filters before grouping by chain', async () => {
       return [[], []];
     }
     if (sql.includes('WITH filtered AS')) {
-      if (sql.includes('plan_senior_empid = ?')) {
-        const reviewer = params[params.length - 3];
-        const pendingRows = temporaries.filter(
-          (row) => row.plan_senior_empid === reviewer && row.status === 'pending',
+      if (sql.includes('JSON_CONTAINS(plan_senior_empid')) {
+        const reviewerParam = params.find(
+          (p) => typeof p === 'string' && (p.includes('"') || p.includes("'")),
         );
+        const reviewer = reviewerParam ? reviewerParam.replace(/['\"]/g, '') : params[0];
+        const pendingRows = temporaries.filter((row) => {
+          const reviewers = Array.isArray(row.plan_senior_empid)
+            ? row.plan_senior_empid
+            : [row.plan_senior_empid];
+          return reviewers.includes(reviewer) && row.status === 'pending';
+        });
         const grouped = new Map();
         pendingRows.forEach((row) => {
           const key = row.chain_id || row.id;
@@ -592,7 +598,8 @@ test('promoteTemporarySubmission forwards chain with normalized metadata and cle
   assert.ok(
     notifications.some(
       (payload) =>
-        payload.recipientEmpId === 'EMP300' &&
+        ((Array.isArray(payload.recipientEmpIds) && payload.recipientEmpIds.includes('EMP300')) ||
+          payload.recipientEmpId === 'EMP300') &&
         payload.message.includes('Temporary submission pending review'),
     ),
   );
@@ -730,7 +737,13 @@ test('promoteTemporarySubmission promotes when reviewer only has plan senior', a
 
   assert.equal(result.promotedRecordId, 'R1');
   assert.ok(chainUpdates.some(({ payload }) => payload.status === 'promoted'));
-  assert.ok(notifications.every((n) => n.recipientEmpId !== 'PLAN300'));
+  assert.ok(
+    notifications.some(
+      (n) =>
+        (Array.isArray(n.recipientEmpIds) && n.recipientEmpIds.includes('PLAN300')) ||
+        n.recipientEmpId === 'PLAN300',
+    ),
+  );
   assert.equal(conn.released, true);
 });
 

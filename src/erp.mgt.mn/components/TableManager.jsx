@@ -581,6 +581,33 @@ const TableManager = forwardRef(function TableManager({
     const str = String(value).trim();
     return str ? str.toUpperCase() : '';
   }, []);
+  const normalizePlanSeniorList = useCallback(
+    (value) => {
+      const rawList = [];
+      if (Array.isArray(value)) {
+        rawList.push(...value);
+      } else if (typeof value === 'string') {
+        const trimmed = value.trim();
+        if (!trimmed) return [];
+        try {
+          const parsed = JSON.parse(trimmed);
+          if (Array.isArray(parsed)) {
+            rawList.push(...parsed);
+          } else {
+            rawList.push(trimmed);
+          }
+        } catch {
+          rawList.push(trimmed);
+        }
+      } else if (value !== undefined && value !== null) {
+        rawList.push(value);
+      }
+      return rawList
+        .map((id) => normalizeEmpId(id))
+        .filter((id) => Boolean(id));
+    },
+    [normalizeEmpId],
+  );
   const {
     user,
     company,
@@ -794,25 +821,28 @@ const TableManager = forwardRef(function TableManager({
   const pendingPromotionHasSeniorAbove = useMemo(() => {
     if (!pendingTemporaryPromotion?.entry) return false;
     const entry = pendingTemporaryPromotion.entry;
-    const plannedSenior =
-      entry.planSeniorEmpId ??
-      entry.plan_senior_empid ??
-      entry.plan_senior_emp_id ??
-      entry.planSeniorEmpID ??
-      null;
-    return hasSenior(plannedSenior);
-  }, [pendingTemporaryPromotion]);
+    const plannedSeniors = normalizePlanSeniorList(
+      entry.planSeniorEmpIds ??
+        entry.plan_senior_empid ??
+        entry.plan_senior_emp_id ??
+        entry.planSeniorEmpID ??
+        null,
+    );
+    return plannedSeniors.some((id) => hasSenior(id));
+  }, [normalizePlanSeniorList, pendingTemporaryPromotion]);
   const normalizedPendingPlanSenior = useMemo(() => {
     if (!pendingTemporaryPromotion?.entry) return '';
     const entry = pendingTemporaryPromotion.entry;
     const plannedSenior =
-      entry.planSeniorEmpId ??
-      entry.plan_senior_empid ??
-      entry.plan_senior_emp_id ??
-      entry.planSeniorEmpID ??
-      null;
+      normalizePlanSeniorList(
+        entry.planSeniorEmpIds ??
+          entry.plan_senior_empid ??
+          entry.plan_senior_emp_id ??
+          entry.planSeniorEmpID ??
+          null,
+      )?.[0] || null;
     return normalizeEmpId(plannedSenior);
-  }, [normalizeEmpId, pendingTemporaryPromotion]);
+  }, [normalizeEmpId, normalizePlanSeniorList, pendingTemporaryPromotion]);
   const isDirectReviewerForPendingPromotion =
     normalizedPendingPlanSenior &&
     normalizedViewerEmpId &&
@@ -3885,9 +3915,10 @@ const TableManager = forwardRef(function TableManager({
         : null;
     const mergedSource = { ...(editing || {}) };
 
-    const nextSeniorEmpId = hasSenior(session?.senior_plan_empid)
-      ? session?.senior_plan_empid
-      : null;
+    const nextSeniorEmpIds = normalizePlanSeniorList(session?.senior_plan_empid);
+    const nextSeniorEmpId = nextSeniorEmpIds[0] || null;
+    const nextSeniorEmpValue =
+      nextSeniorEmpIds.length > 1 ? JSON.stringify(nextSeniorEmpIds) : nextSeniorEmpId;
     const isReviewForwarding =
       forwardingExistingTemporary && canReviewTemporary && temporaryScope === 'review';
 
@@ -3934,10 +3965,10 @@ const TableManager = forwardRef(function TableManager({
       });
     }
 
-    if (forwardingExistingTemporary && nextSeniorEmpId && !preservedPayload) {
+    if (forwardingExistingTemporary && nextSeniorEmpIds.length > 0 && !preservedPayload) {
       ['plan_senior_empid', 'plan_senior_emp_id', 'planSeniorEmpId', 'planSeniorEmpID'].forEach(
         (key) => {
-          mergedSource[key] = nextSeniorEmpId;
+          mergedSource[key] = nextSeniorEmpValue;
         },
       );
     }
@@ -4040,11 +4071,11 @@ const TableManager = forwardRef(function TableManager({
         preservedPayload && isReviewForwarding && preservedPayload.cleanedValues
           ? cloneValue(preservedPayload.cleanedValues)
           : { ...cleaned };
-      if (forwardingExistingTemporary && nextSeniorEmpId && !preservedPayload) {
+      if (forwardingExistingTemporary && nextSeniorEmpIds.length > 0 && !preservedPayload) {
         ['plan_senior_empid', 'plan_senior_emp_id', 'planSeniorEmpId', 'planSeniorEmpID'].forEach(
           (key) => {
-            rowValues[key] = nextSeniorEmpId;
-            rowCleaned[key] = nextSeniorEmpId;
+            rowValues[key] = nextSeniorEmpValue;
+            rowCleaned[key] = nextSeniorEmpValue;
           },
         );
       }
@@ -5201,14 +5232,24 @@ const TableManager = forwardRef(function TableManager({
       (item) => (item?.status || '').toString().trim().toLowerCase() === 'pending',
     );
     const currentReviewerEntry = pendingRows[0] || null;
+    const currentReviewerList = normalizePlanSeniorList(
+      currentReviewerEntry?.planSeniorEmpIds ??
+        currentReviewerEntry?.planSeniorEmpId ??
+        currentReviewerEntry?.plan_senior_empid ??
+        currentReviewerEntry?.plan_senior_emp_id ??
+        currentReviewerEntry?.planSeniorEmpID ??
+        currentReviewerEntry?.reviewerEmpIds ??
+        currentReviewerEntry?.reviewerEmpId ??
+        currentReviewerEntry?.reviewer_emp_id,
+    );
     return {
       length: chain.length,
       pendingCount: pendingRows.length,
       completedCount: chain.length - pendingRows.length,
-      currentReviewer: currentReviewerEntry?.planSeniorEmpId || null,
+      currentReviewer: currentReviewerList[0] || null,
       lastUpdated: chain[chain.length - 1]?.updatedAt || null,
     };
-  }, [temporaryChainModalData]);
+  }, [normalizePlanSeniorList, temporaryChainModalData]);
 
   const temporaryChainView = useMemo(() => {
     const fullChain = Array.isArray(temporaryChainModalData?.chain)
@@ -5220,18 +5261,27 @@ const TableManager = forwardRef(function TableManager({
     if (fullChain.length === 0) {
       return { chain: fullChain, reviewHistory: fullHistory };
     }
-    const normalizePlanSenior = (row) =>
-      normalizeEmpId(
-        row?.planSeniorEmpId ??
+    const normalizePlanSenior = (row) => {
+      const list = normalizePlanSeniorList(
+        row?.planSeniorEmpIds ??
+          row?.planSeniorEmpId ??
           row?.plan_senior_empid ??
           row?.plan_senior_emp_id ??
           row?.planSeniorEmpID ??
-          row?.reviewedBy ??
+          row?.reviewerEmpIds ??
+          row?.reviewerEmpId ??
+          row?.reviewer_emp_id ??
+          [],
+      );
+      if (list.length > 0) return list[0];
+      return normalizeEmpId(
+        row?.reviewedBy ??
           row?.reviewed_by ??
           row?.reviewerEmpId ??
           row?.reviewer_emp_id ??
           '',
       );
+    };
     const normalizedChain = fullChain.map((row) => ({
       ...row,
       __normalizedPlanSenior: normalizePlanSenior(row),
@@ -5259,7 +5309,7 @@ const TableManager = forwardRef(function TableManager({
       return visibleIds.has(tempId);
     });
     return { chain: visibleChain, reviewHistory: visibleHistory };
-  }, [normalizeEmpId, normalizedViewerDirectSeniorId, temporaryChainModalData]);
+  }, [normalizeEmpId, normalizePlanSeniorList, normalizedViewerDirectSeniorId, temporaryChainModalData]);
 
   const latestTemporaryReviewById = useMemo(() => {
     const history = Array.isArray(temporaryChainModalData?.reviewHistory)
@@ -7928,12 +7978,20 @@ const TableManager = forwardRef(function TableManager({
                         const temporaryId =
                           row?.temporaryId || row?.temporary_id || row?.temporaryid || row?.id;
                         const creator = row?.createdBy || row?.created_by || '—';
+                        const reviewerList = normalizePlanSeniorList(
+                          row?.planSeniorEmpIds ??
+                            row?.planSeniorEmpId ??
+                            row?.plan_senior_empid ??
+                            row?.plan_senior_emp_id ??
+                            row?.planSeniorEmpID ??
+                            row?.reviewerEmpIds ??
+                            row?.reviewerEmpId ??
+                            row?.reviewer_emp_id,
+                        );
                         const reviewer =
-                          row?.planSeniorEmpId ||
-                          row?.reviewerEmpId ||
-                          row?.reviewer_emp_id ||
-                          row?.reviewer ||
-                          '—';
+                          reviewerList.length > 0
+                            ? reviewerList.join(', ')
+                            : row?.reviewer || '—';
                         const latestReview =
                           temporaryId && latestTemporaryReviewById.get(temporaryId);
                         const actionLabel = latestReview?.action
