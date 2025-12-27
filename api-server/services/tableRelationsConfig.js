@@ -33,12 +33,6 @@ function normalizeRelation(relation = {}) {
     relation.combinationTargetColumn ?? relation.combination_target_column;
   const filterColumn = relation.filterColumn ?? relation.filter_column;
   const filterValue = relation.filterValue ?? relation.filter_value;
-  const isArray =
-    relation.isArray ??
-    relation.jsonField ??
-    relation.is_array ??
-    relation.json_field ??
-    false;
 
   const tableStr = typeof targetTable === 'string' ? targetTable.trim() : '';
   const columnStr = typeof targetColumn === 'string' ? targetColumn.trim() : '';
@@ -50,11 +44,6 @@ function normalizeRelation(relation = {}) {
   }
 
   const normalized = { table: tableStr, column: columnStr };
-  if (typeof isArray === 'boolean') {
-    normalized.isArray = isArray;
-  } else if (typeof isArray === 'string') {
-    normalized.isArray = isArray.toLowerCase() === 'true';
-  }
   if (typeof idField === 'string' && idField.trim()) {
     normalized.idField = idField.trim();
   }
@@ -153,12 +142,6 @@ function findRelationIndex(list, match = {}) {
       return false;
     }
     if (match.filterValue && rel.filterValue !== match.filterValue) {
-      return false;
-    }
-    if (
-      typeof match.isArray === 'boolean' &&
-      Boolean(rel.isArray) !== Boolean(match.isArray)
-    ) {
       return false;
     }
     return true;

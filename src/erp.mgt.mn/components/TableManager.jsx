@@ -1002,10 +1002,7 @@ const TableManager = forwardRef(function TableManager({
     columnMeta.forEach((c) => {
       const typ = (c.type || c.columnType || c.dataType || c.DATA_TYPE || '')
         .toLowerCase();
-      const comment = (c.comment || c.COLUMN_COMMENT || '').toLowerCase();
-      if (typ.includes('json') || comment.includes('json_array')) {
-        map[c.name] = 'json';
-      } else if (typ.match(/int|decimal|numeric|double|float|real|number|bigint/)) {
+      if (typ.match(/int|decimal|numeric|double|float|real|number|bigint/)) {
         map[c.name] = 'number';
       } else if (typ.includes('timestamp') || typ.includes('datetime')) {
         map[c.name] = 'datetime';
@@ -1419,18 +1416,17 @@ const TableManager = forwardRef(function TableManager({
         mappings.forEach((mapping, idx) => {
           if (!mapping || typeof mapping !== 'object') return;
           if (!mapping.table || !mapping.column) return;
-            list.push({
-              COLUMN_NAME: column,
-              REFERENCED_TABLE_NAME: mapping.table,
-              REFERENCED_COLUMN_NAME: mapping.column,
-              source: 'custom',
-              configIndex: idx,
-              ...(mapping.isArray ? { isArray: true } : {}),
-              ...(mapping.idField ? { idField: mapping.idField } : {}),
-              ...(Array.isArray(mapping.displayFields)
-                ? { displayFields: mapping.displayFields }
-                : {}),
-              ...(mapping.combinationSourceColumn
+          list.push({
+            COLUMN_NAME: column,
+            REFERENCED_TABLE_NAME: mapping.table,
+            REFERENCED_COLUMN_NAME: mapping.column,
+            source: 'custom',
+            configIndex: idx,
+            ...(mapping.idField ? { idField: mapping.idField } : {}),
+            ...(Array.isArray(mapping.displayFields)
+              ? { displayFields: mapping.displayFields }
+              : {}),
+            ...(mapping.combinationSourceColumn
               ? { combinationSourceColumn: mapping.combinationSourceColumn }
               : {}),
             ...(mapping.combinationTargetColumn
@@ -1631,7 +1627,6 @@ const TableManager = forwardRef(function TableManager({
           relMap[lower] = {
             table: entry.REFERENCED_TABLE_NAME,
             column: entry.REFERENCED_COLUMN_NAME,
-            ...(entry.isArray ? { isArray: true } : {}),
             ...(entry.idField ? { idField: entry.idField } : {}),
             ...(Array.isArray(entry.displayFields)
               ? { displayFields: entry.displayFields }
@@ -1825,7 +1820,6 @@ const TableManager = forwardRef(function TableManager({
           : Array.isArray(cfg?.displayFields)
           ? cfg.displayFields
           : [],
-        ...(rel.isArray ? { isArray: true } : {}),
       };
       if (typeof cfg?.indexField === 'string' && cfg.indexField.trim()) {
         normalizedCfg.indexField = cfg.indexField.trim();
@@ -5511,108 +5505,6 @@ const TableManager = forwardRef(function TableManager({
     return value;
   }, []);
 
-  const [jsonCellDisplay, setJsonCellDisplay] = useState({});
-  const jsonLabelCache = useRef(new Map());
-  const jsonDisplayConfigCache = useRef(new Map());
-  const jsonRowCache = useRef(new Map());
-
-  const fetchJsonDisplayConfig = useCallback(
-    async (tableName) => {
-      if (!tableName) return null;
-      const key = String(tableName).toLowerCase();
-      if (jsonDisplayConfigCache.current.has(key)) return jsonDisplayConfigCache.current.get(key);
-      const promise = (async () => {
-        try {
-          const res = await fetch(`/api/display_fields?table=${encodeURIComponent(tableName)}`, {
-            credentials: 'include',
-          });
-          if (!res.ok) return null;
-          const data = await res.json().catch(() => null);
-          if (!data || typeof data !== 'object') return null;
-          return {
-            idField: typeof data.idField === 'string' ? data.idField : null,
-            displayFields: Array.isArray(data.displayFields) ? data.displayFields : [],
-          };
-        } catch {
-          return null;
-        }
-      })();
-      jsonDisplayConfigCache.current.set(key, promise);
-      return promise;
-    },
-    [],
-  );
-
-  const fetchJsonRelationRow = useCallback(
-    async (tableName, idField, value) => {
-      if (!tableName || !idField || value === undefined || value === null) return null;
-      const cacheKey = `${tableName.toLowerCase()}|${idField.toLowerCase()}|${String(value)}`;
-      if (jsonRowCache.current.has(cacheKey)) return jsonRowCache.current.get(cacheKey);
-      const promise = (async () => {
-        const params = new URLSearchParams({ perPage: 1 });
-        params.set(idField, String(value));
-        if (company != null) params.set('company_id', company);
-        try {
-          const res = await fetch(
-            `/api/tables/${encodeURIComponent(tableName)}?${params.toString()}`,
-            { credentials: 'include' },
-          );
-          if (!res.ok) return null;
-          const data = await res.json().catch(() => null);
-          if (!data || !Array.isArray(data.rows) || data.rows.length === 0) return null;
-          return data.rows[0];
-        } catch {
-          return null;
-        }
-      })();
-      jsonRowCache.current.set(cacheKey, promise);
-      return promise;
-    },
-    [company],
-  );
-
-  const resolveJsonRelationLabel = useCallback(
-    async (relConfig, value) => {
-      if (!relConfig?.table || value === undefined || value === null) return '';
-      const idField = relConfig.idField || relConfig.column;
-      const cacheKey = `${relConfig.table.toLowerCase()}|${String(idField).toLowerCase()}|${String(value)}`;
-      if (jsonLabelCache.current.has(cacheKey)) return jsonLabelCache.current.get(cacheKey);
-      const promise = (async () => {
-        const cfg = await fetchJsonDisplayConfig(relConfig.table);
-        const displayFields =
-          Array.isArray(relConfig.displayFields) && relConfig.displayFields.length > 0
-            ? relConfig.displayFields
-            : cfg?.displayFields || [];
-        const resolvedIdField = idField || cfg?.idField || relConfig.column;
-        const row = await fetchJsonRelationRow(relConfig.table, resolvedIdField, value);
-        if (!row || typeof row !== 'object') return String(value);
-        const parts = [];
-        const keyMap = {};
-        Object.keys(row || {}).forEach((k) => {
-          keyMap[k.toLowerCase()] = k;
-        });
-        const idKey = keyMap[String(resolvedIdField || relConfig.column).toLowerCase()];
-        const identifier = idKey ? row[idKey] : undefined;
-        if (identifier !== undefined && identifier !== null) parts.push(identifier);
-        displayFields.forEach((field) => {
-          if (typeof field !== 'string') return;
-          const lookup = keyMap[field.toLowerCase()];
-          if (!lookup) return;
-          const val = row[lookup];
-          if (val !== undefined && val !== null && val !== '') parts.push(val);
-        });
-        if (parts.length === 0) return String(value);
-        return parts
-          .filter((p) => p !== undefined && p !== null && p !== '')
-          .map((p) => (typeof p === 'string' ? p : String(p)))
-          .join(' ');
-      })();
-      jsonLabelCache.current.set(cacheKey, promise);
-      return promise;
-    },
-    [fetchJsonDisplayConfig, fetchJsonRelationRow],
-  );
-
   const stringifyPreviewCell = useCallback(
     (value) => {
       const seen = new Set();
@@ -5880,87 +5772,6 @@ const TableManager = forwardRef(function TableManager({
       isPlainValueObject,
     ],
   );
-
-  useEffect(() => {
-    let canceled = false;
-    setJsonCellDisplay({});
-    async function buildJsonDisplay() {
-      const updates = {};
-      for (let rowIdx = 0; rowIdx < rows.length; rowIdx += 1) {
-        const row = rows[rowIdx];
-        columns.forEach((c) => {
-          if (fieldTypeMap[c] !== 'json') return;
-          const raw = row && typeof row === 'object' ? row[c] : undefined;
-          const parsed = parseMaybeJson(raw);
-          const key = `${rowIdx}:${c}`;
-          if (!Array.isArray(parsed)) {
-            updates[key] = stringifyPreviewCell(parsed);
-            return;
-          }
-          const relConfig = relationConfigs[c];
-          if (relConfig && relConfig.table) {
-            const ids = parsed
-              .filter(
-                (item) =>
-                  item !== null &&
-                  item !== undefined &&
-                  (typeof item === 'string' ||
-                    typeof item === 'number' ||
-                    typeof item === 'boolean'),
-              )
-              .map((item) => (typeof item === 'string' ? item.trim() : item))
-              .filter((item) => item !== '' && item !== null && item !== undefined);
-            const labelPromises = ids.map((id) => resolveJsonRelationLabel(relConfig, id));
-            updates[key] = Promise.all(labelPromises).then((labels) =>
-              labels
-                .map((lbl, idx) => lbl ?? ids[idx])
-                .filter((lbl) => lbl !== undefined && lbl !== null && lbl !== '')
-                .join(', '),
-            );
-          } else {
-            updates[key] = parsed
-              .map((item) => (typeof item === 'string' ? item : String(item)))
-              .filter((item) => item.trim().length > 0)
-              .join(', ');
-          }
-        });
-      }
-      const entries = Object.entries(updates);
-      const pendingPromises = entries.filter(([, v]) => v instanceof Promise);
-      const immediateEntries = entries.filter(([, v]) => !(v instanceof Promise));
-      if (!canceled && immediateEntries.length > 0) {
-        setJsonCellDisplay((prev) => {
-          const next = { ...prev };
-          immediateEntries.forEach(([k, v]) => {
-            next[k] = v;
-          });
-          return next;
-        });
-      }
-      if (pendingPromises.length > 0) {
-        pendingPromises.forEach(([k, promise]) => {
-          promise
-            .then((value) => {
-              if (canceled) return;
-              setJsonCellDisplay((prev) => ({ ...prev, [k]: value }));
-            })
-            .catch(() => {});
-        });
-      }
-    }
-    buildJsonDisplay();
-    return () => {
-      canceled = true;
-    };
-  }, [
-    rows,
-    columns,
-    fieldTypeMap,
-    parseMaybeJson,
-    stringifyPreviewCell,
-    relationConfigs,
-    resolveJsonRelationLabel,
-  ]);
 
 
   const columnAlign = useMemo(() => {
@@ -6981,11 +6792,7 @@ const TableManager = forwardRef(function TableManager({
                 const raw = relationOpts[c]
                   ? labelMap[c][r[c]] || String(r[c])
                   : String(r[c]);
-                const jsonKey = `${rowIdx}:${c}`;
-                let display =
-                  fieldTypeMap[c] === 'json'
-                    ? jsonCellDisplay[jsonKey] ?? stringifyPreviewCell(r[c])
-                    : raw;
+                let display = raw;
                 if (c === 'TotalCur' || totalCurrencySet.has(c)) {
                   display = currencyFmt.format(Number(r[c] || 0));
                 } else if (
