@@ -10004,7 +10004,7 @@ export default function PosApiAdmin() {
                                 { defaultApplyToBody },
                               )
                             }
-                            fieldOptions={requestAggregationFieldOptions}
+                            fieldOptions={aggregationFieldOptions}
                             datalistId={`agg-builder-${index}-${fieldPath}`}
                           />
                         </label>
