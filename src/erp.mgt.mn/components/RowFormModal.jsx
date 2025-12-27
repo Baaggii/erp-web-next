@@ -3945,8 +3945,8 @@ const RowFormModal = function RowFormModal({
                 type="button"
                 onClick={() => {
                   if (!issueEbarimtEnabled) return;
-                  markSubmitIntent('post');
-                  submitForm({ issueEbarimt: true, submitIntent: 'post' });
+                  markSubmitIntent('ebarimt');
+                  submitForm({ issueEbarimt: true, submitIntent: 'ebarimt' });
                 }}
                 className="px-3 py-1 bg-green-600 text-white rounded"
                 disabled={!issueEbarimtEnabled || submitLocked}
