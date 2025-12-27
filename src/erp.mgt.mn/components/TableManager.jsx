@@ -1612,7 +1612,7 @@ const TableManager = forwardRef(function TableManager({
       try {
         const relRes = await fetch(
           `/api/tables/${encodeURIComponent(tableName)}/relations`,
-          { credentials: 'include' },
+          { credentials: 'include', skipErrorToast: true, skipLoader: true },
         );
         if (!relRes.ok) {
           relationCache[cacheKey] = {};
@@ -1926,11 +1926,13 @@ const TableManager = forwardRef(function TableManager({
       try {
         let rels = [];
         let relRes;
+        let unauthorized = false;
         try {
           relRes = await fetch(
             `/api/tables/${encodeURIComponent(table)}/relations`,
-            { credentials: 'include' },
+            { credentials: 'include', skipErrorToast: true, skipLoader: true },
           );
+          unauthorized = relRes?.status === 403;
         } catch (err) {
           relRes = { ok: false, status: 0, error: err };
         }
@@ -1949,8 +1951,9 @@ const TableManager = forwardRef(function TableManager({
           try {
             const customRes = await fetch(
               `/api/tables/${encodeURIComponent(table)}/relations/custom`,
-              { credentials: 'include' },
+              { credentials: 'include', skipErrorToast: true, skipLoader: true },
             );
+            unauthorized = unauthorized || customRes?.status === 403;
             if (customRes.ok) {
               const customJson = await customRes.json().catch(() => ({}));
               customList = buildCustomRelationsList(customJson);
@@ -1959,11 +1962,17 @@ const TableManager = forwardRef(function TableManager({
             /* ignore */
           }
           if (customList.length === 0) {
-            if (!canceled) {
+            if (!canceled && !unauthorized) {
               addToast(
                 t('failed_load_table_relations', 'Failed to load table relations'),
                 'error',
               );
+            }
+            if (!canceled) {
+              setRelations({});
+              setRefData({});
+              setRefRows({});
+              setRelationConfigs({});
             }
             return;
           }

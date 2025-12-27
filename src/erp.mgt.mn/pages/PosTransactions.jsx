@@ -1373,6 +1373,18 @@ export default function PosTransactionsPage() {
   } = useContext(AuthContext);
   const generalConfig = useGeneralConfig();
   const licensed = useCompanyModules(company);
+  const isAdmin = useMemo(() => {
+    if (user?.isAdmin === true || session?.isAdmin === true) return true;
+    const level =
+      user?.employment_user_level ??
+      user?.userLevel ??
+      user?.employmentUserLevel ??
+      session?.employment_user_level ??
+      session?.userLevel ??
+      session?.employmentUserLevel ??
+      null;
+    return level !== null && Number(level) === 1;
+  }, [session, user]);
   const [rawConfigs, setRawConfigs] = useState({});
   const configs = useMemo(() => {
     if (!rawConfigs || typeof rawConfigs !== 'object') return {};
@@ -1408,20 +1420,20 @@ export default function PosTransactionsPage() {
       user?.userlevel_name ??
       user?.userlevelName ??
       null;
-  const workplaceId =
-    workplace ??
-    session?.workplace_id ??
-    session?.workplaceId ??
-    null;
-  const workplacePositionId =
-    resolveWorkplacePositionForContext({
-      workplaceId,
-      session,
-      workplacePositionMap,
-    })?.positionId ??
-    session?.workplace_position_id ??
-    session?.workplacePositionId ??
-    null;
+    const workplaceId =
+      workplace ??
+      session?.workplace_id ??
+      session?.workplaceId ??
+      null;
+    const workplacePositionId =
+      resolveWorkplacePositionForContext({
+        workplaceId,
+        session,
+        workplacePositionMap,
+      })?.positionId ??
+      session?.workplace_position_id ??
+      session?.workplacePositionId ??
+      null;
     const positionId =
       session?.employment_position_id ??
       session?.position_id ??
@@ -1573,6 +1585,10 @@ export default function PosTransactionsPage() {
     setEbarimtQrImage(url);
   }, [ebarimtPreview?.qrData]);
   useEffect(() => {
+    if (!isAdmin) {
+      setPosApiEndpoints([]);
+      return undefined;
+    }
     let cancelled = false;
     fetch('/api/posapi/endpoints', { credentials: 'include' })
       .then((res) => (res.ok ? res.json() : []))
@@ -1590,7 +1606,7 @@ export default function PosTransactionsPage() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [isAdmin]);
   useEffect(() => {
     userSelectedVariationRef.current = false;
   }, [name]);
@@ -1838,6 +1854,8 @@ export default function PosTransactionsPage() {
     try {
       const res = await fetchWithAbort(`/api/tables/${encodeURIComponent(tbl)}/relations`, {
         credentials: 'include',
+        skipErrorToast: true,
+        skipLoader: true,
       });
       if (!res.ok) return { dataMap: {}, cfgMap: {}, rowMap: {} };
       const rels = await res.json().catch(() => []);
