@@ -17,6 +17,7 @@ import {
 import {
   buildMappingValue,
   normalizeMappingSelection,
+  resetMappingFieldsForType,
 } from '../utils/posApiFieldSource.js';
 
 const DEFAULT_SESSION_VARIABLES = [
@@ -408,23 +409,10 @@ export function MappingFieldSelector({
   const sessionListId = `${datalistIdBase}-session`;
 
   const handleTypeChange = (nextType) => {
-    const base = {
-      type: nextType,
-      aggregation: selection.aggregation,
-      applyToBody: selection.applyToBody,
-    };
-    if (nextType === 'column') {
-      base.table = '';
-      base.column = '';
-    } else if (nextType === 'literal') {
-      base.value = '';
-    } else if (nextType === 'env') {
-      base.envVar = '';
-    } else if (nextType === 'session') {
-      base.sessionVar = '';
-    } else if (nextType === 'expression') {
-      base.expression = '';
-    }
+    const base = resetMappingFieldsForType(
+      { ...selection, applyToBody: selection.applyToBody, aggregation: selection.aggregation },
+      nextType,
+    );
     onChange({
       ...buildMappingValue(base, { preserveType: true }),
       applyToBody: selection.applyToBody,

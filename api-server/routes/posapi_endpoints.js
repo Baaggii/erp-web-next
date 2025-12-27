@@ -368,6 +368,7 @@ function normalizeRequestFieldMappingEntry(entry, defaultApplyToBody = true) {
       ? Boolean(entry.applyToBody)
       : defaultApplyToBody;
   const source = entry && typeof entry === 'object' && 'selection' in entry ? entry.selection : entry;
+  const aggregation = typeof source?.aggregation === 'string' ? source.aggregation : '';
   const ENV_VAR_REGEX = /^\s*\{\{\s*([A-Z0-9_]+)\s*}}\s*$/i;
   if (typeof source === 'string') {
     const normalized = source.trim();
@@ -402,29 +403,29 @@ function normalizeRequestFieldMappingEntry(entry, defaultApplyToBody = true) {
   if (type === 'literal') {
     const value = source?.value ?? source?.literal;
     if (value === undefined || value === null || `${value}`.trim() === '') return null;
-    return { type, value, applyToBody };
+    return { type, value, applyToBody, ...(aggregation ? { aggregation } : {}) };
   }
   if (type === 'env') {
     const envVar = source?.envVar || (typeof source?.value === 'string' ? source.value.trim() : '');
     if (!envVar) return null;
-    return { type, envVar, applyToBody };
+    return { type, envVar, applyToBody, ...(aggregation ? { aggregation } : {}) };
   }
   if (type === 'session') {
     const sessionVar = source?.sessionVar || (typeof source?.value === 'string' ? source.value.trim() : '');
     if (!sessionVar) return null;
-    return { type, sessionVar, applyToBody };
+    return { type, sessionVar, applyToBody, ...(aggregation ? { aggregation } : {}) };
   }
   if (type === 'expression') {
     const expression = source?.expression || (typeof source?.value === 'string' ? source.value.trim() : '');
     if (!expression) return null;
-    return { type, expression, applyToBody };
+    return { type, expression, applyToBody, ...(aggregation ? { aggregation } : {}) };
   }
 
   const table = typeof source?.table === 'string' ? source.table.trim() : '';
   const column = typeof source?.column === 'string' ? source.column.trim() : '';
   const value = column || (typeof source?.value === 'string' ? source.value.trim() : '');
   if (!value && !table) return null;
-  return { type: 'column', table, column: value, applyToBody };
+  return { type: 'column', table, column: value, applyToBody, ...(aggregation ? { aggregation } : {}) };
 }
 
 function normalizeRequestFieldMappings(map, requestEnvMap = {}, { defaultApplyToBody = true } = {}) {

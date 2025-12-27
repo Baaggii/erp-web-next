@@ -72,7 +72,11 @@ export function buildFieldSource(tableName, columnName) {
 }
 
 export function normalizeMappingSelection(value, primaryTableName = '') {
-  const parsed = parseFieldSource(value, primaryTableName);
+  const selectionValue =
+    value && typeof value === 'object'
+      ? resetMappingFieldsForType(value, value?.type || value?.mode)
+      : value;
+  const parsed = parseFieldSource(selectionValue, primaryTableName);
   const aggregation =
     value && typeof value === 'object' && !Array.isArray(value) && typeof value.aggregation === 'string'
       ? value.aggregation
@@ -104,6 +108,29 @@ export function normalizeMappingSelection(value, primaryTableName = '') {
     column: parsed.column || parsed.value || '',
     ...(aggregation ? { aggregation } : {}),
   };
+}
+
+export function resetMappingFieldsForType(selection = {}, nextType = selection?.type) {
+  const type = nextType || selection?.type || 'column';
+  const next = { ...selection, type };
+  if (type !== 'column') {
+    delete next.table;
+    delete next.column;
+  }
+  if (type !== 'literal') {
+    delete next.value;
+    delete next.literal;
+  }
+  if (type !== 'env') {
+    delete next.envVar;
+  }
+  if (type !== 'session') {
+    delete next.sessionVar;
+  }
+  if (type !== 'expression') {
+    delete next.expression;
+  }
+  return next;
 }
 
 export function buildMappingValue(selection = {}, { preserveType = false } = {}) {

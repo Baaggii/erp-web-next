@@ -2,7 +2,11 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { API_BASE } from '../utils/apiBase.js';
 import { useToast } from '../context/ToastContext.jsx';
 import { MappingFieldSelector } from '../components/PosApiIntegrationSection.jsx';
-import { buildMappingValue, normalizeMappingSelection } from '../utils/posApiFieldSource.js';
+import {
+  buildMappingValue,
+  normalizeMappingSelection,
+  resetMappingFieldsForType,
+} from '../utils/posApiFieldSource.js';
 
 const POSAPI_TRANSACTION_TYPES = [
   { value: 'B2C', label: 'B2C receipt' },
@@ -7952,8 +7956,15 @@ export default function PosApiAdmin() {
           : current.applyToBody !== undefined
             ? current.applyToBody
             : defaultApplyToBody;
+      const sanitizedSelection =
+        selectionInput && typeof selectionInput === 'object'
+          ? resetMappingFieldsForType(
+              selectionInput,
+              selectionInput.type || selectionInput.mode || current.type || current.mode,
+            )
+          : selectionInput;
       const normalizedSelection = normalizeRequestFieldMappingEntry(
-        { ...selectionInput, applyToBody },
+        { ...sanitizedSelection, applyToBody },
         { defaultApplyToBody },
       );
       const nextSelections = { ...prev };
