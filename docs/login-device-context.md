@@ -9,11 +9,9 @@ can be reconciled with device and location metadata.
   `localStorage` so browsers and desktop shells re-use the same value. Native
   apps can swap this for a platform-provided device identifier.
 - `deviceMac` (string): Mirrors `deviceUuid` as a surrogate when a MAC address
-  is unavailable in web environments. Aliased into `device_mac`, `device_id`,
-  and `device_uuid` for compatibility with session logging.
+  is unavailable in web environments.
 - `location` (object): `{ lat, lon }` coordinates gathered from the HTML5
-  Geolocation API. Values default to `null` when missing and are also copied to
-  `location_lat` and `location_lon`.
+  Geolocation API. Values default to `null` when missing.
 
 ## Permissions and fallbacks
 
@@ -21,9 +19,6 @@ can be reconciled with device and location metadata.
   error occurs, the login payload still includes `location: { lat: null, lon: null }`.
 - The device identifier is generated client-side without any MAC lookup, so it
   works on both desktop and mobile web without additional permissions.
-- A nested `device` object is sent alongside top-level identifiers so the
-  backend can map the values into `pos_session` regardless of which alias is
-  expected.
 
 ## Database expectations
 

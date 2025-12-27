@@ -123,31 +123,9 @@ export async function collectDeviceContext() {
     location = null;
   }
 
-  const lat = location?.lat ?? null;
-  const lon = location?.lon ?? null;
-  const deviceMac = deviceUuid || null;
-
   return {
-    deviceUuid,
-    device_uuid: deviceUuid,
-    deviceId: deviceUuid,
-    device_id: deviceUuid,
-    deviceMac,
-    device_mac: deviceMac,
+    deviceUuid: deviceUuid || null,
+    deviceMac: deviceUuid || null,
     location: location || { lat: null, lon: null },
-    location_lat: lat,
-    location_lon: lon,
-    device: {
-      uuid: deviceUuid,
-      deviceUuid,
-      device_uuid: deviceUuid,
-      id: deviceUuid,
-      mac: deviceMac,
-      deviceMac,
-      device_mac: deviceMac,
-      location: location || { lat: null, lon: null },
-      location_lat: lat,
-      location_lon: lon,
-    },
   };
 }
