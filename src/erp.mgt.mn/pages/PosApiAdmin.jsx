@@ -3637,22 +3637,24 @@ export default function PosApiAdmin() {
   );
 
   const requestAggregationFieldOptions = useMemo(() => {
-    if (requestFieldDisplay.state !== 'ok') return [];
     const seen = new Set();
     const fields = [];
-    const sourceItems = visibleRequestFieldItems.length > 0
-      ? visibleRequestFieldItems
-      : requestFieldDisplay.items;
-
-    sourceItems.forEach((entry) => {
-      const field = normalizeHintEntry(entry).field?.trim();
-      if (!field || seen.has(field)) return;
-      seen.add(field);
-      fields.push(field);
+    Object.entries(requestTableColumns).forEach(([table, cols]) => {
+      (cols || []).forEach((col) => {
+        if (!col) return;
+        const value = table ? `${table}.${col}` : col;
+        if (seen.has(value)) return;
+        seen.add(value);
+        fields.push(value);
+      });
     });
-
+    (primaryRequestColumns || []).forEach((col) => {
+      if (!col || seen.has(col)) return;
+      seen.add(col);
+      fields.push(col);
+    });
     return fields;
-  }, [requestFieldDisplay, visibleRequestFieldItems]);
+  }, [primaryRequestColumns, requestTableColumns]);
 
   useEffect(() => {
     let removedTables = 0;
@@ -7491,31 +7493,7 @@ export default function PosApiAdmin() {
       }
       const saved = await res.json();
       const nextRaw = Array.isArray(saved) ? saved : normalizedWithIds;
-      const mergeSavedEndpoint = (endpoint) => {
-        if (!endpoint || endpoint.id !== preparedDefinition.id) return endpoint;
-        const mergedEnvMap = {
-          ...(endpoint.requestEnvMap || {}),
-          ...(preparedDefinition.requestEnvMap || {}),
-        };
-        const mergedFieldMappings = {
-          ...(endpoint.requestFieldMappings || {}),
-          ...(preparedDefinition.requestFieldMappings || {}),
-        };
-        const mergedRequestMappings = {
-          ...(endpoint.requestMappings || {}),
-          ...(preparedDefinition.requestMappings || {}),
-        };
-        const merged = { ...endpoint, ...preparedDefinition };
-        if (Object.keys(mergedEnvMap).length > 0) merged.requestEnvMap = mergedEnvMap;
-        else delete merged.requestEnvMap;
-        if (Object.keys(mergedFieldMappings).length > 0) merged.requestFieldMappings = mergedFieldMappings;
-        else delete merged.requestFieldMappings;
-        if (Object.keys(mergedRequestMappings).length > 0) merged.requestMappings = mergedRequestMappings;
-        else delete merged.requestMappings;
-        return merged;
-      };
-      const mergedRaw = nextRaw.map((entry) => mergeSavedEndpoint(entry));
-      const next = normalizeEndpointList(mergedRaw.map(withEndpointMetadata));
+      const next = normalizeEndpointList(nextRaw.map(withEndpointMetadata));
       setEndpoints(next);
       const selected = next.find((ep) => ep.id === preparedDefinition.id) || preparedDefinition;
       handleSelect(selected.id, selected);
