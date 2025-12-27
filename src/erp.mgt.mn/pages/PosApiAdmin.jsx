@@ -2472,6 +2472,7 @@ function createFormState(definition) {
     testServerUrlProductionEnvVar: testServerUrlProductionField.envVar,
     testServerUrlProductionMode: testServerUrlProductionField.mode,
     authEndpointId: definition.authEndpointId || '',
+    settingsId: definition.settingsId || '',
     docUrl: '',
     posApiType: definition.posApiType || definition.requestBody?.schema?.type || '',
     usage: rawUsage,
@@ -3340,6 +3341,9 @@ export default function PosApiAdmin() {
   const requestSampleSyncRef = useRef(false);
   const refreshInfoSyncLogsRef = useRef(() => Promise.resolve());
   const mountedRef = useRef(true);
+  useEffect(() => {
+    formStateRef.current = formState;
+  }, [formState]);
 
   useEffect(() => () => {
     mountedRef.current = false;
@@ -7273,7 +7277,9 @@ export default function PosApiAdmin() {
     const receiptItemTemplates = receiptItemsEnabled
       ? buildTemplateList(formState.receiptItemTemplates, allowMultipleReceiptItems)
       : [];
-    const settingsId = usage === 'transaction' ? 'defaultTransaction' : '';
+    const settingsId = typeof formState.settingsId === 'string'
+      ? formState.settingsId.trim()
+      : '';
 
     if (requestSchema && typeof requestSchema === 'object' && resolvedPosApiType) {
       requestSchema.type = resolvedPosApiType;
@@ -7398,24 +7404,17 @@ export default function PosApiAdmin() {
       productionServerUrlEnvVar: productionServerUrlField.envVar,
       productionServerUrlMode: productionServerUrlField.mode,
       testServerUrlProduction: testServerUrlProductionField.literal,
-      testServerUrlProductionEnvVar: testServerUrlProductionField.envVar,
-      testServerUrlProductionMode: testServerUrlProductionField.mode,
-      urlEnvMap,
-      authEndpointId: formState.authEndpointId || '',
-    };
+    testServerUrlProductionEnvVar: testServerUrlProductionField.envVar,
+    testServerUrlProductionMode: testServerUrlProductionField.mode,
+    urlEnvMap,
+    authEndpointId: formState.authEndpointId || '',
+  };
 
-    if (settingsId) {
-      delete endpoint.supportsMultipleReceipts;
-      delete endpoint.supportsMultiplePayments;
-      delete endpoint.receiptTypes;
-      delete endpoint.paymentMethods;
-    }
-
-    const existingIds = new Set(
-      endpoints
-        .filter((ep) => ep?.id && ep.id !== selectedId && ep.id !== endpoint.id)
-        .map((ep) => ep.id),
-    );
+  const existingIds = new Set(
+    endpoints
+      .filter((ep) => ep?.id && ep.id !== selectedId && ep.id !== endpoint.id)
+      .map((ep) => ep.id),
+  );
     validateEndpoint(endpoint, existingIds, selectedId || endpoint.id);
 
     return endpoint;
