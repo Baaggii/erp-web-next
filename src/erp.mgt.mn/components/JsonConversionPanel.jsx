@@ -198,7 +198,7 @@ export default function JsonConversionPanel() {
         setPreviews(data.previews || []);
         setScriptText(data.scriptText || '');
         setBlockedColumns(data.blockedColumns || []);
-        const reason = data?.message || 'Conversion failed';
+        const reason = data?.message || 'Conversion failed while dropping/reapplying constraints';
         addToast(reason, 'error');
         return;
       }
@@ -206,7 +206,11 @@ export default function JsonConversionPanel() {
       setScriptText(data.scriptText || '');
       setBlockedColumns(data.blockedColumns || []);
       setErrorDetails(null);
-      addToast('Conversion script generated', 'success');
+      if (data.executed) {
+        addToast('Constraints dropped/reapplied and conversion executed successfully.', 'success');
+      } else {
+        addToast('Conversion script generated; run to drop constraints and apply changes.', 'info');
+      }
       const scripts = await fetch('/api/json_conversion/scripts', { credentials: 'include' })
         .then((r) => (r.ok ? r.json() : { scripts: [] }))
         .catch(() => ({ scripts: [] }));
