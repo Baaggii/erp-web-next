@@ -27,6 +27,7 @@ function normalizeRelation(relation = {}) {
   const targetColumn = relation.column ?? relation.targetColumn;
   const idField = relation.idField ?? relation.id_field;
   const displayFields = relation.displayFields ?? relation.display_fields;
+  const isArray = relation.isArray ?? relation.jsonField ?? relation.json_field;
   const combinationSource =
     relation.combinationSourceColumn ?? relation.combination_source_column;
   const combinationTarget =
@@ -44,6 +45,10 @@ function normalizeRelation(relation = {}) {
   }
 
   const normalized = { table: tableStr, column: columnStr };
+  if (typeof isArray === 'boolean') {
+    normalized.isArray = isArray;
+    normalized.jsonField = isArray;
+  }
   if (typeof idField === 'string' && idField.trim()) {
     normalized.idField = idField.trim();
   }

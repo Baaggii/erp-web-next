@@ -36,6 +36,7 @@ import snapshotArtifactRoutes from "./routes/report_snapshot_artifacts.js";
 import reportApprovalRoutes from "./routes/report_approvals.js";
 import posApiEndpointRoutes from "./routes/posapi_endpoints.js";
 import posApiProxyRoutes from "./routes/posapi_proxy.js";
+import metaRoutes from "./routes/meta.js";
 
 // Polyfill for __dirname in ES modules
 const __filename = fileURLToPath(import.meta.url);
@@ -103,6 +104,7 @@ app.use("/api/general_config", generalConfigRoutes);
 app.use("/api/config", configRoutes);
 app.use("/api/permissions", permissionsRoutes);
 app.use("/api/tenant_tables", tenantTablesRoutes);
+app.use("/api/meta", metaRoutes);
 app.use("/api/translations/generate", translationGeneratorRoutes);
 app.use("/api/report_access", reportAccessRoutes);
 app.use("/api/tours", tourRoutes);
