@@ -1545,7 +1545,15 @@ function serializeRequestMappings(selections = {}) {
   }, {});
 }
 
-function normalizeRequestFieldMappingMap(map, requestEnvMap = {}, { defaultApplyToBody = true } = {}) {
+function normalizeRequestFieldMappingMap(
+  map,
+  requestEnvMap = {},
+  { defaultApplyToBody = true, defaultApplyToBodyMap = null } = {},
+) {
+  const resolveApplyDefault = (fieldPath) =>
+    (defaultApplyToBodyMap && defaultApplyToBodyMap.has(fieldPath)
+      ? defaultApplyToBodyMap.get(fieldPath)
+      : defaultApplyToBody);
   const normalizedEnvMap =
     requestEnvMap && typeof requestEnvMap === 'object' && !Array.isArray(requestEnvMap)
       ? { ...requestEnvMap }
@@ -1556,13 +1564,14 @@ function normalizeRequestFieldMappingMap(map, requestEnvMap = {}, { defaultApply
     Object.entries(normalizedEnvMap).forEach(([fieldPath, envEntry]) => {
       const envVar = typeof envEntry === 'string' ? envEntry : envEntry?.envVar;
       if (!envVar) return;
+      const applyDefault = resolveApplyDefault(fieldPath);
       normalizedMappings[fieldPath] = {
         type: 'env',
         envVar,
         applyToBody:
           envEntry && typeof envEntry === 'object' && 'applyToBody' in envEntry
             ? Boolean(envEntry.applyToBody)
-            : defaultApplyToBody,
+            : applyDefault,
       };
     });
     return { mappings: normalizedMappings, envMap: normalizedEnvMap };
@@ -1570,7 +1579,8 @@ function normalizeRequestFieldMappingMap(map, requestEnvMap = {}, { defaultApply
 
   entries.forEach(([fieldPath, entry]) => {
     if (!fieldPath) return;
-    const normalized = normalizeRequestFieldMappingEntry(entry, { defaultApplyToBody });
+    const applyDefault = resolveApplyDefault(fieldPath);
+    const normalized = normalizeRequestFieldMappingEntry(entry, { defaultApplyToBody: applyDefault });
     if (!normalized || !hasMappingValue(normalized)) return;
     normalizedMappings[fieldPath] = normalized;
     if (normalized.type === 'env' && normalized.envVar) {
@@ -2352,6 +2362,17 @@ function createFormState(definition) {
   const hasRequestSchema = hasObjectEntries(definition.requestBody?.schema);
   const requestSchema = hasRequestSchema ? definition.requestBody.schema : {};
   const requestSchemaFallback = '{}';
+  const parametersText = toPrettyJson(definition.parameters, '[]');
+  const requestFieldsText = toPrettyJson(
+    sanitizeRequestHints(
+      mergeRequestFieldHints(definition.requestFields || [], variationFieldHints),
+    ),
+    '[]',
+  );
+  const requestFieldDisplayForDefaults = buildRequestFieldDisplayFromState({
+    requestFieldsText,
+    parametersText,
+  });
   const rawRequestSample = parseExamplePayload(
     definition.requestSample
       || definition.requestBody?.example
@@ -2388,8 +2409,13 @@ function createFormState(definition) {
   const testServerUrlField = buildUrlFieldState('testServerUrl');
   const productionServerUrlField = buildUrlFieldState('productionServerUrl');
   const testServerUrlProductionField = buildUrlFieldState('testServerUrlProduction');
+  const applyToBodyDefaults = buildApplyToBodyDefaultMap(
+    requestFieldDisplayForDefaults.state === 'ok' ? requestFieldDisplayForDefaults.items : [],
+  );
   const { mappings: requestFieldMappings, envMap: normalizedRequestEnvMap } =
-    normalizeRequestFieldMappingMap(definition.requestFieldMappings, definition.requestEnvMap);
+    normalizeRequestFieldMappingMap(definition.requestFieldMappings, definition.requestEnvMap, {
+      defaultApplyToBodyMap: applyToBodyDefaults,
+    });
 
   return {
     id: definition.id || '',
@@ -2397,7 +2423,7 @@ function createFormState(definition) {
     category: definition.category || '',
     method: definition.method || 'GET',
     path: definition.path || '',
-    parametersText: toPrettyJson(definition.parameters, '[]'),
+    parametersText,
     requestDescription: definition.requestBody?.description || '',
     requestSampleText: toPrettyJson(
       requestSamplePayload && Object.keys(requestSamplePayload).length > 0
@@ -2410,12 +2436,7 @@ function createFormState(definition) {
     responseDescription: definition.responseBody?.description || '',
     responseSchemaText: toPrettyJson(definition.responseBody?.schema, '{}'),
     fieldDescriptionsText: toPrettyJson(definition.fieldDescriptions, '{}'),
-    requestFieldsText: toPrettyJson(
-      sanitizeRequestHints(
-        mergeRequestFieldHints(definition.requestFields || [], variationFieldHints),
-      ),
-      '[]',
-    ),
+    requestFieldsText,
     responseFieldsText: toPrettyJson(definition.responseFields, '[]'),
     examplesText: toPrettyJson(definition.examples, '[]'),
     variations,
@@ -8001,36 +8022,6 @@ export default function PosApiAdmin() {
       const serialized = serializeRequestFieldSelections(nextSelections, {
         defaultApplyToBodyMap: applyDefaults,
       });
-      setFormState((prevState) => ({
-        ...prevState,
-        requestEnvMap: buildRequestEnvMap(nextSelections),
-        requestFieldMappings: serialized,
-        requestMappings: serializeRequestMappings(nextSelections),
-      }));
-      return nextSelections;
-    });
-  }
-
-  function setApplyToBodyForAll(applyToBody) {
-    setRequestFieldValues((prev) => {
-      const nextSelections = { ...prev };
-      let changed = false;
-      visibleRequestFieldItems.forEach((entry) => {
-        const normalized = normalizeHintEntry(entry);
-        const fieldPath = normalized.field;
-        if (!fieldPath) return;
-        const defaultApplyToBody = entry.source !== 'parameter';
-        const existing = nextSelections[fieldPath] || {};
-        const normalizedExisting = normalizeRequestFieldMappingEntry(existing, { defaultApplyToBody });
-        const currentApply = normalizedExisting?.applyToBody ?? defaultApplyToBody;
-        if (currentApply === applyToBody) return;
-        nextSelections[fieldPath] = { ...existing, applyToBody };
-        changed = true;
-      });
-      if (!changed) return prev;
-
-      syncRequestSampleFromSelections(nextSelections);
-      const serialized = serializeRequestFieldSelections(nextSelections);
       setFormState((prevState) => ({
         ...prevState,
         requestEnvMap: buildRequestEnvMap(nextSelections),
