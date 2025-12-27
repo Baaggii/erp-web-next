@@ -18,20 +18,6 @@ import extractCombinationFilterValue from '../utils/extractCombinationFilterValu
 import useGeneralConfig from '../hooks/useGeneralConfig.js';
 import { API_BASE } from '../utils/apiBase.js';
 
-function parseJsonArray(value) {
-  if (Array.isArray(value)) return value.filter((v) => v !== undefined);
-  if (value === null || value === undefined || value === '') return [];
-  if (typeof value === 'string') {
-    try {
-      const parsed = JSON.parse(value);
-      if (Array.isArray(parsed)) return parsed.filter((v) => v !== undefined);
-    } catch {
-      return [];
-    }
-  }
-  return [];
-}
-
 const DEFAULT_RECEIPT_TYPES = ['B2C', 'B2B_SALE', 'B2B_PURCHASE', 'STOCK_QR'];
 
 function normalizeRelationOptionKey(value) {
@@ -668,19 +654,6 @@ const RowFormModal = function RowFormModal({
     () => JSON.stringify(defaultValues || {}),
     [defaultValues],
   );
-  const jsonMetaSet = React.useMemo(
-    () => new Set(jsonMetaColumns.map((c) => String(c).toLowerCase())),
-    [jsonMetaColumns],
-  );
-  const isJsonField = useCallback(
-    (name) => {
-      if (!name) return false;
-      const lower = String(name).toLowerCase();
-      if (fieldTypeMap[name] === 'json') return true;
-      return jsonMetaSet.has(lower);
-    },
-    [fieldTypeMap, jsonMetaSet],
-  );
   const generatedColumnEvaluators = React.useMemo(() => {
     const map = {};
     if (!Array.isArray(tableColumns)) return map;
@@ -705,7 +678,6 @@ const RowFormModal = function RowFormModal({
     const now = new Date();
     columns.forEach((c) => {
       const typ = fieldTypeMap[c];
-      const jsonField = isJsonField(c);
       let placeholder = '';
       if (typ === 'time') {
         placeholder = 'HH:MM:SS';
@@ -718,9 +690,7 @@ const RowFormModal = function RowFormModal({
       const missing =
         !row || rowValue === undefined || rowValue === '';
       let val;
-      if (jsonField) {
-        val = parseJsonArray(sourceValue);
-      } else if (placeholder) {
+      if (placeholder) {
         val = normalizeDateInput(String(sourceValue ?? ''), placeholder);
       } else if (typ === 'number') {
         val = formatNumericValue(c, sourceValue);
@@ -745,8 +715,6 @@ const RowFormModal = function RowFormModal({
       }
       if (typ === 'number') {
         val = formatNumericValue(c, val);
-      } else if (jsonField) {
-        val = Array.isArray(val) ? val : parseJsonArray(val);
       } else if (placeholder) {
         val = normalizeDateInput(String(val ?? ''), placeholder);
       } else if (val === null || val === undefined) {
@@ -1783,8 +1751,6 @@ const RowFormModal = function RowFormModal({
   const [seedOptions, setSeedOptions] = useState([]);
   const [seedRecordOptions, setSeedRecordOptions] = useState({});
   const [openSeed, setOpenSeed] = useState({});
-  const [jsonMetaColumns, setJsonMetaColumns] = useState([]);
-  const [jsonDraftInputs, setJsonDraftInputs] = useState({});
   const alreadyRequestedRef = useRef(new Set());
 
   useEffect(() => {
@@ -1792,46 +1758,6 @@ const RowFormModal = function RowFormModal({
       alreadyRequestedRef.current.clear();
     }
   }, [visible]);
-
-  useEffect(() => {
-    if (!table) {
-      setJsonMetaColumns([]);
-      return;
-    }
-    let canceled = false;
-    fetch(`/api/meta?table=${encodeURIComponent(table)}`, {
-      credentials: 'include',
-    })
-      .then((res) => (res.ok ? res.json() : []))
-      .then((data) => {
-        if (canceled) return;
-        const cols = Array.isArray(data) ? data : [];
-        const jsonCols = cols
-          .filter((col) => col && typeof col === 'object')
-          .filter((col) => {
-            const typ = (
-              col.type ||
-              col.dataType ||
-              col.columnType ||
-              col.DATA_TYPE ||
-              ''
-            )
-              .toString()
-              .toLowerCase();
-            const comment = (col.columnComment || col.comment || '').toString().toLowerCase();
-            return typ.includes('json') || comment.includes('json_array');
-          })
-          .map((col) => col.name)
-          .filter(Boolean);
-        setJsonMetaColumns(jsonCols);
-      })
-      .catch(() => {
-        if (!canceled) setJsonMetaColumns([]);
-      });
-    return () => {
-      canceled = true;
-    };
-  }, [table]);
 
   useEffect(() => {
     if (visible && !prevVisibleRef.current) {
@@ -3017,14 +2943,9 @@ const RowFormModal = function RowFormModal({
       }
       const normalized = {};
       Object.entries(merged).forEach(([k, v]) => {
-        let val = v;
-        if (isJsonField(k)) {
-          val = JSON.stringify(parseJsonArray(val));
-        } else {
-          val = normalizeDateInput(v, placeholders[k]);
-          if (totalAmountSet.has(k) || totalCurrencySet.has(k)) {
-            val = normalizeNumberInput(val);
-          }
+        let val = normalizeDateInput(v, placeholders[k]);
+        if (totalAmountSet.has(k) || totalCurrencySet.has(k)) {
+          val = normalizeNumberInput(val);
         }
         normalized[k] = val;
       });
@@ -3075,14 +2996,9 @@ const RowFormModal = function RowFormModal({
         const normalized = {};
         Object.entries(r).forEach(([k, v]) => {
           const raw = typeof v === 'object' && v !== null && 'value' in v ? v.value : v;
-          let val = raw;
-          if (isJsonField(k)) {
-            val = JSON.stringify(parseJsonArray(val));
-          } else {
-            val = normalizeDateInput(raw, placeholders[k]);
-            if (totalAmountSet.has(k) || totalCurrencySet.has(k)) {
-              val = normalizeNumberInput(val);
-            }
+          let val = normalizeDateInput(raw, placeholders[k]);
+          if (totalAmountSet.has(k) || totalCurrencySet.has(k)) {
+            val = normalizeNumberInput(val);
           }
           normalized[k] = val;
         });
@@ -3172,10 +3088,7 @@ const RowFormModal = function RowFormModal({
     requiredFields.forEach((f) => {
       if (
         columns.includes(f) &&
-        (formVals[f] === '' ||
-          formVals[f] === null ||
-          formVals[f] === undefined ||
-          (isJsonField(f) && Array.isArray(formVals[f]) && formVals[f].length === 0))
+        (formVals[f] === '' || formVals[f] === null || formVals[f] === undefined)
       ) {
         errs[f] = 'Утга оруулна уу';
       }
@@ -3193,14 +3106,9 @@ const RowFormModal = function RowFormModal({
       }
       const normalized = {};
       Object.entries(merged).forEach(([k, v]) => {
-        let val = v;
-        if (isJsonField(k)) {
-          val = JSON.stringify(parseJsonArray(val));
-        } else {
-          val = normalizeDateInput(v, placeholders[k]);
-          if (totalAmountSet.has(k) || totalCurrencySet.has(k)) {
-            val = normalizeNumberInput(val);
-          }
+        let val = normalizeDateInput(v, placeholders[k]);
+        if (totalAmountSet.has(k) || totalCurrencySet.has(k)) {
+          val = normalizeNumberInput(val);
         }
         normalized[k] = val;
       });
@@ -3236,7 +3144,6 @@ const RowFormModal = function RowFormModal({
         ? '1'
         : (1 / 10 ** numericScale).toFixed(numericScale);
     const isNumericField = fieldTypeMap[c] === 'number';
-    const isJson = isJsonField(c);
     const autoSelectForField = getAutoSelectConfig(c);
     const resolvedRelationConfig = relationConfigMap[c] || autoSelectForField?.config;
 
@@ -3244,9 +3151,6 @@ const RowFormModal = function RowFormModal({
       const raw = isColumn ? formVals[c] : extraVals[c];
       const val = typeof raw === 'object' && raw !== null ? raw.value : raw;
       let display = typeof raw === 'object' && raw !== null ? raw.label || val : val;
-      if (isJsonField(c) && Array.isArray(raw)) {
-        display = raw.join(', ');
-      }
       const normalizedValueKey = normalizeRelationOptionKey(val);
       let resolvedOptionLabel = false;
       const labelMap =
@@ -3352,128 +3256,7 @@ const RowFormModal = function RowFormModal({
       );
     }
 
-    const control = isJson ? (
-      (() => {
-        const jsonValue = Array.isArray(formVals[c])
-          ? formVals[c]
-          : parseJsonArray(formVals[c]);
-        if (resolvedRelationConfig && (resolvedRelationConfig.isArray || resolvedRelationConfig.jsonField)) {
-          const conf = resolvedRelationConfig;
-          const comboFilters =
-            autoSelectForField?.filters ?? resolveCombinationFilters(c, conf);
-          const hasCombination = Boolean(
-            conf?.combinationSourceColumn && conf?.combinationTargetColumn,
-          );
-          const combinationReady =
-            autoSelectForField?.combinationReady ??
-            isCombinationFilterReady(hasCombination, conf?.combinationTargetColumn, comboFilters);
-          return (
-            formVisible && (
-              <AsyncSearchSelect
-                title={tip}
-                table={conf.table}
-                searchColumn={conf.idField || conf.column}
-                searchColumns={[conf.idField || conf.column, ...(conf.displayFields || [])]}
-                labelFields={conf.displayFields || []}
-                value={jsonValue}
-                isMulti
-                onChange={(vals) => {
-                  const nextVals = Array.isArray(vals)
-                    ? vals.filter((v) => v !== undefined && v !== null && v !== '')
-                    : [];
-                  notifyAutoResetGuardOnEdit(c);
-                  setFormValuesWithGenerated((prev) => {
-                    if (valuesEqual(prev[c], nextVals)) return prev;
-                    return { ...prev, [c]: nextVals };
-                  });
-                  setErrors((er) => ({ ...er, [c]: undefined }));
-                }}
-                disabled={disabled}
-                onKeyDown={(e) => handleKeyDown(e, c)}
-                onFocus={(e) => {
-                  handleFocusField(c);
-                  e.target.style.width = 'auto';
-                  const w = Math.min(e.target.scrollWidth + 2, boxMaxWidth);
-                  e.target.style.width = `${Math.max(boxWidth, w)}px`;
-                }}
-                inputRef={(el) => (inputRefs.current[c] = el)}
-                inputStyle={inputStyle}
-                companyId={company}
-                filters={comboFilters || undefined}
-                shouldFetch={combinationReady}
-              />
-            )
-          );
-        }
-        const draft = jsonDraftInputs[c] ?? '';
-        const addTag = (tag) => {
-          const text = String(tag ?? '').trim();
-          if (!text) return;
-          const next = [...jsonValue, text];
-          notifyAutoResetGuardOnEdit(c);
-          setFormValuesWithGenerated((prev) => {
-            if (valuesEqual(prev[c], next)) return prev;
-            return { ...prev, [c]: next };
-          });
-          setJsonDraftInputs((state) => ({ ...state, [c]: '' }));
-          setErrors((er) => ({ ...er, [c]: undefined }));
-        };
-        const removeTag = (idx) => {
-          const next = jsonValue.filter((_, i) => i !== idx);
-          notifyAutoResetGuardOnEdit(c);
-          setFormValuesWithGenerated((prev) => {
-            if (valuesEqual(prev[c], next)) return prev;
-            return { ...prev, [c]: next };
-          });
-        };
-        return (
-          <div className="border rounded px-2 py-1" style={inputStyle}>
-            <div className="flex flex-wrap gap-1 mb-1">
-              {jsonValue.map((val, idx) => (
-                <span
-                  key={`${val}-${idx}`}
-                  className="inline-flex items-center bg-gray-200 px-2 py-0.5 rounded"
-                >
-                  <span>{String(val)}</span>
-                  <button
-                    type="button"
-                    className="ml-1 text-red-500"
-                    onClick={(e) => {
-                      e.preventDefault();
-                      removeTag(idx);
-                    }}
-                  >
-                    ×
-                  </button>
-                </span>
-              ))}
-            </div>
-            <input
-              title={tip}
-              ref={(el) => (inputRefs.current[c] = el)}
-              value={draft}
-              onChange={(e) =>
-                setJsonDraftInputs((state) => ({ ...state, [c]: e.target.value }))
-              }
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' || e.key === ',') {
-                  e.preventDefault();
-                  addTag(e.target.value);
-                } else {
-                  handleKeyDown(e, c);
-                }
-              }}
-              onFocus={(e) => {
-                e.target.select();
-                handleFocusField(c);
-              }}
-              placeholder={placeholders[c] || ''}
-              className={inputClass}
-            />
-          </div>
-        );
-      })()
-    ) : resolvedRelationConfig ? (
+    const control = resolvedRelationConfig ? (
       (() => {
         const conf = resolvedRelationConfig;
         const comboFilters =

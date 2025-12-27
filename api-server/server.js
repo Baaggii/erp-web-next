@@ -62,7 +62,6 @@ import manualTranslationsRoutes from "./routes/manual_translations.js";
 import posApiEndpointRoutes from "./routes/posapi_endpoints.js";
 import posApiProxyRoutes from "./routes/posapi_proxy.js";
 import posApiReferenceCodeRoutes from "./routes/posapi_reference_codes.js";
-import metaRoutes from "./routes/meta.js";
 
 // Polyfill for __dirname in ES modules
 const __filename = fileURLToPath(import.meta.url);
@@ -183,7 +182,6 @@ app.use("/api/report_snapshot_artifacts", snapshotArtifactRoutes);
 app.use("/api/user/settings", userSettingsRoutes);
 app.use("/api/user_activity_log", activityLogRoutes);
 app.use("/api/translations", translationRoutes);
-app.use("/api/meta", metaRoutes);
 app.use("/api/posapi/endpoints", posApiEndpointRoutes);
 app.use("/api/posapi/proxy", posApiProxyRoutes);
 app.use("/api/posapi/reference-codes", posApiReferenceCodeRoutes);

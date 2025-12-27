@@ -123,7 +123,6 @@ export async function getTableRelations(req, res, next) {
             ...(Array.isArray(relation.displayFields)
               ? { displayFields: relation.displayFields }
               : {}),
-            ...(relation.isArray ? { isArray: true, jsonField: true } : {}),
             ...(relation.combinationSourceColumn
               ? { combinationSourceColumn: relation.combinationSourceColumn }
               : {}),
@@ -341,7 +340,7 @@ export async function deleteCustomTableRelation(req, res, next) {
 
 export async function getTableColumnsMeta(req, res, next) {
   try {
-    const companyId = Number(req.query?.companyId ?? req.user?.companyId ?? 0);
+    const companyId = Number(req.query.companyId ?? req.user?.companyId ?? 0);
     const cols = await listTableColumnMeta(req.params.table, companyId);
     let candidateKey = [];
     try {
@@ -375,20 +374,6 @@ export async function getTableColumnsMeta(req, res, next) {
       };
     });
     res.json(normalized);
-  } catch (err) {
-    next(err);
-  }
-}
-
-export async function getTableMeta(req, res, next) {
-  try {
-    const table = req.query?.table || req.query?.tbl || req.params.table;
-    if (!table) {
-      return res.status(400).json({ message: 'table is required' });
-    }
-    const companyId = Number(req.query?.companyId ?? req.user?.companyId ?? 0);
-    const cols = await listTableColumnMeta(table, companyId);
-    res.json(cols);
   } catch (err) {
     next(err);
   }
