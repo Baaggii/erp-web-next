@@ -11,8 +11,6 @@ import {
   REQUIRED_BADGE_STYLE,
   OPTIONAL_BADGE_STYLE,
   withPosApiEndpointMetadata,
-  formatPosApiTypeLabel,
-  formatPosApiTypeLabelText,
 } from '../utils/posApiConfig.js';
 import {
   buildMappingValue,
@@ -902,11 +900,6 @@ export default function PosApiIntegrationSection({
     return [];
   }, [selectedEndpoint, receiptTypesFeatureEnabled]);
 
-  const configuredReceiptTypes = useMemo(() => {
-    if (!receiptTypesFeatureEnabled) return [];
-    return sanitizeSelectionList(config.posApiReceiptTypes, receiptTypesAllowMultiple);
-  }, [config.posApiReceiptTypes, receiptTypesFeatureEnabled, receiptTypesAllowMultiple]);
-
   const endpointReceiptTaxTypes = useMemo(() => {
     if (!receiptTaxTypesFeatureEnabled) return [];
     if (
@@ -931,24 +924,6 @@ export default function PosApiIntegrationSection({
     receiptTaxTypesAllowMultiple,
   ]);
 
-  const effectiveReceiptTypes = useMemo(() => {
-    if (!receiptTypesFeatureEnabled) return [];
-    return configuredReceiptTypes.length ? configuredReceiptTypes : endpointReceiptTypes;
-  }, [configuredReceiptTypes, endpointReceiptTypes, receiptTypesFeatureEnabled]);
-
-  const receiptTypeUniverse = useMemo(() => {
-    if (!receiptTypesFeatureEnabled) return [];
-    const allowed = new Set((endpointReceiptTypes || []).filter(Boolean));
-    const combined = Array.from(
-      new Set([...endpointReceiptTypes, ...configuredReceiptTypes].filter((value) => value)),
-    );
-    const filtered = combined.filter(
-      (value) => allowed.has(value) || configuredReceiptTypes.includes(value),
-    );
-    if (filtered.length) return filtered;
-    return endpointReceiptTypes;
-  }, [endpointReceiptTypes, configuredReceiptTypes, receiptTypesFeatureEnabled]);
-
   const effectiveReceiptTaxTypes = useMemo(() => {
     if (!receiptTaxTypesFeatureEnabled) return [];
     return configuredReceiptTaxTypes.length
@@ -959,19 +934,6 @@ export default function PosApiIntegrationSection({
     endpointReceiptTaxTypes,
     receiptTaxTypesFeatureEnabled,
   ]);
-
-  const receiptTaxTypeUniverse = useMemo(() => {
-    if (!receiptTaxTypesFeatureEnabled) return [];
-    const allowed = new Set((endpointReceiptTaxTypes || []).filter(Boolean));
-    const combined = Array.from(
-      new Set([...endpointReceiptTaxTypes, ...configuredReceiptTaxTypes].filter((value) => value)),
-    );
-    const filtered = combined.filter(
-      (value) => allowed.has(value) || configuredReceiptTaxTypes.includes(value),
-    );
-    if (filtered.length) return filtered;
-    return endpointReceiptTaxTypes;
-  }, [endpointReceiptTaxTypes, configuredReceiptTaxTypes, receiptTaxTypesFeatureEnabled]);
 
   const endpointPaymentMethods = useMemo(() => {
     if (!paymentMethodsFeatureEnabled) return [];
@@ -1519,60 +1481,6 @@ export default function PosApiIntegrationSection({
     });
   };
 
-  const toggleReceiptTypeSelection = (value) => {
-    if (!receiptTypesFeatureEnabled) return;
-    const normalized = typeof value === 'string' ? value.trim() : '';
-    if (!normalized) return;
-    setConfig((c) => {
-      const current = Array.isArray(c.posApiReceiptTypes)
-        ? c.posApiReceiptTypes.filter((entry) => typeof entry === 'string' && entry.trim())
-        : [];
-      const selectedSet = new Set(current);
-      if (selectedSet.has(normalized)) {
-        selectedSet.delete(normalized);
-      } else {
-        if (receiptTypesAllowMultiple) {
-          selectedSet.add(normalized);
-        } else {
-          selectedSet.clear();
-          selectedSet.add(normalized);
-        }
-      }
-      const ordered = endpointReceiptTypes.filter((entry) => selectedSet.has(entry));
-      const leftovers = Array.from(selectedSet).filter(
-        (entry) => !endpointReceiptTypes.includes(entry),
-      );
-      return { ...c, posApiReceiptTypes: [...ordered, ...leftovers] };
-    });
-  };
-
-  const toggleReceiptTaxTypeSelection = (value) => {
-    if (!receiptTaxTypesFeatureEnabled) return;
-    const normalized = typeof value === 'string' ? value.trim() : '';
-    if (!normalized) return;
-    setConfig((c) => {
-      const current = Array.isArray(c.posApiReceiptTaxTypes)
-        ? c.posApiReceiptTaxTypes.filter((entry) => typeof entry === 'string' && entry.trim())
-        : [];
-      const selectedSet = new Set(current);
-      if (selectedSet.has(normalized)) {
-        selectedSet.delete(normalized);
-      } else {
-        if (receiptTaxTypesAllowMultiple) {
-          selectedSet.add(normalized);
-        } else {
-          selectedSet.clear();
-          selectedSet.add(normalized);
-        }
-      }
-      const ordered = endpointReceiptTaxTypes.filter((entry) => selectedSet.has(entry));
-      const leftovers = Array.from(selectedSet).filter(
-        (entry) => !endpointReceiptTaxTypes.includes(entry),
-      );
-      return { ...c, posApiReceiptTaxTypes: [...ordered, ...leftovers] };
-    });
-  };
-
   const togglePaymentMethodSelection = (value) => {
     if (!paymentMethodsFeatureEnabled) return;
     const normalized = typeof value === 'string' ? value.trim() : '';
@@ -1850,42 +1758,6 @@ export default function PosApiIntegrationSection({
       )}
       {config.posApiEnabled && (
         <>
-      {receiptTypesFeatureEnabled && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-          <div>
-            <strong>Receipt types</strong>
-            <p style={{ fontSize: '0.85rem', color: '#555' }}>
-              Enable the POSAPI receipt types available for this form. Leave all selected to allow
-              automatic detection.
-            </p>
-            <div
-              style={{
-                display: 'flex',
-                flexWrap: 'wrap',
-                gap: '0.75rem',
-                alignItems: 'flex-start',
-              }}
-            >
-              {receiptTypeUniverse.map((type) => {
-                const checked = effectiveReceiptTypes.includes(type);
-                const inputType = receiptTypesAllowMultiple ? 'checkbox' : 'radio';
-                return (
-                  <label
-                    key={`pos-receipt-type-${type}`}
-                    style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}
-                  >
-                    <input
-                      type={inputType}
-                      checked={checked}
-                      onChange={() => toggleReceiptTypeSelection(type)}
-                      disabled={!config.posApiEnabled}
-                    />
-                    <span>{formatPosApiTypeLabelText(type)}</span>
-                  </label>
-                );
-              })}
-            </div>
-          </div>
           {paymentMethodsFeatureEnabled && (
             <div>
               <strong>Payment methods</strong>
@@ -1922,178 +1794,119 @@ export default function PosApiIntegrationSection({
               </div>
             </div>
           )}
-        </div>
-      )}
-      {receiptTaxTypesFeatureEnabled && (
-        <div style={{ marginTop: '1rem' }}>
-          <strong>Receipt tax types</strong>
-          <p style={{ fontSize: '0.85rem', color: '#555' }}>
-            Restrict the tax-type codes that can be assigned to generated receipts. Leave all
-            selected to allow automatic detection.
-          </p>
-          <div
+          <label
             style={{
               display: 'flex',
-              flexWrap: 'wrap',
-              gap: '0.75rem',
-              alignItems: 'flex-start',
+              flexDirection: 'column',
+              gap: '0.25rem',
+              marginBottom: '0.75rem',
             }}
           >
-            {receiptTaxTypeUniverse.map((taxType) => {
-              const checked = effectiveReceiptTaxTypes.includes(taxType);
-              const inputType = receiptTaxTypesAllowMultiple ? 'checkbox' : 'radio';
-              return (
-                <label
-                  key={`pos-receipt-tax-${taxType}`}
-                  style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}
-                >
-                  <input
-                    type={inputType}
-                    checked={checked}
-                    onChange={() => toggleReceiptTaxTypeSelection(taxType)}
-                    disabled={!config.posApiEnabled}
-                  />
-                  <span>{taxType.replace(/_/g, ' ')}</span>
-                </label>
-              );
-            })}
-          </div>
-        </div>
-      )}
-      <label
-        style={{
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '0.25rem',
-          marginBottom: '0.75rem',
-        }}
-      >
-        <span style={{ fontWeight: 600 }}>Capture response fields</span>
-        <textarea
-          rows={3}
-          value={fieldsFromPosApiText}
-          onChange={(e) => handleFieldsFromPosApiChange(e.target.value)}
-          placeholder={'id\nlottery\nqrData'}
-          disabled={!config.posApiEnabled}
-          style={{ fontFamily: 'monospace', resize: 'vertical' }}
-        />
-        <small style={{ color: '#666' }}>
-          One field path per line (e.g., receipts[0].billId) to persist on the transaction record.
-        </small>
-      </label>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginBottom: '0.75rem' }}>
-        <strong>Response field mapping</strong>
-        <p style={{ fontSize: '0.85rem', color: '#555' }}>
-          Response fields are mapped according to the POSAPI endpoint definition. Configure mappings
-          from the POS API endpoints screen.
-        </p>
-      </div>
-      <div>
-        <strong>Field mapping</strong>
-        <p style={{ fontSize: '0.85rem', color: '#555' }}>
-          Map POSAPI fields to columns in the master transaction table. Leave blank to skip optional
-          fields.
-        </p>
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '0.5rem',
-            marginBottom: '0.5rem',
-            flexWrap: 'wrap',
-          }}
-        >
-          <input
-            type="text"
-            value={fieldFilter}
-            onChange={(e) => setFieldFilter(e.target.value)}
-            placeholder="Search fields or paths"
-            style={{ flex: '1 1 220px', minWidth: '220px' }}
-          />
-          <button
-            type="button"
-            onClick={handleResetFieldMappings}
-            disabled={!config.posApiEnabled || !endpointRequestMappingDefaults}
-            style={{ padding: '0.35rem 0.6rem' }}
-          >
-            Reset to endpoint mappings
-          </button>
-          <small style={{ color: '#666' }}>Filters across top-level and nested objects.</small>
-        </div>
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
-            gap: '0.75rem',
-            marginTop: '0.5rem',
-          }}
-        >
-          {filteredPrimaryFields.map((field) => {
-            const listId = `posapi-${field.key}-columns`;
-            const hint = topLevelFieldHints[field.key] || {};
-            const isRequired = Boolean(hint.required);
-            const description = hint.description;
-            const mappedValue = config.posApiMapping?.[field.key];
-            const missingRequired = isRequired && !isMappingProvided(mappedValue);
-            return (
-              <label
-                key={field.key}
-                style={{
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: '0.25rem',
-                  border: missingRequired ? '1px solid #ef4444' : '1px solid transparent',
-                  borderRadius: '8px',
-                  padding: missingRequired ? '0.5rem' : 0,
-                }}
-              >
-                <span
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '0.5rem',
-                    fontWeight: 600,
-                    color: '#0f172a',
-                  }}
-                >
-                  {field.label}
-                  <span
+            <span style={{ fontWeight: 600 }}>Capture response fields</span>
+            <textarea
+              rows={3}
+              value={fieldsFromPosApiText}
+              onChange={(e) => handleFieldsFromPosApiChange(e.target.value)}
+              placeholder={'id\nlottery\nqrData'}
+              disabled={!config.posApiEnabled}
+              style={{ fontFamily: 'monospace', resize: 'vertical' }}
+            />
+            <small style={{ color: '#666' }}>
+              One field path per line (e.g., receipts[0].billId) to persist on the transaction record.
+            </small>
+          </label>
+          <div>
+            <strong>Field mapping</strong>
+            <p style={{ fontSize: '0.85rem', color: '#555' }}>
+              Map POSAPI fields to columns in the master transaction table. Leave blank to skip optional
+              fields.
+            </p>
+            <div
+              style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}
+            >
+              <input
+                type="text"
+                value={fieldFilter}
+                onChange={(e) => setFieldFilter(e.target.value)}
+                placeholder="Search fields or paths"
+                style={{ flex: '1 1 220px', minWidth: '220px' }}
+              />
+              <small style={{ color: '#666' }}>Filters across top-level and nested objects.</small>
+            </div>
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+                gap: '0.75rem',
+                marginTop: '0.5rem',
+              }}
+            >
+              {filteredPrimaryFields.map((field) => {
+                const listId = `posapi-${field.key}-columns`;
+                const hint = topLevelFieldHints[field.key] || {};
+                const isRequired = Boolean(hint.required);
+                const description = hint.description;
+                const mappedValue = config.posApiMapping?.[field.key];
+                const missingRequired = isRequired && !isMappingProvided(mappedValue);
+                return (
+                  <label
+                    key={field.key}
                     style={{
-                      ...BADGE_BASE_STYLE,
-                      ...(isRequired ? REQUIRED_BADGE_STYLE : OPTIONAL_BADGE_STYLE),
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '0.25rem',
+                      border: missingRequired ? '1px solid #ef4444' : '1px solid transparent',
+                      borderRadius: '8px',
+                      padding: missingRequired ? '0.5rem' : 0,
                     }}
                   >
-                    {isRequired ? 'Required' : 'Optional'}
-                  </span>
-                  {missingRequired && (
                     <span
                       style={{
-                        ...BADGE_BASE_STYLE,
-                        background: '#fef2f2',
-                        color: '#991b1b',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.5rem',
+                        fontWeight: 600,
+                        color: '#0f172a',
                       }}
                     >
-                      Not mapped
+                      {field.label}
+                      <span
+                        style={{
+                          ...BADGE_BASE_STYLE,
+                          ...(isRequired ? REQUIRED_BADGE_STYLE : OPTIONAL_BADGE_STYLE),
+                        }}
+                      >
+                        {isRequired ? 'Required' : 'Optional'}
+                      </span>
+                      {missingRequired && (
+                        <span
+                          style={{
+                            ...BADGE_BASE_STYLE,
+                            background: '#fef2f2',
+                            color: '#991b1b',
+                          }}
+                        >
+                          Not mapped
+                        </span>
+                      )}
                     </span>
-                  )}
-                </span>
-                <MappingFieldSelector
-                  value={mappedValue}
-                  onChange={(val) => updatePosApiMapping(field.key, val)}
-                  primaryTableName={primaryTableName}
-                  masterColumns={columnOptions}
-                  columnsByTable={tableColumns}
-                  tableOptions={itemTableOptions}
-                  datalistIdBase={listId}
-                  disabled={!config.posApiEnabled}
-                  sessionVariables={DEFAULT_SESSION_VARIABLES}
-                />
-                {description && <small style={{ color: '#555' }}>{description}</small>}
-              </label>
-            );
-          })}
-        </div>
-        {nestedObjects.length > 0 && (
+                    <MappingFieldSelector
+                      value={mappedValue}
+                      onChange={(val) => updatePosApiMapping(field.key, val)}
+                      primaryTableName={primaryTableName}
+                      masterColumns={columnOptions}
+                      columnsByTable={tableColumns}
+                      tableOptions={itemTableOptions}
+                      datalistIdBase={listId}
+                      disabled={!config.posApiEnabled}
+                      sessionVariables={DEFAULT_SESSION_VARIABLES}
+                    />
+                    {description && <small style={{ color: '#555' }}>{description}</small>}
+                  </label>
+                );
+              })}
+            </div>
+            {nestedObjects.length > 0 && (
           <div style={{ marginTop: '1rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
             <strong>Nested objects</strong>
             <p style={{ fontSize: '0.85rem', color: '#555' }}>
@@ -2163,8 +1976,8 @@ export default function PosApiIntegrationSection({
               })}
             </div>
           </div>
-        )}
-        {additionalObjects.length > 0 && (
+            )}
+            {additionalObjects.length > 0 && (
           <div style={{ marginTop: '1rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
             <strong>Additional object mappings</strong>
             <p style={{ fontSize: '0.85rem', color: '#555' }}>
