@@ -148,4 +148,3 @@ export async function fetchProfile(t = (key, fallback) => fallback || key) {
   }
   return nextData;
 }
-
