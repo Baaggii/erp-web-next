@@ -8,6 +8,14 @@ function escapeRegex(str) {
   return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+function buildDropCheckStatement(tableId, constraintName, dbEngine = 'MySQL', { ifExists = true } = {}) {
+  const constraintId = escapeId(constraintName);
+  if (dbEngine === 'MariaDB') {
+    return `ALTER TABLE ${tableId} DROP CONSTRAINT ${constraintId}`;
+  }
+  return `ALTER TABLE ${tableId} DROP CHECK ${ifExists ? 'IF EXISTS ' : ''}${constraintId}`;
+}
+
 function buildDiagnosticQueries(table, column) {
   const safeColumn = String(column || '').replace(/'/g, "''");
   const safeTable = String(table || '').replace(/'/g, "''");
@@ -365,7 +373,7 @@ export async function listColumns(table) {
   };
 }
 
-function buildConstraintHandling(table, columnName, constraintInfo = {}, backupId) {
+function buildConstraintHandling(table, columnName, constraintInfo = {}, backupId, dbEngine = 'MySQL') {
   const tableId = escapeId(table);
   const columnId = escapeId(columnName);
   const dropStatements = new Set();
@@ -424,7 +432,7 @@ function buildConstraintHandling(table, columnName, constraintInfo = {}, backupI
     }
     if ((c.type || '').toUpperCase() === 'CHECK') {
       if (constraintName) {
-        dropStatements.add(`ALTER TABLE ${tableId} DROP CHECK ${constraintName}`);
+        dropStatements.add(buildDropCheckStatement(tableId, c.name, dbEngine, { ifExists: false }));
         recreateStatements.add(
           `-- Reintroduce CHECK ${constraintName} with JSON_VALID(${columnId}) AND JSON_TYPE(${columnId}) = 'ARRAY' once data is validated`,
         );
@@ -509,7 +517,7 @@ function buildColumnStatements(table, columnName, columnMeta, options, constrain
       `UPDATE ${tableId} SET ${companionId} = JSON_ARRAY(${columnId}) WHERE ${columnId} IS NOT NULL`,
     );
     statements.push(
-      `ALTER TABLE ${tableId} DROP CHECK IF EXISTS ${escapeId(`${companionName}_check`)}`,
+      buildDropCheckStatement(tableId, `${companionName}_check`, dbEngine),
     );
     statements.push(
       `ALTER TABLE ${tableId} ADD CONSTRAINT ${escapeId(
@@ -561,6 +569,7 @@ function buildColumnStatements(table, columnName, columnMeta, options, constrain
         columnName,
         constraintInfo,
         backupId,
+        dbEngine,
       );
     statements.push(...dropStatements);
     if (warnings.length > 0) previewNotes.push(...warnings);
@@ -594,9 +603,7 @@ function buildColumnStatements(table, columnName, columnMeta, options, constrain
   };
 
   const validationName = `${columnName}_json_check`;
-  statements.push(
-    `ALTER TABLE ${tableId} DROP CHECK IF EXISTS ${escapeId(validationName)}`,
-  );
+  statements.push(buildDropCheckStatement(tableId, validationName, dbEngine));
   statements.push(
     `ALTER TABLE ${tableId} ADD CONSTRAINT ${escapeId(
       validationName,
