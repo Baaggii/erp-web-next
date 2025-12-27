@@ -1,5 +1,6 @@
 import express from 'express';
 import { requireAuth } from '../middlewares/auth.js';
+import { requireAdmin } from '../middlewares/admin.js';
 import {
   buildConversionPlan,
   getSavedScript,
@@ -15,7 +16,7 @@ import {
 
 const router = express.Router();
 
-router.get('/tables', requireAuth, async (req, res, next) => {
+router.get('/tables', requireAuth, requireAdmin, async (req, res, next) => {
   try {
     const tables = await listTables();
     res.json({ tables });
@@ -24,7 +25,7 @@ router.get('/tables', requireAuth, async (req, res, next) => {
   }
 });
 
-router.get('/tables/:table/columns', requireAuth, async (req, res, next) => {
+router.get('/tables/:table/columns', requireAuth, requireAdmin, async (req, res, next) => {
   try {
     const columns = await listColumns(req.params.table);
     res.json({ columns });
@@ -33,7 +34,7 @@ router.get('/tables/:table/columns', requireAuth, async (req, res, next) => {
   }
 });
 
-router.get('/scripts', requireAuth, async (req, res, next) => {
+router.get('/scripts', requireAuth, requireAdmin, async (req, res, next) => {
   try {
     const scripts = await listSavedScripts();
     res.json({ scripts });
@@ -42,7 +43,7 @@ router.get('/scripts', requireAuth, async (req, res, next) => {
   }
 });
 
-router.post('/convert', requireAuth, async (req, res, next) => {
+router.post('/convert', requireAuth, requireAdmin, async (req, res, next) => {
   try {
     const { table, columns, backup = true, runNow = true } = req.body || {};
     const normalizedColumns = normalizeColumnsInput(columns);
@@ -94,7 +95,7 @@ router.post('/convert', requireAuth, async (req, res, next) => {
   }
 });
 
-router.post('/scripts/:id/run', requireAuth, async (req, res, next) => {
+router.post('/scripts/:id/run', requireAuth, requireAdmin, async (req, res, next) => {
   try {
     const script = await getSavedScript(req.params.id);
     if (!script) {

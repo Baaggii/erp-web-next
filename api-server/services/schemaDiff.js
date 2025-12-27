@@ -4,7 +4,7 @@ import os from 'os';
 import path from 'path';
 import crypto from 'crypto';
 import { spawn } from 'child_process';
-import { pool } from '../../db/index.js';
+import { adminPool as pool } from '../../db/index.js';
 import { splitSqlStatements } from './generatedSql.js';
 
 const projectRoot = process.cwd();

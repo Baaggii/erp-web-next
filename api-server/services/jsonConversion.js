@@ -1,4 +1,4 @@
-import { pool } from '../../db/index.js';
+import { adminPool as pool } from '../../db/index.js';
 
 function escapeId(name) {
   return `\`${String(name).replace(/`/g, '``')}\``;
