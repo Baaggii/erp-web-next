@@ -629,6 +629,7 @@ export function buildConversionPlan(table, columns, metadata, options = {}) {
   const plan = { statements: [], previews: [] };
   const scriptLines = [];
   const metadataMap = new Map(metadata.map((m) => [m.name, m]));
+  const engine = options?.dbEngine || 'MySQL';
   normalizedColumns.forEach((col) => {
     const meta = metadataMap.get(col.name) || {};
     const constraintMeta = metadataMap.get(col.name);
