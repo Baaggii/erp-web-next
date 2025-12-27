@@ -28,42 +28,6 @@ export default function RowDetailModal({
     });
     return map;
   }, [cols, fieldTypeMap]);
-  const chipStyle = React.useMemo(
-    () => ({
-      display: 'inline-flex',
-      alignItems: 'center',
-      backgroundColor: '#eff6ff',
-      border: '1px solid #bfdbfe',
-      color: '#1d4ed8',
-      borderRadius: '9999px',
-      padding: '0.1rem 0.5rem',
-      fontSize: '0.75rem',
-      maxWidth: '14ch',
-      overflow: 'hidden',
-      textOverflow: 'ellipsis',
-      whiteSpace: 'nowrap',
-    }),
-    [],
-  );
-  const parseMaybeJson = React.useCallback((value) => {
-    if (typeof value !== 'string') return value;
-    const trimmed = value.trim();
-    if (!trimmed) return value;
-    const startsWith = trimmed[0];
-    const endsWith = trimmed[trimmed.length - 1];
-    if (
-      (startsWith === '{' && endsWith === '}') ||
-      (startsWith === '[' && endsWith === ']') ||
-      (startsWith === '"' && endsWith === '"')
-    ) {
-      try {
-        return JSON.parse(trimmed);
-      } catch {
-        return value;
-      }
-    }
-    return value;
-  }, []);
 
   if (!visible) return null;
 
@@ -72,7 +36,6 @@ export default function RowDetailModal({
     labelMap[col] = {};
     opts.forEach((o) => {
       labelMap[col][o.value] = o.label;
-      labelMap[col][String(o.value)] = o.label;
     });
   });
 
@@ -104,27 +67,7 @@ export default function RowDetailModal({
                     const raw = relations[c]
                       ? labelMap[c][safeRow[c]] || safeRow[c]
                       : safeRow[c];
-                    const parsed = parseMaybeJson(raw);
-                    if (Array.isArray(parsed)) {
-                      const primitives = parsed.filter(
-                        (item) =>
-                          item !== null &&
-                          item !== undefined &&
-                          (typeof item === 'string' || typeof item === 'number' || typeof item === 'boolean'),
-                      );
-                      if (primitives.length === parsed.length) {
-                        return (
-                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.25rem' }}>
-                            {primitives.map((item, idx) => (
-                              <span key={`${c}-${idx}-${item}`} style={chipStyle}>
-                                {String(item)}
-                              </span>
-                            ))}
-                          </div>
-                        );
-                      }
-                    }
-                    const str = String(parsed ?? '');
+                    const str = String(raw ?? '');
                     let display;
                     if (placeholders[c]) {
                       display = normalizeDateInput(str, placeholders[c]);

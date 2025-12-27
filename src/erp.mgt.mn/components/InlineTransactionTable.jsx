@@ -9,7 +9,6 @@ import React, {
 import { useTranslation } from 'react-i18next';
 import useGeneralConfig from '../hooks/useGeneralConfig.js';
 import AsyncSearchSelect from './AsyncSearchSelect.jsx';
-import TagMultiSelect from './TagMultiSelect.jsx';
 import RowDetailModal from './RowDetailModal.jsx';
 import RowImageUploadModal from './RowImageUploadModal.jsx';
 import buildImageName from '../utils/buildImageName.js';
@@ -418,21 +417,6 @@ function InlineTransactionTable(
     });
     return map;
   }, [relationData, columnCaseMapKey, columnCaseMap]);
-  const relationOptionLabels = React.useMemo(() => {
-    const map = {};
-    Object.entries(relations || {}).forEach(([rawKey, options]) => {
-      if (!Array.isArray(options)) return;
-      const bucket = {};
-      options.forEach((opt) => {
-        if (!opt) return;
-        bucket[opt.value] = opt.label ?? opt.value;
-        bucket[String(opt.value)] = opt.label ?? opt.value;
-      });
-      map[rawKey] = bucket;
-      map[String(rawKey).toLowerCase()] = bucket;
-    });
-    return map;
-  }, [relationsKey]);
   const getRelationRowMap = React.useCallback(
     (field) => {
       if (!field) return null;
@@ -866,119 +850,6 @@ function InlineTransactionTable(
     });
     return map;
   }, [viewColumnsKey, columnCaseMapKey, tableName]);
-  const jsonFieldSet = React.useMemo(() => {
-    const set = new Set();
-    Object.entries(fieldTypeMap || {}).forEach(([key, val]) => {
-      if (val === 'json') {
-        const mapped = columnCaseMap[String(key).toLowerCase()] || key;
-        set.add(mapped);
-      }
-    });
-    Object.entries(columnTypeMap || {}).forEach(([key, val]) => {
-      if (typeof val === 'string' && val.toLowerCase().includes('json')) {
-        set.add(key);
-      }
-    });
-    return set;
-  }, [columnTypeMap, fieldTypeMap, columnCaseMapKey, fieldTypeMapKey]);
-  const chipStyle = React.useMemo(
-    () => ({
-      display: 'inline-flex',
-      alignItems: 'center',
-      backgroundColor: '#eff6ff',
-      border: '1px solid #bfdbfe',
-      color: '#1d4ed8',
-      borderRadius: '9999px',
-      padding: '0.1rem 0.5rem',
-      fontSize: '0.75rem',
-      maxWidth: '14ch',
-      overflow: 'hidden',
-      textOverflow: 'ellipsis',
-      whiteSpace: 'nowrap',
-    }),
-    [],
-  );
-  const isJsonField = React.useCallback(
-    (field) => {
-      if (!field) return false;
-      const key = columnCaseMap[String(field).toLowerCase()] || field;
-      return jsonFieldSet.has(key);
-    },
-    [columnCaseMap, jsonFieldSet],
-  );
-  const parseJsonFieldValue = React.useCallback((value) => {
-    if (value === null || value === undefined || value === '') return [];
-    if (Array.isArray(value)) return value;
-    if (typeof value === 'string') {
-      const trimmed = value.trim();
-      if (!trimmed) return [];
-      try {
-        const parsed = JSON.parse(trimmed);
-        if (Array.isArray(parsed)) return parsed;
-      } catch {
-        /* ignore */
-      }
-      const parts = trimmed
-        .split(',')
-        .map((entry) => entry.trim())
-        .filter((entry) => entry.length > 0);
-      if (parts.length > 0) return parts;
-    }
-    return [value];
-  }, []);
-  const renderChipList = React.useCallback(
-    (labels) => {
-      if (!Array.isArray(labels) || labels.length === 0) return '';
-      return (
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.25rem' }}>
-          {labels.map((label, idx) => (
-            <span key={`${label}-${idx}`} style={chipStyle}>
-              {label}
-            </span>
-          ))}
-        </div>
-      );
-    },
-    [chipStyle],
-  );
-  const mapJsonValuesToLabels = React.useCallback(
-    (field, values) => {
-      if (!Array.isArray(values)) return [];
-      const lookup =
-        relationOptionLabels[field] ||
-        relationOptionLabels[String(field).toLowerCase()] ||
-        {};
-      return values
-        .map((item) => {
-          const normalized =
-            item && typeof item === 'object' && Object.prototype.hasOwnProperty.call(item, 'value')
-              ? item.value
-              : item;
-          if (lookup[normalized] !== undefined) return lookup[normalized];
-          if (lookup[String(normalized)] !== undefined) return lookup[String(normalized)];
-          const relationRow = getRelationRow(field, normalized);
-          if (relationRow) {
-            const cfg = relationConfigMap[field] || {};
-            const parts = [];
-            const identifier = getRowValueCaseInsensitive(
-              relationRow,
-              cfg.idField || cfg.column || field,
-            );
-            if (identifier !== undefined && identifier !== null) parts.push(identifier);
-            (cfg.displayFields || []).forEach((df) => {
-              if (relationRow[df] !== undefined && relationRow[df] !== null) {
-                parts.push(relationRow[df]);
-              }
-            });
-            if (parts.length > 0) return parts.join(' - ');
-          }
-          if (normalized === null || normalized === undefined) return '';
-          return String(normalized);
-        })
-        .filter((entry) => entry !== '');
-    },
-    [getRelationRow, relationConfigMap, relationOptionLabels, getRowValueCaseInsensitive],
-  );
 
   const tableColumnsKey = React.useMemo(
     () =>
@@ -2423,38 +2294,6 @@ function InlineTransactionTable(
     const resolvedAutoConfig = getAutoSelectConfig(f, rows[idx]);
     const resolvedConfig = relationConfigMap[f] || resolvedAutoConfig?.config;
     if (fieldDisabled) {
-      if (isJsonField(f)) {
-        const list = parseJsonFieldValue(val);
-        const labels = mapJsonValuesToLabels(f, list);
-        const displayNode = renderChipList(
-          labels.length > 0
-            ? labels
-            : list
-                .map((entry) => (entry === null || entry === undefined ? '' : String(entry)))
-                .filter((entry) => entry !== ''),
-        );
-        const readonlyStyle = {
-          ...inputStyle,
-          width: 'fit-content',
-          minWidth: `${boxWidth}px`,
-          maxWidth: `${boxMaxWidth}px`,
-        };
-        return (
-          <div className="flex items-center" title="">
-            <div
-              className="px-1 border rounded bg-gray-100"
-              style={readonlyStyle}
-              ref={(el) => (inputRefs.current[`ro-${idx}-${f}`] = el)}
-              tabIndex={0}
-              role="textbox"
-              aria-readonly="true"
-              onFocus={() => handleFocusField(f)}
-            >
-              {displayNode}
-            </div>
-          </div>
-        );
-      }
       let display = typeof val === 'object' ? val.label || val.value : val;
       const rawVal = typeof val === 'object' ? val.value : val;
       const relationRow = rawVal !== undefined ? getRelationRow(f, rawVal) : null;
@@ -2496,17 +2335,6 @@ function InlineTransactionTable(
     }
     if (rows[idx]?._saved && !collectRows) {
       const isoDatePattern = /^\d{4}-\d{2}-\d{2}(?:T.*)?$/;
-      if (isJsonField(f)) {
-        const list = parseJsonFieldValue(val);
-        const labels = mapJsonValuesToLabels(f, list);
-        return renderChipList(
-          labels.length > 0
-            ? labels
-            : list
-                .map((entry) => (entry === null || entry === undefined ? '' : String(entry)))
-                .filter((entry) => entry !== ''),
-        );
-      }
       const displayVal = typeof val === 'object' ? val.label ?? val.value : val;
       if (
         typeof displayVal === 'string' &&
@@ -2516,23 +2344,6 @@ function InlineTransactionTable(
         return normalizeDateInput(displayVal, 'YYYY-MM-DD');
       }
       return displayVal;
-    }
-    if (isJsonField(f)) {
-      const relationOptions = Array.isArray(relations[f])
-        ? filterRelationOptions(rows[idx], f, relations[f])
-        : [];
-      const inputVal = Array.isArray(val) ? val : parseJsonFieldValue(val);
-      return (
-        <TagMultiSelect
-          value={inputVal}
-          options={relationOptions}
-          onChange={(vals) => handleChange(idx, f, vals)}
-          inputRef={(el) => (inputRefs.current[`${idx}-${colIdx}`] = el)}
-          onFocus={() => handleFocusField(f)}
-          onKeyDown={(e) => handleKeyDown(e, idx, colIdx)}
-          inputStyle={inputStyle}
-        />
-      );
     }
     if (resolvedConfig) {
       const conf = resolvedConfig;

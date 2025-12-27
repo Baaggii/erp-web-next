@@ -41,7 +41,6 @@ import { extractRowIndex, sortRowsByIndex } from '../utils/sortRowsByIndex.js';
 import { resolveDisabledFieldState } from './tableManagerDisabledFields.js';
 import { computeTemporaryPromotionOptions } from '../utils/temporaryPromotionOptions.js';
 import NotificationDots from './NotificationDots.jsx';
-import TagMultiSelect from './TagMultiSelect.jsx';
 
 const TEMPORARY_FILTER_CACHE_KEY = 'temporary-transaction-filter';
 
@@ -1003,9 +1002,7 @@ const TableManager = forwardRef(function TableManager({
     columnMeta.forEach((c) => {
       const typ = (c.type || c.columnType || c.dataType || c.DATA_TYPE || '')
         .toLowerCase();
-      if (typ.includes('json')) {
-        map[c.name] = 'json';
-      } else if (typ.match(/int|decimal|numeric|double|float|real|number|bigint/)) {
+      if (typ.match(/int|decimal|numeric|double|float|real|number|bigint/)) {
         map[c.name] = 'number';
       } else if (typ.includes('timestamp') || typ.includes('datetime')) {
         map[c.name] = 'datetime';
@@ -1018,18 +1015,6 @@ const TableManager = forwardRef(function TableManager({
       }
     });
     return map;
-  }, [columnMeta]);
-
-  const jsonFieldSet = useMemo(() => {
-    const set = new Set();
-    columnMeta.forEach((c) => {
-      const typ = (c.type || c.columnType || c.dataType || c.DATA_TYPE || '')
-        .toLowerCase();
-      if (typ.includes('json')) {
-        set.add(c.name);
-      }
-    });
-    return set;
   }, [columnMeta]);
 
   const generatedCols = useMemo(
@@ -1892,8 +1877,6 @@ const TableManager = forwardRef(function TableManager({
         });
         if (val !== undefined) {
           optionRows[val] = row;
-          const stringKey = String(val);
-          optionRows[stringKey] = row;
         }
         return {
           value: val,
@@ -2077,7 +2060,6 @@ const TableManager = forwardRef(function TableManager({
               const identifier = row[idKey];
               if (identifier !== undefined && identifier !== null) {
                 aliasRows[identifier] = row;
-                aliasRows[String(identifier)] = row;
               }
             });
             if (Object.keys(aliasRows).length > 0) {
@@ -2124,15 +2106,14 @@ const TableManager = forwardRef(function TableManager({
     let hasInvalidDateFilter = false;
     Object.entries(filters).forEach(([k, v]) => {
       if (v !== '' && v !== null && v !== undefined && validCols.has(k)) {
-        const normalizedValue = normalizeFilterValue(v);
         if (dateFieldSet.has(k)) {
-          if (isValidDateFilterValue(normalizedValue)) {
-            params.set(k, normalizedValue);
+          if (isValidDateFilterValue(v)) {
+            params.set(k, v);
           } else {
             hasInvalidDateFilter = true;
           }
         } else {
-          params.set(k, normalizedValue);
+          params.set(k, v);
         }
       }
     });
@@ -2194,7 +2175,6 @@ const TableManager = forwardRef(function TableManager({
     validCols,
     requestStatus,
     requestIdsKey,
-    normalizeFilterValue,
   ]);
 
   useEffect(() => {
@@ -3566,13 +3546,8 @@ const TableManager = forwardRef(function TableManager({
             : null;
         const normalizedPlaceholder =
           placeholderKey !== null ? placeholders[placeholderKey] : undefined;
-        let nextValue = v;
-        if (isJsonField(targetKey)) {
-          nextValue = serializeJsonValue(v);
-        } else if (typeof v === 'string') {
-          nextValue = normalizeDateInput(v, normalizedPlaceholder);
-        }
-        cleaned[targetKey] = nextValue;
+        cleaned[targetKey] =
+          typeof v === 'string' ? normalizeDateInput(v, normalizedPlaceholder) : v;
       }
     });
     delete cleaned.rows;
@@ -5486,22 +5461,9 @@ const TableManager = forwardRef(function TableManager({
   Object.entries(relationOpts).forEach(([col, opts]) => {
     labelMap[col] = {};
     opts.forEach((o) => {
-      const rawVal = o.value;
-      labelMap[col][rawVal] = o.label;
-      const stringKey = String(rawVal);
-      labelMap[col][stringKey] = o.label;
+      labelMap[col][o.value] = o.label;
     });
   });
-
-  const isJsonField = useCallback(
-    (name) => {
-      if (!name) return false;
-      const key = resolveCanonicalKey(name);
-      if (!key) return false;
-      return fieldTypeMap[key] === 'json' || jsonFieldSet.has(key);
-    },
-    [fieldTypeMap, jsonFieldSet, resolveCanonicalKey],
-  );
 
   const isPlainValueObject = useCallback(
     (value) =>
@@ -5532,37 +5494,6 @@ const TableManager = forwardRef(function TableManager({
       }
     }
     return value;
-  }, []);
-
-  const normalizeFilterValue = useCallback((value) => {
-    if (Array.isArray(value)) return value.join(',');
-    if (value && typeof value === 'object') {
-      try {
-        return JSON.stringify(value);
-      } catch {
-        return String(value);
-      }
-    }
-    return value;
-  }, []);
-
-  const serializeJsonValue = useCallback((value) => {
-    if (value === '' || value === null || value === undefined) return value;
-    if (typeof value === 'string') {
-      const trimmed = value.trim();
-      if (!trimmed) return '[]';
-      try {
-        JSON.parse(trimmed);
-        return trimmed;
-      } catch {
-        /* ignore */
-      }
-    }
-    try {
-      return JSON.stringify(value);
-    } catch {
-      return String(value);
-    }
   }, []);
 
   const stringifyPreviewCell = useCallback(
@@ -5600,24 +5531,6 @@ const TableManager = forwardRef(function TableManager({
       return flattened.join(', ');
     },
     [isPlainValueObject],
-  );
-
-  const chipStyle = useMemo(
-    () => ({
-      display: 'inline-flex',
-      alignItems: 'center',
-      backgroundColor: '#eff6ff',
-      border: '1px solid #bfdbfe',
-      color: '#1d4ed8',
-      borderRadius: '9999px',
-      padding: '0.1rem 0.5rem',
-      fontSize: '0.75rem',
-      maxWidth: '12ch',
-      overflow: 'hidden',
-      textOverflow: 'ellipsis',
-      whiteSpace: 'nowrap',
-    }),
-    [],
   );
 
   const temporaryValueButtonStyle = useMemo(
@@ -5769,21 +5682,9 @@ const TableManager = forwardRef(function TableManager({
           (item) => item !== null && item !== undefined && typeof item !== 'object',
         );
         if (primitives.length === value.length) {
-          const labels = primitives.map((item) =>
-            typeof item === 'string' ? item : String(item),
-          );
-          if (isJsonField(column)) {
-            return (
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.25rem' }}>
-                {labels.map((label, idx) => (
-                  <span key={`${column}-${idx}-${label}`} style={chipStyle}>
-                    {label}
-                  </span>
-                ))}
-              </div>
-            );
-          }
-          const display = labels.join(', ');
+          const display = primitives
+            .map((item) => (typeof item === 'string' ? item : String(item)))
+            .join(', ');
           return display || '—';
         }
         const objectItems = value.filter((item) => isPlainValueObject(item));
@@ -5860,8 +5761,6 @@ const TableManager = forwardRef(function TableManager({
       temporaryValueButtonStyle,
       totalCurrencySet,
       isPlainValueObject,
-      chipStyle,
-      isJsonField,
     ],
   );
 
@@ -6674,27 +6573,7 @@ const TableManager = forwardRef(function TableManager({
               }}
             >
                 {(() => {
-                  const filterValue = filters[c];
-                  const normalizedJsonFilter = Array.isArray(filterValue)
-                    ? filterValue
-                    : isJsonField(c) && typeof filterValue === 'string'
-                    ? filterValue
-                        .split(',')
-                        .map((entry) => entry.trim())
-                        .filter((entry) => entry.length > 0)
-                    : [];
                   const relationConfig = relationConfigs[c];
-                  if (isJsonField(c)) {
-                    const options = Array.isArray(relationOpts[c]) ? relationOpts[c] : [];
-                    return (
-                      <TagMultiSelect
-                        value={normalizedJsonFilter}
-                        options={options}
-                        onChange={(vals) => handleFilterChange(c, vals)}
-                        inputStyle={{ width: '100%' }}
-                      />
-                    );
-                  }
                   if (relationConfig?.table) {
                     const searchColumn =
                       relationConfig.idField || relationConfig.column || c;
@@ -6901,19 +6780,33 @@ const TableManager = forwardRef(function TableManager({
                 }
                 style.overflow = 'hidden';
                 style.textOverflow = 'ellipsis';
-                const rawValue = r[c];
-                const formatted = formatTemporaryFieldValue(c, rawValue);
-                const tooltip = stringifyPreviewCell(parseMaybeJson(rawValue));
+                const raw = relationOpts[c]
+                  ? labelMap[c][r[c]] || String(r[c])
+                  : String(r[c]);
+                let display = raw;
+                if (c === 'TotalCur' || totalCurrencySet.has(c)) {
+                  display = currencyFmt.format(Number(r[c] || 0));
+                } else if (
+                  fieldTypeMap[c] === 'date' ||
+                  fieldTypeMap[c] === 'datetime' ||
+                  fieldTypeMap[c] === 'time'
+                ) {
+                  display = normalizeDateInput(raw, placeholders[c]);
+                } else if (
+                  placeholders[c] === undefined &&
+                  /^\d{4}-\d{2}-\d{2}T/.test(raw)
+                ) {
+                  display = normalizeDateInput(raw, 'YYYY-MM-DD');
+                }
+                const showFull = display.length > 20;
                 return (
                   <td
                     key={c}
                     style={style}
-                    title={tooltip}
-                    onContextMenu={(e) =>
-                      tooltip && openContextMenu(e, sanitizeName(tooltip))
-                    }
+                    title={raw}
+                    onContextMenu={(e) => raw && openContextMenu(e, sanitizeName(raw))}
                   >
-                    {formatted}
+                    {display}
                   </td>
                 );
               })}
