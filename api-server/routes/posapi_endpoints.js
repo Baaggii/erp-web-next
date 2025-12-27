@@ -5,7 +5,6 @@ import { requireAuth } from '../middlewares/auth.js';
 import { loadEndpoints, saveEndpoints } from '../services/posApiRegistry.js';
 import { invokePosApiEndpoint } from '../services/posApiService.js';
 import { getEmploymentSession } from '../../db/index.js';
-import { ensureAdminResponse, isAdminUser } from '../utils/admin.js';
 
 const DEFAULT_MAPPING_HINTS = {
   branchNo: 'session.branch_id',
@@ -28,8 +27,8 @@ async function requireSystemSettings(req, res) {
   const session =
     (req.session && Number(req.session?.company_id) === companyId && req.session) ||
     (await getEmploymentSession(req.user.empid, companyId));
-  if (!isAdminUser(req.user) || !session?.permissions?.system_settings) {
-    res.status(403).json({ message: 'Admin privileges required' });
+  if (!session?.permissions?.system_settings) {
+    res.status(403).json({ message: 'Admin access required' });
     return null;
   }
   return { session, companyId };

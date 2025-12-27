@@ -5,7 +5,6 @@ class SchemaDiffJob {
   constructor(options) {
     this.id = crypto.randomUUID();
     this.userId = options.userId;
-    this.adminUser = options.adminUser;
     this.schemaPath = options.schemaPath;
     this.schemaFile = options.schemaFile;
     this.allowDrops = options.allowDrops;
@@ -39,7 +38,6 @@ class SchemaDiffJob {
     try {
       this.emitProgress('Dumping current schema');
       const result = await buildSchemaDiff({
-        user: this.adminUser,
         schemaPath: this.schemaPath,
         schemaFile: this.schemaFile,
         allowDrops: this.allowDrops,
