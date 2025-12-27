@@ -41,12 +41,6 @@ import { extractRowIndex, sortRowsByIndex } from '../utils/sortRowsByIndex.js';
 import { resolveDisabledFieldState } from './tableManagerDisabledFields.js';
 import { computeTemporaryPromotionOptions } from '../utils/temporaryPromotionOptions.js';
 import NotificationDots from './NotificationDots.jsx';
-import {
-  formatJsonDisplay,
-  mergeJsonArray,
-  normalizeJsonArray,
-  serializeJsonArray,
-} from '../utils/jsonFieldUtils.js';
 
 const TEMPORARY_FILTER_CACHE_KEY = 'temporary-transaction-filter';
 
@@ -472,7 +466,6 @@ const TableManager = forwardRef(function TableManager({
   const [page, setPage] = useState(1);
   const [perPage, setPerPage] = useState(initialPerPage);
   const [filters, setFilters] = useState({});
-  const [jsonFilterDrafts, setJsonFilterDrafts] = useState({});
   const [sort, setSort] = useState({ column: '', dir: 'asc' });
   const [relations, setRelations] = useState({});
   const [refData, setRefData] = useState({});
@@ -1009,9 +1002,7 @@ const TableManager = forwardRef(function TableManager({
     columnMeta.forEach((c) => {
       const typ = (c.type || c.columnType || c.dataType || c.DATA_TYPE || '')
         .toLowerCase();
-      if (typ.includes('json')) {
-        map[c.name] = 'json';
-      } else if (typ.match(/int|decimal|numeric|double|float|real|number|bigint/)) {
+      if (typ.match(/int|decimal|numeric|double|float|real|number|bigint/)) {
         map[c.name] = 'number';
       } else if (typ.includes('timestamp') || typ.includes('datetime')) {
         map[c.name] = 'datetime';
@@ -1025,24 +1016,6 @@ const TableManager = forwardRef(function TableManager({
     });
     return map;
   }, [columnMeta]);
-  const jsonFieldSet = useMemo(() => {
-    const set = new Set();
-    columnMeta.forEach((c) => {
-      const typ = (c.type || c.columnType || c.dataType || c.DATA_TYPE || '')
-        .toLowerCase();
-      if (typ.includes('json')) {
-        set.add(c.name);
-      }
-    });
-    if (Array.isArray(formConfig?.jsonFields)) {
-      formConfig.jsonFields.forEach((field) => {
-        if (typeof field === 'string' && field.trim()) {
-          set.add(resolveCanonicalKey(field));
-        }
-      });
-    }
-    return set;
-  }, [columnMeta, formConfig?.jsonFields, resolveCanonicalKey]);
 
   const generatedCols = useMemo(
     () =>
@@ -1144,7 +1117,6 @@ const TableManager = forwardRef(function TableManager({
     setCount(0);
     setPage(1);
     setFilters({});
-    setJsonFilterDrafts({});
     setSort({ column: '', dir: 'asc' });
     setRelations({});
     setRefData({});
@@ -2133,9 +2105,7 @@ const TableManager = forwardRef(function TableManager({
     }
     let hasInvalidDateFilter = false;
     Object.entries(filters).forEach(([k, v]) => {
-      const hasValue =
-        Array.isArray(v) ? v.length > 0 : v !== '' && v !== null && v !== undefined;
-      if (hasValue && validCols.has(k)) {
+      if (v !== '' && v !== null && v !== undefined && validCols.has(k)) {
         if (dateFieldSet.has(k)) {
           if (isValidDateFilterValue(v)) {
             params.set(k, v);
@@ -2143,8 +2113,7 @@ const TableManager = forwardRef(function TableManager({
             hasInvalidDateFilter = true;
           }
         } else {
-          const serializedValue = jsonFieldSet.has(k) ? serializeJsonArray(v) : v;
-          params.set(k, serializedValue);
+          params.set(k, v);
         }
       }
     });
@@ -2206,7 +2175,6 @@ const TableManager = forwardRef(function TableManager({
     validCols,
     requestStatus,
     requestIdsKey,
-    jsonFieldSet,
   ]);
 
   useEffect(() => {
@@ -6606,12 +6574,7 @@ const TableManager = forwardRef(function TableManager({
             >
                 {(() => {
                   const relationConfig = relationConfigs[c];
-                  const isJsonField = jsonFieldSet.has(c);
-                  const currentFilterValue = filters[c];
-                  const normalizedFilter = isJsonField
-                    ? normalizeJsonArray(currentFilterValue)
-                    : currentFilterValue;
-                  if (relationConfig?.table && isJsonField) {
+                  if (relationConfig?.table) {
                     const searchColumn =
                       relationConfig.idField || relationConfig.column || c;
                     const searchColumns = [
@@ -6619,89 +6582,20 @@ const TableManager = forwardRef(function TableManager({
                       ...(relationConfig.displayFields || []),
                     ];
                     return (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.25rem' }}>
-                          {normalizedFilter.map((val) => (
-                            <span
-                              key={`${c}-filter-${val}`}
-                              style={{
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                gap: '0.25rem',
-                                padding: '0.1rem 0.35rem',
-                                backgroundColor: '#e5e7eb',
-                                borderRadius: '9999px',
-                                fontSize: '0.75rem',
-                              }}
-                            >
-                              {labelMap[c]?.[val] ?? val}
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  handleFilterChange(
-                                    c,
-                                    normalizedFilter.filter((item) => String(item) !== String(val)),
-                                  )
-                                }
-                                style={{
-                                  border: 'none',
-                                  background: 'transparent',
-                                  cursor: 'pointer',
-                                  padding: 0,
-                                  lineHeight: 1,
-                                }}
-                              >
-                                ×
-                              </button>
-                            </span>
-                          ))}
-                        </div>
-                        <AsyncSearchSelect
-                          table={relationConfig.table}
-                          searchColumn={searchColumn}
-                          searchColumns={searchColumns}
-                          labelFields={relationConfig.displayFields || []}
-                          idField={searchColumn}
-                          value={jsonFilterDrafts[c] || ''}
-                          onChange={(val) =>
-                            setJsonFilterDrafts((drafts) => ({
-                              ...drafts,
-                              [c]: val ?? '',
-                            }))
-                          }
-                          onSelect={(opt) => {
-                            const merged = mergeJsonArray(normalizedFilter, opt?.value ?? '');
-                            handleFilterChange(c, merged);
-                            setJsonFilterDrafts((drafts) => ({ ...drafts, [c]: '' }));
-                          }}
-                          inputStyle={{ width: '100%' }}
-                        />
-                      </div>
+                      <AsyncSearchSelect
+                        table={relationConfig.table}
+                        searchColumn={searchColumn}
+                        searchColumns={searchColumns}
+                        labelFields={relationConfig.displayFields || []}
+                        idField={searchColumn}
+                        value={filters[c] || ''}
+                        onChange={(val) => handleFilterChange(c, val ?? '')}
+                        inputStyle={{ width: '100%' }}
+                      />
                     );
                   }
 
                   if (Array.isArray(relationOpts[c])) {
-                    if (isJsonField) {
-                      return (
-                        <select
-                          multiple
-                          value={normalizedFilter.map((val) => String(val))}
-                          onChange={(e) => {
-                            const selected = Array.from(e.target.selectedOptions).map(
-                              (o) => o.value,
-                            );
-                            handleFilterChange(c, selected);
-                          }}
-                          style={{ width: '100%' }}
-                        >
-                          {relationOpts[c].map((o) => (
-                            <option key={o.value} value={o.value}>
-                              {o.label}
-                            </option>
-                          ))}
-                        </select>
-                      );
-                    }
                     return (
                       <select
                         value={filters[c] || ''}
@@ -6715,16 +6609,6 @@ const TableManager = forwardRef(function TableManager({
                           </option>
                         ))}
                       </select>
-                    );
-                  }
-
-                  if (isJsonField) {
-                    return (
-                      <input
-                        value={normalizedFilter.join(', ')}
-                        onChange={(e) => handleFilterChange(c, normalizeJsonArray(e.target.value))}
-                        style={{ width: '100%' }}
-                      />
                     );
                   }
 
@@ -6896,47 +6780,31 @@ const TableManager = forwardRef(function TableManager({
                 }
                 style.overflow = 'hidden';
                 style.textOverflow = 'ellipsis';
-                const isJsonField = jsonFieldSet.has(c) || fieldTypeMap[c] === 'json';
-                const relationLookup = refRows?.[c] || {};
-                const rawValue = parseMaybeJson(r[c]);
-                let display;
-                let rawTitle;
-                if (isJsonField) {
-                  display = formatJsonDisplay(rawValue, {
-                    labelLookup: labelMap[c],
-                    relationLookup,
-                  });
-                  rawTitle = display;
-                } else {
-                  const raw = relationOpts[c]
-                    ? labelMap[c][r[c]] || String(r[c])
-                    : String(r[c]);
-                  display = raw;
-                  rawTitle = raw;
-                  if (c === 'TotalCur' || totalCurrencySet.has(c)) {
-                    display = currencyFmt.format(Number(r[c] || 0));
-                  } else if (
-                    fieldTypeMap[c] === 'date' ||
-                    fieldTypeMap[c] === 'datetime' ||
-                    fieldTypeMap[c] === 'time'
-                  ) {
-                    display = normalizeDateInput(raw, placeholders[c]);
-                  } else if (
-                    placeholders[c] === undefined &&
-                    /^\d{4}-\d{2}-\d{2}T/.test(raw)
-                  ) {
-                    display = normalizeDateInput(raw, 'YYYY-MM-DD');
-                  }
+                const raw = relationOpts[c]
+                  ? labelMap[c][r[c]] || String(r[c])
+                  : String(r[c]);
+                let display = raw;
+                if (c === 'TotalCur' || totalCurrencySet.has(c)) {
+                  display = currencyFmt.format(Number(r[c] || 0));
+                } else if (
+                  fieldTypeMap[c] === 'date' ||
+                  fieldTypeMap[c] === 'datetime' ||
+                  fieldTypeMap[c] === 'time'
+                ) {
+                  display = normalizeDateInput(raw, placeholders[c]);
+                } else if (
+                  placeholders[c] === undefined &&
+                  /^\d{4}-\d{2}-\d{2}T/.test(raw)
+                ) {
+                  display = normalizeDateInput(raw, 'YYYY-MM-DD');
                 }
-                const showFull = String(display || '').length > 20;
+                const showFull = display.length > 20;
                 return (
                   <td
                     key={c}
                     style={style}
-                    title={rawTitle}
-                    onContextMenu={(e) =>
-                      rawTitle && openContextMenu(e, sanitizeName(String(rawTitle)))
-                    }
+                    title={raw}
+                    onContextMenu={(e) => raw && openContextMenu(e, sanitizeName(raw))}
                   >
                     {display}
                   </td>
