@@ -1002,7 +1002,9 @@ const TableManager = forwardRef(function TableManager({
     columnMeta.forEach((c) => {
       const typ = (c.type || c.columnType || c.dataType || c.DATA_TYPE || '')
         .toLowerCase();
-      if (typ.match(/int|decimal|numeric|double|float|real|number|bigint/)) {
+      if (typ.includes('json')) {
+        map[c.name] = 'json';
+      } else if (typ.match(/int|decimal|numeric|double|float|real|number|bigint/)) {
         map[c.name] = 'number';
       } else if (typ.includes('timestamp') || typ.includes('datetime')) {
         map[c.name] = 'datetime';
@@ -1030,6 +1032,17 @@ const TableManager = forwardRef(function TableManager({
       ),
     [columnMeta],
   );
+  const jsonFieldSet = useMemo(() => {
+    const set = new Set();
+    columnMeta.forEach((c) => {
+      const typ = (c.type || c.columnType || c.dataType || c.DATA_TYPE || '')
+        .toLowerCase();
+      if (typ.includes('json') || fieldTypeMap[c.name] === 'json') {
+        set.add(c.name);
+      }
+    });
+    return set;
+  }, [columnMeta, fieldTypeMap]);
 
   const generatedColumnEvaluators = useMemo(() => {
     if (!Array.isArray(columnMeta) || columnMeta.length === 0) return {};
@@ -3546,8 +3559,12 @@ const TableManager = forwardRef(function TableManager({
             : null;
         const normalizedPlaceholder =
           placeholderKey !== null ? placeholders[placeholderKey] : undefined;
-        cleaned[targetKey] =
+        let nextVal =
           typeof v === 'string' ? normalizeDateInput(v, normalizedPlaceholder) : v;
+        if (jsonFieldSet.has(targetKey)) {
+          nextVal = serializeJsonFieldValue(targetKey, v);
+        }
+        cleaned[targetKey] = nextVal;
       }
     });
     delete cleaned.rows;
@@ -5462,8 +5479,21 @@ const TableManager = forwardRef(function TableManager({
     labelMap[col] = {};
     opts.forEach((o) => {
       labelMap[col][o.value] = o.label;
+      labelMap[col][String(o.value)] = o.label;
     });
   });
+  const resolveRelationDisplay = useCallback(
+    (column, value) => {
+      if (!relationOpts[column]) return value;
+      const map = labelMap[column] || {};
+      if (Array.isArray(value)) {
+        return value.map((item) => resolveRelationDisplay(column, item));
+      }
+      const key = typeof value === 'string' || typeof value === 'number' ? value : String(value);
+      return map[key] !== undefined ? map[key] : value;
+    },
+    [labelMap, relationOpts],
+  );
 
   const isPlainValueObject = useCallback(
     (value) =>
@@ -5495,6 +5525,30 @@ const TableManager = forwardRef(function TableManager({
     }
     return value;
   }, []);
+
+  const normalizeJsonArray = useCallback(
+    (column, value) => {
+      const parsed = jsonFieldSet.has(column) ? parseMaybeJson(value) : value;
+      if (Array.isArray(parsed)) return parsed;
+      if (parsed === undefined || parsed === null || parsed === '') return [];
+      return [parsed];
+    },
+    [jsonFieldSet, parseMaybeJson],
+  );
+
+  const serializeJsonFieldValue = useCallback(
+    (column, value) => {
+      if (!jsonFieldSet.has(column)) return value;
+      if (value === '' || value === undefined) return '';
+      const parsed = parseMaybeJson(value);
+      try {
+        return JSON.stringify(parsed);
+      } catch {
+        return typeof parsed === 'string' ? parsed : String(parsed);
+      }
+    },
+    [jsonFieldSet, parseMaybeJson],
+  );
 
   const stringifyPreviewCell = useCallback(
     (value) => {
@@ -6780,33 +6834,69 @@ const TableManager = forwardRef(function TableManager({
                 }
                 style.overflow = 'hidden';
                 style.textOverflow = 'ellipsis';
-                const raw = relationOpts[c]
-                  ? labelMap[c][r[c]] || String(r[c])
-                  : String(r[c]);
-                let display = raw;
-                if (c === 'TotalCur' || totalCurrencySet.has(c)) {
+                const rawValue = jsonFieldSet.has(c) ? parseMaybeJson(r[c]) : r[c];
+                const resolvedValue = resolveRelationDisplay(c, rawValue);
+                const normalizedList = Array.isArray(resolvedValue)
+                  ? resolvedValue
+                  : normalizeJsonArray(c, resolvedValue);
+                const isJsonList = jsonFieldSet.has(c) || Array.isArray(resolvedValue);
+                let display = resolvedValue;
+                if (isJsonList) {
+                  const parts = normalizedList
+                    .map((item) => stringifyPreviewCell(resolveRelationDisplay(c, item)))
+                    .filter((item) => item !== '—' && item !== '');
+                  display = parts;
+                } else if (c === 'TotalCur' || totalCurrencySet.has(c)) {
                   display = currencyFmt.format(Number(r[c] || 0));
                 } else if (
                   fieldTypeMap[c] === 'date' ||
                   fieldTypeMap[c] === 'datetime' ||
                   fieldTypeMap[c] === 'time'
                 ) {
-                  display = normalizeDateInput(raw, placeholders[c]);
+                  display = normalizeDateInput(String(resolvedValue ?? ''), placeholders[c]);
                 } else if (
                   placeholders[c] === undefined &&
-                  /^\d{4}-\d{2}-\d{2}T/.test(raw)
+                  /^\d{4}-\d{2}-\d{2}T/.test(String(resolvedValue ?? ''))
                 ) {
-                  display = normalizeDateInput(raw, 'YYYY-MM-DD');
+                  display = normalizeDateInput(String(resolvedValue ?? ''), 'YYYY-MM-DD');
+                } else {
+                  display = String(resolvedValue ?? '');
                 }
-                const showFull = display.length > 20;
+                const titleValue = isJsonList
+                  ? normalizedList.map((item) => stringifyPreviewCell(resolveRelationDisplay(c, item))).join(', ')
+                  : String(resolvedValue ?? '');
                 return (
                   <td
                     key={c}
                     style={style}
-                    title={raw}
-                    onContextMenu={(e) => raw && openContextMenu(e, sanitizeName(raw))}
+                    title={titleValue}
+                    onContextMenu={(e) => titleValue && openContextMenu(e, sanitizeName(titleValue))}
                   >
-                    {display}
+                    {Array.isArray(display) ? (
+                      display.length === 0 ? (
+                        '—'
+                      ) : (
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.25rem' }}>
+                          {display.map((item, idx) => (
+                            <span
+                              key={`${c}-${idx}-${item}`}
+                              style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                padding: '0.1rem 0.4rem',
+                                backgroundColor: '#eef2ff',
+                                borderRadius: '9999px',
+                                fontSize: '0.75rem',
+                              }}
+                            >
+                              {item}
+                            </span>
+                          ))}
+                        </div>
+                      )
+                    ) : (
+                      display
+                    )}
                   </td>
                 );
               })}
@@ -7205,6 +7295,7 @@ const TableManager = forwardRef(function TableManager({
         relationConfigs={relationConfigs}
         relationData={refRows}
         fieldTypeMap={fieldTypeMap}
+        jsonFields={Array.from(jsonFieldSet)}
         disabledFields={disabledFields}
         labels={labels}
         requiredFields={formConfig?.requiredFields || []}
@@ -7266,6 +7357,7 @@ const TableManager = forwardRef(function TableManager({
         references={detailRefs}
         labels={labels}
         fieldTypeMap={fieldTypeMap}
+        jsonFields={Array.from(jsonFieldSet)}
       />
       <RowImageUploadModal
         visible={uploadRow !== null}
