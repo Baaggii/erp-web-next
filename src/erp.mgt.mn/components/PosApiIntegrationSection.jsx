@@ -19,6 +19,10 @@ import {
   normalizeMappingSelection,
   resetMappingFieldsForType,
 } from '../utils/posApiFieldSource.js';
+import {
+  buildEndpointRequestMappingDefaults,
+  mergePosApiMappingDefaults,
+} from '../utils/posApiRequestDefaults.js';
 
 const DEFAULT_SESSION_VARIABLES = [
   'currentUserId',
@@ -681,39 +685,38 @@ export default function PosApiIntegrationSection({
     return next;
   }, [endpointCandidates, config.posApiEndpointId, config.posApiEndpointMeta, config.posApiMapping]);
 
+  const normalizedNestedPaths = useMemo(
+    () =>
+      normalizeNestedPathsMap(
+        selectedEndpoint?.mappingHints?.nestedPaths || {},
+        selectedEndpoint?.supportsItems !== false,
+      ),
+    [selectedEndpoint],
+  );
+
+  const endpointRequestMappingDefaults = useMemo(
+    () =>
+      selectedEndpoint
+        ? buildEndpointRequestMappingDefaults(selectedEndpoint, {
+            nestedPaths: normalizedNestedPaths,
+            supportsItems: selectedEndpoint.supportsItems !== false,
+          })
+        : null,
+    [normalizedNestedPaths, selectedEndpoint],
+  );
+
   useEffect(() => {
-    if (!config.posApiEnabled) return;
-    const requestMappings =
-      selectedEndpoint && typeof selectedEndpoint.requestMappings === 'object' && !Array.isArray(selectedEndpoint.requestMappings)
-        ? selectedEndpoint.requestMappings
-        : null;
-    const requestFieldMappings =
-      selectedEndpoint && typeof selectedEndpoint.requestFieldMappings === 'object' && !Array.isArray(selectedEndpoint.requestFieldMappings)
-        ? selectedEndpoint.requestFieldMappings
-        : null;
-    if (!requestMappings && !requestFieldMappings) return;
+    if (!config.posApiEnabled || !endpointRequestMappingDefaults) return;
     setConfig((prev) => {
-      const baseMapping =
-        prev.posApiMapping && typeof prev.posApiMapping === 'object' && !Array.isArray(prev.posApiMapping)
-          ? { ...prev.posApiMapping }
-          : {};
-      let changed = false;
-      const mergeEntry = (field, value) => {
-        const normalizedField = typeof field === 'string' ? field.trim() : '';
-        if (!normalizedField) return;
-        if (baseMapping[normalizedField]) return;
-        const selection = normalizeMappingSelection(value, primaryTableName);
-        const nextValue = buildMappingValue(selection, { preserveType: true });
-        if (nextValue === '' || nextValue === undefined) return;
-        baseMapping[normalizedField] = nextValue;
-        changed = true;
-      };
-      Object.entries(requestMappings || {}).forEach(([field, value]) => mergeEntry(field, value));
-      Object.entries(requestFieldMappings || {}).forEach(([field, value]) => mergeEntry(field, value));
+      if (!prev.posApiEnabled) return prev;
+      const { changed, value } = mergePosApiMappingDefaults(
+        prev.posApiMapping || {},
+        endpointRequestMappingDefaults,
+      );
       if (!changed) return prev;
-      return { ...prev, posApiMapping: baseMapping };
+      return { ...prev, posApiMapping: value };
     });
-  }, [config.posApiEnabled, primaryTableName, selectedEndpoint, setConfig]);
+  }, [config.posApiEnabled, endpointRequestMappingDefaults, setConfig]);
 
   const nestedObjects = useMemo(
     () => (Array.isArray(selectedEndpoint?.nestedObjects) ? selectedEndpoint.nestedObjects : []),
@@ -724,9 +727,9 @@ export default function PosApiIntegrationSection({
       buildRequestFieldStructure(
         selectedEndpoint?.requestFields || [],
         selectedEndpoint?.supportsItems !== false,
-        selectedEndpoint?.mappingHints?.nestedPaths || {},
+        normalizedNestedPaths,
       ),
-    [selectedEndpoint],
+    [normalizedNestedPaths, selectedEndpoint],
   );
   const [fieldFilter, setFieldFilter] = useState('');
   const normalizedFieldFilter = fieldFilter.trim().toLowerCase();
@@ -765,21 +768,20 @@ export default function PosApiIntegrationSection({
   }, [requestObjects, normalizedFieldFilter]);
 
   const endpointSupportsItems = selectedEndpoint?.supportsItems !== false;
-  const endpointReceiptItemsEnabled =
-    selectedEndpoint && selectedEndpoint.supportsItems !== false
+  const endpointReceiptItemsEnabled = endpointSupportsItems
+    ? true
+    : selectedEndpoint
       ? selectedEndpoint.enableReceiptItems !== false
-      : endpointSupportsItems;
+      : false;
   const receiptTypesFeatureEnabled =
     config.posApiEnabled &&
     endpointSupportsItems &&
-    selectedEndpoint?.enableReceiptTypes !== false &&
     Array.isArray(selectedEndpoint?.receiptTypes);
-  const receiptTaxTypesFeatureEnabled =
-    config.posApiEnabled && endpointSupportsItems && selectedEndpoint?.enableReceiptTaxTypes !== false;
+  const receiptTaxTypesFeatureEnabled = config.posApiEnabled && endpointSupportsItems;
   const paymentMethodsFeatureEnabled =
     config.posApiEnabled &&
     selectedEndpoint?.supportsMultiplePayments !== false &&
-    selectedEndpoint?.enablePaymentMethods !== false;
+    (endpointSupportsItems ? true : selectedEndpoint?.enablePaymentMethods !== false);
   const supportsItems = config.posApiEnabled && endpointSupportsItems && endpointReceiptItemsEnabled;
 
   const baseRequestSample = useMemo(() => {
