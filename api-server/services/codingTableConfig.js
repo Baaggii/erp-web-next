@@ -8,9 +8,9 @@ async function ensureDir(companyId = 0) {
   await fs.mkdir(path.dirname(filePath), { recursive: true });
 }
 
-function ensureAdmin(user, sessionPermissions) {
+function ensureAdmin(user) {
   // Admin-only: coding table configs influence schema/column mappings.
-  assertAdminUser(user, sessionPermissions);
+  assertAdminUser(user);
 }
 
   async function readConfig(companyId = 0) {
@@ -86,13 +86,13 @@ function parseConfig(raw = {}) {
 }
 
 export async function getConfig(table, companyId = 0, options = {}) {
-  ensureAdmin(options.user, options.sessionPermissions);
+  ensureAdmin(options.user);
   const { cfg, isDefault } = await readConfig(companyId);
   return { config: parseConfig(cfg[table]), isDefault };
 }
 
 export async function getAllConfigs(companyId = 0, options = {}) {
-  ensureAdmin(options.user, options.sessionPermissions);
+  ensureAdmin(options.user);
   const { cfg, isDefault } = await readConfig(companyId);
   const result = {};
   for (const [tbl, info] of Object.entries(cfg)) {
@@ -102,7 +102,7 @@ export async function getAllConfigs(companyId = 0, options = {}) {
 }
 
 export async function setConfig(table, config = {}, companyId = 0, options = {}) {
-  ensureAdmin(options.user, options.sessionPermissions);
+  ensureAdmin(options.user);
   const { cfg } = await readConfig(companyId);
   cfg[table] = config;
   await writeConfig(cfg, companyId);
@@ -110,7 +110,7 @@ export async function setConfig(table, config = {}, companyId = 0, options = {})
 }
 
 export async function deleteConfig(table, companyId = 0, options = {}) {
-  ensureAdmin(options.user, options.sessionPermissions);
+  ensureAdmin(options.user);
   const { cfg } = await readConfig(companyId);
   if (cfg[table]) {
     delete cfg[table];

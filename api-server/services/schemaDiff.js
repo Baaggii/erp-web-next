@@ -13,7 +13,7 @@ const BASELINE_RECORD_PATH = path.join(projectRoot, 'db', 'schema-baseline.json'
 
 function ensureAdmin(options = {}) {
   // Admin-only: schema diff routines can dump/apply DDL using elevated DB credentials.
-  assertAdminUser(options.user, options.sessionPermissions);
+  assertAdminUser(options.user);
 }
 
 async function commandExists(cmd) {

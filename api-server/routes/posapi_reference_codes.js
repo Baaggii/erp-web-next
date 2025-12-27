@@ -21,7 +21,7 @@ async function requireSystemSettings(req, res) {
   const session =
     (req.session && Number(req.session?.company_id) === companyId && req.session) ||
     (await getEmploymentSession(req.user.empid, companyId));
-  if (!isAdminUser(req.user, session?.permissions) || !session?.permissions?.system_settings) {
+  if (!isAdminUser(req.user) || !session?.permissions?.system_settings) {
     res.status(403).json({ message: 'Admin privileges required' });
     return null;
   }

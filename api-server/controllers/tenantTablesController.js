@@ -59,7 +59,7 @@ export async function getTenantTable(req, res, next) {
 
 async function ensureAdmin(req) {
   const session = await getEmploymentSession(req.user.empid, req.user.companyId);
-  return isAdminUser(req.user, session?.permissions) && hasAction(session, 'system_settings');
+  return isAdminUser(req.user) && hasAction(session, 'system_settings');
 }
 
 export async function createTenantTable(req, res, next) {

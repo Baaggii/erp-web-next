@@ -5,9 +5,9 @@ function escapeId(name) {
   return `\`${String(name).replace(/`/g, '``')}\``;
 }
 
-function ensureAdmin(user, sessionPermissions) {
+function ensureAdmin(user) {
   // Admin-only: JSON conversion rewrites columns, triggers, and constraints.
-  assertAdminUser(user, sessionPermissions);
+  assertAdminUser(user);
 }
 
 function escapeRegex(str) {
@@ -372,7 +372,7 @@ function buildConstraintMap(table, columnNames = [], usage = {}) {
 }
 
 export async function listTables(options = {}) {
-  ensureAdmin(options.user, options.sessionPermissions);
+  ensureAdmin(options.user);
   const [rows] = await pool.query('SHOW TABLES');
   if (!Array.isArray(rows) || rows.length === 0) return [];
   const firstKey = Object.keys(rows[0] || {})[0];
@@ -380,7 +380,7 @@ export async function listTables(options = {}) {
 }
 
 export async function listColumns(table, options = {}) {
-  ensureAdmin(options.user, options.sessionPermissions);
+  ensureAdmin(options.user);
   const [rows] = await pool.query('SHOW COLUMNS FROM ??', [table]);
   const columnNames = rows.map((row) => row.Field);
   let constraintMap = {};
@@ -712,7 +712,7 @@ export function buildConversionPlan(table, columns, metadata, options = {}) {
 }
 
 export async function runPlanStatements(statements, options = {}) {
-  ensureAdmin(options.user, options.sessionPermissions);
+  ensureAdmin(options.user);
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();
@@ -744,7 +744,7 @@ export async function runPlanStatements(statements, options = {}) {
 }
 
 export async function recordConversionLog(table, columns, scriptText, runBy, options = {}) {
-  ensureAdmin(options.user, options.sessionPermissions);
+  ensureAdmin(options.user);
   await ensureLogTable();
   const columnName = Array.isArray(columns) ? columns.join(',') : String(columns || '');
   const [result] = await pool.query(
@@ -756,7 +756,7 @@ export async function recordConversionLog(table, columns, scriptText, runBy, opt
 }
 
 export async function listSavedScripts(options = {}) {
-  ensureAdmin(options.user, options.sessionPermissions);
+  ensureAdmin(options.user);
   await ensureLogTable();
   const [rows] = await pool.query(
     `SELECT id, table_name, column_name, script_text, run_at, run_by
@@ -768,7 +768,7 @@ export async function listSavedScripts(options = {}) {
 }
 
 export async function getSavedScript(id, options = {}) {
-  ensureAdmin(options.user, options.sessionPermissions);
+  ensureAdmin(options.user);
   await ensureLogTable();
   const [rows] = await pool.query(
     `SELECT id, table_name, column_name, script_text, run_at, run_by
@@ -780,7 +780,7 @@ export async function getSavedScript(id, options = {}) {
 }
 
 export async function touchScriptRun(id, runBy, options = {}) {
-  ensureAdmin(options.user, options.sessionPermissions);
+  ensureAdmin(options.user);
   await ensureLogTable();
   await pool.query(
     `UPDATE json_conversion_log

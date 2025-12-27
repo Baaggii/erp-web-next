@@ -69,7 +69,7 @@ async function dropSelfReferentialTriggers(conn, table) {
 
 export async function upsertCodingTableRow(table, row, options = {}) {
   // Admin-only: drops triggers and writes arbitrary tables; restrict to admins.
-  assertAdminUser(options.user, options.sessionPermissions);
+  assertAdminUser(options.user);
   if (!table || !row || typeof row !== 'object') {
     throw new Error('table and row required');
   }
