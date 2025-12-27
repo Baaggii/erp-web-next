@@ -3636,26 +3636,6 @@ export default function PosApiAdmin() {
     [primaryRequestTable, requestTableColumns],
   );
 
-  const requestAggregationFieldOptions = useMemo(() => {
-    const seen = new Set();
-    const fields = [];
-    Object.entries(requestTableColumns).forEach(([table, cols]) => {
-      (cols || []).forEach((col) => {
-        if (!col) return;
-        const value = table ? `${table}.${col}` : col;
-        if (seen.has(value)) return;
-        seen.add(value);
-        fields.push(value);
-      });
-    });
-    (primaryRequestColumns || []).forEach((col) => {
-      if (!col || seen.has(col)) return;
-      seen.add(col);
-      fields.push(col);
-    });
-    return fields;
-  }, [primaryRequestColumns, requestTableColumns]);
-
   useEffect(() => {
     let removedTables = 0;
     setFormState((prev) => {
@@ -7494,8 +7474,11 @@ export default function PosApiAdmin() {
       const saved = await res.json();
       const nextRaw = Array.isArray(saved) ? saved : normalizedWithIds;
       const next = normalizeEndpointList(nextRaw.map(withEndpointMetadata));
-      setEndpoints(next);
-      const selected = next.find((ep) => ep.id === preparedDefinition.id) || preparedDefinition;
+      const mergedNext = next.map((ep) =>
+        ep.id === preparedDefinition.id ? { ...ep, ...preparedDefinition } : ep,
+      );
+      setEndpoints(mergedNext);
+      const selected = mergedNext.find((ep) => ep.id === preparedDefinition.id) || preparedDefinition;
       handleSelect(selected.id, selected);
       setStatus('Changes saved');
     } catch (err) {
@@ -10008,7 +9991,7 @@ export default function PosApiAdmin() {
                                 { defaultApplyToBody },
                               )
                             }
-                            fieldOptions={requestAggregationFieldOptions}
+                            fieldOptions={aggregationFieldOptions}
                             datalistId={`agg-builder-${index}-${fieldPath}`}
                           />
                         </label>
