@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useContext, useMemo, useRef } from 'react';
+import React, { useEffect, useState, useContext, useMemo, useRef, useCallback } from 'react';
 import { useToast } from '../context/ToastContext.jsx';
 import { refreshTxnModules } from '../hooks/useTxnModules.js';
 import { refreshModules } from '../hooks/useModules.js';
@@ -12,10 +12,16 @@ import {
   resolveFeatureToggle,
   withPosApiEndpointMetadata,
 } from '../utils/posApiConfig.js';
-import { buildMappingValue, normalizeMappingSelection, parseFieldSource } from '../utils/posApiFieldSource.js';
+import {
+  buildMappingValue,
+  deriveEndpointRequestMappingDefaults,
+  hasMappingProvidedValue,
+  mergePosApiMappingDefaults,
+  normalizeMappingSelection,
+  parseFieldSource,
+} from '../utils/posApiFieldSource.js';
 import PosApiIntegrationSection from '../components/PosApiIntegrationSection.jsx';
  
-
 function normaliseEndpointUsage(value) {
   return typeof value === 'string' && ['transaction', 'info', 'admin'].includes(value)
     ? value
@@ -75,66 +81,8 @@ const emptyConfig = {
   posApiEnablePaymentMethods: undefined,
   fieldsFromPosApi: [],
   posApiMapping: {},
+  posApiMappingMeta: { endpointDerivedPaths: [], endpointDefaults: null },
 };
-
-const ROOT_REQUEST_KEYS = new Set(POS_API_FIELDS.map((field) => field.key));
-const ITEM_REQUEST_KEYS = new Set(POS_API_ITEM_FIELDS.map((field) => field.key));
-const PAYMENT_REQUEST_KEYS = new Set(POS_API_PAYMENT_FIELDS.map((field) => field.key));
-const RECEIPT_REQUEST_KEYS = new Set(POS_API_RECEIPT_FIELDS.map((field) => field.key));
-
-function tokenizeFieldPath(path) {
-  if (typeof path !== 'string' || !path.trim()) return [];
-  return path
-    .split('.')
-    .map((segment) => {
-      const trimmed = segment.trim();
-      if (!trimmed) return null;
-      const arrayMatch = /^(.*)\[\]$/.exec(trimmed);
-      if (arrayMatch) {
-        return { key: arrayMatch[1], isArray: true };
-      }
-      return { key: trimmed, isArray: false };
-    })
-    .filter(Boolean);
-}
-
-function tokensToPath(tokens = []) {
-  if (!Array.isArray(tokens) || tokens.length === 0) return '';
-  return tokens
-    .map((token) => `${token.key}${token.isArray ? '[]' : ''}`)
-    .filter(Boolean)
-    .join('.');
-}
-
-function normalizeNestedPathsMap(nestedPaths = {}, supportsItems = false) {
-  const defaults = {};
-  if (supportsItems) {
-    defaults.items = 'receipts[].items[]';
-  }
-  defaults.payments = supportsItems ? 'receipts[].payments[]' : 'payments[]';
-  defaults.receipts = 'receipts[]';
-  const map = { ...defaults };
-  if (nestedPaths && typeof nestedPaths === 'object') {
-    Object.entries(nestedPaths).forEach(([key, value]) => {
-      if (typeof value === 'string' && value.trim()) {
-        map[key] = value.trim();
-      }
-    });
-  }
-  return map;
-}
-
-function stripPrefix(tokens = [], prefixTokens = []) {
-  if (!tokens.length || !prefixTokens.length || tokens.length < prefixTokens.length) return null;
-  for (let i = 0; i < prefixTokens.length; i += 1) {
-    if (tokens[i].key !== prefixTokens[i].key) return null;
-  }
-  return tokens.slice(prefixTokens.length);
-}
-
-function normalizeFieldKeyForMatch(path = '') {
-  return path.replace(/\[\]/g, '');
-}
 
 function normalizeVariationDefaults(map = {}) {
   if (!map || typeof map !== 'object' || Array.isArray(map)) return {};
@@ -148,74 +96,68 @@ function normalizeVariationDefaults(map = {}) {
   return normalized;
 }
 
-function hasMappingProvidedValue(value) {
-  if (value === undefined || value === null) return false;
-  if (typeof value === 'string') return value.trim() !== '';
-  if (typeof value !== 'object') return false;
-  if (Object.keys(value).length === 0) return false;
-  if (value.value || value.envVar || value.sessionVar || value.expression) return true;
-  if (value.column) return true;
-  if (value.table) return true;
-  return false;
-}
-
-function mergeMappingSection(current = {}, defaults = {}) {
-  const merged = { ...(current || {}) };
-  let changed = false;
-  Object.entries(defaults || {}).forEach(([fieldKey, value]) => {
-    if (!hasMappingProvidedValue(merged[fieldKey]) && hasMappingProvidedValue(value)) {
-      merged[fieldKey] = value;
-      changed = true;
-    }
+function collectEndpointDerivedPaths(defaults = {}) {
+  const paths = [];
+  Object.entries(defaults || {}).forEach(([key, value]) => {
+    if (['objectFields', 'itemFields', 'paymentFields', 'receiptFields'].includes(key)) return;
+    if (hasMappingProvidedValue(value)) paths.push(key);
   });
-  return { merged, changed };
-}
-
-function mergePosApiMappingDefaults(currentMapping = {}, defaults = {}) {
-  const next = { ...(currentMapping || {}) };
-  let changed = false;
-
-  Object.entries(defaults || {}).forEach(([fieldKey, value]) => {
-    if (['objectFields', 'itemFields', 'paymentFields', 'receiptFields'].includes(fieldKey)) return;
-    if (!hasMappingProvidedValue(next[fieldKey]) && hasMappingProvidedValue(value)) {
-      next[fieldKey] = value;
-      changed = true;
-    }
-  });
-
-  if (defaults.objectFields) {
-    const objectFields =
-      next.objectFields && typeof next.objectFields === 'object' && !Array.isArray(next.objectFields)
-        ? { ...next.objectFields }
-        : {};
+  if (defaults.objectFields && typeof defaults.objectFields === 'object') {
     Object.entries(defaults.objectFields).forEach(([objectKey, fields]) => {
-      const currentFields =
-        objectFields[objectKey] && typeof objectFields[objectKey] === 'object' && !Array.isArray(objectFields[objectKey])
-          ? objectFields[objectKey]
+      Object.keys(fields || {}).forEach((fieldKey) => {
+        paths.push(`objectFields.${objectKey}.${fieldKey}`);
+      });
+    });
+  }
+  ['itemFields', 'paymentFields', 'receiptFields'].forEach((section) => {
+    if (!defaults[section] || typeof defaults[section] !== 'object') return;
+    Object.keys(defaults[section]).forEach((fieldKey) => {
+      paths.push(`${section}.${fieldKey}`);
+    });
+  });
+  return paths;
+}
+
+function applyEndpointDefaults(baseMapping = {}, defaults = {}) {
+  const next = { ...(baseMapping || {}) };
+  Object.entries(defaults || {}).forEach(([key, value]) => {
+    if (['objectFields', 'itemFields', 'paymentFields', 'receiptFields'].includes(key)) return;
+    if (hasMappingProvidedValue(value)) {
+      next[key] = value;
+    }
+  });
+  if (defaults.objectFields && typeof defaults.objectFields === 'object') {
+    const objectFields = {};
+    Object.entries(defaults.objectFields).forEach(([objectKey, fields]) => {
+      const current =
+        next.objectFields && typeof next.objectFields === 'object' && !Array.isArray(next.objectFields)
+          ? next.objectFields[objectKey]
           : {};
-      const { merged, changed: sectionChanged } = mergeMappingSection(currentFields, fields);
-      if (sectionChanged) {
-        objectFields[objectKey] = merged;
-        changed = true;
-      }
+      objectFields[objectKey] = { ...(current || {}), ...(fields || {}) };
     });
     if (Object.keys(objectFields).length) {
-      next.objectFields = objectFields;
+      next.objectFields = {
+        ...(next.objectFields && typeof next.objectFields === 'object' ? next.objectFields : {}),
+        ...objectFields,
+      };
     }
   }
-
-  ['itemFields', 'paymentFields', 'receiptFields'].forEach((key) => {
-    if (!defaults[key]) return;
-    const currentSection =
-      next[key] && typeof next[key] === 'object' && !Array.isArray(next[key]) ? next[key] : {};
-    const { merged, changed: sectionChanged } = mergeMappingSection(currentSection, defaults[key]);
-    if (sectionChanged) {
-      next[key] = merged;
-      changed = true;
+  ['itemFields', 'paymentFields', 'receiptFields'].forEach((section) => {
+    if (!defaults[section] || typeof defaults[section] !== 'object') return;
+    const existing =
+      next[section] && typeof next[section] === 'object' && !Array.isArray(next[section])
+        ? { ...next[section] }
+        : {};
+    Object.entries(defaults[section]).forEach(([fieldKey, value]) => {
+      if (hasMappingProvidedValue(value)) {
+        existing[fieldKey] = value;
+      }
+    });
+    if (Object.keys(existing).length) {
+      next[section] = existing;
     }
   });
-
-  return { changed, value: changed ? next : currentMapping };
+  return next;
 }
 
 export default function PosTxnConfig() {
@@ -676,118 +618,13 @@ export default function PosTxnConfig() {
     return map;
   }, [selectedEndpoint]);
 
-  const endpointNestedPaths = useMemo(
-    () => normalizeNestedPathsMap(selectedEndpoint?.mappingHints?.nestedPaths || {}, endpointSupportsItems),
-    [selectedEndpoint?.mappingHints?.nestedPaths, endpointSupportsItems],
+  const endpointRequestMappingDefaults = useMemo(
+    () =>
+      deriveEndpointRequestMappingDefaults(selectedEndpoint, {
+        primaryTableName: config.masterTable,
+      }),
+    [selectedEndpoint, config.masterTable],
   );
-
-  const endpointRequestMappingDefaults = useMemo(() => {
-    if (!selectedEndpoint) return null;
-    const mappingEntries = Object.entries(selectedEndpoint.requestFieldMappings || {});
-    const envEntries = Object.entries(selectedEndpoint.requestEnvMap || {}).map(([fieldPath, envEntry]) => {
-      if (!fieldPath) return null;
-      const envVar = typeof envEntry === 'string' ? envEntry : envEntry?.envVar;
-      if (!envVar) return null;
-      const applyToBody = envEntry && typeof envEntry === 'object' && envEntry.applyToBody === false
-        ? false
-        : true;
-      return [fieldPath, { type: 'env', envVar, applyToBody }];
-    }).filter(Boolean);
-    const entries = [...mappingEntries, ...envEntries];
-    if (!entries.length) return null;
-    const itemsPrefixTokens = tokenizeFieldPath(endpointNestedPaths.items || '');
-    const paymentsPrefixTokens = tokenizeFieldPath(endpointNestedPaths.payments || '');
-    const receiptsPrefixTokens = tokenizeFieldPath(endpointNestedPaths.receipts || '');
-    const itemsObjectKey = tokensToPath(itemsPrefixTokens) || 'items';
-    const paymentsObjectKey = tokensToPath(paymentsPrefixTokens) || 'payments';
-    const receiptsObjectKey = tokensToPath(receiptsPrefixTokens) || 'receipts';
-    const rootDefaults = {};
-    const objectFields = {};
-    const legacyItemFields = {};
-    const legacyPaymentFields = {};
-    const legacyReceiptFields = {};
-
-    const assignObjectField = (objectKey, fieldKey, legacyTarget, value, includeLegacy = true) => {
-      if (!fieldKey || !value) return;
-      if (legacyTarget && includeLegacy) {
-        legacyTarget[fieldKey] = value;
-      }
-      if (!objectKey) return;
-      const existing =
-        objectFields[objectKey] && typeof objectFields[objectKey] === 'object'
-          ? { ...objectFields[objectKey] }
-          : {};
-      existing[fieldKey] = value;
-      objectFields[objectKey] = existing;
-    };
-
-    entries.forEach(([fieldPath, rawSelection]) => {
-      if (!fieldPath) return;
-      if (rawSelection && rawSelection.applyToBody === false) return;
-      const literalSelection =
-        rawSelection && rawSelection.type === 'literal' && rawSelection.value === undefined && rawSelection.literal !== undefined
-          ? { ...rawSelection, value: rawSelection.literal }
-          : rawSelection;
-      const normalizedSelection = normalizeMappingSelection(literalSelection || {});
-      if (!hasMappingProvidedValue(normalizedSelection)) return;
-      const mappingValue = buildMappingValue(normalizedSelection, { preserveType: true });
-      if (!hasMappingProvidedValue(mappingValue)) return;
-      const tokens = tokenizeFieldPath(fieldPath);
-      const itemRemainder = stripPrefix(tokens, itemsPrefixTokens);
-      if (itemRemainder) {
-        const itemKey = normalizeFieldKeyForMatch(tokensToPath(itemRemainder));
-        if (itemKey) {
-          assignObjectField(
-            itemsObjectKey,
-            itemKey,
-            legacyItemFields,
-            mappingValue,
-            ITEM_REQUEST_KEYS.has(itemKey),
-          );
-        }
-        return;
-      }
-      const paymentRemainder = stripPrefix(tokens, paymentsPrefixTokens);
-      if (paymentRemainder) {
-        const paymentKey = normalizeFieldKeyForMatch(tokensToPath(paymentRemainder));
-        if (paymentKey) {
-          assignObjectField(
-            paymentsObjectKey,
-            paymentKey,
-            legacyPaymentFields,
-            mappingValue,
-            PAYMENT_REQUEST_KEYS.has(paymentKey),
-          );
-        }
-        return;
-      }
-      const receiptRemainder = stripPrefix(tokens, receiptsPrefixTokens);
-      if (receiptRemainder) {
-        const receiptKey = normalizeFieldKeyForMatch(tokensToPath(receiptRemainder));
-        if (receiptKey) {
-          assignObjectField(
-            receiptsObjectKey,
-            receiptKey,
-            legacyReceiptFields,
-            mappingValue,
-            RECEIPT_REQUEST_KEYS.has(receiptKey),
-          );
-        }
-        return;
-      }
-      const rootKey = normalizeFieldKeyForMatch(fieldPath);
-      if (ROOT_REQUEST_KEYS.has(rootKey)) {
-        rootDefaults[rootKey] = mappingValue;
-      }
-    });
-
-    const result = { ...rootDefaults };
-    if (Object.keys(objectFields).length) result.objectFields = objectFields;
-    if (Object.keys(legacyItemFields).length) result.itemFields = legacyItemFields;
-    if (Object.keys(legacyPaymentFields).length) result.paymentFields = legacyPaymentFields;
-    if (Object.keys(legacyReceiptFields).length) result.receiptFields = legacyReceiptFields;
-    return Object.keys(result).length ? result : null;
-  }, [endpointNestedPaths, selectedEndpoint]);
 
   useEffect(() => {
     if (!endpointRequestMappingDefaults) return;
@@ -798,10 +635,44 @@ export default function PosTxnConfig() {
         c.posApiMapping || {},
         endpointRequestMappingDefaults,
       );
-      if (!changed) return c;
-      return { ...c, posApiMapping: value };
+      const derivedPaths = collectEndpointDerivedPaths(endpointRequestMappingDefaults);
+      const prevMeta = c.posApiMappingMeta && typeof c.posApiMappingMeta === 'object' ? c.posApiMappingMeta : {};
+      const prevPaths = Array.isArray(prevMeta.endpointDerivedPaths) ? prevMeta.endpointDerivedPaths : [];
+      const sameDerivedPaths =
+        prevPaths.length === derivedPaths.length &&
+        prevPaths.every((path) => derivedPaths.includes(path));
+      const meta = {
+        ...prevMeta,
+        endpointDerivedPaths: derivedPaths,
+        endpointDefaults: endpointRequestMappingDefaults,
+      };
+      if (!changed && sameDerivedPaths && prevMeta.endpointDefaults === endpointRequestMappingDefaults) {
+        return c;
+      }
+      const next = { ...c, posApiMappingMeta: meta };
+      if (changed) {
+        next.posApiMapping = value;
+      }
+      return next;
     });
   }, [config.posApiEnabled, endpointRequestMappingDefaults]);
+
+  const handleResetPosApiMapping = useCallback(() => {
+    if (!endpointRequestMappingDefaults) return;
+    if (!config.posApiEnabled) return;
+    setConfig((c) => {
+      if (!c.posApiEnabled) return c;
+      const nextMapping = applyEndpointDefaults(c.posApiMapping || {}, endpointRequestMappingDefaults);
+      const derivedPaths = collectEndpointDerivedPaths(endpointRequestMappingDefaults);
+      const meta = {
+        ...(c.posApiMappingMeta && typeof c.posApiMappingMeta === 'object' ? c.posApiMappingMeta : {}),
+        endpointDerivedPaths: derivedPaths,
+        endpointDefaults: endpointRequestMappingDefaults,
+      };
+      return { ...c, posApiMapping: nextMapping, posApiMappingMeta: meta };
+    });
+    addToast('POSAPI mapping reset to endpoint defaults', 'success');
+  }, [addToast, config.posApiEnabled, endpointRequestMappingDefaults]);
 
   const serviceReceiptGroupTypes = useMemo(() => {
     if (!receiptTaxTypesFeatureEnabled) return [];
@@ -1285,6 +1156,25 @@ export default function PosTxnConfig() {
         !Array.isArray(loaded.posApiMapping)
           ? { ...loaded.posApiMapping }
           : {};
+      const loadedMeta =
+        loaded.posApiMappingMeta &&
+        typeof loaded.posApiMappingMeta === 'object' &&
+        !Array.isArray(loaded.posApiMappingMeta)
+          ? loaded.posApiMappingMeta
+          : {};
+      const metaDerivedPaths = Array.isArray(loadedMeta.endpointDerivedPaths)
+        ? loadedMeta.endpointDerivedPaths
+            .map((path) => (typeof path === 'string' ? path.trim() : ''))
+            .filter((path) => path)
+        : [];
+      const metaDefaults =
+        loadedMeta.endpointDefaults && typeof loadedMeta.endpointDefaults === 'object'
+          ? loadedMeta.endpointDefaults
+          : null;
+      loaded.posApiMappingMeta = {
+        endpointDerivedPaths: metaDerivedPaths,
+        endpointDefaults: metaDefaults,
+      };
       delete loaded.posApiResponseMapping;
       if (loaded.posApiEndpointMeta && typeof loaded.posApiEndpointMeta === 'object') {
         loaded.posApiEndpointMeta = { ...loaded.posApiEndpointMeta };
@@ -2522,6 +2412,8 @@ export default function PosTxnConfig() {
           receiptGroupMapping={receiptGroupMapping}
           paymentMethodMapping={paymentMethodMapping}
           onEnsureColumnsLoaded={ensureColumnsLoadedFor}
+          endpointMappingDefaults={endpointRequestMappingDefaults}
+          onResetToEndpointDefaults={handleResetPosApiMapping}
         />
 
         <section style={sectionStyle}>
