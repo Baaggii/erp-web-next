@@ -1,6 +1,5 @@
 import express from 'express';
 import { requireAuth } from '../middlewares/auth.js';
-import { requireAdmin } from '../middlewares/admin.js';
 import {
   getUploadMiddleware,
   importStaticCodes,
@@ -15,7 +14,7 @@ import {
 
 const router = express.Router();
 
-router.get('/', requireAuth, requireAdmin, async (req, res, next) => {
+router.get('/', requireAuth, async (req, res, next) => {
   try {
     const [settings, logs] = await Promise.all([loadSyncSettings(), loadSyncLogs(50)]);
     res.json({ settings, logs });
@@ -24,7 +23,7 @@ router.get('/', requireAuth, requireAdmin, async (req, res, next) => {
   }
 });
 
-router.post('/sync', requireAuth, requireAdmin, async (req, res, next) => {
+router.post('/sync', requireAuth, async (req, res, next) => {
   try {
     const payload = req.body && typeof req.body === 'object' ? req.body : {};
     const result = await runReferenceCodeSync('manual', payload);
@@ -38,7 +37,7 @@ router.post('/sync', requireAuth, requireAdmin, async (req, res, next) => {
   }
 });
 
-router.put('/settings', requireAuth, requireAdmin, async (req, res, next) => {
+router.put('/settings', requireAuth, async (req, res, next) => {
   try {
     const saved = await saveSyncSettings(req.body || {});
     updateSyncSchedule(saved);
@@ -48,7 +47,7 @@ router.put('/settings', requireAuth, requireAdmin, async (req, res, next) => {
   }
 });
 
-router.post('/upload', requireAuth, requireAdmin, getUploadMiddleware(), async (req, res, next) => {
+router.post('/upload', requireAuth, getUploadMiddleware(), async (req, res, next) => {
   try {
     const codeType = String(req.body?.codeType || '').trim();
     if (!codeType) {
@@ -66,7 +65,7 @@ router.post('/upload', requireAuth, requireAdmin, getUploadMiddleware(), async (
   }
 });
 
-router.post('/import-xlsx', requireAuth, requireAdmin, getUploadMiddleware(), async (req, res, next) => {
+router.post('/import-xlsx', requireAuth, getUploadMiddleware(), async (req, res, next) => {
   try {
     const codeType = String(req.body?.codeType || '').trim();
     if (!codeType) {
