@@ -20,6 +20,152 @@ import { API_BASE } from '../utils/apiBase.js';
 
 const DEFAULT_RECEIPT_TYPES = ['B2C', 'B2B_SALE', 'B2B_PURCHASE', 'STOCK_QR'];
 
+function normalizeJsonArrayValue(value) {
+  if (Array.isArray(value)) return value;
+  if (value === null || value === undefined || value === '') return [];
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!trimmed) return [];
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (Array.isArray(parsed)) return parsed;
+      return [parsed];
+    } catch {
+      return [trimmed];
+    }
+  }
+  return [value];
+}
+
+function coerceJsonPrimitive(value) {
+  if (value === null || value === undefined) return value;
+  if (typeof value === 'number') return value;
+  const str = String(value).trim();
+  if (!str) return '';
+  const num = Number(str);
+  if (!Number.isNaN(num) && str !== '') return num;
+  return str;
+}
+
+function formatJsonDisplayValue(value, optionLabelMap = null) {
+  const arr = normalizeJsonArrayValue(value);
+  if (arr.length === 0) return '';
+  const labels = arr.map((item) => {
+    const key =
+      typeof item === 'object' && item !== null && Object.prototype.hasOwnProperty.call(item, 'value')
+        ? item.value
+        : item;
+    const normalizedKey = key === null || key === undefined ? '' : String(key);
+    if (optionLabelMap && optionLabelMap[normalizedKey] !== undefined) {
+      return optionLabelMap[normalizedKey];
+    }
+    if (typeof item === 'object' && item !== null) {
+      try {
+        return JSON.stringify(item);
+      } catch {
+        return normalizedKey;
+      }
+    }
+    return normalizedKey;
+  });
+  return labels.join(', ');
+}
+
+function JsonTagInput({ value = [], onChange, disabled, placeholder = '', inputStyle = {} }) {
+  const [input, setInput] = React.useState('');
+  const tags = Array.isArray(value) ? value : [];
+
+  const addTag = React.useCallback(
+    (tag) => {
+      const normalized = coerceJsonPrimitive(tag);
+      if (normalized === '' || normalized === undefined || normalized === null) return;
+      const next = [...tags, normalized];
+      onChange?.(next);
+      setInput('');
+    },
+    [onChange, tags],
+  );
+
+  const removeTag = React.useCallback(
+    (idx) => {
+      const next = tags.filter((_, i) => i !== idx);
+      onChange?.(next);
+    },
+    [onChange, tags],
+  );
+
+  return (
+    <div
+      style={{
+        display: 'flex',
+        flexWrap: 'wrap',
+        gap: '0.35rem',
+        padding: '0.25rem',
+        border: '1px solid #d1d5db',
+        borderRadius: '6px',
+        minHeight: '2.5rem',
+      }}
+    >
+      {tags.map((tag, idx) => (
+        <span
+          key={`${tag}-${idx}`}
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '0.3rem',
+            padding: '0.2rem 0.45rem',
+            background: '#eef2ff',
+            borderRadius: '999px',
+            border: '1px solid #c7d2fe',
+          }}
+        >
+          <span>{String(tag)}</span>
+          {!disabled && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.preventDefault();
+                removeTag(idx);
+              }}
+              style={{
+                background: 'transparent',
+                border: 'none',
+                cursor: 'pointer',
+                color: '#4b5563',
+                padding: 0,
+              }}
+              aria-label="Remove tag"
+            >
+              ×
+            </button>
+          )}
+        </span>
+      ))}
+      <input
+        value={input}
+        disabled={disabled}
+        onChange={(e) => setInput(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ',' || e.key === 'Tab') {
+            e.preventDefault();
+            addTag(input);
+          } else if (e.key === 'Backspace' && input === '' && tags.length > 0) {
+            removeTag(tags.length - 1);
+          }
+        }}
+        placeholder={placeholder}
+        style={{
+          flex: '1 1 120px',
+          minWidth: '120px',
+          border: 'none',
+          outline: 'none',
+          ...inputStyle,
+        }}
+      />
+    </div>
+  );
+}
+
 function normalizeRelationOptionKey(value) {
   if (value === undefined || value === null) return null;
   if (typeof value === 'object') {
@@ -690,7 +836,9 @@ const RowFormModal = function RowFormModal({
       const missing =
         !row || rowValue === undefined || rowValue === '';
       let val;
-      if (placeholder) {
+      if (typ === 'json') {
+        val = normalizeJsonArrayValue(sourceValue);
+      } else if (placeholder) {
         val = normalizeDateInput(String(sourceValue ?? ''), placeholder);
       } else if (typ === 'number') {
         val = formatNumericValue(c, sourceValue);
@@ -717,9 +865,9 @@ const RowFormModal = function RowFormModal({
         val = formatNumericValue(c, val);
       } else if (placeholder) {
         val = normalizeDateInput(String(val ?? ''), placeholder);
-      } else if (val === null || val === undefined) {
+      } else if (typ !== 'json' && (val === null || val === undefined)) {
         val = '';
-      } else {
+      } else if (typ !== 'json') {
         val = String(val);
       }
       init[c] = val;
@@ -2034,7 +2182,9 @@ const RowFormModal = function RowFormModal({
       const missing =
         !row || rowValue === undefined || rowValue === '';
       let v;
-      if (placeholders[c]) {
+      if (fieldTypeMap[c] === 'json') {
+        v = normalizeJsonArrayValue(sourceValue);
+      } else if (placeholders[c]) {
         v = normalizeDateInput(String(sourceValue ?? ''), placeholders[c]);
       } else if (fieldTypeMap[c] === 'number') {
         v = formatNumericValue(c, sourceValue);
@@ -2062,9 +2212,9 @@ const RowFormModal = function RowFormModal({
         v = formatNumericValue(c, v);
       } else if (placeholders[c]) {
         v = normalizeDateInput(String(v ?? ''), placeholders[c]);
-      } else if (v === null || v === undefined) {
+      } else if (fieldTypeMap[c] !== 'json' && (v === null || v === undefined)) {
         v = '';
-      } else {
+      } else if (fieldTypeMap[c] !== 'json') {
         v = String(v);
       }
       vals[c] = v;
@@ -2866,6 +3016,10 @@ const RowFormModal = function RowFormModal({
           const normalized = {};
           Object.entries(r).forEach(([k, v]) => {
             const raw = typeof v === 'object' && v !== null && 'value' in v ? v.value : v;
+            if (fieldTypeMap[k] === 'json') {
+              normalized[k] = JSON.stringify(normalizeJsonArrayValue(raw));
+              return;
+            }
             let val = normalizeDateInput(raw, placeholders[k]);
             if (totalAmountSet.has(k) || totalCurrencySet.has(k)) {
               val = normalizeNumberInput(val);
@@ -2874,9 +3028,10 @@ const RowFormModal = function RowFormModal({
           });
           requiredFields.forEach((f) => {
             if (
-              normalized[f] === '' ||
-              normalized[f] === null ||
-              normalized[f] === undefined
+              (fieldTypeMap[f] === 'json'
+                ? Array.isArray(normalizeJsonArrayValue(normalized[f])) &&
+                  normalizeJsonArrayValue(normalized[f]).length === 0
+                : normalized[f] === '' || normalized[f] === null || normalized[f] === undefined)
             )
               hasMissing = true;
             if (
@@ -2943,6 +3098,10 @@ const RowFormModal = function RowFormModal({
       }
       const normalized = {};
       Object.entries(merged).forEach(([k, v]) => {
+        if (fieldTypeMap[k] === 'json') {
+          normalized[k] = JSON.stringify(normalizeJsonArrayValue(v));
+          return;
+        }
         let val = normalizeDateInput(v, placeholders[k]);
         if (totalAmountSet.has(k) || totalCurrencySet.has(k)) {
           val = normalizeNumberInput(val);
@@ -2996,6 +3155,10 @@ const RowFormModal = function RowFormModal({
         const normalized = {};
         Object.entries(r).forEach(([k, v]) => {
           const raw = typeof v === 'object' && v !== null && 'value' in v ? v.value : v;
+          if (fieldTypeMap[k] === 'json') {
+            normalized[k] = JSON.stringify(normalizeJsonArrayValue(raw));
+            return;
+          }
           let val = normalizeDateInput(raw, placeholders[k]);
           if (totalAmountSet.has(k) || totalCurrencySet.has(k)) {
             val = normalizeNumberInput(val);
@@ -3004,9 +3167,10 @@ const RowFormModal = function RowFormModal({
         });
         requiredFields.forEach((f) => {
           if (
-            normalized[f] === '' ||
-            normalized[f] === null ||
-            normalized[f] === undefined
+            (fieldTypeMap[f] === 'json'
+              ? Array.isArray(normalizeJsonArrayValue(normalized[f])) &&
+                normalizeJsonArrayValue(normalized[f]).length === 0
+              : normalized[f] === '' || normalized[f] === null || normalized[f] === undefined)
           )
             hasMissing = true;
           if (
@@ -3088,7 +3252,12 @@ const RowFormModal = function RowFormModal({
     requiredFields.forEach((f) => {
       if (
         columns.includes(f) &&
-        (formVals[f] === '' || formVals[f] === null || formVals[f] === undefined)
+        ((fieldTypeMap[f] === 'json' &&
+          Array.isArray(formVals[f]) &&
+          formVals[f].length === 0) ||
+          formVals[f] === '' ||
+          formVals[f] === null ||
+          formVals[f] === undefined)
       ) {
         errs[f] = 'Утга оруулна уу';
       }
@@ -3149,6 +3318,38 @@ const RowFormModal = function RowFormModal({
 
     if (disabled) {
       const raw = isColumn ? formVals[c] : extraVals[c];
+      if (fieldTypeMap[c] === 'json') {
+        const labelMap =
+          relationOptionLabelLookup[c] ||
+          relationOptionLabelLookup[String(c).toLowerCase()] ||
+          null;
+        const display = formatJsonDisplayValue(raw, labelMap);
+        return (
+          <TooltipWrapper key={c} title={tip}>
+            <div className={fitted ? 'mb-1' : 'mb-3'}>
+              <label className="block mb-1 font-medium" style={labelStyle}>
+                {labels[c] || c}
+              </label>
+              <div
+                ref={(el) => (readonlyRefs.current[c] = el)}
+                style={{
+                  padding: '0.5rem',
+                  border: '1px solid #d1d5db',
+                  borderRadius: '6px',
+                  minHeight: '2.5rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  flexWrap: 'wrap',
+                  gap: '0.3rem',
+                }}
+                title={display || '—'}
+              >
+                {display || '—'}
+              </div>
+            </div>
+          </TooltipWrapper>
+        );
+      }
       const val = typeof raw === 'object' && raw !== null ? raw.value : raw;
       let display = typeof raw === 'object' && raw !== null ? raw.label || val : val;
       const normalizedValueKey = normalizeRelationOptionKey(val);
@@ -3251,6 +3452,72 @@ const RowFormModal = function RowFormModal({
               )}
             </label>
             {content}
+          </div>
+        </TooltipWrapper>
+      );
+    }
+
+    if (fieldTypeMap[c] === 'json') {
+      const currentValue = Array.isArray(formVals[c])
+        ? formVals[c]
+        : normalizeJsonArrayValue(formVals[c]);
+      const relationConfig =
+        (resolvedRelationConfig && resolvedRelationConfig.table && resolvedRelationConfig) ||
+        null;
+      const jsonControl = relationConfig ? (
+        <AsyncSearchSelect
+          title={tip}
+          table={relationConfig.table}
+          searchColumn={relationConfig.idField || c}
+          searchColumns={[relationConfig.idField || c, ...(relationConfig.displayFields || [])]}
+          labelFields={relationConfig.displayFields || []}
+          idField={relationConfig.idField || c}
+          value={currentValue}
+          isMulti
+          onChange={(vals) => {
+            notifyAutoResetGuardOnEdit(c);
+            setFormValuesWithGenerated((prev) => {
+              const nextVals = normalizeJsonArrayValue(vals);
+              if (valuesEqual(prev[c], nextVals)) return prev;
+              return { ...prev, [c]: nextVals };
+            });
+            setErrors((er) => ({ ...er, [c]: undefined }));
+          }}
+          disabled={disabled}
+          onKeyDown={(e) => handleKeyDown(e, c)}
+          inputStyle={inputStyle}
+          companyId={company}
+        />
+      ) : (
+        <JsonTagInput
+          value={currentValue}
+          onChange={(vals) => {
+            notifyAutoResetGuardOnEdit(c);
+            setFormValuesWithGenerated((prev) => {
+              const nextVals = normalizeJsonArrayValue(vals);
+              if (valuesEqual(prev[c], nextVals)) return prev;
+              return { ...prev, [c]: nextVals };
+            });
+            setErrors((er) => ({ ...er, [c]: undefined }));
+          }}
+          disabled={disabled}
+          placeholder={placeholders[c] || ''}
+          inputStyle={inputStyle}
+        />
+      );
+
+      if (!withLabel) return <TooltipWrapper title={tip}>{jsonControl}</TooltipWrapper>;
+      return (
+        <TooltipWrapper key={c} title={tip}>
+          <div className={fitted ? 'mb-1' : 'mb-3'}>
+            <label className="block mb-1 font-medium" style={labelStyle}>
+              {labels[c] || c}
+              {requiredFields.includes(c) && (
+                <span className="text-red-500">*</span>
+              )}
+            </label>
+            {jsonControl}
+            {err && <div className="text-red-500 text-sm">{err}</div>}
           </div>
         </TooltipWrapper>
       );

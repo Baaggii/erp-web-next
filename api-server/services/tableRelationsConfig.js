@@ -27,6 +27,12 @@ function normalizeRelation(relation = {}) {
   const targetColumn = relation.column ?? relation.targetColumn;
   const idField = relation.idField ?? relation.id_field;
   const displayFields = relation.displayFields ?? relation.display_fields;
+  const isArray =
+    relation.isArray ??
+    relation.is_array ??
+    relation.jsonField ??
+    relation.json_field ??
+    false;
   const combinationSource =
     relation.combinationSourceColumn ?? relation.combination_source_column;
   const combinationTarget =
@@ -49,6 +55,9 @@ function normalizeRelation(relation = {}) {
   }
   if (Array.isArray(displayFields)) {
     normalized.displayFields = displayFields.map((f) => String(f));
+  }
+  if (isArray === true || isArray === 'true' || isArray === 1 || isArray === '1') {
+    normalized.isArray = true;
   }
   const sourceStr =
     typeof combinationSource === 'string' ? combinationSource.trim() : '';
@@ -142,6 +151,9 @@ function findRelationIndex(list, match = {}) {
       return false;
     }
     if (match.filterValue && rel.filterValue !== match.filterValue) {
+      return false;
+    }
+    if (match.isArray !== undefined && rel.isArray !== match.isArray) {
       return false;
     }
     return true;

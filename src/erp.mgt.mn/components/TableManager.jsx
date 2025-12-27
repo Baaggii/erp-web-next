@@ -1002,7 +1002,10 @@ const TableManager = forwardRef(function TableManager({
     columnMeta.forEach((c) => {
       const typ = (c.type || c.columnType || c.dataType || c.DATA_TYPE || '')
         .toLowerCase();
-      if (typ.match(/int|decimal|numeric|double|float|real|number|bigint/)) {
+      const comment = (c.comment || c.columnComment || c.COLUMN_COMMENT || '').toLowerCase();
+      if (typ.includes('json') || comment.includes('json')) {
+        map[c.name] = 'json';
+      } else if (typ.match(/int|decimal|numeric|double|float|real|number|bigint/)) {
         map[c.name] = 'number';
       } else if (typ.includes('timestamp') || typ.includes('datetime')) {
         map[c.name] = 'datetime';
@@ -1436,6 +1439,7 @@ const TableManager = forwardRef(function TableManager({
             ...(mapping.filterValue !== undefined && mapping.filterValue !== null
               ? { filterValue: mapping.filterValue }
               : {}),
+            ...(mapping.isArray ? { isArray: true } : {}),
           });
         });
       });
@@ -1897,6 +1901,7 @@ const TableManager = forwardRef(function TableManager({
           table: rel.table,
           column: rel.column,
           idField: normalizedCfg.idField,
+          ...(rel.isArray ? { isArray: true } : {}),
           displayFields: normalizedCfg.displayFields,
           ...(normalizedCfg.indexField
             ? { indexField: normalizedCfg.indexField }
@@ -1988,6 +1993,7 @@ const TableManager = forwardRef(function TableManager({
             column: r.REFERENCED_COLUMN_NAME,
             ...(r.idField ? { idField: r.idField } : {}),
             ...(Array.isArray(r.displayFields) ? { displayFields: r.displayFields } : {}),
+            ...(r.isArray ? { isArray: true } : {}),
             ...(r.combinationSourceColumn
               ? { combinationSourceColumn: r.combinationSourceColumn }
               : {}),
@@ -5473,6 +5479,16 @@ const TableManager = forwardRef(function TableManager({
       labelMap[col][o.value] = o.label;
     });
   });
+  const [jsonDisplayState, setJsonDisplayState] = useState({});
+  const jsonFetchInFlight = useRef(new Set());
+  const jsonDisplayConfigCache = useRef(new Map());
+  const relationRowCache = useRef(new Map());
+
+  useEffect(() => {
+    setJsonDisplayState({});
+    jsonFetchInFlight.current.clear();
+    relationRowCache.current.clear();
+  }, [table, refreshId]);
 
   const isPlainValueObject = useCallback(
     (value) =>
@@ -5540,6 +5556,146 @@ const TableManager = forwardRef(function TableManager({
       return flattened.join(', ');
     },
     [isPlainValueObject],
+  );
+
+  const resolveRelationConfig = useCallback(
+    (col) => {
+      const canonical = resolveCanonicalKey(col);
+      return (
+        relationConfigs[col] ||
+        (canonical ? relationConfigs[canonical] : null) ||
+        null
+      );
+    },
+    [relationConfigs, resolveCanonicalKey],
+  );
+
+  const buildRelationLabelFromRow = useCallback(
+    (row, cfg) => {
+      if (!row || !cfg) return '';
+      const idFieldName = cfg.idField || cfg.column;
+      const parts = [];
+      if (idFieldName && row[idFieldName] !== undefined && row[idFieldName] !== null) {
+        parts.push(row[idFieldName]);
+      }
+      (cfg.displayFields || []).forEach((field) => {
+        if (row[field] !== undefined && row[field] !== null) parts.push(row[field]);
+      });
+      return parts
+        .map((p) => (typeof p === 'string' ? p : String(p)))
+        .filter((p) => p.length > 0)
+        .join(' ');
+    },
+    [],
+  );
+
+  const fetchDisplayConfigForTable = useCallback(
+    async (tableName, idField) => {
+      if (!tableName) return { idField, displayFields: [] };
+      const key = `${tableName.toLowerCase()}|${idField || ''}`;
+      if (jsonDisplayConfigCache.current.has(key)) {
+        return jsonDisplayConfigCache.current.get(key);
+      }
+      const promise = (async () => {
+        try {
+          const params = new URLSearchParams({ table: tableName });
+          if (idField) params.set('idField', idField);
+          const res = await fetch(`/api/display_fields?${params.toString()}`, {
+            credentials: 'include',
+            skipErrorToast: true,
+            skipLoader: true,
+          });
+          const json = res.ok ? await res.json().catch(() => ({})) : {};
+          return {
+            idField: json.idField || idField,
+            displayFields: Array.isArray(json.displayFields) ? json.displayFields : [],
+          };
+        } catch {
+          return { idField, displayFields: [] };
+        }
+      })();
+      jsonDisplayConfigCache.current.set(key, promise);
+      return promise;
+    },
+    [],
+  );
+
+  const fetchRelationRow = useCallback(
+    async (tableName, id, column) => {
+      if (!tableName || id === undefined || id === null) return null;
+      const cacheKey = `${tableName}|${id}`;
+      if (relationRowCache.current.has(cacheKey)) {
+        return relationRowCache.current.get(cacheKey);
+      }
+      const canonical = resolveCanonicalKey(column);
+      const cachedRow =
+        refRows[column]?.[id] ||
+        (canonical ? refRows[canonical]?.[id] : null);
+      if (cachedRow) {
+        relationRowCache.current.set(cacheKey, cachedRow);
+        return cachedRow;
+      }
+      const promise = (async () => {
+        try {
+          const res = await fetch(
+            `/api/tables/${encodeURIComponent(tableName)}/${encodeURIComponent(id)}`,
+            { credentials: 'include', skipErrorToast: true, skipLoader: true },
+          );
+          if (!res.ok) return null;
+          const js = await res.json().catch(() => ({}));
+          return js.row || js;
+        } catch {
+          return null;
+        }
+      })();
+      relationRowCache.current.set(cacheKey, promise);
+      return promise;
+    },
+    [refRows, resolveCanonicalKey],
+  );
+
+  const scheduleJsonRelationFetch = useCallback(
+    (column, ids, config, cacheKey) => {
+      if (!config || !config.table || !Array.isArray(ids) || ids.length === 0) return;
+      if (jsonFetchInFlight.current.has(cacheKey)) return;
+      jsonFetchInFlight.current.add(cacheKey);
+      (async () => {
+        try {
+          const displayCfg = await fetchDisplayConfigForTable(
+            config.table,
+            config.idField || config.column || column,
+          );
+          const labels = [];
+          for (const id of ids) {
+            const row = await fetchRelationRow(config.table, id, column);
+            if (row) {
+              labels.push(
+                buildRelationLabelFromRow(row, {
+                  idField: displayCfg.idField || config.idField || config.column,
+                  displayFields:
+                    displayCfg.displayFields && displayCfg.displayFields.length > 0
+                      ? displayCfg.displayFields
+                      : config.displayFields || [],
+                }) || id,
+              );
+            } else {
+              labels.push(id);
+            }
+          }
+          const joined = labels
+            .map((v) => (typeof v === 'string' ? v : String(v)))
+            .filter((v) => v.length > 0)
+            .join(', ');
+          setJsonDisplayState((prev) => {
+            if (prev[cacheKey] !== undefined) return prev;
+            return { ...prev, [cacheKey]: joined || '—' };
+          });
+        } finally {
+          jsonFetchInFlight.current.delete(cacheKey);
+        }
+      })();
+    },
+    [buildRelationLabelFromRow, fetchDisplayConfigForTable, fetchRelationRow],
   );
 
   const temporaryValueButtonStyle = useMemo(
@@ -6789,24 +6945,62 @@ const TableManager = forwardRef(function TableManager({
                 }
                 style.overflow = 'hidden';
                 style.textOverflow = 'ellipsis';
-                const raw = relationOpts[c]
-                  ? labelMap[c][r[c]] || String(r[c])
-                  : String(r[c]);
-                let display = raw;
-                if (c === 'TotalCur' || totalCurrencySet.has(c)) {
-                  display = currencyFmt.format(Number(r[c] || 0));
-                } else if (
-                  fieldTypeMap[c] === 'date' ||
-                  fieldTypeMap[c] === 'datetime' ||
-                  fieldTypeMap[c] === 'time'
-                ) {
-                  display = normalizeDateInput(raw, placeholders[c]);
-                } else if (
-                  placeholders[c] === undefined &&
-                  /^\d{4}-\d{2}-\d{2}T/.test(raw)
-                ) {
-                  display = normalizeDateInput(raw, 'YYYY-MM-DD');
-                }
+                const relationCfgForColumn = resolveRelationConfig(c);
+                const rawValue = r[c];
+                let display;
+                if (fieldTypeMap[c] === 'json') {
+                  const cacheKey = `${c}|${JSON.stringify(rawValue)}`;
+                  const cached = jsonDisplayState[cacheKey];
+                  if (cached !== undefined) {
+                    display = cached;
+                  } else {
+                    const parsed = parseMaybeJson(rawValue);
+                    if (Array.isArray(parsed)) {
+                      const map =
+                        labelMap[c] || labelMap[resolveCanonicalKey(c)] || {};
+                      const labels = parsed.map((id) => {
+                        const strId =
+                          id === null || id === undefined ? '' : String(id);
+                        return map[id] ?? map[strId] ?? strId;
+                      });
+                      display = labels
+                        .map((v) => (typeof v === 'string' ? v : String(v)))
+                        .filter((v) => v.length > 0)
+                        .join(', ');
+                      const unresolved =
+                        relationCfgForColumn?.isArray && relationCfgForColumn.table
+                          ? parsed.filter((id, idx) => labels[idx] === id || labels[idx] === String(id))
+                          : [];
+                      if (unresolved.length > 0) {
+                        scheduleJsonRelationFetch(c, unresolved, relationCfgForColumn, cacheKey);
+                      }
+                      if (!display) display = '—';
+                    } else {
+                      display = stringifyPreviewCell(parsed);
+                    }
+                  }
+                } else {
+                  const raw = relationOpts[c]
+                    ? labelMap[c][r[c]] || String(r[c])
+                    : r[c] === undefined || r[c] === null
+                    ? ''
+                    : String(r[c]);
+                  display = raw;
+                  if (c === 'TotalCur' || totalCurrencySet.has(c)) {
+                    display = currencyFmt.format(Number(r[c] || 0));
+                  } else if (
+                    fieldTypeMap[c] === 'date' ||
+                    fieldTypeMap[c] === 'datetime' ||
+                    fieldTypeMap[c] === 'time'
+                  ) {
+                    display = normalizeDateInput(raw, placeholders[c]);
+                  } else if (
+                    placeholders[c] === undefined &&
+                    /^\d{4}-\d{2}-\d{2}T/.test(raw)
+                  ) {
+                    display = normalizeDateInput(raw, 'YYYY-MM-DD');
+                  }
+                if (display === undefined || display === null) display = '';
                 const showFull = display.length > 20;
                 return (
                   <td
