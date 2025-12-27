@@ -13,6 +13,7 @@ import {
   exportTenantTableDefaults,
   listTenantDefaultSnapshots,
   restoreTenantDefaultSnapshot,
+  getEmploymentSession,
 } from '../../db/index.js';
 import { GLOBAL_COMPANY_ID } from '../../config/0/constants.js';
 import { isAdmin } from '../utils/isAdmin.js';
@@ -20,8 +21,43 @@ import { isAdmin } from '../utils/isAdmin.js';
 const SHARED_SEED_CONFLICT_MESSAGE =
   'Shared tables always read from tenant key 0, so they cannot participate in per-company seeding.';
 
+function canViewRecords(session) {
+  if (!session || typeof session !== 'object') return false;
+  const perms = session.permissions || {};
+  return (
+    perms.audition ||
+    perms.edit_records ||
+    perms.edit_delete_request ||
+    perms.delete_records ||
+    perms.new_records
+  );
+}
+
+function canEditRecords(session) {
+  if (!session || typeof session !== 'object') return false;
+  const perms = session.permissions || {};
+  return (
+    perms.edit_records ||
+    perms.edit_delete_request ||
+    perms.delete_records ||
+    perms.new_records
+  );
+}
+
+async function ensureTenantTableViewer(req, res) {
+  const session = await getEmploymentSession(req.user.empid, req.user.companyId);
+  if (!canViewRecords(session)) {
+    res
+      .status(403)
+      .json({ message: 'You do not have permission to view tenant tables.' });
+    return null;
+  }
+  return session;
+}
+
 export async function listTenantTables(req, res, next) {
   try {
+    if (!(await ensureTenantTableViewer(req, res))) return;
     const tables = await listTenantTablesDb();
     res.json(tables);
   } catch (err) {
@@ -31,7 +67,7 @@ export async function listTenantTables(req, res, next) {
 
 export async function listTenantTableOptions(req, res, next) {
   try {
-    if (!(await ensureAdmin(req))) return res.sendStatus(403);
+    if (!(await ensureTenantTableViewer(req, res))) return;
     const tables = await listAllTenantTableOptions();
     res.json(tables);
   } catch (err) {
@@ -41,6 +77,7 @@ export async function listTenantTableOptions(req, res, next) {
 
 export async function getTenantTable(req, res, next) {
   try {
+    if (!(await ensureTenantTableViewer(req, res))) return;
     const tableName = req.params.table_name;
     if (!tableName) {
       return res.status(400).json({ message: 'table_name is required' });
@@ -112,6 +149,12 @@ export async function updateTenantTable(req, res, next) {
 export async function resetSharedTenantKeys(req, res, next) {
   try {
     if (!(await ensureAdmin(req))) return res.sendStatus(403);
+    const session = await getEmploymentSession(req.user.empid, req.user.companyId);
+    if (!canEditRecords(session)) {
+      return res
+        .status(403)
+        .json({ message: 'You do not have permission to modify tenant tables.' });
+    }
     const result = await zeroSharedTenantKeys(req.user.empid);
     res.json(result);
   } catch (err) {
@@ -277,7 +320,7 @@ export async function exportDefaults(req, res, next) {
 
 export async function listDefaultSnapshots(req, res, next) {
   try {
-    if (!(await ensureAdmin(req))) return res.sendStatus(403);
+    if (!(await ensureTenantTableViewer(req, res))) return;
     const snapshots = await listTenantDefaultSnapshots();
     res.json({ snapshots });
   } catch (err) {
