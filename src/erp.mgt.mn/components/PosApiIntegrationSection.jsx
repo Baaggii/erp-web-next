@@ -703,6 +703,15 @@ export default function PosApiIntegrationSection({
     [normalizedNestedPaths, selectedEndpoint],
   );
 
+  const handleResetFieldMappings = useCallback(() => {
+    if (!endpointRequestMappingDefaults) return;
+    const clonedDefaults = JSON.parse(JSON.stringify(endpointRequestMappingDefaults));
+    setConfig((prev) => ({
+      ...prev,
+      posApiMapping: clonedDefaults,
+    }));
+  }, [endpointRequestMappingDefaults, setConfig]);
+
   useEffect(() => {
     if (!config.posApiEnabled || !endpointRequestMappingDefaults) return;
     setConfig((prev) => {
