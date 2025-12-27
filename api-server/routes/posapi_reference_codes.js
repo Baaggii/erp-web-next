@@ -12,6 +12,7 @@ import {
   saveSyncSettings,
   updateSyncSchedule,
 } from '../services/posApiReferenceCodes.js';
+import { isAdminUser } from '../utils/admin.js';
 
 const router = express.Router();
 
@@ -20,8 +21,8 @@ async function requireSystemSettings(req, res) {
   const session =
     (req.session && Number(req.session?.company_id) === companyId && req.session) ||
     (await getEmploymentSession(req.user.empid, companyId));
-  if (!session?.permissions?.system_settings) {
-    res.status(403).json({ message: 'Admin access required' });
+  if (!isAdminUser(req.user) || !session?.permissions?.system_settings) {
+    res.status(403).json({ message: 'Admin privileges required' });
     return null;
   }
   return { session, companyId };
@@ -116,4 +117,3 @@ initialiseReferenceCodeSync().catch((err) => {
 });
 
 export default router;
-
