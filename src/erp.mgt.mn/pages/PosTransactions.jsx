@@ -1838,6 +1838,8 @@ export default function PosTransactionsPage() {
     try {
       const res = await fetchWithAbort(`/api/tables/${encodeURIComponent(tbl)}/relations`, {
         credentials: 'include',
+        skipErrorToast: true,
+        skipLoader: true,
       });
       if (!res.ok) return { dataMap: {}, cfgMap: {}, rowMap: {} };
       const rels = await res.json().catch(() => []);
