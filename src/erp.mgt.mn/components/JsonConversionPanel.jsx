@@ -29,6 +29,31 @@ export default function JsonConversionPanel() {
     [columnConfigs],
   );
 
+  function handleAdminAuthToasts(adminAuth, context = 'initial', lastError) {
+    if (!adminAuth) return;
+    const alreadyShown = adminToastShown.current[context];
+    const prefix = context === 'convert' ? 'Conversion' : 'JSON Converter';
+    const reasons = Array.isArray(adminAuth.fallbackReasons) ? adminAuth.fallbackReasons : [];
+    const user = adminAuth.adminUser || 'unknown user';
+    const source = adminAuth.adminUserSource || 'env';
+    const errorSuffix = lastError ? ` Last error: ${lastError}` : '';
+    if (reasons.length > 0) {
+      addToast(
+        `${prefix}: Admin DB credential fallback (${source}) using ${user}. Reasons: ${reasons.join('; ')}.${errorSuffix}`,
+        'error',
+      );
+      adminToastShown.current[context] = true;
+      return;
+    }
+    if (!alreadyShown) {
+      addToast(
+        `${prefix}: Using admin DB user ${user} from ${source}. Ensure it has CREATE privileges for json_conversion_log.`,
+        'info',
+      );
+      adminToastShown.current[context] = true;
+    }
+  }
+
   useEffect(() => {
     if (!hasShownDbUserToast.current) {
       addToast(
@@ -42,7 +67,10 @@ export default function JsonConversionPanel() {
   useEffect(() => {
     fetch('/api/json_conversion/tables', { credentials: 'include' })
       .then((res) => (res.ok ? res.json() : { tables: [] }))
-      .then((data) => setTables(data.tables || []))
+      .then((data) => {
+        setTables(data.tables || []);
+        handleAdminAuthToasts(data.adminAuth, 'initial');
+      })
       .catch(() => setTables([]));
   }, []);
 
@@ -221,6 +249,7 @@ export default function JsonConversionPanel() {
         }),
       });
       const data = await res.json().catch(() => ({}));
+      handleAdminAuthToasts(data.adminAuth, 'convert', data?.message);
       if (!res.ok) {
         setPreviews(data.previews || []);
         setScriptText(data.scriptText || '');

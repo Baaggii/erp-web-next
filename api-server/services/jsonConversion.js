@@ -1,4 +1,4 @@
-import { adminPool as pool } from '../../db/index.js';
+import { adminPool as pool, getAdminCredentialMetadata } from '../../db/index.js';
 
 let cachedDbEngine = null;
 let dbEnginePromise = null;
@@ -32,6 +32,10 @@ function escapeId(name) {
 
 function escapeRegex(str) {
   return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+export function getAdminCredentialInfo() {
+  return getAdminCredentialMetadata();
 }
 
 function buildDiagnosticQueries(table, column) {
