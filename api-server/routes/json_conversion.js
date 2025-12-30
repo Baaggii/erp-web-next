@@ -3,6 +3,7 @@ import { requireAuth } from '../middlewares/auth.js';
 import { requireAdmin } from '../middlewares/admin.js';
 import {
   buildConversionPlan,
+  getAdminCredentialInfo,
   getSavedScript,
   listColumns,
   listSavedScripts,
@@ -19,7 +20,7 @@ const router = express.Router();
 router.get('/tables', requireAuth, requireAdmin, async (req, res, next) => {
   try {
     const tables = await listTables();
-    res.json({ tables });
+    res.json({ tables, adminAuth: getAdminCredentialInfo() });
   } catch (err) {
     next(err);
   }
@@ -28,7 +29,7 @@ router.get('/tables', requireAuth, requireAdmin, async (req, res, next) => {
 router.get('/tables/:table/columns', requireAuth, requireAdmin, async (req, res, next) => {
   try {
     const { columns, tableForeignKeys, dbEngine } = await listColumns(req.params.table);
-    res.json({ columns, tableForeignKeys, dbEngine });
+    res.json({ columns, tableForeignKeys, dbEngine, adminAuth: getAdminCredentialInfo() });
   } catch (err) {
     next(err);
   }
@@ -85,6 +86,7 @@ router.post('/convert', requireAuth, requireAdmin, async (req, res, next) => {
         executed: false,
         logId,
         blockedColumns: blocked.map((p) => p.column),
+        adminAuth: getAdminCredentialInfo(),
       });
     }
     res.json({
@@ -93,6 +95,7 @@ router.post('/convert', requireAuth, requireAdmin, async (req, res, next) => {
       executed: Boolean(executed),
       logId,
       blockedColumns: blocked.map((p) => p.column),
+      adminAuth: getAdminCredentialInfo(),
     });
   } catch (err) {
     next(err);

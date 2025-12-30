@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useToast } from '../context/ToastContext.jsx';
 
 function toCsv(items) {
@@ -7,6 +7,7 @@ function toCsv(items) {
 
 export default function JsonConversionPanel() {
   const { addToast } = useToast();
+  const adminToastShown = useRef({ initial: false, convert: false });
   const [tables, setTables] = useState([]);
   const [selectedTable, setSelectedTable] = useState('');
   const [columns, setColumns] = useState([]);
@@ -28,10 +29,38 @@ export default function JsonConversionPanel() {
     [columnConfigs],
   );
 
+  function handleAdminAuthToasts(adminAuth, context = 'initial', lastError) {
+    if (!adminAuth) return;
+    const alreadyShown = adminToastShown.current[context];
+    const prefix = context === 'convert' ? 'Conversion' : 'JSON Converter';
+    const reasons = Array.isArray(adminAuth.fallbackReasons) ? adminAuth.fallbackReasons : [];
+    const user = adminAuth.adminUser || 'unknown user';
+    const source = adminAuth.adminUserSource || 'env';
+    const errorSuffix = lastError ? ` Last error: ${lastError}` : '';
+    if (reasons.length > 0) {
+      addToast(
+        `${prefix}: Admin DB credential fallback (${source}) using ${user}. Reasons: ${reasons.join('; ')}.${errorSuffix}`,
+        'error',
+      );
+      adminToastShown.current[context] = true;
+      return;
+    }
+    if (!alreadyShown) {
+      addToast(
+        `${prefix}: Using admin DB user ${user} from ${source}. Ensure it has CREATE privileges for json_conversion_log.`,
+        'info',
+      );
+      adminToastShown.current[context] = true;
+    }
+  }
+
   useEffect(() => {
     fetch('/api/json_conversion/tables', { credentials: 'include' })
       .then((res) => (res.ok ? res.json() : { tables: [] }))
-      .then((data) => setTables(data.tables || []))
+      .then((data) => {
+        setTables(data.tables || []);
+        handleAdminAuthToasts(data.adminAuth, 'initial');
+      })
       .catch(() => setTables([]));
   }, []);
 
@@ -152,6 +181,10 @@ export default function JsonConversionPanel() {
   }
 
   async function handleConvert() {
+    addToast(
+      'Conversion uses admin DB credentials in the order ERP_ADMIN_USER → DB_ADMIN_USER → DB_USER. Ensure they have CREATE privileges for json_conversion_log.',
+      'info',
+    );
     if (!selectedTable || selectedColumns.length === 0) {
       addToast('Pick a table and at least one column', 'warning');
       return;
@@ -206,6 +239,7 @@ export default function JsonConversionPanel() {
         }),
       });
       const data = await res.json().catch(() => ({}));
+      handleAdminAuthToasts(data.adminAuth, 'convert', data?.message);
       if (!res.ok) {
         setPreviews(data.previews || []);
         setScriptText(data.scriptText || '');
