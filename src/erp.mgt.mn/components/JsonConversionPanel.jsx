@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useToast } from '../context/ToastContext.jsx';
 
 function toCsv(items) {
@@ -7,6 +7,7 @@ function toCsv(items) {
 
 export default function JsonConversionPanel() {
   const { addToast } = useToast();
+  const hasShownDbUserToast = useRef(false);
   const [tables, setTables] = useState([]);
   const [selectedTable, setSelectedTable] = useState('');
   const [columns, setColumns] = useState([]);
@@ -27,6 +28,16 @@ export default function JsonConversionPanel() {
         .map(([name]) => name),
     [columnConfigs],
   );
+
+  useEffect(() => {
+    if (!hasShownDbUserToast.current) {
+      addToast(
+        'JSON Converter uses ERP_ADMIN_USER, then DB_ADMIN_USER, then DB_USER for DB access. Ensure an admin credential is configured to avoid CREATE privilege errors.',
+        'info',
+      );
+      hasShownDbUserToast.current = true;
+    }
+  }, [addToast]);
 
   useEffect(() => {
     fetch('/api/json_conversion/tables', { credentials: 'include' })
@@ -152,6 +163,10 @@ export default function JsonConversionPanel() {
   }
 
   async function handleConvert() {
+    addToast(
+      'Conversion uses admin DB credentials in the order ERP_ADMIN_USER → DB_ADMIN_USER → DB_USER. Ensure they have CREATE privileges for json_conversion_log.',
+      'info',
+    );
     if (!selectedTable || selectedColumns.length === 0) {
       addToast('Pick a table and at least one column', 'warning');
       return;
