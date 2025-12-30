@@ -1093,22 +1093,6 @@ export const adminPool = mysql.createPool({
   multipleStatements: true,
 });
 
-export function getAdminCredentialMetadata() {
-  const fallbackReasons = [];
-  if (adminUserSource !== "ERP_ADMIN_USER") {
-    fallbackReasons.push("ERP_ADMIN_USER not set");
-  }
-  if (adminUserSource === "DB_USER" && !process.env.DB_ADMIN_USER) {
-    fallbackReasons.push("DB_ADMIN_USER not set");
-  }
-  return {
-    adminUser,
-    adminUserSource,
-    fallbackReasons,
-    dbUser: process.env.DB_USER || null,
-  };
-}
-
 function normalizeDateTimeInput(value) {
   if (!value) return null;
   const date = value instanceof Date ? value : new Date(value);
