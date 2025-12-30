@@ -2033,20 +2033,49 @@ const RowFormModal = function RowFormModal({
     return value.replace(',', '.');
   }
 
+  function normalizeJsonToken(token) {
+    if (token === undefined || token === null || token === '') return null;
+    if (Array.isArray(token)) {
+      return token
+        .map((item) => normalizeJsonToken(item))
+        .filter((item) => item !== null);
+    }
+    if (typeof token === 'object') {
+      try {
+        const serialized = JSON.stringify(token);
+        return serialized || null;
+      } catch {
+        return String(token);
+      }
+    }
+    return token;
+  }
+
   function ensureJsonArray(value) {
-    if (Array.isArray(value)) return value;
     if (value === undefined || value === null || value === '') return [];
+    if (Array.isArray(value)) {
+      return value
+        .map((item) => normalizeJsonToken(item))
+        .filter((item) => item !== null);
+    }
     if (typeof value === 'string') {
       try {
         const parsed = JSON.parse(value);
-        if (Array.isArray(parsed)) return parsed;
+        if (Array.isArray(parsed)) {
+          return parsed
+            .map((item) => normalizeJsonToken(item))
+            .filter((item) => item !== null);
+        }
         if (parsed === undefined || parsed === null || parsed === '') return [];
-        return [parsed];
+        const normalized = normalizeJsonToken(parsed);
+        return normalized === null ? [] : [normalized];
       } catch {
-        return value ? [value] : [];
+        const normalized = normalizeJsonToken(value);
+        return normalized === null ? [] : [normalized];
       }
     }
-    return [value];
+    const normalized = normalizeJsonToken(value);
+    return normalized === null ? [] : [normalized];
   }
 
   function isValidDate(value, format) {
