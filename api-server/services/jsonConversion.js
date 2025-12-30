@@ -109,16 +109,24 @@ export function normalizeColumnsInput(columns = []) {
 }
 
 async function ensureLogTable() {
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS json_conversion_log (
-      id INT AUTO_INCREMENT PRIMARY KEY,
-      table_name VARCHAR(255) NOT NULL,
-      column_name VARCHAR(255) NOT NULL,
-      script_text MEDIUMTEXT NOT NULL,
-      run_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      run_by VARCHAR(255)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-  `);
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS json_conversion_log (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        table_name VARCHAR(255) NOT NULL,
+        column_name VARCHAR(255) NOT NULL,
+        script_text MEDIUMTEXT NOT NULL,
+        run_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        run_by VARCHAR(255)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    `);
+  } catch (err) {
+    err.adminAuth = getAdminCredentialMetadata?.();
+    err.message =
+      err.message ||
+      'Failed to ensure json_conversion_log table. Verify admin DB credentials and privileges.';
+    throw err;
+  }
 }
 
 async function loadColumnUsage(table, columnNames = []) {

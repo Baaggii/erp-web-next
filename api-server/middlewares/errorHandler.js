@@ -18,6 +18,9 @@ export function errorHandler(err, req, res, next) {
   if (err.details !== undefined) {
     payload.details = err.details;
   }
+  if (err.adminAuth) {
+    payload.adminAuth = err.adminAuth;
+  }
   payload.stack = err.stack;
   res.status(err.status || 500).json(payload);
 }
