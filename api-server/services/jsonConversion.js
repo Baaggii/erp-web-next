@@ -472,8 +472,10 @@ function buildConstraintHandling(table, columnName, constraintInfo = {}, backupI
   });
   (constraintInfo.triggers || []).forEach((trg) => {
     if (!trg?.name) return;
-    warnings.push(
-      `Trigger ${trg.name} detected; trigger changes are not automated. Update manually after column conversion if needed.`,
+    const triggerName = escapeId(trg.name);
+    dropStatements.add(`DROP TRIGGER IF EXISTS ${triggerName}`);
+    recreateStatements.add(
+      `-- Recreate trigger ${triggerName} so it iterates over JSON_ARRAY elements from ${columnId}`,
     );
   });
   return {
