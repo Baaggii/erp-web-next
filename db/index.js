@@ -149,6 +149,7 @@ try {
 } catch {
   dotenv = { config: () => {} };
 }
+dotenv.config();
 let bcrypt;
 try {
   const mod = await import("bcryptjs");
@@ -1058,8 +1059,6 @@ async function ensureValidColumns(tableName, columns, names) {
     }
   }
 }
-
-dotenv.config();
 
 // Create a connection pool
 export const pool = mysql.createPool({
