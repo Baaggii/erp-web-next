@@ -150,11 +150,6 @@ try {
   dotenv = { config: () => {} };
 }
 dotenv.config();
-const adminUserSource = process.env.ERP_ADMIN_USER
-  ? "ERP_ADMIN_USER"
-  : process.env.DB_ADMIN_USER
-    ? "DB_ADMIN_USER"
-    : "DB_USER";
 let bcrypt;
 try {
   const mod = await import("bcryptjs");

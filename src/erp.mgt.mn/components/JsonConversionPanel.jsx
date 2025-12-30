@@ -7,7 +7,7 @@ function toCsv(items) {
 
 export default function JsonConversionPanel() {
   const { addToast } = useToast();
-  const adminToastShown = useRef({ initial: false, convert: false });
+  const hasShownDbUserToast = useRef(false);
   const [tables, setTables] = useState([]);
   const [selectedTable, setSelectedTable] = useState('');
   const [columns, setColumns] = useState([]);
@@ -53,6 +53,16 @@ export default function JsonConversionPanel() {
       adminToastShown.current[context] = true;
     }
   }
+
+  useEffect(() => {
+    if (!hasShownDbUserToast.current) {
+      addToast(
+        'JSON Converter uses ERP_ADMIN_USER, then DB_ADMIN_USER, then DB_USER for DB access. Ensure an admin credential is configured to avoid CREATE privilege errors.',
+        'info',
+      );
+      hasShownDbUserToast.current = true;
+    }
+  }, [addToast]);
 
   useEffect(() => {
     fetch('/api/json_conversion/tables', { credentials: 'include' })
