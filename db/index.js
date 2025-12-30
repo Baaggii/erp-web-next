@@ -149,6 +149,12 @@ try {
 } catch {
   dotenv = { config: () => {} };
 }
+dotenv.config();
+export const adminUserSource = process.env.ERP_ADMIN_USER
+  ? "ERP_ADMIN_USER"
+  : process.env.DB_ADMIN_USER
+    ? "DB_ADMIN_USER"
+    : "DB_USER";
 let bcrypt;
 try {
   const mod = await import("bcryptjs");
@@ -1059,8 +1065,6 @@ async function ensureValidColumns(tableName, columns, names) {
   }
 }
 
-dotenv.config();
-
 // Create a connection pool
 export const pool = mysql.createPool({
   host: process.env.DB_HOST,
@@ -1073,16 +1077,44 @@ export const pool = mysql.createPool({
   multipleStatements: true,
 });
 
+const adminUser =
+  process.env.ERP_ADMIN_USER ||
+  process.env.DB_ADMIN_USER ||
+  process.env.DB_USER ||
+  null;
+
+const adminPass =
+  process.env.ERP_ADMIN_PASS ||
+  process.env.DB_ADMIN_PASS ||
+  process.env.DB_PASS ||
+  null;
+
 export const adminPool = mysql.createPool({
   host: process.env.DB_HOST,
-  user: process.env.DB_ADMIN_USER || process.env.DB_USER,
-  password: process.env.DB_ADMIN_PASS || process.env.DB_PASS,
+  user: adminUser,
+  password: adminPass,
   database: process.env.DB_NAME,
   waitForConnections: true,
   connectionLimit: 10,
   queueLimit: 0,
   multipleStatements: true,
 });
+
+export function getAdminCredentialMetadata() {
+  const fallbackReasons = [];
+  if (!process.env.ERP_ADMIN_USER) {
+    fallbackReasons.push("ERP_ADMIN_USER not set");
+  }
+  if (adminUserSource !== "ERP_ADMIN_USER" && !process.env.DB_ADMIN_USER) {
+    fallbackReasons.push("DB_ADMIN_USER not set");
+  }
+  return {
+    adminUser,
+    adminUserSource,
+    fallbackReasons,
+    dbUser: process.env.DB_USER || null,
+  };
+}
 
 function normalizeDateTimeInput(value) {
   if (!value) return null;
