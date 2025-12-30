@@ -1073,10 +1073,20 @@ export const pool = mysql.createPool({
   multipleStatements: true,
 });
 
+const adminUser =
+  process.env.ERP_ADMIN_USER ||
+  process.env.DB_ADMIN_USER ||
+  process.env.DB_USER;
+
+const adminPass =
+  process.env.ERP_ADMIN_PASS ||
+  process.env.DB_ADMIN_PASS ||
+  process.env.DB_PASS;
+
 export const adminPool = mysql.createPool({
   host: process.env.DB_HOST,
-  user: process.env.DB_ADMIN_USER || process.env.DB_USER,
-  password: process.env.DB_ADMIN_PASS || process.env.DB_PASS,
+  user: adminUser,
+  password: adminPass,
   database: process.env.DB_NAME,
   waitForConnections: true,
   connectionLimit: 10,
