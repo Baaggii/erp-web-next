@@ -472,10 +472,8 @@ function buildConstraintHandling(table, columnName, constraintInfo = {}, backupI
   });
   (constraintInfo.triggers || []).forEach((trg) => {
     if (!trg?.name) return;
-    const triggerName = escapeId(trg.name);
-    dropStatements.add(`DROP TRIGGER IF EXISTS ${triggerName}`);
-    recreateStatements.add(
-      `-- Recreate trigger ${triggerName} so it iterates over JSON_ARRAY elements from ${columnId}`,
+    warnings.push(
+      `Trigger ${trg.name} detected; trigger changes are not automated. Update manually after column conversion if needed.`,
     );
   });
   return {
@@ -558,7 +556,7 @@ async function buildColumnStatements(table, columnName, columnMeta, options, con
     );
     if (isMySQL) {
       statements.push(
-        `ALTER TABLE ${tableId} DROP CHECK IF EXISTS ${escapeId(`${companionName}_check`)}`,
+        `ALTER TABLE ${tableId} DROP CHECK ${escapeId(`${companionName}_check`)}`,
       );
       statements.push(
         `ALTER TABLE ${tableId} ADD CONSTRAINT ${escapeId(
@@ -602,10 +600,17 @@ async function buildColumnStatements(table, columnName, columnMeta, options, con
   }
 
   if (action === 'convert' && Array.isArray(options.tableForeignKeys)) {
-    options.tableForeignKeys.forEach((fk) => {
-      if (!fk) return;
-      statements.push(`ALTER TABLE ${tableId} DROP FOREIGN KEY IF EXISTS ${escapeId(fk)}`);
-    });
+    if (isMySQL) {
+      options.tableForeignKeys.forEach((fk) => {
+        if (!fk) return;
+        statements.push(`ALTER TABLE ${tableId} DROP FOREIGN KEY ${escapeId(fk)}`);
+      });
+    } else {
+      options.tableForeignKeys.forEach((fk) => {
+        if (!fk) return;
+        statements.push(`ALTER TABLE ${tableId} DROP FOREIGN KEY IF EXISTS ${escapeId(fk)}`);
+      });
+    }
   }
 
   if (constraintInfo.hasBlockingConstraint && handleConstraints) {
@@ -655,7 +660,7 @@ async function buildColumnStatements(table, columnName, columnMeta, options, con
   const validationName = `${columnName}_json_check`;
   if (isMySQL) {
     statements.push(
-      `ALTER TABLE ${tableId} DROP CHECK IF EXISTS ${escapeId(validationName)}`,
+      `ALTER TABLE ${tableId} DROP CHECK ${escapeId(validationName)}`,
     );
     statements.push(
       `ALTER TABLE ${tableId} ADD CONSTRAINT ${escapeId(

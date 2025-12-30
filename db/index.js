@@ -1074,13 +1074,17 @@ export const pool = mysql.createPool({
 
 const adminUser =
   process.env.ERP_ADMIN_USER ||
-  process.env.DB_ADMIN_USER ||
-  process.env.DB_USER;
+  process.env.DB_ADMIN_USER;
 
 const adminPass =
   process.env.ERP_ADMIN_PASS ||
-  process.env.DB_ADMIN_PASS ||
-  process.env.DB_PASS;
+  process.env.DB_ADMIN_PASS;
+
+if (!adminUser || !adminPass) {
+  throw new Error(
+    "Admin database credentials (DB_ADMIN_USER/DB_ADMIN_PASS or ERP_ADMIN_USER/ERP_ADMIN_PASS) are required for administrative operations.",
+  );
+}
 
 export const adminPool = mysql.createPool({
   host: process.env.DB_HOST,

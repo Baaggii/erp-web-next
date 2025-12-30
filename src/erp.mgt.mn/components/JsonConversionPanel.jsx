@@ -217,7 +217,7 @@ export default function JsonConversionPanel() {
           table: selectedTable,
           columns: payloadColumns,
           backup: backupEnabled,
-          runNow: true,
+          runNow: false,
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -233,11 +233,10 @@ export default function JsonConversionPanel() {
       setScriptText(data.scriptText || '');
       setBlockedColumns(data.blockedColumns || []);
       setErrorDetails(null);
-      if (data.executed) {
-        addToast('Constraints dropped/reapplied and conversion executed successfully.', 'success');
-      } else {
-        addToast('Conversion script generated; run to drop constraints and apply changes.', 'info');
-      }
+      addToast(
+        'Conversion script generated. Execution is disabled; download and run manually after reviewing.',
+        'info',
+      );
       const scripts = await fetch('/api/json_conversion/scripts', { credentials: 'include' })
         .then((r) => (r.ok ? r.json() : { scripts: [] }))
         .catch(() => ({ scripts: [] }));
@@ -256,20 +255,10 @@ export default function JsonConversionPanel() {
   }
 
   async function handleRunScript(id) {
-    setLoading(true);
-    try {
-      const res = await fetch(`/api/json_conversion/scripts/${id}/run`, {
-        method: 'POST',
-        credentials: 'include',
-      });
-      if (!res.ok) throw new Error('Run failed');
-      addToast('Script executed', 'success');
-    } catch (err) {
-      console.error(err);
-      addToast('Failed to execute script', 'error');
-    } finally {
-      setLoading(false);
-    }
+    addToast(
+      'Script execution is disabled. Download the SQL and run it manually in your database.',
+      'info',
+    );
   }
 
   const selectedPreviewText = useMemo(
@@ -594,8 +583,13 @@ export default function JsonConversionPanel() {
                   <td>{s.run_at ? new Date(s.run_at).toLocaleString() : '—'}</td>
                   <td>{s.run_by || '—'}</td>
                   <td>
-                    <button type="button" onClick={() => handleRunScript(s.id)} disabled={loading}>
-                      Run
+                    <button
+                      type="button"
+                      onClick={() => handleRunScript(s.id)}
+                      disabled
+                      title="Execution disabled; download and run manually"
+                    >
+                      Run (disabled)
                     </button>{' '}
                     <button
                       type="button"
