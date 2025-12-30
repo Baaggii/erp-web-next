@@ -25,6 +25,7 @@ import {
 } from '../utils/transactionValues.js';
 import extractCombinationFilterValue from '../utils/extractCombinationFilterValue.js';
 import selectDisplayFieldsForRelation from '../utils/selectDisplayFieldsForRelation.js';
+import { formatJsonList } from '../utils/jsonValueFormatting.js';
 
 const currencyFmt = new Intl.NumberFormat('en-US', {
   minimumFractionDigits: 2,
@@ -2308,10 +2309,7 @@ function InlineTransactionTable(
           : val === undefined || val === null || val === ''
           ? []
           : [val];
-        display = arr
-          .filter((item) => item !== undefined && item !== null && item !== '')
-          .map((item) => (typeof item === 'string' ? item : String(item)))
-          .join(', ');
+        display = formatJsonList(arr);
       } else if (resolvedConfig && relationRow) {
         const parts = [rawVal];
         (resolvedConfig.displayFields || []).forEach((df) => {

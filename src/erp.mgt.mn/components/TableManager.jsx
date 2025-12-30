@@ -41,6 +41,7 @@ import { extractRowIndex, sortRowsByIndex } from '../utils/sortRowsByIndex.js';
 import { resolveDisabledFieldState } from './tableManagerDisabledFields.js';
 import { computeTemporaryPromotionOptions } from '../utils/temporaryPromotionOptions.js';
 import NotificationDots from './NotificationDots.jsx';
+import { formatJsonItem, formatJsonList } from '../utils/jsonValueFormatting.js';
 
 const TEMPORARY_FILTER_CACHE_KEY = 'temporary-transaction-filter';
 
@@ -7035,12 +7036,15 @@ const TableManager = forwardRef(function TableManager({
                 }
                 style.overflow = 'hidden';
                 style.textOverflow = 'ellipsis';
+                const rawValue = r[c];
                 const raw = relationOpts[c]
-                  ? labelMap[c][r[c]] || String(r[c])
-                  : String(r[c]);
+                  ? labelMap[c][rawValue] || (rawValue == null ? '' : String(rawValue))
+                  : rawValue == null
+                  ? ''
+                  : String(rawValue);
                 let display = raw;
                 if (fieldTypeMap[c] === 'json') {
-                  const arr = normalizeJsonArray(r[c]);
+                  const arr = normalizeJsonArray(rawValue);
                   const relationConfig = relationConfigs[c];
                   if (relationConfig?.table && arr.length > 0) {
                     const rowsMap = refRows[c] || {};
@@ -7049,10 +7053,9 @@ const TableManager = forwardRef(function TableManager({
                       const relationId = resolveScopeId(val);
                       const key = relationId ?? val ?? '';
                       const cacheKey = key === null || key === undefined ? '' : String(key);
-                      const cachedLabel =
-                        cacheKey && jsonRelationLabels[c]?.[cacheKey]
-                          ? jsonRelationLabels[c][cacheKey]
-                          : null;
+                      const cachedLabel = cacheKey
+                        ? jsonRelationLabels[c]?.[cacheKey]
+                        : null;
                       if (cachedLabel) {
                         parts.push(cachedLabel);
                         return;
@@ -7062,19 +7065,24 @@ const TableManager = forwardRef(function TableManager({
                         rowsMap[String(key)] ||
                         rowsMap[String(relationId ?? '')];
                       if (row && typeof row === 'object') {
-                        parts.push(formatRelationDisplay(row, relationConfig, key));
-                      } else if (cacheKey) {
-                        parts.push(cacheKey);
+                        const formatted = formatRelationDisplay(
+                          row,
+                          relationConfig,
+                          key,
+                        );
+                        if (formatted || formatted === 0 || formatted === false) {
+                          parts.push(formatted);
+                        }
                       } else {
-                        parts.push(String(key));
+                        const formatted = formatJsonItem(key);
+                        if (formatted || formatted === 0 || formatted === false) {
+                          parts.push(String(formatted));
+                        }
                       }
                     });
                     display = parts.join(', ');
                   } else {
-                    display = arr
-                      .filter((item) => item !== undefined && item !== null)
-                      .map((item) => (typeof item === 'string' ? item : String(item)))
-                      .join(', ');
+                    display = formatJsonList(arr);
                   }
                 } else if (c === 'TotalCur' || totalCurrencySet.has(c)) {
                   display = currencyFmt.format(Number(r[c] || 0));
