@@ -25,7 +25,7 @@ import {
 } from '../utils/transactionValues.js';
 import extractCombinationFilterValue from '../utils/extractCombinationFilterValue.js';
 import selectDisplayFieldsForRelation from '../utils/selectDisplayFieldsForRelation.js';
-import { formatJsonList } from '../utils/jsonValueFormatting.js';
+import { formatJsonList, normalizeInputValue } from '../utils/jsonValueFormatting.js';
 
 const currencyFmt = new Intl.NumberFormat('en-US', {
   minimumFractionDigits: 2,
@@ -2500,7 +2500,7 @@ function InlineTransactionTable(
     }
     const fieldType = fieldInputTypes[f];
     const rawVal = typeof val === 'object' ? val.value : val;
-    const normalizedVal =
+    const formattedVal =
       fieldType === 'date'
         ? normalizeDateInput(String(rawVal ?? ''), 'YYYY-MM-DD')
         : rawVal;
@@ -2511,11 +2511,18 @@ function InlineTransactionTable(
         : numericScale <= 0
         ? '1'
         : (1 / 10 ** numericScale).toFixed(numericScale);
+    const normalizedVal = normalizeInputValue(formattedVal);
+    const titleValue =
+      typeof normalizedVal === 'string'
+        ? normalizedVal
+        : normalizedVal === null || normalizedVal === undefined
+        ? ''
+        : String(normalizedVal);
     const commonProps = {
       className: `w-full border px-1 ${invalid ? 'border-red-500 bg-red-100' : ''}`,
       style: { ...inputStyle },
       value: normalizedVal,
-      title: normalizedVal,
+      title: titleValue,
       onChange: (e) => handleChange(idx, f, e.target.value),
       ref: (el) => (inputRefs.current[`${idx}-${colIdx}`] = el),
       onKeyDown: (e) => handleKeyDown(e, idx, colIdx),
@@ -2554,8 +2561,8 @@ function InlineTransactionTable(
         rows={1}
         className={`w-full border px-1 resize-none whitespace-pre-wrap ${invalid ? 'border-red-500 bg-red-100' : ''}`}
         style={{ overflow: 'hidden', ...inputStyle }}
-        value={typeof val === 'object' ? val.value : val}
-        title={typeof val === 'object' ? val.value : val}
+        value={normalizeInputValue(typeof val === 'object' ? val.value : val)}
+        title={normalizeInputValue(typeof val === 'object' ? val.value : val)}
         onChange={(e) => handleChange(idx, f, e.target.value)}
         ref={(el) => (inputRefs.current[`${idx}-${colIdx}`] = el)}
         onKeyDown={(e) => handleKeyDown(e, idx, colIdx)}
