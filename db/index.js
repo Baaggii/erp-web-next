@@ -150,11 +150,6 @@ try {
   dotenv = { config: () => {} };
 }
 dotenv.config();
-export const adminUserSource = process.env.ERP_ADMIN_USER
-  ? "ERP_ADMIN_USER"
-  : process.env.DB_ADMIN_USER
-    ? "DB_ADMIN_USER"
-    : "DB_USER";
 let bcrypt;
 try {
   const mod = await import("bcryptjs");
@@ -1080,14 +1075,12 @@ export const pool = mysql.createPool({
 const adminUser =
   process.env.ERP_ADMIN_USER ||
   process.env.DB_ADMIN_USER ||
-  process.env.DB_USER ||
-  null;
+  process.env.DB_USER;
 
 const adminPass =
   process.env.ERP_ADMIN_PASS ||
   process.env.DB_ADMIN_PASS ||
-  process.env.DB_PASS ||
-  null;
+  process.env.DB_PASS;
 
 export const adminPool = mysql.createPool({
   host: process.env.DB_HOST,
@@ -1102,10 +1095,10 @@ export const adminPool = mysql.createPool({
 
 export function getAdminCredentialMetadata() {
   const fallbackReasons = [];
-  if (!process.env.ERP_ADMIN_USER) {
+  if (adminUserSource !== "ERP_ADMIN_USER") {
     fallbackReasons.push("ERP_ADMIN_USER not set");
   }
-  if (adminUserSource !== "ERP_ADMIN_USER" && !process.env.DB_ADMIN_USER) {
+  if (adminUserSource === "DB_USER" && !process.env.DB_ADMIN_USER) {
     fallbackReasons.push("DB_ADMIN_USER not set");
   }
   return {
