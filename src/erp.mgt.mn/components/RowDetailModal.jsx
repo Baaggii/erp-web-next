@@ -2,6 +2,7 @@ import React from 'react';
 import Modal from './Modal.jsx';
 import { useTranslation } from 'react-i18next';
 import normalizeDateInput from '../utils/normalizeDateInput.js';
+import { formatJsonItem } from '../utils/jsonValueFormatting.js';
 
 export default function RowDetailModal({
   visible,
@@ -65,18 +66,13 @@ export default function RowDetailModal({
                 >
                   {(() => {
                     const raw = relations[c]
-                      ? labelMap[c][safeRow[c]] || safeRow[c]
+                      ? labelMap[c][safeRow[c]] ?? safeRow[c]
                       : safeRow[c];
-                    const str = String(raw ?? '');
-                    let display;
+                    const formatted = formatJsonItem(raw);
                     if (placeholders[c]) {
-                      display = normalizeDateInput(str, placeholders[c]);
-                    } else if (/^\d{4}-\d{2}-\d{2}T/.test(str)) {
-                      display = normalizeDateInput(str, 'YYYY-MM-DD');
-                    } else {
-                      display = str;
+                      return normalizeDateInput(formatted, placeholders[c]);
                     }
-                    return display;
+                    return formatted;
                   })()}
                 </td>
               </tr>

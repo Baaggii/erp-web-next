@@ -18,6 +18,11 @@ import selectDisplayFieldsForRelation from '../utils/selectDisplayFieldsForRelat
 import extractCombinationFilterValue from '../utils/extractCombinationFilterValue.js';
 import useGeneralConfig from '../hooks/useGeneralConfig.js';
 import { API_BASE } from '../utils/apiBase.js';
+import {
+  formatJsonItem,
+  formatJsonList,
+  normalizeInputValue,
+} from '../utils/jsonValueFormatting.js';
 
 const DEFAULT_RECEIPT_TYPES = ['B2C', 'B2B_SALE', 'B2B_PURCHASE', 'STOCK_QR'];
 
@@ -2014,7 +2019,7 @@ const RowFormModal = function RowFormModal({
                   <td key={c} className="border px-1">
                     <input
                       className="border px-1 w-full"
-                      value={row[c] ?? ''}
+                      value={normalizeInputValue(row[c])}
                       readOnly={c === pk}
                       onChange={(e) => handleSeedRecordChange(name, id, c, e.target.value)}
                     />
@@ -3272,6 +3277,12 @@ const RowFormModal = function RowFormModal({
           : ensureJsonArray(val);
         const relationRows = relationData[c] || {};
         const parts = [];
+        const pushFormattedPart = (input) => {
+          const formatted = formatJsonItem(input);
+          if (formatted || formatted === 0 || formatted === false) {
+            parts.push(typeof formatted === 'string' ? formatted : String(formatted));
+          }
+        };
         values.forEach((item) => {
           const row = relationRows[item] || relationRows[String(item)];
           if (row && resolvedRelationConfig) {
@@ -3281,11 +3292,15 @@ const RowFormModal = function RowFormModal({
             const extras = (resolvedRelationConfig.displayFields || [])
               .map((df) => row[df])
               .filter((v) => v !== undefined && v !== null && v !== '');
-            parts.push(
-              [identifier, ...extras].filter((p) => p !== undefined && p !== null && p !== '').join(' - '),
-            );
+            const formattedParts = [identifier, ...extras]
+              .map((entry) => formatJsonItem(entry))
+              .filter((entry) => entry || entry === 0 || entry === false)
+              .map((entry) => (typeof entry === 'string' ? entry : String(entry)));
+            if (formattedParts.length > 0) {
+              parts.push(formattedParts.join(' - '));
+            }
           } else {
-            parts.push(typeof item === 'string' ? item : String(item));
+            pushFormattedPart(item);
           }
         });
         display = parts.join(', ');
@@ -3631,11 +3646,11 @@ const RowFormModal = function RowFormModal({
         })()}
         step={isNumericField && numericStep ? numericStep : undefined}
         placeholder={placeholders[c] || ''}
-        value={
+        value={normalizeInputValue(
           fieldTypeMap[c] === 'date' || fieldTypeMap[c] === 'datetime'
             ? normalizeDateInput(formVals[c], 'YYYY-MM-DD')
-            : formVals[c]
-        }
+            : formVals[c],
+        )}
         onChange={(e) => {
           notifyAutoResetGuardOnEdit(c);
           const value = e.target.value;
@@ -4252,7 +4267,7 @@ const RowFormModal = function RowFormModal({
                         <input
                           type="text"
                           className="border border-gray-300 rounded px-2 py-1 text-sm"
-                          value={value}
+                          value={normalizeInputValue(value)}
                           onChange={(e) => handleInfoPayloadChange(fieldName, e.target.value)}
                         />
                         {description && (
