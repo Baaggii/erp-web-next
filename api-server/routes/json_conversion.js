@@ -22,7 +22,6 @@ router.get('/tables', requireAuth, requireAdmin, async (req, res, next) => {
     const tables = await listTables();
     res.json({ tables, adminAuth: getAdminCredentialInfo() });
   } catch (err) {
-    err.adminAuth = getAdminCredentialInfo();
     next(err);
   }
 });
@@ -32,7 +31,6 @@ router.get('/tables/:table/columns', requireAuth, requireAdmin, async (req, res,
     const { columns, tableForeignKeys, dbEngine } = await listColumns(req.params.table);
     res.json({ columns, tableForeignKeys, dbEngine, adminAuth: getAdminCredentialInfo() });
   } catch (err) {
-    err.adminAuth = getAdminCredentialInfo();
     next(err);
   }
 });
