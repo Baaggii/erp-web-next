@@ -1248,14 +1248,7 @@ function escapeIdentifier(value) {
 }
 
 async function upsertRow(conn, table, row) {
-  const columnSet = await getMasterTableColumnSet(table);
-  const cols = Array.from(
-    new Set(
-      Object.keys(row).filter(
-        (col) => col && columnSet && columnSet.has(col),
-      ),
-    ),
-  );
+  const cols = Object.keys(row).filter((col) => col);
   if (!cols.length) return null;
   const escapeId =
     conn && typeof conn.escapeId === 'function'
