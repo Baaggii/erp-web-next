@@ -14,7 +14,6 @@ import {
 } from '../utils/posApiConfig.js';
 import {
   buildMappingValue,
-  buildFieldSource,
   normalizeMappingSelection,
   resetMappingFieldsForType,
 } from '../utils/posApiFieldSource.js';
@@ -22,7 +21,6 @@ import {
   buildEndpointRequestMappingDefaults,
   mergePosApiMappingDefaults,
 } from '../utils/posApiRequestDefaults.js';
-import ExpressionBuilder from './ExpressionBuilder.jsx';
 
 const DEFAULT_SESSION_VARIABLES = [
   'currentUserId',
@@ -414,8 +412,6 @@ export function MappingFieldSelector({
   allowExpression = true,
   onTableSelect = () => {},
   sessionVariables = [],
-  expressionFieldOptions = [],
-  expressionStyles = {},
 }) {
   const selection = normalizeMappingSelection(value, primaryTableName);
   const currentType = selection.type || 'column';
@@ -430,7 +426,7 @@ export function MappingFieldSelector({
 
   const handleTypeChange = (nextType) => {
     const base = resetMappingFieldsForType(
-      { ...selection, applyToBody: selection.applyToBody },
+      { ...selection, applyToBody: selection.applyToBody, aggregation: selection.aggregation },
       nextType,
     );
     onChange({
@@ -447,6 +443,7 @@ export function MappingFieldSelector({
           type: 'column',
           table: tbl,
           column: selection.column,
+          aggregation: selection.aggregation,
         },
         { preserveType: true },
       ),
@@ -461,6 +458,7 @@ export function MappingFieldSelector({
           type: 'column',
           table: selectedTable,
           column: col,
+          aggregation: selection.aggregation,
         },
         { preserveType: true },
       ),
@@ -469,7 +467,7 @@ export function MappingFieldSelector({
   };
 
   const handleScalarChange = (key, val) => {
-    const base = { ...selection, type: currentType, [key]: val };
+    const base = { ...selection, type: currentType, aggregation: selection.aggregation, [key]: val };
     onChange(buildMappingValue(base, { preserveType: true }));
   };
 
@@ -486,7 +484,7 @@ export function MappingFieldSelector({
           <option value="literal">Literal value</option>
           <option value="env">Environment variable</option>
           <option value="session">Session variable</option>
-          {allowExpression && <option value="expression">Custom expression (sum, count, arithmetic…)</option>}
+          {allowExpression && <option value="expression">Expression</option>}
         </select>
         {currentType === 'column' ? (
           <>
@@ -559,13 +557,13 @@ export function MappingFieldSelector({
             </datalist>
           </>
         ) : (
-          <ExpressionBuilder
+          <input
+            type="text"
             value={selection.expression || ''}
-            onChange={(expr) => handleScalarChange('expression', expr)}
-            fieldOptions={expressionFieldOptions}
-            datalistId={`${datalistIdBase}-expression-helper`}
-            placeholder="Custom expression (e.g., sum(receipts[].items[].qty * receipts[].items[].unitPrice))"
-            styles={expressionStyles}
+            onChange={(e) => handleScalarChange('expression', e.target.value)}
+            placeholder="Expression or formula"
+            disabled={disabled}
+            style={{ flex: '1 1 200px', minWidth: '200px' }}
           />
         )}
       </div>
@@ -1413,32 +1411,11 @@ export default function PosApiIntegrationSection({
   const applyAggregationToMapping = useCallback(
     (value, aggregation) => {
       const normalized = normalizeMappingSelection(value, primaryTableName);
-      const normalizedAggregation = typeof aggregation === 'string' ? aggregation.trim() : '';
-      const baseExpression =
-        normalized.type === 'expression'
-          ? normalized.expression || normalized.value || ''
-          : normalized.type === 'column'
-            ? buildFieldSource(normalized.table || '', normalized.column || normalized.value || '')
-            : normalized.type === 'env'
-              ? normalized.envVar || normalized.value || ''
-              : normalized.type === 'session'
-                ? normalized.sessionVar || normalized.value || ''
-                : normalized.value || '';
-      if (normalizedAggregation && baseExpression) {
-        return buildMappingValue(
-          { type: 'expression', expression: `${normalizedAggregation}(${baseExpression})` },
-          { preserveType: true },
-        );
-      }
-      return buildMappingValue({ ...normalized, aggregation: '' }, { preserveType: true });
+      const next = { ...normalized, aggregation: aggregation || '' };
+      return buildMappingValue(next, { preserveType: true });
     },
     [primaryTableName],
   );
-
-  const extractAggregationFromExpression = useCallback((expression = '') => {
-    const match = /^\s*(sum|count|min|max|avg)\s*\(/i.exec(expression || '');
-    return match ? match[1].toLowerCase() : '';
-  }, []);
 
   const updatePosApiNestedMapping = (section, field, value) => {
     const targetObjectId =
@@ -2147,11 +2124,7 @@ export default function PosApiIntegrationSection({
                         const fieldPath = field.path || field.key;
                         const normalizedMapping = normalizeMappingSelection(mapping[field.key], primaryTableName);
                         const aggregationValue =
-                          (normalizedMapping.type === 'expression'
-                            ? extractAggregationFromExpression(
-                                normalizedMapping.expression || normalizedMapping.value || '',
-                              )
-                            : '') || field.aggregation || '';
+                          normalizedMapping.aggregation || field.aggregation || '';
                         const variationDefaultApplied = hasVariationDefaultBadge(fieldPath);
                         const variationDefaultLocked = isVariationDefaultLocked(fieldPath);
                         return (
@@ -2170,7 +2143,10 @@ export default function PosApiIntegrationSection({
                               onChange={(val) => {
                                 const parsed = normalizeMappingSelection(val, primaryTableName);
                                 if (parsed.table) onEnsureColumnsLoaded(parsed.table);
-                                const nextValue = buildMappingValue(parsed, { preserveType: true });
+                                const nextValue = buildMappingValue(
+                                  { ...parsed, aggregation: aggregationValue },
+                                  { preserveType: true },
+                                );
                                 updateObjectFieldMapping(obj.id, field.key, nextValue, 'objectFields');
                               }}
                               primaryTableName={primaryTableName}
@@ -2183,7 +2159,7 @@ export default function PosApiIntegrationSection({
                               sessionVariables={DEFAULT_SESSION_VARIABLES}
                             />
                               <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                                <span style={{ color: '#475569', fontSize: '0.9rem' }}>Aggregation helper (builds expression)</span>
+                                <span style={{ color: '#475569', fontSize: '0.9rem' }}>Aggregation</span>
                                 <select
                                   value={aggregationValue}
                                   onChange={(e) =>
@@ -2264,11 +2240,7 @@ export default function PosApiIntegrationSection({
                   const itemRequired = Boolean(itemHint.required);
                   const itemDescription = itemHint.description;
                   const aggregationValue =
-                    (normalizedSelection.type === 'expression'
-                      ? extractAggregationFromExpression(
-                          normalizedSelection.expression || normalizedSelection.value || '',
-                        )
-                      : '') || itemHint.aggregation || '';
+                    normalizedSelection.aggregation || itemHint.aggregation || '';
                   const variationDefaultApplied = hasVariationDefaultBadge(fieldPath);
                   const variationDefaultLocked = isVariationDefaultLocked(fieldPath);
                   const missingRequired =
@@ -2325,7 +2297,10 @@ export default function PosApiIntegrationSection({
                         onChange={(val) => {
                           const parsedSelection = normalizeMappingSelection(val, primaryTableName);
                           if (parsedSelection.table) onEnsureColumnsLoaded(parsedSelection.table);
-                          const nextValue = buildMappingValue(parsedSelection, { preserveType: true });
+                          const nextValue = buildMappingValue(
+                            { ...parsedSelection, aggregation: aggregationValue },
+                            { preserveType: true },
+                          );
                           updatePosApiNestedMapping('itemFields', field.key, nextValue);
                         }}
                         primaryTableName={primaryTableName}
@@ -2338,7 +2313,7 @@ export default function PosApiIntegrationSection({
                         sessionVariables={DEFAULT_SESSION_VARIABLES}
                       />
                       <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                        <span style={{ color: '#475569', fontSize: '0.9rem' }}>Aggregation helper (builds expression)</span>
+                        <span style={{ color: '#475569', fontSize: '0.9rem' }}>Aggregation</span>
                         <select
                           value={aggregationValue}
                           onChange={(e) =>
@@ -2386,13 +2361,8 @@ export default function PosApiIntegrationSection({
                   const hint = paymentFieldHints[field.key] || {};
                   const fieldPath = field.path || field.key;
                   const mappedValue = resolvedPaymentFieldMapping[field.key];
-                  const normalizedPaymentSelection = normalizeMappingSelection(mappedValue, primaryTableName);
                   const aggregationValue =
-                    (normalizedPaymentSelection.type === 'expression'
-                      ? extractAggregationFromExpression(
-                          normalizedPaymentSelection.expression || normalizedPaymentSelection.value || '',
-                        )
-                      : '')
+                    normalizeMappingSelection(mappedValue, primaryTableName).aggregation
                     || hint.aggregation
                     || '';
                   const variationDefaultApplied = hasVariationDefaultBadge(fieldPath);
@@ -2444,7 +2414,10 @@ export default function PosApiIntegrationSection({
                         value={mappedValue}
                         onChange={(val) => {
                           const parsedSelection = normalizeMappingSelection(val, primaryTableName);
-                          const nextValue = buildMappingValue(parsedSelection, { preserveType: true });
+                          const nextValue = buildMappingValue(
+                            { ...parsedSelection, aggregation: aggregationValue },
+                            { preserveType: true },
+                          );
                           updatePosApiNestedMapping('paymentFields', field.key, nextValue);
                         }}
                         primaryTableName={primaryTableName}
@@ -2456,7 +2429,7 @@ export default function PosApiIntegrationSection({
                         sessionVariables={DEFAULT_SESSION_VARIABLES}
                       />
                       <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                        <span style={{ color: '#475569', fontSize: '0.9rem' }}>Aggregation helper (builds expression)</span>
+                        <span style={{ color: '#475569', fontSize: '0.9rem' }}>Aggregation</span>
                         <select
                           value={aggregationValue}
                           onChange={(e) =>
@@ -2504,13 +2477,8 @@ export default function PosApiIntegrationSection({
                   const hint = receiptFieldHints[field.key] || {};
                   const fieldPath = field.path || field.key;
                   const mappedValue = resolvedReceiptFieldMapping[field.key];
-                  const normalizedReceiptSelection = normalizeMappingSelection(mappedValue, primaryTableName);
                   const aggregationValue =
-                    (normalizedReceiptSelection.type === 'expression'
-                      ? extractAggregationFromExpression(
-                          normalizedReceiptSelection.expression || normalizedReceiptSelection.value || '',
-                        )
-                      : '')
+                    normalizeMappingSelection(mappedValue, primaryTableName).aggregation
                     || hint.aggregation
                     || '';
                   const variationDefaultApplied = hasVariationDefaultBadge(fieldPath);
@@ -2562,7 +2530,10 @@ export default function PosApiIntegrationSection({
                         value={mappedValue}
                         onChange={(val) => {
                           const parsedSelection = normalizeMappingSelection(val, primaryTableName);
-                          const nextValue = buildMappingValue(parsedSelection, { preserveType: true });
+                          const nextValue = buildMappingValue(
+                            { ...parsedSelection, aggregation: aggregationValue },
+                            { preserveType: true },
+                          );
                           updatePosApiNestedMapping('receiptFields', field.key, nextValue);
                         }}
                         primaryTableName={primaryTableName}
@@ -2574,7 +2545,7 @@ export default function PosApiIntegrationSection({
                         sessionVariables={DEFAULT_SESSION_VARIABLES}
                       />
                       <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                        <span style={{ color: '#475569', fontSize: '0.9rem' }}>Aggregation helper (builds expression)</span>
+                        <span style={{ color: '#475569', fontSize: '0.9rem' }}>Aggregation</span>
                         <select
                           value={aggregationValue}
                           onChange={(e) =>
