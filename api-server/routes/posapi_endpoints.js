@@ -131,25 +131,43 @@ router.put('/', requireAuth, requireAdmin, async (req, res, next) => {
       res.status(400).json({ message: 'Endpoint validation failed', issues: validationIssues });
       return;
     }
-    const sanitized = JSON.parse(JSON.stringify(payload)).map((endpoint) => {
-      const normalized = { ...endpoint };
-      const { map: requestFieldMappings, envMap } = normalizeRequestFieldMappings(
+    const existingEndpoints = await loadEndpoints();
+    const existingById = new Map((existingEndpoints || []).map((endpoint) => [endpoint.id, endpoint]));
+    const sanitized = JSON.parse(JSON.stringify(normalized)).map((endpoint) => {
+      const normalizedEndpoint = { ...endpoint };
+      const existing = existingById.get(endpoint.id);
+      const mergedFieldMappings = mergeApplyToBodyFlags(
         endpoint.requestFieldMappings,
-        endpoint.requestEnvMap,
+        existing?.requestFieldMappings,
       );
-      const requestMappings = normalizeRequestMappings(endpoint.requestMappings);
+      const mergedEnvMap = mergeEnvApplyFlags(endpoint.requestEnvMap, existing?.requestEnvMap);
+      const mergedRequestMappings = mergeApplyToBodyFlags(
+        endpoint.requestMappings,
+        existing?.requestMappings,
+      );
+      const mergedNestedObjects = mergeNestedObjects(endpoint.nestedObjects, existing?.nestedObjects);
+      const { map: requestFieldMappings, envMap } = normalizeRequestFieldMappings(
+        mergedFieldMappings,
+        mergedEnvMap,
+      );
+      const requestMappings = normalizeRequestMappings(mergedRequestMappings);
       if (Object.keys(requestFieldMappings).length) {
-        normalized.requestFieldMappings = requestFieldMappings;
+        normalizedEndpoint.requestFieldMappings = requestFieldMappings;
       } else {
-        delete normalized.requestFieldMappings;
+        delete normalizedEndpoint.requestFieldMappings;
       }
       if (Object.keys(requestMappings).length) {
-        normalized.requestMappings = requestMappings;
+        normalizedEndpoint.requestMappings = requestMappings;
       } else {
-        delete normalized.requestMappings;
+        delete normalizedEndpoint.requestMappings;
       }
-      normalized.requestEnvMap = envMap;
-      return normalized;
+      normalizedEndpoint.requestEnvMap = envMap;
+      if (mergedNestedObjects && mergedNestedObjects.length) {
+        normalizedEndpoint.nestedObjects = mergedNestedObjects;
+      } else {
+        delete normalizedEndpoint.nestedObjects;
+      }
+      return normalizedEndpoint;
     });
     const saved = await saveEndpoints(sanitized);
     res.json(saved);
@@ -492,6 +510,71 @@ function normalizeRequestMappings(map) {
     });
   }
   return normalized;
+}
+
+function mergeApplyToBodyFlags(map, existingMap = {}) {
+  if (!map || typeof map !== 'object') return map;
+  const merged = Array.isArray(map) ? map.slice() : { ...map };
+  Object.entries(merged).forEach(([field, value]) => {
+    if (!field) return;
+    const existing = existingMap && typeof existingMap === 'object' ? existingMap[field] : undefined;
+    if (value && typeof value === 'object') {
+      if (!Object.prototype.hasOwnProperty.call(value, 'applyToBody') && typeof existing?.applyToBody === 'boolean') {
+        merged[field] = { ...value, applyToBody: existing.applyToBody };
+      }
+    }
+  });
+  return merged;
+}
+
+function mergeEnvApplyFlags(envMap = {}, existingEnvMap = {}) {
+  if (!envMap || typeof envMap !== 'object') return envMap;
+  const merged = { ...envMap };
+  Object.entries(merged).forEach(([fieldPath, entry]) => {
+    if (!fieldPath) return;
+    const existing = existingEnvMap && typeof existingEnvMap === 'object' ? existingEnvMap[fieldPath] : undefined;
+    if (entry && typeof entry === 'object') {
+      if (!Object.prototype.hasOwnProperty.call(entry, 'applyToBody') && typeof existing?.applyToBody === 'boolean') {
+        merged[fieldPath] = { ...entry, applyToBody: existing.applyToBody };
+      }
+    } else if (existing && typeof existing.applyToBody === 'boolean') {
+      merged[fieldPath] = { envVar: entry, applyToBody: existing.applyToBody };
+    }
+  });
+  return merged;
+}
+
+function mergeNestedObjects(nextList = [], existingList = []) {
+  const existingByPath = new Map(
+    (Array.isArray(existingList) ? existingList : [])
+      .map((entry) => [typeof entry?.path === 'string' ? entry.path.trim() : '', entry])
+      .filter(([path]) => path),
+  );
+  if (!Array.isArray(nextList) || nextList.length === 0) {
+    return existingList || [];
+  }
+  const merged = nextList
+    .map((entry) => {
+      if (!entry || typeof entry !== 'object') return null;
+      const path = typeof entry.path === 'string' ? entry.path.trim() : '';
+      if (!path) return null;
+      const existing = existingByPath.get(path) || {};
+      const include =
+        typeof entry.include === 'boolean'
+          ? entry.include
+          : typeof existing.include === 'boolean'
+            ? existing.include
+            : true;
+      const repeat =
+        typeof entry.repeat === 'boolean'
+          ? entry.repeat
+          : typeof existing.repeat === 'boolean'
+            ? existing.repeat
+            : false;
+      return { ...existing, ...entry, path, include, repeat };
+    })
+    .filter(Boolean);
+  return merged.length ? merged : existingList;
 }
 
 function applyEnvMapToPayload(payload, envMap = {}) {
