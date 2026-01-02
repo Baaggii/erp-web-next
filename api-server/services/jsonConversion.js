@@ -601,20 +601,6 @@ async function buildColumnStatements(table, columnName, columnMeta, options, con
     };
   }
 
-  if (action === 'convert' && Array.isArray(options.tableForeignKeys)) {
-    if (isMySQL) {
-      options.tableForeignKeys.forEach((fk) => {
-        if (!fk) return;
-        statements.push(`ALTER TABLE ${tableId} DROP FOREIGN KEY ${escapeId(fk)}`);
-      });
-    } else {
-      options.tableForeignKeys.forEach((fk) => {
-        if (!fk) return;
-        statements.push(`ALTER TABLE ${tableId} DROP FOREIGN KEY IF EXISTS ${escapeId(fk)}`);
-      });
-    }
-  }
-
   if (constraintInfo.hasBlockingConstraint && handleConstraints) {
     const { dropStatements, recreateStatements, warnings, postStatements: afterStatements } =
       buildConstraintHandling(

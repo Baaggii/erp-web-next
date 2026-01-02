@@ -84,6 +84,23 @@ app.get("/api/csrf-token", (req, res) => {
 
 // Create HTTP server and attach Socket.IO
 const server = http.createServer(app);
+const requestTimeoutMs = Number(process.env.SERVER_TIMEOUT_MS || 900000); // default 15 minutes for long conversions
+if (Number.isFinite(requestTimeoutMs) && requestTimeoutMs > 0) {
+  server.requestTimeout = requestTimeoutMs;
+  if (typeof server.setTimeout === "function") {
+    server.setTimeout(requestTimeoutMs);
+  }
+}
+const headersTimeoutMs = Number(
+  process.env.SERVER_HEADERS_TIMEOUT_MS || requestTimeoutMs + 5000
+);
+if (Number.isFinite(headersTimeoutMs) && headersTimeoutMs > 0) {
+  server.headersTimeout = headersTimeoutMs;
+}
+const keepAliveTimeoutMs = Number(process.env.SERVER_KEEP_ALIVE_TIMEOUT_MS || 120000);
+if (Number.isFinite(keepAliveTimeoutMs) && keepAliveTimeoutMs > 0) {
+  server.keepAliveTimeout = keepAliveTimeoutMs;
+}
 const socketPath = process.env.SOCKET_IO_PATH || "/api/socket.io";
 const io = new SocketIOServer(server, {
   cors: { origin: true, credentials: true },
@@ -194,7 +211,7 @@ app.get("*", (req, res) => res.sendFile(path.join(buildDir, "index.html")));
 // Error middleware (must be last)
 app.use(errorHandler);
 
-const port = process.env.PORT || 3002;
+const port = process.env.PORT || process.env.API_PORT || 3002;
 server.listen(port, () =>
   console.log(`✅ ERP API & SPA listening on port ${port}`)
 );
