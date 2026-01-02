@@ -2420,9 +2420,7 @@ function InlineTransactionTable(
       const combinationReady =
         resolvedAutoConfig?.combinationReady ??
         isCombinationFilterReady(hasCombination, conf?.combinationTargetColumn, comboFilters);
-      const inputVal = normalizeInputValue(
-        typeof val === 'object' ? val.value : val,
-      );
+      const inputVal = typeof val === 'object' ? val.value : val;
       return (
         <AsyncSearchSelect
           table={conf.table}
@@ -2446,9 +2444,7 @@ function InlineTransactionTable(
       );
     }
     if (Array.isArray(relations[f])) {
-      const inputVal = normalizeInputValue(
-        typeof val === 'object' ? val.value : val,
-      );
+      const inputVal = typeof val === 'object' ? val.value : val;
       const filteredOptions = filterRelationOptions(rows[idx], f, relations[f]);
       return (
         <select
@@ -2482,9 +2478,7 @@ function InlineTransactionTable(
         cfg?.combinationTargetColumn,
         comboFilters,
       );
-      const inputVal = normalizeInputValue(
-        typeof val === 'object' ? val.value : val,
-      );
+      const inputVal = typeof val === 'object' ? val.value : val;
       const idField = cfg.idField || f;
       const labelFields = cfg.displayFields || [];
       return (
