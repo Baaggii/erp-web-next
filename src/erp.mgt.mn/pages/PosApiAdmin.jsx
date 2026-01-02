@@ -883,7 +883,6 @@ const EMPTY_ENDPOINT = {
   receiptTypes: [],
   taxTypes: [],
   paymentMethods: [],
-  nestedObjects: [],
   topLevelFieldsText: '[]',
   nestedPathsText: '{}',
   notes: '',
@@ -2407,12 +2406,11 @@ function createFormState(definition) {
   );
 
   const sanitizedRequestSample = sanitizeRequestExampleForSample(rawRequestSample);
-  const nestedObjects = Array.isArray(definition.nestedObjects)
+  const nestedSampleObjects = Array.isArray(definition.nestedObjects)
     ? definition.nestedObjects
     : Array.isArray(definition.mappingHints?.nestedObjects)
       ? definition.mappingHints.nestedObjects
       : [];
-  const nestedSampleObjects = nestedObjects;
   const requestSamplePayload = ensureNestedPathsInSample(
     sanitizedRequestSample && Object.keys(sanitizedRequestSample).length > 0
       ? sanitizedRequestSample
@@ -2524,7 +2522,6 @@ function createFormState(definition) {
     enableReceiptItems: receiptItemsEnabled,
     allowMultipleReceiptItems,
     receiptItemTemplates,
-    nestedObjects,
     topLevelFieldsText: toPrettyJson(definition.mappingHints?.topLevelFields, '[]'),
     nestedPathsText: toPrettyJson(definition.mappingHints?.nestedPaths, '{}'),
     notes: definition.notes || '',
@@ -6916,18 +6913,6 @@ export default function PosApiAdmin() {
   }
 
   function buildDefinition() {
-    const sanitizeNestedObjects = (list = []) => {
-      if (!Array.isArray(list)) return [];
-      return list
-        .map((entry) => {
-          if (!entry || typeof entry !== 'object') return null;
-          const path = typeof entry.path === 'string' ? entry.path.trim() : '';
-          if (!path) return null;
-          return { ...entry, path };
-        })
-        .filter(Boolean);
-    };
-
     const parameters = parseJsonInput('Parameters', formState.parametersText, []);
     if (!Array.isArray(parameters)) {
       throw new Error('Parameters must be a JSON array');
@@ -7026,29 +7011,6 @@ export default function PosApiAdmin() {
       preRequest: splitScriptText(formState.preRequestScript),
       test: splitScriptText(formState.testScript),
     };
-    const topLevelFields = parseJsonInput(
-      'Top-level mapping hints',
-      formState.topLevelFieldsText,
-      [],
-    );
-    if (!Array.isArray(topLevelFields)) {
-      throw new Error('Top-level mapping hints must be a JSON array');
-    }
-    const nestedPaths = parseJsonInput('Nested mapping paths', formState.nestedPathsText, {});
-    if (!nestedPaths || typeof nestedPaths !== 'object' || Array.isArray(nestedPaths)) {
-      throw new Error('Nested mapping paths must be a JSON object');
-    }
-    const nestedObjects = sanitizeNestedObjects(formState.nestedObjects);
-    const mappingHints = {};
-    if (topLevelFields.length > 0) {
-      mappingHints.topLevelFields = topLevelFields;
-    }
-    if (Object.keys(nestedPaths).length > 0) {
-      mappingHints.nestedPaths = nestedPaths;
-    }
-    if (nestedObjects.length > 0) {
-      mappingHints.nestedObjects = nestedObjects;
-    }
 
     const getFieldMeta = (field) => requestFieldMeta[field] || {};
 
@@ -7449,11 +7411,9 @@ export default function PosApiAdmin() {
       responseFields: responseFieldsWithMapping,
       requestSample,
       requestSampleNotes: formState.requestSampleNotes || '',
-      ...(nestedObjects.length ? { nestedObjects } : {}),
       ...(Object.keys(responseFieldMappings).length
         ? { responseFieldMappings }
         : {}),
-      ...(Object.keys(mappingHints).length ? { mappingHints } : {}),
       examples,
       scripts,
       testable: Boolean(formState.testable),
@@ -10041,7 +10001,6 @@ export default function PosApiAdmin() {
                               ?? '',
                           );
                           const defaultValue = defaultEntry.value ?? '';
-                          const useDefaultInTransaction = defaultEntry.useInTransaction !== false;
                           return (
                             <div
                               key={`variation-toggle-${variationKey}-${fieldLabel}`}
@@ -10075,21 +10034,6 @@ export default function PosApiAdmin() {
                                 placeholder="Default value"
                                 style={styles.input}
                               />
-                              <label style={{ ...styles.checkboxLabel, marginTop: '0.35rem' }}>
-                                <input
-                                  type="checkbox"
-                                  checked={useDefaultInTransaction}
-                                  onChange={(e) =>
-                                    handleVariationDefaultUpdate(
-                                      fieldLabel,
-                                      variationKey,
-                                      undefined,
-                                      e.target.checked,
-                                    )
-                                  }
-                                />
-                                <span>Use in transaction</span>
-                              </label>
                             </div>
                           );
                         })}
