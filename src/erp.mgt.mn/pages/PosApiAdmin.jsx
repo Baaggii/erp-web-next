@@ -2349,22 +2349,28 @@ function createFormState(definition) {
     : [];
   const variations = mergedVariations.map((variation, index) => {
     const fields = Array.isArray(variation.requestFields)
-      ? variation.requestFields.map((field) => ({
-        field: field?.field || '',
-        description: field?.description || '',
-        requiredCommon: Boolean(
-          field?.requiredCommon
-          ?? field?.required
-          ?? field?.requiredVariations
-          ?? field?.requiredByVariation,
-        ),
-        requiredByVariation: normalizeFieldRequirementMap(
+      ? variation.requestFields.map((field) => {
+        const requiredByVariation = normalizeFieldRequirementMap(
           field?.requiredByVariation || field?.requiredVariations,
-        ),
-        defaultByVariation: normalizeFieldValueMap(
+        );
+        const defaultByVariation = normalizeFieldValueMap(
           field?.defaultByVariation || field?.defaultVariations,
-        ),
-      }))
+        );
+        const requiredCommon =
+          typeof field?.requiredCommon === 'boolean'
+            ? field.requiredCommon
+            : typeof field?.required === 'boolean'
+              ? field.required
+              : Object.values(requiredByVariation).some(Boolean);
+
+        return {
+          field: field?.field || '',
+          description: field?.description || '',
+          requiredCommon,
+          requiredByVariation,
+          defaultByVariation,
+        };
+      })
       : [];
     const requestExample = variation.requestExample || variation.request?.body || {};
     const requestExamplePayload = toSamplePayload(requestExample);
