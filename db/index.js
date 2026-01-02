@@ -1125,14 +1125,27 @@ export async function testConnection() {
 /**
  * Fetch a user by employee ID
  */
-export async function getUserByEmpId(empid) {
-  const [rows] = await pool.query(
-    `SELECT *
+function normalizeTimeoutMs(timeout) {
+  const value = Number(timeout);
+  if (!Number.isFinite(value) || value <= 0) return null;
+  return value;
+}
+
+export async function getUserByEmpId(empid, options = {}) {
+  const timeoutMs = normalizeTimeoutMs(options.timeoutMs);
+  const queryOptions = timeoutMs
+    ? {
+        sql: `SELECT *
      FROM users
      WHERE empid = ?
      LIMIT 1`,
-    [empid],
-  );
+        timeout: timeoutMs,
+      }
+    : `SELECT *
+     FROM users
+     WHERE empid = ?
+     LIMIT 1`;
+  const [rows] = await pool.query(queryOptions, [empid]);
   if (rows.length === 0) return null;
   const user = rows[0];
   user.verifyPassword = async (plain) => bcrypt.compare(plain, user.password);
@@ -1250,6 +1263,7 @@ export async function getEmploymentSessions(empid, options = {}) {
   const scheduleDate = options?.effectiveDate
     ? formatDateForDb(options.effectiveDate).slice(0, 10)
     : null;
+  const timeoutMs = normalizeTimeoutMs(options.timeoutMs);
   const scheduleDateSql = scheduleDate ? '?' : 'CURRENT_DATE()';
   const scheduleDateParams = scheduleDate
     ? [scheduleDate, scheduleDate, scheduleDate, scheduleDate]
@@ -1418,9 +1432,16 @@ export async function getEmploymentSessions(empid, options = {}) {
   const querySql = sql.replace(/`/g, "");
   const normalizedSql = querySql.replace(/`/g, "");
   const params = [...scheduleDateParams, empid];
+  const withTimeout = (text) =>
+    timeoutMs
+      ? {
+          sql: text,
+          timeout: timeoutMs,
+        }
+      : text;
   let rows;
   try {
-    [rows] = await pool.query(normalizedSql, params);
+    [rows] = await pool.query(withTimeout(normalizedSql), params);
   } catch (err) {
     if (
       err?.code === "ER_BAD_FIELD_ERROR" &&
@@ -1433,7 +1454,7 @@ export async function getEmploymentSessions(empid, options = {}) {
       const withoutPos = replaceExpr(normalizedSql, posNoExpr, "NULL");
       const withoutMerchantId = replaceExpr(withoutPos, merchantExpr, "NULL");
       const fallbackSql = replaceExpr(withoutMerchantId, merchantTinExpr, "NULL");
-      [rows] = await pool.query(fallbackSql, params);
+      [rows] = await pool.query(withTimeout(fallbackSql), params);
     } else {
       console.warn("Employment sessions query failed; returning empty list", {
         error: err?.message || err,
@@ -1483,6 +1504,7 @@ export async function getEmploymentSession(empid, companyId, options = {}) {
   const departmentPreference = hasDepartmentPref
     ? options.departmentId ?? null
     : undefined;
+  const timeoutMs = normalizeTimeoutMs(options.timeoutMs);
   const scheduleDate = options?.effectiveDate
     ? formatDateForDb(options.effectiveDate).slice(0, 10)
     : null;
@@ -1680,9 +1702,16 @@ export async function getEmploymentSession(empid, companyId, options = {}) {
          LIMIT 1`;
     const normalizedSql = baseSql.replace(/`/g, "");
     const queryParams = [...scheduleDateParams, ...params];
+    const withTimeout = (text) =>
+      timeoutMs
+        ? {
+            sql: text,
+            timeout: timeoutMs,
+          }
+        : text;
     let rows;
     try {
-      [rows] = await pool.query(normalizedSql, queryParams);
+      [rows] = await pool.query(withTimeout(normalizedSql), queryParams);
     } catch (err) {
       if (
         err?.code === "ER_BAD_FIELD_ERROR" &&
@@ -1695,7 +1724,7 @@ export async function getEmploymentSession(empid, companyId, options = {}) {
         const withoutPos = replaceExpr(normalizedSql, posNoExpr, "NULL");
         const withoutMerchantId = replaceExpr(withoutPos, merchantExpr, "NULL");
         const fallbackSql = replaceExpr(withoutMerchantId, merchantTinExpr, "NULL");
-        [rows] = await pool.query(fallbackSql, queryParams);
+        [rows] = await pool.query(withTimeout(fallbackSql), queryParams);
       } else {
         console.warn("Employment session query failed; returning null", {
           error: err?.message || err,
@@ -1720,17 +1749,28 @@ export async function listUserLevels() {
 export async function getUserLevelActions(
   userLevelId,
   companyId = GLOBAL_COMPANY_ID,
+  options = {},
 ) {
-  const id = Number(userLevelId);
-  const [rows] = await pool.query(
-    `SELECT action, action_key
+  const timeoutMs = normalizeTimeoutMs(options.timeoutMs);
+  const queryOptions = timeoutMs
+    ? {
+        sql: `SELECT action, action_key
        FROM user_level_permissions
        WHERE company_id = ? AND userlevel_id = ? AND action IS NOT NULL`,
-    [companyId, userLevelId],
-  );
+        timeout: timeoutMs,
+      }
+    : `SELECT action, action_key
+       FROM user_level_permissions
+       WHERE company_id = ? AND userlevel_id = ? AND action IS NOT NULL`;
+  const id = Number(userLevelId);
+  const [rows] = await pool.query(queryOptions, [companyId, userLevelId]);
   if (id === 1) {
     const perms = {};
-    const [mods] = await pool.query('SELECT module_key FROM modules');
+    const [mods] = await pool.query(
+      timeoutMs
+        ? { sql: 'SELECT module_key FROM modules', timeout: timeoutMs }
+        : 'SELECT module_key FROM modules',
+    );
     for (const { module_key } of mods) perms[module_key] = true;
     const registry = await loadPermissionRegistry(companyId);
     const forms = registry.forms || {};
