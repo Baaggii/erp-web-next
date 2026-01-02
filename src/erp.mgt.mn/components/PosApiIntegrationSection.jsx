@@ -42,6 +42,12 @@ const AGGREGATION_OPTIONS = [
   { value: 'avg', label: 'Average' },
 ];
 
+const VARIATION_DEFAULT_BADGE_STYLE = {
+  ...BADGE_BASE_STYLE,
+  background: '#ecfdf3',
+  color: '#166534',
+};
+
 function humanizeFieldLabel(key) {
   if (!key) return '';
   return String(key)
@@ -90,18 +96,30 @@ function normalizeVariationDefaultMap(map = {}) {
   return normalized;
 }
 
+function normalizePathKey(path = '') {
+  return typeof path === 'string' ? path.replace(/\[\]/g, '').trim() : '';
+}
+
 function collectVariationDefaultsFromEndpoint(endpoint, variationKey) {
-  if (!variationKey || !endpoint || typeof endpoint !== 'object') return {};
+  if (!variationKey || !endpoint || typeof endpoint !== 'object') {
+    return { defaults: {}, forcedPaths: new Set() };
+  }
   const defaults = {};
-  const mergeMap = (map) => {
+  const forcedPaths = new Set();
+  const registerDefault = (path, value, source = 'config') => {
+    const key = typeof path === 'string' ? path.trim() : '';
+    if (!key) return;
+    if (value === undefined) return;
+    if (!shouldUseDefaultValue(value)) return;
+    defaults[key] = extractDefaultValue(value);
+    if (source === 'endpoint') {
+      forcedPaths.add(key);
+      forcedPaths.add(key.replace(/\[\]/g, ''));
+    }
+  };
+  const mergeMap = (map, source = 'config') => {
     if (!map || typeof map !== 'object' || Array.isArray(map)) return;
-    Object.entries(map).forEach(([path, value]) => {
-      const key = typeof path === 'string' ? path.trim() : '';
-      if (!key) return;
-      if (value === undefined) return;
-      if (!shouldUseDefaultValue(value)) return;
-      defaults[key] = extractDefaultValue(value);
-    });
+    Object.entries(map).forEach(([path, value]) => registerDefault(path, value, source));
   };
 
   const variationEntry = Array.isArray(endpoint.variations)
@@ -110,16 +128,14 @@ function collectVariationDefaultsFromEndpoint(endpoint, variationKey) {
       )
     : null;
   if (variationEntry) {
-    mergeMap(variationEntry.defaultValues);
+    mergeMap(variationEntry.defaultValues, 'endpoint');
     if (Array.isArray(variationEntry.requestFields)) {
       variationEntry.requestFields.forEach((field) => {
         const path = typeof field?.field === 'string' ? field.field.trim() : '';
         if (!path) return;
         const variationDefaults = field?.defaultByVariation || field?.defaultVariations || {};
         if (Object.prototype.hasOwnProperty.call(variationDefaults, variationKey)) {
-          const value = variationDefaults[variationKey];
-          if (!shouldUseDefaultValue(value)) return;
-          defaults[path] = extractDefaultValue(value);
+          registerDefault(path, variationDefaults[variationKey], 'endpoint');
         }
       });
     }
@@ -138,14 +154,12 @@ function collectVariationDefaultsFromEndpoint(endpoint, variationKey) {
       if (!path) return;
       const variationDefaults = field?.defaultByVariation || field?.defaultVariations || {};
       if (Object.prototype.hasOwnProperty.call(variationDefaults, variationKey)) {
-        const value = variationDefaults[variationKey];
-        if (!shouldUseDefaultValue(value)) return;
-        defaults[path] = extractDefaultValue(value);
+        registerDefault(path, variationDefaults[variationKey], 'endpoint');
       }
     });
   }
 
-  return defaults;
+  return { defaults, forcedPaths };
 }
 
 function areVariationDefaultsEqual(a = {}, b = {}) {
@@ -830,19 +844,73 @@ export default function PosApiIntegrationSection({
   const selectedVariationKey = config.posApiRequestVariation || '';
   const selectedVariation =
     requestVariations.find((variation) => variation.key === selectedVariationKey) || null;
-  const derivedVariationDefaults = useMemo(() => {
-    if (!selectedVariationKey) return {};
-    const endpointDefaults = collectVariationDefaultsFromEndpoint(
+  const variationDefaults = useMemo(() => {
+    if (!selectedVariationKey) {
+      return { defaults: {}, forcedPaths: new Set() };
+    }
+    const { defaults, forcedPaths } = collectVariationDefaultsFromEndpoint(
       selectedEndpoint || {},
       selectedVariationKey,
     );
-    const normalizedEndpointDefaults = normalizeVariationDefaultMap(endpointDefaults);
-    if (Object.keys(normalizedEndpointDefaults).length) return normalizedEndpointDefaults;
-    return normalizeVariationDefaultMap(config.posApiVariationDefaults);
+    const normalizedEndpointDefaults = normalizeVariationDefaultMap(defaults);
+    if (Object.keys(normalizedEndpointDefaults).length) {
+      return { defaults: normalizedEndpointDefaults, forcedPaths };
+    }
+    return {
+      defaults: normalizeVariationDefaultMap(config.posApiVariationDefaults),
+      forcedPaths: new Set(),
+    };
   }, [config.posApiVariationDefaults, selectedVariationKey, selectedEndpoint]);
 
+  const variationDefaultPathSet = useMemo(() => {
+    const set = new Set();
+    Object.keys(variationDefaults.defaults || {}).forEach((path) => {
+      const normalized = normalizePathKey(path);
+      if (normalized) set.add(normalized);
+    });
+    return set;
+  }, [variationDefaults.defaults]);
+
+  const variationForcedPathSet = useMemo(() => {
+    const set = new Set();
+    const paths = variationDefaults.forcedPaths ? Array.from(variationDefaults.forcedPaths) : [];
+    paths.forEach((path) => {
+      const normalized = normalizePathKey(path);
+      if (normalized) set.add(normalized);
+    });
+    return set;
+  }, [variationDefaults.forcedPaths]);
+
+  const hasVariationDefaultValue = useCallback(
+    (path) => {
+      const normalized = normalizePathKey(path);
+      if (!normalized) return false;
+      return variationDefaultPathSet.has(normalized);
+    },
+    [variationDefaultPathSet],
+  );
+
+  const isVariationDefaultLocked = useCallback(
+    (path) => {
+      const normalized = normalizePathKey(path);
+      if (!normalized) return false;
+      return variationForcedPathSet.has(normalized);
+    },
+    [variationForcedPathSet],
+  );
+
+  const hasVariationDefaultBadge = useCallback(
+    (path) => {
+      const normalized = normalizePathKey(path);
+      if (!normalized) return false;
+      if (variationForcedPathSet.size) return variationForcedPathSet.has(normalized);
+      return variationDefaultPathSet.has(normalized);
+    },
+    [variationDefaultPathSet, variationForcedPathSet],
+  );
+
   useEffect(() => {
-    const normalizedDefaults = normalizeVariationDefaultMap(derivedVariationDefaults);
+    const normalizedDefaults = normalizeVariationDefaultMap(variationDefaults.defaults);
     setConfig((prev) => {
       const nextVariation = selectedVariationKey;
       const prevVariation = prev.posApiRequestVariation || '';
@@ -855,7 +923,7 @@ export default function PosApiIntegrationSection({
         posApiVariationDefaults: normalizedDefaults,
       };
     });
-  }, [derivedVariationDefaults, selectedVariationKey, setConfig]);
+  }, [variationDefaults.defaults, selectedVariationKey, setConfig]);
   const variationSampleText = useMemo(() => {
     let payload = selectedVariation?.requestExample || selectedVariation?.request;
     if (!payload) {
@@ -1867,7 +1935,11 @@ export default function PosApiIntegrationSection({
                 const isRequired = Boolean(hint.required);
                 const description = hint.description;
                 const mappedValue = config.posApiMapping?.[field.key];
-                const missingRequired = isRequired && !isMappingProvided(mappedValue);
+                const fieldPath = field.path || field.key;
+                const variationDefaultApplied = hasVariationDefaultBadge(fieldPath);
+                const variationDefaultLocked = isVariationDefaultLocked(fieldPath);
+                const missingRequired =
+                  isRequired && !hasVariationDefaultValue(fieldPath) && !isMappingProvided(mappedValue);
                 return (
                   <label
                     key={field.key}
@@ -1898,6 +1970,9 @@ export default function PosApiIntegrationSection({
                       >
                         {isRequired ? 'Required' : 'Optional'}
                       </span>
+                      {variationDefaultApplied && (
+                        <span style={VARIATION_DEFAULT_BADGE_STYLE}>Variation default</span>
+                      )}
                       {missingRequired && (
                         <span
                           style={{
@@ -1918,7 +1993,7 @@ export default function PosApiIntegrationSection({
                       columnsByTable={tableColumns}
                       tableOptions={itemTableOptions}
                       datalistIdBase={listId}
-                      disabled={!config.posApiEnabled}
+                      disabled={!config.posApiEnabled || variationDefaultLocked}
                       sessionVariables={DEFAULT_SESSION_VARIABLES}
                     />
                     {description && <small style={{ color: '#555' }}>{description}</small>}
@@ -2046,16 +2121,22 @@ export default function PosApiIntegrationSection({
                       }}
                     >
                       {filteredFields.map((field) => {
+                        const fieldPath = field.path || field.key;
                         const normalizedMapping = normalizeMappingSelection(mapping[field.key], primaryTableName);
                         const aggregationValue =
                           normalizedMapping.aggregation || field.aggregation || '';
+                        const variationDefaultApplied = hasVariationDefaultBadge(fieldPath);
+                        const variationDefaultLocked = isVariationDefaultLocked(fieldPath);
                         return (
                           <div
                             key={`obj-${obj.id}-${field.key}`}
                             style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}
                           >
-                            <span style={{ fontWeight: 600, color: '#0f172a' }}>
+                            <span style={{ fontWeight: 600, color: '#0f172a', display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
                               {field.label || humanizeFieldLabel(field.key)}
+                              {variationDefaultApplied && (
+                                <span style={VARIATION_DEFAULT_BADGE_STYLE}>Variation default</span>
+                              )}
                             </span>
                             <MappingFieldSelector
                               value={mapping[field.key]}
@@ -2074,14 +2155,14 @@ export default function PosApiIntegrationSection({
                               columnsByTable={tableColumns}
                               datalistIdBase={`posapi-object-${obj.id}-${field.key}`}
                               defaultTableLabel={primaryTableLabel}
-                              disabled={!config.posApiEnabled}
+                              disabled={!config.posApiEnabled || variationDefaultLocked}
                               sessionVariables={DEFAULT_SESSION_VARIABLES}
                             />
-                            <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                              <span style={{ color: '#475569', fontSize: '0.9rem' }}>Aggregation</span>
-                              <select
-                                value={aggregationValue}
-                                onChange={(e) =>
+                              <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                                <span style={{ color: '#475569', fontSize: '0.9rem' }}>Aggregation</span>
+                                <select
+                                  value={aggregationValue}
+                                  onChange={(e) =>
                                   updateObjectFieldMapping(
                                     obj.id,
                                     field.key,
@@ -2089,7 +2170,11 @@ export default function PosApiIntegrationSection({
                                     'objectFields',
                                   )
                                 }
-                                disabled={!config.posApiEnabled || !isMappingProvided(mapping[field.key])}
+                                disabled={
+                                  !config.posApiEnabled ||
+                                  !isMappingProvided(mapping[field.key]) ||
+                                  variationDefaultLocked
+                                }
                                 style={{ minWidth: '140px' }}
                               >
                                 {AGGREGATION_OPTIONS.map((option) => (
@@ -2132,6 +2217,7 @@ export default function PosApiIntegrationSection({
                 }}
               >
                 {filteredItemFields.map((field) => {
+                  const fieldPath = field.path || field.key;
                   const mappedValue = resolvedItemFieldMapping[field.key];
                   const normalizedSelection = normalizeMappingSelection(mappedValue, primaryTableName);
                   const mappedTable = normalizedSelection.table || '';
@@ -2155,7 +2241,12 @@ export default function PosApiIntegrationSection({
                   const itemDescription = itemHint.description;
                   const aggregationValue =
                     normalizedSelection.aggregation || itemHint.aggregation || '';
-                  const missingRequired = itemRequired && !isMappingProvided(mappedValue);
+                  const variationDefaultApplied = hasVariationDefaultBadge(fieldPath);
+                  const variationDefaultLocked = isVariationDefaultLocked(fieldPath);
+                  const missingRequired =
+                    itemRequired &&
+                    !hasVariationDefaultValue(fieldPath) &&
+                    !isMappingProvided(mappedValue);
                   return (
                     <div
                       key={`item-${field.key}`}
@@ -2186,6 +2277,9 @@ export default function PosApiIntegrationSection({
                         >
                           {itemRequired ? 'Required' : 'Optional'}
                         </span>
+                        {variationDefaultApplied && (
+                          <span style={VARIATION_DEFAULT_BADGE_STYLE}>Variation default</span>
+                        )}
                         {missingRequired && (
                           <span
                             style={{
@@ -2215,7 +2309,7 @@ export default function PosApiIntegrationSection({
                         columnsByTable={tableColumns}
                         datalistIdBase={`posapi-item-${field.key}`}
                         defaultTableLabel={primaryTableLabel}
-                        disabled={!config.posApiEnabled}
+                        disabled={!config.posApiEnabled || variationDefaultLocked}
                         sessionVariables={DEFAULT_SESSION_VARIABLES}
                       />
                       <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
@@ -2229,7 +2323,11 @@ export default function PosApiIntegrationSection({
                               applyAggregationToMapping(mappedValue, e.target.value),
                             )
                           }
-                          disabled={!config.posApiEnabled || !isMappingProvided(mappedValue)}
+                          disabled={
+                            !config.posApiEnabled ||
+                            !isMappingProvided(mappedValue) ||
+                            variationDefaultLocked
+                          }
                           style={{ minWidth: '140px' }}
                         >
                           {AGGREGATION_OPTIONS.map((option) => (
@@ -2261,12 +2359,18 @@ export default function PosApiIntegrationSection({
                 {filteredPaymentFields.map((field) => {
                   const listId = `posapi-payment-${field.key}-columns`;
                   const hint = paymentFieldHints[field.key] || {};
+                  const fieldPath = field.path || field.key;
                   const mappedValue = resolvedPaymentFieldMapping[field.key];
                   const aggregationValue =
                     normalizeMappingSelection(mappedValue, primaryTableName).aggregation
                     || hint.aggregation
                     || '';
-                  const missingRequired = hint.required && !isMappingProvided(mappedValue);
+                  const variationDefaultApplied = hasVariationDefaultBadge(fieldPath);
+                  const variationDefaultLocked = isVariationDefaultLocked(fieldPath);
+                  const missingRequired =
+                    hint.required &&
+                    !hasVariationDefaultValue(fieldPath) &&
+                    !isMappingProvided(mappedValue);
                   return (
                     <label
                       key={`payment-${field.key}`}
@@ -2291,6 +2395,9 @@ export default function PosApiIntegrationSection({
                     >
                         {hint.required ? 'Required' : 'Optional'}
                       </span>
+                        {variationDefaultApplied && (
+                          <span style={VARIATION_DEFAULT_BADGE_STYLE}>Variation default</span>
+                        )}
                         {missingRequired && (
                           <span
                             style={{
@@ -2318,7 +2425,7 @@ export default function PosApiIntegrationSection({
                         columnsByTable={tableColumns}
                         tableOptions={itemTableOptions}
                         datalistIdBase={listId}
-                        disabled={!config.posApiEnabled}
+                        disabled={!config.posApiEnabled || variationDefaultLocked}
                         sessionVariables={DEFAULT_SESSION_VARIABLES}
                       />
                       <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
@@ -2332,7 +2439,11 @@ export default function PosApiIntegrationSection({
                               applyAggregationToMapping(mappedValue, e.target.value),
                             )
                           }
-                          disabled={!config.posApiEnabled || !isMappingProvided(mappedValue)}
+                          disabled={
+                            !config.posApiEnabled ||
+                            !isMappingProvided(mappedValue) ||
+                            variationDefaultLocked
+                          }
                           style={{ minWidth: '140px' }}
                         >
                           {AGGREGATION_OPTIONS.map((option) => (
@@ -2364,12 +2475,18 @@ export default function PosApiIntegrationSection({
                 {filteredReceiptFields.map((field) => {
                   const listId = `posapi-receipt-${field.key}-columns`;
                   const hint = receiptFieldHints[field.key] || {};
+                  const fieldPath = field.path || field.key;
                   const mappedValue = resolvedReceiptFieldMapping[field.key];
                   const aggregationValue =
                     normalizeMappingSelection(mappedValue, primaryTableName).aggregation
                     || hint.aggregation
                     || '';
-                  const missingRequired = hint.required && !isMappingProvided(mappedValue);
+                  const variationDefaultApplied = hasVariationDefaultBadge(fieldPath);
+                  const variationDefaultLocked = isVariationDefaultLocked(fieldPath);
+                  const missingRequired =
+                    hint.required &&
+                    !hasVariationDefaultValue(fieldPath) &&
+                    !isMappingProvided(mappedValue);
                   return (
                     <label
                       key={`receipt-${field.key}`}
@@ -2394,6 +2511,9 @@ export default function PosApiIntegrationSection({
                     >
                         {hint.required ? 'Required' : 'Optional'}
                       </span>
+                        {variationDefaultApplied && (
+                          <span style={VARIATION_DEFAULT_BADGE_STYLE}>Variation default</span>
+                        )}
                         {missingRequired && (
                           <span
                             style={{
@@ -2421,7 +2541,7 @@ export default function PosApiIntegrationSection({
                         columnsByTable={tableColumns}
                         tableOptions={itemTableOptions}
                         datalistIdBase={listId}
-                        disabled={!config.posApiEnabled}
+                        disabled={!config.posApiEnabled || variationDefaultLocked}
                         sessionVariables={DEFAULT_SESSION_VARIABLES}
                       />
                       <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
@@ -2435,7 +2555,11 @@ export default function PosApiIntegrationSection({
                               applyAggregationToMapping(mappedValue, e.target.value),
                             )
                           }
-                          disabled={!config.posApiEnabled || !isMappingProvided(mappedValue)}
+                          disabled={
+                            !config.posApiEnabled ||
+                            !isMappingProvided(mappedValue) ||
+                            variationDefaultLocked
+                          }
                           style={{ minWidth: '140px' }}
                         >
                           {AGGREGATION_OPTIONS.map((option) => (
