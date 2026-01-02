@@ -272,6 +272,20 @@ export default function JsonConversionPanel() {
     }
   }
 
+  function renderScriptResult(resultStatus, resultError) {
+    if (!resultStatus) return '—';
+    if (resultStatus === 'success') return 'Success';
+    if (resultStatus === 'planned') return 'Planned';
+    if (resultStatus === 'error') {
+      const message =
+        typeof resultError === 'object'
+          ? resultError?.message || resultError?.sqlMessage
+          : String(resultError || '');
+      return message ? `Error: ${message}` : 'Error';
+    }
+    return resultStatus;
+  }
+
   const selectedPreviewText = useMemo(
     () => {
       if (selectedColumns.length === 0) return 'No columns selected';
@@ -581,6 +595,7 @@ export default function JsonConversionPanel() {
               <tr>
                 <th style={{ textAlign: 'left', borderBottom: '1px solid #ccc' }}>Table</th>
                 <th style={{ textAlign: 'left', borderBottom: '1px solid #ccc' }}>Columns</th>
+                <th style={{ textAlign: 'left', borderBottom: '1px solid #ccc' }}>Result</th>
                 <th style={{ textAlign: 'left', borderBottom: '1px solid #ccc' }}>Last Run</th>
                 <th style={{ textAlign: 'left', borderBottom: '1px solid #ccc' }}>Run By</th>
                 <th style={{ textAlign: 'left', borderBottom: '1px solid #ccc' }}>Actions</th>
@@ -591,6 +606,7 @@ export default function JsonConversionPanel() {
                 <tr key={s.id}>
                   <td>{s.table_name}</td>
                   <td>{s.column_name}</td>
+                  <td>{renderScriptResult(s.result_status, s.result_error)}</td>
                   <td>{s.run_at ? new Date(s.run_at).toLocaleString() : '—'}</td>
                   <td>{s.run_by || '—'}</td>
                   <td>
