@@ -1707,6 +1707,25 @@ function applyUsageToDefaultMap(map = {}, useInTransaction) {
   return next;
 }
 
+function mergeVariationDefaultState(normalizedEntry = {}, metaEntry = {}) {
+  const normalized = normalizeHintEntry(normalizedEntry);
+  const baseDefaults = normalizeFieldValueMap(
+    normalized.defaultByVariation || normalized.defaultVariations,
+  );
+  const metaDefaults = normalizeFieldValueMap(metaEntry.defaultByVariation);
+  const clearedDefaults =
+    metaEntry.clearedDefaults && typeof metaEntry.clearedDefaults === 'object'
+      ? { ...metaEntry.clearedDefaults }
+      : {};
+  const mergedDefaults = { ...baseDefaults, ...metaDefaults };
+  Object.entries(clearedDefaults).forEach(([variationKey, cleared]) => {
+    if (cleared) {
+      delete mergedDefaults[variationKey];
+    }
+  });
+  return { mergedDefaults, clearedDefaults };
+}
+
 function resolveVariationUsageFlag(metaFlag, normalizedFlag) {
   if (typeof metaFlag === 'boolean') return metaFlag;
   if (typeof normalizedFlag === 'boolean') return normalizedFlag;
@@ -4074,6 +4093,20 @@ export default function PosApiAdmin() {
     [formState, parameterDefaults, parameterPreview, requestFieldHints],
   );
 
+  const requestFieldHintLookup = useMemo(() => {
+    if (requestFieldDisplay.state !== 'ok') return new Map();
+    const map = new Map();
+    requestFieldDisplay.items.forEach((entry) => {
+      const normalized = normalizeHintEntry(entry);
+      if (normalized.field) {
+        map.set(normalized.field, normalized);
+      }
+    });
+    return map;
+  }, [requestFieldDisplay]);
+
+  const getNormalizedFieldHint = (fieldPath) => (fieldPath ? requestFieldHintLookup.get(fieldPath) || null : null);
+
   const visibleRequestFieldItems = useMemo(() => {
     if (requestFieldDisplay.state !== 'ok') return requestFieldDisplay.items || [];
     if (variationColumns.length === 0) return requestFieldDisplay.items;
@@ -4141,7 +4174,7 @@ export default function PosApiAdmin() {
         const normalized = normalizeHintEntry(hint);
         const fieldLabel = normalized.field;
         if (!fieldLabel) return;
-        const existing = prev[fieldLabel] || {};
+        const existing = prev[fieldLabel] || { clearedDefaults: {} };
         const requiredCommon =
           typeof existing.requiredCommon === 'boolean'
             ? existing.requiredCommon
@@ -4154,8 +4187,9 @@ export default function PosApiAdmin() {
           ...normalized.requiredByVariation,
           ...existing.requiredByVariation,
         };
+        const clearedDefaults = { ...(existing.clearedDefaults || {}) };
         const defaultByVariation = {
-          ...normalized.defaultByVariation,
+          ...normalizeFieldValueMap(normalized.defaultByVariation || normalized.defaultVariations),
           ...existing.defaultByVariation,
         };
         let useInTransaction = resolveVariationUsageFlag(
@@ -4166,16 +4200,12 @@ export default function PosApiAdmin() {
         variationColumns.forEach((variation) => {
           const key = variation.key;
           if (!key) return;
+          if (clearedDefaults[key]) {
+            delete defaultByVariation[key];
+            return;
+          }
           if (!(key in requiredByVariation)) {
             requiredByVariation[key] = requiredCommon;
-          }
-          const variationDefaults = normalized.defaultByVariation || {};
-          if (
-            variationDefaults
-            && variationDefaults[key] !== undefined
-            && defaultByVariation[key] === undefined
-          ) {
-            defaultByVariation[key] = variationDefaults[key];
           }
           const combination = requestFieldVariationMap.get(key);
           if (combination?.requiredFields?.[fieldLabel] && !requiredByVariation[key]) {
@@ -4211,6 +4241,7 @@ export default function PosApiAdmin() {
           defaultByVariation,
           aggregation: normalized.aggregation || existing.aggregation || '',
           useInTransaction: useInTransaction !== false,
+          clearedDefaults,
         };
       });
       return next;
@@ -4260,6 +4291,7 @@ export default function PosApiAdmin() {
       Object.entries(next).forEach(([fieldPath, entry]) => {
         const requiredByVariation = { ...(entry.requiredByVariation || {}) };
         const defaultByVariation = { ...(entry.defaultByVariation || {}) };
+        const clearedDefaults = { ...(entry.clearedDefaults || {}) };
         let entryChanged = false;
 
         Object.keys(requiredByVariation).forEach((key) => {
@@ -4276,8 +4308,15 @@ export default function PosApiAdmin() {
           }
         });
 
+        Object.keys(clearedDefaults).forEach((key) => {
+          if (!variationKeys.has(key)) {
+            delete clearedDefaults[key];
+            entryChanged = true;
+          }
+        });
+
         if (entryChanged) {
-          next[fieldPath] = { ...entry, requiredByVariation, defaultByVariation };
+          next[fieldPath] = { ...entry, requiredByVariation, defaultByVariation, clearedDefaults };
           changed = true;
         }
       });
@@ -4286,6 +4325,7 @@ export default function PosApiAdmin() {
         const existing = next[fieldPath] || {};
         const requiredByVariation = { ...(existing.requiredByVariation || {}) };
         const defaultByVariation = { ...(existing.defaultByVariation || {}) };
+        const clearedDefaults = { ...(existing.clearedDefaults || {}) };
         let entryChanged = false;
 
         Object.keys(requiredByVariation).forEach((key) => {
@@ -4313,11 +4353,14 @@ export default function PosApiAdmin() {
           if (defaultByVariation[key] !== value) {
             defaultByVariation[key] = value;
             entryChanged = true;
+            if (clearedDefaults[key]) {
+              delete clearedDefaults[key];
+            }
           }
         });
 
         if (entryChanged) {
-          next[fieldPath] = { ...existing, requiredByVariation, defaultByVariation };
+          next[fieldPath] = { ...existing, requiredByVariation, defaultByVariation, clearedDefaults };
           changed = true;
         }
       });
@@ -5204,9 +5247,10 @@ export default function PosApiAdmin() {
     if (!variationKey || !fieldPath) return;
 
     setRequestFieldMeta((prev) => {
-      const existing = prev[fieldPath] || { requiredByVariation: {}, defaultByVariation: {} };
+      const existing = prev[fieldPath] || { requiredByVariation: {}, defaultByVariation: {}, clearedDefaults: {} };
       const requiredByVariation = { ...(existing.requiredByVariation || {}) };
       const defaultByVariation = { ...(existing.defaultByVariation || {}) };
+      const clearedDefaults = { ...(existing.clearedDefaults || {}) };
       let changed = false;
 
       if (keepRequiredOverride) {
@@ -5222,9 +5266,16 @@ export default function PosApiAdmin() {
         delete defaultByVariation[variationKey];
         changed = true;
       }
+      if (!clearedDefaults[variationKey]) {
+        clearedDefaults[variationKey] = true;
+        changed = true;
+      }
 
       if (!changed) return prev;
-      return { ...prev, [fieldPath]: { ...existing, requiredByVariation, defaultByVariation } };
+      return {
+        ...prev,
+        [fieldPath]: { ...existing, requiredByVariation, defaultByVariation, clearedDefaults },
+      };
     });
 
     setFormState((prev) => {
@@ -7011,10 +7062,8 @@ export default function PosApiAdmin() {
         ...normalized.requiredByVariation,
         ...meta.requiredByVariation,
       });
-      const defaultByVariation = normalizeFieldValueMap({
-        ...normalized.defaultByVariation,
-        ...meta.defaultByVariation,
-      });
+      const { mergedDefaults } = mergeVariationDefaultState(normalized, meta);
+      const defaultByVariation = normalizeFieldValueMap(mergedDefaults);
       const useInTransaction = resolveVariationUsageFlag(
         meta.useInTransaction,
         normalized.useInTransaction,
@@ -7117,9 +7166,11 @@ export default function PosApiAdmin() {
             : meta.requiredByVariation?.[key]
               ?? normalized.requiredByVariation?.[key]
               ?? false;
-          const defaultValue =
-            meta.defaultByVariation?.[key]
-            ?? normalized.defaultByVariation?.[key];
+          const defaultCleared = meta.clearedDefaults?.[key];
+          const defaultValue = defaultCleared
+            ? undefined
+            : meta.defaultByVariation?.[key]
+              ?? normalized.defaultByVariation?.[key];
 
           if (required) {
             variationRequirementByKey[key][fieldLabel] = true;
@@ -7216,10 +7267,8 @@ export default function PosApiAdmin() {
               ...normalized.requiredByVariation,
               ...meta.requiredByVariation,
             });
-            const defaultByVariation = normalizeFieldValueMap({
-              ...normalized.defaultByVariation,
-              ...meta.defaultByVariation,
-            });
+            const { mergedDefaults } = mergeVariationDefaultState(normalized, meta);
+            const defaultByVariation = normalizeFieldValueMap(mergedDefaults);
 
             return {
               field: normalized.field || '',
@@ -7669,7 +7718,7 @@ export default function PosApiAdmin() {
       const fieldPath = normalized.field;
       if (!fieldPath) return;
       const meta = requestFieldMeta[fieldPath] || {};
-      const defaultByVariation = meta.defaultByVariation || normalized.defaultByVariation || {};
+      const { mergedDefaults: defaultByVariation } = mergeVariationDefaultState(normalized, meta);
       const allowVariationDefaults = resolveVariationUsageFlag(
         meta.useInTransaction,
         normalized.useInTransaction,
@@ -8004,7 +8053,7 @@ export default function PosApiAdmin() {
   function handleRequestFieldDescriptionChange(fieldPath, value) {
     if (!fieldPath) return;
     setRequestFieldMeta((prev) => {
-      const current = prev[fieldPath] || { requiredByVariation: {}, defaultByVariation: {} };
+      const current = prev[fieldPath] || { requiredByVariation: {}, defaultByVariation: {}, clearedDefaults: {} };
       return { ...prev, [fieldPath]: { ...current, description: value } };
     });
   }
@@ -8012,7 +8061,7 @@ export default function PosApiAdmin() {
   function handleCommonRequiredToggle(fieldPath, value) {
     if (!fieldPath) return;
     setRequestFieldMeta((prev) => {
-      const current = prev[fieldPath] || { requiredByVariation: {}, defaultByVariation: {} };
+      const current = prev[fieldPath] || { requiredByVariation: {}, defaultByVariation: {}, clearedDefaults: {} };
       const requiredByVariation = value
         ? variationColumns.reduce((acc, variation) => {
           const key = variation.key;
@@ -8032,7 +8081,7 @@ export default function PosApiAdmin() {
   function handleVariationRequirementChange(fieldPath, variationKey, value) {
     if (!fieldPath || !variationKey) return;
     setRequestFieldMeta((prev) => {
-      const current = prev[fieldPath] || { requiredByVariation: {}, defaultByVariation: {} };
+      const current = prev[fieldPath] || { requiredByVariation: {}, defaultByVariation: {}, clearedDefaults: {} };
       return {
         ...prev,
         [fieldPath]: {
@@ -8049,16 +8098,20 @@ export default function PosApiAdmin() {
   function handleVariationUsageToggle(fieldPath, value) {
     if (!fieldPath) return;
     setRequestFieldMeta((prev) => {
-      const current = prev[fieldPath] || { requiredByVariation: {}, defaultByVariation: {} };
-      const updatedDefaults = applyUsageToDefaultMap(current.defaultByVariation, value);
+      const current = prev[fieldPath] || { requiredByVariation: {}, defaultByVariation: {}, clearedDefaults: {} };
+      const normalizedHint = getNormalizedFieldHint(fieldPath) || {};
+      const { mergedDefaults, clearedDefaults } = mergeVariationDefaultState(normalizedHint, current);
+      const updatedDefaults = applyUsageToDefaultMap(mergedDefaults, value);
       const sameDefaults = JSON.stringify(updatedDefaults) === JSON.stringify(current.defaultByVariation || {});
-      if (current.useInTransaction === value && sameDefaults) return prev;
+      const sameCleared = JSON.stringify(clearedDefaults) === JSON.stringify(current.clearedDefaults || {});
+      if (current.useInTransaction === value && sameDefaults && sameCleared) return prev;
       return {
         ...prev,
         [fieldPath]: {
           ...current,
           defaultByVariation: updatedDefaults,
           useInTransaction: value,
+          clearedDefaults,
         },
       };
     });
@@ -8133,9 +8186,10 @@ export default function PosApiAdmin() {
     if (!fieldPath || !variationKey) return;
     let syncEntry = null;
     setRequestFieldMeta((prev) => {
-      const current = prev[fieldPath] || { requiredByVariation: {}, defaultByVariation: {} };
-      const defaultByVariation = { ...current.defaultByVariation };
-      const currentEntry = parseDefaultValueEntry(defaultByVariation[variationKey]);
+      const current = prev[fieldPath] || { requiredByVariation: {}, defaultByVariation: {}, clearedDefaults: {} };
+      const normalizedHint = getNormalizedFieldHint(fieldPath) || {};
+      const { mergedDefaults, clearedDefaults } = mergeVariationDefaultState(normalizedHint, current);
+      const currentEntry = parseDefaultValueEntry(mergedDefaults[variationKey]);
       const nextValue = value !== undefined ? value : currentEntry.value;
       const resolvedUsage = typeof currentEntry.useInTransaction === 'boolean'
         ? currentEntry.useInTransaction
@@ -8143,11 +8197,22 @@ export default function PosApiAdmin() {
       const nextEntry = buildDefaultValueEntry(nextValue, resolvedUsage);
       syncEntry = nextEntry !== undefined ? nextEntry : undefined;
       if (nextEntry !== undefined) {
-        defaultByVariation[variationKey] = nextEntry;
+        mergedDefaults[variationKey] = nextEntry;
+        if (clearedDefaults[variationKey]) {
+          delete clearedDefaults[variationKey];
+        }
       } else {
-        delete defaultByVariation[variationKey];
+        delete mergedDefaults[variationKey];
+        clearedDefaults[variationKey] = true;
       }
-      return { ...prev, [fieldPath]: { ...current, defaultByVariation } };
+      return {
+        ...prev,
+        [fieldPath]: {
+          ...current,
+          defaultByVariation: mergedDefaults,
+          clearedDefaults,
+        },
+      };
     });
     syncVariationDefaultChange(variationKey, fieldPath, syncEntry);
   }
@@ -8159,7 +8224,7 @@ export default function PosApiAdmin() {
       const next = { ...prev };
       visibleRequestFieldPaths.forEach((fieldPath) => {
         if (!fieldPath) return;
-        const existing = next[fieldPath] || { requiredByVariation: {}, defaultByVariation: {} };
+        const existing = next[fieldPath] || { requiredByVariation: {}, defaultByVariation: {}, clearedDefaults: {} };
         const requiredByVariation = { ...(existing.requiredByVariation || {}) };
         if (existing.requiredCommon && required === false) return;
         if (requiredByVariation[variationKey] !== required) {
@@ -8213,14 +8278,18 @@ export default function PosApiAdmin() {
       const next = { ...prev };
       visibleRequestFieldPaths.forEach((fieldPath) => {
         if (!fieldPath) return;
-        const current = next[fieldPath] || { requiredByVariation: {}, defaultByVariation: {} };
-        const updatedDefaults = applyUsageToDefaultMap(current.defaultByVariation, value);
+        const current = next[fieldPath] || { requiredByVariation: {}, defaultByVariation: {}, clearedDefaults: {} };
+        const normalizedHint = getNormalizedFieldHint(fieldPath) || {};
+        const { mergedDefaults, clearedDefaults } = mergeVariationDefaultState(normalizedHint, current);
+        const updatedDefaults = applyUsageToDefaultMap(mergedDefaults, value);
         const sameDefaults = JSON.stringify(updatedDefaults) === JSON.stringify(current.defaultByVariation || {});
-        if (current.useInTransaction === value && sameDefaults) return;
+        const sameCleared = JSON.stringify(clearedDefaults) === JSON.stringify(current.clearedDefaults || {});
+        if (current.useInTransaction === value && sameDefaults && sameCleared) return;
         next[fieldPath] = {
           ...current,
           defaultByVariation: updatedDefaults,
           useInTransaction: value,
+          clearedDefaults,
         };
         changed = true;
       });
@@ -8297,7 +8366,7 @@ export default function PosApiAdmin() {
       const next = { ...prev };
       visibleRequestFieldPaths.forEach((fieldPath) => {
         if (!fieldPath) return;
-        const current = next[fieldPath] || { requiredByVariation: {}, defaultByVariation: {} };
+        const current = next[fieldPath] || { requiredByVariation: {}, defaultByVariation: {}, clearedDefaults: {} };
         const requiredByVariation = {};
         variationColumns.forEach((variation) => {
           if (!variation.key) return;
@@ -9927,10 +9996,13 @@ export default function PosApiAdmin() {
                             : meta.requiredByVariation?.[variationKey]
                               ?? normalized.requiredByVariation?.[variationKey]
                               ?? false;
+                          const defaultCleared = meta.clearedDefaults?.[variationKey];
                           const defaultEntry = parseDefaultValueEntry(
-                            meta.defaultByVariation?.[variationKey]
-                              ?? normalized.defaultByVariation?.[variationKey]
-                              ?? '',
+                            defaultCleared
+                              ? undefined
+                              : meta.defaultByVariation?.[variationKey]
+                                ?? normalized.defaultByVariation?.[variationKey]
+                                ?? '',
                           );
                           const defaultValue = defaultEntry.value ?? '';
                           return (
