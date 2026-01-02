@@ -656,10 +656,15 @@ async function buildColumnStatements(table, columnName, columnMeta, options, con
   const sourceRef = backupId || columnId;
 
   // Normalize existing scalar values into JSON text before switching the column type.
+  // Preserve already-valid JSON arrays to avoid repeatedly nesting the value.
   // This avoids MySQL "Invalid JSON text" errors during ALTER when legacy values are plain scalars.
   statements.push(`ALTER TABLE ${tableId} MODIFY COLUMN ${columnId} LONGTEXT ${nullabilitySql}`);
   statements.push(
-    `UPDATE ${tableId} SET ${columnId} = JSON_ARRAY(${sourceRef}) WHERE ${sourceRef} IS NOT NULL`,
+    `UPDATE ${tableId} SET ${columnId} = CASE
+        WHEN JSON_VALID(${sourceRef}) AND JSON_TYPE(JSON_EXTRACT(${sourceRef}, '$')) = 'ARRAY' THEN ${sourceRef}
+        ELSE JSON_ARRAY(${sourceRef})
+      END
+      WHERE ${sourceRef} IS NOT NULL`,
   );
 
   // Finally enforce the JSON type with array validation.
