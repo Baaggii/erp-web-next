@@ -42,6 +42,8 @@ const AGGREGATION_OPTIONS = [
   { value: 'avg', label: 'Average' },
 ];
 
+const EXPRESSION_FUNCTIONS = ['sum', 'count', 'min', 'max', 'avg'];
+
 const VARIATION_DEFAULT_BADGE_STYLE = {
   ...BADGE_BASE_STYLE,
   background: '#ecfdf3',
@@ -94,6 +96,156 @@ function normalizeVariationDefaultMap(map = {}) {
     normalized[key] = extractDefaultValue(value);
   });
   return normalized;
+}
+
+const EXPRESSION_TOKEN_REGEX = /\s*(\d*\.\d+|\d+|[A-Za-z_][A-Za-z0-9_]*(?:\[\])?(?:\.[A-Za-z0-9_]+(?:\[\])?)*)|([()+\-*/])\s*/g;
+const EXPRESSION_PRECEDENCE = { '+': 1, '-': 1, '*': 2, '/': 2 };
+
+function tokenizeExpression(expression = '') {
+  const tokens = [];
+  let match;
+  while ((match = EXPRESSION_TOKEN_REGEX.exec(expression))) {
+    const [_, identifier, operator] = match;
+    if (identifier) {
+      tokens.push({ type: 'identifier', value: identifier });
+    } else if (operator) {
+      tokens.push({ type: 'operator', value: operator });
+    }
+  }
+  return tokens;
+}
+
+function toRpnTokens(tokens = []) {
+  const output = [];
+  const operators = [];
+
+  tokens.forEach((token, index) => {
+    if (token.type === 'identifier') {
+      const next = tokens[index + 1];
+      if (next && next.type === 'operator' && next.value === '(' && EXPRESSION_FUNCTIONS.includes(token.value)) {
+        operators.push({ ...token, type: 'function' });
+        return;
+      }
+      output.push(token);
+      return;
+    }
+    if (token.type === 'operator') {
+      if (token.value === '(') {
+        operators.push(token);
+        return;
+      }
+      if (token.value === ')') {
+        while (operators.length) {
+          const op = operators.pop();
+          if (op.value === '(') break;
+          output.push(op);
+        }
+        const fn = operators[operators.length - 1];
+        if (fn && fn.type === 'function') {
+          output.push(operators.pop());
+        }
+        return;
+      }
+
+      while (operators.length) {
+        const top = operators[operators.length - 1];
+        if (top.type === 'function') {
+          output.push(operators.pop());
+          continue;
+        }
+        const topPrecedence = EXPRESSION_PRECEDENCE[top.value] ?? 0;
+        const currentPrecedence = EXPRESSION_PRECEDENCE[token.value] ?? 0;
+        if (topPrecedence >= currentPrecedence) {
+          output.push(operators.pop());
+        } else {
+          break;
+        }
+      }
+      operators.push(token);
+    }
+  });
+
+  while (operators.length) {
+    output.push(operators.pop());
+  }
+
+  return output;
+}
+
+function evaluateExpressionPreview(rpnTokens = []) {
+  const stack = [];
+  rpnTokens.forEach((token) => {
+    if (token.type === 'identifier') {
+      stack.push(1);
+      return;
+    }
+    if (token.type === 'function') {
+      const arg = stack.pop();
+      if (token.value === 'count') {
+        stack.push(1);
+        return;
+      }
+      if (token.value === 'sum' || token.value === 'min' || token.value === 'max' || token.value === 'avg') {
+        stack.push(arg ?? 1);
+        return;
+      }
+      stack.push(arg);
+      return;
+    }
+    if (token.type === 'operator') {
+      const right = stack.pop();
+      const left = stack.pop();
+      const safeLeft = Number.isFinite(left) ? left : 0;
+      const safeRight = Number.isFinite(right) ? right : 0;
+      if (token.value === '+') stack.push(safeLeft + safeRight);
+      else if (token.value === '-') stack.push(safeLeft - safeRight);
+      else if (token.value === '*') stack.push(safeLeft * safeRight);
+      else if (token.value === '/') stack.push(safeRight === 0 ? 0 : safeLeft / safeRight);
+    }
+  });
+  return stack.pop();
+}
+
+function validateExpressionPreview(expression = '', allowedFields = []) {
+  const trimmed = (expression || '').trim();
+  if (!trimmed) {
+    return { status: 'error', message: 'Expression is required to compute this field.' };
+  }
+  const tokens = tokenizeExpression(trimmed);
+  if (!tokens.length) {
+    return { status: 'error', message: 'No valid tokens were found in the expression.' };
+  }
+  let openParens = 0;
+  tokens.forEach((token) => {
+    if (token.type === 'operator' && token.value === '(') openParens += 1;
+    if (token.type === 'operator' && token.value === ')') openParens -= 1;
+  });
+  if (openParens !== 0) {
+    return { status: 'error', message: 'Unbalanced parentheses detected.' };
+  }
+  const unknownPaths = tokens
+    .filter((token) => token.type === 'identifier')
+    .map((token) => token.value)
+    .filter((value) => !!value)
+    .filter((value) => !EXPRESSION_FUNCTIONS.includes(value))
+    .filter((value) => !allowedFields.includes(value));
+  const rpn = toRpnTokens(tokens);
+  const previewValue = evaluateExpressionPreview(rpn);
+  const returnsNumber = Number.isFinite(previewValue);
+  if (unknownPaths.length) {
+    return {
+      status: 'warn',
+      message: `Expression looks valid but includes unknown paths: ${unknownPaths.join(', ')}`,
+      returnsNumber,
+    };
+  }
+  return {
+    status: returnsNumber ? 'ok' : 'warn',
+    message: returnsNumber
+      ? 'Expression should return a numeric result.'
+      : 'Expression parsed, but the result may not be numeric.',
+    returnsNumber,
+  };
 }
 
 function normalizePathKey(path = '') {
@@ -399,6 +551,106 @@ function buildHierarchicalSample(structure, baseSample) {
   return mergeSamples(skeleton, baseSample);
 }
 
+function ExpressionBuilder({
+  value,
+  onChange,
+  fieldOptions = [],
+  functionOptions = EXPRESSION_FUNCTIONS,
+  datalistId,
+}) {
+  const [selectedField, setSelectedField] = useState('');
+  const validation = useMemo(
+    () => validateExpressionPreview(value, fieldOptions),
+    [value, fieldOptions],
+  );
+
+  const insertSnippet = (snippet) => {
+    if (!snippet) return;
+    const base = value || '';
+    const separator = base && !base.endsWith(' ') ? ' ' : '';
+    onChange(`${base}${separator}${snippet}`.trim());
+  };
+
+  const handleInsertField = () => {
+    const trimmed = selectedField.trim();
+    if (!trimmed) return;
+    insertSnippet(trimmed);
+  };
+
+  const handleInsertFunction = (fn) => {
+    const trimmed = fn.trim();
+    if (!trimmed) return;
+    const field = selectedField.trim();
+    insertSnippet(`${trimmed}(${field || ''})`);
+  };
+
+  const validationStyle =
+    validation.status === 'error'
+      ? { color: '#b91c1c' }
+      : validation.status === 'warn'
+        ? { color: '#b45309' }
+        : { color: '#065f46' };
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+      <textarea
+        rows={2}
+        value={value || ''}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder="sum(receipts[].items[].unitPrice * receipts[].items[].qty)"
+        style={{ width: '100%', minHeight: '64px', resize: 'vertical' }}
+      />
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: '0.35rem', alignItems: 'center' }}>
+          <input
+            type="text"
+            list={datalistId}
+            value={selectedField}
+            onChange={(e) => setSelectedField(e.target.value)}
+            placeholder="receipts[].items[].unitPrice"
+            style={{ minWidth: '220px' }}
+          />
+          <button type="button" style={styles.miniToggleButton} onClick={handleInsertField}>
+            Insert path
+          </button>
+        </div>
+        {fieldOptions.length > 0 && (
+          <datalist id={datalistId}>
+            {fieldOptions.map((option) => (
+              <option key={`${datalistId}-${option}`} value={option} />
+            ))}
+          </datalist>
+        )}
+        <div style={{ display: 'flex', gap: '0.25rem', flexWrap: 'wrap' }}>
+          {functionOptions.map((fn) => (
+            <button
+              key={`expr-fn-${fn}`}
+              type="button"
+              style={styles.miniToggleButton}
+              onClick={() => handleInsertFunction(fn)}
+            >
+              {fn}()
+            </button>
+          ))}
+          {['(', ')', '+', '-', '*', '/'].map((op) => (
+            <button
+              key={`expr-op-${op}`}
+              type="button"
+              style={styles.miniToggleButton}
+              onClick={() => insertSnippet(op)}
+            >
+              {op}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div style={{ fontSize: '0.9rem', ...validationStyle }}>
+        {validation.message}
+      </div>
+    </div>
+  );
+}
+
 export function MappingFieldSelector({
   value,
   onChange,
@@ -412,6 +664,8 @@ export function MappingFieldSelector({
   allowExpression = true,
   onTableSelect = () => {},
   sessionVariables = [],
+  expressionFieldOptions = [],
+  expressionFunctions = EXPRESSION_FUNCTIONS,
 }) {
   const selection = normalizeMappingSelection(value, primaryTableName);
   const currentType = selection.type || 'column';
@@ -557,14 +811,15 @@ export function MappingFieldSelector({
             </datalist>
           </>
         ) : (
-          <input
-            type="text"
-            value={selection.expression || ''}
-            onChange={(e) => handleScalarChange('expression', e.target.value)}
-            placeholder="Expression or formula"
-            disabled={disabled}
-            style={{ flex: '1 1 200px', minWidth: '200px' }}
-          />
+          <div style={{ flex: '1 1 320px', minWidth: '260px' }}>
+            <ExpressionBuilder
+              value={selection.expression || ''}
+              onChange={(expr) => handleScalarChange('expression', expr)}
+              fieldOptions={expressionFieldOptions}
+              functionOptions={expressionFunctions}
+              datalistId={`${datalistIdBase}-expression`}
+            />
+          </div>
         )}
       </div>
     </div>
@@ -752,6 +1007,18 @@ export default function PosApiIntegrationSection({
       ),
     [normalizedNestedPaths, selectedEndpoint],
   );
+  const expressionFieldOptions = useMemo(() => {
+    const options = new Set();
+    const addField = (field, prefix = '') => {
+      const key = field?.path || (field?.key ? `${prefix ? `${prefix}.` : ''}${field.key}` : '');
+      if (key) options.add(key);
+    };
+    (requestStructure.rootFields || []).forEach((field) => addField(field));
+    (requestStructure.objects || []).forEach((obj) => {
+      (obj.fields || []).forEach((field) => addField(field, obj.path || obj.id || obj.key));
+    });
+    return Array.from(options);
+  }, [requestStructure]);
   const [fieldFilter, setFieldFilter] = useState('');
   const normalizedFieldFilter = fieldFilter.trim().toLowerCase();
   const filterFieldList = useCallback(
@@ -1995,6 +2262,7 @@ export default function PosApiIntegrationSection({
                       datalistIdBase={listId}
                       disabled={!config.posApiEnabled || variationDefaultLocked}
                       sessionVariables={DEFAULT_SESSION_VARIABLES}
+                      expressionFieldOptions={expressionFieldOptions}
                     />
                     {description && <small style={{ color: '#555' }}>{description}</small>}
                   </label>
@@ -2157,6 +2425,7 @@ export default function PosApiIntegrationSection({
                               defaultTableLabel={primaryTableLabel}
                               disabled={!config.posApiEnabled || variationDefaultLocked}
                               sessionVariables={DEFAULT_SESSION_VARIABLES}
+                              expressionFieldOptions={expressionFieldOptions}
                             />
                               <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
                                 <span style={{ color: '#475569', fontSize: '0.9rem' }}>Aggregation</span>
@@ -2311,6 +2580,7 @@ export default function PosApiIntegrationSection({
                         defaultTableLabel={primaryTableLabel}
                         disabled={!config.posApiEnabled || variationDefaultLocked}
                         sessionVariables={DEFAULT_SESSION_VARIABLES}
+                        expressionFieldOptions={expressionFieldOptions}
                       />
                       <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
                         <span style={{ color: '#475569', fontSize: '0.9rem' }}>Aggregation</span>
@@ -2427,6 +2697,7 @@ export default function PosApiIntegrationSection({
                         datalistIdBase={listId}
                         disabled={!config.posApiEnabled || variationDefaultLocked}
                         sessionVariables={DEFAULT_SESSION_VARIABLES}
+                        expressionFieldOptions={expressionFieldOptions}
                       />
                       <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
                         <span style={{ color: '#475569', fontSize: '0.9rem' }}>Aggregation</span>
@@ -2543,6 +2814,7 @@ export default function PosApiIntegrationSection({
                         datalistIdBase={listId}
                         disabled={!config.posApiEnabled || variationDefaultLocked}
                         sessionVariables={DEFAULT_SESSION_VARIABLES}
+                        expressionFieldOptions={expressionFieldOptions}
                       />
                       <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
                         <span style={{ color: '#475569', fontSize: '0.9rem' }}>Aggregation</span>
