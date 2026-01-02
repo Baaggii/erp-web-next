@@ -119,6 +119,12 @@ Persists any returned values (e.g., lottery number, QR code) back into the trans
 
 For testable endpoints, the UI should provide a Test button. When clicked, it prompts the user to confirm they wish to use the test server and then sends the request to the testServerUrl instead of production.
 
+Aggregation mappings via expressions
+
+- Aggregated values now live inside the **Expression** mapping type. The expression editor includes helper buttons for functions (sum, count, min, max, avg), arithmetic operators (+, -, *, /) and parentheses so complex formulas can be assembled without typing every character.
+- A quick helper can turn a field selection into an expression automatically (e.g., choosing receipts[].items[].unitPrice and “sum” produces `sum(receipts[].items[].unitPrice)`). You can continue editing to add arithmetic, such as `sum(receipts[].items[].unitPrice * receipts[].items[].qty)`.
+- Expressions are saved with the endpoint definition and auto-populate transaction forms when that endpoint is selected, keeping aggregation logic consistent. The legacy aggregation dropdowns have been removed in favor of these expressions.
+
 Reference for further integration
 
 This document focuses on architecture and does not list all ~30 endpoints individually. For detailed request and response schemas, please consult the official POSAPI documentation at https://developer.itc.gov.mn/docs/ebarimt-api/. As you add each endpoint to the registry, capture the JSON examples and field descriptions from the docs. The dynamic registry and UI described here will allow our ERP to support the full breadth of POSAPI 3.0 features without rewriting code for each new service.
