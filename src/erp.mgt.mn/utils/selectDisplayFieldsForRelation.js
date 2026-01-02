@@ -36,11 +36,30 @@ function normalizeEntry(entry = {}, tableName = '') {
     rawFilterValue === null || rawFilterValue === undefined
       ? ''
       : String(rawFilterValue).trim();
+  const columnTypes = Array.isArray(entry.columns)
+    ? entry.columns.reduce((acc, col) => {
+        if (!col || typeof col !== 'object') return acc;
+        const name = col.name || col.column_name || col.COLUMN_NAME;
+        if (!name) return acc;
+        const type = (col.type || col.columnType || col.dataType || col.DATA_TYPE || '').toLowerCase();
+        const comment = (col.columnComment || '').toLowerCase();
+        acc[name] = type;
+        if (type.includes('json') || comment.includes('json_array')) {
+          acc[`${name}__json`] = true;
+        }
+        return acc;
+      }, {})
+    : {};
+  const jsonFields = Object.entries(columnTypes || {})
+    .filter(([key, val]) => key.endsWith('__json') || (typeof val === 'string' && val.includes('json')))
+    .map(([key]) => key.replace('__json', ''));
 
   const normalized = {
     table,
     idField: idField || undefined,
     displayFields: normalizeDisplayFieldList(entry.displayFields ?? entry.display_fields),
+    ...(Object.keys(columnTypes).length > 0 ? { columnTypes } : {}),
+    ...(jsonFields.length > 0 ? { jsonFields } : {}),
   };
 
   if (filterColumn) normalized.filterColumn = filterColumn;
@@ -122,6 +141,10 @@ export function selectDisplayFieldsForRelation(tableConfigs = {}, tableName, rel
         cfg.filterValue === null || cfg.filterValue === undefined
           ? ''
           : String(cfg.filterValue).trim(),
+      ...(cfg.columnTypes ? { columnTypes: cfg.columnTypes } : {}),
+      ...(Array.isArray(cfg.jsonFields) && cfg.jsonFields.length > 0
+        ? { jsonFields: cfg.jsonFields }
+        : {}),
     }));
 
   if (candidates.length === 0) return null;
