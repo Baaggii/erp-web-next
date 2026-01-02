@@ -20,6 +20,7 @@ export default function JsonConversionPanel() {
   const [backupEnabled, setBackupEnabled] = useState(true);
   const [blockedColumns, setBlockedColumns] = useState([]);
   const [errorDetails, setErrorDetails] = useState(null);
+  const [expandedConstraints, setExpandedConstraints] = useState({});
 
   const selectedColumns = useMemo(
     () =>
@@ -313,7 +314,14 @@ export default function JsonConversionPanel() {
     return queries;
   }, [previews]);
 
-  function renderConstraintSummary(col) {
+  function toggleConstraintDetails(name) {
+    setExpandedConstraints((prev) => ({
+      ...prev,
+      [name]: !prev[name],
+    }));
+  }
+
+  function renderConstraintSummary(col, expanded) {
     const constraints = col.constraints || [];
     const triggers = col.triggers || [];
     const warnings = [];
@@ -324,27 +332,38 @@ export default function JsonConversionPanel() {
     if (constraints.length === 0 && triggers.length === 0 && warnings.length === 0) {
       return <span style={{ color: '#166534' }}>No dependent constraints detected</span>;
     }
+    const total = constraints.length + triggers.length + warnings.length;
     return (
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', marginTop: '0.25rem' }}>
-        {warnings.map((warning) => (
-          <div key={warning} style={{ color: '#b45309', fontSize: '0.85rem' }}>
-            {warning}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', marginTop: '0.25rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', color: '#b45309' }}>
+          <span style={{ fontWeight: 600 }}>Constraints detected ({total})</span>
+          <button type="button" onClick={() => toggleConstraintDetails(col.name)} style={{ padding: '0.2rem 0.4rem' }}>
+            {expanded ? 'Hide' : 'Show'}
+          </button>
+        </div>
+        {expanded && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+            {warnings.map((warning) => (
+              <div key={warning} style={{ color: '#b45309', fontSize: '0.85rem' }}>
+                {warning}
+              </div>
+            ))}
+            {constraints.map((c) => (
+              <div key={`${c.name}-${c.table}-${c.type}`} style={{ fontSize: '0.85rem' }}>
+                <strong>{c.type}</strong> — {c.table}.{c.column}
+                {c.referencedTable && c.referencedColumn
+                  ? ` → ${c.referencedTable}.${c.referencedColumn}`
+                  : ''}{' '}
+                {c.direction === 'incoming' ? '(referenced by another table)' : ''}
+              </div>
+            ))}
+            {triggers.map((t) => (
+              <div key={t.name} style={{ fontSize: '0.85rem' }}>
+                Trigger <strong>{t.name}</strong> ({t.timing} {t.event})
+              </div>
+            ))}
           </div>
-        ))}
-        {constraints.map((c) => (
-          <div key={`${c.name}-${c.table}-${c.type}`} style={{ fontSize: '0.85rem' }}>
-            <strong>{c.type}</strong> — {c.table}.{c.column}
-            {c.referencedTable && c.referencedColumn
-              ? ` → ${c.referencedTable}.${c.referencedColumn}`
-              : ''}{' '}
-            {c.direction === 'incoming' ? '(referenced by another table)' : ''}
-          </div>
-        ))}
-        {triggers.map((t) => (
-          <div key={t.name} style={{ fontSize: '0.85rem' }}>
-            Trigger <strong>{t.name}</strong> ({t.timing} {t.event})
-          </div>
-        ))}
+        )}
       </div>
     );
   }
@@ -433,7 +452,7 @@ export default function JsonConversionPanel() {
                               </span>
                             )}
                           </div>
-                          {renderConstraintSummary(col)}
+                          {renderConstraintSummary(col, Boolean(expandedConstraints[col.name]))}
                         </div>
                       </div>
                       {isSelected && (
