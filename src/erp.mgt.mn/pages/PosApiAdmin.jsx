@@ -5105,10 +5105,8 @@ export default function PosApiAdmin() {
       if (variationMetaIndex >= 0) {
         const meta = requestFieldVariations[variationMetaIndex];
         const defaultValues = { ...(meta.defaultValues || {}) };
-        const requiredFields = { ...(meta.requiredFields || {}) };
         const useInTransaction = { ...(meta.useInTransaction || {}) };
         const defaultExists = Object.prototype.hasOwnProperty.call(defaultValues, fieldPath);
-        const requiredExists = Object.prototype.hasOwnProperty.call(requiredFields, fieldPath);
 
         if (storedValue !== '' && storedValue !== undefined && storedValue !== null) {
           defaultValues[fieldPath] = storedValue;
@@ -5119,19 +5117,14 @@ export default function PosApiAdmin() {
           delete defaultValues[fieldPath];
           delete useInTransaction[fieldPath];
         }
-        if (requiredExists && !storedValue) {
-          delete requiredFields[fieldPath];
-        }
 
         if (
           defaultExists !== Object.prototype.hasOwnProperty.call(defaultValues, fieldPath)
-          || requiredExists !== Object.prototype.hasOwnProperty.call(requiredFields, fieldPath)
           || (value && defaultValues[fieldPath] !== meta.defaultValues?.[fieldPath])
         ) {
           requestFieldVariations[variationMetaIndex] = {
             ...meta,
             defaultValues,
-            requiredFields,
             ...(Object.keys(useInTransaction).length ? { useInTransaction } : {}),
           };
           changed = true;
