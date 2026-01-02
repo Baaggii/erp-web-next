@@ -47,14 +47,11 @@ export default function JsonConversionPanel() {
       .catch(() => setTables([]));
   }, []);
 
-  const refreshSavedScripts = useCallback(async () => {
-    try {
-      const res = await fetch('/api/json_conversion/scripts', { credentials: 'include' });
-      const data = res.ok ? await res.json() : { scripts: [] };
-      setSavedScripts(data.scripts || []);
-    } catch {
-      setSavedScripts([]);
-    }
+  const refreshSavedScripts = useCallback(() => {
+    fetch('/api/json_conversion/scripts', { credentials: 'include' })
+      .then((res) => (res.ok ? res.json() : { scripts: [] }))
+      .then((data) => setSavedScripts(data.scripts || []))
+      .catch(() => setSavedScripts([]));
   }, []);
 
   useEffect(() => {
@@ -251,7 +248,7 @@ export default function JsonConversionPanel() {
       console.error(err);
       addToast('Failed to convert columns', 'error');
     } finally {
-      await refreshSavedScripts();
+      refreshSavedScripts();
       setLoading(false);
     }
   }
@@ -274,7 +271,7 @@ export default function JsonConversionPanel() {
       console.error(err);
       addToast('Failed to execute script', 'error');
     } finally {
-      await refreshSavedScripts();
+      refreshSavedScripts();
       setLoading(false);
     }
   }
