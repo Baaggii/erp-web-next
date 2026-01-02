@@ -39,6 +39,28 @@ function normalizeNumberInput(value) {
   return value.replace(',', '.');
 }
 
+function normalizeJsonArrayForState(value) {
+  const list = Array.isArray(value)
+    ? value
+    : value === undefined || value === null || value === ''
+    ? []
+    : [value];
+  return list
+    .map((entry) => normalizeInputValue(entry))
+    .filter((entry) => entry !== '' && entry !== undefined && entry !== null);
+}
+
+function normalizeRowJsonFields(row, fieldTypeMap = {}) {
+  if (!row || typeof row !== 'object') return row;
+  const updated = { ...row };
+  Object.entries(updated).forEach(([key, value]) => {
+    if (fieldTypeMap[key] === 'json') {
+      updated[key] = normalizeJsonArrayForState(value);
+    }
+  });
+  return updated;
+}
+
 function InlineTransactionTable(
   {
     fields = [],
@@ -774,10 +796,14 @@ function InlineTransactionTable(
   }, []);
   const [rows, setRows] = useState(() => {
     if (Array.isArray(initRows) && initRows.length > 0) {
-      const next = initRows.map((r) => fillSessionDefaults(r));
+      const next = initRows.map((r) =>
+        normalizeRowJsonFields(fillSessionDefaults(r), fieldTypeMap),
+      );
       return assignArrayMetadata(next, initRows);
     }
-    const next = Array.from({ length: minRows }, () => fillSessionDefaults(defaultValues));
+    const next = Array.from({ length: minRows }, () =>
+      normalizeRowJsonFields(fillSessionDefaults(defaultValues), fieldTypeMap),
+    );
     return assignArrayMetadata(next, initRows);
   });
   const rowsRef = useRef(rows);
@@ -1006,7 +1032,7 @@ function InlineTransactionTable(
           ];
     const normalized = next.map((row) => {
       if (!row || typeof row !== 'object') return row;
-      const updated = fillSessionDefaults(row);
+      const updated = normalizeRowJsonFields(fillSessionDefaults(row), fieldTypeMap);
       Object.entries(updated).forEach(([k, v]) => {
         if (placeholders[k]) {
           updated[k] = normalizeDateInput(String(v ?? ''), placeholders[k]);
@@ -1867,7 +1893,7 @@ function InlineTransactionTable(
     focusRow.current = newIndex;
     commitRowsUpdate(
       (r) => {
-        const row = fillSessionDefaults(defaultValues);
+        const row = normalizeRowJsonFields(fillSessionDefaults(defaultValues), fieldTypeMap);
         return [...r, row];
       },
       { indices: [newIndex] },
@@ -1934,6 +1960,8 @@ function InlineTransactionTable(
     if (isFieldDisabled(field) && !String(field || '').startsWith('_')) {
       return;
     }
+    const isJsonField = fieldTypeMap[field] === 'json' || fieldInputTypes[field] === 'json';
+    const normalizedValue = isJsonField ? normalizeJsonArrayForState(value) : value;
     if (rowIdx != null && rowIdx >= 0 && rowIdx < rows.length) {
       const row = rows[rowIdx];
       const rowId = getOrAssignRowOverrideId(row);
@@ -1941,7 +1969,7 @@ function InlineTransactionTable(
         const lower = typeof field === 'string' ? field.toLowerCase() : String(field || '');
         if (lower) {
           const existing = manualCellOverridesRef.current.get(rowId) || new Map();
-          existing.set(lower, value);
+          existing.set(lower, normalizedValue);
           manualCellOverridesRef.current.set(rowId, existing);
         }
       }
@@ -1950,9 +1978,9 @@ function InlineTransactionTable(
       (r) =>
         r.map((row, i) => {
           if (i !== rowIdx) return row;
-          const updated = { ...row, [field]: value };
+          const updated = { ...row, [field]: normalizedValue };
           const conf = relationConfigMap[field];
-          let val = value;
+          let val = normalizedValue;
           if (val && typeof val === 'object' && 'value' in val) {
             val = val.value;
           }
@@ -1975,7 +2003,7 @@ function InlineTransactionTable(
     }
 
     const view = combinedViewSource[field];
-    if (view && value !== '') {
+    if (view && normalizedValue !== '') {
       const params = new URLSearchParams({ perPage: 1, debug: 1 });
       let hasFilter = false;
       const cols = (viewColumns[view] || []).map((c) =>
@@ -1984,7 +2012,7 @@ function InlineTransactionTable(
       Object.entries(combinedViewSource).forEach(([f, v]) => {
         if (v !== view) return;
         if (!cols.includes(f)) return;
-        let pv = f === field ? value : rows[rowIdx]?.[f];
+        let pv = f === field ? normalizedValue : rows[rowIdx]?.[f];
         if (pv === undefined || pv === '') return;
         if (typeof pv === 'object' && 'value' in pv) pv = pv.value;
         params.set(f, pv);
@@ -2365,11 +2393,7 @@ function InlineTransactionTable(
       return displayVal;
     }
     if (isJsonField) {
-      const currentValues = Array.isArray(val)
-        ? val
-        : val === undefined || val === null || val === ''
-        ? []
-        : [val];
+      const currentValues = normalizeJsonArrayForState(val);
       if (resolvedConfig) {
         const comboFilters =
           resolvedAutoConfig?.filters ?? resolveCombinationFilters(rows[idx], f, resolvedConfig);
@@ -2386,7 +2410,7 @@ function InlineTransactionTable(
             searchColumns={[resolvedConfig.idField || resolvedConfig.column, ...(resolvedConfig.displayFields || [])]}
             labelFields={resolvedConfig.displayFields || []}
             value={currentValues}
-            onChange={(v) => handleChange(idx, f, Array.isArray(v) ? v : [])}
+            onChange={(v) => handleChange(idx, f, normalizeJsonArrayForState(v))}
             onSelect={(opt) => handleOptionSelect(idx, colIdx, opt)}
             inputRef={(el) => (inputRefs.current[`${idx}-${colIdx}`] = el)}
             onKeyDown={(e) => handleKeyDown(e, idx, colIdx)}
@@ -2403,7 +2427,7 @@ function InlineTransactionTable(
       return (
         <TagMultiInput
           value={currentValues}
-          onChange={(vals) => handleChange(idx, f, Array.isArray(vals) ? vals : [])}
+          onChange={(vals) => handleChange(idx, f, normalizeJsonArrayForState(vals))}
           placeholder={labels[f] || f}
           inputStyle={inputStyle}
           onFocus={() => handleFocusField(f)}
