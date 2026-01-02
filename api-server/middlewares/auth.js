@@ -1,6 +1,7 @@
 // api-server/middlewares/auth.js
 import * as jwtService from '../services/jwtService.js';
 import { getCookieName, getRefreshCookieName } from '../utils/cookieNames.js';
+import { buildCookieOptions } from '../utils/cookieOptions.js';
 
 export function requireAuth(req, res, next) {
   // Read from req.cookies (not req.signedCookies) because we didn't sign it
@@ -8,11 +9,7 @@ export function requireAuth(req, res, next) {
   const rToken = req.cookies?.[getRefreshCookieName()];
 
   function clearCookies() {
-    const opts = {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-    };
+    const opts = buildCookieOptions();
     res.clearCookie(getCookieName(), opts);
     res.clearCookie(getRefreshCookieName(), opts);
   }
@@ -28,18 +25,16 @@ export function requireAuth(req, res, next) {
     };
     const newAccess = jwtService.sign(base);
     const newRefresh = jwtService.signRefresh(base);
-    res.cookie(getCookieName(), newAccess, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      maxAge: jwtService.getExpiryMillis(),
-    });
-    res.cookie(getRefreshCookieName(), newRefresh, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      maxAge: jwtService.getRefreshExpiryMillis(),
-    });
+    res.cookie(
+      getCookieName(),
+      newAccess,
+      buildCookieOptions({ maxAge: jwtService.getExpiryMillis() }),
+    );
+    res.cookie(
+      getRefreshCookieName(),
+      newRefresh,
+      buildCookieOptions({ maxAge: jwtService.getRefreshExpiryMillis() }),
+    );
     req.user = jwtService.verify(newAccess);
   }
 

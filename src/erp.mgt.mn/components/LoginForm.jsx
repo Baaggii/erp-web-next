@@ -197,6 +197,7 @@ export default function LoginForm() {
             value={empid}
             onChange={(ev) => setEmpid(ev.target.value)}
             required
+            autoComplete="username"
             style={{ width: '100%', padding: '0.5rem', borderRadius: '3px', border: '1px solid #ccc' }}
           />
         </div>
@@ -211,6 +212,7 @@ export default function LoginForm() {
             value={password}
             onChange={(ev) => setPassword(ev.target.value)}
             required
+            autoComplete="current-password"
             style={{ width: '100%', padding: '0.5rem', borderRadius: '3px', border: '1px solid #ccc' }}
           />
         </div>
