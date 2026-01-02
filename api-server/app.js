@@ -8,6 +8,7 @@ import csurf from "csurf";
 import { testConnection } from "../db/index.js";
 import { errorHandler } from "./middlewares/errorHandler.js";
 import { logger } from "./middlewares/logging.js";
+import { getCsrfCookieOptions } from "./utils/cookieOptions.js";
 import authRoutes from "./routes/auth.js";
 import userRoutes from "./routes/users.js";
 import companyRoutes from "./routes/companies.js";
@@ -63,7 +64,7 @@ app.use(`/api/${imgBase}/:companyId`, (req, res, next) => {
 });
 
 // Setup CSRF protection using cookies
-const csrfProtection = csurf({ cookie: true });
+const csrfProtection = csurf({ cookie: getCsrfCookieOptions() });
 app.use(csrfProtection);
 
 // Health-check: also verify DB connection
