@@ -34,6 +34,16 @@ function escapeRegex(str) {
   return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+function parseResultError(raw) {
+  if (!raw) return null;
+  if (typeof raw === 'object') return raw;
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return raw;
+  }
+}
+
 function buildDiagnosticQueries(table, column) {
   const safeColumn = String(column || '').replace(/'/g, "''");
   const safeTable = String(table || '').replace(/'/g, "''");
@@ -803,23 +813,30 @@ export async function recordConversionLog(
 export async function listSavedScripts() {
   await ensureLogTable();
   const [rows] = await pool.query(
-    `SELECT id, table_name, column_name, script_text, run_at, run_by
+    `SELECT id, table_name, column_name, script_text, run_at, run_by, result_status, result_error
      FROM json_conversion_log
      ORDER BY run_at DESC
      LIMIT 200`,
   );
-  return rows;
+  return rows.map((row) => ({
+    ...row,
+    result_error: parseResultError(row.result_error),
+  }));
 }
 
 export async function getSavedScript(id) {
   await ensureLogTable();
   const [rows] = await pool.query(
-    `SELECT id, table_name, column_name, script_text, run_at, run_by
+    `SELECT id, table_name, column_name, script_text, run_at, run_by, result_status, result_error
      FROM json_conversion_log
      WHERE id = ?`,
     [id],
   );
-  return rows[0] || null;
+  if (!rows[0]) return null;
+  return {
+    ...rows[0],
+    result_error: parseResultError(rows[0].result_error),
+  };
 }
 
 export async function touchScriptRun(id, runBy) {
