@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useToast } from '../context/ToastContext.jsx';
 
 function toCsv(items) {
@@ -47,12 +47,16 @@ export default function JsonConversionPanel() {
       .catch(() => setTables([]));
   }, []);
 
-  useEffect(() => {
+  const refreshSavedScripts = useCallback(() => {
     fetch('/api/json_conversion/scripts', { credentials: 'include' })
       .then((res) => (res.ok ? res.json() : { scripts: [] }))
       .then((data) => setSavedScripts(data.scripts || []))
       .catch(() => setSavedScripts([]));
   }, []);
+
+  useEffect(() => {
+    refreshSavedScripts();
+  }, [refreshSavedScripts]);
 
   useEffect(() => {
     if (!selectedTable) {
@@ -239,14 +243,11 @@ export default function JsonConversionPanel() {
       } else {
         addToast('Conversion script generated; run to drop constraints and apply changes.', 'info');
       }
-      const scripts = await fetch('/api/json_conversion/scripts', { credentials: 'include' })
-        .then((r) => (r.ok ? r.json() : { scripts: [] }))
-        .catch(() => ({ scripts: [] }));
-      setSavedScripts(scripts.scripts || []);
     } catch (err) {
       console.error(err);
       addToast('Failed to convert columns', 'error');
     } finally {
+      refreshSavedScripts();
       setLoading(false);
     }
   }
@@ -269,6 +270,7 @@ export default function JsonConversionPanel() {
       console.error(err);
       addToast('Failed to execute script', 'error');
     } finally {
+      refreshSavedScripts();
       setLoading(false);
     }
   }
