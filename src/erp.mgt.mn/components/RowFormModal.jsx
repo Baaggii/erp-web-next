@@ -565,6 +565,12 @@ const RowFormModal = function RowFormModal({
             if (!candidate.displayFields || candidate.displayFields.length === 0) {
               candidate.displayFields = matchedDisplay.displayFields || [];
             }
+            if (!candidate.columnTypes && matchedDisplay.columnTypes) {
+              candidate.columnTypes = matchedDisplay.columnTypes;
+            }
+            if (!candidate.jsonFields && Array.isArray(matchedDisplay.jsonFields)) {
+              candidate.jsonFields = matchedDisplay.jsonFields;
+            }
           }
         }
         if (!candidate.table || !candidate.idField) return;
@@ -2087,6 +2093,37 @@ const RowFormModal = function RowFormModal({
       .filter((entry) => entry !== '' && entry !== null && entry !== undefined);
   }
 
+  function parseJsonForSubmit(value) {
+    if (value === undefined || value === null) return {};
+    if (typeof value === 'string') {
+      const trimmed = value.trim();
+      if (!trimmed) return {};
+      try {
+        return JSON.parse(trimmed);
+      } catch {
+        return trimmed;
+      }
+    }
+    if (Array.isArray(value)) {
+      return value
+        .map((entry) => {
+          if (typeof entry === 'string') {
+            const trimmed = entry.trim();
+            if (!trimmed) return '';
+            try {
+              return JSON.parse(trimmed);
+            } catch {
+              return entry;
+            }
+          }
+          return entry;
+        })
+        .filter((entry) => entry !== '' && entry !== null && entry !== undefined);
+    }
+    if (typeof value === 'object') return value;
+    return value;
+  }
+
   function isValidDate(value, format) {
     if (!value) return true;
     const normalized = normalizeDateInput(value, format);
@@ -2951,9 +2988,10 @@ const RowFormModal = function RowFormModal({
           const raw = typeof v === 'object' && v !== null && 'value' in v ? v.value : v;
           let val = raw;
           if (fieldTypeMap[k] === 'json') {
-            const arr = parseJsonFieldValue(val);
+            const parsed = parseJsonForSubmit(val);
+            const arr = Array.isArray(parsed) ? parsed : [parsed];
             jsonValueMap[k] = arr;
-            val = JSON.stringify(arr);
+            val = parsed;
           } else {
             val = normalizeDateInput(val, placeholders[k]);
             if (totalAmountSet.has(k) || totalCurrencySet.has(k)) {
@@ -3008,8 +3046,7 @@ const RowFormModal = function RowFormModal({
         Object.entries(mergedExtra).forEach(([k, v]) => {
           let val = v;
           if (fieldTypeMap[k] === 'json') {
-            const parsed = parseJsonFieldValue(v);
-            val = JSON.stringify(parsed);
+            val = parseJsonForSubmit(v);
           } else {
             val = normalizeDateInput(v, placeholders[k]);
             if (totalAmountSet.has(k) || totalCurrencySet.has(k)) {
@@ -3103,9 +3140,10 @@ const RowFormModal = function RowFormModal({
           const raw = typeof v === 'object' && v !== null && 'value' in v ? v.value : v;
           let val = raw;
           if (fieldTypeMap[k] === 'json') {
-            const arr = parseJsonFieldValue(val);
+            const parsed = parseJsonForSubmit(val);
+            const arr = Array.isArray(parsed) ? parsed : [parsed];
             jsonValueMap[k] = arr;
-            val = JSON.stringify(arr);
+            val = parsed;
           } else {
             val = normalizeDateInput(val, placeholders[k]);
             if (totalAmountSet.has(k) || totalCurrencySet.has(k)) {
@@ -3207,11 +3245,17 @@ const RowFormModal = function RowFormModal({
       if (!columns.includes(f)) return;
       const val = formVals[f];
       const isJson = fieldTypeMap[f] === 'json';
+      const parsedJson = isJson ? parseJsonForSubmit(val) : null;
       const isMissing =
         val === '' ||
         val === null ||
         val === undefined ||
-        (isJson && Array.isArray(val) && val.length === 0);
+        (isJson &&
+          ((Array.isArray(parsedJson) && parsedJson.length === 0) ||
+            (parsedJson &&
+              typeof parsedJson === 'object' &&
+              !Array.isArray(parsedJson) &&
+              Object.keys(parsedJson).length === 0)));
       if (isMissing) {
         errs[f] = 'Утга оруулна уу';
       }
@@ -3231,8 +3275,7 @@ const RowFormModal = function RowFormModal({
       Object.entries(merged).forEach(([k, v]) => {
         let val = v;
         if (fieldTypeMap[k] === 'json') {
-          const parsed = parseJsonFieldValue(v);
-          val = JSON.stringify(parsed);
+          val = parseJsonForSubmit(v);
         } else {
           val = normalizeDateInput(v, placeholders[k]);
           if (totalAmountSet.has(k) || totalCurrencySet.has(k)) {
@@ -3417,6 +3460,17 @@ const RowFormModal = function RowFormModal({
       );
     }
 
+    const rawValue = formVals[c];
+    const safeValue =
+      rawValue && typeof rawValue === 'object' && !Array.isArray(rawValue)
+        ? (() => {
+            try {
+              return JSON.stringify(rawValue);
+            } catch {
+              return rawValue;
+            }
+          })()
+        : rawValue;
     const control = isJsonField ? (
       (() => {
         const currentValues = normalizeJsonArrayForState(formVals[c]);
@@ -3518,7 +3572,9 @@ const RowFormModal = function RowFormModal({
               searchColumn={conf.idField || conf.column}
               searchColumns={[conf.idField || conf.column, ...(conf.displayFields || [])]}
               labelFields={conf.displayFields || []}
-              value={typeof formVals[c] === 'object' ? formVals[c].value : formVals[c]}
+              value={normalizeInputValue(
+                typeof formVals[c] === 'object' ? formVals[c].value : formVals[c],
+              )}
               onChange={(val) => {
                 notifyAutoResetGuardOnEdit(c);
                 setFormValuesWithGenerated((prev) => {
@@ -3574,7 +3630,9 @@ const RowFormModal = function RowFormModal({
               searchColumns={[cfg.idField || c, ...(cfg.displayFields || [])]}
               labelFields={cfg.displayFields || []}
               idField={cfg.idField || c}
-              value={typeof formVals[c] === 'object' ? formVals[c].value : formVals[c]}
+              value={normalizeInputValue(
+                typeof formVals[c] === 'object' ? formVals[c].value : formVals[c],
+              )}
               onChange={(val) => {
                 notifyAutoResetGuardOnEdit(c);
                 setFormValuesWithGenerated((prev) => {
@@ -3615,7 +3673,7 @@ const RowFormModal = function RowFormModal({
           <select
             title={tip}
             ref={(el) => (inputRefs.current[c] = el)}
-            value={formVals[c]}
+            value={normalizeInputValue(safeValue)}
             onFocus={() => handleFocusField(c)}
             onChange={(e) => {
               notifyAutoResetGuardOnEdit(c);
@@ -3663,11 +3721,15 @@ const RowFormModal = function RowFormModal({
         })()}
         step={isNumericField && numericStep ? numericStep : undefined}
         placeholder={placeholders[c] || ''}
-        value={normalizeInputValue(
-          fieldTypeMap[c] === 'date' || fieldTypeMap[c] === 'datetime'
-            ? normalizeDateInput(formVals[c], 'YYYY-MM-DD')
-            : formVals[c],
-        )}
+        value={
+          (() => {
+            const rawInputValue =
+              fieldTypeMap[c] === 'date' || fieldTypeMap[c] === 'datetime'
+                ? normalizeDateInput(safeValue, 'YYYY-MM-DD')
+                : safeValue;
+            return normalizeInputValue(rawInputValue);
+          })()
+        }
         onChange={(e) => {
           notifyAutoResetGuardOnEdit(c);
           const value = e.target.value;
@@ -4110,7 +4172,7 @@ const RowFormModal = function RowFormModal({
                 <span>{t('posapi_type_label', 'POSAPI Type')}</span>
                 <select
                   className="border border-gray-300 rounded px-2 py-1 text-sm"
-                  value={currentPosApiType}
+                  value={normalizeInputValue(currentPosApiType)}
                   onChange={handlePosApiTypeChange}
                   disabled={isReadOnly}
                 >
@@ -4240,7 +4302,7 @@ const RowFormModal = function RowFormModal({
               <span className="font-semibold">{t('posapi_info_endpoint_label', 'Endpoint')}</span>
               <select
                 className="border border-gray-300 rounded px-2 py-1 text-sm"
-                value={activeInfoEndpointId}
+                value={normalizeInputValue(activeInfoEndpointId)}
                 onChange={(e) => handleChangeActiveInfoEndpoint(e.target.value)}
               >
                 {infoEndpoints.map((endpoint) => {

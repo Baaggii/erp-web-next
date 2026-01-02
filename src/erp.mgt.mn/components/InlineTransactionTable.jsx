@@ -39,6 +39,30 @@ function normalizeNumberInput(value) {
   return value.replace(',', '.');
 }
 
+function normalizeJsonArrayForState(value) {
+  const list = Array.isArray(value)
+    ? value
+    : value === undefined || value === null || value === ''
+    ? []
+    : [value];
+  return list
+    .map((entry) => {
+      if (entry === null || entry === undefined || entry === '') return '';
+      if (typeof entry === 'object') {
+        const isPlainObject =
+          Object.prototype.toString.call(entry) === '[object Object]';
+        if (isPlainObject && Object.keys(entry).length === 0) return '';
+        try {
+          return JSON.stringify(entry);
+        } catch {
+          return '';
+        }
+      }
+      return String(entry);
+    })
+    .filter((entry) => entry !== '');
+}
+
 function InlineTransactionTable(
   {
     fields = [],
@@ -573,6 +597,12 @@ function InlineTransactionTable(
             }
             if (!candidate.displayFields || candidate.displayFields.length === 0) {
               candidate.displayFields = matchedDisplay.displayFields || [];
+            }
+            if (!candidate.columnTypes && matchedDisplay.columnTypes) {
+              candidate.columnTypes = matchedDisplay.columnTypes;
+            }
+            if (!candidate.jsonFields && Array.isArray(matchedDisplay.jsonFields)) {
+              candidate.jsonFields = matchedDisplay.jsonFields;
             }
           }
         }
@@ -2359,11 +2389,7 @@ function InlineTransactionTable(
       return displayVal;
     }
     if (isJsonField) {
-      const currentValues = Array.isArray(val)
-        ? val
-        : val === undefined || val === null || val === ''
-        ? []
-        : [val];
+      const currentValues = normalizeJsonArrayForState(val);
       if (resolvedConfig) {
         const comboFilters =
           resolvedAutoConfig?.filters ?? resolveCombinationFilters(rows[idx], f, resolvedConfig);
@@ -2380,7 +2406,13 @@ function InlineTransactionTable(
             searchColumns={[resolvedConfig.idField || resolvedConfig.column, ...(resolvedConfig.displayFields || [])]}
             labelFields={resolvedConfig.displayFields || []}
             value={currentValues}
-            onChange={(v) => handleChange(idx, f, Array.isArray(v) ? v : [])}
+            onChange={(v) =>
+              handleChange(
+                idx,
+                f,
+                Array.isArray(v) ? normalizeJsonArrayForState(v) : [],
+              )
+            }
             onSelect={(opt) => handleOptionSelect(idx, colIdx, opt)}
             inputRef={(el) => (inputRefs.current[`${idx}-${colIdx}`] = el)}
             onKeyDown={(e) => handleKeyDown(e, idx, colIdx)}
@@ -2397,7 +2429,13 @@ function InlineTransactionTable(
       return (
         <TagMultiInput
           value={currentValues}
-          onChange={(vals) => handleChange(idx, f, Array.isArray(vals) ? vals : [])}
+          onChange={(vals) =>
+            handleChange(
+              idx,
+              f,
+              Array.isArray(vals) ? normalizeJsonArrayForState(vals) : [],
+            )
+          }
           placeholder={labels[f] || f}
           inputStyle={inputStyle}
           onFocus={() => handleFocusField(f)}
@@ -2414,7 +2452,9 @@ function InlineTransactionTable(
       const combinationReady =
         resolvedAutoConfig?.combinationReady ??
         isCombinationFilterReady(hasCombination, conf?.combinationTargetColumn, comboFilters);
-      const inputVal = typeof val === 'object' ? val.value : val;
+      const inputVal = normalizeInputValue(
+        typeof val === 'object' ? val.value : val,
+      );
       return (
         <AsyncSearchSelect
           table={conf.table}
@@ -2438,7 +2478,9 @@ function InlineTransactionTable(
       );
     }
     if (Array.isArray(relations[f])) {
-      const inputVal = typeof val === 'object' ? val.value : val;
+      const inputVal = normalizeInputValue(
+        typeof val === 'object' ? val.value : val,
+      );
       const filteredOptions = filterRelationOptions(rows[idx], f, relations[f]);
       return (
         <select
@@ -2472,7 +2514,9 @@ function InlineTransactionTable(
         cfg?.combinationTargetColumn,
         comboFilters,
       );
-      const inputVal = typeof val === 'object' ? val.value : val;
+      const inputVal = normalizeInputValue(
+        typeof val === 'object' ? val.value : val,
+      );
       const idField = cfg.idField || f;
       const labelFields = cfg.displayFields || [];
       return (
