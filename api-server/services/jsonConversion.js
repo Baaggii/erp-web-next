@@ -652,11 +652,18 @@ async function buildColumnStatements(table, columnName, columnMeta, options, con
   }
 
   const jsonType = isMariaDB ? 'LONGTEXT' : 'JSON';
-  statements.push(`ALTER TABLE ${tableId} MODIFY COLUMN ${columnId} ${jsonType}`);
+  const nullabilitySql = columnMeta?.nullable ? 'NULL' : 'NOT NULL';
   const sourceRef = backupId || columnId;
+
+  // Normalize existing scalar values into JSON text before switching the column type.
+  // This avoids MySQL "Invalid JSON text" errors during ALTER when legacy values are plain scalars.
+  statements.push(`ALTER TABLE ${tableId} MODIFY COLUMN ${columnId} LONGTEXT ${nullabilitySql}`);
   statements.push(
     `UPDATE ${tableId} SET ${columnId} = JSON_ARRAY(${sourceRef}) WHERE ${sourceRef} IS NOT NULL`,
   );
+
+  // Finally enforce the JSON type with array validation.
+  statements.push(`ALTER TABLE ${tableId} MODIFY COLUMN ${columnId} ${jsonType} ${nullabilitySql}`);
 
   const preview = {
     column: columnName,
