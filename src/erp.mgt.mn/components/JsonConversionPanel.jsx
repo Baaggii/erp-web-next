@@ -230,6 +230,7 @@ export default function JsonConversionPanel() {
         setPreviews(data.previews || []);
         setScriptText(data.scriptText || '');
         setBlockedColumns(data.blockedColumns || []);
+        setErrorDetails(data.error || null);
         const reason = data?.message || 'Conversion failed while dropping/reapplying constraints';
         addToast(reason, 'error');
         return;
