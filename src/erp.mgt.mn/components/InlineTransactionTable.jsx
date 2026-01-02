@@ -39,6 +39,30 @@ function normalizeNumberInput(value) {
   return value.replace(',', '.');
 }
 
+function normalizeJsonArrayForState(value) {
+  const list = Array.isArray(value)
+    ? value
+    : value === undefined || value === null || value === ''
+    ? []
+    : [value];
+  return list
+    .map((entry) => {
+      if (entry === null || entry === undefined || entry === '') return '';
+      if (typeof entry === 'object') {
+        const isPlainObject =
+          Object.prototype.toString.call(entry) === '[object Object]';
+        if (isPlainObject && Object.keys(entry).length === 0) return '';
+        try {
+          return JSON.stringify(entry);
+        } catch {
+          return '';
+        }
+      }
+      return String(entry);
+    })
+    .filter((entry) => entry !== '');
+}
+
 function InlineTransactionTable(
   {
     fields = [],
@@ -2365,11 +2389,7 @@ function InlineTransactionTable(
       return displayVal;
     }
     if (isJsonField) {
-      const currentValues = Array.isArray(val)
-        ? val
-        : val === undefined || val === null || val === ''
-        ? []
-        : [val];
+      const currentValues = normalizeJsonArrayForState(val);
       if (resolvedConfig) {
         const comboFilters =
           resolvedAutoConfig?.filters ?? resolveCombinationFilters(rows[idx], f, resolvedConfig);
@@ -2386,7 +2406,13 @@ function InlineTransactionTable(
             searchColumns={[resolvedConfig.idField || resolvedConfig.column, ...(resolvedConfig.displayFields || [])]}
             labelFields={resolvedConfig.displayFields || []}
             value={currentValues}
-            onChange={(v) => handleChange(idx, f, Array.isArray(v) ? v : [])}
+            onChange={(v) =>
+              handleChange(
+                idx,
+                f,
+                Array.isArray(v) ? normalizeJsonArrayForState(v) : [],
+              )
+            }
             onSelect={(opt) => handleOptionSelect(idx, colIdx, opt)}
             inputRef={(el) => (inputRefs.current[`${idx}-${colIdx}`] = el)}
             onKeyDown={(e) => handleKeyDown(e, idx, colIdx)}
@@ -2403,7 +2429,13 @@ function InlineTransactionTable(
       return (
         <TagMultiInput
           value={currentValues}
-          onChange={(vals) => handleChange(idx, f, Array.isArray(vals) ? vals : [])}
+          onChange={(vals) =>
+            handleChange(
+              idx,
+              f,
+              Array.isArray(vals) ? normalizeJsonArrayForState(vals) : [],
+            )
+          }
           placeholder={labels[f] || f}
           inputStyle={inputStyle}
           onFocus={() => handleFocusField(f)}
