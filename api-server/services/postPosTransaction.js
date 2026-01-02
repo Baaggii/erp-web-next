@@ -248,6 +248,14 @@ function collectVariationDefaults(config = {}, endpoint = {}, variationKey = '')
 
   const defaults = {};
   const forcedPaths = new Set();
+  const applyUsageOverride = (rawValue, usageMap = {}, path = '') => {
+    const usage = usageMap && typeof usageMap === 'object' ? usageMap[path] : undefined;
+    if (usage === undefined) return rawValue;
+    if (rawValue && typeof rawValue === 'object' && !Array.isArray(rawValue)) {
+      return { ...rawValue, useInTransaction: usage !== false };
+    }
+    return { value: rawValue, useInTransaction: usage !== false };
+  };
 
   const registerDefault = (path, rawValue, source = 'config') => {
     const key = typeof path === 'string' ? path.trim() : '';
@@ -261,17 +269,21 @@ function collectVariationDefaults(config = {}, endpoint = {}, variationKey = '')
     }
   };
 
-  const mergeMap = (map, source = 'config') => {
+  const mergeMap = (map, source = 'config', usageMap = {}) => {
     if (!map || typeof map !== 'object' || Array.isArray(map)) return;
-    Object.entries(map).forEach(([path, value]) => registerDefault(path, value, source));
+    Object.entries(map).forEach(([path, value]) => {
+      registerDefault(path, applyUsageOverride(value, usageMap, path), source);
+    });
   };
 
   mergeMap(config.posApiVariationDefaults, 'config');
 
+  let variationUsageMap = {};
   if (Array.isArray(endpoint.requestFieldVariations)) {
     const variationMeta = endpoint.requestFieldVariations.find((entry) => entry?.key === variationKey);
     if (variationMeta) {
-      mergeMap(variationMeta.defaultValues, 'endpoint');
+      variationUsageMap = variationMeta.useInTransaction || {};
+      mergeMap(variationMeta.defaultValues, 'endpoint', variationUsageMap);
     }
   }
 
@@ -281,14 +293,19 @@ function collectVariationDefaults(config = {}, endpoint = {}, variationKey = '')
       )
     : null;
   if (variationEntry) {
-    mergeMap(variationEntry.defaultValues, 'endpoint');
+    variationUsageMap = { ...variationUsageMap, ...(variationEntry.useInTransaction || {}) };
+    mergeMap(variationEntry.defaultValues, 'endpoint', variationEntry.useInTransaction || variationUsageMap);
     if (Array.isArray(variationEntry.requestFields)) {
       variationEntry.requestFields.forEach((field) => {
         const path = typeof field?.field === 'string' ? field.field.trim() : '';
         if (!path) return;
         const variationDefaults = field?.defaultByVariation || field?.defaultVariations || {};
         if (Object.prototype.hasOwnProperty.call(variationDefaults, variationKey)) {
-          registerDefault(path, variationDefaults[variationKey], 'endpoint');
+          registerDefault(
+            path,
+            applyUsageOverride(variationDefaults[variationKey], variationUsageMap, path),
+            'endpoint',
+          );
         }
       });
     }
@@ -300,7 +317,11 @@ function collectVariationDefaults(config = {}, endpoint = {}, variationKey = '')
       if (!path) return;
       const variationDefaults = field?.defaultByVariation || field?.defaultVariations || {};
       if (Object.prototype.hasOwnProperty.call(variationDefaults, variationKey)) {
-        registerDefault(path, variationDefaults[variationKey], 'endpoint');
+        registerDefault(
+          path,
+          applyUsageOverride(variationDefaults[variationKey], variationUsageMap, path),
+          'endpoint',
+        );
       }
     });
   }
