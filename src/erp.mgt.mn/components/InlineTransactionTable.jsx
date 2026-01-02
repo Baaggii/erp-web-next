@@ -574,6 +574,12 @@ function InlineTransactionTable(
             if (!candidate.displayFields || candidate.displayFields.length === 0) {
               candidate.displayFields = matchedDisplay.displayFields || [];
             }
+            if (!candidate.columnTypes && matchedDisplay.columnTypes) {
+              candidate.columnTypes = matchedDisplay.columnTypes;
+            }
+            if (!candidate.jsonFields && Array.isArray(matchedDisplay.jsonFields)) {
+              candidate.jsonFields = matchedDisplay.jsonFields;
+            }
           }
         }
         if (!candidate.table || !candidate.idField) return;

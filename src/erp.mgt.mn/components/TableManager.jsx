@@ -1044,26 +1044,57 @@ const TableManager = forwardRef(function TableManager({
 
   const fieldTypeMap = useMemo(() => {
     const map = {};
-    columnMeta.forEach((c) => {
+
+    const applyColumnType = (c) => {
+      if (!c) return;
+      const name = c.name || c.COLUMN_NAME;
+      if (!name) return;
+      const lowerName = String(name).toLowerCase();
       const typ = (c.type || c.columnType || c.dataType || c.DATA_TYPE || '')
         .toLowerCase();
       const comment = (c.columnComment || '').toLowerCase();
-      if (typ.includes('json') || comment.includes('json_array')) {
-        map[c.name] = 'json';
-      } else if (typ.match(/int|decimal|numeric|double|float|real|number|bigint/)) {
-        map[c.name] = 'number';
+      const hasExplicitJsonFlag =
+        lowerName === 'location' ||
+        Boolean(c.jsonField ?? c.json_field ?? c.isJson ?? c.is_json ?? c.isArray ?? c.is_array);
+      if (hasExplicitJsonFlag || typ.includes('json') || comment.includes('json_array')) {
+        map[name] = 'json';
+        return;
+      }
+      if (typ.match(/int|decimal|numeric|double|float|real|number|bigint/)) {
+        map[name] = 'number';
       } else if (typ.includes('timestamp') || typ.includes('datetime')) {
-        map[c.name] = 'datetime';
+        map[name] = 'datetime';
       } else if (typ.includes('date')) {
-        map[c.name] = 'date';
+        map[name] = 'date';
       } else if (typ.includes('time')) {
-        map[c.name] = 'time';
+        map[name] = 'time';
       } else {
-        map[c.name] = 'string';
+        map[name] = 'string';
+      }
+    };
+
+    columnMeta.forEach(applyColumnType);
+    Object.values(viewColumns || {}).forEach((cols) => {
+      if (!Array.isArray(cols)) return;
+      cols.forEach((col) => {
+        if (!col || !col.name || map[col.name]) return;
+        applyColumnType(col);
+      });
+    });
+    Object.entries(relationConfigs || {}).forEach(([col, cfg]) => {
+      if (!col || map[col]) return;
+      const isJsonRelation =
+        cfg?.isArray ||
+        cfg?.jsonField ||
+        cfg?.json_field ||
+        cfg?.isJson ||
+        cfg?.is_json;
+      if (isJsonRelation) {
+        map[col] = 'json';
       }
     });
     return map;
-  }, [columnMeta]);
+  }, [columnMeta, viewColumns, relationConfigs]);
 
   const normalizeJsonArray = useCallback((value) => {
     if (Array.isArray(value)) return value;
