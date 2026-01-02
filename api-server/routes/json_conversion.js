@@ -80,6 +80,7 @@ router.post('/convert', requireAuth, requireAdmin, async (req, res, next) => {
     let runError = null;
     let executionDurationMs = 0;
     if (runNow && plan.statements.length > 0) {
+      let startedAt = Date.now();
       try {
         const startedAt = Date.now();
         await runPlanStatements(plan.statements);
@@ -106,7 +107,14 @@ router.post('/convert', requireAuth, requireAdmin, async (req, res, next) => {
         });
       }
     }
-    const logId = await recordConversionLog(table, logColumns, plan.scriptText, runBy);
+    const logId = await recordConversionLog(
+      table,
+      logColumns,
+      plan.scriptText,
+      runBy,
+      runError ? 'error' : executed ? 'success' : 'planned',
+      runError || null,
+    );
     if (runError) {
       logConversionEvent({
         event: 'json-conversion.respond-error',

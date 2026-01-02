@@ -115,6 +115,21 @@ async function ensureLogTable() {
       run_by VARCHAR(255)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
   `);
+  // Add result columns if they do not exist yet (idempotent).
+  const [columns] = await pool.query(
+    `SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'json_conversion_log'`,
+  );
+  const names = new Set((columns || []).map((c) => c.COLUMN_NAME));
+  const alterParts = [];
+  if (!names.has('result_status')) {
+    alterParts.push('ADD COLUMN result_status VARCHAR(50) NULL');
+  }
+  if (!names.has('result_error')) {
+    alterParts.push('ADD COLUMN result_error MEDIUMTEXT NULL');
+  }
+  if (alterParts.length > 0) {
+    await pool.query(`ALTER TABLE json_conversion_log ${alterParts.join(', ')}`);
+  }
 }
 
 async function loadColumnUsage(table, columnNames = []) {
@@ -767,13 +782,20 @@ export async function runPlanStatements(statements) {
   }
 }
 
-export async function recordConversionLog(table, columns, scriptText, runBy) {
+export async function recordConversionLog(
+  table,
+  columns,
+  scriptText,
+  runBy,
+  resultStatus = null,
+  resultError = null,
+) {
   await ensureLogTable();
   const columnName = Array.isArray(columns) ? columns.join(',') : String(columns || '');
   const [result] = await pool.query(
-    `INSERT INTO json_conversion_log (table_name, column_name, script_text, run_at, run_by)
-     VALUES (?, ?, ?, NOW(), ?)`,
-    [table, columnName, scriptText, runBy || null],
+    `INSERT INTO json_conversion_log (table_name, column_name, script_text, run_at, run_by, result_status, result_error)
+     VALUES (?, ?, ?, NOW(), ?, ?, ?)`,
+    [table, columnName, scriptText, runBy || null, resultStatus, resultError ? JSON.stringify(resultError) : null],
   );
   return result.insertId;
 }
@@ -804,7 +826,7 @@ export async function touchScriptRun(id, runBy) {
   await ensureLogTable();
   await pool.query(
     `UPDATE json_conversion_log
-     SET run_at = NOW(), run_by = ?
+     SET run_at = NOW(), run_by = ?, result_status = 'success', result_error = NULL
      WHERE id = ?`,
     [runBy || null, id],
   );
