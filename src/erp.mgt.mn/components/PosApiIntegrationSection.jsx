@@ -50,6 +50,17 @@ const VARIATION_DEFAULT_BADGE_STYLE = {
   color: '#166534',
 };
 
+const styles = {
+  miniToggleButton: {
+    padding: '0.15rem 0.4rem',
+    border: '1px solid #cbd5e1',
+    borderRadius: '6px',
+    background: '#f8fafc',
+    fontSize: '0.75rem',
+    cursor: 'pointer',
+  },
+};
+
 function humanizeFieldLabel(key) {
   if (!key) return '';
   return String(key)
