@@ -135,22 +135,12 @@ router.put('/', requireAuth, requireAdmin, async (req, res, next) => {
     const existingById = new Map((existingEndpoints || []).map((endpoint) => [endpoint.id, endpoint]));
     const sanitized = JSON.parse(JSON.stringify(normalized)).map((endpoint) => {
       const normalizedEndpoint = { ...endpoint };
-      const existing = existingById.get(endpoint.id);
-      const mergedFieldMappings = mergeApplyToBodyFlags(
-        endpoint.requestFieldMappings,
-        existing?.requestFieldMappings,
-      );
-      const mergedEnvMap = mergeEnvApplyFlags(endpoint.requestEnvMap, existing?.requestEnvMap);
-      const mergedRequestMappings = mergeApplyToBodyFlags(
-        endpoint.requestMappings,
-        existing?.requestMappings,
-      );
-      const mergedNestedObjects = mergeNestedObjects(endpoint.nestedObjects, existing?.nestedObjects);
+      const mergedNestedObjects = mergeNestedObjects(endpoint.nestedObjects, existingById.get(endpoint.id)?.nestedObjects);
       const { map: requestFieldMappings, envMap } = normalizeRequestFieldMappings(
-        mergedFieldMappings,
-        mergedEnvMap,
+        endpoint.requestFieldMappings,
+        endpoint.requestEnvMap,
       );
-      const requestMappings = normalizeRequestMappings(mergedRequestMappings);
+      const requestMappings = normalizeRequestMappings(endpoint.requestMappings);
       if (Object.keys(requestFieldMappings).length) {
         normalizedEndpoint.requestFieldMappings = requestFieldMappings;
       } else {
@@ -379,12 +369,8 @@ function hasRequestFieldMappingValue(entry) {
   return Boolean(entry.column || entry.value || entry.table);
 }
 
-function normalizeRequestFieldMappingEntry(entry, defaultApplyToBody = true) {
+function normalizeRequestFieldMappingEntry(entry) {
   if (!entry) return null;
-  const applyToBody =
-    entry && typeof entry === 'object' && 'applyToBody' in entry
-      ? Boolean(entry.applyToBody)
-      : defaultApplyToBody;
   const source = entry && typeof entry === 'object' && 'selection' in entry ? entry.selection : entry;
   const aggregation = typeof source?.aggregation === 'string' ? source.aggregation : '';
   const ENV_VAR_REGEX = /^\s*\{\{\s*([A-Z0-9_]+)\s*}}\s*$/i;
@@ -393,13 +379,13 @@ function normalizeRequestFieldMappingEntry(entry, defaultApplyToBody = true) {
     if (!normalized) return null;
     const envMatch = ENV_VAR_REGEX.exec(normalized);
     if (envMatch) {
-      return { type: 'env', envVar: envMatch[1], applyToBody };
+      return { type: 'env', envVar: envMatch[1] };
     }
     const parts = normalized.split('.');
     if (parts.length > 1) {
-      return { type: 'column', table: parts.shift(), column: parts.join('.'), applyToBody };
+      return { type: 'column', table: parts.shift(), column: parts.join('.') };
     }
-    return { type: 'column', column: normalized, applyToBody };
+    return { type: 'column', column: normalized };
   }
 
   const type = typeof source?.type === 'string'
@@ -421,32 +407,32 @@ function normalizeRequestFieldMappingEntry(entry, defaultApplyToBody = true) {
   if (type === 'literal') {
     const value = source?.value ?? source?.literal;
     if (value === undefined || value === null || `${value}`.trim() === '') return null;
-    return { type, value, applyToBody, ...(aggregation ? { aggregation } : {}) };
+    return { type, value, ...(aggregation ? { aggregation } : {}) };
   }
   if (type === 'env') {
     const envVar = source?.envVar || (typeof source?.value === 'string' ? source.value.trim() : '');
     if (!envVar) return null;
-    return { type, envVar, applyToBody, ...(aggregation ? { aggregation } : {}) };
+    return { type, envVar, ...(aggregation ? { aggregation } : {}) };
   }
   if (type === 'session') {
     const sessionVar = source?.sessionVar || (typeof source?.value === 'string' ? source.value.trim() : '');
     if (!sessionVar) return null;
-    return { type, sessionVar, applyToBody, ...(aggregation ? { aggregation } : {}) };
+    return { type, sessionVar, ...(aggregation ? { aggregation } : {}) };
   }
   if (type === 'expression') {
     const expression = source?.expression || (typeof source?.value === 'string' ? source.value.trim() : '');
     if (!expression) return null;
-    return { type, expression, applyToBody, ...(aggregation ? { aggregation } : {}) };
+    return { type, expression, ...(aggregation ? { aggregation } : {}) };
   }
 
   const table = typeof source?.table === 'string' ? source.table.trim() : '';
   const column = typeof source?.column === 'string' ? source.column.trim() : '';
   const value = column || (typeof source?.value === 'string' ? source.value.trim() : '');
   if (!value && !table) return null;
-  return { type: 'column', table, column: value, applyToBody, ...(aggregation ? { aggregation } : {}) };
+  return { type: 'column', table, column: value, ...(aggregation ? { aggregation } : {}) };
 }
 
-function normalizeRequestFieldMappings(map, requestEnvMap = {}, { defaultApplyToBody = true } = {}) {
+function normalizeRequestFieldMappings(map, requestEnvMap = {}) {
   const envMap =
     requestEnvMap && typeof requestEnvMap === 'object' && !Array.isArray(requestEnvMap)
       ? { ...requestEnvMap }
@@ -460,10 +446,6 @@ function normalizeRequestFieldMappings(map, requestEnvMap = {}, { defaultApplyTo
       normalized[fieldPath] = {
         type: 'env',
         envVar,
-        applyToBody:
-          envEntry && typeof envEntry === 'object' && 'applyToBody' in envEntry
-            ? Boolean(envEntry.applyToBody)
-            : defaultApplyToBody,
       };
     });
     return { map: normalized, envMap };
@@ -471,11 +453,11 @@ function normalizeRequestFieldMappings(map, requestEnvMap = {}, { defaultApplyTo
 
   entries.forEach(([fieldPath, value]) => {
     if (!fieldPath) return;
-    const normalizedEntry = normalizeRequestFieldMappingEntry(value, defaultApplyToBody);
+    const normalizedEntry = normalizeRequestFieldMappingEntry(value);
     if (!normalizedEntry || !hasRequestFieldMappingValue(normalizedEntry)) return;
     normalized[fieldPath] = normalizedEntry;
     if (normalizedEntry.type === 'env' && normalizedEntry.envVar) {
-      envMap[fieldPath] = { envVar: normalizedEntry.envVar, applyToBody: normalizedEntry.applyToBody !== false };
+      envMap[fieldPath] = { envVar: normalizedEntry.envVar };
     }
   });
 
@@ -510,38 +492,6 @@ function normalizeRequestMappings(map) {
     });
   }
   return normalized;
-}
-
-function mergeApplyToBodyFlags(map, existingMap = {}) {
-  if (!map || typeof map !== 'object') return map;
-  const merged = Array.isArray(map) ? map.slice() : { ...map };
-  Object.entries(merged).forEach(([field, value]) => {
-    if (!field) return;
-    const existing = existingMap && typeof existingMap === 'object' ? existingMap[field] : undefined;
-    if (value && typeof value === 'object') {
-      if (!Object.prototype.hasOwnProperty.call(value, 'applyToBody') && typeof existing?.applyToBody === 'boolean') {
-        merged[field] = { ...value, applyToBody: existing.applyToBody };
-      }
-    }
-  });
-  return merged;
-}
-
-function mergeEnvApplyFlags(envMap = {}, existingEnvMap = {}) {
-  if (!envMap || typeof envMap !== 'object') return envMap;
-  const merged = { ...envMap };
-  Object.entries(merged).forEach(([fieldPath, entry]) => {
-    if (!fieldPath) return;
-    const existing = existingEnvMap && typeof existingEnvMap === 'object' ? existingEnvMap[fieldPath] : undefined;
-    if (entry && typeof entry === 'object') {
-      if (!Object.prototype.hasOwnProperty.call(entry, 'applyToBody') && typeof existing?.applyToBody === 'boolean') {
-        merged[fieldPath] = { ...entry, applyToBody: existing.applyToBody };
-      }
-    } else if (existing && typeof existing.applyToBody === 'boolean') {
-      merged[fieldPath] = { envVar: entry, applyToBody: existing.applyToBody };
-    }
-  });
-  return merged;
 }
 
 function mergeNestedObjects(nextList = [], existingList = []) {
@@ -590,8 +540,8 @@ function applyEnvMapToPayload(payload, envMap = {}) {
     if (!fieldPath || !mapping) return;
     const normalized =
       typeof mapping === 'string'
-        ? { envVar: mapping, applyToBody: true }
-        : { envVar: mapping.envVar || mapping, applyToBody: mapping.applyToBody !== false };
+        ? { envVar: mapping }
+        : { envVar: mapping.envVar || mapping };
     if (!normalized.envVar) return;
     const envRaw = process.env[normalized.envVar];
     if (envRaw === undefined || envRaw === null || envRaw === '') {
@@ -602,8 +552,7 @@ function applyEnvMapToPayload(payload, envMap = {}) {
     }
     const parsed = parseEnvValue(envRaw);
     const tokens = tokenizeFieldPath(fieldPath);
-    const target = normalized.applyToBody ? bodyTarget : basePayload;
-    if (!tokens.length || !setValueAtTokens(target, tokens, parsed)) {
+    if (!tokens.length || !setValueAtTokens(bodyTarget, tokens, parsed)) {
       warnings.push(`Could not apply environment variable ${normalized.envVar} to ${fieldPath}.`);
     }
   });

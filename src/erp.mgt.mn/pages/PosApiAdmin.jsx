@@ -1443,10 +1443,8 @@ function hasMappingValue(selection = {}) {
   return Boolean(selection.column || selection.value || selection.table);
 }
 
-function normalizeRequestFieldMappingEntry(entry, { defaultApplyToBody = true } = {}) {
+function normalizeRequestFieldMappingEntry(entry) {
   if (entry === undefined || entry === null) return null;
-  const applyToBody =
-    typeof entry?.applyToBody === 'boolean' ? entry.applyToBody : defaultApplyToBody;
   const source = entry && typeof entry === 'object' && 'selection' in entry ? entry.selection : entry;
   const aggregation =
     typeof source?.aggregation === 'string' ? source.aggregation : '';
@@ -1470,48 +1468,35 @@ function normalizeRequestFieldMappingEntry(entry, { defaultApplyToBody = true } 
   return {
     ...withValue,
     ...(aggregation ? { aggregation } : {}),
-    applyToBody,
   };
 }
 
 function serializeRequestFieldSelections(
   selections = {},
-  { defaultApplyToBody = true, defaultApplyToBodyMap = null } = {},
 ) {
   return Object.entries(selections || {}).reduce((acc, [fieldPath, entry]) => {
-    const applyDefault =
-      defaultApplyToBodyMap && defaultApplyToBodyMap.has(fieldPath)
-        ? defaultApplyToBodyMap.get(fieldPath)
-        : defaultApplyToBody;
-    const normalized = normalizeRequestFieldMappingEntry(entry, { defaultApplyToBody: applyDefault });
+    const normalized = normalizeRequestFieldMappingEntry(entry);
     if (!normalized || !hasMappingValue(normalized)) return acc;
     const storedValue = buildMappingValue(normalized, { preserveType: true });
     const payload =
       typeof storedValue === 'object' && storedValue !== null
         ? { ...storedValue }
         : { type: normalized.type || 'column', value: storedValue };
-    const applyToBody = normalized.applyToBody !== false;
-    acc[fieldPath] = { ...payload, applyToBody };
+    acc[fieldPath] = payload;
     return acc;
   }, {});
 }
 
 function serializeRequestMappings(selections = {}) {
   return Object.entries(selections || {}).reduce((acc, [fieldPath, entry]) => {
-    const normalized = normalizeRequestFieldMappingEntry(entry, { defaultApplyToBody: true });
+    const normalized = normalizeRequestFieldMappingEntry(entry);
     if (!normalized || !hasMappingValue(normalized)) return acc;
     const storedValue = buildMappingValue(normalized, { preserveType: true });
     if (!storedValue || (typeof storedValue === 'string' && !storedValue.trim())) return acc;
-    const applyToBody = normalized.applyToBody;
     if (typeof storedValue === 'object' && storedValue !== null) {
-      acc[fieldPath] = {
-        ...storedValue,
-        ...(applyToBody !== undefined ? { applyToBody } : {}),
-      };
+      acc[fieldPath] = { ...storedValue };
     } else {
-      acc[fieldPath] = applyToBody !== undefined
-        ? { type: normalized.type || 'column', value: storedValue, applyToBody }
-        : storedValue;
+      acc[fieldPath] = storedValue;
     }
     return acc;
   }, {});
@@ -1520,12 +1505,7 @@ function serializeRequestMappings(selections = {}) {
 function normalizeRequestFieldMappingMap(
   map,
   requestEnvMap = {},
-  { defaultApplyToBody = true, defaultApplyToBodyMap = null } = {},
 ) {
-  const resolveApplyDefault = (fieldPath) =>
-    (defaultApplyToBodyMap && defaultApplyToBodyMap.has(fieldPath)
-      ? defaultApplyToBodyMap.get(fieldPath)
-      : defaultApplyToBody);
   const normalizedEnvMap =
     requestEnvMap && typeof requestEnvMap === 'object' && !Array.isArray(requestEnvMap)
       ? { ...requestEnvMap }
@@ -1536,14 +1516,9 @@ function normalizeRequestFieldMappingMap(
     Object.entries(normalizedEnvMap).forEach(([fieldPath, envEntry]) => {
       const envVar = typeof envEntry === 'string' ? envEntry : envEntry?.envVar;
       if (!envVar) return;
-      const applyDefault = resolveApplyDefault(fieldPath);
       normalizedMappings[fieldPath] = {
         type: 'env',
         envVar,
-        applyToBody:
-          envEntry && typeof envEntry === 'object' && 'applyToBody' in envEntry
-            ? Boolean(envEntry.applyToBody)
-            : applyDefault,
       };
     });
     return { mappings: normalizedMappings, envMap: normalizedEnvMap };
@@ -1551,14 +1526,12 @@ function normalizeRequestFieldMappingMap(
 
   entries.forEach(([fieldPath, entry]) => {
     if (!fieldPath) return;
-    const applyDefault = resolveApplyDefault(fieldPath);
-    const normalized = normalizeRequestFieldMappingEntry(entry, { defaultApplyToBody: applyDefault });
+    const normalized = normalizeRequestFieldMappingEntry(entry);
     if (!normalized || !hasMappingValue(normalized)) return;
     normalizedMappings[fieldPath] = normalized;
     if (normalized.type === 'env' && normalized.envVar) {
       normalizedEnvMap[fieldPath] = {
         envVar: normalized.envVar,
-        applyToBody: normalized.applyToBody !== false,
       };
     }
   });
@@ -1568,20 +1541,12 @@ function normalizeRequestFieldMappingMap(
 
 function buildRequestEnvMap(
   selections = {},
-  { defaultApplyToBody = true, defaultApplyToBodyMap = null } = {},
 ) {
-  const resolveApplyDefault = (fieldPath) =>
-    (defaultApplyToBodyMap && defaultApplyToBodyMap.has(fieldPath)
-      ? defaultApplyToBodyMap.get(fieldPath)
-      : defaultApplyToBody);
   return Object.entries(selections || {}).reduce((acc, [fieldPath, entry]) => {
-    const normalized = normalizeRequestFieldMappingEntry(entry, {
-      defaultApplyToBody: resolveApplyDefault(fieldPath),
-    });
+    const normalized = normalizeRequestFieldMappingEntry(entry);
     if (normalized?.type === 'env' && normalized.envVar) {
       acc[fieldPath] = {
         envVar: normalized.envVar,
-        applyToBody: normalized.applyToBody !== false,
       };
     }
     return acc;
@@ -1596,17 +1561,6 @@ function buildUrlEnvMap(selections = {}) {
     }
     return acc;
   }, {});
-}
-
-function buildApplyToBodyDefaultMap(displayItems = []) {
-  const map = new Map();
-  (displayItems || []).forEach((entry) => {
-    const normalized = normalizeHintEntry(entry);
-    const fieldPath = normalized.field;
-    if (!fieldPath) return;
-    map.set(fieldPath, entry.source !== 'parameter');
-  });
-  return map;
 }
 
 function normalizeHintEntry(entry) {
@@ -1723,26 +1677,23 @@ function parseDefaultValueEntry(value) {
     const hasValue = Object.prototype.hasOwnProperty.call(value, 'value');
     return {
       value: hasValue ? value.value : value,
-      useInTransaction: value.useInTransaction !== false,
+      useInTransaction: Object.prototype.hasOwnProperty.call(value, 'useInTransaction')
+        ? value.useInTransaction !== false
+        : undefined,
     };
   }
-  return { value, useInTransaction: true };
+  return { value, useInTransaction: undefined };
 }
 
-function buildDefaultValueEntry(value, useInTransaction = true) {
+function buildDefaultValueEntry(value) {
   if (value === undefined || value === null || value === '') return undefined;
-  if (useInTransaction === false) return { value, useInTransaction: false };
-  return { value };
+  return value;
 }
 
-function hasDisabledVariationDefaults(map = {}) {
-  return Object.values(map || {}).some((entry) => parseDefaultValueEntry(entry).useInTransaction === false);
-}
-
-function resolveVariationUsageFlag(metaFlag, normalizedFlag, defaults = {}) {
+function resolveVariationUsageFlag(metaFlag, normalizedFlag) {
   if (typeof metaFlag === 'boolean') return metaFlag;
   if (typeof normalizedFlag === 'boolean') return normalizedFlag;
-  return !hasDisabledVariationDefaults(defaults);
+  return true;
 }
 
 function parseExampleBody(body) {
@@ -1959,11 +1910,7 @@ function mergeRequestFieldHints(existing = [], variationFields = []) {
           : typeof normalized.required === 'boolean'
             ? normalized.required
             : false;
-    const useInTransaction = resolveVariationUsageFlag(
-      current.useInTransaction,
-      normalized.useInTransaction,
-      defaultByVariation,
-    );
+    const useInTransaction = resolveVariationUsageFlag(current.useInTransaction, normalized.useInTransaction);
 
     map.set(field, {
       field,
@@ -2112,49 +2059,34 @@ function deriveRequestFieldSelections({
 
     const currentValue = readValueAtPath(parsedSample, fieldPath);
     const defaultValue = entry.defaultValue;
-    const applyToBodyDefault = entry.source !== 'parameter';
-    const mappingEntry = normalizeRequestFieldMappingEntry(
-      requestFieldMappings?.[fieldPath],
-      { defaultApplyToBody: applyToBodyDefault },
-    );
+    const mappingEntry = normalizeRequestFieldMappingEntry(requestFieldMappings?.[fieldPath]);
     const envEntry = requestEnvMap?.[fieldPath];
     const envVar = typeof envEntry === 'string' ? envEntry : envEntry?.envVar;
-    const applyToBody = envEntry && typeof envEntry.applyToBody === 'boolean'
-      ? envEntry.applyToBody
-      : applyToBodyDefault;
 
     let selection = null;
     if (mappingEntry && hasMappingValue(mappingEntry)) {
-      selection = {
-        ...mappingEntry,
-        applyToBody: mappingEntry.applyToBody !== undefined ? mappingEntry.applyToBody : applyToBodyDefault,
-      };
+      selection = { ...mappingEntry };
     } else if (envVar) {
       selection = {
         type: 'env',
         envVar,
         value: currentValue === undefined || currentValue === null ? '' : String(currentValue),
-        applyToBody,
       };
     } else {
       const mappingFromEndpoint = requestMappings?.[fieldPath];
       if (mappingFromEndpoint) {
         const normalizedMapping = normalizeMappingSelection(mappingFromEndpoint);
-        const mappingApplyToBody =
-          typeof mappingFromEndpoint?.applyToBody === 'boolean'
-            ? mappingFromEndpoint.applyToBody
-            : applyToBody;
         if (hasMappingValue(normalizedMapping)) {
-          selection = { ...normalizedMapping, applyToBody: mappingApplyToBody };
+          selection = { ...normalizedMapping };
         }
       }
       if (!selection) {
         if (currentValue !== undefined && currentValue !== null) {
-          selection = { type: 'literal', value: String(currentValue), applyToBody };
+          selection = { type: 'literal', value: String(currentValue) };
         } else if (defaultValue !== undefined && defaultValue !== null) {
-          selection = { type: 'literal', value: String(defaultValue), applyToBody };
+          selection = { type: 'literal', value: String(defaultValue) };
         } else {
-          selection = { type: 'literal', value: '', applyToBody };
+          selection = { type: 'literal', value: '' };
         }
       }
     }
@@ -2414,13 +2346,8 @@ function createFormState(definition) {
   const testServerUrlField = buildUrlFieldState('testServerUrl');
   const productionServerUrlField = buildUrlFieldState('productionServerUrl');
   const testServerUrlProductionField = buildUrlFieldState('testServerUrlProduction');
-  const applyToBodyDefaults = buildApplyToBodyDefaultMap(
-    requestFieldDisplayForDefaults.state === 'ok' ? requestFieldDisplayForDefaults.items : [],
-  );
   const { mappings: requestFieldMappings, envMap: normalizedRequestEnvMap } =
-    normalizeRequestFieldMappingMap(definition.requestFieldMappings, definition.requestEnvMap, {
-      defaultApplyToBodyMap: applyToBodyDefaults,
-    });
+    normalizeRequestFieldMappingMap(definition.requestFieldMappings, definition.requestEnvMap);
 
   return {
     id: definition.id || '',
@@ -4224,7 +4151,6 @@ export default function PosApiAdmin() {
           useInTransaction: resolveVariationUsageFlag(
             existing.useInTransaction,
             normalized.useInTransaction,
-            defaultByVariation,
           ),
         };
       });
@@ -4367,8 +4293,6 @@ export default function PosApiAdmin() {
           ? {
               ...selection,
               ...existing,
-              applyToBody:
-                existing.applyToBody !== undefined ? existing.applyToBody : selection.applyToBody,
             }
           : selection;
 
@@ -4428,13 +4352,10 @@ export default function PosApiAdmin() {
     const variationSelections = buildSelectionsForVariation(selectedVariationKey);
     const mergedSelections = { ...selectionsFromSample, ...variationSelections };
     setRequestFieldValues(mergedSelections);
-    const applyDefaults = buildApplyToBodyDefaultMap(requestFieldDisplay.items || []);
     setFormState((prev) => ({
       ...prev,
-      requestEnvMap: buildRequestEnvMap(mergedSelections, { defaultApplyToBodyMap: applyDefaults }),
-      requestFieldMappings: serializeRequestFieldSelections(mergedSelections, {
-        defaultApplyToBodyMap: applyDefaults,
-      }),
+      requestEnvMap: buildRequestEnvMap(mergedSelections),
+      requestFieldMappings: serializeRequestFieldSelections(mergedSelections),
       requestMappings: serializeRequestMappings(mergedSelections),
     }));
   }, [
@@ -5138,10 +5059,7 @@ export default function PosApiAdmin() {
     if (segments.length === 0) return;
     const parsedEntry = parseDefaultValueEntry(value);
     const resolvedValue = parsedEntry.value;
-    const storedValue =
-      resolvedValue !== undefined && parsedEntry.useInTransaction === false
-        ? { value: resolvedValue, useInTransaction: false }
-        : resolvedValue;
+    const storedValue = resolvedValue;
 
     setFormState((prev) => {
       let changed = false;
@@ -5194,7 +5112,9 @@ export default function PosApiAdmin() {
 
         if (storedValue !== '' && storedValue !== undefined && storedValue !== null) {
           defaultValues[fieldPath] = storedValue;
-          useInTransaction[fieldPath] = parsedEntry.useInTransaction !== false;
+          if (parsedEntry.useInTransaction !== undefined) {
+            useInTransaction[fieldPath] = parsedEntry.useInTransaction !== false;
+          }
         } else {
           delete defaultValues[fieldPath];
           delete useInTransaction[fieldPath];
@@ -7041,7 +6961,6 @@ export default function PosApiAdmin() {
       const useInTransaction = resolveVariationUsageFlag(
         meta.useInTransaction,
         normalized.useInTransaction,
-        defaultByVariation,
       );
       const hint = {
         field: normalized.field,
@@ -7188,8 +7107,15 @@ export default function PosApiAdmin() {
         };
         Object.entries(normalizedDefaults).forEach(([fieldPath, value]) => {
           const parsed = parseDefaultValueEntry(value);
-          normalizedUsageMap[fieldPath] = parsed.useInTransaction !== false;
-          normalizedDefaults[fieldPath] = buildDefaultValueEntry(parsed.value, parsed.useInTransaction);
+          const nextValue = buildDefaultValueEntry(parsed.value);
+          if (nextValue === undefined) {
+            delete normalizedDefaults[fieldPath];
+          } else {
+            normalizedDefaults[fieldPath] = nextValue;
+          }
+          if (parsed.useInTransaction !== undefined) {
+            normalizedUsageMap[fieldPath] = parsed.useInTransaction !== false;
+          }
         });
         return {
           key: variationKey,
@@ -7360,8 +7286,6 @@ export default function PosApiAdmin() {
         }
       : null;
 
-    const applyDefaults = buildApplyToBodyDefaultMap(requestFieldDisplay.items || []);
-
     const endpoint = {
       id: formState.id.trim(),
       name: formState.name.trim(),
@@ -7403,15 +7327,11 @@ export default function PosApiAdmin() {
       ...(requestBody ? { requestBody } : {}),
       responseBody: {
         schema: responseSchema,
-        description: formState.responseDescription || '',
-      },
+          description: formState.responseDescription || '',
+        },
       responseTables: sanitizeTableSelection(formState.responseTables, responseTableOptions),
-      requestEnvMap: buildRequestEnvMap(requestFieldValues, {
-        defaultApplyToBodyMap: applyDefaults,
-      }),
-      requestFieldMappings: serializeRequestFieldSelections(requestFieldValues, {
-        defaultApplyToBodyMap: applyDefaults,
-      }),
+      requestEnvMap: buildRequestEnvMap(requestFieldValues),
+      requestFieldMappings: serializeRequestFieldSelections(requestFieldValues),
       requestMappings: serializeRequestMappings(requestFieldValues),
       requestFields: requestFieldsWithVariationDefaults,
       requestFieldVariations: sanitizedRequestFieldVariations,
@@ -7663,7 +7583,6 @@ export default function PosApiAdmin() {
     const baseText = baseOverride ?? baseRequestJson ?? '{}';
     const baseSample = cleanSampleText(baseText);
     const activeSelections = Object.entries(nextSelections || {}).reduce((acc, [path, entry]) => {
-      if (entry?.applyToBody === false) return acc;
       if (!hasMappingValue(entry)) return acc;
       acc[path] = entry;
       return acc;
@@ -7694,7 +7613,6 @@ export default function PosApiAdmin() {
       const allowVariationDefaults = resolveVariationUsageFlag(
         meta.useInTransaction,
         normalized.useInTransaction,
-        defaultByVariation,
       );
       if (!allowVariationDefaults) return;
       const parsedDefault = parseDefaultValueEntry(defaultByVariation[variationKey]);
@@ -7704,7 +7622,6 @@ export default function PosApiAdmin() {
       selections[fieldPath] = {
         type: 'literal',
         value: String(defaultValue),
-        applyToBody: entry.source !== 'parameter',
       };
     });
     return selections;
@@ -7949,7 +7866,7 @@ export default function PosApiAdmin() {
     return pickPayloadFields(payloadCandidate, allowedFields);
   }
 
-  function handleRequestFieldValueChange(fieldPath, updates, { defaultApplyToBody = true } = {}) {
+  function handleRequestFieldValueChange(fieldPath, updates) {
     if (!fieldPath) return;
     setRequestFieldValues((prev) => {
       const current = prev[fieldPath] || {};
@@ -7968,7 +7885,6 @@ export default function PosApiAdmin() {
             || updates.expression !== undefined
             || updates.table !== undefined
             || updates.column !== undefined));
-      const aggregationUpdated = updates && typeof updates === 'object' && 'aggregation' in updates;
       const selectionInput =
         updates && typeof updates === 'object' && 'selection' in updates
           ? updates.selection
@@ -7986,12 +7902,6 @@ export default function PosApiAdmin() {
                   : current.aggregation,
             }
           : selectionInput;
-      const applyToBody =
-        updates && typeof updates === 'object' && 'applyToBody' in updates
-          ? updates.applyToBody
-          : current.applyToBody !== undefined
-            ? current.applyToBody
-            : defaultApplyToBody;
       const sanitizedSelection =
         mergedSelectionInput && typeof mergedSelectionInput === 'object'
           ? resetMappingFieldsForType(
@@ -7999,30 +7909,19 @@ export default function PosApiAdmin() {
               mergedSelectionInput.type || mergedSelectionInput.mode || current.type || current.mode,
             )
           : mergedSelectionInput;
-      const normalizedSelection = normalizeRequestFieldMappingEntry(
-        { ...sanitizedSelection, applyToBody },
-        { defaultApplyToBody },
-      );
+      const normalizedSelection = normalizeRequestFieldMappingEntry(sanitizedSelection);
       const nextSelections = { ...prev };
       let changed = false;
-      const previousNormalized = normalizeRequestFieldMappingEntry(current, { defaultApplyToBody });
+      const previousNormalized = normalizeRequestFieldMappingEntry(current);
       const typeChanged =
         normalizedSelection
         && normalizedSelection.type
         && normalizedSelection.type !== (previousNormalized?.type || current.type || current.mode);
-      if (normalizedSelection && (hasMappingValue(normalizedSelection) || typeChanged || aggregationUpdated)) {
-        const previousNormalized = normalizeRequestFieldMappingEntry(current, { defaultApplyToBody });
+      if (normalizedSelection && (hasMappingValue(normalizedSelection) || typeChanged)) {
+        const previousNormalized = normalizeRequestFieldMappingEntry(current);
         const alreadyEqual = JSON.stringify(previousNormalized || {}) === JSON.stringify(normalizedSelection);
         nextSelections[fieldPath] = normalizedSelection;
         changed = !alreadyEqual;
-      } else if (
-        updates
-        && typeof updates === 'object'
-        && 'applyToBody' in updates
-        && current.applyToBody !== applyToBody
-      ) {
-        nextSelections[fieldPath] = { ...current, applyToBody };
-        changed = true;
       } else if (selectionProvided && fieldPath in nextSelections) {
         delete nextSelections[fieldPath];
         changed = true;
@@ -8031,50 +7930,10 @@ export default function PosApiAdmin() {
       if (!changed) return prev;
 
       syncRequestSampleFromSelections(nextSelections);
-      const applyDefaults = buildApplyToBodyDefaultMap(requestFieldDisplay.items || []);
-      const serialized = serializeRequestFieldSelections(nextSelections, {
-        defaultApplyToBodyMap: applyDefaults,
-      });
+      const serialized = serializeRequestFieldSelections(nextSelections);
       setFormState((prevState) => ({
         ...prevState,
-        requestEnvMap: buildRequestEnvMap(nextSelections, {
-          defaultApplyToBodyMap: applyDefaults,
-        }),
-        requestFieldMappings: serialized,
-        requestMappings: serializeRequestMappings(nextSelections),
-      }));
-      return nextSelections;
-    });
-  }
-
-  function setApplyToBodyForAll(applyToBody) {
-    setRequestFieldValues((prev) => {
-      const nextSelections = { ...prev };
-      let changed = false;
-      visibleRequestFieldItems.forEach((entry) => {
-        const normalized = normalizeHintEntry(entry);
-        const fieldPath = normalized.field;
-        if (!fieldPath) return;
-        const defaultApplyToBody = entry.source !== 'parameter';
-        const existing = nextSelections[fieldPath] || {};
-        const normalizedExisting = normalizeRequestFieldMappingEntry(existing, { defaultApplyToBody });
-        const currentApply = normalizedExisting?.applyToBody ?? defaultApplyToBody;
-        if (currentApply === applyToBody) return;
-        nextSelections[fieldPath] = { ...existing, applyToBody };
-        changed = true;
-      });
-      if (!changed) return prev;
-
-      syncRequestSampleFromSelections(nextSelections);
-      const applyDefaults = buildApplyToBodyDefaultMap(requestFieldDisplay.items || []);
-      const serialized = serializeRequestFieldSelections(nextSelections, {
-        defaultApplyToBodyMap: applyDefaults,
-      });
-      setFormState((prevState) => ({
-        ...prevState,
-        requestEnvMap: buildRequestEnvMap(nextSelections, {
-          defaultApplyToBodyMap: applyDefaults,
-        }),
+        requestEnvMap: buildRequestEnvMap(nextSelections),
         requestFieldMappings: serialized,
         requestMappings: serializeRequestMappings(nextSelections),
       }));
@@ -8112,10 +7971,6 @@ export default function PosApiAdmin() {
 
   function handleVariationRequirementChange(fieldPath, variationKey, value) {
     if (!fieldPath || !variationKey) return;
-    if (!value) {
-      clearVariationFieldSelection(variationKey, fieldPath, { keepRequiredOverride: true });
-      return;
-    }
     setRequestFieldMeta((prev) => {
       const current = prev[fieldPath] || { requiredByVariation: {}, defaultByVariation: {} };
       return {
@@ -8126,39 +7981,27 @@ export default function PosApiAdmin() {
         },
       };
     });
-
-    ensureVariationFieldSelection(variationKey, fieldPath);
+    if (value) {
+      ensureVariationFieldSelection(variationKey, fieldPath);
+    }
   }
 
   function handleVariationUsageToggle(fieldPath, value) {
     if (!fieldPath) return;
     setRequestFieldMeta((prev) => {
       const current = prev[fieldPath] || { requiredByVariation: {}, defaultByVariation: {} };
-      const defaultByVariation = { ...current.defaultByVariation };
-      Object.entries(defaultByVariation).forEach(([variationKey, entry]) => {
-        const parsed = parseDefaultValueEntry(entry);
-        const nextEntry = buildDefaultValueEntry(parsed.value, value);
-        if (nextEntry !== undefined) {
-          defaultByVariation[variationKey] = nextEntry;
-        } else {
-          delete defaultByVariation[variationKey];
-        }
-      });
-      return { ...prev, [fieldPath]: { ...current, defaultByVariation, useInTransaction: value } };
+      if (current.useInTransaction === value) return prev;
+      return { ...prev, [fieldPath]: { ...current, useInTransaction: value } };
     });
     setFormState((prev) => {
       const variations = Array.isArray(prev.variations) ? prev.variations.map((entry) => {
         if (!entry || typeof entry !== 'object') return entry;
         const defaults = entry.defaultValues ? { ...entry.defaultValues } : {};
         if (Object.prototype.hasOwnProperty.call(defaults, fieldPath)) {
-          const parsed = parseDefaultValueEntry(defaults[fieldPath]);
-          const nextEntry = buildDefaultValueEntry(parsed.value, value);
-          if (nextEntry !== undefined) {
-            defaults[fieldPath] = nextEntry;
-          } else {
-            delete defaults[fieldPath];
-          }
-          return { ...entry, defaultValues: defaults };
+          const usageMap = entry.useInTransaction ? { ...entry.useInTransaction } : {};
+          if (usageMap[fieldPath] === value) return entry;
+          usageMap[fieldPath] = value;
+          return { ...entry, useInTransaction: usageMap };
         }
         return entry;
       }) : [];
@@ -8169,20 +8012,11 @@ export default function PosApiAdmin() {
           const defaults = entry.defaultValues ? { ...entry.defaultValues } : {};
           const useInTransactionMap = entry.useInTransaction ? { ...entry.useInTransaction } : {};
           if (Object.prototype.hasOwnProperty.call(defaults, fieldPath)) {
-            const parsed = parseDefaultValueEntry(defaults[fieldPath]);
-            const nextEntry = buildDefaultValueEntry(parsed.value, value);
-            if (nextEntry !== undefined) {
-              defaults[fieldPath] = nextEntry;
-              useInTransactionMap[fieldPath] = value;
-            } else {
-              delete defaults[fieldPath];
-              delete useInTransactionMap[fieldPath];
-            }
+            useInTransactionMap[fieldPath] = value;
             const normalizedUsage =
               Object.keys(useInTransactionMap).length > 0 ? useInTransactionMap : undefined;
             return {
               ...entry,
-              defaultValues: defaults,
               ...(normalizedUsage ? { useInTransaction: normalizedUsage } : { useInTransaction: {} }),
             };
           }
@@ -8194,7 +8028,7 @@ export default function PosApiAdmin() {
     });
   }
 
-  function handleVariationDefaultUpdate(fieldPath, variationKey, value, useInTransaction) {
+  function handleVariationDefaultUpdate(fieldPath, variationKey, value) {
     if (!fieldPath || !variationKey) return;
     let syncEntry = null;
     setRequestFieldMeta((prev) => {
@@ -8202,14 +8036,7 @@ export default function PosApiAdmin() {
       const defaultByVariation = { ...current.defaultByVariation };
       const currentEntry = parseDefaultValueEntry(defaultByVariation[variationKey]);
       const nextValue = value !== undefined ? value : currentEntry.value;
-      const variationUsage = resolveVariationUsageFlag(
-        current.useInTransaction,
-        undefined,
-        defaultByVariation,
-      );
-      const nextUse =
-        useInTransaction === undefined ? variationUsage : useInTransaction;
-      const nextEntry = buildDefaultValueEntry(nextValue, nextUse);
+      const nextEntry = buildDefaultValueEntry(nextValue);
       syncEntry = nextEntry !== undefined ? nextEntry : nextValue;
       if (nextEntry !== undefined) {
         defaultByVariation[variationKey] = nextEntry;
@@ -8283,26 +8110,10 @@ export default function PosApiAdmin() {
       visibleRequestFieldPaths.forEach((fieldPath) => {
         if (!fieldPath) return;
         const current = next[fieldPath] || { requiredByVariation: {}, defaultByVariation: {} };
-        const defaultByVariation = { ...current.defaultByVariation };
-        Object.entries(defaultByVariation).forEach(([variationKey, entry]) => {
-          const parsed = parseDefaultValueEntry(entry);
-          const nextEntry = buildDefaultValueEntry(parsed.value, value);
-          if (nextEntry !== undefined) {
-            defaultByVariation[variationKey] = nextEntry;
-          } else {
-            delete defaultByVariation[variationKey];
-          }
-        });
-        if (
-          current.useInTransaction === value
-          && JSON.stringify(defaultByVariation) === JSON.stringify(current.defaultByVariation || {})
-        ) {
-          return;
-        }
+        if (current.useInTransaction === value) return;
         next[fieldPath] = {
           ...current,
           useInTransaction: value,
-          defaultByVariation,
         };
         changed = true;
       });
@@ -8314,25 +8125,19 @@ export default function PosApiAdmin() {
       const variations = Array.isArray(prev.variations) ? prev.variations.map((entry) => {
         if (!entry || typeof entry !== 'object') return entry;
         const defaults = entry.defaultValues ? { ...entry.defaultValues } : {};
-        let defaultsChanged = false;
+        const useMap = entry.useInTransaction ? { ...entry.useInTransaction } : {};
+        let localChanged = false;
         visibleRequestFieldPaths.forEach((fieldPath) => {
           if (!fieldPath) return;
           if (!Object.prototype.hasOwnProperty.call(defaults, fieldPath)) return;
-          const parsed = parseDefaultValueEntry(defaults[fieldPath]);
-          const nextEntry = buildDefaultValueEntry(parsed.value, value);
-          if (nextEntry !== undefined) {
-            if (JSON.stringify(defaults[fieldPath]) !== JSON.stringify(nextEntry)) {
-              defaults[fieldPath] = nextEntry;
-              defaultsChanged = true;
-            }
-          } else if (fieldPath in defaults) {
-            delete defaults[fieldPath];
-            defaultsChanged = true;
+          if (useMap[fieldPath] !== value) {
+            useMap[fieldPath] = value;
+            localChanged = true;
           }
         });
-        if (!defaultsChanged) return entry;
+        if (!localChanged) return entry;
         changed = true;
-        return { ...entry, defaultValues: defaults };
+        return { ...entry, useInTransaction: useMap };
       }) : [];
 
       const requestFieldVariations = Array.isArray(prev.requestFieldVariations)
@@ -8340,31 +8145,20 @@ export default function PosApiAdmin() {
           if (!entry || typeof entry !== 'object') return entry;
           const defaults = entry.defaultValues ? { ...entry.defaultValues } : {};
           const useInTransaction = entry.useInTransaction ? { ...entry.useInTransaction } : {};
-          let defaultsChanged = false;
+          let usageChanged = false;
           visibleRequestFieldPaths.forEach((fieldPath) => {
             if (!fieldPath) return;
             if (!Object.prototype.hasOwnProperty.call(defaults, fieldPath)) return;
-            const parsed = parseDefaultValueEntry(defaults[fieldPath]);
-            const nextEntry = buildDefaultValueEntry(parsed.value, value);
             useInTransaction[fieldPath] = value;
-            if (nextEntry !== undefined) {
-              if (JSON.stringify(defaults[fieldPath]) !== JSON.stringify(nextEntry)) {
-                defaults[fieldPath] = nextEntry;
-                defaultsChanged = true;
-              }
-            } else if (fieldPath in defaults) {
-              delete defaults[fieldPath];
-              delete useInTransaction[fieldPath];
-              defaultsChanged = true;
-            }
+            usageChanged = true;
           });
-          if (!defaultsChanged) return entry;
+          if (!usageChanged) return entry;
           changed = true;
           const normalizedUsage = Object.keys(useInTransaction).reduce((acc, key) => {
             acc[key] = useInTransaction[key];
             return acc;
           }, {});
-          return { ...entry, defaultValues: defaults, useInTransaction: normalizedUsage };
+          return { ...entry, useInTransaction: normalizedUsage };
         })
         : [];
 
@@ -9953,7 +9747,6 @@ export default function PosApiAdmin() {
                     const useVariationDefaults = resolveVariationUsageFlag(
                       meta.useInTransaction,
                       normalized.useInTransaction,
-                      meta.defaultByVariation || normalized.defaultByVariation || {},
                     );
                     return (
                       <div
@@ -10061,26 +9854,6 @@ export default function PosApiAdmin() {
           <div style={styles.hintCard}>
             <div style={styles.hintHeader}>
               <h3 style={styles.hintTitle}>Request values & environment variables</h3>
-              {requestFieldDisplay.state === 'ok' && visibleRequestFieldItems.length > 0 && (
-                <div style={{ display: 'flex', gap: '0.25rem' }}>
-                  <button
-                    type="button"
-                    style={styles.miniToggleButton}
-                    onClick={() => setApplyToBodyForAll(true)}
-                    title="Apply all request field values to request body"
-                  >
-                    Apply all
-                  </button>
-                  <button
-                    type="button"
-                    style={styles.miniToggleButton}
-                    onClick={() => setApplyToBodyForAll(false)}
-                    title="Do not apply any request field values to request body"
-                  >
-                    Apply none
-                  </button>
-                </div>
-              )}
             </div>
             <p style={styles.requestFieldHint}>
               Use the <strong>Expression</strong> mapping type for totals or custom calculations. Functions
@@ -10100,18 +9873,13 @@ export default function PosApiAdmin() {
                 {visibleRequestFieldItems.map((entry, index) => {
                   const normalized = normalizeHintEntry(entry);
                   const fieldPath = normalized.field;
-                  const defaultApplyToBody = entry.source !== 'parameter';
                   const selection =
-                    normalizeRequestFieldMappingEntry(requestFieldValues[fieldPath], {
-                      defaultApplyToBody,
-                    })
+                    normalizeRequestFieldMappingEntry(requestFieldValues[fieldPath])
                     || {
                       type: 'literal',
                       value: '',
-                      applyToBody: defaultApplyToBody,
                     };
-                  const applyToBody = selection.applyToBody !== false;
-                  const { applyToBody: _ignoredApply, ...selectorValue } = selection || {};
+                  const selectorValue = selection || {};
                   return (
                     <div key={`${fieldPath || 'field'}-${index}`} style={styles.requestValueRow}>
                       <div style={styles.requestValueFieldMeta}>
@@ -10127,25 +9895,21 @@ export default function PosApiAdmin() {
                            <div style={styles.hintDescription}>{normalized.description}</div>
                          )}
                        </div>
-                       <div style={styles.requestFieldModes}>
-                         <MappingFieldSelector
-                           value={selectorValue}
-                           onChange={(val) =>
-                             handleRequestFieldValueChange(fieldPath, val, {
-                           defaultApplyToBody,
-                         })
-                       }
-                       primaryTableName={primaryRequestTable}
-                       masterColumns={primaryRequestColumns}
-                       columnsByTable={requestTableColumns}
-                       tableOptions={requestTableOptions}
-                       datalistIdBase={`request-map-${index}`}
-                       defaultTableLabel="Select table"
-                       sessionVariables={REQUEST_SESSION_VARIABLES}
-                        expressionFieldOptions={expressionFieldOptions}
-                        expressionFunctions={EXPRESSION_FUNCTIONS}
-                     />
-                   </div>
+                      <div style={styles.requestFieldModes}>
+                        <MappingFieldSelector
+                          value={selectorValue}
+                          onChange={(val) => handleRequestFieldValueChange(fieldPath, val)}
+                          primaryTableName={primaryRequestTable}
+                          masterColumns={primaryRequestColumns}
+                          columnsByTable={requestTableColumns}
+                          tableOptions={requestTableOptions}
+                          datalistIdBase={`request-map-${index}`}
+                          defaultTableLabel="Select table"
+                          sessionVariables={REQUEST_SESSION_VARIABLES}
+                          expressionFieldOptions={expressionFieldOptions}
+                          expressionFunctions={EXPRESSION_FUNCTIONS}
+                        />
+                      </div>
                    <div style={styles.requestValueInputs}>
                       <div style={{ marginBottom: '0.25rem' }}>
                         <QuickAggregateHelper
@@ -10155,26 +9919,11 @@ export default function PosApiAdmin() {
                           onApply={(expression) =>
                             handleRequestFieldValueChange(
                               fieldPath,
-                              { type: 'expression', expression, applyToBody },
-                              { defaultApplyToBody },
+                              { type: 'expression', expression },
                             )
                           }
                         />
                       </div>
-                     <label style={{ ...styles.checkboxLabel, marginTop: '0.35rem' }}>
-                       <input
-                         type="checkbox"
-                         checked={applyToBody}
-                         onChange={(e) =>
-                           handleRequestFieldValueChange(
-                                 fieldPath,
-                                 { applyToBody: e.target.checked },
-                                 { defaultApplyToBody },
-                               )
-                             }
-                           />
-                           <span>Apply to request body</span>
-                         </label>
                        </div>
                      </div>
                    );

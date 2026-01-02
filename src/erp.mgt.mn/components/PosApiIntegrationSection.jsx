@@ -691,19 +691,16 @@ export function MappingFieldSelector({
 
   const handleTypeChange = (nextType) => {
     const base = resetMappingFieldsForType(
-      { ...selection, applyToBody: selection.applyToBody, aggregation: selection.aggregation },
+      { ...selection, aggregation: selection.aggregation },
       nextType,
     );
-    onChange({
-      ...buildMappingValue(base, { preserveType: true }),
-      applyToBody: selection.applyToBody,
-    });
+    onChange(buildMappingValue(base, { preserveType: true }));
   };
 
   const handleTableChange = (tbl) => {
     if (tbl) onTableSelect(tbl);
-    onChange({
-      ...buildMappingValue(
+    onChange(
+      buildMappingValue(
         {
           type: 'column',
           table: tbl,
@@ -712,13 +709,12 @@ export function MappingFieldSelector({
         },
         { preserveType: true },
       ),
-      applyToBody: selection.applyToBody,
-    });
+    );
   };
 
   const handleColumnChange = (col) => {
-    onChange({
-      ...buildMappingValue(
+    onChange(
+      buildMappingValue(
         {
           type: 'column',
           table: selectedTable,
@@ -727,8 +723,7 @@ export function MappingFieldSelector({
         },
         { preserveType: true },
       ),
-      applyToBody: selection.applyToBody,
-    });
+    );
   };
 
   const handleScalarChange = (key, val) => {

@@ -149,12 +149,10 @@ function normalizeSelection(rawSelection) {
 
 function coerceMappingEntry(entry) {
   if (entry === undefined || entry === null) return null;
-  const applyToBody =
-    entry && typeof entry === 'object' && 'applyToBody' in entry ? entry.applyToBody !== false : true;
   const selection = entry && typeof entry === 'object' && 'selection' in entry ? entry.selection : entry;
   const mappingValue = normalizeSelection(selection);
   if (!mappingValue) return null;
-  return { applyToBody, mappingValue };
+  return { mappingValue };
 }
 
 function assignObjectField(objectFields, objectKey, fieldKey, legacyTarget, value, includeLegacy = true) {
@@ -208,11 +206,7 @@ export function buildEndpointRequestMappingDefaults(
     if (!fieldPath) return;
     const envVar = typeof envEntry === 'string' ? envEntry : envEntry?.envVar;
     if (!envVar) return;
-    const applyToBody =
-      envEntry && typeof envEntry === 'object' && 'applyToBody' in envEntry
-        ? Boolean(envEntry.applyToBody)
-        : true;
-    entries.push([fieldPath, { type: 'env', envVar, applyToBody }]);
+    entries.push([fieldPath, { type: 'env', envVar }]);
   });
 
   if (!entries.length) return null;
@@ -220,7 +214,7 @@ export function buildEndpointRequestMappingDefaults(
   entries.forEach(([fieldPath, rawSelection]) => {
     if (!fieldPath) return;
     const parsed = coerceMappingEntry(rawSelection);
-    if (!parsed || parsed.applyToBody === false) return;
+    if (!parsed) return;
     const { mappingValue } = parsed;
     const tokens = tokenizeFieldPath(fieldPath);
     const itemRemainder = stripPrefix(tokens, itemsPrefixTokens);
