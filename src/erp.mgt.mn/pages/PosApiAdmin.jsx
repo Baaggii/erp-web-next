@@ -138,121 +138,64 @@ const REQUEST_SESSION_VARIABLES = [
   'userRole',
 ];
 
-const AGGREGATION_OPTIONS = [
-  { value: '', label: 'No aggregation' },
-  { value: 'sum', label: 'Sum' },
-  { value: 'count', label: 'Count' },
-  { value: 'min', label: 'Minimum' },
-  { value: 'max', label: 'Maximum' },
-  { value: 'avg', label: 'Average' },
-];
+const EXPRESSION_FUNCTIONS = ['sum', 'count', 'min', 'max', 'avg'];
 
-const AGGREGATION_OPERATORS = ['=', '+', '-', '*', '/', 'SUM', 'AVG'];
+function QuickAggregateHelper({ fieldOptions = [], onApply, datalistId, disabled = false }) {
+  const [selectedFunction, setSelectedFunction] = useState(EXPRESSION_FUNCTIONS[0]);
+  const [selectedPath, setSelectedPath] = useState('');
 
-function parseAggregationParts(formula = '') {
-  const tokens = `${formula || ''}`
-    .split(/\s+/)
-    .map((token) => token.trim())
-    .filter(Boolean);
-  if (tokens.length === 0) return [{ op: '=', field: '' }];
-  const parts = [];
-  let currentOp = '=';
-  tokens.forEach((token, index) => {
-    if (index === 0) {
-      parts.push({ op: '=', field: token });
-      return;
+  const applyExpression = () => {
+    const trimmedPath = selectedPath.trim();
+    if (!trimmedPath) return;
+    const expression = `${selectedFunction}(${trimmedPath})`;
+    if (typeof onApply === 'function') {
+      onApply(expression);
     }
-    if (AGGREGATION_OPERATORS.includes(token.toUpperCase()) && token !== '=') {
-      currentOp = token.toUpperCase();
-      return;
-    }
-    parts.push({ op: currentOp, field: token });
-    currentOp = '+';
-  });
-  return parts.length ? parts : [{ op: '=', field: '' }];
-}
-
-function buildAggregationFormula(parts = []) {
-  const cleaned = (parts || []).filter((part) => part && part.field !== undefined);
-  if (cleaned.length === 0) return '';
-  return cleaned
-    .map((part, index) => {
-      const op = index === 0 ? '' : `${part.op || '+'} `;
-      return `${op}${part.field || ''}`.trim();
-    })
-    .filter(Boolean)
-    .join(' ');
-}
-
-function AggregationBuilder({ value, onChange, fieldOptions = [], datalistId }) {
-  const parts = useMemo(() => parseAggregationParts(value), [value]);
-  const updateParts = (nextParts) => {
-    const formula = buildAggregationFormula(nextParts);
-    onChange(formula);
-  };
-  const updatePart = (index, updates) => {
-    const next = parts.map((part, idx) => (idx === index ? { ...part, ...updates } : part));
-    updateParts(next);
-  };
-  const addPart = () => {
-    const op = parts.length === 0 ? '=' : '+';
-    updateParts([...parts, { op, field: '' }]);
-  };
-  const removePart = (index) => {
-    const next = parts.filter((_, idx) => idx !== index);
-    updateParts(next.length > 0 ? next : [{ op: '=', field: '' }]);
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
-      {parts.map((part, index) => (
-        <div
-          key={`agg-part-${index}`}
-          style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', flexWrap: 'wrap' }}
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+      <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap', alignItems: 'center' }}>
+        <select
+          value={selectedFunction}
+          onChange={(e) => setSelectedFunction(e.target.value)}
+          disabled={disabled}
+          style={{ minWidth: '120px' }}
         >
-          {index > 0 && (
-            <select
-              value={part.op || '+'}
-              onChange={(e) => updatePart(index, { op: e.target.value })}
-              style={{ minWidth: '70px' }}
-            >
-              {AGGREGATION_OPERATORS.filter((op) => op !== '=').map((op) => (
-                <option key={`agg-op-${index}-${op}`} value={op}>
-                  {op}
-                </option>
-              ))}
-            </select>
-          )}
-          {index === 0 && <span style={{ color: '#475569' }}>=</span>}
-          <input
-            type="text"
-            list={datalistId}
-            value={part.field || ''}
-            onChange={(e) => updatePart(index, { field: e.target.value })}
-            placeholder="field or literal"
-            style={{ minWidth: '200px', flex: '1 1 200px' }}
-          />
-          {fieldOptions.length > 0 && (
-            <datalist id={datalistId}>
-              {fieldOptions.map((opt) => (
-                <option key={`${datalistId}-${opt}`} value={opt} />
-              ))}
-            </datalist>
-          )}
-          <button
-            type="button"
-            onClick={() => removePart(index)}
-            style={{ ...styles.miniToggleButton, background: '#fee2e2', borderColor: '#fecdd3' }}
-          >
-            ✕
-          </button>
-        </div>
-      ))}
-      <div>
-        <button type="button" style={styles.smallButton} onClick={addPart}>
-          Add field
+          {EXPRESSION_FUNCTIONS.map((fn) => (
+            <option key={`quick-fn-${fn}`} value={fn}>
+              {fn}
+            </option>
+          ))}
+        </select>
+        <input
+          type="text"
+          list={datalistId}
+          value={selectedPath}
+          onChange={(e) => setSelectedPath(e.target.value)}
+          placeholder="receipts[].items[].qty"
+          disabled={disabled}
+          style={{ minWidth: '220px', flex: '1 1 220px' }}
+        />
+        {fieldOptions.length > 0 && (
+          <datalist id={datalistId}>
+            {fieldOptions.map((field) => (
+              <option key={`${datalistId}-${field}`} value={field} />
+            ))}
+          </datalist>
+        )}
+        <button
+          type="button"
+          style={styles.miniToggleButton}
+          onClick={applyExpression}
+          disabled={disabled || !selectedPath.trim()}
+        >
+          Convert to expression
         </button>
       </div>
+      <small style={{ color: '#4b5563' }}>
+        Builds an Expression mapping using the selected aggregate. Use the expression editor for multi-field formulas.
+      </small>
     </div>
   );
 }
@@ -4158,6 +4101,20 @@ export default function PosApiAdmin() {
     const fields = [];
     requestFieldDisplay.items.forEach((entry) => {
       if (entry?.source === 'parameter') return;
+      const normalized = normalizeHintEntry(entry);
+      const field = normalized.field?.trim();
+      if (!field || seen.has(field)) return;
+      seen.add(field);
+      fields.push(field);
+    });
+    return fields;
+  }, [requestFieldDisplay]);
+
+  const expressionFieldOptions = useMemo(() => {
+    if (requestFieldDisplay.state !== 'ok') return [];
+    const seen = new Set();
+    const fields = [];
+    requestFieldDisplay.items.forEach((entry) => {
       const normalized = normalizeHintEntry(entry);
       const field = normalized.field?.trim();
       if (!field || seen.has(field)) return;
@@ -8400,32 +8357,6 @@ export default function PosApiAdmin() {
     });
   }
 
-  function handleAddAggregation() {
-    setFormState((prev) => {
-      const list = Array.isArray(prev.aggregations) ? prev.aggregations.slice() : [];
-      list.push({ field: '', formula: '', applyTo: 'both' });
-      return { ...prev, aggregations: list };
-    });
-  }
-
-  function handleAggregationChange(index, updates) {
-    setFormState((prev) => {
-      const list = Array.isArray(prev.aggregations) ? prev.aggregations.slice() : [];
-      if (!list[index]) return prev;
-      list[index] = { ...list[index], ...updates };
-      return { ...prev, aggregations: list };
-    });
-  }
-
-  function handleRemoveAggregation(index) {
-    setFormState((prev) => {
-      const list = Array.isArray(prev.aggregations) ? prev.aggregations.slice() : [];
-      if (!list[index]) return prev;
-      list.splice(index, 1);
-      return { ...prev, aggregations: list };
-    });
-  }
-
   function handleAdminParamChange(name, value) {
     if (!name) return;
     setAdminParamValues((prev) => ({
@@ -10068,6 +9999,11 @@ export default function PosApiAdmin() {
                 </div>
               )}
             </div>
+            <p style={styles.requestFieldHint}>
+              Use the <strong>Expression</strong> mapping type for totals or custom calculations. Functions
+              <code style={{ marginLeft: '0.25rem' }}>sum</code>, <code>count</code>, <code>min</code>, <code>max</code>, and
+              <code style={{ marginLeft: '0.25rem' }}>avg</code> plus <code>+</code>, <code>-</code>, <code>*</code>, <code>/</code> and parentheses are supported and saved with the endpoint.
+            </p>
             {requestFieldDisplay.state !== 'ok' && (
               <p style={styles.hintEmpty}>
                 Add request fields above to configure literal values or environment variable mappings.
@@ -10092,7 +10028,6 @@ export default function PosApiAdmin() {
                       applyToBody: defaultApplyToBody,
                     };
                   const applyToBody = selection.applyToBody !== false;
-                  const aggregation = selection.aggregation || '';
                   const { applyToBody: _ignoredApply, ...selectorValue } = selection || {};
                   return (
                     <div key={`${fieldPath || 'field'}-${index}`} style={styles.requestValueRow}>
@@ -10114,40 +10049,41 @@ export default function PosApiAdmin() {
                            value={selectorValue}
                            onChange={(val) =>
                              handleRequestFieldValueChange(fieldPath, val, {
-                               defaultApplyToBody,
-                             })
-                           }
-                           primaryTableName={primaryRequestTable}
-                           masterColumns={primaryRequestColumns}
-                           columnsByTable={requestTableColumns}
-                           tableOptions={requestTableOptions}
-                           datalistIdBase={`request-map-${index}`}
-                           defaultTableLabel="Select table"
-                           sessionVariables={REQUEST_SESSION_VARIABLES}
-                         />
-                       </div>
-                       <div style={styles.requestValueInputs}>
-                        <label style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
-                          <span style={{ color: '#475569', fontSize: '0.9rem' }}>Aggregation</span>
-                          <AggregationBuilder
-                            value={aggregation}
-                            onChange={(formula) =>
-                              handleRequestFieldValueChange(
-                                fieldPath,
-                                { ...selection, aggregation: formula },
-                                { defaultApplyToBody },
-                              )
-                            }
-                            fieldOptions={aggregationFieldOptions}
-                            datalistId={`agg-builder-${index}-${fieldPath}`}
-                          />
-                        </label>
-                         <label style={{ ...styles.checkboxLabel, marginTop: '0.35rem' }}>
-                           <input
-                             type="checkbox"
-                             checked={applyToBody}
-                             onChange={(e) =>
-                               handleRequestFieldValueChange(
+                           defaultApplyToBody,
+                         })
+                       }
+                       primaryTableName={primaryRequestTable}
+                       masterColumns={primaryRequestColumns}
+                       columnsByTable={requestTableColumns}
+                       tableOptions={requestTableOptions}
+                       datalistIdBase={`request-map-${index}`}
+                       defaultTableLabel="Select table"
+                       sessionVariables={REQUEST_SESSION_VARIABLES}
+                        expressionFieldOptions={expressionFieldOptions}
+                        expressionFunctions={EXPRESSION_FUNCTIONS}
+                     />
+                   </div>
+                   <div style={styles.requestValueInputs}>
+                      <div style={{ marginBottom: '0.25rem' }}>
+                        <QuickAggregateHelper
+                          fieldOptions={aggregationFieldOptions}
+                          datalistId={`agg-helper-${index}-${fieldPath}`}
+                          disabled={false}
+                          onApply={(expression) =>
+                            handleRequestFieldValueChange(
+                              fieldPath,
+                              { type: 'expression', expression, applyToBody },
+                              { defaultApplyToBody },
+                            )
+                          }
+                        />
+                      </div>
+                     <label style={{ ...styles.checkboxLabel, marginTop: '0.35rem' }}>
+                       <input
+                         type="checkbox"
+                         checked={applyToBody}
+                         onChange={(e) =>
+                           handleRequestFieldValueChange(
                                  fieldPath,
                                  { applyToBody: e.target.checked },
                                  { defaultApplyToBody },
@@ -10162,90 +10098,7 @@ export default function PosApiAdmin() {
                 })}
               </div>
            )}
-         </div>
-          <div style={styles.hintCard}>
-            <div style={styles.hintHeader}>
-              <h3 style={styles.hintTitle}>Aggregations</h3>
-            </div>
-            <p style={{ marginTop: '0.35rem' }}>
-              Compute derived values using formulas. Aggregations run when building requests and when parsing responses.
-            </p>
-            <button type="button" onClick={handleAddAggregation} style={styles.smallSecondaryButton}>
-              Add aggregation
-            </button>
-            <datalist id="aggregation-field-options">
-              {aggregationFieldOptions.map((field) => (
-                <option key={`aggregation-field-${field}`} value={field} />
-              ))}
-            </datalist>
-            <p style={styles.requestFieldHint}>
-              Pick any request field as the target and reference other fields in the formula to build multiple derived values.
-            </p>
-            {(!Array.isArray(formState.aggregations) || formState.aggregations.length === 0) && (
-              <p style={styles.hintEmpty}>No aggregations configured yet.</p>
-            )}
-            {Array.isArray(formState.aggregations) && formState.aggregations.length > 0 && (
-              <div className="space-y-3" style={{ marginTop: '0.5rem' }}>
-                {formState.aggregations.map((agg, index) => (
-                  <div
-                    key={`aggregation-${index}`}
-                    style={{
-                      border: '1px solid #e5e7eb',
-                      borderRadius: '8px',
-                      padding: '0.75rem',
-                      display: 'grid',
-                      gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
-                      gap: '0.75rem',
-                      alignItems: 'flex-start',
-                    }}
-                  >
-                    <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                      <span style={{ fontWeight: 600 }}>Field path</span>
-                      <input
-                        type="text"
-                        list="aggregation-field-options"
-                        value={agg.field || ''}
-                        onChange={(e) => handleAggregationChange(index, { field: e.target.value })}
-                        placeholder="totalAmount"
-                        style={styles.input}
-                      />
-                    </label>
-                    <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                      <span style={{ fontWeight: 600 }}>Formula</span>
-                      <input
-                        type="text"
-                        value={agg.formula || agg.expression || ''}
-                        onChange={(e) => handleAggregationChange(index, { formula: e.target.value })}
-                        placeholder="sum(receipts[].items[].unitPrice * receipts[].items[].qty)"
-                        style={styles.input}
-                      />
-                    </label>
-                    <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                      <span style={{ fontWeight: 600 }}>Applies to</span>
-                      <select
-                        value={agg.applyTo || 'both'}
-                        onChange={(e) => handleAggregationChange(index, { applyTo: e.target.value })}
-                        style={styles.input}
-                      >
-                        <option value="both">Requests and responses</option>
-                        <option value="request">Requests only</option>
-                        <option value="response">Responses only</option>
-                      </select>
-                    </label>
-                    <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center' }}>
-                      <button
-                        type="button"
-                        onClick={() => handleRemoveAggregation(index)}
-                        style={styles.smallSecondaryButton}
-                      >
-                        Remove
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
+        </div>
           <div style={styles.hintCard}>
             <div style={styles.hintHeader}>
               <h3 style={styles.hintTitle}>Response fields</h3>
