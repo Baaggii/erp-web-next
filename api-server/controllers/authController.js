@@ -19,7 +19,6 @@ import {
   recordLoginSession,
   recordLogoutSession,
 } from '../services/posSessionLogger.js';
-import { buildCookieOptions } from '../utils/cookieOptions.js';
 
 export async function login(req, res, next) {
   try {
@@ -200,23 +199,27 @@ export async function login(req, res, next) {
     const token = jwtService.sign(payload);
     const refreshToken = jwtService.signRefresh(payload);
 
-    const accessCookieOptions = buildCookieOptions({
+    res.cookie(getCookieName(), token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
       maxAge: jwtService.getExpiryMillis(),
     });
-    const refreshCookieOptions = buildCookieOptions({
+    res.cookie(getRefreshCookieName(), refreshToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
       maxAge: jwtService.getRefreshExpiryMillis(),
     });
-
-    res.cookie(getCookieName(), token, accessCookieOptions);
-    res.cookie(getRefreshCookieName(), refreshToken, refreshCookieOptions);
     try {
       const posSession = await recordLoginSession(req, sessionPayload, user);
       if (posSession?.sessionUuid) {
-        res.cookie(
-          getPosSessionCookieName(),
-          posSession.sessionUuid,
-          refreshCookieOptions,
-        );
+        res.cookie(getPosSessionCookieName(), posSession.sessionUuid, {
+          httpOnly: true,
+          secure: process.env.NODE_ENV === 'production',
+          sameSite: 'lax',
+          maxAge: jwtService.getRefreshExpiryMillis(),
+        });
       } else if (posSession?.error) {
         warnings.push(
           posSession.error?.message
@@ -260,7 +263,11 @@ export async function login(req, res, next) {
 }
 
 export async function logout(req, res) {
-  const opts = buildCookieOptions();
+  const opts = {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax',
+  };
   res.clearCookie(getCookieName(), opts);
   res.clearCookie(getRefreshCookieName(), opts);
   res.clearCookie(getPosSessionCookieName(), opts);
@@ -447,14 +454,18 @@ export async function refresh(req, res) {
     };
     const newAccess = jwtService.sign(newPayload);
     const newRefresh = jwtService.signRefresh(newPayload);
-    const accessCookieOptions = buildCookieOptions({
+    res.cookie(getCookieName(), newAccess, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
       maxAge: jwtService.getExpiryMillis(),
     });
-    const refreshCookieOptions = buildCookieOptions({
+    res.cookie(getRefreshCookieName(), newRefresh, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
       maxAge: jwtService.getRefreshExpiryMillis(),
     });
-    res.cookie(getCookieName(), newAccess, accessCookieOptions);
-    res.cookie(getRefreshCookieName(), newRefresh, refreshCookieOptions);
     res.json({
       id: user.id,
       empid: user.empid,
@@ -477,7 +488,11 @@ export async function refresh(req, res) {
       permissions,
     });
   } catch (err) {
-    const opts = buildCookieOptions();
+    const opts = {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+    };
     res.clearCookie(getCookieName(), opts);
     res.clearCookie(getRefreshCookieName(), opts);
     return res.status(401).json({ message: 'Invalid or expired refresh token' });
