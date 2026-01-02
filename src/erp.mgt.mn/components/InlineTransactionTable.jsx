@@ -63,34 +63,6 @@ function normalizeJsonArrayForState(value) {
     .filter((entry) => entry !== '');
 }
 
-function normalizeRowJsonFields(row, typeMap = {}) {
-  if (!row || typeof row !== 'object' || Array.isArray(row)) return row;
-  const typeLookup = Object.entries(typeMap || {}).reduce((acc, [field, typ]) => {
-    if (typeof typ === 'string' && typ.toLowerCase() === 'json') {
-      acc[field] = 'json';
-    }
-    return acc;
-  }, {});
-  const hasJsonFields = Object.keys(typeLookup).length > 0;
-  if (!hasJsonFields) return row;
-
-  let changed = false;
-  const next = { ...row };
-  Object.keys(typeLookup).forEach((field) => {
-    const current = next[field];
-    const normalized = normalizeJsonArrayForState(current);
-    const differs =
-      !Array.isArray(current) ||
-      current.length !== normalized.length ||
-      current.some((v, idx) => normalized[idx] !== v);
-    if (differs) {
-      next[field] = normalized;
-      changed = true;
-    }
-  });
-  return changed ? next : row;
-}
-
 function InlineTransactionTable(
   {
     fields = [],
