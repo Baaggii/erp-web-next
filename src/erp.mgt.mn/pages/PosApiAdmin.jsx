@@ -1604,9 +1604,18 @@ function normalizeRequestFieldMappingMap(
   return { mappings: normalizedMappings, envMap: normalizedEnvMap };
 }
 
-function buildRequestEnvMap(selections = {}) {
+function buildRequestEnvMap(
+  selections = {},
+  { defaultApplyToBody = true, defaultApplyToBodyMap = null } = {},
+) {
+  const resolveApplyDefault = (fieldPath) =>
+    (defaultApplyToBodyMap && defaultApplyToBodyMap.has(fieldPath)
+      ? defaultApplyToBodyMap.get(fieldPath)
+      : defaultApplyToBody);
   return Object.entries(selections || {}).reduce((acc, [fieldPath, entry]) => {
-    const normalized = normalizeRequestFieldMappingEntry(entry);
+    const normalized = normalizeRequestFieldMappingEntry(entry, {
+      defaultApplyToBody: resolveApplyDefault(fieldPath),
+    });
     if (normalized?.type === 'env' && normalized.envVar) {
       acc[fieldPath] = {
         envVar: normalized.envVar,
@@ -4421,7 +4430,7 @@ export default function PosApiAdmin() {
     const applyDefaults = buildApplyToBodyDefaultMap(requestFieldDisplay.items || []);
     setFormState((prev) => ({
       ...prev,
-      requestEnvMap: buildRequestEnvMap(mergedSelections),
+      requestEnvMap: buildRequestEnvMap(mergedSelections, { defaultApplyToBodyMap: applyDefaults }),
       requestFieldMappings: serializeRequestFieldSelections(mergedSelections, {
         defaultApplyToBodyMap: applyDefaults,
       }),
@@ -5209,17 +5218,21 @@ export default function PosApiAdmin() {
     });
   };
 
-  const clearVariationFieldSelection = (variationKey, fieldPath) => {
+  const clearVariationFieldSelection = (variationKey, fieldPath, { keepRequiredOverride = false } = {}) => {
     if (!variationKey || !fieldPath) return;
 
     setRequestFieldMeta((prev) => {
-      const existing = prev[fieldPath];
-      if (!existing) return prev;
+      const existing = prev[fieldPath] || { requiredByVariation: {}, defaultByVariation: {} };
       const requiredByVariation = { ...(existing.requiredByVariation || {}) };
       const defaultByVariation = { ...(existing.defaultByVariation || {}) };
       let changed = false;
 
-      if (requiredByVariation[variationKey]) {
+      if (keepRequiredOverride) {
+        if (requiredByVariation[variationKey] !== false) {
+          requiredByVariation[variationKey] = false;
+          changed = true;
+        }
+      } else if (requiredByVariation[variationKey]) {
         delete requiredByVariation[variationKey];
         changed = true;
       }
@@ -7329,6 +7342,8 @@ export default function PosApiAdmin() {
         }
       : null;
 
+    const applyDefaults = buildApplyToBodyDefaultMap(requestFieldDisplay.items || []);
+
     const endpoint = {
       id: formState.id.trim(),
       name: formState.name.trim(),
@@ -7372,9 +7387,11 @@ export default function PosApiAdmin() {
         description: formState.responseDescription || '',
       },
       responseTables: sanitizeTableSelection(formState.responseTables, responseTableOptions),
-      requestEnvMap: buildRequestEnvMap(requestFieldValues),
+      requestEnvMap: buildRequestEnvMap(requestFieldValues, {
+        defaultApplyToBodyMap: applyDefaults,
+      }),
       requestFieldMappings: serializeRequestFieldSelections(requestFieldValues, {
-        defaultApplyToBodyMap: buildApplyToBodyDefaultMap(requestFieldDisplay.items || []),
+        defaultApplyToBodyMap: applyDefaults,
       }),
       requestMappings: serializeRequestMappings(requestFieldValues),
       requestFields: requestFieldsWithVariationDefaults,
@@ -7986,12 +8003,13 @@ export default function PosApiAdmin() {
       syncRequestSampleFromSelections(nextSelections);
       const applyDefaults = buildApplyToBodyDefaultMap(requestFieldDisplay.items || []);
       const serialized = serializeRequestFieldSelections(nextSelections, {
-        defaultApplyToBody,
         defaultApplyToBodyMap: applyDefaults,
       });
       setFormState((prevState) => ({
         ...prevState,
-        requestEnvMap: buildRequestEnvMap(nextSelections),
+        requestEnvMap: buildRequestEnvMap(nextSelections, {
+          defaultApplyToBodyMap: applyDefaults,
+        }),
         requestFieldMappings: serialized,
         requestMappings: serializeRequestMappings(nextSelections),
       }));
@@ -8024,7 +8042,9 @@ export default function PosApiAdmin() {
       });
       setFormState((prevState) => ({
         ...prevState,
-        requestEnvMap: buildRequestEnvMap(nextSelections),
+        requestEnvMap: buildRequestEnvMap(nextSelections, {
+          defaultApplyToBodyMap: applyDefaults,
+        }),
         requestFieldMappings: serialized,
         requestMappings: serializeRequestMappings(nextSelections),
       }));
@@ -8063,7 +8083,7 @@ export default function PosApiAdmin() {
   function handleVariationRequirementChange(fieldPath, variationKey, value) {
     if (!fieldPath || !variationKey) return;
     if (!value) {
-      clearVariationFieldSelection(variationKey, fieldPath);
+      clearVariationFieldSelection(variationKey, fieldPath, { keepRequiredOverride: true });
       return;
     }
     setRequestFieldMeta((prev) => {
