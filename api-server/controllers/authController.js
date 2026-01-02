@@ -20,75 +20,22 @@ import {
   recordLogoutSession,
 } from '../services/posSessionLogger.js';
 
-const LOGIN_QUERY_TIMEOUT_MS = 5000;
-
 export async function login(req, res, next) {
   try {
-    const { empid, password } = req.body;
+    const { empid, password, companyId } = req.body;
     const warnings = [];
-    let user;
-    try {
-      user = await getUserByEmpId(empid, { timeoutMs: LOGIN_QUERY_TIMEOUT_MS });
-    } catch (err) {
-      const code = err?.code || err?.name;
-      const timeoutError =
-        code === 'PROTOCOL_SEQUENCE_TIMEOUT' || code === 'PROTOCOL_PACKETS_OUT_OF_ORDER';
-      const message = timeoutError
-        ? 'Authentication request timed out'
-        : 'Unable to process login at this time';
-      console.error('Login failed while fetching user', err);
-      return res.status(timeoutError ? 504 : 503).json({ message });
-    }
+    const user = await getUserByEmpId(empid);
     if (!user || !(await user.verifyPassword(password))) {
       return res.status(401).json({ message: 'Invalid credentials' });
     }
 
-    const payload = {
-      id: user.id,
-      empid: user.empid,
-      position: null,
-      companyId: null,
-      userLevel: null,
-      seniorPlanEmpid: null,
-    };
-    const token = jwtService.sign(payload);
-    const refreshToken = jwtService.signRefresh(payload);
-
-    res.cookie(getCookieName(), token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      maxAge: jwtService.getExpiryMillis(),
-    });
-    res.cookie(getRefreshCookieName(), refreshToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      maxAge: jwtService.getRefreshExpiryMillis(),
-    });
-    res.json({
-      id: user.id,
-      empid: user.empid,
-      warnings,
-      message: 'Login successful',
-    });
-  } catch (err) {
-    next(err);
-  }
-}
-
-export async function establishEmploymentSession(req, res, next) {
-  try {
-    const { companyId } = req.body;
-    const warnings = [];
     const effectiveDate = new Date();
     let sessions = [];
     let sessionFetchFailed = false;
     try {
-      sessions = await getEmploymentSessions(req.user.empid, {
+      sessions = await getEmploymentSessions(empid, {
         effectiveDate,
         includeDiagnostics: true,
-        timeoutMs: LOGIN_QUERY_TIMEOUT_MS,
       });
     } catch (err) {
       sessionFetchFailed = true;
@@ -99,16 +46,14 @@ export async function establishEmploymentSession(req, res, next) {
         warnings.push('Employment session lookup failed');
       }
     }
-    if (sessionFetchFailed) {
-      return res.status(503).json({
-        message: 'Unable to load employment sessions right now',
-        warnings,
-      });
-    }
-    if (!Array.isArray(sessions) || sessions.length === 0) {
-      return res
-        .status(403)
-        .json({ message: 'No employment sessions available for this user' });
+    if (!sessionFetchFailed) {
+      if (!Array.isArray(sessions) || sessions.length === 0) {
+        return res
+          .status(403)
+          .json({ message: 'No employment sessions available for this user' });
+      }
+    } else {
+      sessions = [];
     }
 
     const companyGroups = new Map();
@@ -155,78 +100,82 @@ export async function establishEmploymentSession(req, res, next) {
       }
     }
 
-    let sessionGroup = null;
-    if (!hasCompanySelection) {
-      if (companyGroups.size > 1) {
-        const options = Array.from(companyGroups.values()).map(
-          ({ companyId: id, companyName: name }) => ({
-            company_id: id,
-            company_name: name,
+    if (!sessionFetchFailed) {
+      let sessionGroup = null;
+      if (!hasCompanySelection) {
+        if (companyGroups.size > 1) {
+          const options = Array.from(companyGroups.values()).map(
+            ({ companyId: id, companyName: name }) => ({
+              company_id: id,
+              company_name: name,
+            }),
+          );
+          options.sort((a, b) => {
+            const nameA = (a.company_name || '').toLowerCase();
+            const nameB = (b.company_name || '').toLowerCase();
+            if (nameA < nameB) return -1;
+            if (nameA > nameB) return 1;
+            return 0;
+          });
+          return res.json({ needsCompany: true, sessions: options });
+        }
+        sessionGroup = companyGroups.values().next().value || null;
+      } else {
+        const key = `id:${selectedCompanyId}`;
+        sessionGroup = companyGroups.get(key) || null;
+        if (!sessionGroup) {
+          return res.status(400).json({ message: 'Invalid company selection' });
+        }
+      }
+
+      const session = pickDefaultSession(sessionGroup?.sessions || []);
+      if (!session) {
+        return res
+          .status(403)
+          .json({ message: 'No employment session found for the selected company' });
+      }
+
+      workplaceAssignments = (sessionGroup?.sessions || [])
+        .filter((s) => s && s.workplace_session_id != null)
+        .map(
+          ({
+            company_id,
+            company_name,
+            branch_id,
+            branch_name,
+            department_id,
+            department_name,
+            workplace_id,
+            workplace_name,
+            workplace_session_id,
+          }) => ({
+            company_id: company_id ?? null,
+            company_name: company_name ?? null,
+            branch_id: branch_id ?? null,
+            branch_name: branch_name ?? null,
+            department_id: department_id ?? null,
+            department_name: department_name ?? null,
+            workplace_id: workplace_id ?? null,
+            workplace_name: workplace_name ?? null,
+            workplace_session_id: workplace_session_id ?? null,
           }),
         );
-        options.sort((a, b) => {
-          const nameA = (a.company_name || '').toLowerCase();
-          const nameB = (b.company_name || '').toLowerCase();
-          if (nameA < nameB) return -1;
-          if (nameA > nameB) return 1;
-          return 0;
-        });
-        return res.json({ needsCompany: true, sessions: options });
-      }
-      sessionGroup = companyGroups.values().next().value || null;
+
+      sessionPayload = session
+        ? normalizeEmploymentSession(session, workplaceAssignments)
+        : null;
+
+      permissions =
+        sessionPayload?.user_level && sessionPayload?.company_id
+          ? await getUserLevelActions(
+              sessionPayload.user_level,
+              sessionPayload.company_id,
+            )
+          : {};
     } else {
-      const key = `id:${selectedCompanyId}`;
-      sessionGroup = companyGroups.get(key) || null;
-      if (!sessionGroup) {
-        return res.status(400).json({ message: 'Invalid company selection' });
-      }
+      sessionPayload = null;
+      permissions = {};
     }
-
-    const session = pickDefaultSession(sessionGroup?.sessions || []);
-    if (!session) {
-      return res
-        .status(403)
-        .json({ message: 'No employment session found for the selected company' });
-    }
-
-    workplaceAssignments = (sessionGroup?.sessions || [])
-      .filter((s) => s && s.workplace_session_id != null)
-      .map(
-        ({
-          company_id,
-          company_name,
-          branch_id,
-          branch_name,
-          department_id,
-          department_name,
-          workplace_id,
-          workplace_name,
-          workplace_session_id,
-        }) => ({
-          company_id: company_id ?? null,
-          company_name: company_name ?? null,
-          branch_id: branch_id ?? null,
-          branch_name: branch_name ?? null,
-          department_id: department_id ?? null,
-          department_name: department_name ?? null,
-          workplace_id: workplace_id ?? null,
-          workplace_name: workplace_name ?? null,
-          workplace_session_id: workplace_session_id ?? null,
-        }),
-      );
-
-    sessionPayload = session
-      ? normalizeEmploymentSession(session, workplaceAssignments)
-      : null;
-
-    permissions =
-      sessionPayload?.user_level && sessionPayload?.company_id
-        ? await getUserLevelActions(
-            sessionPayload.user_level,
-            sessionPayload.company_id,
-            { timeoutMs: LOGIN_QUERY_TIMEOUT_MS },
-          )
-        : {};
 
     const {
       company_id: company = null,
@@ -240,8 +189,8 @@ export async function establishEmploymentSession(req, res, next) {
     const resolvedPosition = position_id ?? position ?? null;
 
     const payload = {
-      id: req.user.id,
-      empid: req.user.empid,
+      id: user.id,
+      empid: user.empid,
       position: resolvedPosition,
       companyId: company,
       userLevel: sessionPayload?.user_level ?? null,
@@ -263,7 +212,7 @@ export async function establishEmploymentSession(req, res, next) {
       maxAge: jwtService.getRefreshExpiryMillis(),
     });
     try {
-      const posSession = await recordLoginSession(req, sessionPayload, req.user);
+      const posSession = await recordLoginSession(req, sessionPayload, user);
       if (posSession?.sessionUuid) {
         res.cookie(getPosSessionCookieName(), posSession.sessionUuid, {
           httpOnly: true,
@@ -286,10 +235,9 @@ export async function establishEmploymentSession(req, res, next) {
           : 'POS session was not recorded',
       );
     }
-
     res.json({
-      id: req.user.id,
-      empid: req.user.empid,
+      id: user.id,
+      empid: user.empid,
       position,
       full_name: sessionPayload?.employee_name,
       user_level: sessionPayload?.user_level,
@@ -334,14 +282,10 @@ export async function logout(req, res) {
 export async function getProfile(req, res) {
   const effectiveDate = new Date();
   const [session, sessions] = await Promise.all([
-    getEmploymentSession(req.user.empid, req.user.companyId, {
-      effectiveDate,
-      timeoutMs: LOGIN_QUERY_TIMEOUT_MS,
-    }),
+    getEmploymentSession(req.user.empid, req.user.companyId, { effectiveDate }),
     getEmploymentSessions(req.user.empid, {
       effectiveDate,
       includeDiagnostics: true,
-      timeoutMs: LOGIN_QUERY_TIMEOUT_MS,
     }),
   ]);
 
@@ -381,7 +325,6 @@ export async function getProfile(req, res) {
     ? await getUserLevelActions(
         sessionPayload.user_level,
         sessionPayload.company_id,
-        { timeoutMs: LOGIN_QUERY_TIMEOUT_MS },
       )
     : {};
     const {
@@ -444,14 +387,10 @@ export async function refresh(req, res) {
     if (!user) throw new Error('User not found');
     const effectiveDate = new Date();
     const [session, sessions] = await Promise.all([
-      getEmploymentSession(user.empid, payload.companyId, {
-        effectiveDate,
-        timeoutMs: LOGIN_QUERY_TIMEOUT_MS,
-      }),
+      getEmploymentSession(user.empid, payload.companyId, { effectiveDate }),
       getEmploymentSessions(user.empid, {
         effectiveDate,
         includeDiagnostics: true,
-        timeoutMs: LOGIN_QUERY_TIMEOUT_MS,
       }),
     ]);
 
@@ -491,7 +430,6 @@ export async function refresh(req, res) {
       ? await getUserLevelActions(
           sessionPayload.user_level,
           sessionPayload.company_id,
-          { timeoutMs: LOGIN_QUERY_TIMEOUT_MS },
         )
       : {};
     const {
