@@ -143,8 +143,6 @@ function applyEnvMapToPayload(payload, envMap = {}) {
     if (!fieldPath || !entry) return;
 
     const envVar = typeof entry === 'string' ? entry : entry.envVar;
-    const applyToBody =
-      entry && typeof entry === 'object' && 'applyToBody' in entry ? Boolean(entry.applyToBody) : true;
 
     if (!envVar) return;
     const envRaw = process.env[envVar];
@@ -153,8 +151,7 @@ function applyEnvMapToPayload(payload, envMap = {}) {
     }
     const parsed = parseEnvValue(envRaw);
     const tokens = tokenizeFieldPath(fieldPath);
-    const destination = applyToBody ? target : basePayload;
-    setValueAtTokens(destination, tokens, parsed);
+    setValueAtTokens(target, tokens, parsed);
   });
 
   return { payload: basePayload };
