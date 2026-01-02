@@ -46,19 +46,21 @@ function normalizeJsonArrayForState(value) {
     ? []
     : [value];
   return list
-    .map((entry) => normalizeInputValue(entry))
-    .filter((entry) => entry !== '' && entry !== undefined && entry !== null);
-}
-
-function normalizeRowJsonFields(row, fieldTypeMap = {}) {
-  if (!row || typeof row !== 'object') return row;
-  const updated = { ...row };
-  Object.entries(updated).forEach(([key, value]) => {
-    if (fieldTypeMap[key] === 'json') {
-      updated[key] = normalizeJsonArrayForState(value);
-    }
-  });
-  return updated;
+    .map((entry) => {
+      if (entry === null || entry === undefined || entry === '') return '';
+      if (typeof entry === 'object') {
+        const isPlainObject =
+          Object.prototype.toString.call(entry) === '[object Object]';
+        if (isPlainObject && Object.keys(entry).length === 0) return '';
+        try {
+          return JSON.stringify(entry);
+        } catch {
+          return '';
+        }
+      }
+      return String(entry);
+    })
+    .filter((entry) => entry !== '');
 }
 
 function InlineTransactionTable(
@@ -2410,7 +2412,13 @@ function InlineTransactionTable(
             searchColumns={[resolvedConfig.idField || resolvedConfig.column, ...(resolvedConfig.displayFields || [])]}
             labelFields={resolvedConfig.displayFields || []}
             value={currentValues}
-            onChange={(v) => handleChange(idx, f, normalizeJsonArrayForState(v))}
+            onChange={(v) =>
+              handleChange(
+                idx,
+                f,
+                Array.isArray(v) ? normalizeJsonArrayForState(v) : [],
+              )
+            }
             onSelect={(opt) => handleOptionSelect(idx, colIdx, opt)}
             inputRef={(el) => (inputRefs.current[`${idx}-${colIdx}`] = el)}
             onKeyDown={(e) => handleKeyDown(e, idx, colIdx)}
@@ -2427,7 +2435,13 @@ function InlineTransactionTable(
       return (
         <TagMultiInput
           value={currentValues}
-          onChange={(vals) => handleChange(idx, f, normalizeJsonArrayForState(vals))}
+          onChange={(vals) =>
+            handleChange(
+              idx,
+              f,
+              Array.isArray(vals) ? normalizeJsonArrayForState(vals) : [],
+            )
+          }
           placeholder={labels[f] || f}
           inputStyle={inputStyle}
           onFocus={() => handleFocusField(f)}
