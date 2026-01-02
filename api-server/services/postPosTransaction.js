@@ -220,25 +220,58 @@ function normalizeVariationDefaults(map = {}) {
   return normalized;
 }
 
+function parseVariationDefaultEntry(entry) {
+  if (entry && typeof entry === 'object' && !Array.isArray(entry)) {
+    const hasValue = Object.prototype.hasOwnProperty.call(entry, 'value');
+    return {
+      value: hasValue ? entry.value : entry,
+      useInTransaction: entry.useInTransaction !== false,
+    };
+  }
+  return { value: entry, useInTransaction: true };
+}
+
+function buildForcePathSet(entries = []) {
+  const set = new Set();
+  const list = entries instanceof Set ? Array.from(entries) : Array.isArray(entries) ? entries : [];
+  list.forEach((path) => {
+    const key = typeof path === 'string' ? path.trim() : '';
+    if (!key) return;
+    set.add(key);
+    set.add(key.replace(/\[\]/g, ''));
+  });
+  return set;
+}
+
 function collectVariationDefaults(config = {}, endpoint = {}, variationKey = '') {
-  if (!variationKey) return {};
+  if (!variationKey) return { defaults: {}, forcedPaths: new Set() };
+
   const defaults = {};
-  const mergeMap = (map) => {
-    if (!map || typeof map !== 'object' || Array.isArray(map)) return;
-    Object.entries(map).forEach(([path, value]) => {
-      const key = typeof path === 'string' ? path.trim() : '';
-      if (!key) return;
-      if (value === undefined) return;
-      defaults[key] = value;
-    });
+  const forcedPaths = new Set();
+
+  const registerDefault = (path, rawValue, source = 'config') => {
+    const key = typeof path === 'string' ? path.trim() : '';
+    if (!key) return;
+    const parsed = parseVariationDefaultEntry(rawValue);
+    if (!parsed.useInTransaction) return;
+    if (parsed.value === undefined) return;
+    defaults[key] = parsed.value;
+    if (source === 'endpoint') {
+      forcedPaths.add(key);
+    }
   };
 
-  mergeMap(config.posApiVariationDefaults);
+  const mergeMap = (map, source = 'config') => {
+    if (!map || typeof map !== 'object' || Array.isArray(map)) return;
+    Object.entries(map).forEach(([path, value]) => registerDefault(path, value, source));
+  };
+
+  mergeMap(config.posApiVariationDefaults, 'config');
 
   if (Array.isArray(endpoint.requestFieldVariations)) {
     const variationMeta = endpoint.requestFieldVariations.find((entry) => entry?.key === variationKey);
     if (variationMeta) {
-      mergeMap(variationMeta.defaultValues);
+      mergeMap(variationMeta.defaultValues, 'endpoint');
     }
   }
 
@@ -248,14 +281,14 @@ function collectVariationDefaults(config = {}, endpoint = {}, variationKey = '')
       )
     : null;
   if (variationEntry) {
-    mergeMap(variationEntry.defaultValues);
+    mergeMap(variationEntry.defaultValues, 'endpoint');
     if (Array.isArray(variationEntry.requestFields)) {
       variationEntry.requestFields.forEach((field) => {
         const path = typeof field?.field === 'string' ? field.field.trim() : '';
         if (!path) return;
         const variationDefaults = field?.defaultByVariation || field?.defaultVariations || {};
         if (Object.prototype.hasOwnProperty.call(variationDefaults, variationKey)) {
-          defaults[path] = variationDefaults[variationKey];
+          registerDefault(path, variationDefaults[variationKey], 'endpoint');
         }
       });
     }
@@ -267,22 +300,25 @@ function collectVariationDefaults(config = {}, endpoint = {}, variationKey = '')
       if (!path) return;
       const variationDefaults = field?.defaultByVariation || field?.defaultVariations || {};
       if (Object.prototype.hasOwnProperty.call(variationDefaults, variationKey)) {
-        defaults[path] = variationDefaults[variationKey];
+        registerDefault(path, variationDefaults[variationKey], 'endpoint');
       }
     });
   }
 
-  return defaults;
+  return { defaults, forcedPaths };
 }
 
-function applyVariationDefaults(payload, defaults = {}) {
+function applyVariationDefaults(payload, defaults = {}, options = {}) {
   if (!payload || typeof payload !== 'object') return payload;
   const normalizedDefaults = normalizeVariationDefaults(defaults);
+  const forcedPaths = buildForcePathSet(options.forcePaths);
   Object.entries(normalizedDefaults).forEach(([path, value]) => {
     const tokens = tokenizeFieldPath(path);
     if (!tokens.length) return;
     const existing = getValueAtTokens(payload, tokens);
-    if (existing !== undefined && existing !== null && `${existing}` !== '') return;
+    const normalizedPath = path.replace(/\[\]/g, '');
+    const forceOverride = forcedPaths.has(path) || forcedPaths.has(normalizedPath);
+    if (!forceOverride && existing !== undefined && existing !== null && `${existing}` !== '') return;
     setValueAtTokens(payload, tokens, value);
   });
   return payload;
@@ -1786,8 +1822,14 @@ export async function postPosTransactionWithEbarimt(
       : typeof formCfg.posApiRequestVariation === 'string'
         ? formCfg.posApiRequestVariation.trim()
         : '';
-  const variationDefaults = collectVariationDefaults(formCfg, endpoint, variationKey);
-  const payloadWithDefaults = applyVariationDefaults(payload, variationDefaults);
+  const { defaults: variationDefaults, forcedPaths: variationForcedPaths } = collectVariationDefaults(
+    formCfg,
+    endpoint,
+    variationKey,
+  );
+  const payloadWithDefaults = applyVariationDefaults(payload, variationDefaults, {
+    forcePaths: variationForcedPaths,
+  });
 
   const invoiceId = await saveEbarimtInvoiceSnapshot({
     masterTable,
@@ -1942,8 +1984,14 @@ export async function issueSavedPosTransactionEbarimt(
       : typeof formCfg.posApiRequestVariation === 'string'
         ? formCfg.posApiRequestVariation.trim()
         : '';
-  const variationDefaults = collectVariationDefaults(formCfg, endpoint, variationKey);
-  const payloadWithDefaults = applyVariationDefaults(payload, variationDefaults);
+  const { defaults: variationDefaults, forcedPaths: variationForcedPaths } = collectVariationDefaults(
+    formCfg,
+    endpoint,
+    variationKey,
+  );
+  const payloadWithDefaults = applyVariationDefaults(payload, variationDefaults, {
+    forcePaths: variationForcedPaths,
+  });
 
   const invoiceId = await saveEbarimtInvoiceSnapshot({
     masterTable,
