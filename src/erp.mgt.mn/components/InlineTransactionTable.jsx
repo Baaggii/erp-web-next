@@ -1227,6 +1227,7 @@ function InlineTransactionTable(
     const direct = getDirectTriggers(col);
     const paramTrigs = getParamTriggers(col);
     const hasEntry = Object.prototype.hasOwnProperty.call(procTriggers || {}, col.toLowerCase());
+  }
 
     const assignmentTargets = new Set();
     const collectAssignmentTargets = (cfg, fallbackTarget = null) => {
