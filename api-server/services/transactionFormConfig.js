@@ -1,7 +1,7 @@
 import fs from 'fs/promises';
 import path from 'path';
 import { tenantConfigPath, getConfigPath } from '../utils/configPaths.js';
-import { loadEndpoints } from './posApiRegistry.js';
+import { loadEndpoints, getRegistryPath } from './posApiRegistry.js';
 import { normalizeRequestMappingValue } from './posApiAggregations.js';
 
   async function readConfig(companyId = 0) {
@@ -494,6 +494,78 @@ function sanitizeEndpointForClient(endpoint) {
   return sanitized;
 }
 
+function shouldLoadEndpoints(parsed = {}) {
+  if (!parsed || typeof parsed !== 'object') return false;
+  const hasInfoEndpoints =
+    Array.isArray(parsed.infoEndpoints) && parsed.infoEndpoints.length > 0;
+  const hasFieldsFromPosApi =
+    Array.isArray(parsed.fieldsFromPosApi) && parsed.fieldsFromPosApi.length > 0;
+  return Boolean(parsed.posApiEnabled || parsed.posApiEndpointId || hasInfoEndpoints || hasFieldsFromPosApi);
+}
+
+function describeRegistryError(err) {
+  if (!err) return null;
+  const detail = err.message || 'Failed to load POSAPI endpoints';
+  const base = {
+    message: detail,
+    registryPath:
+      typeof err.path === 'string' && err.path
+        ? err.path
+        : getRegistryPath(),
+  };
+  if (err.code) base.code = err.code;
+  return base;
+}
+
+function createEndpointResolver() {
+  let endpoints = [];
+  let registryError = null;
+  let loaded = false;
+
+  const ensureLoaded = async () => {
+    if (loaded) return { endpoints, registryError };
+    loaded = true;
+    try {
+      endpoints = await loadEndpoints();
+    } catch (err) {
+      registryError = describeRegistryError(err);
+      endpoints = [];
+    }
+    return { endpoints, registryError };
+  };
+
+  return async (parsed) => {
+    const shouldEvaluate = shouldLoadEndpoints(parsed);
+    if (!shouldEvaluate) {
+      return { endpointMeta: null, infoEndpointMeta: [], registryError: null, shouldEvaluate };
+    }
+    const { endpoints: list, registryError: err } = await ensureLoaded();
+    const endpointMeta = list.find((entry) => entry?.id === parsed.posApiEndpointId) || null;
+    const infoEndpointMeta = (Array.isArray(parsed.infoEndpoints) ? parsed.infoEndpoints : [])
+      .map((id) => list.find((entry) => entry?.id === id))
+      .filter(Boolean)
+      .map((entry) => sanitizeEndpointForClient(entry));
+    return { endpointMeta, infoEndpointMeta, registryError: err, shouldEvaluate };
+  };
+}
+
+async function hydrateConfigWithPosApi(parsed, resolveEndpoints) {
+  const { endpointMeta, infoEndpointMeta, registryError, shouldEvaluate } =
+    await resolveEndpoints(parsed);
+  const config = {
+    ...parsed,
+    posApiEndpointMeta: sanitizeEndpointForClient(endpointMeta),
+    posApiInfoEndpointMeta: infoEndpointMeta,
+  };
+  if (shouldEvaluate) {
+    config.posApiAvailable = !registryError;
+  }
+  if (registryError) {
+    config.posApiRegistryError = registryError;
+  }
+  return config;
+}
+
 function normalizePosApiMappingValue(value) {
   if (value === undefined || value === null) return '';
   if (typeof value === 'string') {
@@ -704,37 +776,19 @@ export async function getFormConfig(table, name, companyId = 0) {
   const byTable = cfg[table] || {};
   const raw = byTable[name];
   const parsed = parseEntry(raw);
-  const endpoints = await loadEndpoints();
-  const endpointMeta = endpoints.find((entry) => entry?.id === parsed.posApiEndpointId);
-  const infoEndpointMeta = parsed.infoEndpoints
-    .map((id) => endpoints.find((entry) => entry?.id === id))
-    .filter(Boolean)
-    .map((entry) => sanitizeEndpointForClient(entry));
-  const config = {
-    ...parsed,
-    posApiEndpointMeta: sanitizeEndpointForClient(endpointMeta),
-    posApiInfoEndpointMeta: infoEndpointMeta,
-  };
+  const resolveEndpoints = createEndpointResolver();
+  const config = await hydrateConfigWithPosApi(parsed, resolveEndpoints);
   return { config, isDefault };
 }
 
 export async function getConfigsByTable(table, companyId = 0) {
   const { cfg, isDefault } = await readConfig(companyId);
-  const endpoints = await loadEndpoints();
+  const resolveEndpoints = createEndpointResolver();
   const byTable = cfg[table] || {};
   const result = {};
   for (const [name, info] of Object.entries(byTable)) {
     const parsed = parseEntry(info);
-    const endpointMeta = endpoints.find((entry) => entry?.id === parsed.posApiEndpointId);
-    const infoEndpointMeta = parsed.infoEndpoints
-      .map((id) => endpoints.find((entry) => entry?.id === id))
-      .filter(Boolean)
-      .map((entry) => sanitizeEndpointForClient(entry));
-    result[name] = {
-      ...parsed,
-      posApiEndpointMeta: sanitizeEndpointForClient(endpointMeta),
-      posApiInfoEndpointMeta: infoEndpointMeta,
-    };
+    result[name] = await hydrateConfigWithPosApi(parsed, resolveEndpoints);
   }
   return { config: result, isDefault };
 }
@@ -742,7 +796,7 @@ export async function getConfigsByTable(table, companyId = 0) {
 export async function getConfigsByTransTypeValue(val, companyId = 0) {
   const { cfg, isDefault } = await readConfig(companyId);
   const result = [];
-  const endpoints = await loadEndpoints();
+  const resolveEndpoints = createEndpointResolver();
   for (const [tbl, names] of Object.entries(cfg)) {
     for (const [name, info] of Object.entries(names)) {
       const parsed = parseEntry(info);
@@ -750,19 +804,10 @@ export async function getConfigsByTransTypeValue(val, companyId = 0) {
         parsed.transactionTypeValue &&
         String(parsed.transactionTypeValue) === String(val)
       ) {
-        const endpointMeta = endpoints.find((entry) => entry?.id === parsed.posApiEndpointId);
-        const infoEndpointMeta = parsed.infoEndpoints
-          .map((id) => endpoints.find((entry) => entry?.id === id))
-          .filter(Boolean)
-          .map((entry) => sanitizeEndpointForClient(entry));
         result.push({
           table: tbl,
           name,
-          config: {
-            ...parsed,
-            posApiEndpointMeta: sanitizeEndpointForClient(endpointMeta),
-            posApiInfoEndpointMeta: infoEndpointMeta,
-          },
+          config: await hydrateConfigWithPosApi(parsed, resolveEndpoints),
         });
       }
     }
