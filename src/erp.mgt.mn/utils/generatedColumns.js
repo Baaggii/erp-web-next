@@ -514,26 +514,38 @@ class MySqlExpressionParser {
     }
     if (token.type === 'identifier') {
       this.consume();
-      if ((this.peek()?.type === 'paren' && this.peek().value === '(') || this.matchOperator('(')) {
-        if (!(this.peek()?.type === 'paren' && this.peek().value === '(')) {
+      const nextToken = this.peek();
+      if ((nextToken?.type === 'paren' && nextToken.value === '(') || this.matchOperator('(')) {
+        if (!(nextToken?.type === 'paren' && nextToken.value === '(')) {
           this.index -= 1;
           this.consume();
+        } else {
+          this.consume(); // consume opening paren
         }
         const args = [];
-        if (this.matchOperator(')') || (this.peek()?.type === 'paren' && this.peek().value === ')')) {
-          if (this.peek()?.type === 'paren' && this.peek().value === ')') this.consume();
-          return { type: 'function', name: token.value, args };
-        }
-        while (true) {
-          args.push(this.parseExpression());
-          if (this.matchOperator(')') || (this.peek()?.type === 'paren' && this.peek().value === ')')) {
-            if (this.peek()?.type === 'paren' && this.peek().value === ')') this.consume();
+        let sawClosing = false;
+        while (!sawClosing) {
+          if (this.peek()?.type === 'paren' && this.peek().value === ')') {
+            this.consume();
             break;
           }
-          if (!this.matchOperator(',') && !(this.peek()?.type === 'comma')) {
-            throw new Error('Expected , in function arguments');
+          args.push(this.parseExpression());
+          const peekToken = this.peek();
+          if (peekToken?.type === 'comma') {
+            this.consume();
+            continue;
           }
-          if (this.peek()?.type === 'comma') this.consume();
+          if (peekToken?.type === 'paren' && peekToken.value === ')') {
+            this.consume();
+            sawClosing = true;
+            break;
+          }
+          if (this.matchOperator(',')) continue;
+          if (this.matchOperator(')')) {
+            sawClosing = true;
+            break;
+          }
+          throw new Error('Expected , or ) in function arguments');
         }
         return { type: 'function', name: token.value, args };
       }
