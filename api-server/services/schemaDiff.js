@@ -775,6 +775,40 @@ async function dropTempDatabase(name) {
   }
 }
 
+export async function parseSchemaScript(options = {}) {
+  const { schemaPath, schemaFile } = options;
+  const resolvedSchema = resolveSchemaFile({ schemaPath, schemaFile });
+  const schemaExists = await fsPromises
+    .stat(resolvedSchema)
+    .then((st) => st.isFile())
+    .catch(() => false);
+  if (!schemaExists) {
+    const err = new Error(`Schema file not found: ${resolvedSchema}`);
+    err.status = 400;
+    throw err;
+  }
+  const sqlText = await fsPromises.readFile(resolvedSchema, 'utf8');
+  const grouped = groupStatements(sqlText);
+  const warnings = buildActionableWarnings(grouped);
+  return {
+    tool: 'manual',
+    toolAvailable: true,
+    importedWithCli: false,
+    allowDrops: false,
+    warnings,
+    diffPath: resolvedSchema,
+    currentSchemaPath: 'Manual script review (no database dump)',
+    targetSchemaPath: resolvedSchema,
+    generatedAt: new Date().toISOString(),
+    diffText: sqlText,
+    groups: grouped.groups,
+    generalStatements: grouped.generalStatements,
+    stats: grouped.stats,
+    baseline: null,
+    diffItems: [],
+  };
+}
+
 export async function buildSchemaDiff(options = {}) {
   const { schemaPath, schemaFile, allowDrops = false, signal, onProgress } = options;
   const prereq = await getSchemaDiffPrerequisites();

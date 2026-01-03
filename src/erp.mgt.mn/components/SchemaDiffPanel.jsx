@@ -97,6 +97,7 @@ export default function SchemaDiffPanel() {
   const [dumpStatus, setDumpStatus] = useState('');
   const [jobId, setJobId] = useState(null);
   const [jobStatus, setJobStatus] = useState(null);
+  const [manualMode, setManualMode] = useState(false);
   const [markingBaseline, setMarkingBaseline] = useState(false);
   const socketRef = useRef(null);
 
@@ -106,6 +107,8 @@ export default function SchemaDiffPanel() {
 
   useEffect(() => {
     setAlterPreviewed(false);
+    setRoutineAcknowledged(false);
+    setManualMode(false);
   }, [diff, includeDrops, includeGeneral, selectedObjects, activeGroup]);
 
   useEffect(() => {
@@ -318,7 +321,7 @@ export default function SchemaDiffPanel() {
     };
   }, [jobId, addToast]);
 
-  async function generateDiff() {
+  async function generateDiff(manual = false) {
     setLoading(true);
     setError('');
     setDiff(null);
@@ -328,12 +331,38 @@ export default function SchemaDiffPanel() {
     setAlterPreviewed(false);
     setRoutineAcknowledged(false);
     setJobStatus(null);
-    setDumpStatus('Queueing schema diff job...');
+    setManualMode(manual);
+    setDumpStatus(manual ? 'Parsing selected schema script...' : 'Queueing schema diff job...');
     try {
       if (!hasValidSchemaInputs) {
         setError('Provide both a schema path and a filename to compare.');
         setLoading(false);
         setDumpStatus('');
+        return;
+      }
+      if (manual) {
+        const res = await fetch('/api/coding_tables/schema-diff/parse-script', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ schemaPath, schemaFile }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          throw new Error(data?.message || 'Failed to parse schema script');
+        }
+        setDiff(data);
+        const newGroups = buildGroupsFromDiff(data);
+        const keys = [];
+        newGroups.forEach((g) => g.items.forEach((item) => keys.push(item.key)));
+        setSelectedObjects(new Set(keys));
+        const defaultGroup = newGroups.find((g) => g.items.length)?.id || 'table';
+        setActiveGroup(defaultGroup);
+        const defaultObject = newGroups.find((g) => g.id === defaultGroup)?.items?.[0]?.key || '';
+        setActiveObject(defaultObject);
+        setManualMode(true);
+        setLoading(false);
+        setDumpStatus('');
+        addToast('Schema script parsed for manual review', 'success');
         return;
       }
       const res = await fetch('/api/coding_tables/schema-diff/compare', {
@@ -514,6 +543,9 @@ export default function SchemaDiffPanel() {
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
           <button type="button" onClick={generateDiff} disabled={disableGenerate}>
             {loading ? 'Generating...' : 'Generate Diff'}
+          </button>
+          <button type="button" onClick={() => generateDiff(true)} disabled={disableGenerate}>
+            {loading && manualMode ? 'Parsing...' : 'Manual Script Review'}
           </button>
           <label style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
             <input
