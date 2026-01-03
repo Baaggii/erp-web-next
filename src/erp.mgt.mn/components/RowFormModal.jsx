@@ -45,6 +45,41 @@ function normalizeRelationOptionKey(value) {
   return String(value);
 }
 
+function extractGenerationDependencies(expression = '') {
+  const deps = new Set();
+  if (typeof expression !== 'string' || !expression.trim()) return deps;
+  const RESERVED = new Set([
+    'abs',
+    'avg',
+    'case',
+    'ceil',
+    'ceiling',
+    'coalesce',
+    'count',
+    'floor',
+    'greatest',
+    'if',
+    'ifnull',
+    'least',
+    'nullif',
+    'pow',
+    'power',
+    'round',
+    'sum',
+    'truncate',
+    'when',
+    'then',
+    'else',
+    'end',
+  ]);
+  for (const match of expression.matchAll(/`?([A-Za-z_][A-Za-z0-9_]*)`?/g)) {
+    const token = (match[1] || '').toLowerCase();
+    if (!token || RESERVED.has(token)) continue;
+    deps.add(token);
+  }
+  return deps;
+}
+
 const RowFormModal = function RowFormModal({
   visible,
   onCancel,
@@ -679,6 +714,46 @@ const RowFormModal = function RowFormModal({
     });
     return map;
   }, [tableColumns, columnCaseMap, columnCaseMapKey]);
+  const generatedColumnSet = React.useMemo(() => {
+    const set = new Set();
+    if (!Array.isArray(tableColumns)) return set;
+    tableColumns.forEach((col) => {
+      if (!col || typeof col !== 'object') return;
+      const key = columnCaseMap[String(col.name || '').toLowerCase()] || col.name;
+      if (!key) return;
+      const extra = String(col.extra || col.EXTRA || '').toLowerCase();
+      const expr =
+        col.generationExpression ?? col.GENERATION_EXPRESSION ?? col.generation_expression;
+      if (expr || extra.includes('generated')) {
+        set.add(key);
+      }
+    });
+    return set;
+  }, [tableColumns, columnCaseMap]);
+  const generatedDependencyLookup = React.useMemo(() => {
+    const map = {};
+    if (!Array.isArray(tableColumns)) return map;
+    tableColumns.forEach((col) => {
+      if (!col || typeof col !== 'object') return;
+      const expr =
+        col.generationExpression ??
+        col.GENERATION_EXPRESSION ??
+        col.generation_expression ??
+        null;
+      if (!expr) return;
+      const target = columnCaseMap[String(col.name || '').toLowerCase()] || col.name;
+      if (!target) return;
+      const deps = extractGenerationDependencies(expr);
+      deps.forEach((dep) => {
+        const source = columnCaseMap[dep] || dep;
+        if (!source) return;
+        const lower = String(source).toLowerCase();
+        if (!map[lower]) map[lower] = new Set();
+        map[lower].add(target);
+      });
+    });
+    return map;
+  }, [tableColumns, columnCaseMap]);
   const [formVals, setFormVals] = useState(() => {
     const init = {};
     const now = new Date();
@@ -1632,8 +1707,27 @@ const RowFormModal = function RowFormModal({
         diff[key] = nextVal;
       }
     });
+    let generatedExtra = null;
     if (generatedChanged) {
-      return { next: { ...working }, diff };
+      const generatedKeys = Object.keys(evaluators || {});
+      const lookup = columns.reduce((m, col) => {
+        m[col.toLowerCase()] = col;
+        return m;
+      }, {});
+      const latestExtra = extraValsRef.current || {};
+      const evaluatedRow =
+        evaluationRow || { ...(extraValsRef.current || {}), ...working };
+      generatedKeys.forEach((rawKey) => {
+        const lower = String(rawKey).toLowerCase();
+        if (lookup[lower]) return;
+        const val = evaluatedRow[rawKey];
+        const prevExtra = latestExtra[rawKey];
+        if (!valuesEqual(prevExtra, val)) {
+          if (!generatedExtra) generatedExtra = {};
+          generatedExtra[rawKey] = val;
+        }
+      });
+      return { next: { ...working }, diff, generatedExtra };
     }
     return { next: working, diff };
   }, [generatedColumnEvaluators, columns]);
@@ -1642,6 +1736,7 @@ const RowFormModal = function RowFormModal({
     (updater, { notify = true } = {}) => {
       let pendingDiff = null;
       let snapshot = null;
+      let pendingGeneratedExtra = null;
       setFormVals((prev) => {
         const base = typeof updater === 'function' ? updater(prev) : updater;
         if (!base) {
@@ -1654,10 +1749,13 @@ const RowFormModal = function RowFormModal({
             working[key] = normalizeJsonArrayForState(value);
           }
         });
-        const { next, diff } = computeNextFormVals(working, prev);
+        const { next, diff, generatedExtra } = computeNextFormVals(working, prev);
         if (!diff || Object.keys(diff).length === 0) {
           snapshot = prev;
           return prev;
+        }
+        if (generatedExtra && Object.keys(generatedExtra).length > 0) {
+          pendingGeneratedExtra = generatedExtra;
         }
         pendingDiff = diff;
         if (valuesEqual(prev, next)) {
@@ -1667,6 +1765,15 @@ const RowFormModal = function RowFormModal({
         snapshot = next;
         return next;
       });
+      if (pendingGeneratedExtra && Object.keys(pendingGeneratedExtra).length > 0) {
+        setExtraVals((prev) => {
+          const next = { ...prev };
+          Object.entries(pendingGeneratedExtra).forEach(([k, v]) => {
+            next[k] = v;
+          });
+          return next;
+        });
+      }
       if (notify && pendingDiff && Object.keys(pendingDiff).length > 0) {
         onChange(pendingDiff);
       }
@@ -2496,6 +2603,30 @@ const RowFormModal = function RowFormModal({
         }),
       );
     }
+
+    const colLower = col.toLowerCase();
+    const virtualDependents = generatedDependencyLookup[colLower];
+    if (generatedColumnSet.has(col)) {
+      window.dispatchEvent(
+        new CustomEvent('toast', {
+          detail: {
+            message: `${col} талбар нь виртуал тооцоолол бөгөөд утгыг автоматаар тооцно.`,
+            type: 'info',
+          },
+        }),
+      );
+    }
+    if (virtualDependents && virtualDependents.size > 0) {
+      const list = Array.from(virtualDependents).join(', ');
+      window.dispatchEvent(
+        new CustomEvent('toast', {
+          detail: {
+            message: `${col} талбарын утга өөрчлөгдвөл дараах виртуал талбарууд шинэчлэгдэнэ: ${list}`,
+            type: 'info',
+          },
+        }),
+      );
+    }
   }
 
   function valuesEqual(a, b) {
@@ -2961,6 +3092,7 @@ const RowFormModal = function RowFormModal({
       if (!data || typeof data !== 'object') return;
       const { formVals: nextForm, extraVals: nextExtra, changedValues } =
         applyProcedureResultToForm(data, formValsRef.current, extraValsRef.current);
+      extraValsRef.current = nextExtra;
       setExtraVals(nextExtra);
       const result = setFormValuesWithGenerated(() => nextForm, { notify: false });
       const combined = { ...(changedValues || {}), ...(result?.diff || {}) };
