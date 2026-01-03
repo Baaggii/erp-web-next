@@ -41,6 +41,7 @@ const DEFAULT_SESSION_VARIABLES = [
   'pos_merchant_tin',
   'pos_number',
 ];
+const REQUEST_SESSION_VARIABLES = [...DEFAULT_SESSION_VARIABLES];
 
 const AGGREGATION_OPTIONS = [
   { value: '', label: 'No aggregation' },
@@ -923,25 +924,6 @@ export default function PosApiIntegrationSection({
   const requestSessionVariableOptions = useMemo(
     () =>
       REQUEST_SESSION_VARIABLES.map((key) => ({
-        key,
-        value: sessionValues?.[key] ?? null,
-        label: key,
-      })),
-    [sessionValues],
-  );
-  const { user, session } = useContext(AuthContext);
-
-  const sessionValues = useMemo(
-    () => ({
-      ...((session && typeof session === 'object') ? session : {}),
-      ...((user && typeof user === 'object') ? user : {}),
-    }),
-    [session, user],
-  );
-
-  const sessionVariableOptions = useMemo(
-    () =>
-      DEFAULT_SESSION_VARIABLES.map((key) => ({
         key,
         value: sessionValues?.[key] ?? null,
         label: key,
