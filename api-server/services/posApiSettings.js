@@ -21,7 +21,18 @@ export async function loadSettings(options = {}) {
       return clone(cachedSettings);
     }
     const raw = await fs.readFile(settingsFilePath, 'utf8');
-    const parsed = raw.trim() ? JSON.parse(raw) : {};
+    let parsed;
+    try {
+      parsed = raw.trim() ? JSON.parse(raw) : {};
+    } catch (err) {
+      const parseError = new Error(
+        `Failed to parse POSAPI settings at ${settingsFilePath}: ${err.message}`,
+      );
+      parseError.code = 'POSAPI_SETTINGS_PARSE';
+      parseError.cause = err;
+      parseError.path = settingsFilePath;
+      throw parseError;
+    }
     cachedSettings = parsed && typeof parsed === 'object' ? parsed : {};
     cachedMtimeMs = stat.mtimeMs;
     return clone(cachedSettings);
