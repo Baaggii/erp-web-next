@@ -11,6 +11,7 @@ import {
   applySchemaDiffStatements,
   getSchemaDiffPrerequisites,
   recordSchemaBaseline,
+  parseSchemaScript,
 } from '../services/schemaDiff.js';
 import { enqueueSchemaDiffJob, getSchemaDiffJob } from '../services/schemaDiffJobs.js';
 
@@ -133,6 +134,20 @@ router.post('/schema-diff/compare', requireAuth, requireAdmin, async (req, res, 
   }
 });
 
+router.post('/schema-diff/parse-script', requireAuth, requireAdmin, async (req, res, next) => {
+  try {
+    const { schemaPath, schemaFile } = req.body || {};
+    if (!schemaPath || !schemaFile) {
+      return res.status(400).json({ message: 'schemaPath and schemaFile are required' });
+    }
+    const result = await parseSchemaScript({ schemaPath, schemaFile });
+    res.json(result);
+  } catch (err) {
+    if (err.status) return sendKnownError(res, err);
+    next(err);
+  }
+});
+
 router.post('/schema-diff/baseline', requireAuth, requireAdmin, async (req, res, next) => {
   try {
     const { schemaPath, schemaFile } = req.body || {};
@@ -184,6 +199,20 @@ router.post('/schema-diff/apply', requireAuth, requireAdmin, async (req, res, ne
   } finally {
     req.off('close', handleAbort);
     res.off('close', handleAbort);
+  }
+});
+
+router.post('/schema-diff/parse-script', requireAuth, requireAdmin, async (req, res, next) => {
+  try {
+    const { schemaPath, schemaFile } = req.body || {};
+    if (!schemaPath || !schemaFile) {
+      return res.status(400).json({ message: 'schemaPath and schemaFile are required' });
+    }
+    const result = await parseSchemaScript({ schemaPath, schemaFile });
+    res.json(result);
+  } catch (err) {
+    if (err.status) return sendKnownError(res, err);
+    next(err);
   }
 });
 
