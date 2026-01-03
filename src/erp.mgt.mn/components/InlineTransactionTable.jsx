@@ -1230,6 +1230,21 @@ function InlineTransactionTable(
     [columnCaseMap],
   );
 
+  function hasTrigger(col) {
+    const lower = String(col || '').toLowerCase();
+    return (
+      getDirectTriggers(col).length > 0 ||
+      getParamTriggers(col).length > 0 ||
+      Object.prototype.hasOwnProperty.call(procTriggers || {}, lower)
+    );
+  }
+
+  function showTriggerInfo(col) {
+    if (!general.procToastEnabled) return;
+    const direct = getDirectTriggers(col);
+    const paramTrigs = getParamTriggers(col);
+    const hasEntry = Object.prototype.hasOwnProperty.call(procTriggers || {}, col.toLowerCase());
+
   function analyzeTriggers(col) {
     const assignmentTargets = new Set();
     const collectAssignmentTargets = (cfg, fallbackTarget = null) => {
@@ -1803,15 +1818,23 @@ function InlineTransactionTable(
     return calledProcedure;
   }
 
-  async function previewAssignmentTriggers(col, rowIdx, rowOverride = null, targetColumns = null) {
-    const targetSet = targetColumns
-      ? new Set(
-          Array.from(targetColumns)
-            .map((name) => normalizeColumnName(name) || name)
-            .filter(Boolean),
-        )
-      : analyzeTriggers(col).assignmentTargets;
-    if (!tableName || targetSet.size === 0) return;
+  async function previewAssignmentTriggers(col, rowIdx, rowOverride = null) {
+    const triggerEntry = procTriggers?.[String(col || '').toLowerCase()];
+    const triggerList = Array.isArray(triggerEntry)
+      ? triggerEntry
+      : triggerEntry
+        ? [triggerEntry]
+        : [];
+    const assignmentTargets = new Set();
+    triggerList.forEach((cfg) => {
+      if (!isAssignmentTrigger(cfg)) return;
+      const targets = Array.isArray(cfg?.targets) ? cfg.targets : [];
+      targets.forEach((target) => {
+        const normalized = normalizeColumnName(target);
+        if (normalized) assignmentTargets.add(normalized);
+      });
+    });
+    if (!tableName || assignmentTargets.size === 0) return;
 
     const currentRows = Array.isArray(rowsRef.current) ? rowsRef.current : [];
     const metadata = extractArrayMetadata(currentRows) || {};
@@ -1862,7 +1885,9 @@ function InlineTransactionTable(
       if (!data || typeof data !== 'object') return;
       const assignmentPayload =
         data.assignments && typeof data.assignments === 'object' ? data.assignments : data;
-      const targetLower = new Set(Array.from(targetSet).map((name) => String(name).toLowerCase()));
+      const targetLower = new Set(
+        Array.from(assignmentTargets).map((name) => String(name).toLowerCase()),
+      );
       const filtered = {};
       Object.entries(assignmentPayload).forEach(([rawKey, rawValue]) => {
         const mappedKey = normalizeColumnName(rawKey) || rawKey;
@@ -1871,7 +1896,7 @@ function InlineTransactionTable(
         filtered[mappedKey] = rawValue;
       });
       if (Object.keys(filtered).length === 0) return;
-      applyProcedureResultToRow(rowIdx, filtered, targetSet);
+      applyProcedureResultToRow(rowIdx, filtered, assignmentTargets);
     } catch {
       /* silently ignore preview failures */
     }
@@ -2429,8 +2454,8 @@ function InlineTransactionTable(
     if (triggerInfo) {
       const override = { ...rows[rowIdx], [field]: newValue };
       const calledProc = await runProcTrigger(rowIdx, field, override);
-      if (triggerInfo.assignmentTargets.size > 0) {
-        await previewAssignmentTriggers(field, rowIdx, override, triggerInfo.assignmentTargets);
+      if (!calledProc) {
+        await previewAssignmentTriggers(field, rowIdx, override);
       }
     }
     const enabledIdx = enabledFields.indexOf(field);
