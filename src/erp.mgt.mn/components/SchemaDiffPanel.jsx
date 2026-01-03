@@ -928,6 +928,27 @@ export default function SchemaDiffPanel() {
                   </ul>
                 </div>
               ) : null}
+              {applyResult.method ? (
+                <div style={{ marginTop: '0.5rem', color: '#0b8457' }}>
+                  Execution method:{' '}
+                  {applyResult.method === 'cli'
+                    ? 'MySQL CLI (direct apply to database)'
+                    : 'Database pool transaction'}
+                </div>
+              ) : null}
+              {applyResult.warnings?.length ? (
+                <ul
+                  style={{
+                    color: '#b58900',
+                    marginTop: '0.35rem',
+                    paddingLeft: '1.25rem',
+                  }}
+                >
+                  {applyResult.warnings.map((w, idx) => (
+                    <li key={idx}>{w}</li>
+                  ))}
+                </ul>
+              ) : null}
             </div>
           )}
         </>
