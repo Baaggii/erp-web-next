@@ -208,19 +208,6 @@ const RowFormModal = function RowFormModal({
       }
     }
   }, []);
-  const effectiveRow = React.useMemo(() => {
-    if (row && typeof row === 'object' && Object.keys(row).length > 0) {
-      return row;
-    }
-    if (useGrid && Array.isArray(rows) && rows.length > 0) {
-      const firstRow = rows[0];
-      if (firstRow && typeof firstRow === 'object' && Object.keys(firstRow).length > 0) {
-        return firstRow;
-      }
-    }
-    return row || null;
-  }, [row, rows, useGrid]);
-
   const headerSet = new Set(headerFields);
   const footerSet = new Set(footerFields);
   const userIdSet = React.useMemo(() => new Set(userIdFields || []), [userIdFields]);
@@ -669,7 +656,7 @@ const RowFormModal = function RowFormModal({
     },
     [isHeaderLocation],
   );
-  const rowKey = React.useMemo(() => JSON.stringify(effectiveRow || {}), [effectiveRow]);
+  const rowKey = React.useMemo(() => JSON.stringify(row || {}), [row]);
   const defaultValuesKey = React.useMemo(
     () => JSON.stringify(defaultValues || {}),
     [defaultValues],
@@ -744,13 +731,11 @@ const RowFormModal = function RowFormModal({
       } else if (typ === 'date' || typ === 'datetime') {
         placeholder = 'YYYY-MM-DD';
       }
-      const rowValue = effectiveRow
-        ? getRowValueCaseInsensitive(effectiveRow, c)
-        : undefined;
+      const rowValue = row ? getRowValueCaseInsensitive(row, c) : undefined;
       const sourceValue =
         rowValue !== undefined ? rowValue : defaultValues[c];
       const missing =
-        !effectiveRow || rowValue === undefined || rowValue === '';
+        !row || rowValue === undefined || rowValue === '';
       let val;
       if (typ === 'json') {
         val = normalizeJsonArrayForState(sourceValue);
@@ -794,7 +779,7 @@ const RowFormModal = function RowFormModal({
   });
   const [extraVals, setExtraVals] = useState(() => {
     const extras = {};
-    Object.entries(effectiveRow || {}).forEach(([k, v]) => {
+    Object.entries(row || {}).forEach(([k, v]) => {
       const lowerKey = String(k).toLowerCase();
       if (!columnLowerSet.has(lowerKey)) {
         const typ = fieldTypeMap[k];
@@ -1935,7 +1920,7 @@ const RowFormModal = function RowFormModal({
     const map = {};
     const cols = new Set([
       ...columns,
-      ...Object.keys(effectiveRow || {}),
+      ...Object.keys(row || {}),
       ...Object.keys(defaultValues || {}),
     ]);
     cols.forEach((c) => {
@@ -1964,7 +1949,7 @@ const RowFormModal = function RowFormModal({
 
   useEffect(() => {
     const extras = {};
-    Object.entries(effectiveRow || {}).forEach(([k, v]) => {
+    Object.entries(row || {}).forEach(([k, v]) => {
       const lowerKey = String(k).toLowerCase();
       if (!columnLowerSet.has(lowerKey)) {
         if (fieldTypeMap[k] === 'json') {
@@ -1975,7 +1960,7 @@ const RowFormModal = function RowFormModal({
       }
     });
     setExtraVals(extras);
-  }, [effectiveRow, columnLowerSet, placeholders, fieldTypeMap]);
+  }, [row, columnLowerSet, placeholders, fieldTypeMap]);
 
   useEffect(() => {
     if (table !== 'companies' || row) return;
@@ -2221,11 +2206,9 @@ const RowFormModal = function RowFormModal({
     if (!visible) return;
     const vals = {};
     columns.forEach((c) => {
-      const rowValue = effectiveRow
-        ? getRowValueCaseInsensitive(effectiveRow, c)
-        : undefined;
+      const rowValue = row ? getRowValueCaseInsensitive(row, c) : undefined;
       const sourceValue = rowValue !== undefined ? rowValue : defaultValues[c];
-      const missing = !effectiveRow || rowValue === undefined || rowValue === '';
+      const missing = !row || rowValue === undefined || rowValue === '';
       let v;
       if (fieldTypeMap[c] === 'json') {
         v = normalizeJsonArrayForState(sourceValue);
@@ -2274,7 +2257,7 @@ const RowFormModal = function RowFormModal({
     pendingManualOverrideRef.current.clear();
     setFormValuesWithGenerated(() => vals, { notify: false });
   }, [
-    effectiveRow,
+    row,
     visible,
     user,
     company,
@@ -4267,7 +4250,7 @@ const RowFormModal = function RowFormModal({
     <>
       <Modal
         visible={visible}
-        title={effectiveRow ? 'Мөр засах' : 'Мөр нэмэх'}
+        title={row ? 'Мөр засах' : 'Мөр нэмэх'}
         onClose={handleClose}
         width="70vw"
       >
