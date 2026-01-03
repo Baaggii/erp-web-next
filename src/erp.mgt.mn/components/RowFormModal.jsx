@@ -2516,10 +2516,11 @@ const RowFormModal = function RowFormModal({
         ? general.procToastEnabled
         : general.triggerToastEnabled;
     if (!toastEnabled) return;
-    if (!procTriggers || Object.keys(procTriggers || {}).length === 0) return;
-    const direct = getDirectTriggers(col);
-    const paramTrigs = getParamTriggers(col);
-    const hasEntry = Object.prototype.hasOwnProperty.call(procTriggers, col.toLowerCase());
+    const hasProcData = procTriggers && Object.keys(procTriggers || {}).length > 0;
+    const direct = hasProcData ? getDirectTriggers(col) : [];
+    const paramTrigs = hasProcData ? getParamTriggers(col) : [];
+    const hasEntry =
+      hasProcData && Object.prototype.hasOwnProperty.call(procTriggers, col.toLowerCase());
 
     const assignmentTargets = new Set();
     const collectAssignmentTargets = (cfg, fallbackTarget = null) => {
@@ -2545,9 +2546,16 @@ const RowFormModal = function RowFormModal({
 
     const procDirect = direct.filter((cfg) => !isAssignmentTrigger(cfg));
     const procParam = paramTrigs.filter(([, cfg]) => !isAssignmentTrigger(cfg));
-    const hasAny = assignmentTargets.size > 0 || procDirect.length > 0 || procParam.length > 0;
+    const hasAny =
+      (hasProcData && assignmentTargets.size > 0) ||
+      procDirect.length > 0 ||
+      procParam.length > 0;
+    const colLower = col.toLowerCase();
+    const virtualDependents = generatedDependencyLookup[colLower];
+    const hasVirtualInfo =
+      generatedColumnSet.has(col) || (virtualDependents && virtualDependents.size > 0);
 
-    if (!hasAny) {
+    if (!hasAny && !hasVirtualInfo) {
       const message = hasEntry
         ? `${col} талбар нь өгөгдлийн сангийн триггерээр бөглөгдөнө. Урьдчилсан тооцоолол хязгаарлагдмал байж болно.`
         : `${col} талбар триггер ашигладаггүй`;
@@ -2592,8 +2600,6 @@ const RowFormModal = function RowFormModal({
       );
     }
 
-    const colLower = col.toLowerCase();
-    const virtualDependents = generatedDependencyLookup[colLower];
     if (generatedColumnSet.has(col)) {
       window.dispatchEvent(
         new CustomEvent('toast', {
@@ -3068,12 +3074,29 @@ const RowFormModal = function RowFormModal({
         merged[key] = v;
       });
     }
+    const normalizedPayload = {};
+    Object.entries(merged).forEach(([rawKey, rawValue]) => {
+      if (!rawKey && rawKey !== 0) return;
+      const key = resolveFormColumn(rawKey) || rawKey;
+      const placeholder = placeholders[key];
+      let value = rawValue;
+      if (value && typeof value === 'object' && 'value' in value) {
+        value = value.value;
+      }
+      if (placeholder) {
+        value = normalizeDateInput(value, placeholder);
+      }
+      if (totalAmountSet.has(key) || totalCurrencySet.has(key)) {
+        value = normalizeNumberInput(value);
+      }
+      normalizedPayload[key] = value;
+    });
     try {
       const res = await fetch('/api/proc_triggers/preview', {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ table, values: merged }),
+        body: JSON.stringify({ table, values: normalizedPayload }),
       });
       if (!res.ok) return;
       const data = await res.json().catch(() => ({}));
