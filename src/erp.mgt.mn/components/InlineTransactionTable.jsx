@@ -1218,6 +1218,9 @@ function InlineTransactionTable(
     return res;
   }
 
+  const isAssignmentTrigger = (cfg) =>
+    cfg && (cfg.kind === 'assignment' || cfg.name === '__assignment__');
+
   function hasTrigger(col) {
     return getDirectTriggers(col).length > 0 || getParamTriggers(col).length > 0;
   }
