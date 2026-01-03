@@ -2208,20 +2208,26 @@ export async function invokePosApiEndpoint(endpointId, payload = {}, options = {
   const requestBaseUrl =
     baseUrl || resolveEndpointBaseUrl(endpoint, environment) || (await getPosApiBaseUrl());
   const requestUrl = `${trimEndSlash(requestBaseUrl)}${path.startsWith('/') ? path : `/${path}`}`;
+  const selectedAuthEndpointId = authEndpointId || endpoint?.authEndpointId || null;
+  const requestInfo = {
+    method,
+    url: requestUrl,
+    headers,
+    body: bodyPayload ?? null,
+  };
 
-  let token = null;
-  if (!skipAuth && endpoint?.posApiType !== 'AUTH') {
-    const selectedAuthEndpointId = authEndpointId || endpoint?.authEndpointId || null;
-    token = await getPosApiToken({
-      authEndpointId: selectedAuthEndpointId,
-      baseUrl: requestBaseUrl,
-      authPayload,
-      useCachedToken,
-      environment,
-    });
-  }
+  const invokeOnce = async (forceRefreshToken = false) => {
+    let token = null;
+    if (!skipAuth && endpoint?.posApiType !== 'AUTH') {
+      token = await getPosApiToken({
+        authEndpointId: selectedAuthEndpointId,
+        baseUrl: requestBaseUrl,
+        authPayload,
+        useCachedToken: forceRefreshToken ? false : useCachedToken,
+        environment,
+      });
+    }
 
-  try {
     const response = await posApiFetch(path, {
       method,
       body,
@@ -2232,27 +2238,35 @@ export async function invokePosApiEndpoint(endpointId, payload = {}, options = {
     });
     cacheTokenFromAuthResponse(endpoint, response);
     if (debug) {
-      return {
-        response,
-        request: {
-          method,
-          url: requestUrl,
-          headers,
-          body: bodyPayload ?? null,
-        },
-      };
+      return { response, request: requestInfo };
     }
     return response;
+  };
+
+  try {
+    return await invokeOnce(false);
   } catch (err) {
-    if (debug) {
-      err.request = {
-        method,
-        url: requestUrl,
-        headers,
-        body: bodyPayload ?? null,
-      };
+    let finalError = err;
+    const isUnauthorized = err?.status === 401 && endpoint?.posApiType !== 'AUTH';
+    if (isUnauthorized && !skipAuth) {
+      const cacheKey = selectedAuthEndpointId || 'ENV_FALLBACK';
+      tokenCache.delete(cacheKey);
+      try {
+        return await invokeOnce(true);
+      } catch (retryErr) {
+        finalError = retryErr;
+        finalError.status = retryErr?.status === 401 ? 502 : retryErr?.status;
+      }
     }
-    throw err;
+
+    if (isUnauthorized && finalError?.status === 401) {
+      finalError.status = 502;
+    }
+
+    if (debug) {
+      finalError.request = requestInfo;
+    }
+    throw finalError;
   }
 }
 
