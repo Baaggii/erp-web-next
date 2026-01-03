@@ -1,4 +1,4 @@
-import React, { useMemo, useEffect, useState, useCallback } from 'react';
+import React, { useMemo, useEffect, useState, useCallback, useContext } from 'react';
 import {
   POS_API_FIELDS,
   POS_API_ITEM_FIELDS,
@@ -21,6 +21,7 @@ import {
   buildEndpointRequestMappingDefaults,
   mergePosApiMappingDefaults,
 } from '../utils/posApiRequestDefaults.js';
+import { AuthContext } from '../context/AuthContext.jsx';
 
 const DEFAULT_SESSION_VARIABLES = [
   'currentUserId',
@@ -686,6 +687,21 @@ export function MappingFieldSelector({
   expressionFieldOptions = [],
   expressionFunctions = EXPRESSION_FUNCTIONS,
 }) {
+  const normalizedSessionVariables = useMemo(() => {
+    if (!Array.isArray(sessionVariables)) return [];
+    return sessionVariables.map((entry) => {
+      if (entry && typeof entry === 'object' && !Array.isArray(entry)) {
+        const key = typeof entry.key === 'string' ? entry.key : entry.value ?? entry.sessionVar ?? '';
+        return {
+          key,
+          label: entry.label || key,
+          value: entry.value ?? entry.sessionValue ?? '',
+        };
+      }
+      const key = typeof entry === 'string' ? entry : '';
+      return { key, label: key, value: '' };
+    });
+  }, [sessionVariables]);
   const selection = normalizeMappingSelection(value, primaryTableName);
   const currentType = selection.type || 'column';
   const selectedTable = currentType === 'column' ? selection.table || '' : '';
@@ -696,6 +712,14 @@ export function MappingFieldSelector({
     : [];
   const listId = `${datalistIdBase}-${selectedTable || 'master'}`;
   const sessionListId = `${datalistIdBase}-session`;
+
+  const selectedSessionEntry = useMemo(
+    () =>
+      normalizedSessionVariables.find(
+        (entry) => entry.key === (selection.sessionVar || selection.value),
+      ) || null,
+    [normalizedSessionVariables, selection.sessionVar, selection.value],
+  );
 
   const handleTypeChange = (nextType) => {
     const base = resetMappingFieldsForType(
@@ -815,14 +839,31 @@ export function MappingFieldSelector({
               value={selection.sessionVar || ''}
               onChange={(e) => handleScalarChange('sessionVar', e.target.value)}
               placeholder="currentUserId"
+              title={
+                selectedSessionEntry?.value
+                  ? `Current value: ${selectedSessionEntry.value}`
+                  : undefined
+              }
               disabled={disabled}
               style={{ flex: '1 1 200px', minWidth: '200px' }}
             />
             <datalist id={sessionListId}>
-              {sessionVariables.map((variable) => (
-                <option key={`${sessionListId}-${variable}`} value={variable} />
+              {normalizedSessionVariables.map((variable) => (
+                <option
+                  key={`${sessionListId}-${variable.key}`}
+                  value={variable.key}
+                  label={variable.value ? `Current: ${variable.value}` : ''}
+                />
               ))}
             </datalist>
+            <div style={{ fontSize: '0.9rem', color: '#475569' }}>
+              Current value:{' '}
+              {selectedSessionEntry &&
+              selectedSessionEntry.value !== undefined &&
+              selectedSessionEntry.value !== null
+                ? String(selectedSessionEntry.value)
+                : '—'}
+            </div>
           </>
         ) : (
           <div style={{ flex: '1 1 320px', minWidth: '260px' }}>
@@ -860,6 +901,53 @@ export default function PosApiIntegrationSection({
   onEnsureColumnsLoaded = () => {},
   onPosApiOptionsChange = () => {},
 }) {
+  const { user, session } = useContext(AuthContext);
+
+  const sessionValues = useMemo(
+    () => ({
+      ...((session && typeof session === 'object') ? session : {}),
+      ...((user && typeof user === 'object') ? user : {}),
+    }),
+    [session, user],
+  );
+
+  const sessionVariableOptions = useMemo(
+    () =>
+      DEFAULT_SESSION_VARIABLES.map((key) => ({
+        key,
+        value: sessionValues?.[key] ?? null,
+        label: key,
+      })),
+    [sessionValues],
+  );
+  const requestSessionVariableOptions = useMemo(
+    () =>
+      REQUEST_SESSION_VARIABLES.map((key) => ({
+        key,
+        value: sessionValues?.[key] ?? null,
+        label: key,
+      })),
+    [sessionValues],
+  );
+  const { user, session } = useContext(AuthContext);
+
+  const sessionValues = useMemo(
+    () => ({
+      ...((session && typeof session === 'object') ? session : {}),
+      ...((user && typeof user === 'object') ? user : {}),
+    }),
+    [session, user],
+  );
+
+  const sessionVariableOptions = useMemo(
+    () =>
+      DEFAULT_SESSION_VARIABLES.map((key) => ({
+        key,
+        value: sessionValues?.[key] ?? null,
+        label: key,
+      })),
+    [sessionValues],
+  );
   const objectFieldMappings =
     config.posApiMapping &&
     typeof config.posApiMapping.objectFields === 'object' &&
@@ -2266,18 +2354,18 @@ export default function PosApiIntegrationSection({
                         </span>
                       )}
                     </span>
-                    <MappingFieldSelector
-                      value={mappedValue}
-                      onChange={(val) => updatePosApiMapping(field.key, val)}
-                      primaryTableName={primaryTableName}
-                      masterColumns={columnOptions}
-                      columnsByTable={tableColumns}
-                      tableOptions={itemTableOptions}
-                      datalistIdBase={listId}
-                      disabled={!config.posApiEnabled || variationDefaultLocked}
-                      sessionVariables={DEFAULT_SESSION_VARIABLES}
-                      expressionFieldOptions={expressionFieldOptions}
-                    />
+          <MappingFieldSelector
+            value={mappedValue}
+            onChange={(val) => updatePosApiMapping(field.key, val)}
+            primaryTableName={primaryTableName}
+            masterColumns={columnOptions}
+            columnsByTable={tableColumns}
+            tableOptions={itemTableOptions}
+            datalistIdBase={listId}
+            disabled={!config.posApiEnabled || variationDefaultLocked}
+            sessionVariables={sessionVariableOptions}
+            expressionFieldOptions={expressionFieldOptions}
+          />
                     {description && <small style={{ color: '#555' }}>{description}</small>}
                   </label>
                 );
@@ -2438,7 +2526,7 @@ export default function PosApiIntegrationSection({
                               datalistIdBase={`posapi-object-${obj.id}-${field.key}`}
                               defaultTableLabel={primaryTableLabel}
                               disabled={!config.posApiEnabled || variationDefaultLocked}
-                              sessionVariables={DEFAULT_SESSION_VARIABLES}
+                              sessionVariables={sessionVariableOptions}
                               expressionFieldOptions={expressionFieldOptions}
                             />
                               <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
@@ -2593,7 +2681,7 @@ export default function PosApiIntegrationSection({
                         datalistIdBase={`posapi-item-${field.key}`}
                         defaultTableLabel={primaryTableLabel}
                         disabled={!config.posApiEnabled || variationDefaultLocked}
-                        sessionVariables={DEFAULT_SESSION_VARIABLES}
+                        sessionVariables={sessionVariableOptions}
                         expressionFieldOptions={expressionFieldOptions}
                       />
                       <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
@@ -2710,7 +2798,7 @@ export default function PosApiIntegrationSection({
                         tableOptions={itemTableOptions}
                         datalistIdBase={listId}
                         disabled={!config.posApiEnabled || variationDefaultLocked}
-                        sessionVariables={DEFAULT_SESSION_VARIABLES}
+                        sessionVariables={sessionVariableOptions}
                         expressionFieldOptions={expressionFieldOptions}
                       />
                       <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
@@ -2827,7 +2915,7 @@ export default function PosApiIntegrationSection({
                         tableOptions={itemTableOptions}
                         datalistIdBase={listId}
                         disabled={!config.posApiEnabled || variationDefaultLocked}
-                        sessionVariables={DEFAULT_SESSION_VARIABLES}
+                        sessionVariables={sessionVariableOptions}
                         expressionFieldOptions={expressionFieldOptions}
                       />
                       <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
