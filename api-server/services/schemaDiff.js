@@ -1038,6 +1038,116 @@ export async function recordSchemaBaseline(options = {}) {
   };
 }
 
+async function applyWithPool(statements, { signal } = {}) {
+  const conn = await pool.getConnection();
+  let applied = 0;
+  const failed = [];
+  const started = Date.now();
+  try {
+    await conn.beginTransaction();
+    for (const stmt of statements) {
+      ensureNotAborted(signal, 'Schema diff application aborted');
+      try {
+        await conn.query(stmt.sql);
+        applied += 1;
+      } catch (err) {
+        failed.push({ statement: stmt.sql, error: err.message });
+        const wrapped = new Error('Failed to apply schema diff statement');
+        wrapped.status = 400;
+        wrapped.details = { applied, failed };
+        throw wrapped;
+      }
+    }
+    await conn.commit();
+    return {
+      method: 'pool',
+      applied,
+      failed,
+      durationMs: Date.now() - started,
+    };
+  } catch (err) {
+    try {
+      await conn.rollback();
+    } catch {
+      // ignore rollback errors
+    }
+    throw err;
+  } finally {
+    conn.release();
+  }
+}
+
+async function applyWithCli(statements, { signal } = {}) {
+  ensureNotAborted(signal, 'Schema diff application aborted');
+  const hasMysql = await commandExists('mysql');
+  if (!hasMysql) {
+    const err = new Error('mysql CLI not available to apply schema diff.');
+    err.code = 'ENOENT';
+    err.status = 500;
+    throw err;
+  }
+  const { user, pass, usingAdmin } = getCliCredentials();
+  const host = process.env.DB_HOST || 'localhost';
+  const port = process.env.DB_PORT;
+  const dbName = process.env.DB_NAME;
+  if (!dbName) {
+    const err = new Error('DB_NAME must be configured to apply schema changes.');
+    err.status = 500;
+    throw err;
+  }
+
+  const tempDir = await fsPromises.mkdtemp(path.join(os.tmpdir(), 'schema-apply-'));
+  const scriptPath = path.join(tempDir, 'apply.sql');
+  const sqlText = statements
+    .map((s) => (s.sql.endsWith(';') ? s.sql : `${s.sql};`))
+    .join('\n\n');
+  await fsPromises.writeFile(scriptPath, sqlText, 'utf8');
+
+  const env = { ...process.env };
+  if (pass) env.MYSQL_PWD = pass;
+  const mysqlArgs = ['-h', host];
+  if (port) mysqlArgs.push('-P', String(port));
+  if (user) mysqlArgs.push('-u', user);
+  mysqlArgs.push(dbName);
+
+  const started = Date.now();
+  try {
+    await runCommand('mysql', mysqlArgs, {
+      env,
+      signal,
+      stdinFilePath: scriptPath,
+    });
+    const warnings = [];
+    if (!usingAdmin) {
+      warnings.push('Applied using DB_USER/DB_PASS because admin credentials are not configured.');
+    }
+    return {
+      method: 'cli',
+      applied: statements.length,
+      failed: [],
+      durationMs: Date.now() - started,
+      warnings,
+    };
+  } catch (err) {
+    if (err.code === 'ENOENT') {
+      err.message = 'mysql CLI not found; install the MySQL client or use dry-run to preview SQL.';
+    }
+    const stderrMsg = (err.stderr || '').trim();
+    const stdoutMsg = (err.stdout || '').trim();
+    const detail = stderrMsg || stdoutMsg;
+    if (detail) {
+      err.message = `${err.message || 'mysql CLI failed'}: ${detail.split('\n')[0]}`;
+    } else {
+      err.message = err.message || 'mysql CLI failed';
+    }
+    err.status = err.status || 500;
+    err.details = err.details || { stderr: err.stderr, stdout: err.stdout };
+    throw err;
+  } finally {
+    await fsPromises.rm(tempDir, { recursive: true, force: true }).catch(() => {});
+  }
+}
+
 export async function applySchemaDiffStatements(statements, options = {}) {
   const {
     allowDrops = false,
@@ -1105,51 +1215,45 @@ export async function applySchemaDiffStatements(statements, options = {}) {
     };
   }
 
-  const conn = await pool.getConnection();
-  let applied = 0;
-  const failed = [];
-  const started = Date.now();
+  const attempts = [];
+  let lastError = null;
   try {
-    await conn.beginTransaction();
-    for (const stmt of ordered) {
-      if (signal?.aborted) {
-        const abortErr = new Error('Schema diff application aborted');
-        abortErr.name = 'AbortError';
-        abortErr.aborted = true;
-        throw abortErr;
-      }
-      try {
-        await conn.query(stmt.sql);
-        applied += 1;
-      } catch (err) {
-        failed.push({ statement: stmt.sql, error: err.message });
-        const wrapped = new Error('Failed to apply schema diff statement');
-        wrapped.status = 400;
-        wrapped.details = { applied, failed };
-        throw wrapped;
-      }
-    }
-    await conn.commit();
+    const result = await applyWithPool(ordered, { signal });
     return {
-      applied,
-      failed,
+      ...result,
       dropStatements: dropStatements.length,
       dryRun: false,
-      durationMs: Date.now() - started,
       alterPreviewed,
       routineAcknowledged,
     };
   } catch (err) {
-    try {
-      await conn.rollback();
-    } catch {
-      // ignore rollback errors
-    }
-    if (err.status) throw err;
-    err.status = err.aborted ? 499 : 500;
-    err.details = err.details || { applied, failed };
-    throw err;
-  } finally {
-    conn.release();
+    if (err.aborted) throw err;
+    attempts.push({ method: 'pool', error: err.message, code: err.code });
+    lastError = err;
   }
+
+  try {
+    const cliResult = await applyWithCli(ordered, { signal });
+    return {
+      ...cliResult,
+      dropStatements: dropStatements.length,
+      dryRun: false,
+      alterPreviewed,
+      routineAcknowledged,
+    };
+  } catch (err) {
+    if (err.aborted) throw err;
+    attempts.push({ method: 'cli', error: err.message, code: err.code });
+    lastError = err;
+  }
+
+  const attemptSummary = attempts.map((a) => `${a.method}: ${a.error}`).join('; ');
+  const finalErr = new Error(
+    attemptSummary
+      ? `Failed to apply schema diff (${attemptSummary})`
+      : lastError?.message || 'Failed to apply schema diff',
+  );
+  finalErr.status = lastError?.status || 500;
+  finalErr.details = { attempts };
+  throw finalErr;
 }
