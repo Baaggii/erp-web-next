@@ -322,6 +322,7 @@ export default function SchemaDiffPanel() {
   }, [jobId, addToast]);
 
   async function generateDiff(manual = false) {
+    const manualModeSelected = manual === true;
     setLoading(true);
     setError('');
     setDiff(null);
@@ -331,8 +332,8 @@ export default function SchemaDiffPanel() {
     setAlterPreviewed(false);
     setRoutineAcknowledged(false);
     setJobStatus(null);
-    setManualMode(manual);
-    setDumpStatus(manual ? 'Parsing selected schema script...' : 'Queueing schema diff job...');
+    setManualMode(manualModeSelected);
+    setDumpStatus(manualModeSelected ? 'Parsing selected schema script...' : 'Queueing schema diff job...');
     try {
       if (!hasValidSchemaInputs) {
         setError('Provide both a schema path and a filename to compare.');
@@ -340,7 +341,7 @@ export default function SchemaDiffPanel() {
         setDumpStatus('');
         return;
       }
-      if (manual) {
+      if (manualModeSelected) {
         const res = await fetch('/api/coding_tables/schema-diff/parse-script', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -413,20 +414,6 @@ export default function SchemaDiffPanel() {
   async function applySelected() {
     if (!diff) {
       setError('Generate a diff before applying changes.');
-      return;
-    }
-    if (manualMode || diff?.tool === 'manual') {
-      const dropCount = selectedStatements.filter((s) => s.type === 'drop').length;
-      setApplyResult({
-        applied: 0,
-        failed: [],
-        dropStatements: dropCount,
-        dryRun: true,
-        statements: selectedStatements.map((s) => s.sql),
-        durationMs: 0,
-      });
-      setError('Manual script review is preview-only. Copy the SQL to apply it manually in your database client.');
-      addToast('Preview ready. Copy SQL to apply manually.', 'info');
       return;
     }
     if (selectedStatements.length === 0) {
@@ -555,7 +542,7 @@ export default function SchemaDiffPanel() {
           />
         </label>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-          <button type="button" onClick={generateDiff} disabled={disableGenerate}>
+          <button type="button" onClick={() => generateDiff(false)} disabled={disableGenerate}>
             {loading ? 'Generating...' : 'Generate Diff'}
           </button>
           <button type="button" onClick={() => generateDiff(true)} disabled={disableGenerate}>
@@ -617,7 +604,6 @@ export default function SchemaDiffPanel() {
               type="checkbox"
               checked={dryRun}
               onChange={(e) => setDryRun(e.target.checked)}
-              disabled={manualMode}
             />
             Dry-run only
           </label>
@@ -848,8 +834,7 @@ export default function SchemaDiffPanel() {
                   <button
                     type="button"
                     onClick={applySelected}
-                    disabled={applying || !selectedStatements.length || manualMode}
-                    title={manualMode ? 'Manual script review is preview-only' : undefined}
+                    disabled={applying || !selectedStatements.length}
                   >
                     {applying ? 'Applying...' : dryRun ? 'Preview Selected' : 'Apply Selected'}
                   </button>

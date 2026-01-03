@@ -351,19 +351,67 @@ function stripCommentLines(sqlText) {
 }
 
 const OBJECT_PATTERNS = [
-  { type: 'table', regex: /\bTABLE\s+`?(?:[A-Za-z0-9_]+`?\.)?`?([A-Za-z0-9_]+)`?/i },
+  {
+    type: 'table',
+    regex: /\bTABLE\s+(?:IF\s+(?:NOT\s+)?EXISTS\s+)?`?(?:[A-Za-z0-9_]+`?\.)?`?([A-Za-z0-9_]+)`?/i,
+  },
   {
     type: 'view',
     regex:
-      /\bCREATE\s+(?:OR\s+REPLACE\s+)?(?:ALGORITHM=\w+\s+)?(?:DEFINER=`?[^`]+`?@`?[^`]+`?\s+)?(?:SQL\s+SECURITY\s+\w+\s+)?VIEW\s+`?(?:[A-Za-z0-9_]+`?\.)?`?([A-Za-z0-9_]+)`?/i,
+      /\b(?:CREATE\s+(?:OR\s+REPLACE\s+)?(?:ALGORITHM=\w+\s+)?(?:DEFINER=`?[^`]+`?@`?[^`]+`?\s+)?(?:SQL\s+SECURITY\s+\w+\s+)?|DROP\s+)VIEW\s+(?:IF\s+(?:NOT\s+)?EXISTS\s+)?`?(?:[A-Za-z0-9_]+`?\.)?`?([A-Za-z0-9_]+)`?/i,
   },
-  { type: 'trigger', regex: /\bTRIGGER\s+`?(?:[A-Za-z0-9_]+`?\.)?`?([A-Za-z0-9_]+)`?/i },
-  { type: 'procedure', regex: /\bPROCEDURE\s+`?(?:[A-Za-z0-9_]+`?\.)?`?([A-Za-z0-9_]+)`?/i },
-  { type: 'function', regex: /\bFUNCTION\s+`?(?:[A-Za-z0-9_]+`?\.)?`?([A-Za-z0-9_]+)`?/i },
-  { type: 'event', regex: /\bEVENT\s+`?(?:[A-Za-z0-9_]+`?\.)?`?([A-Za-z0-9_]+)`?/i },
+  {
+    type: 'trigger',
+    regex: /\bTRIGGER\s+(?:IF\s+EXISTS\s+)?`?(?:[A-Za-z0-9_]+`?\.)?`?([A-Za-z0-9_]+)`?/i,
+  },
+  {
+    type: 'procedure',
+    regex: /\bPROCEDURE\s+(?:IF\s+EXISTS\s+)?`?(?:[A-Za-z0-9_]+`?\.)?`?([A-Za-z0-9_]+)`?/i,
+  },
+  {
+    type: 'function',
+    regex: /\bFUNCTION\s+(?:IF\s+EXISTS\s+)?`?(?:[A-Za-z0-9_]+`?\.)?`?([A-Za-z0-9_]+)`?/i,
+  },
+  {
+    type: 'event',
+    regex: /\bEVENT\s+(?:IF\s+EXISTS\s+)?`?(?:[A-Za-z0-9_]+`?\.)?`?([A-Za-z0-9_]+)`?/i,
+  },
+];
+
+const DROP_PATTERNS = [
+  {
+    type: 'table',
+    regex: /\bDROP\s+TABLE\s+(?:IF\s+(?:NOT\s+)?EXISTS\s+)?`?(?:[A-Za-z0-9_]+`?\.)?`?([A-Za-z0-9_]+)`?/i,
+  },
+  {
+    type: 'view',
+    regex: /\bDROP\s+VIEW\s+(?:IF\s+(?:NOT\s+)?EXISTS\s+)?`?(?:[A-Za-z0-9_]+`?\.)?`?([A-Za-z0-9_]+)`?/i,
+  },
+  {
+    type: 'trigger',
+    regex: /\bDROP\s+TRIGGER\s+(?:IF\s+EXISTS\s+)?`?(?:[A-Za-z0-9_]+`?\.)?`?([A-Za-z0-9_]+)`?/i,
+  },
+  {
+    type: 'procedure',
+    regex: /\bDROP\s+PROCEDURE\s+(?:IF\s+EXISTS\s+)?`?(?:[A-Za-z0-9_]+`?\.)?`?([A-Za-z0-9_]+)`?/i,
+  },
+  {
+    type: 'function',
+    regex: /\bDROP\s+FUNCTION\s+(?:IF\s+EXISTS\s+)?`?(?:[A-Za-z0-9_]+`?\.)?`?([A-Za-z0-9_]+)`?/i,
+  },
+  {
+    type: 'event',
+    regex: /\bDROP\s+EVENT\s+(?:IF\s+EXISTS\s+)?`?(?:[A-Za-z0-9_]+`?\.)?`?([A-Za-z0-9_]+)`?/i,
+  },
 ];
 
 function extractObject(statement) {
+  for (const pattern of DROP_PATTERNS) {
+    const match = statement.match(pattern.regex);
+    if (match) {
+      return { name: match[1], type: pattern.type };
+    }
+  }
   for (const pattern of OBJECT_PATTERNS) {
     const match = statement.match(pattern.regex);
     if (match) {
