@@ -403,34 +403,12 @@ function groupStatements(diffSql, metadata = []) {
   metadata.forEach((meta) => {
     if (!meta?.type || !meta?.name) return;
     const key = `${meta.type}:${meta.name}`;
-    const existing = objectMap.get(key);
-    if (existing) {
-      if (!existing.statements.length) {
-        const note =
-          meta.message ||
-          'Manual review required; object changed but no SQL was generated because ALTER diff is unavailable.';
-        existing.statements.push({
-          sql: note.startsWith('--') ? note : `-- ${note}`,
-          type: 'other',
-          risk: 'medium',
-        });
-      }
-      return;
-    }
-    const note =
-      meta.message ||
-      'Manual review required; object changed but no SQL was generated because ALTER diff is unavailable.';
+    if (objectMap.has(key)) return;
     objectMap.set(key, {
       key,
       name: meta.name,
       type: meta.type,
-      statements: [
-        {
-          sql: note.startsWith('--') ? note : `-- ${note}`,
-          type: 'other',
-          risk: 'medium',
-        },
-      ],
+      statements: [],
       hasDrops: false,
       details: meta.message,
       state: meta.state,

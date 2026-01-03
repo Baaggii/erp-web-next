@@ -57,7 +57,18 @@ export async function loadEndpoints(options = {}) {
       return clone(cachedEndpoints);
     }
     const raw = await fs.readFile(endpointsFilePath, 'utf8');
-    const parsed = ensureArray(raw.trim() ? JSON.parse(raw) : []);
+    let parsed;
+    try {
+      parsed = ensureArray(raw.trim() ? JSON.parse(raw) : []);
+    } catch (err) {
+      const parseError = new Error(
+        `Failed to parse POSAPI endpoints file at ${endpointsFilePath}: ${err.message}`,
+      );
+      parseError.code = 'POSAPI_ENDPOINTS_PARSE';
+      parseError.cause = err;
+      parseError.path = endpointsFilePath;
+      throw parseError;
+    }
     const settings = await loadSettings({ forceReload });
     cachedEndpoints = parsed.map((endpoint) => mergeEndpointSettings(endpoint, settings));
     cachedMtimeMs = stat.mtimeMs;
