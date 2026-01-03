@@ -1218,29 +1218,12 @@ function InlineTransactionTable(
     return res;
   }
 
-  const isAssignmentTrigger = (cfg) =>
-    cfg && (cfg.kind === 'assignment' || cfg.name === '__assignment__');
-
-  const normalizeColumnName = useCallback(
-    (name) => {
-      if (!name && name !== 0) return null;
-      const mapped = columnCaseMap[String(name).toLowerCase()] || name;
-      return typeof mapped === 'string' ? mapped : null;
-    },
-    [columnCaseMap],
-  );
-
   function hasTrigger(col) {
-    const lower = String(col || '').toLowerCase();
-    return (
-      getDirectTriggers(col).length > 0 ||
-      getParamTriggers(col).length > 0 ||
-      Object.prototype.hasOwnProperty.call(procTriggers || {}, lower)
-    );
+    return getDirectTriggers(col).length > 0 || getParamTriggers(col).length > 0;
   }
 
   function showTriggerInfo(col) {
-    if (!general.procToastEnabled) return;
+    if (!general.triggerToastEnabled) return;
     const direct = getDirectTriggers(col);
     const paramTrigs = getParamTriggers(col);
     const hasEntry = Object.prototype.hasOwnProperty.call(procTriggers || {}, col.toLowerCase());
@@ -1279,25 +1262,13 @@ function InlineTransactionTable(
         : `${col} талбар триггер ашигладаггүй`;
       window.dispatchEvent(
         new CustomEvent('toast', {
-          detail: { message, type: 'info' },
+          detail: { message: `${col} талбар триггер ашигладаггүй`, type: 'info' },
         }),
       );
       return;
     }
 
-    if (hasAnyAssignments) {
-      const targets = Array.from(assignmentTargets).join(', ');
-      window.dispatchEvent(
-        new CustomEvent('toast', {
-          detail: {
-            message: `${col} талбарын утга өөрчлөгдвөл дараах талбарууд автоматаар бөглөгдөнө: ${targets}`,
-            type: 'info',
-          },
-        }),
-      );
-    }
-
-    const directNames = [...new Set(procDirect.map((d) => d.name))];
+    const directNames = [...new Set(direct.map((d) => d.name))];
     directNames.forEach((name) => {
       window.dispatchEvent(
         new CustomEvent('toast', {
@@ -1306,8 +1277,8 @@ function InlineTransactionTable(
       );
     });
 
-    if (procParam.length > 0) {
-      const names = [...new Set(procParam.map(([, cfg]) => cfg.name))].join(', ');
+    if (paramTrigs.length > 0) {
+      const names = [...new Set(paramTrigs.map(([, cfg]) => cfg.name))].join(', ');
       window.dispatchEvent(
         new CustomEvent('toast', {
           detail: {
@@ -1387,41 +1358,8 @@ function InlineTransactionTable(
     return { rows: withMetadata, changedColumns };
   }
 
-  function applyProcedureResultToRow(rowIdx, rowData, allowedTargets = null) {
-    if (!rowData || typeof rowData !== 'object') return;
-    const allowedLower = allowedTargets
-      ? new Set(
-          Array.from(allowedTargets)
-            .map((name) => {
-              const normalized = normalizeColumnName(name) || name;
-              return normalized ? String(normalized).toLowerCase() : null;
-            })
-            .filter(Boolean),
-        )
-      : null;
-    const filteredData = {};
-    Object.entries(rowData).forEach(([rawKey, rawValue]) => {
-      if (!rawKey && rawKey !== 0) return;
-      const mappedKey = normalizeColumnName(rawKey) || rawKey;
-      if (!mappedKey) return;
-      if (allowedLower && !allowedLower.has(String(mappedKey).toLowerCase())) return;
-      filteredData[mappedKey] = rawValue;
-    });
-    if (allowedLower && Object.keys(filteredData).length === 0) return;
-
-    commitRowsUpdate(
-      (currentRows) => {
-        const base = Array.isArray(currentRows) ? currentRows : [];
-        const { rows: updatedRows } = applyProcedureResult(rowIdx, filteredData, base);
-        return updatedRows;
-      },
-      { indices: [rowIdx] },
-    );
-  }
-
   async function runProcTrigger(rowIdx, col, rowOverride = null) {
     const showToast = general.procToastEnabled;
-    let calledProcedure = false;
     const baseRows = Array.isArray(rowsRef.current) ? rowsRef.current : [];
     let workingRows = assignArrayMetadata(
       baseRows.map((row) => (row && typeof row === 'object' ? { ...row } : row)),
@@ -1467,8 +1405,14 @@ function InlineTransactionTable(
     const queued = new Set();
     const queue = [];
 
+    const normalizeColumn = (name) => {
+      if (!name && name !== 0) return null;
+      const mapped = columnCaseMap[String(name).toLowerCase()] || name;
+      return typeof mapped === 'string' ? mapped : null;
+    };
+
     const enqueue = (name) => {
-      const normalized = normalizeColumnName(name);
+      const normalized = normalizeColumn(name);
       if (!normalized) return;
       const lower = normalized.toLowerCase();
       if (processed.has(lower) || queued.has(lower)) return;
@@ -1513,7 +1457,7 @@ function InlineTransactionTable(
         if (!cfg || !cfg.name) return;
         const key = keyFor(cfg);
         const rec = map.get(key) || { cfg, cols: new Set() };
-        const normalizedTarget = normalizeColumnName(targetCol);
+        const normalizedTarget = normalizeColumn(targetCol);
         if (normalizedTarget) {
           rec.cols.add(normalizedTarget);
         }
@@ -1523,16 +1467,16 @@ function InlineTransactionTable(
       paramTrigs.forEach(([tCol, cfg]) => addCfg(tCol, cfg));
 
       for (const { cfg, cols } of map.values()) {
-        if (!cfg || !cfg.name || isAssignmentTrigger(cfg)) continue;
+        if (!cfg || !cfg.name) continue;
         const colList = [...cols];
         if (colList.length === 0) continue;
         const targetColumn = colList[0];
-        const normalizedTarget = normalizeColumnName(targetColumn);
+        const normalizedTarget = normalizeColumn(targetColumn);
         if (!normalizedTarget) continue;
 
         const { name: procName, params = [], outMap = {} } = cfg;
         const targetCols = Object.values(outMap || {})
-          .map((c) => normalizeColumnName(c))
+          .map((c) => normalizeColumn(c))
           .filter(Boolean);
         const hasTarget = targetCols.some((c) => writableColumns.has(c));
         if (!hasTarget) continue;
@@ -1554,7 +1498,7 @@ function InlineTransactionTable(
         );
 
         const getVal = (name) => {
-          const key = normalizeColumnName(name) || name;
+          const key = normalizeColumn(name) || name;
           const row = workingRows[rowIdx] || {};
           let val = getRowValue(row, key);
           if (val === undefined && key !== name) {
@@ -1730,9 +1674,6 @@ function InlineTransactionTable(
         const aliases = params.map((p) => outMap[p] || null);
         const cacheKey = `${procName}|${JSON.stringify(paramValues)}`;
         let rowData = procCache.current[cacheKey];
-        if (rowData && typeof rowData === 'object') {
-          calledProcedure = true;
-        }
         if (!rowData) {
           if (showToast) {
             window.dispatchEvent(
@@ -1748,7 +1689,6 @@ function InlineTransactionTable(
             rowData = await callProcedure(procName, paramValues, aliases);
             if (rowData && typeof rowData === 'object') {
               procCache.current[cacheKey] = rowData;
-              calledProcedure = true;
             }
           } catch (err) {
             console.error('Procedure call failed', err);
@@ -1774,7 +1714,7 @@ function InlineTransactionTable(
         if (changedColumns.size > 0) {
           updates.push({ rowIdx, rowData });
           changedColumns.forEach((changedCol) => {
-            const normalizedChanged = normalizeColumnName(changedCol) || changedCol;
+            const normalizedChanged = normalizeColumn(changedCol) || changedCol;
             if (hasTrigger(normalizedChanged)) enqueue(normalizedChanged);
           });
         }
@@ -1801,91 +1741,6 @@ function InlineTransactionTable(
         },
         { indices: changedRows },
       );
-    }
-    return calledProcedure;
-  }
-
-  async function previewAssignmentTriggers(col, rowIdx, rowOverride = null) {
-    const triggerEntry = procTriggers?.[String(col || '').toLowerCase()];
-    const triggerList = Array.isArray(triggerEntry)
-      ? triggerEntry
-      : triggerEntry
-        ? [triggerEntry]
-        : [];
-    const assignmentTargets = new Set();
-    triggerList.forEach((cfg) => {
-      if (!isAssignmentTrigger(cfg)) return;
-      const targets = Array.isArray(cfg?.targets) ? cfg.targets : [];
-      targets.forEach((target) => {
-        const normalized = normalizeColumnName(target);
-        if (normalized) assignmentTargets.add(normalized);
-      });
-    });
-    if (!tableName || assignmentTargets.size === 0) return;
-
-    const currentRows = Array.isArray(rowsRef.current) ? rowsRef.current : [];
-    const metadata = extractArrayMetadata(currentRows) || {};
-    const baseRow =
-      (typeof rowIdx === 'number' &&
-        rowIdx >= 0 &&
-        rowIdx < currentRows.length &&
-        currentRows[rowIdx]) ||
-      {};
-    const mergedRow =
-      baseRow && typeof baseRow === 'object'
-        ? { ...metadata, ...baseRow }
-        : { ...metadata };
-    if (rowOverride && typeof rowOverride === 'object') {
-      Object.entries(rowOverride).forEach(([key, value]) => {
-        const mappedKey = normalizeColumnName(key) || key;
-        if (mappedKey) mergedRow[mappedKey] = value;
-      });
-    }
-
-    const normalizedPayload = {};
-    Object.entries(mergedRow).forEach(([rawKey, rawValue]) => {
-      if (!rawKey && rawKey !== 0) return;
-      const key = normalizeColumnName(rawKey) || rawKey;
-      if (typeof key !== 'string') return;
-      let value = rawValue;
-      if (value && typeof value === 'object' && 'value' in value) {
-        value = value.value;
-      }
-      if (placeholders[key]) {
-        value = normalizeDateInput(value, placeholders[key]);
-      }
-      if (totalAmountSet.has(key) || totalCurrencySet.has(key)) {
-        value = normalizeNumberInput(value);
-      }
-      normalizedPayload[key] = value;
-    });
-
-    try {
-      const resp = await fetch('/api/proc_triggers/preview', {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ table: tableName, values: normalizedPayload }),
-      });
-      if (!resp.ok) return;
-      const data = await resp.json().catch(() => ({}));
-      if (!data || typeof data !== 'object') return;
-      const assignmentPayload =
-        data.assignments && typeof data.assignments === 'object' ? data.assignments : data;
-      const targetLower = new Set(
-        Array.from(assignmentTargets).map((name) => String(name).toLowerCase()),
-      );
-      const filtered = {};
-      Object.entries(assignmentPayload).forEach(([rawKey, rawValue]) => {
-        const mappedKey = normalizeColumnName(rawKey) || rawKey;
-        if (!mappedKey) return;
-        if (!targetLower.has(String(mappedKey).toLowerCase())) return;
-        filtered[mappedKey] = rawValue;
-      });
-      if (Object.keys(filtered).length === 0) return;
-      applyProcedureResultToRow(rowIdx, filtered, assignmentTargets);
-    } catch {
-      /* silently ignore preview failures */
     }
   }
 
@@ -2439,10 +2294,7 @@ function InlineTransactionTable(
     }
     if (hasTrigger(field)) {
       const override = { ...rows[rowIdx], [field]: newValue };
-      const calledProc = await runProcTrigger(rowIdx, field, override);
-      if (!calledProc) {
-        await previewAssignmentTriggers(field, rowIdx, override);
-      }
+      await runProcTrigger(rowIdx, field, override);
     }
     const enabledIdx = enabledFields.indexOf(field);
     const nextField = enabledFields[enabledIdx + 1];
