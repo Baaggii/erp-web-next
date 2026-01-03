@@ -1286,6 +1286,16 @@ function mapEmploymentRow(row) {
     workplace_session_id !== undefined && workplace_session_id !== null
       ? workplace_session_id
       : workplace_id ?? null;
+  const resolvedPosNo =
+    pos_no !== undefined && pos_no !== null ? pos_no : posNo ?? null;
+  const resolvedPosBranchNo =
+    branchNo !== undefined && branchNo !== null ? branchNo : null;
+  const resolvedPosDistrictCode =
+    pos_districtCode !== undefined && pos_districtCode !== null
+      ? pos_districtCode
+      : null;
+  const resolvedPosMerchantTin =
+    merchantTin !== undefined && merchantTin !== null ? merchantTin : null;
   return {
     company_id,
     branch_id,
