@@ -97,6 +97,7 @@ export default function SchemaDiffPanel() {
   const [dumpStatus, setDumpStatus] = useState('');
   const [jobId, setJobId] = useState(null);
   const [jobStatus, setJobStatus] = useState(null);
+  const [manualMode, setManualMode] = useState(false);
   const [markingBaseline, setMarkingBaseline] = useState(false);
   const socketRef = useRef(null);
 
@@ -106,6 +107,8 @@ export default function SchemaDiffPanel() {
 
   useEffect(() => {
     setAlterPreviewed(false);
+    setRoutineAcknowledged(false);
+    setManualMode(false);
   }, [diff, includeDrops, includeGeneral, selectedObjects, activeGroup]);
 
   useEffect(() => {
@@ -318,7 +321,7 @@ export default function SchemaDiffPanel() {
     };
   }, [jobId, addToast]);
 
-  async function generateDiff() {
+  async function generateDiff(manual = false) {
     setLoading(true);
     setError('');
     setDiff(null);
@@ -328,12 +331,38 @@ export default function SchemaDiffPanel() {
     setAlterPreviewed(false);
     setRoutineAcknowledged(false);
     setJobStatus(null);
-    setDumpStatus('Queueing schema diff job...');
+    setManualMode(manual);
+    setDumpStatus(manual ? 'Parsing selected schema script...' : 'Queueing schema diff job...');
     try {
       if (!hasValidSchemaInputs) {
         setError('Provide both a schema path and a filename to compare.');
         setLoading(false);
         setDumpStatus('');
+        return;
+      }
+      if (manual) {
+        const res = await fetch('/api/coding_tables/schema-diff/parse-script', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ schemaPath, schemaFile }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          throw new Error(data?.message || 'Failed to parse schema script');
+        }
+        setDiff(data);
+        const newGroups = buildGroupsFromDiff(data);
+        const keys = [];
+        newGroups.forEach((g) => g.items.forEach((item) => keys.push(item.key)));
+        setSelectedObjects(new Set(keys));
+        const defaultGroup = newGroups.find((g) => g.items.length)?.id || 'table';
+        setActiveGroup(defaultGroup);
+        const defaultObject = newGroups.find((g) => g.id === defaultGroup)?.items?.[0]?.key || '';
+        setActiveObject(defaultObject);
+        setManualMode(true);
+        setLoading(false);
+        setDumpStatus('');
+        addToast('Schema script parsed for manual review', 'success');
         return;
       }
       const res = await fetch('/api/coding_tables/schema-diff/compare', {
@@ -384,6 +413,20 @@ export default function SchemaDiffPanel() {
   async function applySelected() {
     if (!diff) {
       setError('Generate a diff before applying changes.');
+      return;
+    }
+    if (manualMode || diff?.tool === 'manual') {
+      const dropCount = selectedStatements.filter((s) => s.type === 'drop').length;
+      setApplyResult({
+        applied: 0,
+        failed: [],
+        dropStatements: dropCount,
+        dryRun: true,
+        statements: selectedStatements.map((s) => s.sql),
+        durationMs: 0,
+      });
+      setError('Manual script review is preview-only. Copy the SQL to apply it manually in your database client.');
+      addToast('Preview ready. Copy SQL to apply manually.', 'info');
       return;
     }
     if (selectedStatements.length === 0) {
@@ -515,6 +558,9 @@ export default function SchemaDiffPanel() {
           <button type="button" onClick={generateDiff} disabled={disableGenerate}>
             {loading ? 'Generating...' : 'Generate Diff'}
           </button>
+          <button type="button" onClick={() => generateDiff(true)} disabled={disableGenerate}>
+            {loading && manualMode ? 'Parsing...' : 'Manual Script Review'}
+          </button>
           <label style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
             <input
               type="checkbox"
@@ -571,6 +617,7 @@ export default function SchemaDiffPanel() {
               type="checkbox"
               checked={dryRun}
               onChange={(e) => setDryRun(e.target.checked)}
+              disabled={manualMode}
             />
             Dry-run only
           </label>
@@ -616,7 +663,7 @@ export default function SchemaDiffPanel() {
             <div>
               <strong>Tool:</strong> {diff.tool}{' '}
               {!diff.toolAvailable && (
-                <span style={{ color: '#d00' }}>(Liquibase not available; bootstrap diff used)</span>
+                <span style={{ color: '#d00' }}>(Liquibase unavailable or failed; bootstrap diff used)</span>
               )}
             </div>
             <div>
@@ -798,7 +845,12 @@ export default function SchemaDiffPanel() {
                   <button type="button" onClick={copySelectedSql} disabled={!selectedStatements.length}>
                     Copy selected SQL
                   </button>
-                  <button type="button" onClick={applySelected} disabled={applying || !selectedStatements.length}>
+                  <button
+                    type="button"
+                    onClick={applySelected}
+                    disabled={applying || !selectedStatements.length || manualMode}
+                    title={manualMode ? 'Manual script review is preview-only' : undefined}
+                  >
                     {applying ? 'Applying...' : dryRun ? 'Preview Selected' : 'Apply Selected'}
                   </button>
                 </div>
