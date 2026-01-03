@@ -415,6 +415,20 @@ export default function SchemaDiffPanel() {
       setError('Generate a diff before applying changes.');
       return;
     }
+    if (manualMode || diff?.tool === 'manual') {
+      const dropCount = selectedStatements.filter((s) => s.type === 'drop').length;
+      setApplyResult({
+        applied: 0,
+        failed: [],
+        dropStatements: dropCount,
+        dryRun: true,
+        statements: selectedStatements.map((s) => s.sql),
+        durationMs: 0,
+      });
+      setError('Manual script review is preview-only. Copy the SQL to apply it manually in your database client.');
+      addToast('Preview ready. Copy SQL to apply manually.', 'info');
+      return;
+    }
     if (selectedStatements.length === 0) {
       setError('Select at least one object or statement to apply.');
       return;
@@ -603,6 +617,7 @@ export default function SchemaDiffPanel() {
               type="checkbox"
               checked={dryRun}
               onChange={(e) => setDryRun(e.target.checked)}
+              disabled={manualMode}
             />
             Dry-run only
           </label>
@@ -830,7 +845,12 @@ export default function SchemaDiffPanel() {
                   <button type="button" onClick={copySelectedSql} disabled={!selectedStatements.length}>
                     Copy selected SQL
                   </button>
-                  <button type="button" onClick={applySelected} disabled={applying || !selectedStatements.length}>
+                  <button
+                    type="button"
+                    onClick={applySelected}
+                    disabled={applying || !selectedStatements.length || manualMode}
+                    title={manualMode ? 'Manual script review is preview-only' : undefined}
+                  >
                     {applying ? 'Applying...' : dryRun ? 'Preview Selected' : 'Apply Selected'}
                   </button>
                 </div>
