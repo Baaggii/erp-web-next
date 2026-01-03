@@ -1226,8 +1226,40 @@ function InlineTransactionTable(
     if (!general.triggerToastEnabled) return;
     const direct = getDirectTriggers(col);
     const paramTrigs = getParamTriggers(col);
+    const hasEntry = Object.prototype.hasOwnProperty.call(procTriggers || {}, col.toLowerCase());
+  }
 
-    if (direct.length === 0 && paramTrigs.length === 0) {
+    const assignmentTargets = new Set();
+    const collectAssignmentTargets = (cfg, fallbackTarget = null) => {
+      if (!isAssignmentTrigger(cfg)) return;
+      const targets = Array.isArray(cfg?.targets) ? cfg.targets : [];
+      const normalizedTargets =
+        targets.length > 0 ? targets : fallbackTarget ? [fallbackTarget] : [];
+      normalizedTargets.forEach((target) => {
+        if (!target) return;
+        const lower = String(target).toLowerCase();
+        const resolved = columnCaseMap[lower] || target;
+        assignmentTargets.add(resolved);
+      });
+      Object.values(cfg?.outMap || {}).forEach((target) => {
+        if (!target) return;
+        const lower = String(target).toLowerCase();
+        const resolved = columnCaseMap[lower] || target;
+        assignmentTargets.add(resolved);
+      });
+    };
+
+    direct.forEach((cfg) => collectAssignmentTargets(cfg));
+    paramTrigs.forEach(([targetCol, cfg]) => collectAssignmentTargets(cfg, targetCol));
+
+    const procDirect = direct.filter((cfg) => !isAssignmentTrigger(cfg));
+    const procParam = paramTrigs.filter(([, cfg]) => !isAssignmentTrigger(cfg));
+
+    const hasAnyAssignments = assignmentTargets.size > 0;
+    if (!hasAnyAssignments && direct.length === 0 && paramTrigs.length === 0) {
+      const message = hasEntry
+        ? `${col} талбар нь өгөгдлийн сангийн триггерээр бөглөгдөнө. Урьдчилсан тооцоолол хязгаарлагдмал байж болно.`
+        : `${col} талбар триггер ашигладаггүй`;
       window.dispatchEvent(
         new CustomEvent('toast', {
           detail: { message: `${col} талбар триггер ашигладаггүй`, type: 'info' },
