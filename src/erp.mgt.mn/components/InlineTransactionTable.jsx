@@ -1246,7 +1246,6 @@ function InlineTransactionTable(
     const hasEntry = Object.prototype.hasOwnProperty.call(procTriggers || {}, col.toLowerCase());
   }
 
-  function analyzeTriggers(col) {
     const assignmentTargets = new Set();
     const collectAssignmentTargets = (cfg, fallbackTarget = null) => {
       if (!isAssignmentTrigger(cfg)) return;
@@ -1254,40 +1253,27 @@ function InlineTransactionTable(
       const normalizedTargets =
         targets.length > 0 ? targets : fallbackTarget ? [fallbackTarget] : [];
       normalizedTargets.forEach((target) => {
-        const normalized = normalizeColumnName(target);
-        if (normalized) assignmentTargets.add(normalized);
+        if (!target) return;
+        const lower = String(target).toLowerCase();
+        const resolved = columnCaseMap[lower] || target;
+        assignmentTargets.add(resolved);
       });
       Object.values(cfg?.outMap || {}).forEach((target) => {
-        const normalized = normalizeColumnName(target);
-        if (normalized) assignmentTargets.add(normalized);
+        if (!target) return;
+        const lower = String(target).toLowerCase();
+        const resolved = columnCaseMap[lower] || target;
+        assignmentTargets.add(resolved);
       });
     };
-    const direct = getDirectTriggers(col);
-    const paramTrigs = getParamTriggers(col);
+
     direct.forEach((cfg) => collectAssignmentTargets(cfg));
     paramTrigs.forEach(([targetCol, cfg]) => collectAssignmentTargets(cfg, targetCol));
+
     const procDirect = direct.filter((cfg) => !isAssignmentTrigger(cfg));
     const procParam = paramTrigs.filter(([, cfg]) => !isAssignmentTrigger(cfg));
-    return { assignmentTargets, procDirect, procParam };
-  }
-
-  function hasTrigger(col) {
-    const lower = String(col || '').toLowerCase();
-    return (
-      getDirectTriggers(col).length > 0 ||
-      getParamTriggers(col).length > 0 ||
-      Object.prototype.hasOwnProperty.call(procTriggers || {}, lower)
-    );
-  }
-
-  function showTriggerInfo(col) {
-    if (!general.procToastEnabled) return;
-    const { assignmentTargets, procDirect, procParam } = analyzeTriggers(col);
-    const hasEntry = Object.prototype.hasOwnProperty.call(procTriggers || {}, col.toLowerCase());
 
     const hasAnyAssignments = assignmentTargets.size > 0;
-    const hasProcedures = procDirect.length > 0 || procParam.length > 0;
-    if (!hasAnyAssignments && !hasProcedures) {
+    if (!hasAnyAssignments && direct.length === 0 && paramTrigs.length === 0) {
       const message = hasEntry
         ? `${col} талбар нь өгөгдлийн сангийн триггерээр бөглөгдөнө. Урьдчилсан тооцоолол хязгаарлагдмал байж болно.`
         : `${col} талбар триггер ашигладаггүй`;
@@ -2451,8 +2437,7 @@ function InlineTransactionTable(
       if (e.target.select) e.target.select();
       return;
     }
-    const triggerInfo = hasTrigger(field) ? analyzeTriggers(field) : null;
-    if (triggerInfo) {
+    if (hasTrigger(field)) {
       const override = { ...rows[rowIdx], [field]: newValue };
       const calledProc = await runProcTrigger(rowIdx, field, override);
       if (!calledProc) {
