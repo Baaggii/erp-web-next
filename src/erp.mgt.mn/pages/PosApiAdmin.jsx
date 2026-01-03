@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { API_BASE } from '../utils/apiBase.js';
 import { useToast } from '../context/ToastContext.jsx';
 import { MappingFieldSelector } from '../components/PosApiIntegrationSection.jsx';
@@ -7,6 +7,7 @@ import {
   normalizeMappingSelection,
   resetMappingFieldsForType,
 } from '../utils/posApiFieldSource.js';
+import { AuthContext } from '../context/AuthContext.jsx';
 
 const POSAPI_TRANSACTION_TYPES = [
   { value: 'B2C', label: 'B2C receipt' },
@@ -3217,6 +3218,7 @@ function groupParametersByLocation(parameters = []) {
 
 export default function PosApiAdmin() {
   const { addToast } = useToast();
+  const { user, session } = useContext(AuthContext);
   const [endpoints, setEndpoints] = useState([]);
   const [selectedId, setSelectedId] = useState('');
   const [formState, setFormState] = useState({ ...EMPTY_ENDPOINT });

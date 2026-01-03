@@ -929,25 +929,6 @@ export default function PosApiIntegrationSection({
       })),
     [sessionValues],
   );
-  const { user, session } = useContext(AuthContext);
-
-  const sessionValues = useMemo(
-    () => ({
-      ...((session && typeof session === 'object') ? session : {}),
-      ...((user && typeof user === 'object') ? user : {}),
-    }),
-    [session, user],
-  );
-
-  const sessionVariableOptions = useMemo(
-    () =>
-      DEFAULT_SESSION_VARIABLES.map((key) => ({
-        key,
-        value: sessionValues?.[key] ?? null,
-        label: key,
-      })),
-    [sessionValues],
-  );
   const objectFieldMappings =
     config.posApiMapping &&
     typeof config.posApiMapping.objectFields === 'object' &&
