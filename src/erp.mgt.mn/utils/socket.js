@@ -36,7 +36,12 @@ function wireSocketEvents() {
 export function connectSocket() {
   if (!socket) {
     const url = resolveSocketUrl();
-    socket = io(url, { withCredentials: true, path: socketPath });
+    socket = io(url, {
+      withCredentials: true,
+      path: socketPath,
+      transports: ['polling'],
+      upgrade: false,
+    });
   }
   wireSocketEvents();
   refs += 1;

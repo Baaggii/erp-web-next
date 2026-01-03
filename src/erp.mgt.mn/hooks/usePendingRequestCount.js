@@ -4,7 +4,7 @@ import useGeneralConfig from '../hooks/useGeneralConfig.js';
 import { useSharedPoller } from '../context/PollingContext.jsx';
 
 const DEFAULT_POLL_INTERVAL_SECONDS = 30;
-const DISCONNECT_FALLBACK_MS = 5 * 60 * 1000;
+const DISCONNECT_FALLBACK_MS = 30 * 1000;
 
 /**
  * Polls the pending request endpoint for a supervisor and returns the count.
@@ -135,15 +135,18 @@ export default function usePendingRequestCount(
 
     const startFallback = () => {
       if (!pollingEnabled) return;
-      clearTimeout(disconnectTimeoutRef.current);
-      disconnectTimeoutRef.current = setTimeout(
-        () => setEnablePolling(true),
-        DISCONNECT_FALLBACK_MS,
-      );
+      if (disconnectTimeoutRef.current) return;
+      disconnectTimeoutRef.current = setTimeout(() => {
+        setEnablePolling(true);
+        disconnectTimeoutRef.current = null;
+      }, DISCONNECT_FALLBACK_MS);
     };
 
     const stopFallback = () => {
-      clearTimeout(disconnectTimeoutRef.current);
+      if (disconnectTimeoutRef.current) {
+        clearTimeout(disconnectTimeoutRef.current);
+        disconnectTimeoutRef.current = null;
+      }
       setEnablePolling(false);
     };
 
@@ -180,7 +183,10 @@ export default function usePendingRequestCount(
 
     return () => {
       cancelled = true;
-      clearTimeout(disconnectTimeoutRef.current);
+      if (disconnectTimeoutRef.current) {
+        clearTimeout(disconnectTimeoutRef.current);
+        disconnectTimeoutRef.current = null;
+      }
       if (socket) {
         socket.off('newRequest', applyFromFetch);
         socket.off('connect', stopFallback);
@@ -204,4 +210,3 @@ export default function usePendingRequestCount(
 
   return { count, hasNew, markSeen };
 }
-
