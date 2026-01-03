@@ -479,12 +479,11 @@ class MySqlExpressionParser {
     }
     if (token.type === 'identifier') {
       this.consume();
-      const next = this.peek();
-      const hasOpeningParen =
-        (next?.type === 'paren' && next.value === '(') ||
-        (next?.type === 'operator' && next.value === '(');
-      if (hasOpeningParen) {
-        this.consume();
+      if ((this.peek()?.type === 'paren' && this.peek().value === '(') || this.matchOperator('(')) {
+        if (!(this.peek()?.type === 'paren' && this.peek().value === '(')) {
+          this.index -= 1;
+          this.consume();
+        }
         const args = [];
         if (this.matchOperator(')') || (this.peek()?.type === 'paren' && this.peek().value === ')')) {
           if (this.peek()?.type === 'paren' && this.peek().value === ')') this.consume();
