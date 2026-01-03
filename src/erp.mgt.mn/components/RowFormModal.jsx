@@ -1849,6 +1849,19 @@ const RowFormModal = function RowFormModal({
     return map;
   }, [columnsKey, rowKey, defaultValuesKey, fieldTypeMapKey]);
 
+  const resolveFormColumn = useCallback(
+    (name) => {
+      if (!name && name !== 0) return null;
+      const lower = String(name).toLowerCase();
+      const direct = columns.find((c) => c.toLowerCase() === lower);
+      if (direct) return direct;
+      const mapped = columnCaseMap[lower];
+      if (typeof mapped === 'string' && mapped) return mapped;
+      return null;
+    },
+    [columns, columnCaseMap],
+  );
+
   useEffect(() => {
     const extras = {};
     Object.entries(row || {}).forEach(([k, v]) => {
@@ -2470,9 +2483,7 @@ const RowFormModal = function RowFormModal({
     const changedValues = {};
     Object.entries(normalizedEntries).forEach(([key, value]) => {
       nextExtraVals[key] = value;
-      const columnMatch = columns.find(
-        (c) => c.toLowerCase() === String(key).toLowerCase(),
-      );
+      const columnMatch = resolveFormColumn(key);
       const targetKey = columnMatch || key;
       if (columnMatch) {
         const lower = columnMatch.toLowerCase();
