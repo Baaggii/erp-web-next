@@ -41,6 +41,7 @@ const DEFAULT_SESSION_VARIABLES = [
   'pos_merchant_tin',
   'pos_number',
 ];
+const REQUEST_SESSION_VARIABLES = [...DEFAULT_SESSION_VARIABLES];
 
 const AGGREGATION_OPTIONS = [
   { value: '', label: 'No aggregation' },
