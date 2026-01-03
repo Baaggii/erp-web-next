@@ -26,7 +26,14 @@ router.post('/', requireAuth, async (req, res, next) => {
       return;
     }
     if (!data) return res.status(400).json({ message: 'invalid data' });
-    const info = { ...(session || {}), userId: req.user.id };
+    const info = {
+      ...(session || {}),
+      userId: req.user.id,
+      posNo: req.user.posNo ?? req.user.pos_no ?? null,
+      branchNo: req.user.branchNo ?? null,
+      pos_districtCode: req.user.posDistrictCode ?? req.user.pos_districtCode ?? null,
+      merchantTin: req.user.merchantTin ?? null,
+    };
     const result = await postPosTransactionWithEbarimt(
       name,
       data,

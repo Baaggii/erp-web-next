@@ -1311,10 +1311,11 @@ function applyAdditionalMappings(
   record,
   columnLookup,
   reservedKeys,
+  { session } = {},
 ) {
   Object.entries(normalizedMapping).forEach(([key, columnName]) => {
     if (reservedKeys.has(key)) return;
-    const value = resolveMappedValue(columnName, record, { columnLookup });
+    const value = resolveMappedValue(columnName, record, { columnLookup, session });
     if (value === undefined || value === null) return;
     if (typeof value === 'string' && !value.trim()) return;
     payload[key] = value;
@@ -1608,6 +1609,7 @@ export async function buildReceiptFromDynamicTransaction(
   const normalizedMapping = normalizeMapping(mapping);
   const columnLookup = createColumnLookup(record);
   const merchantInfo = options.merchantInfo || null;
+  const sessionContext = options.session || null;
   const receiptGroupMapping =
     normalizedMapping[RECEIPT_GROUP_MAPPING_KEY] || {};
   const paymentMethodMapping =
@@ -1616,7 +1618,10 @@ export async function buildReceiptFromDynamicTransaction(
   delete normalizedMapping[PAYMENT_METHOD_MAPPING_KEY];
 
   const totalAmountColumn = normalizedMapping.totalAmount;
-  const totalAmountValue = resolveMappedValue(totalAmountColumn, record, { columnLookup });
+  const totalAmountValue = resolveMappedValue(totalAmountColumn, record, {
+    columnLookup,
+    session: sessionContext,
+  });
   const totalAmount = toNumber(totalAmountValue);
   if (totalAmount === null) {
     const err = new Error(
@@ -1627,25 +1632,43 @@ export async function buildReceiptFromDynamicTransaction(
     throw err;
   }
 
-  const totalVatValue = resolveMappedValue(normalizedMapping.totalVAT, record, { columnLookup });
+  const totalVatValue = resolveMappedValue(normalizedMapping.totalVAT, record, {
+    columnLookup,
+    session: sessionContext,
+  });
   const totalVAT = toNumber(totalVatValue);
-  const totalCityTaxValue = resolveMappedValue(normalizedMapping.totalCityTax, record, { columnLookup });
+  const totalCityTaxValue = resolveMappedValue(
+    normalizedMapping.totalCityTax,
+    record,
+    { columnLookup, session: sessionContext },
+  );
   const totalCityTax = toNumber(totalCityTaxValue);
 
   const customerTin = toStringValue(
-    resolveMappedValue(normalizedMapping.customerTin, record, { columnLookup }),
+    resolveMappedValue(normalizedMapping.customerTin, record, {
+      columnLookup,
+      session: sessionContext,
+    }),
   );
   const consumerNo = toStringValue(
-    resolveMappedValue(normalizedMapping.consumerNo, record, { columnLookup }),
+    resolveMappedValue(normalizedMapping.consumerNo, record, {
+      columnLookup,
+      session: sessionContext,
+    }),
   );
 
   const taxTypeField = normalizedMapping.taxTypeField || normalizedMapping.taxType;
-  let taxType = toStringValue(resolveMappedValue(taxTypeField, record, { columnLookup }));
+  let taxType = toStringValue(
+    resolveMappedValue(taxTypeField, record, { columnLookup, session: sessionContext }),
+  );
 
   const descriptionField = normalizedMapping.description || normalizedMapping.itemDescription;
   let description = '';
   if (descriptionField) {
-    const descValue = resolveMappedValue(descriptionField, record, { columnLookup });
+    const descValue = resolveMappedValue(descriptionField, record, {
+      columnLookup,
+      session: sessionContext,
+    });
     if (descValue !== undefined && descValue !== null) {
       description = descValue;
     }
@@ -1655,7 +1678,7 @@ export async function buildReceiptFromDynamicTransaction(
   }
 
   const lotNo = toStringValue(
-    resolveMappedValue(normalizedMapping.lotNo, record, { columnLookup }),
+    resolveMappedValue(normalizedMapping.lotNo, record, { columnLookup, session: sessionContext }),
   );
 
   const branchNo =
@@ -1671,17 +1694,32 @@ export async function buildReceiptFromDynamicTransaction(
         merchantInfo?.taxRegistrationNo ??
         merchantInfo?.tin,
     ) ||
-    toStringValue(resolveMappedValue(normalizedMapping.merchantTin, record, { columnLookup })) ||
+    toStringValue(
+      resolveMappedValue(normalizedMapping.merchantTin, record, {
+        columnLookup,
+        session: sessionContext,
+      }),
+    ) ||
     toStringValue(readEnvVar('POSAPI_MERCHANT_TIN'));
   const posNo =
     toStringValue(
       merchantInfo?.pos_no ?? merchantInfo?.pos_registration_no ?? merchantInfo?.posNo,
     ) ||
-    toStringValue(resolveMappedValue(normalizedMapping.posNo, record, { columnLookup })) ||
+    toStringValue(
+      resolveMappedValue(normalizedMapping.posNo, record, {
+        columnLookup,
+        session: sessionContext,
+      }),
+    ) ||
     toStringValue(readEnvVar('POSAPI_POS_NO'));
   const districtCode =
     toStringValue(merchantInfo?.district_code ?? merchantInfo?.districtCode) ||
-    toStringValue(resolveMappedValue(normalizedMapping.districtCode, record, { columnLookup })) ||
+    toStringValue(
+      resolveMappedValue(normalizedMapping.districtCode, record, {
+        columnLookup,
+        session: sessionContext,
+      }),
+    ) ||
     toStringValue(readEnvVar('POSAPI_DISTRICT_CODE'));
 
   const missingEnv = [];
@@ -2073,7 +2111,9 @@ export async function buildReceiptFromDynamicTransaction(
     RECEIPT_GROUP_MAPPING_KEY,
     PAYMENT_METHOD_MAPPING_KEY,
   ]);
-  applyAdditionalMappings(payload, normalizedMapping, record, columnLookup, reservedMappingKeys);
+  applyAdditionalMappings(payload, normalizedMapping, record, columnLookup, reservedMappingKeys, {
+    session: sessionContext,
+  });
 
   const aggregatedPayload = applyAggregations(payload, options.aggregations || [], { phase: 'request' });
 

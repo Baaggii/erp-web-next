@@ -13,6 +13,7 @@ router.post('/', requireAuth, async (req, res, next) => {
       formName,
       recordId,
       companyId,
+      req.user,
     );
     res.json(result);
   } catch (err) {

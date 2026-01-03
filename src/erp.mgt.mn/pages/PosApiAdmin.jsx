@@ -136,6 +136,14 @@ const REQUEST_SESSION_VARIABLES = [
   'companyId',
   'sessionId',
   'userRole',
+  'posNo',
+  'branchNo',
+  'pos_districtCode',
+  'merchantTin',
+  'pos_branch_no',
+  'pos_district_code',
+  'pos_merchant_tin',
+  'pos_number',
 ];
 
 const EXPRESSION_FUNCTIONS = ['sum', 'count', 'min', 'max', 'avg'];
@@ -4088,10 +4096,18 @@ export default function PosApiAdmin() {
     });
   }, [exampleVariationChoices]);
 
-  const requestFieldDisplay = useMemo(
+const requestFieldDisplay = useMemo(
     () => buildRequestFieldDisplayFromState(formState),
     [formState, parameterDefaults, parameterPreview, requestFieldHints],
   );
+
+  const sessionOptions = useMemo(() => {
+    return REQUEST_SESSION_VARIABLES.map((key) => ({
+      key,
+      label: key,
+      value: session?.[key] ?? user?.[key] ?? null,
+    }));
+  }, [session, user]);
 
   const requestFieldHintLookup = useMemo(() => {
     if (requestFieldDisplay.state !== 'ok') return new Map();
@@ -10102,7 +10118,7 @@ export default function PosApiAdmin() {
                           tableOptions={requestTableOptions}
                           datalistIdBase={`request-map-${index}`}
                           defaultTableLabel="Select table"
-                          sessionVariables={REQUEST_SESSION_VARIABLES}
+                          sessionVariables={sessionOptions}
                           expressionFieldOptions={expressionFieldOptions}
                           expressionFunctions={EXPRESSION_FUNCTIONS}
                         />
