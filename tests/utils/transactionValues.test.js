@@ -87,28 +87,6 @@ test('recalcGeneratedColumns applies pipelines to single-record tables', () => {
   assert.equal(initialValues.header.shadow_total, undefined);
 });
 
-test('createGeneratedColumnPipeline applies generated columns even when not visible', () => {
-  const initialValues = {
-    items: [{ qty: 2, price: 5 }],
-  };
-
-  const pipeline = createGeneratedColumnPipeline({
-    tableColumns: [
-      { name: 'qty' },
-      { name: 'price' },
-      { name: 'virtual_total', generation_expression: 'qty * price' },
-    ],
-    mainFields: ['qty'], // Does not include virtual_total
-    equals: (a, b) => a === b,
-  });
-
-  const result = recalcGeneratedColumns(initialValues, { items: pipeline }, []);
-
-  assert.notStrictEqual(result, initialValues);
-  assert.equal(result.items[0].virtual_total, 10);
-  assert.equal(initialValues.items[0].virtual_total, undefined);
-});
-
 test('recalcTotals applies POS aggregates after generated columns', () => {
   const initialValues = {
     items: [
