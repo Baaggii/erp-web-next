@@ -400,6 +400,21 @@ function groupStatements(diffSql, metadata = []) {
     }
   }
 
+  metadata.forEach((meta) => {
+    if (!meta?.type || !meta?.name) return;
+    const key = `${meta.type}:${meta.name}`;
+    if (objectMap.has(key)) return;
+    objectMap.set(key, {
+      key,
+      name: meta.name,
+      type: meta.type,
+      statements: [],
+      hasDrops: false,
+      details: meta.message,
+      state: meta.state,
+    });
+  });
+
   const typeOrder = ['table', 'view', 'procedure', 'function', 'trigger', 'index', 'other'];
   const groupedObjects = Array.from(objectMap.values()).sort((a, b) => {
     const at = typeOrder.indexOf(a.type);
@@ -486,6 +501,7 @@ function basicDiffFromDumps(currentSql, targetSql, allowDrops = false) {
 
   const statements = [];
   const warnings = [];
+  const metadata = [];
 
   for (const [key, targetObj] of targetObjects.entries()) {
     const currentObj = currentObjects.get(key);
@@ -498,6 +514,13 @@ function basicDiffFromDumps(currentSql, targetSql, allowDrops = false) {
         warnings.push(
           `Table ${targetObj.name} definitions differ and require manual review. Install Liquibase for full ALTER scripting.`,
         );
+        metadata.push({
+          name: targetObj.name,
+          type: targetObj.type,
+          state: 'changed',
+          message:
+            'Table definition changed; ALTER statements unavailable without Liquibase. Review manually.',
+        });
       } else {
         const dropStmt = buildDropStatement(targetObj.type, targetObj.name);
         if (dropStmt) statements.push(dropStmt);
@@ -518,7 +541,7 @@ function basicDiffFromDumps(currentSql, targetSql, allowDrops = false) {
     }
   }
 
-  return { statements, warnings };
+  return { statements, warnings, metadata };
 }
 
 async function loadBaselines() {
@@ -852,7 +875,7 @@ export async function buildSchemaDiff(options = {}) {
       const fallback = basicDiffFromDumps(currentSql, targetSql, allowDrops);
       diffSql = fallback.statements.join('\n\n');
       warnings.push(...fallback.warnings);
-      grouped = groupStatements(diffSql);
+      grouped = groupStatements(diffSql, fallback.metadata);
     } finally {
       if (tempDbName) {
         await dropTempDatabase(tempDbName);
@@ -867,7 +890,7 @@ export async function buildSchemaDiff(options = {}) {
     const fallback = basicDiffFromDumps(currentSql, targetSql, allowDrops);
     diffSql = fallback.statements.join('\n\n');
     warnings.push(...fallback.warnings);
-    grouped = groupStatements(diffSql);
+    grouped = groupStatements(diffSql, fallback.metadata);
   }
 
   const diffPath = path.join(tempDir, 'schema_diff.sql');
