@@ -108,8 +108,11 @@ export default function SchemaDiffPanel() {
   useEffect(() => {
     setAlterPreviewed(false);
     setRoutineAcknowledged(false);
-    setManualMode(false);
   }, [diff, includeDrops, includeGeneral, selectedObjects, activeGroup]);
+
+  useEffect(() => {
+    setManualMode(diff?.tool === 'manual');
+  }, [diff]);
 
   useEffect(() => {
     if (!window.io) return undefined;
@@ -322,6 +325,7 @@ export default function SchemaDiffPanel() {
   }, [jobId, addToast]);
 
   async function generateDiff(manual = false) {
+    const isManual = manual === true;
     setLoading(true);
     setError('');
     setDiff(null);
@@ -331,8 +335,8 @@ export default function SchemaDiffPanel() {
     setAlterPreviewed(false);
     setRoutineAcknowledged(false);
     setJobStatus(null);
-    setManualMode(manual);
-    setDumpStatus(manual ? 'Parsing selected schema script...' : 'Queueing schema diff job...');
+    setManualMode(isManual);
+    setDumpStatus(isManual ? 'Parsing selected schema script...' : 'Queueing schema diff job...');
     try {
       if (!hasValidSchemaInputs) {
         setError('Provide both a schema path and a filename to compare.');
@@ -340,7 +344,7 @@ export default function SchemaDiffPanel() {
         setDumpStatus('');
         return;
       }
-      if (manual) {
+      if (isManual) {
         const res = await fetch('/api/coding_tables/schema-diff/parse-script', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
