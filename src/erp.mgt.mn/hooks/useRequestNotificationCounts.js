@@ -4,7 +4,7 @@ import { useSharedPoller } from '../context/PollingContext.jsx';
 import useGeneralConfig from '../hooks/useGeneralConfig.js';
 
 const DEFAULT_POLL_INTERVAL_SECONDS = 30;
-const DISCONNECT_FALLBACK_MS = 5 * 60 * 1000;
+const DISCONNECT_FALLBACK_MS = 30 * 1000;
 const STATUSES = ['pending', 'accepted', 'declined'];
 
 function normalizeStatuses(statuses) {
@@ -298,15 +298,18 @@ export default function useRequestNotificationCounts(
 
     const startFallback = () => {
       if (!pollingEnabled) return;
-      clearTimeout(disconnectTimeoutRef.current);
-      disconnectTimeoutRef.current = setTimeout(
-        () => setEnablePolling(true),
-        DISCONNECT_FALLBACK_MS,
-      );
+      if (disconnectTimeoutRef.current) return;
+      disconnectTimeoutRef.current = setTimeout(() => {
+        setEnablePolling(true);
+        disconnectTimeoutRef.current = null;
+      }, DISCONNECT_FALLBACK_MS);
     };
 
     const stopFallback = () => {
-      clearTimeout(disconnectTimeoutRef.current);
+      if (disconnectTimeoutRef.current) {
+        clearTimeout(disconnectTimeoutRef.current);
+        disconnectTimeoutRef.current = null;
+      }
       setEnablePolling(false);
     };
 
@@ -327,7 +330,10 @@ export default function useRequestNotificationCounts(
     return () => {
       cancelled = true;
       fetchCountsRef.current = () => Promise.resolve();
-      clearTimeout(disconnectTimeoutRef.current);
+      if (disconnectTimeoutRef.current) {
+        clearTimeout(disconnectTimeoutRef.current);
+        disconnectTimeoutRef.current = null;
+      }
       if (socket) {
         socket.off('newRequest', applyFromFetch);
         socket.off('requestResolved', applyFromFetch);
@@ -362,4 +368,3 @@ export default function useRequestNotificationCounts(
     refresh,
   };
 }
-
