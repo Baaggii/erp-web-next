@@ -756,45 +756,64 @@ export function applyGeneratedColumnEvaluators({
   const metadataContainer = metadataTarget ?? targetRows;
   const metadataUpdates = {};
   let changed = false;
-  list.forEach((idx) => {
-    if (typeof idx !== 'number' || idx < 0 || idx >= targetRows.length) return;
-    const original = targetRows[idx];
-    if (!original || typeof original !== 'object') return;
-    let working = original;
-    let rowChanged = false;
-    filtered.forEach(([col, evaluator]) => {
-      let nextValue;
-      try {
-        nextValue = evaluator({ row: working });
-      } catch (err) {
-        console.warn('Failed to evaluate generated column', col, err);
-        nextValue = undefined;
-      }
-      if (nextValue === undefined) return;
-      if (treatAllAsMain || mainSet?.has(col)) {
-        const prev = working[col];
-        const equal = Object.is(prev, nextValue) || equals(prev, nextValue);
-        if (!equal) {
-          if (!rowChanged) {
-            working = { ...working };
-            rowChanged = true;
+  const maxPasses = 5;
+
+  for (let pass = 0; pass < maxPasses; pass += 1) {
+    let passChanged = false;
+    const passMetadata = {};
+
+    list.forEach((idx) => {
+      if (typeof idx !== 'number' || idx < 0 || idx >= targetRows.length) return;
+      const original = targetRows[idx];
+      if (!original || typeof original !== 'object') return;
+      let working = original;
+      let rowChanged = false;
+      filtered.forEach(([col, evaluator]) => {
+        let nextValue;
+        try {
+          nextValue = evaluator({ row: working });
+        } catch (err) {
+          console.warn('Failed to evaluate generated column', col, err);
+          nextValue = undefined;
+        }
+        if (nextValue === undefined) return;
+        if (treatAllAsMain || mainSet?.has(col)) {
+          const prev = working[col];
+          const equal = Object.is(prev, nextValue) || equals(prev, nextValue);
+          if (!equal) {
+            if (!rowChanged) {
+              working = { ...working };
+              rowChanged = true;
+            }
+            working[col] = nextValue;
+            passChanged = true;
           }
-          working[col] = nextValue;
-          changed = true;
+        } else if (metadataSet?.has(col)) {
+          const prevMeta =
+            metadataContainer && typeof metadataContainer === 'object'
+              ? metadataContainer[col]
+              : undefined;
+          const equal = Object.is(prevMeta, nextValue) || equals(prevMeta, nextValue);
+          if (!equal) {
+            passMetadata[col] = nextValue;
+            passChanged = true;
+          }
         }
-      } else if (metadataSet?.has(col)) {
-        const prevMeta = metadataContainer && typeof metadataContainer === 'object' ? metadataContainer[col] : undefined;
-        const equal = Object.is(prevMeta, nextValue) || equals(prevMeta, nextValue);
-        if (!equal) {
-          metadataUpdates[col] = nextValue;
-          changed = true;
-        }
+      });
+      if (rowChanged) {
+        targetRows[idx] = working;
       }
     });
-    if (rowChanged) {
-      targetRows[idx] = working;
+
+    if (Object.keys(passMetadata).length > 0) {
+      Object.assign(metadataUpdates, passMetadata);
     }
-  });
+    changed = changed || passChanged || Object.keys(passMetadata).length > 0;
+    if (!passChanged && Object.keys(passMetadata).length === 0) {
+      break;
+    }
+  }
+
   return {
     changed,
     metadata: Object.keys(metadataUpdates).length > 0 ? metadataUpdates : null,
