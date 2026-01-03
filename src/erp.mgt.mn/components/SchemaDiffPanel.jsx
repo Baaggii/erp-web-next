@@ -322,7 +322,6 @@ export default function SchemaDiffPanel() {
   }, [jobId, addToast]);
 
   async function generateDiff(manual = false) {
-    const manualModeSelected = manual === true;
     setLoading(true);
     setError('');
     setDiff(null);
@@ -332,8 +331,8 @@ export default function SchemaDiffPanel() {
     setAlterPreviewed(false);
     setRoutineAcknowledged(false);
     setJobStatus(null);
-    setManualMode(manualModeSelected);
-    setDumpStatus(manualModeSelected ? 'Parsing selected schema script...' : 'Queueing schema diff job...');
+    setManualMode(manual);
+    setDumpStatus(manual ? 'Parsing selected schema script...' : 'Queueing schema diff job...');
     try {
       if (!hasValidSchemaInputs) {
         setError('Provide both a schema path and a filename to compare.');
@@ -341,7 +340,7 @@ export default function SchemaDiffPanel() {
         setDumpStatus('');
         return;
       }
-      if (manualModeSelected) {
+      if (manual) {
         const res = await fetch('/api/coding_tables/schema-diff/parse-script', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -556,7 +555,7 @@ export default function SchemaDiffPanel() {
           />
         </label>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-          <button type="button" onClick={() => generateDiff(false)} disabled={disableGenerate}>
+          <button type="button" onClick={generateDiff} disabled={disableGenerate}>
             {loading ? 'Generating...' : 'Generate Diff'}
           </button>
           <button type="button" onClick={() => generateDiff(true)} disabled={disableGenerate}>
