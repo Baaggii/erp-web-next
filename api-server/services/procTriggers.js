@@ -60,6 +60,7 @@ function normalizeParamToken(raw) {
 export async function getProcTriggers(table) {
   const [rows] = await pool.query('SHOW TRIGGERS WHERE `Table` = ?', [table]);
   const result = {};
+  const assignOnlyColumns = new Set();
   for (const row of rows || []) {
     const stmt = row.Statement || '';
     const varToCol = {};
@@ -93,6 +94,66 @@ export async function getProcTriggers(table) {
         if (!exists) result[key].push({ name: proc, params, outMap });
       });
     }
+    // Track columns that have direct assignments without procedure calls to avoid false "unused" notices
+    for (const [, col] of stmt.matchAll(/NEW\.([A-Za-z0-9_]+)\s*=/gi)) {
+      assignOnlyColumns.add(col.toLowerCase());
+    }
+  }
+  if (assignOnlyColumns.size > 0) {
+    assignOnlyColumns.forEach((col) => {
+      if (!result[col]) result[col] = [];
+    });
   }
   return result;
+}
+
+function buildAssignmentExpressions(statement = '') {
+  const matches = [
+    ...statement.matchAll(
+      /NEW\.([A-Za-z0-9_]+)\s*=\s*(.+?)(?=,\s*NEW\.|;)/gis,
+    ),
+  ];
+  return matches.map(([, target, expr]) => ({
+    target,
+    expression: expr.trim(),
+  }));
+}
+
+function buildParameterizedExpression(expression = '') {
+  const params = [];
+  let sql = expression;
+  sql = sql.replace(/NEW\.([A-Za-z0-9_]+)/gi, (_, name) => {
+    params.push(name);
+    return '?';
+  });
+  return { sql: `SELECT (${sql}) AS value`, params };
+}
+
+export async function previewTriggerAssignments(table, values = {}) {
+  const lowerValues = {};
+  Object.entries(values || {}).forEach(([k, v]) => {
+    lowerValues[String(k).toLowerCase()] = v;
+  });
+  const [rows] = await pool.query('SHOW TRIGGERS WHERE `Table` = ?', [table]);
+  const assignments = {};
+  for (const row of rows || []) {
+    const stmt = row.Statement || '';
+    const expressions = buildAssignmentExpressions(stmt);
+    for (const { target, expression } of expressions) {
+      if (!target || !expression) continue;
+      const { sql, params } = buildParameterizedExpression(expression);
+      const bindings = params.map((name) => lowerValues[name.toLowerCase()]);
+      try {
+        const [resultRows] = await pool.query(sql, bindings);
+        const val =
+          Array.isArray(resultRows) && resultRows.length > 0
+            ? resultRows[0]?.value
+            : null;
+        assignments[target] = val;
+      } catch (err) {
+        // Ignore evaluation errors to avoid blocking the preview flow
+      }
+    }
+  }
+  return assignments;
 }
