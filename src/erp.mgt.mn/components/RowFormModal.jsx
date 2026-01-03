@@ -45,6 +45,41 @@ function normalizeRelationOptionKey(value) {
   return String(value);
 }
 
+function extractGenerationDependencies(expression = '') {
+  const deps = new Set();
+  if (typeof expression !== 'string' || !expression.trim()) return deps;
+  const RESERVED = new Set([
+    'abs',
+    'avg',
+    'case',
+    'ceil',
+    'ceiling',
+    'coalesce',
+    'count',
+    'floor',
+    'greatest',
+    'if',
+    'ifnull',
+    'least',
+    'nullif',
+    'pow',
+    'power',
+    'round',
+    'sum',
+    'truncate',
+    'when',
+    'then',
+    'else',
+    'end',
+  ]);
+  for (const match of expression.matchAll(/`?([A-Za-z_][A-Za-z0-9_]*)`?/g)) {
+    const token = (match[1] || '').toLowerCase();
+    if (!token || RESERVED.has(token)) continue;
+    deps.add(token);
+  }
+  return deps;
+}
+
 const RowFormModal = function RowFormModal({
   visible,
   onCancel,
@@ -679,6 +714,46 @@ const RowFormModal = function RowFormModal({
     });
     return map;
   }, [tableColumns, columnCaseMap, columnCaseMapKey]);
+  const generatedColumnSet = React.useMemo(() => {
+    const set = new Set();
+    if (!Array.isArray(tableColumns)) return set;
+    tableColumns.forEach((col) => {
+      if (!col || typeof col !== 'object') return;
+      const key = columnCaseMap[String(col.name || '').toLowerCase()] || col.name;
+      if (!key) return;
+      const extra = String(col.extra || col.EXTRA || '').toLowerCase();
+      const expr =
+        col.generationExpression ?? col.GENERATION_EXPRESSION ?? col.generation_expression;
+      if (expr || extra.includes('generated')) {
+        set.add(key);
+      }
+    });
+    return set;
+  }, [tableColumns, columnCaseMap]);
+  const generatedDependencyLookup = React.useMemo(() => {
+    const map = {};
+    if (!Array.isArray(tableColumns)) return map;
+    tableColumns.forEach((col) => {
+      if (!col || typeof col !== 'object') return;
+      const expr =
+        col.generationExpression ??
+        col.GENERATION_EXPRESSION ??
+        col.generation_expression ??
+        null;
+      if (!expr) return;
+      const target = columnCaseMap[String(col.name || '').toLowerCase()] || col.name;
+      if (!target) return;
+      const deps = extractGenerationDependencies(expr);
+      deps.forEach((dep) => {
+        const source = columnCaseMap[dep] || dep;
+        if (!source) return;
+        const lower = String(source).toLowerCase();
+        if (!map[lower]) map[lower] = new Set();
+        map[lower].add(target);
+      });
+    });
+    return map;
+  }, [tableColumns, columnCaseMap]);
   const [formVals, setFormVals] = useState(() => {
     const init = {};
     const now = new Date();
@@ -1596,17 +1671,29 @@ const RowFormModal = function RowFormModal({
     if (!baseRow || typeof baseRow !== 'object') {
       return { next: baseRow, diff: {} };
     }
-    const working = baseRow;
+    let working = baseRow;
+    let evaluationRow = null;
     const evaluators = generatedColumnEvaluators || {};
     let generatedChanged = false;
     if (Object.keys(evaluators).length > 0) {
-      const rows = [working];
+      evaluationRow = { ...(extraValsRef.current || {}), ...working };
+      const rows = [evaluationRow];
       const result = applyGeneratedColumnEvaluators({
         targetRows: rows,
         evaluators,
         equals: valuesEqual,
       });
       generatedChanged = Boolean(result?.changed);
+      if (generatedChanged) {
+        const evaluated = rows[0] || {};
+        const merged = { ...working };
+        columns.forEach((col) => {
+          if (evaluated[col] !== undefined) {
+            merged[col] = evaluated[col];
+          }
+        });
+        working = merged;
+      }
     }
     const source = prevRow || {};
     const diff = {};
@@ -1621,16 +1708,36 @@ const RowFormModal = function RowFormModal({
         diff[key] = nextVal;
       }
     });
+    let generatedExtra = null;
     if (generatedChanged) {
-      return { next: { ...working }, diff };
+      const generatedKeys = Object.keys(evaluators || {});
+      const lookup = columns.reduce((m, col) => {
+        m[col.toLowerCase()] = col;
+        return m;
+      }, {});
+      const latestExtra = extraValsRef.current || {};
+      const evaluatedRow =
+        evaluationRow || { ...(extraValsRef.current || {}), ...working };
+      generatedKeys.forEach((rawKey) => {
+        const lower = String(rawKey).toLowerCase();
+        if (lookup[lower]) return;
+        const val = evaluatedRow[rawKey];
+        const prevExtra = latestExtra[rawKey];
+        if (!valuesEqual(prevExtra, val)) {
+          if (!generatedExtra) generatedExtra = {};
+          generatedExtra[rawKey] = val;
+        }
+      });
+      return { next: { ...working }, diff, generatedExtra };
     }
-    return { next: working, diff };
-  }, [generatedColumnEvaluators]);
+    return { next: working, diff, generatedExtra };
+  }, [generatedColumnEvaluators, columns]);
 
   const setFormValuesWithGenerated = useCallback(
     (updater, { notify = true } = {}) => {
       let pendingDiff = null;
       let snapshot = null;
+      let pendingGeneratedExtra = null;
       setFormVals((prev) => {
         const base = typeof updater === 'function' ? updater(prev) : updater;
         if (!base) {
@@ -1643,10 +1750,13 @@ const RowFormModal = function RowFormModal({
             working[key] = normalizeJsonArrayForState(value);
           }
         });
-        const { next, diff } = computeNextFormVals(working, prev);
+        const { next, diff, generatedExtra } = computeNextFormVals(working, prev);
         if (!diff || Object.keys(diff).length === 0) {
           snapshot = prev;
           return prev;
+        }
+        if (generatedExtra && Object.keys(generatedExtra).length > 0) {
+          pendingGeneratedExtra = generatedExtra;
         }
         pendingDiff = diff;
         if (valuesEqual(prev, next)) {
@@ -1656,6 +1766,15 @@ const RowFormModal = function RowFormModal({
         snapshot = next;
         return next;
       });
+      if (pendingGeneratedExtra && Object.keys(pendingGeneratedExtra).length > 0) {
+        setExtraVals((prev) => {
+          const next = { ...prev };
+          Object.entries(pendingGeneratedExtra).forEach(([k, v]) => {
+            next[k] = v;
+          });
+          return next;
+        });
+      }
       if (notify && pendingDiff && Object.keys(pendingDiff).length > 0) {
         onChange(pendingDiff);
       }
@@ -2396,6 +2515,9 @@ const RowFormModal = function RowFormModal({
     return res;
   }
 
+  const isAssignmentTrigger = (cfg) =>
+    cfg && (cfg.kind === 'assignment' || cfg.name === '__assignment__');
+
   function hasTrigger(col) {
     const lower = col.toLowerCase();
     return (
@@ -2412,7 +2534,33 @@ const RowFormModal = function RowFormModal({
     const paramTrigs = getParamTriggers(col);
     const hasEntry = Object.prototype.hasOwnProperty.call(procTriggers, col.toLowerCase());
 
-    if (direct.length === 0 && paramTrigs.length === 0) {
+    const assignmentTargets = new Set();
+    const collectAssignmentTargets = (cfg, fallbackTarget = null) => {
+      if (!isAssignmentTrigger(cfg)) return;
+      const targets = Array.isArray(cfg?.targets) ? cfg.targets : [];
+      const normalizedTargets = targets.length > 0 ? targets : fallbackTarget ? [fallbackTarget] : [];
+      normalizedTargets.forEach((target) => {
+        if (!target) return;
+        const lower = String(target).toLowerCase();
+        const resolved = columnCaseMap[lower] || target;
+        assignmentTargets.add(resolved);
+      });
+      Object.values(cfg?.outMap || {}).forEach((target) => {
+        if (!target) return;
+        const lower = String(target).toLowerCase();
+        const resolved = columnCaseMap[lower] || target;
+        assignmentTargets.add(resolved);
+      });
+    };
+
+    direct.forEach((cfg) => collectAssignmentTargets(cfg));
+    paramTrigs.forEach(([targetCol, cfg]) => collectAssignmentTargets(cfg, targetCol));
+
+    const procDirect = direct.filter((cfg) => !isAssignmentTrigger(cfg) && cfg?.name);
+    const procParam = paramTrigs.filter(([, cfg]) => !isAssignmentTrigger(cfg) && cfg?.name);
+    const hasAny = assignmentTargets.size > 0 || procDirect.length > 0 || procParam.length > 0;
+
+    if (!hasAny) {
       const message = hasEntry
         ? `${col} талбар нь өгөгдлийн сангийн триггерээр бөглөгдөнө. Урьдчилсан тооцоолол хязгаарлагдмал байж болно.`
         : `${col} талбар триггер ашигладаггүй`;
@@ -2424,7 +2572,19 @@ const RowFormModal = function RowFormModal({
       return;
     }
 
-    const directNames = [...new Set(direct.map((d) => d.name))];
+    if (assignmentTargets.size > 0) {
+      const targets = Array.from(assignmentTargets).join(', ');
+      window.dispatchEvent(
+        new CustomEvent('toast', {
+          detail: {
+            message: `${col} талбарын утга өөрчлөгдвөл дараах талбарууд автоматаар бөглөгдөнө: ${targets}`,
+            type: 'info',
+          },
+        }),
+      );
+    }
+
+    const directNames = [...new Set(procDirect.map((d) => d.name))];
     directNames.forEach((name) => {
       window.dispatchEvent(
         new CustomEvent('toast', {
@@ -2433,12 +2593,36 @@ const RowFormModal = function RowFormModal({
       );
     });
 
-    if (paramTrigs.length > 0) {
-      const names = [...new Set(paramTrigs.map(([, cfg]) => cfg.name))].join(', ');
+    if (procParam.length > 0) {
+      const names = [...new Set(procParam.map(([, cfg]) => cfg.name))].join(', ');
       window.dispatchEvent(
         new CustomEvent('toast', {
           detail: {
             message: `${col} талбар параметр болгож дараах процедуруудад ашиглана: ${names}`,
+            type: 'info',
+          },
+        }),
+      );
+    }
+
+    const colLower = col.toLowerCase();
+    const virtualDependents = generatedDependencyLookup[colLower];
+    if (generatedColumnSet.has(col)) {
+      window.dispatchEvent(
+        new CustomEvent('toast', {
+          detail: {
+            message: `${col} талбар нь виртуал тооцоолол бөгөөд утгыг автоматаар тооцно.`,
+            type: 'info',
+          },
+        }),
+      );
+    }
+    if (virtualDependents && virtualDependents.size > 0) {
+      const list = Array.from(virtualDependents).join(', ');
+      window.dispatchEvent(
+        new CustomEvent('toast', {
+          detail: {
+            message: `${col} талбарын утга өөрчлөгдвөл дараах виртуал талбарууд шинэчлэгдэнэ: ${list}`,
             type: 'info',
           },
         }),
@@ -2595,8 +2779,10 @@ const RowFormModal = function RowFormModal({
       if (processed.has(lowerCol)) continue;
       processed.add(lowerCol);
 
-      const direct = getDirectTriggers(currentCol);
-      const paramTrigs = getParamTriggers(currentCol);
+      const direct = getDirectTriggers(currentCol).filter((cfg) => !isAssignmentTrigger(cfg));
+      const paramTrigs = getParamTriggers(currentCol).filter(
+        ([, cfg]) => !isAssignmentTrigger(cfg),
+      );
 
       const map = new Map();
       const keyFor = (cfg) => {
@@ -2907,6 +3093,7 @@ const RowFormModal = function RowFormModal({
       if (!data || typeof data !== 'object') return;
       const { formVals: nextForm, extraVals: nextExtra, changedValues } =
         applyProcedureResultToForm(data, formValsRef.current, extraValsRef.current);
+      extraValsRef.current = nextExtra;
       setExtraVals(nextExtra);
       const result = setFormValuesWithGenerated(() => nextForm, { notify: false });
       const combined = { ...(changedValues || {}), ...(result?.diff || {}) };
