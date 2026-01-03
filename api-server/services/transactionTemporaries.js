@@ -1508,6 +1508,7 @@ export async function promoteTemporarySubmission(
     formConfigResolver = getFormConfig,
     activityLogger = logUserAction,
     notificationInserter = insertNotification,
+    session = null,
   } = runtimeDeps;
 
   const conn = providedConnection || (await connectionFactory());
@@ -2048,7 +2049,12 @@ export async function promoteTemporarySubmission(
             masterRecord,
             mapping,
             receiptType,
-            { typeField: formCfg.posApiTypeField, merchantInfo, aggregations: endpoint?.aggregations || [] },
+            {
+              typeField: formCfg.posApiTypeField,
+              merchantInfo,
+              aggregations: endpoint?.aggregations || [],
+              session,
+            },
           );
           if (payload) {
             try {

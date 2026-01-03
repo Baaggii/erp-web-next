@@ -8,13 +8,15 @@ import { invokePosApiEndpoint } from '../services/posApiService.js';
 import { normalizeRequestMappingValue } from '../services/posApiAggregations.js';
 
 const DEFAULT_MAPPING_HINTS = {
-  branchNo: 'session.branch_id',
+  branchNo: 'session.branchNo',
   branchId: 'session.branch_id',
   branchCode: 'session.branch_code',
-  posNo: 'session.pos_no',
-  posNumber: 'session.pos_no',
+  posNo: 'session.posNo',
+  posNumber: 'session.posNo',
   tin: 'session.tin',
   registerNo: 'session.register_no',
+  districtCode: 'session.pos_districtCode',
+  merchantTin: 'session.merchantTin',
 };
 
 const router = express.Router();

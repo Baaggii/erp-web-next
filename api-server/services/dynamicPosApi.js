@@ -69,6 +69,7 @@ export async function issueDynamicTransactionEbarimt(
   formName,
   recordId,
   companyId = 0,
+  session = null,
 ) {
   const tableName = normalizeName(table);
   const configName = normalizeName(formName);
@@ -150,6 +151,7 @@ export async function issueDynamicTransactionEbarimt(
     typeField: formCfg.posApiTypeField,
     merchantInfo,
     aggregations: endpoint?.aggregations || [],
+    session,
   });
   if (!payload) {
     const err = new Error('POSAPI receipt payload could not be generated from the transaction');

@@ -136,6 +136,14 @@ const REQUEST_SESSION_VARIABLES = [
   'companyId',
   'sessionId',
   'userRole',
+  'posNo',
+  'branchNo',
+  'pos_districtCode',
+  'merchantTin',
+  'pos_branch_no',
+  'pos_district_code',
+  'pos_merchant_tin',
+  'pos_number',
 ];
 
 const EXPRESSION_FUNCTIONS = ['sum', 'count', 'min', 'max', 'avg'];
