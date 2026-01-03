@@ -201,6 +201,10 @@ export async function login(req, res, next) {
       companyId: company,
       userLevel: sessionPayload?.user_level ?? null,
       seniorPlanEmpid: senior_plan_empid || null,
+      posNo: pos_no ?? posNo ?? null,
+      branchNo: branchNo ?? null,
+      posDistrictCode: pos_districtCode ?? null,
+      merchantTin: merchantTin ?? null,
     };
     const token = jwtService.sign(payload);
     const refreshToken = jwtService.signRefresh(payload);
@@ -479,6 +483,10 @@ export async function refresh(req, res) {
       companyId: company,
       userLevel: sessionPayload?.user_level,
       seniorPlanEmpid: senior_plan_empid || null,
+      posNo: pos_no ?? posNo ?? null,
+      branchNo: branchNo ?? null,
+      posDistrictCode: pos_districtCode ?? null,
+      merchantTin: merchantTin ?? null,
     };
     const newAccess = jwtService.sign(newPayload);
     const newRefresh = jwtService.signRefresh(newPayload);

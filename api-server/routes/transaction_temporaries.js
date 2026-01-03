@@ -158,13 +158,17 @@ router.post('/:id/promote', requireAuth, async (req, res, next) => {
       return res.status(400).json({ message: 'forcePromote must be a boolean' });
     }
     const io = req.app.get('io');
-    const result = await promoteTemporarySubmission(req.params.id, {
-      reviewerEmpId: req.user.empid,
-      notes,
-      io,
-      cleanedValues,
-      forcePromote: forcePromote === true,
-    });
+    const result = await promoteTemporarySubmission(
+      req.params.id,
+      {
+        reviewerEmpId: req.user.empid,
+        notes,
+        io,
+        cleanedValues,
+        forcePromote: forcePromote === true,
+      },
+      { session: req.user },
+    );
     res.json(result);
   } catch (err) {
     next(err);
