@@ -3889,6 +3889,23 @@ export function Header({
         icon: '🏭',
       });
     }
+    if (session?.pos_name) {
+      const posParts = [session.pos_name];
+      const posNo =
+        session.pos_no ??
+        session.posNo ??
+        session.pos_number ??
+        session.posNumber ??
+        null;
+      if (posNo !== null && posNo !== undefined) {
+        posParts.push(`#${posNo}`);
+      }
+      items.push({
+        label: t('userMenu.pos', 'POS'),
+        value: posParts.join(' · '),
+        icon: '🧾',
+      });
+    }
     if (session?.user_level_name) {
       items.push({
         label: t('userMenu.role', 'Role'),
