@@ -61,6 +61,7 @@ export async function getProcTriggers(table) {
   const [rows] = await pool.query('SHOW TRIGGERS WHERE `Table` = ?', [table]);
   const result = {};
   const assignOnlyColumns = new Set();
+  const assignmentDependencies = new Map();
   for (const row of rows || []) {
     const stmt = row.Statement || '';
     const varToCol = {};
@@ -69,6 +70,25 @@ export async function getProcTriggers(table) {
     )) {
       const key = normalizeAssignmentToken(token);
       if (key) varToCol[key] = col;
+    }
+    const expressions = buildAssignmentExpressions(stmt);
+    for (const { target, expression } of expressions) {
+      if (!target) continue;
+      const params = Array.from(extractAssignmentParams(expression));
+      assignOnlyColumns.add(target.toLowerCase());
+      if (params.length === 0) continue;
+      params.forEach((param) => {
+        const key = normalizeParamToken(param);
+        if (!key) return;
+        const entry =
+          assignmentDependencies.get(key) || {
+            params: new Set(),
+            targets: new Set(),
+          };
+        params.forEach((p) => entry.params.add(p));
+        entry.targets.add(target);
+        assignmentDependencies.set(key, entry);
+      });
     }
     const calls = [...stmt.matchAll(/CALL\s+([A-Za-z0-9_]+)\s*\(([^)]*)\)/gi)];
     for (const c of calls) {
@@ -104,6 +124,24 @@ export async function getProcTriggers(table) {
       if (!result[col]) result[col] = [];
     });
   }
+  assignmentDependencies.forEach((entry, param) => {
+    if (!param) return;
+    const cfg = {
+      name: '__assignment__',
+      kind: 'assignment',
+      params: Array.from(entry.params),
+      targets: Array.from(entry.targets),
+    };
+    if (!result[param]) result[param] = [];
+    const exists = result[param].some(
+      (item) =>
+        item.kind === 'assignment' &&
+        sameStringSets(item.targets || [], cfg.targets || []),
+    );
+    if (!exists) {
+      result[param].push(cfg);
+    }
+  });
   return result;
 }
 
@@ -156,4 +194,22 @@ export async function previewTriggerAssignments(table, values = {}) {
     }
   }
   return assignments;
+}
+
+function extractAssignmentParams(expression = '') {
+  const params = new Set();
+  if (!expression) return params;
+  for (const match of expression.matchAll(/NEW\.([A-Za-z0-9_]+)/gi)) {
+    const normalized = normalizeParamToken(match[0]);
+    if (normalized) params.add(normalized);
+  }
+  return params;
+}
+
+function sameStringSets(a, b) {
+  const normalize = (list) =>
+    Array.from(new Set((list || []).filter(Boolean).map((item) => String(item))));
+  const normalizedA = normalize(a).sort();
+  const normalizedB = normalize(b).sort();
+  return JSON.stringify(normalizedA) === JSON.stringify(normalizedB);
 }
