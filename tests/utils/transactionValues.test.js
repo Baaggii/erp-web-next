@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import {
   recalcGeneratedColumns,
   recalcTotals,
+  createGeneratedColumnPipeline,
 } from '../../src/erp.mgt.mn/utils/transactionValues.js';
 
 const baseCalcFields = [
@@ -53,6 +54,59 @@ test('recalcGeneratedColumns applies calc fields and pipelines', () => {
   assert.equal(result.items[0].line_total, 20);
   assert.equal(result.items[1].line_total, 5);
   assert.equal(initialValues.items[0].line_total, undefined);
+});
+
+test('recalcGeneratedColumns applies pipelines to single-record tables', () => {
+  const initialValues = {
+    header: { qty: 3, price: 4 },
+  };
+
+  const pipelineMap = {
+    header: {
+      apply(rows) {
+        if (!Array.isArray(rows) || rows.length === 0) return { changed: false, metadata: null };
+        const row = rows[0] || {};
+        const total = Number(row.qty || 0) * Number(row.price || 0);
+        const changed = row.total !== total;
+        const nextRow = { ...row, total };
+        rows[0] = nextRow;
+        return {
+          changed,
+          metadata: { shadow_total: total * 2 },
+        };
+      },
+    },
+  };
+
+  const result = recalcGeneratedColumns(initialValues, pipelineMap, []);
+
+  assert.notStrictEqual(result, initialValues);
+  assert.equal(result.header.total, 12);
+  assert.equal(result.header.shadow_total, 24);
+  assert.equal(initialValues.header.total, undefined);
+  assert.equal(initialValues.header.shadow_total, undefined);
+});
+
+test('createGeneratedColumnPipeline applies generated columns even when not visible', () => {
+  const initialValues = {
+    items: [{ qty: 2, price: 5 }],
+  };
+
+  const pipeline = createGeneratedColumnPipeline({
+    tableColumns: [
+      { name: 'qty' },
+      { name: 'price' },
+      { name: 'virtual_total', generation_expression: 'qty * price' },
+    ],
+    mainFields: ['qty'], // Does not include virtual_total
+    equals: (a, b) => a === b,
+  });
+
+  const result = recalcGeneratedColumns(initialValues, { items: pipeline }, []);
+
+  assert.notStrictEqual(result, initialValues);
+  assert.equal(result.items[0].virtual_total, 10);
+  assert.equal(initialValues.items[0].virtual_total, undefined);
 });
 
 test('recalcTotals applies POS aggregates after generated columns', () => {
