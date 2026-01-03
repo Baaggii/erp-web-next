@@ -21,18 +21,6 @@ import { isAdmin } from '../utils/isAdmin.js';
 const SHARED_SEED_CONFLICT_MESSAGE =
   'Shared tables always read from tenant key 0, so they cannot participate in per-company seeding.';
 
-function canViewRecords(session) {
-  if (!session || typeof session !== 'object') return false;
-  const perms = session.permissions || {};
-  return (
-    perms.audition ||
-    perms.edit_records ||
-    perms.edit_delete_request ||
-    perms.delete_records ||
-    perms.new_records
-  );
-}
-
 function canEditRecords(session) {
   if (!session || typeof session !== 'object') return false;
   const perms = session.permissions || {};
@@ -45,14 +33,19 @@ function canEditRecords(session) {
 }
 
 async function ensureTenantTableViewer(req, res) {
+  if (!req?.user?.empid) {
+    res.status(401).json({ message: 'Authentication required' });
+    return false;
+  }
+  if (isAdmin(req.user)) return true;
   const session = await getEmploymentSession(req.user.empid, req.user.companyId);
-  if (!canViewRecords(session)) {
+  if (!session) {
     res
       .status(403)
-      .json({ message: 'You do not have permission to view tenant tables.' });
-    return null;
+      .json({ message: 'Unable to load your employment session for tenant tables.' });
+    return false;
   }
-  return session;
+  return true;
 }
 
 export async function listTenantTables(req, res, next) {
