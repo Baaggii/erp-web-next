@@ -20,7 +20,7 @@ function summarizePath(p) {
   return `${parts.slice(0, 2).join('/')}/.../${parts.slice(-1)[0]}`;
 }
 
-function StatementList({ statements }) {
+function StatementList({ statements, selectedKeys, onToggle }) {
   if (!statements?.length) {
     return <div style={{ fontStyle: 'italic' }}>No statements for this selection.</div>;
   }
@@ -45,6 +45,12 @@ function StatementList({ statements }) {
           }}
         >
           <div style={{ marginBottom: '0.25rem', fontWeight: 'bold', display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+            <input
+              type="checkbox"
+              checked={selectedKeys?.has(stmt.key)}
+              onChange={() => onToggle?.(stmt)}
+              aria-label="Toggle statement"
+            />
             <span>{stmt.type?.toUpperCase() || 'SQL'}</span>
             {stmt.risk ? (
               <span
@@ -86,6 +92,7 @@ export default function SchemaDiffPanel() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [selectedObjects, setSelectedObjects] = useState(new Set());
+  const [selectedStatementKeys, setSelectedStatementKeys] = useState(new Set());
   const [activeObject, setActiveObject] = useState('');
   const [activeGroup, setActiveGroup] = useState('table');
   const [applyResult, setApplyResult] = useState(null);
@@ -100,6 +107,7 @@ export default function SchemaDiffPanel() {
   const [manualMode, setManualMode] = useState(false);
   const [markingBaseline, setMarkingBaseline] = useState(false);
   const socketRef = useRef(null);
+  const statementKey = (objectKey, idx) => `${objectKey || 'general'}::${idx}`;
 
   useEffect(() => {
     setError('');
@@ -181,21 +189,24 @@ export default function SchemaDiffPanel() {
     if (!diff) return [];
     const sql = [];
     if (includeGeneral && diff.generalStatements) {
-      diff.generalStatements.forEach((stmt) => {
-        if (includeDrops || stmt.type !== 'drop') {
-          sql.push({ ...stmt, objectType: 'general', objectName: 'General' });
+      diff.generalStatements.forEach((stmt, idx) => {
+        const key = statementKey('general', idx);
+        if (selectedStatementKeys.has(key) && (includeDrops || stmt.type !== 'drop')) {
+          sql.push({ ...stmt, objectType: 'general', objectName: 'General', key });
         }
       });
     }
     groups.forEach((group) => {
       group.items.forEach((item) => {
         if (selectedObjects.has(item.key)) {
-          item.statements.forEach((stmt) => {
-            if (includeDrops || stmt.type !== 'drop') {
+          item.statements.forEach((stmt, idx) => {
+            const key = statementKey(item.key, idx);
+            if (selectedStatementKeys.has(key) && (includeDrops || stmt.type !== 'drop')) {
               sql.push({
                 ...stmt,
                 objectType: item.type,
                 objectName: item.name,
+                key,
               });
             }
           });
@@ -203,7 +214,7 @@ export default function SchemaDiffPanel() {
       });
     });
     return sql;
-  }, [diff, selectedObjects, includeDrops, includeGeneral, groups]);
+  }, [diff, selectedObjects, includeDrops, includeGeneral, groups, selectedStatementKeys]);
 
   const selectedSql = useMemo(() => selectedStatements.map((s) => s.sql), [selectedStatements]);
 
@@ -224,6 +235,25 @@ export default function SchemaDiffPanel() {
     if (!activeObject && group.items.length) return group.items[0];
     return group.items.find((t) => t.key === activeObject) || null;
   }, [diff, activeObject, activeGroup, groups]);
+
+  const activeStatements = useMemo(() => {
+    if (!diff) return [];
+    if (activeTableData) {
+      return activeTableData.statements.map((stmt, idx) => ({
+        ...stmt,
+        key: statementKey(activeTableData.key, idx),
+        objectKey: activeTableData.key,
+      }));
+    }
+    if (includeGeneral && diff.generalStatements?.length) {
+      return diff.generalStatements.map((stmt, idx) => ({
+        ...stmt,
+        key: statementKey('general', idx),
+        objectKey: 'general',
+      }));
+    }
+    return [];
+  }, [diff, activeTableData, includeGeneral]);
 
   const criticalPrereqIssues = useMemo(
     () => (preflight.issues || []).filter((issue) => /db_name/i.test(issue)),
@@ -270,6 +300,7 @@ export default function SchemaDiffPanel() {
           const keys = [];
           newGroups.forEach((g) => g.items.forEach((item) => keys.push(item.key)));
           setSelectedObjects(new Set(keys));
+          setSelectedStatementKeys(new Set(collectAllStatementKeys(data.result)));
           const defaultGroup = newGroups.find((g) => g.items.length)?.id || 'table';
           setActiveGroup(defaultGroup);
           const defaultObject = newGroups.find((g) => g.id === defaultGroup)?.items?.[0]?.key || '';
@@ -321,6 +352,24 @@ export default function SchemaDiffPanel() {
     };
   }, [jobId, addToast]);
 
+  function collectAllStatementKeys(nextDiff) {
+    const keys = [];
+    if (!nextDiff) return keys;
+    if (nextDiff.generalStatements?.length) {
+      nextDiff.generalStatements.forEach((_, idx) => {
+        keys.push(statementKey('general', idx));
+      });
+    }
+    Object.values(nextDiff.groups || {}).forEach((items = []) => {
+      items.forEach((item) => {
+        item.statements.forEach((_, idx) => {
+          keys.push(statementKey(item.key, idx));
+        });
+      });
+    });
+    return keys;
+  }
+
   async function generateDiff(manual = false) {
     const manualModeSelected = manual === true;
     setLoading(true);
@@ -356,6 +405,7 @@ export default function SchemaDiffPanel() {
         const keys = [];
         newGroups.forEach((g) => g.items.forEach((item) => keys.push(item.key)));
         setSelectedObjects(new Set(keys));
+        setSelectedStatementKeys(new Set(collectAllStatementKeys(data)));
         const defaultGroup = newGroups.find((g) => g.items.length)?.id || 'table';
         setActiveGroup(defaultGroup);
         const defaultObject = newGroups.find((g) => g.id === defaultGroup)?.items?.[0]?.key || '';
@@ -390,12 +440,26 @@ export default function SchemaDiffPanel() {
   }
 
   function toggleTable(key) {
+    const wasSelected = selectedObjects.has(key);
+    const group = groups.find((g) => g.items.some((item) => item.key === key));
+    const item = group?.items.find((obj) => obj.key === key);
     setSelectedObjects((prev) => {
       const next = new Set(prev);
       if (next.has(key)) next.delete(key);
       else next.add(key);
       return next;
     });
+    if (item) {
+      setSelectedStatementKeys((prev) => {
+        const next = new Set(prev);
+        if (wasSelected) {
+          item.statements.forEach((_, idx) => next.delete(statementKey(item.key, idx)));
+        } else {
+          item.statements.forEach((_, idx) => next.add(statementKey(item.key, idx)));
+        }
+        return next;
+      });
+    }
     setActiveObject(key);
   }
 
@@ -405,10 +469,12 @@ export default function SchemaDiffPanel() {
       g.items.forEach((t) => keys.push(t.key));
     });
     setSelectedObjects(new Set(keys));
+    setSelectedStatementKeys(new Set(collectAllStatementKeys(diff)));
   }
 
   function clearSelection() {
     setSelectedObjects(new Set());
+    setSelectedStatementKeys(new Set());
   }
 
   async function applySelected() {
@@ -464,6 +530,25 @@ export default function SchemaDiffPanel() {
       addToast(err.message || 'Failed to apply schema diff', 'error');
     } finally {
       setApplying(false);
+    }
+  }
+
+  function toggleStatement(stmt) {
+    const key = stmt.key;
+    if (!key) return;
+    setSelectedStatementKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+    if (stmt.objectKey && stmt.objectKey !== 'general') {
+      setSelectedObjects((prev) => {
+        if (prev.has(stmt.objectKey)) return prev;
+        const next = new Set(prev);
+        next.add(stmt.objectKey);
+        return next;
+      });
     }
   }
 
@@ -841,15 +926,9 @@ export default function SchemaDiffPanel() {
                 </div>
               </div>
               <StatementList
-                statements={
-                  activeTableData
-                    ? activeTableData.statements.filter(
-                        (s) => includeDrops || s.type !== 'drop',
-                      )
-                    : (includeGeneral ? diff.generalStatements || [] : []).filter(
-                        (s) => includeDrops || s.type !== 'drop',
-                      )
-                }
+                statements={activeStatements.filter((s) => includeDrops || s.type !== 'drop')}
+                selectedKeys={selectedStatementKeys}
+                onToggle={toggleStatement}
               />
               <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', flexWrap: 'wrap' }}>
                 <label style={{ display: 'flex', gap: '0.35rem', alignItems: 'center' }}>
