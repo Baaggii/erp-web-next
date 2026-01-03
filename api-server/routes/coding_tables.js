@@ -163,10 +163,6 @@ router.post('/schema-diff/baseline', requireAuth, requireAdmin, async (req, res,
 });
 
 router.post('/schema-diff/apply', requireAuth, requireAdmin, async (req, res, next) => {
-  const controller = new AbortController();
-  const handleAbort = () => controller.abort();
-  req.on('close', handleAbort);
-  res.on('close', handleAbort);
   extendTimeouts(req, res);
   try {
     const {
@@ -184,21 +180,11 @@ router.post('/schema-diff/apply', requireAuth, requireAdmin, async (req, res, ne
       dryRun: Boolean(dryRun),
       alterPreviewed: Boolean(alterPreviewed),
       routineAcknowledged: Boolean(routineAcknowledged),
-      signal: controller.signal,
     });
-    if (controller.signal.aborted || result?.aborted) {
-      return sendAborted(res, { ...result, message: 'Schema diff apply aborted' }, 'Schema diff apply aborted');
-    }
     res.json(result);
   } catch (err) {
-    if (controller.signal.aborted) {
-      return sendAborted(res, err, 'Schema diff apply aborted');
-    }
     if (err.status) return sendKnownError(res, err);
     next(err);
-  } finally {
-    req.off('close', handleAbort);
-    res.off('close', handleAbort);
   }
 });
 
