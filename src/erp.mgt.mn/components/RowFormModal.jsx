@@ -1849,6 +1849,19 @@ const RowFormModal = function RowFormModal({
     return map;
   }, [columnsKey, rowKey, defaultValuesKey, fieldTypeMapKey]);
 
+  const resolveFormColumn = useCallback(
+    (name) => {
+      if (!name && name !== 0) return null;
+      const lower = String(name).toLowerCase();
+      const direct = columns.find((c) => c.toLowerCase() === lower);
+      if (direct) return direct;
+      const mapped = columnCaseMap[lower];
+      if (typeof mapped === 'string' && mapped) return mapped;
+      return null;
+    },
+    [columns, columnCaseMap],
+  );
+
   useEffect(() => {
     const extras = {};
     Object.entries(row || {}).forEach(([k, v]) => {
@@ -2337,9 +2350,13 @@ const RowFormModal = function RowFormModal({
       setErrors((er) => ({ ...er, [col]: 'Буруу тоон утга' }));
       return;
     }
-    if (hasTrigger(col)) {
+    const triggerAware =
+      hasTrigger(col) ||
+      Object.prototype.hasOwnProperty.call(procTriggers || {}, col.toLowerCase());
+    if (triggerAware) {
       const override = { ...nextSnapshot, [col]: newVal };
       await runProcTrigger(col, override);
+      await previewTriggerAssignments(override);
     }
 
     const enabled = columns.filter((c) => !disabledSet.has(c.toLowerCase()));
@@ -2380,18 +2397,28 @@ const RowFormModal = function RowFormModal({
   }
 
   function hasTrigger(col) {
-    return getDirectTriggers(col).length > 0 || getParamTriggers(col).length > 0;
+    const lower = col.toLowerCase();
+    return (
+      getDirectTriggers(col).length > 0 ||
+      getParamTriggers(col).length > 0 ||
+      Object.prototype.hasOwnProperty.call(procTriggers || {}, lower)
+    );
   }
 
   function showTriggerInfo(col) {
     if (!general.triggerToastEnabled) return;
+    if (!procTriggers || Object.keys(procTriggers || {}).length === 0) return;
     const direct = getDirectTriggers(col);
     const paramTrigs = getParamTriggers(col);
+    const hasEntry = Object.prototype.hasOwnProperty.call(procTriggers, col.toLowerCase());
 
     if (direct.length === 0 && paramTrigs.length === 0) {
+      const message = hasEntry
+        ? `${col} талбар нь өгөгдлийн сангийн триггерээр бөглөгдөнө. Урьдчилсан тооцоолол хязгаарлагдмал байж болно.`
+        : `${col} талбар триггер ашигладаггүй`;
       window.dispatchEvent(
         new CustomEvent('toast', {
-          detail: { message: `${col} талбар триггер ашигладаггүй`, type: 'info' },
+          detail: { message, type: 'info' },
         }),
       );
       return;
@@ -2470,9 +2497,7 @@ const RowFormModal = function RowFormModal({
     const changedValues = {};
     Object.entries(normalizedEntries).forEach(([key, value]) => {
       nextExtraVals[key] = value;
-      const columnMatch = columns.find(
-        (c) => c.toLowerCase() === String(key).toLowerCase(),
-      );
+      const columnMatch = resolveFormColumn(key);
       const targetKey = columnMatch || key;
       if (columnMatch) {
         const lower = columnMatch.toLowerCase();
@@ -2858,6 +2883,36 @@ const RowFormModal = function RowFormModal({
       if (Object.keys(combinedChanges).length > 0) {
         onChange(combinedChanges);
       }
+    }
+  }
+
+  async function previewTriggerAssignments(payloadOverride = null) {
+    if (!table) return;
+    const merged = { ...(extraValsRef.current || {}), ...(formValsRef.current || {}) };
+    if (payloadOverride && typeof payloadOverride === 'object') {
+      Object.entries(payloadOverride).forEach(([k, v]) => {
+        const key = resolveFormColumn(k) || k;
+        merged[key] = v;
+      });
+    }
+    try {
+      const res = await fetch('/api/proc_triggers/preview', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ table, values: merged }),
+      });
+      if (!res.ok) return;
+      const data = await res.json().catch(() => ({}));
+      if (!data || typeof data !== 'object') return;
+      const { formVals: nextForm, extraVals: nextExtra, changedValues } =
+        applyProcedureResultToForm(data, formValsRef.current, extraValsRef.current);
+      setExtraVals(nextExtra);
+      const result = setFormValuesWithGenerated(() => nextForm, { notify: false });
+      const combined = { ...(changedValues || {}), ...(result?.diff || {}) };
+      if (Object.keys(combined).length > 0) onChange(combined);
+    } catch {
+      // silently ignore preview failures
     }
   }
 
