@@ -2577,37 +2577,6 @@ const TableManager = forwardRef(function TableManager({
     setWorkflowState({ isTemporary: false, status: null });
   }, []);
 
-  async function hydrateRowForEdit(row) {
-    const id = getRowId(row);
-    if (!id) return row;
-
-    await ensureColumnMeta();
-
-    try {
-      const res = await fetch(
-        `/api/tables/${encodeURIComponent(table)}/${encodeURIComponent(id)}`,
-        { credentials: 'include' },
-      );
-
-      if (!res.ok) return row;
-
-      const json = await res.json();
-      const fullRow = json?.row ?? json;
-
-      if (!fullRow || typeof fullRow !== 'object') return row;
-
-      const normalized = {};
-      Object.entries(fullRow).forEach(([k, v]) => {
-        const mapped = columnCaseMap[k.toLowerCase()] || k;
-        normalized[mapped] = v;
-      });
-
-      return { ...row, ...normalized };
-    } catch {
-      return row;
-    }
-  }
-
   async function openAdd() {
     resetWorkflowState();
     const meta = await ensureColumnMeta();
@@ -2662,11 +2631,190 @@ const TableManager = forwardRef(function TableManager({
   }
 
   async function openEdit(row) {
+    if (getRowId(row) === undefined) {
+      if (txnToastEnabled) {
+        addToast(
+          'Transaction toast: Missing primary key for edit operation',
+          'info',
+        );
+      }
+      addToast(
+        t('cannot_edit_without_pk', 'Cannot edit rows without a primary key'),
+        'error',
+      );
+      return;
+    }
     resetWorkflowState();
-    const hydrated = await hydrateRowForEdit(row);
+    const meta = await ensureColumnMeta();
+    const cols = Array.isArray(meta) && meta.length > 0 ? meta : columnMeta;
+    const localCaseMap =
+      Array.isArray(cols) && cols.length > 0
+        ? buildColumnCaseMap(cols)
+        : columnCaseMap;
+    if (txnToastEnabled) {
+      const resolvedKeys = Object.keys(localCaseMap || {});
+      addToast(
+        `Transaction toast: Resolved key columns ${formatTxnToastPayload({
+          count: resolvedKeys.length,
+          sample: resolvedKeys.slice(0, 10),
+        })}`,
+        'info',
+      );
+    }
+    const id = getRowId(row);
+    addToast(t('loading_record', 'Loading record...'));
 
-    setEditing(hydrated);
-    setGridRows([hydrated]);
+    const normalizedRow = normalizeToCanonical(row, localCaseMap);
+
+    let tenantInfo = null;
+    try {
+      const ttRes = await fetch(
+        `/api/tenant_tables/${encodeURIComponent(table)}`,
+        { credentials: 'include', skipErrorToast: true, skipLoader: true },
+      );
+      if (ttRes.ok) {
+        tenantInfo = await ttRes.json().catch(() => null);
+      }
+    } catch {
+      tenantInfo = null;
+    }
+
+    const params = new URLSearchParams();
+    if (tenantInfo && !(tenantInfo.isShared ?? tenantInfo.is_shared)) {
+      if (hasTenantKey(tenantInfo, 'company_id', localCaseMap)) {
+        const companyKey = resolveCanonicalKey('company_id', localCaseMap);
+        const rowCompanyId =
+          companyKey != null ? normalizedRow[companyKey] : normalizedRow.company_id;
+        appendTenantParam(
+          params,
+          'company_id',
+          localCaseMap,
+          rowCompanyId,
+          companyKey,
+        );
+      }
+    }
+    if (txnToastEnabled) {
+      const paramEntries = Array.from(params.entries());
+      addToast(
+        `Transaction toast: Tenant params ${formatTxnToastPayload(
+          paramEntries.length > 0 ? paramEntries : 'none',
+        )}`,
+        'info',
+      );
+    }
+
+    const url = `/api/tables/${encodeURIComponent(table)}/${encodeURIComponent(id)}${
+      params.toString() ? `?${params.toString()}` : ''
+    }`;
+    if (txnToastEnabled) {
+      addToast(`Transaction toast: Fetch URL ${url}`, 'info');
+    }
+
+    let payload = null;
+    let lastResponseInfo = null;
+    try {
+      const res = await fetch(url, { credentials: 'include' });
+      lastResponseInfo = {
+        status: res?.status,
+        statusText: res?.statusText,
+        url,
+      };
+      if (!res.ok) {
+        if (txnToastEnabled) {
+          addToast(
+            `Transaction toast: Record fetch failed ${formatTxnToastPayload({
+              status: res.status,
+              statusText: res.statusText,
+            })}`,
+            'error',
+          );
+        }
+        throw new Error('Failed to load record');
+      }
+      try {
+        payload = await res.json();
+      } catch (jsonErr) {
+        if (txnToastEnabled) {
+          addToast(
+            `Transaction toast: Record fetch parse failed ${formatTxnToastPayload({
+              status: res.status,
+              statusText: res.statusText,
+              error: jsonErr?.message ?? String(jsonErr),
+            })}`,
+            'error',
+          );
+        }
+        throw jsonErr;
+      }
+      if (txnToastEnabled) {
+        addToast(
+          `Transaction toast: Success payload ${formatTxnToastPayload(payload)}`,
+          'info',
+        );
+      }
+    } catch (err) {
+      if (txnToastEnabled) {
+        addToast(
+          `Transaction toast: Edit flow failed ${formatTxnToastPayload({
+            error: {
+              message: err?.message ?? String(err),
+              stack: err?.stack,
+              name: err?.name,
+            },
+            response: lastResponseInfo,
+          })}`,
+          'error',
+        );
+      }
+      addToast(t('failed_load_record', 'Failed to load record details'), 'error');
+      return;
+    }
+
+    let record = null;
+    if (payload && typeof payload === 'object') {
+      if (!Array.isArray(payload) && payload.data && typeof payload.data === 'object') {
+        record = payload.data;
+      } else if (!Array.isArray(payload)) {
+        record = payload;
+      }
+    }
+
+    if (!record) {
+      if (txnToastEnabled) {
+        addToast(
+          `Transaction toast: Record not found ${formatTxnToastPayload(payload)}`,
+          'info',
+        );
+      }
+      addToast(t('failed_load_record', 'Failed to load record details'), 'error');
+      return;
+    }
+
+    const normalizedRecord = normalizeToCanonical(record, localCaseMap);
+    if (txnToastEnabled) {
+      addToast(
+        `Transaction toast: Canonical record ${formatTxnToastPayload(normalizedRecord)}`,
+        'info',
+      );
+    }
+    const mergedRow = { ...normalizedRow };
+    for (const [key, value] of Object.entries(normalizedRecord)) {
+      mergedRow[key] = value;
+    }
+
+    if (txnToastEnabled) {
+      addToast(
+        `Transaction toast: Edit modal payload ${formatTxnToastPayload({
+          mergedRow,
+          willOpenModal: true,
+        })}`,
+        'info',
+      );
+    }
+
+    setEditing(mergedRow);
+    setGridRows([mergedRow]);
     setIsAdding(false);
     setShowForm(true);
   }
