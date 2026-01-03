@@ -616,7 +616,7 @@ export default function SchemaDiffPanel() {
             <div>
               <strong>Tool:</strong> {diff.tool}{' '}
               {!diff.toolAvailable && (
-                <span style={{ color: '#d00' }}>(Liquibase not available; bootstrap diff used)</span>
+                <span style={{ color: '#d00' }}>(Liquibase unavailable or failed; bootstrap diff used)</span>
               )}
             </div>
             <div>
