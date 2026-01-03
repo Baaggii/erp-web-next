@@ -27,6 +27,41 @@ export function valuesEqual(a, b) {
   return true;
 }
 
+export function extractGenerationDependencies(expression = '') {
+  const deps = new Set();
+  if (typeof expression !== 'string' || !expression.trim()) return deps;
+  const RESERVED = new Set([
+    'abs',
+    'avg',
+    'case',
+    'ceil',
+    'ceiling',
+    'coalesce',
+    'count',
+    'floor',
+    'greatest',
+    'if',
+    'ifnull',
+    'least',
+    'nullif',
+    'pow',
+    'power',
+    'round',
+    'sum',
+    'truncate',
+    'when',
+    'then',
+    'else',
+    'end',
+  ]);
+  for (const match of expression.matchAll(/`?([A-Za-z_][A-Za-z0-9_]*)`?/g)) {
+    const token = (match[1] || '').toLowerCase();
+    if (!token || RESERVED.has(token)) continue;
+    deps.add(token);
+  }
+  return deps;
+}
+
 const MYSQL_FUNCTIONS = {
   IFNULL: (a, b) => (a === null || a === undefined ? b ?? null : a),
   COALESCE: (...args) => {
@@ -479,26 +514,38 @@ class MySqlExpressionParser {
     }
     if (token.type === 'identifier') {
       this.consume();
-      if ((this.peek()?.type === 'paren' && this.peek().value === '(') || this.matchOperator('(')) {
-        if (!(this.peek()?.type === 'paren' && this.peek().value === '(')) {
+      const nextToken = this.peek();
+      if ((nextToken?.type === 'paren' && nextToken.value === '(') || this.matchOperator('(')) {
+        if (!(nextToken?.type === 'paren' && nextToken.value === '(')) {
           this.index -= 1;
           this.consume();
+        } else {
+          this.consume(); // consume opening paren
         }
         const args = [];
-        if (this.matchOperator(')') || (this.peek()?.type === 'paren' && this.peek().value === ')')) {
-          if (this.peek()?.type === 'paren' && this.peek().value === ')') this.consume();
-          return { type: 'function', name: token.value, args };
-        }
-        while (true) {
-          args.push(this.parseExpression());
-          if (this.matchOperator(')') || (this.peek()?.type === 'paren' && this.peek().value === ')')) {
-            if (this.peek()?.type === 'paren' && this.peek().value === ')') this.consume();
+        let sawClosing = false;
+        while (!sawClosing) {
+          if (this.peek()?.type === 'paren' && this.peek().value === ')') {
+            this.consume();
             break;
           }
-          if (!this.matchOperator(',') && !(this.peek()?.type === 'comma')) {
-            throw new Error('Expected , in function arguments');
+          args.push(this.parseExpression());
+          const peekToken = this.peek();
+          if (peekToken?.type === 'comma') {
+            this.consume();
+            continue;
           }
-          if (this.peek()?.type === 'comma') this.consume();
+          if (peekToken?.type === 'paren' && peekToken.value === ')') {
+            this.consume();
+            sawClosing = true;
+            break;
+          }
+          if (this.matchOperator(',')) continue;
+          if (this.matchOperator(')')) {
+            sawClosing = true;
+            break;
+          }
+          throw new Error('Expected , or ) in function arguments');
         }
         return { type: 'function', name: token.value, args };
       }
