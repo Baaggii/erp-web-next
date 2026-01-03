@@ -323,16 +323,16 @@ function stripCommentLines(sqlText) {
 }
 
 const OBJECT_PATTERNS = [
-  { type: 'table', regex: /\bTABLE\s+`?([A-Za-z0-9_]+)`?/i },
+  { type: 'table', regex: /\bTABLE\s+(?:IF\s+EXISTS\s+)?`?([A-Za-z0-9_]+)`?/i },
   {
     type: 'view',
     regex:
-      /\bCREATE\s+(?:OR\s+REPLACE\s+)?(?:ALGORITHM=\w+\s+)?(?:DEFINER=`?[^`]+`?@`?[^`]+`?\s+)?(?:SQL\s+SECURITY\s+\w+\s+)?VIEW\s+`?([A-Za-z0-9_]+)`?/i,
+      /\b(?:CREATE\s+(?:OR\s+REPLACE\s+)?(?:ALGORITHM=\w+\s+)?(?:DEFINER=`?[^`]+`?@`?[^`]+`?\s+)?(?:SQL\s+SECURITY\s+\w+\s+)?|DROP\s+)?VIEW\s+(?:IF\s+EXISTS\s+)?`?([A-Za-z0-9_]+)`?/i,
   },
-  { type: 'trigger', regex: /\bTRIGGER\s+`?([A-Za-z0-9_]+)`?/i },
-  { type: 'procedure', regex: /\bPROCEDURE\s+`?([A-Za-z0-9_]+)`?/i },
-  { type: 'function', regex: /\bFUNCTION\s+`?([A-Za-z0-9_]+)`?/i },
-  { type: 'event', regex: /\bEVENT\s+`?([A-Za-z0-9_]+)`?/i },
+  { type: 'trigger', regex: /\bTRIGGER\s+(?:IF\s+EXISTS\s+)?`?([A-Za-z0-9_]+)`?/i },
+  { type: 'procedure', regex: /\bPROCEDURE\s+(?:IF\s+EXISTS\s+)?`?([A-Za-z0-9_]+)`?/i },
+  { type: 'function', regex: /\bFUNCTION\s+(?:IF\s+EXISTS\s+)?`?([A-Za-z0-9_]+)`?/i },
+  { type: 'event', regex: /\bEVENT\s+(?:IF\s+EXISTS\s+)?`?([A-Za-z0-9_]+)`?/i },
 ];
 
 function extractObject(statement) {
@@ -399,6 +399,21 @@ function groupStatements(diffSql, metadata = []) {
       generalStatements.push({ sql: stmt, type, risk });
     }
   }
+
+  metadata.forEach((meta) => {
+    if (!meta?.type || !meta?.name) return;
+    const key = `${meta.type}:${meta.name}`;
+    if (objectMap.has(key)) return;
+    objectMap.set(key, {
+      key,
+      name: meta.name,
+      type: meta.type,
+      statements: [],
+      hasDrops: false,
+      details: meta.message,
+      state: meta.state,
+    });
+  });
 
   const typeOrder = ['table', 'view', 'procedure', 'function', 'trigger', 'index', 'other'];
   const groupedObjects = Array.from(objectMap.values()).sort((a, b) => {
@@ -486,6 +501,7 @@ function basicDiffFromDumps(currentSql, targetSql, allowDrops = false) {
 
   const statements = [];
   const warnings = [];
+  const metadata = [];
 
   for (const [key, targetObj] of targetObjects.entries()) {
     const currentObj = currentObjects.get(key);
@@ -498,6 +514,13 @@ function basicDiffFromDumps(currentSql, targetSql, allowDrops = false) {
         warnings.push(
           `Table ${targetObj.name} definitions differ and require manual review. Install Liquibase for full ALTER scripting.`,
         );
+        metadata.push({
+          name: targetObj.name,
+          type: targetObj.type,
+          state: 'changed',
+          message:
+            'Table definition changed; ALTER statements unavailable without Liquibase. Review manually.',
+        });
       } else {
         const dropStmt = buildDropStatement(targetObj.type, targetObj.name);
         if (dropStmt) statements.push(dropStmt);
@@ -518,7 +541,7 @@ function basicDiffFromDumps(currentSql, targetSql, allowDrops = false) {
     }
   }
 
-  return { statements, warnings };
+  return { statements, warnings, metadata };
 }
 
 async function loadBaselines() {
@@ -852,7 +875,7 @@ export async function buildSchemaDiff(options = {}) {
       const fallback = basicDiffFromDumps(currentSql, targetSql, allowDrops);
       diffSql = fallback.statements.join('\n\n');
       warnings.push(...fallback.warnings);
-      grouped = groupStatements(diffSql);
+      grouped = groupStatements(diffSql, fallback.metadata);
     } finally {
       if (tempDbName) {
         await dropTempDatabase(tempDbName);
@@ -867,7 +890,7 @@ export async function buildSchemaDiff(options = {}) {
     const fallback = basicDiffFromDumps(currentSql, targetSql, allowDrops);
     diffSql = fallback.statements.join('\n\n');
     warnings.push(...fallback.warnings);
-    grouped = groupStatements(diffSql);
+    grouped = groupStatements(diffSql, fallback.metadata);
   }
 
   const diffPath = path.join(tempDir, 'schema_diff.sql');
