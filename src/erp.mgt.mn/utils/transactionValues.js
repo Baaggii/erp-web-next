@@ -171,6 +171,9 @@ export function createGeneratedColumnPipeline({
 } = {}) {
   const evaluators = buildGeneratedColumnEvaluators(tableColumns, columnCaseMap);
   const mainFieldSet = ensureFieldSet(mainFields);
+  if (mainFieldSet && Object.keys(evaluators).length > 0) {
+    Object.keys(evaluators).forEach((key) => mainFieldSet.add(key));
+  }
   const metadataFieldSet = ensureFieldSet(metadataFields);
   const hasEvaluators = Object.keys(evaluators).length > 0;
 

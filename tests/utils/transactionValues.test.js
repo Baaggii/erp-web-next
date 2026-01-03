@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import {
   recalcGeneratedColumns,
   recalcTotals,
+  createGeneratedColumnPipeline,
 } from '../../src/erp.mgt.mn/utils/transactionValues.js';
 
 const baseCalcFields = [
