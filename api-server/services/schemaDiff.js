@@ -323,16 +323,16 @@ function stripCommentLines(sqlText) {
 }
 
 const OBJECT_PATTERNS = [
-  { type: 'table', regex: /\bTABLE\s+(?:IF\s+EXISTS\s+)?`?([A-Za-z0-9_]+)`?/i },
+  { type: 'table', regex: /\bTABLE\s+`?([A-Za-z0-9_]+)`?/i },
   {
     type: 'view',
     regex:
-      /\b(?:CREATE\s+(?:OR\s+REPLACE\s+)?(?:ALGORITHM=\w+\s+)?(?:DEFINER=`?[^`]+`?@`?[^`]+`?\s+)?(?:SQL\s+SECURITY\s+\w+\s+)?|DROP\s+)?VIEW\s+(?:IF\s+EXISTS\s+)?`?([A-Za-z0-9_]+)`?/i,
+      /\bCREATE\s+(?:OR\s+REPLACE\s+)?(?:ALGORITHM=\w+\s+)?(?:DEFINER=`?[^`]+`?@`?[^`]+`?\s+)?(?:SQL\s+SECURITY\s+\w+\s+)?VIEW\s+`?([A-Za-z0-9_]+)`?/i,
   },
-  { type: 'trigger', regex: /\bTRIGGER\s+(?:IF\s+EXISTS\s+)?`?([A-Za-z0-9_]+)`?/i },
-  { type: 'procedure', regex: /\bPROCEDURE\s+(?:IF\s+EXISTS\s+)?`?([A-Za-z0-9_]+)`?/i },
-  { type: 'function', regex: /\bFUNCTION\s+(?:IF\s+EXISTS\s+)?`?([A-Za-z0-9_]+)`?/i },
-  { type: 'event', regex: /\bEVENT\s+(?:IF\s+EXISTS\s+)?`?([A-Za-z0-9_]+)`?/i },
+  { type: 'trigger', regex: /\bTRIGGER\s+`?([A-Za-z0-9_]+)`?/i },
+  { type: 'procedure', regex: /\bPROCEDURE\s+`?([A-Za-z0-9_]+)`?/i },
+  { type: 'function', regex: /\bFUNCTION\s+`?([A-Za-z0-9_]+)`?/i },
+  { type: 'event', regex: /\bEVENT\s+`?([A-Za-z0-9_]+)`?/i },
 ];
 
 function extractObject(statement) {
