@@ -108,6 +108,7 @@ export default function SchemaDiffPanel() {
   useEffect(() => {
     setAlterPreviewed(false);
     setRoutineAcknowledged(false);
+    setManualMode(false);
   }, [diff, includeDrops, includeGeneral, selectedObjects, activeGroup]);
 
   useEffect(() => {
@@ -359,9 +360,6 @@ export default function SchemaDiffPanel() {
         const defaultObject = newGroups.find((g) => g.id === defaultGroup)?.items?.[0]?.key || '';
         setActiveObject(defaultObject);
         setManualMode(true);
-        setDryRun(false);
-        setAlterPreviewed(true);
-        setRoutineAcknowledged(true);
         setLoading(false);
         setDumpStatus('');
         addToast('Schema script parsed for manual review', 'success');
@@ -415,6 +413,20 @@ export default function SchemaDiffPanel() {
   async function applySelected() {
     if (!diff) {
       setError('Generate a diff before applying changes.');
+      return;
+    }
+    if (manualMode || diff?.tool === 'manual') {
+      const dropCount = selectedStatements.filter((s) => s.type === 'drop').length;
+      setApplyResult({
+        applied: 0,
+        failed: [],
+        dropStatements: dropCount,
+        dryRun: true,
+        statements: selectedStatements.map((s) => s.sql),
+        durationMs: 0,
+      });
+      setError('Manual script review is preview-only. Copy the SQL to apply it manually in your database client.');
+      addToast('Preview ready. Copy SQL to apply manually.', 'info');
       return;
     }
     if (selectedStatements.length === 0) {
@@ -605,6 +617,7 @@ export default function SchemaDiffPanel() {
               type="checkbox"
               checked={dryRun}
               onChange={(e) => setDryRun(e.target.checked)}
+              disabled={manualMode}
             />
             Dry-run only
           </label>
@@ -835,7 +848,8 @@ export default function SchemaDiffPanel() {
                   <button
                     type="button"
                     onClick={applySelected}
-                    disabled={applying || !selectedStatements.length}
+                    disabled={applying || !selectedStatements.length || manualMode}
+                    title={manualMode ? 'Manual script review is preview-only' : undefined}
                   >
                     {applying ? 'Applying...' : dryRun ? 'Preview Selected' : 'Apply Selected'}
                   </button>
