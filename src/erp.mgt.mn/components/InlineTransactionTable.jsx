@@ -17,7 +17,7 @@ import slugify from '../utils/slugify.js';
 import formatTimestamp from '../utils/formatTimestamp.js';
 import callProcedure from '../utils/callProcedure.js';
 import normalizeDateInput from '../utils/normalizeDateInput.js';
-import { extractGenerationDependencies, valuesEqual } from '../utils/generatedColumns.js';
+import { valuesEqual } from '../utils/generatedColumns.js';
 import {
   assignArrayMetadata,
   extractArrayMetadata,
@@ -898,48 +898,6 @@ function InlineTransactionTable(
   const generatedColumnEvaluators = generatedColumnPipeline.evaluators;
   const hasGeneratedColumnsRef = useRef(false);
 
-  const generatedColumnSet = React.useMemo(() => {
-    const set = new Set();
-    if (!Array.isArray(tableColumns)) return set;
-    tableColumns.forEach((col) => {
-      if (!col || typeof col !== 'object') return;
-      const key = columnCaseMap[String(col.name || '').toLowerCase()] || col.name;
-      if (!key) return;
-      const extra = String(col.extra || col.EXTRA || '').toLowerCase();
-      const expr =
-        col.generationExpression ?? col.GENERATION_EXPRESSION ?? col.generation_expression;
-      if (expr || extra.includes('generated')) {
-        set.add(key);
-      }
-    });
-    return set;
-  }, [tableColumnsKey, columnCaseMapKey, tableColumns, columnCaseMap]);
-
-  const generatedDependencyLookup = React.useMemo(() => {
-    const map = {};
-    if (!Array.isArray(tableColumns)) return map;
-    tableColumns.forEach((col) => {
-      if (!col || typeof col !== 'object') return;
-      const expr =
-        col.generationExpression ??
-        col.GENERATION_EXPRESSION ??
-        col.generation_expression ??
-        null;
-      if (!expr) return;
-      const target = columnCaseMap[String(col.name || '').toLowerCase()] || col.name;
-      if (!target) return;
-      const deps = extractGenerationDependencies(expr);
-      deps.forEach((dep) => {
-        const source = columnCaseMap[dep] || dep;
-        if (!source) return;
-        const lower = String(source).toLowerCase();
-        if (!map[lower]) map[lower] = new Set();
-        map[lower].add(target);
-      });
-    });
-    return map;
-  }, [tableColumnsKey, columnCaseMapKey, tableColumns, columnCaseMap]);
-
   const applyGeneratedColumns = React.useCallback(
     (targetRows, indices = null) =>
       generatedColumnPipeline.apply(targetRows, indices),
@@ -1000,27 +958,6 @@ function InlineTransactionTable(
     });
     return map;
   }, [fieldsKey, columnTypeMap, fieldTypeMapKey]);
-
-  const buildAssignmentPreviewPayload = useCallback(
-    (rowValues = {}) => {
-      const normalized = {};
-      Object.entries(rowValues || {}).forEach(([rawKey, rawValue]) => {
-        if (!rawKey && rawKey !== 0) return;
-        const key = columnCaseMap[String(rawKey).toLowerCase()] || rawKey;
-        let val = rawValue;
-        if (val && typeof val === 'object' && 'value' in val) val = val.value;
-        if (placeholders[key]) {
-          val = normalizeDateInput(val, placeholders[key]);
-        }
-        if (totalAmountSet.has(key) || totalCurrencySet.has(key)) {
-          val = normalizeNumberInput(val);
-        }
-        normalized[key] = val;
-      });
-      return normalized;
-    },
-    [columnCaseMap, placeholders, totalAmountSet, totalCurrencySet],
-  );
 
   const fieldInputTypes = React.useMemo(() => {
     const map = {};
@@ -1293,35 +1230,8 @@ function InlineTransactionTable(
     );
   }
 
-  const assignmentTriggerColumns = React.useMemo(() => {
-    const set = new Set();
-    Object.entries(procTriggers || {}).forEach(([col, cfgList]) => {
-      const list = Array.isArray(cfgList) ? cfgList : [cfgList];
-      if (list.some(isAssignmentTrigger)) {
-        set.add(String(col).toLowerCase());
-      }
-    });
-    return set;
-  }, [procTriggers]);
-
-  const hasAnyAssignmentTriggers = React.useMemo(
-    () => assignmentTriggerColumns.size > 0,
-    [assignmentTriggerColumns],
-  );
-
-  const hasAssignmentTriggersForColumn = useCallback(
-    (col) => assignmentTriggerColumns.has(String(col || '').toLowerCase()),
-    [assignmentTriggerColumns],
-  );
-
   function showTriggerInfo(col) {
     if (!general.procToastEnabled) return;
-    const hasProcTriggerData = procTriggers && Object.keys(procTriggers || {}).length > 0;
-    const colLower = String(col || '').toLowerCase();
-    const virtualDependents = generatedDependencyLookup[colLower];
-    const hasVirtualInfo =
-      generatedColumnSet.has(col) || (virtualDependents && virtualDependents.size > 0);
-    if (!hasProcTriggerData && !hasVirtualInfo) return;
     const direct = getDirectTriggers(col);
     const paramTrigs = getParamTriggers(col);
     const hasEntry = Object.prototype.hasOwnProperty.call(procTriggers || {}, col.toLowerCase());
@@ -1353,69 +1263,45 @@ function InlineTransactionTable(
     const procParam = paramTrigs.filter(([, cfg]) => !isAssignmentTrigger(cfg));
 
     const hasAnyAssignments = assignmentTargets.size > 0;
-    if (hasProcTriggerData) {
-      if (!hasAnyAssignments && direct.length === 0 && paramTrigs.length === 0) {
-        const message = hasEntry
-          ? `${col} талбар нь өгөгдлийн сангийн триггерээр бөглөгдөнө. Урьдчилсан тооцоолол хязгаарлагдмал байж болно.`
-          : `${col} талбар триггер ашигладаггүй`;
-        window.dispatchEvent(
-          new CustomEvent('toast', {
-            detail: { message, type: 'info' },
-          }),
-        );
-        if (!hasVirtualInfo) return;
-      }
-
-      if (hasAnyAssignments) {
-        const targets = Array.from(assignmentTargets).join(', ');
-        window.dispatchEvent(
-          new CustomEvent('toast', {
-            detail: {
-              message: `${col} талбарын утга өөрчлөгдвөл дараах талбарууд автоматаар бөглөгдөнө: ${targets}`,
-              type: 'info',
-            },
-          }),
-        );
-      }
-
-      const directNames = [...new Set(procDirect.map((d) => d.name))];
-      directNames.forEach((name) => {
-        window.dispatchEvent(
-          new CustomEvent('toast', {
-            detail: { message: `${col} -> ${name}`, type: 'info' },
-          }),
-        );
-      });
-
-      if (procParam.length > 0) {
-        const names = [...new Set(procParam.map(([, cfg]) => cfg.name))].join(', ');
-        window.dispatchEvent(
-          new CustomEvent('toast', {
-            detail: {
-              message: `${col} талбар параметр болгож дараах процедуруудад ашиглана: ${names}`,
-              type: 'info',
-            },
-          }),
-        );
-      }
+    if (!hasAnyAssignments && direct.length === 0 && paramTrigs.length === 0) {
+      const message = hasEntry
+        ? `${col} талбар нь өгөгдлийн сангийн триггерээр бөглөгдөнө. Урьдчилсан тооцоолол хязгаарлагдмал байж болно.`
+        : `${col} талбар триггер ашигладаггүй`;
+      window.dispatchEvent(
+        new CustomEvent('toast', {
+          detail: { message, type: 'info' },
+        }),
+      );
+      return;
     }
 
-    if (generatedColumnSet.has(col)) {
+    if (hasAnyAssignments) {
+      const targets = Array.from(assignmentTargets).join(', ');
       window.dispatchEvent(
         new CustomEvent('toast', {
           detail: {
-            message: `${col} талбар нь виртуал тооцоолол бөгөөд утгыг автоматаар тооцно.`,
+            message: `${col} талбарын утга өөрчлөгдвөл дараах талбарууд автоматаар бөглөгдөнө: ${targets}`,
             type: 'info',
           },
         }),
       );
     }
-    if (virtualDependents && virtualDependents.size > 0) {
-      const list = Array.from(virtualDependents).join(', ');
+
+    const directNames = [...new Set(procDirect.map((d) => d.name))];
+    directNames.forEach((name) => {
+      window.dispatchEvent(
+        new CustomEvent('toast', {
+          detail: { message: `${col} -> ${name}`, type: 'info' },
+        }),
+      );
+    });
+
+    if (procParam.length > 0) {
+      const names = [...new Set(procParam.map(([, cfg]) => cfg.name))].join(', ');
       window.dispatchEvent(
         new CustomEvent('toast', {
           detail: {
-            message: `${col} талбарын утга өөрчлөгдвөл дараах виртуал талбарууд шинэчлэгдэнэ: ${list}`,
+            message: `${col} талбар параметр болгож дараах процедуруудад ашиглана: ${names}`,
             type: 'info',
           },
         }),
@@ -1874,43 +1760,6 @@ function InlineTransactionTable(
         },
         { indices: changedRows },
       );
-    }
-    return { rows: workingRows };
-  }
-
-  async function previewAssignmentTriggers(rowIdx, col, rowOverride = null, workingRowsOverride = null) {
-    if (!tableName || !hasAnyAssignmentTriggers || !hasAssignmentTriggersForColumn(col)) return;
-    const sourceRows = Array.isArray(workingRowsOverride) ? workingRowsOverride : rowsRef.current;
-    if (!Array.isArray(sourceRows) || rowIdx < 0 || rowIdx >= sourceRows.length) return;
-    const baseRow = sourceRows[rowIdx] && typeof sourceRows[rowIdx] === 'object' ? sourceRows[rowIdx] : {};
-    const mergedRow = { ...baseRow };
-    if (rowOverride && typeof rowOverride === 'object') {
-      Object.entries(rowOverride).forEach(([k, v]) => {
-        mergedRow[k] = v;
-      });
-    }
-    const payload = buildAssignmentPreviewPayload(mergedRow);
-    if (!payload || Object.keys(payload).length === 0) return;
-    try {
-      const res = await fetch('/api/proc_triggers/preview', {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ table: tableName, values: payload }),
-      });
-      if (!res.ok) return;
-      const data = await res.json().catch(() => ({}));
-      if (!data || typeof data !== 'object') return;
-      const targetRows = Array.isArray(workingRowsOverride) ? workingRowsOverride : rowsRef.current;
-      const { rows: updatedRows, changedColumns } = applyProcedureResult(
-        rowIdx,
-        data,
-        targetRows,
-      );
-      if (changedColumns.size === 0) return;
-      commitRowsUpdate(() => updatedRows, { indices: [rowIdx] });
-    } catch {
-      // ignore preview failures
     }
   }
 
@@ -2462,12 +2311,9 @@ function InlineTransactionTable(
       if (e.target.select) e.target.select();
       return;
     }
-    const override = { ...rows[rowIdx], [field]: newValue };
     if (hasTrigger(field)) {
-      const triggerResult = await runProcTrigger(rowIdx, field, override);
-      await previewAssignmentTriggers(rowIdx, field, override, triggerResult?.rows);
-    } else {
-      await previewAssignmentTriggers(rowIdx, field, override);
+      const override = { ...rows[rowIdx], [field]: newValue };
+      await runProcTrigger(rowIdx, field, override);
     }
     const enabledIdx = enabledFields.indexOf(field);
     const nextField = enabledFields[enabledIdx + 1];
