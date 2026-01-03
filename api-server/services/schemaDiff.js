@@ -1132,15 +1132,6 @@ async function applyWithCli(statements, { signal } = {}) {
     if (err.code === 'ENOENT') {
       err.message = 'mysql CLI not found; install the MySQL client or use dry-run to preview SQL.';
     }
-    const stderrMsg = (err.stderr || '').trim();
-    const stdoutMsg = (err.stdout || '').trim();
-    const detail = stderrMsg || stdoutMsg;
-    if (detail) {
-      err.message = `${err.message || 'mysql CLI failed'}: ${detail.split('\n')[0]}`;
-    } else {
-      err.message = err.message || 'mysql CLI failed';
-    }
-    err.status = err.status || 500;
     err.details = err.details || { stderr: err.stderr, stdout: err.stdout };
     throw err;
   } finally {
@@ -1247,13 +1238,10 @@ export async function applySchemaDiffStatements(statements, options = {}) {
     lastError = err;
   }
 
-  const attemptSummary = attempts.map((a) => `${a.method}: ${a.error}`).join('; ');
-  const finalErr = new Error(
-    attemptSummary
-      ? `Failed to apply schema diff (${attemptSummary})`
-      : lastError?.message || 'Failed to apply schema diff',
-  );
+  const finalErr = new Error(lastError?.message || 'Failed to apply schema diff');
   finalErr.status = lastError?.status || 500;
-  finalErr.details = { attempts };
+  finalErr.details = {
+    attempts,
+  };
   throw finalErr;
 }
