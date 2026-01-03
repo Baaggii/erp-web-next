@@ -55,6 +55,37 @@ test('recalcGeneratedColumns applies calc fields and pipelines', () => {
   assert.equal(initialValues.items[0].line_total, undefined);
 });
 
+test('recalcGeneratedColumns applies pipelines to single-record tables', () => {
+  const initialValues = {
+    header: { qty: 3, price: 4 },
+  };
+
+  const pipelineMap = {
+    header: {
+      apply(rows) {
+        if (!Array.isArray(rows) || rows.length === 0) return { changed: false, metadata: null };
+        const row = rows[0] || {};
+        const total = Number(row.qty || 0) * Number(row.price || 0);
+        const changed = row.total !== total;
+        const nextRow = { ...row, total };
+        rows[0] = nextRow;
+        return {
+          changed,
+          metadata: { shadow_total: total * 2 },
+        };
+      },
+    },
+  };
+
+  const result = recalcGeneratedColumns(initialValues, pipelineMap, []);
+
+  assert.notStrictEqual(result, initialValues);
+  assert.equal(result.header.total, 12);
+  assert.equal(result.header.shadow_total, 24);
+  assert.equal(initialValues.header.total, undefined);
+  assert.equal(initialValues.header.shadow_total, undefined);
+});
+
 test('recalcTotals applies POS aggregates after generated columns', () => {
   const initialValues = {
     items: [
