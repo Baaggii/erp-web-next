@@ -2435,13 +2435,20 @@ const RowFormModal = function RowFormModal({
       setErrors((er) => ({ ...er, [col]: 'Буруу тоон утга' }));
       return;
     }
+    const { assignmentTargets, procDirect, procParam } = analyzeTriggers(col);
+    const hasProcTriggers = procDirect.length > 0 || procParam.length > 0;
     const triggerAware =
-      hasTrigger(col) ||
+      hasProcTriggers ||
+      assignmentTargets.size > 0 ||
       Object.prototype.hasOwnProperty.call(procTriggers || {}, col.toLowerCase());
     if (triggerAware) {
       const override = { ...nextSnapshot, [col]: newVal };
-      await runProcTrigger(col, override);
-      await previewTriggerAssignments(override);
+      if (hasProcTriggers) {
+        await runProcTrigger(col, override);
+      }
+      if (assignmentTargets.size > 0) {
+        await previewTriggerAssignments(override, assignmentTargets);
+      }
     }
 
     const enabled = columns.filter((c) => !disabledSet.has(c.toLowerCase()));
@@ -2484,6 +2491,35 @@ const RowFormModal = function RowFormModal({
   const isAssignmentTrigger = (cfg) =>
     cfg && (cfg.kind === 'assignment' || cfg.name === '__assignment__');
 
+  function analyzeTriggers(col) {
+    const assignmentTargets = new Set();
+    const collectAssignmentTargets = (cfg, fallbackTarget = null) => {
+      if (!isAssignmentTrigger(cfg)) return;
+      const targets = Array.isArray(cfg?.targets) ? cfg.targets : [];
+      const normalizedTargets =
+        targets.length > 0 ? targets : fallbackTarget ? [fallbackTarget] : [];
+      normalizedTargets.forEach((target) => {
+        if (!target) return;
+        const lower = String(target).toLowerCase();
+        const resolved = columnCaseMap[lower] || target;
+        assignmentTargets.add(resolved);
+      });
+      Object.values(cfg?.outMap || {}).forEach((target) => {
+        if (!target) return;
+        const lower = String(target).toLowerCase();
+        const resolved = columnCaseMap[lower] || target;
+        assignmentTargets.add(resolved);
+      });
+    };
+    const directTriggers = getDirectTriggers(col);
+    const paramTriggers = getParamTriggers(col);
+    directTriggers.forEach((cfg) => collectAssignmentTargets(cfg));
+    paramTriggers.forEach(([targetCol, cfg]) => collectAssignmentTargets(cfg, targetCol));
+    const procDirect = directTriggers.filter((cfg) => !isAssignmentTrigger(cfg));
+    const procParam = paramTriggers.filter(([, cfg]) => !isAssignmentTrigger(cfg));
+    return { assignmentTargets, procDirect, procParam };
+  }
+
   function hasTrigger(col) {
     const lower = col.toLowerCase();
     return (
@@ -2500,35 +2536,11 @@ const RowFormModal = function RowFormModal({
         : general.triggerToastEnabled;
     if (!toastEnabled) return;
     const hasProcData = procTriggers && Object.keys(procTriggers || {}).length > 0;
-    const direct = hasProcData ? getDirectTriggers(col) : [];
-    const paramTrigs = hasProcData ? getParamTriggers(col) : [];
+    const { assignmentTargets, procDirect, procParam } = hasProcData
+      ? analyzeTriggers(col)
+      : { assignmentTargets: new Set(), procDirect: [], procParam: [] };
     const hasEntry =
       hasProcData && Object.prototype.hasOwnProperty.call(procTriggers, col.toLowerCase());
-
-    const assignmentTargets = new Set();
-    const collectAssignmentTargets = (cfg, fallbackTarget = null) => {
-      if (!isAssignmentTrigger(cfg)) return;
-      const targets = Array.isArray(cfg?.targets) ? cfg.targets : [];
-      const normalizedTargets = targets.length > 0 ? targets : fallbackTarget ? [fallbackTarget] : [];
-      normalizedTargets.forEach((target) => {
-        if (!target) return;
-        const lower = String(target).toLowerCase();
-        const resolved = columnCaseMap[lower] || target;
-        assignmentTargets.add(resolved);
-      });
-      Object.values(cfg?.outMap || {}).forEach((target) => {
-        if (!target) return;
-        const lower = String(target).toLowerCase();
-        const resolved = columnCaseMap[lower] || target;
-        assignmentTargets.add(resolved);
-      });
-    };
-
-    direct.forEach((cfg) => collectAssignmentTargets(cfg));
-    paramTrigs.forEach(([targetCol, cfg]) => collectAssignmentTargets(cfg, targetCol));
-
-    const procDirect = direct.filter((cfg) => !isAssignmentTrigger(cfg));
-    const procParam = paramTrigs.filter(([, cfg]) => !isAssignmentTrigger(cfg));
     const hasAny =
       (hasProcData && assignmentTargets.size > 0) ||
       procDirect.length > 0 ||
@@ -3048,7 +3060,15 @@ const RowFormModal = function RowFormModal({
     }
   }
 
-  async function previewTriggerAssignments(payloadOverride = null) {
+  async function previewTriggerAssignments(payloadOverride = null, targetColumns = null) {
+    const targetSet = targetColumns
+      ? new Set(
+          Array.from(targetColumns)
+            .map((name) => resolveFormColumn(name) || name)
+            .filter(Boolean),
+        )
+      : null;
+    if (targetSet && targetSet.size === 0) return;
     if (!table) return;
     const merged = { ...(extraValsRef.current || {}), ...(formValsRef.current || {}) };
     if (payloadOverride && typeof payloadOverride === 'object') {
@@ -3084,8 +3104,20 @@ const RowFormModal = function RowFormModal({
       if (!res.ok) return;
       const data = await res.json().catch(() => ({}));
       if (!data || typeof data !== 'object') return;
+      const filteredData = {};
+      const targetLower = targetSet
+        ? new Set(Array.from(targetSet).map((key) => String(key).toLowerCase()))
+        : null;
+      Object.entries(data).forEach(([rawKey, rawValue]) => {
+        const resolvedKey = resolveFormColumn(rawKey) || rawKey;
+        if (!resolvedKey) return;
+        if (targetLower && !targetLower.has(String(resolvedKey).toLowerCase())) return;
+        filteredData[resolvedKey] = rawValue;
+      });
+      if (targetLower && Object.keys(filteredData).length === 0) return;
+      const sourceData = targetLower ? filteredData : data;
       const { formVals: nextForm, extraVals: nextExtra, changedValues } =
-        applyProcedureResultToForm(data, formValsRef.current, extraValsRef.current);
+        applyProcedureResultToForm(sourceData, formValsRef.current, extraValsRef.current);
       extraValsRef.current = nextExtra;
       setExtraVals(nextExtra);
       const result = setFormValuesWithGenerated(() => nextForm, { notify: false });
