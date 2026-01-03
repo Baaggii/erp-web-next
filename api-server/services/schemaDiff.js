@@ -10,6 +10,18 @@ import { splitSqlStatements } from './generatedSql.js';
 const projectRoot = process.cwd();
 const BASELINE_RECORD_PATH = path.join(projectRoot, 'db', 'schema-baseline.json');
 
+function getCliCredentials() {
+  const adminUser = process.env.ERP_ADMIN_USER || process.env.DB_ADMIN_USER;
+  const adminPass = process.env.ERP_ADMIN_PASS || process.env.DB_ADMIN_PASS;
+  const fallbackUser = process.env.DB_USER || '';
+  const fallbackPass = process.env.DB_PASS || '';
+  return {
+    user: adminUser || fallbackUser,
+    pass: adminPass || fallbackPass,
+    usingAdmin: Boolean(adminUser),
+  };
+}
+
 async function commandExists(cmd) {
   try {
     await runCommand('which', [cmd], { captureStdout: false, captureStderr: false });
@@ -31,6 +43,7 @@ export async function getSchemaDiffPrerequisites() {
     DB_PASS: Boolean(process.env.DB_PASS),
     DB_HOST: Boolean(process.env.DB_HOST),
   };
+  const { usingAdmin } = getCliCredentials();
   const missing = [];
   const warnings = [];
   if (!mysqldumpAvailable) missing.push('mysqldump');
@@ -40,6 +53,9 @@ export async function getSchemaDiffPrerequisites() {
     );
   }
   if (!env.DB_NAME) missing.push('DB_NAME');
+  if (!usingAdmin) {
+    warnings.push('Admin database credentials not configured; CLI operations will use DB_USER/DB_PASS and may be limited.');
+  }
 
   return {
     mysqldumpAvailable,
@@ -176,8 +192,7 @@ function resolveSchemaFile({ schemaPath, schemaFile }) {
 
 async function dumpCurrentSchema(outputPath, signal, onProgress) {
   const host = process.env.DB_HOST || 'localhost';
-  const user = process.env.DB_USER || '';
-  const pass = process.env.DB_PASS || '';
+  const { user, pass, usingAdmin } = getCliCredentials();
   const dbName = process.env.DB_NAME;
   const port = process.env.DB_PORT;
   ensureNotAborted(signal);
@@ -187,7 +202,17 @@ async function dumpCurrentSchema(outputPath, signal, onProgress) {
     err.status = 500;
     throw err;
   }
-  const args = ['--no-data', '--routines', '--triggers', '--events', '-h', host];
+  const args = [
+    '--no-data',
+    '--routines',
+    '--triggers',
+    '--events',
+    '--single-transaction',
+    '--skip-lock-tables',
+    '--no-tablespaces',
+    '-h',
+    host,
+  ];
   if (port) args.push('--port', String(port));
   if (user) args.push('-u', user);
   args.push(dbName);
@@ -210,6 +235,9 @@ async function dumpCurrentSchema(outputPath, signal, onProgress) {
         err.message = stderrMsg
           ? `mysqldump failed: ${stderrMsg}`
           : err.message || 'mysqldump failed';
+      }
+      if (!usingAdmin) {
+        err.message = `${err.message} (admin credentials unavailable; CLI used DB_USER/DB_PASS)`;
       }
     }
     err.details = err.details || { code: err.code, stderr: err.stderr, stdout: err.stdout };
@@ -323,16 +351,16 @@ function stripCommentLines(sqlText) {
 }
 
 const OBJECT_PATTERNS = [
-  { type: 'table', regex: /\bTABLE\s+`?([A-Za-z0-9_]+)`?/i },
+  { type: 'table', regex: /\bTABLE\s+`?(?:[A-Za-z0-9_]+`?\.)?`?([A-Za-z0-9_]+)`?/i },
   {
     type: 'view',
     regex:
-      /\bCREATE\s+(?:OR\s+REPLACE\s+)?(?:ALGORITHM=\w+\s+)?(?:DEFINER=`?[^`]+`?@`?[^`]+`?\s+)?(?:SQL\s+SECURITY\s+\w+\s+)?VIEW\s+`?([A-Za-z0-9_]+)`?/i,
+      /\bCREATE\s+(?:OR\s+REPLACE\s+)?(?:ALGORITHM=\w+\s+)?(?:DEFINER=`?[^`]+`?@`?[^`]+`?\s+)?(?:SQL\s+SECURITY\s+\w+\s+)?VIEW\s+`?(?:[A-Za-z0-9_]+`?\.)?`?([A-Za-z0-9_]+)`?/i,
   },
-  { type: 'trigger', regex: /\bTRIGGER\s+`?([A-Za-z0-9_]+)`?/i },
-  { type: 'procedure', regex: /\bPROCEDURE\s+`?([A-Za-z0-9_]+)`?/i },
-  { type: 'function', regex: /\bFUNCTION\s+`?([A-Za-z0-9_]+)`?/i },
-  { type: 'event', regex: /\bEVENT\s+`?([A-Za-z0-9_]+)`?/i },
+  { type: 'trigger', regex: /\bTRIGGER\s+`?(?:[A-Za-z0-9_]+`?\.)?`?([A-Za-z0-9_]+)`?/i },
+  { type: 'procedure', regex: /\bPROCEDURE\s+`?(?:[A-Za-z0-9_]+`?\.)?`?([A-Za-z0-9_]+)`?/i },
+  { type: 'function', regex: /\bFUNCTION\s+`?(?:[A-Za-z0-9_]+`?\.)?`?([A-Za-z0-9_]+)`?/i },
+  { type: 'event', regex: /\bEVENT\s+`?(?:[A-Za-z0-9_]+`?\.)?`?([A-Za-z0-9_]+)`?/i },
 ];
 
 function extractObject(statement) {
@@ -583,11 +611,10 @@ async function markBaseline(resolvedSchemaPath, targetSql) {
 }
 
 async function importSchemaFile(schemaFilePath, tempDbName, signal, onProgress) {
-  const pass = process.env.DB_PASS || '';
+  const { user, pass, usingAdmin } = getCliCredentials();
   const env = { ...process.env };
   if (pass) env.MYSQL_PWD = pass;
   const host = process.env.DB_HOST || 'localhost';
-  const user = process.env.DB_USER || '';
   const port = process.env.DB_PORT;
   const mysqlArgs = ['-h', host];
   if (port) mysqlArgs.push('-P', String(port));
@@ -619,6 +646,9 @@ async function importSchemaFile(schemaFilePath, tempDbName, signal, onProgress) 
       const stderrMsg = err.stderr?.trim();
       if (stderrMsg) {
         err.message = `${err.message || 'mysql import failed'}: ${stderrMsg}`;
+      }
+      if (!usingAdmin) {
+        err.message = `${err.message} (admin credentials unavailable; CLI used DB_USER/DB_PASS)`;
       }
       err.details = err.details || { code: err.code, stderr: err.stderr, stdout: err.stdout };
       throw err;
@@ -786,6 +816,7 @@ export async function buildSchemaDiff(options = {}) {
   if (prereq.liquibaseAvailable) {
     tempDbName = `schema_diff_${crypto.randomBytes(5).toString('hex')}`;
     try {
+      const cliCreds = getCliCredentials();
       const { importedWithCli: viaCli } = await importSchemaFile(
         resolvedSchema,
         tempDbName,
@@ -794,8 +825,8 @@ export async function buildSchemaDiff(options = {}) {
       );
       importedWithCli = viaCli;
       const host = process.env.DB_HOST || 'localhost';
-      const user = process.env.DB_USER || '';
-      const pass = process.env.DB_PASS || '';
+      const user = cliCreds.user;
+      const pass = cliCreds.pass;
       const port = process.env.DB_PORT;
       const dbName = process.env.DB_NAME;
       const env = { ...process.env };
@@ -877,7 +908,7 @@ export async function buildSchemaDiff(options = {}) {
     baselineStatus.inSync && (grouped.stats?.statementCount || 0) === 0;
   return {
     tool,
-    toolAvailable: prereq.liquibaseAvailable,
+    toolAvailable: prereq.liquibaseAvailable && tool === 'liquibase',
     prerequisites: prereq,
     importedWithCli,
     allowDrops,
