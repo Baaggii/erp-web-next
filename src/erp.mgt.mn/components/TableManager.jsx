@@ -682,6 +682,38 @@ const TableManager = forwardRef(function TableManager({
   const ebarimtToastEnabled = generalConfig.general?.ebarimtToastEnabled;
   const { addToast } = useToast();
   const canRequestStatus = isSubordinate;
+  const posApiErrorSignatureRef = useRef('');
+  const posApiAvailable = formConfig?.posApiAvailable !== false;
+  const posApiEnabled = Boolean(formConfig?.posApiEnabled && posApiAvailable);
+
+  useEffect(() => {
+    if (!formConfig?.posApiEnabled) return;
+    const err = formConfig?.posApiRegistryError;
+    if (!err) return;
+    const signature = JSON.stringify(err);
+    if (posApiErrorSignatureRef.current === signature) return;
+    posApiErrorSignatureRef.current = signature;
+    const pathHint =
+      err.registryPath && typeof err.registryPath === 'string' && err.registryPath.trim()
+        ? ` (${err.registryPath})`
+        : '';
+    const messageDetail = err.message || 'POSAPI configuration is unavailable';
+    addToast(
+      t(
+        'posapi_config_unavailable',
+        'POSAPI configuration is unavailable: {{detail}}{{pathHint}}',
+        { detail: messageDetail, pathHint },
+      ),
+      'warning',
+    );
+    addToast(
+      t(
+        'posapi_fallback_warning',
+        'POSAPI is disabled for this transaction. You can continue without it, but please contact a system administrator.',
+      ),
+      'warning',
+    );
+  }, [formConfig?.posApiEnabled, formConfig?.posApiRegistryError, addToast, t]);
 
   const formatTxnToastPayload = useCallback((value) => {
     const maxLength = 500;
@@ -3504,7 +3536,7 @@ const TableManager = forwardRef(function TableManager({
   }
 
   async function issueTransactionEbarimt(recordId) {
-    if (!formConfig?.posApiEnabled) return null;
+    if (!posApiEnabled) return null;
     if (recordId === undefined || recordId === null || `${recordId}`.trim() === '') {
       addToast(
         t(
@@ -3794,7 +3826,7 @@ const TableManager = forwardRef(function TableManager({
           : t('transaction_updated', 'Transaction updated');
         const targetRecordId = isAdding ? savedRow?.id ?? null : getRowId(editing);
         const shouldIssueEbarimt =
-          submitIntent === 'ebarimt' && issueEbarimt && formConfig?.posApiEnabled;
+          submitIntent === 'ebarimt' && issueEbarimt && posApiEnabled;
         setShowForm(false);
         setEditing(null);
         setIsAdding(false);
@@ -7540,7 +7572,7 @@ const TableManager = forwardRef(function TableManager({
         allowTemporaryOnly={allowTemporaryOnly}
         forceEditable={guardOverridesActive}
         extraFooterContent={forceResolveFooterContent}
-        posApiEnabled={Boolean(formConfig?.posApiEnabled)}
+        posApiEnabled={posApiEnabled}
         posApiTypeField={formConfig?.posApiTypeField || ''}
         posApiEndpointMeta={formConfig?.posApiEndpointMeta || null}
         posApiInfoEndpointMeta={formConfig?.posApiInfoEndpointMeta || []}
