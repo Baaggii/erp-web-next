@@ -452,6 +452,105 @@ async function resolveEmploymentRelation({
   return { join, nameExpr };
 }
 
+async function resolveSchedulePosRelation({
+  scheduleInfo,
+  relationConfig,
+  companyId = GLOBAL_COMPANY_ID,
+  scheduleAlias = "es",
+  posAlias = "pos",
+}) {
+  const posColumn = scheduleInfo?.posColumnName || "pos_no";
+  if (!scheduleInfo?.hasPosNo || !posColumn) {
+    return {
+      join: "",
+      select: {
+        posId: "NULL",
+        posNo: "NULL",
+        posName: "NULL",
+        branchNo: "NULL",
+        districtCode: "NULL",
+        merchantTin: "NULL",
+      },
+    };
+  }
+
+  const relation = getRelationEntry(relationConfig, "pos_no");
+  const targetTable = relation?.table || "code_pos";
+  const posInfo = await getPosTableColumnInfo(targetTable);
+  if (!posInfo?.exists) {
+    return {
+      join: "",
+      select: {
+        posId: "NULL",
+        posNo: aliasedColumn(scheduleAlias, posColumn),
+        posName: "NULL",
+        branchNo: "NULL",
+        districtCode: "NULL",
+        merchantTin: "NULL",
+      },
+    };
+  }
+
+  const idField =
+    relation?.idField ||
+    relation?.column ||
+    posInfo.idColumn ||
+    posInfo.posNoColumn ||
+    null;
+
+  const joinConditions = [];
+  if (idField) {
+    joinConditions.push(
+      `${aliasedColumn(scheduleAlias, posColumn)} = ${aliasedColumn(
+        posAlias,
+        idField,
+      )}`,
+    );
+  }
+
+  const tenantInfo = await getTenantTable(targetTable, companyId);
+  const companyKey = Array.isArray(tenantInfo?.tenantKeys)
+    ? tenantInfo.tenantKeys.find(
+        (key) => String(key || "").toLowerCase() === "company_id",
+      )
+    : null;
+  if (companyKey) {
+    joinConditions.push(
+      `${aliasedColumn(posAlias, companyKey)} IN (${GLOBAL_COMPANY_ID}, ${aliasedColumn(
+        scheduleAlias,
+        "company_id",
+      )})`,
+    );
+  }
+
+  const join =
+    joinConditions.length > 0
+      ? `LEFT JOIN ${escapeIdentifier(targetTable)} ${posAlias} ON ${joinConditions.join(" AND ")}`
+      : "";
+
+  return {
+    join,
+    select: {
+      posId: idField ? aliasedColumn(posAlias, idField) : "NULL",
+      posNo: posInfo.posNoColumn
+        ? aliasedColumn(posAlias, posInfo.posNoColumn)
+        : aliasedColumn(scheduleAlias, posColumn),
+      posName: posInfo.posNameColumn
+        ? aliasedColumn(posAlias, posInfo.posNameColumn)
+        : "NULL",
+      branchNo: posInfo.branchNoColumn
+        ? aliasedColumn(posAlias, posInfo.branchNoColumn)
+        : "NULL",
+      districtCode: posInfo.districtCodeColumn
+        ? aliasedColumn(posAlias, posInfo.districtCodeColumn)
+        : "NULL",
+      merchantTin: posInfo.merchantTinColumn
+        ? aliasedColumn(posAlias, posInfo.merchantTinColumn)
+        : "NULL",
+    },
+  };
+}
+
 async function loadSoftDeleteConfig(companyId = GLOBAL_COMPANY_ID) {
   if (!softDeleteConfigCache.has(companyId)) {
     try {
@@ -1152,6 +1251,11 @@ function mapEmploymentRow(row) {
     workplace_name,
     workplace_session_id,
     pos_no,
+    posNo,
+    pos_name,
+    branchNo,
+    pos_districtCode,
+    merchantTin,
     merchant_id,
     permission_list,
     ...rest
@@ -1193,6 +1297,11 @@ function mapEmploymentRow(row) {
     workplace_name,
     workplace_session_id: resolvedWorkplaceSessionId,
     pos_no,
+    posNo,
+    pos_name,
+    branchNo,
+    pos_districtCode,
+    merchantTin,
     merchant_id,
     merchant_tin,
     ...rest,
@@ -1202,6 +1311,51 @@ function mapEmploymentRow(row) {
 
 let employmentScheduleColumnCache = null;
 let companyMerchantColumnCache = null;
+const posTableColumnCache = new Map();
+
+function findColumnName(columns = [], candidates = []) {
+  if (!Array.isArray(columns) || !columns.length) return null;
+  const lower = new Map(
+    columns.map((col) => [String(col || '').toLowerCase(), String(col)]),
+  );
+  for (const candidate of candidates) {
+    const key = String(candidate || '').toLowerCase();
+    if (!key) continue;
+    const match = lower.get(key);
+    if (match) return match;
+  }
+  return null;
+}
+
+async function getPosTableColumnInfo(tableName) {
+  if (posTableColumnCache.has(tableName)) return posTableColumnCache.get(tableName);
+  try {
+    const columns = await getTableColumnsSafe(tableName);
+    const info = {
+      exists: true,
+      columns,
+      idColumn: findColumnName(columns, ['pos_id', 'id', 'posid', 'pos_no', 'posno']),
+      posNoColumn: findColumnName(columns, ['pos_no', 'posno', 'pos_number']),
+      posNameColumn: findColumnName(columns, ['pos_name', 'posname', 'name']),
+      branchNoColumn: findColumnName(columns, ['branchNo', 'branch_no', 'branch_id']),
+      districtCodeColumn: findColumnName(columns, [
+        'pos_districtCode',
+        'pos_district_code',
+        'district_code',
+      ]),
+      merchantTinColumn: findColumnName(columns, ['merchantTin', 'merchant_tin']),
+    };
+    posTableColumnCache.set(tableName, info);
+    return info;
+  } catch (err) {
+    if (err?.code === 'ER_NO_SUCH_TABLE') {
+      const info = { exists: false };
+      posTableColumnCache.set(tableName, info);
+      return info;
+    }
+    throw err;
+  }
+}
 
 async function getCompanyMerchantTinColumnInfo() {
   if (companyMerchantColumnCache) return companyMerchantColumnCache;
@@ -1222,19 +1376,31 @@ async function getCompanyMerchantTinColumnInfo() {
 async function getEmploymentScheduleColumnInfo() {
   if (employmentScheduleColumnCache) return employmentScheduleColumnCache;
   if (process.env.SKIP_SCHEDULE_COLUMN_CHECK === "1") {
-    employmentScheduleColumnCache = { hasPosNo: true, hasMerchantId: true };
+    employmentScheduleColumnCache = {
+      hasPosNo: true,
+      posColumnName: "pos_no",
+      hasMerchantId: true,
+      merchantIdColumn: "merchant_id",
+    };
     return employmentScheduleColumnCache;
   }
   try {
     const columns = await getTableColumnsSafe("tbl_employment_schedule");
     const lower = new Set(columns.map((c) => String(c).toLowerCase()));
     employmentScheduleColumnCache = {
-      hasPosNo: lower.has("pos_no"),
+      hasPosNo: lower.has("pos_no") || lower.has("posid") || lower.has("pos_id"),
+      posColumnName: findColumnName(columns, ["pos_no", "posid", "pos_id"]),
       hasMerchantId: lower.has("merchant_id"),
+      merchantIdColumn: findColumnName(columns, ["merchant_id", "merchantid", "merchantId"]),
     };
   } catch (err) {
     if (err?.code === "ER_NO_SUCH_TABLE") {
-      employmentScheduleColumnCache = { hasPosNo: false, hasMerchantId: false };
+      employmentScheduleColumnCache = {
+        hasPosNo: false,
+        posColumnName: null,
+        hasMerchantId: false,
+        merchantIdColumn: null,
+      };
     } else {
       throw err;
     }
@@ -1260,6 +1426,7 @@ export async function getEmploymentSessions(empid, options = {}) {
     deptCfgRaw,
     empCfgRaw,
     relationCfg,
+    scheduleRelationCfg,
     companyMerchantInfo,
   ] = await Promise.all([
     getDisplayCfg("companies", configCompanyId),
@@ -1267,6 +1434,7 @@ export async function getEmploymentSessions(empid, options = {}) {
     getDisplayCfg("code_department", configCompanyId),
     getDisplayCfg("tbl_employee", configCompanyId),
     listCustomRelations("tbl_employment", configCompanyId),
+    listCustomRelations("tbl_employment_schedule", configCompanyId),
     getCompanyMerchantTinColumnInfo(),
   ]);
 
@@ -1275,12 +1443,22 @@ export async function getEmploymentSessions(empid, options = {}) {
   const deptCfg = unwrapDisplayConfig(deptCfgRaw);
   const empCfg = unwrapDisplayConfig(empCfgRaw);
   const relationConfig = relationCfg?.config || {};
+  const scheduleRelationConfig = scheduleRelationCfg?.config || {};
   const merchantTinExpr = companyMerchantInfo?.hasMerchantTin
     ? "c.merchant_tin"
     : "NULL";
   const scheduleInfo = await getEmploymentScheduleColumnInfo();
-  const posNoExpr = scheduleInfo.hasPosNo ? "es.pos_no" : "NULL";
-  const merchantExpr = scheduleInfo.hasMerchantId ? "es.merchant_id" : "NULL";
+  const posNoExpr = scheduleInfo.hasPosNo
+    ? aliasedColumn("es", scheduleInfo.posColumnName || "pos_no")
+    : "NULL";
+  const merchantExpr = scheduleInfo.hasMerchantId
+    ? aliasedColumn("es", scheduleInfo.merchantIdColumn || "merchant_id")
+    : "NULL";
+  const posRelation = await resolveSchedulePosRelation({
+    scheduleInfo,
+    relationConfig: scheduleRelationConfig,
+    companyId: configCompanyId,
+  });
 
   const [companyRel, branchRel, deptRel] = await Promise.all([
     resolveEmploymentRelation({
@@ -1345,6 +1523,11 @@ export async function getEmploymentSessions(empid, options = {}) {
           es.workplace_session_id AS workplace_session_id,
           ${posNoExpr} AS pos_no,
           ${merchantExpr} AS merchant_id,
+          ${posRelation.select.posNo} AS posNo,
+          ${posRelation.select.posName} AS pos_name,
+          ${posRelation.select.branchNo} AS branchNo,
+          ${posRelation.select.districtCode} AS pos_districtCode,
+          ${posRelation.select.merchantTin} AS merchantTin,
           cw.workplace_name AS workplace_name,
           e.employment_position_id AS position_id,
           e.employment_senior_empid AS senior_empid,
@@ -1394,6 +1577,7 @@ export async function getEmploymentSessions(empid, options = {}) {
         AND es.company_id = e.employment_company_id
         AND es.branch_id = e.employment_branch_id
        AND es.department_id = e.employment_department_id
+      ${posRelation.join}
        LEFT JOIN tbl_workplace tw
          ON tw.company_id = e.employment_company_id
         AND tw.branch_id = e.employment_branch_id
@@ -1409,7 +1593,7 @@ export async function getEmploymentSessions(empid, options = {}) {
                 e.employment_branch_id, branch_name,
                 e.employment_department_id, department_name,
                 es.workplace_id, cw.workplace_name,
-                pos_no, merchant_id,
+                pos_no, merchant_id, posNo, pos_name, branchNo, pos_districtCode, merchantTin,
                 e.employment_position_id,
                 e.employment_senior_empid,
                 e.employment_senior_plan_empid,
@@ -1426,7 +1610,12 @@ export async function getEmploymentSessions(empid, options = {}) {
       err?.code === "ER_BAD_FIELD_ERROR" &&
       /\b(pos_no|merchant_id|merchant_tin)\b/i.test(err.message || "")
     ) {
-      employmentScheduleColumnCache = { hasPosNo: false, hasMerchantId: false };
+      employmentScheduleColumnCache = {
+        hasPosNo: false,
+        posColumnName: null,
+        hasMerchantId: false,
+        merchantIdColumn: null,
+      };
       companyMerchantColumnCache = { hasMerchantTin: false };
       const replaceExpr = (text, target, replacement) =>
         text.split(target).join(replacement);
@@ -1501,6 +1690,7 @@ export async function getEmploymentSession(empid, companyId, options = {}) {
     deptCfgRaw,
     empCfgRaw,
     relationCfg,
+    scheduleRelationCfg,
     companyMerchantInfo,
   ] = await Promise.all([
     getDisplayCfg("companies", configCompanyId),
@@ -1508,6 +1698,7 @@ export async function getEmploymentSession(empid, companyId, options = {}) {
     getDisplayCfg("code_department", configCompanyId),
     getDisplayCfg("tbl_employee", configCompanyId),
     listCustomRelations("tbl_employment", configCompanyId),
+    listCustomRelations("tbl_employment_schedule", configCompanyId),
     getCompanyMerchantTinColumnInfo(),
   ]);
 
@@ -1516,12 +1707,22 @@ export async function getEmploymentSession(empid, companyId, options = {}) {
   const deptCfg = unwrapDisplayConfig(deptCfgRaw);
   const empCfg = unwrapDisplayConfig(empCfgRaw);
   const relationConfig = relationCfg?.config || {};
+  const scheduleRelationConfig = scheduleRelationCfg?.config || {};
   const merchantTinExpr = companyMerchantInfo?.hasMerchantTin
     ? "c.merchant_tin"
     : "NULL";
   const scheduleInfo = await getEmploymentScheduleColumnInfo();
-  const posNoExpr = scheduleInfo.hasPosNo ? "es.pos_no" : "NULL";
-  const merchantExpr = scheduleInfo.hasMerchantId ? "es.merchant_id" : "NULL";
+  const posNoExpr = scheduleInfo.hasPosNo
+    ? aliasedColumn("es", scheduleInfo.posColumnName || "pos_no")
+    : "NULL";
+  const merchantExpr = scheduleInfo.hasMerchantId
+    ? aliasedColumn("es", scheduleInfo.merchantIdColumn || "merchant_id")
+    : "NULL";
+  const posRelation = await resolveSchedulePosRelation({
+    scheduleInfo,
+    relationConfig: scheduleRelationConfig,
+    companyId: configCompanyId,
+  });
 
   const [companyRel, branchRel, deptRel] = await Promise.all([
     resolveEmploymentRelation({
@@ -1607,6 +1808,11 @@ export async function getEmploymentSession(empid, companyId, options = {}) {
             es.workplace_session_id AS workplace_session_id,
             ${posNoExpr} AS pos_no,
             ${merchantExpr} AS merchant_id,
+            ${posRelation.select.posNo} AS posNo,
+            ${posRelation.select.posName} AS pos_name,
+            ${posRelation.select.branchNo} AS branchNo,
+            ${posRelation.select.districtCode} AS pos_districtCode,
+            ${posRelation.select.merchantTin} AS merchantTin,
             cw.workplace_name AS workplace_name,
             e.employment_position_id AS position_id,
             e.employment_senior_empid AS senior_empid,
@@ -1656,6 +1862,7 @@ export async function getEmploymentSession(empid, companyId, options = {}) {
           AND es.company_id = e.employment_company_id
           AND es.branch_id = e.employment_branch_id
          AND es.department_id = e.employment_department_id
+         ${posRelation.join}
          LEFT JOIN tbl_workplace tw
            ON tw.company_id = e.employment_company_id
           AND tw.branch_id = e.employment_branch_id
@@ -1671,7 +1878,7 @@ export async function getEmploymentSession(empid, companyId, options = {}) {
                    e.employment_branch_id, branch_name,
                    e.employment_department_id, department_name,
                    es.workplace_id, cw.workplace_name,
-                   pos_no, merchant_id,
+                   pos_no, merchant_id, posNo, pos_name, branchNo, pos_districtCode, merchantTin,
                    e.employment_position_id,
                    e.employment_senior_empid,
                    e.employment_senior_plan_empid,
@@ -1688,7 +1895,12 @@ export async function getEmploymentSession(empid, companyId, options = {}) {
         err?.code === "ER_BAD_FIELD_ERROR" &&
         /\b(pos_no|merchant_id|merchant_tin)\b/i.test(err.message || "")
       ) {
-        employmentScheduleColumnCache = { hasPosNo: false, hasMerchantId: false };
+        employmentScheduleColumnCache = {
+          hasPosNo: false,
+          posColumnName: null,
+          hasMerchantId: false,
+          merchantIdColumn: null,
+        };
         companyMerchantColumnCache = { hasMerchantTin: false };
         const replaceExpr = (text, target, replacement) =>
           text.split(target).join(replacement);
