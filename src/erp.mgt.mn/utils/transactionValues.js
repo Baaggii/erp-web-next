@@ -171,6 +171,9 @@ export function createGeneratedColumnPipeline({
 } = {}) {
   const evaluators = buildGeneratedColumnEvaluators(tableColumns, columnCaseMap);
   const mainFieldSet = ensureFieldSet(mainFields);
+  if (mainFieldSet && Object.keys(evaluators).length > 0) {
+    Object.keys(evaluators).forEach((key) => mainFieldSet.add(key));
+  }
   const metadataFieldSet = ensureFieldSet(metadataFields);
   const hasEvaluators = Object.keys(evaluators).length > 0;
 
@@ -206,20 +209,36 @@ export function applyGeneratedColumnsForValues(valuesByTable, pipelineMap) {
   Object.entries(pipelineMap).forEach(([table, pipeline]) => {
     if (!pipeline || typeof pipeline.apply !== 'function') return;
     const current = next[table];
-    if (!Array.isArray(current)) return;
-    const cloned = cloneArrayWithMetadata(current);
+    const isSingleRecord = isPlainRecord(current);
+    if (!Array.isArray(current) && !isSingleRecord) return;
+
+    const cloned = isSingleRecord
+      ? [{ ...(current || {}) }]
+      : cloneArrayWithMetadata(current);
     const { changed, metadata } = pipeline.apply(cloned);
     if (!changed && !metadata) return;
+
+    let updated = cloned;
     if (metadata && typeof metadata === 'object') {
-      Object.entries(metadata).forEach(([key, value]) => {
-        cloned[key] = value;
-      });
+      if (isSingleRecord) {
+        const mergedRow = cloned[0] && typeof cloned[0] === 'object' ? { ...cloned[0] } : {};
+        Object.entries(metadata).forEach(([key, value]) => {
+          mergedRow[key] = value;
+        });
+        updated = mergedRow;
+      } else {
+        Object.entries(metadata).forEach(([key, value]) => {
+          cloned[key] = value;
+        });
+      }
+    } else if (isSingleRecord) {
+      updated = cloned[0];
     }
     if (!mutated) {
       next = { ...valuesByTable };
       mutated = true;
     }
-    next[table] = cloned;
+    next[table] = updated;
   });
 
   return mutated ? next : valuesByTable;
