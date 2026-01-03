@@ -571,8 +571,13 @@ function basicDiffFromDumps(currentSql, targetSql, allowDrops = false) {
     }
     if (normalizeDefinition(targetObj.statement) !== normalizeDefinition(currentObj.statement)) {
       if (targetObj.type === 'table') {
+        if (allowDrops) {
+          const dropStmt = buildDropStatement(targetObj.type, targetObj.name);
+          if (dropStmt) statements.push(dropStmt);
+        }
+        statements.push(targetObj.statement);
         warnings.push(
-          `Table ${targetObj.name} definitions differ and require manual review. Install Liquibase for full ALTER scripting.`,
+          `Table ${targetObj.name} definitions differ; generated CREATE statement for manual review${allowDrops ? ' (DROP included when enabled)' : ''}. Install Liquibase for full ALTER scripting.`,
         );
       } else {
         const dropStmt = buildDropStatement(targetObj.type, targetObj.name);
