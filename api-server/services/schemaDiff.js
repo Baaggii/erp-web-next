@@ -323,16 +323,16 @@ function stripCommentLines(sqlText) {
 }
 
 const OBJECT_PATTERNS = [
-  { type: 'table', regex: /\bTABLE\s+(?:IF\s+(?:NOT\s+)?EXISTS\s+)?`?([A-Za-z0-9_]+)`?/i },
+  { type: 'table', regex: /\bTABLE\s+(?:IF\s+EXISTS\s+)?`?([A-Za-z0-9_]+)`?/i },
   {
     type: 'view',
     regex:
-      /\b(?:CREATE\s+(?:OR\s+REPLACE\s+)?(?:ALGORITHM=\w+\s+)?(?:DEFINER=`?[^`]+`?@`?[^`]+`?\s+)?(?:SQL\s+SECURITY\s+\w+\s+)?|DROP\s+)?VIEW\s+(?:IF\s+(?:NOT\s+)?EXISTS\s+)?`?([A-Za-z0-9_]+)`?/i,
+      /\b(?:CREATE\s+(?:OR\s+REPLACE\s+)?(?:ALGORITHM=\w+\s+)?(?:DEFINER=`?[^`]+`?@`?[^`]+`?\s+)?(?:SQL\s+SECURITY\s+\w+\s+)?|DROP\s+)?VIEW\s+(?:IF\s+EXISTS\s+)?`?([A-Za-z0-9_]+)`?/i,
   },
-  { type: 'trigger', regex: /\bTRIGGER\s+(?:IF\s+(?:NOT\s+)?EXISTS\s+)?`?([A-Za-z0-9_]+)`?/i },
-  { type: 'procedure', regex: /\bPROCEDURE\s+(?:IF\s+(?:NOT\s+)?EXISTS\s+)?`?([A-Za-z0-9_]+)`?/i },
-  { type: 'function', regex: /\bFUNCTION\s+(?:IF\s+(?:NOT\s+)?EXISTS\s+)?`?([A-Za-z0-9_]+)`?/i },
-  { type: 'event', regex: /\bEVENT\s+(?:IF\s+(?:NOT\s+)?EXISTS\s+)?`?([A-Za-z0-9_]+)`?/i },
+  { type: 'trigger', regex: /\bTRIGGER\s+(?:IF\s+EXISTS\s+)?`?([A-Za-z0-9_]+)`?/i },
+  { type: 'procedure', regex: /\bPROCEDURE\s+(?:IF\s+EXISTS\s+)?`?([A-Za-z0-9_]+)`?/i },
+  { type: 'function', regex: /\bFUNCTION\s+(?:IF\s+EXISTS\s+)?`?([A-Za-z0-9_]+)`?/i },
+  { type: 'event', regex: /\bEVENT\s+(?:IF\s+EXISTS\s+)?`?([A-Za-z0-9_]+)`?/i },
 ];
 
 function extractObject(statement) {
@@ -403,34 +403,12 @@ function groupStatements(diffSql, metadata = []) {
   metadata.forEach((meta) => {
     if (!meta?.type || !meta?.name) return;
     const key = `${meta.type}:${meta.name}`;
-    const existing = objectMap.get(key);
-    if (existing) {
-      if (!existing.statements.length) {
-        const note =
-          meta.message ||
-          'Manual review required; object changed but no SQL was generated because ALTER diff is unavailable.';
-        existing.statements.push({
-          sql: note.startsWith('--') ? note : `-- ${note}`,
-          type: 'other',
-          risk: 'medium',
-        });
-      }
-      return;
-    }
-    const note =
-      meta.message ||
-      'Manual review required; object changed but no SQL was generated because ALTER diff is unavailable.';
+    if (objectMap.has(key)) return;
     objectMap.set(key, {
       key,
       name: meta.name,
       type: meta.type,
-      statements: [
-        {
-          sql: note.startsWith('--') ? note : `-- ${note}`,
-          type: 'other',
-          risk: 'medium',
-        },
-      ],
+      statements: [],
       hasDrops: false,
       details: meta.message,
       state: meta.state,
