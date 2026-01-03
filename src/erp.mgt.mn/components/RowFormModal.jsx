@@ -1672,11 +1672,10 @@ const RowFormModal = function RowFormModal({
       return { next: baseRow, diff: {} };
     }
     let working = baseRow;
-    let evaluationRow = null;
     const evaluators = generatedColumnEvaluators || {};
     let generatedChanged = false;
     if (Object.keys(evaluators).length > 0) {
-      evaluationRow = { ...(extraValsRef.current || {}), ...working };
+      const evaluationRow = { ...(extraValsRef.current || {}), ...working };
       const rows = [evaluationRow];
       const result = applyGeneratedColumnEvaluators({
         targetRows: rows,
@@ -1730,7 +1729,7 @@ const RowFormModal = function RowFormModal({
       });
       return { next: { ...working }, diff, generatedExtra };
     }
-    return { next: working, diff, generatedExtra };
+    return { next: working, diff };
   }, [generatedColumnEvaluators, columns]);
 
   const setFormValuesWithGenerated = useCallback(
@@ -2560,8 +2559,8 @@ const RowFormModal = function RowFormModal({
     direct.forEach((cfg) => collectAssignmentTargets(cfg));
     paramTrigs.forEach(([targetCol, cfg]) => collectAssignmentTargets(cfg, targetCol));
 
-    const procDirect = direct.filter((cfg) => !isAssignmentTrigger(cfg) && cfg?.name);
-    const procParam = paramTrigs.filter(([, cfg]) => !isAssignmentTrigger(cfg) && cfg?.name);
+    const procDirect = direct.filter((cfg) => !isAssignmentTrigger(cfg));
+    const procParam = paramTrigs.filter(([, cfg]) => !isAssignmentTrigger(cfg));
     const hasAny = assignmentTargets.size > 0 || procDirect.length > 0 || procParam.length > 0;
 
     if (!hasAny) {
