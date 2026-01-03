@@ -1218,6 +1218,15 @@ function InlineTransactionTable(
     return res;
   }
 
+  const normalizeColumnName = useCallback(
+    (name) => {
+      if (!name && name !== 0) return null;
+      const mapped = columnCaseMap[String(name).toLowerCase()] || name;
+      return typeof mapped === 'string' ? mapped : null;
+    },
+    [columnCaseMap],
+  );
+
   const isAssignmentTrigger = (cfg) =>
     cfg && (cfg.kind === 'assignment' || cfg.name === '__assignment__');
 
@@ -1258,7 +1267,8 @@ function InlineTransactionTable(
     const procParam = paramTrigs.filter(([, cfg]) => !isAssignmentTrigger(cfg));
 
     const hasAnyAssignments = assignmentTargets.size > 0;
-    if (!hasAnyAssignments && direct.length === 0 && paramTrigs.length === 0) {
+    const hasAnyProcedures = procDirect.length > 0 || procParam.length > 0;
+    if (!hasAnyAssignments && !hasAnyProcedures) {
       const message = hasEntry
         ? `${col} талбар нь өгөгдлийн сангийн триггерээр бөглөгдөнө. Урьдчилсан тооцоолол хязгаарлагдмал байж болно.`
         : `${col} талбар триггер ашигладаггүй`;
@@ -1270,7 +1280,19 @@ function InlineTransactionTable(
       return;
     }
 
-    const directNames = [...new Set(direct.map((d) => d.name))];
+    if (assignmentTargets.size > 0) {
+      const targets = Array.from(assignmentTargets).join(', ');
+      window.dispatchEvent(
+        new CustomEvent('toast', {
+          detail: {
+            message: `${col} талбарын утга өөрчлөгдвөл дараах талбарууд автоматаар бөглөгдөнө: ${targets}`,
+            type: 'info',
+          },
+        }),
+      );
+    }
+
+    const directNames = [...new Set(procDirect.map((d) => d.name))];
     directNames.forEach((name) => {
       window.dispatchEvent(
         new CustomEvent('toast', {
@@ -1279,8 +1301,8 @@ function InlineTransactionTable(
       );
     });
 
-    if (paramTrigs.length > 0) {
-      const names = [...new Set(paramTrigs.map(([, cfg]) => cfg.name))].join(', ');
+    if (procParam.length > 0) {
+      const names = [...new Set(procParam.map(([, cfg]) => cfg.name))].join(', ');
       window.dispatchEvent(
         new CustomEvent('toast', {
           detail: {
@@ -1360,6 +1382,26 @@ function InlineTransactionTable(
     return { rows: withMetadata, changedColumns };
   }
 
+  function applyProcedureResultToRow(
+    rowIdx,
+    rowData,
+    baseRows = rowsRef.current,
+    allowedTargets = null,
+  ) {
+    let payload = rowData;
+    if (allowedTargets && allowedTargets.size > 0 && rowData && typeof rowData === 'object') {
+      payload = {};
+      Object.entries(rowData).forEach(([rawKey, rawValue]) => {
+        const normalized = normalizeColumnName(rawKey) || rawKey;
+        if (!normalized) return;
+        const lower = String(normalized).toLowerCase();
+        if (!allowedTargets.has(lower)) return;
+        payload[normalized] = rawValue;
+      });
+    }
+    return applyProcedureResult(rowIdx, payload, baseRows);
+  }
+
   async function runProcTrigger(rowIdx, col, rowOverride = null) {
     const showToast = general.procToastEnabled;
     const baseRows = Array.isArray(rowsRef.current) ? rowsRef.current : [];
@@ -1407,14 +1449,8 @@ function InlineTransactionTable(
     const queued = new Set();
     const queue = [];
 
-    const normalizeColumn = (name) => {
-      if (!name && name !== 0) return null;
-      const mapped = columnCaseMap[String(name).toLowerCase()] || name;
-      return typeof mapped === 'string' ? mapped : null;
-    };
-
     const enqueue = (name) => {
-      const normalized = normalizeColumn(name);
+      const normalized = normalizeColumnName(name);
       if (!normalized) return;
       const lower = normalized.toLowerCase();
       if (processed.has(lower) || queued.has(lower)) return;
@@ -1442,8 +1478,8 @@ function InlineTransactionTable(
       if (processed.has(lowerCol)) continue;
       processed.add(lowerCol);
 
-      const direct = getDirectTriggers(currentCol);
-      const paramTrigs = getParamTriggers(currentCol);
+      const direct = getDirectTriggers(currentCol).filter((cfg) => !isAssignmentTrigger(cfg));
+      const paramTrigs = getParamTriggers(currentCol).filter(([, cfg]) => !isAssignmentTrigger(cfg));
 
       const map = new Map();
       const keyFor = (cfg) => {
@@ -1459,7 +1495,7 @@ function InlineTransactionTable(
         if (!cfg || !cfg.name) return;
         const key = keyFor(cfg);
         const rec = map.get(key) || { cfg, cols: new Set() };
-        const normalizedTarget = normalizeColumn(targetCol);
+        const normalizedTarget = normalizeColumnName(targetCol);
         if (normalizedTarget) {
           rec.cols.add(normalizedTarget);
         }
@@ -1473,12 +1509,12 @@ function InlineTransactionTable(
         const colList = [...cols];
         if (colList.length === 0) continue;
         const targetColumn = colList[0];
-        const normalizedTarget = normalizeColumn(targetColumn);
+        const normalizedTarget = normalizeColumnName(targetColumn);
         if (!normalizedTarget) continue;
 
         const { name: procName, params = [], outMap = {} } = cfg;
         const targetCols = Object.values(outMap || {})
-          .map((c) => normalizeColumn(c))
+          .map((c) => normalizeColumnName(c))
           .filter(Boolean);
         const hasTarget = targetCols.some((c) => writableColumns.has(c));
         if (!hasTarget) continue;
@@ -1500,7 +1536,7 @@ function InlineTransactionTable(
         );
 
         const getVal = (name) => {
-          const key = normalizeColumn(name) || name;
+          const key = normalizeColumnName(name) || name;
           const row = workingRows[rowIdx] || {};
           let val = getRowValue(row, key);
           if (val === undefined && key !== name) {
@@ -1716,7 +1752,7 @@ function InlineTransactionTable(
         if (changedColumns.size > 0) {
           updates.push({ rowIdx, rowData });
           changedColumns.forEach((changedCol) => {
-            const normalizedChanged = normalizeColumn(changedCol) || changedCol;
+            const normalizedChanged = normalizeColumnName(changedCol) || changedCol;
             if (hasTrigger(normalizedChanged)) enqueue(normalizedChanged);
           });
         }
@@ -1744,23 +1780,99 @@ function InlineTransactionTable(
         { indices: changedRows },
       );
     }
+
+    return updates.length > 0;
   }
 
-  async function openRelationPreview(col, val) {
-    if (val && typeof val === 'object') val = val.value;
+  async function previewAssignmentTriggers(col, rowIdx, rowOverride = null) {
+    if (!tableName) return;
+    if (typeof rowIdx !== 'number' || rowIdx < 0 || rowIdx >= rowsRef.current.length) return;
+    const hasAssignments =
+      getDirectTriggers(col).some((cfg) => isAssignmentTrigger(cfg)) ||
+      getParamTriggers(col).some(([, cfg]) => isAssignmentTrigger(cfg));
+    if (!hasAssignments) return;
+
+    const baseRow = rowsRef.current[rowIdx];
+    const merged =
+      baseRow && typeof baseRow === 'object'
+        ? { ...baseRow }
+        : {};
+    if (rowOverride && typeof rowOverride === 'object') {
+      Object.entries(rowOverride).forEach(([rawKey, rawValue]) => {
+        if (!rawKey && rawKey !== 0) return;
+        const mappedKey = normalizeColumnName(rawKey) || rawKey;
+        if (typeof mappedKey !== 'string') return;
+        merged[mappedKey] = rawValue;
+      });
+    }
+
+    const normalizedValues = {};
+    Object.entries(merged).forEach(([rawKey, rawValue]) => {
+      const mappedKey = normalizeColumnName(rawKey) || rawKey;
+      if (!mappedKey || typeof mappedKey !== 'string') return;
+      let val = rawValue;
+      if (val && typeof val === 'object' && 'value' in val) {
+        val = val.value;
+      }
+      if (placeholders[mappedKey]) {
+        val = normalizeDateInput(val, placeholders[mappedKey]);
+      }
+      if (totalCurrencySet.has(mappedKey) || totalAmountSet.has(mappedKey)) {
+        val = normalizeNumberInput(val);
+      }
+      normalizedValues[mappedKey] = val;
+    });
+
+    try {
+      const res = await fetch('/api/proc_triggers/preview', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ table: tableName, values: normalizedValues }),
+      });
+      if (!res.ok) return;
+      const data = await res.json().catch(() => ({}));
+      if (!data || typeof data !== 'object') return;
+      const assignmentPayload =
+        data.assignments && typeof data.assignments === 'object'
+          ? data.assignments
+          : data;
+      if (!assignmentPayload || typeof assignmentPayload !== 'object') return;
+
+      const resolvedPayload = {};
+      Object.entries(assignmentPayload).forEach(([rawKey, rawValue]) => {
+        const mappedKey = normalizeColumnName(rawKey) || rawKey;
+        if (!mappedKey) return;
+        resolvedPayload[mappedKey] = rawValue;
+      });
+      if (Object.keys(resolvedPayload).length === 0) return;
+
+      const { rows: updatedRows, changedColumns } = applyProcedureResultToRow(
+        rowIdx,
+        resolvedPayload,
+      );
+      if (changedColumns.size > 0) {
+        commitRowsUpdate(() => updatedRows, { indices: [rowIdx] });
+      }
+    } catch {
+      // silently ignore preview failures
+    }
+  }
+
+  async function openRelationPreview(col, val, rowIdx = null) {
+    const rawValue = val !== undefined ? val : null;
+    let lookupVal = rawValue;
+    if (lookupVal && typeof lookupVal === 'object') lookupVal = lookupVal.value;
     const auto = getAutoSelectConfig(col);
     const conf = relationConfigMap[col] || auto?.config;
     const viewTbl = viewSourceMap[col] || auto?.config?.table;
     const table = conf ? conf.table : viewTbl;
-    const idField = conf
-      ? conf.idField || conf.column
-      : auto?.config?.idField || viewDisplays[viewTbl]?.idField || col;
-    if (!table || val === undefined || val === '') return;
-    let row = getRelationRow(col, val);
+    if (!table || lookupVal === undefined || lookupVal === '') return;
+    let row = getRelationRow(col, lookupVal);
     if (!row) {
       try {
         const res = await fetch(
-          `/api/tables/${encodeURIComponent(table)}/${encodeURIComponent(val)}`,
+          `/api/tables/${encodeURIComponent(table)}/${encodeURIComponent(lookupVal)}`,
           { credentials: 'include' },
         );
         if (res.ok) {
@@ -1772,6 +1884,17 @@ function InlineTransactionTable(
       }
     }
     if (row && typeof row === 'object') setPreviewRow(row);
+
+    const validRowIndex = typeof rowIdx === 'number' && rowIdx >= 0 && rowIdx < rows.length;
+    if (validRowIndex && hasTrigger(col)) {
+      const override = { ...(rows[rowIdx] || {}) };
+      if (col) {
+        const nextValue = rawValue !== null ? rawValue : rows[rowIdx]?.[col];
+        override[col] = nextValue;
+      }
+      await runProcTrigger(rowIdx, col, override);
+      await previewAssignmentTriggers(col, rowIdx, override);
+    }
   }
 
   function handleFocusField(col) {
@@ -2297,6 +2420,7 @@ function InlineTransactionTable(
     if (hasTrigger(field)) {
       const override = { ...rows[rowIdx], [field]: newValue };
       await runProcTrigger(rowIdx, field, override);
+      await previewAssignmentTriggers(field, rowIdx, override);
     }
     const enabledIdx = enabledFields.indexOf(field);
     const nextField = enabledFields[enabledIdx + 1];
