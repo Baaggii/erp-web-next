@@ -2527,7 +2527,11 @@ const RowFormModal = function RowFormModal({
   }
 
   function showTriggerInfo(col) {
-    if (!general.triggerToastEnabled) return;
+    const toastEnabled =
+      general.procToastEnabled !== undefined
+        ? general.procToastEnabled
+        : general.triggerToastEnabled;
+    if (!toastEnabled) return;
     if (!procTriggers || Object.keys(procTriggers || {}).length === 0) return;
     const direct = getDirectTriggers(col);
     const paramTrigs = getParamTriggers(col);
