@@ -160,6 +160,9 @@ export async function listReportWorkplaces(req, res, next) {
           department_name,
           workplace_id,
           workplace_name,
+          workplace_effective_month,
+          workplace_position_id,
+          workplace_position_name,
         }) => ({
           company_id: company_id ?? null,
           company_name: company_name ?? null,
@@ -169,6 +172,9 @@ export async function listReportWorkplaces(req, res, next) {
           department_name: department_name ?? null,
           workplace_id: workplace_id ?? null,
           workplace_name: workplace_name ?? null,
+          workplace_effective_month: workplace_effective_month ?? null,
+          workplace_position_id: workplace_position_id ?? null,
+          workplace_position_name: workplace_position_name ?? null,
         }),
       );
 
