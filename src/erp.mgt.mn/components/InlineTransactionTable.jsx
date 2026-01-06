@@ -1218,16 +1218,8 @@ function InlineTransactionTable(
     return res;
   }
 
-  const isAssignmentTrigger = (cfg) =>
-    cfg && (cfg.kind === 'assignment' || cfg.name === '__assignment__');
-
   function hasTrigger(col) {
-    const lower = col.toLowerCase();
-    return (
-      getDirectTriggers(col).length > 0 ||
-      getParamTriggers(col).length > 0 ||
-      Object.prototype.hasOwnProperty.call(procTriggers || {}, lower)
-    );
+    return getDirectTriggers(col).length > 0 || getParamTriggers(col).length > 0;
   }
 
   function showTriggerInfo(col) {
@@ -1297,12 +1289,7 @@ function InlineTransactionTable(
     }
   }
 
-  function applyProcedureResult(
-    rowIdx,
-    rowData,
-    baseRows = rowsRef.current,
-    { allowNewColumns = false } = {},
-  ) {
+  function applyProcedureResult(rowIdx, rowData, baseRows = rowsRef.current) {
     if (!rowData || typeof rowData !== 'object') {
       return {
         rows: Array.isArray(baseRows) ? [...baseRows] : baseRows,
@@ -1328,7 +1315,7 @@ function InlineTransactionTable(
         if (typeof mappedKey !== 'string') return;
         const lower = mappedKey.toLowerCase();
         const existingKey = keyLookup[lower];
-        const shouldWrite = allowNewColumns || writableColumns.has(mappedKey) || existingKey;
+        const shouldWrite = writableColumns.has(mappedKey) || existingKey;
         if (!shouldWrite) return;
         const targetKey = existingKey || mappedKey;
         if (manualRowMap && manualRowMap.has(lower)) {
@@ -1480,9 +1467,6 @@ function InlineTransactionTable(
 
       for (const { cfg, cols } of map.values()) {
         if (!cfg || !cfg.name) continue;
-        if (isAssignmentTrigger(cfg)) {
-          continue;
-        }
         const colList = [...cols];
         if (colList.length === 0) continue;
         const targetColumn = colList[0];
@@ -1693,7 +1677,10 @@ function InlineTransactionTable(
           if (showToast) {
             window.dispatchEvent(
               new CustomEvent('toast', {
-                detail: { message: `${normalizedTarget} -> ${procName}`, type: 'info' },
+                detail: {
+                  message: `${normalizedTarget} -> ${procName}(${paramValues.join(', ')})`,
+                  type: 'info',
+                },
               }),
             );
           }
@@ -1730,6 +1717,13 @@ function InlineTransactionTable(
             if (hasTrigger(normalizedChanged)) enqueue(normalizedChanged);
           });
         }
+        if (showToast) {
+          window.dispatchEvent(
+            new CustomEvent('toast', {
+              detail: { message: `Returned: ${JSON.stringify(rowData)}`, type: 'info' },
+            }),
+          );
+        }
       }
     }
 
@@ -1746,71 +1740,6 @@ function InlineTransactionTable(
         },
         { indices: changedRows },
       );
-    }
-
-    return workingRows;
-  }
-
-  async function previewTriggerAssignments(rowIdx, rowOverride = null, baseRows = rowsRef.current) {
-    if (!tableName) return;
-    const sourceRows = Array.isArray(baseRows) ? baseRows : [];
-    if (typeof rowIdx !== 'number' || rowIdx < 0 || rowIdx >= sourceRows.length) return;
-    const baseRow = sourceRows[rowIdx] && typeof sourceRows[rowIdx] === 'object' ? sourceRows[rowIdx] : {};
-    const payload = {};
-    const appendEntries = (entries) => {
-      entries.forEach(([rawKey, rawValue]) => {
-        if (!rawKey && rawKey !== 0) return;
-        const key = columnCaseMap[String(rawKey).toLowerCase()] || rawKey;
-        if (typeof key !== 'string') return;
-        let val = rawValue;
-        if (val && typeof val === 'object' && 'value' in val) {
-          val = val.value;
-        }
-        payload[key] = val;
-      });
-    };
-    appendEntries(Object.entries(baseRow));
-    if (rowOverride && typeof rowOverride === 'object') {
-      appendEntries(Object.entries(rowOverride));
-    }
-    if (Object.keys(payload).length === 0) return;
-    try {
-      const res = await fetch('/api/proc_triggers/preview', {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ table: tableName, values: payload }),
-      });
-      if (!res.ok) return;
-      const data = await res.json().catch(() => ({}));
-      if (!data || typeof data !== 'object') return;
-      const previewRow = (() => {
-        const base = {};
-        if (Array.isArray(data.rows) && data.rows.length > 0 && typeof data.rows[0] === 'object') {
-          Object.assign(base, data.rows[0]);
-        }
-        if (data.row && typeof data.row === 'object' && !Array.isArray(data.row)) {
-          Object.assign(base, data.row);
-        }
-        Object.entries(data || {}).forEach(([key, value]) => {
-          if (key === 'rows' || key === 'row') return;
-          base[key] = value;
-        });
-        return Object.keys(base).length > 0 ? base : null;
-      })();
-      if (!previewRow) return;
-      commitRowsUpdate(
-        (currentRows) => {
-          const base = baseRows === rowsRef.current ? currentRows : baseRows;
-          const { rows: updatedRows } = applyProcedureResult(rowIdx, previewRow, base, {
-            allowNewColumns: true,
-          });
-          return updatedRows;
-        },
-        { indices: [rowIdx], metadataSource: baseRows },
-      );
-    } catch (err) {
-      console.warn('Preview trigger assignments failed', err);
     }
   }
 
@@ -2364,8 +2293,7 @@ function InlineTransactionTable(
     }
     if (hasTrigger(field)) {
       const override = { ...rows[rowIdx], [field]: newValue };
-      const snapshot = await runProcTrigger(rowIdx, field, override);
-      await previewTriggerAssignments(rowIdx, override, snapshot);
+      await runProcTrigger(rowIdx, field, override);
     }
     const enabledIdx = enabledFields.indexOf(field);
     const nextField = enabledFields[enabledIdx + 1];

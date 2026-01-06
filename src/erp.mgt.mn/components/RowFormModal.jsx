@@ -2478,8 +2478,8 @@ const RowFormModal = function RowFormModal({
       Object.prototype.hasOwnProperty.call(procTriggers || {}, col.toLowerCase());
     if (triggerAware) {
       const override = { ...nextSnapshot, [col]: newVal };
-      const triggerState = await runProcTrigger(col, override);
-      await previewTriggerAssignments(override, triggerState);
+      await runProcTrigger(col, override);
+      await previewTriggerAssignments(override);
     }
 
     const enabled = columns.filter((c) => !disabledSet.has(c.toLowerCase()));
@@ -2811,9 +2811,6 @@ const RowFormModal = function RowFormModal({
 
       for (const { cfg, cols } of map.values()) {
         if (!cfg || !cfg.name) continue;
-        if (isAssignmentTrigger(cfg)) {
-          continue;
-        }
         const colList = [...cols];
         if (colList.length === 0) continue;
         const targetColumn = colList[0];
@@ -3021,7 +3018,10 @@ const RowFormModal = function RowFormModal({
           if (general.procToastEnabled) {
             window.dispatchEvent(
               new CustomEvent('toast', {
-                detail: { message: `${normalizedTarget} -> ${procName}`, type: 'info' },
+                detail: {
+                  message: `${normalizedTarget} -> ${procName}(${paramValues.join(', ')})`,
+                  type: 'info',
+                },
               }),
             );
           }
@@ -3061,6 +3061,13 @@ const RowFormModal = function RowFormModal({
             if (hasTrigger(normalizedChanged)) enqueue(normalizedChanged);
           });
         }
+        if (general.procToastEnabled) {
+          window.dispatchEvent(
+            new CustomEvent('toast', {
+              detail: { message: `Returned: ${JSON.stringify(row)}`, type: 'info' },
+            }),
+          );
+        }
       }
     }
 
@@ -3072,15 +3079,11 @@ const RowFormModal = function RowFormModal({
         onChange(combinedChanges);
       }
     }
-
-    return { formVals: workingFormVals, extraVals: workingExtraVals };
   }
 
-  async function previewTriggerAssignments(payloadOverride = null, stateOverride = null) {
+  async function previewTriggerAssignments(payloadOverride = null) {
     if (!table) return;
-    const baseExtra = (stateOverride && stateOverride.extraVals) || extraValsRef.current || {};
-    const baseForm = (stateOverride && stateOverride.formVals) || formValsRef.current || {};
-    const merged = { ...baseExtra, ...baseForm };
+    const merged = { ...(extraValsRef.current || {}), ...(formValsRef.current || {}) };
     if (payloadOverride && typeof payloadOverride === 'object') {
       Object.entries(payloadOverride).forEach(([k, v]) => {
         const key = resolveFormColumn(k) || k;
