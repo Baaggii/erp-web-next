@@ -3,6 +3,41 @@ function normalizeNumberInput(value) {
   return value.replace(',', '.');
 }
 
+export function extractGenerationDependencies(expression = '') {
+  const deps = new Set();
+  if (typeof expression !== 'string' || !expression.trim()) return deps;
+  const RESERVED = new Set([
+    'abs',
+    'avg',
+    'case',
+    'ceil',
+    'ceiling',
+    'coalesce',
+    'count',
+    'floor',
+    'greatest',
+    'if',
+    'ifnull',
+    'least',
+    'nullif',
+    'pow',
+    'power',
+    'round',
+    'sum',
+    'truncate',
+    'when',
+    'then',
+    'else',
+    'end',
+  ]);
+  for (const match of expression.matchAll(/`?([A-Za-z_][A-Za-z0-9_]*)`?/g)) {
+    const token = (match[1] || '').toLowerCase();
+    if (!token || RESERVED.has(token)) continue;
+    deps.add(token);
+  }
+  return deps;
+}
+
 
 export function valuesEqual(a, b) {
   if (Object.is(a, b)) return true;
@@ -468,7 +503,7 @@ class MySqlExpressionParser {
     if (token.type === 'paren' && token.value === '(') {
       this.consume();
       const expr = this.parseExpression();
-      if (!this.matchOperator(')') && !(this.peek()?.type === 'paren' && this.peek().value === ')')) {
+      if (!(this.peek()?.type === 'paren' && this.peek().value === ')') && !this.matchOperator(')')) {
         throw new Error('Expected )');
       }
       if (this.peek()?.type === 'paren' && this.peek().value === ')') this.consume();
@@ -479,26 +514,34 @@ class MySqlExpressionParser {
     }
     if (token.type === 'identifier') {
       this.consume();
-      if ((this.peek()?.type === 'paren' && this.peek().value === '(') || this.matchOperator('(')) {
-        if (!(this.peek()?.type === 'paren' && this.peek().value === '(')) {
-          this.index -= 1;
-          this.consume();
-        }
+      if (
+        (this.peek()?.type === 'paren' && this.peek().value === '(') ||
+        this.matchOperator('(')
+      ) {
+        if (this.peek()?.type === 'paren' && this.peek().value === '(') this.consume();
         const args = [];
-        if (this.matchOperator(')') || (this.peek()?.type === 'paren' && this.peek().value === ')')) {
+        if (
+          this.peek()?.type === 'paren' && this.peek().value === ')' ||
+          this.matchOperator(')')
+        ) {
           if (this.peek()?.type === 'paren' && this.peek().value === ')') this.consume();
           return { type: 'function', name: token.value, args };
         }
         while (true) {
           args.push(this.parseExpression());
-          if (this.matchOperator(')') || (this.peek()?.type === 'paren' && this.peek().value === ')')) {
-            if (this.peek()?.type === 'paren' && this.peek().value === ')') this.consume();
+          const next = this.peek();
+          if (
+            (next?.type === 'paren' && next.value === ')') ||
+            this.matchOperator(')')
+          ) {
+            if (next?.type === 'paren' && next.value === ')') this.consume();
             break;
           }
-          if (!this.matchOperator(',') && !(this.peek()?.type === 'comma')) {
-            throw new Error('Expected , in function arguments');
+          if (next?.type === 'comma' || this.matchOperator(',')) {
+            if (next?.type === 'comma') this.consume();
+            continue;
           }
-          if (this.peek()?.type === 'comma') this.consume();
+          throw new Error('Expected , in function arguments');
         }
         return { type: 'function', name: token.value, args };
       }
@@ -685,32 +728,68 @@ function evaluateMySqlAst(node, context) {
   }
 }
 
-export function createGeneratedColumnEvaluator(expression, columnCaseMap) {
-  try {
-    const tokens = tokenizeMySqlExpression(expression);
-    const parser = new MySqlExpressionParser(tokens);
-    const ast = parser.parse();
-    return ({ row }) => {
-      const context = {
-        getValue(identifier) {
-          if (!identifier && identifier !== 0) return null;
-          const raw = String(identifier);
-          const normalized = raw.replace(/`/g, '');
-          const lower = normalized.toLowerCase();
-          const mapped = columnCaseMap[lower] || normalized;
-          const value = row?.[mapped] ?? row?.[normalized] ?? row?.[lower];
-          if (value && typeof value === 'object' && 'value' in value) {
-            return value.value;
-          }
-          return value ?? null;
-        },
+export function createGeneratedColumnEvaluator(expression, columnCaseMap, options = {}) {
+  let compiled = null;
+  let lastCompileError = null;
+  let lastCaseMapKey = null;
+  const columnName = options?.columnName;
+
+  const logWarning = (prefix, err) => {
+    const message = err?.message || err;
+    const label = columnName ? `${prefix}: ${columnName}` : prefix;
+    console.warn(label, expression, message);
+  };
+
+  const compile = () => {
+    lastCaseMapKey = JSON.stringify(columnCaseMap || {});
+    try {
+      const tokens = tokenizeMySqlExpression(expression);
+      const parser = new MySqlExpressionParser(tokens);
+      const ast = parser.parse();
+      lastCompileError = null;
+      return ({ row }) => {
+        const context = {
+          getValue(identifier) {
+            if (!identifier && identifier !== 0) return null;
+            const raw = String(identifier);
+            const normalized = raw.replace(/`/g, '');
+            const lower = normalized.toLowerCase();
+            const mapped = columnCaseMap[lower] || normalized;
+            const value = row?.[mapped] ?? row?.[normalized] ?? row?.[lower];
+            if (value && typeof value === 'object' && 'value' in value) {
+              return value.value;
+            }
+            return value ?? null;
+          },
+        };
+        return evaluateMySqlAst(ast, context);
       };
-      return evaluateMySqlAst(ast, context);
-    };
-  } catch (err) {
-    console.warn('Failed to compile generated column expression', expression, err);
-    return null;
-  }
+    } catch (err) {
+      lastCompileError = err;
+      logWarning('Failed to compile generated column expression', err);
+      return null;
+    }
+  };
+
+  const ensureCompiled = () => {
+    const caseKey = JSON.stringify(columnCaseMap || {});
+    if (compiled && caseKey === lastCaseMapKey) return compiled;
+    compiled = null;
+    return compile();
+  };
+
+  return ({ row }) => {
+    const evaluator = ensureCompiled();
+    if (!evaluator) return undefined;
+    try {
+      return evaluator({ row });
+    } catch (err) {
+      lastCompileError = err;
+      compiled = null;
+      logWarning('Failed to evaluate generated column', err);
+      return undefined;
+    }
+  };
 }
 
 
