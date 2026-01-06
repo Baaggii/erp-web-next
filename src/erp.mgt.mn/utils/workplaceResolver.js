@@ -148,13 +148,9 @@ function extractWorkplaceAssignment(entry) {
   if (!entry || typeof entry !== 'object') return null;
   const workplaceId = normalizeWorkplaceId(entry.workplace_id ?? entry.workplaceId ?? entry.id);
   if (workplaceId === null || workplaceId === undefined) return null;
-  const sessionId = normalizeWorkplaceId(
-    entry.workplace_session_id ?? entry.workplaceSessionId ?? workplaceId,
-  );
 
   return {
     workplaceId,
-    workplaceSessionId: sessionId,
     positionId: normalizePositionId(
       entry.workplace_position_id ??
         entry.workplacePositionId ??
@@ -170,16 +166,9 @@ function extractWorkplaceAssignment(entry) {
   };
 }
 
-function storeWorkplaceEntry(map, { workplaceId, workplaceSessionId }, data) {
+function storeWorkplaceEntry(map, { workplaceId }, data) {
   if (workplaceId !== null && workplaceId !== undefined) {
     map[workplaceId] = data;
-  }
-  if (
-    workplaceSessionId !== null &&
-    workplaceSessionId !== undefined &&
-    workplaceSessionId !== workplaceId
-  ) {
-    map[workplaceSessionId] = data;
   }
 }
 
@@ -196,13 +185,6 @@ export function collectWorkplaceIds(session) {
       null;
     if (wId !== null && wId !== undefined) {
       ids.push(wId);
-    }
-    const sessionId =
-      assignment?.workplace_session_id ??
-      assignment?.workplaceSessionId ??
-      null;
-    if (sessionId !== null && sessionId !== undefined) {
-      ids.push(sessionId);
     }
   });
   const sessionId = session?.workplace_id ?? session?.workplaceId;
@@ -226,8 +208,8 @@ export function deriveWorkplacePositionsFromAssignments(session) {
   assignments.forEach((assignment) => {
     const normalized = extractWorkplaceAssignment(assignment);
     if (!normalized) return;
-    const { workplaceId, workplaceSessionId, positionId, positionName } = normalized;
-    storeWorkplaceEntry(map, { workplaceId, workplaceSessionId }, {
+    const { workplaceId, positionId, positionName } = normalized;
+    storeWorkplaceEntry(map, { workplaceId }, {
       positionId,
       positionName,
     });
@@ -423,7 +405,7 @@ export async function resolveWorkplacePositionMap({
           : String(info.positionId).trim();
       storeWorkplaceEntry(
         finalEntries,
-        { workplaceId: normalizeWorkplaceId(workplaceId), workplaceSessionId: null },
+        { workplaceId: normalizeWorkplaceId(workplaceId) },
         {
           positionId: normalizedId || info?.positionId || null,
           positionName:
@@ -472,8 +454,7 @@ export function resolveWorkplacePositionForContext({
     .find(
       (entry) =>
         entry &&
-        (entry.workplaceId === normalizedWorkplaceId ||
-          entry.workplaceSessionId === normalizedWorkplaceId),
+        entry.workplaceId === normalizedWorkplaceId,
     );
 
   if (match) {

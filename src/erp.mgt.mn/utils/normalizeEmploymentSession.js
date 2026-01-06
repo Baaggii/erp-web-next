@@ -39,37 +39,20 @@ export default function normalizeEmploymentSession(session) {
     const workplaceId = normalizeNumericId(
       assignment.workplace_id ?? assignment.workplaceId,
     );
-    const sessionId = normalizeNumericId(
-      assignment.workplace_session_id ??
-        assignment.workplaceSessionId ??
-        assignment.workplace_id ??
-        assignment.workplaceId,
-    );
-    if (workplaceId === null || sessionId === null) {
+    if (workplaceId === null) {
       return list;
     }
 
     const normalizedAssignment = {
       ...assignment,
       workplace_id: workplaceId,
-      workplace_session_id: sessionId,
     };
     list.push(normalizedAssignment);
     return list;
   }, []);
 
-  const assignmentSessionIds = collectUnique(
-    normalizedAssignments.map((assignment) => assignment.workplace_session_id),
-  );
-
   const normalizedWorkplaceId = normalizeNumericId(
     session.workplace_id ?? session.workplaceId,
-  );
-  const normalizedSessionId = normalizeNumericId(
-    session.workplace_session_id ??
-      session.workplaceSessionId ??
-      session.workplace_id ??
-      session.workplaceId,
   );
 
   const fallbackWorkplaceId =
@@ -78,15 +61,9 @@ export default function normalizeEmploymentSession(session) {
       ?.workplace_id ??
     null;
 
-  const fallbackSessionId =
-    normalizedSessionId ??
-    (assignmentSessionIds.length ? assignmentSessionIds[0] : null);
-
   return {
     ...session,
     workplace_id: fallbackWorkplaceId,
-    workplace_session_id: fallbackSessionId,
     workplace_assignments: normalizedAssignments,
-    workplace_session_ids: assignmentSessionIds,
   };
 }

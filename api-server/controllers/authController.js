@@ -81,9 +81,7 @@ export async function login(req, res, next) {
 
     const pickDefaultSession = (items = []) => {
       if (!Array.isArray(items) || items.length === 0) return null;
-      const withWorkplace = items.find(
-        (item) => item?.workplace_session_id != null,
-      );
+      const withWorkplace = items.find((item) => item?.workplace_id != null);
       return withWorkplace ?? items[0];
     };
 
@@ -136,7 +134,7 @@ export async function login(req, res, next) {
       }
 
       workplaceAssignments = (sessionGroup?.sessions || [])
-        .filter((s) => s && s.workplace_session_id != null)
+        .filter((s) => s && s.workplace_id != null)
         .map(
           ({
             company_id,
@@ -147,7 +145,6 @@ export async function login(req, res, next) {
             department_name,
             workplace_id,
             workplace_name,
-            workplace_session_id,
           }) => ({
             company_id: company_id ?? null,
             company_name: company_name ?? null,
@@ -157,7 +154,6 @@ export async function login(req, res, next) {
             department_name: department_name ?? null,
             workplace_id: workplace_id ?? null,
             workplace_name: workplace_name ?? null,
-            workplace_session_id: workplace_session_id ?? null,
           }),
         );
 
@@ -265,8 +261,6 @@ export async function login(req, res, next) {
       pos_district_code: pos_districtCode ?? null,
       pos_merchant_tin: merchantTin ?? null,
       workplace: sessionPayload?.workplace_id ?? null,
-      workplace_session_id: sessionPayload?.workplace_session_id ?? null,
-      workplace_session_ids: sessionPayload?.workplace_session_ids ?? [],
       workplace_name: sessionPayload?.workplace_name ?? null,
       session: sessionPayload,
       permissions,
@@ -309,7 +303,7 @@ export async function getProfile(req, res) {
         .filter(
           (s) =>
             s.company_id === session.company_id &&
-            s.workplace_session_id != null,
+            s.workplace_id != null,
         )
         .map(
           ({
@@ -319,7 +313,6 @@ export async function getProfile(req, res) {
             department_name,
             workplace_id,
             workplace_name,
-            workplace_session_id,
           }) => ({
             branch_id: branch_id ?? null,
             branch_name: branch_name ?? null,
@@ -327,7 +320,6 @@ export async function getProfile(req, res) {
             department_name: department_name ?? null,
             workplace_id: workplace_id ?? null,
             workplace_name: workplace_name ?? null,
-            workplace_session_id: workplace_session_id ?? null,
           }),
         )
     : [];
@@ -380,8 +372,6 @@ export async function getProfile(req, res) {
     pos_branch_no: branchNo ?? null,
     pos_district_code: pos_districtCode ?? null,
     pos_merchant_tin: merchantTin ?? null,
-    workplace_session_id: sessionPayload?.workplace_session_id ?? null,
-    workplace_session_ids: sessionPayload?.workplace_session_ids ?? [],
     workplace_name: workplace_name ?? null,
     session: sessionPayload,
     permissions,
@@ -425,7 +415,7 @@ export async function refresh(req, res) {
           .filter(
             (s) =>
               s.company_id === session.company_id &&
-              s.workplace_session_id != null,
+              s.workplace_id != null,
           )
           .map(
             ({
@@ -435,7 +425,6 @@ export async function refresh(req, res) {
               department_name,
               workplace_id,
               workplace_name,
-              workplace_session_id,
             }) => ({
               branch_id: branch_id ?? null,
               branch_name: branch_name ?? null,
@@ -443,7 +432,6 @@ export async function refresh(req, res) {
               department_name: department_name ?? null,
               workplace_id: workplace_id ?? null,
               workplace_name: workplace_name ?? null,
-              workplace_session_id: workplace_session_id ?? null,
             }),
           )
       : [];
@@ -522,8 +510,6 @@ export async function refresh(req, res) {
       pos_branch_no: branchNo ?? null,
       pos_district_code: pos_districtCode ?? null,
       pos_merchant_tin: merchantTin ?? null,
-      workplace_session_id: sessionPayload?.workplace_session_id ?? null,
-      workplace_session_ids: sessionPayload?.workplace_session_ids ?? [],
       workplace_name: workplace_name ?? null,
       session: sessionPayload,
       permissions,

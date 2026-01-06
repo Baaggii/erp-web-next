@@ -132,7 +132,7 @@ function ReportBuilderInner() {
   );
 
   const formatProcDisplay = (name) => {
-    const label = procLabels[name] || procHeaderMap?.[name] || '';
+    const label = procHeaderMap?.[name] || procLabels[name] || '';
     if (label && label !== name) return `${label} (${name})`;
     return name;
   };

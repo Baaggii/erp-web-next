@@ -660,6 +660,8 @@ function parseEntry(raw = {}) {
         .map((value) => (typeof value === 'string' ? value.trim() : ''))
         .filter((value) => value)
     : [];
+  const allowDirectPostResolved =
+    raw.allowDirectPost === undefined ? !temporaryFlag : Boolean(raw.allowDirectPost);
   return {
     visibleFields: Array.isArray(raw.visibleFields)
       ? raw.visibleFields.map(String)
@@ -744,6 +746,7 @@ function parseEntry(raw = {}) {
     moduleLabel: typeof raw.moduleLabel === 'string' ? raw.moduleLabel : '',
     procedures: arrify(raw.procedures || raw.procedure),
     temporaryProcedures: arrify(raw.temporaryProcedures),
+    allowDirectPost: allowDirectPostResolved,
     supportsTemporarySubmission: temporaryFlag,
     allowTemporarySubmission: temporaryFlag,
     posApiEnabled: Boolean(raw.posApiEnabled),
@@ -1106,6 +1109,7 @@ export async function setFormConfig(
     detectField = '',
     procedures = [],
     temporaryProcedures = [],
+    allowDirectPost,
     supportsTemporarySubmission,
     allowTemporarySubmission,
     posApiEnabled = false,
@@ -1152,6 +1156,11 @@ export async function setFormConfig(
     : [];
   const { cfg } = await readConfig(companyId);
   if (!cfg[table]) cfg[table] = {};
+  const defaultTempSupport = Boolean(
+    supportsTemporarySubmission ?? allowTemporarySubmission ?? false,
+  );
+  const allowDirectPostFlag =
+    allowDirectPost === undefined ? !defaultTempSupport : Boolean(allowDirectPost);
   cfg[table][name] = {
     visibleFields: arrify(visibleFields),
     requiredFields: arrify(requiredFields),
@@ -1194,12 +1203,9 @@ export async function setFormConfig(
     temporaryAllowedWorkplaces: taw,
     procedures: arrify(procedures),
     temporaryProcedures: tempProcedures,
-    allowTemporarySubmission: Boolean(
-      supportsTemporarySubmission ?? allowTemporarySubmission ?? false,
-    ),
-    supportsTemporarySubmission: Boolean(
-      supportsTemporarySubmission ?? allowTemporarySubmission ?? false,
-    ),
+    allowDirectPost: allowDirectPostFlag,
+    allowTemporarySubmission: defaultTempSupport,
+    supportsTemporarySubmission: defaultTempSupport,
     posApiEnabled: Boolean(posApiEnabled),
     posApiType:
       typeof posApiType === 'string' && posApiType.trim()

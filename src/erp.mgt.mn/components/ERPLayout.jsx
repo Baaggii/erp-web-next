@@ -3789,36 +3789,19 @@ export function Header({
         assignment.workplace_id !== undefined
           ? assignment.workplace_id
           : assignment.workplaceId;
-      const sessionId =
-        assignment.workplace_session_id !== undefined
-          ? assignment.workplace_session_id
-          : assignment.workplaceSessionId;
       const normalizedWorkplaceId = parseId(workplaceId);
-      const normalizedSessionId = parseId(sessionId);
-      const compositeKey = `${normalizedWorkplaceId ?? ''}|${normalizedSessionId ?? ''}`;
+      const compositeKey = `${normalizedWorkplaceId ?? ''}`;
       if (seenComposite.has(compositeKey)) return;
-      if (
-        (normalizedWorkplaceId != null && seenWorkplaceIds.has(normalizedWorkplaceId)) ||
-        (normalizedSessionId != null && seenSessionIds.has(normalizedSessionId))
-      ) {
+      if (normalizedWorkplaceId != null && seenWorkplaceIds.has(normalizedWorkplaceId)) {
         return;
       }
       seenComposite.add(compositeKey);
       if (normalizedWorkplaceId != null) {
         seenWorkplaceIds.add(normalizedWorkplaceId);
       }
-      if (normalizedSessionId != null) {
-        seenSessionIds.add(normalizedSessionId);
-      }
       const idParts = [];
       if (assignment.workplace_id != null) {
         idParts.push(`#${assignment.workplace_id}`);
-      }
-      if (
-        assignment.workplace_session_id != null &&
-        assignment.workplace_session_id !== assignment.workplace_id
-      ) {
-        idParts.push(`session ${assignment.workplace_session_id}`);
       }
       const idLabel = idParts.join(' · ');
       const baseName = assignment.workplace_name
@@ -3844,12 +3827,6 @@ export function Header({
       const idParts = [];
       if (session.workplace_id != null) {
         idParts.push(`#${session.workplace_id}`);
-      }
-      if (
-        session.workplace_session_id != null &&
-        session.workplace_session_id !== session.workplace_id
-      ) {
-        idParts.push(`session ${session.workplace_session_id}`);
       }
       const baseName = session.workplace_name
         ? String(session.workplace_name).trim()
@@ -3927,22 +3904,9 @@ export function Header({
     const assignments = Array.isArray(session?.workplace_assignments)
       ? session.workplace_assignments
       : [];
-    const currentSessionId =
-      session?.workplace_session_id ?? session?.workplaceSessionId ?? null;
     const currentWorkplaceId = session?.workplace_id ?? session?.workplaceId ?? null;
     return (
       assignments.find((assignment) => {
-        const assignmentSessionId =
-          assignment?.workplace_session_id ?? assignment?.workplaceSessionId ?? null;
-        if (
-          currentSessionId !== null &&
-          currentSessionId !== undefined &&
-          assignmentSessionId !== null &&
-          assignmentSessionId !== undefined &&
-          assignmentSessionId === currentSessionId
-        ) {
-          return true;
-        }
         const assignmentWorkplaceId =
           assignment?.workplace_id ?? assignment?.workplaceId ?? assignment?.id ?? null;
         return (

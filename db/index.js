@@ -1249,7 +1249,6 @@ function mapEmploymentRow(row) {
     senior_plan_empid,
     workplace_id,
     workplace_name,
-    workplace_session_id,
     pos_no,
     posNo,
     pos_name,
@@ -1282,10 +1281,6 @@ function mapEmploymentRow(row) {
   ];
   const permissions = {};
   for (const k of all) permissions[k] = flags.has(k);
-  const resolvedWorkplaceSessionId =
-    workplace_session_id !== undefined && workplace_session_id !== null
-      ? workplace_session_id
-      : workplace_id ?? null;
   const resolvedPosNo =
     pos_no !== undefined && pos_no !== null ? pos_no : posNo ?? null;
   const resolvedPosBranchNo =
@@ -1305,7 +1300,6 @@ function mapEmploymentRow(row) {
     senior_plan_empid,
     workplace_id,
     workplace_name,
-    workplace_session_id: resolvedWorkplaceSessionId,
     pos_no,
     posNo,
     pos_name,
@@ -1530,7 +1524,6 @@ export async function getEmploymentSessions(empid, options = {}) {
           e.employment_department_id AS department_id,
           ${deptRel.nameExpr} AS department_name,
           es.workplace_id AS workplace_id,
-          es.workplace_session_id AS workplace_session_id,
           ${posNoExpr} AS pos_no,
           ${merchantExpr} AS merchant_id,
           ${posRelation.select.posNo} AS posNo,
@@ -1557,7 +1550,6 @@ export async function getEmploymentSessions(empid, options = {}) {
             es.department_id,
             es.emp_id,
             es.workplace_id,
-            NULL AS workplace_session_id,
             ${posNoExpr} AS pos_no,
             ${merchantExpr} AS merchant_id
          FROM tbl_employment_schedule es
@@ -1815,7 +1807,6 @@ export async function getEmploymentSession(empid, companyId, options = {}) {
             e.employment_department_id AS department_id,
             ${deptRel.nameExpr} AS department_name,
             es.workplace_id AS workplace_id,
-            es.workplace_session_id AS workplace_session_id,
             ${posNoExpr} AS pos_no,
             ${merchantExpr} AS merchant_id,
             ${posRelation.select.posNo} AS posNo,
@@ -1838,13 +1829,12 @@ export async function getEmploymentSession(empid, companyId, options = {}) {
          LEFT JOIN (
            SELECT
              es.company_id,
-             es.branch_id,
-             es.department_id,
-             es.emp_id,
-             es.workplace_id,
-             NULL AS workplace_session_id,
-             ${posNoExpr} AS pos_no,
-             ${merchantExpr} AS merchant_id
+            es.branch_id,
+            es.department_id,
+            es.emp_id,
+            es.workplace_id,
+            ${posNoExpr} AS pos_no,
+            ${merchantExpr} AS merchant_id
            FROM tbl_employment_schedule es
            INNER JOIN (
              SELECT

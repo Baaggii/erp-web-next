@@ -292,10 +292,7 @@ export default function AllowedReportsConfig() {
   );
 
   const getProcedureLabel = (name) =>
-    procLabels[name] ||
-    headerMappings?.[name] ||
-    procOptionLabelMap.get(name) ||
-    '';
+    headerMappings?.[name] || procOptionLabelMap.get(name) || procLabels[name] || '';
 
   const formatProcedureDisplay = (name) => {
     const label = getProcedureLabel(name);
@@ -820,7 +817,7 @@ export default function AllowedReportsConfig() {
                       !hasWorkplaces &&
                       !hasPositions &&
                       !hasPermissions;
-                    const labelValue = getProcedureLabel(p) || p;
+                    const labelValue = getProcedureLabel(p);
                     const isSelected = selectedRule === p;
                     return (
                       <tr
