@@ -1645,9 +1645,8 @@ const RowFormModal = function RowFormModal({
     let working = baseRow;
     const evaluators = generatedColumnEvaluators || {};
     let generatedChanged = false;
-    let evaluationRow = null;
     if (Object.keys(evaluators).length > 0) {
-      evaluationRow = { ...(extraValsRef.current || {}), ...working };
+      const evaluationRow = { ...(extraValsRef.current || {}), ...working };
       const rows = [evaluationRow];
       const result = applyGeneratedColumnEvaluators({
         targetRows: rows,
@@ -1657,7 +1656,6 @@ const RowFormModal = function RowFormModal({
       generatedChanged = Boolean(result?.changed);
       if (generatedChanged) {
         const evaluated = rows[0] || {};
-        evaluationRow = rows[0] || evaluationRow;
         const merged = { ...working };
         columns.forEach((col) => {
           if (evaluated[col] !== undefined) {
