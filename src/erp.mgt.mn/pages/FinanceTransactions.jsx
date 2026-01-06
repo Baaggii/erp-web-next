@@ -132,6 +132,7 @@ export default function FinanceTransactions({ moduleKey = 'finance_transactions'
   const [reportResult, setReportResult] = useState(null);
   const [manualParams, setManualParams] = useState({});
   const [externalTemporaryTrigger, setExternalTemporaryTrigger] = useState(null);
+  const [configsLoaded, setConfigsLoaded] = useState(false);
   const {
     company,
     branch,
@@ -408,6 +409,8 @@ useEffect(() => {
 
   useEffect(() => {
     console.log('FinanceTransactions load forms effect');
+    let canceled = false;
+    setConfigsLoaded(false);
     const params = new URLSearchParams();
     if (moduleKey) params.set('moduleKey', moduleKey);
     if (branch != null) params.set('branchId', branch);
@@ -463,6 +466,7 @@ useEffect(() => {
     const url = `/api/transaction_forms${query ? `?${query}` : ''}`;
     fetch(url, { credentials: 'include', skipLoader: true })
       .then((res) => {
+        if (canceled) return {};
         if (!res.ok) {
           addToast('Failed to load transaction forms', 'error');
           return {};
@@ -473,6 +477,7 @@ useEffect(() => {
         });
       })
       .then((data) => {
+        if (canceled) return;
         const filtered = {};
         const branchId = branch != null ? String(branch) : null;
         const departmentId = department != null ? String(department) : null;
@@ -494,8 +499,6 @@ useEffect(() => {
             })
           )
             return;
-          if (!isModulePermissionGranted(perms, mKey))
-            return;
           if (!isModuleLicensed(licensed, mKey))
             return;
           filtered[n] = info;
@@ -507,9 +510,17 @@ useEffect(() => {
         }
       })
       .catch(() => {
-        addToast('Failed to load transaction forms', 'error');
-        setConfigs({});
+        if (!canceled) {
+          addToast('Failed to load transaction forms', 'error');
+          setConfigs({});
+        }
+      })
+      .finally(() => {
+        if (!canceled) setConfigsLoaded(true);
       });
+    return () => {
+      canceled = true;
+    };
   }, [
     moduleKey,
     company,
@@ -895,8 +906,13 @@ useEffect(() => {
   }
 
   if (!perms || !licensed) return <p>Ачааллаж байна...</p>;
-  if (!isModulePermissionGranted(perms, moduleKey) || !isModuleLicensed(licensed, moduleKey))
+  const moduleLicensed = isModuleLicensed(licensed, moduleKey);
+  const modulePermitted = isModulePermissionGranted(perms, moduleKey);
+  const hasConfigs = Object.keys(configs).length > 0;
+  if (!moduleLicensed)
     return <p>Нэвтрэх эрхгүй.</p>;
+  if (!modulePermitted && !configsLoaded) return <p>Ачааллаж байна...</p>;
+  if (!modulePermitted && configsLoaded && !hasConfigs) return <p>Нэвтрэх эрхгүй.</p>;
 
   const caption = 'Гүйлгээ сонгоно уу';
 
