@@ -17,7 +17,7 @@ import slugify from '../utils/slugify.js';
 import formatTimestamp from '../utils/formatTimestamp.js';
 import callProcedure from '../utils/callProcedure.js';
 import normalizeDateInput from '../utils/normalizeDateInput.js';
-import { valuesEqual } from '../utils/generatedColumns.js';
+import { extractGenerationDependencies, valuesEqual } from '../utils/generatedColumns.js';
 import {
   assignArrayMetadata,
   extractArrayMetadata,
@@ -897,6 +897,46 @@ function InlineTransactionTable(
   );
   const generatedColumnEvaluators = generatedColumnPipeline.evaluators;
   const hasGeneratedColumnsRef = useRef(false);
+  const generatedColumnSet = React.useMemo(() => {
+    const set = new Set();
+    if (!Array.isArray(tableColumns)) return set;
+    tableColumns.forEach((col) => {
+      if (!col || typeof col !== 'object') return;
+      const key = columnCaseMap[String(col.name || '').toLowerCase()] || col.name;
+      if (!key) return;
+      const extra = String(col.extra || col.EXTRA || '').toLowerCase();
+      const expr =
+        col.generationExpression ?? col.GENERATION_EXPRESSION ?? col.generation_expression;
+      if (expr || extra.includes('generated')) {
+        set.add(key);
+      }
+    });
+    return set;
+  }, [tableColumns, columnCaseMap]);
+  const generatedDependencyLookup = React.useMemo(() => {
+    const map = {};
+    if (!Array.isArray(tableColumns)) return map;
+    tableColumns.forEach((col) => {
+      if (!col || typeof col !== 'object') return;
+      const expr =
+        col.generationExpression ??
+        col.GENERATION_EXPRESSION ??
+        col.generation_expression ??
+        null;
+      if (!expr) return;
+      const target = columnCaseMap[String(col.name || '').toLowerCase()] || col.name;
+      if (!target) return;
+      const deps = extractGenerationDependencies(expr);
+      deps.forEach((dep) => {
+        const source = columnCaseMap[dep] || dep;
+        if (!source) return;
+        const lower = String(source).toLowerCase();
+        if (!map[lower]) map[lower] = new Set();
+        map[lower].add(target);
+      });
+    });
+    return map;
+  }, [tableColumns, columnCaseMap]);
 
   const applyGeneratedColumns = React.useCallback(
     (targetRows, indices = null) =>
@@ -1218,15 +1258,20 @@ function InlineTransactionTable(
     return res;
   }
 
+  const isAssignmentTrigger = (cfg) =>
+    cfg && (cfg.kind === 'assignment' || cfg.name === '__assignment__');
+
   function hasTrigger(col) {
     return getDirectTriggers(col).length > 0 || getParamTriggers(col).length > 0;
   }
 
   function showTriggerInfo(col) {
     if (!general.triggerToastEnabled) return;
+    const colLower = col.toLowerCase();
+    const normalizedCol = columnCaseMap[colLower] || col;
     const direct = getDirectTriggers(col);
     const paramTrigs = getParamTriggers(col);
-    const hasEntry = Object.prototype.hasOwnProperty.call(procTriggers || {}, col.toLowerCase());
+    const hasEntry = Object.prototype.hasOwnProperty.call(procTriggers || {}, colLower);
 
     const assignmentTargets = new Set();
     const collectAssignmentTargets = (cfg, fallbackTarget = null) => {
@@ -1253,21 +1298,51 @@ function InlineTransactionTable(
 
     const procDirect = direct.filter((cfg) => !isAssignmentTrigger(cfg));
     const procParam = paramTrigs.filter(([, cfg]) => !isAssignmentTrigger(cfg));
+    const virtualDependents = generatedDependencyLookup[colLower];
+    const isVirtual = generatedColumnSet.has(normalizedCol);
+    const combinedTargets = new Set([
+      ...assignmentTargets,
+      ...(virtualDependents ? Array.from(virtualDependents) : []),
+    ]);
 
-    const hasAnyAssignments = assignmentTargets.size > 0;
-    if (!hasAnyAssignments && direct.length === 0 && paramTrigs.length === 0) {
+    const hasAnyAssignments = combinedTargets.size > 0;
+    const hasAnyProcedures = procDirect.length > 0 || procParam.length > 0;
+    if (!hasAnyAssignments && !hasAnyProcedures && !isVirtual) {
       const message = hasEntry
         ? `${col} талбар нь өгөгдлийн сангийн триггерээр бөглөгдөнө. Урьдчилсан тооцоолол хязгаарлагдмал байж болно.`
         : `${col} талбар триггер ашигладаггүй`;
       window.dispatchEvent(
         new CustomEvent('toast', {
-          detail: { message: `${col} талбар триггер ашигладаггүй`, type: 'info' },
+          detail: { message, type: 'info' },
         }),
       );
       return;
     }
 
-    const directNames = [...new Set(direct.map((d) => d.name))];
+    if (combinedTargets.size > 0) {
+      const targets = Array.from(combinedTargets).join(', ');
+      window.dispatchEvent(
+        new CustomEvent('toast', {
+          detail: {
+            message: `${col} талбарын утга өөрчлөгдвөл дараах талбарууд автоматаар бөглөгдөнө: ${targets}`,
+            type: 'info',
+          },
+        }),
+      );
+    }
+
+    if (isVirtual) {
+      window.dispatchEvent(
+        new CustomEvent('toast', {
+          detail: {
+            message: `${col} талбар нь виртуал тооцоолол бөгөөд утгыг автоматаар тооцно.`,
+            type: 'info',
+          },
+        }),
+      );
+    }
+
+    const directNames = [...new Set(procDirect.map((d) => d.name))];
     directNames.forEach((name) => {
       window.dispatchEvent(
         new CustomEvent('toast', {
@@ -1276,8 +1351,8 @@ function InlineTransactionTable(
       );
     });
 
-    if (paramTrigs.length > 0) {
-      const names = [...new Set(paramTrigs.map(([, cfg]) => cfg.name))].join(', ');
+    if (procParam.length > 0) {
+      const names = [...new Set(procParam.map(([, cfg]) => cfg.name))].join(', ');
       window.dispatchEvent(
         new CustomEvent('toast', {
           detail: {
