@@ -72,6 +72,39 @@ function buildNormalizedAssignment(source = {}, defaults = {}, options = {}) {
         fallbackMeta ? defaults.workplace_name ?? defaults.workplaceName : null,
       ),
     ) ?? null;
+  const workplaceEffectiveMonth =
+    trimOrNull(
+      coalesce(
+        source.workplace_effective_month ??
+          source.workplaceEffectiveMonth ??
+          source.effective_month ??
+          source.effectiveMonth,
+        fallbackMeta
+          ? defaults.workplace_effective_month ?? defaults.workplaceEffectiveMonth
+          : null,
+      ),
+    ) ?? null;
+  const workplacePositionId = normalizeNumericId(
+    coalesce(
+      source.workplace_position_id ??
+        source.workplacePositionId ??
+        source.position_id ??
+        source.positionId,
+      fallbackMeta ? defaults.workplace_position_id ?? defaults.workplacePositionId : null,
+    ),
+  );
+  const workplacePositionName =
+    trimOrNull(
+      coalesce(
+        source.workplace_position_name ??
+          source.workplacePositionName ??
+          source.position_name ??
+          source.positionName,
+        fallbackMeta
+          ? defaults.workplace_position_name ?? defaults.workplacePositionName
+          : null,
+      ),
+    ) ?? null;
 
   if (workplaceId === null) {
     return null;
@@ -94,6 +127,12 @@ function buildNormalizedAssignment(source = {}, defaults = {}, options = {}) {
     workplaceId: workplaceId,
     workplace_name: workplaceName,
     workplaceName: workplaceName,
+    workplace_effective_month: workplaceEffectiveMonth,
+    workplaceEffectiveMonth: workplaceEffectiveMonth,
+    workplace_position_id: workplacePositionId,
+    workplacePositionId: workplacePositionId,
+    workplace_position_name: workplacePositionName,
+    workplacePositionName: workplacePositionName,
   };
 }
 
@@ -114,6 +153,18 @@ export function normalizeEmploymentSession(session, assignments = []) {
     ...session,
     workplace_id: fallbackWorkplaceId,
     workplaceId: fallbackWorkplaceId,
+    workplace_effective_month:
+      session?.workplace_effective_month ?? session?.workplaceEffectiveMonth ?? null,
+    workplaceEffectiveMonth:
+      session?.workplaceEffectiveMonth ?? session?.workplace_effective_month ?? null,
+    workplace_position_id:
+      session?.workplace_position_id ?? session?.workplacePositionId ?? null,
+    workplacePositionId:
+      session?.workplacePositionId ?? session?.workplace_position_id ?? null,
+    workplace_position_name:
+      session?.workplace_position_name ?? session?.workplacePositionName ?? null,
+    workplacePositionName:
+      session?.workplacePositionName ?? session?.workplace_position_name ?? null,
   };
 
   const hydratedAssignments = [];

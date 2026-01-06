@@ -145,6 +145,9 @@ export async function login(req, res, next) {
             department_name,
             workplace_id,
             workplace_name,
+            workplace_effective_month,
+            workplace_position_id,
+            workplace_position_name,
           }) => ({
             company_id: company_id ?? null,
             company_name: company_name ?? null,
@@ -154,6 +157,9 @@ export async function login(req, res, next) {
             department_name: department_name ?? null,
             workplace_id: workplace_id ?? null,
             workplace_name: workplace_name ?? null,
+            workplace_effective_month: workplace_effective_month ?? null,
+            workplace_position_id: workplace_position_id ?? null,
+            workplace_position_name: workplace_position_name ?? null,
           }),
         );
 
@@ -262,6 +268,7 @@ export async function login(req, res, next) {
       pos_merchant_tin: merchantTin ?? null,
       workplace: sessionPayload?.workplace_id ?? null,
       workplace_name: sessionPayload?.workplace_name ?? null,
+      workplaces: sessionPayload?.workplace_assignments ?? [],
       session: sessionPayload,
       permissions,
       warnings,
@@ -307,21 +314,27 @@ export async function getProfile(req, res) {
         )
         .map(
           ({
-            branch_id,
-            branch_name,
-            department_id,
-            department_name,
-            workplace_id,
-            workplace_name,
-          }) => ({
-            branch_id: branch_id ?? null,
-            branch_name: branch_name ?? null,
-            department_id: department_id ?? null,
-            department_name: department_name ?? null,
-            workplace_id: workplace_id ?? null,
-            workplace_name: workplace_name ?? null,
-          }),
-        )
+          branch_id,
+          branch_name,
+          department_id,
+          department_name,
+          workplace_id,
+          workplace_name,
+          workplace_effective_month,
+          workplace_position_id,
+          workplace_position_name,
+        }) => ({
+          branch_id: branch_id ?? null,
+          branch_name: branch_name ?? null,
+          department_id: department_id ?? null,
+          department_name: department_name ?? null,
+          workplace_id: workplace_id ?? null,
+          workplace_name: workplace_name ?? null,
+          workplace_effective_month: workplace_effective_month ?? null,
+          workplace_position_id: workplace_position_id ?? null,
+          workplace_position_name: workplace_position_name ?? null,
+        }),
+      )
     : [];
 
   const sessionPayload = session
@@ -373,6 +386,7 @@ export async function getProfile(req, res) {
     pos_district_code: pos_districtCode ?? null,
     pos_merchant_tin: merchantTin ?? null,
     workplace_name: workplace_name ?? null,
+    workplaces: sessionPayload?.workplace_assignments ?? [],
     session: sessionPayload,
     permissions,
   });
@@ -419,21 +433,27 @@ export async function refresh(req, res) {
           )
           .map(
             ({
-              branch_id,
-              branch_name,
-              department_id,
-              department_name,
-              workplace_id,
-              workplace_name,
-            }) => ({
-              branch_id: branch_id ?? null,
-              branch_name: branch_name ?? null,
-              department_id: department_id ?? null,
-              department_name: department_name ?? null,
-              workplace_id: workplace_id ?? null,
-              workplace_name: workplace_name ?? null,
-            }),
-          )
+            branch_id,
+            branch_name,
+            department_id,
+            department_name,
+            workplace_id,
+            workplace_name,
+            workplace_effective_month,
+            workplace_position_id,
+            workplace_position_name,
+          }) => ({
+            branch_id: branch_id ?? null,
+            branch_name: branch_name ?? null,
+            department_id: department_id ?? null,
+            department_name: department_name ?? null,
+            workplace_id: workplace_id ?? null,
+            workplace_name: workplace_name ?? null,
+            workplace_effective_month: workplace_effective_month ?? null,
+            workplace_position_id: workplace_position_id ?? null,
+            workplace_position_name: workplace_position_name ?? null,
+          }),
+        )
       : [];
 
     const sessionPayload = session
@@ -511,6 +531,7 @@ export async function refresh(req, res) {
       pos_district_code: pos_districtCode ?? null,
       pos_merchant_tin: merchantTin ?? null,
       workplace_name: workplace_name ?? null,
+      workplaces: sessionPayload?.workplace_assignments ?? [],
       session: sessionPayload,
       permissions,
     });
