@@ -325,10 +325,25 @@ class MySqlExpressionParser {
 
   matchOperator(...ops) {
     const token = this.peek();
-    if (!token || token.type !== 'operator') return false;
-    if (!ops.some((op) => token.value.toUpperCase() === op.toUpperCase())) return false;
+    if (!token) return false;
+    const value =
+      token.type === 'operator' || token.type === 'paren' || token.type === 'comma'
+        ? token.value
+        : token.type === 'identifier' && token.upper
+          ? token.upper
+          : null;
+    if (value === null) return false;
+    const upperValue = typeof value === 'string' ? value.toUpperCase() : value;
+    if (
+      !ops.some((op) => {
+        const normalized = typeof op === 'string' ? op.toUpperCase() : op;
+        return upperValue === normalized;
+      })
+    ) {
+      return false;
+    }
     this.index += 1;
-    return token.value.toUpperCase();
+    return upperValue;
   }
 
   matchKeyword(name) {
@@ -468,10 +483,7 @@ class MySqlExpressionParser {
     if (token.type === 'paren' && token.value === '(') {
       this.consume();
       const expr = this.parseExpression();
-      if (!this.matchOperator(')') && !(this.peek()?.type === 'paren' && this.peek().value === ')')) {
-        throw new Error('Expected )');
-      }
-      if (this.peek()?.type === 'paren' && this.peek().value === ')') this.consume();
+      this.expectOperator(')');
       return expr;
     }
     if (token.type === 'identifier' && token.upper === 'CASE') {
@@ -479,26 +491,19 @@ class MySqlExpressionParser {
     }
     if (token.type === 'identifier') {
       this.consume();
-      if ((this.peek()?.type === 'paren' && this.peek().value === '(') || this.matchOperator('(')) {
-        if (!(this.peek()?.type === 'paren' && this.peek().value === '(')) {
-          this.index -= 1;
-          this.consume();
-        }
+      if (this.matchOperator('(')) {
         const args = [];
-        if (this.matchOperator(')') || (this.peek()?.type === 'paren' && this.peek().value === ')')) {
-          if (this.peek()?.type === 'paren' && this.peek().value === ')') this.consume();
+        if (this.matchOperator(')')) {
           return { type: 'function', name: token.value, args };
         }
         while (true) {
           args.push(this.parseExpression());
-          if (this.matchOperator(')') || (this.peek()?.type === 'paren' && this.peek().value === ')')) {
-            if (this.peek()?.type === 'paren' && this.peek().value === ')') this.consume();
+          if (this.matchOperator(')')) {
             break;
           }
-          if (!this.matchOperator(',') && !(this.peek()?.type === 'comma')) {
+          if (!this.matchOperator(',')) {
             throw new Error('Expected , in function arguments');
           }
-          if (this.peek()?.type === 'comma') this.consume();
         }
         return { type: 'function', name: token.value, args };
       }
@@ -686,31 +691,55 @@ function evaluateMySqlAst(node, context) {
 }
 
 export function createGeneratedColumnEvaluator(expression, columnCaseMap) {
-  try {
+  let ast = null;
+  let lastError = null;
+  const compile = () => {
     const tokens = tokenizeMySqlExpression(expression);
     const parser = new MySqlExpressionParser(tokens);
-    const ast = parser.parse();
-    return ({ row }) => {
-      const context = {
-        getValue(identifier) {
-          if (!identifier && identifier !== 0) return null;
-          const raw = String(identifier);
-          const normalized = raw.replace(/`/g, '');
-          const lower = normalized.toLowerCase();
-          const mapped = columnCaseMap[lower] || normalized;
-          const value = row?.[mapped] ?? row?.[normalized] ?? row?.[lower];
-          if (value && typeof value === 'object' && 'value' in value) {
-            return value.value;
-          }
-          return value ?? null;
-        },
-      };
-      return evaluateMySqlAst(ast, context);
-    };
+    ast = parser.parse();
+    lastError = null;
+  };
+
+  try {
+    compile();
   } catch (err) {
+    lastError = err;
     console.warn('Failed to compile generated column expression', expression, err);
-    return null;
   }
+
+  return ({ row }) => {
+    if (!ast) {
+      try {
+        compile();
+      } catch (err) {
+        if (err !== lastError) {
+          console.warn('Deferred compilation failed for generated column', expression, err);
+        }
+        lastError = err;
+        return undefined;
+      }
+    }
+    const context = {
+      getValue(identifier) {
+        if (!identifier && identifier !== 0) return null;
+        const raw = String(identifier);
+        const normalized = raw.replace(/`/g, '');
+        const lower = normalized.toLowerCase();
+        const mapped = columnCaseMap[lower] || normalized;
+        const value = row?.[mapped] ?? row?.[normalized] ?? row?.[lower];
+        if (value && typeof value === 'object' && 'value' in value) {
+          return value.value;
+        }
+        return value ?? null;
+      },
+    };
+    try {
+      return evaluateMySqlAst(ast, context);
+    } catch (err) {
+      console.warn('Failed to evaluate generated column', expression, err);
+      return undefined;
+    }
+  };
 }
 
 
