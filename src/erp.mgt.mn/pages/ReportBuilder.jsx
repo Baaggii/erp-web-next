@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useContext } from 'react';
+import React, { useEffect, useState, useContext, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import buildStoredProcedure from '../utils/buildStoredProcedure.js';
 import buildReportSql from '../utils/buildReportSql.js';
@@ -10,6 +10,7 @@ import reportDefinitionToConfig from '../utils/reportDefinitionToConfig.js';
 import { useToast } from '../context/ToastContext.jsx';
 import { AuthContext } from '../context/AuthContext.jsx';
 import I18nContext from '../context/I18nContext.jsx';
+import useHeaderMappings from '../hooks/useHeaderMappings.js';
 
 const SESSION_PARAMS = [
   { name: 'session_company_id', type: 'INT' },
@@ -122,6 +123,19 @@ function ReportBuilderInner() {
     permissions?.permissions?.system_settings ||
     session?.permissions?.system_settings;
   const isCodeTab = activeTab === 'code';
+  const procLabels = generalConfig.general?.procLabels || {};
+  const procHeaderMap = useHeaderMappings(
+    useMemo(
+      () => dbProcedures.map((p) => p?.name).filter(Boolean),
+      [dbProcedures],
+    ),
+  );
+
+  const formatProcDisplay = (name) => {
+    const label = procLabels[name] || procHeaderMap?.[name] || '';
+    if (label && label !== name) return `${label} (${name})`;
+    return name;
+  };
 
   const tenantProcedures = dbProcedures.filter((p) => !p.isDefault);
   const displayProcedures = isCodeTab
@@ -3314,7 +3328,7 @@ function ReportBuilderInner() {
           >
             {displayProcedures.map((p) => (
               <option key={p.name} value={p.name}>
-                {p.name}
+                {formatProcDisplay(p.name)}
               </option>
             ))}
           </select>
