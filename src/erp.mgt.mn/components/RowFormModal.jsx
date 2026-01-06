@@ -13,7 +13,6 @@ import callProcedure from '../utils/callProcedure.js';
 import {
   applyGeneratedColumnEvaluators,
   createGeneratedColumnEvaluator,
-  extractGenerationDependencies,
 } from '../utils/generatedColumns.js';
 import selectDisplayFieldsForRelation from '../utils/selectDisplayFieldsForRelation.js';
 import extractCombinationFilterValue from '../utils/extractCombinationFilterValue.js';
@@ -44,6 +43,41 @@ function normalizeRelationOptionKey(value) {
     }
   }
   return String(value);
+}
+
+function extractGenerationDependencies(expression = '') {
+  const deps = new Set();
+  if (typeof expression !== 'string' || !expression.trim()) return deps;
+  const RESERVED = new Set([
+    'abs',
+    'avg',
+    'case',
+    'ceil',
+    'ceiling',
+    'coalesce',
+    'count',
+    'floor',
+    'greatest',
+    'if',
+    'ifnull',
+    'least',
+    'nullif',
+    'pow',
+    'power',
+    'round',
+    'sum',
+    'truncate',
+    'when',
+    'then',
+    'else',
+    'end',
+  ]);
+  for (const match of expression.matchAll(/`?([A-Za-z_][A-Za-z0-9_]*)`?/g)) {
+    const token = (match[1] || '').toLowerCase();
+    if (!token || RESERVED.has(token)) continue;
+    deps.add(token);
+  }
+  return deps;
 }
 
 const RowFormModal = function RowFormModal({
@@ -680,7 +714,7 @@ const RowFormModal = function RowFormModal({
       if (!rawName || !expr) return;
       const key = columnCaseMap[String(rawName).toLowerCase()] || rawName;
       if (typeof key !== 'string') return;
-      const evaluator = createGeneratedColumnEvaluator(expr, columnCaseMap, { columnName: key });
+      const evaluator = createGeneratedColumnEvaluator(expr, columnCaseMap);
       if (evaluator) map[key] = evaluator;
     });
     return map;

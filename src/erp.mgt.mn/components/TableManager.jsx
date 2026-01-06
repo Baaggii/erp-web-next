@@ -1187,7 +1187,7 @@ const TableManager = forwardRef(function TableManager({
       if (!rawName || !expr) return;
       const key = resolveCanonicalKey(rawName);
       if (typeof key !== 'string') return;
-      const evaluator = createGeneratedColumnEvaluator(expr, columnCaseMap, { columnName: key });
+      const evaluator = createGeneratedColumnEvaluator(expr, columnCaseMap);
       if (evaluator) evaluators[key] = evaluator;
     });
     return evaluators;
