@@ -13,6 +13,7 @@ import { Navigate } from 'react-router-dom';
 import { withPosApiEndpointMetadata } from '../utils/posApiConfig.js';
 import { parseFieldSource } from '../utils/posApiFieldSource.js';
 import PosApiIntegrationSection from '../components/PosApiIntegrationSection.jsx';
+import { isModulePermissionGranted } from '../utils/moduleAccess.js';
 
 
 function normalizeFormConfig(info = {}) {
@@ -193,7 +194,11 @@ export default function FormsManagement() {
   const hasAdmin =
     permissions?.permissions?.system_settings ||
     session?.permissions?.system_settings;
-  if (!hasAdmin) {
+  const modulePermitted = isModulePermissionGranted(permissions, 'forms_management');
+  if (!permissions) {
+    return <p>{t('loading', 'Ачааллаж байна...')}</p>;
+  }
+  if (!hasAdmin && !modulePermitted) {
     return <Navigate to="/" replace />;
   }
 

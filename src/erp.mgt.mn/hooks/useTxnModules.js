@@ -4,6 +4,7 @@ import { debugLog } from '../utils/debug.js';
 import { useCompanyModules } from './useCompanyModules.js';
 import { hasTransactionFormAccess } from '../utils/transactionFormAccess.js';
 import { resolveWorkplacePositionForContext } from '../utils/workplaceResolver.js';
+import { isModuleLicensed } from '../utils/moduleAccess.js';
 
 // Cache the raw transaction-form payload so we can re-derive module visibility
 // whenever permissions, licensing, or scope change without re-fetching.
@@ -61,20 +62,7 @@ function deriveTxnModuleState(
         })
       )
         return;
-      if (
-        perms &&
-        Object.prototype.hasOwnProperty.call(perms, moduleKey) &&
-        !perms[moduleKey]
-      ) {
-        return;
-      }
-      if (
-        licensed &&
-        Object.prototype.hasOwnProperty.call(licensed, moduleKey) &&
-        !licensed[moduleKey]
-      ) {
-        return;
-      }
+      if (!isModuleLicensed(licensed, moduleKey)) return;
       keys.add(moduleKey);
       if (info.moduleLabel) {
         labels[moduleKey] = info.moduleLabel;
