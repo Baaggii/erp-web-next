@@ -1428,7 +1428,7 @@ export async function getEmploymentSessions(empid, options = {}) {
     : null;
   const scheduleDateSql = scheduleDate ? '?' : 'CURRENT_DATE()';
   const scheduleDateParams = scheduleDate
-    ? [scheduleDate, scheduleDate]
+    ? [scheduleDate, scheduleDate, scheduleDate, scheduleDate]
     : [];
   const [
     companyCfgRaw,
@@ -1550,21 +1550,50 @@ export async function getEmploymentSessions(empid, options = {}) {
        ${companyRel.join}
        ${branchRel.join}
        ${deptRel.join}
-       LEFT JOIN tbl_employment_schedule es
+       LEFT JOIN (
+         SELECT
+            es.company_id,
+            es.branch_id,
+            es.department_id,
+            es.emp_id,
+            es.workplace_id,
+            NULL AS workplace_session_id,
+            ${posNoExpr} AS pos_no,
+            ${merchantExpr} AS merchant_id
+         FROM tbl_employment_schedule es
+         INNER JOIN (
+           SELECT
+             company_id,
+             branch_id,
+             department_id,
+             emp_id,
+             MAX(start_date) AS latest_start_date
+           FROM tbl_employment_schedule
+           WHERE start_date <= ${scheduleDateSql}
+             AND (end_date IS NULL OR end_date >= ${scheduleDateSql})
+             AND deleted_at IS NULL
+           GROUP BY company_id, branch_id, department_id, emp_id
+         ) latest
+           ON latest.company_id = es.company_id
+          AND latest.branch_id = es.branch_id
+          AND latest.department_id = es.department_id
+          AND latest.emp_id = es.emp_id
+          AND latest.latest_start_date = es.start_date
+         WHERE es.start_date <= ${scheduleDateSql}
+           AND (es.end_date IS NULL OR es.end_date >= ${scheduleDateSql})
+           AND es.deleted_at IS NULL
+       ) es
          ON es.emp_id = e.employment_emp_id
         AND es.company_id = e.employment_company_id
         AND es.branch_id = e.employment_branch_id
        AND es.department_id = e.employment_department_id
-       AND es.start_date <= ${scheduleDateSql}
-       AND (es.end_date IS NULL OR es.end_date >= ${scheduleDateSql})
-       AND es.deleted_at IS NULL
       ${posRelation.join}
        LEFT JOIN tbl_workplace tw
          ON tw.company_id = e.employment_company_id
         AND tw.branch_id = e.employment_branch_id
         AND tw.department_id = e.employment_department_id
         AND tw.workplace_id = es.workplace_id
-      LEFT JOIN code_workplace cw ON cw.workplace_id = es.workplace_id
+       LEFT JOIN code_workplace cw ON cw.workplace_id = es.workplace_id
        LEFT JOIN tbl_employee emp ON e.employment_emp_id = emp.emp_id
        LEFT JOIN user_levels ul ON e.employment_user_level = ul.userlevel_id
        LEFT JOIN user_level_permissions up ON up.userlevel_id = ul.userlevel_id AND up.action = 'permission' AND up.company_id IN (${GLOBAL_COMPANY_ID}, e.employment_company_id)
@@ -1573,7 +1602,7 @@ export async function getEmploymentSessions(empid, options = {}) {
                 ${merchantTinExpr},
                 e.employment_branch_id, branch_name,
                 e.employment_department_id, department_name,
-                es.workplace_id, es.workplace_session_id, cw.workplace_name,
+                es.workplace_id, cw.workplace_name,
                 pos_no, merchant_id, posNo, pos_name, branchNo, pos_districtCode, merchantTin,
                 e.employment_position_id,
                 e.employment_senior_empid,
@@ -1658,7 +1687,7 @@ export async function getEmploymentSession(empid, companyId, options = {}) {
     : null;
   const scheduleDateSql = scheduleDate ? '?' : 'CURRENT_DATE()';
   const scheduleDateParams = scheduleDate
-    ? [scheduleDate, scheduleDate]
+    ? [scheduleDate, scheduleDate, scheduleDate, scheduleDate]
     : [];
 
   if (companyId !== undefined && companyId !== null) {
@@ -1806,14 +1835,43 @@ export async function getEmploymentSession(empid, companyId, options = {}) {
          ${companyRel.join}
          ${branchRel.join}
          ${deptRel.join}
-         LEFT JOIN tbl_employment_schedule es
+         LEFT JOIN (
+           SELECT
+             es.company_id,
+             es.branch_id,
+             es.department_id,
+             es.emp_id,
+             es.workplace_id,
+             NULL AS workplace_session_id,
+             ${posNoExpr} AS pos_no,
+             ${merchantExpr} AS merchant_id
+           FROM tbl_employment_schedule es
+           INNER JOIN (
+             SELECT
+               company_id,
+               branch_id,
+               department_id,
+               emp_id,
+               MAX(start_date) AS latest_start_date
+             FROM tbl_employment_schedule
+             WHERE start_date <= ${scheduleDateSql}
+               AND (end_date IS NULL OR end_date >= ${scheduleDateSql})
+               AND deleted_at IS NULL
+             GROUP BY company_id, branch_id, department_id, emp_id
+           ) latest
+             ON latest.company_id = es.company_id
+            AND latest.branch_id = es.branch_id
+            AND latest.department_id = es.department_id
+            AND latest.emp_id = es.emp_id
+            AND latest.latest_start_date = es.start_date
+           WHERE es.start_date <= ${scheduleDateSql}
+             AND (es.end_date IS NULL OR es.end_date >= ${scheduleDateSql})
+             AND es.deleted_at IS NULL
+         ) es
            ON es.emp_id = e.employment_emp_id
           AND es.company_id = e.employment_company_id
           AND es.branch_id = e.employment_branch_id
          AND es.department_id = e.employment_department_id
-         AND es.start_date <= ${scheduleDateSql}
-         AND (es.end_date IS NULL OR es.end_date >= ${scheduleDateSql})
-         AND es.deleted_at IS NULL
          ${posRelation.join}
          LEFT JOIN tbl_workplace tw
            ON tw.company_id = e.employment_company_id
@@ -1829,7 +1887,7 @@ export async function getEmploymentSession(empid, companyId, options = {}) {
                    ${merchantTinExpr},
                    e.employment_branch_id, branch_name,
                    e.employment_department_id, department_name,
-                   es.workplace_id, es.workplace_session_id, cw.workplace_name,
+                   es.workplace_id, cw.workplace_name,
                    pos_no, merchant_id, posNo, pos_name, branchNo, pos_districtCode, merchantTin,
                    e.employment_position_id,
                    e.employment_senior_empid,
