@@ -16,11 +16,10 @@ test('normalizeNumericId rejects bigint inputs outside the safe range', () => {
 });
 
 test('normalizeWorkplaceAssignments keeps bigint identifiers', () => {
-  const { assignments, sessionIds } = normalizeWorkplaceAssignments([
+  const { assignments } = normalizeWorkplaceAssignments([
     {
       company_id: 1n,
       workplace_id: 12n,
-      workplace_session_id: 34n,
       workplace_name: 'Main',
     },
   ]);
@@ -29,9 +28,7 @@ test('normalizeWorkplaceAssignments keeps bigint identifiers', () => {
     {
       company_id: 1n,
       workplace_id: 12,
-      workplace_session_id: 34,
       workplace_name: 'Main',
     },
   ]);
-  assert.deepEqual(sessionIds, [34]);
 });

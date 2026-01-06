@@ -18,34 +18,26 @@ export function normalizeNumericId(value) {
 
 export function normalizeWorkplaceAssignments(assignments = []) {
   const normalized = [];
-  const sessionIds = [];
   const seen = new Set();
 
   assignments.forEach((assignment) => {
     if (!assignment || typeof assignment !== 'object') return;
-    const workplaceId = normalizeNumericId(assignment.workplace_id);
-    const rawSessionId =
-      assignment.workplace_session_id !== undefined
-        ? assignment.workplace_session_id
-        : assignment.workplaceSessionId;
-    const workplaceSessionId = normalizeNumericId(rawSessionId);
+    const workplaceId = normalizeNumericId(
+      assignment.workplace_id ?? assignment.workplaceId,
+    );
 
-    if (workplaceSessionId === null || workplaceId === null) return;
+    if (workplaceId === null) return;
 
-    const key = `${workplaceId ?? ''}|${workplaceSessionId}`;
+    const key = `${workplaceId}`;
     if (seen.has(key)) return;
     seen.add(key);
 
     const normalizedAssignment = {
       ...assignment,
       workplace_id: workplaceId,
-      workplace_session_id: workplaceSessionId,
     };
     normalized.push(normalizedAssignment);
-    if (!sessionIds.includes(workplaceSessionId)) {
-      sessionIds.push(workplaceSessionId);
-    }
   });
 
-  return { assignments: normalized, sessionIds };
+  return { assignments: normalized };
 }

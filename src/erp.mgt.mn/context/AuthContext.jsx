@@ -80,12 +80,6 @@ export default function AuthContextProvider({ children }) {
         if (data.workplace) {
           sessionUpdates.workplace_id = data.workplace;
         }
-        if (data.workplace_session_id) {
-          sessionUpdates.workplace_session_id = data.workplace_session_id;
-        }
-        if (Array.isArray(data.workplace_session_ids)) {
-          sessionUpdates.workplace_session_ids = data.workplace_session_ids;
-        }
         if (Object.keys(sessionUpdates).length) {
           trackSetState('AuthContext.setSession');
           setSession((s) =>
@@ -109,12 +103,6 @@ export default function AuthContextProvider({ children }) {
       senior_empid: session?.senior_empid,
       senior_plan_empid: session?.senior_plan_empid,
     };
-    if (session?.workplace_session_id != null) {
-      data.workplace_session_id = session.workplace_session_id;
-    }
-    if (Array.isArray(session?.workplace_session_ids) && session.workplace_session_ids.length) {
-      data.workplace_session_ids = session.workplace_session_ids;
-    }
     if (
       company ||
       branch ||
@@ -122,10 +110,7 @@ export default function AuthContextProvider({ children }) {
       position ||
       workplace ||
       session?.senior_empid ||
-      session?.senior_plan_empid ||
-      session?.workplace_session_id ||
-      (Array.isArray(session?.workplace_session_ids) &&
-        session.workplace_session_ids.length)
+      session?.senior_plan_empid
     ) {
       localStorage.setItem('erp_session_ids', JSON.stringify(data));
     } else {

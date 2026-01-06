@@ -520,7 +520,6 @@ if (typeof mock.import !== 'function') {
             assignments: [
               {
                 workplace_id: '2',
-                workplace_session_id: '22',
                 workplace_name: 'Period workplace',
                 company_id: 99,
                 branch_id: 77,
@@ -568,12 +567,10 @@ if (typeof mock.import !== 'function') {
         department_id: 8,
         position_id: 6,
         workplace_id: 1,
-        workplace_session_id: 11,
         workplace_name: 'Base workplace',
         workplace_assignments: [
           {
             workplace_id: 1,
-            workplace_session_id: 11,
             workplace_name: 'Base workplace',
           },
         ],
@@ -771,14 +768,12 @@ if (typeof mock.import !== 'function') {
             assignments: [
               {
                 workplace_id: '7',
-                workplace_session_id: '107',
                 workplace_name: 'Fetched workplace A',
                 branch_name: 'Downtown',
                 department_name: 'Sales',
               },
               {
                 workplace_id: '7',
-                workplace_session_id: '108',
                 workplace_name: 'Fetched workplace B',
               },
             ],
@@ -806,12 +801,10 @@ if (typeof mock.import !== 'function') {
         branch_id: 55,
         department_id: 11,
         workplace_id: 3,
-        workplace_session_id: 103,
         workplace_name: 'Base workplace',
         workplace_assignments: [
           {
             workplace_id: 3,
-            workplace_session_id: 103,
             workplace_name: 'Base workplace',
           },
         ],

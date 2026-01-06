@@ -25,9 +25,7 @@ export default function AppLayout({ children, title }) {
       ? session.workplace_assignments
       : [];
 
-    const seenComposite = new Set();
     const seenWorkplaceIds = new Set();
-    const seenSessionIds = new Set();
     const summaries = [];
 
     const parseId = (value) => {
@@ -51,30 +49,13 @@ export default function AppLayout({ children, title }) {
         assignment.workplace_id !== undefined
           ? assignment.workplace_id
           : assignment.workplaceId;
-      const workplaceSessionId =
-        assignment.workplace_session_id !== undefined
-          ? assignment.workplace_session_id
-          : assignment.workplaceSessionId;
-
       const normalizedWorkplaceId = parseId(workplaceId);
-      const normalizedSessionId = parseId(workplaceSessionId);
-
-      const compositeKey = `${normalizedWorkplaceId ?? ''}|${normalizedSessionId ?? ''}`;
-      if (seenComposite.has(compositeKey)) return null;
-
-      if (
-        (normalizedWorkplaceId != null && seenWorkplaceIds.has(normalizedWorkplaceId)) ||
-        (normalizedSessionId != null && seenSessionIds.has(normalizedSessionId))
-      ) {
+      if (normalizedWorkplaceId != null && seenWorkplaceIds.has(normalizedWorkplaceId)) {
         return null;
       }
 
-      seenComposite.add(compositeKey);
       if (normalizedWorkplaceId != null) {
         seenWorkplaceIds.add(normalizedWorkplaceId);
-      }
-      if (normalizedSessionId != null) {
-        seenSessionIds.add(normalizedSessionId);
       }
 
       const labelParts = [];
@@ -88,12 +69,6 @@ export default function AppLayout({ children, title }) {
       const idParts = [];
       if (normalizedWorkplaceId != null) {
         idParts.push(`#${normalizedWorkplaceId}`);
-      }
-      if (
-        normalizedSessionId != null &&
-        normalizedSessionId !== normalizedWorkplaceId
-      ) {
-        idParts.push(`session ${normalizedSessionId}`);
       }
       if (idParts.length) {
         labelParts.push(idParts.join(' · '));
@@ -111,9 +86,8 @@ export default function AppLayout({ children, title }) {
       }
 
       if (!labelParts.length) {
-        const fallbackId = normalizedSessionId ?? normalizedWorkplaceId;
-        if (fallbackId != null) {
-          labelParts.push(`Session ${fallbackId}`);
+        if (normalizedWorkplaceId != null) {
+          labelParts.push(`Workplace ${normalizedWorkplaceId}`);
         }
       }
 
@@ -130,7 +104,6 @@ export default function AppLayout({ children, title }) {
     if (!summaries.length) {
       const fallbackLabel = formatAssignment({
         workplace_id: session.workplace_id ?? null,
-        workplace_session_id: session.workplace_session_id ?? session.workplace_id ?? null,
         workplace_name: session.workplace_name ?? null,
         department_name: session.department_name ?? null,
         branch_name: session.branch_name ?? null,

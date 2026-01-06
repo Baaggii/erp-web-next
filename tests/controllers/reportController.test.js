@@ -31,7 +31,6 @@ test('listReportWorkplaces dedupes workplace assignments', async () => {
       department_name: 'Sales',
       workplace_id: '5',
       workplace_name: 'HQ  ',
-      workplace_session_id: '101',
     },
     {
       company_id: 1,
@@ -42,7 +41,6 @@ test('listReportWorkplaces dedupes workplace assignments', async () => {
       department_name: 'Sales',
       workplace_id: '5',
       workplace_name: 'HQ',
-      workplace_session_id: '101',
     },
     {
       company_id: 2,
@@ -53,7 +51,6 @@ test('listReportWorkplaces dedupes workplace assignments', async () => {
       department_name: '  ',
       workplace_id: '7',
       workplace_name: 'Shop',
-      workplace_session_id: '202',
     },
     {
       company_id: 2,
@@ -64,7 +61,6 @@ test('listReportWorkplaces dedupes workplace assignments', async () => {
       department_name: null,
       workplace_id: null,
       workplace_name: 'Ghost',
-      workplace_session_id: '303',
     },
     {
       company_id: 2,
@@ -75,7 +71,6 @@ test('listReportWorkplaces dedupes workplace assignments', async () => {
       department_name: null,
       workplace_id: '7',
       workplace_name: 'Shop',
-      workplace_session_id: null,
     },
   ]);
 
@@ -113,8 +108,6 @@ test('listReportWorkplaces dedupes workplace assignments', async () => {
       workplaceId: 5,
       workplace_name: 'HQ',
       workplaceName: 'HQ',
-      workplace_session_id: 101,
-      workplaceSessionId: 101,
     },
     {
       company_id: 2,
@@ -133,8 +126,6 @@ test('listReportWorkplaces dedupes workplace assignments', async () => {
       workplaceId: 7,
       workplace_name: 'Shop',
       workplaceName: 'Shop',
-      workplace_session_id: 202,
-      workplaceSessionId: 202,
     },
   ]);
 });
@@ -151,7 +142,6 @@ test('listReportWorkplaces exposes SQL diagnostics for workplace toasts', async 
       department_name: 'Ops',
       workplace_id: 11,
       workplace_name: 'Default workplace',
-      workplace_session_id: 101,
     },
   ];
   Object.defineProperty(sessions, '__diagnostics', {
@@ -210,7 +200,6 @@ test(
         department_name: null,
         workplace_id: null,
         workplace_name: 'Main Office',
-        workplace_session_id: '700',
       },
       {
         company_id: 1,
@@ -221,7 +210,6 @@ test(
         department_name: 'Sales',
         workplace_id: '55',
         workplace_name: 'Main Office',
-        workplace_session_id: '700',
       },
     ]);
 
@@ -259,8 +247,6 @@ test(
         workplaceId: 55,
         workplace_name: 'Main Office',
         workplaceName: 'Main Office',
-        workplace_session_id: 700,
-        workplaceSessionId: 700,
       },
     ]);
   },
@@ -280,7 +266,6 @@ test('listReportWorkplaces prefers endDate when provided', async () => {
         department_name: 'Sales',
         workplace_id: 5,
         workplace_name: 'HQ',
-        workplace_session_id: 101,
       },
     ];
   });
@@ -320,7 +305,6 @@ test('listReportWorkplaces handles bigint identifiers from the database', async 
       department_name: 'Ops',
       workplace_id: 4n,
       workplace_name: 'Plant',
-      workplace_session_id: 5n,
     },
   ]);
 
@@ -358,8 +342,6 @@ test('listReportWorkplaces handles bigint identifiers from the database', async 
       workplaceId: 4,
       workplace_name: 'Plant',
       workplaceName: 'Plant',
-      workplace_session_id: 5,
-      workplaceSessionId: 5,
     },
   ]);
 });
