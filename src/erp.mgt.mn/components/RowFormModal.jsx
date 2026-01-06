@@ -1771,14 +1771,10 @@ const RowFormModal = function RowFormModal({
         snapshot = next;
         return next;
       });
-      const generatedExtraResult =
-        pendingGeneratedExtra && Object.keys(pendingGeneratedExtra).length > 0
-          ? pendingGeneratedExtra
-          : null;
-      if (generatedExtraResult) {
+      if (pendingGeneratedExtra && Object.keys(pendingGeneratedExtra).length > 0) {
         setExtraVals((prev) => {
           const next = { ...prev };
-          Object.entries(generatedExtraResult).forEach(([k, v]) => {
+          Object.entries(pendingGeneratedExtra).forEach(([k, v]) => {
             next[k] = v;
           });
           return next;
@@ -1787,11 +1783,7 @@ const RowFormModal = function RowFormModal({
       if (notify && pendingDiff && Object.keys(pendingDiff).length > 0) {
         onChange(pendingDiff);
       }
-      return {
-        snapshot: snapshot ?? formValsRef.current,
-        diff: pendingDiff,
-        generatedExtra: generatedExtraResult,
-      };
+      return { snapshot: snapshot ?? formValsRef.current, diff: pendingDiff };
     },
     [computeNextFormVals, onChange],
   );
@@ -3073,28 +3065,16 @@ const RowFormModal = function RowFormModal({
       }
     }
 
-    let snapshotFormVals = workingFormVals;
-    let snapshotExtraVals = workingExtraVals;
     if (stateChanged) {
       setExtraVals(workingExtraVals);
-      const generatedResult =
-        setFormValuesWithGenerated(() => workingFormVals, { notify: false }) || {};
-      const generatedDiff = generatedResult.diff || {};
-      const generatedExtra = generatedResult.generatedExtra || null;
-      snapshotFormVals = generatedResult.snapshot || workingFormVals;
-      if (generatedExtra && Object.keys(generatedExtra).length > 0) {
-        snapshotExtraVals = { ...workingExtraVals, ...generatedExtra };
-      }
-      const combinedChanges = { ...generatedDiff, ...aggregatedChanges };
+      const { diff: generatedDiff } = setFormValuesWithGenerated(() => workingFormVals, { notify: false }) || {};
+      const combinedChanges = { ...(generatedDiff || {}), ...aggregatedChanges };
       if (Object.keys(combinedChanges).length > 0) {
         onChange(combinedChanges);
       }
-    } else {
-      snapshotFormVals = workingFormVals;
-      snapshotExtraVals = workingExtraVals;
     }
 
-    return { formVals: snapshotFormVals, extraVals: snapshotExtraVals };
+    return { formVals: workingFormVals, extraVals: workingExtraVals };
   }
 
   async function previewTriggerAssignments(payloadOverride = null, stateOverride = null) {

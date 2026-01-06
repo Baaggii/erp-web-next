@@ -1748,22 +1748,7 @@ function InlineTransactionTable(
       );
     }
 
-    let snapshotRows = workingRows;
-    if (Array.isArray(snapshotRows) && hasGeneratedColumnsRef.current) {
-      const generatedSnapshot = assignArrayMetadata(
-        snapshotRows.map((row) => (row && typeof row === 'object' ? { ...row } : row)),
-        snapshotRows,
-      );
-      const { metadata } = applyGeneratedColumns(generatedSnapshot);
-      if (metadata && typeof metadata === 'object') {
-        Object.entries(metadata).forEach(([key, value]) => {
-          generatedSnapshot[key] = value;
-        });
-      }
-      snapshotRows = generatedSnapshot;
-    }
-
-    return snapshotRows;
+    return workingRows;
   }
 
   async function previewTriggerAssignments(rowIdx, rowOverride = null, baseRows = rowsRef.current) {
