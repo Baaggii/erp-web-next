@@ -48,9 +48,8 @@ export async function login(req, res, next) {
     }
     if (!sessionFetchFailed) {
       if (!Array.isArray(sessions) || sessions.length === 0) {
-        return res
-          .status(403)
-          .json({ message: 'No employment sessions available for this user' });
+        warnings.push('No workplace assignments found for current period');
+        sessions = [];
       }
     } else {
       sessions = [];
@@ -98,7 +97,7 @@ export async function login(req, res, next) {
       }
     }
 
-    if (!sessionFetchFailed) {
+    if (!sessionFetchFailed && sessions.length > 0) {
       let sessionGroup = null;
       if (!hasCompanySelection) {
         if (companyGroups.size > 1) {
@@ -128,9 +127,7 @@ export async function login(req, res, next) {
 
       const session = pickDefaultSession(sessionGroup?.sessions || []);
       if (!session) {
-        return res
-          .status(403)
-          .json({ message: 'No employment session found for the selected company' });
+        warnings.push('No employment session found for the selected company');
       }
 
       workplaceAssignments = (sessionGroup?.sessions || [])
@@ -168,8 +165,28 @@ export async function login(req, res, next) {
               sessionPayload.company_id,
             )
           : {};
-    } else {
-      sessionPayload = null;
+    }
+
+    if (!sessionPayload) {
+      const fallbackCompanyId =
+        hasCompanySelection && selectedCompanyId !== null
+          ? selectedCompanyId
+          : sessions[0]?.company_id ?? null;
+      sessionPayload =
+        normalizeEmploymentSession(
+          {
+            company_id: fallbackCompanyId,
+            workplace_id: null,
+            workplace_name: null,
+          },
+          workplaceAssignments,
+        ) ||
+        {
+          company_id: fallbackCompanyId,
+          workplace_id: null,
+          workplace_name: null,
+          workplace_assignments: workplaceAssignments,
+        };
       permissions = {};
     }
 
