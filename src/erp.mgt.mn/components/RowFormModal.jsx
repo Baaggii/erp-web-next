@@ -23,6 +23,11 @@ import {
   formatJsonList,
   normalizeInputValue,
 } from '../utils/jsonValueFormatting.js';
+import {
+  buildTriggerPreviewPayload,
+  createProcTriggerHelpers,
+  extractTriggerPreviewRow,
+} from '../utils/procTriggerHelpers.js';
 
 const DEFAULT_RECEIPT_TYPES = ['B2C', 'B2B_SALE', 'B2B_PURCHASE', 'STOCK_QR'];
 
@@ -364,6 +369,10 @@ const RowFormModal = function RowFormModal({
     () => JSON.stringify(columnCaseMap || {}),
     [columnCaseMap],
   );
+  const procTriggersKey = React.useMemo(
+    () => JSON.stringify(procTriggers || {}),
+    [procTriggers],
+  );
   const numericScaleMapKey = React.useMemo(
     () => JSON.stringify(numericScaleMap || {}),
     [numericScaleMap],
@@ -377,6 +386,18 @@ const RowFormModal = function RowFormModal({
     () => JSON.stringify(tableDisplayFields || []),
     [tableDisplayFields],
   );
+  const triggerHelpers = React.useMemo(
+    () => createProcTriggerHelpers(procTriggers || {}, columnCaseMap || {}),
+    [procTriggersKey, columnCaseMapKey],
+  );
+  const {
+    collectAssignmentTargets,
+    getDirectTriggers,
+    getParamTriggers,
+    hasTrigger,
+    isAssignmentTrigger,
+    normalizeColumn: normalizeTriggerColumn,
+  } = triggerHelpers;
 
   const numericScaleLookup = React.useMemo(() => {
     const map = {};
@@ -2508,38 +2529,6 @@ const RowFormModal = function RowFormModal({
     }
   }
 
-  function getDirectTriggers(col) {
-    const val = procTriggers[col.toLowerCase()];
-    if (!val) return [];
-    return Array.isArray(val) ? val : [val];
-  }
-
-  function getParamTriggers(col) {
-    const res = [];
-    const colLower = col.toLowerCase();
-    Object.entries(procTriggers).forEach(([tCol, cfgList]) => {
-      const list = Array.isArray(cfgList) ? cfgList : [cfgList];
-      list.forEach((cfg) => {
-        if (Array.isArray(cfg.params) && cfg.params.includes(colLower)) {
-          res.push([tCol, cfg]);
-        }
-      });
-    });
-    return res;
-  }
-
-  const isAssignmentTrigger = (cfg) =>
-    cfg && (cfg.kind === 'assignment' || cfg.name === '__assignment__');
-
-  function hasTrigger(col) {
-    const lower = col.toLowerCase();
-    return (
-      getDirectTriggers(col).length > 0 ||
-      getParamTriggers(col).length > 0 ||
-      Object.prototype.hasOwnProperty.call(procTriggers || {}, lower)
-    );
-  }
-
   function showTriggerInfo(col) {
     if (!general.triggerToastEnabled) return;
     if (!procTriggers || Object.keys(procTriggers || {}).length === 0) return;
@@ -2548,26 +2537,12 @@ const RowFormModal = function RowFormModal({
     const hasEntry = Object.prototype.hasOwnProperty.call(procTriggers, col.toLowerCase());
 
     const assignmentTargets = new Set();
-    const collectAssignmentTargets = (cfg, fallbackTarget = null) => {
-      if (!isAssignmentTrigger(cfg)) return;
-      const targets = Array.isArray(cfg?.targets) ? cfg.targets : [];
-      const normalizedTargets = targets.length > 0 ? targets : fallbackTarget ? [fallbackTarget] : [];
-      normalizedTargets.forEach((target) => {
-        if (!target) return;
-        const lower = String(target).toLowerCase();
-        const resolved = columnCaseMap[lower] || target;
-        assignmentTargets.add(resolved);
-      });
-      Object.values(cfg?.outMap || {}).forEach((target) => {
-        if (!target) return;
-        const lower = String(target).toLowerCase();
-        const resolved = columnCaseMap[lower] || target;
-        assignmentTargets.add(resolved);
-      });
-    };
-
-    direct.forEach((cfg) => collectAssignmentTargets(cfg));
-    paramTrigs.forEach(([targetCol, cfg]) => collectAssignmentTargets(cfg, targetCol));
+    direct.forEach((cfg) => {
+      collectAssignmentTargets(cfg).forEach((target) => assignmentTargets.add(target));
+    });
+    paramTrigs.forEach(([targetCol, cfg]) => {
+      collectAssignmentTargets(cfg, targetCol).forEach((target) => assignmentTargets.add(target));
+    });
 
     const procDirect = direct.filter((cfg) => !isAssignmentTrigger(cfg));
     const procParam = paramTrigs.filter(([, cfg]) => !isAssignmentTrigger(cfg));
@@ -2727,14 +2702,8 @@ const RowFormModal = function RowFormModal({
     const queued = new Set();
     const queue = [];
 
-    const normalizeColumn = (name) => {
-      if (!name && name !== 0) return null;
-      const mapped = columnCaseMap[String(name).toLowerCase()] || name;
-      return typeof mapped === 'string' ? mapped : null;
-    };
-
     const enqueue = (name) => {
-      const normalized = normalizeColumn(name);
+      const normalized = normalizeTriggerColumn(name);
       if (!normalized) return;
       const lower = normalized.toLowerCase();
       if (processed.has(lower) || queued.has(lower)) return;
@@ -2749,7 +2718,7 @@ const RowFormModal = function RowFormModal({
     if (valsOverride && typeof valsOverride === 'object') {
       Object.entries(valsOverride).forEach(([rawKey, rawValue]) => {
         if (!rawKey && rawKey !== 0) return;
-        const mappedKey = normalizeColumn(rawKey) || rawKey;
+        const mappedKey = normalizeTriggerColumn(rawKey) || rawKey;
         if (typeof mappedKey !== 'string') return;
         const match = columns.find((c) => c.toLowerCase() === String(mappedKey).toLowerCase());
         if (match) {
@@ -2764,7 +2733,7 @@ const RowFormModal = function RowFormModal({
     let stateChanged = false;
 
     const getVal = (name) => {
-      const key = normalizeColumn(name) || name;
+      const key = normalizeTriggerColumn(name) || name;
       const match = columns.find((c) => c.toLowerCase() === String(key).toLowerCase());
       let val = match ? workingFormVals[match] : workingFormVals[key];
       if (val === undefined) {
@@ -2809,7 +2778,7 @@ const RowFormModal = function RowFormModal({
         if (!cfg || !cfg.name) return;
         const key = keyFor(cfg);
         const rec = map.get(key) || { cfg, cols: new Set() };
-        const normalizedTarget = normalizeColumn(targetCol);
+        const normalizedTarget = normalizeTriggerColumn(targetCol);
         if (normalizedTarget) {
           rec.cols.add(normalizedTarget);
         }
@@ -2820,27 +2789,24 @@ const RowFormModal = function RowFormModal({
 
       for (const { cfg, cols } of map.values()) {
         if (!cfg || !cfg.name) continue;
-        if (isAssignmentTrigger(cfg)) {
-          continue;
-        }
         const colList = [...cols];
         if (colList.length === 0) continue;
         const targetColumn = colList[0];
-        const normalizedTarget = normalizeColumn(targetColumn);
+        const normalizedTarget = normalizeTriggerColumn(targetColumn);
         if (!normalizedTarget) continue;
 
         const { name: procName, params = [], outMap = {} } = cfg;
         const targetCols = Object.values(outMap || {})
-          .map((c) => normalizeColumn(c))
+          .map((c) => normalizeTriggerColumn(c))
           .filter(Boolean);
         const assignmentTargets =
           isAssignmentTrigger(cfg) && Array.isArray(cfg.targets) ? cfg.targets : [];
         const normalizedAssignmentTargets = assignmentTargets
-          .map((target) => normalizeColumn(target))
+          .map((target) => normalizeTriggerColumn(target))
           .filter(Boolean);
-        const hasTarget = [...targetCols, ...normalizedAssignmentTargets].some((c) =>
-          columns.includes(c),
-        );
+        const hasTarget =
+          isAssignmentTrigger(cfg) ||
+          [...targetCols, ...normalizedAssignmentTargets].some((c) => columns.includes(c));
         if (!hasTarget) continue;
 
         const optionalParamSet = new Set(
@@ -3066,7 +3032,7 @@ const RowFormModal = function RowFormModal({
           stateChanged = true;
           Object.assign(aggregatedChanges, result.changedValues);
           result.changedColumns.forEach((changedCol) => {
-            const normalizedChanged = normalizeColumn(changedCol) || changedCol;
+            const normalizedChanged = normalizeTriggerColumn(changedCol) || changedCol;
             if (hasTrigger(normalizedChanged)) enqueue(normalizedChanged);
           });
         }
@@ -3075,23 +3041,33 @@ const RowFormModal = function RowFormModal({
 
     let snapshotFormVals = workingFormVals;
     let snapshotExtraVals = workingExtraVals;
-    if (stateChanged) {
-      setExtraVals(workingExtraVals);
+    const applyGeneratedResults = () => {
       const generatedResult =
         setFormValuesWithGenerated(() => workingFormVals, { notify: false }) || {};
-      const generatedDiff = generatedResult.diff || {};
-      const generatedExtra = generatedResult.generatedExtra || null;
       snapshotFormVals = generatedResult.snapshot || workingFormVals;
+      const generatedExtra = generatedResult.generatedExtra || null;
       if (generatedExtra && Object.keys(generatedExtra).length > 0) {
         snapshotExtraVals = { ...workingExtraVals, ...generatedExtra };
       }
+      return generatedResult;
+    };
+    if (stateChanged) {
+      setExtraVals(workingExtraVals);
+      const generatedResult = applyGeneratedResults();
+      const generatedDiff = generatedResult.diff || {};
       const combinedChanges = { ...generatedDiff, ...aggregatedChanges };
       if (Object.keys(combinedChanges).length > 0) {
         onChange(combinedChanges);
       }
     } else {
-      snapshotFormVals = workingFormVals;
-      snapshotExtraVals = workingExtraVals;
+      const generatedResult = applyGeneratedResults();
+      const generatedDiff = generatedResult.diff || {};
+      if (generatedResult.generatedExtra && Object.keys(generatedResult.generatedExtra).length > 0) {
+        setExtraVals((prev) => ({ ...prev, ...generatedResult.generatedExtra }));
+      }
+      if (Object.keys(generatedDiff).length > 0) {
+        onChange(generatedDiff);
+      }
     }
 
     return { formVals: snapshotFormVals, extraVals: snapshotExtraVals };
@@ -3102,42 +3078,26 @@ const RowFormModal = function RowFormModal({
     const baseExtra = (stateOverride && stateOverride.extraVals) || extraValsRef.current || {};
     const baseForm = (stateOverride && stateOverride.formVals) || formValsRef.current || {};
     const merged = { ...baseExtra, ...baseForm };
+    const overridePayload = {};
     if (payloadOverride && typeof payloadOverride === 'object') {
       Object.entries(payloadOverride).forEach(([k, v]) => {
         const key = resolveFormColumn(k) || k;
-        merged[key] = v;
+        overridePayload[key] = v;
       });
     }
+    const payload = buildTriggerPreviewPayload(merged, overridePayload, columnCaseMap);
+    if (Object.keys(payload).length === 0) return;
     try {
       const res = await fetch('/api/proc_triggers/preview', {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ table, values: merged }),
+        body: JSON.stringify({ table, values: payload }),
       });
       if (!res.ok) return;
       const data = await res.json().catch(() => ({}));
       if (!data || typeof data !== 'object') return;
-      const previewRow = (() => {
-        if (!data || typeof data !== 'object') return null;
-        const base = {};
-        if (Array.isArray(data.rows) && data.rows.length > 0 && typeof data.rows[0] === 'object') {
-          Object.assign(base, data.rows[0]);
-        }
-        if (data.row && typeof data.row === 'object' && !Array.isArray(data.row)) {
-          Object.assign(base, data.row);
-        }
-        const directEntries = Object.entries(data).filter(
-          ([key]) => key !== 'rows' && key !== 'row',
-        );
-        if (directEntries.length > 0) {
-          directEntries.forEach(([key, value]) => {
-            base[key] = value;
-          });
-        }
-        if (Object.keys(base).length > 0) return base;
-        return null;
-      })();
+      const previewRow = extractTriggerPreviewRow(data);
       if (!previewRow || typeof previewRow !== 'object') return;
       const { formVals: nextForm, extraVals: nextExtra, changedValues } =
         applyProcedureResultToForm(previewRow, formValsRef.current, extraValsRef.current);
