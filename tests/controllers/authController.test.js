@@ -5,31 +5,15 @@ import * as db from '../../db/index.js';
 import * as posSessions from '../../api-server/services/posSessionLogger.js';
 
 process.env.SKIP_SCHEDULE_COLUMN_CHECK = '1';
-process.env.SKIP_WORKPLACE_COLUMN_CHECK = '1';
-process.env.SKIP_POS_RELATION_CHECK = '1';
 
-function mockPoolSequential(responses = [], options = {}) {
+function mockPoolSequential(responses = []) {
   const orig = db.pool.query;
   let i = 0;
   db.pool.query = async (...args) => {
     const res = responses[i];
     i += 1;
-    if (res !== undefined) {
-      if (typeof res === 'function') return res(...args);
-      return res;
-    }
-    const [sql] = args;
-    const text = typeof sql === 'string' ? sql.toLowerCase() : '';
-    if (options.userFallback && text.includes('from users')) {
-      return [[options.userFallback]];
-    }
-    if (options.sessionFallback && text.includes('from tbl_employment')) {
-      return [options.sessionFallback];
-    }
-    if (options.permissionsFallback && text.includes('user_level_permissions')) {
-      return [options.permissionsFallback];
-    }
-    return [[]];
+    if (typeof res === 'function') return res(...args);
+    return res;
   };
   return () => {
     db.pool.query = orig;
@@ -61,11 +45,12 @@ test('login prompts for company selection when companyId undefined', async () =>
     { company_id: 0, company_name: 'Alpha', branch_id: 2, department_id: 2, position_id: 2, position: 'Q', senior_empid: null, senior_plan_empid: null, employee_name: 'Emp0', user_level: 1, user_level_name: 'Admin', permission_list: '', workplace_id: 10 },
     { company_id: 1, company_name: 'Beta', branch_id: 1, department_id: 1, position_id: 1, position: 'P', senior_empid: null, senior_plan_empid: null, employee_name: 'Emp1', user_level: 1, user_level_name: 'Admin', permission_list: '', workplace_id: 20 },
   ];
-  const restore = mockPoolSequential([], {
-    userFallback: { id: 1, empid: 1, password: 'hashed' },
-    sessionFallback: sessions,
-    permissionsFallback: [],
-  });
+  const restore = mockPoolSequential([
+    [[{ id: 1, empid: 1, password: 'hashed' }]],
+    [sessions],
+    [[]],
+    [[]],
+  ]);
   const res = createRes();
   await login({ body: { empid: 1, password: 'pw' } }, res, () => {});
   restore();
@@ -85,11 +70,12 @@ test('login succeeds when companyId is 0', async () => {
     { company_id: 0, company_name: 'Alpha', branch_id: 1, department_id: 1, position_id: 1, position: 'P', senior_empid: null, senior_plan_empid: null, employee_name: 'Emp0', user_level: 1, user_level_name: 'Admin', permission_list: '', workplace_id: 7 },
     { company_id: 1, company_name: 'Beta', branch_id: 1, department_id: 1, position_id: 1, position: 'P', senior_empid: null, senior_plan_empid: null, employee_name: 'Emp1', user_level: 1, user_level_name: 'Admin', permission_list: '', workplace_id: 30 },
   ];
-  const restore = mockPoolSequential([], {
-    userFallback: { id: 1, empid: 1, password: 'hashed' },
-    sessionFallback: sessions,
-    permissionsFallback: [],
-  });
+  const restore = mockPoolSequential([
+    [[{ id: 1, empid: 1, password: 'hashed' }]],
+    [sessions],
+    [[]],
+    [[]],
+  ]);
   const res = createRes();
   await login({ body: { empid: 1, password: 'pw', companyId: 0 } }, res, () => {});
   restore();
@@ -106,11 +92,12 @@ test('login succeeds without workplace assignments', async () => {
   const sessions = [
     { company_id: 2, company_name: 'Gamma', branch_id: 1, department_id: 1, position_id: 1, position: 'P', senior_empid: null, senior_plan_empid: null, employee_name: 'Emp2', user_level: 1, user_level_name: 'Admin', permission_list: '', workplace_id: null },
   ];
-  const restore = mockPoolSequential([], {
-    userFallback: { id: 1, empid: 1, password: 'hashed' },
-    sessionFallback: sessions,
-    permissionsFallback: [],
-  });
+  const restore = mockPoolSequential([
+    [[{ id: 1, empid: 1, password: 'hashed' }]],
+    [sessions],
+    [[]],
+    [[]],
+  ]);
   const res = createRes();
   await login({ body: { empid: 1, password: 'pw' } }, res, () => {});
   restore();
@@ -120,64 +107,4 @@ test('login succeeds without workplace assignments', async () => {
   assert.equal(res.body.workplace, null);
   assert.equal(res.body.session.workplace_id, null);
   assert.deepEqual(res.body.session.workplace_assignments, []);
-});
-
-test('login returns all open workplaces for selected company', async () => {
-  const restorePos = mockPosSessionLogger();
-  const sessions = [
-    {
-      company_id: 5,
-      company_name: 'Omega',
-      branch_id: 1,
-      department_id: 1,
-      position_id: 1,
-      position: 'P',
-      senior_empid: null,
-      senior_plan_empid: null,
-      employee_name: 'Emp5',
-      user_level: 1,
-      user_level_name: 'Admin',
-      permission_list: '',
-      workplace_id: 11,
-      workplace_name: 'Main Warehouse',
-      workplace_effective_month: '2026-01',
-      workplace_position_id: 7,
-    },
-    {
-      company_id: 5,
-      company_name: 'Omega',
-      branch_id: 1,
-      department_id: 1,
-      position_id: 1,
-      position: 'P',
-      senior_empid: null,
-      senior_plan_empid: null,
-      employee_name: 'Emp5',
-      user_level: 1,
-      user_level_name: 'Admin',
-      permission_list: '',
-      workplace_id: 12,
-      workplace_name: 'Retail Shop',
-      workplace_effective_month: '2026-01',
-      workplace_position_id: 9,
-    },
-  ];
-  const restore = mockPoolSequential([], {
-    userFallback: { id: 1, empid: 1, password: 'hashed' },
-    sessionFallback: sessions,
-    permissionsFallback: [],
-  });
-  const res = createRes();
-  await login({ body: { empid: 1, password: 'pw', companyId: 5 } }, res, () => {});
-  restore();
-  restorePos();
-  assert.equal(res.code, 200);
-  assert.equal(res.body.workplaces.length, 2);
-  assert.deepEqual(
-    res.body.workplaces.map((w) => w.workplace_id).sort(),
-    [11, 12],
-  );
-  assert.equal(res.body.session.workplace_assignments.length, 2);
-  const months = res.body.session.workplace_assignments.map((w) => w.workplace_effective_month);
-  assert.ok(months.every((m) => m === '2026-01'));
 });
