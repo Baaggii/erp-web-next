@@ -1315,6 +1315,7 @@ function mapEmploymentRow(row) {
 
 let employmentScheduleColumnCache = null;
 let companyMerchantColumnCache = null;
+let codeWorkplaceColumnCache = null;
 const posTableColumnCache = new Map();
 
 function findColumnName(columns = [], candidates = []) {
@@ -1412,6 +1413,34 @@ async function getEmploymentScheduleColumnInfo() {
   return employmentScheduleColumnCache;
 }
 
+async function getCodeWorkplaceColumnInfo() {
+  if (codeWorkplaceColumnCache) return codeWorkplaceColumnCache;
+  try {
+    const columns = await getTableColumnsSafe("code_workplace");
+    const lower = new Set(columns.map((c) => String(c).toLowerCase()));
+    codeWorkplaceColumnCache = {
+      hasIsOpen: lower.has("is_open"),
+      nameColumn: findColumnName(columns, ["workplace_name", "workplace_ner", "name"]),
+      positionIdColumn: findColumnName(columns, [
+        "workplace_position_id",
+        "position_id",
+        "workplace_position",
+      ]),
+    };
+  } catch (err) {
+    if (err?.code === "ER_NO_SUCH_TABLE") {
+      codeWorkplaceColumnCache = {
+        hasIsOpen: false,
+        nameColumn: null,
+        positionIdColumn: null,
+      };
+    } else {
+      throw err;
+    }
+  }
+  return codeWorkplaceColumnCache;
+}
+
 /**
  * List all employment sessions for an employee
  */
@@ -1421,8 +1450,12 @@ export async function getEmploymentSessions(empid, options = {}) {
     ? formatDateForDb(options.effectiveDate).slice(0, 10)
     : null;
   const scheduleDateSql = scheduleDate ? '?' : 'CURRENT_DATE()';
-  const scheduleDateParams = scheduleDate
-    ? [scheduleDate, scheduleDate, scheduleDate, scheduleDate]
+  const scheduleStartParams = scheduleDate ? [scheduleDate] : [];
+  const scheduleEndParams = scheduleDate ? [scheduleDate] : [];
+  const directDateParams = scheduleDate ? [scheduleDate] : [];
+  const companyFilter = options?.companyId ?? null;
+  const companyParams = Number.isFinite(Number(companyFilter))
+    ? [Number(companyFilter)]
     : [];
   const [
     companyCfgRaw,
@@ -1432,6 +1465,7 @@ export async function getEmploymentSessions(empid, options = {}) {
     relationCfg,
     scheduleRelationCfg,
     companyMerchantInfo,
+    codeWorkplaceInfo,
   ] = await Promise.all([
     getDisplayCfg("companies", configCompanyId),
     getDisplayCfg("code_branches", configCompanyId),
@@ -1440,6 +1474,7 @@ export async function getEmploymentSessions(empid, options = {}) {
     listCustomRelations("tbl_employment", configCompanyId),
     listCustomRelations("tbl_employment_schedule", configCompanyId),
     getCompanyMerchantTinColumnInfo(),
+    getCodeWorkplaceColumnInfo(),
   ]);
 
   const companyCfg = unwrapDisplayConfig(companyCfgRaw);
@@ -1463,6 +1498,17 @@ export async function getEmploymentSessions(empid, options = {}) {
     relationConfig: scheduleRelationConfig,
     companyId: configCompanyId,
   });
+  const workplaceNameExpr =
+    typeof codeWorkplaceInfo?.nameColumn === "string" && codeWorkplaceInfo.nameColumn.length
+      ? aliasedColumn("cw", codeWorkplaceInfo.nameColumn)
+      : "cw.workplace_name";
+  const workplacePositionExpr =
+    typeof codeWorkplaceInfo?.positionIdColumn === "string" &&
+    codeWorkplaceInfo.positionIdColumn.length
+      ? aliasedColumn("cw", codeWorkplaceInfo.positionIdColumn)
+      : "cw.workplace_position_id";
+  const workplaceIsOpenExpr =
+    codeWorkplaceInfo?.hasIsOpen === true ? "cw.is_open = 1" : "1=1";
 
   const [companyRel, branchRel, deptRel] = await Promise.all([
     resolveEmploymentRelation({
@@ -1524,6 +1570,8 @@ export async function getEmploymentSessions(empid, options = {}) {
           e.employment_department_id AS department_id,
           ${deptRel.nameExpr} AS department_name,
           es.workplace_id AS workplace_id,
+          es.effective_month AS effective_month,
+          COALESCE(es.workplace_position_id, ${workplacePositionExpr}) AS workplace_position_id,
           ${posNoExpr} AS pos_no,
           ${merchantExpr} AS merchant_id,
           ${posRelation.select.posNo} AS posNo,
@@ -1531,7 +1579,7 @@ export async function getEmploymentSessions(empid, options = {}) {
           ${posRelation.select.branchNo} AS branchNo,
           ${posRelation.select.districtCode} AS pos_districtCode,
           ${posRelation.select.merchantTin} AS merchantTin,
-          cw.workplace_name AS workplace_name,
+          ${workplaceNameExpr} AS workplace_name,
           e.employment_position_id AS position_id,
           e.employment_senior_empid AS senior_empid,
           e.employment_senior_plan_empid AS senior_plan_empid,
@@ -1545,56 +1593,90 @@ export async function getEmploymentSessions(empid, options = {}) {
        ${deptRel.join}
        LEFT JOIN (
          SELECT
+            company_id,
+            branch_id,
+            department_id,
+            emp_id,
+            workplace_id,
+            workplace_position_id,
+            pos_no,
+            merchant_id,
+            effective_month
+         FROM (
+           SELECT
             es.company_id,
             es.branch_id,
             es.department_id,
             es.emp_id,
             es.workplace_id,
-            ${posNoExpr} AS pos_no,
-            ${merchantExpr} AS merchant_id
-         FROM tbl_employment_schedule es
-         INNER JOIN (
-           SELECT
-             company_id,
-             branch_id,
-             department_id,
-             emp_id,
-             MAX(start_date) AS latest_start_date
-           FROM tbl_employment_schedule
-           WHERE start_date <= ${scheduleDateSql}
-             AND (end_date IS NULL OR end_date >= ${scheduleDateSql})
-             AND deleted_at IS NULL
-           GROUP BY company_id, branch_id, department_id, emp_id
-         ) latest
-           ON latest.company_id = es.company_id
-          AND latest.branch_id = es.branch_id
-          AND latest.department_id = es.department_id
-          AND latest.emp_id = es.emp_id
-          AND latest.latest_start_date = es.start_date
-         WHERE es.start_date <= ${scheduleDateSql}
-           AND (es.end_date IS NULL OR es.end_date >= ${scheduleDateSql})
-           AND es.deleted_at IS NULL
+            es.workplace_position_id,
+            es.pos_no,
+            es.merchant_id,
+            es.start_date,
+            DATE_FORMAT(es.start_date, '%Y-%m') AS effective_month,
+            ROW_NUMBER() OVER (
+              PARTITION BY es.emp_id, es.workplace_id, DATE_FORMAT(es.start_date, '%Y-%m')
+              ORDER BY es.start_date DESC, es.source_priority ASC
+            ) AS row_num
+           FROM (
+             SELECT
+                sched.company_id,
+                sched.branch_id,
+                sched.department_id,
+                sched.emp_id,
+                sched.workplace_id,
+                NULL AS workplace_position_id,
+                ${posNoExpr} AS pos_no,
+                ${merchantExpr} AS merchant_id,
+                sched.start_date,
+                0 AS source_priority
+             FROM tbl_employment_schedule sched
+             WHERE sched.emp_id = ?
+               ${companyParams.length ? "AND sched.company_id = ?" : ""}
+               AND sched.start_date <= ${scheduleDateSql}
+               AND (sched.end_date IS NULL OR sched.end_date >= ${scheduleDateSql})
+               AND sched.deleted_at IS NULL
+             UNION ALL
+             SELECT
+               e2.employment_company_id AS company_id,
+               e2.employment_branch_id AS branch_id,
+               e2.employment_department_id AS department_id,
+               e2.employment_emp_id AS emp_id,
+               e2.employment_workplace_id AS workplace_id,
+               e2.employment_position_id AS workplace_position_id,
+               NULL AS pos_no,
+               NULL AS merchant_id,
+               e2.employment_date AS start_date,
+               1 AS source_priority
+             FROM tbl_employment e2
+             WHERE e2.employment_emp_id = ?
+               ${companyParams.length ? "AND e2.employment_company_id = ?" : ""}
+               AND e2.employment_workplace_id IS NOT NULL
+               AND e2.deleted_at IS NULL
+               AND e2.employment_date <= ${scheduleDateSql}
+           ) es
+         ) es
+         WHERE es.row_num = 1
        ) es
          ON es.emp_id = e.employment_emp_id
         AND es.company_id = e.employment_company_id
         AND es.branch_id = e.employment_branch_id
        AND es.department_id = e.employment_department_id
       ${posRelation.join}
-       LEFT JOIN tbl_workplace tw
-         ON tw.company_id = e.employment_company_id
-        AND tw.branch_id = e.employment_branch_id
-        AND tw.department_id = e.employment_department_id
-        AND tw.workplace_id = es.workplace_id
-       LEFT JOIN code_workplace cw ON cw.workplace_id = es.workplace_id
+       LEFT JOIN code_workplace cw
+         ON cw.workplace_id = es.workplace_id
+        AND ${workplaceIsOpenExpr}
        LEFT JOIN tbl_employee emp ON e.employment_emp_id = emp.emp_id
        LEFT JOIN user_levels ul ON e.employment_user_level = ul.userlevel_id
        LEFT JOIN user_level_permissions up ON up.userlevel_id = ul.userlevel_id AND up.action = 'permission' AND up.company_id IN (${GLOBAL_COMPANY_ID}, e.employment_company_id)
        WHERE e.employment_emp_id = ?
+       ${companyParams.length ? "AND e.employment_company_id = ?" : ""}
       GROUP BY e.employment_company_id, company_name,
                 ${merchantTinExpr},
                 e.employment_branch_id, branch_name,
                 e.employment_department_id, department_name,
-                es.workplace_id, cw.workplace_name,
+                es.workplace_id, workplace_name,
+                es.effective_month, workplace_position_id,
                 pos_no, merchant_id, posNo, pos_name, branchNo, pos_districtCode, merchantTin,
                 e.employment_position_id,
                 e.employment_senior_empid,
@@ -1603,14 +1685,26 @@ export async function getEmploymentSessions(empid, options = {}) {
       ORDER BY company_name, department_name, branch_name, workplace_name, user_level_name`;
   const querySql = sql.replace(/`/g, "");
   const normalizedSql = querySql.replace(/`/g, "");
-  const params = [...scheduleDateParams, empid];
+  const params = [
+    empid,
+    ...companyParams,
+    ...scheduleStartParams,
+    ...scheduleEndParams,
+    empid,
+    ...companyParams,
+    ...directDateParams,
+    empid,
+    ...companyParams,
+  ];
   let rows;
   try {
     [rows] = await pool.query(normalizedSql, params);
   } catch (err) {
     if (
       err?.code === "ER_BAD_FIELD_ERROR" &&
-      /\b(pos_no|merchant_id|merchant_tin)\b/i.test(err.message || "")
+      /\b(pos_no|merchant_id|merchant_tin|workplace_(name|ner|position_id)|is_open|effective_month)\b/i.test(
+        err.message || "",
+      )
     ) {
       employmentScheduleColumnCache = {
         hasPosNo: false,
@@ -1619,11 +1713,23 @@ export async function getEmploymentSessions(empid, options = {}) {
         merchantIdColumn: null,
       };
       companyMerchantColumnCache = { hasMerchantTin: false };
+      codeWorkplaceColumnCache = {
+        hasIsOpen: false,
+        nameColumn: null,
+        positionIdColumn: null,
+      };
       const replaceExpr = (text, target, replacement) =>
         text.split(target).join(replacement);
       const withoutPos = replaceExpr(normalizedSql, posNoExpr, "NULL");
       const withoutMerchantId = replaceExpr(withoutPos, merchantExpr, "NULL");
-      const fallbackSql = replaceExpr(withoutMerchantId, merchantTinExpr, "NULL");
+      const withoutMerchantTin = replaceExpr(withoutMerchantId, merchantTinExpr, "NULL");
+      const withoutWorkplaceName = replaceExpr(withoutMerchantTin, workplaceNameExpr, "NULL");
+      const withoutWorkplacePosition = replaceExpr(
+        withoutWorkplaceName,
+        workplacePositionExpr,
+        "NULL",
+      );
+      const fallbackSql = replaceExpr(withoutWorkplacePosition, workplaceIsOpenExpr, "1=1");
       [rows] = await pool.query(fallbackSql, params);
     } else {
       console.warn("Employment sessions query failed; returning empty list", {
