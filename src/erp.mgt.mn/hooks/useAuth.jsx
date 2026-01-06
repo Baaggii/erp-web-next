@@ -46,8 +46,6 @@ export async function login({ empid, password, companyId }, t = (key, fallback) 
     try {
       const stored = JSON.parse(localStorage.getItem('erp_session_ids') || '{}');
       const workplaceId = nextData.workplace ?? nextData.session?.workplace_id;
-      const workplaceSessionId = nextData.session?.workplace_session_id;
-      const workplaceSessionIds = nextData.session?.workplace_session_ids;
       if (nextData.session.senior_empid) {
         stored.senior_empid = nextData.session.senior_empid;
       } else {
@@ -62,16 +60,6 @@ export async function login({ empid, password, companyId }, t = (key, fallback) 
         stored.workplace = workplaceId;
       } else {
         delete stored.workplace;
-      }
-      if (workplaceSessionId) {
-        stored.workplace_session_id = workplaceSessionId;
-      } else {
-        delete stored.workplace_session_id;
-      }
-      if (Array.isArray(workplaceSessionIds) && workplaceSessionIds.length) {
-        stored.workplace_session_ids = workplaceSessionIds;
-      } else {
-        delete stored.workplace_session_ids;
       }
       localStorage.setItem('erp_session_ids', JSON.stringify(stored));
     } catch {
@@ -114,8 +102,6 @@ export async function fetchProfile(t = (key, fallback) => fallback || key) {
     try {
       const stored = JSON.parse(localStorage.getItem('erp_session_ids') || '{}');
       const workplaceId = nextData.workplace ?? nextData.session?.workplace_id;
-      const workplaceSessionId = nextData.session?.workplace_session_id;
-      const workplaceSessionIds = nextData.session?.workplace_session_ids;
       if (nextData.session.senior_empid) {
         stored.senior_empid = nextData.session.senior_empid;
       } else {
@@ -130,16 +116,6 @@ export async function fetchProfile(t = (key, fallback) => fallback || key) {
         stored.workplace = workplaceId;
       } else {
         delete stored.workplace;
-      }
-      if (workplaceSessionId) {
-        stored.workplace_session_id = workplaceSessionId;
-      } else {
-        delete stored.workplace_session_id;
-      }
-      if (Array.isArray(workplaceSessionIds) && workplaceSessionIds.length) {
-        stored.workplace_session_ids = workplaceSessionIds;
-      } else {
-        delete stored.workplace_session_ids;
       }
       localStorage.setItem('erp_session_ids', JSON.stringify(stored));
     } catch {

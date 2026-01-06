@@ -72,17 +72,8 @@ function buildNormalizedAssignment(source = {}, defaults = {}, options = {}) {
         fallbackMeta ? defaults.workplace_name ?? defaults.workplaceName : null,
       ),
     ) ?? null;
-  const workplaceSessionId = normalizeNumericId(
-    coalesce(
-      source.workplace_session_id ?? source.workplaceSessionId,
-      defaults.workplace_session_id ??
-        defaults.workplaceSessionId ??
-        defaults.workplace_id ??
-        defaults.workplaceId,
-    ),
-  );
 
-  if (workplaceSessionId === null) {
+  if (workplaceId === null) {
     return null;
   }
 
@@ -103,8 +94,6 @@ function buildNormalizedAssignment(source = {}, defaults = {}, options = {}) {
     workplaceId: workplaceId,
     workplace_name: workplaceName,
     workplaceName: workplaceName,
-    workplace_session_id: workplaceSessionId,
-    workplaceSessionId: workplaceSessionId,
   };
 }
 
@@ -113,23 +102,18 @@ export function normalizeEmploymentSession(session, assignments = []) {
     return session ?? null;
   }
 
-  const { assignments: normalizedAssignments, sessionIds } =
+  const { assignments: normalizedAssignments } =
     normalizeWorkplaceAssignments(assignments);
   const normalizedWorkplaceId = normalizeNumericId(session.workplace_id);
-  const normalizedSessionId = normalizeNumericId(session.workplace_session_id);
   const fallbackWorkplaceId =
     normalizedWorkplaceId ??
     (normalizedAssignments.find((item) => item.workplace_id !== null)?.workplace_id ??
       null);
-  const fallbackSessionId =
-    normalizedSessionId ?? (sessionIds.length ? sessionIds[0] : null);
 
   const fallbackDefaults = {
     ...session,
     workplace_id: fallbackWorkplaceId,
     workplaceId: fallbackWorkplaceId,
-    workplace_session_id: fallbackSessionId,
-    workplaceSessionId: fallbackSessionId,
   };
 
   const hydratedAssignments = [];
@@ -143,24 +127,20 @@ export function normalizeEmploymentSession(session, assignments = []) {
     if (!normalizedAssignment) {
       return;
     }
-    const key = `${normalizedAssignment.workplaceId ?? 'null'}|${
-      normalizedAssignment.workplaceSessionId ?? 'null'
-    }`;
+    const key = `${normalizedAssignment.workplaceId ?? 'null'}`;
     if (assignmentKeys.has(key)) return;
     assignmentKeys.add(key);
     hydratedAssignments.push(normalizedAssignment);
   });
 
-  if (hydratedAssignments.length === 0 && fallbackSessionId !== null) {
+  if (hydratedAssignments.length === 0 && fallbackWorkplaceId !== null) {
     const fallbackAssignment = buildNormalizedAssignment(
       session,
       fallbackDefaults,
       { fallbackMeta: true },
     );
     if (fallbackAssignment) {
-      const key = `${fallbackAssignment.workplaceId ?? 'null'}|${
-        fallbackAssignment.workplaceSessionId ?? 'null'
-      }`;
+      const key = `${fallbackAssignment.workplaceId ?? 'null'}`;
       if (!assignmentKeys.has(key)) {
         assignmentKeys.add(key);
         hydratedAssignments.push(fallbackAssignment);
@@ -168,19 +148,9 @@ export function normalizeEmploymentSession(session, assignments = []) {
     }
   }
 
-  const combinedSessionIds = [...sessionIds];
-  if (
-    fallbackSessionId !== null &&
-    !combinedSessionIds.includes(fallbackSessionId)
-  ) {
-    combinedSessionIds.push(fallbackSessionId);
-  }
-
   return {
     ...session,
     workplace_id: fallbackWorkplaceId,
-    workplace_session_id: fallbackSessionId,
     workplace_assignments: hydratedAssignments,
-    workplace_session_ids: combinedSessionIds,
   };
 }

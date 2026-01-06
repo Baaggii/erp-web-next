@@ -149,7 +149,7 @@ export async function listReportWorkplaces(req, res, next) {
         : sessionList;
 
     const workplaceAssignments = filtered
-      .filter((s) => s && s.workplace_session_id != null)
+      .filter((s) => s && s.workplace_id != null)
       .map(
         ({
           company_id,
@@ -160,7 +160,6 @@ export async function listReportWorkplaces(req, res, next) {
           department_name,
           workplace_id,
           workplace_name,
-          workplace_session_id,
         }) => ({
           company_id: company_id ?? null,
           company_name: company_name ?? null,
@@ -170,15 +169,12 @@ export async function listReportWorkplaces(req, res, next) {
           department_name: department_name ?? null,
           workplace_id: workplace_id ?? null,
           workplace_name: workplace_name ?? null,
-          workplace_session_id: workplace_session_id ?? null,
         }),
       );
 
     const pickDefaultSession = (items = []) => {
       if (!Array.isArray(items) || items.length === 0) return null;
-      const withWorkplace = items.find(
-        (item) => item?.workplace_session_id != null,
-      );
+      const withWorkplace = items.find((item) => item?.workplace_id != null);
       return withWorkplace ?? items[0];
     };
 
@@ -212,10 +208,6 @@ export async function listReportWorkplaces(req, res, next) {
         : 0,
       selectedWorkplaceId:
         sessionPayload?.workplace_id ?? sessionPayload?.workplaceId ?? null,
-      selectedWorkplaceSessionId:
-        sessionPayload?.workplace_session_id ??
-        sessionPayload?.workplaceSessionId ??
-        null,
     };
 
     res.json({
