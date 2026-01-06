@@ -491,21 +491,14 @@ class MySqlExpressionParser {
     }
     if (token.type === 'identifier') {
       this.consume();
-      const next = this.peek();
-      const hasOpeningParen =
-        (next?.type === 'paren' && next.value === '(') ||
-        (next?.type === 'operator' && next.value === '(');
-      if (hasOpeningParen) {
-        this.consume();
+      if (this.matchOperator('(')) {
         const args = [];
-        if (this.matchOperator(')') || (this.peek()?.type === 'paren' && this.peek().value === ')')) {
-          if (this.peek()?.type === 'paren' && this.peek().value === ')') this.consume();
+        if (this.matchOperator(')')) {
           return { type: 'function', name: token.value, args };
         }
         while (true) {
           args.push(this.parseExpression());
-          if (this.matchOperator(')') || (this.peek()?.type === 'paren' && this.peek().value === ')')) {
-            if (this.peek()?.type === 'paren' && this.peek().value === ')') this.consume();
+          if (this.matchOperator(')')) {
             break;
           }
           if (!this.matchOperator(',')) {
