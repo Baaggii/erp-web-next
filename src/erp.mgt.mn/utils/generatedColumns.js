@@ -480,7 +480,10 @@ class MySqlExpressionParser {
       this.consume();
       return { type: 'boolean', value: token.upper === 'TRUE' };
     }
-    if (token.type === 'paren' && token.value === '(') {
+    if (
+      (token.type === 'paren' || token.type === 'operator') &&
+      token.value === '('
+    ) {
       this.consume();
       const expr = this.parseExpression();
       this.expectOperator(')');
