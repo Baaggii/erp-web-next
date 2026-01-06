@@ -6,9 +6,6 @@ import {
   __resetGetEmploymentSessions,
 } from '../../api-server/controllers/reportController.js';
 
-process.env.SKIP_WORKPLACE_COLUMN_CHECK = '1';
-process.env.SKIP_POS_RELATION_CHECK = '1';
-
 function createRes() {
   return {
     statusCode: 200,
@@ -111,12 +108,6 @@ test('listReportWorkplaces dedupes workplace assignments', async () => {
       workplaceId: 5,
       workplace_name: 'HQ',
       workplaceName: 'HQ',
-      workplace_effective_month: null,
-      workplaceEffectiveMonth: null,
-      workplace_position_id: null,
-      workplacePositionId: null,
-      workplace_position_name: null,
-      workplacePositionName: null,
     },
     {
       company_id: 2,
@@ -135,12 +126,6 @@ test('listReportWorkplaces dedupes workplace assignments', async () => {
       workplaceId: 7,
       workplace_name: 'Shop',
       workplaceName: 'Shop',
-      workplace_effective_month: null,
-      workplaceEffectiveMonth: null,
-      workplace_position_id: null,
-      workplacePositionId: null,
-      workplace_position_name: null,
-      workplacePositionName: null,
     },
   ]);
 });
@@ -262,12 +247,6 @@ test(
         workplaceId: 55,
         workplace_name: 'Main Office',
         workplaceName: 'Main Office',
-        workplace_effective_month: null,
-        workplaceEffectiveMonth: null,
-        workplace_position_id: null,
-        workplacePositionId: null,
-        workplace_position_name: null,
-        workplacePositionName: null,
       },
     ]);
   },
@@ -363,12 +342,6 @@ test('listReportWorkplaces handles bigint identifiers from the database', async 
       workplaceId: 4,
       workplace_name: 'Plant',
       workplaceName: 'Plant',
-      workplace_effective_month: null,
-      workplaceEffectiveMonth: null,
-      workplace_position_id: null,
-      workplacePositionId: null,
-      workplace_position_name: null,
-      workplacePositionName: null,
     },
   ]);
 });
