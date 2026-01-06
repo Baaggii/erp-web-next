@@ -69,6 +69,7 @@ export default function AllowedReportsConfig() {
   const [permRows, setPermRows] = useState([]);
   const [permCfg, setPermCfg] = useState({});
   const [isLoading, setIsLoading] = useState(true);
+  const [selectedRule, setSelectedRule] = useState('');
   const columnResizeRef = useRef({ key: null, startX: 0, startWidth: 0 });
   const rulesResizeRef = useRef({ active: false, startX: 0, startWidth: 0 });
   const [columnWidths, setColumnWidths] = useState(() => {
@@ -271,7 +272,36 @@ export default function AllowedReportsConfig() {
 
   const procLabels = generalConfig?.general?.procLabels || {};
   const procedureKeys = useMemo(() => Object.keys(reports || {}), [reports]);
-  const headerMappings = useHeaderMappings(procedureKeys);
+  const procOptionLabelMap = useMemo(() => {
+    const map = new Map();
+    procOptions.forEach((p) => {
+      if (p?.name && p.label) map.set(p.name, p.label);
+    });
+    return map;
+  }, [procOptions]);
+  const headerMappings = useHeaderMappings(
+    useMemo(
+      () => [
+        ...new Set([
+          ...procedureKeys,
+          ...procOptions.map((p) => p?.name).filter(Boolean),
+        ]),
+      ],
+      [procedureKeys, procOptions],
+    ),
+  );
+
+  const getProcedureLabel = (name) =>
+    procLabels[name] ||
+    headerMappings?.[name] ||
+    procOptionLabelMap.get(name) ||
+    '';
+
+  const formatProcedureDisplay = (name) => {
+    const label = getProcedureLabel(name);
+    if (label && label !== name) return `${label} (${name})`;
+    return name;
+  };
 
   const columnWidth = (key) =>
     columnWidths[key] ??
@@ -441,6 +471,7 @@ export default function AllowedReportsConfig() {
   function edit(p) {
     const info = reports[p] || { branches: [], departments: [], workplaces: [], positions: [], permissions: [] };
     setProc(p);
+    setSelectedRule(p);
     setBranches((info.branches || []).map(String));
     setDepartments((info.departments || []).map(String));
     setWorkplaces((info.workplaces || []).map(String));
@@ -450,6 +481,7 @@ export default function AllowedReportsConfig() {
 
   function handleNew() {
     setProc('');
+    setSelectedRule('');
     setBranches([]);
     setDepartments([]);
     setWorkplaces([]);
@@ -788,10 +820,17 @@ export default function AllowedReportsConfig() {
                       !hasWorkplaces &&
                       !hasPositions &&
                       !hasPermissions;
-                    const labelValue =
-                      procLabels[p] || headerMappings?.[p] || '';
+                    const labelValue = getProcedureLabel(p);
+                    const isSelected = selectedRule === p;
                     return (
-                      <tr key={p}>
+                      <tr
+                        key={p}
+                        onClick={() => edit(p)}
+                        style={{
+                          cursor: 'pointer',
+                          background: isSelected ? '#e0ecff' : undefined,
+                        }}
+                      >
                         <td
                           style={{
                             ...cellStyle('procedure'),
@@ -801,7 +840,7 @@ export default function AllowedReportsConfig() {
                             textOverflow: 'ellipsis',
                           }}
                         >
-                          {p}
+                          {formatProcedureDisplay(p)}
                         </td>
                         <td
                           style={{
@@ -869,12 +908,22 @@ export default function AllowedReportsConfig() {
                           }}
                         >
                           <button
-                            onClick={() => edit(p)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              edit(p);
+                            }}
                             style={{ marginRight: '0.35rem' }}
                           >
                             Edit
                           </button>
-                          <button onClick={() => handleDelete(p)}>Delete</button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDelete(p);
+                            }}
+                          >
+                            Delete
+                          </button>
                         </td>
                       </tr>
                     );
@@ -914,7 +963,13 @@ export default function AllowedReportsConfig() {
           <div>
             <label>
               Procedure:{' '}
-              <select value={proc} onChange={(e) => setProc(e.target.value)}>
+              <select
+                value={proc}
+                onChange={(e) => {
+                  setProc(e.target.value);
+                  setSelectedRule(e.target.value);
+                }}
+              >
                 <option value="">-- Select --</option>
                 {procOptions.filter((p) => !p.isDefault).length > 0 && (
                   <optgroup label="Tenant">
@@ -922,7 +977,7 @@ export default function AllowedReportsConfig() {
                       .filter((p) => !p.isDefault)
                       .map((p) => (
                         <option key={p.name} value={p.name}>
-                          {p.name}
+                          {formatProcedureDisplay(p.name)}
                         </option>
                       ))}
                   </optgroup>
@@ -933,7 +988,7 @@ export default function AllowedReportsConfig() {
                       .filter((p) => p.isDefault)
                       .map((p) => (
                         <option key={p.name} value={p.name}>
-                          {p.name}
+                          {formatProcedureDisplay(p.name)}
                         </option>
                       ))}
                   </optgroup>
