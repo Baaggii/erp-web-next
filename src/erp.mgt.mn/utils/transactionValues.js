@@ -139,7 +139,7 @@ export function buildGeneratedColumnEvaluators(tableColumns, columnCaseMap = {})
     if (!rawName || !expr) return;
     const key = columnCaseMap[String(rawName).toLowerCase()] || rawName;
     if (typeof key !== 'string') return;
-    const evaluator = createGeneratedColumnEvaluator(expr, columnCaseMap, { columnName: key });
+    const evaluator = createGeneratedColumnEvaluator(expr, columnCaseMap);
     if (evaluator) map[key] = evaluator;
   });
   return map;
