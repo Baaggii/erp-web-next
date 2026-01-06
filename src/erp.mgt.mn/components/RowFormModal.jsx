@@ -2502,11 +2502,9 @@ const RowFormModal = function RowFormModal({
   function showTriggerInfo(col) {
     if (!general.triggerToastEnabled) return;
     if (!procTriggers || Object.keys(procTriggers || {}).length === 0) return;
-    const colLower = col.toLowerCase();
-    const normalizedCol = columnCaseMap[colLower] || col;
     const direct = getDirectTriggers(col);
     const paramTrigs = getParamTriggers(col);
-    const hasEntry = Object.prototype.hasOwnProperty.call(procTriggers, colLower);
+    const hasEntry = Object.prototype.hasOwnProperty.call(procTriggers, col.toLowerCase());
 
     const assignmentTargets = new Set();
     const collectAssignmentTargets = (cfg, fallbackTarget = null) => {
@@ -2532,16 +2530,9 @@ const RowFormModal = function RowFormModal({
 
     const procDirect = direct.filter((cfg) => !isAssignmentTrigger(cfg));
     const procParam = paramTrigs.filter(([, cfg]) => !isAssignmentTrigger(cfg));
-    const virtualDependents = generatedDependencyLookup[colLower];
-    const combinedTargets = new Set([
-      ...assignmentTargets,
-      ...(virtualDependents ? Array.from(virtualDependents) : []),
-    ]);
-    const isVirtual = generatedColumnSet.has(normalizedCol);
-    const hasAnyAssignments = combinedTargets.size > 0;
-    const hasAnyProcedures = procDirect.length > 0 || procParam.length > 0;
+    const hasAny = assignmentTargets.size > 0 || procDirect.length > 0 || procParam.length > 0;
 
-    if (!hasAnyAssignments && !hasAnyProcedures && !isVirtual) {
+    if (!hasAny) {
       const message = hasEntry
         ? `${col} талбар нь өгөгдлийн сангийн триггерээр бөглөгдөнө. Урьдчилсан тооцоолол хязгаарлагдмал байж болно.`
         : `${col} талбар триггер ашигладаггүй`;
@@ -2553,23 +2544,12 @@ const RowFormModal = function RowFormModal({
       return;
     }
 
-    if (combinedTargets.size > 0) {
-      const targets = Array.from(combinedTargets).join(', ');
+    if (assignmentTargets.size > 0) {
+      const targets = Array.from(assignmentTargets).join(', ');
       window.dispatchEvent(
         new CustomEvent('toast', {
           detail: {
             message: `${col} талбарын утга өөрчлөгдвөл дараах талбарууд автоматаар бөглөгдөнө: ${targets}`,
-            type: 'info',
-          },
-        }),
-      );
-    }
-
-    if (isVirtual) {
-      window.dispatchEvent(
-        new CustomEvent('toast', {
-          detail: {
-            message: `${col} талбар нь виртуал тооцоолол бөгөөд утгыг автоматаар тооцно.`,
             type: 'info',
           },
         }),
@@ -2591,6 +2571,30 @@ const RowFormModal = function RowFormModal({
         new CustomEvent('toast', {
           detail: {
             message: `${col} талбар параметр болгож дараах процедуруудад ашиглана: ${names}`,
+            type: 'info',
+          },
+        }),
+      );
+    }
+
+    const colLower = col.toLowerCase();
+    const virtualDependents = generatedDependencyLookup[colLower];
+    if (generatedColumnSet.has(col)) {
+      window.dispatchEvent(
+        new CustomEvent('toast', {
+          detail: {
+            message: `${col} талбар нь виртуал тооцоолол бөгөөд утгыг автоматаар тооцно.`,
+            type: 'info',
+          },
+        }),
+      );
+    }
+    if (virtualDependents && virtualDependents.size > 0) {
+      const list = Array.from(virtualDependents).join(', ');
+      window.dispatchEvent(
+        new CustomEvent('toast', {
+          detail: {
+            message: `${col} талбарын утга өөрчлөгдвөл дараах виртуал талбарууд шинэчлэгдэнэ: ${list}`,
             type: 'info',
           },
         }),
