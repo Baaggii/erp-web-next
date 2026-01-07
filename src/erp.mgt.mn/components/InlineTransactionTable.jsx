@@ -1218,9 +1218,6 @@ function InlineTransactionTable(
     return res;
   }
 
-  const isAssignmentTrigger = (cfg) =>
-    cfg && (cfg.kind === 'assignment' || cfg.name === '__assignment__');
-
   function hasTrigger(col) {
     return getDirectTriggers(col).length > 0 || getParamTriggers(col).length > 0;
   }
@@ -1480,14 +1477,7 @@ function InlineTransactionTable(
         const targetCols = Object.values(outMap || {})
           .map((c) => normalizeColumn(c))
           .filter(Boolean);
-        const assignmentTargets =
-          isAssignmentTrigger(cfg) && Array.isArray(cfg.targets) ? cfg.targets : [];
-        const normalizedAssignmentTargets = assignmentTargets
-          .map((target) => normalizeColumn(target))
-          .filter(Boolean);
-        const hasTarget = [...targetCols, ...normalizedAssignmentTargets].some((c) =>
-          writableColumns.has(c),
-        );
+        const hasTarget = targetCols.some((c) => writableColumns.has(c));
         if (!hasTarget) continue;
 
         const optionalParamSet = new Set(
