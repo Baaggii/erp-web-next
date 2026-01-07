@@ -8053,7 +8053,10 @@ const TableManager = forwardRef(function TableManager({
                                     type="button"
                                     onClick={() =>
                                       setTemporaryImagesEntry({
-                                        row: normalizedValues,
+                                        row: {
+                                          ...normalizedValues,
+                                          _imageName: temporaryImageName || normalizedValues?._imageName,
+                                        },
                                         table: entry?.tableName || table,
                                       })
                                     }

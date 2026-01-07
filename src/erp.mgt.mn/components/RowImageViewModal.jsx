@@ -127,6 +127,9 @@ export default function RowImageViewModal({
     if (!primary) {
       primary = buildFallbackName(row);
     }
+    if (!primary && row?._imageName) {
+      primary = row._imageName;
+    }
     if (cfg?.imageIdField) {
       idName = buildImageName(row, [cfg.imageIdField], columnCaseMap, company).name;
     }
