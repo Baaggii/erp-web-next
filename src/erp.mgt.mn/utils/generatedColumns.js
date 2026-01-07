@@ -347,24 +347,6 @@ class MySqlExpressionParser {
     if (!this.matchOperator(op)) throw new Error(`Expected operator ${op}`);
   }
 
-  hasOpeningParen() {
-    const token = this.peek();
-    if (!token) return false;
-    if (token.type === 'paren' || token.type === 'operator') {
-      return token.value === '(';
-    }
-    return false;
-  }
-
-  hasClosingParen() {
-    const token = this.peek();
-    if (!token) return false;
-    if (token.type === 'paren' || token.type === 'operator') {
-      return token.value === ')';
-    }
-    return false;
-  }
-
   parse() {
     const expr = this.parseExpression();
     if (this.index < this.tokens.length) {
@@ -486,10 +468,10 @@ class MySqlExpressionParser {
     if (token.type === 'paren' && token.value === '(') {
       this.consume();
       const expr = this.parseExpression();
-      if (!this.hasClosingParen()) {
+      if (!this.matchOperator(')') && !(this.peek()?.type === 'paren' && this.peek().value === ')')) {
         throw new Error('Expected )');
       }
-      this.consume();
+      if (this.peek()?.type === 'paren' && this.peek().value === ')') this.consume();
       return expr;
     }
     if (token.type === 'identifier' && token.upper === 'CASE') {
@@ -497,17 +479,20 @@ class MySqlExpressionParser {
     }
     if (token.type === 'identifier') {
       this.consume();
-      if (this.hasOpeningParen()) {
-        this.consume();
-        const args = [];
-        if (this.hasClosingParen()) {
+      if ((this.peek()?.type === 'paren' && this.peek().value === '(') || this.matchOperator('(')) {
+        if (!(this.peek()?.type === 'paren' && this.peek().value === '(')) {
+          this.index -= 1;
           this.consume();
+        }
+        const args = [];
+        if (this.matchOperator(')') || (this.peek()?.type === 'paren' && this.peek().value === ')')) {
+          if (this.peek()?.type === 'paren' && this.peek().value === ')') this.consume();
           return { type: 'function', name: token.value, args };
         }
         while (true) {
           args.push(this.parseExpression());
-          if (this.hasClosingParen()) {
-            this.consume();
+          if (this.matchOperator(')') || (this.peek()?.type === 'paren' && this.peek().value === ')')) {
+            if (this.peek()?.type === 'paren' && this.peek().value === ')') this.consume();
             break;
           }
           if (!this.matchOperator(',') && !(this.peek()?.type === 'comma')) {
