@@ -11,15 +11,43 @@ export default function Modal({
   const [closing, setClosing] = useState(false);
   const modalRef = useRef(null);
   const posRef = useRef({ x: 0, y: 0 });
+  const modalIdRef = useRef(0);
+  if (modalIdRef.current === 0) {
+    modalIdCounter += 1;
+    modalIdRef.current = modalIdCounter;
+  }
 
   useEffect(() => {
+    if (!closeOnEscape) return;
     if (!visible) return;
     function handleKey(e) {
-      if (e.key === 'Escape') handleClose();
+      if (e.key !== 'Escape') return;
+      const isTopmost =
+        modalStack.length > 0 &&
+        modalStack[modalStack.length - 1] === modalIdRef.current;
+      if (!isTopmost) return;
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      handleClose();
     }
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
-  }, [visible]);
+  }, [closeOnEscape, visible]);
+
+  useEffect(() => {
+    const isActive = visible || closing;
+    if (!isActive) return;
+    const id = modalIdRef.current;
+    if (!modalStack.includes(id)) {
+      modalStack.push(id);
+    }
+    return () => {
+      const idx = modalStack.indexOf(id);
+      if (idx !== -1) {
+        modalStack.splice(idx, 1);
+      }
+    };
+  }, [closing, visible]);
 
   function handleClose() {
     if (closing) return;

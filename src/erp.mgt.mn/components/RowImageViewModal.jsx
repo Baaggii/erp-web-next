@@ -16,6 +16,7 @@ export default function RowImageViewModal({
   row = {},
   columnCaseMap = {},
   configs = {},
+  canDelete = true,
 }) {
   const baseZIndex = 1300;
   const [files, setFiles] = useState([]);
@@ -366,6 +367,7 @@ export default function RowImageViewModal({
                     style={{ width: '100%', height: '100%', objectFit: 'cover', cursor: 'pointer' }}
                     onClick={() => handleView(idx)}
                   />
+                  {canDelete && (
                     <button
                       type="button"
                       onClick={(e) => {
@@ -387,6 +389,7 @@ export default function RowImageViewModal({
                     >
                       {t('delete', 'Delete')}
                     </button>
+                  )}
                 </div>
               ))}
             </div>

@@ -534,6 +534,7 @@ const TableManager = forwardRef(function TableManager({
   const [temporarySelection, setTemporarySelection] = useState(() => new Set());
   const [temporaryValuePreview, setTemporaryValuePreview] = useState(null);
   const [temporaryImagesEntry, setTemporaryImagesEntry] = useState(null);
+  const [temporaryUploadEntry, setTemporaryUploadEntry] = useState(null);
   const pendingRequests = usePendingRequests();
   const markTemporaryScopeSeen = pendingRequests?.temporary?.markScopeSeen;
   const temporaryHasNew = Boolean(pendingRequests?.temporary?.hasNew);
@@ -597,6 +598,13 @@ const TableManager = forwardRef(function TableManager({
     const str = String(value).trim();
     return str ? str.toUpperCase() : '';
   }, []);
+  const resolveCreatedBy = useCallback(
+    (row) =>
+      normalizeEmpId(
+        row?.created_by ?? row?.createdBy ?? row?.createdby ?? row?.createdBy,
+      ),
+    [normalizeEmpId],
+  );
   const normalizePlanSeniorList = useCallback(
     (value) => {
       const rawList = [];
@@ -2445,6 +2453,34 @@ const TableManager = forwardRef(function TableManager({
     return `${slugify(t1)}/${slugify(String(t2))}`;
   }
 
+  const resolveImageNameForRow = useCallback(
+    (row, config = {}) => {
+      if (!row || typeof row !== 'object') return '';
+      const imagenameFields = Array.isArray(config?.imagenameField)
+        ? config.imagenameField
+        : [];
+      const imageIdField =
+        typeof config?.imageIdField === 'string' ? config.imageIdField : '';
+      const combinedFields = Array.from(
+        new Set([...imagenameFields, imageIdField].filter(Boolean)),
+      );
+      if (combinedFields.length > 0) {
+        const { name } = buildImageName(row, combinedFields, columnCaseMap, company);
+        if (name) return name;
+      }
+      if (imagenameFields.length > 0) {
+        const { name } = buildImageName(row, imagenameFields, columnCaseMap, company);
+        if (name) return name;
+      }
+      if (imageIdField) {
+        const { name } = buildImageName(row, [imageIdField], columnCaseMap, company);
+        if (name) return name;
+      }
+      return row._imageName || row.imageName || row.image_name || '';
+    },
+    [columnCaseMap, company],
+  );
+
   function getCase(obj, field) {
     if (!obj) return undefined;
     if (obj[field] !== undefined) return obj[field];
@@ -3606,6 +3642,24 @@ const TableManager = forwardRef(function TableManager({
     }
   }
 
+  const renameTransactionImages = useCallback(
+    async ({ tableName, oldName, newName, folder } = {}) => {
+      if (!tableName || !oldName || !newName) return;
+      const params = new URLSearchParams();
+      if (folder) params.set('folder', folder);
+      const renameUrl =
+        `${API_BASE}/transaction_images/${encodeURIComponent(tableName)}` +
+        `/${encodeURIComponent(oldName)}/rename/${encodeURIComponent(newName)}` +
+        `?${params.toString()}`;
+      try {
+        await fetch(renameUrl, { method: 'POST', credentials: 'include' });
+      } catch (err) {
+        console.error('Failed to rename transaction images', err);
+      }
+    },
+    [],
+  );
+
   async function handleSubmit(values, options = {}) {
     const { issueEbarimt = false, submitIntent = 'post' } = options || {};
     const normalizedSubmitIntent = submitIntent === 'ebarimt' ? 'post' : submitIntent;
@@ -3767,6 +3821,24 @@ const TableManager = forwardRef(function TableManager({
         );
         return false;
       }
+      const promotionEntry = pendingTemporaryPromotion?.entry || null;
+      const promotionValues = cleaned;
+      const promotionConfig = getConfigForRow(promotionValues) || formConfig || {};
+      const promotionEntryValues = promotionEntry
+        ? buildTemporaryFormState(promotionEntry).values
+        : null;
+      const promotionOldName = resolveImageNameForRow(promotionEntryValues, promotionConfig);
+      const promotionNewName = resolveImageNameForRow(promotionValues, promotionConfig);
+      const promotionOldFolder = promotionEntryValues
+        ? getImageFolder(promotionEntryValues)
+        : null;
+      const promotionNewFolder = getImageFolder(promotionValues);
+      const promotionTable =
+        promotionEntry?.tableName || promotionEntry?.table_name || table;
+      const shouldRenamePromotionImages =
+        Boolean(promotionOldName) &&
+        Boolean(promotionNewName) &&
+        (promotionOldName !== promotionNewName || promotionOldFolder !== promotionNewFolder);
       const ok = await promoteTemporary(temporaryId, {
         skipConfirm: true,
         silent: false,
@@ -3775,6 +3847,14 @@ const TableManager = forwardRef(function TableManager({
         forcePromote: shouldForcePromote,
       });
       if (ok) {
+        if (shouldRenamePromotionImages) {
+          await renameTransactionImages({
+            tableName: promotionTable,
+            oldName: promotionOldName,
+            newName: promotionNewName,
+            folder: promotionNewFolder,
+          });
+        }
         const [nextEntry, ...remainingQueue] = temporaryPromotionQueue;
         setTemporaryPromotionQueue(remainingQueue);
         setTemporarySelection((prev) => {
@@ -7639,6 +7719,10 @@ const TableManager = forwardRef(function TableManager({
         row={imagesRow || {}}
         columnCaseMap={columnCaseMap}
         configs={allConfigs}
+        canDelete={
+          Boolean(resolveCreatedBy(imagesRow)) &&
+          resolveCreatedBy(imagesRow) === normalizedViewerEmpId
+        }
       />
       <RowImageViewModal
         visible={temporaryImagesEntry !== null}
@@ -7648,6 +7732,41 @@ const TableManager = forwardRef(function TableManager({
         row={temporaryImagesEntry?.row || {}}
         columnCaseMap={columnCaseMap}
         configs={allConfigs}
+        canDelete={Boolean(temporaryImagesEntry?.canDelete)}
+      />
+      <RowImageUploadModal
+        visible={temporaryUploadEntry !== null}
+        onClose={() => setTemporaryUploadEntry(null)}
+        table={temporaryUploadEntry?.table || table}
+        folder={getImageFolder(temporaryUploadEntry?.row || {})}
+        row={temporaryUploadEntry?.row || {}}
+        rowKey={temporaryUploadEntry?.id || 0}
+        imagenameFields={temporaryUploadEntry?.config?.imagenameField || []}
+        columnCaseMap={columnCaseMap}
+        imageIdField={temporaryUploadEntry?.config?.imageIdField || ''}
+        onUploaded={(name) => {
+          if (!temporaryUploadEntry) return;
+          const targetId = temporaryUploadEntry.id;
+          if (targetId) {
+            setTemporaryList((prev) =>
+              prev.map((entry) =>
+                getTemporaryId(entry) === targetId
+                  ? {
+                      ...entry,
+                      _imageName: name,
+                      imageName: name,
+                      image_name: name,
+                    }
+                  : entry,
+              ),
+            );
+          }
+          setTemporaryUploadEntry((prev) =>
+            prev
+              ? { ...prev, row: { ...prev.row, _imageName: name, imageName: name } }
+              : prev,
+          );
+        }}
       />
       <Modal
         visible={showTemporaryModal}
@@ -7859,6 +7978,11 @@ const TableManager = forwardRef(function TableManager({
                           imageConfig.imagenameField.length > 0) ||
                         Boolean(imageConfig?.imageIdField) ||
                         hasTemporaryImageName;
+                      const canUploadTemporaryImages =
+                        (Array.isArray(imageConfig?.imagenameField) &&
+                          imageConfig.imagenameField.length > 0) ||
+                        Boolean(imageConfig?.imageIdField) ||
+                        hasTemporaryImageName;
                       const detailColumns = temporaryDetailColumns;
                       const rowBackgroundColor = isFocused
                         ? '#fef9c3'
@@ -8062,31 +8186,72 @@ const TableManager = forwardRef(function TableManager({
                                 </table>
                               </div>
                               )}
-                              {canViewTemporaryImages && (
-                                <div style={{ marginTop: '0.35rem' }}>
-                                  <button
-                                    type="button"
-                                    onClick={() =>
-                                      setTemporaryImagesEntry({
-                                        row: {
-                                          ...normalizedValues,
-                                          _imageName: temporaryImageName || normalizedValues?._imageName,
-                                        },
-                                        table: entry?.tableName || table,
-                                      })
-                                    }
-                                    style={{
-                                      padding: '0.25rem 0.55rem',
-                                      backgroundColor: '#f3f4f6',
-                                      color: '#1f2937',
-                                      border: '1px solid #d1d5db',
-                                      borderRadius: '6px',
-                                      cursor: 'pointer',
-                                      fontSize: '0.8rem',
-                                    }}
-                                  >
-                                    {t('view_images', 'View images')}
-                                  </button>
+                              {(canViewTemporaryImages || canUploadTemporaryImages) && (
+                                <div
+                                  style={{
+                                    marginTop: '0.35rem',
+                                    display: 'flex',
+                                    gap: '0.35rem',
+                                    flexWrap: 'wrap',
+                                  }}
+                                >
+                                  {canUploadTemporaryImages && (
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        setTemporaryUploadEntry({
+                                          id: entryId,
+                                          row: {
+                                            ...normalizedValues,
+                                            _imageName:
+                                              temporaryImageName || normalizedValues?._imageName,
+                                            created_by: entry?.created_by || entry?.createdBy,
+                                          },
+                                          table: temporaryTableName,
+                                          config: imageConfig,
+                                        })
+                                      }
+                                      style={{
+                                        padding: '0.25rem 0.55rem',
+                                        backgroundColor: '#e0f2fe',
+                                        color: '#0369a1',
+                                        border: '1px solid #bae6fd',
+                                        borderRadius: '6px',
+                                        cursor: 'pointer',
+                                        fontSize: '0.8rem',
+                                      }}
+                                    >
+                                      {t('upload_images', 'Upload Images')}
+                                    </button>
+                                  )}
+                                  {canViewTemporaryImages && (
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        setTemporaryImagesEntry({
+                                          row: {
+                                            ...normalizedValues,
+                                            _imageName:
+                                              temporaryImageName || normalizedValues?._imageName,
+                                            created_by: entry?.created_by || entry?.createdBy,
+                                          },
+                                          table: temporaryTableName,
+                                          canDelete: canDeleteTemporaryImages,
+                                        })
+                                      }
+                                      style={{
+                                        padding: '0.25rem 0.55rem',
+                                        backgroundColor: '#f3f4f6',
+                                        color: '#1f2937',
+                                        border: '1px solid #d1d5db',
+                                        borderRadius: '6px',
+                                        cursor: 'pointer',
+                                        fontSize: '0.8rem',
+                                      }}
+                                    >
+                                      {t('view_images', 'View images')}
+                                    </button>
+                                  )}
                                 </div>
                               )}
                             </td>
