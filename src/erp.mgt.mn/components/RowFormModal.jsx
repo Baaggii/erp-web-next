@@ -4712,7 +4712,6 @@ const RowFormModal = function RowFormModal({
         imagenameFields={imagenameField}
         columnCaseMap={columnCaseMap}
         imageIdField={imageIdField}
-        zIndex={1350}
         onUploaded={handleImageUploaded}
       />
       <RowDetailModal
