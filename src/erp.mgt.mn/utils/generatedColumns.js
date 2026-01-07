@@ -477,7 +477,13 @@ class MySqlExpressionParser {
     if (token.type === 'paren' && token.value === '(') {
       this.consume();
       const expr = this.parseExpression();
-      if (!this.matchOperator(')') && !(this.peek()?.type === 'paren' && this.peek().value === ')')) {
+      if (
+        !this.matchOperator(')') &&
+        !(this.peek()?.type === 'paren' && this.peek().value === ')')
+      ) {
+        if (this.peek()?.type === 'comma') {
+          return expr;
+        }
         throw new Error('Expected )');
       }
       if (this.peek()?.type === 'paren' && this.peek().value === ')') this.consume();
@@ -488,20 +494,26 @@ class MySqlExpressionParser {
     }
     if (token.type === 'identifier') {
       this.consume();
-      if ((this.peek()?.type === 'paren' && this.peek().value === '(') || this.matchOperator('(')) {
-        if (!(this.peek()?.type === 'paren' && this.peek().value === '(')) {
-          this.index -= 1;
-          this.consume();
-        }
+      const hasParenToken = this.peek()?.type === 'paren' && this.peek().value === '(';
+      const matchedParenOperator = this.matchOperator('(');
+      if (hasParenToken || matchedParenOperator) {
+        if (hasParenToken) this.consume();
         const args = [];
-        if (this.matchOperator(')') || (this.peek()?.type === 'paren' && this.peek().value === ')')) {
+        if (
+          this.matchOperator(')') ||
+          (this.peek()?.type === 'paren' && this.peek().value === ')')
+        ) {
           if (this.peek()?.type === 'paren' && this.peek().value === ')') this.consume();
           return { type: 'function', name: token.value, args };
         }
         while (true) {
           args.push(this.parseExpression());
-          if (this.matchOperator(')') || (this.peek()?.type === 'paren' && this.peek().value === ')')) {
-            if (this.peek()?.type === 'paren' && this.peek().value === ')') this.consume();
+          if (
+            this.matchOperator(')') ||
+            (this.peek()?.type === 'paren' && this.peek().value === ')')
+          ) {
+            if (this.peek()?.type === 'paren' && this.peek().value === ')')
+              this.consume();
             break;
           }
           if (!this.matchOperator(',') && !(this.peek()?.type === 'comma')) {
