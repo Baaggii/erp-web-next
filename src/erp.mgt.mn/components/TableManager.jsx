@@ -5112,18 +5112,28 @@ const TableManager = forwardRef(function TableManager({
           return { values: {}, rows: [] };
         }
 
-        const valueSources = [
+        const cleanedValueSources = [
           entry?.cleanedValues,
           entry?.payload?.cleanedValues,
+        ];
+        const rawValueSources = [
           entry?.payload?.values,
           entry?.values,
           entry?.rawValues,
         ];
-        const baseValues = valueSources.find(
+        const cleanedValues = cleanedValueSources.find(
           (candidate) =>
             candidate && typeof candidate === 'object' && !Array.isArray(candidate),
         );
-        const hydratedValues = hydrateDisplayFromWrappedRelations(baseValues || {});
+        const rawValues = rawValueSources.find(
+          (candidate) =>
+            candidate && typeof candidate === 'object' && !Array.isArray(candidate),
+        );
+        const baseValues = {
+          ...(rawValues || {}),
+          ...(cleanedValues || {}),
+        };
+        const hydratedValues = hydrateDisplayFromWrappedRelations(baseValues);
         const canonicalHydratedValues = normalizeToCanonical(hydratedValues);
         const normalizedValues = populateRelationDisplayFields(
           normalizeToCanonical(stripTemporaryLabelValue(hydratedValues)),
@@ -7839,6 +7849,11 @@ const TableManager = forwardRef(function TableManager({
                           normalizedValues?.imageName ||
                           normalizedValues?.image_name,
                       );
+                      const temporaryImageName =
+                        normalizedValues?._imageName ||
+                        normalizedValues?.imageName ||
+                        normalizedValues?.image_name ||
+                        '';
                       const canViewTemporaryImages =
                         (Array.isArray(imageConfig?.imagenameField) &&
                           imageConfig.imagenameField.length > 0) ||

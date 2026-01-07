@@ -1,6 +1,13 @@
 import React, { useEffect, useRef, useState } from 'react';
 
-export default function Modal({ visible, title, onClose, children, width = 'auto' }) {
+export default function Modal({
+  visible,
+  title,
+  onClose,
+  children,
+  width = 'auto',
+  zIndex = 1000,
+}) {
   const [closing, setClosing] = useState(false);
   const modalRef = useRef(null);
   const posRef = useRef({ x: 0, y: 0 });
@@ -55,7 +62,7 @@ export default function Modal({ visible, title, onClose, children, width = 'auto
     justifyContent: 'center',
     opacity: closing ? 0 : 1,
     transition: 'opacity 0.2s',
-    zIndex: 1000,
+    zIndex,
   };
 
   const modalStyle = {
