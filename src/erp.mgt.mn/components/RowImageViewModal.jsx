@@ -16,7 +16,9 @@ export default function RowImageViewModal({
   row = {},
   columnCaseMap = {},
   configs = {},
+  canDelete = true,
 }) {
+  const baseZIndex = 1300;
   const [files, setFiles] = useState([]);
   const [showGallery, setShowGallery] = useState(false);
   const [fullscreenIndex, setFullscreenIndex] = useState(null);
@@ -304,7 +306,13 @@ export default function RowImageViewModal({
 
   return (
     <>
-      <Modal visible={visible} title={t('images', 'Images')} onClose={onClose} width="auto">
+      <Modal
+        visible={visible}
+        title={t('images', 'Images')}
+        onClose={onClose}
+        width="auto"
+        zIndex={baseZIndex}
+      >
         {files.length === 0 ? <p>{t('no_images', 'No images')}</p> : listView}
         {files.length > 0 && (
           <div style={{ textAlign: 'right', marginTop: '0.5rem' }}>
@@ -327,7 +335,7 @@ export default function RowImageViewModal({
               right: 0,
               bottom: 0,
               background: 'rgba(0,0,0,0.85)',
-              zIndex: 1100,
+              zIndex: baseZIndex + 100,
               padding: '1rem',
               display: 'flex',
               flexDirection: 'column',
@@ -359,6 +367,7 @@ export default function RowImageViewModal({
                     style={{ width: '100%', height: '100%', objectFit: 'cover', cursor: 'pointer' }}
                     onClick={() => handleView(idx)}
                   />
+                  {canDelete && (
                     <button
                       type="button"
                       onClick={(e) => {
@@ -380,6 +389,7 @@ export default function RowImageViewModal({
                     >
                       {t('delete', 'Delete')}
                     </button>
+                  )}
                 </div>
               ))}
             </div>
@@ -399,7 +409,7 @@ export default function RowImageViewModal({
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              zIndex: 1200,
+              zIndex: baseZIndex + 200,
             }}
             onClick={() => setFullscreenIndex(null)}
           >

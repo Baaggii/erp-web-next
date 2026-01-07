@@ -152,6 +152,7 @@ const RowFormModal = function RowFormModal({
   posApiPaymentMethods = [],
   extraFooterContent = null,
   allowTemporaryOnly = false,
+  allowImageUploadInReadOnly = false,
 }) {
   const mounted = useRef(false);
   const renderCount = useRef(0);
@@ -4289,9 +4290,7 @@ const RowFormModal = function RowFormModal({
     submitIntentRef.current = intent || 'post';
   };
   const imageRow = { ...extraVals, ...formVals };
-  const canUploadImages =
-    (Array.isArray(imagenameField) && imagenameField.length > 0) ||
-    Boolean(imageIdField);
+  const canUploadImages = true;
   const openImageUpload = () => {
     setImageUploadKey((prev) => prev + 1);
     setImageUploadOpen(true);
@@ -4459,7 +4458,7 @@ const RowFormModal = function RowFormModal({
                 type="button"
                 onClick={openImageUpload}
                 className="px-3 py-1 bg-gray-200 rounded"
-                disabled={isReadOnly}
+                disabled={isReadOnly && !allowImageUploadInReadOnly}
               >
                 {t('upload_images', 'Upload Images')}
               </button>
@@ -4708,6 +4707,7 @@ const RowFormModal = function RowFormModal({
         imagenameFields={imagenameField}
         columnCaseMap={columnCaseMap}
         imageIdField={imageIdField}
+        zIndex={1350}
         onUploaded={handleImageUploaded}
       />
       <RowDetailModal
