@@ -385,7 +385,11 @@ class MySqlExpressionParser {
   parseEquality() {
     let expr = this.parseComparison();
     while (true) {
-      const op = this.matchOperator('=', '!=', '<>', 'IS') || (this.peek()?.type === 'identifier' && this.peek().upper === 'IS' ? 'IS' : null);
+      let op = this.matchOperator('=', '!=', '<>', 'IS');
+      if (!op && this.peek()?.type === 'identifier' && this.peek().upper === 'IS') {
+        this.consume();
+        op = 'IS';
+      }
       if (!op) break;
       if (op === 'IS' || op === 'is') {
         const not = this.matchKeyword('NOT');
