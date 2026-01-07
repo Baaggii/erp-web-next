@@ -645,6 +645,32 @@ const RowFormModal = function RowFormModal({
     if (useGrid && Array.isArray(rows) && rows.length > 0) return rows[0];
     return row;
   }, [row, rows, useGrid]);
+  const hydratedRowForEdit = React.useMemo(() => {
+    const base =
+      effectiveRow && typeof effectiveRow === 'object' ? { ...effectiveRow } : {};
+    if (useGrid && Array.isArray(rows)) {
+      const firstRow = rows.find((r) => r && typeof r === 'object');
+      if (firstRow) {
+        columns.forEach((col) => {
+          const existing = getRowValueCaseInsensitive(base, col);
+          if (existing !== undefined) return;
+          const fallback = getRowValueCaseInsensitive(firstRow, col);
+          if (fallback !== undefined) {
+            base[col] = fallback;
+          }
+        });
+        Object.entries(firstRow).forEach(([key, value]) => {
+          if (base[key] !== undefined) return;
+          const lower = String(key).toLowerCase();
+          const mapped = columnCaseMap[lower] || key;
+          if (base[mapped] === undefined) {
+            base[mapped] = value;
+          }
+        });
+      }
+    }
+    return Object.keys(base).length > 0 ? base : effectiveRow;
+  }, [effectiveRow, rows, useGrid, columns, columnCaseMap, getRowValueCaseInsensitive]);
   const fieldTypeMapKey = React.useMemo(
     () => JSON.stringify(fieldTypeMap || {}),
     [fieldTypeMap],
@@ -695,7 +721,10 @@ const RowFormModal = function RowFormModal({
     },
     [isHeaderLocation],
   );
-  const rowKey = React.useMemo(() => JSON.stringify(effectiveRow || {}), [effectiveRow]);
+  const rowKey = React.useMemo(
+    () => JSON.stringify(hydratedRowForEdit || {}),
+    [hydratedRowForEdit],
+  );
   const defaultValuesKey = React.useMemo(
     () => JSON.stringify(defaultValues || {}),
     [defaultValues],
@@ -770,11 +799,13 @@ const RowFormModal = function RowFormModal({
       } else if (typ === 'date' || typ === 'datetime') {
         placeholder = 'YYYY-MM-DD';
       }
-      const rowValue = effectiveRow ? getRowValueCaseInsensitive(effectiveRow, c) : undefined;
+      const rowValue = hydratedRowForEdit
+        ? getRowValueCaseInsensitive(hydratedRowForEdit, c)
+        : undefined;
       const sourceValue =
         rowValue !== undefined ? rowValue : defaultValues[c];
       const missing =
-        !effectiveRow || rowValue === undefined || rowValue === '';
+        !hydratedRowForEdit || rowValue === undefined || rowValue === '';
       let val;
       if (typ === 'json') {
         val = normalizeJsonArrayForState(sourceValue);
@@ -818,7 +849,7 @@ const RowFormModal = function RowFormModal({
   });
   const [extraVals, setExtraVals] = useState(() => {
     const extras = {};
-    Object.entries(effectiveRow || {}).forEach(([k, v]) => {
+    Object.entries(hydratedRowForEdit || {}).forEach(([k, v]) => {
       const lowerKey = String(k).toLowerCase();
       if (!columnLowerSet.has(lowerKey)) {
         const typ = fieldTypeMap[k];
@@ -1958,7 +1989,7 @@ const RowFormModal = function RowFormModal({
     const map = {};
     const cols = new Set([
       ...columns,
-      ...Object.keys(effectiveRow || {}),
+      ...Object.keys(hydratedRowForEdit || {}),
       ...Object.keys(defaultValues || {}),
     ]);
     cols.forEach((c) => {
@@ -1987,7 +2018,7 @@ const RowFormModal = function RowFormModal({
 
   useEffect(() => {
     const extras = {};
-    Object.entries(effectiveRow || {}).forEach(([k, v]) => {
+    Object.entries(hydratedRowForEdit || {}).forEach(([k, v]) => {
       const lowerKey = String(k).toLowerCase();
       if (!columnLowerSet.has(lowerKey)) {
         if (fieldTypeMap[k] === 'json') {
@@ -1998,10 +2029,10 @@ const RowFormModal = function RowFormModal({
       }
     });
     setExtraVals(extras);
-  }, [effectiveRow, columnLowerSet, placeholders, fieldTypeMap]);
+  }, [hydratedRowForEdit, columnLowerSet, placeholders, fieldTypeMap]);
 
   useEffect(() => {
-    if (table !== 'companies' || effectiveRow) return;
+    if (table !== 'companies' || hydratedRowForEdit) return;
     fetch('/api/tenant_tables', { credentials: 'include' })
       .then((res) => (res.ok ? res.json() : []))
       .then((data) => {
@@ -2016,7 +2047,7 @@ const RowFormModal = function RowFormModal({
         opts.forEach((o) => loadSeedRecords(o.tableName));
       })
       .catch(() => {});
-  }, [table, effectiveRow]);
+  }, [table, hydratedRowForEdit]);
 
   function toggleSeedTable(name) {
     setExtraVals((e) => {
@@ -2244,9 +2275,11 @@ const RowFormModal = function RowFormModal({
     if (!visible) return;
     const vals = {};
     columns.forEach((c) => {
-      const rowValue = row ? getRowValueCaseInsensitive(row, c) : undefined;
+      const rowValue = hydratedRowForEdit
+        ? getRowValueCaseInsensitive(hydratedRowForEdit, c)
+        : undefined;
       const sourceValue = rowValue !== undefined ? rowValue : defaultValues[c];
-      const missing = !row || rowValue === undefined || rowValue === '';
+      const missing = !hydratedRowForEdit || rowValue === undefined || rowValue === '';
       let v;
       if (fieldTypeMap[c] === 'json') {
         v = normalizeJsonArrayForState(sourceValue);
@@ -2295,7 +2328,7 @@ const RowFormModal = function RowFormModal({
     pendingManualOverrideRef.current.clear();
     setFormValuesWithGenerated(() => vals, { notify: false });
   }, [
-    row,
+    hydratedRowForEdit,
     visible,
     user,
     company,
@@ -2478,8 +2511,11 @@ const RowFormModal = function RowFormModal({
       Object.prototype.hasOwnProperty.call(procTriggers || {}, col.toLowerCase());
     if (triggerAware) {
       const override = { ...nextSnapshot, [col]: newVal };
-      await runProcTrigger(col, override);
-      await previewTriggerAssignments(override);
+      const triggerResult = await runProcTrigger(col, override);
+      await previewTriggerAssignments(override, {
+        formVals: triggerResult?.formVals,
+        extraVals: triggerResult?.extraVals,
+      });
     }
 
     const enabled = columns.filter((c) => !disabledSet.has(c.toLowerCase()));
@@ -3071,19 +3107,28 @@ const RowFormModal = function RowFormModal({
       }
     }
 
+    let latestFormVals = workingFormVals;
     if (stateChanged) {
+      extraValsRef.current = workingExtraVals;
       setExtraVals(workingExtraVals);
-      const { diff: generatedDiff } = setFormValuesWithGenerated(() => workingFormVals, { notify: false }) || {};
+      const { diff: generatedDiff, snapshot } =
+        setFormValuesWithGenerated(() => workingFormVals, { notify: false }) || {};
+      latestFormVals = snapshot || workingFormVals;
+      formValsRef.current = latestFormVals;
       const combinedChanges = { ...(generatedDiff || {}), ...aggregatedChanges };
       if (Object.keys(combinedChanges).length > 0) {
         onChange(combinedChanges);
       }
     }
+    return { formVals: latestFormVals, extraVals: workingExtraVals };
   }
 
-  async function previewTriggerAssignments(payloadOverride = null) {
+  async function previewTriggerAssignments(payloadOverride = null, baseState = null) {
     if (!table) return;
-    const merged = { ...(extraValsRef.current || {}), ...(formValsRef.current || {}) };
+    const merged = {
+      ...(baseState?.extraVals || extraValsRef.current || {}),
+      ...(baseState?.formVals || formValsRef.current || {}),
+    };
     if (payloadOverride && typeof payloadOverride === 'object') {
       Object.entries(payloadOverride).forEach(([k, v]) => {
         const key = resolveFormColumn(k) || k;
