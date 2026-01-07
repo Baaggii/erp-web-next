@@ -533,6 +533,7 @@ const TableManager = forwardRef(function TableManager({
   const [temporaryFocusId, setTemporaryFocusId] = useState(null);
   const [temporarySelection, setTemporarySelection] = useState(() => new Set());
   const [temporaryValuePreview, setTemporaryValuePreview] = useState(null);
+  const [temporaryImagesEntry, setTemporaryImagesEntry] = useState(null);
   const pendingRequests = usePendingRequests();
   const markTemporaryScopeSeen = pendingRequests?.temporary?.markScopeSeen;
   const temporaryHasNew = Boolean(pendingRequests?.temporary?.hasNew);
@@ -2965,6 +2966,14 @@ const TableManager = forwardRef(function TableManager({
   function openUpload(row) {
     setUploadRow(row);
   }
+
+  const openTemporaryImageUpload = useCallback(
+    (values) => {
+      if (!values || typeof values !== 'object') return;
+      setUploadRow({ ...values, _uploadSource: 'form' });
+    },
+    [setUploadRow],
+  );
 
   function openContextMenu(e, value) {
     e.preventDefault();
@@ -7572,6 +7581,7 @@ const TableManager = forwardRef(function TableManager({
         allowTemporaryOnly={allowTemporaryOnly}
         forceEditable={guardOverridesActive}
         extraFooterContent={forceResolveFooterContent}
+        onImageUpload={openTemporaryImageUpload}
         posApiEnabled={posApiEnabled}
         posApiTypeField={formConfig?.posApiTypeField || ''}
         posApiEndpointMeta={formConfig?.posApiEndpointMeta || null}
@@ -7611,6 +7621,10 @@ const TableManager = forwardRef(function TableManager({
         imageIdField={uploadCfg.imageIdField || ''}
         onUploaded={(name) => {
           if (uploadRow) {
+            if (uploadRow._uploadSource === 'form') {
+              setEditing((prev) => (prev ? { ...prev, _imageName: name } : prev));
+              return;
+            }
             const id = getRowId(uploadRow);
             setRows((rs) =>
               rs.map((r) =>
@@ -7626,6 +7640,15 @@ const TableManager = forwardRef(function TableManager({
         table={table}
         folder={getImageFolder(imagesRow)}
         row={imagesRow || {}}
+        columnCaseMap={columnCaseMap}
+        configs={allConfigs}
+      />
+      <RowImageViewModal
+        visible={temporaryImagesEntry !== null}
+        onClose={() => setTemporaryImagesEntry(null)}
+        table={temporaryImagesEntry?.table || table}
+        folder={getImageFolder(temporaryImagesEntry?.row || {})}
+        row={temporaryImagesEntry?.row || {}}
         columnCaseMap={columnCaseMap}
         configs={allConfigs}
       />
@@ -7823,6 +7846,23 @@ const TableManager = forwardRef(function TableManager({
                       const reviewedAt = entry?.reviewedAt || entry?.reviewed_at || null;
                       const reviewedBy = entry?.reviewedBy || entry?.reviewed_by || '';
                       const { values: normalizedValues } = buildTemporaryFormState(entry);
+                      const temporaryImageName =
+                        normalizedValues?._imageName ||
+                        entry?.rawValues?._imageName ||
+                        entry?.cleanedValues?._imageName ||
+                        entry?.payload?._imageName ||
+                        entry?.payload?.values?._imageName ||
+                        entry?.payload?.rawValues?._imageName ||
+                        '';
+                      const imageConfig = getConfigForRow(normalizedValues) || formConfig || {};
+                      const configHasImages = (cfg) =>
+                        (Array.isArray(cfg?.imagenameField) &&
+                          cfg.imagenameField.length > 0) ||
+                        Boolean(cfg?.imageIdField);
+                      const canViewTemporaryImages =
+                        configHasImages(imageConfig) ||
+                        Object.values(allConfigs || {}).some((cfg) => configHasImages(cfg)) ||
+                        Boolean(temporaryImageName);
                       const detailColumns = temporaryDetailColumns;
                       const rowBackgroundColor = isFocused
                         ? '#fef9c3'
@@ -8025,6 +8065,35 @@ const TableManager = forwardRef(function TableManager({
                                   </tbody>
                                 </table>
                               </div>
+                              )}
+                              {canViewTemporaryImages && (
+                                <div style={{ marginTop: '0.35rem' }}>
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      setTemporaryImagesEntry({
+                                        row: {
+                                          ...normalizedValues,
+                                          ...(temporaryImageName
+                                            ? { _imageName: temporaryImageName }
+                                            : {}),
+                                        },
+                                        table: entry?.tableName || table,
+                                      })
+                                    }
+                                    style={{
+                                      padding: '0.25rem 0.55rem',
+                                      backgroundColor: '#f3f4f6',
+                                      color: '#1f2937',
+                                      border: '1px solid #d1d5db',
+                                      borderRadius: '6px',
+                                      cursor: 'pointer',
+                                      fontSize: '0.8rem',
+                                    }}
+                                  >
+                                    {t('view_images', 'View images')}
+                                  </button>
+                                </div>
                               )}
                             </td>
                             {showCreatorActions && (
