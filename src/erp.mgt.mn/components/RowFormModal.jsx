@@ -4289,9 +4289,13 @@ const RowFormModal = function RowFormModal({
     submitIntentRef.current = intent || 'post';
   };
   const imageRow = { ...extraVals, ...formVals };
+  const hasImageName = Boolean(
+    imageRow?._imageName || imageRow?.imageName || imageRow?.image_name,
+  );
   const canUploadImages =
     (Array.isArray(imagenameField) && imagenameField.length > 0) ||
-    Boolean(imageIdField);
+    Boolean(imageIdField) ||
+    hasImageName;
   const openImageUpload = () => {
     setImageUploadKey((prev) => prev + 1);
     setImageUploadOpen(true);
