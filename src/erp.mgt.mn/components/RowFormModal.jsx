@@ -1678,11 +1678,10 @@ const RowFormModal = function RowFormModal({
     }
     let working = baseRow;
     const evaluators = generatedColumnEvaluators || {};
-    const baseEvaluationRow = { ...(extraValsRef.current || {}), ...working };
-    let evaluatedRow = baseEvaluationRow;
     let generatedChanged = false;
     if (Object.keys(evaluators).length > 0) {
-      const rows = [evaluatedRow];
+      const evaluationRow = { ...(extraValsRef.current || {}), ...working };
+      const rows = [evaluationRow];
       const result = applyGeneratedColumnEvaluators({
         targetRows: rows,
         evaluators,
@@ -1691,7 +1690,6 @@ const RowFormModal = function RowFormModal({
       generatedChanged = Boolean(result?.changed);
       if (generatedChanged) {
         const evaluated = rows[0] || {};
-        evaluatedRow = rows[0] || evaluatedRow;
         const merged = { ...working };
         columns.forEach((col) => {
           if (evaluated[col] !== undefined) {
@@ -1722,12 +1720,12 @@ const RowFormModal = function RowFormModal({
         return m;
       }, {});
       const latestExtra = extraValsRef.current || {};
-      const evaluatedForExtra =
-        evaluatedRow || { ...(extraValsRef.current || {}), ...working };
+      const evaluatedRow =
+        evaluationRow || { ...(extraValsRef.current || {}), ...working };
       generatedKeys.forEach((rawKey) => {
         const lower = String(rawKey).toLowerCase();
         if (lookup[lower]) return;
-        const val = evaluatedForExtra[rawKey];
+        const val = evaluatedRow[rawKey];
         const prevExtra = latestExtra[rawKey];
         if (!valuesEqual(prevExtra, val)) {
           if (!generatedExtra) generatedExtra = {};
