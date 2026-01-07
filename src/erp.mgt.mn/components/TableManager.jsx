@@ -7849,6 +7849,11 @@ const TableManager = forwardRef(function TableManager({
                           normalizedValues?.imageName ||
                           normalizedValues?.image_name,
                       );
+                      const temporaryImageName =
+                        normalizedValues?._imageName ||
+                        normalizedValues?.imageName ||
+                        normalizedValues?.image_name ||
+                        '';
                       const canViewTemporaryImages =
                         (Array.isArray(imageConfig?.imagenameField) &&
                           imageConfig.imagenameField.length > 0) ||
