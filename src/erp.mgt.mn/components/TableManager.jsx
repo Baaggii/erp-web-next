@@ -7968,6 +7968,8 @@ const TableManager = forwardRef(function TableManager({
                           normalizedValues?.imageName ||
                           normalizedValues?.image_name,
                       );
+                      const temporaryTableName =
+                        entry?.tableName || entry?.table_name || table;
                       const temporaryImageName =
                         normalizedValues?._imageName ||
                         normalizedValues?.imageName ||
