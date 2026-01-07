@@ -1677,18 +1677,16 @@ const RowFormModal = function RowFormModal({
       return { next: baseRow, diff: {} };
     }
     let working = baseRow;
-    let evaluationRow;
     const evaluators = generatedColumnEvaluators || {};
     let generatedChanged = false;
     if (Object.keys(evaluators).length > 0) {
-      evaluationRow = { ...(extraValsRef.current || {}), ...working };
+      const evaluationRow = { ...(extraValsRef.current || {}), ...working };
       const rows = [evaluationRow];
       const result = applyGeneratedColumnEvaluators({
         targetRows: rows,
         evaluators,
         equals: valuesEqual,
       });
-      evaluationRow = rows[0] || evaluationRow;
       generatedChanged = Boolean(result?.changed);
       if (generatedChanged) {
         const evaluated = rows[0] || {};
