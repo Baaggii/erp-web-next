@@ -3643,11 +3643,10 @@ const TableManager = forwardRef(function TableManager({
   }
 
   const renameTransactionImages = useCallback(
-    async ({ tableName, oldName, newName, folder, fromFolder } = {}) => {
+    async ({ tableName, oldName, newName, folder } = {}) => {
       if (!tableName || !oldName || !newName) return;
       const params = new URLSearchParams();
       if (folder) params.set('folder', folder);
-      if (fromFolder) params.set('fromFolder', fromFolder);
       const renameUrl =
         `${API_BASE}/transaction_images/${encodeURIComponent(tableName)}` +
         `/${encodeURIComponent(oldName)}/rename/${encodeURIComponent(newName)}` +
@@ -3854,7 +3853,6 @@ const TableManager = forwardRef(function TableManager({
             oldName: promotionOldName,
             newName: promotionNewName,
             folder: promotionNewFolder,
-            fromFolder: promotionOldFolder || undefined,
           });
         }
         const [nextEntry, ...remainingQueue] = temporaryPromotionQueue;
@@ -7748,7 +7746,6 @@ const TableManager = forwardRef(function TableManager({
         imagenameFields={temporaryUploadEntry?.config?.imagenameField || []}
         columnCaseMap={columnCaseMap}
         imageIdField={temporaryUploadEntry?.config?.imageIdField || ''}
-        zIndex={1350}
         onUploaded={(name) => {
           if (!temporaryUploadEntry) return;
           const targetId = temporaryUploadEntry.id;
@@ -7970,14 +7967,29 @@ const TableManager = forwardRef(function TableManager({
                       const imageConfig = getConfigForRow(normalizedValues) || formConfig || {};
                       const temporaryImageName =
                         normalizedValues?._imageName ||
+                          normalizedValues?.imageName ||
+                          normalizedValues?.image_name,
+                      );
+                      const temporaryTableName =
+                        entry?.tableName || entry?.table_name || table;
+                      const temporaryImageName =
+                        normalizedValues?._imageName ||
                         normalizedValues?.imageName ||
                         normalizedValues?.image_name ||
                         '';
-                      const temporaryTableName =
-                        entry?.tableName || entry?.table_name || table;
-                      const temporaryCreatedBy = resolveCreatedBy(entry);
-                      const canViewTemporaryImages = true;
-                      const canUploadTemporaryImages = true;
+                      const canViewTemporaryImages =
+                        (Array.isArray(imageConfig?.imagenameField) &&
+                          imageConfig.imagenameField.length > 0) ||
+                        Boolean(imageConfig?.imageIdField) ||
+                        hasTemporaryImageName;
+                      const canUploadTemporaryImages =
+                        (Array.isArray(imageConfig?.imagenameField) &&
+                          imageConfig.imagenameField.length > 0) ||
+                        Boolean(imageConfig?.imageIdField) ||
+                        hasTemporaryImageName;
+                      const canDeleteTemporaryImages =
+                        Boolean(resolveCreatedBy(entry)) &&
+                        resolveCreatedBy(entry) === normalizedViewerEmpId;
                       const detailColumns = temporaryDetailColumns;
                       const rowBackgroundColor = isFocused
                         ? '#fef9c3'
@@ -8231,10 +8243,7 @@ const TableManager = forwardRef(function TableManager({
                                             created_by: entry?.created_by || entry?.createdBy,
                                           },
                                           table: temporaryTableName,
-                                          canDelete:
-                                            !isTemporaryReviewMode &&
-                                            Boolean(temporaryCreatedBy) &&
-                                            temporaryCreatedBy === normalizedViewerEmpId,
+                                          canDelete: canDeleteTemporaryImages,
                                         })
                                       }
                                       style={{

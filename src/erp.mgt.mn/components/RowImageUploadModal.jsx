@@ -17,7 +17,7 @@ export default function RowImageUploadModal({
   imagenameFields = [],
   columnCaseMap = {},
   imageIdField = '',
-  zIndex = 1350,
+  zIndex = 1200,
   onUploaded = () => {},
   onSuggestion = () => {},
 }) {
