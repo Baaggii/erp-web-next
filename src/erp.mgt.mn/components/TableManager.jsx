@@ -7834,18 +7834,11 @@ const TableManager = forwardRef(function TableManager({
                       const reviewedBy = entry?.reviewedBy || entry?.reviewed_by || '';
                       const { values: normalizedValues } = buildTemporaryFormState(entry);
                       const imageConfig = getConfigForRow(normalizedValues) || formConfig || {};
-                      const temporaryImageName =
-                        getCase(normalizedValues, '_imageName') ||
-                        getCase(normalizedValues, 'imageName') ||
-                        getCase(normalizedValues, 'image_name') ||
-                        getCase(entry?.payload?.values || {}, '_imageName') ||
-                        getCase(entry?.payload?.values || {}, 'imageName') ||
-                        getCase(entry?.payload?.values || {}, 'image_name') ||
-                        getCase(entry || {}, '_imageName') ||
-                        getCase(entry || {}, 'imageName') ||
-                        getCase(entry || {}, 'image_name') ||
-                        '';
-                      const hasTemporaryImageName = Boolean(temporaryImageName);
+                      const hasTemporaryImageName = Boolean(
+                        normalizedValues?._imageName ||
+                          normalizedValues?.imageName ||
+                          normalizedValues?.image_name,
+                      );
                       const canViewTemporaryImages =
                         (Array.isArray(imageConfig?.imagenameField) &&
                           imageConfig.imagenameField.length > 0) ||
