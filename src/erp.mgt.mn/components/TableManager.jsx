@@ -7985,6 +7985,9 @@ const TableManager = forwardRef(function TableManager({
                           imageConfig.imagenameField.length > 0) ||
                         Boolean(imageConfig?.imageIdField) ||
                         hasTemporaryImageName;
+                      const canDeleteTemporaryImages =
+                        Boolean(resolveCreatedBy(entry)) &&
+                        resolveCreatedBy(entry) === normalizedViewerEmpId;
                       const detailColumns = temporaryDetailColumns;
                       const rowBackgroundColor = isFocused
                         ? '#fef9c3'
