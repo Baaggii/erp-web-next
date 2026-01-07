@@ -1702,8 +1702,9 @@ const RowFormModal = function RowFormModal({
     let working = baseRow;
     const evaluators = generatedColumnEvaluators || {};
     let generatedChanged = false;
+    let evaluationRow = null;
     if (Object.keys(evaluators).length > 0) {
-      const evaluationRow = { ...(extraValsRef.current || {}), ...working };
+      evaluationRow = { ...(extraValsRef.current || {}), ...working };
       const rows = [evaluationRow];
       const result = applyGeneratedColumnEvaluators({
         targetRows: rows,
