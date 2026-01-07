@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 
-const modalStack = [];
 let modalIdCounter = 0;
+const modalStack = [];
 
 export default function Modal({
   visible,
