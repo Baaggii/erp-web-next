@@ -1677,16 +1677,18 @@ const RowFormModal = function RowFormModal({
       return { next: baseRow, diff: {} };
     }
     let working = baseRow;
+    let evaluationRow;
     const evaluators = generatedColumnEvaluators || {};
     let generatedChanged = false;
     if (Object.keys(evaluators).length > 0) {
-      const evaluationRow = { ...(extraValsRef.current || {}), ...working };
+      evaluationRow = { ...(extraValsRef.current || {}), ...working };
       const rows = [evaluationRow];
       const result = applyGeneratedColumnEvaluators({
         targetRows: rows,
         evaluators,
         equals: valuesEqual,
       });
+      evaluationRow = rows[0] || evaluationRow;
       generatedChanged = Boolean(result?.changed);
       if (generatedChanged) {
         const evaluated = rows[0] || {};
@@ -1715,10 +1717,14 @@ const RowFormModal = function RowFormModal({
     let generatedExtra = null;
     if (generatedChanged) {
       const generatedKeys = Object.keys(evaluators || {});
-      const lookup = columns.reduce((m, col) => {
-        m[col.toLowerCase()] = col;
-        return m;
-      }, {});
+      const lookup = { ...(columnCaseMap || {}) };
+      columns.forEach((col) => {
+        if (col === undefined || col === null) return;
+        const lower = String(col).toLowerCase();
+        if (!lookup[lower]) {
+          lookup[lower] = col;
+        }
+      });
       const latestExtra = extraValsRef.current || {};
       const evaluatedRow =
         evaluationRow || { ...(extraValsRef.current || {}), ...working };
@@ -1735,7 +1741,7 @@ const RowFormModal = function RowFormModal({
       return { next: { ...working }, diff, generatedExtra };
     }
     return { next: working, diff };
-  }, [generatedColumnEvaluators, columns]);
+  }, [generatedColumnEvaluators, columns, columnCaseMap]);
 
   const setFormValuesWithGenerated = useCallback(
     (updater, { notify = true } = {}) => {
