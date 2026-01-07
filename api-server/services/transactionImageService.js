@@ -140,6 +140,38 @@ function buildFolderName(row, fallback = '') {
   return fallback;
 }
 
+export function resolveImageNaming(row = {}, config = {}, fallbackTable = '') {
+  const imagenameFields = Array.isArray(config?.imagenameField)
+    ? config.imagenameField
+    : [];
+  const imageIdField =
+    typeof config?.imageIdField === 'string' ? config.imageIdField : '';
+  const combinedFields = Array.from(
+    new Set([...imagenameFields, imageIdField].filter(Boolean)),
+  );
+  let name = '';
+  if (combinedFields.length) {
+    name = buildNameFromRow(row, combinedFields);
+  }
+  if (!name && imagenameFields.length) {
+    name = buildNameFromRow(row, imagenameFields);
+  }
+  if (!name && imageIdField) {
+    name = buildNameFromRow(row, [imageIdField]);
+  }
+  if (!name) {
+    const fallback =
+      getCase(row, '_imageName') ||
+      getCase(row, 'imagename') ||
+      getCase(row, 'image_name') ||
+      getCase(row, 'ImageName') ||
+      '';
+    name = sanitizeName(fallback || '');
+  }
+  const folder = buildFolderName(row, config?.imageFolder || fallbackTable);
+  return { name, folder };
+}
+
 async function fetchTxnCodes() {
   try {
     const [rows] = await pool.query('SELECT UITrtype, UITransType FROM code_transaction');
