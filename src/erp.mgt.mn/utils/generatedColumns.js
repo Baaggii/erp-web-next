@@ -380,7 +380,10 @@ class MySqlExpressionParser {
   parseEquality() {
     let expr = this.parseComparison();
     while (true) {
-      const op = this.matchOperator('=', '!=', '<>', 'IS') || (this.peek()?.type === 'identifier' && this.peek().upper === 'IS' ? 'IS' : null);
+      let op = this.matchOperator('=', '!=', '<>');
+      if (!op && this.matchKeyword('IS')) {
+        op = 'IS';
+      }
       if (!op) break;
       if (op === 'IS' || op === 'is') {
         const not = this.matchKeyword('NOT');
@@ -479,9 +482,8 @@ class MySqlExpressionParser {
     }
     if (token.type === 'identifier') {
       this.consume();
-      if ((this.peek()?.type === 'paren' && this.peek().value === '(') || this.matchOperator('(')) {
-        if (!(this.peek()?.type === 'paren' && this.peek().value === '(')) {
-          this.index -= 1;
+      if (this.matchOperator('(') || (this.peek()?.type === 'paren' && this.peek().value === '(')) {
+        if (this.peek()?.type === 'paren' && this.peek().value === '(') {
           this.consume();
         }
         const args = [];
