@@ -1,5 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 
+let modalIdCounter = 0;
+const modalStack = [];
+
 export default function Modal({
   visible,
   title,
@@ -7,6 +10,7 @@ export default function Modal({
   children,
   width = 'auto',
   zIndex = 1000,
+  closeOnEscape = true,
 }) {
   const [closing, setClosing] = useState(false);
   const modalRef = useRef(null);
