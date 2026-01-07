@@ -3,6 +3,7 @@ import AsyncSearchSelect from './AsyncSearchSelect.jsx';
 import Modal from './Modal.jsx';
 import InlineTransactionTable from './InlineTransactionTable.jsx';
 import RowImageUploadModal from './RowImageUploadModal.jsx';
+import RowImageViewModal from './RowImageViewModal.jsx';
 import RowDetailModal from './RowDetailModal.jsx';
 import TooltipWrapper from './TooltipWrapper.jsx';
 import TagMultiInput from './TagMultiInput.jsx';
@@ -118,6 +119,7 @@ const RowFormModal = function RowFormModal({
   table = '',
   imagenameField = [],
   imageIdField = '',
+  imageConfigs = {},
   scope = 'forms',
   labelFontSize,
   boxWidth,
@@ -138,6 +140,7 @@ const RowFormModal = function RowFormModal({
   allowTemporarySave = false,
   temporarySaveLabel = null,
   readOnly = false,
+  allowImageActions = false,
   isAdding = false,
   isEditingTemporaryDraft = false,
   canPost = true,
@@ -841,6 +844,7 @@ const RowFormModal = function RowFormModal({
   });
   const [imageUploadOpen, setImageUploadOpen] = useState(false);
   const [imageUploadKey, setImageUploadKey] = useState(0);
+  const [imageViewOpen, setImageViewOpen] = useState(false);
 
   const resolveCombinationFilters = useCallback(
     (column, overrideConfig = null) => {
@@ -4297,9 +4301,14 @@ const RowFormModal = function RowFormModal({
     (Array.isArray(imagenameField) && imagenameField.length > 0) ||
     Boolean(imageIdField) ||
     hasImageName;
+  const canViewImages = canUploadImages;
+  const imageActionDisabled = isReadOnly && !allowImageActions;
   const openImageUpload = () => {
     setImageUploadKey((prev) => prev + 1);
     setImageUploadOpen(true);
+  };
+  const openImageView = () => {
+    setImageViewOpen(true);
   };
   const handleImageUploaded = (name) => {
     setExtraVals((prev) => ({ ...prev, _imageName: name }));
@@ -4464,9 +4473,19 @@ const RowFormModal = function RowFormModal({
                 type="button"
                 onClick={openImageUpload}
                 className="px-3 py-1 bg-gray-200 rounded"
-                disabled={isReadOnly}
+                disabled={imageActionDisabled}
               >
                 {t('upload_images', 'Upload Images')}
+              </button>
+            )}
+            {canViewImages && (
+              <button
+                type="button"
+                onClick={openImageView}
+                className="px-3 py-1 bg-gray-200 rounded"
+                disabled={imageActionDisabled}
+              >
+                {t('view_images', 'View images')}
               </button>
             )}
             <button
@@ -4714,6 +4733,16 @@ const RowFormModal = function RowFormModal({
         columnCaseMap={columnCaseMap}
         imageIdField={imageIdField}
         onUploaded={handleImageUploaded}
+      />
+      <RowImageViewModal
+        visible={imageViewOpen}
+        onClose={() => setImageViewOpen(false)}
+        table={table}
+        folder={getImageFolder(imageRow)}
+        row={imageRow}
+        columnCaseMap={columnCaseMap}
+        configs={imageConfigs}
+        canDelete={!imageActionDisabled}
       />
       <RowDetailModal
         visible={!!previewRow}

@@ -3643,10 +3643,11 @@ const TableManager = forwardRef(function TableManager({
   }
 
   const renameTransactionImages = useCallback(
-    async ({ tableName, oldName, newName, folder } = {}) => {
+    async ({ tableName, oldName, newName, folder, sourceFolder } = {}) => {
       if (!tableName || !oldName || !newName) return;
       const params = new URLSearchParams();
       if (folder) params.set('folder', folder);
+      if (sourceFolder) params.set('sourceFolder', sourceFolder);
       const renameUrl =
         `${API_BASE}/transaction_images/${encodeURIComponent(tableName)}` +
         `/${encodeURIComponent(oldName)}/rename/${encodeURIComponent(newName)}` +
@@ -3853,6 +3854,7 @@ const TableManager = forwardRef(function TableManager({
             oldName: promotionOldName,
             newName: promotionNewName,
             folder: promotionNewFolder,
+            sourceFolder: promotionOldFolder,
           });
         }
         const [nextEntry, ...remainingQueue] = temporaryPromotionQueue;
@@ -7650,6 +7652,7 @@ const TableManager = forwardRef(function TableManager({
         tableColumns={columnMeta}
         imagenameField={formConfig?.imagenameField || []}
         imageIdField={formConfig?.imageIdField || ''}
+        imageConfigs={allConfigs}
         viewSource={viewSourceMap}
         viewDisplays={viewDisplayMap}
         viewColumns={viewColumns}
@@ -7658,6 +7661,7 @@ const TableManager = forwardRef(function TableManager({
         scope="forms"
         allowTemporarySave={temporarySaveEnabled}
         readOnly={isTemporaryReadOnlyMode}
+        allowImageActions={isTemporaryReviewMode}
         isAdding={isAdding}
         canPost={canPostTransactions}
         allowTemporaryOnly={allowTemporaryOnly}
