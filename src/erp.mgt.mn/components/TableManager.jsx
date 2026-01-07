@@ -7846,23 +7846,11 @@ const TableManager = forwardRef(function TableManager({
                       const reviewedAt = entry?.reviewedAt || entry?.reviewed_at || null;
                       const reviewedBy = entry?.reviewedBy || entry?.reviewed_by || '';
                       const { values: normalizedValues } = buildTemporaryFormState(entry);
-                      const temporaryImageName =
-                        normalizedValues?._imageName ||
-                        entry?.rawValues?._imageName ||
-                        entry?.cleanedValues?._imageName ||
-                        entry?.payload?._imageName ||
-                        entry?.payload?.values?._imageName ||
-                        entry?.payload?.rawValues?._imageName ||
-                        '';
                       const imageConfig = getConfigForRow(normalizedValues) || formConfig || {};
-                      const configHasImages = (cfg) =>
-                        (Array.isArray(cfg?.imagenameField) &&
-                          cfg.imagenameField.length > 0) ||
-                        Boolean(cfg?.imageIdField);
                       const canViewTemporaryImages =
-                        configHasImages(imageConfig) ||
-                        Object.values(allConfigs || {}).some((cfg) => configHasImages(cfg)) ||
-                        Boolean(temporaryImageName);
+                        (Array.isArray(imageConfig?.imagenameField) &&
+                          imageConfig.imagenameField.length > 0) ||
+                        Boolean(imageConfig?.imageIdField);
                       const detailColumns = temporaryDetailColumns;
                       const rowBackgroundColor = isFocused
                         ? '#fef9c3'
@@ -8072,12 +8060,7 @@ const TableManager = forwardRef(function TableManager({
                                     type="button"
                                     onClick={() =>
                                       setTemporaryImagesEntry({
-                                        row: {
-                                          ...normalizedValues,
-                                          ...(temporaryImageName
-                                            ? { _imageName: temporaryImageName }
-                                            : {}),
-                                        },
+                                        row: normalizedValues,
                                         table: entry?.tableName || table,
                                       })
                                     }
