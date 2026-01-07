@@ -150,7 +150,6 @@ const RowFormModal = function RowFormModal({
   posApiPaymentMethods = [],
   extraFooterContent = null,
   allowTemporaryOnly = false,
-  onImageUpload = null,
 }) {
   const mounted = useRef(false);
   const renderCount = useRef(0);
@@ -4253,13 +4252,6 @@ const RowFormModal = function RowFormModal({
     onSaveTemporary &&
     (isAdding || isEditingTemporaryDraft) &&
     (!isReadOnly || temporarySaveLabel);
-  const showImageUploadButton =
-    allowTemporarySave &&
-    (isAdding || isEditingTemporaryDraft) &&
-    !isReadOnly &&
-    typeof onImageUpload === 'function' &&
-    ((Array.isArray(imagenameField) && imagenameField.length > 0) ||
-      Boolean(imageIdField));
   const postButtonLabel = submitLocked ? t('posting', 'Posting...') : t('post', 'Post');
   const ebarimtButtonLabel = submitLocked
     ? t('posting', 'Posting...')
@@ -4454,21 +4446,6 @@ const RowFormModal = function RowFormModal({
                 className="px-3 py-1 bg-yellow-400 text-gray-900 rounded"
               >
                 {temporaryButtonLabel}
-              </button>
-            )}
-            {showImageUploadButton && (
-              <button
-                type="button"
-                onClick={() => {
-                  const payload = { ...formVals };
-                  if (payload._imageName === undefined && row?._imageName) {
-                    payload._imageName = row._imageName;
-                  }
-                  onImageUpload(payload);
-                }}
-                className="px-3 py-1 bg-gray-200 rounded"
-              >
-                {t('upload_images', 'Upload Images')}
               </button>
             )}
             <button

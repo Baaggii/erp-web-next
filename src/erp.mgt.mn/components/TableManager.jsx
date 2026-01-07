@@ -2967,14 +2967,6 @@ const TableManager = forwardRef(function TableManager({
     setUploadRow(row);
   }
 
-  const openTemporaryImageUpload = useCallback(
-    (values) => {
-      if (!values || typeof values !== 'object') return;
-      setUploadRow({ ...values, _uploadSource: 'form' });
-    },
-    [setUploadRow],
-  );
-
   function openContextMenu(e, value) {
     e.preventDefault();
     e.stopPropagation();
@@ -7581,7 +7573,6 @@ const TableManager = forwardRef(function TableManager({
         allowTemporaryOnly={allowTemporaryOnly}
         forceEditable={guardOverridesActive}
         extraFooterContent={forceResolveFooterContent}
-        onImageUpload={openTemporaryImageUpload}
         posApiEnabled={posApiEnabled}
         posApiTypeField={formConfig?.posApiTypeField || ''}
         posApiEndpointMeta={formConfig?.posApiEndpointMeta || null}
@@ -7621,10 +7612,6 @@ const TableManager = forwardRef(function TableManager({
         imageIdField={uploadCfg.imageIdField || ''}
         onUploaded={(name) => {
           if (uploadRow) {
-            if (uploadRow._uploadSource === 'form') {
-              setEditing((prev) => (prev ? { ...prev, _imageName: name } : prev));
-              return;
-            }
             const id = getRowId(uploadRow);
             setRows((rs) =>
               rs.map((r) =>
