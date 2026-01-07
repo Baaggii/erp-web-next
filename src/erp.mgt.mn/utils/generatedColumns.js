@@ -169,6 +169,25 @@ function readStringLiteral(expr, startIdx) {
   throw new Error('Unterminated string literal');
 }
 
+function readQuotedIdentifier(expr, startIdx) {
+  let idx = startIdx + 1;
+  let result = '';
+  while (idx < expr.length) {
+    const ch = expr[idx];
+    if (ch === '`') {
+      if (expr[idx + 1] === '`') {
+        result += '`';
+        idx += 2;
+        continue;
+      }
+      return { value: result, nextIndex: idx + 1 };
+    }
+    result += ch;
+    idx += 1;
+  }
+  throw new Error('Unterminated quoted identifier');
+}
+
 function readNumberLiteral(expr, startIdx) {
   let idx = startIdx;
   let sawDot = false;
@@ -223,23 +242,9 @@ function tokenizeMySqlExpression(expr) {
       continue;
     }
     if (ch === '`') {
-      let end = idx + 1;
-      let value = '';
-      while (end < expr.length) {
-        const nextChar = expr[end];
-        if (nextChar === '`') {
-          if (expr[end + 1] === '`') {
-            value += '`';
-            end += 2;
-            continue;
-          }
-          break;
-        }
-        value += nextChar;
-        end += 1;
-      }
+      const { value, nextIndex } = readQuotedIdentifier(expr, idx);
       tokens.push({ type: 'identifier', value, upper: value.toUpperCase() });
-      idx = end + 1;
+      idx = nextIndex;
       continue;
     }
     if (/[0-9]/.test(ch) || (ch === '.' && /[0-9]/.test(expr[idx + 1] || ''))) {
@@ -380,7 +385,11 @@ class MySqlExpressionParser {
   parseEquality() {
     let expr = this.parseComparison();
     while (true) {
-      const op = this.matchOperator('=', '!=', '<>', 'IS') || (this.peek()?.type === 'identifier' && this.peek().upper === 'IS' ? 'IS' : null);
+      let op = this.matchOperator('=', '!=', '<>', 'IS');
+      if (!op && this.peek()?.type === 'identifier' && this.peek().upper === 'IS') {
+        this.consume();
+        op = 'IS';
+      }
       if (!op) break;
       if (op === 'IS' || op === 'is') {
         const not = this.matchKeyword('NOT');
@@ -468,7 +477,13 @@ class MySqlExpressionParser {
     if (token.type === 'paren' && token.value === '(') {
       this.consume();
       const expr = this.parseExpression();
-      if (!this.matchOperator(')') && !(this.peek()?.type === 'paren' && this.peek().value === ')')) {
+      if (
+        !this.matchOperator(')') &&
+        !(this.peek()?.type === 'paren' && this.peek().value === ')')
+      ) {
+        if (this.peek()?.type === 'comma') {
+          return expr;
+        }
         throw new Error('Expected )');
       }
       if (this.peek()?.type === 'paren' && this.peek().value === ')') this.consume();
@@ -479,20 +494,26 @@ class MySqlExpressionParser {
     }
     if (token.type === 'identifier') {
       this.consume();
-      if ((this.peek()?.type === 'paren' && this.peek().value === '(') || this.matchOperator('(')) {
-        if (!(this.peek()?.type === 'paren' && this.peek().value === '(')) {
-          this.index -= 1;
-          this.consume();
-        }
+      const hasParenToken = this.peek()?.type === 'paren' && this.peek().value === '(';
+      const matchedParenOperator = this.matchOperator('(');
+      if (hasParenToken || matchedParenOperator) {
+        if (hasParenToken) this.consume();
         const args = [];
-        if (this.matchOperator(')') || (this.peek()?.type === 'paren' && this.peek().value === ')')) {
+        if (
+          this.matchOperator(')') ||
+          (this.peek()?.type === 'paren' && this.peek().value === ')')
+        ) {
           if (this.peek()?.type === 'paren' && this.peek().value === ')') this.consume();
           return { type: 'function', name: token.value, args };
         }
         while (true) {
           args.push(this.parseExpression());
-          if (this.matchOperator(')') || (this.peek()?.type === 'paren' && this.peek().value === ')')) {
-            if (this.peek()?.type === 'paren' && this.peek().value === ')') this.consume();
+          if (
+            this.matchOperator(')') ||
+            (this.peek()?.type === 'paren' && this.peek().value === ')')
+          ) {
+            if (this.peek()?.type === 'paren' && this.peek().value === ')')
+              this.consume();
             break;
           }
           if (!this.matchOperator(',') && !(this.peek()?.type === 'comma')) {
