@@ -533,6 +533,7 @@ const TableManager = forwardRef(function TableManager({
   const [temporaryFocusId, setTemporaryFocusId] = useState(null);
   const [temporarySelection, setTemporarySelection] = useState(() => new Set());
   const [temporaryValuePreview, setTemporaryValuePreview] = useState(null);
+  const [temporaryImagesEntry, setTemporaryImagesEntry] = useState(null);
   const pendingRequests = usePendingRequests();
   const markTemporaryScopeSeen = pendingRequests?.temporary?.markScopeSeen;
   const temporaryHasNew = Boolean(pendingRequests?.temporary?.hasNew);
@@ -7629,6 +7630,15 @@ const TableManager = forwardRef(function TableManager({
         columnCaseMap={columnCaseMap}
         configs={allConfigs}
       />
+      <RowImageViewModal
+        visible={temporaryImagesEntry !== null}
+        onClose={() => setTemporaryImagesEntry(null)}
+        table={temporaryImagesEntry?.table || table}
+        folder={getImageFolder(temporaryImagesEntry?.row || {})}
+        row={temporaryImagesEntry?.row || {}}
+        columnCaseMap={columnCaseMap}
+        configs={allConfigs}
+      />
       <Modal
         visible={showTemporaryModal}
         onClose={() => setShowTemporaryModal(false)}
@@ -7823,6 +7833,11 @@ const TableManager = forwardRef(function TableManager({
                       const reviewedAt = entry?.reviewedAt || entry?.reviewed_at || null;
                       const reviewedBy = entry?.reviewedBy || entry?.reviewed_by || '';
                       const { values: normalizedValues } = buildTemporaryFormState(entry);
+                      const imageConfig = getConfigForRow(normalizedValues) || formConfig || {};
+                      const canViewTemporaryImages =
+                        (Array.isArray(imageConfig?.imagenameField) &&
+                          imageConfig.imagenameField.length > 0) ||
+                        Boolean(imageConfig?.imageIdField);
                       const detailColumns = temporaryDetailColumns;
                       const rowBackgroundColor = isFocused
                         ? '#fef9c3'
@@ -8025,6 +8040,30 @@ const TableManager = forwardRef(function TableManager({
                                   </tbody>
                                 </table>
                               </div>
+                              )}
+                              {canViewTemporaryImages && (
+                                <div style={{ marginTop: '0.35rem' }}>
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      setTemporaryImagesEntry({
+                                        row: normalizedValues,
+                                        table: entry?.tableName || table,
+                                      })
+                                    }
+                                    style={{
+                                      padding: '0.25rem 0.55rem',
+                                      backgroundColor: '#f3f4f6',
+                                      color: '#1f2937',
+                                      border: '1px solid #d1d5db',
+                                      borderRadius: '6px',
+                                      cursor: 'pointer',
+                                      fontSize: '0.8rem',
+                                    }}
+                                  >
+                                    {t('view_images', 'View images')}
+                                  </button>
+                                </div>
                               )}
                             </td>
                             {showCreatorActions && (
