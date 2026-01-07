@@ -7834,10 +7834,16 @@ const TableManager = forwardRef(function TableManager({
                       const reviewedBy = entry?.reviewedBy || entry?.reviewed_by || '';
                       const { values: normalizedValues } = buildTemporaryFormState(entry);
                       const imageConfig = getConfigForRow(normalizedValues) || formConfig || {};
+                      const hasTemporaryImageName = Boolean(
+                        normalizedValues?._imageName ||
+                          normalizedValues?.imageName ||
+                          normalizedValues?.image_name,
+                      );
                       const canViewTemporaryImages =
                         (Array.isArray(imageConfig?.imagenameField) &&
                           imageConfig.imagenameField.length > 0) ||
-                        Boolean(imageConfig?.imageIdField);
+                        Boolean(imageConfig?.imageIdField) ||
+                        hasTemporaryImageName;
                       const detailColumns = temporaryDetailColumns;
                       const rowBackgroundColor = isFocused
                         ? '#fef9c3'

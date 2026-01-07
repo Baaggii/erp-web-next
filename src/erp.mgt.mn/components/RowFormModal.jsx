@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useContext, memo, useCallback } fro
 import AsyncSearchSelect from './AsyncSearchSelect.jsx';
 import Modal from './Modal.jsx';
 import InlineTransactionTable from './InlineTransactionTable.jsx';
+import RowImageUploadModal from './RowImageUploadModal.jsx';
 import RowDetailModal from './RowDetailModal.jsx';
 import TooltipWrapper from './TooltipWrapper.jsx';
 import TagMultiInput from './TagMultiInput.jsx';
@@ -18,6 +19,7 @@ import selectDisplayFieldsForRelation from '../utils/selectDisplayFieldsForRelat
 import extractCombinationFilterValue from '../utils/extractCombinationFilterValue.js';
 import useGeneralConfig from '../hooks/useGeneralConfig.js';
 import { API_BASE } from '../utils/apiBase.js';
+import slugify from '../utils/slugify.js';
 import {
   formatJsonItem,
   formatJsonList,
@@ -837,6 +839,8 @@ const RowFormModal = function RowFormModal({
     });
     return extras;
   });
+  const [imageUploadOpen, setImageUploadOpen] = useState(false);
+  const [imageUploadKey, setImageUploadKey] = useState(0);
 
   const resolveCombinationFilters = useCallback(
     (column, overrideConfig = null) => {
@@ -857,6 +861,21 @@ const RowFormModal = function RowFormModal({
     },
     [autoSelectConfigs, columnCaseMap, formVals, relationConfigMap],
   );
+
+  function getImageFolder(row) {
+    if (!row || !row._saved) return table;
+    const lowerMap = {};
+    Object.keys(row).forEach((k) => {
+      lowerMap[k.toLowerCase()] = row[k];
+    });
+    const t1 = lowerMap['trtype'];
+    const t2 =
+      lowerMap['uitranstypename'] ||
+      lowerMap['transtype'] ||
+      lowerMap['transtypename'];
+    if (!t1 || !t2) return table;
+    return `${slugify(t1)}/${slugify(String(t2))}`;
+  }
 
   const isCombinationFilterReady = (hasCombination, targetColumn, filters) => {
     if (!hasCombination) return true;
@@ -4269,6 +4288,17 @@ const RowFormModal = function RowFormModal({
   const markSubmitIntent = (intent) => {
     submitIntentRef.current = intent || 'post';
   };
+  const imageRow = { ...extraVals, ...formVals };
+  const canUploadImages =
+    (Array.isArray(imagenameField) && imagenameField.length > 0) ||
+    Boolean(imageIdField);
+  const openImageUpload = () => {
+    setImageUploadKey((prev) => prev + 1);
+    setImageUploadOpen(true);
+  };
+  const handleImageUploaded = (name) => {
+    setExtraVals((prev) => ({ ...prev, _imageName: name }));
+  };
 
   if (inline) {
     return (
@@ -4424,6 +4454,16 @@ const RowFormModal = function RowFormModal({
             )}
           </div>
           <div className="text-right space-x-2">
+            {canUploadImages && (
+              <button
+                type="button"
+                onClick={openImageUpload}
+                className="px-3 py-1 bg-gray-200 rounded"
+                disabled={isReadOnly}
+              >
+                {t('upload_images', 'Upload Images')}
+              </button>
+            )}
             <button
               type="button"
               onClick={() => handlePrint('emp')}
@@ -4658,6 +4698,18 @@ const RowFormModal = function RowFormModal({
           </div>
         </Modal>
       )}
+      <RowImageUploadModal
+        visible={imageUploadOpen}
+        onClose={() => setImageUploadOpen(false)}
+        table={table}
+        folder={getImageFolder(imageRow)}
+        row={imageRow}
+        rowKey={imageUploadKey}
+        imagenameFields={imagenameField}
+        columnCaseMap={columnCaseMap}
+        imageIdField={imageIdField}
+        onUploaded={handleImageUploaded}
+      />
       <RowDetailModal
         visible={!!previewRow}
         onClose={() => setPreviewRow(null)}
