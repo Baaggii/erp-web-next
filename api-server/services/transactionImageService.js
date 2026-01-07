@@ -381,7 +381,6 @@ export async function renameImages(
   oldName,
   newName,
   folder = null,
-  fromFolder = null,
   companyId = 0,
 ) {
   const { baseDir, urlBase } = await getDirs(companyId);
@@ -390,15 +389,10 @@ export async function renameImages(
   ensureDir(dir);
   const targetDir = folder ? path.join(baseDir, folder) : dir;
   ensureDir(targetDir);
-  const sourceDir = fromFolder ? path.join(baseDir, fromFolder) : null;
-  if (sourceDir) ensureDir(sourceDir);
   const oldPrefix = sanitizeName(oldName);
   const newPrefix = sanitizeName(newName);
   try {
     const searchDirs = folder ? [dir, targetDir] : [dir];
-    if (sourceDir && !searchDirs.includes(sourceDir)) {
-      searchDirs.push(sourceDir);
-    }
     const results = [];
     const seen = new Set();
     for (const d of searchDirs) {

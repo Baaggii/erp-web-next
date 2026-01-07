@@ -217,7 +217,6 @@ router.post('/:table/:oldName/rename/:newName', requireAuth, async (req, res, ne
       req.params.oldName,
       req.params.newName,
       req.query.folder,
-      req.query.fromFolder,
       req.user.companyId,
     );
     res.json(toAbsolute(req, files));
