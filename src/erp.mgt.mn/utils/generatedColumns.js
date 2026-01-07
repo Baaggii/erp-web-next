@@ -344,20 +344,6 @@ class MySqlExpressionParser {
     return true;
   }
 
-  matchParen(value) {
-    const token = this.peek();
-    if (!token || token.type !== 'paren' || token.value !== value) return false;
-    this.index += 1;
-    return true;
-  }
-
-  matchComma() {
-    const token = this.peek();
-    if (!token || token.type !== 'comma') return false;
-    this.index += 1;
-    return true;
-  }
-
   expectKeyword(name) {
     if (!this.matchKeyword(name)) throw new Error(`Expected keyword ${name}`);
   }
@@ -488,11 +474,13 @@ class MySqlExpressionParser {
       this.consume();
       return { type: 'boolean', value: token.upper === 'TRUE' };
     }
-    if (this.matchParen('(')) {
+    if (token.type === 'paren' && token.value === '(') {
+      this.consume();
       const expr = this.parseExpression();
-      if (!this.matchParen(')')) {
+      if (!this.matchOperator(')') && !(this.peek()?.type === 'paren' && this.peek().value === ')')) {
         throw new Error('Expected )');
       }
+      if (this.peek()?.type === 'paren' && this.peek().value === ')') this.consume();
       return expr;
     }
     if (token.type === 'identifier' && token.upper === 'CASE') {
@@ -500,19 +488,26 @@ class MySqlExpressionParser {
     }
     if (token.type === 'identifier') {
       this.consume();
-      if (this.matchParen('(')) {
+      if ((this.peek()?.type === 'paren' && this.peek().value === '(') || this.matchOperator('(')) {
+        if (!(this.peek()?.type === 'paren' && this.peek().value === '(')) {
+          this.index -= 1;
+          this.consume();
+        }
         const args = [];
-        if (this.matchParen(')')) {
+        if (this.matchOperator(')') || (this.peek()?.type === 'paren' && this.peek().value === ')')) {
+          if (this.peek()?.type === 'paren' && this.peek().value === ')') this.consume();
           return { type: 'function', name: token.value, args };
         }
         while (true) {
           args.push(this.parseExpression());
-          if (this.matchParen(')')) {
+          if (this.matchOperator(')') || (this.peek()?.type === 'paren' && this.peek().value === ')')) {
+            if (this.peek()?.type === 'paren' && this.peek().value === ')') this.consume();
             break;
           }
-          if (!this.matchOperator(',') && !this.matchComma()) {
+          if (!this.matchOperator(',') && !(this.peek()?.type === 'comma')) {
             throw new Error('Expected , in function arguments');
           }
+          if (this.peek()?.type === 'comma') this.consume();
         }
         return { type: 'function', name: token.value, args };
       }
