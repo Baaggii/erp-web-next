@@ -189,6 +189,7 @@ router.post('/:table/:name', requireAuth, upload.array('images'), async (req, re
       req.files,
       req.query.folder,
       req.user.companyId,
+      req.user.empid || req.user.id || null,
     );
     res.json(toAbsolute(req, files));
   } catch (err) {
@@ -218,6 +219,7 @@ router.post('/:table/:oldName/rename/:newName', requireAuth, async (req, res, ne
       req.params.newName,
       req.query.folder,
       req.user.companyId,
+      req.query.sourceFolder || null,
     );
     res.json(toAbsolute(req, files));
   } catch (err) {
@@ -232,6 +234,7 @@ router.delete('/:table/:name/:file', requireAuth, async (req, res, next) => {
       req.params.file,
       req.query.folder,
       req.user.companyId,
+      req.user.empid || req.user.id || null,
     );
     res.json({ ok });
   } catch (err) {

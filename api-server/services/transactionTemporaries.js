@@ -2195,6 +2195,7 @@ export async function promoteTemporarySubmission(
             newImageName,
             newImageFolder,
             row.company_id,
+            oldImageFolder,
           );
         } catch (renameErr) {
           console.error('Failed to rename images after temporary promotion', {

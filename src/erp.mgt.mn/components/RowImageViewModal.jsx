@@ -25,7 +25,7 @@ export default function RowImageViewModal({
   const { addToast } = useToast();
   const generalConfig = useGeneralConfig();
   const { t } = useTranslation();
-  const { company } = useContext(AuthContext);
+  const { company, user } = useContext(AuthContext);
   const toast = (msg, type = 'info') => {
     if (type === 'info' && !generalConfig?.general?.imageToastEnabled) return;
     addToast(msg, type);
@@ -49,6 +49,19 @@ export default function RowImageViewModal({
     String(name)
       .toLowerCase()
       .replace(/[^a-z0-9_-]+/gi, '_');
+  const normalizeEmpId = (value) =>
+    value == null ? '' : sanitize(String(value));
+  const viewerEmpId = user?.empid || user?.empId || user?.id || '';
+  const extractUploaderId = (name = '') => {
+    const match = String(name).match(/__u([^_]+?)__/i);
+    return match ? match[1] : null;
+  };
+  const canDeleteFile = (fileName) => {
+    if (!canDelete) return false;
+    const uploader = extractUploaderId(fileName);
+    if (!uploader) return canDelete;
+    return normalizeEmpId(uploader) === normalizeEmpId(viewerEmpId);
+  };
 
   function pickConfig(cfgs = {}, r = {}) {
     const tVal =
@@ -367,7 +380,7 @@ export default function RowImageViewModal({
                     style={{ width: '100%', height: '100%', objectFit: 'cover', cursor: 'pointer' }}
                     onClick={() => handleView(idx)}
                   />
-                  {canDelete && (
+                  {canDeleteFile(f.name) && (
                     <button
                       type="button"
                       onClick={(e) => {
