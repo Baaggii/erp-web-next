@@ -7663,7 +7663,6 @@ const TableManager = forwardRef(function TableManager({
         allowTemporaryOnly={allowTemporaryOnly}
         forceEditable={guardOverridesActive}
         extraFooterContent={forceResolveFooterContent}
-        allowImageUploadInReadOnly={requestType === 'temporary-promote'}
         posApiEnabled={posApiEnabled}
         posApiTypeField={formConfig?.posApiTypeField || ''}
         posApiEndpointMeta={formConfig?.posApiEndpointMeta || null}
@@ -7701,7 +7700,6 @@ const TableManager = forwardRef(function TableManager({
         imagenameFields={uploadCfg.imagenameField || []}
         columnCaseMap={columnCaseMap}
         imageIdField={uploadCfg.imageIdField || ''}
-        zIndex={1350}
         onUploaded={(name) => {
           if (uploadRow) {
             const id = getRowId(uploadRow);
@@ -7965,7 +7963,7 @@ const TableManager = forwardRef(function TableManager({
                       const reviewedBy = entry?.reviewedBy || entry?.reviewed_by || '';
                       const { values: normalizedValues } = buildTemporaryFormState(entry);
                       const imageConfig = getConfigForRow(normalizedValues) || formConfig || {};
-                      const temporaryImageName =
+                      const hasTemporaryImageName = Boolean(
                         normalizedValues?._imageName ||
                           normalizedValues?.imageName ||
                           normalizedValues?.image_name,
