@@ -59,7 +59,7 @@ export default function RowImageViewModal({
   const canDeleteFile = (fileName) => {
     if (!canDelete) return false;
     const uploader = extractUploaderId(fileName);
-    if (!uploader) return canDelete;
+    if (!uploader) return false;
     return normalizeEmpId(uploader) === normalizeEmpId(viewerEmpId);
   };
 
