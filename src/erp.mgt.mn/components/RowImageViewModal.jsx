@@ -16,6 +16,8 @@ export default function RowImageViewModal({
   row = {},
   columnCaseMap = {},
   configs = {},
+  currentConfig = {},
+  currentConfigName = '',
   canDelete = true,
 }) {
   const baseZIndex = 1300;
@@ -152,9 +154,28 @@ export default function RowImageViewModal({
 
     const { config: cfg, configName } = pickConfigEntry(configs, row);
     let primary = '';
-    let idName = '';
-    if (cfg?.imagenameField?.length) {
-      primary = buildImageName(row, cfg.imagenameField, columnCaseMap, company).name;
+    const idFieldSet = new Set();
+    if (preferredName) {
+      primary = preferredName;
+      if (preferredConfigName) {
+        usedConfigNames = [preferredConfigName];
+      }
+      if (preferredConfig?.imageIdField) {
+        idFieldSet.add(preferredConfig.imageIdField);
+      }
+    }
+    if (!primary) {
+      const matchedConfigs = pickMatchingConfigs(configs, row);
+      const { fields, configNames, imageIdFields } =
+        collectImageFields(matchedConfigs);
+      imageIdFields.forEach((field) => idFieldSet.add(field));
+      if (fields.length > 0) {
+        const { name } = buildImageName(row, fields, columnCaseMap, company);
+        if (name) {
+          primary = name;
+          usedConfigNames = configNames;
+        }
+      }
     }
     if (!primary) {
       primary = buildFallbackName(row);
@@ -162,11 +183,17 @@ export default function RowImageViewModal({
     if (!primary && row?._imageName) {
       primary = row._imageName;
     }
-    if (cfg?.imageIdField) {
-      idName = buildImageName(row, [cfg.imageIdField], columnCaseMap, company).name;
-    }
     const altNames = [];
-    if (idName && idName !== primary) altNames.push(idName);
+    let idName = '';
+    idFieldSet.forEach((field) => {
+      const { name } = buildImageName(row, [field], columnCaseMap, company);
+      if (name && !idName) {
+        idName = name;
+      }
+      if (name && name !== primary && !altNames.includes(name)) {
+        altNames.push(name);
+      }
+    });
     if (row._imageName && ![primary, ...altNames].includes(row._imageName)) {
       altNames.push(row._imageName);
     }
@@ -265,7 +292,17 @@ export default function RowImageViewModal({
       toast('No images found', 'info');
       setFiles([]);
     })();
-  }, [visible, folder, row, table, configs]);
+  }, [
+    visible,
+    folder,
+    row,
+    table,
+    configs,
+    currentConfig,
+    currentConfigName,
+    columnCaseMap,
+    company,
+  ]);
 
   useEffect(() => {
     if (!visible) {
