@@ -2498,16 +2498,6 @@ const TableManager = forwardRef(function TableManager({
     return `${slugify(t1)}/${slugify(String(t2))}`;
   }
 
-  function getCase(obj, field) {
-    if (!obj) return undefined;
-    if (obj[field] !== undefined) return obj[field];
-    const canonical = resolveCanonicalKey(field);
-    if (canonical != null && obj[canonical] !== undefined) return obj[canonical];
-    const lower = String(field).toLowerCase();
-    const key = Object.keys(obj).find((k) => String(k).toLowerCase() === lower);
-    return key ? obj[key] : undefined;
-  }
-
   const resolveImageNameForRow = useCallback(
     (row, config = {}) => {
       if (!row || typeof row !== 'object') return '';
@@ -2519,52 +2509,32 @@ const TableManager = forwardRef(function TableManager({
       const combinedFields = Array.from(
         new Set([...imagenameFields, imageIdField].filter(Boolean)),
       );
-      const promotedRecordId =
-        getCase(row, 'promotedRecordId') ||
-        getCase(row, 'promoted_record_id') ||
-        getCase(row, 'recordId') ||
-        getCase(row, 'record_id') ||
-        getCase(row, 'id') ||
-        null;
-      const hasImageId =
-        imageIdField &&
-        getCase(row, imageIdField) != null &&
-        getCase(row, imageIdField) !== '';
-      const nameSource =
-        imageIdField && promotedRecordId && !hasImageId
-          ? { ...row, [imageIdField]: promotedRecordId }
-          : row;
       if (combinedFields.length > 0) {
-        const { name } = buildImageName(
-          nameSource,
-          combinedFields,
-          columnCaseMap,
-          company,
-        );
+        const { name } = buildImageName(row, combinedFields, columnCaseMap, company);
         if (name) return name;
       }
       if (imagenameFields.length > 0) {
-        const { name } = buildImageName(
-          nameSource,
-          imagenameFields,
-          columnCaseMap,
-          company,
-        );
+        const { name } = buildImageName(row, imagenameFields, columnCaseMap, company);
         if (name) return name;
       }
       if (imageIdField) {
-        const { name } = buildImageName(
-          nameSource,
-          [imageIdField],
-          columnCaseMap,
-          company,
-        );
+        const { name } = buildImageName(row, [imageIdField], columnCaseMap, company);
         if (name) return name;
       }
       return row._imageName || row.imageName || row.image_name || '';
     },
     [columnCaseMap, company],
   );
+
+  function getCase(obj, field) {
+    if (!obj) return undefined;
+    if (obj[field] !== undefined) return obj[field];
+    const canonical = resolveCanonicalKey(field);
+    if (canonical != null && obj[canonical] !== undefined) return obj[canonical];
+    const lower = String(field).toLowerCase();
+    const key = Object.keys(obj).find((k) => String(k).toLowerCase() === lower);
+    return key ? obj[key] : undefined;
+  }
 
   function getConfigForRow(row) {
     if (!row) return formConfig || {};
