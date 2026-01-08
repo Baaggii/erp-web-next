@@ -111,6 +111,65 @@ export default function RowImageViewModal({
     return { config: {}, configName: '' };
   }
 
+  function pickMatchingConfigs(cfgs = {}, r = {}) {
+    const matches = [];
+    const tVal =
+      getCase(r, 'transtype') ||
+      getCase(r, 'Transtype') ||
+      getCase(r, 'UITransType') ||
+      getCase(r, 'UITransTypeName');
+    for (const [configName, cfg] of Object.entries(cfgs)) {
+      if (!cfg?.transactionTypeValue) continue;
+      if (
+        tVal !== undefined &&
+        String(tVal) === String(cfg.transactionTypeValue)
+      ) {
+        matches.push({ config: cfg, configName });
+        continue;
+      }
+      if (cfg.transactionTypeField) {
+        const val = getCase(r, cfg.transactionTypeField);
+        if (val !== undefined && String(val) === String(cfg.transactionTypeValue)) {
+          matches.push({ config: cfg, configName });
+        }
+      } else {
+        const matchField = Object.keys(r).find(
+          (k) => String(getCase(r, k)) === String(cfg.transactionTypeValue),
+        );
+        if (matchField) {
+          matches.push({
+            config: { ...cfg, transactionTypeField: matchField },
+            configName,
+          });
+        }
+      }
+    }
+    return matches;
+  }
+
+  function collectImageFields(entries = []) {
+    const fieldSet = new Set();
+    const imageIdFields = new Set();
+    const configNames = [];
+    entries.forEach(({ config, configName }) => {
+      if (configName) configNames.push(configName);
+      if (Array.isArray(config?.imagenameField)) {
+        config.imagenameField.forEach((field) => {
+          if (field) fieldSet.add(field);
+        });
+      }
+      if (typeof config?.imageIdField === 'string' && config.imageIdField) {
+        fieldSet.add(config.imageIdField);
+        imageIdFields.add(config.imageIdField);
+      }
+    });
+    return {
+      fields: Array.from(fieldSet),
+      configNames,
+      imageIdFields: Array.from(imageIdFields),
+    };
+  }
+
   function buildFallbackName(r = {}) {
     const fields = [
       'z_mat_code',
@@ -153,13 +212,25 @@ export default function RowImageViewModal({
     loaded.current = true;
 
     const { config: cfg, configName } = pickConfigEntry(configs, row);
+    const preferredConfig = currentConfig && Object.keys(currentConfig).length
+      ? currentConfig
+      : cfg;
+    const preferredConfigName = currentConfigName || configName;
+    const preferredFields = Array.isArray(preferredConfig?.imagenameField)
+      ? preferredConfig.imagenameField
+      : [];
+    const preferredImageIdField =
+      typeof preferredConfig?.imageIdField === 'string' ? preferredConfig.imageIdField : '';
+    const preferredFieldSet = Array.from(
+      new Set([...preferredFields, preferredImageIdField].filter(Boolean)),
+    );
+    const preferredName = preferredFieldSet.length
+      ? buildImageName(row, preferredFieldSet, columnCaseMap, company).name
+      : '';
     let primary = '';
     const idFieldSet = new Set();
     if (preferredName) {
       primary = preferredName;
-      if (preferredConfigName) {
-        usedConfigNames = [preferredConfigName];
-      }
       if (preferredConfig?.imageIdField) {
         idFieldSet.add(preferredConfig.imageIdField);
       }
@@ -173,7 +244,6 @@ export default function RowImageViewModal({
         const { name } = buildImageName(row, fields, columnCaseMap, company);
         if (name) {
           primary = name;
-          usedConfigNames = configNames;
         }
       }
     }
