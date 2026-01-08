@@ -90,15 +90,25 @@ function logRowsMemory(rows) {
     }
 }
 
+function normalizeSearchValue(value) {
+  if (value && typeof value === 'object') {
+    if (value.value !== undefined && value.value !== null) return value.value;
+    if (value.id !== undefined && value.id !== null) return value.id;
+    if (value.Id !== undefined && value.Id !== null) return value.Id;
+    if (value.label !== undefined && value.label !== null) return value.label;
+  }
+  return value;
+}
+
 function sanitizeName(name) {
-  return String(name)
+  return String(normalizeSearchValue(name))
     .toLowerCase()
     .replace(/[^a-z0-9_-]+/gi, '_');
 }
 
 function buildDelimitedSearchTerm(value, delimiter = '_') {
   if (value === undefined || value === null) return '';
-  const safe = sanitizeName(value);
+  const safe = sanitizeName(normalizeSearchValue(value));
   if (!safe) return '';
   return `${delimiter}${safe}${delimiter}`;
 }
@@ -7287,8 +7297,10 @@ const TableManager = forwardRef(function TableManager({
                 if (relationConfig?.table) {
                   const idField =
                     relationConfig.idField || relationConfig.column || c;
-                  const idValue = getRowValueCaseInsensitive(r, idField);
-                  if (idValue !== undefined && idValue !== null) {
+                  const idValue = normalizeSearchValue(
+                    getRowValueCaseInsensitive(r, idField),
+                  );
+                  if (idValue !== undefined && idValue !== null && idValue !== '') {
                     const delimiter = String(idValue).includes('-') ? '-' : '_';
                     searchTerm = buildDelimitedSearchTerm(idValue, delimiter);
                   }
