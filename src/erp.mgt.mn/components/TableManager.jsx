@@ -96,6 +96,13 @@ function sanitizeName(name) {
     .replace(/[^a-z0-9_-]+/gi, '_');
 }
 
+function buildDelimitedSearchTerm(value, delimiter = '_') {
+  if (value === undefined || value === null) return '';
+  const safe = sanitizeName(value);
+  if (!safe) return '';
+  return `${delimiter}${safe}${delimiter}`;
+}
+
 function getRowValueCaseInsensitive(row, key) {
   if (!row || key === undefined || key === null) return undefined;
   const keyMap = {};
@@ -3003,10 +3010,10 @@ const TableManager = forwardRef(function TableManager({
     setUploadRow(row);
   }
 
-  function openContextMenu(e, value) {
+  function openContextMenu(e, term) {
     e.preventDefault();
     e.stopPropagation();
-    setCtxMenu({ x: e.clientX, y: e.clientY, value });
+    setCtxMenu({ x: e.clientX, y: e.clientY, term });
   }
 
   const hydrateDisplayFromWrappedRelations = useCallback(
@@ -7213,6 +7220,7 @@ const TableManager = forwardRef(function TableManager({
                 style.overflow = 'hidden';
                 style.textOverflow = 'ellipsis';
                 const rawValue = r[c];
+                const relationConfig = relationConfigs[c];
                 const raw = relationOpts[c]
                   ? labelMap[c][rawValue] || (rawValue == null ? '' : String(rawValue))
                   : rawValue == null
@@ -7275,12 +7283,22 @@ const TableManager = forwardRef(function TableManager({
                   display = normalizeDateInput(raw, 'YYYY-MM-DD');
                 }
                 const showFull = display.length > 20;
+                let searchTerm = sanitizeName(raw);
+                if (relationConfig?.table) {
+                  const idField =
+                    relationConfig.idField || relationConfig.column || c;
+                  const idValue = getRowValueCaseInsensitive(r, idField);
+                  if (idValue !== undefined && idValue !== null) {
+                    const delimiter = String(idValue).includes('-') ? '-' : '_';
+                    searchTerm = buildDelimitedSearchTerm(idValue, delimiter);
+                  }
+                }
                 return (
                   <td
                     key={c}
                     style={style}
                     title={raw}
-                    onContextMenu={(e) => raw && openContextMenu(e, sanitizeName(raw))}
+                    onContextMenu={(e) => searchTerm && openContextMenu(e, searchTerm)}
                   >
                     {display}
                   </td>
@@ -8821,7 +8839,7 @@ const TableManager = forwardRef(function TableManager({
           <li
             style={{ padding: '0.25rem 1rem', cursor: 'pointer' }}
             onClick={() => {
-              loadSearch(ctxMenu.value);
+              loadSearch(ctxMenu.term);
               setCtxMenu(null);
             }}
           >
