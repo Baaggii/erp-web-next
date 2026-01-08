@@ -5244,8 +5244,36 @@ const TableManager = forwardRef(function TableManager({
         );
         const mergedValues = mergeDisplayFallbacks(normalizedValues, canonicalHydratedValues);
         const finalizedValues = populateRelationDisplayFields(mergedValues);
-        const entryImageName =
-          entry?._imageName || entry?.imageName || entry?.image_name || '';
+        const promotedRecordId =
+          entry?.promotedRecordId ||
+          entry?.promoted_record_id ||
+          entry?.recordId ||
+          entry?.record_id ||
+          null;
+        const imageConfig =
+          getConfigForRow({ ...finalizedValues, ...entry }) || formConfig || {};
+        const resolvedImageValues = {
+          ...finalizedValues,
+          ...entry,
+        };
+        if (
+          promotedRecordId &&
+          imageConfig?.imageIdField &&
+          (resolvedImageValues[imageConfig.imageIdField] == null ||
+            resolvedImageValues[imageConfig.imageIdField] === '')
+        ) {
+          resolvedImageValues[imageConfig.imageIdField] = promotedRecordId;
+          if (
+            finalizedValues[imageConfig.imageIdField] == null ||
+            finalizedValues[imageConfig.imageIdField] === ''
+          ) {
+            finalizedValues[imageConfig.imageIdField] = promotedRecordId;
+          }
+        }
+        const entryImageName = resolveImageNameForRow(
+          resolvedImageValues,
+          imageConfig,
+        );
         if (entryImageName) {
           finalizedValues._imageName = finalizedValues._imageName || entryImageName;
           finalizedValues.imageName = finalizedValues.imageName || entryImageName;
@@ -5280,10 +5308,13 @@ const TableManager = forwardRef(function TableManager({
         return { values: finalizedValues, rows: sanitizedRows };
       },
       [
+        formConfig,
+        getConfigForRow,
         hydrateDisplayFromWrappedRelations,
         mergeDisplayFallbacks,
         normalizeToCanonical,
         populateRelationDisplayFields,
+        resolveImageNameForRow,
       ],
     );
 
@@ -7992,21 +8023,30 @@ const TableManager = forwardRef(function TableManager({
                       const reviewedAt = entry?.reviewedAt || entry?.reviewed_at || null;
                       const reviewedBy = entry?.reviewedBy || entry?.reviewed_by || '';
                       const { values: normalizedValues } = buildTemporaryFormState(entry);
-                      const imageConfig = getConfigForRow(normalizedValues) || formConfig || {};
-                      const entryImageName =
-                        normalizedValues?._imageName ||
-                        normalizedValues?.imageName ||
-                        normalizedValues?.image_name ||
-                        entry?._imageName ||
-                        entry?.imageName ||
-                        entry?.image_name ||
-                        '';
+                      const imageConfig =
+                        getConfigForRow({ ...normalizedValues, ...entry }) || formConfig || {};
                       const promotedRecordId =
                         entry?.promotedRecordId ||
                         entry?.promoted_record_id ||
                         entry?.recordId ||
                         entry?.record_id ||
                         null;
+                      const resolvedImageValues = {
+                        ...normalizedValues,
+                        ...entry,
+                      };
+                      if (
+                        promotedRecordId &&
+                        imageConfig?.imageIdField &&
+                        (resolvedImageValues[imageConfig.imageIdField] == null ||
+                          resolvedImageValues[imageConfig.imageIdField] === '')
+                      ) {
+                        resolvedImageValues[imageConfig.imageIdField] = promotedRecordId;
+                      }
+                      const entryImageName = resolveImageNameForRow(
+                        resolvedImageValues,
+                        imageConfig,
+                      );
                       const normalizedValuesWithImage = {
                         ...normalizedValues,
                         ...(entryImageName
@@ -8036,11 +8076,7 @@ const TableManager = forwardRef(function TableManager({
                           imageConfig.imagenameField.length > 0) ||
                         Boolean(imageConfig?.imageIdField) ||
                         hasTemporaryImageName;
-                      const canUploadTemporaryImages =
-                        (Array.isArray(imageConfig?.imagenameField) &&
-                          imageConfig.imagenameField.length > 0) ||
-                        Boolean(imageConfig?.imageIdField) ||
-                        hasTemporaryImageName;
+                      const canUploadTemporaryImages = true;
                       const canDeleteTemporaryImages = Boolean(normalizedViewerEmpId);
                       const detailColumns = temporaryDetailColumns;
                       const rowBackgroundColor = isFocused
