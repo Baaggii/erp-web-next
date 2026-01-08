@@ -9,6 +9,7 @@ import {
   rejectTemporarySubmission,
   getTemporaryChainHistory,
   deleteTemporarySubmission,
+  updateTemporarySubmissionImageName,
 } from '../services/transactionTemporaries.js';
 
 const router = express.Router();
@@ -197,6 +198,19 @@ router.delete('/:id', requireAuth, async (req, res, next) => {
   try {
     const result = await deleteTemporarySubmission(req.params.id, {
       requesterEmpId: req.user.empid,
+    });
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.patch('/:id/image', requireAuth, async (req, res, next) => {
+  try {
+    const { imageName } = req.body || {};
+    const result = await updateTemporarySubmissionImageName(req.params.id, {
+      requesterEmpId: req.user.empid,
+      imageName,
     });
     res.json(result);
   } catch (err) {

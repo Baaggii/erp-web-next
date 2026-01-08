@@ -7821,10 +7821,36 @@ const TableManager = forwardRef(function TableManager({
                   : entry,
               ),
             );
+            fetch(
+              `${API_BASE}/transaction_temporaries/${encodeURIComponent(targetId)}/image`,
+              {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
+                body: JSON.stringify({ imageName: name }),
+              },
+            ).catch((err) => {
+              console.error('Failed to persist temporary image name', err);
+              addToast(
+                t(
+                  'temporary_image_name_save_failed',
+                  'Failed to save temporary image name',
+                ),
+                'error',
+              );
+            });
           }
           setTemporaryUploadEntry((prev) =>
             prev
-              ? { ...prev, row: { ...prev.row, _imageName: name, imageName: name } }
+              ? {
+                  ...prev,
+                  row: {
+                    ...prev.row,
+                    _imageName: name,
+                    imageName: name,
+                    image_name: name,
+                  },
+                }
               : prev,
           );
         }}

@@ -2626,3 +2626,83 @@ export async function deleteTemporarySubmission(id, { requesterEmpId }) {
     conn.release();
   }
 }
+
+export async function updateTemporarySubmissionImageName(
+  id,
+  { requesterEmpId, imageName },
+) {
+  const normalizedRequester = normalizeEmpId(requesterEmpId);
+  if (!normalizedRequester) {
+    const err = new Error('requesterEmpId required');
+    err.status = 400;
+    throw err;
+  }
+  const normalizedImageName = String(imageName || '').trim();
+  if (!normalizedImageName) {
+    const err = new Error('imageName required');
+    err.status = 400;
+    throw err;
+  }
+  const conn = await pool.getConnection();
+  try {
+    await ensureTemporaryTable(conn);
+    await conn.query('BEGIN');
+    const [rows] = await conn.query(
+      `SELECT * FROM \`${TEMP_TABLE}\` WHERE id = ? FOR UPDATE`,
+      [id],
+    );
+    const row = rows[0];
+    if (!row) {
+      const err = new Error('Temporary submission not found');
+      err.status = 404;
+      throw err;
+    }
+    const normalizedCreator = normalizeEmpId(row.created_by);
+    const reviewerIds = parseEmpIdList(row.plan_senior_empid);
+    const isReviewer = reviewerIds.includes(normalizedRequester);
+    if (normalizedCreator !== normalizedRequester && !isReviewer) {
+      const err = new Error('Forbidden');
+      err.status = 403;
+      throw err;
+    }
+    const payload = safeJsonParse(row.payload_json, {});
+    const cleanedValues = safeJsonParse(row.cleaned_values_json, {});
+    const rawValues = safeJsonParse(row.raw_values_json, {});
+    const applyImageName = (value) => {
+      if (!isPlainObject(value)) return value;
+      return {
+        ...value,
+        _imageName: normalizedImageName,
+        imageName: normalizedImageName,
+        image_name: normalizedImageName,
+        imagename: normalizedImageName,
+      };
+    };
+    const nextPayload = isPlainObject(payload) ? { ...payload } : {};
+    nextPayload.values = applyImageName(nextPayload.values);
+    nextPayload.cleanedValues = applyImageName(nextPayload.cleanedValues);
+    nextPayload.rawValues = applyImageName(nextPayload.rawValues);
+    const nextCleanedValues = applyImageName(cleanedValues);
+    const nextRawValues = applyImageName(rawValues);
+    await conn.query(
+      `UPDATE \`${TEMP_TABLE}\`
+       SET payload_json = ?, cleaned_values_json = ?, raw_values_json = ?
+       WHERE id = ?`,
+      [
+        safeJsonStringify(nextPayload),
+        safeJsonStringify(nextCleanedValues),
+        safeJsonStringify(nextRawValues),
+        id,
+      ],
+    );
+    await conn.query('COMMIT');
+    return { id, imageName: normalizedImageName };
+  } catch (err) {
+    try {
+      await conn.query('ROLLBACK');
+    } catch {}
+    throw err;
+  } finally {
+    conn.release();
+  }
+}
