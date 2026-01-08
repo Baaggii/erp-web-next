@@ -3714,10 +3714,10 @@ const TableManager = forwardRef(function TableManager({
     }
 
     const baseRowForName = isAdding ? values : editing;
-    const { name: oldImageName } = buildImageName(
+    const imageConfig = formConfig || {};
+    const oldImageName = resolveImageNameForRow(
       baseRowForName || merged,
-      formConfig?.imagenameField || [],
-      columnCaseMap,
+      imageConfig,
     );
 
     const required = formConfig?.requiredFields || [];
@@ -3944,23 +3944,17 @@ const TableManager = forwardRef(function TableManager({
         } else {
           setActiveTemporaryDraftId(null);
         }
-        if (isAdding && (formConfig?.imagenameField || []).length) {
+        if (
+          isAdding &&
+          (((formConfig?.imagenameField || []).length > 0 ||
+            Boolean(formConfig?.imageIdField)) ||
+            oldImageName)
+        ) {
           const rowForName = {
             ...merged,
             ...(savedRow && typeof savedRow === 'object' ? savedRow : {}),
           };
-          const nameFields = Array.from(
-            new Set(
-              (formConfig?.imagenameField || [])
-                .concat(formConfig?.imageIdField || '')
-                .filter(Boolean),
-            ),
-          );
-          const { name: newImageName } = buildImageName(
-            rowForName,
-            nameFields,
-            columnCaseMap,
-          );
+          const newImageName = resolveImageNameForRow(rowForName, imageConfig);
           const folder = getImageFolder(rowForName);
           if (
             oldImageName &&
