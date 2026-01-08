@@ -7994,10 +7994,6 @@ const TableManager = forwardRef(function TableManager({
                       const { values: normalizedValues } = buildTemporaryFormState(entry);
                       const imageConfig =
                         getConfigForRow({ ...normalizedValues, ...entry }) || formConfig || {};
-                      const entryImageName = resolveImageNameForRow(
-                        { ...normalizedValues, ...entry },
-                        imageConfig,
-                      );
                       const promotedRecordId =
                         entry?.promotedRecordId ||
                         entry?.promoted_record_id ||
