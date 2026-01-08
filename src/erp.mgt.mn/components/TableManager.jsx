@@ -8004,6 +8004,22 @@ const TableManager = forwardRef(function TableManager({
                         entry?.recordId ||
                         entry?.record_id ||
                         null;
+                      const resolvedImageValues = {
+                        ...normalizedValues,
+                        ...entry,
+                      };
+                      if (
+                        promotedRecordId &&
+                        imageConfig?.imageIdField &&
+                        (resolvedImageValues[imageConfig.imageIdField] == null ||
+                          resolvedImageValues[imageConfig.imageIdField] === '')
+                      ) {
+                        resolvedImageValues[imageConfig.imageIdField] = promotedRecordId;
+                      }
+                      const entryImageName = resolveImageNameForRow(
+                        resolvedImageValues,
+                        imageConfig,
+                      );
                       const normalizedValuesWithImage = {
                         ...normalizedValues,
                         ...(entryImageName
@@ -8033,11 +8049,7 @@ const TableManager = forwardRef(function TableManager({
                           imageConfig.imagenameField.length > 0) ||
                         Boolean(imageConfig?.imageIdField) ||
                         hasTemporaryImageName;
-                      const canUploadTemporaryImages =
-                        (Array.isArray(imageConfig?.imagenameField) &&
-                          imageConfig.imagenameField.length > 0) ||
-                        Boolean(imageConfig?.imageIdField) ||
-                        hasTemporaryImageName;
+                      const canUploadTemporaryImages = true;
                       const canDeleteTemporaryImages = Boolean(normalizedViewerEmpId);
                       const detailColumns = temporaryDetailColumns;
                       const rowBackgroundColor = isFocused
