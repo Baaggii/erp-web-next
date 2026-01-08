@@ -7325,8 +7325,12 @@ const TableManager = forwardRef(function TableManager({
                 }
                 const showFull = display.length > 20;
                 let searchTerm = sanitizeName(raw);
-                if (relationInfo?.config?.table) {
-                  const idValue = getRelationSearchValue(r, c, relationInfo);
+                if (relationConfig?.table) {
+                  const idField =
+                    relationConfig.idField || relationConfig.column || c;
+                  const idValue = normalizeSearchValue(
+                    getRowValueCaseInsensitive(r, idField),
+                  );
                   if (idValue !== undefined && idValue !== null && idValue !== '') {
                     const delimiter = String(idValue).includes('-') ? '-' : '_';
                     searchTerm = buildDelimitedSearchTerm(idValue, delimiter);
