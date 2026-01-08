@@ -75,33 +75,38 @@ export default function RowImageViewModal({
     return normalizeEmpId(uploader) === normalizeEmpId(viewerEmpId);
   };
 
-  function pickConfig(cfgs = {}, r = {}) {
+  function pickConfigEntry(cfgs = {}, r = {}) {
     const tVal =
       getCase(r, 'transtype') ||
       getCase(r, 'Transtype') ||
       getCase(r, 'UITransType') ||
       getCase(r, 'UITransTypeName');
-    for (const cfg of Object.values(cfgs)) {
+    for (const [configName, cfg] of Object.entries(cfgs)) {
       if (!cfg.transactionTypeValue) continue;
       if (
         tVal !== undefined &&
         String(tVal) === String(cfg.transactionTypeValue)
       ) {
-        return cfg;
+        return { config: cfg, configName };
       }
       if (cfg.transactionTypeField) {
         const val = getCase(r, cfg.transactionTypeField);
         if (val !== undefined && String(val) === String(cfg.transactionTypeValue)) {
-          return cfg;
+          return { config: cfg, configName };
         }
       } else {
         const matchField = Object.keys(r).find(
           (k) => String(getCase(r, k)) === String(cfg.transactionTypeValue),
         );
-        if (matchField) return { ...cfg, transactionTypeField: matchField };
+        if (matchField) {
+          return {
+            config: { ...cfg, transactionTypeField: matchField },
+            configName,
+          };
+        }
       }
     }
-    return {};
+    return { config: {}, configName: '' };
   }
 
   function buildFallbackName(r = {}) {
@@ -145,7 +150,7 @@ export default function RowImageViewModal({
     if (!visible || loaded.current) return;
     loaded.current = true;
 
-    const cfg = pickConfig(configs, row);
+    const { config: cfg, configName } = pickConfigEntry(configs, row);
     let primary = '';
     let idName = '';
     if (cfg?.imagenameField?.length) {
@@ -164,6 +169,9 @@ export default function RowImageViewModal({
     if (idName && idName !== primary) altNames.push(idName);
     if (row._imageName && ![primary, ...altNames].includes(row._imageName)) {
       altNames.push(row._imageName);
+    }
+    if (configName) {
+      toast(`Image search config: ${configName}`, 'info');
     }
     toast(`Primary image name: ${primary}`, 'info');
     if (altNames.length) {
