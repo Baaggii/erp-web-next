@@ -7992,15 +7992,12 @@ const TableManager = forwardRef(function TableManager({
                       const reviewedAt = entry?.reviewedAt || entry?.reviewed_at || null;
                       const reviewedBy = entry?.reviewedBy || entry?.reviewed_by || '';
                       const { values: normalizedValues } = buildTemporaryFormState(entry);
-                      const imageConfig = getConfigForRow(normalizedValues) || formConfig || {};
-                      const entryImageName =
-                        normalizedValues?._imageName ||
-                        normalizedValues?.imageName ||
-                        normalizedValues?.image_name ||
-                        entry?._imageName ||
-                        entry?.imageName ||
-                        entry?.image_name ||
-                        '';
+                      const imageConfig =
+                        getConfigForRow({ ...normalizedValues, ...entry }) || formConfig || {};
+                      const entryImageName = resolveImageNameForRow(
+                        { ...normalizedValues, ...entry },
+                        imageConfig,
+                      );
                       const promotedRecordId =
                         entry?.promotedRecordId ||
                         entry?.promoted_record_id ||
