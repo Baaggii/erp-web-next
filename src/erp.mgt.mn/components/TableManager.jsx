@@ -3956,22 +3956,19 @@ const TableManager = forwardRef(function TableManager({
           };
           const newImageName = resolveImageNameForRow(rowForName, imageConfig);
           const folder = getImageFolder(rowForName);
+          const sourceFolder = getImageFolder(baseRowForName || merged);
           if (
             oldImageName &&
             newImageName &&
             (oldImageName !== newImageName || folder !== table)
           ) {
-            const renameUrl =
-              `/api/transaction_images/${table}/${encodeURIComponent(oldImageName)}` +
-              `/rename/${encodeURIComponent(newImageName)}?folder=${encodeURIComponent(folder)}`;
-            await fetch(renameUrl, { method: 'POST', credentials: 'include' });
-            const verifyUrl =
-              `/api/transaction_images/${table}/${encodeURIComponent(newImageName)}?folder=${encodeURIComponent(folder)}`;
-            const res2 = await fetch(verifyUrl, { credentials: 'include' });
-            const imgs = res2.ok ? await res2.json().catch(() => []) : [];
-            if (!Array.isArray(imgs) || imgs.length === 0) {
-              await fetch(renameUrl, { method: 'POST', credentials: 'include' });
-            }
+            await renameTransactionImages({
+              tableName: table,
+              oldName: oldImageName,
+              newName: newImageName,
+              folder,
+              sourceFolder,
+            });
           }
         }
         if (shouldIssueEbarimt) {
