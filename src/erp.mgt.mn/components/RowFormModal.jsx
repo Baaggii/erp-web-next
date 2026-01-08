@@ -4297,6 +4297,8 @@ const RowFormModal = function RowFormModal({
     imageRow?._imageName || imageRow?.imageName || imageRow?.image_name,
   );
   const canUploadImages =
+    allowImageActions ||
+    isEditingTemporaryDraft ||
     canPost ||
     (Array.isArray(imagenameField) && imagenameField.length > 0) ||
     Boolean(imageIdField) ||
