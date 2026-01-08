@@ -3040,7 +3040,29 @@ const TableManager = forwardRef(function TableManager({
     setShowDetail(true);
   }
 
+  function showImageSearchToast(row, tableName = table) {
+    if (!generalConfig.general?.imageToastEnabled) return;
+    if (!row || typeof row !== 'object') return;
+    const config = getConfigForRow(row) || formConfig || {};
+    const name = resolveImageNameForRow(row, config);
+    const folder = getImageFolder(row);
+    const details = [
+      name ? `name=${name}` : null,
+      folder ? `folder=${folder}` : null,
+      tableName ? `table=${tableName}` : null,
+    ]
+      .filter(Boolean)
+      .join(', ');
+    addToast(
+      t('image_searching_name', 'Searching images for: {{details}}', {
+        details: details || t('image_searching_unknown', 'unknown'),
+      }),
+      'info',
+    );
+  }
+
   function openImages(row) {
+    showImageSearchToast(row);
     setImagesRow(row);
   }
 
@@ -8401,19 +8423,21 @@ const TableManager = forwardRef(function TableManager({
                                   {canViewTemporaryImages && (
                                     <button
                                       type="button"
-                                      onClick={() =>
+                                      onClick={() => {
+                                        const rowWithImage = {
+                                          ...normalizedValuesWithImage,
+                                          _imageName:
+                                            temporaryImageName ||
+                                            normalizedValuesWithImage?._imageName,
+                                          created_by: entry?.created_by || entry?.createdBy,
+                                        };
+                                        showImageSearchToast(rowWithImage, temporaryTableName);
                                         setTemporaryImagesEntry({
-                                          row: {
-                                            ...normalizedValuesWithImage,
-                                            _imageName:
-                                              temporaryImageName ||
-                                              normalizedValuesWithImage?._imageName,
-                                            created_by: entry?.created_by || entry?.createdBy,
-                                          },
+                                          row: rowWithImage,
                                           table: temporaryTableName,
                                           canDelete: canDeleteTemporaryImages,
-                                        })
-                                      }
+                                        });
+                                      }}
                                       style={{
                                         padding: '0.25rem 0.55rem',
                                         backgroundColor: '#f3f4f6',
