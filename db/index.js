@@ -1256,6 +1256,8 @@ function mapEmploymentRow(row) {
     pos_districtCode,
     merchantTin,
     merchant_id,
+    effective_start_date,
+    effective_end_date,
     permission_list,
     ...rest
   } = row;
@@ -1308,6 +1310,8 @@ function mapEmploymentRow(row) {
     merchantTin,
     merchant_id,
     merchant_tin,
+    effective_start_date,
+    effective_end_date,
     ...rest,
     permissions,
   };
@@ -1524,6 +1528,8 @@ export async function getEmploymentSessions(empid, options = {}) {
           e.employment_department_id AS department_id,
           ${deptRel.nameExpr} AS department_name,
           es.workplace_id AS workplace_id,
+          es.effective_start_date AS effective_start_date,
+          es.effective_end_date AS effective_end_date,
           ${posNoExpr} AS pos_no,
           ${merchantExpr} AS merchant_id,
           ${posRelation.select.posNo} AS posNo,
@@ -1550,6 +1556,8 @@ export async function getEmploymentSessions(empid, options = {}) {
             es.department_id,
             es.emp_id,
             es.workplace_id,
+            es.start_date AS effective_start_date,
+            es.end_date AS effective_end_date,
             ${posNoExpr} AS pos_no,
             ${merchantExpr} AS merchant_id
          FROM tbl_employment_schedule es
@@ -1558,22 +1566,53 @@ export async function getEmploymentSessions(empid, options = {}) {
              company_id,
              branch_id,
              department_id,
+             workplace_id,
              emp_id,
+             YEAR(start_date) AS start_year,
+             MONTH(start_date) AS start_month,
              MAX(start_date) AS latest_start_date
            FROM tbl_employment_schedule
            WHERE start_date <= ${scheduleDateSql}
-             AND (end_date IS NULL OR end_date >= ${scheduleDateSql})
+             AND (end_date IS NULL OR end_date >= CURRENT_DATE())
              AND deleted_at IS NULL
-           GROUP BY company_id, branch_id, department_id, emp_id
+           GROUP BY company_id, branch_id, department_id, workplace_id, emp_id, YEAR(start_date), MONTH(start_date)
          ) latest
            ON latest.company_id = es.company_id
           AND latest.branch_id = es.branch_id
           AND latest.department_id = es.department_id
           AND latest.emp_id = es.emp_id
+          AND latest.workplace_id = es.workplace_id
           AND latest.latest_start_date = es.start_date
          WHERE es.start_date <= ${scheduleDateSql}
-           AND (es.end_date IS NULL OR es.end_date >= ${scheduleDateSql})
+           AND (es.end_date IS NULL OR es.end_date >= CURRENT_DATE())
            AND es.deleted_at IS NULL
+         UNION ALL
+         SELECT
+           e.employment_company_id AS company_id,
+           e.employment_branch_id AS branch_id,
+           e.employment_department_id AS department_id,
+           e.employment_emp_id AS emp_id,
+           e.employment_workplace_id AS workplace_id,
+           e.employment_date AS effective_start_date,
+           NULL AS effective_end_date,
+           NULL AS pos_no,
+           NULL AS merchant_id
+         FROM tbl_employment e
+         WHERE e.employment_emp_id = ?
+           AND e.employment_date <= ${scheduleDateSql}
+           AND e.deleted_at IS NULL
+           AND NOT EXISTS (
+             SELECT 1
+               FROM tbl_employment_schedule es
+              WHERE es.emp_id = e.employment_emp_id
+                AND es.company_id = e.employment_company_id
+                AND es.branch_id = e.employment_branch_id
+                AND es.department_id = e.employment_department_id
+                AND es.workplace_id = e.employment_workplace_id
+                AND es.start_date <= ${scheduleDateSql}
+                AND (es.end_date IS NULL OR es.end_date >= CURRENT_DATE())
+                AND es.deleted_at IS NULL
+           )
        ) es
          ON es.emp_id = e.employment_emp_id
         AND es.company_id = e.employment_company_id
@@ -1595,6 +1634,7 @@ export async function getEmploymentSessions(empid, options = {}) {
                 e.employment_branch_id, branch_name,
                 e.employment_department_id, department_name,
                 es.workplace_id, cw.workplace_name,
+                es.effective_start_date, es.effective_end_date,
                 pos_no, merchant_id, posNo, pos_name, branchNo, pos_districtCode, merchantTin,
                 e.employment_position_id,
                 e.employment_senior_empid,
@@ -1603,7 +1643,7 @@ export async function getEmploymentSessions(empid, options = {}) {
       ORDER BY company_name, department_name, branch_name, workplace_name, user_level_name`;
   const querySql = sql.replace(/`/g, "");
   const normalizedSql = querySql.replace(/`/g, "");
-  const params = [...scheduleDateParams, empid];
+  const params = [...scheduleDateParams, empid, empid];
   let rows;
   try {
     [rows] = await pool.query(normalizedSql, params);
@@ -1778,7 +1818,7 @@ export async function getEmploymentSession(empid, companyId, options = {}) {
   );
 
   const orderPriority = [];
-  const params = [empid, companyId];
+  const params = [empid, empid, companyId];
   if (hasBranchPref) {
     orderPriority.push('CASE WHEN e.employment_branch_id <=> ? THEN 0 ELSE 1 END');
     params.push(branchPreference);
@@ -1807,6 +1847,8 @@ export async function getEmploymentSession(empid, companyId, options = {}) {
             e.employment_department_id AS department_id,
             ${deptRel.nameExpr} AS department_name,
             es.workplace_id AS workplace_id,
+            es.effective_start_date AS effective_start_date,
+            es.effective_end_date AS effective_end_date,
             ${posNoExpr} AS pos_no,
             ${merchantExpr} AS merchant_id,
             ${posRelation.select.posNo} AS posNo,
@@ -1833,6 +1875,8 @@ export async function getEmploymentSession(empid, companyId, options = {}) {
             es.department_id,
             es.emp_id,
             es.workplace_id,
+            es.start_date AS effective_start_date,
+            es.end_date AS effective_end_date,
             ${posNoExpr} AS pos_no,
             ${merchantExpr} AS merchant_id
            FROM tbl_employment_schedule es
@@ -1841,22 +1885,53 @@ export async function getEmploymentSession(empid, companyId, options = {}) {
                company_id,
                branch_id,
                department_id,
+               workplace_id,
                emp_id,
+               YEAR(start_date) AS start_year,
+               MONTH(start_date) AS start_month,
                MAX(start_date) AS latest_start_date
              FROM tbl_employment_schedule
              WHERE start_date <= ${scheduleDateSql}
-               AND (end_date IS NULL OR end_date >= ${scheduleDateSql})
+               AND (end_date IS NULL OR end_date >= CURRENT_DATE())
                AND deleted_at IS NULL
-             GROUP BY company_id, branch_id, department_id, emp_id
+             GROUP BY company_id, branch_id, department_id, workplace_id, emp_id, YEAR(start_date), MONTH(start_date)
            ) latest
              ON latest.company_id = es.company_id
             AND latest.branch_id = es.branch_id
             AND latest.department_id = es.department_id
             AND latest.emp_id = es.emp_id
+            AND latest.workplace_id = es.workplace_id
             AND latest.latest_start_date = es.start_date
            WHERE es.start_date <= ${scheduleDateSql}
-             AND (es.end_date IS NULL OR es.end_date >= ${scheduleDateSql})
+             AND (es.end_date IS NULL OR es.end_date >= CURRENT_DATE())
              AND es.deleted_at IS NULL
+           UNION ALL
+           SELECT
+             e.employment_company_id AS company_id,
+             e.employment_branch_id AS branch_id,
+             e.employment_department_id AS department_id,
+             e.employment_emp_id AS emp_id,
+             e.employment_workplace_id AS workplace_id,
+             e.employment_date AS effective_start_date,
+             NULL AS effective_end_date,
+             NULL AS pos_no,
+             NULL AS merchant_id
+           FROM tbl_employment e
+           WHERE e.employment_emp_id = ?
+             AND e.employment_date <= ${scheduleDateSql}
+             AND e.deleted_at IS NULL
+             AND NOT EXISTS (
+               SELECT 1
+                 FROM tbl_employment_schedule es
+                WHERE es.emp_id = e.employment_emp_id
+                  AND es.company_id = e.employment_company_id
+                  AND es.branch_id = e.employment_branch_id
+                  AND es.department_id = e.employment_department_id
+                  AND es.workplace_id = e.employment_workplace_id
+                  AND es.start_date <= ${scheduleDateSql}
+                  AND (es.end_date IS NULL OR es.end_date >= CURRENT_DATE())
+                  AND es.deleted_at IS NULL
+             )
          ) es
            ON es.emp_id = e.employment_emp_id
           AND es.company_id = e.employment_company_id
@@ -1878,6 +1953,7 @@ export async function getEmploymentSession(empid, companyId, options = {}) {
                    e.employment_branch_id, branch_name,
                    e.employment_department_id, department_name,
                    es.workplace_id, cw.workplace_name,
+                   es.effective_start_date, es.effective_end_date,
                    pos_no, merchant_id, posNo, pos_name, branchNo, pos_districtCode, merchantTin,
                    e.employment_position_id,
                    e.employment_senior_empid,

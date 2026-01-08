@@ -148,29 +148,31 @@ export async function listReportWorkplaces(req, res, next) {
           })
         : sessionList;
 
-    const workplaceAssignments = filtered
-      .filter((s) => s && s.workplace_id != null)
-      .map(
-        ({
-          company_id,
-          company_name,
-          branch_id,
-          branch_name,
-          department_id,
-          department_name,
-          workplace_id,
-          workplace_name,
-        }) => ({
-          company_id: company_id ?? null,
-          company_name: company_name ?? null,
-          branch_id: branch_id ?? null,
-          branch_name: branch_name ?? null,
-          department_id: department_id ?? null,
-          department_name: department_name ?? null,
-          workplace_id: workplace_id ?? null,
-          workplace_name: workplace_name ?? null,
-        }),
-      );
+    const workplaceAssignments = filtered.map(
+      ({
+        company_id,
+        company_name,
+        branch_id,
+        branch_name,
+        department_id,
+        department_name,
+        workplace_id,
+        workplace_name,
+        effective_start_date,
+        effective_end_date,
+      }) => ({
+        company_id: company_id ?? null,
+        company_name: company_name ?? null,
+        branch_id: branch_id ?? null,
+        branch_name: branch_name ?? null,
+        department_id: department_id ?? null,
+        department_name: department_name ?? null,
+        workplace_id: workplace_id ?? null,
+        workplace_name: workplace_name ?? null,
+        effective_start_date: effective_start_date ?? null,
+        effective_end_date: effective_end_date ?? null,
+      }),
+    );
 
     const pickDefaultSession = (items = []) => {
       if (!Array.isArray(items) || items.length === 0) return null;
