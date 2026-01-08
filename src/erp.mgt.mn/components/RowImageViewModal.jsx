@@ -217,6 +217,9 @@ export default function RowImageViewModal({
         ? { ...row, [imageIdField]: promotedRecordId }
         : row;
     primary = resolveImageNameForRow(nameSource, cfg);
+    if (!primary) {
+      primary = buildFallbackName(row);
+    }
     if (cfg?.imageIdField) {
       idName = buildImageName(
         nameSource,
