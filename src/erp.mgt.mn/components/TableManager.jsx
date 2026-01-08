@@ -3714,10 +3714,10 @@ const TableManager = forwardRef(function TableManager({
     }
 
     const baseRowForName = isAdding ? values : editing;
-    const { name: oldImageName } = buildImageName(
+    const imageConfig = formConfig || {};
+    const oldImageName = resolveImageNameForRow(
       baseRowForName || merged,
-      formConfig?.imagenameField || [],
-      columnCaseMap,
+      imageConfig,
     );
 
     const required = formConfig?.requiredFields || [];
@@ -3944,23 +3944,17 @@ const TableManager = forwardRef(function TableManager({
         } else {
           setActiveTemporaryDraftId(null);
         }
-        if (isAdding && (formConfig?.imagenameField || []).length) {
+        if (
+          isAdding &&
+          (((formConfig?.imagenameField || []).length > 0 ||
+            Boolean(formConfig?.imageIdField)) ||
+            oldImageName)
+        ) {
           const rowForName = {
             ...merged,
             ...(savedRow && typeof savedRow === 'object' ? savedRow : {}),
           };
-          const nameFields = Array.from(
-            new Set(
-              (formConfig?.imagenameField || [])
-                .concat(formConfig?.imageIdField || '')
-                .filter(Boolean),
-            ),
-          );
-          const { name: newImageName } = buildImageName(
-            rowForName,
-            nameFields,
-            columnCaseMap,
-          );
+          const newImageName = resolveImageNameForRow(rowForName, imageConfig);
           const folder = getImageFolder(rowForName);
           if (
             oldImageName &&
@@ -5244,8 +5238,36 @@ const TableManager = forwardRef(function TableManager({
         );
         const mergedValues = mergeDisplayFallbacks(normalizedValues, canonicalHydratedValues);
         const finalizedValues = populateRelationDisplayFields(mergedValues);
-        const entryImageName =
-          entry?._imageName || entry?.imageName || entry?.image_name || '';
+        const promotedRecordId =
+          entry?.promotedRecordId ||
+          entry?.promoted_record_id ||
+          entry?.recordId ||
+          entry?.record_id ||
+          null;
+        const imageConfig =
+          getConfigForRow({ ...finalizedValues, ...entry }) || formConfig || {};
+        const resolvedImageValues = {
+          ...finalizedValues,
+          ...entry,
+        };
+        if (
+          promotedRecordId &&
+          imageConfig?.imageIdField &&
+          (resolvedImageValues[imageConfig.imageIdField] == null ||
+            resolvedImageValues[imageConfig.imageIdField] === '')
+        ) {
+          resolvedImageValues[imageConfig.imageIdField] = promotedRecordId;
+          if (
+            finalizedValues[imageConfig.imageIdField] == null ||
+            finalizedValues[imageConfig.imageIdField] === ''
+          ) {
+            finalizedValues[imageConfig.imageIdField] = promotedRecordId;
+          }
+        }
+        const entryImageName = resolveImageNameForRow(
+          resolvedImageValues,
+          imageConfig,
+        );
         if (entryImageName) {
           finalizedValues._imageName = finalizedValues._imageName || entryImageName;
           finalizedValues.imageName = finalizedValues.imageName || entryImageName;
@@ -5280,10 +5302,13 @@ const TableManager = forwardRef(function TableManager({
         return { values: finalizedValues, rows: sanitizedRows };
       },
       [
+        formConfig,
+        getConfigForRow,
         hydrateDisplayFromWrappedRelations,
         mergeDisplayFallbacks,
         normalizeToCanonical,
         populateRelationDisplayFields,
+        resolveImageNameForRow,
       ],
     );
 
@@ -7790,10 +7815,36 @@ const TableManager = forwardRef(function TableManager({
                   : entry,
               ),
             );
+            fetch(
+              `${API_BASE}/transaction_temporaries/${encodeURIComponent(targetId)}/image`,
+              {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
+                body: JSON.stringify({ imageName: name }),
+              },
+            ).catch((err) => {
+              console.error('Failed to persist temporary image name', err);
+              addToast(
+                t(
+                  'temporary_image_name_save_failed',
+                  'Failed to save temporary image name',
+                ),
+                'error',
+              );
+            });
           }
           setTemporaryUploadEntry((prev) =>
             prev
-              ? { ...prev, row: { ...prev.row, _imageName: name, imageName: name } }
+              ? {
+                  ...prev,
+                  row: {
+                    ...prev.row,
+                    _imageName: name,
+                    imageName: name,
+                    image_name: name,
+                  },
+                }
               : prev,
           );
         }}
@@ -7992,21 +8043,30 @@ const TableManager = forwardRef(function TableManager({
                       const reviewedAt = entry?.reviewedAt || entry?.reviewed_at || null;
                       const reviewedBy = entry?.reviewedBy || entry?.reviewed_by || '';
                       const { values: normalizedValues } = buildTemporaryFormState(entry);
-                      const imageConfig = getConfigForRow(normalizedValues) || formConfig || {};
-                      const entryImageName =
-                        normalizedValues?._imageName ||
-                        normalizedValues?.imageName ||
-                        normalizedValues?.image_name ||
-                        entry?._imageName ||
-                        entry?.imageName ||
-                        entry?.image_name ||
-                        '';
+                      const imageConfig =
+                        getConfigForRow({ ...normalizedValues, ...entry }) || formConfig || {};
                       const promotedRecordId =
                         entry?.promotedRecordId ||
                         entry?.promoted_record_id ||
                         entry?.recordId ||
                         entry?.record_id ||
                         null;
+                      const resolvedImageValues = {
+                        ...normalizedValues,
+                        ...entry,
+                      };
+                      if (
+                        promotedRecordId &&
+                        imageConfig?.imageIdField &&
+                        (resolvedImageValues[imageConfig.imageIdField] == null ||
+                          resolvedImageValues[imageConfig.imageIdField] === '')
+                      ) {
+                        resolvedImageValues[imageConfig.imageIdField] = promotedRecordId;
+                      }
+                      const entryImageName = resolveImageNameForRow(
+                        resolvedImageValues,
+                        imageConfig,
+                      );
                       const normalizedValuesWithImage = {
                         ...normalizedValues,
                         ...(entryImageName
@@ -8036,11 +8096,7 @@ const TableManager = forwardRef(function TableManager({
                           imageConfig.imagenameField.length > 0) ||
                         Boolean(imageConfig?.imageIdField) ||
                         hasTemporaryImageName;
-                      const canUploadTemporaryImages =
-                        (Array.isArray(imageConfig?.imagenameField) &&
-                          imageConfig.imagenameField.length > 0) ||
-                        Boolean(imageConfig?.imageIdField) ||
-                        hasTemporaryImageName;
+                      const canUploadTemporaryImages = true;
                       const canDeleteTemporaryImages = Boolean(normalizedViewerEmpId);
                       const detailColumns = temporaryDetailColumns;
                       const rowBackgroundColor = isFocused
