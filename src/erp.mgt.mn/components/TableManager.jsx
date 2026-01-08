@@ -124,6 +124,20 @@ function getRowValueCaseInsensitive(row, key) {
   return row[key];
 }
 
+function getRelationSearchValue(row, columnName, relationInfo) {
+  if (!row || !relationInfo || !relationInfo.config) return undefined;
+  const candidates = new Set();
+  if (relationInfo.sourceColumn) candidates.add(relationInfo.sourceColumn);
+  if (columnName) candidates.add(columnName);
+  if (relationInfo.config.idField) candidates.add(relationInfo.config.idField);
+  if (relationInfo.config.column) candidates.add(relationInfo.config.column);
+  for (const field of candidates) {
+    const val = normalizeSearchValue(getRowValueCaseInsensitive(row, field));
+    if (val !== undefined && val !== null && val !== '') return val;
+  }
+  return undefined;
+}
+
 function buildColumnCaseMap(columns) {
   const map = {};
   if (!Array.isArray(columns)) return map;
@@ -1393,6 +1407,20 @@ const TableManager = forwardRef(function TableManager({
   useEffect(() => {
     setAutoInc(computeAutoInc(columnMeta));
   }, [columnMeta]);
+
+  const relationDisplayMap = useMemo(() => {
+    const map = {};
+    Object.entries(relationConfigs || {}).forEach(([column, config]) => {
+      if (!config || !Array.isArray(config.displayFields)) return;
+      config.displayFields.forEach((field) => {
+        if (typeof field !== 'string' || !field.trim()) return;
+        const canonical = resolveCanonicalKey(field) || field;
+        if (!canonical || map[canonical]) return;
+        map[canonical] = { config, sourceColumn: column };
+      });
+    });
+    return map;
+  }, [relationConfigs, resolveCanonicalKey]);
 
   useEffect(() => {
     if (!formConfig) return;
@@ -7231,6 +7259,9 @@ const TableManager = forwardRef(function TableManager({
                 style.textOverflow = 'ellipsis';
                 const rawValue = r[c];
                 const relationConfig = relationConfigs[c];
+                const relationInfo = relationConfig
+                  ? { config: relationConfig, sourceColumn: c }
+                  : relationDisplayMap[c];
                 const raw = relationOpts[c]
                   ? labelMap[c][rawValue] || (rawValue == null ? '' : String(rawValue))
                   : rawValue == null
