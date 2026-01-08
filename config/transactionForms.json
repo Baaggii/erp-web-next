@@ -20,7 +20,11 @@
         "or_emp_receiver",
         "or_tur_receiver",
         "or_other_receiver",
-        "or_org_id"
+        "or_org_id",
+        "TRTYPENAME",
+        "trtype",
+        "TransType",
+        "orBurtgel_rd"
       ],
       "requiredFields": [
         "or_g_id",
@@ -29,12 +33,12 @@
         "or_torol",
         "or_type_id",
         "or_av_now",
-        "or_date",
         "or_or",
         "or_vallut_id",
         "or_valut_choice",
         "or_tailbar1",
-        "or_eb"
+        "or_eb",
+        "orBurtgel_rd"
       ],
       "defaultValues": {
         "or_g_id": "-1",
@@ -47,10 +51,6 @@
         "or_o_barimt": "0",
         "company_id": ""
       },
-      "tooltips": {
-        "or_g_id": "tooltip.organization",
-        "or_date": "tooltip.date"
-      },
       "editableDefaultFields": [
         "or_av_now",
         "or_g_id",
@@ -60,7 +60,6 @@
         "or_chig",
         "or_torol",
         "or_type_id",
-        "or_date",
         "orcash_or_id",
         "or_or",
         "or_bcode",
@@ -70,7 +69,12 @@
         "or_emp_receiver",
         "or_tur_receiver",
         "or_other_receiver",
-        "or_org_id"
+        "or_org_id",
+        "orBurtgel_rd",
+        "or_date"
+      ],
+      "editableFields": [
+        "orBurtgel_rd"
       ],
       "userIdFields": [
         "ortr_confirm_emp",
@@ -83,15 +87,15 @@
       "companyIdFields": [
         "company_id"
       ],
-      "dateField": [
-        "or_date"
-      ],
+      "dateField": [],
       "emailField": [
         "or_org_id"
       ],
       "imagenameField": [
         "or_num"
       ],
+      "imageIdField": "",
+      "imageFolder": "",
       "printEmpField": [
         "branch_id",
         "company_id",
@@ -135,13 +139,38 @@
       "totalAmountFields": [],
       "signatureFields": [],
       "headerFields": [],
-      "mainFields": [],
+      "mainFields": [
+        "TRTYPENAME",
+        "trtype",
+        "TransType",
+        "or_g_id",
+        "or_burtgel",
+        "or_chig",
+        "or_torol",
+        "or_type_id",
+        "or_av_now",
+        "or_date",
+        "orcash_or_id",
+        "or_or",
+        "or_vallut_id",
+        "or_valut_choice",
+        "or_bcode",
+        "or_orderid",
+        "or_tailbar1",
+        "orBurtgel_rd",
+        "or_eb",
+        "or_emp_receiver",
+        "or_tur_receiver",
+        "or_other_receiver",
+        "or_org_id"
+      ],
       "footerFields": [],
       "viewSource": {
         "or_bcode": "UnifiedInventoryCode"
       },
       "transactionTypeField": "TransType",
       "transactionTypeValue": "1111",
+      "detectFields": [],
       "moduleKey": "finance_transactions",
       "allowedBranches": [
         1,
@@ -150,10 +179,178 @@
         11
       ],
       "allowedDepartments": [
-        100,
-        102,
+        1,
+        102
+      ],
+      "allowedPositions": [],
+      "allowedUserRights": [
+        1,
+        3
+      ],
+      "allowedWorkplaces": [],
+      "temporaryAllowedBranches": [
+        1
+      ],
+      "temporaryAllowedDepartments": [
         110
-      ]
+      ],
+      "temporaryAllowedPositions": [],
+      "temporaryAllowedUserRights": [
+        6,
+        11
+      ],
+      "temporaryAllowedWorkplaces": [
+        383,
+        384,
+        385
+      ],
+      "procedures": [],
+      "temporaryProcedures": [],
+      "allowTemporarySubmission": false,
+      "supportsTemporarySubmission": false,
+      "posApiEnabled": false,
+      "posApiType": "",
+      "posApiTypeField": "",
+      "posApiEndpointId": "post-rest-receipt",
+      "posApiInfoEndpointIds": [
+        "get-api-info-check-getInfo",
+        "get-api-info-check-getTinInfo",
+        "get-rest-bankAccounts-tin--TIN"
+      ],
+      "infoEndpoints": [
+        "get-api-info-check-getInfo",
+        "get-api-info-check-getTinInfo",
+        "get-rest-bankAccounts-tin--TIN"
+      ],
+      "posApiReceiptTypes": [
+        "B2C",
+        "B2B_SALE",
+        "B2B_PURCHASE",
+        "STOCK_QR"
+      ],
+      "posApiPaymentMethods": [
+        "CASH"
+      ],
+      "fieldsFromPosApi": [],
+      "posApiMapping": {
+        "branchNo": "branch_id",
+        "posNo": "session_id",
+        "receipts": "pos_receipts",
+        "lottery": "lottery_no",
+        "qrData": "qr_data",
+        "totalAmount": "or_or",
+        "customerTin": "orBurtgel_rd",
+        "consumerNo": "or_tur_receiver",
+        "taxType": "or_eb",
+        "lotNo": "or_type_id",
+        "totalVAT": {
+          "type": "expression",
+          "expression": "sum(receipts[].totalVAT)"
+        },
+        "totalCityTax": {
+          "type": "expression",
+          "expression": "sum(receipts[].totalCityTax)"
+        },
+        "merchantTin": {
+          "type": "session",
+          "sessionVar": "pos_merchant_tin"
+        },
+        "districtCode": {
+          "type": "session",
+          "sessionVar": "pos_districtCode"
+        },
+        "objectFields": {
+          "receipts[]": {
+            "totalAmount": {
+              "type": "expression",
+              "expression": "sum(receipts[].items[].totalAmount)"
+            },
+            "totalVAT": {
+              "type": "expression",
+              "expression": "sum(receipts[].items[].totalVAT)"
+            },
+            "totalCityTax": {
+              "type": "expression",
+              "expression": "sum(receipts[].items[].totalCityTax)"
+            },
+            "merchantTin": {
+              "type": "session",
+              "sessionVar": "pos_merchant_tin"
+            }
+          },
+          "receipts[].items[]": {
+            "barCodeType": {
+              "type": "literal",
+              "value": "EAN_13"
+            },
+            "measureUnit": {
+              "type": "literal",
+              "value": "PCS"
+            },
+            "qty": {
+              "type": "literal",
+              "value": "1"
+            },
+            "totalVAT": {
+              "type": "expression",
+              "expression": "receipts[].items[].unitPrice * receipts[].items[].qty /11"
+            },
+            "totalCityTax": {
+              "type": "expression",
+              "expression": "receipts[].items[].unitPrice * receipts[].items[].qty /20"
+            },
+            "totalAmount": {
+              "type": "expression",
+              "expression": "receipts[].items[].unitPrice * receipts[].items[].qty"
+            },
+            "data": {
+              "type": "literal",
+              "value": "[object Object]"
+            },
+            "data.stockQR": {
+              "type": "literal",
+              "value": "[object Object]"
+            }
+          }
+        },
+        "itemFields": {
+          "measureUnit": {
+            "type": "literal",
+            "value": "PCS"
+          },
+          "qty": {
+            "type": "literal",
+            "value": "1"
+          },
+          "totalVAT": {
+            "type": "expression",
+            "expression": "receipts[].items[].unitPrice * receipts[].items[].qty /11"
+          },
+          "totalCityTax": {
+            "type": "expression",
+            "expression": "receipts[].items[].unitPrice * receipts[].items[].qty /20"
+          },
+          "totalAmount": {
+            "type": "expression",
+            "expression": "receipts[].items[].unitPrice * receipts[].items[].qty"
+          }
+        },
+        "receiptFields": {
+          "totalAmount": {
+            "type": "expression",
+            "expression": "sum(receipts[].items[].totalAmount)"
+          },
+          "totalVAT": {
+            "type": "expression",
+            "expression": "sum(receipts[].items[].totalVAT)"
+          },
+          "totalCityTax": {
+            "type": "expression",
+            "expression": "sum(receipts[].items[].totalCityTax)"
+          }
+        }
+      },
+      "infoEndpointConfig": {}
     },
     "Бараа материал ЭХ борлуулсан САНХҮҮГИЙН орлого": {
       "visibleFields": [
@@ -318,18 +515,22 @@
       },
       "transactionTypeField": "TransType",
       "transactionTypeValue": "1913",
+      "detectFields": [],
       "moduleKey": "finance_transactions",
       "allowedBranches": [
-        1,
-        3,
-        4,
-        11
+        1
       ],
       "allowedDepartments": [
-        100,
-        102,
-        110
-      ]
+        102
+      ],
+      "temporaryAllowedBranches": [],
+      "temporaryAllowedDepartments": [],
+      "procedures": [],
+      "allowTemporarySubmission": false,
+      "supportsTemporarySubmission": false,
+      "posApiEnabled": false,
+      "posApiType": "",
+      "posApiMapping": {}
     },
     "Посын борлуулалтын орлого": {
       "visibleFields": [
@@ -392,6 +593,1348 @@
         102,
         110
       ]
+    },
+    "Түрээсийн орлого": {
+      "visibleFields": [
+        "or_type_id",
+        "orcash_or_id",
+        "or_or",
+        "or_tailbar1",
+        "or_emp_receiver",
+        "trtype",
+        "TransType",
+        "TRTYPENAME",
+        "or_g_id",
+        "or_date",
+        "or_vallut_id",
+        "or_valut_choice",
+        "or_av_now",
+        "sp_curr_receivables",
+        "sp_curr_receivableswithpenalty",
+        "sp_curr_penalty"
+      ],
+      "requiredFields": [
+        "or_g_id",
+        "or_type_id",
+        "or_or",
+        "or_vallut_id",
+        "or_valut_choice",
+        "or_tailbar1",
+        "or_date",
+        "orcash_or_id",
+        "or_av_now"
+      ],
+      "defaultValues": {
+        "or_g_id": "",
+        "or_av_now": "0",
+        "or_vallut_id": "1",
+        "or_valut_choice": "11",
+        "TRTYPENAME": "",
+        "trtype": "",
+        "TransType": "1111",
+        "or_o_barimt": "0",
+        "company_id": "",
+        "or_type_id": "1",
+        "or_chig": "",
+        "or_torol": ""
+      },
+      "editableDefaultFields": [
+        "or_g_id",
+        "orcash_or_id",
+        "or_or",
+        "or_tailbar1",
+        "or_av_now",
+        "or_type_id"
+      ],
+      "editableFields": [
+        "or_chig",
+        "or_torol",
+        "or_date",
+        "or_bcode",
+        "or_orderid",
+        "or_eb",
+        "or_emp_receiver",
+        "or_tur_receiver",
+        "or_other_receiver",
+        "or_org_id",
+        "or_burtgel",
+        "or_vallut_id",
+        "or_valut_choice"
+      ],
+      "userIdFields": [
+        "ortr_confirm_emp",
+        "emp_id",
+        "or_emp_receiver"
+      ],
+      "branchIdFields": [
+        "ortr_transbranch",
+        "branch_id"
+      ],
+      "companyIdFields": [
+        "company_id"
+      ],
+      "dateField": [
+        "or_date"
+      ],
+      "emailField": [],
+      "imagenameField": [
+        "or_num"
+      ],
+      "imageIdField": "",
+      "imageFolder": "",
+      "printEmpField": [
+        "branch_id",
+        "company_id",
+        "id",
+        "or_date",
+        "or_g_id",
+        "or_or",
+        "or_tailbar1",
+        "or_torol",
+        "or_type_id",
+        "or_vallut_id",
+        "or_valut_choice",
+        "orcash_or_id",
+        "ortr_confirm_emp",
+        "ortr_transbranch",
+        "or_chig",
+        "or_av_now"
+      ],
+      "printCustField": [
+        "id",
+        "or_date",
+        "or_or",
+        "or_tailbar1",
+        "or_type_id",
+        "or_vallut_id"
+      ],
+      "totalCurrencyFields": [],
+      "totalAmountFields": [],
+      "signatureFields": [
+        "ortr_confirm_emp"
+      ],
+      "headerFields": [
+        "TRTYPENAME",
+        "trtype",
+        "TransType"
+      ],
+      "mainFields": [
+        "or_type_id",
+        "orcash_or_id",
+        "or_or",
+        "or_tailbar1",
+        "or_av_now",
+        "or_g_id",
+        "or_date",
+        "sp_curr_receivables",
+        "sp_curr_penalty",
+        "sp_curr_receivableswithpenalty"
+      ],
+      "footerFields": [
+        "ortr_confirm_emp"
+      ],
+      "viewSource": {
+        "or_bcode": "UnifiedInventoryCode"
+      },
+      "transactionTypeField": "TransType",
+      "transactionTypeValue": "1111",
+      "detectFields": [],
+      "moduleKey": "finance_transactions",
+      "allowedBranches": [
+        1,
+        3,
+        4,
+        11
+      ],
+      "allowedDepartments": [
+        1,
+        102
+      ],
+      "allowedPositions": [
+        2,
+        8
+      ],
+      "allowedUserRights": [
+        1,
+        3
+      ],
+      "allowedWorkplaces": [],
+      "temporaryAllowedBranches": [
+        1
+      ],
+      "temporaryAllowedDepartments": [
+        110
+      ],
+      "temporaryAllowedPositions": [
+        13,
+        14
+      ],
+      "temporaryAllowedUserRights": [],
+      "temporaryAllowedWorkplaces": [],
+      "procedures": [
+        "dynrep_1_percontract_receivables_simple"
+      ],
+      "temporaryProcedures": [
+        "dynrep_1_percontract_receivables_simple"
+      ],
+      "allowDirectPost": false,
+      "allowTemporarySubmission": true,
+      "supportsTemporarySubmission": true,
+      "posApiEnabled": true,
+      "posApiType": "",
+      "posApiTypeField": "",
+      "posApiEndpointId": "post-rest-receipt",
+      "posApiInfoEndpointIds": [
+        "get-api-info-check-getInfo",
+        "get-api-info-check-getTinInfo",
+        "get-rest-bankAccounts-tin--TIN"
+      ],
+      "infoEndpoints": [
+        "get-api-info-check-getInfo",
+        "get-api-info-check-getTinInfo",
+        "get-rest-bankAccounts-tin--TIN"
+      ],
+      "posApiReceiptTypes": [
+        "B2C_RECEIPT"
+      ],
+      "posApiPaymentMethods": [
+        "CASH"
+      ],
+      "fieldsFromPosApi": [],
+      "posApiMapping": {
+        "totalAmount": {
+          "type": "expression",
+          "expression": "sum(receipts[].totalAmount)"
+        },
+        "totalVAT": {
+          "type": "expression",
+          "expression": "sum(receipts[].totalVAT)"
+        },
+        "totalCityTax": {
+          "type": "expression",
+          "expression": "sum(receipts[].totalCityTax)"
+        },
+        "merchantTin": {
+          "type": "session",
+          "sessionVar": "pos_merchant_tin"
+        },
+        "posNo": {
+          "type": "session",
+          "sessionVar": "posNo"
+        },
+        "branchNo": {
+          "type": "session",
+          "sessionVar": "pos_branch_no"
+        },
+        "districtCode": {
+          "type": "session",
+          "sessionVar": "pos_districtCode"
+        },
+        "objectFields": {
+          "receipts[]": {
+            "totalAmount": {
+              "type": "expression",
+              "expression": "sum(receipts[].items[].totalAmount)"
+            },
+            "totalVAT": {
+              "type": "expression",
+              "expression": "sum(receipts[].items[].totalVAT)"
+            },
+            "totalCityTax": {
+              "type": "expression",
+              "expression": "sum(receipts[].items[].totalCityTax)"
+            },
+            "merchantTin": {
+              "type": "session",
+              "sessionVar": "pos_merchant_tin"
+            },
+            "customerTin": {
+              "type": "column"
+            }
+          },
+          "receipts[].items[]": {
+            "barCodeType": {
+              "type": "literal",
+              "value": "EAN_13"
+            },
+            "measureUnit": {
+              "type": "literal",
+              "value": "PCS"
+            },
+            "qty": {
+              "type": "literal",
+              "value": "1"
+            },
+            "totalVAT": {
+              "type": "expression",
+              "expression": "receipts[].items[].unitPrice * receipts[].items[].qty /11"
+            },
+            "totalCityTax": {
+              "type": "expression",
+              "expression": "receipts[].items[].unitPrice * receipts[].items[].qty /20"
+            },
+            "totalAmount": {
+              "type": "expression",
+              "expression": "receipts[].items[].unitPrice * receipts[].items[].qty"
+            },
+            "data": {
+              "type": "literal",
+              "value": "[object Object]"
+            },
+            "data.stockQR": {
+              "type": "literal",
+              "value": "[object Object]"
+            },
+            "barCode": {
+              "type": "column"
+            },
+            "classificationCode": {
+              "type": "column",
+              "column": "classification_code"
+            },
+            "taxProductCode": {
+              "type": "column",
+              "column": "tax_reason_code"
+            },
+            "unitPrice": {
+              "type": "column",
+              "column": "or_or"
+            }
+          },
+          "receipts": {
+            "totalAmount": {
+              "type": "expression",
+              "expression": "sum(receipts[].items[].totalAmount)"
+            },
+            "totalVAT": {
+              "type": "expression",
+              "expression": "sum(receipts[].items[].totalVAT)"
+            },
+            "totalCityTax": {
+              "type": "expression",
+              "expression": "sum(receipts[].items[].totalCityTax)"
+            },
+            "merchantTin": {
+              "type": "session",
+              "sessionVar": "pos_merchant_tin"
+            }
+          },
+          "receipts[].items": {
+            "barCodeType": {
+              "type": "literal",
+              "value": "EAN_13"
+            },
+            "measureUnit": {
+              "type": "literal",
+              "value": "PCS"
+            },
+            "qty": {
+              "type": "literal",
+              "value": "1"
+            },
+            "totalVAT": {
+              "type": "expression",
+              "expression": "receipts[].items[].unitPrice * receipts[].items[].qty /11"
+            },
+            "totalCityTax": {
+              "type": "expression",
+              "expression": "receipts[].items[].unitPrice * receipts[].items[].qty /20"
+            },
+            "totalAmount": {
+              "type": "expression",
+              "expression": "receipts[].items[].unitPrice * receipts[].items[].qty"
+            },
+            "data": {
+              "type": "literal",
+              "value": "[object Object]"
+            },
+            "data.stockQR": {
+              "type": "literal",
+              "value": "[object Object]"
+            }
+          },
+          "payments[]": {
+            "status": {
+              "type": "column"
+            },
+            "paidAmount": {
+              "type": "column",
+              "column": "or_or"
+            }
+          }
+        },
+        "itemFields": {
+          "measureUnit": {
+            "type": "literal",
+            "value": "PCS"
+          },
+          "qty": {
+            "type": "literal",
+            "value": "1"
+          },
+          "totalVAT": {
+            "type": "expression",
+            "expression": "receipts[].items[].unitPrice * receipts[].items[].qty /11"
+          },
+          "totalCityTax": {
+            "type": "expression",
+            "expression": "receipts[].items[].unitPrice * receipts[].items[].qty /20"
+          },
+          "totalAmount": {
+            "type": "expression",
+            "expression": "receipts[].items[].unitPrice * receipts[].items[].qty"
+          },
+          "barCodeType": {
+            "type": "column"
+          },
+          "barCode": {
+            "type": "column"
+          },
+          "classificationCode": {
+            "type": "column",
+            "column": "classification_code"
+          },
+          "taxProductCode": {
+            "type": "column",
+            "column": "tax_reason_code"
+          },
+          "unitPrice": {
+            "type": "column",
+            "column": "or_or"
+          }
+        },
+        "receiptFields": {
+          "totalAmount": {
+            "type": "expression",
+            "expression": "sum(receipts[].items[].totalAmount)"
+          },
+          "totalVAT": {
+            "type": "expression",
+            "expression": "sum(receipts[].items[].totalVAT)"
+          },
+          "totalCityTax": {
+            "type": "expression",
+            "expression": "sum(receipts[].items[].totalCityTax)"
+          },
+          "customerTin": {
+            "type": "column"
+          }
+        },
+        "billIdSuffix": {
+          "type": "column",
+          "column": "id"
+        },
+        "nestedSources": {
+          "receipts[]": {
+            "repeat": "false"
+          },
+          "receipts[].items[]": {
+            "repeat": "false"
+          },
+          "payments[]": {
+            "repeat": "false"
+          },
+          "receipts[].items[].data.stockQR[]": {
+            "repeat": "false"
+          }
+        },
+        "paymentFields": {
+          "status": {
+            "type": "column"
+          },
+          "paidAmount": {
+            "type": "column",
+            "column": "or_or"
+          }
+        },
+        "receiptGroups": {
+          "VAT_ABLE": {
+            "totalAmount": "or_or",
+            "totalVAT": "vat_amount",
+            "totalCityTax": "city_tax"
+          }
+        },
+        "paymentMethods": {
+          "CASH": {
+            "paidAmount": "or_or"
+          }
+        }
+      },
+      "infoEndpointConfig": {}
+    },
+    "Хаалганы орлого": {
+      "visibleFields": [
+        "or_type_id",
+        "orcash_or_id",
+        "or_or",
+        "or_tailbar1",
+        "or_emp_receiver",
+        "trtype",
+        "TransType",
+        "TRTYPENAME",
+        "or_g_id",
+        "or_burtgel",
+        "or_date",
+        "or_vallut_id",
+        "or_valut_choice"
+      ],
+      "requiredFields": [
+        "or_g_id",
+        "or_type_id",
+        "or_or",
+        "or_vallut_id",
+        "or_valut_choice",
+        "or_tailbar1",
+        "or_date",
+        "orcash_or_id",
+        "or_burtgel"
+      ],
+      "defaultValues": {
+        "or_g_id": "-1",
+        "or_av_now": "0",
+        "or_vallut_id": "1",
+        "or_valut_choice": "11",
+        "TRTYPENAME": "",
+        "trtype": "",
+        "TransType": "1111",
+        "or_o_barimt": "0",
+        "company_id": "",
+        "or_type_id": "",
+        "or_chig": "10",
+        "or_torol": "24"
+      },
+      "editableDefaultFields": [
+        "or_vallut_id",
+        "or_valut_choice",
+        "orcash_or_id",
+        "or_or",
+        "or_tailbar1",
+        "or_burtgel",
+        "or_type_id",
+        "or_date"
+      ],
+      "editableFields": [
+        "or_chig",
+        "or_torol",
+        "or_bcode",
+        "or_orderid",
+        "or_eb",
+        "or_emp_receiver",
+        "or_tur_receiver",
+        "or_other_receiver",
+        "or_org_id",
+        "or_av_now",
+        "or_g_id"
+      ],
+      "userIdFields": [
+        "ortr_confirm_emp",
+        "emp_id",
+        "or_emp_receiver"
+      ],
+      "branchIdFields": [
+        "ortr_transbranch",
+        "branch_id"
+      ],
+      "companyIdFields": [
+        "company_id"
+      ],
+      "dateField": [],
+      "emailField": [],
+      "imagenameField": [
+        "or_num"
+      ],
+      "imageIdField": "",
+      "imageFolder": "",
+      "printEmpField": [
+        "branch_id",
+        "company_id",
+        "id",
+        "or_date",
+        "or_g_id",
+        "or_or",
+        "or_tailbar1",
+        "or_torol",
+        "or_type_id",
+        "or_vallut_id",
+        "or_valut_choice",
+        "orcash_or_id",
+        "ortr_confirm_emp",
+        "ortr_transbranch",
+        "or_burtgel",
+        "or_chig"
+      ],
+      "printCustField": [
+        "id",
+        "or_date",
+        "or_or",
+        "or_tailbar1",
+        "or_type_id",
+        "or_vallut_id"
+      ],
+      "totalCurrencyFields": [],
+      "totalAmountFields": [],
+      "signatureFields": [
+        "ortr_confirm_emp"
+      ],
+      "headerFields": [
+        "TRTYPENAME",
+        "trtype",
+        "TransType",
+        "company_id",
+        "branch_id"
+      ],
+      "mainFields": [
+        "or_type_id",
+        "orcash_or_id",
+        "or_or",
+        "or_tailbar1",
+        "or_burtgel",
+        "or_date"
+      ],
+      "footerFields": [
+        "ortr_confirm_emp"
+      ],
+      "viewSource": {
+        "or_bcode": "UnifiedInventoryCode"
+      },
+      "transactionTypeField": "TransType",
+      "transactionTypeValue": "1111",
+      "detectFields": [],
+      "moduleKey": "finance_transactions",
+      "allowedBranches": [
+        1
+      ],
+      "allowedDepartments": [
+        1,
+        102
+      ],
+      "allowedPositions": [
+        8
+      ],
+      "allowedUserRights": [],
+      "allowedWorkplaces": [],
+      "temporaryAllowedBranches": [
+        1
+      ],
+      "temporaryAllowedDepartments": [
+        110
+      ],
+      "temporaryAllowedPositions": [
+        13,
+        14,
+        15
+      ],
+      "temporaryAllowedUserRights": [],
+      "temporaryAllowedWorkplaces": [],
+      "procedures": [],
+      "temporaryProcedures": [],
+      "allowTemporarySubmission": true,
+      "supportsTemporarySubmission": true,
+      "posApiEnabled": false,
+      "posApiType": "",
+      "posApiTypeField": "",
+      "posApiEndpointId": "saveReceipt",
+      "posApiInfoEndpointIds": [
+        "getDistrictCodes",
+        "getInformation",
+        "getVatTaxTypes"
+      ],
+      "infoEndpoints": [
+        "getDistrictCodes",
+        "getInformation",
+        "getVatTaxTypes"
+      ],
+      "posApiReceiptTypes": [
+        "B2C_RECEIPT",
+        "B2B_RECEIPT",
+        "B2C_INVOICE",
+        "B2B_INVOICE"
+      ],
+      "posApiPaymentMethods": [
+        "CASH"
+      ],
+      "fieldsFromPosApi": [],
+      "posApiMapping": {
+        "branchNo": "branch_id",
+        "posNo": "session_id",
+        "receipts": "pos_receipts",
+        "lottery": "lottery_no",
+        "qrData": "qr_data",
+        "totalAmount": "or_or",
+        "customerTin": "orBurtgel_rd",
+        "consumerNo": "or_tur_receiver",
+        "taxType": "or_eb",
+        "lotNo": "or_type_id"
+      },
+      "infoEndpointConfig": {}
+    },
+    "Данс зузаатгал": {
+      "visibleFields": [
+        "or_type_id",
+        "orcash_or_id",
+        "or_or",
+        "or_tailbar1",
+        "or_emp_receiver",
+        "trtype",
+        "TransType",
+        "TRTYPENAME",
+        "or_g_id",
+        "or_burtgel",
+        "or_date",
+        "or_vallut_id",
+        "or_valut_choice"
+      ],
+      "requiredFields": [
+        "or_g_id",
+        "or_type_id",
+        "or_or",
+        "or_vallut_id",
+        "or_valut_choice",
+        "or_tailbar1",
+        "or_date",
+        "orcash_or_id",
+        "or_burtgel"
+      ],
+      "defaultValues": {
+        "or_g_id": "-1",
+        "or_av_now": "0",
+        "or_vallut_id": "1",
+        "or_valut_choice": "11",
+        "TRTYPENAME": "",
+        "trtype": "",
+        "TransType": "1111",
+        "or_o_barimt": "0",
+        "company_id": "",
+        "or_type_id": "",
+        "or_chig": "10",
+        "or_torol": "24"
+      },
+      "editableDefaultFields": [
+        "or_vallut_id",
+        "or_valut_choice",
+        "orcash_or_id",
+        "or_or",
+        "or_tailbar1",
+        "or_burtgel",
+        "or_type_id",
+        "or_date"
+      ],
+      "editableFields": [
+        "or_chig",
+        "or_torol",
+        "or_bcode",
+        "or_orderid",
+        "or_eb",
+        "or_emp_receiver",
+        "or_tur_receiver",
+        "or_other_receiver",
+        "or_org_id",
+        "or_av_now",
+        "or_g_id"
+      ],
+      "userIdFields": [
+        "ortr_confirm_emp",
+        "emp_id",
+        "or_emp_receiver"
+      ],
+      "branchIdFields": [
+        "ortr_transbranch",
+        "branch_id"
+      ],
+      "companyIdFields": [
+        "company_id"
+      ],
+      "dateField": [
+        "or_date"
+      ],
+      "emailField": [],
+      "imagenameField": [
+        "or_num"
+      ],
+      "imageIdField": "",
+      "imageFolder": "",
+      "printEmpField": [
+        "branch_id",
+        "company_id",
+        "id",
+        "or_date",
+        "or_g_id",
+        "or_or",
+        "or_tailbar1",
+        "or_torol",
+        "or_type_id",
+        "or_vallut_id",
+        "or_valut_choice",
+        "orcash_or_id",
+        "ortr_confirm_emp",
+        "ortr_transbranch",
+        "or_burtgel",
+        "or_chig"
+      ],
+      "printCustField": [
+        "id",
+        "or_date",
+        "or_or",
+        "or_tailbar1",
+        "or_type_id",
+        "or_vallut_id"
+      ],
+      "totalCurrencyFields": [],
+      "totalAmountFields": [],
+      "signatureFields": [
+        "ortr_confirm_emp"
+      ],
+      "headerFields": [
+        "TRTYPENAME",
+        "trtype",
+        "TransType"
+      ],
+      "mainFields": [
+        "or_type_id",
+        "orcash_or_id",
+        "or_or",
+        "or_tailbar1",
+        "or_burtgel",
+        "or_date"
+      ],
+      "footerFields": [
+        "ortr_confirm_emp"
+      ],
+      "viewSource": {
+        "or_bcode": "UnifiedInventoryCode"
+      },
+      "transactionTypeField": "TransType",
+      "transactionTypeValue": "1111",
+      "detectFields": [],
+      "moduleKey": "finance_transactions",
+      "allowedBranches": [
+        1
+      ],
+      "allowedDepartments": [
+        102
+      ],
+      "allowedPositions": [
+        3
+      ],
+      "allowedUserRights": [],
+      "allowedWorkplaces": [],
+      "temporaryAllowedBranches": [
+        1
+      ],
+      "temporaryAllowedDepartments": [
+        102
+      ],
+      "temporaryAllowedPositions": [
+        8
+      ],
+      "temporaryAllowedUserRights": [],
+      "temporaryAllowedWorkplaces": [],
+      "procedures": [],
+      "temporaryProcedures": [],
+      "allowTemporarySubmission": true,
+      "supportsTemporarySubmission": true,
+      "posApiEnabled": false,
+      "posApiType": "",
+      "posApiTypeField": "",
+      "posApiEndpointId": "saveReceipt",
+      "posApiInfoEndpointIds": [
+        "getDistrictCodes",
+        "getInformation",
+        "getVatTaxTypes"
+      ],
+      "infoEndpoints": [
+        "getDistrictCodes",
+        "getInformation",
+        "getVatTaxTypes"
+      ],
+      "posApiReceiptTypes": [
+        "B2C_RECEIPT",
+        "B2B_RECEIPT",
+        "B2C_INVOICE",
+        "B2B_INVOICE"
+      ],
+      "posApiPaymentMethods": [
+        "CASH"
+      ],
+      "fieldsFromPosApi": [],
+      "posApiMapping": {
+        "branchNo": "branch_id",
+        "posNo": "session_id",
+        "receipts": "pos_receipts",
+        "lottery": "lottery_no",
+        "qrData": "qr_data",
+        "totalAmount": "or_or",
+        "customerTin": "orBurtgel_rd",
+        "consumerNo": "or_tur_receiver",
+        "taxType": "or_eb",
+        "lotNo": "or_type_id"
+      },
+      "infoEndpointConfig": {}
+    },
+    "Test Түрээсийн орлого": {
+      "visibleFields": [
+        "or_type_id",
+        "orcash_or_id",
+        "or_or",
+        "or_tailbar1",
+        "or_emp_receiver",
+        "trtype",
+        "TransType",
+        "TRTYPENAME",
+        "or_g_id",
+        "or_date",
+        "or_vallut_id",
+        "or_valut_choice",
+        "or_av_now",
+        "sp_curr_receivables",
+        "sp_curr_receivableswithpenalty",
+        "sp_curr_penalty",
+        "classification_code",
+        "total_amount_without_tax",
+        "vat_amount",
+        "city_tax",
+        "tax_reason_code",
+        "tax_type"
+      ],
+      "requiredFields": [
+        "or_g_id",
+        "or_type_id",
+        "or_or",
+        "or_vallut_id",
+        "or_valut_choice",
+        "or_tailbar1",
+        "or_date",
+        "orcash_or_id",
+        "or_av_now"
+      ],
+      "defaultValues": {
+        "or_g_id": "",
+        "or_av_now": "0",
+        "or_vallut_id": "1",
+        "or_valut_choice": "11",
+        "TRTYPENAME": "",
+        "trtype": "",
+        "TransType": "1111",
+        "or_o_barimt": "0",
+        "company_id": "",
+        "or_type_id": "1",
+        "or_chig": "",
+        "or_torol": ""
+      },
+      "editableDefaultFields": [
+        "or_g_id",
+        "orcash_or_id",
+        "or_or",
+        "or_tailbar1",
+        "or_av_now",
+        "or_type_id"
+      ],
+      "editableFields": [
+        "or_chig",
+        "or_torol",
+        "or_date",
+        "or_bcode",
+        "or_orderid",
+        "or_eb",
+        "or_emp_receiver",
+        "or_tur_receiver",
+        "or_other_receiver",
+        "or_org_id",
+        "or_burtgel",
+        "or_vallut_id",
+        "or_valut_choice"
+      ],
+      "userIdFields": [
+        "ortr_confirm_emp",
+        "emp_id",
+        "or_emp_receiver"
+      ],
+      "branchIdFields": [
+        "ortr_transbranch",
+        "branch_id"
+      ],
+      "companyIdFields": [
+        "company_id"
+      ],
+      "dateField": [
+        "or_date"
+      ],
+      "emailField": [],
+      "imagenameField": [
+        "or_num"
+      ],
+      "imageIdField": "",
+      "imageFolder": "",
+      "printEmpField": [
+        "branch_id",
+        "company_id",
+        "id",
+        "or_date",
+        "or_g_id",
+        "or_or",
+        "or_tailbar1",
+        "or_torol",
+        "or_type_id",
+        "or_vallut_id",
+        "or_valut_choice",
+        "orcash_or_id",
+        "ortr_confirm_emp",
+        "ortr_transbranch",
+        "or_chig",
+        "or_av_now"
+      ],
+      "printCustField": [
+        "id",
+        "or_date",
+        "or_or",
+        "or_tailbar1",
+        "or_type_id",
+        "or_vallut_id"
+      ],
+      "totalCurrencyFields": [],
+      "totalAmountFields": [],
+      "signatureFields": [
+        "ortr_confirm_emp"
+      ],
+      "headerFields": [
+        "TRTYPENAME",
+        "trtype",
+        "TransType"
+      ],
+      "mainFields": [
+        "or_type_id",
+        "orcash_or_id",
+        "or_or",
+        "or_tailbar1",
+        "or_av_now",
+        "or_g_id",
+        "or_date",
+        "sp_curr_receivables",
+        "sp_curr_penalty",
+        "sp_curr_receivableswithpenalty",
+        "classification_code",
+        "total_amount_without_tax",
+        "vat_amount",
+        "city_tax",
+        "tax_reason_code",
+        "tax_type"
+      ],
+      "footerFields": [
+        "ortr_confirm_emp"
+      ],
+      "viewSource": {
+        "or_bcode": "UnifiedInventoryCode"
+      },
+      "transactionTypeField": "TransType",
+      "transactionTypeValue": "1111",
+      "detectFields": [],
+      "moduleKey": "finance_transactions",
+      "allowedBranches": [
+        1
+      ],
+      "allowedDepartments": [
+        1
+      ],
+      "allowedPositions": [
+        2
+      ],
+      "allowedUserRights": [],
+      "allowedWorkplaces": [],
+      "temporaryAllowedBranches": [],
+      "temporaryAllowedDepartments": [],
+      "temporaryAllowedPositions": [],
+      "temporaryAllowedUserRights": [],
+      "temporaryAllowedWorkplaces": [],
+      "procedures": [
+        "dynrep_1_percontract_receivables_simple"
+      ],
+      "temporaryProcedures": [
+        "dynrep_1_percontract_receivables_simple"
+      ],
+      "allowDirectPost": false,
+      "allowTemporarySubmission": true,
+      "supportsTemporarySubmission": true,
+      "posApiEnabled": true,
+      "posApiType": "",
+      "posApiTypeField": "",
+      "posApiEndpointId": "post-rest-receipt",
+      "posApiInfoEndpointIds": [
+        "get-api-info-check-getInfo",
+        "get-api-info-check-getTinInfo",
+        "get-rest-bankAccounts-tin--TIN"
+      ],
+      "infoEndpoints": [
+        "get-api-info-check-getInfo",
+        "get-api-info-check-getTinInfo",
+        "get-rest-bankAccounts-tin--TIN"
+      ],
+      "posApiReceiptTypes": [
+        "B2C_RECEIPT"
+      ],
+      "posApiPaymentMethods": [
+        "CASH"
+      ],
+      "fieldsFromPosApi": [],
+      "posApiMapping": {
+        "totalAmount": {
+          "type": "expression",
+          "expression": "sum(receipts[].totalAmount)"
+        },
+        "totalVAT": {
+          "type": "expression",
+          "expression": "sum(receipts[].totalVAT)"
+        },
+        "totalCityTax": {
+          "type": "expression",
+          "expression": "sum(receipts[].totalCityTax)"
+        },
+        "merchantTin": {
+          "type": "session",
+          "sessionVar": "pos_merchant_tin"
+        },
+        "posNo": {
+          "type": "session",
+          "sessionVar": "posNo"
+        },
+        "branchNo": {
+          "type": "session",
+          "sessionVar": "pos_branch_no"
+        },
+        "districtCode": {
+          "type": "session",
+          "sessionVar": "pos_districtCode"
+        },
+        "objectFields": {
+          "receipts[]": {
+            "totalAmount": {
+              "type": "expression",
+              "expression": "sum(receipts[].items[].totalAmount)"
+            },
+            "totalVAT": {
+              "type": "expression",
+              "expression": "sum(receipts[].items[].totalVAT)"
+            },
+            "totalCityTax": {
+              "type": "expression",
+              "expression": "sum(receipts[].items[].totalCityTax)"
+            },
+            "merchantTin": {
+              "type": "session",
+              "sessionVar": "pos_merchant_tin"
+            },
+            "customerTin": {
+              "type": "column"
+            }
+          },
+          "receipts[].items[]": {
+            "barCodeType": {
+              "type": "literal",
+              "value": "EAN_13"
+            },
+            "measureUnit": {
+              "type": "literal",
+              "value": "PCS"
+            },
+            "qty": {
+              "type": "literal",
+              "value": "1"
+            },
+            "totalVAT": {
+              "type": "expression",
+              "expression": "receipts[].items[].unitPrice * receipts[].items[].qty /11"
+            },
+            "totalCityTax": {
+              "type": "expression",
+              "expression": "receipts[].items[].unitPrice * receipts[].items[].qty /20"
+            },
+            "totalAmount": {
+              "type": "expression",
+              "expression": "receipts[].items[].unitPrice * receipts[].items[].qty"
+            },
+            "data": {
+              "type": "literal",
+              "value": "[object Object]"
+            },
+            "data.stockQR": {
+              "type": "literal",
+              "value": "[object Object]"
+            },
+            "barCode": {
+              "type": "column"
+            },
+            "classificationCode": {
+              "type": "column",
+              "column": "classification_code"
+            },
+            "taxProductCode": {
+              "type": "column",
+              "column": "tax_reason_code"
+            },
+            "unitPrice": {
+              "type": "column",
+              "column": "or_or"
+            }
+          },
+          "receipts": {
+            "totalAmount": {
+              "type": "expression",
+              "expression": "sum(receipts[].items[].totalAmount)"
+            },
+            "totalVAT": {
+              "type": "expression",
+              "expression": "sum(receipts[].items[].totalVAT)"
+            },
+            "totalCityTax": {
+              "type": "expression",
+              "expression": "sum(receipts[].items[].totalCityTax)"
+            },
+            "merchantTin": {
+              "type": "session",
+              "sessionVar": "pos_merchant_tin"
+            }
+          },
+          "receipts[].items": {
+            "barCodeType": {
+              "type": "literal",
+              "value": "EAN_13"
+            },
+            "measureUnit": {
+              "type": "literal",
+              "value": "PCS"
+            },
+            "qty": {
+              "type": "literal",
+              "value": "1"
+            },
+            "totalVAT": {
+              "type": "expression",
+              "expression": "receipts[].items[].unitPrice * receipts[].items[].qty /11"
+            },
+            "totalCityTax": {
+              "type": "expression",
+              "expression": "receipts[].items[].unitPrice * receipts[].items[].qty /20"
+            },
+            "totalAmount": {
+              "type": "expression",
+              "expression": "receipts[].items[].unitPrice * receipts[].items[].qty"
+            },
+            "data": {
+              "type": "literal",
+              "value": "[object Object]"
+            },
+            "data.stockQR": {
+              "type": "literal",
+              "value": "[object Object]"
+            }
+          },
+          "payments[]": {
+            "status": {
+              "type": "column"
+            },
+            "paidAmount": {
+              "type": "column",
+              "column": "or_or"
+            }
+          }
+        },
+        "itemFields": {
+          "measureUnit": {
+            "type": "literal",
+            "value": "PCS"
+          },
+          "qty": {
+            "type": "literal",
+            "value": "1"
+          },
+          "totalVAT": {
+            "type": "expression",
+            "expression": "receipts[].items[].unitPrice * receipts[].items[].qty /11"
+          },
+          "totalCityTax": {
+            "type": "expression",
+            "expression": "receipts[].items[].unitPrice * receipts[].items[].qty /20"
+          },
+          "totalAmount": {
+            "type": "expression",
+            "expression": "receipts[].items[].unitPrice * receipts[].items[].qty"
+          },
+          "barCodeType": {
+            "type": "column"
+          },
+          "barCode": {
+            "type": "column"
+          },
+          "classificationCode": {
+            "type": "column",
+            "column": "classification_code"
+          },
+          "taxProductCode": {
+            "type": "column",
+            "column": "tax_reason_code"
+          },
+          "unitPrice": {
+            "type": "column",
+            "column": "or_or"
+          }
+        },
+        "receiptFields": {
+          "totalAmount": {
+            "type": "expression",
+            "expression": "sum(receipts[].items[].totalAmount)"
+          },
+          "totalVAT": {
+            "type": "expression",
+            "expression": "sum(receipts[].items[].totalVAT)"
+          },
+          "totalCityTax": {
+            "type": "expression",
+            "expression": "sum(receipts[].items[].totalCityTax)"
+          },
+          "customerTin": {
+            "type": "column"
+          }
+        },
+        "billIdSuffix": {
+          "type": "column",
+          "column": "id"
+        },
+        "nestedSources": {
+          "receipts[]": {
+            "repeat": "false"
+          },
+          "receipts[].items[]": {
+            "repeat": "false"
+          },
+          "payments[]": {
+            "repeat": "false"
+          },
+          "receipts[].items[].data.stockQR[]": {
+            "repeat": "false"
+          }
+        },
+        "paymentFields": {
+          "status": {
+            "type": "column"
+          },
+          "paidAmount": {
+            "type": "column",
+            "column": "or_or"
+          }
+        },
+        "receiptGroups": {
+          "VAT_ABLE": {
+            "totalAmount": "or_or",
+            "totalVAT": "vat_amount",
+            "totalCityTax": "city_tax"
+          }
+        },
+        "paymentMethods": {
+          "CASH": {
+            "paidAmount": "or_or"
+          }
+        }
+      },
+      "infoEndpointConfig": {}
     }
   },
   "transactions_expense": {
@@ -464,6 +2007,7 @@
         "z_noat_month",
         "zar_uglug_eseh_code"
       ],
+      "editableFields": [],
       "userIdFields": [
         "ztr_confirm_emp"
       ],
@@ -484,6 +2028,8 @@
       "imagenameField": [
         "z_num"
       ],
+      "imageIdField": "",
+      "imageFolder": "",
       "printEmpField": [
         "branch_id",
         "comapny_id",
@@ -590,14 +2136,16 @@
       },
       "transactionTypeField": "TransType",
       "transactionTypeValue": "2122",
+      "detectFields": [],
       "moduleKey": "finance_transactions",
       "allowedBranches": [
         1
       ],
       "allowedDepartments": [
-        100,
+        1,
         102
-      ]
+      ],
+      "procedures": []
     },
     "Посын хямдралын санхүүгийн зардал": {
       "visibleFields": [
@@ -708,43 +2256,151 @@
   "transactions_plan": {
     "Ажлын төлөвлөгөө, үүрэг даалгавар": {
       "visibleFields": [
+        "cid",
+        "pmid",
+        "acc",
+        "sub",
+        "annot",
+        "sellerid",
+        "empid",
+        "orderedp",
+        "orderid",
+        "orderdid",
+        "branchid",
+        "consumerid",
+        "frombranchid",
+        "TRTYPENAME",
+        "date",
+        "tid",
+        "pid"
+      ],
+      "requiredFields": [
         "annot"
       ],
-      "requiredFields": [],
       "defaultValues": {
         "TransType": "6001"
       },
-      "editableDefaultFields": [],
-      "userIdFields": [],
-      "branchIdFields": [],
-      "companyIdFields": [],
-      "dateField": [],
+      "editableDefaultFields": [
+        "cid",
+        "pmid",
+        "acc",
+        "sub",
+        "annot",
+        "sellerid",
+        "empid",
+        "orderedp",
+        "orderid",
+        "orderdid",
+        "branchid",
+        "consumerid",
+        "frombranchid",
+        "tid"
+      ],
+      "editableFields": [
+        "cid",
+        "pmid",
+        "acc",
+        "sub",
+        "annot",
+        "sellerid",
+        "empid",
+        "orderedp",
+        "orderid",
+        "orderdid",
+        "branchid",
+        "consumerid",
+        "frombranchid",
+        "tid"
+      ],
+      "userIdFields": [
+        "created_by"
+      ],
+      "branchIdFields": [
+        "branch_id",
+        "transbranch"
+      ],
+      "companyIdFields": [
+        "company_id"
+      ],
+      "dateField": [
+        "date"
+      ],
       "emailField": [],
       "imagenameField": [],
+      "imageIdField": "",
+      "imageFolder": "",
       "printEmpField": [],
       "printCustField": [],
       "totalCurrencyFields": [],
       "totalAmountFields": [],
-      "signatureFields": [],
-      "headerFields": [],
-      "mainFields": [],
-      "footerFields": [],
+      "signatureFields": [
+        "created_by"
+      ],
+      "headerFields": [
+        "company_id",
+        "branch_id",
+        "TRTYPENAME"
+      ],
+      "mainFields": [
+        "cid",
+        "pmid",
+        "acc",
+        "sub",
+        "annot",
+        "sellerid",
+        "empid",
+        "orderedp",
+        "orderid",
+        "orderdid",
+        "branchid",
+        "consumerid",
+        "frombranchid",
+        "date",
+        "tid"
+      ],
+      "footerFields": [
+        "created_by"
+      ],
       "viewSource": {},
       "transactionTypeField": "TransType",
       "transactionTypeValue": "6001",
-      "moduleKey": "pos_transactions",
+      "detectFields": [],
+      "moduleKey": "planning_transactions",
       "allowedBranches": [
         1,
-        4
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16
       ],
       "allowedDepartments": [
-        100,
+        1,
         102,
-        110
+        104,
+        106,
+        108,
+        110,
+        112,
+        114,
+        116,
+        0
       ],
-      "tooltips": {
-        "annot": "tooltip.annot"
-      }
+      "temporaryAllowedBranches": [],
+      "temporaryAllowedDepartments": [],
+      "procedures": [],
+      "allowTemporarySubmission": false,
+      "supportsTemporarySubmission": false
     },
     "Посын гүйлгээний ажил": {
       "visibleFields": [
@@ -804,9 +2460,9 @@
         "ordrsub",
         "sp_pm_name",
         "sp_pm_unit_id",
-        "sp_cost",
         "ordrap",
-        "sp_current_stock"
+        "sp_current_stock",
+        "sp_selling_price"
       ],
       "requiredFields": [
         "ordrsub",
@@ -892,10 +2548,10 @@
       "mainFields": [
         "ordrbkod",
         "ordrsub",
-        "ordrap",
         "sp_pm_name",
         "sp_pm_unit_id",
-        "sp_cost",
+        "sp_selling_price",
+        "ordrap",
         "sp_current_stock"
       ],
       "footerFields": [
@@ -906,6 +2562,7 @@
       },
       "transactionTypeField": "TransType",
       "transactionTypeValue": "5901",
+      "detectFields": [],
       "moduleKey": "pos_transactions",
       "allowedBranches": [
         1,
@@ -916,7 +2573,8 @@
         100,
         102,
         110
-      ]
+      ],
+      "procedures": []
     }
   },
   "transactions_inventory": {
@@ -1145,13 +2803,23 @@
       "moduleKey": "inventory_transaction",
       "allowedBranches": [
         1,
-        3,
-        4,
-        11
+        2,
+        5,
+        6,
+        7,
+        8
       ],
       "allowedDepartments": [
+        1,
         11,
-        110
+        104,
+        106,
+        108,
+        110,
+        112,
+        114,
+        116,
+        0
       ],
       "procedures": [
         "dynrep_inventory_warehouse"
@@ -1210,6 +2878,8 @@
       ],
       "emailField": [],
       "imagenameField": [],
+      "imageIdField": "",
+      "imageFolder": "",
       "printEmpField": [],
       "printCustField": [],
       "totalCurrencyFields": [],
@@ -1245,6 +2915,7 @@
       },
       "transactionTypeField": "TransType",
       "transactionTypeValue": "1001",
+      "detectFields": [],
       "moduleKey": "inventory_transaction",
       "allowedBranches": [
         1,
@@ -1252,10 +2923,13 @@
         4
       ],
       "allowedDepartments": [
-        100,
-        102,
-        110
-      ]
+        102
+      ],
+      "temporaryAllowedBranches": [],
+      "temporaryAllowedDepartments": [],
+      "procedures": [],
+      "allowTemporarySubmission": false,
+      "supportsTemporarySubmission": false
     },
     "Тооллого": {
       "visibleFields": [
@@ -1362,15 +3036,33 @@
       "moduleKey": "inventory_transaction",
       "allowedBranches": [
         1,
+        2,
         3,
         4,
-        11
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16
       ],
       "allowedDepartments": [
         1,
-        11,
+        102,
+        104,
+        106,
+        108,
         110,
-        112
+        112,
+        114,
+        116,
+        0
       ],
       "procedures": [
         "dynrep_inventory_warehouse"
@@ -1508,15 +3200,23 @@
       "moduleKey": "inventory_transaction",
       "allowedBranches": [
         1,
-        3,
-        4,
-        11
+        2,
+        5,
+        6,
+        7,
+        8
       ],
       "allowedDepartments": [
+        1,
         11,
+        104,
+        106,
+        108,
         110,
         112,
-        116
+        114,
+        116,
+        0
       ],
       "procedures": [
         "dynrep_inventory_warehouse"
@@ -1552,7 +3252,6 @@
       },
       "editableDefaultFields": [
         "order_id",
-        "cashback",
         "cashback_payment_type",
         "deposit_amount",
         "payment_type",
@@ -1560,27 +3259,9 @@
         "transport_price",
         "assembly_price"
       ],
-      "editableFields": [],
-      "tooltips": {
-        "session_id": "tooltip.session_id",
-        "company_id": "tooltip.company_id",
-        "branch_id": "tooltip.branch_id",
-        "department_id": "tooltip.department_id",
-        "emp_id": "tooltip.emp_id",
-        "pos_date": "tooltip.pos_date",
-        "total_amount": "tooltip.total_amount",
-        "total_discount": "tooltip.total_discount",
-        "cashback": "tooltip.cashback",
-        "payable_amount": "tooltip.payable_amount",
-        "deposit_amount": "tooltip.deposit_amount",
-        "payment_type": "tooltip.payment_type",
-        "remarks": "tooltip.remarks",
-        "status": "tooltip.status",
-        "total_quantity": "tooltip.total_quantity",
-        "cashback_payment_type": "tooltip.cashback_payment_type",
-        "transport_price": "tooltip.transport_price",
-        "assembly_price": "tooltip.assembly_price"
-      },
+      "editableFields": [
+        "cashback"
+      ],
       "userIdFields": [
         "emp_id"
       ],
@@ -1620,8 +3301,7 @@
         "status",
         "total_quantity",
         "total_amount",
-        "total_discount",
-        "payable_amount"
+        "total_discount"
       ],
       "mainFields": [
         "cashback",
@@ -1630,7 +3310,8 @@
         "remarks",
         "cashback_payment_type",
         "transport_price",
-        "assembly_price"
+        "assembly_price",
+        "payable_amount"
       ],
       "footerFields": [],
       "viewSource": {},
@@ -1649,7 +3330,11 @@
         110,
         112
       ],
-      "procedures": []
+      "temporaryAllowedBranches": [],
+      "temporaryAllowedDepartments": [],
+      "procedures": [],
+      "allowTemporarySubmission": false,
+      "supportsTemporarySubmission": false
     }
   },
   "tbl": {
@@ -1856,6 +3541,1649 @@
       "allowedBranches": [],
       "allowedDepartments": [],
       "procedures": []
+    }
+  },
+  "transactions_contract": {
+    "Гэрээ": {
+      "visibleFields": [
+        "g_num",
+        "g_burtgel_id",
+        "g_chig",
+        "g_torol",
+        "g_sq",
+        "g_start",
+        "g_end",
+        "g_cancel",
+        "g_daatgah",
+        "g_baritsaa_must",
+        "g_desc",
+        "baitsaagch_id",
+        "date",
+        "TRTYPENAME",
+        "trtype",
+        "TransType",
+        "g_ab_tur",
+        "g_ab_huviin",
+        "g_id",
+        "g_cancel_reason"
+      ],
+      "requiredFields": [
+        "g_chig",
+        "g_torol",
+        "g_sq",
+        "g_start",
+        "g_end",
+        "g_daatgah",
+        "g_baritsaa_must",
+        "g_desc",
+        "g_burtgel_id"
+      ],
+      "defaultValues": {
+        "TransType": "6100"
+      },
+      "editableDefaultFields": [
+        "g_chig",
+        "g_torol",
+        "g_sq",
+        "g_start",
+        "g_end",
+        "g_daatgah",
+        "g_baritsaa_must",
+        "g_desc",
+        "g_ab_tur",
+        "g_ab_huviin",
+        "g_burtgel_id",
+        "g_id"
+      ],
+      "editableFields": [
+        "g_chig",
+        "g_torol",
+        "g_sq",
+        "g_start",
+        "g_end",
+        "g_daatgah",
+        "g_baritsaa_must",
+        "g_desc",
+        "g_ab_tur",
+        "g_ab_huviin",
+        "g_burtgel_id",
+        "g_id"
+      ],
+      "userIdFields": [
+        "confirm_emp"
+      ],
+      "branchIdFields": [
+        "branch_id",
+        "transbranch"
+      ],
+      "companyIdFields": [
+        "company_id"
+      ],
+      "dateField": [
+        "date"
+      ],
+      "emailField": [],
+      "imagenameField": [],
+      "imageIdField": "",
+      "imageFolder": "",
+      "printEmpField": [],
+      "printCustField": [],
+      "totalCurrencyFields": [],
+      "totalAmountFields": [],
+      "signatureFields": [],
+      "headerFields": [
+        "transbranch",
+        "TransType",
+        "trtype",
+        "TRTYPENAME",
+        "company_id",
+        "branch_id",
+        "department_id"
+      ],
+      "mainFields": [
+        "g_ab_tur",
+        "g_ab_huviin",
+        "baitsaagch_id",
+        "g_desc",
+        "g_baritsaa_must",
+        "g_daatgah",
+        "g_end",
+        "g_start",
+        "g_sq",
+        "g_torol",
+        "g_chig",
+        "g_burtgel_id",
+        "g_id",
+        "g_cancel_reason",
+        "g_cancel"
+      ],
+      "footerFields": [
+        "confirm_emp"
+      ],
+      "viewSource": {},
+      "transactionTypeField": "TransType",
+      "transactionTypeValue": "6100",
+      "detectFields": [],
+      "moduleKey": "transactions_contract",
+      "allowedBranches": [
+        1
+      ],
+      "allowedDepartments": [
+        1,
+        102
+      ],
+      "allowedPositions": [],
+      "allowedUserRights": [],
+      "allowedWorkplaces": [],
+      "temporaryAllowedBranches": [],
+      "temporaryAllowedDepartments": [],
+      "temporaryAllowedPositions": [],
+      "temporaryAllowedUserRights": [],
+      "temporaryAllowedWorkplaces": [],
+      "procedures": [
+        "dynrep_1_contract_plan10"
+      ],
+      "temporaryProcedures": [],
+      "allowDirectPost": true,
+      "allowTemporarySubmission": false,
+      "supportsTemporarySubmission": false,
+      "posApiEnabled": false,
+      "posApiType": "",
+      "posApiTypeField": "",
+      "posApiEndpointId": "",
+      "posApiInfoEndpointIds": [],
+      "infoEndpoints": [],
+      "posApiReceiptTypes": [],
+      "posApiPaymentMethods": [],
+      "fieldsFromPosApi": [],
+      "posApiMapping": {},
+      "infoEndpointConfig": {}
+    },
+    "Гэрээ үүсгэх": {
+      "visibleFields": [
+        "g_burtgel_id",
+        "g_chig",
+        "g_torol",
+        "g_sq",
+        "g_start",
+        "g_end",
+        "g_cancel",
+        "g_daatgah",
+        "g_baritsaa_must",
+        "g_desc",
+        "baitsaagch_id",
+        "date",
+        "TRTYPENAME",
+        "trtype",
+        "TransType",
+        "g_ab_tur",
+        "g_ab_huviin",
+        "g_id",
+        "g_cancel_reason"
+      ],
+      "requiredFields": [
+        "g_chig",
+        "g_torol",
+        "g_sq",
+        "g_start",
+        "g_end",
+        "g_daatgah",
+        "g_baritsaa_must",
+        "g_desc",
+        "g_burtgel_id"
+      ],
+      "defaultValues": {
+        "TransType": "6100"
+      },
+      "editableDefaultFields": [
+        "g_chig",
+        "g_torol",
+        "g_sq",
+        "g_start",
+        "g_end",
+        "g_daatgah",
+        "g_baritsaa_must",
+        "g_desc",
+        "g_ab_tur",
+        "g_ab_huviin",
+        "g_burtgel_id",
+        "g_cancel_reason",
+        "g_cancel"
+      ],
+      "editableFields": [
+        "g_chig",
+        "g_torol",
+        "g_sq",
+        "g_start",
+        "g_end",
+        "g_daatgah",
+        "g_baritsaa_must",
+        "g_desc",
+        "g_ab_tur",
+        "g_ab_huviin",
+        "g_burtgel_id",
+        "g_cancel_reason",
+        "g_cancel"
+      ],
+      "userIdFields": [
+        "confirm_emp"
+      ],
+      "branchIdFields": [
+        "branch_id",
+        "transbranch"
+      ],
+      "companyIdFields": [
+        "company_id"
+      ],
+      "dateField": [
+        "date"
+      ],
+      "emailField": [],
+      "imagenameField": [],
+      "imageIdField": "",
+      "imageFolder": "",
+      "printEmpField": [],
+      "printCustField": [],
+      "totalCurrencyFields": [],
+      "totalAmountFields": [],
+      "signatureFields": [],
+      "headerFields": [
+        "transbranch",
+        "TransType",
+        "trtype",
+        "TRTYPENAME",
+        "company_id",
+        "branch_id",
+        "department_id"
+      ],
+      "mainFields": [
+        "g_ab_tur",
+        "g_ab_huviin",
+        "baitsaagch_id",
+        "g_desc",
+        "g_baritsaa_must",
+        "g_daatgah",
+        "g_end",
+        "g_start",
+        "g_sq",
+        "g_torol",
+        "g_chig",
+        "g_burtgel_id",
+        "g_cancel_reason",
+        "g_cancel"
+      ],
+      "footerFields": [
+        "confirm_emp"
+      ],
+      "viewSource": {},
+      "transactionTypeField": "TransType",
+      "transactionTypeValue": "6100",
+      "detectFields": [],
+      "moduleKey": "transactions_contract",
+      "allowedBranches": [
+        1
+      ],
+      "allowedDepartments": [
+        1,
+        102
+      ],
+      "allowedPositions": [
+        8
+      ],
+      "allowedUserRights": [],
+      "allowedWorkplaces": [],
+      "temporaryAllowedBranches": [
+        1
+      ],
+      "temporaryAllowedDepartments": [
+        110
+      ],
+      "temporaryAllowedPositions": [
+        13,
+        14
+      ],
+      "temporaryAllowedUserRights": [],
+      "temporaryAllowedWorkplaces": [],
+      "procedures": [
+        "dynrep_1_contract_plan10"
+      ],
+      "temporaryProcedures": [],
+      "allowDirectPost": false,
+      "allowTemporarySubmission": true,
+      "supportsTemporarySubmission": true,
+      "posApiEnabled": false,
+      "posApiType": "",
+      "posApiTypeField": "",
+      "posApiEndpointId": "saveReceipt",
+      "posApiInfoEndpointIds": [],
+      "infoEndpoints": [],
+      "posApiReceiptTypes": [
+        "B2C_RECEIPT",
+        "B2B_RECEIPT",
+        "B2C_INVOICE",
+        "B2B_INVOICE"
+      ],
+      "posApiPaymentMethods": [
+        "CASH"
+      ],
+      "fieldsFromPosApi": [],
+      "posApiMapping": {},
+      "infoEndpointConfig": {}
+    },
+    "Гэрээ сунгах": {
+      "visibleFields": [
+        "g_num",
+        "g_burtgel_id",
+        "g_chig",
+        "g_torol",
+        "g_sq",
+        "g_start",
+        "g_end",
+        "g_cancel",
+        "g_daatgah",
+        "g_baritsaa_must",
+        "g_desc",
+        "baitsaagch_id",
+        "date",
+        "TRTYPENAME",
+        "trtype",
+        "TransType",
+        "g_id",
+        "g_cancel_reason",
+        "g_ab_tur",
+        "g_ab_huviin"
+      ],
+      "requiredFields": [
+        "g_chig",
+        "g_torol",
+        "g_sq",
+        "g_start",
+        "g_end",
+        "g_desc",
+        "g_burtgel_id",
+        "g_daatgah",
+        "g_baritsaa_must"
+      ],
+      "defaultValues": {
+        "TransType": "6100",
+        "g_daatgah": "0",
+        "g_baritsaa_must": "0"
+      },
+      "editableDefaultFields": [
+        "g_end",
+        "g_id",
+        "g_start",
+        "g_desc",
+        "g_ab_tur",
+        "g_ab_huviin",
+        "g_sq"
+      ],
+      "editableFields": [
+        "g_end",
+        "g_id",
+        "g_start",
+        "g_desc",
+        "g_ab_tur",
+        "g_ab_huviin",
+        "g_sq"
+      ],
+      "userIdFields": [
+        "confirm_emp",
+        "created_by"
+      ],
+      "branchIdFields": [
+        "branch_id",
+        "transbranch"
+      ],
+      "companyIdFields": [
+        "company_id"
+      ],
+      "dateField": [
+        "date"
+      ],
+      "emailField": [],
+      "imagenameField": [
+        "g_num",
+        "g_id",
+        "g_burtgel_id",
+        "trtype",
+        "TransType"
+      ],
+      "imageIdField": "g_num",
+      "imageFolder": "",
+      "printEmpField": [],
+      "printCustField": [],
+      "totalCurrencyFields": [],
+      "totalAmountFields": [],
+      "signatureFields": [],
+      "headerFields": [
+        "transbranch",
+        "TransType",
+        "trtype",
+        "TRTYPENAME",
+        "company_id",
+        "branch_id",
+        "department_id"
+      ],
+      "mainFields": [
+        "baitsaagch_id",
+        "g_desc",
+        "g_end",
+        "g_start",
+        "g_sq",
+        "g_torol",
+        "g_chig",
+        "g_burtgel_id",
+        "g_id",
+        "g_cancel_reason",
+        "g_cancel",
+        "g_daatgah",
+        "g_baritsaa_must",
+        "g_ab_tur",
+        "g_ab_huviin"
+      ],
+      "footerFields": [
+        "confirm_emp"
+      ],
+      "viewSource": {},
+      "transactionTypeField": "TransType",
+      "transactionTypeValue": "6100",
+      "detectFields": [],
+      "moduleKey": "transactions_contract",
+      "allowedBranches": [
+        1
+      ],
+      "allowedDepartments": [
+        1,
+        102
+      ],
+      "allowedPositions": [
+        8
+      ],
+      "allowedUserRights": [
+        3
+      ],
+      "allowedWorkplaces": [],
+      "temporaryAllowedBranches": [
+        1
+      ],
+      "temporaryAllowedDepartments": [
+        110
+      ],
+      "temporaryAllowedPositions": [
+        13,
+        14
+      ],
+      "temporaryAllowedUserRights": [],
+      "temporaryAllowedWorkplaces": [],
+      "procedures": [
+        "dynrep_1_contract_plan10"
+      ],
+      "temporaryProcedures": [],
+      "allowDirectPost": false,
+      "allowTemporarySubmission": true,
+      "supportsTemporarySubmission": true,
+      "posApiEnabled": false,
+      "posApiType": "",
+      "posApiTypeField": "",
+      "posApiEndpointId": "saveReceipt",
+      "posApiInfoEndpointIds": [],
+      "infoEndpoints": [],
+      "posApiReceiptTypes": [
+        "B2C_RECEIPT",
+        "B2B_RECEIPT"
+      ],
+      "posApiPaymentMethods": [
+        "CASH"
+      ],
+      "fieldsFromPosApi": [],
+      "posApiMapping": {},
+      "infoEndpointConfig": {}
+    }
+  },
+  "tbl_contracter": {
+    "Харилцагч бүртгэх": {
+      "visibleFields": [
+        "manuf_id",
+        "manuf_rd",
+        "manuf_phone",
+        "manuf_lname",
+        "manuf_fname",
+        "manuf_orgname",
+        "brandname",
+        "description",
+        "manuf_address",
+        "phone1",
+        "phone2",
+        "manuf_torol",
+        "manuf_products",
+        "manuf_agrdate",
+        "manuf_agrenddate"
+      ],
+      "requiredFields": [
+        "manuf_rd",
+        "manuf_phone",
+        "manuf_lname",
+        "manuf_fname",
+        "manuf_orgname",
+        "brandname",
+        "description",
+        "manuf_address",
+        "phone1",
+        "phone2",
+        "manuf_torol",
+        "manuf_products",
+        "manuf_agrdate",
+        "manuf_id"
+      ],
+      "defaultValues": {
+        "company_id": "0"
+      },
+      "editableDefaultFields": [
+        "manuf_rd",
+        "manuf_phone",
+        "manuf_lname",
+        "manuf_fname",
+        "manuf_orgname",
+        "brandname",
+        "description",
+        "manuf_address",
+        "phone1",
+        "phone2",
+        "manuf_torol",
+        "manuf_products",
+        "manuf_agrdate",
+        "manuf_agrenddate",
+        "manuf_id"
+      ],
+      "editableFields": [
+        "manuf_rd",
+        "manuf_phone",
+        "manuf_lname",
+        "manuf_fname",
+        "manuf_orgname",
+        "brandname",
+        "description",
+        "manuf_address",
+        "phone1",
+        "phone2",
+        "manuf_torol",
+        "manuf_products",
+        "manuf_agrdate",
+        "manuf_agrenddate",
+        "manuf_id"
+      ],
+      "userIdFields": [
+        "created_by"
+      ],
+      "branchIdFields": [],
+      "companyIdFields": [],
+      "dateField": [
+        "created_at"
+      ],
+      "emailField": [],
+      "imagenameField": [
+        "id",
+        "manuf_id",
+        "manuf_rd",
+        "manuf_phone",
+        "manuf_lname",
+        "manuf_fname",
+        "manuf_orgname",
+        "brandname"
+      ],
+      "imageIdField": "manuf_rd",
+      "imageFolder": "",
+      "printEmpField": [
+        "id",
+        "manuf_id",
+        "manuf_rd",
+        "manuf_phone",
+        "manuf_lname",
+        "manuf_fname",
+        "manuf_orgname",
+        "brandname",
+        "description",
+        "manuf_address",
+        "phone1",
+        "phone2",
+        "manuf_torol",
+        "manuf_products",
+        "manuf_agrdate",
+        "manuf_agrenddate"
+      ],
+      "printCustField": [
+        "manuf_id",
+        "manuf_lname",
+        "manuf_fname",
+        "manuf_orgname",
+        "brandname",
+        "description"
+      ],
+      "totalCurrencyFields": [],
+      "totalAmountFields": [],
+      "signatureFields": [
+        "created_by"
+      ],
+      "headerFields": [
+        "company_id"
+      ],
+      "mainFields": [
+        "manuf_rd",
+        "manuf_phone",
+        "manuf_lname",
+        "manuf_fname",
+        "manuf_orgname",
+        "brandname",
+        "description",
+        "manuf_address",
+        "phone1",
+        "phone2",
+        "manuf_torol",
+        "manuf_products",
+        "manuf_agrdate",
+        "manuf_agrenddate",
+        "manuf_id"
+      ],
+      "footerFields": [
+        "created_by"
+      ],
+      "viewSource": {},
+      "transactionTypeField": "",
+      "transactionTypeValue": "",
+      "detectFields": [],
+      "moduleKey": "transactions_contract",
+      "allowedBranches": [
+        1
+      ],
+      "allowedDepartments": [
+        102
+      ],
+      "allowedPositions": [
+        8
+      ],
+      "allowedUserRights": [
+        3
+      ],
+      "allowedWorkplaces": [],
+      "temporaryAllowedBranches": [],
+      "temporaryAllowedDepartments": [],
+      "temporaryAllowedPositions": [],
+      "temporaryAllowedUserRights": [],
+      "temporaryAllowedWorkplaces": [],
+      "procedures": [],
+      "temporaryProcedures": [],
+      "allowTemporarySubmission": false,
+      "supportsTemporarySubmission": false,
+      "posApiEnabled": false,
+      "posApiType": "",
+      "posApiTypeField": "",
+      "posApiEndpointId": "",
+      "posApiInfoEndpointIds": [],
+      "infoEndpoints": [],
+      "posApiReceiptTypes": [],
+      "posApiPaymentMethods": [],
+      "fieldsFromPosApi": [],
+      "posApiMapping": {},
+      "infoEndpointConfig": {}
+    }
+  },
+  "tbl_hongololt": {
+    "Хөнгөлөлт бүртгэх": {
+      "visibleFields": [
+        "hon_g_id",
+        "hon_year",
+        "hon_month",
+        "hon_per",
+        "hon_size",
+        "tushaalnum",
+        "decidedby",
+        "description",
+        "hon_startdate",
+        "hon_enddate"
+      ],
+      "requiredFields": [
+        "hon_g_id",
+        "hon_year",
+        "hon_month",
+        "hon_size",
+        "tushaalnum",
+        "decidedby",
+        "description",
+        "hon_startdate"
+      ],
+      "defaultValues": {},
+      "editableDefaultFields": [
+        "hon_g_id",
+        "hon_year",
+        "hon_month",
+        "hon_size",
+        "tushaalnum",
+        "decidedby",
+        "description",
+        "hon_per",
+        "hon_startdate"
+      ],
+      "editableFields": [
+        "hon_g_id",
+        "hon_year",
+        "hon_month",
+        "hon_size",
+        "tushaalnum",
+        "decidedby",
+        "description",
+        "hon_per",
+        "hon_startdate"
+      ],
+      "userIdFields": [
+        "created_by"
+      ],
+      "branchIdFields": [],
+      "companyIdFields": [
+        "company_id"
+      ],
+      "dateField": [
+        "created_at"
+      ],
+      "emailField": [],
+      "imagenameField": [
+        "id",
+        "hon_g_id",
+        "tushaalnum"
+      ],
+      "imageIdField": "id",
+      "imageFolder": "",
+      "printEmpField": [
+        "hon_g_id",
+        "hon_year",
+        "hon_month",
+        "id",
+        "hon_per",
+        "hon_size",
+        "tushaalnum",
+        "decidedby",
+        "description",
+        "company_id",
+        "created_by",
+        "created_at"
+      ],
+      "printCustField": [
+        "hon_g_id",
+        "hon_year",
+        "hon_month",
+        "hon_per",
+        "hon_size",
+        "tushaalnum",
+        "decidedby",
+        "description"
+      ],
+      "totalCurrencyFields": [
+        "hon_size"
+      ],
+      "totalAmountFields": [
+        "hon_size"
+      ],
+      "signatureFields": [
+        "created_by"
+      ],
+      "headerFields": [
+        "company_id"
+      ],
+      "mainFields": [
+        "hon_g_id",
+        "hon_year",
+        "hon_month",
+        "hon_per",
+        "hon_size",
+        "tushaalnum",
+        "decidedby",
+        "description",
+        "hon_startdate"
+      ],
+      "footerFields": [
+        "created_by"
+      ],
+      "viewSource": {},
+      "transactionTypeField": "",
+      "transactionTypeValue": "",
+      "detectFields": [],
+      "moduleKey": "transactions_contract",
+      "allowedBranches": [
+        1
+      ],
+      "allowedDepartments": [
+        1,
+        102
+      ],
+      "allowedPositions": [
+        8
+      ],
+      "allowedUserRights": [
+        3
+      ],
+      "allowedWorkplaces": [],
+      "temporaryAllowedBranches": [],
+      "temporaryAllowedDepartments": [],
+      "temporaryAllowedPositions": [],
+      "temporaryAllowedUserRights": [],
+      "temporaryAllowedWorkplaces": [],
+      "procedures": [],
+      "temporaryProcedures": [],
+      "allowTemporarySubmission": false,
+      "supportsTemporarySubmission": false,
+      "posApiEnabled": false,
+      "posApiType": "",
+      "posApiTypeField": "",
+      "posApiEndpointId": "",
+      "posApiInfoEndpointIds": [],
+      "infoEndpoints": [],
+      "posApiReceiptTypes": [],
+      "posApiPaymentMethods": [],
+      "fieldsFromPosApi": [],
+      "posApiMapping": {},
+      "infoEndpointConfig": {}
+    }
+  },
+  "tbl_bill_lines": {
+    "Хэрэглээний бичилт": {
+      "visibleFields": [
+        "contract_number",
+        "period_start",
+        "period_end",
+        "utility_id",
+        "band_id",
+        "reading_curr",
+        "isnew_equipment",
+        "bill_date",
+        "reading_prev"
+      ],
+      "requiredFields": [
+        "contract_number",
+        "period_end",
+        "utility_id",
+        "band_id",
+        "reading_curr",
+        "bill_date"
+      ],
+      "defaultValues": {
+        "isnew_equipment": "0",
+        "line_id": "1"
+      },
+      "editableDefaultFields": [
+        "contract_number",
+        "period_end",
+        "utility_id",
+        "band_id",
+        "reading_curr"
+      ],
+      "editableFields": [
+        "contract_number",
+        "period_end",
+        "utility_id",
+        "band_id",
+        "reading_curr"
+      ],
+      "userIdFields": [
+        "created_by"
+      ],
+      "branchIdFields": [],
+      "companyIdFields": [
+        "company_id"
+      ],
+      "dateField": [
+        "bill_date",
+        "period_end"
+      ],
+      "emailField": [],
+      "imagenameField": [],
+      "imageIdField": "",
+      "imageFolder": "",
+      "printEmpField": [],
+      "printCustField": [],
+      "totalCurrencyFields": [],
+      "totalAmountFields": [],
+      "signatureFields": [
+        "created_by"
+      ],
+      "headerFields": [
+        "company_id"
+      ],
+      "mainFields": [
+        "contract_number",
+        "period_end",
+        "utility_id",
+        "band_id",
+        "reading_curr",
+        "isnew_equipment",
+        "bill_date",
+        "reading_prev"
+      ],
+      "footerFields": [
+        "created_by"
+      ],
+      "viewSource": {},
+      "transactionTypeField": "",
+      "transactionTypeValue": "",
+      "detectFields": [],
+      "moduleKey": "transactions_contract",
+      "allowedBranches": [
+        1
+      ],
+      "allowedDepartments": [
+        102
+      ],
+      "allowedPositions": [
+        8
+      ],
+      "allowedUserRights": [
+        3
+      ],
+      "allowedWorkplaces": [],
+      "temporaryAllowedBranches": [
+        1
+      ],
+      "temporaryAllowedDepartments": [
+        110,
+        112,
+        116
+      ],
+      "temporaryAllowedPositions": [
+        13,
+        14,
+        15,
+        17,
+        36
+      ],
+      "temporaryAllowedUserRights": [],
+      "temporaryAllowedWorkplaces": [],
+      "procedures": [],
+      "temporaryProcedures": [],
+      "allowDirectPost": false,
+      "allowTemporarySubmission": true,
+      "supportsTemporarySubmission": true,
+      "posApiEnabled": false,
+      "posApiType": "",
+      "posApiTypeField": "",
+      "posApiEndpointId": "saveReceipt",
+      "posApiInfoEndpointIds": [],
+      "infoEndpoints": [],
+      "posApiReceiptTypes": [
+        "B2C_RECEIPT",
+        "B2B_RECEIPT",
+        "B2C_INVOICE",
+        "B2B_INVOICE"
+      ],
+      "posApiPaymentMethods": [
+        "CASH"
+      ],
+      "fieldsFromPosApi": [],
+      "posApiMapping": {},
+      "infoEndpointConfig": {}
+    },
+    "Цахилгааны бичилт": {
+      "visibleFields": [
+        "contract_number",
+        "period_start",
+        "period_end",
+        "utility_id",
+        "band_id",
+        "reading_curr",
+        "isnew_equipment",
+        "bill_date",
+        "reading_prev",
+        "is_allowed"
+      ],
+      "requiredFields": [
+        "contract_number",
+        "period_end",
+        "utility_id",
+        "band_id",
+        "reading_curr",
+        "bill_date"
+      ],
+      "defaultValues": {
+        "isnew_equipment": "0",
+        "line_id": "1",
+        "utility_id": "1"
+      },
+      "editableDefaultFields": [
+        "contract_number",
+        "period_end",
+        "band_id",
+        "reading_curr"
+      ],
+      "editableFields": [
+        "contract_number",
+        "period_end",
+        "band_id",
+        "reading_curr"
+      ],
+      "userIdFields": [
+        "created_by"
+      ],
+      "branchIdFields": [],
+      "companyIdFields": [
+        "company_id"
+      ],
+      "dateField": [
+        "bill_date",
+        "period_end"
+      ],
+      "emailField": [],
+      "imagenameField": [],
+      "imageIdField": "",
+      "imageFolder": "",
+      "printEmpField": [],
+      "printCustField": [],
+      "totalCurrencyFields": [],
+      "totalAmountFields": [],
+      "signatureFields": [
+        "created_by"
+      ],
+      "headerFields": [
+        "company_id"
+      ],
+      "mainFields": [
+        "contract_number",
+        "period_end",
+        "utility_id",
+        "band_id",
+        "reading_curr",
+        "isnew_equipment",
+        "bill_date",
+        "reading_prev",
+        "is_allowed"
+      ],
+      "footerFields": [
+        "created_by"
+      ],
+      "viewSource": {},
+      "transactionTypeField": "",
+      "transactionTypeValue": "",
+      "detectFields": [],
+      "moduleKey": "transactions_contract",
+      "allowedBranches": [
+        1
+      ],
+      "allowedDepartments": [
+        102
+      ],
+      "allowedPositions": [
+        8
+      ],
+      "allowedUserRights": [
+        3
+      ],
+      "allowedWorkplaces": [],
+      "temporaryAllowedBranches": [
+        1
+      ],
+      "temporaryAllowedDepartments": [
+        110,
+        112,
+        116
+      ],
+      "temporaryAllowedPositions": [
+        13,
+        14,
+        17,
+        18,
+        36
+      ],
+      "temporaryAllowedUserRights": [],
+      "temporaryAllowedWorkplaces": [],
+      "procedures": [],
+      "temporaryProcedures": [],
+      "allowDirectPost": false,
+      "allowTemporarySubmission": true,
+      "supportsTemporarySubmission": true,
+      "posApiEnabled": false,
+      "posApiType": "",
+      "posApiTypeField": "",
+      "posApiEndpointId": "saveReceipt",
+      "posApiInfoEndpointIds": [],
+      "infoEndpoints": [],
+      "posApiReceiptTypes": [
+        "B2C_RECEIPT",
+        "B2B_RECEIPT",
+        "B2C_INVOICE",
+        "B2B_INVOICE"
+      ],
+      "posApiPaymentMethods": [
+        "CASH"
+      ],
+      "fieldsFromPosApi": [],
+      "posApiMapping": {},
+      "infoEndpointConfig": {}
+    },
+    "Зөвшөөрөл бүртгэл": {
+      "visibleFields": [
+        "contract_number",
+        "utility_id",
+        "bill_date",
+        "reading_curr",
+        "period_end"
+      ],
+      "requiredFields": [
+        "contract_number",
+        "utility_id",
+        "band_id",
+        "bill_date",
+        "reading_curr",
+        "period_end"
+      ],
+      "defaultValues": {
+        "isnew_equipment": "0",
+        "line_id": "1",
+        "utility_id": "34"
+      },
+      "editableDefaultFields": [
+        "contract_number",
+        "band_id",
+        "bill_date",
+        "reading_curr",
+        "period_end",
+        "utility_id"
+      ],
+      "editableFields": [
+        "contract_number",
+        "band_id",
+        "bill_date",
+        "reading_curr",
+        "period_end",
+        "utility_id"
+      ],
+      "userIdFields": [
+        "created_by"
+      ],
+      "branchIdFields": [],
+      "companyIdFields": [
+        "company_id"
+      ],
+      "dateField": [
+        "period_end",
+        "bill_date"
+      ],
+      "emailField": [],
+      "imagenameField": [],
+      "imageIdField": "",
+      "imageFolder": "",
+      "printEmpField": [],
+      "printCustField": [],
+      "totalCurrencyFields": [],
+      "totalAmountFields": [],
+      "signatureFields": [
+        "created_by"
+      ],
+      "headerFields": [
+        "company_id"
+      ],
+      "mainFields": [
+        "contract_number",
+        "utility_id",
+        "band_id",
+        "period_start",
+        "reading_curr",
+        "period_end"
+      ],
+      "footerFields": [
+        "created_by"
+      ],
+      "viewSource": {},
+      "transactionTypeField": "",
+      "transactionTypeValue": "",
+      "detectFields": [],
+      "moduleKey": "transactions_contract",
+      "allowedBranches": [
+        1
+      ],
+      "allowedDepartments": [
+        102
+      ],
+      "allowedPositions": [
+        8
+      ],
+      "allowedUserRights": [
+        3
+      ],
+      "allowedWorkplaces": [],
+      "temporaryAllowedBranches": [
+        1
+      ],
+      "temporaryAllowedDepartments": [
+        110,
+        112,
+        116
+      ],
+      "temporaryAllowedPositions": [
+        13,
+        14,
+        15,
+        36
+      ],
+      "temporaryAllowedUserRights": [],
+      "temporaryAllowedWorkplaces": [],
+      "procedures": [],
+      "temporaryProcedures": [],
+      "allowDirectPost": false,
+      "allowTemporarySubmission": true,
+      "supportsTemporarySubmission": true,
+      "posApiEnabled": false,
+      "posApiType": "",
+      "posApiTypeField": "",
+      "posApiEndpointId": "saveReceipt",
+      "posApiInfoEndpointIds": [],
+      "infoEndpoints": [],
+      "posApiReceiptTypes": [
+        "B2C_RECEIPT",
+        "B2B_RECEIPT",
+        "B2C_INVOICE",
+        "B2B_INVOICE"
+      ],
+      "posApiPaymentMethods": [
+        "CASH"
+      ],
+      "fieldsFromPosApi": [],
+      "posApiMapping": {},
+      "infoEndpointConfig": {}
+    }
+  },
+  "tbl_employment_schedule": {
+    "Ажлын хуваарь": {
+      "visibleFields": [
+        "workplace_id",
+        "emp_id",
+        "start_date",
+        "end_date"
+      ],
+      "requiredFields": [
+        "workplace_id",
+        "emp_id",
+        "start_date"
+      ],
+      "defaultValues": {},
+      "editableDefaultFields": [
+        "workplace_id",
+        "emp_id",
+        "start_date",
+        "end_date"
+      ],
+      "editableFields": [
+        "workplace_id",
+        "emp_id",
+        "start_date",
+        "end_date"
+      ],
+      "userIdFields": [
+        "created_by"
+      ],
+      "branchIdFields": [
+        "branch_id"
+      ],
+      "companyIdFields": [
+        "company_id"
+      ],
+      "dateField": [],
+      "emailField": [],
+      "imagenameField": [],
+      "imageIdField": "",
+      "imageFolder": "",
+      "printEmpField": [],
+      "printCustField": [],
+      "totalCurrencyFields": [],
+      "totalAmountFields": [],
+      "signatureFields": [],
+      "headerFields": [],
+      "mainFields": [
+        "workplace_id",
+        "emp_id",
+        "start_date",
+        "end_date"
+      ],
+      "footerFields": [],
+      "viewSource": {},
+      "transactionTypeField": "",
+      "transactionTypeValue": "",
+      "detectFields": [],
+      "moduleKey": "admin_configs",
+      "allowedBranches": [
+        1
+      ],
+      "allowedDepartments": [
+        102
+      ],
+      "allowedPositions": [
+        8
+      ],
+      "allowedUserRights": [
+        3
+      ],
+      "allowedWorkplaces": [],
+      "temporaryAllowedBranches": [],
+      "temporaryAllowedDepartments": [],
+      "temporaryAllowedPositions": [],
+      "temporaryAllowedUserRights": [],
+      "temporaryAllowedWorkplaces": [],
+      "procedures": [],
+      "temporaryProcedures": [],
+      "allowTemporarySubmission": false,
+      "supportsTemporarySubmission": false,
+      "posApiEnabled": false,
+      "posApiType": "",
+      "posApiTypeField": "",
+      "posApiEndpointId": "saveReceipt",
+      "posApiInfoEndpointIds": [],
+      "infoEndpoints": [],
+      "posApiReceiptTypes": [],
+      "posApiPaymentMethods": [],
+      "fieldsFromPosApi": [],
+      "posApiMapping": {},
+      "posApiResponseMapping": {},
+      "infoEndpointConfig": {}
+    }
+  },
+  "code_utility_rates": {
+    "Хэрэглээ, авлага тохируулах": {
+      "visibleFields": [
+        "uchig_id",
+        "utorol_id",
+        "utility_id",
+        "band_id",
+        "effective_from",
+        "effective_to",
+        "eqip_lloss",
+        "maintenance_per",
+        "fixed_fee",
+        "per_unit",
+        "penalty_interestperday",
+        "penalty_maxinterest",
+        "penalty_startdayofmonth",
+        "require_bill_lines",
+        "is_base",
+        "unit_price"
+      ],
+      "requiredFields": [
+        "utility_id",
+        "band_id",
+        "effective_from"
+      ],
+      "defaultValues": {},
+      "editableDefaultFields": [
+        "uchig_id",
+        "utorol_id",
+        "utility_id",
+        "band_id",
+        "effective_from",
+        "effective_to",
+        "eqip_lloss",
+        "maintenance_per",
+        "fixed_fee",
+        "per_unit",
+        "penalty_interestperday",
+        "penalty_maxinterest",
+        "penalty_startdayofmonth",
+        "require_bill_lines",
+        "is_base",
+        "unit_price"
+      ],
+      "editableFields": [
+        "uchig_id",
+        "utorol_id",
+        "utility_id",
+        "band_id",
+        "effective_from",
+        "effective_to",
+        "eqip_lloss",
+        "maintenance_per",
+        "fixed_fee",
+        "per_unit",
+        "penalty_interestperday",
+        "penalty_maxinterest",
+        "penalty_startdayofmonth",
+        "require_bill_lines",
+        "is_base",
+        "unit_price"
+      ],
+      "userIdFields": [
+        "created_by"
+      ],
+      "branchIdFields": [],
+      "companyIdFields": [
+        "company_id"
+      ],
+      "dateField": [],
+      "emailField": [],
+      "imagenameField": [],
+      "imageIdField": "",
+      "imageFolder": "",
+      "printEmpField": [],
+      "printCustField": [],
+      "totalCurrencyFields": [],
+      "totalAmountFields": [],
+      "signatureFields": [],
+      "headerFields": [],
+      "mainFields": [
+        "uchig_id",
+        "utorol_id",
+        "utility_id",
+        "band_id",
+        "effective_from",
+        "effective_to",
+        "eqip_lloss",
+        "maintenance_per",
+        "fixed_fee",
+        "per_unit",
+        "penalty_interestperday",
+        "penalty_maxinterest",
+        "penalty_startdayofmonth",
+        "require_bill_lines",
+        "is_base",
+        "unit_price"
+      ],
+      "footerFields": [],
+      "viewSource": {},
+      "transactionTypeField": "",
+      "transactionTypeValue": "",
+      "detectFields": [],
+      "moduleKey": "admin_configs",
+      "allowedBranches": [
+        1
+      ],
+      "allowedDepartments": [
+        102
+      ],
+      "allowedPositions": [
+        8
+      ],
+      "allowedUserRights": [
+        3
+      ],
+      "allowedWorkplaces": [],
+      "temporaryAllowedBranches": [],
+      "temporaryAllowedDepartments": [],
+      "temporaryAllowedPositions": [],
+      "temporaryAllowedUserRights": [],
+      "temporaryAllowedWorkplaces": [],
+      "procedures": [],
+      "temporaryProcedures": [],
+      "allowTemporarySubmission": false,
+      "supportsTemporarySubmission": false,
+      "posApiEnabled": false,
+      "posApiType": "",
+      "posApiTypeField": "",
+      "posApiEndpointId": "saveReceipt",
+      "posApiInfoEndpointIds": [],
+      "infoEndpoints": [],
+      "posApiReceiptTypes": [],
+      "posApiPaymentMethods": [],
+      "fieldsFromPosApi": [],
+      "posApiMapping": {},
+      "posApiResponseMapping": {},
+      "infoEndpointConfig": {}
+    }
+  },
+  "code_income_priority": {
+    "Авлагын дараалал тохируулга": {
+      "visibleFields": [
+        "utility_id",
+        "priority_order"
+      ],
+      "requiredFields": [
+        "utility_id"
+      ],
+      "defaultValues": {},
+      "editableDefaultFields": [
+        "utility_id",
+        "priority_order"
+      ],
+      "editableFields": [
+        "utility_id",
+        "priority_order"
+      ],
+      "userIdFields": [
+        "created_by"
+      ],
+      "branchIdFields": [],
+      "companyIdFields": [
+        "company_id"
+      ],
+      "dateField": [],
+      "emailField": [],
+      "imagenameField": [],
+      "imageIdField": "",
+      "imageFolder": "",
+      "printEmpField": [],
+      "printCustField": [],
+      "totalCurrencyFields": [],
+      "totalAmountFields": [],
+      "signatureFields": [],
+      "headerFields": [],
+      "mainFields": [
+        "utility_id",
+        "priority_order"
+      ],
+      "footerFields": [],
+      "viewSource": {},
+      "transactionTypeField": "",
+      "transactionTypeValue": "",
+      "detectFields": [],
+      "moduleKey": "admin_configs",
+      "allowedBranches": [
+        1
+      ],
+      "allowedDepartments": [
+        102
+      ],
+      "allowedPositions": [
+        8
+      ],
+      "allowedUserRights": [
+        3
+      ],
+      "allowedWorkplaces": [],
+      "temporaryAllowedBranches": [],
+      "temporaryAllowedDepartments": [],
+      "temporaryAllowedPositions": [],
+      "temporaryAllowedUserRights": [],
+      "temporaryAllowedWorkplaces": [],
+      "procedures": [],
+      "temporaryProcedures": [],
+      "allowTemporarySubmission": false,
+      "supportsTemporarySubmission": false,
+      "posApiEnabled": false,
+      "posApiType": "",
+      "posApiTypeField": "",
+      "posApiEndpointId": "saveReceipt",
+      "posApiInfoEndpointIds": [],
+      "infoEndpoints": [],
+      "posApiReceiptTypes": [],
+      "posApiPaymentMethods": [],
+      "fieldsFromPosApi": [],
+      "posApiMapping": {},
+      "posApiResponseMapping": {},
+      "infoEndpointConfig": {}
+    }
+  },
+  "code_incometype": {
+    "Орлогын төрөл тохиргоо": {
+      "visibleFields": [
+        "income_type_id",
+        "name",
+        "classification_code"
+      ],
+      "requiredFields": [
+        "income_type_id",
+        "name"
+      ],
+      "defaultValues": {},
+      "editableDefaultFields": [
+        "income_type_id",
+        "name",
+        "classification_code"
+      ],
+      "editableFields": [
+        "income_type_id",
+        "name",
+        "classification_code"
+      ],
+      "userIdFields": [],
+      "branchIdFields": [],
+      "companyIdFields": [],
+      "dateField": [],
+      "emailField": [],
+      "imagenameField": [],
+      "imageIdField": "",
+      "imageFolder": "",
+      "printEmpField": [],
+      "printCustField": [],
+      "totalCurrencyFields": [],
+      "totalAmountFields": [],
+      "signatureFields": [],
+      "headerFields": [],
+      "mainFields": [
+        "income_type_id",
+        "name",
+        "classification_code"
+      ],
+      "footerFields": [],
+      "viewSource": {},
+      "transactionTypeField": "",
+      "transactionTypeValue": "",
+      "detectFields": [],
+      "moduleKey": "admin_configs",
+      "allowedBranches": [
+        1
+      ],
+      "allowedDepartments": [
+        102
+      ],
+      "allowedPositions": [
+        8
+      ],
+      "allowedUserRights": [
+        3
+      ],
+      "allowedWorkplaces": [],
+      "temporaryAllowedBranches": [],
+      "temporaryAllowedDepartments": [],
+      "temporaryAllowedPositions": [],
+      "temporaryAllowedUserRights": [],
+      "temporaryAllowedWorkplaces": [],
+      "procedures": [],
+      "temporaryProcedures": [],
+      "allowTemporarySubmission": false,
+      "supportsTemporarySubmission": false,
+      "posApiEnabled": false,
+      "posApiType": "",
+      "posApiTypeField": "",
+      "posApiEndpointId": "",
+      "posApiInfoEndpointIds": [],
+      "infoEndpoints": [],
+      "posApiReceiptTypes": [],
+      "posApiPaymentMethods": [],
+      "fieldsFromPosApi": [],
+      "posApiMapping": {},
+      "infoEndpointConfig": {}
     }
   }
 }
