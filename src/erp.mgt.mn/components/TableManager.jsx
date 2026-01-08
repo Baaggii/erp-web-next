@@ -3040,7 +3040,80 @@ const TableManager = forwardRef(function TableManager({
     setShowDetail(true);
   }
 
+  function showImageSearchToast(row, tableName = table) {
+    if (!generalConfig.general?.imageToastEnabled) return;
+    if (!row || typeof row !== 'object') return;
+    const hasFormImageConfig =
+      (Array.isArray(formConfig?.imagenameField) && formConfig.imagenameField.length > 0) ||
+      Boolean(formConfig?.imageIdField);
+    const config = hasFormImageConfig ? formConfig : getConfigForRow(row) || formConfig || {};
+    const sanitizeName = (value) =>
+      String(value)
+        .toLowerCase()
+        .replace(/[^a-z0-9_-]+/gi, '_');
+    const buildFallbackName = (r = {}) => {
+      const baseFields = [
+        'z_mat_code',
+        'or_bcode',
+        'bmtr_pmid',
+        'pmid',
+        'sp_primary_code',
+        'pid',
+      ];
+      const parts = [];
+      const base = baseFields.map((field) => getCase(r, field)).filter(Boolean).join('_');
+      if (base) parts.push(base);
+      const o1 = [getCase(r, 'bmtr_orderid'), getCase(r, 'bmtr_orderdid')]
+        .filter(Boolean)
+        .join('~');
+      const o2 = [getCase(r, 'ordrid'), getCase(r, 'ordrdid')]
+        .filter(Boolean)
+        .join('~');
+      const ord = o1 || o2;
+      if (ord) parts.push(ord);
+      const transTypeVal =
+        getCase(r, 'TransType') ||
+        getCase(r, 'UITransType') ||
+        getCase(r, 'UITransTypeName') ||
+        getCase(r, 'transtype');
+      const tType =
+        getCase(r, 'trtype') ||
+        getCase(r, 'UITrtype') ||
+        getCase(r, 'TRTYPENAME') ||
+        getCase(r, 'trtypename') ||
+        getCase(r, 'uitranstypename') ||
+        getCase(r, 'transtype');
+      if (transTypeVal) parts.push(transTypeVal);
+      if (tType) parts.push(tType);
+      return sanitizeName(parts.join('_'));
+    };
+    let name = '';
+    if (Array.isArray(config.imagenameField) && config.imagenameField.length) {
+      name = buildImageName(row, config.imagenameField, columnCaseMap, company).name;
+    }
+    if (!name) name = buildFallbackName(row);
+    if (!name) name = row._imageName || row.imageName || row.image_name || '';
+    if (!name && config.imageIdField) {
+      name = buildImageName(row, [config.imageIdField], columnCaseMap, company).name;
+    }
+    const folder = getImageFolder(row);
+    const details = [
+      name ? `name=${name}` : null,
+      folder ? `folder=${folder}` : null,
+      tableName ? `table=${tableName}` : null,
+    ]
+      .filter(Boolean)
+      .join(', ');
+    addToast(
+      t('image_searching_name', 'Searching images for: {{details}}', {
+        details: details || t('image_searching_unknown', 'unknown'),
+      }),
+      'info',
+    );
+  }
+
   function openImages(row) {
+    showImageSearchToast(row);
     setImagesRow(row);
   }
 
@@ -8401,19 +8474,21 @@ const TableManager = forwardRef(function TableManager({
                                   {canViewTemporaryImages && (
                                     <button
                                       type="button"
-                                      onClick={() =>
+                                      onClick={() => {
+                                        const rowWithImage = {
+                                          ...normalizedValuesWithImage,
+                                          _imageName:
+                                            temporaryImageName ||
+                                            normalizedValuesWithImage?._imageName,
+                                          created_by: entry?.created_by || entry?.createdBy,
+                                        };
+                                        showImageSearchToast(rowWithImage, temporaryTableName);
                                         setTemporaryImagesEntry({
-                                          row: {
-                                            ...normalizedValuesWithImage,
-                                            _imageName:
-                                              temporaryImageName ||
-                                              normalizedValuesWithImage?._imageName,
-                                            created_by: entry?.created_by || entry?.createdBy,
-                                          },
+                                          row: rowWithImage,
                                           table: temporaryTableName,
                                           canDelete: canDeleteTemporaryImages,
-                                        })
-                                      }
+                                        });
+                                      }}
                                       style={{
                                         padding: '0.25rem 0.55rem',
                                         backgroundColor: '#f3f4f6',
