@@ -141,59 +141,6 @@ export default function RowImageViewModal({
     return sanitize(parts.join('_'));
   }
 
-  function resolveImageNameForRow(r, cfg = {}) {
-    if (!r || typeof r !== 'object') return '';
-    const imagenameFields = Array.isArray(cfg?.imagenameField)
-      ? cfg.imagenameField
-      : [];
-    const imageIdField =
-      typeof cfg?.imageIdField === 'string' ? cfg.imageIdField : '';
-    const combinedFields = Array.from(
-      new Set([...imagenameFields, imageIdField].filter(Boolean)),
-    );
-    const promotedRecordId =
-      getCase(r, 'promotedRecordId') ||
-      getCase(r, 'promoted_record_id') ||
-      getCase(r, 'recordId') ||
-      getCase(r, 'record_id') ||
-      getCase(r, 'id') ||
-      null;
-    const hasImageId =
-      imageIdField && getCase(r, imageIdField) != null && getCase(r, imageIdField) !== '';
-    const nameSource =
-      imageIdField && promotedRecordId && !hasImageId
-        ? { ...r, [imageIdField]: promotedRecordId }
-        : r;
-    if (combinedFields.length > 0) {
-      const { name } = buildImageName(
-        nameSource,
-        combinedFields,
-        columnCaseMap,
-        company,
-      );
-      if (name) return name;
-    }
-    if (imagenameFields.length > 0) {
-      const { name } = buildImageName(
-        nameSource,
-        imagenameFields,
-        columnCaseMap,
-        company,
-      );
-      if (name) return name;
-    }
-    if (imageIdField) {
-      const { name } = buildImageName(
-        nameSource,
-        [imageIdField],
-        columnCaseMap,
-        company,
-      );
-      if (name) return name;
-    }
-    return r._imageName || r.imageName || r.image_name || '';
-  }
-
   useEffect(() => {
     if (!visible || loaded.current) return;
     loaded.current = true;
@@ -201,32 +148,17 @@ export default function RowImageViewModal({
     const cfg = pickConfig(configs, row);
     let primary = '';
     let idName = '';
-    const promotedRecordId =
-      getCase(row, 'promotedRecordId') ||
-      getCase(row, 'promoted_record_id') ||
-      getCase(row, 'recordId') ||
-      getCase(row, 'record_id') ||
-      getCase(row, 'id') ||
-      null;
-    const imageIdField =
-      typeof cfg?.imageIdField === 'string' ? cfg.imageIdField : '';
-    const hasImageId =
-      imageIdField && getCase(row, imageIdField) != null && getCase(row, imageIdField) !== '';
-    const nameSource =
-      imageIdField && promotedRecordId && !hasImageId
-        ? { ...row, [imageIdField]: promotedRecordId }
-        : row;
-    primary = resolveImageNameForRow(nameSource, cfg);
+    if (cfg?.imagenameField?.length) {
+      primary = buildImageName(row, cfg.imagenameField, columnCaseMap, company).name;
+    }
     if (!primary) {
       primary = buildFallbackName(row);
     }
+    if (!primary && row?._imageName) {
+      primary = row._imageName;
+    }
     if (cfg?.imageIdField) {
-      idName = buildImageName(
-        nameSource,
-        [cfg.imageIdField],
-        columnCaseMap,
-        company,
-      ).name;
+      idName = buildImageName(row, [cfg.imageIdField], columnCaseMap, company).name;
     }
     const altNames = [];
     if (idName && idName !== primary) altNames.push(idName);
