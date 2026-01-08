@@ -130,31 +130,29 @@ export async function login(req, res, next) {
         warnings.push('No employment session found for the selected company');
       }
 
-      workplaceAssignments = (sessionGroup?.sessions || []).map(
-        ({
-          company_id,
-          company_name,
-          branch_id,
-          branch_name,
-          department_id,
-          department_name,
-          workplace_id,
-          workplace_name,
-          effective_start_date,
-          effective_end_date,
-        }) => ({
-          company_id: company_id ?? null,
-          company_name: company_name ?? null,
-          branch_id: branch_id ?? null,
-          branch_name: branch_name ?? null,
-          department_id: department_id ?? null,
-          department_name: department_name ?? null,
-          workplace_id: workplace_id ?? null,
-          workplace_name: workplace_name ?? null,
-          effective_start_date: effective_start_date ?? null,
-          effective_end_date: effective_end_date ?? null,
-        }),
-      );
+      workplaceAssignments = (sessionGroup?.sessions || [])
+        .filter((s) => s && s.workplace_id != null)
+        .map(
+          ({
+            company_id,
+            company_name,
+            branch_id,
+            branch_name,
+            department_id,
+            department_name,
+            workplace_id,
+            workplace_name,
+          }) => ({
+            company_id: company_id ?? null,
+            company_name: company_name ?? null,
+            branch_id: branch_id ?? null,
+            branch_name: branch_name ?? null,
+            department_id: department_id ?? null,
+            department_name: department_name ?? null,
+            workplace_id: workplace_id ?? null,
+            workplace_name: workplace_name ?? null,
+          }),
+        );
 
       sessionPayload = session
         ? normalizeEmploymentSession(session, workplaceAssignments)
@@ -281,7 +279,6 @@ export async function login(req, res, next) {
       pos_merchant_tin: merchantTin ?? null,
       workplace: sessionPayload?.workplace_id ?? null,
       workplace_name: sessionPayload?.workplace_name ?? null,
-      workplace_assignments: sessionPayload?.workplace_assignments ?? [],
       session: sessionPayload,
       permissions,
       warnings,
@@ -320,7 +317,11 @@ export async function getProfile(req, res) {
 
   const workplaceAssignments = session
     ? sessions
-        .filter((s) => s && s.company_id === session.company_id)
+        .filter(
+          (s) =>
+            s.company_id === session.company_id &&
+            s.workplace_id != null,
+        )
         .map(
           ({
             branch_id,
@@ -329,8 +330,6 @@ export async function getProfile(req, res) {
             department_name,
             workplace_id,
             workplace_name,
-            effective_start_date,
-            effective_end_date,
           }) => ({
             branch_id: branch_id ?? null,
             branch_name: branch_name ?? null,
@@ -338,8 +337,6 @@ export async function getProfile(req, res) {
             department_name: department_name ?? null,
             workplace_id: workplace_id ?? null,
             workplace_name: workplace_name ?? null,
-            effective_start_date: effective_start_date ?? null,
-            effective_end_date: effective_end_date ?? null,
           }),
         )
     : [];
@@ -393,7 +390,6 @@ export async function getProfile(req, res) {
     pos_district_code: pos_districtCode ?? null,
     pos_merchant_tin: merchantTin ?? null,
     workplace_name: workplace_name ?? null,
-    workplace_assignments: sessionPayload?.workplace_assignments ?? [],
     session: sessionPayload,
     permissions,
   });
