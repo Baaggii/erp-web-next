@@ -90,15 +90,25 @@ function logRowsMemory(rows) {
     }
 }
 
+function normalizeSearchValue(value) {
+  if (value && typeof value === 'object') {
+    if (value.value !== undefined && value.value !== null) return value.value;
+    if (value.id !== undefined && value.id !== null) return value.id;
+    if (value.Id !== undefined && value.Id !== null) return value.Id;
+    if (value.label !== undefined && value.label !== null) return value.label;
+  }
+  return value;
+}
+
 function sanitizeName(name) {
-  return String(name)
+  return String(normalizeSearchValue(name))
     .toLowerCase()
     .replace(/[^a-z0-9_-]+/gi, '_');
 }
 
 function buildDelimitedSearchTerm(value, delimiter = '_') {
   if (value === undefined || value === null) return '';
-  const safe = sanitizeName(value);
+  const safe = sanitizeName(normalizeSearchValue(value));
   if (!safe) return '';
   return `${delimiter}${safe}${delimiter}`;
 }
@@ -112,6 +122,20 @@ function getRowValueCaseInsensitive(row, key) {
   const lookup = keyMap[String(key).toLowerCase()];
   if (lookup) return row[lookup];
   return row[key];
+}
+
+function getRelationSearchValue(row, columnName, relationInfo) {
+  if (!row || !relationInfo || !relationInfo.config) return undefined;
+  const candidates = new Set();
+  if (relationInfo.sourceColumn) candidates.add(relationInfo.sourceColumn);
+  if (columnName) candidates.add(columnName);
+  if (relationInfo.config.idField) candidates.add(relationInfo.config.idField);
+  if (relationInfo.config.column) candidates.add(relationInfo.config.column);
+  for (const field of candidates) {
+    const val = normalizeSearchValue(getRowValueCaseInsensitive(row, field));
+    if (val !== undefined && val !== null && val !== '') return val;
+  }
+  return undefined;
 }
 
 function buildColumnCaseMap(columns) {
@@ -1383,6 +1407,20 @@ const TableManager = forwardRef(function TableManager({
   useEffect(() => {
     setAutoInc(computeAutoInc(columnMeta));
   }, [columnMeta]);
+
+  const relationDisplayMap = useMemo(() => {
+    const map = {};
+    Object.entries(relationConfigs || {}).forEach(([column, config]) => {
+      if (!config || !Array.isArray(config.displayFields)) return;
+      config.displayFields.forEach((field) => {
+        if (typeof field !== 'string' || !field.trim()) return;
+        const canonical = resolveCanonicalKey(field) || field;
+        if (!canonical || map[canonical]) return;
+        map[canonical] = { config, sourceColumn: column };
+      });
+    });
+    return map;
+  }, [relationConfigs, resolveCanonicalKey]);
 
   useEffect(() => {
     if (!formConfig) return;
@@ -7221,6 +7259,9 @@ const TableManager = forwardRef(function TableManager({
                 style.textOverflow = 'ellipsis';
                 const rawValue = r[c];
                 const relationConfig = relationConfigs[c];
+                const relationInfo = relationConfig
+                  ? { config: relationConfig, sourceColumn: c }
+                  : relationDisplayMap[c];
                 const raw = relationOpts[c]
                   ? labelMap[c][rawValue] || (rawValue == null ? '' : String(rawValue))
                   : rawValue == null
@@ -7284,11 +7325,9 @@ const TableManager = forwardRef(function TableManager({
                 }
                 const showFull = display.length > 20;
                 let searchTerm = sanitizeName(raw);
-                if (relationConfig?.table) {
-                  const idField =
-                    relationConfig.idField || relationConfig.column || c;
-                  const idValue = getRowValueCaseInsensitive(r, idField);
-                  if (idValue !== undefined && idValue !== null) {
+                if (relationInfo?.config?.table) {
+                  const idValue = getRelationSearchValue(r, c, relationInfo);
+                  if (idValue !== undefined && idValue !== null && idValue !== '') {
                     const delimiter = String(idValue).includes('-') ? '-' : '_';
                     searchTerm = buildDelimitedSearchTerm(idValue, delimiter);
                   }
