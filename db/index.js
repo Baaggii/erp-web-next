@@ -1256,6 +1256,8 @@ function mapEmploymentRow(row) {
     pos_districtCode,
     merchantTin,
     merchant_id,
+    effective_start_date,
+    effective_end_date,
     permission_list,
     ...rest
   } = row;
@@ -1308,6 +1310,8 @@ function mapEmploymentRow(row) {
     merchantTin,
     merchant_id,
     merchant_tin,
+    effective_start_date,
+    effective_end_date,
     ...rest,
     permissions,
   };

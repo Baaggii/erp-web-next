@@ -73,6 +73,21 @@ function buildNormalizedAssignment(source = {}, defaults = {}, options = {}) {
       ),
     ) ?? null;
 
+  const effectiveStart =
+    coalesce(
+      source.effective_start_date ?? source.effectiveStartDate,
+      fallbackMeta
+        ? defaults.effective_start_date ?? defaults.effectiveStartDate
+        : null,
+    ) ?? null;
+  const effectiveEnd =
+    coalesce(
+      source.effective_end_date ?? source.effectiveEndDate,
+      fallbackMeta
+        ? defaults.effective_end_date ?? defaults.effectiveEndDate
+        : null,
+    ) ?? null;
+
   if (workplaceId === null) {
     return null;
   }
@@ -94,6 +109,10 @@ function buildNormalizedAssignment(source = {}, defaults = {}, options = {}) {
     workplaceId: workplaceId,
     workplace_name: workplaceName,
     workplaceName: workplaceName,
+    effective_start_date: effectiveStart,
+    effectiveStartDate: effectiveStart,
+    effective_end_date: effectiveEnd,
+    effectiveEndDate: effectiveEnd,
   };
 }
 
