@@ -21,6 +21,7 @@ import {
   persistEbarimtInvoiceResponse,
 } from './ebarimtInvoiceStore.js';
 import { getMerchantById } from './merchantService.js';
+import { renameImages, resolveImageNaming } from './transactionImageService.js';
 import formatTimestamp from '../../src/erp.mgt.mn/utils/formatTimestamp.js';
 
 const TEMP_TABLE = 'transaction_temporaries';
@@ -218,6 +219,18 @@ function isPlainObject(value) {
       !Array.isArray(value) &&
       Object.getPrototypeOf(value) === Object.prototype,
   );
+}
+
+function mergePlainObjectSources(...sources) {
+  const merged = {};
+  sources.forEach((source) => {
+    if (isPlainObject(source)) {
+      Object.entries(source).forEach(([key, value]) => {
+        merged[key] = value;
+      });
+    }
+  });
+  return merged;
 }
 
 function extractPromotableValues(source) {
@@ -2126,6 +2139,75 @@ export async function promoteTemporarySubmission(
         });
       }
     }
+    const hasImageConfig =
+      (Array.isArray(formCfg?.imagenameField) &&
+        formCfg.imagenameField.filter(Boolean).length > 0) ||
+      Boolean(formCfg?.imageIdField);
+    if (hasImageConfig) {
+      const rawValues = safeJsonParse(row.raw_values_json, null);
+      const cleanedValues = safeJsonParse(row.cleaned_values_json, null);
+      const tempImageSource = mergePlainObjectSources(
+        rawValues,
+        cleanedValues,
+        payloadJson?.values,
+        payloadJson?.cleanedValues,
+        payloadJson?.rawValues,
+        payloadJson,
+      );
+      const { name: oldImageName, folder: oldImageFolder } = resolveImageNaming(
+        tempImageSource,
+        formCfg,
+        row.table_name,
+      );
+      let promotedRow = null;
+      if (insertedId) {
+        try {
+          const [promotedRows] = await conn.query(
+            `SELECT * FROM \`${row.table_name}\` WHERE id = ? LIMIT 1`,
+            [insertedId],
+          );
+          if (Array.isArray(promotedRows) && promotedRows[0]) {
+            promotedRow = promotedRows[0];
+          }
+        } catch (selectErr) {
+          console.error('Failed to load promoted transaction for image rename', {
+            table: row.table_name,
+            id: insertedId,
+            error: selectErr,
+          });
+        }
+      }
+      const targetImageSource = promotedRow || sanitizedValues;
+      const { name: newImageName, folder: newImageFolder } = resolveImageNaming(
+        targetImageSource,
+        formCfg,
+        row.table_name,
+      );
+      if (
+        oldImageName &&
+        newImageName &&
+        (oldImageName !== newImageName || oldImageFolder !== newImageFolder)
+      ) {
+        try {
+          await renameImages(
+            row.table_name,
+            oldImageName,
+            newImageName,
+            newImageFolder,
+            row.company_id,
+            oldImageFolder,
+          );
+        } catch (renameErr) {
+          console.error('Failed to rename images after temporary promotion', {
+            table: row.table_name,
+            id,
+            oldImageName,
+            newImageName,
+            error: renameErr,
+          });
+        }
+      }
+    }
     console.info('Temporary promotion chain update', {
       id,
       chainId: effectiveChainId,
@@ -2535,6 +2617,86 @@ export async function deleteTemporarySubmission(id, { requesterEmpId }) {
     );
     await conn.query('COMMIT');
     return { id, deleted: true };
+  } catch (err) {
+    try {
+      await conn.query('ROLLBACK');
+    } catch {}
+    throw err;
+  } finally {
+    conn.release();
+  }
+}
+
+export async function updateTemporarySubmissionImageName(
+  id,
+  { requesterEmpId, imageName },
+) {
+  const normalizedRequester = normalizeEmpId(requesterEmpId);
+  if (!normalizedRequester) {
+    const err = new Error('requesterEmpId required');
+    err.status = 400;
+    throw err;
+  }
+  const normalizedImageName = String(imageName || '').trim();
+  if (!normalizedImageName) {
+    const err = new Error('imageName required');
+    err.status = 400;
+    throw err;
+  }
+  const conn = await pool.getConnection();
+  try {
+    await ensureTemporaryTable(conn);
+    await conn.query('BEGIN');
+    const [rows] = await conn.query(
+      `SELECT * FROM \`${TEMP_TABLE}\` WHERE id = ? FOR UPDATE`,
+      [id],
+    );
+    const row = rows[0];
+    if (!row) {
+      const err = new Error('Temporary submission not found');
+      err.status = 404;
+      throw err;
+    }
+    const normalizedCreator = normalizeEmpId(row.created_by);
+    const reviewerIds = parseEmpIdList(row.plan_senior_empid);
+    const isReviewer = reviewerIds.includes(normalizedRequester);
+    if (normalizedCreator !== normalizedRequester && !isReviewer) {
+      const err = new Error('Forbidden');
+      err.status = 403;
+      throw err;
+    }
+    const payload = safeJsonParse(row.payload_json, {});
+    const cleanedValues = safeJsonParse(row.cleaned_values_json, {});
+    const rawValues = safeJsonParse(row.raw_values_json, {});
+    const applyImageName = (value) => {
+      if (!isPlainObject(value)) return value;
+      return {
+        ...value,
+        _imageName: normalizedImageName,
+        imageName: normalizedImageName,
+        image_name: normalizedImageName,
+        imagename: normalizedImageName,
+      };
+    };
+    const nextPayload = isPlainObject(payload) ? { ...payload } : {};
+    nextPayload.values = applyImageName(nextPayload.values);
+    nextPayload.cleanedValues = applyImageName(nextPayload.cleanedValues);
+    nextPayload.rawValues = applyImageName(nextPayload.rawValues);
+    const nextCleanedValues = applyImageName(cleanedValues);
+    const nextRawValues = applyImageName(rawValues);
+    await conn.query(
+      `UPDATE \`${TEMP_TABLE}\`
+       SET payload_json = ?, cleaned_values_json = ?, raw_values_json = ?
+       WHERE id = ?`,
+      [
+        safeJsonStringify(nextPayload),
+        safeJsonStringify(nextCleanedValues),
+        safeJsonStringify(nextRawValues),
+        id,
+      ],
+    );
+    await conn.query('COMMIT');
+    return { id, imageName: normalizedImageName };
   } catch (err) {
     try {
       await conn.query('ROLLBACK');

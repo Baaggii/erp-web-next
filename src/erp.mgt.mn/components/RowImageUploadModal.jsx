@@ -17,6 +17,7 @@ export default function RowImageUploadModal({
   imagenameFields = [],
   columnCaseMap = {},
   imageIdField = '',
+  zIndex = 1200,
   onUploaded = () => {},
   onSuggestion = () => {},
 }) {
@@ -319,7 +320,13 @@ export default function RowImageUploadModal({
   if (!visible) return null;
 
   return (
-    <Modal visible={visible} title={t('upload_images', 'Upload Images')} onClose={onClose} width="auto">
+    <Modal
+      visible={visible}
+      title={t('upload_images', 'Upload Images')}
+      onClose={onClose}
+      width="auto"
+      zIndex={zIndex}
+    >
       <div
         tabIndex={0}
         onPaste={handleClipboardPaste}

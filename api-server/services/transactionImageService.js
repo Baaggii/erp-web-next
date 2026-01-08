@@ -140,6 +140,38 @@ function buildFolderName(row, fallback = '') {
   return fallback;
 }
 
+export function resolveImageNaming(row = {}, config = {}, fallbackTable = '') {
+  const imagenameFields = Array.isArray(config?.imagenameField)
+    ? config.imagenameField
+    : [];
+  const imageIdField =
+    typeof config?.imageIdField === 'string' ? config.imageIdField : '';
+  const combinedFields = Array.from(
+    new Set([...imagenameFields, imageIdField].filter(Boolean)),
+  );
+  let name = '';
+  if (combinedFields.length) {
+    name = buildNameFromRow(row, combinedFields);
+  }
+  if (!name && imagenameFields.length) {
+    name = buildNameFromRow(row, imagenameFields);
+  }
+  if (!name && imageIdField) {
+    name = buildNameFromRow(row, [imageIdField]);
+  }
+  if (!name) {
+    const fallback =
+      getCase(row, '_imageName') ||
+      getCase(row, 'imagename') ||
+      getCase(row, 'image_name') ||
+      getCase(row, 'ImageName') ||
+      '';
+    name = sanitizeName(fallback || '');
+  }
+  const folder = buildFolderName(row, config?.imageFolder || fallbackTable);
+  return { name, folder };
+}
+
 async function fetchTxnCodes() {
   try {
     const [rows] = await pool.query('SELECT UITrtype, UITransType FROM code_transaction');
@@ -278,6 +310,7 @@ export async function saveImages(
   files,
   folder = null,
   companyId = 0,
+  uploaderId = null,
 ) {
   const { baseDir, urlBase } = await getDirs(companyId);
   ensureDir(baseDir);
@@ -285,6 +318,7 @@ export async function saveImages(
   ensureDir(dir);
   const saved = [];
   const prefix = sanitizeName(name);
+  const uploaderTag = uploaderId ? `__u${sanitizeName(uploaderId)}__` : '';
   let mimeLib;
   try {
     mimeLib = (await import('mime-types')).default;
@@ -293,7 +327,7 @@ export async function saveImages(
     const ext =
       path.extname(file.originalname) || `.${mimeLib?.extension(file.mimetype) || 'bin'}`;
     const unique = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-    const fileName = `${prefix}_${unique}${ext}`;
+    const fileName = `${prefix}${uploaderTag}_${unique}${ext}`;
     const dest = path.join(dir, fileName);
     let optimized = false;
     try {
@@ -350,6 +384,7 @@ export async function renameImages(
   newName,
   folder = null,
   companyId = 0,
+  sourceFolder = null,
 ) {
   const { baseDir, urlBase } = await getDirs(companyId);
   ensureDir(baseDir);
@@ -357,10 +392,14 @@ export async function renameImages(
   ensureDir(dir);
   const targetDir = folder ? path.join(baseDir, folder) : dir;
   ensureDir(targetDir);
+  const sourceDir = sourceFolder ? path.join(baseDir, sourceFolder) : null;
   const oldPrefix = sanitizeName(oldName);
   const newPrefix = sanitizeName(newName);
   try {
     const searchDirs = folder ? [dir, targetDir] : [dir];
+    if (sourceDir && sourceDir !== dir && sourceDir !== targetDir) {
+      searchDirs.push(sourceDir);
+    }
     const results = [];
     const seen = new Set();
     for (const d of searchDirs) {
@@ -465,12 +504,29 @@ export async function moveImagesToDeleted(table, row = {}, companyId = 0) {
   return moved;
 }
 
-export async function deleteImage(table, file, folder = null, companyId = 0) {
+function extractUploaderFromFilename(file) {
+  const match = String(file || '').match(/__u([^_]+?)__/i);
+  return match ? match[1] : null;
+}
+
+export async function deleteImage(
+  table,
+  file,
+  folder = null,
+  companyId = 0,
+  requesterEmpId = null,
+) {
   const { baseDir } = await getDirs(companyId);
   const dir = path.join(baseDir, folder || table);
   const targetDir = path.join(baseDir, 'deleted_images');
   ensureDir(targetDir);
   try {
+    if (requesterEmpId) {
+      const uploader = extractUploaderFromFilename(file);
+      if (uploader && sanitizeName(uploader) !== sanitizeName(requesterEmpId)) {
+        return false;
+      }
+    }
     const src = path.join(dir, path.basename(file));
     const dest = path.join(targetDir, path.basename(file));
     await fs.rename(src, dest).catch(async () => {

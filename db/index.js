@@ -1425,25 +1425,19 @@ export async function getEmploymentSessions(empid, options = {}) {
     ? formatDateForDb(options.effectiveDate).slice(0, 10)
     : null;
   const scheduleDateSql = scheduleDate ? '?' : 'CURRENT_DATE()';
-  const scheduleDateParams = scheduleDate
-    ? [scheduleDate, scheduleDate, scheduleDate, scheduleDate]
-    : [];
+  const scheduleDateParams = scheduleDate ? [scheduleDate, scheduleDate] : [];
   const [
     companyCfgRaw,
     branchCfgRaw,
     deptCfgRaw,
     empCfgRaw,
     relationCfg,
-    scheduleRelationCfg,
-    companyMerchantInfo,
   ] = await Promise.all([
     getDisplayCfg("companies", configCompanyId),
     getDisplayCfg("code_branches", configCompanyId),
     getDisplayCfg("code_department", configCompanyId),
     getDisplayCfg("tbl_employee", configCompanyId),
     listCustomRelations("tbl_employment", configCompanyId),
-    listCustomRelations("tbl_employment_schedule", configCompanyId),
-    getCompanyMerchantTinColumnInfo(),
   ]);
 
   const companyCfg = unwrapDisplayConfig(companyCfgRaw);
@@ -1451,22 +1445,6 @@ export async function getEmploymentSessions(empid, options = {}) {
   const deptCfg = unwrapDisplayConfig(deptCfgRaw);
   const empCfg = unwrapDisplayConfig(empCfgRaw);
   const relationConfig = relationCfg?.config || {};
-  const scheduleRelationConfig = scheduleRelationCfg?.config || {};
-  const merchantTinExpr = companyMerchantInfo?.hasMerchantTin
-    ? "c.merchant_tin"
-    : "NULL";
-  const scheduleInfo = await getEmploymentScheduleColumnInfo();
-  const posNoExpr = scheduleInfo.hasPosNo
-    ? aliasedColumn("es", scheduleInfo.posColumnName || "pos_no")
-    : "NULL";
-  const merchantExpr = scheduleInfo.hasMerchantId
-    ? aliasedColumn("es", scheduleInfo.merchantIdColumn || "merchant_id")
-    : "NULL";
-  const posRelation = await resolveSchedulePosRelation({
-    scheduleInfo,
-    relationConfig: scheduleRelationConfig,
-    companyId: configCompanyId,
-  });
 
   const [companyRel, branchRel, deptRel] = await Promise.all([
     resolveEmploymentRelation({
@@ -1519,158 +1497,85 @@ export async function getEmploymentSessions(empid, options = {}) {
     "CONCAT_WS(' ', emp.emp_fname, emp.emp_lname)",
   );
 
-  const sql = `SELECT
-          e.employment_company_id AS company_id,
-          ${merchantTinExpr} AS merchant_tin,
-          ${companyRel.nameExpr} AS company_name,
-          e.employment_branch_id AS branch_id,
-          ${branchRel.nameExpr} AS branch_name,
-          e.employment_department_id AS department_id,
-          ${deptRel.nameExpr} AS department_name,
-          es.workplace_id AS workplace_id,
-          es.effective_start_date AS effective_start_date,
-          es.effective_end_date AS effective_end_date,
-          ${posNoExpr} AS pos_no,
-          ${merchantExpr} AS merchant_id,
-          ${posRelation.select.posNo} AS posNo,
-          ${posRelation.select.posName} AS pos_name,
-          ${posRelation.select.branchNo} AS branchNo,
-          ${posRelation.select.districtCode} AS pos_districtCode,
-          ${posRelation.select.merchantTin} AS merchantTin,
-          cw.workplace_name AS workplace_name,
-          e.employment_position_id AS position_id,
-          e.employment_senior_empid AS senior_empid,
-          e.employment_senior_plan_empid AS senior_plan_empid,
-          ${empName} AS employee_name,
-          e.employment_user_level AS user_level,
-          ul.name AS user_level_name,
-          GROUP_CONCAT(DISTINCT up.action_key) AS permission_list
-       FROM tbl_employment e
-       ${companyRel.join}
-       ${branchRel.join}
-       ${deptRel.join}
-       LEFT JOIN (
-         SELECT
-            es.company_id,
-            es.branch_id,
-            es.department_id,
-            es.emp_id,
-            es.workplace_id,
-            es.start_date AS effective_start_date,
-            es.end_date AS effective_end_date,
-            ${posNoExpr} AS pos_no,
-            ${merchantExpr} AS merchant_id
-         FROM tbl_employment_schedule es
-         INNER JOIN (
-           SELECT
-             company_id,
-             branch_id,
-             department_id,
-             workplace_id,
-             emp_id,
-             YEAR(start_date) AS start_year,
-             MONTH(start_date) AS start_month,
-             MAX(start_date) AS latest_start_date
-           FROM tbl_employment_schedule
-           WHERE start_date <= ${scheduleDateSql}
-             AND (end_date IS NULL OR end_date >= CURRENT_DATE())
-             AND deleted_at IS NULL
-           GROUP BY company_id, branch_id, department_id, workplace_id, emp_id, YEAR(start_date), MONTH(start_date)
-         ) latest
-           ON latest.company_id = es.company_id
-          AND latest.branch_id = es.branch_id
-          AND latest.department_id = es.department_id
-          AND latest.emp_id = es.emp_id
-          AND latest.workplace_id = es.workplace_id
-          AND latest.latest_start_date = es.start_date
-         WHERE es.start_date <= ${scheduleDateSql}
-           AND (es.end_date IS NULL OR es.end_date >= CURRENT_DATE())
-           AND es.deleted_at IS NULL
-         UNION ALL
-         SELECT
-           e.employment_company_id AS company_id,
-           e.employment_branch_id AS branch_id,
-           e.employment_department_id AS department_id,
-           e.employment_emp_id AS emp_id,
-           e.employment_workplace_id AS workplace_id,
-           e.employment_date AS effective_start_date,
-           NULL AS effective_end_date,
-           NULL AS pos_no,
-           NULL AS merchant_id
-         FROM tbl_employment e
-         WHERE e.employment_emp_id = ?
-           AND e.employment_date <= ${scheduleDateSql}
-           AND e.deleted_at IS NULL
-           AND NOT EXISTS (
-             SELECT 1
-               FROM tbl_employment_schedule es
-              WHERE es.emp_id = e.employment_emp_id
-                AND es.company_id = e.employment_company_id
-                AND es.branch_id = e.employment_branch_id
-                AND es.department_id = e.employment_department_id
-                AND es.workplace_id = e.employment_workplace_id
-                AND es.start_date <= ${scheduleDateSql}
-                AND (es.end_date IS NULL OR es.end_date >= CURRENT_DATE())
-                AND es.deleted_at IS NULL
-           )
-       ) es
-         ON es.emp_id = e.employment_emp_id
-        AND es.company_id = e.employment_company_id
-        AND es.branch_id = e.employment_branch_id
-       AND es.department_id = e.employment_department_id
-      ${posRelation.join}
-       LEFT JOIN tbl_workplace tw
-         ON tw.company_id = e.employment_company_id
-        AND tw.branch_id = e.employment_branch_id
-        AND tw.department_id = e.employment_department_id
-        AND tw.workplace_id = es.workplace_id
-       LEFT JOIN code_workplace cw ON cw.workplace_id = es.workplace_id
-       LEFT JOIN tbl_employee emp ON e.employment_emp_id = emp.emp_id
-       LEFT JOIN user_levels ul ON e.employment_user_level = ul.userlevel_id
-       LEFT JOIN user_level_permissions up ON up.userlevel_id = ul.userlevel_id AND up.action = 'permission' AND up.company_id IN (${GLOBAL_COMPANY_ID}, e.employment_company_id)
-       WHERE e.employment_emp_id = ?
-      GROUP BY e.employment_company_id, company_name,
-                ${merchantTinExpr},
-                e.employment_branch_id, branch_name,
-                e.employment_department_id, department_name,
-                es.workplace_id, cw.workplace_name,
-                es.effective_start_date, es.effective_end_date,
-                pos_no, merchant_id, posNo, pos_name, branchNo, pos_districtCode, merchantTin,
-                e.employment_position_id,
-                e.employment_senior_empid,
-                e.employment_senior_plan_empid,
-                employee_name, e.employment_user_level, ul.name
-      ORDER BY company_name, department_name, branch_name, workplace_name, user_level_name`;
-  const querySql = sql.replace(/`/g, "");
-  const normalizedSql = querySql.replace(/`/g, "");
-  const params = [...scheduleDateParams, empid, empid];
+  const sql = `WITH ranked_schedule AS (
+    SELECT
+      es.emp_id,
+      es.company_id,
+      es.branch_id,
+      es.department_id,
+      es.workplace_id,
+      es.pos_no,
+      DATE_FORMAT(es.start_date, '%Y-%m') AS ym,
+      es.start_date,
+      es.end_date,
+      ROW_NUMBER() OVER (
+        PARTITION BY es.emp_id, es.workplace_id, DATE_FORMAT(es.start_date, '%Y-%m')
+        ORDER BY es.start_date DESC, es.id DESC
+      ) AS rn
+    FROM tbl_employment_schedule es
+    WHERE es.emp_id = ?
+      AND es.start_date <= ${scheduleDateSql}
+      AND (es.end_date IS NULL OR es.end_date >= ${scheduleDateSql})
+      AND es.deleted_at IS NULL
+  ),
+  latest_schedule AS (
+    SELECT * FROM ranked_schedule WHERE rn = 1
+  )
+  SELECT
+    e.employment_company_id AS company_id,
+    ${companyRel.nameExpr} AS company_name,
+    e.employment_branch_id AS branch_id,
+    ${branchRel.nameExpr} AS branch_name,
+    e.employment_department_id AS department_id,
+    ${deptRel.nameExpr} AS department_name,
+    ls.workplace_id AS workplace_id,
+    cw.workplace_name AS workplace_name,
+    ls.ym AS workplace_month,
+    ls.start_date AS workplace_start_date,
+    ls.end_date AS workplace_end_date,
+    ls.pos_no AS pos_no,
+    e.employment_position_id AS position_id,
+    e.employment_senior_empid AS senior_empid,
+    e.employment_senior_plan_empid AS senior_plan_empid,
+    ${empName} AS employee_name,
+    e.employment_user_level AS user_level,
+    ul.name AS user_level_name,
+    GROUP_CONCAT(DISTINCT up.action_key) AS permission_list
+  FROM tbl_employment e
+  ${companyRel.join}
+  ${branchRel.join}
+  ${deptRel.join}
+  LEFT JOIN latest_schedule ls
+    ON ls.emp_id = e.employment_emp_id
+   AND ls.company_id = e.employment_company_id
+   AND ls.branch_id = e.employment_branch_id
+   AND ls.department_id = e.employment_department_id
+  LEFT JOIN code_workplace cw ON cw.workplace_id = ls.workplace_id AND cw.company_id = e.employment_company_id
+  LEFT JOIN tbl_employee emp ON e.employment_emp_id = emp.emp_id
+  LEFT JOIN user_levels ul ON e.employment_user_level = ul.userlevel_id
+  LEFT JOIN user_level_permissions up ON up.userlevel_id = ul.userlevel_id AND up.action = 'permission' AND up.company_id IN (${GLOBAL_COMPANY_ID}, e.employment_company_id)
+  WHERE e.employment_emp_id = ? AND e.deleted_at IS NULL
+  GROUP BY e.employment_company_id, company_name,
+           e.employment_branch_id, branch_name,
+           e.employment_department_id, department_name,
+           ls.workplace_id, cw.workplace_name,
+           ls.ym, ls.start_date, ls.end_date, ls.pos_no,
+           e.employment_position_id,
+           e.employment_senior_empid,
+           e.employment_senior_plan_empid,
+           employee_name, e.employment_user_level, ul.name
+  ORDER BY company_name, department_name, branch_name, workplace_name, user_level_name, ls.ym DESC, ls.start_date DESC`;
+
+  const normalizedSql = sql.replace(/`/g, "");
+  const params = [empid, ...scheduleDateParams, empid];
   let rows;
   try {
     [rows] = await pool.query(normalizedSql, params);
   } catch (err) {
-    if (
-      err?.code === "ER_BAD_FIELD_ERROR" &&
-      /\b(pos_no|merchant_id|merchant_tin)\b/i.test(err.message || "")
-    ) {
-      employmentScheduleColumnCache = {
-        hasPosNo: false,
-        posColumnName: null,
-        hasMerchantId: false,
-        merchantIdColumn: null,
-      };
-      companyMerchantColumnCache = { hasMerchantTin: false };
-      const replaceExpr = (text, target, replacement) =>
-        text.split(target).join(replacement);
-      const withoutPos = replaceExpr(normalizedSql, posNoExpr, "NULL");
-      const withoutMerchantId = replaceExpr(withoutPos, merchantExpr, "NULL");
-      const fallbackSql = replaceExpr(withoutMerchantId, merchantTinExpr, "NULL");
-      [rows] = await pool.query(fallbackSql, params);
-    } else {
-      console.warn("Employment sessions query failed; returning empty list", {
-        error: err?.message || err,
-      });
-      rows = [];
-    }
+    console.warn("Employment sessions query failed; returning empty list", {
+      error: err?.message || err,
+    });
+    rows = [];
   }
   const sessions = rows.map(mapEmploymentRow);
   if (options?.includeDiagnostics) {
@@ -1680,7 +1585,7 @@ export async function getEmploymentSessions(empid, options = {}) {
     let formattedSql = null;
     if (typeof mysql?.format === 'function') {
       try {
-        formattedSql = mysql.format(sql, params);
+        formattedSql = mysql.format(normalizedSql, params);
       } catch {
         formattedSql = null;
       }
@@ -1706,296 +1611,54 @@ export async function getEmploymentSessions(empid, options = {}) {
  * Optionally filter by company ID.
  */
 export async function getEmploymentSession(empid, companyId, options = {}) {
+  const normalizeId = (value) => {
+    if (value === undefined || value === null) return null;
+    const num = Number(value);
+    return Number.isFinite(num) ? num : null;
+  };
   const hasBranchPref =
     options && Object.prototype.hasOwnProperty.call(options, 'branchId');
   const hasDepartmentPref =
     options && Object.prototype.hasOwnProperty.call(options, 'departmentId');
-  const branchPreference = hasBranchPref ? options.branchId ?? null : undefined;
-  const departmentPreference = hasDepartmentPref
-    ? options.departmentId ?? null
-    : undefined;
-  const scheduleDate = options?.effectiveDate
-    ? formatDateForDb(options.effectiveDate).slice(0, 10)
-    : null;
-  const scheduleDateSql = scheduleDate ? '?' : 'CURRENT_DATE()';
-  const scheduleDateParams = scheduleDate
-    ? [scheduleDate, scheduleDate, scheduleDate, scheduleDate]
-    : [];
+  const branchPreference = hasBranchPref ? normalizeId(options.branchId ?? null) : undefined;
+  const departmentPreference =
+    hasDepartmentPref ? normalizeId(options.departmentId ?? null) : undefined;
+  const normalizedCompanyId =
+    companyId === undefined || companyId === null ? null : normalizeId(companyId);
 
-  if (companyId !== undefined && companyId !== null) {
-    const configCompanyId = Number.isFinite(Number(companyId))
-      ? Number(companyId)
-      : GLOBAL_COMPANY_ID;
-  const [
-    companyCfgRaw,
-    branchCfgRaw,
-    deptCfgRaw,
-    empCfgRaw,
-    relationCfg,
-    scheduleRelationCfg,
-    companyMerchantInfo,
-  ] = await Promise.all([
-    getDisplayCfg("companies", configCompanyId),
-    getDisplayCfg("code_branches", configCompanyId),
-    getDisplayCfg("code_department", configCompanyId),
-    getDisplayCfg("tbl_employee", configCompanyId),
-    listCustomRelations("tbl_employment", configCompanyId),
-    listCustomRelations("tbl_employment_schedule", configCompanyId),
-    getCompanyMerchantTinColumnInfo(),
-  ]);
+  const sessions = await getEmploymentSessions(empid, options);
+  if (!Array.isArray(sessions) || sessions.length === 0) return null;
 
-  const companyCfg = unwrapDisplayConfig(companyCfgRaw);
-  const branchCfg = unwrapDisplayConfig(branchCfgRaw);
-  const deptCfg = unwrapDisplayConfig(deptCfgRaw);
-  const empCfg = unwrapDisplayConfig(empCfgRaw);
-  const relationConfig = relationCfg?.config || {};
-  const scheduleRelationConfig = scheduleRelationCfg?.config || {};
-  const merchantTinExpr = companyMerchantInfo?.hasMerchantTin
-    ? "c.merchant_tin"
-    : "NULL";
-  const scheduleInfo = await getEmploymentScheduleColumnInfo();
-  const posNoExpr = scheduleInfo.hasPosNo
-    ? aliasedColumn("es", scheduleInfo.posColumnName || "pos_no")
-    : "NULL";
-  const merchantExpr = scheduleInfo.hasMerchantId
-    ? aliasedColumn("es", scheduleInfo.merchantIdColumn || "merchant_id")
-    : "NULL";
-  const posRelation = await resolveSchedulePosRelation({
-    scheduleInfo,
-    relationConfig: scheduleRelationConfig,
-    companyId: configCompanyId,
+  let filteredSessions = sessions;
+  if (normalizedCompanyId !== null) {
+    filteredSessions = sessions.filter(
+      (session) => normalizeId(session?.company_id) === normalizedCompanyId,
+    );
+  }
+  if (filteredSessions.length === 0) return null;
+
+  const branchMatches = (session) =>
+    branchPreference !== undefined &&
+    branchPreference !== null &&
+    normalizeId(session?.branch_id) === branchPreference;
+  const departmentMatches = (session) =>
+    departmentPreference !== undefined &&
+    departmentPreference !== null &&
+    normalizeId(session?.department_id) === departmentPreference;
+
+  filteredSessions.sort((a, b) => {
+    const branchScore = Number(branchMatches(b)) - Number(branchMatches(a));
+    if (branchScore !== 0) return branchScore;
+    const deptScore = Number(departmentMatches(b)) - Number(departmentMatches(a));
+    if (deptScore !== 0) return deptScore;
+    const nameA = `${a.company_name || ''}::${a.department_name || ''}::${a.branch_name || ''}::${a.workplace_name || ''}`.toLowerCase();
+    const nameB = `${b.company_name || ''}::${b.department_name || ''}::${b.branch_name || ''}::${b.workplace_name || ''}`.toLowerCase();
+    if (nameA < nameB) return -1;
+    if (nameA > nameB) return 1;
+    return 0;
   });
 
-  const [companyRel, branchRel, deptRel] = await Promise.all([
-    resolveEmploymentRelation({
-      baseColumn: "employment_company_id",
-      alias: "c",
-      defaultTable: "companies",
-      defaultIdField: companyCfg?.idField || "id",
-      defaultFallbackColumn: "name",
-      defaultDisplayConfig: companyCfg,
-      relationConfig,
-      companyId: configCompanyId,
-    }),
-    resolveEmploymentRelation({
-      baseColumn: "employment_branch_id",
-      alias: "b",
-      defaultTable: "code_branches",
-      defaultIdField: "branch_id",
-      defaultFallbackColumn: "name",
-      defaultDisplayConfig: branchCfg,
-      defaultJoinExtras: [
-        `${aliasedColumn("b", "company_id")} = ${aliasedColumn(
-          "e",
-          "employment_company_id",
-        )}`,
-      ],
-      relationConfig,
-      companyId: configCompanyId,
-    }),
-    resolveEmploymentRelation({
-      baseColumn: "employment_department_id",
-      alias: "d",
-      defaultTable: "code_department",
-      defaultIdField: deptCfg?.idField || "id",
-      defaultFallbackColumn: "name",
-      defaultDisplayConfig: deptCfg,
-      defaultJoinExtras: [
-        `${aliasedColumn("d", "company_id")} IN (${GLOBAL_COMPANY_ID}, ${aliasedColumn(
-          "e",
-          "employment_company_id",
-        )})`,
-      ],
-      relationConfig,
-      companyId: configCompanyId,
-    }),
-  ]);
-
-  const empName = buildDisplayExpr(
-    "emp",
-    empCfg,
-    "CONCAT_WS(' ', emp.emp_fname, emp.emp_lname)",
-  );
-
-  const orderPriority = [];
-  const params = [empid, empid, companyId];
-  if (hasBranchPref) {
-    orderPriority.push('CASE WHEN e.employment_branch_id <=> ? THEN 0 ELSE 1 END');
-    params.push(branchPreference);
-  }
-  if (hasDepartmentPref) {
-    orderPriority.push(
-      'CASE WHEN e.employment_department_id <=> ? THEN 0 ELSE 1 END',
-    );
-    params.push(departmentPreference);
-  }
-  const orderParts = [
-    ...orderPriority,
-    'company_name',
-    'department_name',
-    'branch_name',
-    'workplace_name',
-    'user_level_name',
-  ];
-
-  const baseSql = `SELECT
-            e.employment_company_id AS company_id,
-            ${merchantTinExpr} AS merchant_tin,
-            ${companyRel.nameExpr} AS company_name,
-            e.employment_branch_id AS branch_id,
-            ${branchRel.nameExpr} AS branch_name,
-            e.employment_department_id AS department_id,
-            ${deptRel.nameExpr} AS department_name,
-            es.workplace_id AS workplace_id,
-            es.effective_start_date AS effective_start_date,
-            es.effective_end_date AS effective_end_date,
-            ${posNoExpr} AS pos_no,
-            ${merchantExpr} AS merchant_id,
-            ${posRelation.select.posNo} AS posNo,
-            ${posRelation.select.posName} AS pos_name,
-            ${posRelation.select.branchNo} AS branchNo,
-            ${posRelation.select.districtCode} AS pos_districtCode,
-            ${posRelation.select.merchantTin} AS merchantTin,
-            cw.workplace_name AS workplace_name,
-            e.employment_position_id AS position_id,
-            e.employment_senior_empid AS senior_empid,
-            e.employment_senior_plan_empid AS senior_plan_empid,
-            ${empName} AS employee_name,
-            e.employment_user_level AS user_level,
-            ul.name AS user_level_name,
-            GROUP_CONCAT(DISTINCT up.action_key) AS permission_list
-         FROM tbl_employment e
-         ${companyRel.join}
-         ${branchRel.join}
-         ${deptRel.join}
-         LEFT JOIN (
-           SELECT
-             es.company_id,
-            es.branch_id,
-            es.department_id,
-            es.emp_id,
-            es.workplace_id,
-            es.start_date AS effective_start_date,
-            es.end_date AS effective_end_date,
-            ${posNoExpr} AS pos_no,
-            ${merchantExpr} AS merchant_id
-           FROM tbl_employment_schedule es
-           INNER JOIN (
-             SELECT
-               company_id,
-               branch_id,
-               department_id,
-               workplace_id,
-               emp_id,
-               YEAR(start_date) AS start_year,
-               MONTH(start_date) AS start_month,
-               MAX(start_date) AS latest_start_date
-             FROM tbl_employment_schedule
-             WHERE start_date <= ${scheduleDateSql}
-               AND (end_date IS NULL OR end_date >= CURRENT_DATE())
-               AND deleted_at IS NULL
-             GROUP BY company_id, branch_id, department_id, workplace_id, emp_id, YEAR(start_date), MONTH(start_date)
-           ) latest
-             ON latest.company_id = es.company_id
-            AND latest.branch_id = es.branch_id
-            AND latest.department_id = es.department_id
-            AND latest.emp_id = es.emp_id
-            AND latest.workplace_id = es.workplace_id
-            AND latest.latest_start_date = es.start_date
-           WHERE es.start_date <= ${scheduleDateSql}
-             AND (es.end_date IS NULL OR es.end_date >= CURRENT_DATE())
-             AND es.deleted_at IS NULL
-           UNION ALL
-           SELECT
-             e.employment_company_id AS company_id,
-             e.employment_branch_id AS branch_id,
-             e.employment_department_id AS department_id,
-             e.employment_emp_id AS emp_id,
-             e.employment_workplace_id AS workplace_id,
-             e.employment_date AS effective_start_date,
-             NULL AS effective_end_date,
-             NULL AS pos_no,
-             NULL AS merchant_id
-           FROM tbl_employment e
-           WHERE e.employment_emp_id = ?
-             AND e.employment_date <= ${scheduleDateSql}
-             AND e.deleted_at IS NULL
-             AND NOT EXISTS (
-               SELECT 1
-                 FROM tbl_employment_schedule es
-                WHERE es.emp_id = e.employment_emp_id
-                  AND es.company_id = e.employment_company_id
-                  AND es.branch_id = e.employment_branch_id
-                  AND es.department_id = e.employment_department_id
-                  AND es.workplace_id = e.employment_workplace_id
-                  AND es.start_date <= ${scheduleDateSql}
-                  AND (es.end_date IS NULL OR es.end_date >= CURRENT_DATE())
-                  AND es.deleted_at IS NULL
-             )
-         ) es
-           ON es.emp_id = e.employment_emp_id
-          AND es.company_id = e.employment_company_id
-          AND es.branch_id = e.employment_branch_id
-         AND es.department_id = e.employment_department_id
-         ${posRelation.join}
-         LEFT JOIN tbl_workplace tw
-           ON tw.company_id = e.employment_company_id
-          AND tw.branch_id = e.employment_branch_id
-          AND tw.department_id = e.employment_department_id
-          AND tw.workplace_id = es.workplace_id
-         LEFT JOIN code_workplace cw ON cw.workplace_id = es.workplace_id
-         LEFT JOIN tbl_employee emp ON e.employment_emp_id = emp.emp_id
-         LEFT JOIN user_levels ul ON e.employment_user_level = ul.userlevel_id
-         LEFT JOIN user_level_permissions up ON up.userlevel_id = ul.userlevel_id AND up.action = 'permission' AND up.company_id IN (${GLOBAL_COMPANY_ID}, e.employment_company_id)
-         WHERE e.employment_emp_id = ? AND e.employment_company_id = ?
-         GROUP BY e.employment_company_id, company_name,
-                   ${merchantTinExpr},
-                   e.employment_branch_id, branch_name,
-                   e.employment_department_id, department_name,
-                   es.workplace_id, cw.workplace_name,
-                   es.effective_start_date, es.effective_end_date,
-                   pos_no, merchant_id, posNo, pos_name, branchNo, pos_districtCode, merchantTin,
-                   e.employment_position_id,
-                   e.employment_senior_empid,
-                   e.employment_senior_plan_empid,
-                   employee_name, e.employment_user_level, ul.name
-         ORDER BY ${orderParts.join(', ')}
-         LIMIT 1`;
-    const normalizedSql = baseSql.replace(/`/g, "");
-    const queryParams = [...scheduleDateParams, ...params];
-    let rows;
-    try {
-      [rows] = await pool.query(normalizedSql, queryParams);
-    } catch (err) {
-      if (
-        err?.code === "ER_BAD_FIELD_ERROR" &&
-        /\b(pos_no|merchant_id|merchant_tin)\b/i.test(err.message || "")
-      ) {
-        employmentScheduleColumnCache = {
-          hasPosNo: false,
-          posColumnName: null,
-          hasMerchantId: false,
-          merchantIdColumn: null,
-        };
-        companyMerchantColumnCache = { hasMerchantTin: false };
-        const replaceExpr = (text, target, replacement) =>
-          text.split(target).join(replacement);
-        const withoutPos = replaceExpr(normalizedSql, posNoExpr, "NULL");
-        const withoutMerchantId = replaceExpr(withoutPos, merchantExpr, "NULL");
-        const fallbackSql = replaceExpr(withoutMerchantId, merchantTinExpr, "NULL");
-        [rows] = await pool.query(fallbackSql, queryParams);
-      } else {
-        console.warn("Employment session query failed; returning null", {
-          error: err?.message || err,
-        });
-        return null;
-      }
-    }
-    if (rows.length === 0) return null;
-    return mapEmploymentRow(rows[0]);
-  }
-  const sessions = await getEmploymentSessions(empid);
-  return sessions[0] || null;
+  return filteredSessions[0] || null;
 }
 
 export async function listUserLevels() {

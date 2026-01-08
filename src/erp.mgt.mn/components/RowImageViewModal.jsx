@@ -16,14 +16,16 @@ export default function RowImageViewModal({
   row = {},
   columnCaseMap = {},
   configs = {},
+  canDelete = true,
 }) {
+  const baseZIndex = 1300;
   const [files, setFiles] = useState([]);
   const [showGallery, setShowGallery] = useState(false);
   const [fullscreenIndex, setFullscreenIndex] = useState(null);
   const { addToast } = useToast();
   const generalConfig = useGeneralConfig();
   const { t } = useTranslation();
-  const { company } = useContext(AuthContext);
+  const { company, user } = useContext(AuthContext);
   const toast = (msg, type = 'info') => {
     if (type === 'info' && !generalConfig?.general?.imageToastEnabled) return;
     addToast(msg, type);
@@ -47,6 +49,19 @@ export default function RowImageViewModal({
     String(name)
       .toLowerCase()
       .replace(/[^a-z0-9_-]+/gi, '_');
+  const normalizeEmpId = (value) =>
+    value == null ? '' : sanitize(String(value));
+  const viewerEmpId = user?.empid || user?.empId || user?.id || '';
+  const extractUploaderId = (name = '') => {
+    const match = String(name).match(/__u([^_]+?)__/i);
+    return match ? match[1] : null;
+  };
+  const canDeleteFile = (fileName) => {
+    if (!canDelete) return false;
+    const uploader = extractUploaderId(fileName);
+    if (!uploader) return false;
+    return normalizeEmpId(uploader) === normalizeEmpId(viewerEmpId);
+  };
 
   function pickConfig(cfgs = {}, r = {}) {
     const tVal =
@@ -126,6 +141,9 @@ export default function RowImageViewModal({
     }
     if (!primary) {
       primary = buildFallbackName(row);
+    }
+    if (!primary && row?._imageName) {
+      primary = row._imageName;
     }
     if (cfg?.imageIdField) {
       idName = buildImageName(row, [cfg.imageIdField], columnCaseMap, company).name;
@@ -301,7 +319,13 @@ export default function RowImageViewModal({
 
   return (
     <>
-      <Modal visible={visible} title={t('images', 'Images')} onClose={onClose} width="auto">
+      <Modal
+        visible={visible}
+        title={t('images', 'Images')}
+        onClose={onClose}
+        width="auto"
+        zIndex={baseZIndex}
+      >
         {files.length === 0 ? <p>{t('no_images', 'No images')}</p> : listView}
         {files.length > 0 && (
           <div style={{ textAlign: 'right', marginTop: '0.5rem' }}>
@@ -324,7 +348,7 @@ export default function RowImageViewModal({
               right: 0,
               bottom: 0,
               background: 'rgba(0,0,0,0.85)',
-              zIndex: 1100,
+              zIndex: baseZIndex + 100,
               padding: '1rem',
               display: 'flex',
               flexDirection: 'column',
@@ -356,6 +380,7 @@ export default function RowImageViewModal({
                     style={{ width: '100%', height: '100%', objectFit: 'cover', cursor: 'pointer' }}
                     onClick={() => handleView(idx)}
                   />
+                  {canDeleteFile(f.name) && (
                     <button
                       type="button"
                       onClick={(e) => {
@@ -377,6 +402,7 @@ export default function RowImageViewModal({
                     >
                       {t('delete', 'Delete')}
                     </button>
+                  )}
                 </div>
               ))}
             </div>
@@ -396,7 +422,7 @@ export default function RowImageViewModal({
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              zIndex: 1200,
+              zIndex: baseZIndex + 200,
             }}
             onClick={() => setFullscreenIndex(null)}
           >
