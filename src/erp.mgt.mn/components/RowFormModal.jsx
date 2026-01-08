@@ -4298,8 +4298,6 @@ const RowFormModal = function RowFormModal({
   );
   const canUploadImages =
     allowImageActions ||
-    allowTemporarySave ||
-    isEditingTemporaryDraft ||
     canPost ||
     (Array.isArray(imagenameField) && imagenameField.length > 0) ||
     Boolean(imageIdField) ||

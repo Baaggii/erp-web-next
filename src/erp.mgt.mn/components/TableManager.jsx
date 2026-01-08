@@ -7997,12 +7997,6 @@ const TableManager = forwardRef(function TableManager({
                         normalizedValues?._imageName ||
                         normalizedValues?.imageName ||
                         normalizedValues?.image_name ||
-                        entry?.payload?.values?._imageName ||
-                        entry?.payload?.values?.imageName ||
-                        entry?.payload?.values?.image_name ||
-                        entry?.payload?._imageName ||
-                        entry?.payload?.imageName ||
-                        entry?.payload?.image_name ||
                         entry?._imageName ||
                         entry?.imageName ||
                         entry?.image_name ||
@@ -8042,7 +8036,11 @@ const TableManager = forwardRef(function TableManager({
                           imageConfig.imagenameField.length > 0) ||
                         Boolean(imageConfig?.imageIdField) ||
                         hasTemporaryImageName;
-                      const canUploadTemporaryImages = true;
+                      const canUploadTemporaryImages =
+                        (Array.isArray(imageConfig?.imagenameField) &&
+                          imageConfig.imagenameField.length > 0) ||
+                        Boolean(imageConfig?.imageIdField) ||
+                        hasTemporaryImageName;
                       const canDeleteTemporaryImages = Boolean(normalizedViewerEmpId);
                       const detailColumns = temporaryDetailColumns;
                       const rowBackgroundColor = isFocused
