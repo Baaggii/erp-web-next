@@ -45,6 +45,15 @@ export default function RowImageUploadModal({
     });
   }
 
+  function buildTemporaryImageName(fileName = '') {
+    const timestamp = Date.now();
+    const random = Math.random().toString(36).slice(2, 5);
+    const safeOriginal = String(fileName || `upload_${timestamp}`)
+      .toLowerCase()
+      .replace(/[^a-z0-9._-]+/gi, '_');
+    return `tmp_${timestamp}__${random}___${safeOriginal}`;
+  }
+
   function handleClipboardPaste(event) {
     if (!visible) return;
     const items = event.clipboardData?.items;
@@ -189,7 +198,14 @@ export default function RowImageUploadModal({
 
   async function handleUpload(selectedFiles) {
     const { primary: safeName, missing, idName } = resolveNames();
-    let finalName = safeName || `tmp_${Date.now()}`;
+    const filesToUpload = Array.from(selectedFiles || files);
+    if (!filesToUpload.length) return;
+    const isTemporary = !row._saved;
+    const existingTemporaryName =
+      isTemporary && row?._imageName ? row._imageName : '';
+    let finalName = isTemporary
+      ? existingTemporaryName || buildTemporaryImageName(filesToUpload[0]?.name)
+      : safeName || buildTemporaryImageName(filesToUpload[0]?.name);
     if (!safeName && row._saved && imagenameFields.length > 0) {
       toast(
         `Image name is missing fields: ${missing.join(', ')}. Save required fields before uploading.`,
@@ -197,7 +213,7 @@ export default function RowImageUploadModal({
       );
       return;
     }
-    if (!safeName && idName) {
+    if (!isTemporary && !safeName && idName) {
       finalName = `${finalName}_${idName}`;
     }
     if (!folder) {
@@ -215,8 +231,6 @@ export default function RowImageUploadModal({
     if (folder) params.set('folder', folder);
     if (company != null) params.set('companyId', company);
     const uploadUrl = `/api/transaction_images/${safeTable}/${encodeURIComponent(finalName)}?${params.toString()}`;
-    const filesToUpload = Array.from(selectedFiles || files);
-    if (!filesToUpload.length) return;
     setLoading(true);
     const form = new FormData();
     filesToUpload.forEach((f) => form.append('images', f));
