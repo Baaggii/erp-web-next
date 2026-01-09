@@ -432,6 +432,19 @@ function matchesImagePrefix(prefix, candidate) {
   return false;
 }
 
+function reduceImagePrefix(prefix = '', parts = 2) {
+  const segments = sanitizeName(prefix).split('_').filter(Boolean);
+  if (!segments.length) return '';
+  return segments.slice(0, parts).join('_');
+}
+
+function matchesImagePrefixVariants(prefix, candidate) {
+  if (matchesImagePrefix(prefix, candidate)) return true;
+  const reduced = reduceImagePrefix(prefix);
+  if (!reduced || reduced === sanitizeName(prefix || '')) return false;
+  return matchesImagePrefix(reduced, candidate);
+}
+
 async function getNumFieldForTable(table) {
   let cols;
   try {
@@ -443,10 +456,36 @@ async function getNumFieldForTable(table) {
   return numCol ? numCol.Field : '';
 }
 
-async function findPromotedTempMatch(imagePrefix, companyId = 0, timestamp = null) {
-  if (!imagePrefix) return null;
-  const escaped = escapeLike(imagePrefix);
-  const like = `%${escaped}%`;
+async function findPromotedTempMatch(
+  imagePrefix,
+  companyId = 0,
+  timestamp = null,
+  suffix = '',
+) {
+  if (!imagePrefix && !suffix) return null;
+  const escapedPrefix = imagePrefix ? escapeLike(imagePrefix) : '';
+  const escapedSuffix = suffix ? escapeLike(suffix) : '';
+  const likeClauses = [];
+  const likeParams = [];
+  if (escapedPrefix) {
+    const like = `%${escapedPrefix}%`;
+    likeClauses.push(
+      'payload_json LIKE ? ESCAPE \'\\\\\'',
+      'cleaned_values_json LIKE ? ESCAPE \'\\\\\'',
+      'raw_values_json LIKE ? ESCAPE \'\\\\\'',
+    );
+    likeParams.push(like, like, like);
+  }
+  if (escapedSuffix) {
+    const like = `%${escapedSuffix}%`;
+    likeClauses.push(
+      'payload_json LIKE ? ESCAPE \'\\\\\'',
+      'cleaned_values_json LIKE ? ESCAPE \'\\\\\'',
+      'raw_values_json LIKE ? ESCAPE \'\\\\\'',
+    );
+    likeParams.push(like, like, like);
+  }
+  if (!likeClauses.length) return null;
   let rows;
   try {
     [rows] = await pool.query(
@@ -455,14 +494,10 @@ async function findPromotedTempMatch(imagePrefix, companyId = 0, timestamp = nul
         WHERE company_id = ?
           AND status = 'promoted'
           AND promoted_record_id IS NOT NULL
-          AND (
-            payload_json LIKE ? ESCAPE '\\\\'
-            OR cleaned_values_json LIKE ? ESCAPE '\\\\'
-            OR raw_values_json LIKE ? ESCAPE '\\\\'
-          )
+          AND (${likeClauses.join(' OR ')})
         ORDER BY updated_at DESC
         LIMIT 20`,
-      [companyId, like, like, like],
+      [companyId, ...likeParams],
     );
   } catch {
     return null;
@@ -470,7 +505,12 @@ async function findPromotedTempMatch(imagePrefix, companyId = 0, timestamp = nul
   for (const row of rows || []) {
     const imageName = extractTempImageName(row);
     if (!imageName) continue;
-    if (!matchesImagePrefix(imagePrefix, imageName)) continue;
+    if (
+      !matchesImagePrefixVariants(imagePrefix, imageName) &&
+      !(suffix && imageName.includes(suffix))
+    ) {
+      continue;
+    }
     const promotedRecordId = row.promoted_record_id;
     let promotedRows;
     try {
@@ -517,7 +557,11 @@ async function findPromotedTempMatch(imagePrefix, companyId = 0, timestamp = nul
   }
   for (const row of recentRows || []) {
     const imageName = extractTempImageName(row);
-    if (imageName && matchesImagePrefix(imagePrefix, imageName)) {
+    if (
+      imageName &&
+      (matchesImagePrefixVariants(imagePrefix, imageName) ||
+        (suffix && imageName.includes(suffix)))
+    ) {
       // falls through to promoted row fetch below
     } else if (!imageName) {
       // allow prefix check against resolved image name on posted row
@@ -545,13 +589,13 @@ async function findPromotedTempMatch(imagePrefix, companyId = 0, timestamp = nul
       cfgs,
       row.table_name,
     );
-    if (!matchesImagePrefix(imagePrefix, resolved.name)) {
+    if (!matchesImagePrefixVariants(imagePrefix, resolved.name)) {
       const prefixOnly = resolveImagePrefixForSearch(
         promotedRow,
         cfgs,
         row.table_name,
       );
-      if (!matchesImagePrefix(imagePrefix, prefixOnly.name)) {
+      if (!matchesImagePrefixVariants(imagePrefix, prefixOnly.name)) {
         continue;
       }
     }
@@ -1228,6 +1272,7 @@ export async function detectIncompleteImages(
           tempPrefix,
           companyId,
           save?.ts ? Number(save.ts) : suffixMatch?.ts ? Number(suffixMatch.ts) : null,
+          suffix,
         );
         if (tempMatch) {
           found = tempMatch;
@@ -1479,6 +1524,7 @@ export async function checkUploadedImages(
             tempPrefix,
             companyId,
             Number(save.ts),
+            suffix,
           );
         }
       }
@@ -1504,6 +1550,7 @@ export async function checkUploadedImages(
             tempPrefix,
             companyId,
             Number(suffixMatch.ts),
+            suffix,
           );
         }
       }
