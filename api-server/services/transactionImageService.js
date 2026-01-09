@@ -376,6 +376,11 @@ function stripUploaderTag(value = '') {
   return String(value).replace(/__u[^_]+__$/i, '');
 }
 
+function isTemporaryGeneratedName(base = '') {
+  const value = String(base);
+  return /^tmp[_-]/i.test(value) || /__u[a-z0-9]+__/i.test(value);
+}
+
 function extractImagePrefix(base) {
   const save = parseSaveName(base);
   if (!save) return '';
@@ -1214,7 +1219,7 @@ export async function detectIncompleteImages(
       if (save) {
         ({ unique } = save);
         suffix = `_${save.ts}_${save.rand}`;
-        if (hasTxnCode(base, unique, codes)) {
+        if (!isTemporaryGeneratedName(base) && hasTxnCode(base, unique, codes)) {
           skipped.push({
             currentName: f,
             newName: f,
@@ -1253,7 +1258,7 @@ export async function detectIncompleteImages(
           });
           continue;
         }
-        if (hasTxnCode(base, unique, codes)) {
+        if (!isTemporaryGeneratedName(base) && hasTxnCode(base, unique, codes)) {
           skipped.push({
             currentName: f,
             newName: f,
@@ -1504,11 +1509,11 @@ export async function checkUploadedImages(
     let suffix = '';
     let found;
     let reason = '';
-      const save = parseSaveName(base);
-      if (save) {
-        ({ unique } = save);
-        suffix = `_${save.ts}_${save.rand}`;
-      if (hasTxnCode(base, unique, codes)) {
+    const save = parseSaveName(base);
+    if (save) {
+      ({ unique } = save);
+      suffix = `_${save.ts}_${save.rand}`;
+      if (!isTemporaryGeneratedName(base) && hasTxnCode(base, unique, codes)) {
         reason = 'Already renamed';
       } else {
         found = await findTxnByParts(
@@ -1540,7 +1545,7 @@ export async function checkUploadedImages(
       }
       if (!unique) {
         reason = 'Invalid filename';
-      } else if (hasTxnCode(base, unique, codes)) {
+      } else if (!isTemporaryGeneratedName(base) && hasTxnCode(base, unique, codes)) {
         reason = 'Already renamed';
       } else {
         found = await findTxnByUniqueId(unique, companyId);
@@ -1709,7 +1714,7 @@ export async function detectIncompleteFromNames(names = [], companyId = 0, signa
       skipped.push({ originalName: name, reason: 'No unique identifier' });
       continue;
     }
-    if (hasTxnCode(base, unique, codes)) {
+    if (!isTemporaryGeneratedName(base) && hasTxnCode(base, unique, codes)) {
       skipped.push({ originalName: name, reason: 'Contains transaction codes' });
       continue;
     }
