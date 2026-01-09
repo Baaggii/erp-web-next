@@ -216,6 +216,7 @@ async function findPromotedTempMatch(imagePrefix, companyId = 0) {
     const imageName = extractTempImageName(row);
     if (!imageName) continue;
     if (sanitizeName(imageName) !== sanitizeName(imagePrefix)) continue;
+    const promotedRecordId = row.promoted_record_id;
     let promotedRows;
     try {
       [promotedRows] = await pool.query(
@@ -238,6 +239,8 @@ async function findPromotedTempMatch(imagePrefix, companyId = 0) {
       row: promotedRow,
       configs: cfgs,
       numField,
+      tempPromoted: true,
+      promotedRecordId,
     };
   }
   return null;
@@ -825,6 +828,7 @@ export async function detectIncompleteImages(
         continue;
       }
       const { row, configs, numField, tempPromoted } = found;
+      const promotedRecordId = found?.promotedRecordId ?? null;
 
       const cfgEntry = pickConfigEntry(configs, row);
       const cfg = cfgEntry.config;
