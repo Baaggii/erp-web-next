@@ -122,6 +122,136 @@ function parseSaveName(base) {
   return { inv, sp, transType, unique, ts, rand, pre };
 }
 
+function stripUploaderTag(value = '') {
+  return String(value).replace(/__u[^_]+__$/i, '');
+}
+
+function extractImagePrefix(base) {
+  const normalized = String(base || '');
+  if (!normalized) return '';
+  const save = parseSaveName(normalized);
+  if (save?.pre) {
+    return stripUploaderTag(save.pre || '');
+  }
+  const savedMatch = normalized.match(
+    /^(.*?)(?:__u[^_]+__)?_[0-9]{13}_[a-z0-9]{6}$/i,
+  );
+  if (savedMatch?.[1]) {
+    return stripUploaderTag(savedMatch[1]);
+  }
+  const altMatch = normalized.match(/^(.*?)(?:__u[^_]+__)?__([a-z0-9]{6})$/i);
+  if (altMatch?.[1]) {
+    return stripUploaderTag(altMatch[1]);
+  }
+  return stripUploaderTag(normalized);
+}
+
+function escapeLike(value = '') {
+  return String(value).replace(/[\\%_]/g, '\\$&');
+}
+
+function safeJsonParse(value, fallback) {
+  if (!value) return fallback;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return fallback;
+  }
+}
+
+function pickImageName(payload) {
+  if (!payload || typeof payload !== 'object') return '';
+  const keys = ['_imageName', 'imageName', 'image_name', 'imagename'];
+  for (const key of keys) {
+    const val = payload[key];
+    if (typeof val === 'string' && val.trim()) return val.trim();
+  }
+  return '';
+}
+
+function extractTempImageName(row) {
+  const payload = safeJsonParse(row.payload_json, {});
+  const cleanedValues = safeJsonParse(row.cleaned_values_json, {});
+  const rawValues = safeJsonParse(row.raw_values_json, {});
+  const payloadValues = payload?.values;
+  const payloadCleaned = payload?.cleanedValues;
+  const payloadRaw = payload?.rawValues;
+  return (
+    pickImageName(payloadValues) ||
+    pickImageName(payloadCleaned) ||
+    pickImageName(payloadRaw) ||
+    pickImageName(cleanedValues) ||
+    pickImageName(rawValues) ||
+    ''
+  );
+}
+
+async function getNumFieldForTable(table) {
+  let cols;
+  try {
+    [cols] = await pool.query(`SHOW COLUMNS FROM \`${table}\``);
+  } catch {
+    return '';
+  }
+  const numCol = cols.find((c) => c.Field.toLowerCase().includes('num'));
+  return numCol ? numCol.Field : '';
+}
+
+async function findPromotedTempMatch(imagePrefix, companyId = 0) {
+  if (!imagePrefix) return null;
+  const escaped = escapeLike(imagePrefix);
+  const like = `%${escaped}%`;
+  let rows;
+  try {
+    [rows] = await pool.query(
+      `SELECT table_name, promoted_record_id, payload_json, raw_values_json, cleaned_values_json
+         FROM transaction_temporaries
+        WHERE company_id = ?
+          AND status = 'promoted'
+          AND promoted_record_id IS NOT NULL
+          AND (
+            payload_json LIKE ? ESCAPE '\\\\'
+            OR cleaned_values_json LIKE ? ESCAPE '\\\\'
+            OR raw_values_json LIKE ? ESCAPE '\\\\'
+          )
+        ORDER BY updated_at DESC
+        LIMIT 20`,
+      [companyId, like, like, like],
+    );
+  } catch {
+    return null;
+  }
+  for (const row of rows || []) {
+    const imageName = extractTempImageName(row);
+    if (!imageName) continue;
+    if (sanitizeName(imageName) !== sanitizeName(imagePrefix)) continue;
+    let promotedRows;
+    try {
+      [promotedRows] = await pool.query(
+        `SELECT * FROM \`${row.table_name}\` WHERE id = ? LIMIT 1`,
+        [row.promoted_record_id],
+      );
+    } catch {
+      continue;
+    }
+    const promotedRow = promotedRows?.[0];
+    if (!promotedRow) continue;
+    let cfgs = {};
+    try {
+      const { config } = await getConfigsByTable(row.table_name, companyId);
+      cfgs = config;
+    } catch {}
+    const numField = await getNumFieldForTable(row.table_name);
+    return {
+      table: row.table_name,
+      row: promotedRow,
+      configs: cfgs,
+      numField,
+    };
+  }
+  return null;
+}
+
 function buildFolderName(row, fallback = '') {
   const part1 =
     getCase(row, 'trtype') ||
@@ -683,6 +813,13 @@ export async function detectIncompleteImages(
           continue;
         }
         found = await findTxnByUniqueId(unique, companyId);
+      }
+      if (!found) {
+        const tempPrefix = extractImagePrefix(base);
+        const tempMatch = await findPromotedTempMatch(tempPrefix, companyId);
+        if (tempMatch) {
+          found = tempMatch;
+        }
       }
       if (!found) {
         skipped.push({
