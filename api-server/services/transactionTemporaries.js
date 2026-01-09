@@ -2177,21 +2177,9 @@ export async function promoteTemporarySubmission(
           });
         }
       }
-      const imageIdField =
-        typeof formCfg?.imageIdField === 'string' ? formCfg.imageIdField : '';
       const targetImageSource = promotedRow || sanitizedValues;
-      const namingSource = { ...targetImageSource };
-      if (
-        promotedId &&
-        imageIdField &&
-        (namingSource[imageIdField] === undefined ||
-          namingSource[imageIdField] === null ||
-          namingSource[imageIdField] === '')
-      ) {
-        namingSource[imageIdField] = promotedId;
-      }
       const { name: newImageName, folder: newImageFolder } = resolveImageNaming(
-        namingSource,
+        targetImageSource,
         formCfg,
         row.table_name,
       );
