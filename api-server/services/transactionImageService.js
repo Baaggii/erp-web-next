@@ -819,11 +819,18 @@ export async function detectIncompleteImages(
         });
         continue;
       }
-      const { row, configs, numField } = found;
+      const { row, configs, numField, tempPromoted } = found;
 
       const cfg = pickConfig(configs, row);
       let newBase = '';
       let folderRaw = '';
+      if (tempPromoted) {
+        const resolved = resolveImageNaming(row, cfg, found.table || entry.name);
+        if (resolved.name) {
+          newBase = resolved.name;
+          folderRaw = resolved.folder;
+        }
+      }
       const tType =
         getCase(row, 'trtype') ||
         getCase(row, 'UITrtype') ||
