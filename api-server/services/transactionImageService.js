@@ -1255,6 +1255,22 @@ export async function detectIncompleteImages(
           suffix = parsed.suffix;
         }
         if (!unique) {
+          skipped.push({
+            currentName: f,
+            newName: f,
+            folder: entry.name,
+            folderDisplay: '/' + entry.name,
+            currentPath: filePath,
+            reason: 'No unique identifier',
+          });
+          continue;
+        }
+        const parsed = parseFileUnique(base);
+        unique = parsed.unique;
+        if (!suffix && parsed.suffix) {
+          suffix = parsed.suffix;
+        }
+        if (!unique) {
           if (suffixMatch) {
             found = await findPromotedTempByTimestamp(
               Number(suffixMatch.ts),
@@ -1524,10 +1540,10 @@ export async function checkUploadedImages(
     let suffix = '';
     let found;
     let reason = '';
-    const save = parseSaveName(base);
-    if (save) {
-      ({ unique } = save);
-      suffix = `_${save.ts}_${save.rand}`;
+      const save = parseSaveName(base);
+      if (save) {
+        ({ unique } = save);
+        suffix = `_${save.ts}_${save.rand}`;
       if (hasTxnCode(base, unique, codes)) {
         reason = 'Already renamed';
       } else {
