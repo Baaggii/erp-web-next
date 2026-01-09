@@ -856,35 +856,61 @@ export async function detectIncompleteImages(
         }
       }
       if (!newBase) {
-        const fields = [
-          'z_mat_code',
-          'or_bcode',
-          'bmtr_pmid',
-          'pmid',
-          'sp_primary_code',
-          'pid',
-        ];
-        const partsArr = [];
-        const basePart = buildNameFromRow(row, fields);
-        if (basePart) partsArr.push(basePart);
-        const o1 = [getCase(row, 'bmtr_orderid'), getCase(row, 'bmtr_orderdid')]
-          .filter(Boolean)
-          .join('~');
-        const o2 = [getCase(row, 'ordrid'), getCase(row, 'ordrdid')]
-          .filter(Boolean)
-          .join('~');
-        const ord = o1 || o2;
-        if (ord) partsArr.push(ord);
-        if (transTypeVal) partsArr.push(transTypeVal);
-        if (tType) partsArr.push(tType);
-        if (partsArr.length) {
-          newBase = sanitizeName(partsArr.join('_'));
-          folderRaw = folderRaw || buildFolderName(row, cfg?.imageFolder || entry.name);
+        const tType =
+          getCase(row, 'trtype') ||
+          getCase(row, 'UITrtype') ||
+          getCase(row, 'TRTYPENAME') ||
+          getCase(row, 'trtypename') ||
+          getCase(row, 'uitranstypename') ||
+          getCase(row, 'transtype');
+        const transTypeVal =
+          getCase(row, 'TransType') ||
+          getCase(row, 'UITransType') ||
+          getCase(row, 'UITransTypeName') ||
+          getCase(row, 'transtype');
+        if (
+          cfg?.imagenameField?.length &&
+          tType &&
+          cfg.transactionTypeValue &&
+          cfg.transactionTypeField &&
+          String(getCase(row, cfg.transactionTypeField)) === String(cfg.transactionTypeValue)
+        ) {
+          newBase = buildNameFromRow(row, cfg.imagenameField);
+          if (newBase) {
+            folderRaw = `${slugify(String(tType))}/${slugify(String(cfg.transactionTypeValue))}`;
+          }
         }
-      }
-      if (!newBase && numField) {
-        newBase = sanitizeName(String(row[numField]));
-        folderRaw = buildFolderName(row, cfg?.imageFolder || entry.name);
+        if (!newBase) {
+          const fields = [
+            'z_mat_code',
+            'or_bcode',
+            'bmtr_pmid',
+            'pmid',
+            'sp_primary_code',
+            'pid',
+          ];
+          const partsArr = [];
+          const basePart = buildNameFromRow(row, fields);
+          if (basePart) partsArr.push(basePart);
+          const o1 = [getCase(row, 'bmtr_orderid'), getCase(row, 'bmtr_orderdid')]
+            .filter(Boolean)
+            .join('~');
+          const o2 = [getCase(row, 'ordrid'), getCase(row, 'ordrdid')]
+            .filter(Boolean)
+            .join('~');
+          const ord = o1 || o2;
+          if (ord) partsArr.push(ord);
+          if (transTypeVal) partsArr.push(transTypeVal);
+          if (tType) partsArr.push(tType);
+          if (partsArr.length) {
+            newBase = sanitizeName(partsArr.join('_'));
+            folderRaw = folderRaw || buildFolderName(row, cfg?.imageFolder || entry.name);
+          }
+        }
+        if (!newBase && numField) {
+          newBase = sanitizeName(String(row[numField]));
+          folderRaw = buildFolderName(row, cfg?.imageFolder || entry.name);
+        }
       }
       if (!newBase) {
         skipped.push({
