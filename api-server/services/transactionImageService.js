@@ -59,6 +59,60 @@ function buildNameFromRow(row, fields = []) {
   return sanitizeName(vals.join('_'));
 }
 
+function pickMatchingConfigs(configs = {}, row = {}) {
+  const matches = [];
+  for (const [name, cfg] of Object.entries(configs)) {
+    if (!cfg.transactionTypeValue) continue;
+    if (cfg.transactionTypeField) {
+      const val = getCase(row, cfg.transactionTypeField);
+      if (val !== undefined && String(val) === String(cfg.transactionTypeValue)) {
+        matches.push({ name, config: cfg });
+      }
+    } else {
+      const matchField = Object.keys(row).find(
+        (k) => String(getCase(row, k)) === String(cfg.transactionTypeValue),
+      );
+      if (matchField) {
+        matches.push({
+          name,
+          config: { ...cfg, transactionTypeField: matchField },
+        });
+      }
+    }
+  }
+  return matches;
+}
+
+function dedupeFields(fields = []) {
+  const seen = new Set();
+  const deduped = [];
+  fields.forEach((field) => {
+    if (!field) return;
+    const key = String(field);
+    if (seen.has(key)) return;
+    seen.add(key);
+    deduped.push(field);
+  });
+  return deduped;
+}
+
+function collectImageFields(entries = []) {
+  const fieldSet = new Set();
+  const configNames = [];
+  entries.forEach(({ name, config }) => {
+    if (name) configNames.push(name);
+    if (Array.isArray(config?.imagenameField)) {
+      config.imagenameField.forEach((field) => {
+        if (field) fieldSet.add(field);
+      });
+    }
+    if (typeof config?.imageIdField === 'string' && config.imageIdField) {
+      fieldSet.add(config.imageIdField);
+    }
+  });
+  return { fields: Array.from(fieldSet), configNames };
+}
+
 function pickConfigEntry(configs = {}, row = {}) {
   for (const [name, cfg] of Object.entries(configs)) {
     if (!cfg.transactionTypeValue) continue;
@@ -82,6 +136,39 @@ function pickConfigEntry(configs = {}, row = {}) {
 
 function pickConfig(configs = {}, row = {}) {
   return pickConfigEntry(configs, row).config;
+}
+
+function resolveImageNamingForSearch(row = {}, configs = {}, fallbackTable = '') {
+  const { name: preferredName, config: preferredConfig } = pickConfigEntry(configs, row);
+  const preferredFields = Array.isArray(preferredConfig?.imagenameField)
+    ? preferredConfig.imagenameField
+    : [];
+  const preferredImageIdField =
+    typeof preferredConfig?.imageIdField === 'string' ? preferredConfig.imageIdField : '';
+  const preferredFieldSet = dedupeFields([
+    ...preferredFields,
+    preferredImageIdField,
+  ]);
+  let name = '';
+  let configNames = [];
+  if (preferredFieldSet.length) {
+    name = buildNameFromRow(row, preferredFieldSet);
+    if (name && preferredName) {
+      configNames = [preferredName];
+    }
+  }
+  if (!name) {
+    const matchedConfigs = pickMatchingConfigs(configs, row);
+    const { fields, configNames: matchedNames } = collectImageFields(matchedConfigs);
+    if (fields.length) {
+      name = buildNameFromRow(row, fields);
+      if (name) {
+        configNames = matchedNames;
+      }
+    }
+  }
+  const folder = buildFolderName(row, preferredConfig?.imageFolder || fallbackTable);
+  return { name, folder, configNames };
 }
 
 function extractUnique(str) {
@@ -837,37 +924,19 @@ export async function detectIncompleteImages(
 
       const cfgEntry = pickConfigEntry(configs, row);
       const cfg = cfgEntry.config;
+      let configNames = cfgEntry.name ? [cfgEntry.name] : [];
       let newBase = '';
       let folderRaw = '';
       if (tempPromoted) {
-        const resolved = resolveImageNaming(row, cfg, found.table || entry.name);
+        const resolved = resolveImageNamingForSearch(
+          row,
+          configs,
+          found.table || entry.name,
+        );
         if (resolved.name) {
           newBase = resolved.name;
           folderRaw = resolved.folder;
-        }
-      }
-      const tType =
-        getCase(row, 'trtype') ||
-        getCase(row, 'UITrtype') ||
-        getCase(row, 'TRTYPENAME') ||
-        getCase(row, 'trtypename') ||
-        getCase(row, 'uitranstypename') ||
-        getCase(row, 'transtype');
-      const transTypeVal =
-        getCase(row, 'TransType') ||
-        getCase(row, 'UITransType') ||
-        getCase(row, 'UITransTypeName') ||
-        getCase(row, 'transtype');
-      if (
-        cfg?.imagenameField?.length &&
-        tType &&
-        cfg.transactionTypeValue &&
-        cfg.transactionTypeField &&
-        String(getCase(row, cfg.transactionTypeField)) === String(cfg.transactionTypeValue)
-      ) {
-        newBase = buildNameFromRow(row, cfg.imagenameField);
-        if (newBase) {
-          folderRaw = `${slugify(String(tType))}/${slugify(String(cfg.transactionTypeValue))}`;
+          configNames = resolved.configNames.length ? resolved.configNames : configNames;
         }
       }
       if (!newBase) {
@@ -965,7 +1034,7 @@ export async function detectIncompleteImages(
           currentName: f,
           newName,
           recordId,
-          configName: cfgEntry.name || '',
+          configName: configNames.join(', '),
           currentPath: path.join(dirPath, f),
         });
       } else if (results.length >= perPage) {
