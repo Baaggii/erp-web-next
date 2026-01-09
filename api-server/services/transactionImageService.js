@@ -70,6 +70,11 @@ async function ensureJpegForHeic(filePath, fileName = '', mimeType = '') {
   if (!sharpLib) return null;
   try {
     await sharpLib(filePath).jpeg({ quality: 80 }).toFile(jpgPath);
+    const { size } = await fs.stat(jpgPath);
+    if (!size) {
+      await fs.unlink(jpgPath).catch(() => {});
+      return null;
+    }
     return jpgPath;
   } catch {
     return null;
