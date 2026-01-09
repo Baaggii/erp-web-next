@@ -127,23 +127,9 @@ function stripUploaderTag(value = '') {
 }
 
 function extractImagePrefix(base) {
-  const normalized = String(base || '');
-  if (!normalized) return '';
-  const save = parseSaveName(normalized);
-  if (save?.pre) {
-    return stripUploaderTag(save.pre || '');
-  }
-  const savedMatch = normalized.match(
-    /^(.*?)(?:__u[^_]+__)?_[0-9]{13}_[a-z0-9]{6}$/i,
-  );
-  if (savedMatch?.[1]) {
-    return stripUploaderTag(savedMatch[1]);
-  }
-  const altMatch = normalized.match(/^(.*?)(?:__u[^_]+__)?__([a-z0-9]{6})$/i);
-  if (altMatch?.[1]) {
-    return stripUploaderTag(altMatch[1]);
-  }
-  return stripUploaderTag(normalized);
+  const save = parseSaveName(base);
+  if (!save) return '';
+  return stripUploaderTag(save.pre || '');
 }
 
 function escapeLike(value = '') {
@@ -199,7 +185,6 @@ async function getNumFieldForTable(table) {
 
 async function findPromotedTempMatch(imagePrefix, companyId = 0) {
   if (!imagePrefix) return null;
-  const normalizedPrefix = sanitizeName(imagePrefix);
   const escaped = escapeLike(imagePrefix);
   const like = `%${escaped}%`;
   let rows;
@@ -225,14 +210,7 @@ async function findPromotedTempMatch(imagePrefix, companyId = 0) {
   for (const row of rows || []) {
     const imageName = extractTempImageName(row);
     if (!imageName) continue;
-    const normalizedImage = sanitizeName(imageName);
-    if (
-      normalizedImage !== normalizedPrefix &&
-      !normalizedImage.startsWith(`${normalizedPrefix}_`) &&
-      !normalizedPrefix.startsWith(`${normalizedImage}_`)
-    ) {
-      continue;
-    }
+    if (sanitizeName(imageName) !== sanitizeName(imagePrefix)) continue;
     let promotedRows;
     try {
       [promotedRows] = await pool.query(
@@ -255,7 +233,6 @@ async function findPromotedTempMatch(imagePrefix, companyId = 0) {
       row: promotedRow,
       configs: cfgs,
       numField,
-      tempPromoted: true,
     };
   }
   return null;
