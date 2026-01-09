@@ -20,6 +20,7 @@ export default function RowImageUploadModal({
   zIndex = 1200,
   onUploaded = () => {},
   onSuggestion = () => {},
+  forceTemporary = false,
 }) {
   const { addToast } = useToast();
   const [files, setFiles] = useState([]);
@@ -29,12 +30,13 @@ export default function RowImageUploadModal({
   const requestRef = useRef(0);
   const generalConfig = useGeneralConfig();
   const { t } = useTranslation();
-  const { company } = useContext(AuthContext);
+  const { company, user } = useContext(AuthContext);
   const toast = (msg, type = 'info') => {
     if (type === 'info' && !generalConfig?.general?.imageToastEnabled) return;
     addToast(msg, type);
   };
   const [showSuggestModal, setShowSuggestModal] = useState(false);
+  const isTemporary = forceTemporary || !row._saved;
   function resolveNames() {
     return resolveImageNames({
       row,
@@ -48,10 +50,7 @@ export default function RowImageUploadModal({
   function buildTemporaryImageName(fileName = '') {
     const timestamp = Date.now();
     const random = Math.random().toString(36).slice(2, 5);
-    const safeOriginal = String(fileName || `upload_${timestamp}`)
-      .toLowerCase()
-      .replace(/[^a-z0-9._-]+/gi, '_');
-    return `tmp_${timestamp}__${random}___${safeOriginal}`;
+    return `tmp_${timestamp}__${random}`;
   }
 
   function handleClipboardPaste(event) {
@@ -101,7 +100,7 @@ export default function RowImageUploadModal({
       if (isCurrent()) setUploaded([]);
       return;
     }
-    if (!row._saved && !row._imageName) {
+    if (isTemporary && !row._imageName) {
       if (isCurrent()) setUploaded([]);
       return;
     }
@@ -178,6 +177,7 @@ export default function RowImageUploadModal({
     row._saved,
     imageIdField,
     imagenameFields,
+    forceTemporary,
   ]);
 
 
@@ -196,17 +196,34 @@ export default function RowImageUploadModal({
     }
   }, [suggestions]);
 
+  const sanitize = (value) =>
+    String(value || '')
+      .toLowerCase()
+      .replace(/[^a-z0-9_-]+/gi, '_');
+  const normalizeEmpId = (value) =>
+    value == null ? '' : sanitize(String(value));
+  const viewerEmpId = user?.empid || user?.empId || user?.id || '';
+  const extractUploaderId = (name = '') => {
+    const match = String(name).match(/__u([^_]+?)__/i);
+    return match ? match[1] : null;
+  };
+  const canDeleteFile = (fileName) => {
+    const uploader = extractUploaderId(fileName);
+    if (!uploader) return true;
+    return normalizeEmpId(uploader) === normalizeEmpId(viewerEmpId);
+  };
+
   async function handleUpload(selectedFiles) {
-    const { primary: safeName, missing, idName } = resolveNames();
+    const { primary: resolvedPrimary, missing, idName } = resolveNames();
+    const safeName = isTemporary ? '' : resolvedPrimary;
     const filesToUpload = Array.from(selectedFiles || files);
     if (!filesToUpload.length) return;
-    const isTemporary = !row._saved;
     const existingTemporaryName =
       isTemporary && row?._imageName ? row._imageName : '';
     let finalName = isTemporary
       ? existingTemporaryName || buildTemporaryImageName(filesToUpload[0]?.name)
       : safeName || buildTemporaryImageName(filesToUpload[0]?.name);
-    if (!safeName && row._saved && imagenameFields.length > 0) {
+    if (!safeName && !isTemporary && row._saved && imagenameFields.length > 0) {
       toast(
         `Image name is missing fields: ${missing.join(', ')}. Save required fields before uploading.`,
         'error',
@@ -323,6 +340,7 @@ export default function RowImageUploadModal({
   }
 
   async function deleteFile(file) {
+    if (!canDeleteFile(file)) return;
     const { primary: name } = resolveNames();
     if (!folder || !name) return;
     try {
@@ -339,6 +357,11 @@ export default function RowImageUploadModal({
   }
 
   async function deleteAll() {
+    const hasProtected = uploaded.some((src) => {
+      const name = src.split('/').pop();
+      return name && !canDeleteFile(name);
+    });
+    if (hasProtected) return;
     const { primary: name } = resolveNames();
     if (!folder || !name) return;
     try {
@@ -393,17 +416,26 @@ export default function RowImageUploadModal({
         <div style={{ maxHeight: '40vh', overflowY: 'auto' }}>
           {uploaded.map((src) => {
             const name = src.split('/').pop();
+            const allowDelete = name ? canDeleteFile(name) : false;
             return (
               <div key={src} style={{ marginBottom: '0.25rem' }}>
                 <img src={src} alt="" style={{ maxWidth: '100px', marginRight: '0.5rem' }} />
                 <span style={{ marginRight: '0.5rem' }}>{name}</span>
-                <button type="button" onClick={() => deleteFile(name)}>{t('delete', 'Delete')}</button>
+                {allowDelete && (
+                  <button type="button" onClick={() => deleteFile(name)}>{t('delete', 'Delete')}</button>
+                )}
               </div>
             );
           })}
-          <button type="button" onClick={deleteAll} style={{ marginTop: '0.5rem' }}>
-            {t('delete_all', 'Delete All')}
-          </button>
+          {uploaded.length > 0 &&
+            uploaded.every((src) => {
+              const name = src.split('/').pop();
+              return name ? canDeleteFile(name) : false;
+            }) && (
+              <button type="button" onClick={deleteAll} style={{ marginTop: '0.5rem' }}>
+                {t('delete_all', 'Delete All')}
+              </button>
+            )}
         </div>
       )}
       {suggestions.length > 0 && (

@@ -5464,13 +5464,13 @@ const TableManager = forwardRef(function TableManager({
         }
         const existingTemporaryImageName =
           entry?._imageName || entry?.imageName || entry?.image_name || '';
-        const entryImageName =
-          existingTemporaryImageName ||
-          resolveImageNameWithFallback(resolvedImageValues, imageConfig);
-        if (entryImageName) {
-          finalizedValues._imageName = finalizedValues._imageName || entryImageName;
-          finalizedValues.imageName = finalizedValues.imageName || entryImageName;
-          finalizedValues.image_name = finalizedValues.image_name || entryImageName;
+        if (existingTemporaryImageName) {
+          finalizedValues._imageName =
+            finalizedValues._imageName || existingTemporaryImageName;
+          finalizedValues.imageName =
+            finalizedValues.imageName || existingTemporaryImageName;
+          finalizedValues.image_name =
+            finalizedValues.image_name || existingTemporaryImageName;
         }
 
         const rowSources = [
@@ -8018,6 +8018,7 @@ const TableManager = forwardRef(function TableManager({
         imagenameFields={temporaryUploadEntry?.config?.imagenameField || []}
         columnCaseMap={columnCaseMap}
         imageIdField={temporaryUploadEntry?.config?.imageIdField || ''}
+        forceTemporary
         onUploaded={(name) => {
           if (!temporaryUploadEntry) return;
           const targetId = temporaryUploadEntry.id;

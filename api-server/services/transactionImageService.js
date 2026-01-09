@@ -1121,13 +1121,20 @@ export async function deleteAllImages(table, name, folder = null, companyId = 0)
   ensureDir(baseDir);
   const dir = path.join(baseDir, folder || table);
   ensureDir(dir);
+  const targetDir = path.join(baseDir, 'deleted_images');
+  ensureDir(targetDir);
   const prefix = sanitizeName(name);
   try {
     const files = await fs.readdir(dir);
     const deleted = [];
     for (const f of files) {
       if (f.startsWith(prefix + '_')) {
-        await fs.unlink(path.join(dir, f));
+        const src = path.join(dir, f);
+        const dest = path.join(targetDir, f);
+        await fs.rename(src, dest).catch(async () => {
+          await fs.copyFile(src, dest);
+          await fs.unlink(src);
+        });
         deleted.push(f);
       }
     }
