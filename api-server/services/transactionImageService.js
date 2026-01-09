@@ -678,19 +678,11 @@ async function fetchTxnCodes() {
 }
 
 function hasTxnCode(base, unique, codes) {
-  if (!isMeaningfulUnique(unique)) return false;
   const leftover = base.toLowerCase().replace(unique.toLowerCase(), '');
   const tokens = leftover.split(/[_-]/).filter(Boolean);
   const hasTrtype = tokens.some((t) => codes.trtypes.includes(t));
   const hasTransType = tokens.some((t) => codes.transTypes.includes(t));
   return hasTrtype && hasTransType;
-}
-
-function isMeaningfulUnique(unique = '') {
-  const cleaned = stripUploaderTag(String(unique || '')).trim();
-  if (!cleaned) return false;
-  if (cleaned.toLowerCase() === 'tmp') return false;
-  return true;
 }
 
 export async function findBenchmarkCode(name) {
