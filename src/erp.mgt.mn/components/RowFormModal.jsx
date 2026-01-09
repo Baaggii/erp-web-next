@@ -4724,6 +4724,7 @@ const RowFormModal = function RowFormModal({
         </Modal>
       )}
       <RowImageUploadModal
+        key={`${imageUploadKey ?? 'none'}-${imageRow?._imageName || ''}`}
         visible={imageUploadOpen}
         onClose={() => setImageUploadOpen(false)}
         table={table}

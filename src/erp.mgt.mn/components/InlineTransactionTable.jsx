@@ -2732,6 +2732,7 @@ function InlineTransactionTable(
         fieldTypeMap={fieldTypeMap}
       />
       <RowImageUploadModal
+        key={`${uploadRow ?? 'none'}-${rows[uploadRow]?._imageName || ''}`}
         visible={uploadRow !== null}
         onClose={() => setUploadRow(null)}
         table={tableName}
