@@ -201,6 +201,7 @@ export default function RowImageUploadModal({
     const params = new URLSearchParams();
     if (folder) params.set('folder', folder);
     if (company != null) params.set('companyId', company);
+    if (generalConfig?.general?.imageToastEnabled) params.set('imageToasts', '1');
     const uploadUrl = `/api/transaction_images/${safeTable}/${encodeURIComponent(finalName)}?${params.toString()}`;
     const filesToUpload = Array.from(selectedFiles || files);
     if (!filesToUpload.length) return;
@@ -211,8 +212,15 @@ export default function RowImageUploadModal({
     try {
       const res = await fetch(uploadUrl, { method: 'POST', body: form, credentials: 'include' });
       if (res.ok) {
-        const imgs = await res.json().catch(() => []);
+        const payload = await res.json().catch(() => []);
+        const imgs = Array.isArray(payload) ? payload : payload?.files || [];
         toast(`Uploaded ${imgs.length} image(s) as ${finalName}`, 'success');
+        if (Array.isArray(payload?.toasts)) {
+          payload.toasts.forEach((msg) => {
+            if (!msg?.message) return;
+            toast(msg.message, msg.type || 'info');
+          });
+        }
         setFiles([]);
         setUploaded((u) => [...u, ...imgs]);
         onUploaded(finalName);

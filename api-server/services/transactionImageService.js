@@ -52,21 +52,67 @@ function ensureDir(dir) {
 
 function isHeicFile(fileName = '', mimeType = '') {
   const ext = path.extname(String(fileName)).toLowerCase();
-  return ext === '.heic' || ext === '.heif' || String(mimeType).includes('heic');
+  const normalizedMime = String(mimeType).toLowerCase();
+  return (
+    ext === '.heic' ||
+    ext === '.heif' ||
+    normalizedMime.includes('heic') ||
+    normalizedMime.includes('heif')
+  );
 }
 
-async function ensureJpegForHeic(filePath) {
-  if (!isHeicFile(filePath)) return null;
-  const jpgPath = filePath.replace(/\.(heic|heif)$/i, '.jpg');
-  if (fssync.existsSync(jpgPath)) return jpgPath;
+async function convertHeicToJpeg(filePath, fileName = '', mimeType = '') {
+  const nameForCheck = fileName || filePath;
+  if (!isHeicFile(nameForCheck, mimeType)) return { path: null, error: null };
+  const ext = path.extname(filePath);
+  const jpgPath = /\.(heic|heif)$/i.test(ext)
+    ? filePath.replace(/\.(heic|heif)$/i, '.jpg')
+    : `${filePath}.jpg`;
+  if (fssync.existsSync(jpgPath)) {
+    try {
+      const { size } = await fs.stat(jpgPath);
+      if (size > 0) return { path: jpgPath, error: null };
+      await fs.unlink(jpgPath);
+    } catch {
+      // ignore and retry conversion
+    }
+  }
+  let sourceStat;
+  try {
+    sourceStat = await fs.stat(filePath);
+  } catch {
+    return { path: null, error: { type: 'missing_file', message: 'Source file missing' } };
+  }
+  if (!sourceStat?.size) {
+    return { path: null, error: { type: 'empty_source', message: 'Source file is empty' } };
+  }
   const sharpLib = await loadSharp();
-  if (!sharpLib) return null;
+  if (!sharpLib) {
+    return { path: null, error: { type: 'sharp_unavailable', message: 'Sharp not available' } };
+  }
   try {
     await sharpLib(filePath).jpeg({ quality: 80 }).toFile(jpgPath);
-    return jpgPath;
-  } catch {
-    return null;
+  } catch (err) {
+    return {
+      path: null,
+      error: { type: 'sharp_error', message: err?.message || 'Sharp conversion failed' },
+    };
   }
+  try {
+    const { size } = await fs.stat(jpgPath);
+    if (!size) {
+      await fs.unlink(jpgPath).catch(() => {});
+      return { path: null, error: { type: 'empty_output', message: 'JPEG output is empty' } };
+    }
+    return { path: jpgPath, error: null };
+  } catch {
+    return { path: null, error: { type: 'write_error', message: 'JPEG output missing' } };
+  }
+}
+
+async function ensureJpegForHeic(filePath, fileName = '', mimeType = '') {
+  const result = await convertHeicToJpeg(filePath, fileName, mimeType);
+  return result.path;
 }
 
 function sanitizeName(name) {
@@ -551,14 +597,17 @@ export async function saveImages(
   folder = null,
   companyId = 0,
   uploaderId = null,
+  options = {},
 ) {
   const { baseDir, urlBase } = await getDirs(companyId);
   ensureDir(baseDir);
   const dir = path.join(baseDir, folder || table);
   ensureDir(dir);
   const saved = [];
+  const toasts = [];
   const prefix = sanitizeName(name);
   const uploaderTag = uploaderId ? `__u${sanitizeName(uploaderId)}__` : '';
+  const includeToasts = Boolean(options?.includeToasts);
   let mimeLib;
   try {
     mimeLib = (await import('mime-types')).default;
@@ -578,11 +627,23 @@ export async function saveImages(
       } catch {
         // ignore
       }
-      const converted = await ensureJpegForHeic(dest);
-      if (converted) {
-        saved.push(`${urlBase}/${folder || table}/${path.basename(converted)}`);
+      const conversion = await convertHeicToJpeg(dest, file.originalname, file.mimetype);
+      if (conversion.path) {
+        saved.push(`${urlBase}/${folder || table}/${path.basename(conversion.path)}`);
+        if (includeToasts) {
+          toasts.push({
+            type: 'info',
+            message: `HEIC converted: ${file.originalname}`,
+          });
+        }
       } else {
         saved.push(`${urlBase}/${folder || table}/${originalName}`);
+        if (includeToasts && conversion.error) {
+          toasts.push({
+            type: 'error',
+            message: `HEIC conversion failed (${conversion.error.type}): ${file.originalname} - ${conversion.error.message}`,
+          });
+        }
       }
       continue;
     }
@@ -615,7 +676,7 @@ export async function saveImages(
     }
     saved.push(`${urlBase}/${folder || table}/${originalName}`);
   }
-  return saved;
+  return { files: saved, toasts };
 }
 
 export async function listImages(table, name, folder = null, companyId = 0) {
@@ -631,7 +692,7 @@ export async function listImages(table, name, folder = null, companyId = 0) {
     for (const file of files) {
       if (!file.startsWith(prefix + '_')) continue;
       if (isHeicFile(file)) {
-        const jpgPath = await ensureJpegForHeic(path.join(dir, file));
+        const jpgPath = await ensureJpegForHeic(path.join(dir, file), file);
         if (jpgPath) {
           const jpgName = path.basename(jpgPath);
           if (!seen.has(jpgName)) {
@@ -725,7 +786,7 @@ export async function searchImages(term, page = 1, perPage = 20, companyId = 0) 
       } else if (regex.test(entry.name)) {
         let relName = relPath.replace(/\\\\/g, '/');
         if (isHeicFile(entry.name)) {
-          const jpgPath = await ensureJpegForHeic(full);
+          const jpgPath = await ensureJpegForHeic(full, entry.name);
           if (jpgPath) {
             relName = path.join(rel, path.basename(jpgPath)).replace(/\\\\/g, '/');
           }
