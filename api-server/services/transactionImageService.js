@@ -773,6 +773,7 @@ export async function detectIncompleteImages(
           save.sp,
           save.transType,
           Number(save.ts),
+          companyId,
         );
       } else {
         ({ unique, suffix } = parseFileUnique(base));
