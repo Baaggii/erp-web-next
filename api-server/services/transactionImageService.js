@@ -52,17 +52,40 @@ function ensureDir(dir) {
 
 function isHeicFile(fileName = '', mimeType = '') {
   const ext = path.extname(String(fileName)).toLowerCase();
-  return ext === '.heic' || ext === '.heif' || String(mimeType).includes('heic');
+  const normalizedMime = String(mimeType).toLowerCase();
+  return (
+    ext === '.heic' ||
+    ext === '.heif' ||
+    normalizedMime.includes('heic') ||
+    normalizedMime.includes('heif')
+  );
 }
 
-async function ensureJpegForHeic(filePath) {
-  if (!isHeicFile(filePath)) return null;
-  const jpgPath = filePath.replace(/\.(heic|heif)$/i, '.jpg');
-  if (fssync.existsSync(jpgPath)) return jpgPath;
+async function ensureJpegForHeic(filePath, fileName = '', mimeType = '') {
+  const nameForCheck = fileName || filePath;
+  if (!isHeicFile(nameForCheck, mimeType)) return null;
+  const ext = path.extname(filePath);
+  const jpgPath = /\.(heic|heif)$/i.test(ext)
+    ? filePath.replace(/\.(heic|heif)$/i, '.jpg')
+    : `${filePath}.jpg`;
+  if (fssync.existsSync(jpgPath)) {
+    try {
+      const { size } = await fs.stat(jpgPath);
+      if (size > 0) return jpgPath;
+      await fs.unlink(jpgPath);
+    } catch {
+      // ignore and retry conversion
+    }
+  }
   const sharpLib = await loadSharp();
   if (!sharpLib) return null;
   try {
     await sharpLib(filePath).jpeg({ quality: 80 }).toFile(jpgPath);
+    const { size } = await fs.stat(jpgPath);
+    if (!size) {
+      await fs.unlink(jpgPath).catch(() => {});
+      return null;
+    }
     return jpgPath;
   } catch {
     return null;
@@ -578,7 +601,7 @@ export async function saveImages(
       } catch {
         // ignore
       }
-      const converted = await ensureJpegForHeic(dest);
+      const converted = await ensureJpegForHeic(dest, file.originalname, file.mimetype);
       if (converted) {
         saved.push(`${urlBase}/${folder || table}/${path.basename(converted)}`);
       } else {
@@ -631,7 +654,7 @@ export async function listImages(table, name, folder = null, companyId = 0) {
     for (const file of files) {
       if (!file.startsWith(prefix + '_')) continue;
       if (isHeicFile(file)) {
-        const jpgPath = await ensureJpegForHeic(path.join(dir, file));
+        const jpgPath = await ensureJpegForHeic(path.join(dir, file), file);
         if (jpgPath) {
           const jpgName = path.basename(jpgPath);
           if (!seen.has(jpgName)) {
@@ -725,7 +748,7 @@ export async function searchImages(term, page = 1, perPage = 20, companyId = 0) 
       } else if (regex.test(entry.name)) {
         let relName = relPath.replace(/\\\\/g, '/');
         if (isHeicFile(entry.name)) {
-          const jpgPath = await ensureJpegForHeic(full);
+          const jpgPath = await ensureJpegForHeic(full, entry.name);
           if (jpgPath) {
             relName = path.join(rel, path.basename(jpgPath)).replace(/\\\\/g, '/');
           }
