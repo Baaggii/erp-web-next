@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useContext } from 'react';
+import React, { useState, useEffect, useContext } from 'react';
 import { createPortal } from 'react-dom';
 import Modal from './Modal.jsx';
 import buildImageName from '../utils/buildImageName.js';
@@ -32,7 +32,6 @@ export default function RowImageViewModal({
     if (type === 'info' && !generalConfig?.general?.imageToastEnabled) return;
     addToast(msg, type);
   };
-  const loaded = useRef(false);
 
   const placeholder =
     'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMBAZLr5z0AAAAASUVORK5CYII=';
@@ -208,8 +207,8 @@ export default function RowImageViewModal({
   }
 
   useEffect(() => {
-    if (!visible || loaded.current) return;
-    loaded.current = true;
+    if (!visible) return;
+    setFiles([]);
 
     const { config: cfg, configName } = pickConfigEntry(configs, row);
     const preferredConfig = currentConfig && Object.keys(currentConfig).length
@@ -378,7 +377,7 @@ export default function RowImageViewModal({
     if (!visible) {
       setShowGallery(false);
       setFullscreenIndex(null);
-      loaded.current = false;
+      setFiles([]);
     }
   }, [visible]);
 
