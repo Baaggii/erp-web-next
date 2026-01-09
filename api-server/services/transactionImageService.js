@@ -67,7 +67,9 @@ async function ensureJpegForHeic(filePath, fileName = '', mimeType = '') {
   const jpgPath = filePath.replace(/\.(heic|heif)$/i, '.jpg');
   if (fssync.existsSync(jpgPath)) return jpgPath;
   const sharpLib = await loadSharp();
-  if (!sharpLib) return null;
+  if (!sharpLib) {
+    return { path: null, error: { type: 'sharp_unavailable', message: 'Sharp not available' } };
+  }
   try {
     await sharpLib(filePath).jpeg({ quality: 80 }).toFile(jpgPath);
     const { size } = await fs.stat(jpgPath);
@@ -77,8 +79,13 @@ async function ensureJpegForHeic(filePath, fileName = '', mimeType = '') {
     }
     return jpgPath;
   } catch {
-    return null;
+    return { path: null, error: { type: 'write_error', message: 'JPEG output missing' } };
   }
+}
+
+async function ensureJpegForHeic(filePath, fileName = '', mimeType = '') {
+  const result = await convertHeicToJpeg(filePath, fileName, mimeType);
+  return result.path;
 }
 
 function sanitizeName(name) {
@@ -563,14 +570,17 @@ export async function saveImages(
   folder = null,
   companyId = 0,
   uploaderId = null,
+  options = {},
 ) {
   const { baseDir, urlBase } = await getDirs(companyId);
   ensureDir(baseDir);
   const dir = path.join(baseDir, folder || table);
   ensureDir(dir);
   const saved = [];
+  const toasts = [];
   const prefix = sanitizeName(name);
   const uploaderTag = uploaderId ? `__u${sanitizeName(uploaderId)}__` : '';
+  const includeToasts = Boolean(options?.includeToasts);
   let mimeLib;
   try {
     mimeLib = (await import('mime-types')).default;
@@ -595,6 +605,12 @@ export async function saveImages(
         saved.push(`${urlBase}/${folder || table}/${path.basename(converted)}`);
       } else {
         saved.push(`${urlBase}/${folder || table}/${originalName}`);
+        if (includeToasts && conversion.error) {
+          toasts.push({
+            type: 'error',
+            message: `HEIC conversion failed (${conversion.error.type}): ${file.originalname} - ${conversion.error.message}`,
+          });
+        }
       }
       continue;
     }
@@ -627,7 +643,7 @@ export async function saveImages(
     }
     saved.push(`${urlBase}/${folder || table}/${originalName}`);
   }
-  return saved;
+  return { files: saved, toasts };
 }
 
 export async function listImages(table, name, folder = null, companyId = 0) {
