@@ -64,19 +64,8 @@ function isHeicFile(fileName = '', mimeType = '') {
 async function ensureJpegForHeic(filePath, fileName = '', mimeType = '') {
   const nameForCheck = fileName || filePath;
   if (!isHeicFile(nameForCheck, mimeType)) return null;
-  const ext = path.extname(filePath);
-  const jpgPath = /\.(heic|heif)$/i.test(ext)
-    ? filePath.replace(/\.(heic|heif)$/i, '.jpg')
-    : `${filePath}.jpg`;
-  if (fssync.existsSync(jpgPath)) {
-    try {
-      const { size } = await fs.stat(jpgPath);
-      if (size > 0) return jpgPath;
-      await fs.unlink(jpgPath);
-    } catch {
-      // ignore and retry conversion
-    }
-  }
+  const jpgPath = filePath.replace(/\.(heic|heif)$/i, '.jpg');
+  if (fssync.existsSync(jpgPath)) return jpgPath;
   const sharpLib = await loadSharp();
   if (!sharpLib) return null;
   try {
