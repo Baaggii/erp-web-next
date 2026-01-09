@@ -189,7 +189,7 @@ router.post('/:table/:name', requireAuth, upload.array('images'), async (req, re
       req.files,
       req.query.folder,
       req.user.companyId,
-      req.user.empid || req.user.id || null,
+      req.user.empid ?? req.user.id ?? null,
     );
     const absolute = toAbsolute(req, files);
     if (conversionIssues?.length) {
@@ -244,7 +244,7 @@ router.delete('/:table/:name/:file', requireAuth, async (req, res, next) => {
       req.params.file,
       req.query.folder,
       req.user.companyId,
-      req.user.empid || req.user.id || null,
+      req.user.empid ?? req.user.id ?? null,
     );
     res.json({ ok });
   } catch (err) {
