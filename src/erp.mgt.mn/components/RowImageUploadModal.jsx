@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useContext } from 'react';
+import React, { useState, useEffect, useContext, useLayoutEffect, useRef } from 'react';
 import Modal from './Modal.jsx';
 import { useToast } from '../context/ToastContext.jsx';
 import buildImageName from '../utils/buildImageName.js';
@@ -26,6 +26,7 @@ export default function RowImageUploadModal({
   const [loading, setLoading] = useState(false);
   const [uploaded, setUploaded] = useState([]);
   const [suggestions, setSuggestions] = useState([]);
+  const requestRef = useRef(0);
   const generalConfig = useGeneralConfig();
   const { t } = useTranslation();
   const { company } = useContext(AuthContext);
@@ -79,17 +80,24 @@ export default function RowImageUploadModal({
     handleUpload(pastedFiles);
   }
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!visible) return;
     setFiles([]);
     setUploaded([]);
     setSuggestions([]);
+    setShowSuggestModal(false);
+  }, [visible, rowKey, folder, table]);
+
+  useEffect(() => {
+    if (!visible) return;
+    const requestId = ++requestRef.current;
+    const isCurrent = () => requestRef.current === requestId;
     if (!folder) {
-      setUploaded([]);
+      if (isCurrent()) setUploaded([]);
       return;
     }
     if (!row._saved && !row._imageName) {
-      setUploaded([]);
+      if (isCurrent()) setUploaded([]);
       return;
     }
     const primary = buildName().name;
@@ -112,7 +120,7 @@ export default function RowImageUploadModal({
           );
           const imgs = res.ok ? await res.json().catch(() => []) : [];
           const list = Array.isArray(imgs) ? imgs : [];
-          if (list.length > 0) {
+          if (list.length > 0 && isCurrent()) {
             setUploaded(list);
             list.forEach((p) => toast(`Found image: ${p}`, 'info'));
             return;
@@ -142,7 +150,7 @@ export default function RowImageUploadModal({
                 );
                 const imgs2 = res2.ok ? await res2.json().catch(() => []) : [];
                 const list2 = Array.isArray(imgs2) ? imgs2 : [];
-                if (list2.length > 0) {
+                if (list2.length > 0 && isCurrent()) {
                   setUploaded(list2);
                   list2.forEach((p) => toast(`Found image: ${p}`, 'info'));
                   return;
@@ -150,7 +158,7 @@ export default function RowImageUploadModal({
               } catch {
                 /* ignore */
               }
-            } else {
+            } else if (isCurrent()) {
               setUploaded(list);
               list.forEach((p) => toast(`Found image: ${p}`, 'info'));
               return;
@@ -160,7 +168,7 @@ export default function RowImageUploadModal({
           /* ignore */
         }
       }
-      setUploaded([]);
+      if (isCurrent()) setUploaded([]);
     })();
   }, [visible, folder, rowKey, table, row._imageName, row._saved, imageIdField]);
 

@@ -61,50 +61,23 @@ function isHeicFile(fileName = '', mimeType = '') {
   );
 }
 
-async function convertHeicToJpeg(filePath, fileName = '', mimeType = '') {
+async function ensureJpegForHeic(filePath, fileName = '', mimeType = '') {
   const nameForCheck = fileName || filePath;
-  if (!isHeicFile(nameForCheck, mimeType)) return { path: null, error: null };
-  const ext = path.extname(filePath);
-  const jpgPath = /\.(heic|heif)$/i.test(ext)
-    ? filePath.replace(/\.(heic|heif)$/i, '.jpg')
-    : `${filePath}.jpg`;
-  if (fssync.existsSync(jpgPath)) {
-    try {
-      const { size } = await fs.stat(jpgPath);
-      if (size > 0) return { path: jpgPath, error: null };
-      await fs.unlink(jpgPath);
-    } catch {
-      // ignore and retry conversion
-    }
-  }
-  let sourceStat;
-  try {
-    sourceStat = await fs.stat(filePath);
-  } catch {
-    return { path: null, error: { type: 'missing_file', message: 'Source file missing' } };
-  }
-  if (!sourceStat?.size) {
-    return { path: null, error: { type: 'empty_source', message: 'Source file is empty' } };
-  }
+  if (!isHeicFile(nameForCheck, mimeType)) return null;
+  const jpgPath = filePath.replace(/\.(heic|heif)$/i, '.jpg');
+  if (fssync.existsSync(jpgPath)) return jpgPath;
   const sharpLib = await loadSharp();
   if (!sharpLib) {
     return { path: null, error: { type: 'sharp_unavailable', message: 'Sharp not available' } };
   }
   try {
     await sharpLib(filePath).jpeg({ quality: 80 }).toFile(jpgPath);
-  } catch (err) {
-    return {
-      path: null,
-      error: { type: 'sharp_error', message: err?.message || 'Sharp conversion failed' },
-    };
-  }
-  try {
     const { size } = await fs.stat(jpgPath);
     if (!size) {
       await fs.unlink(jpgPath).catch(() => {});
-      return { path: null, error: { type: 'empty_output', message: 'JPEG output is empty' } };
+      return null;
     }
-    return { path: jpgPath, error: null };
+    return jpgPath;
   } catch {
     return { path: null, error: { type: 'write_error', message: 'JPEG output missing' } };
   }
@@ -627,15 +600,9 @@ export async function saveImages(
       } catch {
         // ignore
       }
-      const conversion = await convertHeicToJpeg(dest, file.originalname, file.mimetype);
-      if (conversion.path) {
-        saved.push(`${urlBase}/${folder || table}/${path.basename(conversion.path)}`);
-        if (includeToasts) {
-          toasts.push({
-            type: 'info',
-            message: `HEIC converted: ${file.originalname}`,
-          });
-        }
+      const converted = await ensureJpegForHeic(dest, file.originalname, file.mimetype);
+      if (converted) {
+        saved.push(`${urlBase}/${folder || table}/${path.basename(converted)}`);
       } else {
         saved.push(`${urlBase}/${folder || table}/${originalName}`);
         if (includeToasts && conversion.error) {
