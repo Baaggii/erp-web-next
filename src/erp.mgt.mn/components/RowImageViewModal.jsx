@@ -16,6 +16,8 @@ export default function RowImageViewModal({
   row = {},
   columnCaseMap = {},
   configs = {},
+  currentConfig = {},
+  currentConfigName = '',
   canDelete = true,
 }) {
   const baseZIndex = 1300;
@@ -75,33 +77,90 @@ export default function RowImageViewModal({
     return normalizeEmpId(uploader) === normalizeEmpId(viewerEmpId);
   };
 
-  function pickConfig(cfgs = {}, r = {}) {
+  function pickMatchingConfigs(cfgs = {}, r = {}) {
     const tVal =
       getCase(r, 'transtype') ||
       getCase(r, 'Transtype') ||
       getCase(r, 'UITransType') ||
       getCase(r, 'UITransTypeName');
-    for (const cfg of Object.values(cfgs)) {
+    const matches = [];
+    for (const [configName, cfg] of Object.entries(cfgs)) {
       if (!cfg.transactionTypeValue) continue;
       if (
         tVal !== undefined &&
         String(tVal) === String(cfg.transactionTypeValue)
       ) {
-        return cfg;
+        matches.push({ config: cfg, configName });
+        continue;
       }
       if (cfg.transactionTypeField) {
         const val = getCase(r, cfg.transactionTypeField);
         if (val !== undefined && String(val) === String(cfg.transactionTypeValue)) {
-          return cfg;
+          matches.push({ config: cfg, configName });
         }
       } else {
         const matchField = Object.keys(r).find(
           (k) => String(getCase(r, k)) === String(cfg.transactionTypeValue),
         );
-        if (matchField) return { ...cfg, transactionTypeField: matchField };
+        if (matchField) {
+          matches.push({
+            config: { ...cfg, transactionTypeField: matchField },
+            configName,
+          });
+        }
       }
     }
-    return {};
+    return matches;
+  }
+
+  function collectImageFields(configEntries = []) {
+    const fieldSet = new Set();
+    const idFieldSet = new Set();
+    const configNames = [];
+    configEntries.forEach(({ configName, config }) => {
+      const hasImageNameFields = Array.isArray(config?.imagenameField)
+        ? config.imagenameField.filter(Boolean)
+        : [];
+      const imageIdField =
+        typeof config?.imageIdField === 'string' ? config.imageIdField : '';
+      if (hasImageNameFields.length === 0 && !imageIdField) return;
+      hasImageNameFields.forEach((field) => fieldSet.add(field));
+      if (imageIdField) {
+        fieldSet.add(imageIdField);
+        idFieldSet.add(imageIdField);
+      }
+      if (configName) configNames.push(configName);
+    });
+    return {
+      fields: Array.from(fieldSet),
+      configNames,
+      imageIdFields: Array.from(idFieldSet),
+    };
+  }
+
+  function resolveImageNameForRow(r = {}, config = {}) {
+    if (!r || typeof r !== 'object') return '';
+    const imagenameFields = Array.isArray(config?.imagenameField)
+      ? config.imagenameField
+      : [];
+    const imageIdField =
+      typeof config?.imageIdField === 'string' ? config.imageIdField : '';
+    const combinedFields = Array.from(
+      new Set([...imagenameFields, imageIdField].filter(Boolean)),
+    );
+    if (combinedFields.length > 0) {
+      const { name } = buildImageName(r, combinedFields, columnCaseMap, company);
+      if (name) return name;
+    }
+    if (imagenameFields.length > 0) {
+      const { name } = buildImageName(r, imagenameFields, columnCaseMap, company);
+      if (name) return name;
+    }
+    if (imageIdField) {
+      const { name } = buildImageName(r, [imageIdField], columnCaseMap, company);
+      if (name) return name;
+    }
+    return r._imageName || r.imageName || r.image_name || '';
   }
 
   function buildFallbackName(r = {}) {
@@ -145,11 +204,36 @@ export default function RowImageViewModal({
     if (!visible || loaded.current) return;
     loaded.current = true;
 
-    const cfg = pickConfig(configs, row);
+    const preferredConfig =
+      currentConfig && Object.keys(currentConfig).length > 0
+        ? currentConfig
+        : {};
+    const preferredConfigName = currentConfigName || '';
+    const preferredName = resolveImageNameForRow(row, preferredConfig);
+    let usedConfigNames = [];
     let primary = '';
-    let idName = '';
-    if (cfg?.imagenameField?.length) {
-      primary = buildImageName(row, cfg.imagenameField, columnCaseMap, company).name;
+    const idFieldSet = new Set();
+    if (preferredName) {
+      primary = preferredName;
+      if (preferredConfigName) {
+        usedConfigNames = [preferredConfigName];
+      }
+      if (preferredConfig?.imageIdField) {
+        idFieldSet.add(preferredConfig.imageIdField);
+      }
+    }
+    if (!primary) {
+      const matchedConfigs = pickMatchingConfigs(configs, row);
+      const { fields, configNames, imageIdFields } =
+        collectImageFields(matchedConfigs);
+      imageIdFields.forEach((field) => idFieldSet.add(field));
+      if (fields.length > 0) {
+        const { name } = buildImageName(row, fields, columnCaseMap, company);
+        if (name) {
+          primary = name;
+          usedConfigNames = configNames;
+        }
+      }
     }
     if (!primary) {
       primary = buildFallbackName(row);
@@ -157,13 +241,24 @@ export default function RowImageViewModal({
     if (!primary && row?._imageName) {
       primary = row._imageName;
     }
-    if (cfg?.imageIdField) {
-      idName = buildImageName(row, [cfg.imageIdField], columnCaseMap, company).name;
-    }
     const altNames = [];
-    if (idName && idName !== primary) altNames.push(idName);
+    let idName = '';
+    idFieldSet.forEach((field) => {
+      const { name } = buildImageName(row, [field], columnCaseMap, company);
+      if (name && !idName) {
+        idName = name;
+      }
+      if (name && name !== primary && !altNames.includes(name)) {
+        altNames.push(name);
+      }
+    });
     if (row._imageName && ![primary, ...altNames].includes(row._imageName)) {
       altNames.push(row._imageName);
+    }
+    if (usedConfigNames.length > 0) {
+      const label =
+        usedConfigNames.length === 1 ? 'Image search config' : 'Image search configs';
+      toast(`${label}: ${usedConfigNames.join(', ')}`, 'info');
     }
     toast(`Primary image name: ${primary}`, 'info');
     if (altNames.length) {
@@ -257,7 +352,17 @@ export default function RowImageViewModal({
       toast('No images found', 'info');
       setFiles([]);
     })();
-  }, [visible, folder, row, table, configs]);
+  }, [
+    visible,
+    folder,
+    row,
+    table,
+    configs,
+    currentConfig,
+    currentConfigName,
+    columnCaseMap,
+    company,
+  ]);
 
   useEffect(() => {
     if (!visible) {

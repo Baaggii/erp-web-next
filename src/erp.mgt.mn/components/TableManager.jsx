@@ -2563,6 +2563,68 @@ const TableManager = forwardRef(function TableManager({
     return formConfig || {};
   }
 
+  function getMatchingConfigsForRow(row) {
+    if (!row) return [];
+    const matches = [];
+    const tVal =
+      getCase(row, 'transtype') ||
+      getCase(row, 'Transtype') ||
+      getCase(row, 'UITransType') ||
+      getCase(row, 'UITransTypeName');
+    for (const [configName, cfg] of Object.entries(allConfigs || {})) {
+      if (!cfg?.transactionTypeValue) continue;
+      if (tVal !== undefined && String(tVal) === String(cfg.transactionTypeValue)) {
+        matches.push({ configName, config: cfg });
+        continue;
+      }
+      if (cfg.transactionTypeField) {
+        const val = getCase(row, cfg.transactionTypeField);
+        if (val !== undefined && String(val) === String(cfg.transactionTypeValue)) {
+          matches.push({ configName, config: cfg });
+        }
+      } else {
+        const matchField = Object.keys(row).find(
+          (k) => String(getCase(row, k)) === String(cfg.transactionTypeValue),
+        );
+        if (matchField) {
+          matches.push({
+            configName,
+            config: { ...cfg, transactionTypeField: matchField },
+          });
+        }
+      }
+    }
+    return matches;
+  }
+
+  function resolveImageNameForSearch(row) {
+    return resolveImageNameWithFallback(row, formConfig || {});
+  }
+
+  function resolveImageNameWithFallback(row, preferredConfig = {}) {
+    if (!row) return '';
+    const preferredName = resolveImageNameForRow(row, preferredConfig);
+    if (preferredName) return preferredName;
+    const matches = getMatchingConfigsForRow(row);
+    const fieldSet = new Set();
+    matches.forEach(({ config }) => {
+      if (Array.isArray(config?.imagenameField)) {
+        config.imagenameField.forEach((field) => {
+          if (field) fieldSet.add(field);
+        });
+      }
+      if (typeof config?.imageIdField === 'string' && config.imageIdField) {
+        fieldSet.add(config.imageIdField);
+      }
+    });
+    const combinedFields = Array.from(fieldSet);
+    if (combinedFields.length > 0) {
+      const { name } = buildImageName(row, combinedFields, columnCaseMap, company);
+      if (name) return name;
+    }
+    return row._imageName || row.imageName || row.image_name || '';
+  }
+
   function getKeyFields() {
     const withPrimaryOrdinals = columnMeta
       .map((column, index) => {
@@ -3043,8 +3105,7 @@ const TableManager = forwardRef(function TableManager({
   function showImageSearchToast(row, tableName = table) {
     if (!generalConfig.general?.imageToastEnabled) return;
     if (!row || typeof row !== 'object') return;
-    const config = getConfigForRow(row) || formConfig || {};
-    const name = resolveImageNameForRow(row, config);
+    const name = resolveImageNameForSearch(row);
     const folder = getImageFolder(row);
     const details = [
       name ? `name=${name}` : null,
@@ -3895,7 +3956,10 @@ const TableManager = forwardRef(function TableManager({
       const promotionEntryValues = promotionEntry
         ? buildTemporaryFormState(promotionEntry).values
         : null;
-      const promotionOldName = resolveImageNameForRow(promotionEntryValues, promotionConfig);
+      const promotionOldName = resolveImageNameWithFallback(
+        promotionEntryValues,
+        promotionConfig,
+      );
       const promotionOldFolder = promotionEntryValues
         ? getImageFolder(promotionEntryValues)
         : null;
@@ -3928,7 +3992,7 @@ const TableManager = forwardRef(function TableManager({
                 [promotionConfig.imageIdField]: promotedRecordId,
               }
             : promotionValues;
-        const promotionNewName = resolveImageNameForRow(
+        const promotionNewName = resolveImageNameWithFallback(
           promotionNameSource,
           promotionConfig,
         );
@@ -5328,7 +5392,7 @@ const TableManager = forwardRef(function TableManager({
             finalizedValues[imageConfig.imageIdField] = promotedRecordId;
           }
         }
-        const entryImageName = resolveImageNameForRow(
+        const entryImageName = resolveImageNameWithFallback(
           resolvedImageValues,
           imageConfig,
         );
@@ -7857,6 +7921,8 @@ const TableManager = forwardRef(function TableManager({
         row={imagesRow || {}}
         columnCaseMap={columnCaseMap}
         configs={allConfigs}
+        currentConfig={formConfig}
+        currentConfigName={formName}
         canDelete={Boolean(normalizedViewerEmpId)}
       />
       <RowImageViewModal
@@ -7867,6 +7933,8 @@ const TableManager = forwardRef(function TableManager({
         row={temporaryImagesEntry?.row || {}}
         columnCaseMap={columnCaseMap}
         configs={allConfigs}
+        currentConfig={formConfig}
+        currentConfigName={formName}
         canDelete={Boolean(temporaryImagesEntry?.canDelete)}
       />
       <RowImageUploadModal
