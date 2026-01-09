@@ -32,6 +32,25 @@ export default function RowImageViewModal({
     if (type === 'info' && !generalConfig?.general?.imageToastEnabled) return;
     addToast(msg, type);
   };
+  const showConversionIssues = (issues = []) => {
+    if (!generalConfig?.general?.imageToastEnabled) return;
+    issues.forEach((issue) => {
+      const detail = issue?.detail ? ` (${issue.detail})` : '';
+      toast(
+        `Sharp conversion ${issue?.reason || 'error'} for ${issue?.file || 'image'}${detail}`,
+        'error',
+      );
+    });
+  };
+  const parseImagesPayload = async (res) => {
+    if (!res?.ok) return [];
+    const payload = await res.json().catch(() => []);
+    const list = Array.isArray(payload) ? payload : payload?.files || [];
+    if (Array.isArray(payload?.conversionIssues)) {
+      showConversionIssues(payload.conversionIssues);
+    }
+    return list;
+  };
   const loaded = useRef(false);
 
   const placeholder =
@@ -293,8 +312,7 @@ export default function RowImageViewModal({
         toast(`Searching URL: ${url}`, 'info');
         try {
           const res = await fetch(url, { credentials: 'include' });
-          const imgs = res.ok ? await res.json().catch(() => []) : [];
-          const list = Array.isArray(imgs) ? imgs : [];
+          const list = await parseImagesPayload(res);
           if (list.length > 0) {
             list.forEach((p) => toast(`Found image: ${p}`, 'info'));
             const entries = list.map((p) => ({
@@ -313,8 +331,7 @@ export default function RowImageViewModal({
           toast(`Searching URL: ${altUrl}`, 'info');
           try {
             const res = await fetch(altUrl, { credentials: 'include' });
-            const imgs = res.ok ? await res.json().catch(() => []) : [];
-            const list = Array.isArray(imgs) ? imgs : [];
+            const list = await parseImagesPayload(res);
             if (list.length > 0) {
               if (nm === idName && idName && idName !== primary) {
                 try {
@@ -328,8 +345,7 @@ export default function RowImageViewModal({
                     `${API_BASE}/transaction_images/${safeTable}/${encodeURIComponent(primary)}?${renameParams.toString()}`,
                     { credentials: 'include' },
                   );
-                  const imgs2 = res2.ok ? await res2.json().catch(() => []) : [];
-                  const list2 = Array.isArray(imgs2) ? imgs2 : [];
+                  const list2 = await parseImagesPayload(res2);
                   if (list2.length > 0) {
                     list2.forEach((p) => toast(`Found image: ${p}`, 'info'));
                     const entries = list2.map((p) => ({
