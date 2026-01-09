@@ -31,7 +31,7 @@
     "openai": "^4.24.0",
     "node-fetch": "^3.3.2",
     "react-mosaic-component": "^6.0.0",
-    "sharp": "^0.33.2",
+    "sharp": "0.32.6",
     "socket.io": "^4.7.5",
     "socket.io-client": "^4.7.5",
     "xlsx": "^0.18.5",
