@@ -127,33 +127,13 @@ function stripUploaderTag(value = '') {
 }
 
 function extractImagePrefix(base) {
-  const normalized = String(base || '');
-  if (!normalized) return '';
-  const save = parseSaveName(normalized);
-  if (save?.pre) {
-    return stripUploaderTag(save.pre || '');
-  }
-  const savedMatch = normalized.match(
-    /^(.*?)(?:__u[^_]+__)?_[0-9]{13}_[a-z0-9]{6}$/i,
-  );
-  if (savedMatch?.[1]) {
-    return stripUploaderTag(savedMatch[1]);
-  }
-  const altMatch = normalized.match(/^(.*?)(?:__u[^_]+__)?__([a-z0-9]{6})$/i);
-  if (altMatch?.[1]) {
-    return stripUploaderTag(altMatch[1]);
-  }
-  return stripUploaderTag(normalized);
+  const save = parseSaveName(base);
+  if (!save) return '';
+  return stripUploaderTag(save.pre || '');
 }
 
 function escapeLike(value = '') {
   return String(value).replace(/[\\%_]/g, '\\$&');
-}
-
-function isPlainObject(value) {
-  if (!value || typeof value !== 'object') return false;
-  if (Array.isArray(value)) return false;
-  return Object.getPrototypeOf(value) === Object.prototype;
 }
 
 function safeJsonParse(value, fallback) {
@@ -192,26 +172,6 @@ function extractTempImageName(row) {
   );
 }
 
-async function getPromotedRecordIdFromHistory(tempId) {
-  if (!tempId) return null;
-  let rows;
-  try {
-    [rows] = await pool.query(
-      `SELECT promoted_record_id
-         FROM transaction_temporary_review_history
-        WHERE temporary_id = ?
-          AND action = 'promoted'
-          AND promoted_record_id IS NOT NULL
-        ORDER BY created_at DESC, id DESC
-        LIMIT 1`,
-      [tempId],
-    );
-  } catch {
-    return null;
-  }
-  return rows?.[0]?.promoted_record_id || null;
-}
-
 async function getNumFieldForTable(table) {
   let cols;
   try {
@@ -223,54 +183,18 @@ async function getNumFieldForTable(table) {
   return numCol ? numCol.Field : '';
 }
 
-function resolveTempImageValues(row) {
-  const payload = safeJsonParse(row.payload_json, {});
-  const cleanedContainer = safeJsonParse(row.cleaned_values_json, {});
-  const rawContainer = safeJsonParse(row.raw_values_json, {});
-  const cleanedValues = isPlainObject(cleanedContainer?.values)
-    ? cleanedContainer.values
-    : isPlainObject(cleanedContainer)
-    ? cleanedContainer
-    : null;
-  const payloadCleaned = isPlainObject(payload?.cleanedValues)
-    ? payload.cleanedValues
-    : null;
-  const rawValues = isPlainObject(payload?.values)
-    ? payload.values
-    : isPlainObject(rawContainer)
-    ? rawContainer
-    : null;
-  return {
-    payload,
-    cleanedValues,
-    rawValues,
-    mergedValues: {
-      ...(rawValues || {}),
-      ...(cleanedValues || {}),
-      ...(payloadCleaned || {}),
-    },
-  };
-}
-
-function applyImageIdFallback(values, config, promotedRecordId) {
-  if (!promotedRecordId || !config?.imageIdField) return values;
-  const current = getCase(values, config.imageIdField);
-  if (current != null && current !== '') return values;
-  return { ...values, [config.imageIdField]: promotedRecordId };
-}
-
 async function findPromotedTempMatch(imagePrefix, companyId = 0) {
   if (!imagePrefix) return null;
-  const normalizedPrefix = sanitizeName(imagePrefix);
   const escaped = escapeLike(imagePrefix);
   const like = `%${escaped}%`;
   let rows;
   try {
     [rows] = await pool.query(
-      `SELECT id, table_name, promoted_record_id, payload_json, raw_values_json, cleaned_values_json
+      `SELECT table_name, promoted_record_id, payload_json, raw_values_json, cleaned_values_json
          FROM transaction_temporaries
         WHERE company_id = ?
           AND status = 'promoted'
+          AND promoted_record_id IS NOT NULL
           AND (
             payload_json LIKE ? ESCAPE '\\\\'
             OR cleaned_values_json LIKE ? ESCAPE '\\\\'
@@ -284,59 +208,31 @@ async function findPromotedTempMatch(imagePrefix, companyId = 0) {
     return null;
   }
   for (const row of rows || []) {
-    const { mergedValues } = resolveTempImageValues(row);
-    const { config: cfgs } = await getConfigsByTable(row.table_name, companyId).catch(
-      () => ({ config: {} }),
-    );
-    const cfg = pickConfig(cfgs, mergedValues);
-    let promotedRecordId = row.promoted_record_id || null;
-    if (!promotedRecordId) {
-      promotedRecordId = await getPromotedRecordIdFromHistory(row.id);
-    }
-    if (!promotedRecordId) continue;
-    const withFallback = applyImageIdFallback(mergedValues, cfg, promotedRecordId);
-    const resolvedFromValues = resolveImageNaming(
-      withFallback,
-      cfg,
-      row.table_name,
-    );
-    const candidates = new Set(
-      [
-        extractTempImageName(row),
-        resolvedFromValues.name,
-        withFallback?._imageName,
-        withFallback?.imageName,
-        withFallback?.image_name,
-      ]
-        .filter((val) => typeof val === 'string' && val.trim())
-        .map((val) => sanitizeName(val)),
-    );
-    const matches = Array.from(candidates).some(
-      (candidate) =>
-        candidate === normalizedPrefix ||
-        candidate.startsWith(`${normalizedPrefix}_`) ||
-        normalizedPrefix.startsWith(`${candidate}_`),
-    );
-    if (!matches) continue;
+    const imageName = extractTempImageName(row);
+    if (!imageName) continue;
+    if (sanitizeName(imageName) !== sanitizeName(imagePrefix)) continue;
     let promotedRows;
     try {
       [promotedRows] = await pool.query(
         `SELECT * FROM \`${row.table_name}\` WHERE id = ? LIMIT 1`,
-        [promotedRecordId],
+        [row.promoted_record_id],
       );
     } catch {
       continue;
     }
     const promotedRow = promotedRows?.[0];
     if (!promotedRow) continue;
+    let cfgs = {};
+    try {
+      const { config } = await getConfigsByTable(row.table_name, companyId);
+      cfgs = config;
+    } catch {}
     const numField = await getNumFieldForTable(row.table_name);
     return {
       table: row.table_name,
       row: promotedRow,
       configs: cfgs,
       numField,
-      tempPromoted: true,
-      promotedRecordId,
     };
   }
   return null;
@@ -923,22 +819,41 @@ export async function detectIncompleteImages(
         });
         continue;
       }
-      const { row, configs, numField, tempPromoted, promotedRecordId } = found;
+      const { row, configs, numField, tempPromoted } = found;
 
       const cfg = pickConfig(configs, row);
       let newBase = '';
       let folderRaw = '';
-      const namingSource = tempPromoted
-        ? applyImageIdFallback(row, cfg, promotedRecordId)
-        : row;
-      const resolved = resolveImageNaming(
-        namingSource,
-        cfg,
-        found.table || entry.name,
-      );
-      if (resolved.name) {
-        newBase = resolved.name;
-        folderRaw = resolved.folder;
+      if (tempPromoted) {
+        const resolved = resolveImageNaming(row, cfg, found.table || entry.name);
+        if (resolved.name) {
+          newBase = resolved.name;
+          folderRaw = resolved.folder;
+        }
+      }
+      const tType =
+        getCase(row, 'trtype') ||
+        getCase(row, 'UITrtype') ||
+        getCase(row, 'TRTYPENAME') ||
+        getCase(row, 'trtypename') ||
+        getCase(row, 'uitranstypename') ||
+        getCase(row, 'transtype');
+      const transTypeVal =
+        getCase(row, 'TransType') ||
+        getCase(row, 'UITransType') ||
+        getCase(row, 'UITransTypeName') ||
+        getCase(row, 'transtype');
+      if (
+        cfg?.imagenameField?.length &&
+        tType &&
+        cfg.transactionTypeValue &&
+        cfg.transactionTypeField &&
+        String(getCase(row, cfg.transactionTypeField)) === String(cfg.transactionTypeValue)
+      ) {
+        newBase = buildNameFromRow(row, cfg.imagenameField);
+        if (newBase) {
+          folderRaw = `${slugify(String(tType))}/${slugify(String(cfg.transactionTypeValue))}`;
+        }
       }
       if (!newBase) {
         const tType =
