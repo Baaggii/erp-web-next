@@ -204,13 +204,18 @@ router.post('/:table/:name', requireAuth, upload.array('images'), async (req, re
 
 router.get('/:table/:name', requireAuth, async (req, res, next) => {
   try {
-    const files = await listImages(
+    const { files, conversionIssues } = await listImages(
       req.params.table,
       req.params.name,
       req.query.folder,
       req.user.companyId,
     );
-    res.json(toAbsolute(req, files));
+    const absolute = toAbsolute(req, files);
+    if (conversionIssues?.length) {
+      res.json({ files: absolute, conversionIssues });
+    } else {
+      res.json(absolute);
+    }
   } catch (err) {
     next(err);
   }

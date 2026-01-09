@@ -61,22 +61,51 @@ function isHeicFile(fileName = '', mimeType = '') {
   );
 }
 
-async function ensureJpegForHeic(filePath, fileName = '', mimeType = '') {
+async function ensureJpegForHeic(
+  filePath,
+  fileName = '',
+  mimeType = '',
+  conversionIssues = [],
+) {
   const nameForCheck = fileName || filePath;
   if (!isHeicFile(nameForCheck, mimeType)) return null;
   const jpgPath = filePath.replace(/\.(heic|heif)$/i, '.jpg');
   if (fssync.existsSync(jpgPath)) return jpgPath;
+  if (!fssync.existsSync(filePath)) {
+    conversionIssues.push({ file: fileName || path.basename(filePath), reason: 'file missing' });
+    return null;
+  }
   const sharpLib = await loadSharp();
   if (!sharpLib) return null;
   try {
+    try {
+      await sharpLib(filePath).metadata();
+    } catch (err) {
+      conversionIssues.push({
+        file: fileName || path.basename(filePath),
+        reason: 'decode error',
+        detail: err?.message || String(err),
+      });
+      return null;
+    }
     await sharpLib(filePath).jpeg({ quality: 80 }).toFile(jpgPath);
     const { size } = await fs.stat(jpgPath);
     if (!size) {
       await fs.unlink(jpgPath).catch(() => {});
+      conversionIssues.push({
+        file: fileName || path.basename(filePath),
+        reason: 'write error',
+        detail: 'empty output',
+      });
       return null;
     }
     return jpgPath;
-  } catch {
+  } catch (err) {
+    conversionIssues.push({
+      file: fileName || path.basename(filePath),
+      reason: 'write error',
+      detail: err?.message || String(err),
+    });
     return null;
   }
 }
@@ -591,7 +620,12 @@ export async function saveImages(
       } catch {
         // ignore
       }
-      const converted = await ensureJpegForHeic(dest, file.originalname, file.mimetype);
+      const converted = await ensureJpegForHeic(
+        dest,
+        file.originalname,
+        file.mimetype,
+        conversionIssues,
+      );
       if (converted) {
         saved.push(`${urlBase}/${folder || table}/${path.basename(converted)}`);
       } else {
@@ -667,6 +701,7 @@ export async function listImages(table, name, folder = null, companyId = 0) {
   const dir = path.join(baseDir, folder || table);
   ensureDir(dir);
   const prefix = sanitizeName(name);
+  const conversionIssues = [];
   try {
     const files = await fs.readdir(dir);
     const results = [];
@@ -674,7 +709,7 @@ export async function listImages(table, name, folder = null, companyId = 0) {
     for (const file of files) {
       if (!file.startsWith(prefix + '_')) continue;
       if (isHeicFile(file)) {
-        const jpgPath = await ensureJpegForHeic(path.join(dir, file), file);
+        const jpgPath = await ensureJpegForHeic(path.join(dir, file), file, '', conversionIssues);
         if (jpgPath) {
           const jpgName = path.basename(jpgPath);
           if (!seen.has(jpgName)) {
@@ -689,9 +724,9 @@ export async function listImages(table, name, folder = null, companyId = 0) {
         seen.add(file);
       }
     }
-    return results;
+    return { files: results, conversionIssues };
   } catch {
-    return [];
+    return { files: [], conversionIssues };
   }
 }
 
