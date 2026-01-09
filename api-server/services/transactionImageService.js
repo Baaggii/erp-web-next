@@ -141,6 +141,41 @@ function escapeLike(value = '') {
   return String(value).replace(/[\\%_]/g, '\\$&');
 }
 
+function isHeicExtension(filename = '') {
+  const ext = path.extname(filename).toLowerCase();
+  return ext === '.heic' || ext === '.heif';
+}
+
+async function loadSharp() {
+  try {
+    return (await import('sharp')).default;
+  } catch {
+    return null;
+  }
+}
+
+async function ensureHeicConverted(dir, filename) {
+  if (!isHeicExtension(filename)) return filename;
+  const base = filename.slice(0, -path.extname(filename).length);
+  const jpgName = `${base}.jpg`;
+  const src = path.join(dir, filename);
+  const dest = path.join(dir, jpgName);
+  try {
+    await fs.access(dest);
+    await fs.unlink(src).catch(() => {});
+    return jpgName;
+  } catch {}
+  const sharpLib = await loadSharp();
+  if (!sharpLib) return filename;
+  try {
+    await sharpLib(src).jpeg({ quality: 80 }).toFile(dest);
+    await fs.unlink(src).catch(() => {});
+    return jpgName;
+  } catch {
+    return filename;
+  }
+}
+
 function safeJsonParse(value, fallback) {
   if (!value) return fallback;
   try {
@@ -499,9 +534,13 @@ export async function listImages(table, name, folder = null, companyId = 0) {
   const prefix = sanitizeName(name);
   try {
     const files = await fs.readdir(dir);
-    return files
-      .filter((f) => f.startsWith(prefix + '_'))
-      .map((f) => `${urlBase}/${folder || table}/${f}`);
+    const list = [];
+    for (const file of files) {
+      if (!file.startsWith(prefix + '_')) continue;
+      const normalized = await ensureHeicConverted(dir, file);
+      list.push(`${urlBase}/${folder || table}/${normalized}`);
+    }
+    return list;
   } catch {
     return [];
   }
@@ -577,7 +616,9 @@ export async function searchImages(term, page = 1, perPage = 20, companyId = 0) 
         if (ignore.includes(entry.name.toLowerCase())) continue;
         await walk(full, relPath);
       } else if (regex.test(entry.name)) {
-        list.push(`${urlBase}/${relPath.replace(/\\\\/g, '/')}`);
+        const normalized = await ensureHeicConverted(dir, entry.name);
+        const normalizedPath = path.join(rel, normalized);
+        list.push(`${urlBase}/${normalizedPath.replace(/\\\\/g, '/')}`);
       }
     }
   }
