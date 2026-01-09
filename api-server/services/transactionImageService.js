@@ -448,24 +448,29 @@ export async function saveImages(
     mimeLib = (await import('mime-types')).default;
   } catch {}
   for (const file of files) {
-    const ext =
+    const originalExt =
       path.extname(file.originalname) || `.${mimeLib?.extension(file.mimetype) || 'bin'}`;
+    const lowerExt = originalExt.toLowerCase();
+    const isHeic = lowerExt === '.heic' || lowerExt === '.heif' || file.mimetype?.includes('heic');
+    const outputExt = isHeic ? '.jpg' : originalExt;
     const unique = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-    const fileName = `${prefix}${uploaderTag}_${unique}${ext}`;
+    const fileName = `${prefix}${uploaderTag}_${unique}${outputExt}`;
     const dest = path.join(dir, fileName);
     let optimized = false;
     try {
-    let sharpLib;
+      let sharpLib;
       try {
         sharpLib = (await import('sharp')).default;
       } catch {}
       if (sharpLib) {
         const image = sharpLib(file.path).resize({ width: 1200, height: 1200, fit: 'inside' });
-        if (/\.jpe?g$/i.test(ext)) {
+        if (isHeic) {
           await image.jpeg({ quality: 80 }).toFile(dest);
-        } else if (/\.png$/i.test(ext)) {
+        } else if (/\.jpe?g$/i.test(originalExt)) {
+          await image.jpeg({ quality: 80 }).toFile(dest);
+        } else if (/\.png$/i.test(originalExt)) {
           await image.png({ quality: 80 }).toFile(dest);
-        } else if (/\.webp$/i.test(ext)) {
+        } else if (/\.webp$/i.test(originalExt)) {
           await image.webp({ quality: 80 }).toFile(dest);
         } else {
           await image.toFile(dest);
