@@ -568,6 +568,62 @@ async function findPromotedTempMatch(imagePrefix, companyId = 0, timestamp = nul
   return null;
 }
 
+async function findPromotedTempByTimestamp(timestamp, companyId = 0) {
+  if (!timestamp) return null;
+  let recentRows;
+  try {
+    [recentRows] = await pool.query(
+      `SELECT table_name, promoted_record_id
+         FROM transaction_temporaries
+        WHERE company_id = ?
+          AND status = 'promoted'
+          AND promoted_record_id IS NOT NULL
+          AND ABS(TIMESTAMPDIFF(SECOND, FROM_UNIXTIME(?/1000), updated_at)) < 172800
+        ORDER BY updated_at DESC
+        LIMIT 20`,
+      [companyId, timestamp],
+    );
+  } catch {
+    return null;
+  }
+  const candidates = [];
+  for (const row of recentRows || []) {
+    let promotedRows;
+    try {
+      [promotedRows] = await pool.query(
+        `SELECT * FROM \`${row.table_name}\` WHERE id = ? LIMIT 1`,
+        [row.promoted_record_id],
+      );
+    } catch {
+      continue;
+    }
+    const promotedRow = promotedRows?.[0];
+    if (!promotedRow) continue;
+    let cfgs = {};
+    try {
+      const { config } = await getConfigsByTable(row.table_name, companyId);
+      cfgs = config;
+    } catch {}
+    const prefixOnly = resolveImagePrefixForSearch(
+      promotedRow,
+      cfgs,
+      row.table_name,
+    );
+    if (!prefixOnly.name) continue;
+    const numField = await getNumFieldForTable(row.table_name);
+    candidates.push({
+      table: row.table_name,
+      row: promotedRow,
+      configs: cfgs,
+      numField,
+      tempPromoted: true,
+      promotedRecordId: row.promoted_record_id,
+    });
+    if (candidates.length > 1) break;
+  }
+  return candidates.length === 1 ? candidates[0] : null;
+}
+
 function buildFolderName(row, fallback = '') {
   const part1 =
     getCase(row, 'trtype') ||
@@ -1209,18 +1265,43 @@ export async function detectIncompleteImages(
           });
           continue;
         }
-        if (hasTxnCode(base, unique, codes)) {
-          skipped.push({
-            currentName: f,
-            newName: f,
-            folder: entry.name,
-            folderDisplay: '/' + entry.name,
-            currentPath: filePath,
-            reason: 'Contains transaction codes',
-          });
-          continue;
+        const parsed = parseFileUnique(base);
+        unique = parsed.unique;
+        if (!suffix && parsed.suffix) {
+          suffix = parsed.suffix;
         }
-        found = await findTxnByUniqueId(unique, companyId);
+        if (!unique) {
+          if (suffixMatch) {
+            found = await findPromotedTempByTimestamp(
+              Number(suffixMatch.ts),
+              companyId,
+            );
+          }
+          if (!found) {
+            skipped.push({
+              currentName: f,
+              newName: f,
+              folder: entry.name,
+              folderDisplay: '/' + entry.name,
+              currentPath: filePath,
+              reason: 'No unique identifier',
+            });
+            continue;
+          }
+        } else {
+          if (hasTxnCode(base, unique, codes)) {
+            skipped.push({
+              currentName: f,
+              newName: f,
+              folder: entry.name,
+              folderDisplay: '/' + entry.name,
+              currentPath: filePath,
+              reason: 'Contains transaction codes',
+            });
+            continue;
+          }
+          found = await findTxnByUniqueId(unique, companyId);
+        }
       }
       if (!found) {
         const tempPrefix = extractImagePrefix(base);
@@ -1493,7 +1574,15 @@ export async function checkUploadedImages(
         suffix = parsed.suffix;
       }
       if (!unique) {
-        reason = 'Invalid filename';
+        if (suffixMatch) {
+          found = await findPromotedTempByTimestamp(
+            Number(suffixMatch.ts),
+            companyId,
+          );
+        }
+        if (!found) {
+          reason = 'Invalid filename';
+        }
       } else if (hasTxnCode(base, unique, codes)) {
         reason = 'Already renamed';
       } else {
