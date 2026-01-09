@@ -127,23 +127,9 @@ function stripUploaderTag(value = '') {
 }
 
 function extractImagePrefix(base) {
-  const normalized = String(base || '');
-  if (!normalized) return '';
-  const save = parseSaveName(normalized);
-  if (save?.pre) {
-    return stripUploaderTag(save.pre || '');
-  }
-  const savedMatch = normalized.match(
-    /^(.*?)(?:__u[^_]+__)?_[0-9]{13}_[a-z0-9]{6}$/i,
-  );
-  if (savedMatch?.[1]) {
-    return stripUploaderTag(savedMatch[1]);
-  }
-  const altMatch = normalized.match(/^(.*?)(?:__u[^_]+__)?__([a-z0-9]{6})$/i);
-  if (altMatch?.[1]) {
-    return stripUploaderTag(altMatch[1]);
-  }
-  return stripUploaderTag(normalized);
+  const save = parseSaveName(base);
+  if (!save) return '';
+  return stripUploaderTag(save.pre || '');
 }
 
 function escapeLike(value = '') {
