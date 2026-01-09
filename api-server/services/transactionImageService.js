@@ -52,12 +52,19 @@ function ensureDir(dir) {
 
 function isHeicFile(fileName = '', mimeType = '') {
   const ext = path.extname(String(fileName)).toLowerCase();
-  return ext === '.heic' || ext === '.heif' || String(mimeType).includes('heic');
+  const lowerMime = String(mimeType).toLowerCase();
+  return (
+    ext === '.heic' ||
+    ext === '.heif' ||
+    lowerMime.includes('heic') ||
+    lowerMime.includes('heif')
+  );
 }
 
-async function ensureJpegForHeic(filePath) {
-  if (!isHeicFile(filePath)) return null;
-  const jpgPath = filePath.replace(/\.(heic|heif)$/i, '.jpg');
+async function ensureJpegForHeic(filePath, mimeType = '') {
+  if (!isHeicFile(filePath, mimeType)) return null;
+  const ext = path.extname(filePath);
+  const jpgPath = ext ? `${filePath.slice(0, -ext.length)}.jpg` : `${filePath}.jpg`;
   if (fssync.existsSync(jpgPath)) return jpgPath;
   const sharpLib = await loadSharp();
   if (!sharpLib) return null;
@@ -564,11 +571,15 @@ export async function saveImages(
     mimeLib = (await import('mime-types')).default;
   } catch {}
   for (const file of files) {
-    const originalExt =
+    let originalExt =
       path.extname(file.originalname) || `.${mimeLib?.extension(file.mimetype) || 'bin'}`;
     const unique = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
     const baseName = `${prefix}${uploaderTag}_${unique}`;
     const isHeic = isHeicFile(file.originalname, file.mimetype);
+    if (isHeic && !/\.(heic|heif)$/i.test(originalExt)) {
+      const lowerMime = String(file.mimetype || '').toLowerCase();
+      originalExt = lowerMime.includes('heif') ? '.heif' : '.heic';
+    }
     const originalName = `${baseName}${originalExt}`;
     const dest = path.join(dir, originalName);
     let optimized = false;
@@ -578,7 +589,7 @@ export async function saveImages(
       } catch {
         // ignore
       }
-      const converted = await ensureJpegForHeic(dest);
+      const converted = await ensureJpegForHeic(dest, file.mimetype);
       if (converted) {
         saved.push(`${urlBase}/${folder || table}/${path.basename(converted)}`);
       } else {
