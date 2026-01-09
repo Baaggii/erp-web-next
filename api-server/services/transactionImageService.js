@@ -59,18 +59,8 @@ function buildNameFromRow(row, fields = []) {
   return sanitizeName(vals.join('_'));
 }
 
-function hasImageFields(config = {}) {
-  return (
-    (Array.isArray(config?.imagenameField) && config.imagenameField.length > 0) ||
-    Boolean(config?.imageIdField)
-  );
-}
-
 function pickConfigEntry(configs = {}, row = {}) {
-  const entries = Object.entries(configs);
-  const withImages = entries.filter(([, cfg]) => hasImageFields(cfg));
-  const pool = withImages.length > 0 ? withImages : entries;
-  for (const [name, cfg] of pool) {
+  for (const [name, cfg] of Object.entries(configs)) {
     if (!cfg.transactionTypeValue) continue;
     if (cfg.transactionTypeField) {
       const val = getCase(row, cfg.transactionTypeField);
@@ -86,7 +76,7 @@ function pickConfigEntry(configs = {}, row = {}) {
       }
     }
   }
-  const [fallbackName, fallbackConfig] = pool[0] || [];
+  const [fallbackName, fallbackConfig] = Object.entries(configs)[0] || [];
   return { name: fallbackName || '', config: fallbackConfig || {} };
 }
 
@@ -142,33 +132,48 @@ function stripUploaderTag(value = '') {
 }
 
 function extractImagePrefix(base) {
-  const normalized = String(base || '');
-  if (!normalized) return '';
-  const save = parseSaveName(normalized);
-  if (save?.pre) {
-    return stripUploaderTag(save.pre || '');
-  }
-  const savedMatch = normalized.match(
-    /^(.*?)(?:__u[^_]+__)?_[0-9]{13}_[a-z0-9]{6}$/i,
-  );
-  if (savedMatch?.[1]) {
-    return stripUploaderTag(savedMatch[1]);
-  }
-  const altMatch = normalized.match(/^(.*?)(?:__u[^_]+__)?__([a-z0-9]{6})$/i);
-  if (altMatch?.[1]) {
-    return stripUploaderTag(altMatch[1]);
-  }
-  return stripUploaderTag(normalized);
+  const save = parseSaveName(base);
+  if (!save) return '';
+  return stripUploaderTag(save.pre || '');
 }
 
 function escapeLike(value = '') {
   return String(value).replace(/[\\%_]/g, '\\$&');
 }
 
-function isPlainObject(value) {
-  if (!value || typeof value !== 'object') return false;
-  if (Array.isArray(value)) return false;
-  return Object.getPrototypeOf(value) === Object.prototype;
+function isHeicExtension(filename = '') {
+  const ext = path.extname(filename).toLowerCase();
+  return ext === '.heic' || ext === '.heif';
+}
+
+async function loadSharp() {
+  try {
+    return (await import('sharp')).default;
+  } catch {
+    return null;
+  }
+}
+
+async function ensureHeicConverted(dir, filename) {
+  if (!isHeicExtension(filename)) return filename;
+  const base = filename.slice(0, -path.extname(filename).length);
+  const jpgName = `${base}.jpg`;
+  const src = path.join(dir, filename);
+  const dest = path.join(dir, jpgName);
+  try {
+    await fs.access(dest);
+    await fs.unlink(src).catch(() => {});
+    return jpgName;
+  } catch {}
+  const sharpLib = await loadSharp();
+  if (!sharpLib) return filename;
+  try {
+    await sharpLib(src).jpeg({ quality: 80 }).toFile(dest);
+    await fs.unlink(src).catch(() => {});
+    return jpgName;
+  } catch {
+    return filename;
+  }
 }
 
 function safeJsonParse(value, fallback) {
@@ -207,26 +212,6 @@ function extractTempImageName(row) {
   );
 }
 
-async function getPromotedRecordIdFromHistory(tempId) {
-  if (!tempId) return null;
-  let rows;
-  try {
-    [rows] = await pool.query(
-      `SELECT promoted_record_id
-         FROM transaction_temporary_review_history
-        WHERE temporary_id = ?
-          AND action = 'promoted'
-          AND promoted_record_id IS NOT NULL
-        ORDER BY created_at DESC, id DESC
-        LIMIT 1`,
-      [tempId],
-    );
-  } catch {
-    return null;
-  }
-  return rows?.[0]?.promoted_record_id || null;
-}
-
 async function getNumFieldForTable(table) {
   let cols;
   try {
@@ -238,54 +223,18 @@ async function getNumFieldForTable(table) {
   return numCol ? numCol.Field : '';
 }
 
-function resolveTempImageValues(row) {
-  const payload = safeJsonParse(row.payload_json, {});
-  const cleanedContainer = safeJsonParse(row.cleaned_values_json, {});
-  const rawContainer = safeJsonParse(row.raw_values_json, {});
-  const cleanedValues = isPlainObject(cleanedContainer?.values)
-    ? cleanedContainer.values
-    : isPlainObject(cleanedContainer)
-    ? cleanedContainer
-    : null;
-  const payloadCleaned = isPlainObject(payload?.cleanedValues)
-    ? payload.cleanedValues
-    : null;
-  const rawValues = isPlainObject(payload?.values)
-    ? payload.values
-    : isPlainObject(rawContainer)
-    ? rawContainer
-    : null;
-  return {
-    payload,
-    cleanedValues,
-    rawValues,
-    mergedValues: {
-      ...(rawValues || {}),
-      ...(cleanedValues || {}),
-      ...(payloadCleaned || {}),
-    },
-  };
-}
-
-function applyImageIdFallback(values, config, promotedRecordId) {
-  if (!promotedRecordId || !config?.imageIdField) return values;
-  const current = getCase(values, config.imageIdField);
-  if (current != null && current !== '') return values;
-  return { ...values, [config.imageIdField]: promotedRecordId };
-}
-
 async function findPromotedTempMatch(imagePrefix, companyId = 0) {
   if (!imagePrefix) return null;
-  const normalizedPrefix = sanitizeName(imagePrefix);
   const escaped = escapeLike(imagePrefix);
   const like = `%${escaped}%`;
   let rows;
   try {
     [rows] = await pool.query(
-      `SELECT id, table_name, promoted_record_id, payload_json, raw_values_json, cleaned_values_json
+      `SELECT table_name, promoted_record_id, payload_json, raw_values_json, cleaned_values_json
          FROM transaction_temporaries
         WHERE company_id = ?
           AND status = 'promoted'
+          AND promoted_record_id IS NOT NULL
           AND (
             payload_json LIKE ? ESCAPE '\\\\'
             OR cleaned_values_json LIKE ? ESCAPE '\\\\'
@@ -299,52 +248,26 @@ async function findPromotedTempMatch(imagePrefix, companyId = 0) {
     return null;
   }
   for (const row of rows || []) {
-    const { mergedValues } = resolveTempImageValues(row);
-    const { config: cfgs } = await getConfigsByTable(row.table_name, companyId).catch(
-      () => ({ config: {} }),
-    );
-    const cfgEntry = pickConfigEntry(cfgs, mergedValues);
-    const cfg = cfgEntry.config;
-    let promotedRecordId = row.promoted_record_id || null;
-    if (!promotedRecordId) {
-      promotedRecordId = await getPromotedRecordIdFromHistory(row.id);
-    }
-    if (!promotedRecordId) continue;
-    const withFallback = applyImageIdFallback(mergedValues, cfg, promotedRecordId);
-    const resolvedFromValues = resolveImageNaming(
-      withFallback,
-      cfg,
-      row.table_name,
-    );
-    const candidates = new Set(
-      [
-        extractTempImageName(row),
-        resolvedFromValues.name,
-        withFallback?._imageName,
-        withFallback?.imageName,
-        withFallback?.image_name,
-      ]
-        .filter((val) => typeof val === 'string' && val.trim())
-        .map((val) => sanitizeName(val)),
-    );
-    const matches = Array.from(candidates).some(
-      (candidate) =>
-        candidate === normalizedPrefix ||
-        candidate.startsWith(`${normalizedPrefix}_`) ||
-        normalizedPrefix.startsWith(`${candidate}_`),
-    );
-    if (!matches) continue;
+    const imageName = extractTempImageName(row);
+    if (!imageName) continue;
+    if (sanitizeName(imageName) !== sanitizeName(imagePrefix)) continue;
+    const promotedRecordId = row.promoted_record_id;
     let promotedRows;
     try {
       [promotedRows] = await pool.query(
         `SELECT * FROM \`${row.table_name}\` WHERE id = ? LIMIT 1`,
-        [promotedRecordId],
+        [row.promoted_record_id],
       );
     } catch {
       continue;
     }
     const promotedRow = promotedRows?.[0];
     if (!promotedRow) continue;
+    let cfgs = {};
+    try {
+      const { config } = await getConfigsByTable(row.table_name, companyId);
+      cfgs = config;
+    } catch {}
     const numField = await getNumFieldForTable(row.table_name);
     return {
       table: row.table_name,
@@ -560,24 +483,29 @@ export async function saveImages(
     mimeLib = (await import('mime-types')).default;
   } catch {}
   for (const file of files) {
-    const ext =
+    const originalExt =
       path.extname(file.originalname) || `.${mimeLib?.extension(file.mimetype) || 'bin'}`;
+    const lowerExt = originalExt.toLowerCase();
+    const isHeic = lowerExt === '.heic' || lowerExt === '.heif' || file.mimetype?.includes('heic');
+    const outputExt = isHeic ? '.jpg' : originalExt;
     const unique = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-    const fileName = `${prefix}${uploaderTag}_${unique}${ext}`;
+    const fileName = `${prefix}${uploaderTag}_${unique}${outputExt}`;
     const dest = path.join(dir, fileName);
     let optimized = false;
     try {
-    let sharpLib;
+      let sharpLib;
       try {
         sharpLib = (await import('sharp')).default;
       } catch {}
       if (sharpLib) {
         const image = sharpLib(file.path).resize({ width: 1200, height: 1200, fit: 'inside' });
-        if (/\.jpe?g$/i.test(ext)) {
+        if (isHeic) {
           await image.jpeg({ quality: 80 }).toFile(dest);
-        } else if (/\.png$/i.test(ext)) {
+        } else if (/\.jpe?g$/i.test(originalExt)) {
+          await image.jpeg({ quality: 80 }).toFile(dest);
+        } else if (/\.png$/i.test(originalExt)) {
           await image.png({ quality: 80 }).toFile(dest);
-        } else if (/\.webp$/i.test(ext)) {
+        } else if (/\.webp$/i.test(originalExt)) {
           await image.webp({ quality: 80 }).toFile(dest);
         } else {
           await image.toFile(dest);
@@ -606,9 +534,13 @@ export async function listImages(table, name, folder = null, companyId = 0) {
   const prefix = sanitizeName(name);
   try {
     const files = await fs.readdir(dir);
-    return files
-      .filter((f) => f.startsWith(prefix + '_'))
-      .map((f) => `${urlBase}/${folder || table}/${f}`);
+    const list = [];
+    for (const file of files) {
+      if (!file.startsWith(prefix + '_')) continue;
+      const normalized = await ensureHeicConverted(dir, file);
+      list.push(`${urlBase}/${folder || table}/${normalized}`);
+    }
+    return list;
   } catch {
     return [];
   }
@@ -684,7 +616,9 @@ export async function searchImages(term, page = 1, perPage = 20, companyId = 0) 
         if (ignore.includes(entry.name.toLowerCase())) continue;
         await walk(full, relPath);
       } else if (regex.test(entry.name)) {
-        list.push(`${urlBase}/${relPath.replace(/\\\\/g, '/')}`);
+        const normalized = await ensureHeicConverted(dir, entry.name);
+        const normalizedPath = path.join(rel, normalized);
+        list.push(`${urlBase}/${normalizedPath.replace(/\\\\/g, '/')}`);
       }
     }
   }
@@ -939,23 +873,43 @@ export async function detectIncompleteImages(
         });
         continue;
       }
-      const { row, configs, numField, tempPromoted, promotedRecordId } = found;
+      const { row, configs, numField, tempPromoted } = found;
+      const promotedRecordId = found?.promotedRecordId ?? null;
 
       const cfgEntry = pickConfigEntry(configs, row);
       const cfg = cfgEntry.config;
       let newBase = '';
       let folderRaw = '';
-      const namingSource = tempPromoted
-        ? applyImageIdFallback(row, cfg, promotedRecordId)
-        : row;
-      const resolved = resolveImageNaming(
-        namingSource,
-        cfg,
-        found.table || entry.name,
-      );
-      if (resolved.name) {
-        newBase = resolved.name;
-        folderRaw = resolved.folder;
+      if (tempPromoted) {
+        const resolved = resolveImageNaming(row, cfg, found.table || entry.name);
+        if (resolved.name) {
+          newBase = resolved.name;
+          folderRaw = resolved.folder;
+        }
+      }
+      const tType =
+        getCase(row, 'trtype') ||
+        getCase(row, 'UITrtype') ||
+        getCase(row, 'TRTYPENAME') ||
+        getCase(row, 'trtypename') ||
+        getCase(row, 'uitranstypename') ||
+        getCase(row, 'transtype');
+      const transTypeVal =
+        getCase(row, 'TransType') ||
+        getCase(row, 'UITransType') ||
+        getCase(row, 'UITransTypeName') ||
+        getCase(row, 'transtype');
+      if (
+        cfg?.imagenameField?.length &&
+        tType &&
+        cfg.transactionTypeValue &&
+        cfg.transactionTypeField &&
+        String(getCase(row, cfg.transactionTypeField)) === String(cfg.transactionTypeValue)
+      ) {
+        newBase = buildNameFromRow(row, cfg.imagenameField);
+        if (newBase) {
+          folderRaw = `${slugify(String(tType))}/${slugify(String(cfg.transactionTypeValue))}`;
+        }
       }
       if (!newBase) {
         const tType =
