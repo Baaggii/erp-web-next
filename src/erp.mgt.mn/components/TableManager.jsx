@@ -5462,10 +5462,11 @@ const TableManager = forwardRef(function TableManager({
             finalizedValues[imageConfig.imageIdField] = promotedRecordId;
           }
         }
-        const entryImageName = resolveImageNameWithFallback(
-          resolvedImageValues,
-          imageConfig,
-        );
+        const existingTemporaryImageName =
+          entry?._imageName || entry?.imageName || entry?.image_name || '';
+        const entryImageName =
+          existingTemporaryImageName ||
+          resolveImageNameWithFallback(resolvedImageValues, imageConfig);
         if (entryImageName) {
           finalizedValues._imageName = finalizedValues._imageName || entryImageName;
           finalizedValues.imageName = finalizedValues.imageName || entryImageName;
@@ -8281,10 +8282,11 @@ const TableManager = forwardRef(function TableManager({
                       ) {
                         resolvedImageValues[imageConfig.imageIdField] = promotedRecordId;
                       }
-                      const entryImageName = resolveImageNameForRow(
-                        resolvedImageValues,
-                        imageConfig,
-                      );
+                      const entryImageName =
+                        entry?._imageName ||
+                        entry?.imageName ||
+                        entry?.image_name ||
+                        resolveImageNameForRow(resolvedImageValues, imageConfig);
                       const normalizedValuesWithImage = {
                         ...normalizedValues,
                         ...(entryImageName
