@@ -1618,6 +1618,8 @@ export default function ImageManagement() {
                     <th className="border px-2 py-1">Current</th>
                     <th className="border px-2 py-1">New Name</th>
                     <th className="border px-2 py-1">Folder</th>
+                    <th className="border px-2 py-1">Posted ID</th>
+                    <th className="border px-2 py-1">Config</th>
                     <th className="border px-2 py-1">Description</th>
                     <th className="border px-2 py-1">State</th>
                     <th className="border px-2 py-1">Delete</th>
@@ -1632,6 +1634,8 @@ export default function ImageManagement() {
                       <td className="border px-2 py-1">{p.currentName}</td>
                       <td className="border px-2 py-1">{p.newName}</td>
                       <td className="border px-2 py-1">{p.folderDisplay}</td>
+                      <td className="border px-2 py-1">{p.recordId || '-'}</td>
+                      <td className="border px-2 py-1">{p.configName || '-'}</td>
                       <td className="border px-2 py-1">{p.description}</td>
                       <td className="border px-2 py-1">{stateLabel(p)}</td>
                       <td className="border px-2 py-1 text-center">
@@ -1758,6 +1762,8 @@ export default function ImageManagement() {
                     <th className="border px-2 py-1">Original</th>
                     <th className="border px-2 py-1">New Name</th>
                     <th className="border px-2 py-1">Folder</th>
+                    <th className="border px-2 py-1">Posted ID</th>
+                    <th className="border px-2 py-1">Config</th>
                     <th className="border px-2 py-1">Description</th>
                     <th className="border px-2 py-1">State</th>
                     <th className="border px-2 py-1">Delete</th>
@@ -1776,6 +1782,8 @@ export default function ImageManagement() {
                       <td className="border px-2 py-1">{p.currentName}</td>
                       <td className="border px-2 py-1">{p.newName}</td>
                       <td className="border px-2 py-1">{p.folderDisplay}</td>
+                      <td className="border px-2 py-1">{p.recordId || '-'}</td>
+                      <td className="border px-2 py-1">{p.configName || '-'}</td>
                       <td className="border px-2 py-1">
                         {p.description}
                         {p.description && p.reason ? ' - ' : ''}
