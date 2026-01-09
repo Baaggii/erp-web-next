@@ -10,6 +10,16 @@ import { slugify } from '../utils/slugify.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const projectRoot = path.resolve(__dirname, '../../');
+let sharpLoader;
+
+async function loadSharp() {
+  if (!sharpLoader) {
+    sharpLoader = import('sharp')
+      .then((mod) => mod.default)
+      .catch(() => null);
+  }
+  return sharpLoader;
+}
 
 async function getDirs(companyId = 0) {
   const { config: cfg } = await getGeneralConfig(companyId);
@@ -37,6 +47,25 @@ async function getDirs(companyId = 0) {
 function ensureDir(dir) {
   if (!fssync.existsSync(dir)) {
     fssync.mkdirSync(dir, { recursive: true });
+  }
+}
+
+function isHeicFile(fileName = '', mimeType = '') {
+  const ext = path.extname(String(fileName)).toLowerCase();
+  return ext === '.heic' || ext === '.heif' || String(mimeType).includes('heic');
+}
+
+async function ensureJpegForHeic(filePath) {
+  if (!isHeicFile(filePath)) return null;
+  const jpgPath = filePath.replace(/\.(heic|heif)$/i, '.jpg');
+  if (fssync.existsSync(jpgPath)) return jpgPath;
+  const sharpLib = await loadSharp();
+  if (!sharpLib) return null;
+  try {
+    await sharpLib(filePath).jpeg({ quality: 80 }).toFile(jpgPath);
+    return jpgPath;
+  } catch {
+    return null;
   }
 }
 
@@ -586,9 +615,27 @@ export async function listImages(table, name, folder = null, companyId = 0) {
   const prefix = sanitizeName(name);
   try {
     const files = await fs.readdir(dir);
-    return files
-      .filter((f) => f.startsWith(prefix + '_'))
-      .map((f) => `${urlBase}/${folder || table}/${f}`);
+    const results = [];
+    const seen = new Set();
+    for (const file of files) {
+      if (!file.startsWith(prefix + '_')) continue;
+      if (isHeicFile(file)) {
+        const jpgPath = await ensureJpegForHeic(path.join(dir, file));
+        if (jpgPath) {
+          const jpgName = path.basename(jpgPath);
+          if (!seen.has(jpgName)) {
+            results.push(`${urlBase}/${folder || table}/${jpgName}`);
+            seen.add(jpgName);
+          }
+          continue;
+        }
+      }
+      if (!seen.has(file)) {
+        results.push(`${urlBase}/${folder || table}/${file}`);
+        seen.add(file);
+      }
+    }
+    return results;
   } catch {
     return [];
   }
@@ -649,6 +696,7 @@ export async function searchImages(term, page = 1, perPage = 20, companyId = 0) 
   const safe = sanitizeName(term);
   const regex = new RegExp(`(^|[\\-_~])${safe}([\\-_~]|$)`, 'i');
   const list = [];
+  const seen = new Set();
 
   async function walk(dir, rel = '') {
     let entries;
@@ -664,7 +712,17 @@ export async function searchImages(term, page = 1, perPage = 20, companyId = 0) 
         if (ignore.includes(entry.name.toLowerCase())) continue;
         await walk(full, relPath);
       } else if (regex.test(entry.name)) {
-        list.push(`${urlBase}/${relPath.replace(/\\\\/g, '/')}`);
+        let relName = relPath.replace(/\\\\/g, '/');
+        if (isHeicFile(entry.name)) {
+          const jpgPath = await ensureJpegForHeic(full);
+          if (jpgPath) {
+            relName = path.join(rel, path.basename(jpgPath)).replace(/\\\\/g, '/');
+          }
+        }
+        if (!seen.has(relName)) {
+          list.push(`${urlBase}/${relName}`);
+          seen.add(relName);
+        }
       }
     }
   }
