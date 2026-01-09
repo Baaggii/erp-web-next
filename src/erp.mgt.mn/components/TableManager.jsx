@@ -8017,6 +8017,7 @@ const TableManager = forwardRef(function TableManager({
         imagenameFields={temporaryUploadEntry?.config?.imagenameField || []}
         columnCaseMap={columnCaseMap}
         imageIdField={temporaryUploadEntry?.config?.imageIdField || ''}
+        forceTemporaryName
         onUploaded={(name) => {
           if (!temporaryUploadEntry) return;
           const targetId = temporaryUploadEntry.id;

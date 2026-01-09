@@ -2154,11 +2154,20 @@ export async function promoteTemporarySubmission(
         payloadJson?.rawValues,
         payloadJson,
       );
-      const { name: oldImageName, folder: oldImageFolder } = resolveImageNaming(
+      const {
+        name: resolvedOldImageName,
+        folder: oldImageFolder,
+      } = resolveImageNaming(
         tempImageSource,
         formCfg,
         row.table_name,
       );
+      const oldImageName =
+        tempImageSource?._imageName ||
+        tempImageSource?.imageName ||
+        tempImageSource?.image_name ||
+        tempImageSource?.imagename ||
+        resolvedOldImageName;
       let promotedRow = null;
       if (insertedId) {
         try {

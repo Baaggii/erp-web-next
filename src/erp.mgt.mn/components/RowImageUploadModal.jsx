@@ -17,6 +17,7 @@ export default function RowImageUploadModal({
   imagenameFields = [],
   columnCaseMap = {},
   imageIdField = '',
+  forceTemporaryName = false,
   zIndex = 1200,
   onUploaded = () => {},
   onSuggestion = () => {},
@@ -190,14 +191,17 @@ export default function RowImageUploadModal({
   async function handleUpload(selectedFiles) {
     const { primary: safeName, missing, idName } = resolveNames();
     let finalName = safeName || `tmp_${Date.now()}`;
-    if (!safeName && row._saved && imagenameFields.length > 0) {
+    if (forceTemporaryName) {
+      finalName = row._imageName || `tmp_${Date.now()}`;
+    }
+    if (!forceTemporaryName && !safeName && row._saved && imagenameFields.length > 0) {
       toast(
         `Image name is missing fields: ${missing.join(', ')}. Save required fields before uploading.`,
         'error',
       );
       return;
     }
-    if (!safeName && idName) {
+    if (!forceTemporaryName && !safeName && idName) {
       finalName = `${finalName}_${idName}`;
     }
     if (!folder) {

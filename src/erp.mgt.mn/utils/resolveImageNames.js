@@ -186,6 +186,10 @@ export default function resolveImageNames({
   let primary = '';
   let missing = [];
   const idFieldSet = new Set();
+  const isTemporaryDraft = row?._saved === false;
+  if (isTemporaryDraft && row?._imageName) {
+    primary = String(row._imageName);
+  }
   const hasCurrentConfig = currentConfig && Object.keys(currentConfig).length > 0;
   const preferredFields = hasCurrentConfig
     ? Array.isArray(currentConfig?.imagenameField)
@@ -203,7 +207,7 @@ export default function resolveImageNames({
     new Set([...preferredFields, preferredImageIdField].filter(Boolean)),
   );
   if (preferredImageIdField) idFieldSet.add(preferredImageIdField);
-  if (preferredFieldSet.length > 0) {
+  if (!primary && preferredFieldSet.length > 0) {
     const result = buildImageName(row, preferredFieldSet, columnCaseMap, company);
     primary = result.name;
     missing = result.missing;
