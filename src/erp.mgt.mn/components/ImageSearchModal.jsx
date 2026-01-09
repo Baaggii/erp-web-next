@@ -26,13 +26,14 @@ export default function ImageSearchModal({
     if (!window.confirm('Delete this image?')) return;
     try {
       const url = new URL(src, window.location.origin);
-      const match = url.pathname.match(/^\/api\/[^/]+\/[^/]+\/(.+)$/);
-      if (!match) return;
-      const rel = match[1];
-      const parts = rel.split('/');
+      const uploadMatch = url.pathname.match(/^\/api\/uploads\/[^/]+\/[^/]+\/(.+)$/);
+      const rel = uploadMatch ? uploadMatch[1] : '';
+      if (!rel) return;
+      const parts = rel.split('/').filter(Boolean);
       const file = parts.pop();
       const folder = parts.join('/');
       const table = parts[0] || 'unused';
+      if (!file) return;
       const qs = folder ? `?folder=${encodeURIComponent(folder)}` : '';
       const delUrl = `/api/transaction_images/${encodeURIComponent(table)}/unused/${encodeURIComponent(file)}${qs}`;
       const res = await fetch(delUrl, { method: 'DELETE', credentials: 'include' });
