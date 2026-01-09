@@ -382,6 +382,16 @@ function extractTempImageName(row) {
   );
 }
 
+function matchesImagePrefix(prefix, candidate) {
+  const left = sanitizeName(prefix || '');
+  const right = sanitizeName(candidate || '');
+  if (!left || !right) return false;
+  if (left === right) return true;
+  if (right.startsWith(`${left}_`)) return true;
+  if (left.startsWith(`${right}_`)) return true;
+  return false;
+}
+
 async function getNumFieldForTable(table) {
   let cols;
   try {
@@ -393,7 +403,7 @@ async function getNumFieldForTable(table) {
   return numCol ? numCol.Field : '';
 }
 
-async function findPromotedTempMatch(imagePrefix, companyId = 0) {
+async function findPromotedTempMatch(imagePrefix, companyId = 0, timestamp = null) {
   if (!imagePrefix) return null;
   const escaped = escapeLike(imagePrefix);
   const like = `%${escaped}%`;
@@ -420,7 +430,7 @@ async function findPromotedTempMatch(imagePrefix, companyId = 0) {
   for (const row of rows || []) {
     const imageName = extractTempImageName(row);
     if (!imageName) continue;
-    if (sanitizeName(imageName) !== sanitizeName(imagePrefix)) continue;
+    if (!matchesImagePrefix(imagePrefix, imageName)) continue;
     const promotedRecordId = row.promoted_record_id;
     let promotedRows;
     try {
@@ -446,6 +456,66 @@ async function findPromotedTempMatch(imagePrefix, companyId = 0) {
       numField,
       tempPromoted: true,
       promotedRecordId,
+    };
+  }
+  if (!timestamp) return null;
+  let recentRows;
+  try {
+    [recentRows] = await pool.query(
+      `SELECT table_name, promoted_record_id, payload_json, raw_values_json, cleaned_values_json
+         FROM transaction_temporaries
+        WHERE company_id = ?
+          AND status = 'promoted'
+          AND promoted_record_id IS NOT NULL
+          AND ABS(TIMESTAMPDIFF(SECOND, FROM_UNIXTIME(?/1000), updated_at)) < 172800
+        ORDER BY updated_at DESC
+        LIMIT 50`,
+      [companyId, timestamp],
+    );
+  } catch {
+    return null;
+  }
+  for (const row of recentRows || []) {
+    const imageName = extractTempImageName(row);
+    if (imageName && matchesImagePrefix(imagePrefix, imageName)) {
+      // falls through to promoted row fetch below
+    } else if (!imageName) {
+      // allow prefix check against resolved image name on posted row
+    } else {
+      continue;
+    }
+    let promotedRows;
+    try {
+      [promotedRows] = await pool.query(
+        `SELECT * FROM \`${row.table_name}\` WHERE id = ? LIMIT 1`,
+        [row.promoted_record_id],
+      );
+    } catch {
+      continue;
+    }
+    const promotedRow = promotedRows?.[0];
+    if (!promotedRow) continue;
+    let cfgs = {};
+    try {
+      const { config } = await getConfigsByTable(row.table_name, companyId);
+      cfgs = config;
+    } catch {}
+    const resolved = resolveImageNamingForSearch(
+      promotedRow,
+      cfgs,
+      row.table_name,
+    );
+    if (!matchesImagePrefix(imagePrefix, resolved.name)) {
+      continue;
+    }
+    const numField = await getNumFieldForTable(row.table_name);
+    return {
+      table: row.table_name,
+      row: promotedRow,
+      configs: cfgs,
+      numField,
+      tempPromoted: true,
+      promotedRecordId: row.promoted_record_id,
     };
   }
   return null;
@@ -1098,7 +1168,11 @@ export async function detectIncompleteImages(
       }
       if (!found) {
         const tempPrefix = extractImagePrefix(base);
-        const tempMatch = await findPromotedTempMatch(tempPrefix, companyId);
+        const tempMatch = await findPromotedTempMatch(
+          tempPrefix,
+          companyId,
+          save?.ts ? Number(save.ts) : null,
+        );
         if (tempMatch) {
           found = tempMatch;
         }
@@ -1343,6 +1417,14 @@ export async function checkUploadedImages(
           Number(save.ts),
           companyId,
         );
+        if (!found) {
+          const tempPrefix = extractImagePrefix(base);
+          found = await findPromotedTempMatch(
+            tempPrefix,
+            companyId,
+            Number(save.ts),
+          );
+        }
       }
     } else {
       ({ unique, suffix } = parseFileUnique(base));
