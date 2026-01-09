@@ -7963,12 +7963,13 @@ const TableManager = forwardRef(function TableManager({
         fieldTypeMap={fieldTypeMap}
       />
       <RowImageUploadModal
+        key={uploadRow ? `${getRowId(uploadRow) ?? 'row'}-${uploadRow?._imageName || ''}` : 'upload-none'}
         visible={uploadRow !== null}
         onClose={() => setUploadRow(null)}
         table={table}
         folder={getImageFolder(uploadRow)}
         row={uploadRow || {}}
-        rowKey={0}
+        rowKey={getRowId(uploadRow) || 0}
         imagenameFields={uploadCfg.imagenameField || []}
         columnCaseMap={columnCaseMap}
         imageIdField={uploadCfg.imageIdField || ''}
@@ -8008,6 +8009,7 @@ const TableManager = forwardRef(function TableManager({
         canDelete={Boolean(temporaryImagesEntry?.canDelete)}
       />
       <RowImageUploadModal
+        key={temporaryUploadEntry ? `${temporaryUploadEntry.id || 'temp'}-${temporaryUploadEntry?.row?._imageName || ''}` : 'temp-upload-none'}
         visible={temporaryUploadEntry !== null}
         onClose={() => setTemporaryUploadEntry(null)}
         table={temporaryUploadEntry?.table || table}

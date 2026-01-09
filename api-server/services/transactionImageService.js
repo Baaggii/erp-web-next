@@ -58,13 +58,27 @@ function isHeicFile(fileName = '', mimeType = '') {
 async function ensureJpegForHeic(filePath) {
   if (!isHeicFile(filePath)) return null;
   const jpgPath = filePath.replace(/\.(heic|heif)$/i, '.jpg');
-  if (fssync.existsSync(jpgPath)) return jpgPath;
+  const hasValidJpeg = async () => {
+    try {
+      const stat = await fs.stat(jpgPath);
+      return stat.isFile() && stat.size > 0;
+    } catch {
+      return false;
+    }
+  };
+  if (await hasValidJpeg()) return jpgPath;
+  if (fssync.existsSync(jpgPath)) {
+    await fs.unlink(jpgPath).catch(() => {});
+  }
   const sharpLib = await loadSharp();
   if (!sharpLib) return null;
   try {
     await sharpLib(filePath).jpeg({ quality: 80 }).toFile(jpgPath);
-    return jpgPath;
+    if (await hasValidJpeg()) return jpgPath;
+    await fs.unlink(jpgPath).catch(() => {});
+    return null;
   } catch {
+    await fs.unlink(jpgPath).catch(() => {});
     return null;
   }
 }
