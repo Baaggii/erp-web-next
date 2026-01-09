@@ -219,7 +219,17 @@ export default function RowImageUploadModal({
     try {
       const res = await fetch(uploadUrl, { method: 'POST', body: form, credentials: 'include' });
       if (res.ok) {
-        const imgs = await res.json().catch(() => []);
+        const payload = await res.json().catch(() => []);
+        const imgs = Array.isArray(payload) ? payload : payload?.files || [];
+        if (generalConfig.general?.imageToastEnabled && Array.isArray(payload?.conversionIssues)) {
+          payload.conversionIssues.forEach((issue) => {
+            const detail = issue?.detail ? ` (${issue.detail})` : '';
+            toast(
+              `Sharp conversion ${issue?.reason || 'error'} for ${issue?.file || 'image'}${detail}`,
+              'error',
+            );
+          });
+        }
         toast(`Uploaded ${imgs.length} image(s) as ${finalName}`, 'success');
         setFiles([]);
         setUploaded((u) => [...u, ...imgs]);
