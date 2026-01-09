@@ -569,6 +569,7 @@ export async function saveImages(
   const dir = path.join(baseDir, folder || table);
   ensureDir(dir);
   const saved = [];
+  const conversionIssues = [];
   const prefix = sanitizeName(name);
   const uploaderTag = uploaderId ? `__u${sanitizeName(uploaderId)}__` : '';
   let mimeLib;
@@ -604,18 +605,48 @@ export async function saveImages(
         sharpLib = (await import('sharp')).default;
       } catch {}
       if (sharpLib) {
-        const image = sharpLib(file.path).resize({ width: 1200, height: 1200, fit: 'inside' });
-        if (/\.jpe?g$/i.test(originalExt)) {
-          await image.jpeg({ quality: 80 }).toFile(dest);
-        } else if (/\.png$/i.test(originalExt)) {
-          await image.png({ quality: 80 }).toFile(dest);
-        } else if (/\.webp$/i.test(originalExt)) {
-          await image.webp({ quality: 80 }).toFile(dest);
+        let conversionBlocked = false;
+        const stats = await fs.stat(file.path).catch(() => null);
+        if (!stats) {
+          conversionIssues.push({
+            file: file.originalname,
+            reason: 'file missing',
+          });
+          conversionBlocked = true;
         } else {
-          await image.toFile(dest);
+          try {
+            await sharpLib(file.path).metadata();
+          } catch (err) {
+            conversionIssues.push({
+              file: file.originalname,
+              reason: 'decode error',
+              detail: err?.message || String(err),
+            });
+            conversionBlocked = true;
+          }
         }
-        await fs.unlink(file.path);
-        optimized = true;
+        if (!conversionBlocked) {
+          const image = sharpLib(file.path).resize({ width: 1200, height: 1200, fit: 'inside' });
+          try {
+            if (/\.jpe?g$/i.test(originalExt)) {
+              await image.jpeg({ quality: 80 }).toFile(dest);
+            } else if (/\.png$/i.test(originalExt)) {
+              await image.png({ quality: 80 }).toFile(dest);
+            } else if (/\.webp$/i.test(originalExt)) {
+              await image.webp({ quality: 80 }).toFile(dest);
+            } else {
+              await image.toFile(dest);
+            }
+            await fs.unlink(file.path);
+            optimized = true;
+          } catch (err) {
+            conversionIssues.push({
+              file: file.originalname,
+              reason: 'write error',
+              detail: err?.message || String(err),
+            });
+          }
+        }
       }
     } catch {}
     if (!optimized) {
@@ -627,7 +658,7 @@ export async function saveImages(
     }
     saved.push(`${urlBase}/${folder || table}/${originalName}`);
   }
-  return saved;
+  return { files: saved, conversionIssues };
 }
 
 export async function listImages(table, name, folder = null, companyId = 0) {

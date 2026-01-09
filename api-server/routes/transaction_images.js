@@ -183,7 +183,7 @@ router.post('/:table/:name', requireAuth, upload.array('images'), async (req, re
     if (!req.files || req.files.length === 0) {
       return res.status(400).json({ message: 'no files' });
     }
-    const files = await saveImages(
+    const { files, conversionIssues } = await saveImages(
       req.params.table,
       req.params.name,
       req.files,
@@ -191,7 +191,12 @@ router.post('/:table/:name', requireAuth, upload.array('images'), async (req, re
       req.user.companyId,
       req.user.empid || req.user.id || null,
     );
-    res.json(toAbsolute(req, files));
+    const absolute = toAbsolute(req, files);
+    if (conversionIssues?.length) {
+      res.json({ files: absolute, conversionIssues });
+    } else {
+      res.json(absolute);
+    }
   } catch (err) {
     next(err);
   }
