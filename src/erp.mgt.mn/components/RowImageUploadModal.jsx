@@ -37,17 +37,31 @@ export default function RowImageUploadModal({
   };
   const [showSuggestModal, setShowSuggestModal] = useState(false);
   const isTemporary = forceTemporary || !row._saved;
+  const getTemporaryImageName = (currentRow = {}) =>
+    currentRow?._imageName ||
+    currentRow?.imageName ||
+    currentRow?.image_name ||
+    '';
   function resolveNames() {
-    return resolveImageNames({
+    const resolved = resolveImageNames({
       row,
       columnCaseMap,
       company,
       imagenameFields,
       imageIdField,
     });
+    if (!isTemporary) return resolved;
+    const temporaryName = getTemporaryImageName(row);
+    return {
+      ...resolved,
+      primary: temporaryName,
+      altNames: temporaryName ? [] : [],
+      idName: '',
+      imageIdFields: [],
+    };
   }
 
-  function buildTemporaryImageName(fileName = '') {
+  function buildTemporaryImageName() {
     const timestamp = Date.now();
     const random = Math.random().toString(36).slice(2, 5);
     return `tmp_${timestamp}__${random}`;
@@ -100,7 +114,8 @@ export default function RowImageUploadModal({
       if (isCurrent()) setUploaded([]);
       return;
     }
-    if (isTemporary && !row._imageName) {
+    const temporaryName = getTemporaryImageName(row);
+    if (isTemporary && !temporaryName) {
       if (isCurrent()) setUploaded([]);
       return;
     }
@@ -219,10 +234,10 @@ export default function RowImageUploadModal({
     const filesToUpload = Array.from(selectedFiles || files);
     if (!filesToUpload.length) return;
     const existingTemporaryName =
-      isTemporary && row?._imageName ? row._imageName : '';
+      isTemporary ? getTemporaryImageName(row) : '';
     let finalName = isTemporary
-      ? existingTemporaryName || buildTemporaryImageName(filesToUpload[0]?.name)
-      : safeName || buildTemporaryImageName(filesToUpload[0]?.name);
+      ? existingTemporaryName || buildTemporaryImageName()
+      : safeName || buildTemporaryImageName();
     if (!safeName && !isTemporary && row._saved && imagenameFields.length > 0) {
       toast(
         `Image name is missing fields: ${missing.join(', ')}. Save required fields before uploading.`,
