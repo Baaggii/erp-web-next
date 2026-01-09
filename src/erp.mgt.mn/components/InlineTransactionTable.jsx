@@ -12,7 +12,7 @@ import AsyncSearchSelect from './AsyncSearchSelect.jsx';
 import RowDetailModal from './RowDetailModal.jsx';
 import RowImageUploadModal from './RowImageUploadModal.jsx';
 import TagMultiInput from './TagMultiInput.jsx';
-import buildImageName from '../utils/buildImageName.js';
+import resolveImageNames from '../utils/resolveImageNames.js';
 import slugify from '../utils/slugify.js';
 import formatTimestamp from '../utils/formatTimestamp.js';
 import callProcedure from '../utils/callProcedure.js';
@@ -2137,14 +2137,13 @@ function InlineTransactionTable(
     if (ok !== false) {
       const savedData = (ok && typeof ok === 'object') ? ok : {};
       const updated = { ...row, ...savedData, _saved: true };
-      const imageFields = imagenameFields.length
-        ? Array.from(
-            new Set([...imagenameFields, imageIdField].filter(Boolean)),
-          )
-        : imageIdField
-        ? [imageIdField]
-        : [];
-      const { name: newImageName } = buildImageName(updated, imageFields, columnCaseMap);
+      const { primary: newImageName } = resolveImageNames({
+        row: updated,
+        columnCaseMap,
+        company,
+        imagenameFields,
+        imageIdField,
+      });
       const oldImageName = row._imageName;
       if (oldImageName && newImageName && oldImageName !== newImageName) {
         const safeTable = encodeURIComponent(tableName);

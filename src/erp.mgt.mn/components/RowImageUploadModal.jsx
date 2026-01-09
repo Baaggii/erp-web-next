@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useContext, useLayoutEffect, useRef } from 'react';
 import Modal from './Modal.jsx';
 import { useToast } from '../context/ToastContext.jsx';
-import buildImageName from '../utils/buildImageName.js';
+import resolveImageNames from '../utils/resolveImageNames.js';
 import AISuggestionModal from './AISuggestionModal.jsx';
 import useGeneralConfig from '../hooks/useGeneralConfig.js';
 import { useTranslation } from 'react-i18next';
@@ -35,18 +35,14 @@ export default function RowImageUploadModal({
     addToast(msg, type);
   };
   const [showSuggestModal, setShowSuggestModal] = useState(false);
-  function buildName(fields = imagenameFields) {
-    let list = [];
-    if (fields === imagenameFields) {
-      list = Array.from(
-        new Set([...imagenameFields, imageIdField].filter(Boolean)),
-      );
-    } else if (fields.length) {
-      list = fields;
-    } else if (imageIdField) {
-      list = [imageIdField];
-    }
-    return buildImageName(row, list, columnCaseMap, company);
+  function resolveNames() {
+    return resolveImageNames({
+      row,
+      columnCaseMap,
+      company,
+      imagenameFields,
+      imageIdField,
+    });
   }
 
   function handleClipboardPaste(event) {
@@ -100,13 +96,7 @@ export default function RowImageUploadModal({
       if (isCurrent()) setUploaded([]);
       return;
     }
-    const primary = buildName().name;
-    const { name: idName } = imageIdField ? buildName([imageIdField]) : { name: '' };
-    const altNames = [];
-    if (idName && idName !== primary) altNames.push(idName);
-    if (row._imageName && ![primary, ...altNames].includes(row._imageName)) {
-      altNames.push(row._imageName);
-    }
+    const { primary, altNames, idName } = resolveNames();
     const safeTable = encodeURIComponent(table);
     const params = new URLSearchParams();
     if (folder) params.set('folder', folder);
@@ -170,7 +160,16 @@ export default function RowImageUploadModal({
       }
       if (isCurrent()) setUploaded([]);
     })();
-  }, [visible, folder, rowKey, table, row._imageName, row._saved, imageIdField]);
+  }, [
+    visible,
+    folder,
+    rowKey,
+    table,
+    row._imageName,
+    row._saved,
+    imageIdField,
+    imagenameFields,
+  ]);
 
 
   useEffect(() => {
@@ -189,11 +188,17 @@ export default function RowImageUploadModal({
   }, [suggestions]);
 
   async function handleUpload(selectedFiles) {
-    const { name: safeName, missing } = buildName();
+    const { primary: safeName, missing, idName } = resolveNames();
     let finalName = safeName || `tmp_${Date.now()}`;
-    if (!safeName && imageIdField) {
-      const { name: idName } = buildName([imageIdField]);
-      if (idName) finalName = `${finalName}_${idName}`;
+    if (!safeName && row._saved && imagenameFields.length > 0) {
+      toast(
+        `Image name is missing fields: ${missing.join(', ')}. Save required fields before uploading.`,
+        'error',
+      );
+      return;
+    }
+    if (!safeName && idName) {
+      finalName = `${finalName}_${idName}`;
     }
     if (!folder) {
       toast('Image folder is missing', 'error');
@@ -304,7 +309,7 @@ export default function RowImageUploadModal({
   }
 
   async function deleteFile(file) {
-    const { name } = buildName();
+    const { primary: name } = resolveNames();
     if (!folder || !name) return;
     try {
       const safeTable = encodeURIComponent(table);
@@ -320,7 +325,7 @@ export default function RowImageUploadModal({
   }
 
   async function deleteAll() {
-    const { name } = buildName();
+    const { primary: name } = resolveNames();
     if (!folder || !name) return;
     try {
       const safeTable = encodeURIComponent(table);
