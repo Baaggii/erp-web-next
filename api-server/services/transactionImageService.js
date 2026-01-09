@@ -59,24 +59,29 @@ function buildNameFromRow(row, fields = []) {
   return sanitizeName(vals.join('_'));
 }
 
-function pickConfig(configs = {}, row = {}) {
-  for (const cfg of Object.values(configs)) {
+function pickConfigEntry(configs = {}, row = {}) {
+  for (const [name, cfg] of Object.entries(configs)) {
     if (!cfg.transactionTypeValue) continue;
     if (cfg.transactionTypeField) {
       const val = getCase(row, cfg.transactionTypeField);
       if (val !== undefined && String(val) === String(cfg.transactionTypeValue)) {
-        return cfg;
+        return { name, config: cfg };
       }
     } else {
       const matchField = Object.keys(row).find(
         (k) => String(getCase(row, k)) === String(cfg.transactionTypeValue),
       );
       if (matchField) {
-        return { ...cfg, transactionTypeField: matchField };
+        return { name, config: { ...cfg, transactionTypeField: matchField } };
       }
     }
   }
-  return Object.values(configs)[0] || {};
+  const [fallbackName, fallbackConfig] = Object.entries(configs)[0] || [];
+  return { name: fallbackName || '', config: fallbackConfig || {} };
+}
+
+function pickConfig(configs = {}, row = {}) {
+  return pickConfigEntry(configs, row).config;
 }
 
 function extractUnique(str) {
@@ -821,7 +826,8 @@ export async function detectIncompleteImages(
       }
       const { row, configs, numField, tempPromoted } = found;
 
-      const cfg = pickConfig(configs, row);
+      const cfgEntry = pickConfigEntry(configs, row);
+      const cfg = cfgEntry.config;
       let newBase = '';
       let folderRaw = '';
       if (tempPromoted) {
@@ -923,6 +929,11 @@ export async function detectIncompleteImages(
         });
         continue;
       }
+      const recordId =
+        promotedRecordId ||
+        getCase(row, 'id') ||
+        (numField ? getCase(row, numField) : '') ||
+        '';
       incompleteFound += 1;
       const folderDisplay = '/' + String(folderRaw).replace(/^\/+/, '');
       const sanitizedUnique = sanitizeName(unique);
@@ -944,6 +955,8 @@ export async function detectIncompleteImages(
           folderDisplay,
           currentName: f,
           newName,
+          recordId,
+          configName: cfgEntry.name || '',
           currentPath: path.join(dirPath, f),
         });
       } else if (results.length >= perPage) {
