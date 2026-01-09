@@ -566,13 +566,26 @@ export async function saveImages(
   for (const file of files) {
     const originalExt =
       path.extname(file.originalname) || `.${mimeLib?.extension(file.mimetype) || 'bin'}`;
-    const lowerExt = originalExt.toLowerCase();
-    const isHeic = lowerExt === '.heic' || lowerExt === '.heif' || file.mimetype?.includes('heic');
-    const outputExt = isHeic ? '.jpg' : originalExt;
     const unique = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-    const fileName = `${prefix}${uploaderTag}_${unique}${outputExt}`;
-    const dest = path.join(dir, fileName);
+    const baseName = `${prefix}${uploaderTag}_${unique}`;
+    const isHeic = isHeicFile(file.originalname, file.mimetype);
+    const originalName = `${baseName}${originalExt}`;
+    const dest = path.join(dir, originalName);
     let optimized = false;
+    if (isHeic) {
+      try {
+        await fs.rename(file.path, dest);
+      } catch {
+        // ignore
+      }
+      const converted = await ensureJpegForHeic(dest);
+      if (converted) {
+        saved.push(`${urlBase}/${folder || table}/${path.basename(converted)}`);
+      } else {
+        saved.push(`${urlBase}/${folder || table}/${originalName}`);
+      }
+      continue;
+    }
     try {
       let sharpLib;
       try {
@@ -580,9 +593,7 @@ export async function saveImages(
       } catch {}
       if (sharpLib) {
         const image = sharpLib(file.path).resize({ width: 1200, height: 1200, fit: 'inside' });
-        if (isHeic) {
-          await image.jpeg({ quality: 80 }).toFile(dest);
-        } else if (/\.jpe?g$/i.test(originalExt)) {
+        if (/\.jpe?g$/i.test(originalExt)) {
           await image.jpeg({ quality: 80 }).toFile(dest);
         } else if (/\.png$/i.test(originalExt)) {
           await image.png({ quality: 80 }).toFile(dest);
@@ -602,7 +613,7 @@ export async function saveImages(
         // ignore
       }
     }
-    saved.push(`${urlBase}/${folder || table}/${fileName}`);
+    saved.push(`${urlBase}/${folder || table}/${originalName}`);
   }
   return saved;
 }
