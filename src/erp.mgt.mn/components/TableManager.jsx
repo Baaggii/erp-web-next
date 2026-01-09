@@ -2598,13 +2598,9 @@ const TableManager = forwardRef(function TableManager({
   }
 
   function resolveImageNameForSearch(row) {
-    return resolveImageNameWithFallback(row, formConfig || {});
-  }
-
-  function resolveImageNameWithFallback(row, preferredConfig = {}) {
     if (!row) return '';
-    const preferredName = resolveImageNameForRow(row, preferredConfig);
-    if (preferredName) return preferredName;
+    const currentName = resolveImageNameForRow(row, formConfig || {});
+    if (currentName) return currentName;
     const matches = getMatchingConfigsForRow(row);
     const fieldSet = new Set();
     matches.forEach(({ config }) => {

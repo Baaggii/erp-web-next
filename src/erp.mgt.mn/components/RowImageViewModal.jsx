@@ -77,15 +77,49 @@ export default function RowImageViewModal({
     return normalizeEmpId(uploader) === normalizeEmpId(viewerEmpId);
   };
 
-  function pickMatchingConfigs(cfgs = {}, r = {}) {
+  function pickConfigEntry(cfgs = {}, r = {}) {
     const tVal =
       getCase(r, 'transtype') ||
       getCase(r, 'Transtype') ||
       getCase(r, 'UITransType') ||
       getCase(r, 'UITransTypeName');
-    const matches = [];
     for (const [configName, cfg] of Object.entries(cfgs)) {
       if (!cfg.transactionTypeValue) continue;
+      if (
+        tVal !== undefined &&
+        String(tVal) === String(cfg.transactionTypeValue)
+      ) {
+        return { config: cfg, configName };
+      }
+      if (cfg.transactionTypeField) {
+        const val = getCase(r, cfg.transactionTypeField);
+        if (val !== undefined && String(val) === String(cfg.transactionTypeValue)) {
+          return { config: cfg, configName };
+        }
+      } else {
+        const matchField = Object.keys(r).find(
+          (k) => String(getCase(r, k)) === String(cfg.transactionTypeValue),
+        );
+        if (matchField) {
+          return {
+            config: { ...cfg, transactionTypeField: matchField },
+            configName,
+          };
+        }
+      }
+    }
+    return { config: {}, configName: '' };
+  }
+
+  function pickMatchingConfigs(cfgs = {}, r = {}) {
+    const matches = [];
+    const tVal =
+      getCase(r, 'transtype') ||
+      getCase(r, 'Transtype') ||
+      getCase(r, 'UITransType') ||
+      getCase(r, 'UITransTypeName');
+    for (const [configName, cfg] of Object.entries(cfgs)) {
+      if (!cfg?.transactionTypeValue) continue;
       if (
         tVal !== undefined &&
         String(tVal) === String(cfg.transactionTypeValue)
@@ -113,54 +147,27 @@ export default function RowImageViewModal({
     return matches;
   }
 
-  function collectImageFields(configEntries = []) {
+  function collectImageFields(entries = []) {
     const fieldSet = new Set();
-    const idFieldSet = new Set();
+    const imageIdFields = new Set();
     const configNames = [];
-    configEntries.forEach(({ configName, config }) => {
-      const hasImageNameFields = Array.isArray(config?.imagenameField)
-        ? config.imagenameField.filter(Boolean)
-        : [];
-      const imageIdField =
-        typeof config?.imageIdField === 'string' ? config.imageIdField : '';
-      if (hasImageNameFields.length === 0 && !imageIdField) return;
-      hasImageNameFields.forEach((field) => fieldSet.add(field));
-      if (imageIdField) {
-        fieldSet.add(imageIdField);
-        idFieldSet.add(imageIdField);
-      }
+    entries.forEach(({ config, configName }) => {
       if (configName) configNames.push(configName);
+      if (Array.isArray(config?.imagenameField)) {
+        config.imagenameField.forEach((field) => {
+          if (field) fieldSet.add(field);
+        });
+      }
+      if (typeof config?.imageIdField === 'string' && config.imageIdField) {
+        fieldSet.add(config.imageIdField);
+        imageIdFields.add(config.imageIdField);
+      }
     });
     return {
       fields: Array.from(fieldSet),
       configNames,
-      imageIdFields: Array.from(idFieldSet),
+      imageIdFields: Array.from(imageIdFields),
     };
-  }
-
-  function resolveImageNameForRow(r = {}, config = {}) {
-    if (!r || typeof r !== 'object') return '';
-    const imagenameFields = Array.isArray(config?.imagenameField)
-      ? config.imagenameField
-      : [];
-    const imageIdField =
-      typeof config?.imageIdField === 'string' ? config.imageIdField : '';
-    const combinedFields = Array.from(
-      new Set([...imagenameFields, imageIdField].filter(Boolean)),
-    );
-    if (combinedFields.length > 0) {
-      const { name } = buildImageName(r, combinedFields, columnCaseMap, company);
-      if (name) return name;
-    }
-    if (imagenameFields.length > 0) {
-      const { name } = buildImageName(r, imagenameFields, columnCaseMap, company);
-      if (name) return name;
-    }
-    if (imageIdField) {
-      const { name } = buildImageName(r, [imageIdField], columnCaseMap, company);
-      if (name) return name;
-    }
-    return r._imageName || r.imageName || r.image_name || '';
   }
 
   function buildFallbackName(r = {}) {
@@ -204,20 +211,26 @@ export default function RowImageViewModal({
     if (!visible || loaded.current) return;
     loaded.current = true;
 
-    const preferredConfig =
-      currentConfig && Object.keys(currentConfig).length > 0
-        ? currentConfig
-        : {};
-    const preferredConfigName = currentConfigName || '';
-    const preferredName = resolveImageNameForRow(row, preferredConfig);
-    let usedConfigNames = [];
+    const { config: cfg, configName } = pickConfigEntry(configs, row);
+    const preferredConfig = currentConfig && Object.keys(currentConfig).length
+      ? currentConfig
+      : cfg;
+    const preferredConfigName = currentConfigName || configName;
+    const preferredFields = Array.isArray(preferredConfig?.imagenameField)
+      ? preferredConfig.imagenameField
+      : [];
+    const preferredImageIdField =
+      typeof preferredConfig?.imageIdField === 'string' ? preferredConfig.imageIdField : '';
+    const preferredFieldSet = Array.from(
+      new Set([...preferredFields, preferredImageIdField].filter(Boolean)),
+    );
+    const preferredName = preferredFieldSet.length
+      ? buildImageName(row, preferredFieldSet, columnCaseMap, company).name
+      : '';
     let primary = '';
     const idFieldSet = new Set();
     if (preferredName) {
       primary = preferredName;
-      if (preferredConfigName) {
-        usedConfigNames = [preferredConfigName];
-      }
       if (preferredConfig?.imageIdField) {
         idFieldSet.add(preferredConfig.imageIdField);
       }
@@ -231,7 +244,6 @@ export default function RowImageViewModal({
         const { name } = buildImageName(row, fields, columnCaseMap, company);
         if (name) {
           primary = name;
-          usedConfigNames = configNames;
         }
       }
     }
@@ -255,10 +267,8 @@ export default function RowImageViewModal({
     if (row._imageName && ![primary, ...altNames].includes(row._imageName)) {
       altNames.push(row._imageName);
     }
-    if (usedConfigNames.length > 0) {
-      const label =
-        usedConfigNames.length === 1 ? 'Image search config' : 'Image search configs';
-      toast(`${label}: ${usedConfigNames.join(', ')}`, 'info');
+    if (configName) {
+      toast(`Image search config: ${configName}`, 'info');
     }
     toast(`Primary image name: ${primary}`, 'info');
     if (altNames.length) {
