@@ -2621,6 +2621,13 @@ const TableManager = forwardRef(function TableManager({
     return row._imageName || row.imageName || row.image_name || '';
   }
 
+  function resolveImageNameWithFallback(row, config = {}) {
+    if (!row) return '';
+    const primaryName = resolveImageNameForRow(row, config);
+    if (primaryName) return primaryName;
+    return resolveImageNameForSearch(row);
+  }
+
   function getKeyFields() {
     const withPrimaryOrdinals = columnMeta
       .map((column, index) => {
