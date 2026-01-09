@@ -11,6 +11,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const projectRoot = path.resolve(__dirname, '../../');
 let sharpLoader;
+let heicConvertLoader;
 
 async function loadSharp() {
   if (!sharpLoader) {
@@ -19,6 +20,15 @@ async function loadSharp() {
       .catch(() => null);
   }
   return sharpLoader;
+}
+
+async function loadHeicConvert() {
+  if (!heicConvertLoader) {
+    heicConvertLoader = import('heic-convert')
+      .then((mod) => mod.default || mod)
+      .catch(() => null);
+  }
+  return heicConvertLoader;
 }
 
 async function getDirs(companyId = 0) {
@@ -76,38 +86,76 @@ async function ensureJpegForHeic(
     return null;
   }
   const sharpLib = await loadSharp();
-  if (!sharpLib) return null;
+  let sharpFailed = false;
+  let lastSharpError;
   try {
-    try {
-      await sharpLib(filePath).metadata();
-    } catch (err) {
+    if (!sharpLib) {
+      sharpFailed = true;
+    } else {
+      try {
+        await sharpLib(filePath).metadata();
+      } catch (err) {
+        sharpFailed = true;
+        lastSharpError = err;
+      }
+      if (!sharpFailed) {
+        await sharpLib(filePath).jpeg({ quality: 80 }).toFile(jpgPath);
+        const { size } = await fs.stat(jpgPath);
+        if (!size) {
+          await fs.unlink(jpgPath).catch(() => {});
+          conversionIssues.push({
+            file: fileName || path.basename(filePath),
+            reason: 'write error',
+            detail: 'empty output',
+          });
+          return null;
+        }
+        return jpgPath;
+      }
+    }
+  } catch (err) {
+    sharpFailed = true;
+    lastSharpError = err;
+  }
+  if (sharpFailed) {
+    const heicConvert = await loadHeicConvert();
+    if (!heicConvert) {
       conversionIssues.push({
         file: fileName || path.basename(filePath),
         reason: 'decode error',
+        detail: lastSharpError?.message || String(lastSharpError || 'heic converter unavailable'),
+      });
+      return null;
+    }
+    try {
+      const inputBuffer = await fs.readFile(filePath);
+      const outputBuffer = await heicConvert({
+        buffer: inputBuffer,
+        format: 'JPEG',
+        quality: 0.8,
+      });
+      await fs.writeFile(jpgPath, outputBuffer);
+      const { size } = await fs.stat(jpgPath);
+      if (!size) {
+        await fs.unlink(jpgPath).catch(() => {});
+        conversionIssues.push({
+          file: fileName || path.basename(filePath),
+          reason: 'write error',
+          detail: 'empty output',
+        });
+        return null;
+      }
+      return jpgPath;
+    } catch (err) {
+      conversionIssues.push({
+        file: fileName || path.basename(filePath),
+        reason: 'write error',
         detail: err?.message || String(err),
       });
       return null;
     }
-    await sharpLib(filePath).jpeg({ quality: 80 }).toFile(jpgPath);
-    const { size } = await fs.stat(jpgPath);
-    if (!size) {
-      await fs.unlink(jpgPath).catch(() => {});
-      conversionIssues.push({
-        file: fileName || path.basename(filePath),
-        reason: 'write error',
-        detail: 'empty output',
-      });
-      return null;
-    }
-    return jpgPath;
-  } catch (err) {
-    conversionIssues.push({
-      file: fileName || path.basename(filePath),
-      reason: 'write error',
-      detail: err?.message || String(err),
-    });
-    return null;
   }
+  return null;
 }
 
 function sanitizeName(name) {
