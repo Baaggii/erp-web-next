@@ -3952,7 +3952,10 @@ const TableManager = forwardRef(function TableManager({
       const promotionEntryValues = promotionEntry
         ? buildTemporaryFormState(promotionEntry).values
         : null;
-      const promotionOldName = resolveImageNameForRow(promotionEntryValues, promotionConfig);
+      const promotionOldName = resolveImageNameWithFallback(
+        promotionEntryValues,
+        promotionConfig,
+      );
       const promotionOldFolder = promotionEntryValues
         ? getImageFolder(promotionEntryValues)
         : null;
@@ -3985,7 +3988,7 @@ const TableManager = forwardRef(function TableManager({
                 [promotionConfig.imageIdField]: promotedRecordId,
               }
             : promotionValues;
-        const promotionNewName = resolveImageNameForRow(
+        const promotionNewName = resolveImageNameWithFallback(
           promotionNameSource,
           promotionConfig,
         );
@@ -5385,7 +5388,7 @@ const TableManager = forwardRef(function TableManager({
             finalizedValues[imageConfig.imageIdField] = promotedRecordId;
           }
         }
-        const entryImageName = resolveImageNameForRow(
+        const entryImageName = resolveImageNameWithFallback(
           resolvedImageValues,
           imageConfig,
         );
