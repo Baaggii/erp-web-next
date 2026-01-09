@@ -2597,6 +2597,73 @@ const TableManager = forwardRef(function TableManager({
     return matches;
   }
 
+  function hasImageFields(config) {
+    return (
+      (Array.isArray(config?.imagenameField) && config.imagenameField.length > 0) ||
+      Boolean(config?.imageIdField)
+    );
+  }
+
+  function dedupeFields(fields = []) {
+    const seen = new Set();
+    const deduped = [];
+    fields.forEach((field) => {
+      if (!field) return;
+      const key = String(field);
+      if (seen.has(key)) return;
+      seen.add(key);
+      deduped.push(field);
+    });
+    return deduped;
+  }
+
+  function getImageConfigForRow(row, fallbackConfig = formConfig || {}) {
+    if (!row) return fallbackConfig || {};
+    const matches = getMatchingConfigsForRow(row);
+    const imageMatches = matches.filter(({ config }) => hasImageFields(config));
+    const sourceEntries = imageMatches.length > 0 ? imageMatches : matches;
+    const imageFields = [];
+    sourceEntries.forEach(({ config }) => {
+      if (Array.isArray(config?.imagenameField)) {
+        imageFields.push(...config.imagenameField);
+      }
+      if (typeof config?.imageIdField === 'string' && config.imageIdField) {
+        imageFields.push(config.imageIdField);
+      }
+    });
+    const combinedFields = dedupeFields(imageFields);
+    if (combinedFields.length === 0) {
+      if (hasImageFields(fallbackConfig)) {
+        return {
+          ...fallbackConfig,
+          imagenameField: dedupeFields([
+            ...(fallbackConfig?.imagenameField || []),
+            fallbackConfig?.imageIdField || '',
+          ]),
+          imageIdField:
+            typeof fallbackConfig?.imageIdField === 'string'
+              ? fallbackConfig.imageIdField
+              : '',
+        };
+      }
+      return fallbackConfig || {};
+    }
+    const imageIdField =
+      sourceEntries
+        .map(({ config }) =>
+          typeof config?.imageIdField === 'string' ? config.imageIdField : '',
+        )
+        .find(Boolean) ||
+      (typeof fallbackConfig?.imageIdField === 'string'
+        ? fallbackConfig.imageIdField
+        : '');
+    return {
+      ...fallbackConfig,
+      imagenameField: combinedFields,
+      imageIdField: imageIdField || '',
+    };
+  }
+
   function resolveImageNameForSearch(row) {
     if (!row) return '';
     const currentName = resolveImageNameForRow(row, formConfig || {});
@@ -3955,7 +4022,7 @@ const TableManager = forwardRef(function TableManager({
       }
       const promotionEntry = pendingTemporaryPromotion?.entry || null;
       const promotionValues = cleaned;
-      const promotionConfig = getConfigForRow(promotionValues) || formConfig || {};
+      const promotionConfig = getImageConfigForRow(promotionValues, formConfig || {});
       const promotionEntryValues = promotionEntry
         ? buildTemporaryFormState(promotionEntry).values
         : null;
@@ -8195,7 +8262,7 @@ const TableManager = forwardRef(function TableManager({
                       const reviewedBy = entry?.reviewedBy || entry?.reviewed_by || '';
                       const { values: normalizedValues } = buildTemporaryFormState(entry);
                       const imageConfig =
-                        getConfigForRow({ ...normalizedValues, ...entry }) || formConfig || {};
+                        getImageConfigForRow({ ...normalizedValues, ...entry }, formConfig || {});
                       const promotedRecordId =
                         entry?.promotedRecordId ||
                         entry?.promoted_record_id ||
