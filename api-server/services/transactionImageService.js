@@ -214,7 +214,7 @@ function dedupeFields(fields = []) {
   return deduped;
 }
 
-function collectImageFields(entries = []) {
+function collectImageFields(entries = [], { includeImageId = true } = {}) {
   const fieldSet = new Set();
   const configNames = [];
   entries.forEach(({ name, config }) => {
@@ -224,7 +224,11 @@ function collectImageFields(entries = []) {
         if (field) fieldSet.add(field);
       });
     }
-    if (typeof config?.imageIdField === 'string' && config.imageIdField) {
+    if (
+      includeImageId &&
+      typeof config?.imageIdField === 'string' &&
+      config.imageIdField
+    ) {
       fieldSet.add(config.imageIdField);
     }
   });
@@ -289,6 +293,36 @@ function resolveImageNamingForSearch(row = {}, configs = {}, fallbackTable = '')
   return { name, folder, configNames };
 }
 
+function resolveImagePrefixForSearch(row = {}, configs = {}, fallbackTable = '') {
+  const { name: preferredName, config: preferredConfig } = pickConfigEntry(configs, row);
+  const preferredFields = Array.isArray(preferredConfig?.imagenameField)
+    ? preferredConfig.imagenameField
+    : [];
+  let name = '';
+  let configNames = [];
+  if (preferredFields.length) {
+    name = buildNameFromRow(row, preferredFields);
+    if (name && preferredName) {
+      configNames = [preferredName];
+    }
+  }
+  if (!name) {
+    const matchedConfigs = pickMatchingConfigs(configs, row);
+    const { fields, configNames: matchedNames } = collectImageFields(
+      matchedConfigs,
+      { includeImageId: false },
+    );
+    if (fields.length) {
+      name = buildNameFromRow(row, fields);
+      if (name) {
+        configNames = matchedNames;
+      }
+    }
+  }
+  const folder = buildFolderName(row, preferredConfig?.imageFolder || fallbackTable);
+  return { name, folder, configNames };
+}
+
 function extractUnique(str) {
   // Strip saveImages timestamp/random suffix if present
   const cleaned = str.replace(/_[0-9]{13}_[a-z0-9]{6}$/i, '');
@@ -330,6 +364,12 @@ function parseSaveName(base) {
   }
   const unique = segs.join('_');
   return { inv, sp, transType, unique, ts, rand, pre };
+}
+
+function parseSaveSuffix(base) {
+  const match = base.match(/_(\d{13})_([a-z0-9]{6})$/i);
+  if (!match) return null;
+  return { ts: match[1], rand: match[2], suffix: `_${match[1]}_${match[2]}` };
 }
 
 function stripUploaderTag(value = '') {
@@ -506,7 +546,14 @@ async function findPromotedTempMatch(imagePrefix, companyId = 0, timestamp = nul
       row.table_name,
     );
     if (!matchesImagePrefix(imagePrefix, resolved.name)) {
-      continue;
+      const prefixOnly = resolveImagePrefixForSearch(
+        promotedRow,
+        cfgs,
+        row.table_name,
+      );
+      if (!matchesImagePrefix(imagePrefix, prefixOnly.name)) {
+        continue;
+      }
     }
     const numField = await getNumFieldForTable(row.table_name);
     return {
@@ -519,6 +566,62 @@ async function findPromotedTempMatch(imagePrefix, companyId = 0, timestamp = nul
     };
   }
   return null;
+}
+
+async function findPromotedTempByTimestamp(timestamp, companyId = 0) {
+  if (!timestamp) return null;
+  let recentRows;
+  try {
+    [recentRows] = await pool.query(
+      `SELECT table_name, promoted_record_id
+         FROM transaction_temporaries
+        WHERE company_id = ?
+          AND status = 'promoted'
+          AND promoted_record_id IS NOT NULL
+          AND ABS(TIMESTAMPDIFF(SECOND, FROM_UNIXTIME(?/1000), updated_at)) < 172800
+        ORDER BY updated_at DESC
+        LIMIT 20`,
+      [companyId, timestamp],
+    );
+  } catch {
+    return null;
+  }
+  const candidates = [];
+  for (const row of recentRows || []) {
+    let promotedRows;
+    try {
+      [promotedRows] = await pool.query(
+        `SELECT * FROM \`${row.table_name}\` WHERE id = ? LIMIT 1`,
+        [row.promoted_record_id],
+      );
+    } catch {
+      continue;
+    }
+    const promotedRow = promotedRows?.[0];
+    if (!promotedRow) continue;
+    let cfgs = {};
+    try {
+      const { config } = await getConfigsByTable(row.table_name, companyId);
+      cfgs = config;
+    } catch {}
+    const prefixOnly = resolveImagePrefixForSearch(
+      promotedRow,
+      cfgs,
+      row.table_name,
+    );
+    if (!prefixOnly.name) continue;
+    const numField = await getNumFieldForTable(row.table_name);
+    candidates.push({
+      table: row.table_name,
+      row: promotedRow,
+      configs: cfgs,
+      numField,
+      tempPromoted: true,
+      promotedRecordId: row.promoted_record_id,
+    });
+    if (candidates.length > 1) break;
+  }
+  return candidates.length === 1 ? candidates[0] : null;
 }
 
 function buildFolderName(row, fallback = '') {
@@ -1119,9 +1222,10 @@ export async function detectIncompleteImages(
       let suffix = '';
       let found;
       const save = parseSaveName(base);
+      let suffixMatch = null;
       if (save) {
         ({ unique } = save);
-        suffix = `__${save.ts}_${save.rand}`;
+        suffix = `_${save.ts}_${save.rand}`;
         if (hasTxnCode(base, unique, codes)) {
           skipped.push({
             currentName: f,
@@ -1141,37 +1245,54 @@ export async function detectIncompleteImages(
           companyId,
         );
       } else {
-        ({ unique, suffix } = parseFileUnique(base));
+        suffixMatch = parseSaveSuffix(base);
+        if (suffixMatch) {
+          suffix = suffixMatch.suffix;
+        }
+        const parsed = parseFileUnique(base);
+        unique = parsed.unique;
+        if (!suffix && parsed.suffix) {
+          suffix = parsed.suffix;
+        }
         if (!unique) {
-          skipped.push({
-            currentName: f,
-            newName: f,
-            folder: entry.name,
-            folderDisplay: '/' + entry.name,
-            currentPath: filePath,
-            reason: 'No unique identifier',
-          });
-          continue;
+          if (suffixMatch) {
+            found = await findPromotedTempByTimestamp(
+              Number(suffixMatch.ts),
+              companyId,
+            );
+          }
+          if (!found) {
+            skipped.push({
+              currentName: f,
+              newName: f,
+              folder: entry.name,
+              folderDisplay: '/' + entry.name,
+              currentPath: filePath,
+              reason: 'No unique identifier',
+            });
+            continue;
+          }
+        } else {
+          if (hasTxnCode(base, unique, codes)) {
+            skipped.push({
+              currentName: f,
+              newName: f,
+              folder: entry.name,
+              folderDisplay: '/' + entry.name,
+              currentPath: filePath,
+              reason: 'Contains transaction codes',
+            });
+            continue;
+          }
+          found = await findTxnByUniqueId(unique, companyId);
         }
-        if (hasTxnCode(base, unique, codes)) {
-          skipped.push({
-            currentName: f,
-            newName: f,
-            folder: entry.name,
-            folderDisplay: '/' + entry.name,
-            currentPath: filePath,
-            reason: 'Contains transaction codes',
-          });
-          continue;
-        }
-        found = await findTxnByUniqueId(unique, companyId);
       }
       if (!found) {
         const tempPrefix = extractImagePrefix(base);
         const tempMatch = await findPromotedTempMatch(
           tempPrefix,
           companyId,
-          save?.ts ? Number(save.ts) : null,
+          save?.ts ? Number(save.ts) : suffixMatch?.ts ? Number(suffixMatch.ts) : null,
         );
         if (tempMatch) {
           found = tempMatch;
@@ -1406,7 +1527,7 @@ export async function checkUploadedImages(
     const save = parseSaveName(base);
     if (save) {
       ({ unique } = save);
-      suffix = `__${save.ts}_${save.rand}`;
+      suffix = `_${save.ts}_${save.rand}`;
       if (hasTxnCode(base, unique, codes)) {
         reason = 'Already renamed';
       } else {
@@ -1427,13 +1548,37 @@ export async function checkUploadedImages(
         }
       }
     } else {
-      ({ unique, suffix } = parseFileUnique(base));
+      const suffixMatch = parseSaveSuffix(base);
+      if (suffixMatch) {
+        suffix = suffixMatch.suffix;
+      }
+      const parsed = parseFileUnique(base);
+      unique = parsed.unique;
+      if (!suffix && parsed.suffix) {
+        suffix = parsed.suffix;
+      }
       if (!unique) {
-        reason = 'Invalid filename';
+        if (suffixMatch) {
+          found = await findPromotedTempByTimestamp(
+            Number(suffixMatch.ts),
+            companyId,
+          );
+        }
+        if (!found) {
+          reason = 'Invalid filename';
+        }
       } else if (hasTxnCode(base, unique, codes)) {
         reason = 'Already renamed';
       } else {
         found = await findTxnByUniqueId(unique, companyId);
+        if (!found && suffixMatch) {
+          const tempPrefix = extractImagePrefix(base);
+          found = await findPromotedTempMatch(
+            tempPrefix,
+            companyId,
+            Number(suffixMatch.ts),
+          );
+        }
       }
     }
     if (!reason && !found) reason = 'Transaction not found';
