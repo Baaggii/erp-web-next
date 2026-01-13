@@ -1222,6 +1222,8 @@ const RowFormModal = function RowFormModal({
   const [printEmpSelected, setPrintEmpSelected] = useState(true);
   const [printCustSelected, setPrintCustSelected] = useState(false);
   const [printPayload, setPrintPayload] = useState(null);
+  const [printJobQueue, setPrintJobQueue] = useState([]);
+  const printIframeRef = useRef(null);
   const [infoPayload, setInfoPayload] = useState({});
   const [infoResponse, setInfoResponse] = useState(null);
   const [infoError, setInfoError] = useState(null);
@@ -4230,87 +4232,268 @@ const RowFormModal = function RowFormModal({
     setPrintModalOpen(false);
     setPrintPayload(null);
   }
+  const resolvePrintValue = useCallback(
+    (column, rawValue) => {
+      const autoSelectForField = getAutoSelectConfig(column);
+      const resolvedRelationConfig = relationConfigMap[column] || autoSelectForField?.config;
+      const normalizedColumn = String(column).toLowerCase();
+      const isNumericField = fieldTypeMap[column] === 'number';
+      const isJsonField = fieldTypeMap[column] === 'json';
+      const raw = rawValue;
+      const val = typeof raw === 'object' && raw !== null ? raw.value : raw;
+      let display = typeof raw === 'object' && raw !== null ? raw.label || val : val;
+      const normalizedValueKey = normalizeRelationOptionKey(val);
+      let resolvedOptionLabel = false;
+      const labelMap = relationOptionLabelLookup[column] || relationOptionLabelLookup[normalizedColumn];
+      if (normalizedValueKey && labelMap) {
+        const optionLabel = labelMap[normalizedValueKey];
+        if (optionLabel !== undefined) {
+          display = optionLabel;
+          resolvedOptionLabel = true;
+        }
+      }
+      if (isJsonField) {
+        const values = normalizeJsonArrayForState(val);
+        const relationRows = relationData[column] || {};
+        const parts = [];
+        const pushFormattedPart = (input) => {
+          const formatted = formatJsonItem(input);
+          if (formatted || formatted === 0 || formatted === false) {
+            parts.push(typeof formatted === 'string' ? formatted : String(formatted));
+          }
+        };
+        values.forEach((item) => {
+          const rowData = relationRows[item] || relationRows[String(item)];
+          if (rowData && resolvedRelationConfig) {
+            const identifier =
+              getRowValueCaseInsensitive(
+                rowData,
+                resolvedRelationConfig.idField || resolvedRelationConfig.column,
+              ) ?? item;
+            const extras = (resolvedRelationConfig.displayFields || [])
+              .map((df) => rowData[df])
+              .filter((v) => v !== undefined && v !== null && v !== '');
+            const formattedParts = [identifier, ...extras]
+              .map((entry) => formatJsonItem(entry))
+              .filter((entry) => entry || entry === 0 || entry === false)
+              .map((entry) => (typeof entry === 'string' ? entry : String(entry)));
+            if (formattedParts.length > 0) {
+              parts.push(formattedParts.join(' - '));
+            }
+          } else {
+            pushFormattedPart(item);
+          }
+        });
+        display = parts.join(', ');
+      } else if (
+        !resolvedOptionLabel &&
+        resolvedRelationConfig &&
+        val !== undefined &&
+        relationData[column]?.[val]
+      ) {
+        const rowData = relationData[column][val];
+        const cfg = resolvedRelationConfig;
+        const parts = [];
+        const identifier = getRowValueCaseInsensitive(
+          rowData,
+          cfg.idField || cfg.column,
+        );
+        if (identifier !== undefined && identifier !== null) {
+          parts.push(identifier);
+        }
+        if (parts.length === 0) parts.push(val);
+        (cfg.displayFields || []).forEach((df) => {
+          if (rowData[df] !== undefined) parts.push(rowData[df]);
+        });
+        display = parts.join(' - ');
+      } else if (
+        !resolvedOptionLabel &&
+        viewSourceMap[column] &&
+        val !== undefined &&
+        relationData[column]?.[val]
+      ) {
+        const rowData = relationData[column][val];
+        const cfg = viewDisplays[viewSourceMap[column]] || {};
+        const parts = [];
+        const identifier = getRowValueCaseInsensitive(
+          rowData,
+          cfg.idField || column,
+        );
+        if (identifier !== undefined && identifier !== null) {
+          parts.push(identifier);
+        }
+        if (parts.length === 0) parts.push(val);
+        (cfg.displayFields || []).forEach((df) => {
+          if (rowData[df] !== undefined) parts.push(rowData[df]);
+        });
+        display = parts.join(' - ');
+      } else if (
+        !resolvedOptionLabel &&
+        autoSelectForField?.config &&
+        val !== undefined &&
+        relationData[column]?.[val]
+      ) {
+        const rowData = relationData[column][val];
+        const cfg = autoSelectForField?.config || {};
+        const parts = [];
+        const identifier = getRowValueCaseInsensitive(rowData, cfg.idField);
+        if (identifier !== undefined && identifier !== null) {
+          parts.push(identifier);
+        }
+        if (parts.length === 0) parts.push(val);
+        (cfg.displayFields || []).forEach((df) => {
+          if (rowData[df] !== undefined) parts.push(rowData[df]);
+        });
+        display = parts.join(' - ');
+      }
+      if (isNumericField && display !== undefined && display !== null && display !== '') {
+        display = formatNumericValue(column, display);
+      }
+      if (display === null || display === undefined) display = '';
+      return typeof display === 'string' ? display : String(display);
+    },
+    [
+      fieldTypeMap,
+      formatNumericValue,
+      getAutoSelectConfig,
+      getRowValueCaseInsensitive,
+      relationConfigMap,
+      relationData,
+      relationOptionLabelLookup,
+      viewDisplays,
+      viewSourceMap,
+    ],
+  );
+
+  const buildPrintHtml = useCallback(
+    (mode, payload = null) => {
+      const activePayload = payload || buildPrintPayload();
+      const activeFormVals = activePayload.formVals || formVals;
+      const activeGridRows = Array.isArray(activePayload.gridRows)
+        ? activePayload.gridRows
+        : gridRows;
+      const all = [...headerCols, ...mainCols, ...footerCols];
+      const list = mode === 'emp' ? printEmpField : printCustField;
+      const allowed = new Set(list.length > 0 ? list : all);
+      const h = headerCols.filter((c) => allowed.has(c));
+      const m = mainCols.filter((c) => allowed.has(c));
+      const f = footerCols.filter((c) => allowed.has(c));
+      const hasPrintValue = (value) =>
+        value !== '' && value !== null && value !== 0 && value !== undefined;
+      const resolveFormValue = (column) =>
+        resolvePrintValue(column, activeFormVals?.[column]);
+      const resolveRowValue = (rowData, column) =>
+        resolvePrintValue(column, getRowValueCaseInsensitive(rowData, column));
+
+      const rowHtml = (cols, skipEmpty = false) =>
+        cols
+          .filter((c) => (skipEmpty ? hasPrintValue(activeFormVals?.[c]) : true))
+          .map((c) => `<tr><th>${labels[c] || c}</th><td>${resolveFormValue(c)}</td></tr>`)
+          .join('');
+
+      const mainTableHtml = () => {
+        if (!useGrid) return rowHtml(m, true);
+        if (activeGridRows.length === 0) return '';
+        const used = m.filter((c) =>
+          activeGridRows.some((r) => hasPrintValue(getRowValueCaseInsensitive(r, c))),
+        );
+        if (used.length === 0) return '';
+        const header = used.map((c) => `<th>${labels[c] || c}</th>`).join('');
+        const body = activeGridRows
+          .map(
+            (r) =>
+              '<tr>' +
+              used.map((c) => `<td>${resolveRowValue(r, c)}</td>`).join('') +
+              '</tr>',
+          )
+          .join('');
+        return `<table><thead><tr>${header}</tr></thead><tbody>${body}</tbody></table>`;
+      };
+
+      let html = '<html><head><title>Print</title>';
+      html +=
+        '<style>@media print{body{margin:1rem;font-size:12px}}table{width:100%;border-collapse:collapse;margin-bottom:1rem;}th,td{border:1px solid #666;padding:4px;text-align:left;}h3{margin:0 0 4px 0;font-weight:600;}</style>';
+      html += '</head><body>';
+      if (h.length) html += `<h3>Header</h3><table>${rowHtml(h, true)}</table>`;
+      if (m.length) html += `<h3>Main</h3>${mainTableHtml()}`;
+      if (f.length) html += `<h3>Footer</h3><table>${rowHtml(f, true)}</table>`;
+      html += '</body></html>';
+      return html;
+    },
+    [
+      buildPrintPayload,
+      footerCols,
+      formVals,
+      getRowValueCaseInsensitive,
+      gridRows,
+      headerCols,
+      labels,
+      mainCols,
+      printCustField,
+      printEmpField,
+      resolvePrintValue,
+      useGrid,
+    ],
+  );
+
+  const activePrintJob = printJobQueue[0] || null;
+  const activePrintJobHtml = React.useMemo(() => {
+    if (!activePrintJob) return '';
+    return buildPrintHtml(activePrintJob.mode, activePrintJob.payload);
+  }, [activePrintJob, buildPrintHtml]);
+
+  const advancePrintQueue = useCallback(() => {
+    setPrintJobQueue((prev) => {
+      if (prev.length <= 1) return [];
+      return prev.slice(1);
+    });
+  }, []);
+
+  const handlePrintJobCancel = useCallback(() => {
+    advancePrintQueue();
+  }, [advancePrintQueue]);
+
+  const handlePrintJobExecute = useCallback(() => {
+    if (!activePrintJob) return;
+    const html = activePrintJobHtml || buildPrintHtml(activePrintJob.mode, activePrintJob.payload);
+    if (userSettings?.printerId) {
+      Promise.resolve(
+        fetch(`${API_BASE}/print`, {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ printerId: userSettings.printerId, content: html }),
+        }),
+      )
+        .catch((err) => console.error('Print failed', err))
+        .finally(() => {
+          advancePrintQueue();
+        });
+      return;
+    }
+    const frameWindow = printIframeRef.current?.contentWindow;
+    if (frameWindow) {
+      frameWindow.focus();
+      frameWindow.print();
+    }
+    advancePrintQueue();
+  }, [
+    activePrintJob,
+    activePrintJobHtml,
+    advancePrintQueue,
+    buildPrintHtml,
+    userSettings?.printerId,
+  ]);
+
   function confirmPrintSelection() {
     const payload = printPayload || buildPrintPayload();
-    if (printEmpSelected) handlePrint('emp', payload);
-    if (printCustSelected) handlePrint('cust', payload);
-    closePrintModal();
-  }
-
-  function handlePrint(mode, payload = null) {
-    const activePayload = payload || buildPrintPayload();
-    const activeFormVals = activePayload.formVals || formVals;
-    const activeGridRows = Array.isArray(activePayload.gridRows)
-      ? activePayload.gridRows
-      : gridRows;
-    const all = [...headerCols, ...mainCols, ...footerCols];
-    const list = mode === 'emp' ? printEmpField : printCustField;
-    const allowed = new Set(list.length > 0 ? list : all);
-    const h = headerCols.filter((c) => allowed.has(c));
-    const m = mainCols.filter((c) => allowed.has(c));
-    const f = footerCols.filter((c) => allowed.has(c));
-
-    const rowHtml = (cols, skipEmpty = false) =>
-      cols
-        .filter((c) =>
-          skipEmpty
-            ? activeFormVals[c] !== '' &&
-              activeFormVals[c] !== null &&
-              activeFormVals[c] !== 0 &&
-              activeFormVals[c] !== undefined
-            : true,
-        )
-        .map(
-          (c) =>
-            `<tr><th>${labels[c] || c}</th><td>${
-              activeFormVals[c] !== undefined ? activeFormVals[c] : ''
-            }</td></tr>`,
-        )
-        .join('');
-
-    const mainTableHtml = () => {
-      if (!useGrid) return rowHtml(m, true);
-      if (activeGridRows.length === 0) return '';
-      const used = m.filter((c) =>
-        activeGridRows.some(
-          (r) => r[c] !== '' && r[c] !== null && r[c] !== 0 && r[c] !== undefined,
-        ),
-      );
-      if (used.length === 0) return '';
-      const header = used.map((c) => `<th>${labels[c] || c}</th>`).join('');
-      const body = activeGridRows
-        .map(
-          (r) =>
-            '<tr>' +
-            used.map((c) => `<td>${r[c] !== undefined ? r[c] : ''}</td>`).join('') +
-            '</tr>',
-        )
-        .join('');
-      return `<table><thead><tr>${header}</tr></thead><tbody>${body}</tbody></table>`;
-    };
-
-    let html = '<html><head><title>Print</title>';
-    html +=
-      '<style>@media print{body{margin:1rem;font-size:12px}}table{width:100%;border-collapse:collapse;margin-bottom:1rem;}th,td{border:1px solid #666;padding:4px;text-align:left;}h3{margin:0 0 4px 0;font-weight:600;}</style>';
-    html += '</head><body>';
-    if (h.length) html += `<h3>Header</h3><table>${rowHtml(h, true)}</table>`;
-    if (m.length) html += `<h3>Main</h3>${mainTableHtml()}`;
-    if (f.length) html += `<h3>Footer</h3><table>${rowHtml(f, true)}</table>`;
-    html += '</body></html>';
-    if (userSettings?.printerId) {
-      fetch(`${API_BASE}/print`, {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ printerId: userSettings.printerId, content: html }),
-      }).catch((err) => console.error('Print failed', err));
-    } else {
-      const w = window.open('', '_blank');
-      w.document.write(html);
-      w.document.close();
-      w.focus();
-      w.print();
+    const queue = [];
+    if (printEmpSelected) queue.push({ mode: 'emp', payload });
+    if (printCustSelected) queue.push({ mode: 'cust', payload });
+    if (queue.length > 0) {
+      setPrintJobQueue(queue);
     }
+    closePrintModal();
   }
 
   const showTemporarySaveButton =
@@ -4620,6 +4803,45 @@ const RowFormModal = function RowFormModal({
                 className="px-3 py-1 bg-blue-600 text-white rounded disabled:opacity-60"
                 onClick={confirmPrintSelection}
                 disabled={!printEmpSelected && !printCustSelected}
+              >
+                {t('print', 'Print')}
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+      {activePrintJob && (
+        <Modal
+          visible={Boolean(activePrintJob)}
+          title={`${t('print', 'Print')} - ${
+            activePrintJob.mode === 'emp'
+              ? t('printEmp', 'Print Emp')
+              : t('printCust', 'Print Cust')
+          }`}
+          onClose={handlePrintJobCancel}
+          width="720px"
+          zIndex={1100}
+        >
+          <div className="flex flex-col gap-3">
+            <iframe
+              ref={printIframeRef}
+              title="Print preview"
+              className="w-full border rounded"
+              style={{ height: '60vh' }}
+              srcDoc={activePrintJobHtml}
+            />
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                className="px-3 py-1 bg-gray-200 rounded"
+                onClick={handlePrintJobCancel}
+              >
+                {t('cancel', 'Cancel')}
+              </button>
+              <button
+                type="button"
+                className="px-3 py-1 bg-blue-600 text-white rounded disabled:opacity-60"
+                onClick={handlePrintJobExecute}
               >
                 {t('print', 'Print')}
               </button>
