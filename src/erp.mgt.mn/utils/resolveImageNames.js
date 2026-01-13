@@ -220,18 +220,25 @@ export default function resolveImageNames({
   let fallbackPrimary = '';
   let configAltNames = [];
   const idFieldSet = new Set();
-  const hasCurrentConfig = currentConfig && Object.keys(currentConfig).length > 0;
-  const preferredFields = hasCurrentConfig
+  const hasCurrentConfig =
+    Boolean(currentConfigName) ||
+    (currentConfig && Object.keys(currentConfig).length > 0);
+  const currentHasImageFields = hasImageFields(currentConfig);
+  const preferredFields = hasCurrentConfig && currentHasImageFields
     ? Array.isArray(currentConfig?.imagenameField)
       ? currentConfig.imagenameField
       : []
+    : hasCurrentConfig
+    ? []
     : Array.isArray(imagenameFields)
     ? imagenameFields
     : [];
-  const preferredImageIdField = hasCurrentConfig
+  const preferredImageIdField = hasCurrentConfig && currentHasImageFields
     ? typeof currentConfig?.imageIdField === 'string'
       ? currentConfig.imageIdField
       : ''
+    : hasCurrentConfig
+    ? ''
     : imageIdField || '';
   const preferredFieldSet = Array.from(
     new Set([...preferredFields, preferredImageIdField].filter(Boolean)),
@@ -247,9 +254,11 @@ export default function resolveImageNames({
     const matched = pickConfigEntry(configs, row, columnCaseMap);
     if (matched.configName) configName = matched.configName;
   }
-  if (!primary && Object.keys(configs || {}).length > 0) {
-    if (!hasImageFields(currentConfig)) {
-      const { fields, configNames, imageIdFields } = collectAllConfigImageFields(configs);
+  const shouldForceAllConfigNames = hasCurrentConfig && !currentHasImageFields;
+  if (Object.keys(configs || {}).length > 0) {
+    if (shouldForceAllConfigNames || (!primary && !hasImageFields(currentConfig))) {
+      const { fields, configNames, imageIdFields } =
+        collectAllConfigImageFields(configs);
       const entries = Object.entries(configs || {}).map(([configName, config]) => ({
         configName,
         config,
@@ -273,7 +282,7 @@ export default function resolveImageNames({
         }
         if (!missing.length) missing = result.missing;
       }
-    } else {
+    } else if (!primary) {
       const matchedConfigs = pickMatchingConfigs(configs, row, columnCaseMap);
       const { fields, configNames, imageIdFields } =
         collectImageFields(matchedConfigs);
