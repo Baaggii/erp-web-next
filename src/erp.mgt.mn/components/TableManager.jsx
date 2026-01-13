@@ -2700,12 +2700,22 @@ const TableManager = forwardRef(function TableManager({
         }
       });
       combinedFields = Array.from(fieldSet);
+      if (combinedFields.length === 0) {
+        combinedFields = getAllConfigImageFields();
+      }
     } else {
       combinedFields = getAllConfigImageFields();
     }
     if (combinedFields.length > 0) {
       const { name } = buildImageName(row, combinedFields, columnCaseMap, company);
       if (name) return name;
+    }
+    if (hasCurrentImageFields) {
+      const allFields = getAllConfigImageFields();
+      if (allFields.length > 0) {
+        const { name } = buildImageName(row, allFields, columnCaseMap, company);
+        if (name) return name;
+      }
     }
     return row._imageName || row.imageName || row.image_name || '';
   }
