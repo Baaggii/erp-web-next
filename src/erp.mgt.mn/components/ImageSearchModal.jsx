@@ -45,7 +45,7 @@ export default function ImageSearchModal({
       const delUrl = `/api/transaction_images/${encodeURIComponent(table)}/unused/${encodeURIComponent(file)}${qs}`;
       const res = await fetch(delUrl, { method: 'DELETE', credentials: 'include' });
       if (res.ok) {
-        setItems((it) => it.filter((i) => i !== src));
+        setItems((it) => it.filter((i) => i.src !== src));
       }
     } catch {
       /* ignore */
