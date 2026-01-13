@@ -256,8 +256,14 @@ export default function resolveImageNames({
       altNames.push(name);
     }
   });
-  if (row?._imageName && ![primary, ...altNames].includes(row._imageName)) {
-    altNames.push(row._imageName);
+  const explicitImageName =
+    row?._imageName || row?.imageName || row?.image_name || '';
+  if (explicitImageName && explicitImageName !== primary) {
+    const existingIndex = altNames.indexOf(explicitImageName);
+    if (existingIndex !== -1) {
+      altNames.splice(existingIndex, 1);
+    }
+    altNames.unshift(explicitImageName);
   }
   return {
     primary,
