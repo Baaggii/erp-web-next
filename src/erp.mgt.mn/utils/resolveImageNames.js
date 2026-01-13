@@ -232,8 +232,22 @@ export default function resolveImageNames({
   const hasMatchingConfigs = matchingConfigs.length > 0;
   const shouldUseAllConfigs =
     useAllConfigsWhenMissing && configsAvailable && !hasMatchingConfigs;
-  const preferredFields = Array.isArray(imagenameFields) ? imagenameFields : [];
-  const preferredImageIdField = imageIdField || '';
+  const preferredFields = hasCurrentConfig && currentHasImageFields
+    ? Array.isArray(currentConfig?.imagenameField)
+      ? currentConfig.imagenameField
+      : []
+    : hasCurrentConfig
+    ? []
+    : Array.isArray(imagenameFields)
+    ? imagenameFields
+    : [];
+  const preferredImageIdField = hasCurrentConfig && currentHasImageFields
+    ? typeof currentConfig?.imageIdField === 'string'
+      ? currentConfig.imageIdField
+      : ''
+    : hasCurrentConfig
+    ? ''
+    : imageIdField || '';
   const preferredFieldSet = Array.from(
     new Set([...preferredFields, preferredImageIdField].filter(Boolean)),
   );
@@ -300,37 +314,24 @@ export default function resolveImageNames({
       imageIdFields.forEach((field) => idFieldSet.add(field));
       if (!configName && configNames.length > 0) configName = configNames[0];
       if (names.length > 0) {
-        if (!primary) {
-          primary = names[0];
-          configAltNames = names.slice(1);
-        } else {
-          names.forEach((name) => {
-            if (name && name !== primary && !configAltNames.includes(name)) {
-              configAltNames.push(name);
-            }
-          });
-        }
+        primary = names[0];
+        configAltNames = names.slice(1);
         if (!missing.length) missing = configMissing;
       } else if (fields.length > 0) {
         const result = buildImageName(row, fields, columnCaseMap, company);
         if (result.name) {
-          if (!primary) {
-            primary = result.name;
-          } else if (result.name !== primary && !configAltNames.includes(result.name)) {
-            configAltNames.push(result.name);
-          }
+          primary = result.name;
         }
         if (!missing.length) missing = result.missing;
       }
-    } else {
-      const { fields, configNames, imageIdFields } =
-        collectAllConfigImageFields(configs);
+    } else if (!primary) {
+      const { fields, configNames, imageIdFields } = collectImageFields(matchingConfigs);
       imageIdFields.forEach((field) => idFieldSet.add(field));
       if (!configName && configNames.length > 0) configName = configNames[0];
       if (fields.length > 0) {
         const result = buildImageName(row, fields, columnCaseMap, company);
-        if (result.name && result.name !== primary && !configAltNames.includes(result.name)) {
-          configAltNames.push(result.name);
+        if (result.name) {
+          primary = result.name;
         }
         if (!missing.length) missing = result.missing;
       }
