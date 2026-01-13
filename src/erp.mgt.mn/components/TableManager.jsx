@@ -22,6 +22,7 @@ import Modal from './Modal.jsx';
 import CustomDatePicker from './CustomDatePicker.jsx';
 import formatTimestamp from '../utils/formatTimestamp.js';
 import buildImageName from '../utils/buildImageName.js';
+import resolveImageNames from '../utils/resolveImageNames.js';
 import slugify from '../utils/slugify.js';
 import { getTenantKeyList } from '../utils/tenantKeys.js';
 import useGeneralConfig from '../hooks/useGeneralConfig.js';
@@ -2506,24 +2507,19 @@ const TableManager = forwardRef(function TableManager({
         : [];
       const imageIdField =
         typeof config?.imageIdField === 'string' ? config.imageIdField : '';
-      const combinedFields = Array.from(
-        new Set([...imagenameFields, imageIdField].filter(Boolean)),
-      );
-      if (combinedFields.length > 0) {
-        const { name } = buildImageName(row, combinedFields, columnCaseMap, company);
-        if (name) return name;
-      }
-      if (imagenameFields.length > 0) {
-        const { name } = buildImageName(row, imagenameFields, columnCaseMap, company);
-        if (name) return name;
-      }
-      if (imageIdField) {
-        const { name } = buildImageName(row, [imageIdField], columnCaseMap, company);
-        if (name) return name;
-      }
-      return row._imageName || row.imageName || row.image_name || '';
+      const { primary } = resolveImageNames({
+        row,
+        columnCaseMap,
+        company,
+        imagenameFields,
+        imageIdField,
+        configs: allConfigs,
+        currentConfig: formConfig,
+        currentConfigName: formName,
+      });
+      return primary || '';
     },
-    [columnCaseMap, company],
+    [allConfigs, columnCaseMap, company, formConfig, formName],
   );
 
   function getCase(obj, field) {
@@ -2538,27 +2534,21 @@ const TableManager = forwardRef(function TableManager({
 
   function getConfigForRow(row) {
     if (!row) return formConfig || {};
-    const tVal =
-      getCase(row, 'transtype') ||
-      getCase(row, 'Transtype') ||
-      getCase(row, 'UITransType') ||
-      getCase(row, 'UITransTypeName');
+    const { fields, valueSet } = getTransactionTypeFilters();
     for (const cfg of Object.values(allConfigs || {})) {
       if (!cfg.transactionTypeValue) continue;
-      if (tVal !== undefined && String(tVal) === String(cfg.transactionTypeValue)) {
-        return cfg;
-      }
       if (cfg.transactionTypeField) {
         const val = getCase(row, cfg.transactionTypeField);
         if (val !== undefined && String(val) === String(cfg.transactionTypeValue)) {
           return cfg;
         }
-      } else {
-        const matchField = Object.keys(row).find(
-          (k) => String(getCase(row, k)) === String(cfg.transactionTypeValue),
-        );
-        if (matchField) return { ...cfg, transactionTypeField: matchField };
       }
+      if (!valueSet.has(String(cfg.transactionTypeValue))) continue;
+      const matchField = fields.find((field) => {
+        const val = getCase(row, field);
+        return val !== undefined && String(val) === String(cfg.transactionTypeValue);
+      });
+      if (matchField) return { ...cfg, transactionTypeField: matchField };
     }
     return formConfig || {};
   }
@@ -2566,35 +2556,49 @@ const TableManager = forwardRef(function TableManager({
   function getMatchingConfigsForRow(row) {
     if (!row) return [];
     const matches = [];
-    const tVal =
-      getCase(row, 'transtype') ||
-      getCase(row, 'Transtype') ||
-      getCase(row, 'UITransType') ||
-      getCase(row, 'UITransTypeName');
+    const { fields, valueSet } = getTransactionTypeFilters();
     for (const [configName, cfg] of Object.entries(allConfigs || {})) {
       if (!cfg?.transactionTypeValue) continue;
-      if (tVal !== undefined && String(tVal) === String(cfg.transactionTypeValue)) {
-        matches.push({ configName, config: cfg });
-        continue;
-      }
       if (cfg.transactionTypeField) {
         const val = getCase(row, cfg.transactionTypeField);
         if (val !== undefined && String(val) === String(cfg.transactionTypeValue)) {
           matches.push({ configName, config: cfg });
+          continue;
         }
-      } else {
-        const matchField = Object.keys(row).find(
-          (k) => String(getCase(row, k)) === String(cfg.transactionTypeValue),
-        );
-        if (matchField) {
-          matches.push({
-            configName,
-            config: { ...cfg, transactionTypeField: matchField },
-          });
-        }
+      }
+      if (!valueSet.has(String(cfg.transactionTypeValue))) continue;
+      const matchField = fields.find((field) => {
+        const val = getCase(row, field);
+        return val !== undefined && String(val) === String(cfg.transactionTypeValue);
+      });
+      if (matchField) {
+        matches.push({
+          configName,
+          config: { ...cfg, transactionTypeField: matchField },
+        });
       }
     }
     return matches;
+  }
+
+  function getTransactionTypeFilters() {
+    const values = [];
+    const fields = [
+      'transtype',
+      'Transtype',
+      'UITransType',
+      'UITransTypeName',
+    ];
+    Object.values(allConfigs || {}).forEach((cfg) => {
+      if (cfg?.transactionTypeValue) values.push(cfg.transactionTypeValue);
+      if (cfg?.transactionTypeField) fields.push(cfg.transactionTypeField);
+    });
+    const dedupedValues = dedupeFields(values);
+    return {
+      values: dedupedValues,
+      fields: dedupeFields(fields),
+      valueSet: new Set(dedupedValues.map((val) => String(val))),
+    };
   }
 
   function hasImageFields(config) {
@@ -2679,60 +2683,24 @@ const TableManager = forwardRef(function TableManager({
 
   function resolveImageNameForSearch(row) {
     if (!row) return '';
-    const hasConfigs = Object.keys(allConfigs || {}).length > 0;
-    const currentConfig =
-      formConfig && typeof formConfig === 'object' ? formConfig : null;
-    const hasCurrentImageFields = currentConfig ? hasImageFields(currentConfig) : false;
-    if (hasCurrentImageFields) {
-      const currentName = resolveImageNameForRow(row, currentConfig);
-      if (currentName) return currentName;
-    }
-    let combinedFields = [];
-    if (hasCurrentImageFields && hasConfigs) {
-      const matches = getMatchingConfigsForRow(row);
-      const fieldSet = new Set();
-      matches.forEach(({ config }) => {
-        if (Array.isArray(config?.imagenameField)) {
-          config.imagenameField.forEach((field) => {
-            if (field) fieldSet.add(field);
-          });
-        }
-        if (typeof config?.imageIdField === 'string' && config.imageIdField) {
-          fieldSet.add(config.imageIdField);
-        }
-      });
-      combinedFields = Array.from(fieldSet);
-      if (combinedFields.length === 0) {
-        combinedFields = getAllConfigImageFields();
-      }
-    } else if (hasCurrentImageFields) {
-      combinedFields = dedupeFields([
-        ...(currentConfig?.imagenameField || []),
-        currentConfig?.imageIdField || '',
-      ]);
-    } else {
-      combinedFields = getAllConfigImageFields();
-    }
-    if (combinedFields.length > 0) {
-      const { name } = buildImageName(row, combinedFields, columnCaseMap, company);
-      if (name) return name;
-    }
-    if (hasCurrentImageFields) {
-      const allFields = getAllConfigImageFields();
-      if (allFields.length > 0) {
-        const { name } = buildImageName(row, allFields, columnCaseMap, company);
-        if (name) return name;
-      }
-    }
-    return row._imageName || row.imageName || row.image_name || '';
+    const allFields = getAllConfigImageFields();
+    const { primary } = resolveImageNames({
+      row,
+      columnCaseMap,
+      company,
+      imagenameFields: allFields,
+      imageIdField: '',
+      configs: allConfigs,
+      currentConfig: formConfig,
+      currentConfigName: formName,
+    });
+    return primary || '';
   }
 
   function resolveImageNameWithFallback(row, config = {}) {
     if (!row) return '';
-    if (hasImageFields(config)) {
-      const primaryName = resolveImageNameForRow(row, config);
-      if (primaryName) return primaryName;
-    }
+    const primaryName = resolveImageNameForRow(row, config);
+    if (primaryName) return primaryName;
     return resolveImageNameForSearch(row);
   }
 
