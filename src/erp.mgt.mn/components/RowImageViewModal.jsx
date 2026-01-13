@@ -97,7 +97,7 @@ export default function RowImageViewModal({
     if (altNames.length) {
       toast(`Alt image names: ${altNames.join(', ')}`, 'info');
     }
-    if (!folder || !primary) {
+    if (!folder || (!primary && altNames.length === 0)) {
       setFiles([]);
       return;
     }
@@ -112,32 +112,18 @@ export default function RowImageViewModal({
         const params = new URLSearchParams();
         if (fld) params.set('folder', fld);
         if (company != null) params.set('companyId', company);
-        const url = `${API_BASE}/transaction_images/${safeTable}/${encodeURIComponent(primary)}?${params.toString()}`;
-        toast(`Searching URL: ${url}`, 'info');
-        try {
-          const res = await fetch(url, { credentials: 'include' });
-          const list = await parseImagesPayload(res);
-          if (list.length > 0) {
-            list.forEach((p) => toast(`Found image: ${p}`, 'info'));
-            const entries = list.map((p) => ({
-              path: p,
-              name: p.split('/').pop(),
-              src: p.startsWith('http') ? p : `${apiRoot}${p}`,
-            }));
-            setFiles(entries);
-            return;
+        const searchNames = [primary, ...altNames].filter(Boolean);
+        for (const nm of searchNames) {
+          if (nm !== primary) {
+            toast(`Searching alternate image name: ${nm}`, 'info');
           }
-        } catch {
-          /* ignore */
-        }
-        for (const nm of altNames) {
-          const altUrl = `${API_BASE}/transaction_images/${safeTable}/${encodeURIComponent(nm)}?${params.toString()}`;
-          toast(`Searching URL: ${altUrl}`, 'info');
+          const url = `${API_BASE}/transaction_images/${safeTable}/${encodeURIComponent(nm)}?${params.toString()}`;
+          toast(`Searching URL: ${url}`, 'info');
           try {
-            const res = await fetch(altUrl, { credentials: 'include' });
+            const res = await fetch(url, { credentials: 'include' });
             const list = await parseImagesPayload(res);
             if (list.length > 0) {
-              if (nm === idName && idName && idName !== primary) {
+              if (nm === idName && idName && idName !== primary && primary) {
                 try {
                   const renameParams = new URLSearchParams();
                   if (folder) renameParams.set('folder', folder);
