@@ -2536,7 +2536,6 @@ const TableManager = forwardRef(function TableManager({
     if (!row) return formConfig || {};
     const { matches } = getConfigMatchesForRow(row);
     if (matches.length > 0) return matches[0].config;
-    }
     return formConfig || {};
   }
 
