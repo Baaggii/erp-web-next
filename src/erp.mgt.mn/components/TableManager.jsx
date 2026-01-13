@@ -594,6 +594,7 @@ const TableManager = forwardRef(function TableManager({
   const [showDetail, setShowDetail] = useState(false);
   const [detailRow, setDetailRow] = useState(null);
   const [detailRefs, setDetailRefs] = useState([]);
+  const [imagesRow, setImagesRow] = useState(null);
   const [uploadRow, setUploadRow] = useState(null);
   const [ctxMenu, setCtxMenu] = useState(null); // { x, y, value }
   const [searchTerm, setSearchTerm] = useState('');
@@ -3154,6 +3155,55 @@ const TableManager = forwardRef(function TableManager({
       setDetailRefs([]);
     }
     setShowDetail(true);
+  }
+
+  function showImageSearchToast(row, tableName = table) {
+    if (!generalConfig.general?.imageToastEnabled) return;
+    if (!row || typeof row !== 'object') return;
+    const { matches, fields, value } = getConfigMatchesForRow(row);
+    const matchedTypeFields = dedupeFields(
+      matches.map((match) => match.matchedField).filter(Boolean),
+    );
+    const imageConfig = getImageConfigForRow(row, formConfig || {});
+    const buildFields = dedupeFields([
+      ...(Array.isArray(imageConfig?.imagenameField)
+        ? imageConfig.imagenameField
+        : []),
+      imageConfig?.imageIdField || '',
+    ]);
+    addToast(
+      `Transaction type value: ${value || 'none'}`,
+      'info',
+    );
+    addToast(
+      `Transaction type fields: ${fields.join(', ') || 'none'}`,
+      'info',
+    );
+    addToast(
+      `Matched transaction type fields: ${matchedTypeFields.join(', ') || 'none'}`,
+      'info',
+    );
+    addToast(`Image build fields: ${buildFields.join(', ') || 'none'}`, 'info');
+    const name = resolveImageNameForSearch(row);
+    const folder = getImageFolder(row);
+    const details = [
+      name ? `name=${name}` : null,
+      folder ? `folder=${folder}` : null,
+      tableName ? `table=${tableName}` : null,
+    ]
+      .filter(Boolean)
+      .join(', ');
+    addToast(
+      t('image_searching_name', 'Searching images for: {{details}}', {
+        details: details || t('image_searching_unknown', 'unknown'),
+      }),
+      'info',
+    );
+  }
+
+  function openImages(row) {
+    showImageSearchToast(row);
+    setImagesRow(row);
   }
 
   function openUpload(row) {
@@ -7936,6 +7986,32 @@ const TableManager = forwardRef(function TableManager({
             );
           }
         }}
+      />
+      <RowImageViewModal
+        visible={imagesRow !== null}
+        onClose={() => setImagesRow(null)}
+        table={table}
+        folder={getImageFolder(imagesRow)}
+        row={imagesRow || {}}
+        columnCaseMap={columnCaseMap}
+        configs={allConfigs}
+        currentConfig={formConfig}
+        currentConfigName={formName}
+        canDelete={Boolean(normalizedViewerEmpId)}
+        useAllConfigsWhenMissing
+      />
+      <RowImageViewModal
+        visible={temporaryImagesEntry !== null}
+        onClose={() => setTemporaryImagesEntry(null)}
+        table={temporaryImagesEntry?.table || table}
+        folder={getImageFolder(temporaryImagesEntry?.row || {})}
+        row={temporaryImagesEntry?.row || {}}
+        columnCaseMap={columnCaseMap}
+        configs={allConfigs}
+        currentConfig={formConfig}
+        currentConfigName={formName}
+        canDelete={Boolean(temporaryImagesEntry?.canDelete)}
+        useAllConfigsWhenMissing
       />
       <RowImageUploadModal
         visible={temporaryUploadEntry !== null}
