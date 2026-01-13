@@ -2512,17 +2512,6 @@ const TableManager = forwardRef(function TableManager({
       if (combinedFields.length > 0) {
         const { name } = buildImageName(row, combinedFields, columnCaseMap, company);
         if (name) return name;
-      } else {
-        const fallbackFields = getAllConfigImageFields();
-        if (fallbackFields.length > 0) {
-          const { name } = buildImageName(
-            row,
-            fallbackFields,
-            columnCaseMap,
-            company,
-          );
-          if (name) return name;
-        }
       }
       if (imagenameFields.length > 0) {
         const { name } = buildImageName(row, imagenameFields, columnCaseMap, company);
@@ -2626,23 +2615,6 @@ const TableManager = forwardRef(function TableManager({
       deduped.push(field);
     });
     return deduped;
-  }
-
-  function getAllConfigImageFields() {
-    const fields = [];
-    const configs = [
-      ...(formConfig ? [formConfig] : []),
-      ...Object.values(allConfigs || {}),
-    ];
-    configs.forEach((config) => {
-      if (Array.isArray(config?.imagenameField)) {
-        fields.push(...config.imagenameField);
-      }
-      if (typeof config?.imageIdField === 'string' && config.imageIdField) {
-        fields.push(config.imageIdField);
-      }
-    });
-    return dedupeFields(fields);
   }
 
   function getImageConfigForRow(row, fallbackConfig = formConfig || {}) {
