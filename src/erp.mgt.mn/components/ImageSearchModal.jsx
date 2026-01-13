@@ -13,6 +13,7 @@ export default function ImageSearchModal({
   onPrev,
   onNext,
 }) {
+  const baseZIndex = 16000;
   const totalPages = Math.ceil(total / perPage);
   const [items, setItems] = useState(images);
   const [fullscreenIndex, setFullscreenIndex] = useState(null);
@@ -57,7 +58,13 @@ export default function ImageSearchModal({
 
   return (
     <>
-      <Modal visible={visible} title={`Images for "${term}"`} onClose={onClose} width="80%">
+      <Modal
+        visible={visible}
+        title={`Images for "${term}"`}
+        onClose={onClose}
+        width="80%"
+        zIndex={baseZIndex}
+      >
         {items.length === 0 ? (
           <div>No images found.</div>
         ) : (
@@ -138,7 +145,7 @@ export default function ImageSearchModal({
               right: 0,
               bottom: 0,
               background: 'rgba(0,0,0,0.85)',
-              zIndex: 1100,
+              zIndex: baseZIndex + 100,
               padding: '1rem',
               display: 'flex',
               flexDirection: 'column',
@@ -207,7 +214,7 @@ export default function ImageSearchModal({
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              zIndex: 1200,
+              zIndex: baseZIndex + 200,
             }}
             onClick={() => setFullscreenIndex(null)}
           >
