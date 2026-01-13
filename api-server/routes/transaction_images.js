@@ -2,6 +2,7 @@ import express from 'express';
 import multer from 'multer';
 import fs from 'fs';
 import path from 'path';
+import rateLimit from 'express-rate-limit';
 import { requireAuth } from '../middlewares/auth.js';
 import {
   saveImages,
@@ -21,6 +22,13 @@ import {
 import { getGeneralConfig } from '../services/generalConfig.js';
 
 const router = express.Router();
+
+const authenticatedRouteLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 100,
+  standardHeaders: true,
+  legacyHeaders: false,
+});
 
 const storage = multer.diskStorage({
   destination(req, file, cb) {
@@ -90,6 +98,7 @@ router.post('/fix_incomplete', requireAuth, async (req, res, next) => {
 router.post(
   '/upload_check',
   requireAuth,
+  authenticatedRouteLimiter,
   (req, res, next) => {
     const ct = req.headers['content-type'] || '';
     if (ct.includes('multipart/form-data')) {
@@ -136,7 +145,7 @@ router.post(
   },
 );
 
-router.post('/upload_scan', requireAuth, async (req, res, next) => {
+router.post('/upload_scan', requireAuth, authenticatedRouteLimiter, async (req, res, next) => {
   const controller = new AbortController();
   req.on('close', () => controller.abort());
   try {
@@ -152,7 +161,7 @@ router.post('/upload_scan', requireAuth, async (req, res, next) => {
   }
 });
 
-router.post('/upload_commit', requireAuth, async (req, res, next) => {
+router.post('/upload_commit', requireAuth, authenticatedRouteLimiter, async (req, res, next) => {
   const controller = new AbortController();
   req.on('close', () => controller.abort());
   try {
@@ -168,7 +177,7 @@ router.post('/upload_commit', requireAuth, async (req, res, next) => {
   }
 });
 
-router.get('/search/:value', requireAuth, async (req, res, next) => {
+router.get('/search/:value', requireAuth, authenticatedRouteLimiter, async (req, res, next) => {
   try {
     const page = parseInt(req.query.page, 10) || 1;
     const perPage = parseInt(req.query.pageSize, 10) || 20;
@@ -179,7 +188,7 @@ router.get('/search/:value', requireAuth, async (req, res, next) => {
   }
 });
 
-router.get('/thumbnail', requireAuth, async (req, res, next) => {
+router.get('/thumbnail', requireAuth, authenticatedRouteLimiter, async (req, res, next) => {
   try {
     const savePath = req.query.path || req.query.savePath || '';
     if (!savePath) {
@@ -196,7 +205,12 @@ router.get('/thumbnail', requireAuth, async (req, res, next) => {
   }
 });
 
-router.post('/:table/:name', requireAuth, upload.array('images'), async (req, res, next) => {
+router.post(
+  '/:table/:name',
+  requireAuth,
+  authenticatedRouteLimiter,
+  upload.array('images'),
+  async (req, res, next) => {
   try {
     if (!req.files || req.files.length === 0) {
       return res.status(400).json({ message: 'no files' });
@@ -218,7 +232,8 @@ router.post('/:table/:name', requireAuth, upload.array('images'), async (req, re
   } catch (err) {
     next(err);
   }
-});
+  },
+);
 
 router.get('/:table/:name', requireAuth, async (req, res, next) => {
   try {
