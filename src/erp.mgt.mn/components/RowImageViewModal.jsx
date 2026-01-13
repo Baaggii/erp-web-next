@@ -20,7 +20,7 @@ export default function RowImageViewModal({
   currentConfigName = '',
   canDelete = true,
 }) {
-  const baseZIndex = 1300;
+  const baseZIndex = 16000;
   const [files, setFiles] = useState([]);
   const [showGallery, setShowGallery] = useState(false);
   const [fullscreenIndex, setFullscreenIndex] = useState(null);
