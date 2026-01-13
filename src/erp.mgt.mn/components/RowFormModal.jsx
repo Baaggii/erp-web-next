@@ -1218,6 +1218,10 @@ const RowFormModal = function RowFormModal({
   const [activeInfoEndpointId, setActiveInfoEndpointId] = useState(
     () => infoEndpoints[0]?.id || '',
   );
+  const [printModalOpen, setPrintModalOpen] = useState(false);
+  const [printEmpSelected, setPrintEmpSelected] = useState(true);
+  const [printCustSelected, setPrintCustSelected] = useState(false);
+  const [printPayload, setPrintPayload] = useState(null);
   const [infoPayload, setInfoPayload] = useState({});
   const [infoResponse, setInfoResponse] = useState(null);
   const [infoError, setInfoError] = useState(null);
@@ -3363,6 +3367,7 @@ const RowFormModal = function RowFormModal({
     const submitIntent = submitOptions.submitIntent || submitIntentRef.current || 'post';
     submitOptions.submitIntent = submitIntent;
     submitIntentRef.current = null;
+    const shouldPromptPrint = submitIntent === 'post';
     if (!canPost) {
       alert(
         t(
@@ -3487,10 +3492,15 @@ const RowFormModal = function RowFormModal({
         if (anySuccess) {
           window.dispatchEvent(new Event('pending-request-refresh'));
         }
+        const nextPrintPayload =
+          shouldPromptPrint && anySuccess ? buildPrintPayload(rows) : null;
         if (failedRows.length === 0) {
           tableRef.current.clearRows();
         } else if (tableRef.current.replaceRows) {
           tableRef.current.replaceRows(failedRows);
+        }
+        if (nextPrintPayload) {
+          openPrintModal(nextPrintPayload);
         }
       }
       procCache.current = {};
@@ -3544,6 +3554,9 @@ const RowFormModal = function RowFormModal({
         }
         procCache.current = {};
         window.dispatchEvent(new Event('pending-request-refresh'));
+        if (shouldPromptPrint) {
+          openPrintModal(buildPrintPayload());
+        }
       } catch (err) {
         console.error('Submit failed', err);
         setSubmitLocked(false);
@@ -4199,7 +4212,37 @@ const RowFormModal = function RowFormModal({
     );
   }
 
-  function handlePrint(mode) {
+  function buildPrintPayload(rowsOverride = null) {
+    return {
+      formVals: { ...formVals },
+      gridRows: Array.isArray(rowsOverride)
+        ? rowsOverride.map((row) => ({ ...row }))
+        : gridRows.map((row) => ({ ...row })),
+    };
+  }
+  function openPrintModal(payload) {
+    setPrintPayload(payload || buildPrintPayload());
+    setPrintEmpSelected(true);
+    setPrintCustSelected(false);
+    setPrintModalOpen(true);
+  }
+  function closePrintModal() {
+    setPrintModalOpen(false);
+    setPrintPayload(null);
+  }
+  function confirmPrintSelection() {
+    const payload = printPayload || buildPrintPayload();
+    if (printEmpSelected) handlePrint('emp', payload);
+    if (printCustSelected) handlePrint('cust', payload);
+    closePrintModal();
+  }
+
+  function handlePrint(mode, payload = null) {
+    const activePayload = payload || buildPrintPayload();
+    const activeFormVals = activePayload.formVals || formVals;
+    const activeGridRows = Array.isArray(activePayload.gridRows)
+      ? activePayload.gridRows
+      : gridRows;
     const all = [...headerCols, ...mainCols, ...footerCols];
     const list = mode === 'emp' ? printEmpField : printCustField;
     const allowed = new Set(list.length > 0 ? list : all);
@@ -4211,31 +4254,31 @@ const RowFormModal = function RowFormModal({
       cols
         .filter((c) =>
           skipEmpty
-            ? formVals[c] !== '' &&
-              formVals[c] !== null &&
-              formVals[c] !== 0 &&
-              formVals[c] !== undefined
+            ? activeFormVals[c] !== '' &&
+              activeFormVals[c] !== null &&
+              activeFormVals[c] !== 0 &&
+              activeFormVals[c] !== undefined
             : true,
         )
         .map(
           (c) =>
             `<tr><th>${labels[c] || c}</th><td>${
-              formVals[c] !== undefined ? formVals[c] : ''
+              activeFormVals[c] !== undefined ? activeFormVals[c] : ''
             }</td></tr>`,
         )
         .join('');
 
     const mainTableHtml = () => {
       if (!useGrid) return rowHtml(m, true);
-      if (gridRows.length === 0) return '';
+      if (activeGridRows.length === 0) return '';
       const used = m.filter((c) =>
-        gridRows.some(
+        activeGridRows.some(
           (r) => r[c] !== '' && r[c] !== null && r[c] !== 0 && r[c] !== undefined,
         ),
       );
       if (used.length === 0) return '';
       const header = used.map((c) => `<th>${labels[c] || c}</th>`).join('');
-      const body = gridRows
+      const body = activeGridRows
         .map(
           (r) =>
             '<tr>' +
@@ -4489,20 +4532,6 @@ const RowFormModal = function RowFormModal({
                 {t('view_images', 'View images')}
               </button>
             )}
-            <button
-              type="button"
-              onClick={() => handlePrint('emp')}
-              className="px-3 py-1 bg-gray-200 rounded"
-            >
-              {t('printEmp', 'Print Emp')}
-            </button>
-            <button
-              type="button"
-              onClick={() => handlePrint('cust')}
-              className="px-3 py-1 bg-gray-200 rounded"
-            >
-              {t('printCust', 'Print Cust')}
-            </button>
             {showTemporarySaveButton && (
               <button
                 type="button"
@@ -4560,6 +4589,54 @@ const RowFormModal = function RowFormModal({
           </form>
         </div>
       </Modal>
+      {printModalOpen && (
+        <Modal
+          visible={printModalOpen}
+          title={t('print_after_post', 'Print after post')}
+          onClose={closePrintModal}
+          width="420px"
+        >
+          <div className="flex flex-col gap-4">
+            <div className="space-y-2">
+              <label className="flex items-center gap-2 text-sm text-gray-700">
+                <input
+                  type="checkbox"
+                  className="rounded"
+                  checked={printEmpSelected}
+                  onChange={(e) => setPrintEmpSelected(e.target.checked)}
+                />
+                <span>{t('printEmp', 'Print Emp')}</span>
+              </label>
+              <label className="flex items-center gap-2 text-sm text-gray-700">
+                <input
+                  type="checkbox"
+                  className="rounded"
+                  checked={printCustSelected}
+                  onChange={(e) => setPrintCustSelected(e.target.checked)}
+                />
+                <span>{t('printCust', 'Print Cust')}</span>
+              </label>
+            </div>
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                className="px-3 py-1 bg-gray-200 rounded"
+                onClick={closePrintModal}
+              >
+                {t('cancel', 'Cancel')}
+              </button>
+              <button
+                type="button"
+                className="px-3 py-1 bg-blue-600 text-white rounded disabled:opacity-60"
+                onClick={confirmPrintSelection}
+                disabled={!printEmpSelected && !printCustSelected}
+              >
+                {t('print', 'Print')}
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
       {infoModalOpen && (
         <Modal
           visible={infoModalOpen}
