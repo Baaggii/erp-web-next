@@ -2534,70 +2534,102 @@ const TableManager = forwardRef(function TableManager({
 
   function getConfigForRow(row) {
     if (!row) return formConfig || {};
-    const { fields, valueSet } = getTransactionTypeFilters();
-    for (const cfg of Object.values(allConfigs || {})) {
-      if (!cfg.transactionTypeValue) continue;
-      if (cfg.transactionTypeField) {
-        const val = getCase(row, cfg.transactionTypeField);
-        if (val !== undefined && String(val) === String(cfg.transactionTypeValue)) {
-          return cfg;
-        }
-      }
-      if (!valueSet.has(String(cfg.transactionTypeValue))) continue;
-      const matchField = fields.find((field) => {
-        const val = getCase(row, field);
-        return val !== undefined && String(val) === String(cfg.transactionTypeValue);
-      });
-      if (matchField) return { ...cfg, transactionTypeField: matchField };
-    }
+    const { matches } = getConfigMatchesForRow(row);
+    if (matches.length > 0) return matches[0].config;
     return formConfig || {};
   }
 
   function getMatchingConfigsForRow(row) {
     if (!row) return [];
+    return getConfigMatchesForRow(row).matches.map(({ configName, config }) => ({
+      configName,
+      config,
+    }));
+  }
+
+  function getTransactionTypeFields() {
+    const fields = [];
+    if (formConfig?.transactionTypeField) {
+      fields.push(formConfig.transactionTypeField);
+    }
+    Object.values(allConfigs || {}).forEach((cfg) => {
+      if (cfg?.transactionTypeField) fields.push(cfg.transactionTypeField);
+    });
+    return dedupeFields(fields);
+  }
+
+  function getTransactionTypeValues() {
+    const values = [];
+    Object.values(allConfigs || {}).forEach((cfg) => {
+      if (cfg?.transactionTypeValue) values.push(cfg.transactionTypeValue);
+    });
+    return dedupeFields(values);
+  }
+
+  function getRowTransactionTypeValue(
+    row,
+    fields = getTransactionTypeFields(),
+    valueSet = new Set(getTransactionTypeValues().map((val) => String(val))),
+  ) {
+    if (!row) return { value: '', field: '' };
+    for (const field of fields) {
+      const val = getCase(row, field);
+      if (val !== undefined && val !== null && String(val) !== '') {
+        return { value: val, field };
+      }
+    }
+    for (const key of Object.keys(row || {})) {
+      const val = getCase(row, key);
+      if (val === undefined || val === null || String(val) === '') continue;
+      if (valueSet.has(String(val))) {
+        return { value: val, field: key };
+      }
+    }
+    return {
+      value: '',
+      field: '',
+    };
+  }
+
+  function getConfigMatchesForRow(row) {
+    if (!row) return { matches: [], fields: [], value: '', matchedField: '' };
+    const fields = getTransactionTypeFields();
+    const values = getTransactionTypeValues();
+    const valueSet = new Set(values.map((val) => String(val)));
+    const { value, field: matchedField } = getRowTransactionTypeValue(
+      row,
+      fields,
+      valueSet,
+    );
     const matches = [];
-    const { fields, valueSet } = getTransactionTypeFilters();
+    const normalizedValue = value != null ? String(value) : '';
+    const normalizedFields = dedupeFields([...fields, matchedField].filter(Boolean));
     for (const [configName, cfg] of Object.entries(allConfigs || {})) {
       if (!cfg?.transactionTypeValue) continue;
+      if (!normalizedValue) continue;
+      if (String(cfg.transactionTypeValue) !== normalizedValue) continue;
       if (cfg.transactionTypeField) {
-        const val = getCase(row, cfg.transactionTypeField);
-        if (val !== undefined && String(val) === String(cfg.transactionTypeValue)) {
-          matches.push({ configName, config: cfg });
-          continue;
-        }
-      }
-      if (!valueSet.has(String(cfg.transactionTypeValue))) continue;
-      const matchField = fields.find((field) => {
-        const val = getCase(row, field);
-        return val !== undefined && String(val) === String(cfg.transactionTypeValue);
-      });
-      if (matchField) {
+        if (!normalizedFields.includes(cfg.transactionTypeField)) continue;
         matches.push({
           configName,
-          config: { ...cfg, transactionTypeField: matchField },
+          config: cfg,
+          matchedField: cfg.transactionTypeField,
+        });
+        continue;
+      }
+      if (matchedField) {
+        matches.push({
+          configName,
+          config: { ...cfg, transactionTypeField: matchedField },
+          matchedField,
         });
       }
     }
-    return matches;
-  }
-
-  function getTransactionTypeFilters() {
-    const values = [];
-    const fields = [
-      'transtype',
-      'Transtype',
-      'UITransType',
-      'UITransTypeName',
-    ];
-    Object.values(allConfigs || {}).forEach((cfg) => {
-      if (cfg?.transactionTypeValue) values.push(cfg.transactionTypeValue);
-      if (cfg?.transactionTypeField) fields.push(cfg.transactionTypeField);
-    });
-    const dedupedValues = dedupeFields(values);
     return {
-      values: dedupedValues,
-      fields: dedupeFields(fields),
-      valueSet: new Set(dedupedValues.map((val) => String(val))),
+      matches,
+      fields: normalizedFields,
+      value: normalizedValue,
+      matchedField,
     };
   }
 
@@ -3161,23 +3193,30 @@ const TableManager = forwardRef(function TableManager({
   function showImageSearchToast(row, tableName = table) {
     if (!generalConfig.general?.imageToastEnabled) return;
     if (!row || typeof row !== 'object') return;
-    const typeFilters = getTransactionTypeFilters();
-    const matchedTypeFields = typeFilters.fields.filter((field) => {
-      const val = getCase(row, field);
-      return val !== undefined && typeFilters.valueSet.has(String(val));
-    });
+    const { matches, fields, value } = getConfigMatchesForRow(row);
+    const matchedTypeFields = dedupeFields(
+      matches.map((match) => match.matchedField).filter(Boolean),
+    );
+    const imageConfig = getImageConfigForRow(row, formConfig || {});
+    const buildFields = dedupeFields([
+      ...(Array.isArray(imageConfig?.imagenameField)
+        ? imageConfig.imagenameField
+        : []),
+      imageConfig?.imageIdField || '',
+    ]);
     addToast(
-      `Transaction type values: ${typeFilters.values.join(', ') || 'none'}`,
+      `Transaction type value: ${value || 'none'}`,
       'info',
     );
     addToast(
-      `Transaction type fields: ${typeFilters.fields.join(', ') || 'none'}`,
+      `Transaction type fields: ${fields.join(', ') || 'none'}`,
       'info',
     );
     addToast(
       `Matched transaction type fields: ${matchedTypeFields.join(', ') || 'none'}`,
       'info',
     );
+    addToast(`Image build fields: ${buildFields.join(', ') || 'none'}`, 'info');
     const name = resolveImageNameForSearch(row);
     const folder = getImageFolder(row);
     const details = [
