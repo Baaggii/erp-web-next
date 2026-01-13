@@ -2536,21 +2536,17 @@ const TableManager = forwardRef(function TableManager({
     if (!row) return formConfig || {};
     const { fields, valueSet } = getTransactionTypeFilters();
     for (const cfg of Object.values(allConfigs || {})) {
-      const cfgValue = normalizeSearchValue(cfg?.transactionTypeValue);
-      if (cfgValue === undefined || cfgValue === null || cfgValue === '') continue;
-      if (cfg?.transactionTypeField) {
-        const fieldName = normalizeSearchValue(cfg.transactionTypeField);
-        const val = getCase(row, fieldName);
-        if (val !== undefined && String(normalizeSearchValue(val)) === String(cfgValue)) {
+      if (!cfg.transactionTypeValue) continue;
+      if (cfg.transactionTypeField) {
+        const val = getCase(row, cfg.transactionTypeField);
+        if (val !== undefined && String(val) === String(cfg.transactionTypeValue)) {
           return cfg;
         }
       }
-      if (!valueSet.has(String(cfgValue))) continue;
+      if (!valueSet.has(String(cfg.transactionTypeValue))) continue;
       const matchField = fields.find((field) => {
         const val = getCase(row, field);
-        return (
-          val !== undefined && String(normalizeSearchValue(val)) === String(cfgValue)
-        );
+        return val !== undefined && String(val) === String(cfg.transactionTypeValue);
       });
       if (matchField) return { ...cfg, transactionTypeField: matchField };
     }
@@ -2562,22 +2558,18 @@ const TableManager = forwardRef(function TableManager({
     const matches = [];
     const { fields, valueSet } = getTransactionTypeFilters();
     for (const [configName, cfg] of Object.entries(allConfigs || {})) {
-      const cfgValue = normalizeSearchValue(cfg?.transactionTypeValue);
-      if (cfgValue === undefined || cfgValue === null || cfgValue === '') continue;
-      if (cfg?.transactionTypeField) {
-        const fieldName = normalizeSearchValue(cfg.transactionTypeField);
-        const val = getCase(row, fieldName);
-        if (val !== undefined && String(normalizeSearchValue(val)) === String(cfgValue)) {
+      if (!cfg?.transactionTypeValue) continue;
+      if (cfg.transactionTypeField) {
+        const val = getCase(row, cfg.transactionTypeField);
+        if (val !== undefined && String(val) === String(cfg.transactionTypeValue)) {
           matches.push({ configName, config: cfg });
           continue;
         }
       }
-      if (!valueSet.has(String(cfgValue))) continue;
+      if (!valueSet.has(String(cfg.transactionTypeValue))) continue;
       const matchField = fields.find((field) => {
         const val = getCase(row, field);
-        return (
-          val !== undefined && String(normalizeSearchValue(val)) === String(cfgValue)
-        );
+        return val !== undefined && String(val) === String(cfg.transactionTypeValue);
       });
       if (matchField) {
         matches.push({
@@ -2591,12 +2583,15 @@ const TableManager = forwardRef(function TableManager({
 
   function getTransactionTypeFilters() {
     const values = [];
-    const fields = [];
+    const fields = [
+      'transtype',
+      'Transtype',
+      'UITransType',
+      'UITransTypeName',
+    ];
     Object.values(allConfigs || {}).forEach((cfg) => {
-      const value = normalizeSearchValue(cfg?.transactionTypeValue);
-      const field = normalizeSearchValue(cfg?.transactionTypeField);
-      if (value !== undefined && value !== null && value !== '') values.push(value);
-      if (field) fields.push(field);
+      if (cfg?.transactionTypeValue) values.push(cfg.transactionTypeValue);
+      if (cfg?.transactionTypeField) fields.push(cfg.transactionTypeField);
     });
     const dedupedValues = dedupeFields(values);
     return {
@@ -2673,33 +2668,10 @@ const TableManager = forwardRef(function TableManager({
     };
   }
 
-  function getAllConfigImageFields() {
-    const imageFields = [];
-    Object.values(allConfigs || {}).forEach((config) => {
-      if (Array.isArray(config?.imagenameField)) {
-        imageFields.push(...config.imagenameField);
-      }
-      if (typeof config?.imageIdField === 'string' && config.imageIdField) {
-        imageFields.push(config.imageIdField);
-      }
-    });
-    return dedupeFields(imageFields);
-  }
-
   function resolveImageNameForSearch(row) {
     if (!row) return '';
-    const allFields = getAllConfigImageFields();
-    const { primary } = resolveImageNames({
-      row,
-      columnCaseMap,
-      company,
-      imagenameFields: allFields,
-      imageIdField: '',
-      configs: allConfigs,
-      currentConfig: formConfig,
-      currentConfigName: formName,
-    });
-    return primary || '';
+    const imageConfig = getImageConfigForRow(row, formConfig || {});
+    return resolveImageNameForRow(row, imageConfig);
   }
 
   function resolveImageNameWithFallback(row, config = {}) {
@@ -3192,13 +3164,8 @@ const TableManager = forwardRef(function TableManager({
     const typeFilters = getTransactionTypeFilters();
     const matchedTypeFields = typeFilters.fields.filter((field) => {
       const val = getCase(row, field);
-      return (
-        val !== undefined && typeFilters.valueSet.has(String(normalizeSearchValue(val)))
-      );
+      return val !== undefined && typeFilters.valueSet.has(String(val));
     });
-    const rowFieldNames = typeFilters.fields.filter(
-      (field) => getCase(row, field) !== undefined,
-    );
     addToast(
       `Transaction type values: ${typeFilters.values.join(', ') || 'none'}`,
       'info',
@@ -3209,10 +3176,6 @@ const TableManager = forwardRef(function TableManager({
     );
     addToast(
       `Matched transaction type fields: ${matchedTypeFields.join(', ') || 'none'}`,
-      'info',
-    );
-    addToast(
-      `Row transaction type fields: ${rowFieldNames.join(', ') || 'none'}`,
       'info',
     );
     const name = resolveImageNameForSearch(row);
