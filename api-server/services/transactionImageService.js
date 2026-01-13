@@ -326,6 +326,14 @@ function collectImageFields(entries = [], { includeImageId = true } = {}) {
   return { fields: Array.from(fieldSet), configNames };
 }
 
+function collectAllConfigImageFields(configs = {}, options = {}) {
+  const entries = Object.entries(configs || {}).map(([name, config]) => ({
+    name,
+    config,
+  }));
+  return collectImageFields(entries, options);
+}
+
 function pickConfigEntry(configs = {}, row = {}) {
   for (const [name, cfg] of Object.entries(configs)) {
     if (!cfg.transactionTypeValue) continue;
@@ -353,6 +361,7 @@ function pickConfig(configs = {}, row = {}) {
 
 function resolveImageNamingForSearch(row = {}, configs = {}, fallbackTable = '') {
   const { name: preferredName, config: preferredConfig } = pickConfigEntry(configs, row);
+  const hasConfigs = Object.keys(configs || {}).length > 0;
   const preferredFields = Array.isArray(preferredConfig?.imagenameField)
     ? preferredConfig.imagenameField
     : [];
@@ -364,7 +373,8 @@ function resolveImageNamingForSearch(row = {}, configs = {}, fallbackTable = '')
   ]);
   let name = '';
   let configNames = [];
-  if (preferredFieldSet.length) {
+  const hasPreferredFields = preferredFieldSet.length > 0;
+  if (hasPreferredFields) {
     name = buildNameFromRow(row, preferredFieldSet);
     if (name && preferredName) {
       configNames = [preferredName];
@@ -380,18 +390,29 @@ function resolveImageNamingForSearch(row = {}, configs = {}, fallbackTable = '')
       }
     }
   }
+  if (!name && (!hasPreferredFields || !hasConfigs)) {
+    const { fields, configNames: allNames } = collectAllConfigImageFields(configs);
+    if (fields.length) {
+      name = buildNameFromRow(row, fields);
+      if (name) {
+        configNames = allNames;
+      }
+    }
+  }
   const folder = buildFolderName(row, preferredConfig?.imageFolder || fallbackTable);
   return { name, folder, configNames };
 }
 
 function resolveImagePrefixForSearch(row = {}, configs = {}, fallbackTable = '') {
   const { name: preferredName, config: preferredConfig } = pickConfigEntry(configs, row);
+  const hasConfigs = Object.keys(configs || {}).length > 0;
   const preferredFields = Array.isArray(preferredConfig?.imagenameField)
     ? preferredConfig.imagenameField
     : [];
   let name = '';
   let configNames = [];
-  if (preferredFields.length) {
+  const hasPreferredFields = preferredFields.length > 0;
+  if (hasPreferredFields) {
     name = buildNameFromRow(row, preferredFields);
     if (name && preferredName) {
       configNames = [preferredName];
@@ -407,6 +428,17 @@ function resolveImagePrefixForSearch(row = {}, configs = {}, fallbackTable = '')
       name = buildNameFromRow(row, fields);
       if (name) {
         configNames = matchedNames;
+      }
+    }
+  }
+  if (!name && (!hasPreferredFields || !hasConfigs)) {
+    const { fields, configNames: allNames } = collectAllConfigImageFields(configs, {
+      includeImageId: false,
+    });
+    if (fields.length) {
+      name = buildNameFromRow(row, fields);
+      if (name) {
+        configNames = allNames;
       }
     }
   }
