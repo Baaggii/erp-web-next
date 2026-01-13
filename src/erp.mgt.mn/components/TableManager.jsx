@@ -596,7 +596,6 @@ const TableManager = forwardRef(function TableManager({
   const [showDetail, setShowDetail] = useState(false);
   const [detailRow, setDetailRow] = useState(null);
   const [detailRefs, setDetailRefs] = useState([]);
-  const [imagesRow, setImagesRow] = useState(null);
   const [uploadRow, setUploadRow] = useState(null);
   const [ctxMenu, setCtxMenu] = useState(null); // { x, y, value }
   const [searchTerm, setSearchTerm] = useState('');
@@ -3203,13 +3202,21 @@ const TableManager = forwardRef(function TableManager({
     );
   }
 
-  function openImages(row) {
-    showImageSearchToast(row);
-    setImagesRow(row);
-  }
-
   function openUpload(row) {
     setUploadRow(row);
+  }
+
+  function openImageSearch(row) {
+    const term = resolveImageNameForSearch(row);
+    showImageSearchToast(row);
+    if (!term) {
+      addToast(
+        t('image_search_missing', 'No image search name available.'),
+        'error',
+      );
+      return;
+    }
+    loadSearch(term);
   }
 
   function openContextMenu(e, term) {
@@ -7530,19 +7537,19 @@ const TableManager = forwardRef(function TableManager({
                     actionButtons.push(
                       <button
                         key="images"
-                        onClick={() => openImages(r)}
+                        onClick={() => openUpload(r)}
                         style={actionBtnStyle}
                       >
-                        🖼 Images
+                        🖼 Add/View Image
                       </button>,
                     );
                     actionButtons.push(
                       <button
-                        key="upload"
-                        onClick={() => openUpload(r)}
+                        key="image-search"
+                        onClick={() => openImageSearch(r)}
                         style={actionBtnStyle}
                       >
-                        ➕ Add Img
+                        🔍 Search Img
                       </button>,
                     );
                     const explicitRequestOnlyValue =
@@ -7997,19 +8004,6 @@ const TableManager = forwardRef(function TableManager({
             );
           }
         }}
-      />
-      <RowImageViewModal
-        visible={imagesRow !== null}
-        onClose={() => setImagesRow(null)}
-        table={table}
-        folder={getImageFolder(imagesRow)}
-        row={imagesRow || {}}
-        columnCaseMap={columnCaseMap}
-        configs={allConfigs}
-        currentConfig={formConfig}
-        currentConfigName={formName}
-        canDelete={Boolean(normalizedViewerEmpId)}
-        useAllConfigsWhenMissing
       />
       <RowImageViewModal
         visible={temporaryImagesEntry !== null}
