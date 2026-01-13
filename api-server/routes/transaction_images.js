@@ -28,6 +28,7 @@ const authenticatedRouteLimiter = rateLimit({
   max: 100,
   standardHeaders: true,
   legacyHeaders: false,
+  keyGenerator: (req) => req.user?.companyId?.toString() || req.ip,
 });
 
 const storage = multer.diskStorage({
