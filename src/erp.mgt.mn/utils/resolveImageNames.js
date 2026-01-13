@@ -183,8 +183,18 @@ export default function resolveImageNames({
   currentConfig = {},
   currentConfigName = '',
 } = {}) {
+  const sanitizeName = (name) =>
+    String(name)
+      .toLowerCase()
+      .replace(/[^a-z0-9_-]+/gi, '_');
+  const explicitImageNameRaw =
+    row?._imageName || row?.imageName || row?.image_name || row?.ImageName || '';
+  const explicitImageName = explicitImageNameRaw
+    ? sanitizeName(explicitImageNameRaw)
+    : '';
   let primary = '';
   let missing = [];
+  let fallbackPrimary = '';
   const idFieldSet = new Set();
   const hasCurrentConfig = currentConfig && Object.keys(currentConfig).length > 0;
   const preferredFields = hasCurrentConfig
@@ -244,8 +254,11 @@ export default function resolveImageNames({
   if (!primary) {
     primary = buildFallbackName(row, columnCaseMap);
   }
-  if (!primary && row?._imageName) {
-    primary = row._imageName;
+  if (explicitImageName) {
+    if (primary && primary !== explicitImageName) {
+      fallbackPrimary = primary;
+    }
+    primary = explicitImageName;
   }
   const altNames = [];
   let idName = '';
@@ -256,9 +269,10 @@ export default function resolveImageNames({
       altNames.push(name);
     }
   });
-  const explicitImageName =
-    row?._imageName || row?.imageName || row?.image_name || '';
-  if (explicitImageName && explicitImageName !== primary) {
+  if (fallbackPrimary && fallbackPrimary !== primary && !altNames.includes(fallbackPrimary)) {
+    altNames.unshift(fallbackPrimary);
+  }
+  if (explicitImageNameRaw && explicitImageName && explicitImageName !== primary) {
     const existingIndex = altNames.indexOf(explicitImageName);
     if (existingIndex !== -1) {
       altNames.splice(existingIndex, 1);
