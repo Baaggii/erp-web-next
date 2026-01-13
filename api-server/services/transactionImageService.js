@@ -57,6 +57,19 @@ async function getDirs(companyId = 0) {
 function normalizeSavePath(savePath = '') {
   let raw = String(savePath || '').trim();
   if (!raw) return '';
+  const decodePath = (value) => {
+    let decoded = value;
+    for (let i = 0; i < 2; i += 1) {
+      try {
+        const next = decodeURIComponent(decoded);
+        if (next === decoded) break;
+        decoded = next;
+      } catch {
+        break;
+      }
+    }
+    return decoded;
+  };
   let pathname = raw;
   if (/^https?:\/\//i.test(raw)) {
     try {
@@ -66,11 +79,7 @@ function normalizeSavePath(savePath = '') {
     }
   }
   pathname = pathname.split('?')[0];
-  try {
-    pathname = decodeURIComponent(pathname);
-  } catch {
-    // ignore decoding errors
-  }
+  pathname = decodePath(pathname);
   pathname = pathname.replace(/\\/g, '/').replace(/^\/+/, '');
   const apiIndex = pathname.indexOf('api/');
   if (apiIndex > 0) {
