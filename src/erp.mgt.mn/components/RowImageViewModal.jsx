@@ -20,6 +20,7 @@ export default function RowImageViewModal({
   currentConfig = {},
   currentConfigName = '',
   canDelete = true,
+  useAllConfigsWhenMissing = false,
 }) {
   const baseZIndex = 16000;
   const [files, setFiles] = useState([]);
@@ -90,6 +91,7 @@ export default function RowImageViewModal({
       configs,
       currentConfig,
       currentConfigName,
+      useAllConfigsWhenMissing,
     });
     if (currentConfigName) {
       toast(`Current config name: ${currentConfigName}`, 'info');
