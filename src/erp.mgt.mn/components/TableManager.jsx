@@ -2558,31 +2558,12 @@ const TableManager = forwardRef(function TableManager({
     return dedupeFields(fields);
   }
 
-  function getTransactionTypeValues() {
-    const values = [];
-    Object.values(allConfigs || {}).forEach((cfg) => {
-      if (cfg?.transactionTypeValue) values.push(cfg.transactionTypeValue);
-    });
-    return dedupeFields(values);
-  }
-
-  function getRowTransactionTypeValue(
-    row,
-    fields = getTransactionTypeFields(),
-    valueSet = new Set(getTransactionTypeValues().map((val) => String(val))),
-  ) {
+  function getRowTransactionTypeValue(row, fields = getTransactionTypeFields()) {
     if (!row) return { value: '', field: '' };
     for (const field of fields) {
       const val = getCase(row, field);
       if (val !== undefined && val !== null && String(val) !== '') {
         return { value: val, field };
-      }
-    }
-    for (const key of Object.keys(row || {})) {
-      const val = getCase(row, key);
-      if (val === undefined || val === null || String(val) === '') continue;
-      if (valueSet.has(String(val))) {
-        return { value: val, field: key };
       }
     }
     return {
@@ -2594,22 +2575,15 @@ const TableManager = forwardRef(function TableManager({
   function getConfigMatchesForRow(row) {
     if (!row) return { matches: [], fields: [], value: '', matchedField: '' };
     const fields = getTransactionTypeFields();
-    const values = getTransactionTypeValues();
-    const valueSet = new Set(values.map((val) => String(val)));
-    const { value, field: matchedField } = getRowTransactionTypeValue(
-      row,
-      fields,
-      valueSet,
-    );
+    const { value, field: matchedField } = getRowTransactionTypeValue(row, fields);
     const matches = [];
     const normalizedValue = value != null ? String(value) : '';
-    const normalizedFields = dedupeFields([...fields, matchedField].filter(Boolean));
     for (const [configName, cfg] of Object.entries(allConfigs || {})) {
       if (!cfg?.transactionTypeValue) continue;
       if (!normalizedValue) continue;
       if (String(cfg.transactionTypeValue) !== normalizedValue) continue;
       if (cfg.transactionTypeField) {
-        if (!normalizedFields.includes(cfg.transactionTypeField)) continue;
+        if (!fields.includes(cfg.transactionTypeField)) continue;
         matches.push({
           configName,
           config: cfg,
@@ -2625,12 +2599,7 @@ const TableManager = forwardRef(function TableManager({
         });
       }
     }
-    return {
-      matches,
-      fields: normalizedFields,
-      value: normalizedValue,
-      matchedField,
-    };
+    return { matches, fields, value: normalizedValue, matchedField };
   }
 
   function hasImageFields(config) {
