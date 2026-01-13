@@ -2679,14 +2679,16 @@ const TableManager = forwardRef(function TableManager({
 
   function resolveImageNameForSearch(row) {
     if (!row) return '';
-    const currentConfig = formConfig || {};
-    const hasCurrentImageFields = hasImageFields(currentConfig);
+    const hasConfigs = Object.keys(allConfigs || {}).length > 0;
+    const currentConfig =
+      formConfig && typeof formConfig === 'object' ? formConfig : null;
+    const hasCurrentImageFields = currentConfig ? hasImageFields(currentConfig) : false;
     if (hasCurrentImageFields) {
       const currentName = resolveImageNameForRow(row, currentConfig);
       if (currentName) return currentName;
     }
     let combinedFields = [];
-    if (hasCurrentImageFields) {
+    if (hasCurrentImageFields && hasConfigs) {
       const matches = getMatchingConfigsForRow(row);
       const fieldSet = new Set();
       matches.forEach(({ config }) => {
@@ -2700,12 +2702,27 @@ const TableManager = forwardRef(function TableManager({
         }
       });
       combinedFields = Array.from(fieldSet);
-    } else {
+      if (combinedFields.length === 0) {
+        combinedFields = getAllConfigImageFields();
+      }
+    } else if (hasConfigs) {
       combinedFields = getAllConfigImageFields();
+    } else if (hasCurrentImageFields) {
+      combinedFields = dedupeFields([
+        ...(currentConfig?.imagenameField || []),
+        currentConfig?.imageIdField || '',
+      ]);
     }
     if (combinedFields.length > 0) {
       const { name } = buildImageName(row, combinedFields, columnCaseMap, company);
       if (name) return name;
+    }
+    if (hasCurrentImageFields && hasConfigs) {
+      const allFields = getAllConfigImageFields();
+      if (allFields.length > 0) {
+        const { name } = buildImageName(row, allFields, columnCaseMap, company);
+        if (name) return name;
+      }
     }
     return row._imageName || row.imageName || row.image_name || '';
   }
