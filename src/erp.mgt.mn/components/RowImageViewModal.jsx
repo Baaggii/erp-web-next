@@ -28,6 +28,7 @@ export default function RowImageViewModal({
   const generalConfig = useGeneralConfig();
   const { t } = useTranslation();
   const { company, user } = useContext(AuthContext);
+  const requestRef = useRef(0);
   const toast = (msg, type = 'info') => {
     if (type === 'info' && !generalConfig?.general?.imageToastEnabled) return;
     addToast(msg, type);
@@ -51,8 +52,6 @@ export default function RowImageViewModal({
     }
     return list;
   };
-  const loaded = useRef(false);
-
   const placeholder =
     'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMBAZLr5z0AAAAASUVORK5CYII=';
   // Root URL for static assets like uploaded images
@@ -76,8 +75,12 @@ export default function RowImageViewModal({
   };
 
   useEffect(() => {
-    if (!visible || loaded.current) return;
-    loaded.current = true;
+    if (!visible) return;
+    const requestId = ++requestRef.current;
+    const isCurrent = () => requestRef.current === requestId;
+    setFiles([]);
+    setShowGallery(false);
+    setFullscreenIndex(null);
 
     const { primary, altNames, idName, configName } = resolveImageNames({
       row,
@@ -98,7 +101,7 @@ export default function RowImageViewModal({
       toast(`Alt image names: ${altNames.join(', ')}`, 'info');
     }
     if (!folder || (!primary && altNames.length === 0)) {
-      setFiles([]);
+      if (isCurrent()) setFiles([]);
       return;
     }
     const safeTable = encodeURIComponent(table);
@@ -140,7 +143,7 @@ export default function RowImageViewModal({
                       name: p.split('/').pop(),
                       src: p.startsWith('http') ? p : `${apiRoot}${p}`,
                     }));
-                    setFiles(entries);
+                    if (isCurrent()) setFiles(entries);
                     return;
                   }
                 } catch {
@@ -153,7 +156,7 @@ export default function RowImageViewModal({
                   name: p.split('/').pop(),
                   src: p.startsWith('http') ? p : `${apiRoot}${p}`,
                 }));
-                setFiles(entries);
+                if (isCurrent()) setFiles(entries);
                 return;
               }
             }
@@ -163,7 +166,7 @@ export default function RowImageViewModal({
         }
       }
       toast('No images found', 'info');
-      setFiles([]);
+      if (isCurrent()) setFiles([]);
     })();
   }, [
     visible,
@@ -181,7 +184,6 @@ export default function RowImageViewModal({
     if (!visible) {
       setShowGallery(false);
       setFullscreenIndex(null);
-      loaded.current = false;
     }
   }, [visible]);
 
