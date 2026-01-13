@@ -220,18 +220,25 @@ export default function resolveImageNames({
   let fallbackPrimary = '';
   let configAltNames = [];
   const idFieldSet = new Set();
-  const hasCurrentConfig = currentConfig && Object.keys(currentConfig).length > 0;
-  const preferredFields = hasCurrentConfig
+  const hasCurrentConfig =
+    Boolean(currentConfigName) ||
+    (currentConfig && Object.keys(currentConfig).length > 0);
+  const currentHasImageFields = hasImageFields(currentConfig);
+  const preferredFields = hasCurrentConfig && currentHasImageFields
     ? Array.isArray(currentConfig?.imagenameField)
       ? currentConfig.imagenameField
       : []
+    : hasCurrentConfig
+    ? []
     : Array.isArray(imagenameFields)
     ? imagenameFields
     : [];
-  const preferredImageIdField = hasCurrentConfig
+  const preferredImageIdField = hasCurrentConfig && currentHasImageFields
     ? typeof currentConfig?.imageIdField === 'string'
       ? currentConfig.imageIdField
       : ''
+    : hasCurrentConfig
+    ? ''
     : imageIdField || '';
   const preferredFieldSet = Array.from(
     new Set([...preferredFields, preferredImageIdField].filter(Boolean)),
