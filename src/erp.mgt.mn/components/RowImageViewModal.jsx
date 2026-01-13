@@ -114,9 +114,6 @@ export default function RowImageViewModal({
         if (company != null) params.set('companyId', company);
         const searchNames = [primary, ...altNames].filter(Boolean);
         for (const nm of searchNames) {
-          if (nm !== primary) {
-            toast(`Searching alternate image name: ${nm}`, 'info');
-          }
           const url = `${API_BASE}/transaction_images/${safeTable}/${encodeURIComponent(nm)}?${params.toString()}`;
           toast(`Searching URL: ${url}`, 'info');
           try {
