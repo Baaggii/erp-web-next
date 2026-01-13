@@ -7973,6 +7973,9 @@ const TableManager = forwardRef(function TableManager({
         imagenameFields={uploadCfg.imagenameField || []}
         columnCaseMap={columnCaseMap}
         imageIdField={uploadCfg.imageIdField || ''}
+        configs={allConfigs}
+        currentConfig={formConfig}
+        currentConfigName={formName}
         onUploaded={(name) => {
           if (uploadRow) {
             const id = getRowId(uploadRow);
@@ -8018,6 +8021,9 @@ const TableManager = forwardRef(function TableManager({
         imagenameFields={temporaryUploadEntry?.config?.imagenameField || []}
         columnCaseMap={columnCaseMap}
         imageIdField={temporaryUploadEntry?.config?.imageIdField || ''}
+        configs={allConfigs}
+        currentConfig={formConfig}
+        currentConfigName={formName}
         forceTemporary
         onUploaded={(name) => {
           if (!temporaryUploadEntry) return;

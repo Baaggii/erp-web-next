@@ -17,6 +17,9 @@ export default function RowImageUploadModal({
   imagenameFields = [],
   columnCaseMap = {},
   imageIdField = '',
+  configs = {},
+  currentConfig = {},
+  currentConfigName = '',
   zIndex = 1200,
   onUploaded = () => {},
   onSuggestion = () => {},
@@ -43,22 +46,16 @@ export default function RowImageUploadModal({
     currentRow?.image_name ||
     '';
   function resolveNames() {
-    const resolved = resolveImageNames({
+    return resolveImageNames({
       row,
       columnCaseMap,
       company,
       imagenameFields,
       imageIdField,
+      configs,
+      currentConfig,
+      currentConfigName,
     });
-    if (!isTemporary) return resolved;
-    const temporaryName = getTemporaryImageName(row);
-    return {
-      ...resolved,
-      primary: temporaryName,
-      altNames: temporaryName ? [] : [],
-      idName: '',
-      imageIdFields: [],
-    };
   }
 
   function buildTemporaryImageName() {
