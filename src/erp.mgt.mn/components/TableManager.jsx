@@ -596,7 +596,7 @@ const TableManager = forwardRef(function TableManager({
   const [showDetail, setShowDetail] = useState(false);
   const [detailRow, setDetailRow] = useState(null);
   const [detailRefs, setDetailRefs] = useState([]);
-  const [imagesRow, setImagesRow] = useState(null);
+  const [imageViewRow, setImageViewRow] = useState(null);
   const [uploadRow, setUploadRow] = useState(null);
   const [ctxMenu, setCtxMenu] = useState(null); // { x, y, value }
   const [searchTerm, setSearchTerm] = useState('');
@@ -3204,8 +3204,7 @@ const TableManager = forwardRef(function TableManager({
   }
 
   function openImages(row) {
-    showImageSearchToast(row);
-    setImagesRow(row);
+    setImageViewRow(row);
   }
 
   function openUpload(row) {
@@ -6570,6 +6569,9 @@ const TableManager = forwardRef(function TableManager({
   );
 
   const uploadCfg = uploadRow ? getConfigForRow(uploadRow) : {};
+  const viewImageConfig = imageViewRow
+    ? getImageConfigForRow(imageViewRow, formConfig || {})
+    : {};
 
   const reviewPendingCount = supportsTemporary &&
     availableTemporaryScopes.includes('review')
@@ -7998,18 +8000,29 @@ const TableManager = forwardRef(function TableManager({
           }
         }}
       />
-      <RowImageViewModal
-        visible={imagesRow !== null}
-        onClose={() => setImagesRow(null)}
+      <RowImageUploadModal
+        visible={imageViewRow !== null}
+        onClose={() => setImageViewRow(null)}
         table={table}
-        folder={getImageFolder(imagesRow)}
-        row={imagesRow || {}}
+        folder={getImageFolder(imageViewRow)}
+        row={imageViewRow || {}}
+        rowKey={getRowId(imageViewRow) || 0}
+        imagenameFields={viewImageConfig.imagenameField || []}
         columnCaseMap={columnCaseMap}
+        imageIdField={viewImageConfig.imageIdField || ''}
         configs={allConfigs}
         currentConfig={formConfig}
         currentConfigName={formName}
-        canDelete={Boolean(normalizedViewerEmpId)}
-        useAllConfigsWhenMissing
+        onUploaded={(name) => {
+          if (imageViewRow) {
+            const id = getRowId(imageViewRow);
+            setRows((rs) =>
+              rs.map((r) =>
+                getRowId(r) === id ? { ...r, _imageName: name } : r,
+              ),
+            );
+          }
+        }}
       />
       <RowImageViewModal
         visible={temporaryImagesEntry !== null}
