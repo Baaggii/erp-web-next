@@ -8540,8 +8540,14 @@ const TableManager = forwardRef(function TableManager({
                                           row: {
                                             ...normalizedValuesWithImage,
                                             _imageName:
-                                              temporaryImageName ||
-                                              normalizedValuesWithImage?._imageName,
+                                              normalizedValuesWithImage?._imageName ||
+                                              temporaryImageName,
+                                            imageName:
+                                              normalizedValuesWithImage?.imageName ||
+                                              temporaryImageName,
+                                            image_name:
+                                              normalizedValuesWithImage?.image_name ||
+                                              temporaryImageName,
                                             created_by: entry?.created_by || entry?.createdBy,
                                           },
                                           table: temporaryTableName,
@@ -8568,8 +8574,14 @@ const TableManager = forwardRef(function TableManager({
                                         const rowWithImage = {
                                           ...normalizedValuesWithImage,
                                           _imageName:
-                                            temporaryImageName ||
-                                            normalizedValuesWithImage?._imageName,
+                                            normalizedValuesWithImage?._imageName ||
+                                            temporaryImageName,
+                                          imageName:
+                                            normalizedValuesWithImage?.imageName ||
+                                            temporaryImageName,
+                                          image_name:
+                                            normalizedValuesWithImage?.image_name ||
+                                            temporaryImageName,
                                           created_by: entry?.created_by || entry?.createdBy,
                                         };
                                         showImageSearchToast(rowWithImage, temporaryTableName);
