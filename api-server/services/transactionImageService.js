@@ -220,12 +220,7 @@ export async function getThumbnailPath(savePath, companyId = 0, size = 240) {
     return thumbPath;
   }
   const sharpLib = await loadSharp();
-  if (!sharpLib) {
-    if (!thumbStat || thumbStat.mtimeMs < sourceStat.mtimeMs) {
-      await fs.copyFile(sourcePath, thumbPath);
-    }
-    return thumbPath;
-  }
+  if (!sharpLib) return sourcePath;
   let pipeline = sharpLib(sourcePath).resize({ width: size, height: size, fit: 'cover' });
   const ext = path.extname(thumbPath).toLowerCase();
   if (ext === '.png') {
