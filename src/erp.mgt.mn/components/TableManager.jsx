@@ -2664,23 +2664,45 @@ const TableManager = forwardRef(function TableManager({
     };
   }
 
-  function resolveImageNameForSearch(row) {
-    if (!row) return '';
-    const currentName = resolveImageNameForRow(row, formConfig || {});
-    if (currentName) return currentName;
-    const matches = getMatchingConfigsForRow(row);
-    const fieldSet = new Set();
-    matches.forEach(({ config }) => {
+  function getAllConfigImageFields() {
+    const imageFields = [];
+    Object.values(allConfigs || {}).forEach((config) => {
       if (Array.isArray(config?.imagenameField)) {
-        config.imagenameField.forEach((field) => {
-          if (field) fieldSet.add(field);
-        });
+        imageFields.push(...config.imagenameField);
       }
       if (typeof config?.imageIdField === 'string' && config.imageIdField) {
-        fieldSet.add(config.imageIdField);
+        imageFields.push(config.imageIdField);
       }
     });
-    const combinedFields = Array.from(fieldSet);
+    return dedupeFields(imageFields);
+  }
+
+  function resolveImageNameForSearch(row) {
+    if (!row) return '';
+    const currentConfig = formConfig || {};
+    const hasCurrentImageFields = hasImageFields(currentConfig);
+    if (hasCurrentImageFields) {
+      const currentName = resolveImageNameForRow(row, currentConfig);
+      if (currentName) return currentName;
+    }
+    let combinedFields = [];
+    if (hasCurrentImageFields) {
+      const matches = getMatchingConfigsForRow(row);
+      const fieldSet = new Set();
+      matches.forEach(({ config }) => {
+        if (Array.isArray(config?.imagenameField)) {
+          config.imagenameField.forEach((field) => {
+            if (field) fieldSet.add(field);
+          });
+        }
+        if (typeof config?.imageIdField === 'string' && config.imageIdField) {
+          fieldSet.add(config.imageIdField);
+        }
+      });
+      combinedFields = Array.from(fieldSet);
+    } else {
+      combinedFields = getAllConfigImageFields();
+    }
     if (combinedFields.length > 0) {
       const { name } = buildImageName(row, combinedFields, columnCaseMap, company);
       if (name) return name;
@@ -2690,8 +2712,10 @@ const TableManager = forwardRef(function TableManager({
 
   function resolveImageNameWithFallback(row, config = {}) {
     if (!row) return '';
-    const primaryName = resolveImageNameForRow(row, config);
-    if (primaryName) return primaryName;
+    if (hasImageFields(config)) {
+      const primaryName = resolveImageNameForRow(row, config);
+      if (primaryName) return primaryName;
+    }
     return resolveImageNameForSearch(row);
   }
 
