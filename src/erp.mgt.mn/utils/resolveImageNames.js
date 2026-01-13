@@ -254,9 +254,11 @@ export default function resolveImageNames({
     const matched = pickConfigEntry(configs, row, columnCaseMap);
     if (matched.configName) configName = matched.configName;
   }
-  if (!primary && Object.keys(configs || {}).length > 0) {
-    if (!hasImageFields(currentConfig)) {
-      const { fields, configNames, imageIdFields } = collectAllConfigImageFields(configs);
+  const shouldForceAllConfigNames = hasCurrentConfig && !currentHasImageFields;
+  if (Object.keys(configs || {}).length > 0) {
+    if (shouldForceAllConfigNames || (!primary && !hasImageFields(currentConfig))) {
+      const { fields, configNames, imageIdFields } =
+        collectAllConfigImageFields(configs);
       const entries = Object.entries(configs || {}).map(([configName, config]) => ({
         configName,
         config,
@@ -280,7 +282,7 @@ export default function resolveImageNames({
         }
         if (!missing.length) missing = result.missing;
       }
-    } else {
+    } else if (!primary) {
       const matchedConfigs = pickMatchingConfigs(configs, row, columnCaseMap);
       const { fields, configNames, imageIdFields } =
         collectImageFields(matchedConfigs);
