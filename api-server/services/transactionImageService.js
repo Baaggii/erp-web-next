@@ -54,6 +54,46 @@ async function getDirs(companyId = 0) {
   };
 }
 
+function normalizeSavePath(savePath = '') {
+  let raw = String(savePath || '').trim();
+  if (!raw) return '';
+  let pathname = raw;
+  if (/^https?:\/\//i.test(raw)) {
+    try {
+      pathname = new URL(raw).pathname;
+    } catch {
+      pathname = raw;
+    }
+  }
+  pathname = pathname.split('?')[0];
+  try {
+    pathname = decodeURIComponent(pathname);
+  } catch {
+    // ignore decoding errors
+  }
+  pathname = pathname.replace(/\\/g, '/').replace(/^\/+/, '');
+  if (pathname.startsWith('api/')) {
+    pathname = pathname.slice(4);
+  }
+  return pathname;
+}
+
+async function resolveSafeImagePath(savePath, companyId = 0) {
+  const { baseRoot, basePath } = await getDirs(companyId);
+  const normalized = normalizeSavePath(savePath);
+  if (!normalized) return null;
+  const basePrefix = basePath.replace(/\\/g, '/');
+  if (!normalized.startsWith(`${basePrefix}/`)) return null;
+  const rel = normalized.slice(basePrefix.length + 1);
+  if (!rel || rel.includes('..')) return null;
+  const resolvedBase = path.resolve(baseRoot);
+  const resolvedPath = path.resolve(baseRoot, rel);
+  if (resolvedPath !== resolvedBase && !resolvedPath.startsWith(`${resolvedBase}${path.sep}`)) {
+    return null;
+  }
+  return { abs: resolvedPath, rel, baseRoot };
+}
+
 function ensureDir(dir) {
   if (!fssync.existsSync(dir)) {
     fssync.mkdirSync(dir, { recursive: true });
@@ -156,6 +196,47 @@ async function ensureJpegForHeic(
     }
   }
   return null;
+}
+
+export async function getThumbnailPath(savePath, companyId = 0, size = 240) {
+  const resolved = await resolveSafeImagePath(savePath, companyId);
+  if (!resolved) return null;
+  let sourcePath = resolved.abs;
+  let rel = resolved.rel;
+  if (isHeicFile(sourcePath)) {
+    const converted = await ensureJpegForHeic(sourcePath, path.basename(sourcePath), '');
+    if (converted) {
+      sourcePath = converted;
+      rel = path.relative(resolved.baseRoot, converted);
+    }
+  }
+  const sourceStat = await fs.stat(sourcePath).catch(() => null);
+  if (!sourceStat) return null;
+  const thumbRoot = path.join(resolved.baseRoot, 'thumbnails');
+  const thumbPath = path.join(thumbRoot, rel);
+  ensureDir(path.dirname(thumbPath));
+  const thumbStat = await fs.stat(thumbPath).catch(() => null);
+  if (thumbStat && thumbStat.mtimeMs >= sourceStat.mtimeMs) {
+    return thumbPath;
+  }
+  const sharpLib = await loadSharp();
+  if (!sharpLib) {
+    if (!thumbStat || thumbStat.mtimeMs < sourceStat.mtimeMs) {
+      await fs.copyFile(sourcePath, thumbPath);
+    }
+    return thumbPath;
+  }
+  let pipeline = sharpLib(sourcePath).resize({ width: size, height: size, fit: 'cover' });
+  const ext = path.extname(thumbPath).toLowerCase();
+  if (ext === '.png') {
+    pipeline = pipeline.png({ quality: 80 });
+  } else if (ext === '.webp') {
+    pipeline = pipeline.webp({ quality: 80 });
+  } else {
+    pipeline = pipeline.jpeg({ quality: 80 });
+  }
+  await pipeline.toFile(thumbPath);
+  return thumbPath;
 }
 
 function sanitizeName(name) {
