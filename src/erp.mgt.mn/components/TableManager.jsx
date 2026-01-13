@@ -2488,15 +2488,15 @@ const TableManager = forwardRef(function TableManager({
   }
 
   function getImageFolder(row) {
-    const typeFields = getTransactionTypeFilters().fields;
-    const rowValues = getRowTransactionTypeValues(row, typeFields);
-    if (rowValues.length >= 2) {
-      return `${slugify(rowValues[0])}/${slugify(String(rowValues[1]))}`;
-    }
-    if (rowValues.length === 1) {
-      return `${slugify(table)}/${slugify(String(rowValues[0]))}`;
-    }
-    return table;
+    const lower = {};
+    Object.keys(row || {}).forEach((k) => {
+      lower[k.toLowerCase()] = row[k];
+    });
+    const t1 = lower['trtype'];
+    const t2 =
+      lower['uitranstypename'] || lower['transtype'] || lower['transtypename'];
+    if (!t1 || !t2) return table;
+    return `${slugify(t1)}/${slugify(String(t2))}`;
   }
 
   const resolveImageNameForRow = useCallback(
