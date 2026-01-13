@@ -506,6 +506,10 @@ const TableManager = forwardRef(function TableManager({
   }, []);
   
   const [rows, setRows] = useState([]);
+  const safeRows = useMemo(
+    () => (Array.isArray(rows) ? rows.filter((row) => row && typeof row === 'object') : []),
+    [rows],
+  );
   const [count, setCount] = useState(0);
   const [page, setPage] = useState(1);
   const [perPage, setPerPage] = useState(initialPerPage);
@@ -3652,7 +3656,9 @@ const TableManager = forwardRef(function TableManager({
   }
 
   function selectCurrentPage() {
-    setSelectedRows(new Set(rows.map((r) => getRowId(r)).filter((id) => id !== undefined)));
+    setSelectedRows(
+      new Set(safeRows.map((r) => getRowId(r)).filter((id) => id !== undefined)),
+    );
   }
 
   function deselectAll() {
@@ -7138,8 +7144,8 @@ const TableManager = forwardRef(function TableManager({
               <input
                 type="checkbox"
                 checked={
-                  rows.length > 0 &&
-                  rows.every((r) => {
+                  safeRows.length > 0 &&
+                  safeRows.every((r) => {
                     const rid = getRowId(r);
                     return rid !== undefined && selectedRows.has(rid);
                   })
@@ -7273,14 +7279,14 @@ const TableManager = forwardRef(function TableManager({
           </tr>
         </thead>
         <tbody>
-          {rows.length === 0 && (
+          {safeRows.length === 0 && (
             <tr>
               <td colSpan={columns.length + 2} style={{ textAlign: 'center', padding: '0.5rem' }}>
                 No data.
               </td>
             </tr>
           )}
-          {rows.map((r) => {
+          {safeRows.map((r) => {
             const rid = getRowId(r);
             const ridKey =
               rid === undefined || rid === null ? null : String(rid);
@@ -7349,9 +7355,10 @@ const TableManager = forwardRef(function TableManager({
             if (requestReason)
               tooltipParts.push(`Reason: ${String(requestReason).substring(0, 200)}`);
             const lockTooltip = tooltipParts.join('\n');
+            const rowKey = r?.id ?? JSON.stringify(r);
             return (
               <tr
-                key={r.id || JSON.stringify(r)}
+                key={rowKey}
                 onClick={(e) => {
                   const t = e.target.tagName;
                   if (t !== 'INPUT' && t !== 'BUTTON' && t !== 'SELECT' && t !== 'A') {
