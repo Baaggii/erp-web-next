@@ -16,6 +16,7 @@ import {
   commitUploadedImages,
   detectIncompleteFromNames,
   searchImages,
+  getThumbnailPath,
 } from '../services/transactionImageService.js';
 import { getGeneralConfig } from '../services/generalConfig.js';
 
@@ -173,6 +174,23 @@ router.get('/search/:value', requireAuth, async (req, res, next) => {
     const perPage = parseInt(req.query.pageSize, 10) || 20;
     const { files, total } = await searchImages(req.params.value, page, perPage, req.user.companyId);
     res.json({ files: toAbsolute(req, files), total, page, perPage });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get('/thumbnail', requireAuth, async (req, res, next) => {
+  try {
+    const savePath = req.query.path || req.query.savePath || '';
+    if (!savePath) {
+      return res.status(400).json({ message: 'path required' });
+    }
+    const thumbPath = await getThumbnailPath(savePath, req.user.companyId);
+    if (!thumbPath) {
+      return res.status(404).json({ message: 'not found' });
+    }
+    res.set('Cache-Control', 'private, max-age=86400');
+    return res.sendFile(thumbPath);
   } catch (err) {
     next(err);
   }

@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import Modal from './Modal.jsx';
 import { API_BASE, API_ROOT } from '../utils/apiBase.js';
 import resolveImageNames from '../utils/resolveImageNames.js';
+import { buildImageThumbnailUrl } from '../utils/transactionImageThumbnails.js';
 import { useToast } from '../context/ToastContext.jsx';
 import useGeneralConfig from '../hooks/useGeneralConfig.js';
 import { useTranslation } from 'react-i18next';
@@ -142,6 +143,7 @@ export default function RowImageViewModal({
                       path: p,
                       name: p.split('/').pop(),
                       src: p.startsWith('http') ? p : `${apiRoot}${p}`,
+                      thumbSrc: buildImageThumbnailUrl(p),
                     }));
                     if (isCurrent()) setFiles(entries);
                     return;
@@ -155,6 +157,7 @@ export default function RowImageViewModal({
                   path: p,
                   name: p.split('/').pop(),
                   src: p.startsWith('http') ? p : `${apiRoot}${p}`,
+                  thumbSrc: buildImageThumbnailUrl(p),
                 }));
                 if (isCurrent()) setFiles(entries);
                 return;
@@ -230,7 +233,7 @@ export default function RowImageViewModal({
       {files.map((f, idx) => (
         <div key={f.path} style={{ marginBottom: '0.25rem' }}>
           <img
-            src={f.src}
+            src={f.thumbSrc || f.src}
             alt=""
             onError={(e) => {
               e.currentTarget.onerror = null;
@@ -303,7 +306,7 @@ export default function RowImageViewModal({
               {files.map((f, idx) => (
                 <div key={f.path} style={{ position: 'relative', aspectRatio: '1 / 1' }}>
                   <img
-                    src={f.src}
+                    src={f.thumbSrc || f.src}
                     alt=""
                     onError={(e) => {
                       e.currentTarget.onerror = null;
