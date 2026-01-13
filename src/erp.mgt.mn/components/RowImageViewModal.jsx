@@ -31,6 +31,7 @@ export default function RowImageViewModal({
   const { t } = useTranslation();
   const { company, user } = useContext(AuthContext);
   const requestRef = useRef(0);
+  const lastSearchRef = useRef({ key: '', hadImages: false });
   const toast = (msg, type = 'info') => {
     if (type === 'info' && !generalConfig?.general?.imageToastEnabled) return;
     addToast(msg, type);
@@ -93,6 +94,14 @@ export default function RowImageViewModal({
       currentConfigName,
       useAllConfigsWhenMissing,
     });
+    const searchKey = [
+      table,
+      folder,
+      primary,
+      altNames.join('|'),
+      idName || '',
+      company ?? '',
+    ].join('::');
     if (currentConfigName) {
       toast(`Current config name: ${currentConfigName}`, 'info');
     }
@@ -114,6 +123,7 @@ export default function RowImageViewModal({
     }
     toast(`Folders to search: ${folders.join(', ')}`, 'info');
     (async () => {
+      let foundAny = false;
       for (const fld of folders) {
         const params = new URLSearchParams();
         if (fld) params.set('folder', fld);
@@ -126,6 +136,7 @@ export default function RowImageViewModal({
             const res = await fetch(url, { credentials: 'include' });
             const list = await parseImagesPayload(res);
             if (list.length > 0) {
+              foundAny = true;
               if (nm === idName && idName && idName !== primary && primary) {
                 try {
                   const renameParams = new URLSearchParams();
@@ -140,6 +151,7 @@ export default function RowImageViewModal({
                   );
                   const list2 = await parseImagesPayload(res2);
                   if (list2.length > 0) {
+                    foundAny = true;
                     list2.forEach((p) => toast(`Found image: ${p}`, 'info'));
                     const entries = list2.map((p) => ({
                       path: p,
@@ -147,6 +159,7 @@ export default function RowImageViewModal({
                       src: p.startsWith('http') ? p : `${apiRoot}${p}`,
                       thumbSrc: buildImageThumbnailUrl(p),
                     }));
+                    lastSearchRef.current = { key: searchKey, hadImages: true };
                     if (isCurrent()) setFiles(entries);
                     return;
                   }
@@ -161,6 +174,7 @@ export default function RowImageViewModal({
                   src: p.startsWith('http') ? p : `${apiRoot}${p}`,
                   thumbSrc: buildImageThumbnailUrl(p),
                 }));
+                lastSearchRef.current = { key: searchKey, hadImages: true };
                 if (isCurrent()) setFiles(entries);
                 return;
               }
@@ -170,7 +184,15 @@ export default function RowImageViewModal({
           }
         }
       }
-      toast('No images found', 'info');
+      if (!foundAny) {
+        const alreadyNotified =
+          lastSearchRef.current.key === searchKey &&
+          lastSearchRef.current.hadImages === false;
+        if (!alreadyNotified) {
+          toast('No images found', 'info');
+        }
+        lastSearchRef.current = { key: searchKey, hadImages: false };
+      }
       if (isCurrent()) setFiles([]);
     })();
   }, [
@@ -189,6 +211,7 @@ export default function RowImageViewModal({
     if (!visible) {
       setShowGallery(false);
       setFullscreenIndex(null);
+      lastSearchRef.current = { key: '', hadImages: false };
     }
   }, [visible]);
 
