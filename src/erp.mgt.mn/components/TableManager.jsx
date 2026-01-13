@@ -2532,23 +2532,6 @@ const TableManager = forwardRef(function TableManager({
     return key ? obj[key] : undefined;
   }
 
-  function getRowTransactionTypeValues(row, fields = [], valueSet = null) {
-    if (!row || typeof row !== 'object') return [];
-    const values = [];
-    const seen = new Set();
-    fields.forEach((field) => {
-      if (!field) return;
-      const val = getCase(row, field);
-      if (val === undefined || val === null || val === '') return;
-      if (valueSet && !valueSet.has(String(val))) return;
-      const key = String(val);
-      if (seen.has(key)) return;
-      seen.add(key);
-      values.push(val);
-    });
-    return values;
-  }
-
   function getConfigForRow(row) {
     if (!row) return formConfig || {};
     const { fields, valueSet } = getTransactionTypeFilters();
