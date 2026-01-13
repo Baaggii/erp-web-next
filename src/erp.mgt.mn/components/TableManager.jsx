@@ -2668,33 +2668,10 @@ const TableManager = forwardRef(function TableManager({
     };
   }
 
-  function getAllConfigImageFields() {
-    const imageFields = [];
-    Object.values(allConfigs || {}).forEach((config) => {
-      if (Array.isArray(config?.imagenameField)) {
-        imageFields.push(...config.imagenameField);
-      }
-      if (typeof config?.imageIdField === 'string' && config.imageIdField) {
-        imageFields.push(config.imageIdField);
-      }
-    });
-    return dedupeFields(imageFields);
-  }
-
   function resolveImageNameForSearch(row) {
     if (!row) return '';
-    const allFields = getAllConfigImageFields();
-    const { primary } = resolveImageNames({
-      row,
-      columnCaseMap,
-      company,
-      imagenameFields: allFields,
-      imageIdField: '',
-      configs: allConfigs,
-      currentConfig: formConfig,
-      currentConfigName: formName,
-    });
-    return primary || '';
+    const imageConfig = getImageConfigForRow(row, formConfig || {});
+    return resolveImageNameForRow(row, imageConfig);
   }
 
   function resolveImageNameWithFallback(row, config = {}) {
@@ -3189,9 +3166,6 @@ const TableManager = forwardRef(function TableManager({
       const val = getCase(row, field);
       return val !== undefined && typeFilters.valueSet.has(String(val));
     });
-    const rowFieldNames = typeFilters.fields.filter(
-      (field) => getCase(row, field) !== undefined,
-    );
     addToast(
       `Transaction type values: ${typeFilters.values.join(', ') || 'none'}`,
       'info',
@@ -3202,10 +3176,6 @@ const TableManager = forwardRef(function TableManager({
     );
     addToast(
       `Matched transaction type fields: ${matchedTypeFields.join(', ') || 'none'}`,
-      'info',
-    );
-    addToast(
-      `Row transaction type fields: ${rowFieldNames.join(', ') || 'none'}`,
       'info',
     );
     const name = resolveImageNameForSearch(row);
