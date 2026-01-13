@@ -203,7 +203,8 @@ export async function getThumbnailPath(savePath, companyId = 0, size = 240) {
   if (!resolved) return null;
   let sourcePath = resolved.abs;
   let rel = resolved.rel;
-  if (isHeicFile(sourcePath)) {
+  const wasHeic = isHeicFile(sourcePath);
+  if (wasHeic) {
     const converted = await ensureJpegForHeic(sourcePath, path.basename(sourcePath), '');
     if (converted) {
       sourcePath = converted;
@@ -212,6 +213,7 @@ export async function getThumbnailPath(savePath, companyId = 0, size = 240) {
   }
   const sourceStat = await fs.stat(sourcePath).catch(() => null);
   if (!sourceStat) return null;
+  if (wasHeic && isHeicFile(sourcePath)) return sourcePath;
   const thumbRoot = path.join(resolved.baseRoot, 'thumbnails');
   const thumbPath = path.join(thumbRoot, rel);
   ensureDir(path.dirname(thumbPath));
