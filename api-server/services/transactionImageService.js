@@ -390,7 +390,7 @@ function resolveImageNamingForSearch(row = {}, configs = {}, fallbackTable = '')
       }
     }
   }
-  if (!name && (!hasPreferredFields || !hasConfigs)) {
+  if (!name && !hasPreferredFields) {
     const { fields, configNames: allNames } = collectAllConfigImageFields(configs);
     if (fields.length) {
       name = buildNameFromRow(row, fields);
@@ -431,7 +431,7 @@ function resolveImagePrefixForSearch(row = {}, configs = {}, fallbackTable = '')
       }
     }
   }
-  if (!name && (!hasPreferredFields || !hasConfigs)) {
+  if (!name && !hasPreferredFields) {
     const { fields, configNames: allNames } = collectAllConfigImageFields(configs, {
       includeImageId: false,
     });
