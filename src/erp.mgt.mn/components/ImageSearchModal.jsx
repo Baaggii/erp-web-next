@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import Modal from './Modal.jsx';
+import { buildImageThumbnailUrl } from '../utils/transactionImageThumbnails.js';
 
 export default function ImageSearchModal({
   visible,
@@ -15,12 +16,17 @@ export default function ImageSearchModal({
 }) {
   const baseZIndex = 16000;
   const totalPages = Math.ceil(total / perPage);
-  const [items, setItems] = useState(images);
+  const toItems = (list = []) =>
+    list.map((src) => ({
+      src,
+      thumbSrc: buildImageThumbnailUrl(src),
+    }));
+  const [items, setItems] = useState(toItems(images));
   const [fullscreenIndex, setFullscreenIndex] = useState(null);
   const [showGallery, setShowGallery] = useState(false);
 
   useEffect(() => {
-    setItems(images);
+    setItems(toItems(images));
   }, [images]);
 
   async function handleDelete(src) {
@@ -75,10 +81,10 @@ export default function ImageSearchModal({
               gap: '0.5rem',
             }}
           >
-            {items.map((src, idx) => (
-              <div key={src} style={{ position: 'relative' }}>
+            {items.map((item, idx) => (
+              <div key={item.src} style={{ position: 'relative' }}>
                 <img
-                  src={src}
+                  src={item.thumbSrc || item.src}
                   style={{ width: '100%', height: 'auto', objectFit: 'cover', cursor: 'pointer' }}
                   onClick={() => setFullscreenIndex(idx)}
                 />
@@ -86,7 +92,7 @@ export default function ImageSearchModal({
                   type="button"
                   onClick={(e) => {
                     e.stopPropagation();
-                    handleDelete(src);
+                    handleDelete(item.src);
                   }}
                   style={{
                     position: 'absolute',
@@ -167,10 +173,10 @@ export default function ImageSearchModal({
                 alignContent: 'start',
               }}
             >
-              {items.map((src, idx) => (
-                <div key={src} style={{ position: 'relative', aspectRatio: '1 / 1' }}>
+              {items.map((item, idx) => (
+                <div key={item.src} style={{ position: 'relative', aspectRatio: '1 / 1' }}>
                   <img
-                    src={src}
+                    src={item.thumbSrc || item.src}
                     style={{ width: '100%', height: '100%', objectFit: 'cover', cursor: 'pointer' }}
                     onClick={() => setFullscreenIndex(idx)}
                   />
@@ -178,7 +184,7 @@ export default function ImageSearchModal({
                     type="button"
                     onClick={(e) => {
                       e.stopPropagation();
-                      handleDelete(src);
+                      handleDelete(item.src);
                     }}
                     style={{
                       position: 'absolute',
@@ -231,7 +237,7 @@ export default function ImageSearchModal({
               Prev
             </button>
             <img
-              src={items[fullscreenIndex]}
+              src={items[fullscreenIndex]?.src}
               alt=""
               style={{ maxWidth: '90%', maxHeight: '90%' }}
             />
