@@ -361,6 +361,7 @@ function pickConfig(configs = {}, row = {}) {
 
 function resolveImageNamingForSearch(row = {}, configs = {}, fallbackTable = '') {
   const { name: preferredName, config: preferredConfig } = pickConfigEntry(configs, row);
+  const hasConfigs = Object.keys(configs || {}).length > 0;
   const preferredFields = Array.isArray(preferredConfig?.imagenameField)
     ? preferredConfig.imagenameField
     : [];
@@ -404,6 +405,7 @@ function resolveImageNamingForSearch(row = {}, configs = {}, fallbackTable = '')
 
 function resolveImagePrefixForSearch(row = {}, configs = {}, fallbackTable = '') {
   const { name: preferredName, config: preferredConfig } = pickConfigEntry(configs, row);
+  const hasConfigs = Object.keys(configs || {}).length > 0;
   const preferredFields = Array.isArray(preferredConfig?.imagenameField)
     ? preferredConfig.imagenameField
     : [];
