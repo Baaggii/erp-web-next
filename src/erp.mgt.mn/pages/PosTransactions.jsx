@@ -1491,6 +1491,9 @@ export default function PosTransactionsPage() {
   const [isPostingEbarimt, setIsPostingEbarimt] = useState(false);
   const [ebarimtPreview, setEbarimtPreview] = useState(null);
   const [ebarimtQrImage, setEbarimtQrImage] = useState('');
+  const [ebarimtPrintHtml, setEbarimtPrintHtml] = useState('');
+  const [ebarimtPrintOpen, setEbarimtPrintOpen] = useState(false);
+  const ebarimtPrintFrameRef = useRef(null);
   const [posApiEndpoints, setPosApiEndpoints] = useState([]);
   const [selectedRequestVariation, setSelectedRequestVariation] = useState('');
   const canIssueEbarimt = Boolean(
@@ -3357,56 +3360,46 @@ export default function PosTransactionsPage() {
 
   function handlePrintEbarimtPreview() {
     if (!ebarimtPreview || !ebarimtQrImage) return;
-    const printWindow = window.open('', '_blank', 'width=420,height=640');
-    if (!printWindow) {
-      addToast('Unable to open print window', 'error');
-      return;
-    }
-    printWindow.document.open();
-    printWindow.document.write(
-      '<!DOCTYPE html><html><head><title>Ebarimt receipt</title></head>' +
-        '<body style="font-family: sans-serif; display: flex; flex-direction: column; align-items: center; gap: 0.5rem; padding: 1rem;">' +
-        '</body></html>',
-    );
-    printWindow.document.close();
-    const { document: doc } = printWindow;
-    const createRow = (label, value) => {
-      if (!value) return null;
-      const row = doc.createElement('div');
-      row.textContent = `${label}: ${value}`;
-      return row;
+    const escapeHtml = (value) => {
+      if (value === null || value === undefined) return '';
+      return String(value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
     };
-    const title = doc.createElement('h2');
-    title.textContent = 'Ebarimt receipt';
-    doc.body.appendChild(title);
-    const billRow = createRow('Bill ID', ebarimtPreview.billId || '-');
-    if (billRow) doc.body.appendChild(billRow);
-    if (ebarimtPreview.invoiceNo) {
-      const invoiceRow = createRow('Invoice No', ebarimtPreview.invoiceNo);
-      if (invoiceRow) doc.body.appendChild(invoiceRow);
+    const rows = [];
+    const pushRow = (label, value) => {
+      if (!value) return;
+      rows.push(
+        `<div style="font-size: 0.9rem;">${escapeHtml(label)}: ${escapeHtml(value)}</div>`,
+      );
+    };
+    const title = '<h2 style="margin: 0;">Ebarimt receipt</h2>';
+    pushRow('Bill ID', ebarimtPreview.billId || '-');
+    pushRow('Invoice No', ebarimtPreview.invoiceNo);
+    pushRow('Status', ebarimtPreview.status);
+    pushRow('Lottery', ebarimtPreview.lottery);
+    pushRow('Message', ebarimtPreview.errorMessage);
+    const html = `<!DOCTYPE html><html><head><title>Ebarimt receipt</title></head>
+      <body style="font-family: sans-serif; display: flex; flex-direction: column; align-items: center; gap: 0.5rem; padding: 1rem;">
+        ${title}
+        ${rows.join('')}
+        <img src="${escapeHtml(ebarimtQrImage)}" alt="Ebarimt QR code"
+          style="width: 260px; height: 260px; border: 1px solid #ccc; padding: 0.5rem;" />
+      </body></html>`;
+    setEbarimtPrintHtml(html);
+    setEbarimtPrintOpen(true);
+  }
+
+  function handleRunEbarimtPrint() {
+    const frame = ebarimtPrintFrameRef.current;
+    if (frame?.contentWindow) {
+      frame.contentWindow.focus();
+      frame.contentWindow.print();
     }
-    if (ebarimtPreview.status) {
-      const statusRow = createRow('Status', ebarimtPreview.status);
-      if (statusRow) doc.body.appendChild(statusRow);
-    }
-    if (ebarimtPreview.lottery) {
-      const lotteryRow = createRow('Lottery', ebarimtPreview.lottery);
-      if (lotteryRow) doc.body.appendChild(lotteryRow);
-    }
-    if (ebarimtPreview.errorMessage) {
-      const messageRow = createRow('Message', ebarimtPreview.errorMessage);
-      if (messageRow) doc.body.appendChild(messageRow);
-    }
-    const img = doc.createElement('img');
-    img.src = ebarimtQrImage;
-    img.alt = 'Ebarimt QR code';
-    img.style.width = '260px';
-    img.style.height = '260px';
-    img.style.border = '1px solid #ccc';
-    img.style.padding = '0.5rem';
-    doc.body.appendChild(img);
-    printWindow.focus();
-    printWindow.print();
+    setEbarimtPrintOpen(false);
   }
 
   function startDrag(table, e) {
@@ -3833,6 +3826,32 @@ export default function PosTransactionsPage() {
             onSelect={selectPending}
             onClose={() => setShowLoadModal(false)}
           />
+          {ebarimtPrintOpen && (
+            <Modal
+              visible={ebarimtPrintOpen}
+              title="Ebarimt receipt"
+              onClose={() => setEbarimtPrintOpen(false)}
+              width="460px"
+              zIndex={1200}
+            >
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                <iframe
+                  ref={ebarimtPrintFrameRef}
+                  title="Ebarimt receipt"
+                  style={{ width: '100%', height: '60vh', border: '1px solid #d1d5db' }}
+                  srcDoc={ebarimtPrintHtml}
+                />
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem' }}>
+                  <button type="button" onClick={() => setEbarimtPrintOpen(false)}>
+                    Cancel
+                  </button>
+                  <button type="button" onClick={handleRunEbarimtPrint}>
+                    Print
+                  </button>
+                </div>
+              </div>
+            </Modal>
+          )}
         </>
       )}
     </div>
