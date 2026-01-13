@@ -3161,6 +3161,23 @@ const TableManager = forwardRef(function TableManager({
   function showImageSearchToast(row, tableName = table) {
     if (!generalConfig.general?.imageToastEnabled) return;
     if (!row || typeof row !== 'object') return;
+    const typeFilters = getTransactionTypeFilters();
+    const matchedTypeFields = typeFilters.fields.filter((field) => {
+      const val = getCase(row, field);
+      return val !== undefined && typeFilters.valueSet.has(String(val));
+    });
+    addToast(
+      `Transaction type values: ${typeFilters.values.join(', ') || 'none'}`,
+      'info',
+    );
+    addToast(
+      `Transaction type fields: ${typeFilters.fields.join(', ') || 'none'}`,
+      'info',
+    );
+    addToast(
+      `Matched transaction type fields: ${matchedTypeFields.join(', ') || 'none'}`,
+      'info',
+    );
     const name = resolveImageNameForSearch(row);
     const folder = getImageFolder(row);
     const details = [
