@@ -182,6 +182,15 @@ export default function resolveImageNames({
   const configsAvailable = Object.keys(configs || {}).length > 0;
   const preferredFields = Array.isArray(imagenameFields) ? imagenameFields : [];
   const preferredImageIdField = imageIdField || '';
+  const preferredFieldSet = Array.from(
+    new Set([...preferredFields, preferredImageIdField].filter(Boolean)),
+  );
+  if (preferredImageIdField) idFieldSet.add(preferredImageIdField);
+  if (preferredFieldSet.length > 0) {
+    const result = buildImageName(row, preferredFieldSet, columnCaseMap, company);
+    primary = result.name;
+    missing = result.missing;
+  }
   let configName = currentConfigName || '';
   if (!configName && configsAvailable) {
     const matched = pickConfigEntry(configs, row, columnCaseMap);
@@ -203,35 +212,27 @@ export default function resolveImageNames({
     imageIdFields.forEach((field) => idFieldSet.add(field));
     if (!configName && configNames.length > 0) configName = configNames[0];
     if (names.length > 0) {
-      primary = names[0];
-      configAltNames = names.slice(1);
+      if (!primary) {
+        primary = names[0];
+        configAltNames = names.slice(1);
+      } else {
+        names.forEach((name) => {
+          if (name && name !== primary && !configAltNames.includes(name)) {
+            configAltNames.push(name);
+          }
+        });
+      }
       if (!missing.length) missing = configMissing;
     } else if (fields.length > 0) {
       const result = buildImageName(row, fields, columnCaseMap, company);
       if (result.name) {
-        primary = result.name;
+        if (!primary) {
+          primary = result.name;
+        } else if (result.name !== primary && !configAltNames.includes(result.name)) {
+          configAltNames.push(result.name);
+        }
       }
       if (!missing.length) missing = result.missing;
-    }
-  }
-  if (!primary && currentConfig && Object.keys(currentConfig).length > 0) {
-    const currentFields = Array.isArray(currentConfig?.imagenameField)
-      ? currentConfig.imagenameField
-      : [];
-    const currentImageIdField =
-      typeof currentConfig?.imageIdField === 'string'
-        ? currentConfig.imageIdField
-        : '';
-    const currentFieldSet = Array.from(
-      new Set([...currentFields, currentImageIdField].filter(Boolean)),
-    );
-    if (currentImageIdField) idFieldSet.add(currentImageIdField);
-    if (currentFieldSet.length > 0) {
-      const result = buildImageName(row, currentFieldSet, columnCaseMap, company);
-      if (result.name) {
-        primary = result.name;
-        if (!missing.length) missing = result.missing;
-      }
     }
   }
   if (!primary) {
