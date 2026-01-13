@@ -8039,6 +8039,7 @@ const TableManager = forwardRef(function TableManager({
         currentConfig={formConfig}
         currentConfigName={formName}
         canDelete={Boolean(normalizedViewerEmpId)}
+        useAllConfigsWhenMissing
       />
       <RowImageViewModal
         visible={temporaryImagesEntry !== null}
@@ -8051,6 +8052,7 @@ const TableManager = forwardRef(function TableManager({
         currentConfig={formConfig}
         currentConfigName={formName}
         canDelete={Boolean(temporaryImagesEntry?.canDelete)}
+        useAllConfigsWhenMissing
       />
       <RowImageUploadModal
         visible={temporaryUploadEntry !== null}

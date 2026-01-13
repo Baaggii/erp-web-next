@@ -205,6 +205,7 @@ export default function resolveImageNames({
   configs = {},
   currentConfig = {},
   currentConfigName = '',
+  useAllConfigsWhenMissing = false,
 } = {}) {
   const sanitizeName = (name) =>
     String(name)
@@ -224,6 +225,13 @@ export default function resolveImageNames({
     Boolean(currentConfigName) ||
     (currentConfig && Object.keys(currentConfig).length > 0);
   const currentHasImageFields = hasImageFields(currentConfig);
+  const configsAvailable = Object.keys(configs || {}).length > 0;
+  const matchingConfigs = configsAvailable
+    ? pickMatchingConfigs(configs, row, columnCaseMap)
+    : [];
+  const hasMatchingConfigs = matchingConfigs.length > 0;
+  const shouldUseAllConfigs =
+    useAllConfigsWhenMissing && configsAvailable && !hasMatchingConfigs;
   const preferredFields = hasCurrentConfig && currentHasImageFields
     ? Array.isArray(currentConfig?.imagenameField)
       ? currentConfig.imagenameField
@@ -250,13 +258,47 @@ export default function resolveImageNames({
     missing = result.missing;
   }
   let configName = currentConfigName || '';
-  if (!configName && Object.keys(configs || {}).length > 0) {
+  if (!configName && configsAvailable) {
     const matched = pickConfigEntry(configs, row, columnCaseMap);
     if (matched.configName) configName = matched.configName;
   }
   const shouldForceAllConfigNames = hasCurrentConfig && !currentHasImageFields;
-  if (Object.keys(configs || {}).length > 0) {
-    if (shouldForceAllConfigNames || (!primary && !hasImageFields(currentConfig))) {
+  if (configsAvailable) {
+    if (shouldUseAllConfigs) {
+      const { fields, configNames, imageIdFields } =
+        collectAllConfigImageFields(configs);
+      const entries = Object.entries(configs || {}).map(([configName, config]) => ({
+        configName,
+        config,
+      }));
+      const { names, missing: configMissing } = buildNamesFromConfigEntries(
+        entries,
+        row,
+        columnCaseMap,
+        company,
+      );
+      imageIdFields.forEach((field) => idFieldSet.add(field));
+      if (!configName && configNames.length > 0) configName = configNames[0];
+      if (names.length > 0) {
+        if (!primary) {
+          primary = names[0];
+          configAltNames = names.slice(1);
+        } else {
+          names.forEach((name) => {
+            if (name && name !== primary && !configAltNames.includes(name)) {
+              configAltNames.push(name);
+            }
+          });
+        }
+        if (!missing.length) missing = configMissing;
+      } else if (!primary && fields.length > 0) {
+        const result = buildImageName(row, fields, columnCaseMap, company);
+        if (result.name) {
+          primary = result.name;
+        }
+        if (!missing.length) missing = result.missing;
+      }
+    } else if (shouldForceAllConfigNames || (!primary && !hasImageFields(currentConfig))) {
       const { fields, configNames, imageIdFields } =
         collectAllConfigImageFields(configs);
       const entries = Object.entries(configs || {}).map(([configName, config]) => ({
@@ -283,9 +325,7 @@ export default function resolveImageNames({
         if (!missing.length) missing = result.missing;
       }
     } else if (!primary) {
-      const matchedConfigs = pickMatchingConfigs(configs, row, columnCaseMap);
-      const { fields, configNames, imageIdFields } =
-        collectImageFields(matchedConfigs);
+      const { fields, configNames, imageIdFields } = collectImageFields(matchingConfigs);
       imageIdFields.forEach((field) => idFieldSet.add(field));
       if (!configName && configNames.length > 0) configName = configNames[0];
       if (fields.length > 0) {
