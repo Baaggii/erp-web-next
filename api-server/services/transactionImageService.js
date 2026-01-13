@@ -72,6 +72,10 @@ function normalizeSavePath(savePath = '') {
     // ignore decoding errors
   }
   pathname = pathname.replace(/\\/g, '/').replace(/^\/+/, '');
+  const apiIndex = pathname.indexOf('api/');
+  if (apiIndex > 0) {
+    pathname = pathname.slice(apiIndex);
+  }
   if (pathname.startsWith('api/')) {
     pathname = pathname.slice(4);
   }
