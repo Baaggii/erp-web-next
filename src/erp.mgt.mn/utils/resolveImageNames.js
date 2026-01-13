@@ -127,6 +127,29 @@ function collectAllConfigImageFields(cfgs = {}) {
   return collectImageFields(entries);
 }
 
+function buildNamesFromConfigEntries(entries = [], row = {}, columnCaseMap = {}, company) {
+  const names = [];
+  let missing = [];
+  entries.forEach(({ config }) => {
+    if (!config) return;
+    const fields = Array.from(
+      new Set([
+        ...(Array.isArray(config.imagenameField) ? config.imagenameField : []),
+        ...(config.imageIdField ? [config.imageIdField] : []),
+      ].filter(Boolean)),
+    );
+    if (fields.length === 0) return;
+    const result = buildImageName(row, fields, columnCaseMap, company);
+    if (result.name && !names.includes(result.name)) {
+      names.push(result.name);
+    }
+    if (!missing.length && result.missing.length > 0) {
+      missing = result.missing;
+    }
+  });
+  return { names, missing };
+}
+
 function buildFallbackName(row = {}, columnCaseMap = {}) {
   const sanitize = (name) =>
     String(name)
@@ -195,6 +218,7 @@ export default function resolveImageNames({
   let primary = '';
   let missing = [];
   let fallbackPrimary = '';
+  let configAltNames = [];
   const idFieldSet = new Set();
   const hasCurrentConfig = currentConfig && Object.keys(currentConfig).length > 0;
   const preferredFields = hasCurrentConfig
@@ -225,11 +249,24 @@ export default function resolveImageNames({
   }
   if (!primary && Object.keys(configs || {}).length > 0) {
     if (!hasImageFields(currentConfig)) {
-      const { fields, configNames, imageIdFields } =
-        collectAllConfigImageFields(configs);
+      const { fields, configNames, imageIdFields } = collectAllConfigImageFields(configs);
+      const entries = Object.entries(configs || {}).map(([configName, config]) => ({
+        configName,
+        config,
+      }));
+      const { names, missing: configMissing } = buildNamesFromConfigEntries(
+        entries,
+        row,
+        columnCaseMap,
+        company,
+      );
       imageIdFields.forEach((field) => idFieldSet.add(field));
       if (!configName && configNames.length > 0) configName = configNames[0];
-      if (fields.length > 0) {
+      if (names.length > 0) {
+        primary = names[0];
+        configAltNames = names.slice(1);
+        if (!missing.length) missing = configMissing;
+      } else if (fields.length > 0) {
         const result = buildImageName(row, fields, columnCaseMap, company);
         if (result.name) {
           primary = result.name;
@@ -261,6 +298,11 @@ export default function resolveImageNames({
     primary = explicitImageName;
   }
   const altNames = [];
+  configAltNames.forEach((name) => {
+    if (name && name !== primary && !altNames.includes(name)) {
+      altNames.push(name);
+    }
+  });
   let idName = '';
   idFieldSet.forEach((field) => {
     const { name } = buildImageName(row, [field], columnCaseMap, company);
