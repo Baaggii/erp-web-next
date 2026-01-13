@@ -2705,7 +2705,7 @@ const TableManager = forwardRef(function TableManager({
       if (combinedFields.length === 0) {
         combinedFields = getAllConfigImageFields();
       }
-    } else if (hasConfigs) {
+    } else {
       combinedFields = getAllConfigImageFields();
     } else if (hasCurrentImageFields) {
       combinedFields = dedupeFields([
@@ -2717,7 +2717,7 @@ const TableManager = forwardRef(function TableManager({
       const { name } = buildImageName(row, combinedFields, columnCaseMap, company);
       if (name) return name;
     }
-    if (hasCurrentImageFields && hasConfigs) {
+    if (hasCurrentImageFields) {
       const allFields = getAllConfigImageFields();
       if (allFields.length > 0) {
         const { name } = buildImageName(row, allFields, columnCaseMap, company);
