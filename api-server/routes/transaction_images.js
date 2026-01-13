@@ -53,7 +53,7 @@ function toAbsolute(req, list) {
 }
 
 // Cleanup old images before the dynamic routes so /cleanup isn't captured
-router.delete('/cleanup/:days?', requireAuth, async (req, res, next) => {
+router.delete('/cleanup/:days?', requireAuth, authenticatedRouteLimiter, async (req, res, next) => {
   try {
     let days = parseInt(req.params.days || req.query.days, 10);
     if (!days || Number.isNaN(days)) {
@@ -67,7 +67,7 @@ router.delete('/cleanup/:days?', requireAuth, async (req, res, next) => {
   }
 });
 
-router.get('/detect_incomplete', requireAuth, async (req, res, next) => {
+router.get('/detect_incomplete', requireAuth, authenticatedRouteLimiter, async (req, res, next) => {
   const controller = new AbortController();
   req.on('close', () => controller.abort());
   try {
@@ -85,7 +85,7 @@ router.get('/detect_incomplete', requireAuth, async (req, res, next) => {
   }
 });
 
-router.post('/fix_incomplete', requireAuth, async (req, res, next) => {
+router.post('/fix_incomplete', requireAuth, authenticatedRouteLimiter, async (req, res, next) => {
   try {
     const arr = Array.isArray(req.body?.list) ? req.body.list : [];
     const fixed = await fixIncompleteImages(arr, req.user.companyId);
@@ -235,7 +235,7 @@ router.post(
   },
 );
 
-router.get('/:table/:name', requireAuth, async (req, res, next) => {
+router.get('/:table/:name', requireAuth, authenticatedRouteLimiter, async (req, res, next) => {
   try {
     const { files, conversionIssues } = await listImages(
       req.params.table,
@@ -254,7 +254,11 @@ router.get('/:table/:name', requireAuth, async (req, res, next) => {
   }
 });
 
-router.post('/:table/:oldName/rename/:newName', requireAuth, async (req, res, next) => {
+router.post(
+  '/:table/:oldName/rename/:newName',
+  requireAuth,
+  authenticatedRouteLimiter,
+  async (req, res, next) => {
   try {
     const files = await renameImages(
       req.params.table,
@@ -268,9 +272,14 @@ router.post('/:table/:oldName/rename/:newName', requireAuth, async (req, res, ne
   } catch (err) {
     next(err);
   }
-});
+  },
+);
 
-router.delete('/:table/:name/:file', requireAuth, async (req, res, next) => {
+router.delete(
+  '/:table/:name/:file',
+  requireAuth,
+  authenticatedRouteLimiter,
+  async (req, res, next) => {
   try {
     const ok = await deleteImage(
       req.params.table,
@@ -283,9 +292,14 @@ router.delete('/:table/:name/:file', requireAuth, async (req, res, next) => {
   } catch (err) {
     next(err);
   }
-});
+  },
+);
 
-router.delete('/:table/:name', requireAuth, async (req, res, next) => {
+router.delete(
+  '/:table/:name',
+  requireAuth,
+  authenticatedRouteLimiter,
+  async (req, res, next) => {
   try {
     const count = await deleteAllImages(
       req.params.table,
@@ -297,6 +311,7 @@ router.delete('/:table/:name', requireAuth, async (req, res, next) => {
   } catch (err) {
     next(err);
   }
-});
+  },
+);
 
 export default router;
