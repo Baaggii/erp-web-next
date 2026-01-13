@@ -280,6 +280,17 @@ export default function resolveImageNames({
     }
   }
   if (!primary) {
+    const preferredFieldSet = Array.from(
+      new Set([...preferredFields, preferredImageIdField].filter(Boolean)),
+    );
+    if (preferredImageIdField) idFieldSet.add(preferredImageIdField);
+    if (preferredFieldSet.length > 0) {
+      const result = buildImageName(row, preferredFieldSet, columnCaseMap, company);
+      primary = result.name;
+      if (!missing.length) missing = result.missing;
+    }
+  }
+  if (!primary) {
     primary = buildFallbackName(row, columnCaseMap);
   }
   if (explicitImageName) {
