@@ -2,6 +2,8 @@ import React, { useState, useEffect, useContext, useLayoutEffect, useRef } from 
 import Modal from './Modal.jsx';
 import { useToast } from '../context/ToastContext.jsx';
 import resolveImageNames from '../utils/resolveImageNames.js';
+import { API_ROOT } from '../utils/apiBase.js';
+import { buildImageThumbnailUrl } from '../utils/transactionImageThumbnails.js';
 import AISuggestionModal from './AISuggestionModal.jsx';
 import useGeneralConfig from '../hooks/useGeneralConfig.js';
 import { useTranslation } from 'react-i18next';
@@ -34,6 +36,7 @@ export default function RowImageUploadModal({
   const generalConfig = useGeneralConfig();
   const { t } = useTranslation();
   const { company, user } = useContext(AuthContext);
+  const apiRoot = API_ROOT;
   const toast = (msg, type = 'info') => {
     if (type === 'info' && !generalConfig?.general?.imageToastEnabled) return;
     addToast(msg, type);
@@ -224,6 +227,7 @@ export default function RowImageUploadModal({
     if (!uploader) return true;
     return normalizeEmpId(uploader) === normalizeEmpId(viewerEmpId);
   };
+  const getImageSrc = (path) => (path?.startsWith('http') ? path : `${apiRoot}${path}`);
 
   async function handleUpload(selectedFiles) {
     const { primary: resolvedPrimary, missing, idName } = resolveNames();
@@ -429,9 +433,14 @@ export default function RowImageUploadModal({
           {uploaded.map((src) => {
             const name = src.split('/').pop();
             const allowDelete = name ? canDeleteFile(name) : false;
+            const thumbSrc = buildImageThumbnailUrl(src);
             return (
               <div key={src} style={{ marginBottom: '0.25rem' }}>
-                <img src={src} alt="" style={{ maxWidth: '100px', marginRight: '0.5rem' }} />
+                <img
+                  src={thumbSrc || getImageSrc(src)}
+                  alt=""
+                  style={{ maxWidth: '100px', marginRight: '0.5rem' }}
+                />
                 <span style={{ marginRight: '0.5rem' }}>{name}</span>
                 {allowDelete && (
                   <button type="button" onClick={() => deleteFile(name)}>{t('delete', 'Delete')}</button>
