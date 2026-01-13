@@ -2705,13 +2705,13 @@ const TableManager = forwardRef(function TableManager({
       if (combinedFields.length === 0) {
         combinedFields = getAllConfigImageFields();
       }
-    } else {
-      combinedFields = getAllConfigImageFields();
     } else if (hasCurrentImageFields) {
       combinedFields = dedupeFields([
         ...(currentConfig?.imagenameField || []),
         currentConfig?.imageIdField || '',
       ]);
+    } else {
+      combinedFields = getAllConfigImageFields();
     }
     if (combinedFields.length > 0) {
       const { name } = buildImageName(row, combinedFields, columnCaseMap, company);
