@@ -15,7 +15,6 @@ import { usePendingRequests } from '../context/PendingRequestContext.jsx';
 import RowFormModal from './RowFormModal.jsx';
 import CascadeDeleteModal from './CascadeDeleteModal.jsx';
 import RowDetailModal from './RowDetailModal.jsx';
-import RowImageViewModal from './RowImageViewModal.jsx';
 import RowImageUploadModal from './RowImageUploadModal.jsx';
 import ImageSearchModal from './ImageSearchModal.jsx';
 import Modal from './Modal.jsx';
@@ -565,7 +564,6 @@ const TableManager = forwardRef(function TableManager({
   const [temporaryFocusId, setTemporaryFocusId] = useState(null);
   const [temporarySelection, setTemporarySelection] = useState(() => new Set());
   const [temporaryValuePreview, setTemporaryValuePreview] = useState(null);
-  const [temporaryImagesEntry, setTemporaryImagesEntry] = useState(null);
   const [temporaryUploadEntry, setTemporaryUploadEntry] = useState(null);
   const pendingRequests = usePendingRequests();
   const markTemporaryScopeSeen = pendingRequests?.temporary?.markScopeSeen;
@@ -596,7 +594,6 @@ const TableManager = forwardRef(function TableManager({
   const [showDetail, setShowDetail] = useState(false);
   const [detailRow, setDetailRow] = useState(null);
   const [detailRefs, setDetailRefs] = useState([]);
-  const [imageViewRow, setImageViewRow] = useState(null);
   const [uploadRow, setUploadRow] = useState(null);
   const [ctxMenu, setCtxMenu] = useState(null); // { x, y, value }
   const [searchTerm, setSearchTerm] = useState('');
@@ -3157,54 +3154,6 @@ const TableManager = forwardRef(function TableManager({
       setDetailRefs([]);
     }
     setShowDetail(true);
-  }
-
-  function showImageSearchToast(row, tableName = table) {
-    if (!generalConfig.general?.imageToastEnabled) return;
-    if (!row || typeof row !== 'object') return;
-    const { matches, fields, value } = getConfigMatchesForRow(row);
-    const matchedTypeFields = dedupeFields(
-      matches.map((match) => match.matchedField).filter(Boolean),
-    );
-    const imageConfig = getImageConfigForRow(row, formConfig || {});
-    const buildFields = dedupeFields([
-      ...(Array.isArray(imageConfig?.imagenameField)
-        ? imageConfig.imagenameField
-        : []),
-      imageConfig?.imageIdField || '',
-    ]);
-    addToast(
-      `Transaction type value: ${value || 'none'}`,
-      'info',
-    );
-    addToast(
-      `Transaction type fields: ${fields.join(', ') || 'none'}`,
-      'info',
-    );
-    addToast(
-      `Matched transaction type fields: ${matchedTypeFields.join(', ') || 'none'}`,
-      'info',
-    );
-    addToast(`Image build fields: ${buildFields.join(', ') || 'none'}`, 'info');
-    const name = resolveImageNameForSearch(row);
-    const folder = getImageFolder(row);
-    const details = [
-      name ? `name=${name}` : null,
-      folder ? `folder=${folder}` : null,
-      tableName ? `table=${tableName}` : null,
-    ]
-      .filter(Boolean)
-      .join(', ');
-    addToast(
-      t('image_searching_name', 'Searching images for: {{details}}', {
-        details: details || t('image_searching_unknown', 'unknown'),
-      }),
-      'info',
-    );
-  }
-
-  function openImages(row) {
-    setImageViewRow(row);
   }
 
   function openUpload(row) {
@@ -6569,9 +6518,6 @@ const TableManager = forwardRef(function TableManager({
   );
 
   const uploadCfg = uploadRow ? getConfigForRow(uploadRow) : {};
-  const viewImageConfig = imageViewRow
-    ? getImageConfigForRow(imageViewRow, formConfig || {})
-    : {};
 
   const reviewPendingCount = supportsTemporary &&
     availableTemporaryScopes.includes('review')
@@ -7531,15 +7477,6 @@ const TableManager = forwardRef(function TableManager({
                     );
                     actionButtons.push(
                       <button
-                        key="images"
-                        onClick={() => openImages(r)}
-                        style={actionBtnStyle}
-                      >
-                        🖼 Images
-                      </button>,
-                    );
-                    actionButtons.push(
-                      <button
                         key="upload"
                         onClick={() => openUpload(r)}
                         style={actionBtnStyle}
@@ -8001,43 +7938,6 @@ const TableManager = forwardRef(function TableManager({
         }}
       />
       <RowImageUploadModal
-        visible={imageViewRow !== null}
-        onClose={() => setImageViewRow(null)}
-        table={table}
-        folder={getImageFolder(imageViewRow)}
-        row={imageViewRow || {}}
-        rowKey={getRowId(imageViewRow) || 0}
-        imagenameFields={viewImageConfig.imagenameField || []}
-        columnCaseMap={columnCaseMap}
-        imageIdField={viewImageConfig.imageIdField || ''}
-        configs={allConfigs}
-        currentConfig={formConfig}
-        currentConfigName={formName}
-        onUploaded={(name) => {
-          if (imageViewRow) {
-            const id = getRowId(imageViewRow);
-            setRows((rs) =>
-              rs.map((r) =>
-                getRowId(r) === id ? { ...r, _imageName: name } : r,
-              ),
-            );
-          }
-        }}
-      />
-      <RowImageViewModal
-        visible={temporaryImagesEntry !== null}
-        onClose={() => setTemporaryImagesEntry(null)}
-        table={temporaryImagesEntry?.table || table}
-        folder={getImageFolder(temporaryImagesEntry?.row || {})}
-        row={temporaryImagesEntry?.row || {}}
-        columnCaseMap={columnCaseMap}
-        configs={allConfigs}
-        currentConfig={formConfig}
-        currentConfigName={formName}
-        canDelete={Boolean(temporaryImagesEntry?.canDelete)}
-        useAllConfigsWhenMissing
-      />
-      <RowImageUploadModal
         visible={temporaryUploadEntry !== null}
         onClose={() => setTemporaryUploadEntry(null)}
         table={temporaryUploadEntry?.table || table}
@@ -8340,17 +8240,10 @@ const TableManager = forwardRef(function TableManager({
                         normalizedValuesWithImage[imageConfig.imageIdField] =
                           promotedRecordId;
                       }
-                      const hasTemporaryImageName = Boolean(entryImageName);
                       const temporaryTableName =
                         entry?.tableName || entry?.table_name || table;
                       const temporaryImageName = entryImageName || '';
-                      const canViewTemporaryImages =
-                        (Array.isArray(imageConfig?.imagenameField) &&
-                          imageConfig.imagenameField.length > 0) ||
-                        Boolean(imageConfig?.imageIdField) ||
-                        hasTemporaryImageName;
                       const canUploadTemporaryImages = true;
-                      const canDeleteTemporaryImages = Boolean(normalizedViewerEmpId);
                       const detailColumns = temporaryDetailColumns;
                       const rowBackgroundColor = isFocused
                         ? '#fef9c3'
@@ -8554,7 +8447,7 @@ const TableManager = forwardRef(function TableManager({
                                 </table>
                               </div>
                               )}
-                              {(canViewTemporaryImages || canUploadTemporaryImages) && (
+                              {canUploadTemporaryImages && (
                                 <div
                                   style={{
                                     marginTop: '0.35rem',
@@ -8597,43 +8490,6 @@ const TableManager = forwardRef(function TableManager({
                                       }}
                                     >
                                       {t('upload_images', 'Upload Images')}
-                                    </button>
-                                  )}
-                                  {canViewTemporaryImages && (
-                                    <button
-                                      type="button"
-                                      onClick={() => {
-                                        const rowWithImage = {
-                                          ...normalizedValuesWithImage,
-                                          _imageName:
-                                            normalizedValuesWithImage?._imageName ||
-                                            temporaryImageName,
-                                          imageName:
-                                            normalizedValuesWithImage?.imageName ||
-                                            temporaryImageName,
-                                          image_name:
-                                            normalizedValuesWithImage?.image_name ||
-                                            temporaryImageName,
-                                          created_by: entry?.created_by || entry?.createdBy,
-                                        };
-                                        showImageSearchToast(rowWithImage, temporaryTableName);
-                                        setTemporaryImagesEntry({
-                                          row: rowWithImage,
-                                          table: temporaryTableName,
-                                          canDelete: canDeleteTemporaryImages,
-                                        });
-                                      }}
-                                      style={{
-                                        padding: '0.25rem 0.55rem',
-                                        backgroundColor: '#f3f4f6',
-                                        color: '#1f2937',
-                                        border: '1px solid #d1d5db',
-                                        borderRadius: '6px',
-                                        cursor: 'pointer',
-                                        fontSize: '0.8rem',
-                                      }}
-                                    >
-                                      {t('view_images', 'View images')}
                                     </button>
                                   )}
                                 </div>
