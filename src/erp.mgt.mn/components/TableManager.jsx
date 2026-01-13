@@ -596,6 +596,7 @@ const TableManager = forwardRef(function TableManager({
   const [showDetail, setShowDetail] = useState(false);
   const [detailRow, setDetailRow] = useState(null);
   const [detailRefs, setDetailRefs] = useState([]);
+  const [imagesRow, setImagesRow] = useState(null);
   const [uploadRow, setUploadRow] = useState(null);
   const [ctxMenu, setCtxMenu] = useState(null); // { x, y, value }
   const [searchTerm, setSearchTerm] = useState('');
@@ -3200,6 +3201,11 @@ const TableManager = forwardRef(function TableManager({
       }),
       'info',
     );
+  }
+
+  function openImages(row) {
+    showImageSearchToast(row);
+    setImagesRow(row);
   }
 
   function openUpload(row) {
@@ -7523,11 +7529,20 @@ const TableManager = forwardRef(function TableManager({
                     );
                     actionButtons.push(
                       <button
+                        key="images"
+                        onClick={() => openImages(r)}
+                        style={actionBtnStyle}
+                      >
+                        🖼 Images
+                      </button>,
+                    );
+                    actionButtons.push(
+                      <button
                         key="upload"
                         onClick={() => openUpload(r)}
                         style={actionBtnStyle}
                       >
-                        Add/View Image
+                        ➕ Add Img
                       </button>,
                     );
                     const explicitRequestOnlyValue =
@@ -7982,6 +7997,19 @@ const TableManager = forwardRef(function TableManager({
             );
           }
         }}
+      />
+      <RowImageViewModal
+        visible={imagesRow !== null}
+        onClose={() => setImagesRow(null)}
+        table={table}
+        folder={getImageFolder(imagesRow)}
+        row={imagesRow || {}}
+        columnCaseMap={columnCaseMap}
+        configs={allConfigs}
+        currentConfig={formConfig}
+        currentConfigName={formName}
+        canDelete={Boolean(normalizedViewerEmpId)}
+        useAllConfigsWhenMissing
       />
       <RowImageViewModal
         visible={temporaryImagesEntry !== null}
