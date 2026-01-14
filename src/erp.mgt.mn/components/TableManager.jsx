@@ -4138,6 +4138,8 @@ const TableManager = forwardRef(function TableManager({
         body: JSON.stringify(cleaned),
       });
       const savedRow = res.ok ? await res.json().catch(() => ({})) : {};
+      const savedRowHasData =
+        savedRow && typeof savedRow === 'object' && Object.keys(savedRow).length > 0;
       if (res.ok) {
         const msg = isAdding
           ? t('transaction_posted', 'Transaction posted')
@@ -4146,10 +4148,6 @@ const TableManager = forwardRef(function TableManager({
         const shouldIssueEbarimt =
           submitIntent === 'ebarimt' && issueEbarimt && posApiEnabled;
         if (!isAdding && editingRowId !== null && editingRowId !== undefined) {
-          const savedRowHasData =
-            savedRow &&
-            typeof savedRow === 'object' &&
-            Object.keys(savedRow).length > 0;
           const mergedRow = savedRowHasData
             ? savedRow
             : { ...editing, ...cleaned };
@@ -4230,6 +4228,23 @@ const TableManager = forwardRef(function TableManager({
             );
           }
         }
+        const resolvedPrintFormVals = {
+          ...merged,
+          ...(savedRowHasData ? savedRow : {}),
+        };
+        if (
+          targetRecordId !== null &&
+          targetRecordId !== undefined &&
+          !Object.prototype.hasOwnProperty.call(resolvedPrintFormVals, 'id')
+        ) {
+          resolvedPrintFormVals.id = targetRecordId;
+        }
+        const printPayload = {
+          formVals: resolvedPrintFormVals,
+          gridRows: Array.isArray(gridRows)
+            ? gridRows.map((row) => ({ ...row }))
+            : [],
+        };
         addToast(msg, 'success');
         if (isAdding || !didOptimisticUpdate) {
           refreshRows();
@@ -4237,7 +4252,7 @@ const TableManager = forwardRef(function TableManager({
         if (isAdding) {
           setTimeout(() => openAdd(), 0);
         }
-        return true;
+        return { printPayload };
       } else {
         let message = 'Хадгалахад алдаа гарлаа';
         try {
