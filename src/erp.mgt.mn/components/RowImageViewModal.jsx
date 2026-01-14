@@ -124,6 +124,8 @@ export default function RowImageViewModal({
     toast(`Folders to search: ${folders.join(', ')}`, 'info');
     (async () => {
       let foundAny = false;
+      let rateLimited = false;
+      let rateLimitMessage = 'Too many requests, please try again later.';
       for (const fld of folders) {
         const params = new URLSearchParams();
         if (fld) params.set('folder', fld);
@@ -133,7 +135,13 @@ export default function RowImageViewModal({
           const url = `${API_BASE}/transaction_images/${safeTable}/${encodeURIComponent(nm)}?${params.toString()}`;
           toast(`Searching URL: ${url}`, 'info');
           try {
-            const res = await fetch(url, { credentials: 'include' });
+            const res = await fetch(url, { credentials: 'include', skipErrorToast: true });
+            if (res.status === 429) {
+              const data = await res.json().catch(() => ({}));
+              rateLimited = true;
+              rateLimitMessage = data.message || rateLimitMessage;
+              break;
+            }
             const list = await parseImagesPayload(res);
             if (list.length > 0) {
               foundAny = true;
@@ -147,8 +155,14 @@ export default function RowImageViewModal({
                   await fetch(renameUrl, { method: 'POST', credentials: 'include' });
                   const res2 = await fetch(
                     `${API_BASE}/transaction_images/${safeTable}/${encodeURIComponent(primary)}?${renameParams.toString()}`,
-                    { credentials: 'include' },
+                    { credentials: 'include', skipErrorToast: true },
                   );
+                  if (res2.status === 429) {
+                    const data = await res2.json().catch(() => ({}));
+                    rateLimited = true;
+                    rateLimitMessage = data.message || rateLimitMessage;
+                    break;
+                  }
                   const list2 = await parseImagesPayload(res2);
                   if (list2.length > 0) {
                     foundAny = true;
@@ -183,6 +197,11 @@ export default function RowImageViewModal({
             /* ignore */
           }
         }
+        if (rateLimited) break;
+      }
+      if (rateLimited) {
+        toast(rateLimitMessage, 'warning');
+        return;
       }
       if (!foundAny) {
         const alreadyNotified =
