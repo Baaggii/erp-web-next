@@ -2,6 +2,7 @@
 import React, { useState, useRef, useEffect, useContext } from 'react';
 import { useToast } from '../context/ToastContext.jsx';
 import { AuthContext } from '../context/AuthContext.jsx';
+import { parseTemporaryImageName } from '../utils/temporaryImageName.js';
 
 const FOLDER_STATE_KEY = 'imgMgmtFolderState';
 
@@ -66,6 +67,8 @@ async function deleteDirHandle(key) {
 
 
 function extractDateFromName(name) {
+  const tempInfo = parseTemporaryImageName(name);
+  if (tempInfo.isTemporary && tempInfo.date) return tempInfo.date;
   const match = typeof name === 'string' ? name.match(/(?:__|_)(\d{13})_/) : null;
   if (match) {
     const d = new Date(Number(match[1]));
@@ -74,6 +77,14 @@ function extractDateFromName(name) {
     }
   }
   return '';
+}
+
+function describeImageName(name) {
+  const tempInfo = parseTemporaryImageName(name);
+  if (tempInfo.isTemporary) {
+    return tempInfo.date ? `Temporary image (${tempInfo.date})` : 'Temporary image';
+  }
+  return extractDateFromName(name);
 }
 
 export default function ImageManagement() {
@@ -239,7 +250,7 @@ export default function ImageManagement() {
       ? data.uploads.map((u) => ({
           ...u,
           id: u.originalName,
-          description: extractDateFromName(u.originalName),
+          description: describeImageName(u.originalName),
           processed: !!u.processed,
           index: u.index,
         }))
@@ -248,7 +259,7 @@ export default function ImageManagement() {
       ? data.ignored.map((u) => ({
           ...u,
           id: u.originalName,
-          description: extractDateFromName(u.originalName),
+          description: describeImageName(u.originalName),
           processed: !!u.processed,
           index: u.index,
         }))
@@ -578,7 +589,7 @@ export default function ImageManagement() {
           id: u.originalName,
           handle: f?.handle,
           index: f?.index,
-          description: extractDateFromName(u.originalName),
+          description: describeImageName(u.originalName),
           processed: false,
         };
       });
@@ -665,7 +676,7 @@ export default function ImageManagement() {
           ? data.list
               .slice()
               .sort((a, b) => a.currentName.localeCompare(b.currentName))
-              .map((p) => ({ ...p, description: extractDateFromName(p.currentName) }))
+              .map((p) => ({ ...p, description: describeImageName(p.currentName) }))
           : [];
         const miss = Array.isArray(data.skipped)
           ? data.skipped
@@ -673,7 +684,7 @@ export default function ImageManagement() {
               .sort((a, b) => a.currentName.localeCompare(b.currentName))
               .map((p) => ({
                 ...p,
-                description: extractDateFromName(p.currentName),
+                description: describeImageName(p.currentName),
               }))
           : [];
         setPending(list);
@@ -797,7 +808,7 @@ export default function ImageManagement() {
             }
             const desc = r.reason && !r.tmpPath
               ? r.reason
-              : extractDateFromName(r.newName);
+              : describeImageName(r.newName);
             return {
               ...u,
               newName: r.newName,
@@ -1037,7 +1048,7 @@ export default function ImageManagement() {
             }
             const desc = r.reason && !r.tmpPath
               ? r.reason
-              : extractDateFromName(r.newName);
+              : describeImageName(r.newName);
             return {
               ...u,
               newName: r.newName,

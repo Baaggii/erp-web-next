@@ -663,31 +663,6 @@ function buildImageNameDetails(row = {}, config = {}, fallbackTable = '', numFie
   };
 }
 
-function normalizeRowIdPrimaryName(primary = '', baseKey = '', idName = '') {
-  if (!primary) return '';
-  const safePrimary = sanitizeName(primary);
-  const safeBase = sanitizeName(baseKey);
-  const safeId = sanitizeName(idName);
-  if (!safeId) return safePrimary;
-  if (safeBase && safePrimary.includes(safeBase)) {
-    return sanitizeName(safePrimary.replace(safeBase, safeId));
-  }
-  if (!safePrimary.includes(safeId)) {
-    return sanitizeName(`${safePrimary}_${safeId}`);
-  }
-  return safePrimary;
-}
-
-function buildPrimaryFromConfigs(row = {}, configs = {}, fallbackTable = '', numField = '') {
-  const { fields } = collectAllConfigImageFields(configs);
-  let primary = fields.length ? buildNameFromRow(row, fields) : '';
-  if (!primary) {
-    const cfg = pickConfig(configs, row);
-    primary = buildImageNameDetails(row, cfg, fallbackTable, numField).primary;
-  }
-  return primary;
-}
-
 async function findTxnByRowIdInTable(table, baseName, companyId = 0, configs = null) {
   if (!table || !baseName) return null;
   let cfgs = configs;
@@ -717,7 +692,7 @@ async function findTxnByRowIdInTable(table, baseName, companyId = 0, configs = n
         );
         if (rows.length) {
           const numField = await getNumFieldForTable(table);
-          return { table, row: rows[0], configs: cfgs, numField, matchedByRowId: true };
+          return { table, row: rows[0], configs: cfgs, numField };
         }
       } catch {
         // ignore
@@ -1683,19 +1658,6 @@ export async function detectIncompleteImages(
           numField,
         );
         newBase = naming.primary;
-        if (matchedByRowId) {
-          const primaryFromConfigs = buildPrimaryFromConfigs(
-            row,
-            configs,
-            found.table || entry.name,
-            numField,
-          );
-          newBase = normalizeRowIdPrimaryName(
-            primaryFromConfigs || newBase,
-            baseKey,
-            naming.idName,
-          );
-        }
         folderRaw = naming.folder;
         if (
           baseKey &&
@@ -1720,11 +1682,8 @@ export async function detectIncompleteImages(
               matchesImagePrefixVariants(baseKey, alt) ||
               matchesImagePrefixVariants(alt, baseKey),
           );
-        if ((altMatch || matchedByRowId) && newBase) {
+        if (altMatch && newBase) {
           unique = '';
-          if (matchedByRowId) {
-            suffix = '';
-          }
         }
       }
       if (!newBase) {
@@ -1928,19 +1887,6 @@ export async function checkUploadedImages(
       let folderRaw = '';
       const naming = buildImageNameDetails(row, cfg, found.table, numField);
       newBase = naming.primary;
-      if (matchedByRowId) {
-        const primaryFromConfigs = buildPrimaryFromConfigs(
-          row,
-          configs,
-          found.table,
-          numField,
-        );
-        newBase = normalizeRowIdPrimaryName(
-          primaryFromConfigs || newBase,
-          baseKey,
-          naming.idName,
-        );
-      }
       folderRaw = naming.folder;
       const altMatch =
         baseKey &&
@@ -1949,11 +1895,8 @@ export async function checkUploadedImages(
             matchesImagePrefixVariants(baseKey, alt) ||
             matchesImagePrefixVariants(alt, baseKey),
         );
-      if ((altMatch || matchedByRowId) && newBase) {
+      if (altMatch && newBase) {
         unique = '';
-        if (matchedByRowId) {
-          suffix = '';
-        }
       }
       if (!newBase) {
         reason = 'Could not build new name';
