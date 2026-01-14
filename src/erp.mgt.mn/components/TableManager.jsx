@@ -3187,7 +3187,7 @@ const TableManager = forwardRef(function TableManager({
     );
     addToast(`Image build fields: ${buildFields.join(', ') || 'none'}`, 'info');
     const name = resolveImageNameForSearch(row);
-    const folder = getImageFolder(row);
+    const folder = getImageFolder(row, tableName);
     const details = [
       name ? `name=${name}` : null,
       folder ? `folder=${folder}` : null,
