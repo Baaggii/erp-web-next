@@ -211,19 +211,22 @@ export default function FormsManagement() {
     setEditLabels(true);
   };
 
-  const saveFieldLabels = () => {
-    fetch('/api/header_mappings', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
-      body: JSON.stringify(labelEdits),
-    })
-      .then((res) => (res.ok ? res.json() : null))
-      .then(() => {
-        clearHeaderMappingsCache(columns);
-        setEditLabels(false);
-      })
-      .catch(() => setEditLabels(false));
+  const saveFieldLabels = async () => {
+    try {
+      const res = await fetch('/api/header_mappings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(labelEdits),
+      });
+      if (!res.ok) {
+        throw new Error('Failed to save header mappings');
+      }
+      clearHeaderMappingsCache(columns);
+      setEditLabels(false);
+    } catch {
+      setEditLabels(false);
+    }
   };
   function getProcLabel(name) {
     return generalConfig.general?.procLabels?.[name] || procMap[name] || name;
