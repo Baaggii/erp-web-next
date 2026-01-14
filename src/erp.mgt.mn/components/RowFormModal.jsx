@@ -3460,6 +3460,8 @@ const RowFormModal = function RowFormModal({
 
       {
         const failedRows = [];
+        const resolvedPrintRows = [];
+        const resolvedPayloads = [];
         let anySuccess = false;
         for (let i = 0; i < cleanedRows.length; i++) {
           const r = cleanedRows[i];
@@ -3483,6 +3485,15 @@ const RowFormModal = function RowFormModal({
             if (res === false) {
               failedRows.push(rows[rowIndices[i]]);
             } else {
+              const resolvedPayload = resolvePrintPayloadFromResult(res, rows);
+              if (resolvedPayload) {
+                resolvedPayloads.push(resolvedPayload);
+                if (Array.isArray(resolvedPayload.gridRows)) {
+                  resolvedPrintRows.push(...resolvedPayload.gridRows);
+                }
+              } else if (res && typeof res === 'object') {
+                resolvedPrintRows.push(res);
+              }
               anySuccess = true;
             }
           } catch (err) {
@@ -3493,15 +3504,28 @@ const RowFormModal = function RowFormModal({
         if (anySuccess) {
           window.dispatchEvent(new Event('pending-request-refresh'));
         }
-        const nextPrintPayload =
-          shouldPromptPrint && anySuccess ? buildPrintPayload(rows) : null;
         if (failedRows.length === 0) {
           tableRef.current.clearRows();
         } else if (tableRef.current.replaceRows) {
           tableRef.current.replaceRows(failedRows);
         }
-        if (nextPrintPayload) {
-          openPrintModal(nextPrintPayload);
+        if (shouldPromptPrint && anySuccess) {
+          const printPayload =
+            resolvedPayloads.length === 1
+              ? resolvedPayloads[0]
+              : resolvedPayloads.length > 1
+              ? buildPrintPayload(
+                  resolvedPayloads.flatMap((payload) =>
+                    Array.isArray(payload.gridRows) ? payload.gridRows : [],
+                  ),
+                  resolvedPayloads[0]?.formVals || null,
+                )
+              : resolvedPrintRows.length > 0
+              ? buildPrintPayload(resolvedPrintRows)
+              : buildPrintPayload(rows);
+          if (printPayload) {
+            openPrintModal(printPayload);
+          }
         }
       }
       procCache.current = {};
@@ -3556,7 +3580,8 @@ const RowFormModal = function RowFormModal({
         procCache.current = {};
         window.dispatchEvent(new Event('pending-request-refresh'));
         if (shouldPromptPrint) {
-          openPrintModal(buildPrintPayload());
+          const printPayload = resolvePrintPayloadFromResult(res) || buildPrintPayload();
+          openPrintModal(printPayload);
         }
       } catch (err) {
         console.error('Submit failed', err);
@@ -4213,13 +4238,26 @@ const RowFormModal = function RowFormModal({
     );
   }
 
-  function buildPrintPayload(rowsOverride = null) {
+  function buildPrintPayload(rowsOverride = null, formValsOverride = null) {
     return {
-      formVals: { ...formVals },
+      formVals: formValsOverride ? { ...formValsOverride } : { ...formVals },
       gridRows: Array.isArray(rowsOverride)
         ? rowsOverride.map((row) => ({ ...row }))
         : gridRows.map((row) => ({ ...row })),
     };
+  }
+  function resolvePrintPayloadFromResult(result, rowsOverride = null) {
+    if (!result || typeof result !== 'object') return null;
+    if (result.printPayload && typeof result.printPayload === 'object') {
+      return result.printPayload;
+    }
+    if (result.formVals || result.gridRows) {
+      return buildPrintPayload(
+        Array.isArray(result.gridRows) ? result.gridRows : rowsOverride,
+        result.formVals || null,
+      );
+    }
+    return buildPrintPayload(rowsOverride, result);
   }
   function openPrintModal(payload) {
     setPrintPayload(payload || buildPrintPayload());
@@ -4260,9 +4298,118 @@ const RowFormModal = function RowFormModal({
         labelMap[col][o.value] = o.label;
       });
     });
+    const labelKeys = [
+      'label',
+      'name',
+      'title',
+      'text',
+      'display',
+      'displayName',
+      'code',
+    ];
+    const resolveLabelWrapperValue = (value) => {
+      if (value === undefined || value === null) return value;
+      if (Array.isArray(value)) return value.map(resolveLabelWrapperValue);
+      if (typeof value !== 'object') return value;
+      for (const key of labelKeys) {
+        if (value[key] !== undefined && value[key] !== null && value[key] !== '') {
+          return value[key];
+        }
+      }
+      if (value.value !== undefined && value.value !== null) return value.value;
+      return value;
+    };
+    const resolveSinglePrintValue = (col, value) => {
+      const resolvedRelationConfig =
+        relationConfigMap[col] || getAutoSelectConfig(col)?.config;
+      const optionLabelMap =
+        relationOptionLabelLookup[col] ||
+        relationOptionLabelLookup[String(col).toLowerCase()];
+      const labelWrapper = resolveLabelWrapperValue(value);
+      const baseValue =
+        value && typeof value === 'object' && !Array.isArray(value) && value.value !== undefined
+          ? value.value
+          : labelWrapper;
+      const normalizedValueKey = normalizeRelationOptionKey(baseValue);
+      if (relations[col] && normalizedValueKey && optionLabelMap) {
+        const optionLabel = optionLabelMap[normalizedValueKey];
+        if (optionLabel !== undefined) return optionLabel;
+      }
+      if (
+        resolvedRelationConfig &&
+        baseValue !== undefined &&
+        baseValue !== null &&
+        relationData[col]?.[baseValue]
+      ) {
+        const rowData = relationData[col][baseValue];
+        const parts = [];
+        const identifier = getRowValueCaseInsensitive(
+          rowData,
+          resolvedRelationConfig.idField || resolvedRelationConfig.column,
+        );
+        if (identifier !== undefined && identifier !== null) {
+          parts.push(identifier);
+        }
+        if (parts.length === 0 && baseValue !== undefined && baseValue !== null) {
+          parts.push(baseValue);
+        }
+        (resolvedRelationConfig.displayFields || []).forEach((df) => {
+          if (rowData[df] !== undefined) parts.push(rowData[df]);
+        });
+        return parts.join(' - ');
+      }
+      if (
+        viewSourceMap[col] &&
+        baseValue !== undefined &&
+        baseValue !== null &&
+        relationData[col]?.[baseValue]
+      ) {
+        const rowData = relationData[col][baseValue];
+        const cfg = viewDisplays[viewSourceMap[col]] || {};
+        const parts = [];
+        const identifier = getRowValueCaseInsensitive(rowData, cfg.idField || col);
+        if (identifier !== undefined && identifier !== null) {
+          parts.push(identifier);
+        }
+        if (parts.length === 0 && baseValue !== undefined && baseValue !== null) {
+          parts.push(baseValue);
+        }
+        (cfg.displayFields || []).forEach((df) => {
+          if (rowData[df] !== undefined) parts.push(rowData[df]);
+        });
+        return parts.join(' - ');
+      }
+      if (
+        getAutoSelectConfig(col)?.config &&
+        baseValue !== undefined &&
+        baseValue !== null &&
+        relationData[col]?.[baseValue]
+      ) {
+        const rowData = relationData[col][baseValue];
+        const cfg = getAutoSelectConfig(col)?.config || {};
+        const parts = [];
+        const identifier = getRowValueCaseInsensitive(rowData, cfg.idField);
+        if (identifier !== undefined && identifier !== null) {
+          parts.push(identifier);
+        }
+        if (parts.length === 0 && baseValue !== undefined && baseValue !== null) {
+          parts.push(baseValue);
+        }
+        (cfg.displayFields || []).forEach((df) => {
+          if (rowData[df] !== undefined) parts.push(rowData[df]);
+        });
+        return parts.join(' - ');
+      }
+      if (labelWrapper !== undefined && labelWrapper !== null && labelWrapper !== '') {
+        return labelWrapper;
+      }
+      return baseValue ?? '';
+    };
     const resolvePrintValue = (col, row = activeFormVals) => {
       const raw = row?.[col];
-      const resolved = relations[col] ? labelMap[col]?.[raw] ?? raw : raw;
+      const resolved = Array.isArray(raw)
+        ? raw.map((item) => resolveSinglePrintValue(col, item))
+        : resolveSinglePrintValue(col, raw);
       const formatted = formatJsonItem(resolved);
       if (placeholders[col]) {
         return normalizeDateInput(formatted, placeholders[col]);
