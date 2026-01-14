@@ -4137,6 +4137,11 @@ const TableManager = forwardRef(function TableManager({
       }
     }
 
+    const editingRowId = isAdding ? null : getRowId(editing);
+    const editingRowIdKey =
+      editingRowId === null || editingRowId === undefined
+        ? null
+        : String(editingRowId);
     try {
       const res = await fetch(url, {
         method,
@@ -4152,6 +4157,25 @@ const TableManager = forwardRef(function TableManager({
         const targetRecordId = isAdding ? savedRow?.id ?? null : getRowId(editing);
         const shouldIssueEbarimt =
           submitIntent === 'ebarimt' && issueEbarimt && posApiEnabled;
+        if (!isAdding && editingRowIdKey) {
+          const savedRowHasData =
+            savedRow &&
+            typeof savedRow === 'object' &&
+            Object.keys(savedRow).length > 0;
+          const mergedRow = savedRowHasData
+            ? savedRow
+            : { ...editing, ...cleaned };
+          if (!Object.prototype.hasOwnProperty.call(mergedRow, 'id')) {
+            mergedRow.id = editingRowId;
+          }
+          setRows((prev) =>
+            prev.map((row) =>
+              String(getRowId(row)) === editingRowIdKey
+                ? { ...row, ...mergedRow }
+                : row,
+            ),
+          );
+        }
         setShowForm(false);
         setEditing(null);
         setIsAdding(false);
