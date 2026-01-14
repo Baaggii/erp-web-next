@@ -692,7 +692,7 @@ async function findTxnByRowIdInTable(table, baseName, companyId = 0, configs = n
         );
         if (rows.length) {
           const numField = await getNumFieldForTable(table);
-          return { table, row: rows[0], configs: cfgs, numField, matchedByRowId: true };
+          return { table, row: rows[0], configs: cfgs, numField };
         }
       } catch {
         // ignore
@@ -1682,11 +1682,8 @@ export async function detectIncompleteImages(
               matchesImagePrefixVariants(baseKey, alt) ||
               matchesImagePrefixVariants(alt, baseKey),
           );
-        if ((altMatch || matchedByRowId) && newBase) {
+        if (altMatch && newBase) {
           unique = '';
-          if (matchedByRowId) {
-            suffix = '';
-          }
         }
       }
       if (!newBase) {
@@ -1898,11 +1895,8 @@ export async function checkUploadedImages(
             matchesImagePrefixVariants(baseKey, alt) ||
             matchesImagePrefixVariants(alt, baseKey),
         );
-      if ((altMatch || matchedByRowId) && newBase) {
+      if (altMatch && newBase) {
         unique = '';
-        if (matchedByRowId) {
-          suffix = '';
-        }
       }
       if (!newBase) {
         reason = 'Could not build new name';
