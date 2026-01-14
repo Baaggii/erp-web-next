@@ -4288,9 +4288,9 @@ const RowFormModal = function RowFormModal({
     const signatureSet = new Set(signatureFields);
     const orderedAllowed = all.filter((c) => allowed.has(c));
     const signatureCols = orderedAllowed.filter((c) => signatureSet.has(c));
-    const h = headerCols.filter((c) => allowed.has(c));
-    const m = mainCols.filter((c) => allowed.has(c));
-    const f = footerCols.filter((c) => allowed.has(c));
+    const h = headerCols.filter((c) => allowed.has(c) && !signatureSet.has(c));
+    const m = mainCols.filter((c) => allowed.has(c) && !signatureSet.has(c));
+    const f = footerCols.filter((c) => allowed.has(c) && !signatureSet.has(c));
     const getRelationDisplayParts = (col, rowValue) => {
       const normalizedValueKey = normalizeRelationOptionKey(rowValue);
       const optionLabels =
