@@ -4286,8 +4286,7 @@ const RowFormModal = function RowFormModal({
     const list = mode === 'emp' ? printEmpField : printCustField;
     const allowed = new Set(list.length > 0 ? list : all);
     const signatureSet = new Set(signatureFields);
-    const orderedAllowed = all.filter((c) => allowed.has(c));
-    const signatureCols = orderedAllowed.filter((c) => signatureSet.has(c));
+    const signatureCols = all.filter((c) => signatureSet.has(c));
     const h = headerCols.filter((c) => allowed.has(c) && !signatureSet.has(c));
     const m = mainCols.filter((c) => allowed.has(c) && !signatureSet.has(c));
     const f = footerCols.filter((c) => allowed.has(c) && !signatureSet.has(c));
@@ -4458,11 +4457,14 @@ const RowFormModal = function RowFormModal({
       const blocks = signatureCols
         .map((c) => {
           const value = resolvePrintValue(c);
+          if (value === '' || value === null || value === undefined) return null;
           return `<div class="signature-block"><div class="signature-label">${
             labels[c] || c
           }</div><div class="signature-line"></div><div class="signature-info">${value}</div></div>`;
         })
+        .filter(Boolean)
         .join('');
+      if (!blocks) return '';
       return `<h3>Signature</h3>${blocks}`;
     };
 
