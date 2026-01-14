@@ -254,7 +254,7 @@ export default function RowImageViewModal({
   };
 
   const listView = (
-    <div style={{ maxHeight: '60vh', overflowY: 'auto' }}>
+    <div style={{ maxHeight: '50vh', overflowY: 'auto' }}>
       {files.map((f, idx) => (
         <div
           key={f.path}
@@ -273,8 +273,8 @@ export default function RowImageViewModal({
               e.currentTarget.src = placeholder;
             }}
             style={{
-              width: '240px',
-              height: '180px',
+              width: '160px',
+              height: '120px',
               objectFit: 'contain',
               background: '#111827',
               borderRadius: '0.25rem',
@@ -336,7 +336,7 @@ export default function RowImageViewModal({
                 flex: 1,
                 overflowY: 'auto',
                 display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
                 gap: '0.75rem',
                 marginTop: '1rem',
                 alignContent: 'start',
@@ -353,7 +353,7 @@ export default function RowImageViewModal({
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    minHeight: '280px',
+                    minHeight: '220px',
                   }}
                 >
                   <img
@@ -365,7 +365,7 @@ export default function RowImageViewModal({
                     }}
                     style={{
                       maxWidth: '100%',
-                      maxHeight: '340px',
+                      maxHeight: '260px',
                       width: 'auto',
                       height: 'auto',
                       objectFit: 'contain',
