@@ -3461,7 +3461,6 @@ const RowFormModal = function RowFormModal({
       {
         const failedRows = [];
         let anySuccess = false;
-        const postedRows = [];
         for (let i = 0; i < cleanedRows.length; i++) {
           const r = cleanedRows[i];
           const extra = { ...extraVals };
@@ -3485,7 +3484,6 @@ const RowFormModal = function RowFormModal({
               failedRows.push(rows[rowIndices[i]]);
             } else {
               anySuccess = true;
-              postedRows.push(resolveSubmittedRow(res, r));
             }
           } catch (err) {
             console.error('Submit failed', err);
@@ -3496,12 +3494,7 @@ const RowFormModal = function RowFormModal({
           window.dispatchEvent(new Event('pending-request-refresh'));
         }
         const nextPrintPayload =
-          shouldPromptPrint && anySuccess
-            ? buildPrintPayloadFromSubmit(null, {
-                rowsOverride: postedRows.length > 0 ? postedRows : rows,
-                mergeForm: false,
-              })
-            : null;
+          shouldPromptPrint && anySuccess ? buildPrintPayload(rows) : null;
         if (failedRows.length === 0) {
           tableRef.current.clearRows();
         } else if (tableRef.current.replaceRows) {
@@ -3563,7 +3556,7 @@ const RowFormModal = function RowFormModal({
         procCache.current = {};
         window.dispatchEvent(new Event('pending-request-refresh'));
         if (shouldPromptPrint) {
-          openPrintModal(buildPrintPayloadFromSubmit(res));
+          openPrintModal(buildPrintPayload());
         }
       } catch (err) {
         console.error('Submit failed', err);
@@ -4223,37 +4216,6 @@ const RowFormModal = function RowFormModal({
   function buildPrintPayload(rowsOverride = null) {
     return {
       formVals: { ...formVals },
-      gridRows: Array.isArray(rowsOverride)
-        ? rowsOverride.map((row) => ({ ...row }))
-        : gridRows.map((row) => ({ ...row })),
-    };
-  }
-  function resolveSubmittedRow(result, fallback = {}) {
-    if (!result || result === true) return fallback;
-    if (typeof result !== 'object') return fallback;
-    if (result.row && typeof result.row === 'object') return result.row;
-    if (result.savedRow && typeof result.savedRow === 'object') return result.savedRow;
-    return result;
-  }
-  function buildPrintPayloadFromSubmit(result, { rowsOverride = null, mergeForm = true } = {}) {
-    if (result && typeof result === 'object') {
-      if (result.printPayload && typeof result.printPayload === 'object') {
-        return result.printPayload;
-      }
-      if (result.formVals || result.gridRows) {
-        return {
-          formVals: result.formVals ? { ...result.formVals } : { ...formVals },
-          gridRows: Array.isArray(result.gridRows)
-            ? result.gridRows.map((row) => ({ ...row }))
-            : Array.isArray(rowsOverride)
-            ? rowsOverride.map((row) => ({ ...row }))
-            : gridRows.map((row) => ({ ...row })),
-        };
-      }
-    }
-    const resolvedRow = resolveSubmittedRow(result, {});
-    return {
-      formVals: mergeForm ? { ...formVals, ...resolvedRow } : { ...formVals },
       gridRows: Array.isArray(rowsOverride)
         ? rowsOverride.map((row) => ({ ...row }))
         : gridRows.map((row) => ({ ...row })),
