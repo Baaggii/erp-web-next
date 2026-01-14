@@ -360,89 +360,30 @@ function pickConfig(configs = {}, row = {}) {
 }
 
 function resolveImageNamingForSearch(row = {}, configs = {}, fallbackTable = '') {
-  const { name: preferredName, config: preferredConfig } = pickConfigEntry(configs, row);
-  const hasConfigs = Object.keys(configs || {}).length > 0;
-  const preferredFields = Array.isArray(preferredConfig?.imagenameField)
-    ? preferredConfig.imagenameField
-    : [];
-  const preferredImageIdField =
-    typeof preferredConfig?.imageIdField === 'string' ? preferredConfig.imageIdField : '';
-  const preferredFieldSet = dedupeFields([
-    ...preferredFields,
-    preferredImageIdField,
-  ]);
   let name = '';
   let configNames = [];
-  const hasPreferredFields = preferredFieldSet.length > 0;
-  if (hasPreferredFields) {
-    name = buildNameFromRow(row, preferredFieldSet);
-    if (name && preferredName) {
-      configNames = [preferredName];
+  const { fields, configNames: allNames } = collectAllConfigImageFields(configs);
+  if (fields.length) {
+    name = buildNameFromRow(row, fields);
+    if (name) {
+      configNames = allNames;
     }
   }
-  if (!name) {
-    const matchedConfigs = pickMatchingConfigs(configs, row);
-    const { fields, configNames: matchedNames } = collectImageFields(matchedConfigs);
-    if (fields.length) {
-      name = buildNameFromRow(row, fields);
-      if (name) {
-        configNames = matchedNames;
-      }
-    }
-  }
-  if (!name && !hasPreferredFields) {
-    const { fields, configNames: allNames } = collectAllConfigImageFields(configs);
-    if (fields.length) {
-      name = buildNameFromRow(row, fields);
-      if (name) {
-        configNames = allNames;
-      }
-    }
-  }
-  const folder = buildFolderName(row, preferredConfig?.imageFolder || fallbackTable);
+  const folder = buildFolderName(row, fallbackTable);
   return { name, folder, configNames };
 }
 
 function resolveImagePrefixForSearch(row = {}, configs = {}, fallbackTable = '') {
-  const { name: preferredName, config: preferredConfig } = pickConfigEntry(configs, row);
-  const hasConfigs = Object.keys(configs || {}).length > 0;
-  const preferredFields = Array.isArray(preferredConfig?.imagenameField)
-    ? preferredConfig.imagenameField
-    : [];
   let name = '';
   let configNames = [];
-  const hasPreferredFields = preferredFields.length > 0;
-  if (hasPreferredFields) {
-    name = buildNameFromRow(row, preferredFields);
-    if (name && preferredName) {
-      configNames = [preferredName];
+  const { fields, configNames: allNames } = collectAllConfigImageFields(configs);
+  if (fields.length) {
+    name = buildNameFromRow(row, fields);
+    if (name) {
+      configNames = allNames;
     }
   }
-  if (!name) {
-    const matchedConfigs = pickMatchingConfigs(configs, row);
-    const { fields, configNames: matchedNames } = collectImageFields(
-      matchedConfigs,
-      { includeImageId: false },
-    );
-    if (fields.length) {
-      name = buildNameFromRow(row, fields);
-      if (name) {
-        configNames = matchedNames;
-      }
-    }
-  }
-  if (!name && !hasPreferredFields) {
-    const { fields, configNames: allNames } = collectAllConfigImageFields(configs, {
-      includeImageId: false,
-    });
-    if (fields.length) {
-      name = buildNameFromRow(row, fields);
-      if (name) {
-        configNames = allNames;
-      }
-    }
-  }
-  const folder = buildFolderName(row, preferredConfig?.imageFolder || fallbackTable);
+  const folder = buildFolderName(row, fallbackTable);
   return { name, folder, configNames };
 }
 
@@ -508,6 +449,21 @@ function extractImagePrefix(base) {
   const save = parseSaveName(base);
   if (!save) return '';
   return stripUploaderTag(save.pre || '');
+}
+
+function extractRowIdPrefix(base = '') {
+  let prefix = '';
+  const save = parseSaveName(base);
+  if (save?.pre) {
+    prefix = stripUploaderTag(save.pre || '');
+  } else {
+    const suffixMatch = parseSaveSuffix(base);
+    prefix = suffixMatch ? base.replace(suffixMatch.suffix, '') : base;
+    prefix = stripUploaderTag(prefix);
+  }
+  if (!prefix) return '';
+  const firstToken = prefix.split(/[_-~]/).filter(Boolean)[0] || '';
+  return /^\d+$/.test(firstToken) ? firstToken : '';
 }
 
 function escapeLike(value = '') {
@@ -1402,6 +1358,12 @@ export async function detectIncompleteImages(
         found = await findTxnByUniqueId(unique, companyId);
       }
       if (!found) {
+        const rowIdPrefix = extractRowIdPrefix(base);
+        if (rowIdPrefix) {
+          found = await findTxnByRowId(entry.name, rowIdPrefix, companyId);
+        }
+      }
+      if (!found) {
         const tempPrefix = extractImagePrefix(base);
         const tempMatch = await findPromotedTempMatch(
           tempPrefix,
@@ -1599,6 +1561,35 @@ async function findTxnByUniqueId(idPart, companyId = 0) {
     }
   }
   return null;
+}
+
+async function findTxnByRowId(table, rowId, companyId = 0) {
+  if (!table || !rowId) return null;
+  let cols;
+  try {
+    [cols] = await pool.query(`SHOW COLUMNS FROM \`${table}\``);
+  } catch {
+    return null;
+  }
+  const idCol = cols.find((c) => c.Field.toLowerCase() === 'id');
+  if (!idCol) return null;
+  let rows;
+  try {
+    [rows] = await pool.query(
+      `SELECT * FROM \`${table}\` WHERE \`${idCol.Field}\` = ? LIMIT 1`,
+      [rowId],
+    );
+  } catch {
+    return null;
+  }
+  if (!rows.length) return null;
+  let cfgs = {};
+  try {
+    const { config } = await getConfigsByTable(table, companyId);
+    cfgs = config;
+  } catch {}
+  const numField = await getNumFieldForTable(table);
+  return { table, row: rows[0], configs: cfgs, numField };
 }
 
 export async function fixIncompleteImages(list = [], companyId = 0) {
