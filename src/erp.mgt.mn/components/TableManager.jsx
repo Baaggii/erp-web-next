@@ -596,7 +596,7 @@ const TableManager = forwardRef(function TableManager({
   const [showDetail, setShowDetail] = useState(false);
   const [detailRow, setDetailRow] = useState(null);
   const [detailRefs, setDetailRefs] = useState([]);
-  const [imagesRow, setImagesRow] = useState(null);
+  const [imagesEntry, setImagesEntry] = useState(null);
   const [uploadRow, setUploadRow] = useState(null);
   const [ctxMenu, setCtxMenu] = useState(null); // { x, y, value }
   const [searchTerm, setSearchTerm] = useState('');
@@ -2487,7 +2487,7 @@ const TableManager = forwardRef(function TableManager({
     }
   }
 
-  function getImageFolder(row) {
+  function getImageFolder(row, fallbackTable = table) {
     const lower = {};
     Object.keys(row || {}).forEach((k) => {
       lower[k.toLowerCase()] = row[k];
@@ -2495,7 +2495,7 @@ const TableManager = forwardRef(function TableManager({
     const t1 = lower['trtype'];
     const t2 =
       lower['uitranstypename'] || lower['transtype'] || lower['transtypename'];
-    if (!t1 || !t2) return table;
+    if (!t1 || !t2) return fallbackTable;
     return `${slugify(t1)}/${slugify(String(t2))}`;
   }
 
@@ -3187,7 +3187,7 @@ const TableManager = forwardRef(function TableManager({
     );
     addToast(`Image build fields: ${buildFields.join(', ') || 'none'}`, 'info');
     const name = resolveImageNameForSearch(row);
-    const folder = getImageFolder(row);
+    const folder = getImageFolder(row, tableName);
     const details = [
       name ? `name=${name}` : null,
       folder ? `folder=${folder}` : null,
@@ -3204,8 +3204,16 @@ const TableManager = forwardRef(function TableManager({
   }
 
   function openImages(row) {
-    showImageSearchToast(row);
-    setImagesRow(row);
+    const tableName = row?.tableName || row?.table_name || table;
+    showImageSearchToast(row, tableName);
+    const matches = getMatchingConfigsForRow(row);
+    const match = matches[0];
+    setImagesEntry({
+      row,
+      table: tableName,
+      config: match?.config || formConfig || {},
+      configName: match?.configName || formName || '',
+    });
   }
 
   function openUpload(row) {
@@ -7999,15 +8007,15 @@ const TableManager = forwardRef(function TableManager({
         }}
       />
       <RowImageViewModal
-        visible={imagesRow !== null}
-        onClose={() => setImagesRow(null)}
-        table={table}
-        folder={getImageFolder(imagesRow)}
-        row={imagesRow || {}}
+        visible={imagesEntry !== null}
+        onClose={() => setImagesEntry(null)}
+        table={imagesEntry?.table || table}
+        folder={getImageFolder(imagesEntry?.row || {}, imagesEntry?.table || table)}
+        row={imagesEntry?.row || {}}
         columnCaseMap={columnCaseMap}
         configs={allConfigs}
-        currentConfig={formConfig}
-        currentConfigName={formName}
+        currentConfig={imagesEntry?.config || formConfig}
+        currentConfigName={imagesEntry?.configName || formName}
         canDelete={Boolean(normalizedViewerEmpId)}
         useAllConfigsWhenMissing
       />
