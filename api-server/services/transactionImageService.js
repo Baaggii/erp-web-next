@@ -504,6 +504,18 @@ function isTemporaryGeneratedName(base = '') {
   return /^tmp[_-]/i.test(value) || /__u[a-z0-9]+__/i.test(value);
 }
 
+function extractTemporaryPrefix(base = '') {
+  const value = String(base);
+  if (!/^tmp[_-]/i.test(value)) return '';
+  const trimmed = value.replace(/_[0-9]{13}_[a-z0-9]{6}$/i, '');
+  return stripUploaderTag(trimmed);
+}
+
+function extractTemporaryTimestamp(base = '') {
+  const match = String(base).match(/^tmp[_-](\d{13})/i);
+  return match ? Number(match[1]) : null;
+}
+
 function extractImagePrefix(base) {
   const save = parseSaveName(base);
   if (!save) return '';
@@ -1415,6 +1427,18 @@ export async function detectIncompleteImages(
           continue;
         }
         found = await findTxnByUniqueId(unique, companyId);
+        if (!found) {
+          const tempPrefix = extractTemporaryPrefix(base);
+          if (tempPrefix) {
+            const tempMatch = await findPromotedTempMatch(
+              tempPrefix,
+              companyId,
+              extractTemporaryTimestamp(base),
+              suffix,
+            );
+            if (tempMatch) found = tempMatch;
+          }
+        }
       }
       if (!found) {
         const rowIdPrefix = extractRowIdPrefix(base);
@@ -1724,11 +1748,34 @@ export async function checkUploadedImages(
         suffix = parsed.suffix;
       }
       if (!unique) {
-        reason = 'Invalid filename';
+        const tempPrefix = extractTemporaryPrefix(base);
+        if (tempPrefix) {
+          found = await findPromotedTempMatch(
+            tempPrefix,
+            companyId,
+            extractTemporaryTimestamp(base),
+            suffix,
+          );
+          if (!found) reason = 'Invalid filename';
+        } else {
+          reason = 'Invalid filename';
+        }
       } else if (!isTemporaryGeneratedName(base) && hasTxnCode(base, unique, codes)) {
         reason = 'Already renamed';
       } else {
         found = await findTxnByUniqueId(unique, companyId);
+        if (!found) {
+          const tempPrefix = extractTemporaryPrefix(base);
+          if (tempPrefix) {
+            const tempMatch = await findPromotedTempMatch(
+              tempPrefix,
+              companyId,
+              extractTemporaryTimestamp(base),
+              suffix,
+            );
+            if (tempMatch) found = tempMatch;
+          }
+        }
         if (!found && suffixMatch) {
           const tempPrefix = extractImagePrefix(base);
           found = await findPromotedTempMatch(
@@ -1890,7 +1937,8 @@ export async function detectIncompleteFromNames(names = [], companyId = 0, signa
     const ext = path.extname(name || '');
     const base = path.basename(name || '', ext);
     const { unique } = parseFileUnique(base);
-    if (!unique) {
+    const isTemporary = Boolean(extractTemporaryPrefix(base));
+    if (!unique && !isTemporary) {
       skipped.push({ originalName: name, reason: 'No unique identifier' });
       continue;
     }
