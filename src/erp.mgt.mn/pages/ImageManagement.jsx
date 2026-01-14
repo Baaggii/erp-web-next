@@ -646,10 +646,19 @@ export default function ImageManagement() {
     detectAbortRef.current = controller;
     setActiveOp('detect');
     try {
-      const res = await fetch(`/api/transaction_images/detect_incomplete?page=${p}&pageSize=${pageSize}${company != null ? `&companyId=${encodeURIComponent(company)}` : ''}`, {
-        credentials: 'include',
-        signal: controller.signal,
-      });
+      const res = await fetch(
+        `/api/transaction_images/detect_incomplete?page=${p}&pageSize=${pageSize}${company != null ? `&companyId=${encodeURIComponent(company)}` : ''}`,
+        {
+          credentials: 'include',
+          signal: controller.signal,
+          skipErrorToast: true,
+        },
+      );
+      if (res.status === 429) {
+        const data = await res.json().catch(() => ({}));
+        addToast(data.message || 'Too many requests, please try again later.', 'warning');
+        return;
+      }
       if (res.ok) {
         const data = await res.json();
         const list = Array.isArray(data.list)
@@ -713,7 +722,7 @@ export default function ImageManagement() {
       detectAbortRef.current = null;
       setActiveOp(null);
     }
-      setPendingPage(p);
+    setPendingPage(p);
   }
 
   async function applyFixesSelection(list, sel) {
