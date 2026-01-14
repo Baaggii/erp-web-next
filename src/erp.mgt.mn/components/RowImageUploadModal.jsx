@@ -4,7 +4,6 @@ import { useToast } from '../context/ToastContext.jsx';
 import resolveImageNames from '../utils/resolveImageNames.js';
 import { API_ROOT } from '../utils/apiBase.js';
 import { buildImageThumbnailUrl } from '../utils/transactionImageThumbnails.js';
-import { buildTemporaryImageName } from '../utils/temporaryImageName.js';
 import AISuggestionModal from './AISuggestionModal.jsx';
 import useGeneralConfig from '../hooks/useGeneralConfig.js';
 import { useTranslation } from 'react-i18next';
@@ -60,6 +59,12 @@ export default function RowImageUploadModal({
       currentConfig,
       currentConfigName,
     });
+  }
+
+  function buildTemporaryImageName() {
+    const timestamp = Date.now();
+    const random = Math.random().toString(36).slice(2, 5);
+    return `tmp_${timestamp}__${random}`;
   }
 
   function handleClipboardPaste(event) {
