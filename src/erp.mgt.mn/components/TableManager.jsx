@@ -596,7 +596,7 @@ const TableManager = forwardRef(function TableManager({
   const [showDetail, setShowDetail] = useState(false);
   const [detailRow, setDetailRow] = useState(null);
   const [detailRefs, setDetailRefs] = useState([]);
-  const [imagesEntry, setImagesEntry] = useState(null);
+  const [imagesRow, setImagesRow] = useState(null);
   const [uploadRow, setUploadRow] = useState(null);
   const [ctxMenu, setCtxMenu] = useState(null); // { x, y, value }
   const [searchTerm, setSearchTerm] = useState('');
@@ -2487,7 +2487,7 @@ const TableManager = forwardRef(function TableManager({
     }
   }
 
-  function getImageFolder(row, fallbackTable = table) {
+  function getImageFolder(row) {
     const lower = {};
     Object.keys(row || {}).forEach((k) => {
       lower[k.toLowerCase()] = row[k];
@@ -2495,7 +2495,7 @@ const TableManager = forwardRef(function TableManager({
     const t1 = lower['trtype'];
     const t2 =
       lower['uitranstypename'] || lower['transtype'] || lower['transtypename'];
-    if (!t1 || !t2) return fallbackTable;
+    if (!t1 || !t2) return table;
     return `${slugify(t1)}/${slugify(String(t2))}`;
   }
 
@@ -3204,16 +3204,8 @@ const TableManager = forwardRef(function TableManager({
   }
 
   function openImages(row) {
-    const tableName = row?.tableName || row?.table_name || table;
-    showImageSearchToast(row, tableName);
-    const matches = getMatchingConfigsForRow(row);
-    const match = matches[0];
-    setImagesEntry({
-      row,
-      table: tableName,
-      config: match?.config || formConfig || {},
-      configName: match?.configName || formName || '',
-    });
+    showImageSearchToast(row);
+    setImagesRow(row);
   }
 
   function openUpload(row) {
@@ -8028,15 +8020,15 @@ const TableManager = forwardRef(function TableManager({
         }}
       />
       <RowImageViewModal
-        visible={imagesEntry !== null}
-        onClose={() => setImagesEntry(null)}
-        table={imagesEntry?.table || table}
-        folder={getImageFolder(imagesEntry?.row || {}, imagesEntry?.table || table)}
-        row={imagesEntry?.row || {}}
+        visible={imagesRow !== null}
+        onClose={() => setImagesRow(null)}
+        table={table}
+        folder={getImageFolder(imagesRow)}
+        row={imagesRow || {}}
         columnCaseMap={columnCaseMap}
         configs={allConfigs}
-        currentConfig={imagesEntry?.config || formConfig}
-        currentConfigName={imagesEntry?.configName || formName}
+        currentConfig={formConfig}
+        currentConfigName={formName}
         canDelete={Boolean(normalizedViewerEmpId)}
         useAllConfigsWhenMissing
       />
