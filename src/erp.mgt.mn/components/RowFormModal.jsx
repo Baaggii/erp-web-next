@@ -4248,7 +4248,7 @@ const RowFormModal = function RowFormModal({
     const list = mode === 'emp' ? printEmpField : printCustField;
     const allowed = new Set(list.length > 0 ? list : all);
     const signatureSet = new Set(signatureFields);
-    const signatureCols = signatureFields.filter((c) => all.includes(c));
+    const signatureCols = signatureFields;
     const h = headerCols.filter((c) => allowed.has(c) && !signatureSet.has(c));
     const m = mainCols.filter((c) => allowed.has(c) && !signatureSet.has(c));
     const f = footerCols.filter((c) => allowed.has(c) && !signatureSet.has(c));
