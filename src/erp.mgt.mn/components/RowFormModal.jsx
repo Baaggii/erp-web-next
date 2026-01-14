@@ -4553,16 +4553,6 @@ const RowFormModal = function RowFormModal({
                 {t('upload_images', 'Upload Images')}
               </button>
             )}
-            {canViewImages && (
-              <button
-                type="button"
-                onClick={openImageView}
-                className="px-3 py-1 bg-gray-200 rounded"
-                disabled={imageActionDisabled}
-              >
-                {t('view_images', 'View images')}
-              </button>
-            )}
             {showTemporarySaveButton && (
               <button
                 type="button"
