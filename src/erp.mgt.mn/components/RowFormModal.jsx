@@ -4457,11 +4457,14 @@ const RowFormModal = function RowFormModal({
       const blocks = signatureCols
         .map((c) => {
           const value = resolvePrintValue(c);
+          if (value === '' || value === null || value === undefined) return null;
           return `<div class="signature-block"><div class="signature-label">${
             labels[c] || c
           }</div><div class="signature-line"></div><div class="signature-info">${value}</div></div>`;
         })
+        .filter(Boolean)
         .join('');
+      if (!blocks) return '';
       return `<h3>Signature</h3>${blocks}`;
     };
 
