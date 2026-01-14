@@ -4247,11 +4247,14 @@ const RowFormModal = function RowFormModal({
     const all = [...headerCols, ...mainCols, ...footerCols];
     const list = mode === 'emp' ? printEmpField : printCustField;
     const allowed = new Set(list.length > 0 ? list : all);
-    const signatureSet = new Set(signatureFields);
-    const signatureCols = signatureFields;
-    const h = headerCols.filter((c) => allowed.has(c) && !signatureSet.has(c));
-    const m = mainCols.filter((c) => allowed.has(c) && !signatureSet.has(c));
-    const f = footerCols.filter((c) => allowed.has(c) && !signatureSet.has(c));
+    const signatureEntries = signatureFields.map((field, index) => {
+      const resolved = resolveFormColumn(field) ?? field;
+      return { field, resolved, key: `${field}-${index}` };
+    });
+    const signatureResolvedSet = new Set(signatureEntries.map((entry) => entry.resolved));
+    const h = headerCols.filter((c) => allowed.has(c) && !signatureResolvedSet.has(c));
+    const m = mainCols.filter((c) => allowed.has(c) && !signatureResolvedSet.has(c));
+    const f = footerCols.filter((c) => allowed.has(c) && !signatureResolvedSet.has(c));
     const labelMap = {};
     Object.entries(relations).forEach(([col, opts]) => {
       labelMap[col] = {};
@@ -4306,12 +4309,13 @@ const RowFormModal = function RowFormModal({
     };
 
     const signatureHtml = () => {
-      if (signatureCols.length === 0) return '';
-      const blocks = signatureCols
-        .map((c) => {
-          const value = resolvePrintValue(c);
+      if (signatureEntries.length === 0) return '';
+      const blocks = signatureEntries
+        .map((entry) => {
+          const value = resolvePrintValue(entry.resolved);
+          const label = labels[entry.resolved] || labels[entry.field] || entry.field;
           return `<div class="signature-block"><div class="signature-label">${
-            labels[c] || c
+            label
           }</div><div class="signature-line"></div><div class="signature-info">${value}</div></div>`;
         })
         .join('');
@@ -4325,7 +4329,7 @@ const RowFormModal = function RowFormModal({
     if (h.length) html += `<h3>Header</h3><table>${rowHtml(h, true)}</table>`;
     if (m.length) html += `<h3>Main</h3>${mainTableHtml()}`;
     if (f.length) html += `<h3>Footer</h3><table>${rowHtml(f, true)}</table>`;
-    if (signatureCols.length) html += signatureHtml();
+    if (signatureEntries.length) html += signatureHtml();
     html += '</body></html>';
     if (userSettings?.printerId) {
       fetch(`${API_BASE}/print`, {
