@@ -7932,6 +7932,7 @@ const TableManager = forwardRef(function TableManager({
         companyIdFields={companyIdFields}
         printEmpField={formConfig?.printEmpField || []}
         printCustField={formConfig?.printCustField || []}
+        signatureFields={formConfig?.signatureFields || []}
         totalAmountFields={formConfig?.totalAmountFields || []}
         totalCurrencyFields={formConfig?.totalCurrencyFields || []}
         procTriggers={procTriggers}
