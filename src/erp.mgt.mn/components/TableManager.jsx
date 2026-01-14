@@ -4143,22 +4143,25 @@ const TableManager = forwardRef(function TableManager({
           ? t('transaction_posted', 'Transaction posted')
           : t('transaction_updated', 'Transaction updated');
         const targetRecordId = isAdding ? savedRow?.id ?? null : getRowId(editing);
+        const savedRowHasData =
+          savedRow && typeof savedRow === 'object' && Object.keys(savedRow).length > 0;
+        const fallbackRow = isAdding
+          ? { ...merged, ...cleaned }
+          : { ...editing, ...cleaned };
+        const finalRow = savedRowHasData ? savedRow : fallbackRow;
+        if (
+          targetRecordId !== null &&
+          targetRecordId !== undefined &&
+          !Object.prototype.hasOwnProperty.call(finalRow, 'id')
+        ) {
+          finalRow.id = targetRecordId;
+        }
         const shouldIssueEbarimt =
           submitIntent === 'ebarimt' && issueEbarimt && posApiEnabled;
         if (!isAdding && editingRowId !== null && editingRowId !== undefined) {
-          const savedRowHasData =
-            savedRow &&
-            typeof savedRow === 'object' &&
-            Object.keys(savedRow).length > 0;
-          const mergedRow = savedRowHasData
-            ? savedRow
-            : { ...editing, ...cleaned };
-          if (!Object.prototype.hasOwnProperty.call(mergedRow, 'id')) {
-            mergedRow.id = editingRowId;
-          }
           setRows((prev) =>
             prev.map((row) =>
-              getRowId(row) === editingRowId ? { ...row, ...mergedRow } : row,
+              getRowId(row) === editingRowId ? { ...row, ...finalRow } : row,
             ),
           );
         }
@@ -4237,7 +4240,7 @@ const TableManager = forwardRef(function TableManager({
         if (isAdding) {
           setTimeout(() => openAdd(), 0);
         }
-        return true;
+        return finalRow;
       } else {
         let message = 'Хадгалахад алдаа гарлаа';
         try {
