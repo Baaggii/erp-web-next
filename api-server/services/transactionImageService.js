@@ -360,30 +360,89 @@ function pickConfig(configs = {}, row = {}) {
 }
 
 function resolveImageNamingForSearch(row = {}, configs = {}, fallbackTable = '') {
+  const { name: preferredName, config: preferredConfig } = pickConfigEntry(configs, row);
+  const hasConfigs = Object.keys(configs || {}).length > 0;
+  const preferredFields = Array.isArray(preferredConfig?.imagenameField)
+    ? preferredConfig.imagenameField
+    : [];
+  const preferredImageIdField =
+    typeof preferredConfig?.imageIdField === 'string' ? preferredConfig.imageIdField : '';
+  const preferredFieldSet = dedupeFields([
+    ...preferredFields,
+    preferredImageIdField,
+  ]);
   let name = '';
   let configNames = [];
-  const { fields, configNames: allNames } = collectAllConfigImageFields(configs);
-  if (fields.length) {
-    name = buildNameFromRow(row, fields);
-    if (name) {
-      configNames = allNames;
+  const hasPreferredFields = preferredFieldSet.length > 0;
+  if (hasPreferredFields) {
+    name = buildNameFromRow(row, preferredFieldSet);
+    if (name && preferredName) {
+      configNames = [preferredName];
     }
   }
-  const folder = buildFolderName(row, fallbackTable);
+  if (!name) {
+    const matchedConfigs = pickMatchingConfigs(configs, row);
+    const { fields, configNames: matchedNames } = collectImageFields(matchedConfigs);
+    if (fields.length) {
+      name = buildNameFromRow(row, fields);
+      if (name) {
+        configNames = matchedNames;
+      }
+    }
+  }
+  if (!name && !hasPreferredFields) {
+    const { fields, configNames: allNames } = collectAllConfigImageFields(configs);
+    if (fields.length) {
+      name = buildNameFromRow(row, fields);
+      if (name) {
+        configNames = allNames;
+      }
+    }
+  }
+  const folder = buildFolderName(row, preferredConfig?.imageFolder || fallbackTable);
   return { name, folder, configNames };
 }
 
 function resolveImagePrefixForSearch(row = {}, configs = {}, fallbackTable = '') {
+  const { name: preferredName, config: preferredConfig } = pickConfigEntry(configs, row);
+  const hasConfigs = Object.keys(configs || {}).length > 0;
+  const preferredFields = Array.isArray(preferredConfig?.imagenameField)
+    ? preferredConfig.imagenameField
+    : [];
   let name = '';
   let configNames = [];
-  const { fields, configNames: allNames } = collectAllConfigImageFields(configs);
-  if (fields.length) {
-    name = buildNameFromRow(row, fields);
-    if (name) {
-      configNames = allNames;
+  const hasPreferredFields = preferredFields.length > 0;
+  if (hasPreferredFields) {
+    name = buildNameFromRow(row, preferredFields);
+    if (name && preferredName) {
+      configNames = [preferredName];
     }
   }
-  const folder = buildFolderName(row, fallbackTable);
+  if (!name) {
+    const matchedConfigs = pickMatchingConfigs(configs, row);
+    const { fields, configNames: matchedNames } = collectImageFields(
+      matchedConfigs,
+      { includeImageId: false },
+    );
+    if (fields.length) {
+      name = buildNameFromRow(row, fields);
+      if (name) {
+        configNames = matchedNames;
+      }
+    }
+  }
+  if (!name && !hasPreferredFields) {
+    const { fields, configNames: allNames } = collectAllConfigImageFields(configs, {
+      includeImageId: false,
+    });
+    if (fields.length) {
+      name = buildNameFromRow(row, fields);
+      if (name) {
+        configNames = allNames;
+      }
+    }
+  }
+  const folder = buildFolderName(row, preferredConfig?.imageFolder || fallbackTable);
   return { name, folder, configNames };
 }
 
