@@ -4291,63 +4291,16 @@ const RowFormModal = function RowFormModal({
     const h = headerCols.filter((c) => allowed.has(c) && !signatureSet.has(c));
     const m = mainCols.filter((c) => allowed.has(c) && !signatureSet.has(c));
     const f = footerCols.filter((c) => allowed.has(c) && !signatureSet.has(c));
-    const getRelationDisplayParts = (col, rowValue) => {
-      const normalizedValueKey = normalizeRelationOptionKey(rowValue);
-      const optionLabels =
-        relationOptionLabelLookup[col] ||
-        relationOptionLabelLookup[String(col).toLowerCase()];
-      if (normalizedValueKey && optionLabels?.[normalizedValueKey] !== undefined) {
-        return [optionLabels[normalizedValueKey]];
-      }
-      if (
-        rowValue === undefined ||
-        rowValue === null ||
-        rowValue === '' ||
-        !relationData?.[col]
-      ) {
-        return null;
-      }
-      const relationRow =
-        relationData[col][rowValue] ?? relationData[col][String(rowValue)];
-      if (!relationRow) return null;
-      const autoConfig = getAutoSelectConfig(col)?.config;
-      const config = relationConfigMap[col] || autoConfig;
-      const view = viewSourceMap[col];
-      const viewConfig = view ? viewDisplays?.[view] || {} : null;
-      const cfg = config || viewConfig;
-      const idField = cfg?.idField || cfg?.column || (view ? col : null);
-      const parts = [];
-      if (idField) {
-        const identifier = getRowValueCaseInsensitive(relationRow, idField);
-        if (identifier !== undefined && identifier !== null && identifier !== '') {
-          parts.push(identifier);
-        }
-      }
-      if (parts.length === 0) {
-        parts.push(rowValue);
-      }
-      (cfg?.displayFields || []).forEach((df) => {
-        const value = relationRow[df];
-        if (value !== undefined && value !== null && value !== '') {
-          parts.push(value);
-        }
+    const labelMap = {};
+    Object.entries(relations).forEach(([col, opts]) => {
+      labelMap[col] = {};
+      (opts || []).forEach((o) => {
+        labelMap[col][o.value] = o.label;
       });
-      return parts;
-    };
+    });
     const resolvePrintValue = (col, row = activeFormVals) => {
       const raw = row?.[col];
-      let value = raw;
-      if (raw && typeof raw === 'object') {
-        if (Object.prototype.hasOwnProperty.call(raw, 'label') && raw.label !== undefined) {
-          value = raw.label;
-        } else if (Object.prototype.hasOwnProperty.call(raw, 'value')) {
-          value = raw.value;
-        } else if (Object.prototype.hasOwnProperty.call(raw, 'id')) {
-          value = raw.id;
-        }
-      }
-      const relationParts = getRelationDisplayParts(col, value);
-      const resolved = relationParts ? relationParts.join(' - ') : value;
+      const resolved = relations[col] ? labelMap[col]?.[raw] ?? raw : raw;
       const formatted = formatJsonItem(resolved);
       if (placeholders[col]) {
         return normalizeDateInput(formatted, placeholders[col]);
