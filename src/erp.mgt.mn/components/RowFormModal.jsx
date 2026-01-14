@@ -109,6 +109,7 @@ const RowFormModal = function RowFormModal({
   companyIdFields = [],
   printEmpField = [],
   printCustField = [],
+  signatureFields = [],
   totalAmountFields = [],
   totalCurrencyFields = [],
   defaultValues = {},
@@ -4246,9 +4247,28 @@ const RowFormModal = function RowFormModal({
     const all = [...headerCols, ...mainCols, ...footerCols];
     const list = mode === 'emp' ? printEmpField : printCustField;
     const allowed = new Set(list.length > 0 ? list : all);
-    const h = headerCols.filter((c) => allowed.has(c));
-    const m = mainCols.filter((c) => allowed.has(c));
-    const f = footerCols.filter((c) => allowed.has(c));
+    const signatureSet = new Set(signatureFields);
+    const orderedAllowed = all.filter((c) => allowed.has(c));
+    const signatureCols = orderedAllowed.filter((c) => signatureSet.has(c));
+    const h = headerCols.filter((c) => allowed.has(c) && !signatureSet.has(c));
+    const m = mainCols.filter((c) => allowed.has(c) && !signatureSet.has(c));
+    const f = footerCols.filter((c) => allowed.has(c) && !signatureSet.has(c));
+    const labelMap = {};
+    Object.entries(relations).forEach(([col, opts]) => {
+      labelMap[col] = {};
+      (opts || []).forEach((o) => {
+        labelMap[col][o.value] = o.label;
+      });
+    });
+    const resolvePrintValue = (col, row = activeFormVals) => {
+      const raw = row?.[col];
+      const resolved = relations[col] ? labelMap[col]?.[raw] ?? raw : raw;
+      const formatted = formatJsonItem(resolved);
+      if (placeholders[col]) {
+        return normalizeDateInput(formatted, placeholders[col]);
+      }
+      return formatted ?? '';
+    };
 
     const rowHtml = (cols, skipEmpty = false) =>
       cols
@@ -4261,10 +4281,7 @@ const RowFormModal = function RowFormModal({
             : true,
         )
         .map(
-          (c) =>
-            `<tr><th>${labels[c] || c}</th><td>${
-              activeFormVals[c] !== undefined ? activeFormVals[c] : ''
-            }</td></tr>`,
+          (c) => `<tr><th>${labels[c] || c}</th><td>${resolvePrintValue(c)}</td></tr>`,
         )
         .join('');
 
@@ -4282,20 +4299,34 @@ const RowFormModal = function RowFormModal({
         .map(
           (r) =>
             '<tr>' +
-            used.map((c) => `<td>${r[c] !== undefined ? r[c] : ''}</td>`).join('') +
+            used.map((c) => `<td>${resolvePrintValue(c, r)}</td>`).join('') +
             '</tr>',
         )
         .join('');
       return `<table><thead><tr>${header}</tr></thead><tbody>${body}</tbody></table>`;
     };
 
+    const signatureHtml = () => {
+      if (signatureCols.length === 0) return '';
+      const blocks = signatureCols
+        .map((c) => {
+          const value = resolvePrintValue(c);
+          return `<div class="signature-block"><div class="signature-label">${
+            labels[c] || c
+          }</div><div class="signature-line"></div><div class="signature-info">${value}</div></div>`;
+        })
+        .join('');
+      return `<h3>Signature</h3>${blocks}`;
+    };
+
     let html = '<html><head><title>Print</title>';
     html +=
-      '<style>@media print{body{margin:1rem;font-size:12px}}table{width:100%;border-collapse:collapse;margin-bottom:1rem;}th,td{border:1px solid #666;padding:4px;text-align:left;}h3{margin:0 0 4px 0;font-weight:600;}</style>';
+      '<style>@media print{body{margin:1rem;font-size:12px}}table{width:100%;border-collapse:collapse;margin-bottom:1rem;}th,td{border:1px solid #666;padding:4px;text-align:left;}h3{margin:0 0 4px 0;font-weight:600;}.signature-block{margin-top:0.5rem;margin-bottom:0.75rem;}.signature-label{font-weight:600;margin-bottom:0.25rem;}.signature-line{border-bottom:1px solid #111;height:1.2rem;margin-bottom:0.25rem;}.signature-info{font-size:11px;color:#333;white-space:pre-wrap;}</style>';
     html += '</head><body>';
     if (h.length) html += `<h3>Header</h3><table>${rowHtml(h, true)}</table>`;
     if (m.length) html += `<h3>Main</h3>${mainTableHtml()}`;
     if (f.length) html += `<h3>Footer</h3><table>${rowHtml(f, true)}</table>`;
+    if (signatureCols.length) html += signatureHtml();
     html += '</body></html>';
     if (userSettings?.printerId) {
       fetch(`${API_BASE}/print`, {
