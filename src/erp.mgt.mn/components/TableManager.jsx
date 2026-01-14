@@ -8613,6 +8613,43 @@ const TableManager = forwardRef(function TableManager({
                                       {t('upload_images', 'Upload Images')}
                                     </button>
                                   )}
+                                  {canViewTemporaryImages && (
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        const rowWithImage = {
+                                          ...normalizedValuesWithImage,
+                                          _imageName:
+                                            normalizedValuesWithImage?._imageName ||
+                                            temporaryImageName,
+                                          imageName:
+                                            normalizedValuesWithImage?.imageName ||
+                                            temporaryImageName,
+                                          image_name:
+                                            normalizedValuesWithImage?.image_name ||
+                                            temporaryImageName,
+                                          created_by: entry?.created_by || entry?.createdBy,
+                                        };
+                                        showImageSearchToast(rowWithImage, temporaryTableName);
+                                        setTemporaryImagesEntry({
+                                          row: rowWithImage,
+                                          table: temporaryTableName,
+                                          canDelete: canDeleteTemporaryImages,
+                                        });
+                                      }}
+                                      style={{
+                                        padding: '0.25rem 0.55rem',
+                                        backgroundColor: '#f3f4f6',
+                                        color: '#1f2937',
+                                        border: '1px solid #d1d5db',
+                                        borderRadius: '6px',
+                                        cursor: 'pointer',
+                                        fontSize: '0.8rem',
+                                      }}
+                                    >
+                                      {t('view_images', 'View images')}
+                                    </button>
+                                  )}
                                 </div>
                               )}
                             </td>
