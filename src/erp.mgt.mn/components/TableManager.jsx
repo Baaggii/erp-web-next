@@ -8613,7 +8613,7 @@ const TableManager = forwardRef(function TableManager({
                                       {t('upload_images', 'Upload Images')}
                                     </button>
                                   )}
-                                  {canViewTemporaryImages && (
+                                  {canViewTemporaryImages && !showReviewActions && (
                                     <button
                                       type="button"
                                       onClick={() => {
