@@ -4239,7 +4239,9 @@ const TableManager = forwardRef(function TableManager({
           }
         }
         addToast(msg, 'success');
-        refreshRows();
+        if (isAdding || !didOptimisticUpdate) {
+          refreshRows();
+        }
         if (isAdding) {
           setTimeout(() => openAdd(), 0);
         }
