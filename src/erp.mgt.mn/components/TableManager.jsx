@@ -4138,10 +4138,6 @@ const TableManager = forwardRef(function TableManager({
     }
 
     const editingRowId = isAdding ? null : getRowId(editing);
-    const editingRowIdKey =
-      editingRowId === null || editingRowId === undefined
-        ? null
-        : String(editingRowId);
     try {
       const res = await fetch(url, {
         method,
@@ -4157,8 +4153,7 @@ const TableManager = forwardRef(function TableManager({
         const targetRecordId = isAdding ? savedRow?.id ?? null : getRowId(editing);
         const shouldIssueEbarimt =
           submitIntent === 'ebarimt' && issueEbarimt && posApiEnabled;
-        let didOptimisticUpdate = false;
-        if (!isAdding && editingRowIdKey) {
+        if (!isAdding && editingRowId !== null && editingRowId !== undefined) {
           const savedRowHasData =
             savedRow &&
             typeof savedRow === 'object' &&
@@ -4171,12 +4166,9 @@ const TableManager = forwardRef(function TableManager({
           }
           setRows((prev) =>
             prev.map((row) =>
-              String(getRowId(row)) === editingRowIdKey
-                ? { ...row, ...mergedRow }
-                : row,
+              getRowId(row) === editingRowId ? { ...row, ...mergedRow } : row,
             ),
           );
-          didOptimisticUpdate = true;
         }
         setShowForm(false);
         setEditing(null);
