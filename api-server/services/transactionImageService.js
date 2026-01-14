@@ -510,6 +510,198 @@ function extractImagePrefix(base) {
   return stripUploaderTag(save.pre || '');
 }
 
+function splitImageBase(base = '') {
+  const save = parseSaveName(base);
+  if (save) {
+    const suffix = save.ts
+      ? `_${save.ts}_${save.rand}`
+      : save.rand
+        ? `__${save.rand}`
+        : '';
+    return { baseName: save.pre || '', suffix };
+  }
+  const saveSuffix = parseSaveSuffix(base);
+  if (saveSuffix) {
+    return {
+      baseName: base.slice(0, -saveSuffix.suffix.length),
+      suffix: saveSuffix.suffix,
+    };
+  }
+  return { baseName: base, suffix: '' };
+}
+
+function collectImageIdFields(configs = {}) {
+  const fields = new Set();
+  Object.values(configs || {}).forEach((cfg) => {
+    if (typeof cfg?.imageIdField === 'string' && cfg.imageIdField) {
+      fields.add(cfg.imageIdField);
+    }
+  });
+  return Array.from(fields);
+}
+
+function buildIdCandidates(value = '') {
+  const cleaned = sanitizeName(stripUploaderTag(value || ''));
+  if (!cleaned) return [];
+  const parts = cleaned.split('_').filter(Boolean);
+  const last = parts[parts.length - 1] || '';
+  return dedupeFields([cleaned, last].filter(Boolean));
+}
+
+async function getTableColumns(table) {
+  try {
+    const [cols] = await pool.query(`SHOW COLUMNS FROM \`${table}\``);
+    return cols.map((c) => c.Field);
+  } catch {
+    return [];
+  }
+}
+
+function buildImageNameDetails(row = {}, config = {}, fallbackTable = '', numField = '') {
+  const imagenameFields = Array.isArray(config?.imagenameField)
+    ? config.imagenameField
+    : [];
+  const imageIdField =
+    typeof config?.imageIdField === 'string' ? config.imageIdField : '';
+  const combinedFields = dedupeFields([
+    ...imagenameFields,
+    imageIdField,
+  ]);
+  const nameWithoutId = imagenameFields.length
+    ? buildNameFromRow(row, imagenameFields)
+    : '';
+  const idName = imageIdField ? buildNameFromRow(row, [imageIdField]) : '';
+  let primary = combinedFields.length
+    ? buildNameFromRow(row, combinedFields)
+    : '';
+  const tType =
+    getCase(row, 'trtype') ||
+    getCase(row, 'UITrtype') ||
+    getCase(row, 'TRTYPENAME') ||
+    getCase(row, 'trtypename') ||
+    getCase(row, 'uitranstypename') ||
+    getCase(row, 'transtype');
+  const transTypeVal =
+    getCase(row, 'TransType') ||
+    getCase(row, 'UITransType') ||
+    getCase(row, 'UITransTypeName') ||
+    getCase(row, 'transtype');
+  let folder =
+    config?.imagenameField?.length &&
+    tType &&
+    config.transactionTypeValue &&
+    config.transactionTypeField &&
+    String(getCase(row, config.transactionTypeField)) ===
+      String(config.transactionTypeValue)
+      ? `${slugify(String(tType))}/${slugify(String(config.transactionTypeValue))}`
+      : '';
+  if (!folder) {
+    folder = buildFolderName(row, config?.imageFolder || fallbackTable);
+  }
+  if (!primary) {
+    const fields = [
+      'z_mat_code',
+      'or_bcode',
+      'bmtr_pmid',
+      'pmid',
+      'sp_primary_code',
+      'pid',
+    ];
+    const partsArr = [];
+    const basePart = buildNameFromRow(row, fields);
+    if (basePart) partsArr.push(basePart);
+    const o1 = [getCase(row, 'bmtr_orderid'), getCase(row, 'bmtr_orderdid')]
+      .filter(Boolean)
+      .join('~');
+    const o2 = [getCase(row, 'ordrid'), getCase(row, 'ordrdid')]
+      .filter(Boolean)
+      .join('~');
+    const ord = o1 || o2;
+    if (ord) partsArr.push(ord);
+    if (transTypeVal) partsArr.push(transTypeVal);
+    if (tType) partsArr.push(tType);
+    if (partsArr.length) {
+      const baseName = sanitizeName(partsArr.join('_'));
+      if (baseName) {
+        if (idName && !sanitizeName(baseName).includes(sanitizeName(idName))) {
+          primary = sanitizeName(`${baseName}_${idName}`);
+        } else {
+          primary = baseName;
+        }
+      }
+    }
+  }
+  if (!primary && numField) {
+    const baseName = sanitizeName(String(row[numField]));
+    if (baseName) {
+      if (idName && !sanitizeName(baseName).includes(sanitizeName(idName))) {
+        primary = sanitizeName(`${baseName}_${idName}`);
+      } else {
+        primary = baseName;
+      }
+    }
+  }
+  const explicit =
+    sanitizeName(
+      getCase(row, '_imageName') ||
+        getCase(row, 'imagename') ||
+        getCase(row, 'image_name') ||
+        getCase(row, 'ImageName') ||
+        '',
+    ) || '';
+  const altNames = dedupeFields(
+    [nameWithoutId, idName, explicit].filter((name) => name && name !== primary),
+  );
+  return {
+    primary,
+    nameWithoutId,
+    idName,
+    altNames,
+    folder,
+    tType,
+    transTypeVal,
+  };
+}
+
+async function findTxnByRowIdInTable(table, baseName, companyId = 0, configs = null) {
+  if (!table || !baseName) return null;
+  let cfgs = configs;
+  if (!cfgs) {
+    try {
+      const { config } = await getConfigsByTable(table, companyId);
+      cfgs = config;
+    } catch {
+      cfgs = {};
+    }
+  }
+  const columns = await getTableColumns(table);
+  if (!columns.length) return null;
+  const idFields = dedupeFields([
+    ...collectImageIdFields(cfgs),
+    'id',
+  ]).filter((field) => columns.includes(field));
+  if (!idFields.length) return null;
+  const candidates = buildIdCandidates(baseName);
+  if (!candidates.length) return null;
+  for (const field of idFields) {
+    for (const candidate of candidates) {
+      try {
+        const [rows] = await pool.query(
+          `SELECT * FROM \`${table}\` WHERE \`${field}\` = ? LIMIT 1`,
+          [candidate],
+        );
+        if (rows.length) {
+          const numField = await getNumFieldForTable(table);
+          return { table, row: rows[0], configs: cfgs, numField, matchedByRowId: true };
+        }
+      } catch {
+        // ignore
+      }
+    }
+  }
+  return null;
+}
+
 function escapeLike(value = '') {
   return String(value).replace(/[\\%_]/g, '\\$&');
 }
@@ -1340,15 +1532,21 @@ export async function detectIncompleteImages(
       signal?.throwIfAborted();
       const ext = path.extname(f);
       const base = path.basename(f, ext);
+      const { baseName, suffix: baseSuffix } = splitImageBase(base);
+      const baseKey = sanitizeName(stripUploaderTag(baseName));
       const filePath = path.join(dirPath, f);
       let unique = '';
-      let suffix = '';
+      let suffix = baseSuffix || '';
       let found;
       const save = parseSaveName(base);
       let suffixMatch = null;
       if (save) {
         ({ unique } = save);
-        suffix = `_${save.ts}_${save.rand}`;
+        suffix = save.ts
+          ? `_${save.ts}_${save.rand}`
+          : save.rand
+            ? `__${save.rand}`
+            : '';
         if (!isTemporaryGeneratedName(base) && hasTxnCode(base, unique, codes)) {
           skipped.push({
             currentName: f,
@@ -1378,15 +1576,18 @@ export async function detectIncompleteImages(
           suffix = parsed.suffix;
         }
         if (!unique) {
-          skipped.push({
-            currentName: f,
-            newName: f,
-            folder: entry.name,
-            folderDisplay: '/' + entry.name,
-            currentPath: filePath,
-            reason: 'No unique identifier',
-          });
-          continue;
+          found = await findTxnByRowIdInTable(entry.name, baseKey, companyId);
+          if (!found) {
+            skipped.push({
+              currentName: f,
+              newName: f,
+              folder: entry.name,
+              folderDisplay: '/' + entry.name,
+              currentPath: filePath,
+              reason: 'No unique identifier',
+            });
+            continue;
+          }
         }
         if (!isTemporaryGeneratedName(base) && hasTxnCode(base, unique, codes)) {
           skipped.push({
@@ -1399,7 +1600,9 @@ export async function detectIncompleteImages(
           });
           continue;
         }
-        found = await findTxnByUniqueId(unique, companyId);
+        if (!found) {
+          found = await findTxnByUniqueId(unique, companyId);
+        }
       }
       if (!found) {
         const tempPrefix = extractImagePrefix(base);
@@ -1413,6 +1616,9 @@ export async function detectIncompleteImages(
           found = tempMatch;
         }
       }
+      if (!found && baseKey) {
+        found = await findTxnByRowIdInTable(entry.name, baseKey, companyId);
+      }
       if (!found) {
         skipped.push({
           currentName: f,
@@ -1424,7 +1630,7 @@ export async function detectIncompleteImages(
         });
         continue;
       }
-      const { row, configs, numField, tempPromoted } = found;
+      const { row, configs, numField, tempPromoted, matchedByRowId } = found;
       const promotedRecordId = found?.promotedRecordId ?? null;
 
       const cfgEntry = pickConfigEntry(configs, row);
@@ -1445,60 +1651,42 @@ export async function detectIncompleteImages(
         }
       }
       if (!newBase) {
-        const tType =
-          getCase(row, 'trtype') ||
-          getCase(row, 'UITrtype') ||
-          getCase(row, 'TRTYPENAME') ||
-          getCase(row, 'trtypename') ||
-          getCase(row, 'uitranstypename') ||
-          getCase(row, 'transtype');
-        const transTypeVal =
-          getCase(row, 'TransType') ||
-          getCase(row, 'UITransType') ||
-          getCase(row, 'UITransTypeName') ||
-          getCase(row, 'transtype');
+        const naming = buildImageNameDetails(
+          row,
+          cfg,
+          found.table || entry.name,
+          numField,
+        );
+        newBase = naming.primary;
+        folderRaw = naming.folder;
         if (
-          cfg?.imagenameField?.length &&
-          tType &&
-          cfg.transactionTypeValue &&
-          cfg.transactionTypeField &&
-          String(getCase(row, cfg.transactionTypeField)) === String(cfg.transactionTypeValue)
+          baseKey &&
+          newBase &&
+          matchesImagePrefixVariants(baseKey, newBase) &&
+          !isTemporaryGeneratedName(base)
         ) {
-          newBase = buildNameFromRow(row, cfg.imagenameField);
-          if (newBase) {
-            folderRaw = `${slugify(String(tType))}/${slugify(String(cfg.transactionTypeValue))}`;
-          }
+          skipped.push({
+            currentName: f,
+            newName: f,
+            folder: entry.name,
+            folderDisplay: '/' + entry.name,
+            currentPath: filePath,
+            reason: 'Already primary name',
+          });
+          continue;
         }
-        if (!newBase) {
-          const fields = [
-            'z_mat_code',
-            'or_bcode',
-            'bmtr_pmid',
-            'pmid',
-            'sp_primary_code',
-            'pid',
-          ];
-          const partsArr = [];
-          const basePart = buildNameFromRow(row, fields);
-          if (basePart) partsArr.push(basePart);
-          const o1 = [getCase(row, 'bmtr_orderid'), getCase(row, 'bmtr_orderdid')]
-            .filter(Boolean)
-            .join('~');
-          const o2 = [getCase(row, 'ordrid'), getCase(row, 'ordrdid')]
-            .filter(Boolean)
-            .join('~');
-          const ord = o1 || o2;
-          if (ord) partsArr.push(ord);
-          if (transTypeVal) partsArr.push(transTypeVal);
-          if (tType) partsArr.push(tType);
-          if (partsArr.length) {
-            newBase = sanitizeName(partsArr.join('_'));
-            folderRaw = folderRaw || buildFolderName(row, cfg?.imageFolder || entry.name);
+        const altMatch =
+          baseKey &&
+          naming.altNames.some(
+            (alt) =>
+              matchesImagePrefixVariants(baseKey, alt) ||
+              matchesImagePrefixVariants(alt, baseKey),
+          );
+        if ((altMatch || matchedByRowId) && newBase) {
+          unique = '';
+          if (matchedByRowId) {
+            suffix = '';
           }
-        }
-        if (!newBase && numField) {
-          newBase = sanitizeName(String(row[numField]));
-          folderRaw = buildFolderName(row, cfg?.imageFolder || entry.name);
         }
       }
       if (!newBase) {
@@ -1635,6 +1823,8 @@ export async function checkUploadedImages(
     signal?.throwIfAborted();
     const ext = path.extname(file.originalname || '');
     const base = path.basename(file.originalname || '', ext);
+    const { baseName } = splitImageBase(base);
+    const baseKey = sanitizeName(stripUploaderTag(baseName));
     let unique = '';
     let suffix = '';
     let found;
@@ -1642,7 +1832,11 @@ export async function checkUploadedImages(
     const save = parseSaveName(base);
     if (save) {
       ({ unique } = save);
-      suffix = `_${save.ts}_${save.rand}`;
+      suffix = save.ts
+        ? `_${save.ts}_${save.rand}`
+        : save.rand
+          ? `__${save.rand}`
+          : '';
       if (!isTemporaryGeneratedName(base) && hasTxnCode(base, unique, codes)) {
         reason = 'Already renamed';
       } else {
@@ -1670,9 +1864,7 @@ export async function checkUploadedImages(
       }
       const parsed = parseFileUnique(base);
       unique = parsed.unique;
-      if (!suffix && parsed.suffix) {
-        suffix = parsed.suffix;
-      }
+      if (!suffix && parsed.suffix) suffix = parsed.suffix;
       if (!unique) {
         reason = 'Invalid filename';
       } else if (!isTemporaryGeneratedName(base) && hasTxnCode(base, unique, codes)) {
@@ -1692,64 +1884,25 @@ export async function checkUploadedImages(
     }
     if (!reason && !found) reason = 'Transaction not found';
     if (found && !reason) {
-      const { row, configs, numField } = found;
+      const { row, configs, numField, matchedByRowId } = found;
       const cfg = pickConfig(configs, row);
       let newBase = '';
       let folderRaw = '';
-      const tType =
-        getCase(row, 'trtype') ||
-        getCase(row, 'UITrtype') ||
-        getCase(row, 'TRTYPENAME') ||
-        getCase(row, 'trtypename') ||
-        getCase(row, 'uitranstypename') ||
-        getCase(row, 'transtype');
-      const transTypeVal =
-        getCase(row, 'TransType') ||
-        getCase(row, 'UITransType') ||
-        getCase(row, 'UITransTypeName') ||
-        getCase(row, 'transtype');
-      if (
-        cfg?.imagenameField?.length &&
-        tType &&
-        cfg.transactionTypeValue &&
-        cfg.transactionTypeField &&
-        String(getCase(row, cfg.transactionTypeField)) === String(cfg.transactionTypeValue)
-      ) {
-        newBase = buildNameFromRow(row, cfg.imagenameField);
-        if (newBase) {
-          folderRaw = `${slugify(String(tType))}/${slugify(String(cfg.transactionTypeValue))}`;
+      const naming = buildImageNameDetails(row, cfg, found.table, numField);
+      newBase = naming.primary;
+      folderRaw = naming.folder;
+      const altMatch =
+        baseKey &&
+        naming.altNames.some(
+          (alt) =>
+            matchesImagePrefixVariants(baseKey, alt) ||
+            matchesImagePrefixVariants(alt, baseKey),
+        );
+      if ((altMatch || matchedByRowId) && newBase) {
+        unique = '';
+        if (matchedByRowId) {
+          suffix = '';
         }
-      }
-      if (!newBase) {
-        const fields = [
-          'z_mat_code',
-          'or_bcode',
-          'bmtr_pmid',
-          'pmid',
-          'sp_primary_code',
-          'pid',
-        ];
-        const partsArr = [];
-        const basePart = buildNameFromRow(row, fields);
-        if (basePart) partsArr.push(basePart);
-        const o1 = [getCase(row, 'bmtr_orderid'), getCase(row, 'bmtr_orderdid')]
-          .filter(Boolean)
-          .join('~');
-        const o2 = [getCase(row, 'ordrid'), getCase(row, 'ordrdid')]
-          .filter(Boolean)
-          .join('~');
-        const ord = o1 || o2;
-        if (ord) partsArr.push(ord);
-        if (transTypeVal) partsArr.push(transTypeVal);
-        if (tType) partsArr.push(tType);
-        if (partsArr.length) {
-          newBase = sanitizeName(partsArr.join('_'));
-          folderRaw = folderRaw || buildFolderName(row, cfg?.imageFolder || found.table);
-        }
-      }
-      if (!newBase && numField) {
-        newBase = sanitizeName(String(row[numField]));
-        folderRaw = buildFolderName(row, cfg?.imageFolder || found.table);
       }
       if (!newBase) {
         reason = 'Could not build new name';
