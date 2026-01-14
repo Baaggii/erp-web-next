@@ -254,9 +254,17 @@ export default function RowImageViewModal({
   };
 
   const listView = (
-    <div style={{ maxHeight: '40vh', overflowY: 'auto' }}>
+    <div style={{ maxHeight: '50vh', overflowY: 'auto' }}>
       {files.map((f, idx) => (
-        <div key={f.path} style={{ marginBottom: '0.25rem' }}>
+        <div
+          key={f.path}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.75rem',
+            padding: '0.25rem 0',
+          }}
+        >
           <img
             src={f.thumbSrc || f.src}
             alt=""
@@ -264,7 +272,13 @@ export default function RowImageViewModal({
               e.currentTarget.onerror = null;
               e.currentTarget.src = placeholder;
             }}
-            style={{ maxWidth: '100px', marginRight: '0.5rem' }}
+            style={{
+              width: '160px',
+              height: '120px',
+              objectFit: 'contain',
+              background: '#111827',
+              borderRadius: '0.25rem',
+            }}
           />
           <span
             style={{ cursor: 'pointer', color: '#2563eb' }}
@@ -322,22 +336,41 @@ export default function RowImageViewModal({
                 flex: 1,
                 overflowY: 'auto',
                 display: 'grid',
-                gridTemplateColumns: 'repeat(2, 1fr)',
-                gap: '0.5rem',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+                gap: '0.75rem',
                 marginTop: '1rem',
                 alignContent: 'start',
               }}
             >
               {files.map((f, idx) => (
-                <div key={f.path} style={{ position: 'relative', aspectRatio: '1 / 1' }}>
+                <div
+                  key={f.path}
+                  style={{
+                    position: 'relative',
+                    background: '#0f172a',
+                    borderRadius: '0.5rem',
+                    padding: '0.5rem',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    minHeight: '220px',
+                  }}
+                >
                   <img
-                    src={f.thumbSrc || f.src}
+                    src={f.src}
                     alt=""
                     onError={(e) => {
                       e.currentTarget.onerror = null;
                       e.currentTarget.src = placeholder;
                     }}
-                    style={{ width: '100%', height: '100%', objectFit: 'cover', cursor: 'pointer' }}
+                    style={{
+                      maxWidth: '100%',
+                      maxHeight: '260px',
+                      width: 'auto',
+                      height: 'auto',
+                      objectFit: 'contain',
+                      cursor: 'pointer',
+                    }}
                     onClick={() => handleView(idx)}
                   />
                   {canDeleteFile(f.name) && (
