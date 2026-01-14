@@ -1630,7 +1630,7 @@ export async function detectIncompleteImages(
         });
         continue;
       }
-      const { row, configs, numField, tempPromoted, matchedByRowId } = found;
+      const { row, configs, numField, tempPromoted } = found;
       const promotedRecordId = found?.promotedRecordId ?? null;
 
       const cfgEntry = pickConfigEntry(configs, row);
@@ -1881,7 +1881,7 @@ export async function checkUploadedImages(
     }
     if (!reason && !found) reason = 'Transaction not found';
     if (found && !reason) {
-      const { row, configs, numField, matchedByRowId } = found;
+      const { row, configs, numField } = found;
       const cfg = pickConfig(configs, row);
       let newBase = '';
       let folderRaw = '';
