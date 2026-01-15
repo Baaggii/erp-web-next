@@ -81,9 +81,22 @@ function CncProcessingPage() {
 
     try {
       setStatus('uploading');
+      const csrfRes = await fetch(`${API_BASE}/csrf-token`, { credentials: 'include' });
+      if (!csrfRes.ok) {
+        throw new Error('Unable to fetch CSRF token. Please refresh and try again.');
+      }
+      const csrfData = await csrfRes.json();
+      const csrfToken = csrfData?.csrfToken || csrfData?.csrf_token;
+      if (!csrfToken) {
+        throw new Error('Missing CSRF token. Please refresh and try again.');
+      }
       const res = await fetch(`${API_BASE}/cnc_processing`, {
         method: 'POST',
         body: formData,
+        credentials: 'include',
+        headers: {
+          'X-CSRF-Token': csrfToken,
+        },
       });
       const contentType = res.headers.get('content-type') || '';
 
