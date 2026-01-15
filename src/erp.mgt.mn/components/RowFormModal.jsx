@@ -4272,18 +4272,6 @@ const RowFormModal = function RowFormModal({
     setPrintModalOpen(false);
     setPrintPayload(null);
   }
-
-  function openPrintWindow(html) {
-    const w = window.open('', '_blank');
-    if (!w) {
-      addToast(t('print_window_blocked', 'Unable to open print window'), 'error');
-      return;
-    }
-    w.document.write(html);
-    w.document.close();
-    w.focus();
-    w.print();
-  }
   function confirmPrintSelection() {
     const payload = printPayload || buildPrintPayload();
     if (printEmpSelected) handlePrint('emp', payload);
@@ -4503,22 +4491,13 @@ const RowFormModal = function RowFormModal({
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ printerId: userSettings.printerId, content: html }),
-      })
-        .then((res) => {
-          if (!res.ok) {
-            throw new Error('Print request failed');
-          }
-        })
-        .catch((err) => {
-          console.error('Print failed', err);
-          addToast(
-            t('print_failed_fallback', 'Printer failed, opening browser print dialog'),
-            'error',
-          );
-          openPrintWindow(html);
-        });
+      }).catch((err) => console.error('Print failed', err));
     } else {
-      openPrintWindow(html);
+      const w = window.open('', '_blank');
+      w.document.write(html);
+      w.document.close();
+      w.focus();
+      w.print();
     }
   }
 
