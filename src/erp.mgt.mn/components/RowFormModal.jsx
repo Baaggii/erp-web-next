@@ -4418,7 +4418,7 @@ const RowFormModal = function RowFormModal({
       return formatted ?? '';
     };
 
-    const columnTableHtml = (cols, row = activeFormVals, skipEmpty = false, className = '') => {
+    const columnTableHtml = (cols, row = activeFormVals, skipEmpty = false) => {
       const filtered = cols.filter((c) =>
         skipEmpty
           ? row?.[c] !== '' && row?.[c] !== null && row?.[c] !== 0 && row?.[c] !== undefined
@@ -4427,23 +4427,15 @@ const RowFormModal = function RowFormModal({
       if (filtered.length === 0) return '';
       const header = filtered.map((c) => `<th>${labels[c] || c}</th>`).join('');
       const values = filtered.map((c) => `<td>${resolvePrintValue(c, row)}</td>`).join('');
-      const classAttr = className ? ` class="${className}"` : '';
-      return `<table${classAttr}><thead><tr>${header}</tr></thead><tbody><tr>${values}</tr></tbody></table>`;
-    };
-
-    const signatureTableHtml = () => {
-      if (signatureCols.length === 0) return '';
-      const header = signatureCols.map((c) => `<th>${labels[c] || c}</th>`).join('');
-      const lines = signatureCols.map(() => '<td class="signature-line">&nbsp;</td>').join('');
-      return `<table class="plain-table signature-table"><thead><tr>${header}</tr></thead><tbody><tr>${lines}</tr></tbody></table>`;
+      return `<table><thead><tr>${header}</tr></thead><tbody><tr>${values}</tr></tbody></table>`;
     };
 
     const mainTableHtml = () => {
       if (!useGrid) {
-        return columnTableHtml(m, activeFormVals, true, 'data-table');
+        return columnTableHtml(m, activeFormVals, true);
       }
       if (!Array.isArray(activeGridRows) || activeGridRows.length === 0) {
-        return columnTableHtml(m, activeFormVals, true, 'data-table');
+        return columnTableHtml(m, activeFormVals, true);
       }
       const used = m.filter((c) =>
         activeGridRows.some(
@@ -4451,7 +4443,7 @@ const RowFormModal = function RowFormModal({
         ),
       );
       if (used.length === 0) {
-        return columnTableHtml(m, activeFormVals, true, 'data-table');
+        return columnTableHtml(m, activeFormVals, true);
       }
       const header = used.map((c) => `<th>${labels[c] || c}</th>`).join('');
       const body = activeGridRows
@@ -4466,17 +4458,18 @@ const RowFormModal = function RowFormModal({
     };
 
     const signatureHtml = () => {
-      const table = signatureTableHtml();
+      if (signatureCols.length === 0) return '';
+      const table = columnTableHtml(signatureCols, activeFormVals, true);
       if (!table) return '';
       return `<h3>Signature</h3>${table}`;
     };
 
     let html = '<html><head><title>Print</title>';
     html +=
-      '<style>@media print{body{margin:0.5rem;font-size:10px}}table{border-collapse:collapse;margin-bottom:0.5rem;width:auto;max-width:100%;}h3{margin:0 0 4px 0;font-weight:600;font-size:10px;}th,td{padding:2px 4px;text-align:left;}.data-table th,.data-table td{border:1px solid #666;}.plain-table th,.plain-table td{border:none;}.signature-table th,.signature-table td{vertical-align:bottom;}.signature-line{border-bottom:1px solid #111;height:1.2rem;}</style>';
+      '<style>@media print{body{margin:1rem;font-size:12px}}table{width:100%;border-collapse:collapse;margin-bottom:1rem;}th,td{border:1px solid #666;padding:4px;text-align:left;}h3{margin:0 0 4px 0;font-weight:600;}</style>';
     html += '</head><body>';
     if (h.length) {
-      const table = columnTableHtml(h, activeFormVals, true, 'plain-table');
+      const table = columnTableHtml(h, activeFormVals, true);
       if (table) html += `<h3>Header</h3>${table}`;
     }
     if (m.length) {
@@ -4484,7 +4477,7 @@ const RowFormModal = function RowFormModal({
       if (mainTable) html += `<h3>Main</h3>${mainTable}`;
     }
     if (f.length) {
-      const table = columnTableHtml(f, activeFormVals, true, 'plain-table');
+      const table = columnTableHtml(f, activeFormVals, true);
       if (table) html += `<h3>Footer</h3>${table}`;
     }
     if (signatureCols.length) html += signatureHtml();
