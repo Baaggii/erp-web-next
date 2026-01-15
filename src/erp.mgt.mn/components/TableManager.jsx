@@ -6639,13 +6639,17 @@ const TableManager = forwardRef(function TableManager({
     return match || null;
   }, [rows, selectedRows]);
 
-  const buildPrintPayloadFromRow = useCallback((row) => {
-    const baseRow = row && typeof row === 'object' ? { ...row } : {};
-    const gridRows = Array.isArray(row?.rows)
-      ? row.rows.map((entry) => ({ ...entry }))
-      : [];
-    return { formVals: baseRow, gridRows };
-  }, []);
+  const buildPrintPayloadFromRow = useCallback(
+    (row) => {
+      const baseRow = row && typeof row === 'object' ? { ...row } : {};
+      const normalizedRows = normalizeJsonArray(row?.rows);
+      const gridRows = normalizedRows
+        .filter((entry) => entry !== undefined && entry !== null && entry !== '')
+        .map((entry) => (entry && typeof entry === 'object' ? { ...entry } : entry));
+      return { formVals: baseRow, gridRows };
+    },
+    [normalizeJsonArray],
+  );
 
   const openPrintModalForRow = useCallback(
     (row) => {
@@ -6665,8 +6669,8 @@ const TableManager = forwardRef(function TableManager({
 
   const handlePrintSelection = useCallback(
     (mode, payload) => {
-      if (!payload) return;
       const activePayload = payload || buildPrintPayloadFromRow(selectedRowForPrint);
+      if (!activePayload) return;
       const activeFormVals = activePayload.formVals || {};
       const activeGridRows = Array.isArray(activePayload.gridRows)
         ? activePayload.gridRows
@@ -6781,24 +6785,24 @@ const TableManager = forwardRef(function TableManager({
         return formatted ?? '';
       };
 
-      const rowHtml = (cols, skipEmpty = false) =>
-        cols
-          .filter((c) =>
-            skipEmpty
-              ? activeFormVals[c] !== '' &&
-                activeFormVals[c] !== null &&
-                activeFormVals[c] !== 0 &&
-                activeFormVals[c] !== undefined
-              : true,
-          )
-          .map(
-            (c) => `<tr><th>${labels[c] || c}</th><td>${resolvePrintValue(c)}</td></tr>`,
-          )
-          .join('');
+      const sectionTableHtml = (cols, row = activeFormVals, skipEmpty = false) => {
+        const used = cols.filter((c) =>
+          skipEmpty
+            ? row?.[c] !== '' &&
+              row?.[c] !== null &&
+              row?.[c] !== 0 &&
+              row?.[c] !== undefined
+            : true,
+        );
+        if (used.length === 0) return '';
+        const header = used.map((c) => `<th>${labels[c] || c}</th>`).join('');
+        const body = used.map((c) => `<td>${resolvePrintValue(c, row)}</td>`).join('');
+        return `<table><thead><tr>${header}</tr></thead><tbody><tr>${body}</tr></tbody></table>`;
+      };
 
       const mainTableHtml = () => {
         if (!Array.isArray(activeGridRows) || activeGridRows.length === 0) {
-          return rowHtml(m, true);
+          return sectionTableHtml(m, activeFormVals, true);
         }
         const used = m.filter((c) =>
           activeGridRows.some(
@@ -6818,31 +6822,27 @@ const TableManager = forwardRef(function TableManager({
         return `<table><thead><tr>${header}</tr></thead><tbody>${body}</tbody></table>`;
       };
 
-      const signatureHtml = () => {
+      const signatureTableHtml = () => {
         if (signatureFields.length === 0) return '';
-        const blocks = signatureFields
-          .map((c) => {
-            if (!allowed.has(c)) return null;
-            const value = resolvePrintValue(c);
-            if (value === '' || value === null || value === undefined) return null;
-            return `<div class="signature-block"><div class="signature-label">${
-              labels[c] || c
-            }</div><div class="signature-line"></div><div class="signature-info">${value}</div></div>`;
-          })
-          .filter(Boolean)
-          .join('');
-        if (!blocks) return '';
-        return `<h3>Signature</h3>${blocks}`;
+        const cols = signatureFields.filter((c) => allowed.has(c));
+        const tableHtml = sectionTableHtml(cols, activeFormVals, true);
+        return tableHtml ? `<h3>Signature</h3>${tableHtml}` : '';
       };
 
       let html = '<html><head><title>Print</title>';
       html +=
         '<style>@media print{body{margin:1rem;font-size:12px}}table{width:100%;border-collapse:collapse;margin-bottom:1rem;}th,td{border:1px solid #666;padding:4px;text-align:left;}h3{margin:0 0 4px 0;font-weight:600;}.signature-block{margin-top:0.5rem;margin-bottom:0.75rem;}.signature-label{font-weight:600;margin-bottom:0.25rem;}.signature-line{border-bottom:1px solid #111;height:1.2rem;margin-bottom:0.25rem;}.signature-info{font-size:11px;color:#333;white-space:pre-wrap;}</style>';
       html += '</head><body>';
-      if (h.length) html += `<h3>Header</h3><table>${rowHtml(h, true)}</table>`;
+      if (h.length) {
+        const headerTableHtml = sectionTableHtml(h, activeFormVals, true);
+        if (headerTableHtml) html += `<h3>Header</h3>${headerTableHtml}`;
+      }
       if (m.length) html += `<h3>Main</h3>${mainTableHtml()}`;
-      if (f.length) html += `<h3>Footer</h3><table>${rowHtml(f, true)}</table>`;
-      const signatureBlock = signatureHtml();
+      if (f.length) {
+        const footerTableHtml = sectionTableHtml(f, activeFormVals, true);
+        if (footerTableHtml) html += `<h3>Footer</h3>${footerTableHtml}`;
+      }
+      const signatureBlock = signatureTableHtml();
       if (signatureBlock) html += signatureBlock;
       html += '</body></html>';
 
