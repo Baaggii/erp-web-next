@@ -4434,14 +4434,21 @@ const RowFormModal = function RowFormModal({
         .join('');
 
     const mainTableHtml = () => {
-      if (!useGrid) return rowHtml(m, true);
-      if (activeGridRows.length === 0) return '';
+      const rowsHtml = rowHtml(m, true);
+      if (!useGrid) {
+        return rowsHtml ? `<table><tbody>${rowsHtml}</tbody></table>` : '';
+      }
+      if (!Array.isArray(activeGridRows) || activeGridRows.length === 0) {
+        return rowsHtml ? `<table><tbody>${rowsHtml}</tbody></table>` : '';
+      }
       const used = m.filter((c) =>
         activeGridRows.some(
           (r) => r[c] !== '' && r[c] !== null && r[c] !== 0 && r[c] !== undefined,
         ),
       );
-      if (used.length === 0) return '';
+      if (used.length === 0) {
+        return rowsHtml ? `<table><tbody>${rowsHtml}</tbody></table>` : '';
+      }
       const header = used.map((c) => `<th>${labels[c] || c}</th>`).join('');
       const body = activeGridRows
         .map(
