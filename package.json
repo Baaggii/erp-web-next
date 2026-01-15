@@ -36,7 +36,7 @@
     "socket.io": "^4.7.5",
     "socket.io-client": "^4.7.5",
     "svg-path-properties": "^2.0.0",
-    "potrace": "^2.1.10",
+    "potrace": "^2.1.8",
     "xlsx": "^0.18.5",
     "jspdf": "^2.5.2",
     "react-joyride": "^2.9.0",
