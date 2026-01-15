@@ -4418,28 +4418,27 @@ const RowFormModal = function RowFormModal({
       return formatted ?? '';
     };
 
-    const rowHtml = (cols, skipEmpty = false) =>
-      cols
-        .filter((c) =>
-          skipEmpty
-            ? activeFormVals[c] !== '' &&
-              activeFormVals[c] !== null &&
-              activeFormVals[c] !== 0 &&
-              activeFormVals[c] !== undefined
-            : true,
-        )
-        .map(
-          (c) => `<tr><th>${labels[c] || c}</th><td>${resolvePrintValue(c)}</td></tr>`,
-        )
-        .join('');
+    const sectionTableHtml = (cols, row = activeFormVals, skipEmpty = false) => {
+      const used = cols.filter((c) =>
+        skipEmpty
+          ? row?.[c] !== '' &&
+            row?.[c] !== null &&
+            row?.[c] !== 0 &&
+            row?.[c] !== undefined
+          : true,
+      );
+      if (used.length === 0) return '';
+      const header = used.map((c) => `<th>${labels[c] || c}</th>`).join('');
+      const body = used.map((c) => `<td>${resolvePrintValue(c, row)}</td>`).join('');
+      return `<table><thead><tr>${header}</tr></thead><tbody><tr>${body}</tr></tbody></table>`;
+    };
 
     const mainTableHtml = () => {
-      const rowsHtml = rowHtml(m, true);
       if (!useGrid) {
-        return rowsHtml ? `<table><tbody>${rowsHtml}</tbody></table>` : '';
+        return sectionTableHtml(m, activeFormVals, true);
       }
       if (!Array.isArray(activeGridRows) || activeGridRows.length === 0) {
-        return rowsHtml ? `<table><tbody>${rowsHtml}</tbody></table>` : '';
+        return sectionTableHtml(m, activeFormVals, true);
       }
       const used = m.filter((c) =>
         activeGridRows.some(
@@ -4447,7 +4446,7 @@ const RowFormModal = function RowFormModal({
         ),
       );
       if (used.length === 0) {
-        return rowsHtml ? `<table><tbody>${rowsHtml}</tbody></table>` : '';
+        return sectionTableHtml(m, activeFormVals, true);
       }
       const header = used.map((c) => `<th>${labels[c] || c}</th>`).join('');
       const body = activeGridRows
