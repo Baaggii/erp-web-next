@@ -106,7 +106,7 @@ function CncProcessingPage() {
       if (!csrfToken) {
         throw new Error('Missing CSRF token. Please refresh and try again.');
       }
-      const res = await fetch(`${API_BASE}/cnc_processing/`, {
+      const res = await fetch(`${API_BASE}/cnc_processing`, {
         method: 'POST',
         body: formData,
         credentials: 'include',
