@@ -6639,13 +6639,17 @@ const TableManager = forwardRef(function TableManager({
     return match || null;
   }, [rows, selectedRows]);
 
-  const buildPrintPayloadFromRow = useCallback((row) => {
-    const baseRow = row && typeof row === 'object' ? { ...row } : {};
-    const gridRows = Array.isArray(row?.rows)
-      ? row.rows.map((entry) => ({ ...entry }))
-      : [];
-    return { formVals: baseRow, gridRows };
-  }, []);
+  const buildPrintPayloadFromRow = useCallback(
+    (row) => {
+      const baseRow = row && typeof row === 'object' ? { ...row } : {};
+      const normalizedRows = normalizeJsonArray(row?.rows);
+      const gridRows = normalizedRows
+        .filter((entry) => entry !== undefined && entry !== null && entry !== '')
+        .map((entry) => (entry && typeof entry === 'object' ? { ...entry } : entry));
+      return { formVals: baseRow, gridRows };
+    },
+    [normalizeJsonArray],
+  );
 
   const openPrintModalForRow = useCallback(
     (row) => {
@@ -6798,7 +6802,8 @@ const TableManager = forwardRef(function TableManager({
 
       const mainTableHtml = () => {
         if (!Array.isArray(activeGridRows) || activeGridRows.length === 0) {
-          return rowHtml(m, true);
+          const rowsHtml = rowHtml(m, true);
+          return rowsHtml ? `<table><tbody>${rowsHtml}</tbody></table>` : '';
         }
         const used = m.filter((c) =>
           activeGridRows.some(
@@ -6839,9 +6844,9 @@ const TableManager = forwardRef(function TableManager({
       html +=
         '<style>@media print{body{margin:1rem;font-size:12px}}table{width:100%;border-collapse:collapse;margin-bottom:1rem;}th,td{border:1px solid #666;padding:4px;text-align:left;}h3{margin:0 0 4px 0;font-weight:600;}.signature-block{margin-top:0.5rem;margin-bottom:0.75rem;}.signature-label{font-weight:600;margin-bottom:0.25rem;}.signature-line{border-bottom:1px solid #111;height:1.2rem;margin-bottom:0.25rem;}.signature-info{font-size:11px;color:#333;white-space:pre-wrap;}</style>';
       html += '</head><body>';
-      if (h.length) html += `<h3>Header</h3><table>${rowHtml(h, true)}</table>`;
+      if (h.length) html += `<h3>Header</h3><table><tbody>${rowHtml(h, true)}</tbody></table>`;
       if (m.length) html += `<h3>Main</h3>${mainTableHtml()}`;
-      if (f.length) html += `<h3>Footer</h3><table>${rowHtml(f, true)}</table>`;
+      if (f.length) html += `<h3>Footer</h3><table><tbody>${rowHtml(f, true)}</tbody></table>`;
       const signatureBlock = signatureHtml();
       if (signatureBlock) html += signatureBlock;
       html += '</body></html>';
