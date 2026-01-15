@@ -6798,18 +6798,14 @@ const TableManager = forwardRef(function TableManager({
 
       const mainTableHtml = () => {
         if (!Array.isArray(activeGridRows) || activeGridRows.length === 0) {
-          const rowsHtml = rowHtml(m, true);
-          return rowsHtml ? `<table>${rowsHtml}</table>` : '';
+          return rowHtml(m, true);
         }
         const used = m.filter((c) =>
           activeGridRows.some(
             (r) => r[c] !== '' && r[c] !== null && r[c] !== 0 && r[c] !== undefined,
           ),
         );
-        if (used.length === 0) {
-          const rowsHtml = rowHtml(m, true);
-          return rowsHtml ? `<table>${rowsHtml}</table>` : '';
-        }
+        if (used.length === 0) return '';
         const header = used.map((c) => `<th>${labels[c] || c}</th>`).join('');
         const body = activeGridRows
           .map(
