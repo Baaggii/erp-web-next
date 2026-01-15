@@ -65,3 +65,15 @@ for images via the context-menu search feature.
 
 The settings can be edited in the **General Configuration** screen
 (module key `general_configuration`) under the Settings menu.
+
+## CNC Processing API
+
+The CNC conversion endpoint lives at `POST /api/cnc_processing` and accepts
+multipart form data with a `file` upload (PNG, JPG, SVG, DXF). Optional
+parameters such as `outputFormat` (`gcode` or `dxf`), `conversionType`,
+`step`, `feedRate`, `cutDepth`, `safeHeight`, and `plungeRate` let developers
+tune vectorization and toolpath generation. The response includes the output
+`fileName`, `downloadUrl`, and `processingTimeMs`. Use
+`GET /api/cnc_processing/download/:id` to download the generated file.
+Requests are rate limited (20 requests per 15 minutes per user) and require the
+developer permission key `cnc_processing`.
