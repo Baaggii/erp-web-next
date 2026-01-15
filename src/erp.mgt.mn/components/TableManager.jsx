@@ -6683,8 +6683,8 @@ const TableManager = forwardRef(function TableManager({
 
   const handlePrintSelection = useCallback(
     (mode, payload) => {
+      if (!payload) return;
       const activePayload = payload || buildPrintPayloadFromRow(selectedRowForPrint);
-      if (!activePayload) return;
       const activeFormVals = activePayload.formVals || {};
       const activeGridRows = Array.isArray(activePayload.gridRows)
         ? activePayload.gridRows
