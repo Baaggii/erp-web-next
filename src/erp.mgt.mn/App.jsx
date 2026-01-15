@@ -49,6 +49,7 @@ import UserSettingsPage from './pages/UserSettings.jsx';
 import AllowedReportsConfigPage from './pages/AllowedReportsConfig.jsx';
 import NotificationsPage from './pages/Notifications.jsx';
 import PosApiAdminPage from './pages/PosApiAdmin.jsx';
+import CncProcessingPage from './pages/CncProcessingPage.jsx';
 
 export default function App() {
   useEffect(() => {
@@ -138,6 +139,7 @@ function AuthedApp() {
       edit_translations: <TranslationEditorPage />,
       user_manual_export: <UserManualExportPage />,
       report_access: <AllowedReportsConfigPage />,
+      cnc_processing: <CncProcessingPage />,
     };
 
     modules.forEach((m) => {

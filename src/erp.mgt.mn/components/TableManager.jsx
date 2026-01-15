@@ -6798,18 +6798,14 @@ const TableManager = forwardRef(function TableManager({
 
       const mainTableHtml = () => {
         if (!Array.isArray(activeGridRows) || activeGridRows.length === 0) {
-          const rowsHtml = rowHtml(m, true);
-          return rowsHtml ? `<table>${rowsHtml}</table>` : '';
+          return rowHtml(m, true);
         }
         const used = m.filter((c) =>
           activeGridRows.some(
             (r) => r[c] !== '' && r[c] !== null && r[c] !== 0 && r[c] !== undefined,
           ),
         );
-        if (used.length === 0) {
-          const rowsHtml = rowHtml(m, true);
-          return rowsHtml ? `<table>${rowsHtml}</table>` : '';
-        }
+        if (used.length === 0) return '';
         const header = used.map((c) => `<th>${labels[c] || c}</th>`).join('');
         const body = activeGridRows
           .map(
@@ -6844,15 +6840,7 @@ const TableManager = forwardRef(function TableManager({
         '<style>@media print{body{margin:1rem;font-size:12px}}table{width:100%;border-collapse:collapse;margin-bottom:1rem;}th,td{border:1px solid #666;padding:4px;text-align:left;}h3{margin:0 0 4px 0;font-weight:600;}.signature-block{margin-top:0.5rem;margin-bottom:0.75rem;}.signature-label{font-weight:600;margin-bottom:0.25rem;}.signature-line{border-bottom:1px solid #111;height:1.2rem;margin-bottom:0.25rem;}.signature-info{font-size:11px;color:#333;white-space:pre-wrap;}</style>';
       html += '</head><body>';
       if (h.length) html += `<h3>Header</h3><table>${rowHtml(h, true)}</table>`;
-      if (m.length) {
-        const mainHtml = mainTableHtml();
-        const trimmedMain = mainHtml.trim();
-        const wrappedMain =
-          trimmedMain && !trimmedMain.startsWith('<table')
-            ? `<table>${mainHtml}</table>`
-            : mainHtml;
-        html += `<h3>Main</h3>${wrappedMain}`;
-      }
+      if (m.length) html += `<h3>Main</h3>${mainTableHtml()}`;
       if (f.length) html += `<h3>Footer</h3><table>${rowHtml(f, true)}</table>`;
       const signatureBlock = signatureHtml();
       if (signatureBlock) html += signatureBlock;
