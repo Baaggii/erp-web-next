@@ -530,6 +530,10 @@ const TableManager = forwardRef(function TableManager({
   const [activeTemporaryDraftId, setActiveTemporaryDraftId] = useState(null);
   const [gridRows, setGridRows] = useState([]);
   const [selectedRows, setSelectedRows] = useState(new Set());
+  const [printModalOpen, setPrintModalOpen] = useState(false);
+  const [printEmpSelected, setPrintEmpSelected] = useState(true);
+  const [printCustSelected, setPrintCustSelected] = useState(false);
+  const [printPayload, setPrintPayload] = useState(null);
   const [localRefresh, setLocalRefresh] = useState(0);
   const [procTriggers, setProcTriggers] = useState({});
   const [lockMetadataById, setLockMetadataById] = useState({});
@@ -669,6 +673,7 @@ const TableManager = forwardRef(function TableManager({
     company,
     branch,
     department,
+    userSettings,
     session,
     position,
     workplace,
@@ -4131,7 +4136,7 @@ const TableManager = forwardRef(function TableManager({
             openTemporaryPromotion(nextEntry, { resetQueue: false });
           }, 0);
         }
-        return { printPayload };
+        return { printPayload, forcePrint: true };
       }
       return ok;
     }
@@ -6623,6 +6628,282 @@ const TableManager = forwardRef(function TableManager({
     [columns, totalAmountSet, totalCurrencySet],
   );
 
+  const selectedRowForPrint = useMemo(() => {
+    if (selectedRows.size === 0) return null;
+    const [firstId] = selectedRows;
+    if (firstId === undefined || firstId === null) return null;
+    const match = rows.find((row) => {
+      const rid = getRowId(row);
+      return rid !== undefined && String(rid) === String(firstId);
+    });
+    return match || null;
+  }, [rows, selectedRows]);
+
+  const buildPrintPayloadFromRow = useCallback((row) => {
+    const baseRow = row && typeof row === 'object' ? { ...row } : {};
+    const gridRows = Array.isArray(row?.rows)
+      ? row.rows.map((entry) => ({ ...entry }))
+      : [];
+    return { formVals: baseRow, gridRows };
+  }, []);
+
+  const openPrintModalForRow = useCallback(
+    (row) => {
+      const payload = buildPrintPayloadFromRow(row);
+      setPrintPayload(payload);
+      setPrintEmpSelected(true);
+      setPrintCustSelected(false);
+      setPrintModalOpen(true);
+    },
+    [buildPrintPayloadFromRow],
+  );
+
+  const closePrintModal = useCallback(() => {
+    setPrintModalOpen(false);
+    setPrintPayload(null);
+  }, []);
+
+  const handlePrintSelection = useCallback(
+    (mode, payload) => {
+      if (!payload) return;
+      const activePayload = payload || buildPrintPayloadFromRow(selectedRowForPrint);
+      const activeFormVals = activePayload.formVals || {};
+      const activeGridRows = Array.isArray(activePayload.gridRows)
+        ? activePayload.gridRows
+        : [];
+      const allFields = [...headerFields, ...mainFields, ...footerFields];
+      const hasDefinedSections = allFields.length > 0;
+      const headerCols = hasDefinedSections ? headerFields : [];
+      const mainCols = hasDefinedSections ? mainFields : formColumns;
+      const footerCols = hasDefinedSections ? footerFields : [];
+      const signatureFields = formConfig?.signatureFields || [];
+      const list = mode === 'emp' ? formConfig?.printEmpField || [] : formConfig?.printCustField || [];
+      const allowed = new Set(list.length > 0 ? list : [...headerCols, ...mainCols, ...footerCols]);
+      const signatureSet = new Set(signatureFields);
+      const h = headerCols.filter((c) => allowed.has(c) && !signatureSet.has(c));
+      const m = mainCols.filter((c) => allowed.has(c) && !signatureSet.has(c));
+      const f = footerCols.filter((c) => allowed.has(c) && !signatureSet.has(c));
+      const labelKeys = ['label', 'name', 'title', 'text', 'display', 'displayName', 'code'];
+      const resolveLabelWrapperValue = (value) => {
+        if (value === undefined || value === null) return value;
+        if (Array.isArray(value)) return value.map(resolveLabelWrapperValue);
+        if (typeof value !== 'object') return value;
+        for (const key of labelKeys) {
+          if (value[key] !== undefined && value[key] !== null && value[key] !== '') {
+            return value[key];
+          }
+        }
+        if (value.value !== undefined && value.value !== null) return value.value;
+        return value;
+      };
+      const resolveSinglePrintValue = (col, value) => {
+        const labelWrapper = resolveLabelWrapperValue(value);
+        const baseValue =
+          value && typeof value === 'object' && !Array.isArray(value) && value.value !== undefined
+            ? value.value
+            : labelWrapper;
+        const normalizedValueKey = normalizeSearchValue(baseValue);
+        if (relationOpts[col] && normalizedValueKey !== undefined && labelMap[col]) {
+          const optionLabel = labelMap[col][normalizedValueKey];
+          if (optionLabel !== undefined) return optionLabel;
+        }
+        if (relationConfigs[col]?.table && normalizedValueKey !== undefined && normalizedValueKey !== null) {
+          const relationRows = refRows[col] || {};
+          const rowData =
+            relationRows[normalizedValueKey] ||
+            relationRows[String(normalizedValueKey)] ||
+            relationRows[String(resolveScopeId(normalizedValueKey))];
+          if (rowData && typeof rowData === 'object') {
+            return formatRelationDisplay(rowData, relationConfigs[col], normalizedValueKey);
+          }
+        }
+        const displayInfo = relationDisplayMap[col];
+        if (displayInfo && normalizedValueKey !== undefined && normalizedValueKey !== null) {
+          const relationRows = refRows[displayInfo.sourceColumn] || {};
+          const rowData =
+            relationRows[normalizedValueKey] ||
+            relationRows[String(normalizedValueKey)] ||
+            relationRows[String(resolveScopeId(normalizedValueKey))];
+          if (rowData && typeof rowData === 'object') {
+            return formatRelationDisplay(rowData, displayInfo.config, normalizedValueKey);
+          }
+        }
+        if (labelWrapper !== undefined && labelWrapper !== null && labelWrapper !== '') {
+          return labelWrapper;
+        }
+        return baseValue ?? '';
+      };
+      const resolvePrintValue = (col, row = activeFormVals) => {
+        const raw = row?.[col];
+        if (fieldTypeMap[col] === 'json') {
+          const arr = normalizeJsonArray(raw);
+          const relationConfig = relationConfigs[col];
+          if (relationConfig?.table && arr.length > 0) {
+            const rowsMap = refRows[col] || {};
+            const parts = [];
+            arr.forEach((val) => {
+              const relationId = resolveScopeId(val);
+              const key = relationId ?? val ?? '';
+              const cacheKey = key === null || key === undefined ? '' : String(key);
+              const cachedLabel = cacheKey ? jsonRelationLabels[col]?.[cacheKey] : null;
+              if (cachedLabel) {
+                parts.push(cachedLabel);
+                return;
+              }
+              const relationRow =
+                rowsMap[key] ||
+                rowsMap[String(key)] ||
+                rowsMap[String(relationId ?? '')];
+              if (relationRow && typeof relationRow === 'object') {
+                const formatted = formatRelationDisplay(relationRow, relationConfig, key);
+                if (formatted || formatted === 0 || formatted === false) {
+                  parts.push(formatted);
+                }
+              } else {
+                const formatted = formatJsonItem(key);
+                if (formatted || formatted === 0 || formatted === false) {
+                  parts.push(String(formatted));
+                }
+              }
+            });
+            const formatted = parts.join(', ');
+            return formatted ?? '';
+          }
+          return formatJsonList(arr);
+        }
+        const resolved = Array.isArray(raw)
+          ? raw.map((item) => resolveSinglePrintValue(col, item))
+          : resolveSinglePrintValue(col, raw);
+        const formatted = formatJsonItem(resolved);
+        if (placeholders[col]) {
+          return normalizeDateInput(formatted, placeholders[col]);
+        }
+        return formatted ?? '';
+      };
+
+      const rowHtml = (cols, skipEmpty = false) =>
+        cols
+          .filter((c) =>
+            skipEmpty
+              ? activeFormVals[c] !== '' &&
+                activeFormVals[c] !== null &&
+                activeFormVals[c] !== 0 &&
+                activeFormVals[c] !== undefined
+              : true,
+          )
+          .map(
+            (c) => `<tr><th>${labels[c] || c}</th><td>${resolvePrintValue(c)}</td></tr>`,
+          )
+          .join('');
+
+      const mainTableHtml = () => {
+        if (!Array.isArray(activeGridRows) || activeGridRows.length === 0) {
+          const rowsHtml = rowHtml(m, true);
+          return rowsHtml ? `<table>${rowsHtml}</table>` : '';
+        }
+        const used = m.filter((c) =>
+          activeGridRows.some(
+            (r) => r[c] !== '' && r[c] !== null && r[c] !== 0 && r[c] !== undefined,
+          ),
+        );
+        if (used.length === 0) return '';
+        const header = used.map((c) => `<th>${labels[c] || c}</th>`).join('');
+        const body = activeGridRows
+          .map(
+            (r) =>
+              '<tr>' +
+              used.map((c) => `<td>${resolvePrintValue(c, r)}</td>`).join('') +
+              '</tr>',
+          )
+          .join('');
+        return `<table><thead><tr>${header}</tr></thead><tbody>${body}</tbody></table>`;
+      };
+
+      const signatureHtml = () => {
+        if (signatureFields.length === 0) return '';
+        const blocks = signatureFields
+          .map((c) => {
+            if (!allowed.has(c)) return null;
+            const value = resolvePrintValue(c);
+            if (value === '' || value === null || value === undefined) return null;
+            return `<div class="signature-block"><div class="signature-label">${
+              labels[c] || c
+            }</div><div class="signature-line"></div><div class="signature-info">${value}</div></div>`;
+          })
+          .filter(Boolean)
+          .join('');
+        if (!blocks) return '';
+        return `<h3>Signature</h3>${blocks}`;
+      };
+
+      let html = '<html><head><title>Print</title>';
+      html +=
+        '<style>@media print{body{margin:1rem;font-size:12px}}table{width:100%;border-collapse:collapse;margin-bottom:1rem;}th,td{border:1px solid #666;padding:4px;text-align:left;}h3{margin:0 0 4px 0;font-weight:600;}.signature-block{margin-top:0.5rem;margin-bottom:0.75rem;}.signature-label{font-weight:600;margin-bottom:0.25rem;}.signature-line{border-bottom:1px solid #111;height:1.2rem;margin-bottom:0.25rem;}.signature-info{font-size:11px;color:#333;white-space:pre-wrap;}</style>';
+      html += '</head><body>';
+      if (h.length) html += `<h3>Header</h3><table>${rowHtml(h, true)}</table>`;
+      if (m.length) html += `<h3>Main</h3>${mainTableHtml()}`;
+      if (f.length) html += `<h3>Footer</h3><table>${rowHtml(f, true)}</table>`;
+      const signatureBlock = signatureHtml();
+      if (signatureBlock) html += signatureBlock;
+      html += '</body></html>';
+
+      if (userSettings?.printerId) {
+        fetch(`${API_BASE}/print`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ printerId: userSettings.printerId, content: html }),
+        }).catch((err) => console.error('Print failed', err));
+      } else {
+        const w = window.open('', '_blank');
+        if (!w) return;
+        w.document.write(html);
+        w.document.close();
+        w.focus();
+        w.print();
+      }
+    },
+    [
+      API_BASE,
+      buildPrintPayloadFromRow,
+      footerFields,
+      formColumns,
+      formConfig,
+      formatRelationDisplay,
+      headerFields,
+      jsonRelationLabels,
+      labelMap,
+      labels,
+      mainFields,
+      normalizeJsonArray,
+      placeholders,
+      relationConfigs,
+      relationDisplayMap,
+      relationOpts,
+      refRows,
+      selectedRowForPrint,
+      userSettings,
+    ],
+  );
+
+  const confirmPrintSelection = useCallback(() => {
+    const payload = printPayload || buildPrintPayloadFromRow(selectedRowForPrint);
+    if (!payload) return;
+    const modeList = [];
+    if (printEmpSelected) modeList.push('emp');
+    if (printCustSelected) modeList.push('cust');
+    modeList.forEach((mode) => handlePrintSelection(mode, payload));
+    closePrintModal();
+  }, [
+    buildPrintPayloadFromRow,
+    closePrintModal,
+    handlePrintSelection,
+    printCustSelected,
+    printEmpSelected,
+    printPayload,
+    selectedRowForPrint,
+  ]);
+
   const uploadCfg = uploadRow ? getConfigForRow(uploadRow) : {};
 
   const reviewPendingCount = supportsTemporary &&
@@ -6824,6 +7105,26 @@ const TableManager = forwardRef(function TableManager({
         {selectedRows.size > 0 && buttonPerms['Delete transaction'] && (
           <TooltipWrapper title={t('delete_selected', { ns: 'tooltip', defaultValue: 'Remove selected rows' })}>
             <button onClick={handleDeleteSelected}>Delete Selected</button>
+          </TooltipWrapper>
+        )}
+        {selectedRows.size > 0 && (
+          <TooltipWrapper title={t('print_selected', { ns: 'tooltip', defaultValue: 'Print selected transaction' })}>
+            <button
+              onClick={() => {
+                if (!selectedRowForPrint || selectedRows.size !== 1) {
+                  addToast(
+                    t('print_select_one', 'Select a single transaction to print'),
+                    'error',
+                  );
+                  return;
+                }
+                openPrintModalForRow(selectedRowForPrint);
+              }}
+              disabled={selectedRows.size !== 1}
+              style={{ marginLeft: '0.5rem' }}
+            >
+              {t('print', 'Print')}
+            </button>
           </TooltipWrapper>
         )}
       </div>
@@ -8010,6 +8311,54 @@ const TableManager = forwardRef(function TableManager({
         posApiReceiptTypes={formConfig?.posApiReceiptTypes || []}
         posApiPaymentMethods={formConfig?.posApiPaymentMethods || []}
       />
+      {printModalOpen && (
+        <Modal
+          visible={printModalOpen}
+          title={t('print', 'Print')}
+          onClose={closePrintModal}
+          width="420px"
+        >
+          <div className="flex flex-col gap-4">
+            <div className="space-y-2">
+              <label className="flex items-center gap-2 text-sm text-gray-700">
+                <input
+                  type="checkbox"
+                  className="rounded"
+                  checked={printEmpSelected}
+                  onChange={(e) => setPrintEmpSelected(e.target.checked)}
+                />
+                <span>{t('printEmp', 'Print Emp')}</span>
+              </label>
+              <label className="flex items-center gap-2 text-sm text-gray-700">
+                <input
+                  type="checkbox"
+                  className="rounded"
+                  checked={printCustSelected}
+                  onChange={(e) => setPrintCustSelected(e.target.checked)}
+                />
+                <span>{t('printCust', 'Print Cust')}</span>
+              </label>
+            </div>
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                className="px-3 py-1 bg-gray-200 rounded"
+                onClick={closePrintModal}
+              >
+                {t('cancel', 'Cancel')}
+              </button>
+              <button
+                type="button"
+                className="px-3 py-1 bg-blue-600 text-white rounded disabled:opacity-60"
+                onClick={confirmPrintSelection}
+                disabled={!printEmpSelected && !printCustSelected}
+              >
+                {t('print', 'Print')}
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
       <CascadeDeleteModal
         visible={showCascade}
         references={deleteInfo?.refs || []}
