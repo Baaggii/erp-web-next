@@ -6798,8 +6798,7 @@ const TableManager = forwardRef(function TableManager({
 
       const mainTableHtml = () => {
         if (!Array.isArray(activeGridRows) || activeGridRows.length === 0) {
-          const rowsHtml = rowHtml(m, true);
-          return rowsHtml ? `<table>${rowsHtml}</table>` : '';
+          return rowHtml(m, true);
         }
         const used = m.filter((c) =>
           activeGridRows.some(
