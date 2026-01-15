@@ -48,6 +48,23 @@ app.use(express.json({ limit: '100mb' }));
 app.use(express.urlencoded({ extended: true, limit: '100mb' }));
 app.use(cookieParser());
 
+// ---- CSRF (selective) ----
+const csrfProtection = csurf({ cookie: true });
+
+app.use((req, res, next) => {
+  // Skip CSRF for CNC upload (file + authenticated)
+  if (req.path.startsWith('/api/cnc_processing')) {
+    return next();
+  }
+
+  // Skip CSRF for download endpoint
+  if (req.path.startsWith('/api/cnc_processing/download')) {
+    return next();
+  }
+
+  return csrfProtection(req, res, next);
+});
+
 app.use(logger);
 
 // Serve uploaded images statically before CSRF so image requests don't require tokens
