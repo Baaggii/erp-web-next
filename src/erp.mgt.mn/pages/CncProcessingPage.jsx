@@ -13,17 +13,24 @@ const outputOptions = [
   { value: 'dxf', label: 'DXF' },
 ];
 
+const supportedExtensions = ['.png', '.jpg', '.jpeg', '.svg', '.dxf'];
+const supportedMimeTypes = new Set([
+  'image/png',
+  'image/jpeg',
+  'image/jpg',
+  'image/pjpeg',
+  'image/svg+xml',
+  'image/x-png',
+  'application/dxf',
+  'application/vnd.dxf',
+  'image/vnd.dxf',
+]);
+
 function isSupportedFile(file) {
   if (!file) return false;
-  if (file.type?.startsWith('image/')) return true;
+  if (supportedMimeTypes.has(file.type)) return true;
   const name = file.name?.toLowerCase() || '';
-  return (
-    name.endsWith('.png') ||
-    name.endsWith('.jpg') ||
-    name.endsWith('.jpeg') ||
-    name.endsWith('.svg') ||
-    name.endsWith('.dxf')
-  );
+  return supportedExtensions.some((ext) => name.endsWith(ext));
 }
 
 function extractDownloadInfo(data) {
@@ -57,6 +64,15 @@ function CncProcessingPage() {
     () => (file ? `${file.name} (${Math.round(file.size / 1024)} KB)` : 'No file selected'),
     [file],
   );
+
+  function handleFileChange(event) {
+    const selectedFile = event.target.files?.[0] || null;
+    setFile(selectedFile);
+    setError('');
+    setDownload(null);
+    setStatus('idle');
+    setProgress(0);
+  }
 
   async function handleSubmit(event) {
     event.preventDefault();
@@ -178,7 +194,7 @@ function CncProcessingPage() {
                 id="cnc-file"
                 type="file"
                 accept="image/*,.svg,.dxf"
-                onChange={(event) => setFile(event.target.files?.[0] || null)}
+                onChange={handleFileChange}
                 className="text-sm text-slate-700 file:mr-4 file:rounded-md file:border-0 file:bg-slate-900 file:px-3 file:py-2 file:text-sm file:font-medium file:text-white hover:file:bg-slate-700"
               />
               <span className="text-xs text-slate-500">{selectedFileLabel}</span>
@@ -264,7 +280,8 @@ function CncProcessingPage() {
           <div className="flex items-center justify-between gap-4">
             <button
               type="submit"
-              disabled={!file || !isSupportedFile(file) || isBusy}
+              disabled={!canSubmit}
+              title={disabledReason}
               className="inline-flex items-center justify-center rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:bg-slate-400"
             >
               {isBusy ? 'Processing…' : 'Start conversion'}
