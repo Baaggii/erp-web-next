@@ -4091,6 +4091,24 @@ const TableManager = forwardRef(function TableManager({
             sourceFolder: promotionOldFolder,
           });
         }
+        const resolvedPrintFormVals = {
+          ...(promotionEntryValues || {}),
+          ...promotionValues,
+          ...(promotedData && typeof promotedData === 'object' ? promotedData : {}),
+        };
+        if (
+          promotedRecordId !== null &&
+          promotedRecordId !== undefined &&
+          !Object.prototype.hasOwnProperty.call(resolvedPrintFormVals, 'id')
+        ) {
+          resolvedPrintFormVals.id = promotedRecordId;
+        }
+        const printPayload = {
+          formVals: resolvedPrintFormVals,
+          gridRows: Array.isArray(gridRows)
+            ? gridRows.map((row) => ({ ...row }))
+            : [],
+        };
         const [nextEntry, ...remainingQueue] = temporaryPromotionQueue;
         setTemporaryPromotionQueue(remainingQueue);
         setTemporarySelection((prev) => {
@@ -4113,6 +4131,7 @@ const TableManager = forwardRef(function TableManager({
             openTemporaryPromotion(nextEntry, { resetQueue: false });
           }, 0);
         }
+        return { printPayload };
       }
       return ok;
     }
