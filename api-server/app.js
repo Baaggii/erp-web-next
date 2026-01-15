@@ -80,6 +80,15 @@ app.use(`/api/${imgBase}/:companyId`, (req, res, next) => {
   return express.static(dir)(req, res, next);
 });
 
+// Setup CSRF protection using cookies
+const csrfProtection = csurf({ cookie: true });
+app.use((req, res, next) => {
+  if (req.path.startsWith("/api/cnc_processing")) {
+    return next();
+  }
+  return csrfProtection(req, res, next);
+});
+
 // Health-check: also verify DB connection
 app.get("/api/auth/health", async (req, res, next) => {
   try {
