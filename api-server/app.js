@@ -48,17 +48,16 @@ app.use(express.json({ limit: '100mb' }));
 app.use(express.urlencoded({ extended: true, limit: '100mb' }));
 app.use(cookieParser());
 
-// ---- CSRF (selective) ----
+// ==============================
+// CSRF (selective enforcement)
+// ==============================
 const csrfProtection = csurf({ cookie: true });
 
 app.use((req, res, next) => {
-  // Skip CSRF for CNC upload (file + authenticated)
-  if (req.path.startsWith('/api/cnc_processing')) {
-    return next();
-  }
+  const url = req.originalUrl || req.path;
 
-  // Skip CSRF for download endpoint
-  if (req.path.startsWith('/api/cnc_processing/download')) {
+  // Skip CSRF for CNC upload & download
+  if (url.startsWith('/api/cnc_processing')) {
     return next();
   }
 
@@ -78,15 +77,6 @@ app.use(`/api/${imgBase}/:companyId`, (req, res, next) => {
   const dir = path.join(uploadsRoot, req.params.companyId);
   if (!fs.existsSync(dir)) return res.sendStatus(404);
   return express.static(dir)(req, res, next);
-});
-
-// Setup CSRF protection using cookies
-const csrfProtection = csurf({ cookie: true });
-app.use((req, res, next) => {
-  if (req.path.startsWith("/api/cnc_processing")) {
-    return next();
-  }
-  return csrfProtection(req, res, next);
 });
 
 // Health-check: also verify DB connection
