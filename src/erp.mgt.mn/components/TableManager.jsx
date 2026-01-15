@@ -6639,13 +6639,17 @@ const TableManager = forwardRef(function TableManager({
     return match || null;
   }, [rows, selectedRows]);
 
-  const buildPrintPayloadFromRow = useCallback((row) => {
-    const baseRow = row && typeof row === 'object' ? { ...row } : {};
-    const gridRows = Array.isArray(row?.rows)
-      ? row.rows.map((entry) => ({ ...entry }))
-      : [];
-    return { formVals: baseRow, gridRows };
-  }, []);
+  const buildPrintPayloadFromRow = useCallback(
+    (row) => {
+      const baseRow = row && typeof row === 'object' ? { ...row } : {};
+      const normalizedRows = normalizeJsonArray(row?.rows);
+      const gridRows = normalizedRows
+        .filter((entry) => entry !== undefined && entry !== null && entry !== '')
+        .map((entry) => (entry && typeof entry === 'object' ? { ...entry } : entry));
+      return { formVals: baseRow, gridRows };
+    },
+    [normalizeJsonArray],
+  );
 
   const openPrintModalForRow = useCallback(
     (row) => {
@@ -6798,7 +6802,8 @@ const TableManager = forwardRef(function TableManager({
 
       const mainTableHtml = () => {
         if (!Array.isArray(activeGridRows) || activeGridRows.length === 0) {
-          return rowHtml(m, true);
+          const rowsHtml = rowHtml(m, true);
+          return rowsHtml ? `<table><tbody>${rowsHtml}</tbody></table>` : '';
         }
         const used = m.filter((c) =>
           activeGridRows.some(
