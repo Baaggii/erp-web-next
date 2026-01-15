@@ -85,6 +85,7 @@ function CncProcessingPage() {
         method: 'POST',
         body: formData,
       });
+      const contentType = res.headers.get('content-type') || '';
 
       if (!res.ok) {
         let message = res.statusText || 'Conversion failed';
@@ -92,13 +93,16 @@ function CncProcessingPage() {
           const data = await res.clone().json();
           if (data?.message) message = data.message;
         } catch {}
+        if (contentType.includes('text/html') && res.status === 404) {
+          message =
+            'CNC API endpoint not found. Ensure the backend is running and VITE_API_BASE points to the correct /api origin.';
+        }
         if (res.status === 415) {
           message = 'Unsupported file type. Please upload a PNG, JPG, SVG, or DXF file.';
         }
         throw new Error(message);
       }
 
-      const contentType = res.headers.get('content-type') || '';
       if (contentType.includes('application/json')) {
         const data = await res.json();
         const info = extractDownloadInfo(data);
@@ -126,6 +130,19 @@ function CncProcessingPage() {
   }
 
   const isBusy = status === 'uploading';
+  const disabledReason = useMemo(() => {
+    if (isBusy) {
+      return 'Conversion in progress. Please wait for it to finish.';
+    }
+    if (!file) {
+      return 'Select a PNG, JPG, SVG, or DXF file to enable conversion.';
+    }
+    if (!isSupportedFile(file)) {
+      return 'Unsupported file type. Please upload a PNG, JPG, SVG, or DXF file.';
+    }
+    return '';
+  }, [file, isBusy]);
+  const canSubmit = !disabledReason;
 
   return (
     <div className="mx-auto max-w-3xl p-6">
