@@ -4285,14 +4285,13 @@ const RowFormModal = function RowFormModal({
     const activeGridRows = Array.isArray(activePayload.gridRows)
       ? activePayload.gridRows
       : gridRows;
-    const all = [...headerCols, ...mainCols, ...footerCols];
+    const all = [...headerCols, ...mainCols, ...footerCols, ...signatureFields];
     const list = mode === 'emp' ? printEmpField : printCustField;
     const allowed = new Set(list.length > 0 ? list : all);
-    const signatureSet = new Set(signatureFields);
-    const signatureCols = all.filter((c) => signatureSet.has(c));
-    const h = headerCols.filter((c) => allowed.has(c) && !signatureSet.has(c));
-    const m = mainCols.filter((c) => allowed.has(c) && !signatureSet.has(c));
-    const f = footerCols.filter((c) => allowed.has(c) && !signatureSet.has(c));
+    const signatureCols = signatureFields.filter((c) => allowed.has(c));
+    const h = headerCols.filter((c) => allowed.has(c));
+    const m = mainCols.filter((c) => allowed.has(c));
+    const f = footerCols.filter((c) => allowed.has(c));
     const labelMap = {};
     Object.entries(relations).forEach(([col, opts]) => {
       labelMap[col] = {};
