@@ -14,6 +14,11 @@ export function errorHandler(err, req, res, next) {
   } catch (logErr) {
     console.error('Failed to write error log:', logErr);
   }
+  if (err.code === 'EBADCSRFTOKEN') {
+    return res.status(403).json({
+      message: 'Invalid or expired CSRF token',
+    });
+  }
   const payload = { message: err.message || 'Internal Server Error' };
   if (err.details !== undefined) {
     payload.details = err.details;
