@@ -95,8 +95,7 @@ function CncProcessingPage() {
         } catch {}
         if (contentType.includes('text/html') && res.status === 404) {
           message =
-            `CNC API endpoint not found at ${API_BASE}/cnc_processing. ` +
-            'Confirm the backend deployment includes the cnc_processing route and that this build has VITE_API_BASE set correctly.';
+            'CNC API endpoint not found. Ensure the backend is running and VITE_API_BASE points to the correct /api origin.';
         }
         if (res.status === 415) {
           message = 'Unsupported file type. Please upload a PNG, JPG, SVG, or DXF file.';
@@ -251,18 +250,13 @@ function CncProcessingPage() {
           )}
 
           <div className="flex items-center justify-between gap-4">
-            <div className="space-y-1">
-              <button
-                type="submit"
-                disabled={!canSubmit}
-                className="inline-flex items-center justify-center rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:bg-slate-400"
-              >
-                {isBusy ? 'Processing…' : 'Start conversion'}
-              </button>
-              {disabledReason && (
-                <p className="text-xs text-slate-500">{disabledReason}</p>
-              )}
-            </div>
+            <button
+              type="submit"
+              disabled={!file || !isSupportedFile(file) || isBusy}
+              className="inline-flex items-center justify-center rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:bg-slate-400"
+            >
+              {isBusy ? 'Processing…' : 'Start conversion'}
+            </button>
             <p className="text-xs text-slate-500">
               Supported formats: PNG, JPG, SVG, and DXF files.
             </p>
