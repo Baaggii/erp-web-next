@@ -106,9 +106,8 @@ function CncProcessingPage() {
           const data = await res.clone().json();
           if (data?.message) message = data.message;
         } catch {}
-        if (contentType.includes('text/html') && res.status === 404) {
-          message =
-            'CNC API endpoint not found. Ensure the backend is running and VITE_API_BASE points to the correct /api origin.';
+        if (contentType.includes('text/html')) {
+          message = 'CNC processing failed on server. Check backend logs.';
         }
         if (res.status === 415) {
           message = 'Unsupported file type. Please upload a PNG, JPG, SVG, or DXF file.';
