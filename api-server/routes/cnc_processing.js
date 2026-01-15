@@ -56,18 +56,8 @@ router.post(
   requireAuth,
   cncLimiter,
   requireDeveloper,
-  (req, res, next) => {
-    upload.single('file')(req, res, (err) => {
-      if (err) {
-        if (err.code === 'LIMIT_FILE_SIZE') {
-          return res.status(413).json({ message: 'File too large' });
-        }
-        return next(err);
-      }
-      return next();
-    });
-  },
-  async (req, res, next) => {
+  upload.single('file'),
+  async (req, res) => {
     const start = performance.now();
     try {
       if (!req.file) {
@@ -107,7 +97,10 @@ router.post(
         conversionType,
       });
     } catch (err) {
-      return next(err);
+      console.error('[CNC ERROR]', err);
+      return res.status(500).json({
+        message: err.message || 'CNC processing failed',
+      });
     }
   },
 );
