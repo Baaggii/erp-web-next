@@ -3462,6 +3462,7 @@ const RowFormModal = function RowFormModal({
         const failedRows = [];
         const resolvedPrintRows = [];
         const resolvedPayloads = [];
+        let forcePrint = false;
         let anySuccess = false;
         for (let i = 0; i < cleanedRows.length; i++) {
           const r = cleanedRows[i];
@@ -3485,6 +3486,7 @@ const RowFormModal = function RowFormModal({
             if (res === false) {
               failedRows.push(rows[rowIndices[i]]);
             } else {
+              if (res?.forcePrint) forcePrint = true;
               const resolvedPayload = resolvePrintPayloadFromResult(res, rows);
               if (resolvedPayload) {
                 resolvedPayloads.push(resolvedPayload);
@@ -3509,7 +3511,7 @@ const RowFormModal = function RowFormModal({
         } else if (tableRef.current.replaceRows) {
           tableRef.current.replaceRows(failedRows);
         }
-        if (shouldPromptPrint && anySuccess) {
+        if ((shouldPromptPrint || forcePrint) && anySuccess) {
           const printPayload =
             resolvedPayloads.length === 1
               ? resolvedPayloads[0]
@@ -3579,7 +3581,8 @@ const RowFormModal = function RowFormModal({
         }
         procCache.current = {};
         window.dispatchEvent(new Event('pending-request-refresh'));
-        if (shouldPromptPrint) {
+        const forcePrint = Boolean(res?.forcePrint);
+        if (shouldPromptPrint || forcePrint) {
           const printPayload = resolvePrintPayloadFromResult(res) || buildPrintPayload();
           openPrintModal(printPayload);
         }
@@ -4432,14 +4435,21 @@ const RowFormModal = function RowFormModal({
         .join('');
 
     const mainTableHtml = () => {
-      if (!useGrid) return rowHtml(m, true);
-      if (activeGridRows.length === 0) return '';
+      const rowsHtml = rowHtml(m, true);
+      if (!useGrid) {
+        return rowsHtml ? `<table><tbody>${rowsHtml}</tbody></table>` : '';
+      }
+      if (!Array.isArray(activeGridRows) || activeGridRows.length === 0) {
+        return rowsHtml ? `<table><tbody>${rowsHtml}</tbody></table>` : '';
+      }
       const used = m.filter((c) =>
         activeGridRows.some(
           (r) => r[c] !== '' && r[c] !== null && r[c] !== 0 && r[c] !== undefined,
         ),
       );
-      if (used.length === 0) return '';
+      if (used.length === 0) {
+        return rowsHtml ? `<table><tbody>${rowsHtml}</tbody></table>` : '';
+      }
       const header = used.map((c) => `<th>${labels[c] || c}</th>`).join('');
       const body = activeGridRows
         .map(
