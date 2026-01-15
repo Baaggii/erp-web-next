@@ -4452,9 +4452,9 @@ const RowFormModal = function RowFormModal({
             '<tr>' +
             used.map((c) => `<td>${resolvePrintValue(c, r)}</td>`).join('') +
             '</tr>',
-        )
-        .join('');
-      return `<table><thead><tr>${header}</tr></thead><tbody>${body}</tbody></table>`;
+          )
+          .join('');
+      return `<table class="data-table"><thead><tr>${header}</tr></thead><tbody>${body}</tbody></table>`;
     };
 
     const signatureHtml = () => {

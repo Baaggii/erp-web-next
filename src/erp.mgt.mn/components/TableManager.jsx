@@ -6832,7 +6832,7 @@ const TableManager = forwardRef(function TableManager({
               '</tr>',
           )
           .join('');
-        return `<table><thead><tr>${header}</tr></thead><tbody>${body}</tbody></table>`;
+        return `<table class="data-table"><thead><tr>${header}</tr></thead><tbody>${body}</tbody></table>`;
       };
 
       const signatureHtml = () => {
