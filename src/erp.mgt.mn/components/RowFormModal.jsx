@@ -4418,28 +4418,24 @@ const RowFormModal = function RowFormModal({
       return formatted ?? '';
     };
 
-    const rowHtml = (cols, skipEmpty = false) =>
-      cols
-        .filter((c) =>
-          skipEmpty
-            ? activeFormVals[c] !== '' &&
-              activeFormVals[c] !== null &&
-              activeFormVals[c] !== 0 &&
-              activeFormVals[c] !== undefined
-            : true,
-        )
-        .map(
-          (c) => `<tr><th>${labels[c] || c}</th><td>${resolvePrintValue(c)}</td></tr>`,
-        )
-        .join('');
+    const columnTableHtml = (cols, row = activeFormVals, skipEmpty = false) => {
+      const filtered = cols.filter((c) =>
+        skipEmpty
+          ? row?.[c] !== '' && row?.[c] !== null && row?.[c] !== 0 && row?.[c] !== undefined
+          : true,
+      );
+      if (filtered.length === 0) return '';
+      const header = filtered.map((c) => `<th>${labels[c] || c}</th>`).join('');
+      const values = filtered.map((c) => `<td>${resolvePrintValue(c, row)}</td>`).join('');
+      return `<table><thead><tr>${header}</tr></thead><tbody><tr>${values}</tr></tbody></table>`;
+    };
 
     const mainTableHtml = () => {
-      const rowsHtml = rowHtml(m, true);
       if (!useGrid) {
-        return rowsHtml ? `<table><tbody>${rowsHtml}</tbody></table>` : '';
+        return columnTableHtml(m, activeFormVals, true);
       }
       if (!Array.isArray(activeGridRows) || activeGridRows.length === 0) {
-        return rowsHtml ? `<table><tbody>${rowsHtml}</tbody></table>` : '';
+        return columnTableHtml(m, activeFormVals, true);
       }
       const used = m.filter((c) =>
         activeGridRows.some(
@@ -4447,7 +4443,7 @@ const RowFormModal = function RowFormModal({
         ),
       );
       if (used.length === 0) {
-        return rowsHtml ? `<table><tbody>${rowsHtml}</tbody></table>` : '';
+        return columnTableHtml(m, activeFormVals, true);
       }
       const header = used.map((c) => `<th>${labels[c] || c}</th>`).join('');
       const body = activeGridRows
@@ -4463,27 +4459,27 @@ const RowFormModal = function RowFormModal({
 
     const signatureHtml = () => {
       if (signatureCols.length === 0) return '';
-      const blocks = signatureCols
-        .map((c) => {
-          const value = resolvePrintValue(c);
-          if (value === '' || value === null || value === undefined) return null;
-          return `<div class="signature-block"><div class="signature-label">${
-            labels[c] || c
-          }</div><div class="signature-line"></div><div class="signature-info">${value}</div></div>`;
-        })
-        .filter(Boolean)
-        .join('');
-      if (!blocks) return '';
-      return `<h3>Signature</h3>${blocks}`;
+      const table = columnTableHtml(signatureCols, activeFormVals, true);
+      if (!table) return '';
+      return `<h3>Signature</h3>${table}`;
     };
 
     let html = '<html><head><title>Print</title>';
     html +=
-      '<style>@media print{body{margin:1rem;font-size:12px}}table{width:100%;border-collapse:collapse;margin-bottom:1rem;}th,td{border:1px solid #666;padding:4px;text-align:left;}h3{margin:0 0 4px 0;font-weight:600;}.signature-block{margin-top:0.5rem;margin-bottom:0.75rem;}.signature-label{font-weight:600;margin-bottom:0.25rem;}.signature-line{border-bottom:1px solid #111;height:1.2rem;margin-bottom:0.25rem;}.signature-info{font-size:11px;color:#333;white-space:pre-wrap;}</style>';
+      '<style>@media print{body{margin:1rem;font-size:12px}}table{width:100%;border-collapse:collapse;margin-bottom:1rem;}th,td{border:1px solid #666;padding:4px;text-align:left;}h3{margin:0 0 4px 0;font-weight:600;}</style>';
     html += '</head><body>';
-    if (h.length) html += `<h3>Header</h3><table><tbody>${rowHtml(h, true)}</tbody></table>`;
-    if (m.length) html += `<h3>Main</h3>${mainTableHtml()}`;
-    if (f.length) html += `<h3>Footer</h3><table><tbody>${rowHtml(f, true)}</tbody></table>`;
+    if (h.length) {
+      const table = columnTableHtml(h, activeFormVals, true);
+      if (table) html += `<h3>Header</h3>${table}`;
+    }
+    if (m.length) {
+      const mainTable = mainTableHtml();
+      if (mainTable) html += `<h3>Main</h3>${mainTable}`;
+    }
+    if (f.length) {
+      const table = columnTableHtml(f, activeFormVals, true);
+      if (table) html += `<h3>Footer</h3>${table}`;
+    }
     if (signatureCols.length) html += signatureHtml();
     html += '</body></html>';
     if (userSettings?.printerId) {
@@ -4495,6 +4491,7 @@ const RowFormModal = function RowFormModal({
       }).catch((err) => console.error('Print failed', err));
     } else {
       const w = window.open('', '_blank');
+      if (!w) return;
       w.document.write(html);
       w.document.close();
       w.focus();
