@@ -77,3 +77,42 @@ tune vectorization and toolpath generation. The response includes the output
 `GET /api/cnc_processing/download/:id` to download the generated file.
 Requests are rate limited (20 requests per 15 minutes per user) and require the
 developer permission key `cnc_processing`.
+
+### CNC Processing usage
+
+1. Open **CNC Converter** from the ERP navigation.
+2. Upload an image (PNG/JPG) or an STL file.
+3. Choose the processing type and output format.
+4. Start the conversion and download the generated file when ready.
+
+**Example request**
+
+```bash
+curl -X POST http://localhost:3000/api/cnc_processing \\
+  -H "Authorization: Bearer <token>" \\
+  -F "file=@sample.png" \\
+  -F "conversionType=2d_outline" \\
+  -F "outputFormat=gcode"
+```
+
+**Example response**
+
+```json
+{
+  "fileName": "sample.gcode",
+  "downloadUrl": "http://localhost:3000/api/cnc_processing/download/abc123",
+  "processingTimeMs": 812,
+  "outputFormat": "gcode",
+  "conversionType": "vectorize"
+}
+```
+
+**Example output (G-code)**
+
+```gcode
+G21
+G90
+G1 X0 Y0 F800
+G1 X10 Y0
+M2
+```
