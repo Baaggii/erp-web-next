@@ -4114,6 +4114,7 @@ const TableManager = forwardRef(function TableManager({
             ? gridRows.map((row) => ({ ...row }))
             : [],
         };
+        openPrintModalForPayload(printPayload);
         const [nextEntry, ...remainingQueue] = temporaryPromotionQueue;
         setTemporaryPromotionQueue(remainingQueue);
         setTemporarySelection((prev) => {
@@ -6660,6 +6661,19 @@ const TableManager = forwardRef(function TableManager({
       setPrintModalOpen(true);
     },
     [buildPrintPayloadFromRow],
+  );
+
+  const openPrintModalForPayload = useCallback(
+    (payload) => {
+      const resolvedPayload =
+        payload ||
+        buildPrintPayloadFromRow(editing || (Array.isArray(gridRows) ? gridRows[0] : null));
+      setPrintPayload(resolvedPayload);
+      setPrintEmpSelected(true);
+      setPrintCustSelected(false);
+      setPrintModalOpen(true);
+    },
+    [buildPrintPayloadFromRow, editing, gridRows],
   );
 
   const closePrintModal = useCallback(() => {
