@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useToast } from '../context/ToastContext.jsx';
+import { API_BASE } from '../utils/apiBase.js';
 
 const processingOptions = [
   { value: '2d_outline', label: '2D outline' },
@@ -16,7 +17,13 @@ function isSupportedFile(file) {
   if (!file) return false;
   if (file.type?.startsWith('image/')) return true;
   const name = file.name?.toLowerCase() || '';
-  return name.endsWith('.stl');
+  return (
+    name.endsWith('.png') ||
+    name.endsWith('.jpg') ||
+    name.endsWith('.jpeg') ||
+    name.endsWith('.svg') ||
+    name.endsWith('.dxf')
+  );
 }
 
 function extractDownloadInfo(data) {
@@ -62,19 +69,19 @@ function CncProcessingPage() {
       return;
     }
     if (!isSupportedFile(file)) {
-      setError('Unsupported file type. Please upload an image or STL file.');
-      addToast('Unsupported file type. Please upload an image or STL file.', 'error');
+      setError('Unsupported file type. Please upload a PNG, JPG, SVG, or DXF file.');
+      addToast('Unsupported file type. Please upload a PNG, JPG, SVG, or DXF file.', 'error');
       return;
     }
 
     const formData = new FormData();
     formData.append('file', file);
-    formData.append('processing_type', processingType);
-    formData.append('output_format', outputFormat);
+    formData.append('conversionType', processingType);
+    formData.append('outputFormat', outputFormat);
 
     try {
       setStatus('uploading');
-      const res = await fetch('/api/cnc_processing', {
+      const res = await fetch(`${API_BASE}/cnc_processing`, {
         method: 'POST',
         body: formData,
       });
@@ -86,7 +93,7 @@ function CncProcessingPage() {
           if (data?.message) message = data.message;
         } catch {}
         if (res.status === 415) {
-          message = 'Unsupported file type. Please upload an image or STL file.';
+          message = 'Unsupported file type. Please upload a PNG, JPG, SVG, or DXF file.';
         }
         throw new Error(message);
       }
@@ -128,7 +135,7 @@ function CncProcessingPage() {
             CNC Converter
           </h1>
           <p className="mt-2 text-sm text-slate-600">
-            Upload an image or STL file and generate CNC-ready output.
+            Upload a PNG, JPG, SVG, or DXF file and generate CNC-ready output.
           </p>
         </div>
 
@@ -141,7 +148,7 @@ function CncProcessingPage() {
               <input
                 id="cnc-file"
                 type="file"
-                accept="image/*,.stl"
+                accept="image/*,.svg,.dxf"
                 onChange={(event) => setFile(event.target.files?.[0] || null)}
                 className="text-sm text-slate-700 file:mr-4 file:rounded-md file:border-0 file:bg-slate-900 file:px-3 file:py-2 file:text-sm file:font-medium file:text-white hover:file:bg-slate-700"
               />
@@ -228,13 +235,13 @@ function CncProcessingPage() {
           <div className="flex items-center justify-between gap-4">
             <button
               type="submit"
-              disabled={isBusy}
+              disabled={!file || !isSupportedFile(file) || isBusy}
               className="inline-flex items-center justify-center rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:bg-slate-400"
             >
               {isBusy ? 'Processing…' : 'Start conversion'}
             </button>
             <p className="text-xs text-slate-500">
-              Supported formats: images (PNG, JPG) and STL files.
+              Supported formats: PNG, JPG, SVG, and DXF files.
             </p>
           </div>
         </form>
