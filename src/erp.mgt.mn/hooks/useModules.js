@@ -43,7 +43,18 @@ export function useModules() {
       const res = await fetch('/api/modules', { credentials: 'include' });
       let rows = res.ok ? await res.json() : [];
       if (!Array.isArray(rows)) rows = [];
-      rows = rows.filter((m) => m && typeof m === 'object' && m.module_key);
+      rows = rows
+        .filter((m) => m && typeof m === 'object')
+        .map((m) => {
+          const moduleKey = m.module_key ?? m.moduleKey ?? m.modulekey;
+          const parentKey = m.parent_key ?? m.parentKey ?? m.parentkey;
+          return {
+            ...m,
+            module_key: moduleKey,
+            parent_key: parentKey,
+          };
+        })
+        .filter((m) => m.module_key);
 
       const txnKeys = txnModules?.keys instanceof Set ? txnModules.keys : new Set();
       const txnLabels = txnModules?.labels || {};
