@@ -1,7 +1,6 @@
 import express from 'express';
 import multer from 'multer';
 import rateLimit from 'express-rate-limit';
-import { performance } from 'perf_hooks';
 import { requireAuth } from '../middlewares/auth.js';
 import { getEmploymentSession } from '../../db/index.js';
 import { hasAction } from '../utils/hasAction.js';
@@ -40,17 +39,6 @@ async function requireDeveloper(req, res, next) {
   }
 }
 
-function buildAbsoluteUrl(req, pathname) {
-  const host = req.get('x-forwarded-host') || req.get('host');
-  const proto = req.get('x-forwarded-proto') || req.protocol;
-  let base = `${proto}://${host}`;
-  const origin = req.get('origin');
-  if (origin && (host?.startsWith('127.') || host === 'localhost')) {
-    base = origin.replace(/\/$/, '');
-  }
-  return `${base}${pathname}`;
-}
-
 router.post(
   '/',
   requireAuth,
@@ -58,44 +46,28 @@ router.post(
   requireDeveloper,
   upload.single('file'),
   async (req, res) => {
-    const start = performance.now();
     try {
+      console.log('[CNC] Request received', {
+        filename: req.file?.originalname,
+        mimetype: req.file?.mimetype,
+        size: req.file?.size,
+        conversionType: req.body.conversionType,
+        outputFormat: req.body.outputFormat,
+      });
+
       if (!req.file) {
-        return res.status(400).json({ message: 'File is required' });
+        throw new Error('No file uploaded');
       }
-      const outputFormat = req.body?.outputFormat || 'gcode';
-      const conversionType = req.body?.conversionType || 'vectorize';
-      const step = req.body?.step;
-      const feedRate = req.body?.feedRate;
-      const cutDepth = req.body?.cutDepth;
-      const safeHeight = req.body?.safeHeight;
-      const plungeRate = req.body?.plungeRate;
 
-      const metadata = await processCncFile({
+      const result = await processCncFile({
         file: req.file,
-        outputFormat,
-        options: {
-          step: step ? Number(step) : undefined,
-          feedRate: feedRate ? Number(feedRate) : undefined,
-          cutDepth: cutDepth ? Number(cutDepth) : undefined,
-          safeHeight: safeHeight ? Number(safeHeight) : undefined,
-          plungeRate: plungeRate ? Number(plungeRate) : undefined,
-        },
+        outputFormat: req.body.outputFormat,
+        options: { conversionType: req.body.conversionType },
       });
 
-      const processingTimeMs = Math.round(performance.now() - start);
-      const downloadUrl = buildAbsoluteUrl(
-        req,
-        `/api/cnc_processing/download/${metadata.id}`,
-      );
+      console.log('[CNC] Processing success', result);
 
-      return res.json({
-        fileName: metadata.fileName,
-        downloadUrl,
-        processingTimeMs,
-        outputFormat,
-        conversionType,
-      });
+      return res.json(result);
     } catch (err) {
       console.error('[CNC ERROR]', err);
       return res.status(500).json({
