@@ -6681,6 +6681,21 @@ const TableManager = forwardRef(function TableManager({
     setPrintPayload(null);
   }, []);
 
+  const openPrintWindow = useCallback(
+    (html) => {
+      const w = window.open('', '_blank');
+      if (!w) {
+        addToast(t('print_window_blocked', 'Unable to open print window'), 'error');
+        return;
+      }
+      w.document.write(html);
+      w.document.close();
+      w.focus();
+      w.print();
+    },
+    [addToast, t],
+  );
+
   const handlePrintSelection = useCallback(
     (mode, payload) => {
       const activePayload = payload || buildPrintPayloadFromRow(selectedRowForPrint);
@@ -6861,19 +6876,29 @@ const TableManager = forwardRef(function TableManager({
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
           body: JSON.stringify({ printerId: userSettings.printerId, content: html }),
-        }).catch((err) => console.error('Print failed', err));
+        })
+          .then((res) => {
+            if (!res.ok) {
+              throw new Error('Print request failed');
+            }
+          })
+          .catch((err) => {
+            console.error('Print failed', err);
+            addToast(
+              t('print_failed_fallback', 'Printer failed, opening browser print dialog'),
+              'error',
+            );
+            openPrintWindow(html);
+          });
       } else {
-        const w = window.open('', '_blank');
-        if (!w) return;
-        w.document.write(html);
-        w.document.close();
-        w.focus();
-        w.print();
+        openPrintWindow(html);
       }
     },
     [
       API_BASE,
       buildPrintPayloadFromRow,
+      openPrintWindow,
+      addToast,
       footerFields,
       formColumns,
       formConfig,
@@ -6890,6 +6915,7 @@ const TableManager = forwardRef(function TableManager({
       relationOpts,
       refRows,
       selectedRowForPrint,
+      t,
       userSettings,
     ],
   );
