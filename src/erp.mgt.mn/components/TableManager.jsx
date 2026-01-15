@@ -6799,20 +6799,20 @@ const TableManager = forwardRef(function TableManager({
         return formatted ?? '';
       };
 
-      const sectionTableHtml = (cols, row = activeFormVals, skipEmpty = false) => {
-        const used = cols.filter((c) =>
-          skipEmpty
-            ? row?.[c] !== '' &&
-              row?.[c] !== null &&
-              row?.[c] !== 0 &&
-              row?.[c] !== undefined
-            : true,
-        );
-        if (used.length === 0) return '';
-        const header = used.map((c) => `<th>${labels[c] || c}</th>`).join('');
-        const body = used.map((c) => `<td>${resolvePrintValue(c, row)}</td>`).join('');
-        return `<table><thead><tr>${header}</tr></thead><tbody><tr>${body}</tr></tbody></table>`;
-      };
+      const rowHtml = (cols, skipEmpty = false) =>
+        cols
+          .filter((c) =>
+            skipEmpty
+              ? activeFormVals[c] !== '' &&
+                activeFormVals[c] !== null &&
+                activeFormVals[c] !== 0 &&
+                activeFormVals[c] !== undefined
+              : true,
+          )
+          .map(
+            (c) => `<tr><th>${labels[c] || c}</th><td>${resolvePrintValue(c)}</td></tr>`,
+          )
+          .join('');
 
       const mainTableHtml = () => {
         if (!Array.isArray(activeGridRows) || activeGridRows.length === 0) {
@@ -6837,11 +6837,21 @@ const TableManager = forwardRef(function TableManager({
         return `<table><thead><tr>${header}</tr></thead><tbody>${body}</tbody></table>`;
       };
 
-      const signatureTableHtml = () => {
+      const signatureHtml = () => {
         if (signatureFields.length === 0) return '';
-        const cols = signatureFields.filter((c) => allowed.has(c));
-        const tableHtml = sectionTableHtml(cols, activeFormVals, true);
-        return tableHtml ? `<h3>Signature</h3>${tableHtml}` : '';
+        const blocks = signatureFields
+          .map((c) => {
+            if (!allowed.has(c)) return null;
+            const value = resolvePrintValue(c);
+            if (value === '' || value === null || value === undefined) return null;
+            return `<div class="signature-block"><div class="signature-label">${
+              labels[c] || c
+            }</div><div class="signature-line"></div><div class="signature-info">${value}</div></div>`;
+          })
+          .filter(Boolean)
+          .join('');
+        if (!blocks) return '';
+        return `<h3>Signature</h3>${blocks}`;
       };
 
       let html = '<html><head><title>Print</title>';
