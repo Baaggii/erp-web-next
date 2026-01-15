@@ -4480,15 +4480,9 @@ const RowFormModal = function RowFormModal({
     html +=
       '<style>@media print{body{margin:1rem;font-size:12px}}table{width:100%;border-collapse:collapse;margin-bottom:1rem;}th,td{border:1px solid #666;padding:4px;text-align:left;}h3{margin:0 0 4px 0;font-weight:600;}.signature-block{margin-top:0.5rem;margin-bottom:0.75rem;}.signature-label{font-weight:600;margin-bottom:0.25rem;}.signature-line{border-bottom:1px solid #111;height:1.2rem;margin-bottom:0.25rem;}.signature-info{font-size:11px;color:#333;white-space:pre-wrap;}</style>';
     html += '</head><body>';
-    if (h.length) {
-      const headerTableHtml = sectionTableHtml(h, activeFormVals, true);
-      if (headerTableHtml) html += `<h3>Header</h3>${headerTableHtml}`;
-    }
+    if (h.length) html += `<h3>Header</h3><table><tbody>${rowHtml(h, true)}</tbody></table>`;
     if (m.length) html += `<h3>Main</h3>${mainTableHtml()}`;
-    if (f.length) {
-      const footerTableHtml = sectionTableHtml(f, activeFormVals, true);
-      if (footerTableHtml) html += `<h3>Footer</h3>${footerTableHtml}`;
-    }
+    if (f.length) html += `<h3>Footer</h3><table><tbody>${rowHtml(f, true)}</tbody></table>`;
     if (signatureCols.length) html += signatureHtml();
     html += '</body></html>';
     if (userSettings?.printerId) {
