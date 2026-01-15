@@ -7,6 +7,10 @@
     {
       "key": "system_settings",
       "name": "System Settings"
+    },
+    {
+      "key": "cnc_processing",
+      "name": "CNC Processing"
     }
   ],
   "forms": {
@@ -173,6 +177,7 @@
   "tooltips": {
     "edit_delete_request": "tooltip.edit_delete_request",
     "system_settings": "tooltip.system_settings",
+    "cnc_processing": "tooltip.cnc_processing",
     "finance_transactions": "tooltip.finance_transactions",
     "reports": "tooltip.reports",
     "user_level_actions": "tooltip.user_level_actions"
