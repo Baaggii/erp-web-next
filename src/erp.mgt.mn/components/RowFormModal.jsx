@@ -4459,20 +4459,14 @@ const RowFormModal = function RowFormModal({
 
     const signatureHtml = () => {
       if (signatureCols.length === 0) return '';
-      const rows = signatureCols
-        .map((col) => {
-          const value = resolvePrintValue(col, activeFormVals);
-          const label = labels[col] || col;
-          return `<tr><th>${label}</th></tr><tr class="signature-spacer"><td>&nbsp;</td></tr><tr><td class="signature-line">${value}</td></tr>`;
-        })
-        .join('');
-      const table = `<table class="print-signature-table"><tbody>${rows}</tbody></table>`;
+      const table = columnTableHtml(signatureCols, activeFormVals, true, 'print-signature-table');
+      if (!table) return '';
       return `<h3>Signature</h3>${table}`;
     };
 
     let html = '<html><head><title>Print</title>';
     html +=
-      '<style>@media print{body{margin:1rem;}table{border-collapse:collapse;margin-bottom:1rem;}th,td{padding:4px;text-align:left;}.print-main-table{width:100%;}.print-main-table th,.print-main-table td{border:1px solid #666;}.print-signature-table{width:auto;margin-bottom:0.5rem;}.print-signature-table th{padding-right:16px;}.print-signature-table .signature-spacer td{height:12px;padding:0;}.print-signature-table .signature-line{border-top:1px solid #666;text-align:right;padding-top:6px;min-width:160px;}h3{margin:0 0 4px 0;font-weight:600;}</style>';
+      '<style>@media print{body{margin:1rem;font-size:12px}}table{width:100%;border-collapse:collapse;margin-bottom:1rem;}th,td{padding:4px;text-align:left;}.print-main-table th,.print-main-table td{border:1px solid #666;}h3{margin:0 0 4px 0;font-weight:600;}</style>';
     html += '</head><body>';
     if (h.length) {
       const table = columnTableHtml(h, activeFormVals, true);
