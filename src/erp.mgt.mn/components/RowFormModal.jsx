@@ -4418,28 +4418,32 @@ const RowFormModal = function RowFormModal({
       return formatted ?? '';
     };
 
-    const rowHtml = (cols, skipEmpty = false) =>
-      cols
-        .filter((c) =>
-          skipEmpty
-            ? activeFormVals[c] !== '' &&
-              activeFormVals[c] !== null &&
-              activeFormVals[c] !== 0 &&
-              activeFormVals[c] !== undefined
-            : true,
-        )
-        .map(
-          (c) => `<tr><th>${labels[c] || c}</th><td>${resolvePrintValue(c)}</td></tr>`,
-        )
-        .join('');
+    const columnTableHtml = (cols, row = activeFormVals, skipEmpty = false, className = '') => {
+      const filtered = cols.filter((c) =>
+        skipEmpty
+          ? row?.[c] !== '' && row?.[c] !== null && row?.[c] !== 0 && row?.[c] !== undefined
+          : true,
+      );
+      if (filtered.length === 0) return '';
+      const header = filtered.map((c) => `<th>${labels[c] || c}</th>`).join('');
+      const values = filtered.map((c) => `<td>${resolvePrintValue(c, row)}</td>`).join('');
+      const classAttr = className ? ` class="${className}"` : '';
+      return `<table${classAttr}><thead><tr>${header}</tr></thead><tbody><tr>${values}</tr></tbody></table>`;
+    };
+
+    const signatureTableHtml = () => {
+      if (signatureCols.length === 0) return '';
+      const header = signatureCols.map((c) => `<th>${labels[c] || c}</th>`).join('');
+      const lines = signatureCols.map(() => '<td class="signature-line">&nbsp;</td>').join('');
+      return `<table class="plain-table signature-table"><thead><tr>${header}</tr></thead><tbody><tr>${lines}</tr></tbody></table>`;
+    };
 
     const mainTableHtml = () => {
-      const rowsHtml = rowHtml(m, true);
       if (!useGrid) {
-        return rowsHtml ? `<table><tbody>${rowsHtml}</tbody></table>` : '';
+        return columnTableHtml(m, activeFormVals, true, 'data-table');
       }
       if (!Array.isArray(activeGridRows) || activeGridRows.length === 0) {
-        return rowsHtml ? `<table><tbody>${rowsHtml}</tbody></table>` : '';
+        return columnTableHtml(m, activeFormVals, true, 'data-table');
       }
       const used = m.filter((c) =>
         activeGridRows.some(
@@ -4447,7 +4451,7 @@ const RowFormModal = function RowFormModal({
         ),
       );
       if (used.length === 0) {
-        return rowsHtml ? `<table><tbody>${rowsHtml}</tbody></table>` : '';
+        return columnTableHtml(m, activeFormVals, true, 'data-table');
       }
       const header = used.map((c) => `<th>${labels[c] || c}</th>`).join('');
       const body = activeGridRows
@@ -4456,34 +4460,33 @@ const RowFormModal = function RowFormModal({
             '<tr>' +
             used.map((c) => `<td>${resolvePrintValue(c, r)}</td>`).join('') +
             '</tr>',
-        )
-        .join('');
-      return `<table><thead><tr>${header}</tr></thead><tbody>${body}</tbody></table>`;
+          )
+          .join('');
+      return `<table class="data-table"><thead><tr>${header}</tr></thead><tbody>${body}</tbody></table>`;
     };
 
     const signatureHtml = () => {
-      if (signatureCols.length === 0) return '';
-      const blocks = signatureCols
-        .map((c) => {
-          const value = resolvePrintValue(c);
-          if (value === '' || value === null || value === undefined) return null;
-          return `<div class="signature-block"><div class="signature-label">${
-            labels[c] || c
-          }</div><div class="signature-line"></div><div class="signature-info">${value}</div></div>`;
-        })
-        .filter(Boolean)
-        .join('');
-      if (!blocks) return '';
-      return `<h3>Signature</h3>${blocks}`;
+      const table = signatureTableHtml();
+      if (!table) return '';
+      return `<h3>Signature</h3>${table}`;
     };
 
     let html = '<html><head><title>Print</title>';
     html +=
-      '<style>@media print{body{margin:1rem;font-size:12px}}table{width:100%;border-collapse:collapse;margin-bottom:1rem;}th,td{border:1px solid #666;padding:4px;text-align:left;}h3{margin:0 0 4px 0;font-weight:600;}.signature-block{margin-top:0.5rem;margin-bottom:0.75rem;}.signature-label{font-weight:600;margin-bottom:0.25rem;}.signature-line{border-bottom:1px solid #111;height:1.2rem;margin-bottom:0.25rem;}.signature-info{font-size:11px;color:#333;white-space:pre-wrap;}</style>';
+      '<style>@media print{body{margin:0.5rem;font-size:10px}}@page{margin:0.5rem;}table{border-collapse:collapse;margin-bottom:0.5rem;width:auto !important;max-width:100%;border:none !important;}h3{margin:0 0 4px 0;font-weight:600;font-size:10px;}th,td{padding:2px 4px;text-align:left;border:none !important;}table.plain-table,table.signature-table{border:none !important;}table.plain-table *,table.signature-table *{border:none !important;outline:none !important;box-shadow:none !important;}table.data-table{border:none !important;}.data-table th,.data-table td{border:1px solid #666 !important;}.plain-table th,.plain-table td{border:none !important;}.signature-table th,.signature-table td{vertical-align:bottom;border:none !important;}.signature-line{border-bottom:1px solid #111 !important;height:1.2rem;}</style>';
     html += '</head><body>';
-    if (h.length) html += `<h3>Header</h3><table><tbody>${rowHtml(h, true)}</tbody></table>`;
-    if (m.length) html += `<h3>Main</h3>${mainTableHtml()}`;
-    if (f.length) html += `<h3>Footer</h3><table><tbody>${rowHtml(f, true)}</tbody></table>`;
+    if (h.length) {
+      const table = columnTableHtml(h, activeFormVals, true, 'plain-table');
+      if (table) html += `<h3>Header</h3>${table}`;
+    }
+    if (m.length) {
+      const mainTable = mainTableHtml();
+      if (mainTable) html += `<h3>Main</h3>${mainTable}`;
+    }
+    if (f.length) {
+      const table = columnTableHtml(f, activeFormVals, true, 'plain-table');
+      if (table) html += `<h3>Footer</h3>${table}`;
+    }
     if (signatureCols.length) html += signatureHtml();
     html += '</body></html>';
     if (userSettings?.printerId) {
@@ -4495,6 +4498,7 @@ const RowFormModal = function RowFormModal({
       }).catch((err) => console.error('Print failed', err));
     } else {
       const w = window.open('', '_blank');
+      if (!w) return;
       w.document.write(html);
       w.document.close();
       w.focus();
