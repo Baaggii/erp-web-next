@@ -45,6 +45,14 @@ function formatTimestamp(date = new Date()) {
   return date.toLocaleString();
 }
 
+function parseViewBox(viewBox) {
+  if (!viewBox) return null;
+  const parts = viewBox.split(' ').map((value) => Number(value));
+  if (parts.length !== 4 || parts.some((value) => !Number.isFinite(value))) return null;
+  const [minX, minY, width, height] = parts;
+  return { minX, minY, width, height };
+}
+
 function headersToObject(headers) {
   if (!headers) return {};
   return Array.from(headers.entries()).reduce((acc, [key, value]) => {
@@ -77,10 +85,15 @@ function CncProcessingPage() {
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState('');
   const [download, setDownload] = useState(null);
+  const [preview, setPreview] = useState(null);
+  const [animatePreview, setAnimatePreview] = useState(true);
   const [steps, setSteps] = useState([]);
   const [apiLogs, setApiLogs] = useState([]);
   const stepId = useRef(0);
   const logId = useRef(0);
+  const submitLock = useRef(false);
+  const woodCanvasRef = useRef(null);
+  const showWoodPreview = Boolean(preview?.polylines?.length);
 
   const addStep = (label, status, details = '') => {
     stepId.current += 1;
@@ -121,6 +134,66 @@ function CncProcessingPage() {
     return () => clearInterval(id);
   }, [status]);
 
+  useEffect(() => {
+    if (!showWoodPreview || !preview?.polylines?.length) return;
+    const canvas = woodCanvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    const box = parseViewBox(preview.viewBox);
+    if (!box) return;
+
+    const targetWidth = 640;
+    const targetHeight = 360;
+    canvas.width = targetWidth;
+    canvas.height = targetHeight;
+
+    const gradient = ctx.createLinearGradient(0, 0, targetWidth, targetHeight);
+    gradient.addColorStop(0, '#f8e7c2');
+    gradient.addColorStop(0.5, '#e8c08e');
+    gradient.addColorStop(1, '#d1a073');
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, targetWidth, targetHeight);
+
+    ctx.globalAlpha = 0.25;
+    for (let i = 0; i < 18; i += 1) {
+      ctx.fillStyle = i % 2 === 0 ? '#d9b085' : '#e0bf97';
+      const y = (targetHeight / 18) * i;
+      ctx.fillRect(0, y, targetWidth, targetHeight / 18);
+    }
+    ctx.globalAlpha = 1;
+
+    const scale = Math.min(
+      targetWidth / box.width,
+      targetHeight / box.height,
+    );
+    const offsetX = (targetWidth - box.width * scale) / 2 - box.minX * scale;
+    const offsetY = (targetHeight - box.height * scale) / 2 - box.minY * scale;
+
+    ctx.lineJoin = 'round';
+    ctx.lineCap = 'round';
+    ctx.strokeStyle = '#3f2a19';
+    ctx.lineWidth = 1.6;
+    ctx.shadowColor = 'rgba(30, 15, 5, 0.35)';
+    ctx.shadowBlur = 3;
+    ctx.shadowOffsetY = 1;
+
+    preview.polylines.forEach((polyline) => {
+      if (!polyline.length) return;
+      ctx.beginPath();
+      polyline.forEach((point, index) => {
+        const x = point.x * scale + offsetX;
+        const y = point.y * scale + offsetY;
+        if (index === 0) {
+          ctx.moveTo(x, y);
+        } else {
+          ctx.lineTo(x, y);
+        }
+      });
+      ctx.stroke();
+    });
+  }, [preview, showWoodPreview]);
+
   const selectedFileLabel = useMemo(
     () => (file ? `${file.name} (${Math.round(file.size / 1024)} KB)` : 'No file selected'),
     [file],
@@ -131,6 +204,7 @@ function CncProcessingPage() {
     setFile(selectedFile);
     setError('');
     setDownload(null);
+    setPreview(null);
     setStatus('idle');
     setProgress(0);
     if (selectedFile) {
@@ -142,8 +216,11 @@ function CncProcessingPage() {
 
   async function handleSubmit(event) {
     event.preventDefault();
+    if (submitLock.current) return;
+    submitLock.current = true;
     setError('');
     setDownload(null);
+    setPreview(null);
     addStep('Validation started', 'success');
 
     if (!file) {
@@ -151,6 +228,7 @@ function CncProcessingPage() {
       setError(message);
       addToast(message, 'error');
       addStep('Validation failed', 'fail', message);
+      submitLock.current = false;
       return;
     }
     if (!isSupportedFile(file)) {
@@ -158,9 +236,12 @@ function CncProcessingPage() {
       setError(message);
       addToast(message, 'error');
       addStep('Validation failed', 'fail', message);
+      submitLock.current = false;
       return;
     }
     addStep('Validation complete', 'success');
+    setStatus('uploading');
+    setProgress(10);
 
     const formData = new FormData();
     formData.append('file', file);
@@ -168,7 +249,6 @@ function CncProcessingPage() {
     formData.append('outputFormat', outputFormat);
 
     try {
-      setStatus('uploading');
       addStep('Requesting CSRF token', 'success');
       const csrfRequest = {
         url: `${API_BASE}/csrf-token`,
@@ -267,10 +347,12 @@ function CncProcessingPage() {
         } else {
           setDownload({ url: '', filename: info?.filename || 'cnc-output' });
         }
+        setPreview(data?.preview || null);
       } else {
         const blob = await res.blob();
         const url = window.URL.createObjectURL(blob);
         setDownload({ url, filename: `cnc-output.${outputFormat}` });
+        setPreview(null);
       }
 
       addStep('CNC processing completed', 'success');
@@ -284,10 +366,13 @@ function CncProcessingPage() {
       setProgress(0);
       addStep('Conversion failed', 'fail', message);
       addToast(message, 'error');
+    } finally {
+      submitLock.current = false;
     }
   }
 
   const isBusy = status === 'uploading';
+  const hasPreview = preview?.polylines?.length > 0;
   const disabledReason = useMemo(() => {
     if (isBusy) {
       return 'Conversion in progress. Please wait for it to finish.';
@@ -304,6 +389,12 @@ function CncProcessingPage() {
 
   return (
     <div className="mx-auto max-w-3xl p-6">
+      <style>{`
+        @keyframes cnc-draw {
+          from { stroke-dashoffset: 1; }
+          to { stroke-dashoffset: 0; }
+        }
+      `}</style>
       <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
         <div className="mb-6">
           <h1 className="text-2xl font-semibold text-slate-900">
@@ -384,10 +475,10 @@ function CncProcessingPage() {
             </div>
           )}
 
-          {status === 'success' && (
-            <div className="rounded-md border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">
-              <p className="font-medium">Conversion complete.</p>
-              {download?.url ? (
+      {status === 'success' && (
+        <div className="rounded-md border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">
+          <p className="font-medium">Conversion complete.</p>
+          {download?.url ? (
                 <a
                   href={download.url}
                   download={download.filename}
@@ -398,8 +489,78 @@ function CncProcessingPage() {
               ) : (
                 <p className="mt-2">Your file is ready. Check with the backend for the download link.</p>
               )}
+        </div>
+      )}
+
+      {preview?.polylines?.length > 0 && (
+        <div className="rounded-md border border-slate-200 bg-white p-4 text-sm text-slate-700">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="text-sm font-medium text-slate-900">Toolpath preview</p>
+              <p className="text-xs text-slate-500">
+                Simulated carving path based on the converted vector data.
+              </p>
+            </div>
+            <label className="flex items-center gap-2 text-xs text-slate-500">
+              <input
+                type="checkbox"
+                checked={animatePreview}
+                onChange={(event) => setAnimatePreview(event.target.checked)}
+                className="h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-slate-400"
+              />
+              Animate toolpath
+            </label>
+          </div>
+          <div className="mt-4 rounded-md border border-slate-200 bg-slate-50 p-3">
+            <svg
+              viewBox={preview.viewBox}
+              className="h-64 w-full"
+              preserveAspectRatio="xMidYMid meet"
+            >
+              {preview.polylines.map((polyline, index) => (
+                <polyline
+                  key={`${index + 1}`}
+                  points={polyline.map((point) => `${point.x},${point.y}`).join(' ')}
+                  fill="none"
+                  stroke="#0f172a"
+                  strokeWidth="0.7"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  pathLength="1"
+                  style={
+                    animatePreview
+                      ? {
+                          strokeDasharray: 1,
+                          strokeDashoffset: 1,
+                          animation: 'cnc-draw 3s ease forwards',
+                        }
+                      : undefined
+                  }
+                />
+              ))}
+            </svg>
+          </div>
+          {showWoodPreview && (
+            <div className="mt-4 rounded-md border border-slate-200 bg-slate-50 p-3">
+              <p className="text-xs font-medium text-slate-600">
+                Imitated wood carving result (based on the processed file)
+              </p>
+              <p className="mt-1 text-[11px] text-slate-500">
+                This preview renders the full toolpath onto a wood texture so the carved result is
+                visible.
+              </p>
+              <div className="mt-3 overflow-hidden rounded-md border border-slate-200 bg-white">
+                <canvas
+                  ref={woodCanvasRef}
+                  className="h-48 w-full"
+                  role="img"
+                  aria-label="Simulated wood carving preview"
+                />
+              </div>
             </div>
           )}
+        </div>
+      )}
 
           {error && (
             <div className="rounded-md border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800">
@@ -410,6 +571,7 @@ function CncProcessingPage() {
           <div className="flex items-center justify-between gap-4">
             <button
               type="submit"
+              onClick={handleSubmit}
               disabled={!canSubmit}
               title={disabledReason}
               className="inline-flex items-center justify-center rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:bg-slate-400"
