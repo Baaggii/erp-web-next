@@ -162,13 +162,10 @@ function CncProcessingPage() {
     }
     addStep('Validation complete', 'success');
 
-    const buildFormData = () => {
-      const formData = new FormData();
-      formData.append('file', file);
-      formData.append('conversionType', processingType);
-      formData.append('outputFormat', outputFormat);
-      return formData;
-    };
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('conversionType', processingType);
+    formData.append('outputFormat', outputFormat);
 
     try {
       setStatus('uploading');
