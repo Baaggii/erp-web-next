@@ -4418,7 +4418,7 @@ const RowFormModal = function RowFormModal({
       return formatted ?? '';
     };
 
-    const columnTableHtml = (cols, row = activeFormVals, skipEmpty = false) => {
+    const columnTableHtml = (cols, row = activeFormVals, skipEmpty = false, className = '') => {
       const filtered = cols.filter((c) =>
         skipEmpty
           ? row?.[c] !== '' && row?.[c] !== null && row?.[c] !== 0 && row?.[c] !== undefined
@@ -4427,15 +4427,15 @@ const RowFormModal = function RowFormModal({
       if (filtered.length === 0) return '';
       const header = filtered.map((c) => `<th>${labels[c] || c}</th>`).join('');
       const values = filtered.map((c) => `<td>${resolvePrintValue(c, row)}</td>`).join('');
-      return `<table><thead><tr>${header}</tr></thead><tbody><tr>${values}</tr></tbody></table>`;
+      return `<table${className ? ` class="${className}"` : ''}><thead><tr>${header}</tr></thead><tbody><tr>${values}</tr></tbody></table>`;
     };
 
     const mainTableHtml = () => {
       if (!useGrid) {
-        return columnTableHtml(m, activeFormVals, true);
+        return columnTableHtml(m, activeFormVals, true, 'print-main-table');
       }
       if (!Array.isArray(activeGridRows) || activeGridRows.length === 0) {
-        return columnTableHtml(m, activeFormVals, true);
+        return columnTableHtml(m, activeFormVals, true, 'print-main-table');
       }
       const used = m.filter((c) =>
         activeGridRows.some(
@@ -4443,7 +4443,7 @@ const RowFormModal = function RowFormModal({
         ),
       );
       if (used.length === 0) {
-        return columnTableHtml(m, activeFormVals, true);
+        return columnTableHtml(m, activeFormVals, true, 'print-main-table');
       }
       const header = used.map((c) => `<th>${labels[c] || c}</th>`).join('');
       const body = activeGridRows
@@ -4454,19 +4454,25 @@ const RowFormModal = function RowFormModal({
             '</tr>',
           )
           .join('');
-      return `<table class="data-table"><thead><tr>${header}</tr></thead><tbody>${body}</tbody></table>`;
+      return `<table class="print-main-table"><thead><tr>${header}</tr></thead><tbody>${body}</tbody></table>`;
     };
 
     const signatureHtml = () => {
       if (signatureCols.length === 0) return '';
-      const table = columnTableHtml(signatureCols, activeFormVals, true);
-      if (!table) return '';
+      const rows = signatureCols
+        .map((col) => {
+          const value = resolvePrintValue(col, activeFormVals);
+          const label = labels[col] || col;
+          return `<tr><th>${label}</th></tr><tr class="signature-spacer"><td>&nbsp;</td></tr><tr><td class="signature-line">${value}</td></tr>`;
+        })
+        .join('');
+      const table = `<table class="print-signature-table"><tbody>${rows}</tbody></table>`;
       return `<h3>Signature</h3>${table}`;
     };
 
     let html = '<html><head><title>Print</title>';
     html +=
-      '<style>@media print{body{margin:1rem;font-size:12px}}table{width:100%;border-collapse:collapse;margin-bottom:1rem;}th,td{border:1px solid #666;padding:4px;text-align:left;}h3{margin:0 0 4px 0;font-weight:600;}</style>';
+      '<style>@media print{body{margin:1rem;}table{border-collapse:collapse;margin-bottom:1rem;}th,td{padding:4px;text-align:left;}.print-main-table{width:100%;}.print-main-table th,.print-main-table td{border:1px solid #666;}.print-signature-table{width:auto;margin-bottom:0.5rem;}.print-signature-table th{padding-right:16px;}.print-signature-table .signature-spacer td{height:12px;padding:0;}.print-signature-table .signature-line{border-top:1px solid #666;text-align:right;padding-top:6px;min-width:160px;}h3{margin:0 0 4px 0;font-weight:600;}</style>';
     html += '</head><body>';
     if (h.length) {
       const table = columnTableHtml(h, activeFormVals, true);
