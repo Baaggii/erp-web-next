@@ -246,7 +246,10 @@ function CncProcessingPage() {
         if (responseBody?.body && typeof responseBody.body === 'object') {
           if (responseBody.body?.message) message = responseBody.body.message;
         }
-        if (contentType.includes('text/html')) {
+        if (res.status === 404) {
+          message =
+            'CNC processing endpoint not found (404). Verify API base URL and backend routes.';
+        } else if (contentType.includes('text/html')) {
           message = 'CNC processing failed on server. Check backend logs.';
         }
         if (res.status === 415) {
