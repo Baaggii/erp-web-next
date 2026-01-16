@@ -240,6 +240,8 @@ function CncProcessingPage() {
       return;
     }
     addStep('Validation complete', 'success');
+    setStatus('uploading');
+    setProgress(10);
 
     const formData = new FormData();
     formData.append('file', file);
@@ -247,7 +249,6 @@ function CncProcessingPage() {
     formData.append('outputFormat', outputFormat);
 
     try {
-      setStatus('uploading');
       addStep('Requesting CSRF token', 'success');
       const csrfRequest = {
         url: `${API_BASE}/csrf-token`,
