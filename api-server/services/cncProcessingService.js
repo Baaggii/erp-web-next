@@ -151,6 +151,31 @@ function generateDxf(polylines) {
   return `${lines.join('\n')}\n`;
 }
 
+function buildPreview(polylines) {
+  if (!polylines?.length) return null;
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  polylines.forEach((points) => {
+    points.forEach((point) => {
+      if (!Number.isFinite(point.x) || !Number.isFinite(point.y)) return;
+      minX = Math.min(minX, point.x);
+      minY = Math.min(minY, point.y);
+      maxX = Math.max(maxX, point.x);
+      maxY = Math.max(maxY, point.y);
+    });
+  });
+  if (!Number.isFinite(minX) || !Number.isFinite(minY)) return null;
+  const padding = 5;
+  const width = Math.max(1, maxX - minX + padding * 2);
+  const height = Math.max(1, maxY - minY + padding * 2);
+  return {
+    viewBox: `${minX - padding} ${minY - padding} ${width} ${height}`,
+    polylines,
+  };
+}
+
 async function ensureOutputDir() {
   await fs.mkdir(OUTPUT_DIR, { recursive: true });
 }
@@ -185,6 +210,7 @@ export async function processCncFile({
   let outputContent;
   let outputMime;
   let outputExtension;
+  let preview = null;
 
   if (dxf && normalizedOutput === 'dxf') {
     outputContent = file.buffer;
@@ -217,6 +243,8 @@ export async function processCncFile({
       throw err;
     }
 
+    preview = buildPreview(polylines);
+
     if (normalizedOutput === 'gcode') {
       outputContent = generateGcode(polylines, options);
       outputMime = 'text/plain';
@@ -241,6 +269,7 @@ export async function processCncFile({
     path: outputPath,
     mimeType: outputMime,
     createdAt: Date.now(),
+    preview,
   };
   outputRegistry.set(id, metadata);
   return metadata;
