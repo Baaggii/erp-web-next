@@ -45,6 +45,14 @@ function formatTimestamp(date = new Date()) {
   return date.toLocaleString();
 }
 
+function parseViewBox(viewBox) {
+  if (!viewBox) return null;
+  const parts = viewBox.split(' ').map((value) => Number(value));
+  if (parts.length !== 4 || parts.some((value) => !Number.isFinite(value))) return null;
+  const [minX, minY, width, height] = parts;
+  return { minX, minY, width, height };
+}
+
 function headersToObject(headers) {
   if (!headers) return {};
   return Array.from(headers.entries()).reduce((acc, [key, value]) => {
@@ -83,6 +91,7 @@ function CncProcessingPage() {
   const [apiLogs, setApiLogs] = useState([]);
   const stepId = useRef(0);
   const logId = useRef(0);
+  const woodCanvasRef = useRef(null);
 
   const addStep = (label, status, details = '') => {
     stepId.current += 1;
@@ -122,6 +131,66 @@ function CncProcessingPage() {
     }, 400);
     return () => clearInterval(id);
   }, [status]);
+
+  useEffect(() => {
+    if (!showWoodPreview || !preview?.polylines?.length) return;
+    const canvas = woodCanvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    const box = parseViewBox(preview.viewBox);
+    if (!box) return;
+
+    const targetWidth = 640;
+    const targetHeight = 360;
+    canvas.width = targetWidth;
+    canvas.height = targetHeight;
+
+    const gradient = ctx.createLinearGradient(0, 0, targetWidth, targetHeight);
+    gradient.addColorStop(0, '#f8e7c2');
+    gradient.addColorStop(0.5, '#e8c08e');
+    gradient.addColorStop(1, '#d1a073');
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, targetWidth, targetHeight);
+
+    ctx.globalAlpha = 0.25;
+    for (let i = 0; i < 18; i += 1) {
+      ctx.fillStyle = i % 2 === 0 ? '#d9b085' : '#e0bf97';
+      const y = (targetHeight / 18) * i;
+      ctx.fillRect(0, y, targetWidth, targetHeight / 18);
+    }
+    ctx.globalAlpha = 1;
+
+    const scale = Math.min(
+      targetWidth / box.width,
+      targetHeight / box.height,
+    );
+    const offsetX = (targetWidth - box.width * scale) / 2 - box.minX * scale;
+    const offsetY = (targetHeight - box.height * scale) / 2 - box.minY * scale;
+
+    ctx.lineJoin = 'round';
+    ctx.lineCap = 'round';
+    ctx.strokeStyle = '#3f2a19';
+    ctx.lineWidth = 1.6;
+    ctx.shadowColor = 'rgba(30, 15, 5, 0.35)';
+    ctx.shadowBlur = 3;
+    ctx.shadowOffsetY = 1;
+
+    preview.polylines.forEach((polyline) => {
+      if (!polyline.length) return;
+      ctx.beginPath();
+      polyline.forEach((point, index) => {
+        const x = point.x * scale + offsetX;
+        const y = point.y * scale + offsetY;
+        if (index === 0) {
+          ctx.moveTo(x, y);
+        } else {
+          ctx.lineTo(x, y);
+        }
+      });
+      ctx.stroke();
+    });
+  }, [preview, showWoodPreview]);
 
   const selectedFileLabel = useMemo(
     () => (file ? `${file.name} (${Math.round(file.size / 1024)} KB)` : 'No file selected'),
