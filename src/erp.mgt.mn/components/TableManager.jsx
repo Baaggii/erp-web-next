@@ -6838,7 +6838,7 @@ const TableManager = forwardRef(function TableManager({
       const signatureHtml = () => {
         if (signatureFields.length === 0) return '';
         const cols = signatureFields.filter((c) => allowed.has(c));
-        const table = columnTableHtml(cols, activeFormVals, true);
+        const table = columnTableHtml(cols, activeFormVals, true, 'print-signature-table');
         if (!table) return '';
         return `<h3>Signature</h3>${table}`;
       };

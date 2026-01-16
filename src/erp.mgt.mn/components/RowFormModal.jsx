@@ -4459,7 +4459,7 @@ const RowFormModal = function RowFormModal({
 
     const signatureHtml = () => {
       if (signatureCols.length === 0) return '';
-      const table = columnTableHtml(signatureCols, activeFormVals, true);
+      const table = columnTableHtml(signatureCols, activeFormVals, true, 'print-signature-table');
       if (!table) return '';
       return `<h3>Signature</h3>${table}`;
     };
