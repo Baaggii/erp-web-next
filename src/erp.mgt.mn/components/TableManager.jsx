@@ -6799,7 +6799,7 @@ const TableManager = forwardRef(function TableManager({
         return formatted ?? '';
       };
 
-      const columnTableHtml = (cols, row = activeFormVals, skipEmpty = false, className = '') => {
+      const columnTableHtml = (cols, row = activeFormVals, skipEmpty = false) => {
         const filtered = cols.filter((c) =>
           skipEmpty
             ? row?.[c] !== '' && row?.[c] !== null && row?.[c] !== 0 && row?.[c] !== undefined
@@ -6808,22 +6808,12 @@ const TableManager = forwardRef(function TableManager({
         if (filtered.length === 0) return '';
         const header = filtered.map((c) => `<th>${labels[c] || c}</th>`).join('');
         const values = filtered.map((c) => `<td>${resolvePrintValue(c, row)}</td>`).join('');
-        const classAttr = className ? ` class="${className}"` : '';
-        return `<table${classAttr}><thead><tr>${header}</tr></thead><tbody><tr>${values}</tr></tbody></table>`;
-      };
-
-      const signatureTableHtml = () => {
-        if (signatureFields.length === 0) return '';
-        const cols = signatureFields.filter((c) => allowed.has(c));
-        if (cols.length === 0) return '';
-        const header = cols.map((c) => `<th>${labels[c] || c}</th>`).join('');
-        const lines = cols.map(() => '<td class="signature-line">&nbsp;</td>').join('');
-        return `<table class="plain-table signature-table"><thead><tr>${header}</tr></thead><tbody><tr>${lines}</tr></tbody></table>`;
+        return `<table><thead><tr>${header}</tr></thead><tbody><tr>${values}</tr></tbody></table>`;
       };
 
       const mainTableHtml = () => {
         if (!Array.isArray(activeGridRows) || activeGridRows.length === 0) {
-          return columnTableHtml(m, activeFormVals, true, 'data-table');
+          return columnTableHtml(m, activeFormVals, true);
         }
         const used = m.filter((c) =>
           activeGridRows.some(
@@ -6831,7 +6821,7 @@ const TableManager = forwardRef(function TableManager({
           ),
         );
         if (used.length === 0) {
-          return columnTableHtml(m, activeFormVals, true, 'data-table');
+          return columnTableHtml(m, activeFormVals, true);
         }
         const header = used.map((c) => `<th>${labels[c] || c}</th>`).join('');
         const body = activeGridRows
@@ -6846,17 +6836,19 @@ const TableManager = forwardRef(function TableManager({
       };
 
       const signatureHtml = () => {
-        const table = signatureTableHtml();
+        if (signatureFields.length === 0) return '';
+        const cols = signatureFields.filter((c) => allowed.has(c));
+        const table = columnTableHtml(cols, activeFormVals, true);
         if (!table) return '';
         return `<h3>Signature</h3>${table}`;
       };
 
       let html = '<html><head><title>Print</title>';
       html +=
-        '<style>@media print{body{margin:0.5rem;font-size:10px}}@page{margin:0.5rem;}table{border-collapse:collapse;margin-bottom:0.5rem;width:auto !important;max-width:100%;border:none !important;}h3{margin:0 0 4px 0;font-weight:600;font-size:10px;}th,td{padding:2px 4px;text-align:left;border:none !important;}table.plain-table,table.signature-table{border:none !important;}table.plain-table *,table.signature-table *{border:none !important;outline:none !important;box-shadow:none !important;}table.data-table{border:none !important;}.data-table th,.data-table td{border:1px solid #666 !important;}.plain-table th,.plain-table td{border:none !important;}.signature-table th,.signature-table td{vertical-align:bottom;border:none !important;}.signature-line{border-bottom:1px solid #111 !important;height:1.2rem;}</style>';
+        '<style>@media print{body{margin:1rem;font-size:12px}}table{width:100%;border-collapse:collapse;margin-bottom:1rem;}th,td{border:1px solid #666;padding:4px;text-align:left;}h3{margin:0 0 4px 0;font-weight:600;}</style>';
       html += '</head><body>';
       if (h.length) {
-        const table = columnTableHtml(h, activeFormVals, true, 'plain-table');
+        const table = columnTableHtml(h, activeFormVals, true);
         if (table) html += `<h3>Header</h3>${table}`;
       }
       if (m.length) {
@@ -6864,7 +6856,7 @@ const TableManager = forwardRef(function TableManager({
         if (mainTable) html += `<h3>Main</h3>${mainTable}`;
       }
       if (f.length) {
-        const table = columnTableHtml(f, activeFormVals, true, 'plain-table');
+        const table = columnTableHtml(f, activeFormVals, true);
         if (table) html += `<h3>Footer</h3>${table}`;
       }
       const signatureBlock = signatureHtml();
