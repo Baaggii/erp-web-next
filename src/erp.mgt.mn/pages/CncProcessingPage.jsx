@@ -364,6 +364,7 @@ function CncProcessingPage() {
   }
 
   const isBusy = status === 'uploading';
+  const hasPreview = preview?.polylines?.length > 0;
   const disabledReason = useMemo(() => {
     if (isBusy) {
       return 'Conversion in progress. Please wait for it to finish.';
