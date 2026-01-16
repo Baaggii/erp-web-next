@@ -6845,7 +6845,7 @@ const TableManager = forwardRef(function TableManager({
 
       let html = '<html><head><title>Print</title>';
       html +=
-        '<style>@media print{body{margin:1rem;}table{border-collapse:collapse;margin-bottom:1rem;}th,td{padding:4px;text-align:left;}.print-main-table th,.print-main-table td{border:1px solid #666;}.print-signature-table{width:auto;}.print-signature-table th{padding-right:16px;}h3{margin:0 0 4px 0;font-weight:600;}</style>';
+        '<style>@media print{body{margin:1rem;font-size:12px}}table{width:100%;border-collapse:collapse;margin-bottom:1rem;}th,td{padding:4px;text-align:left;}.print-main-table th,.print-main-table td{border:1px solid #666;}h3{margin:0 0 4px 0;font-weight:600;}</style>';
       html += '</head><body>';
       if (h.length) {
         const table = columnTableHtml(h, activeFormVals, true);
