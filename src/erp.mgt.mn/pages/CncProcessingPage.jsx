@@ -45,6 +45,83 @@ function formatTimestamp(date = new Date()) {
   return date.toLocaleString();
 }
 
+function parseViewBox(viewBox) {
+  if (!viewBox) return null;
+  const parts = viewBox.split(' ').map((value) => Number(value));
+  if (parts.length !== 4 || parts.some((value) => !Number.isFinite(value))) return null;
+  const [minX, minY, width, height] = parts;
+  return { minX, minY, width, height };
+}
+
+function buildPreviewFromPolylines(polylines) {
+  if (!polylines?.length) return null;
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  polylines.forEach((points) => {
+    points.forEach((point) => {
+      if (!Number.isFinite(point.x) || !Number.isFinite(point.y)) return;
+      minX = Math.min(minX, point.x);
+      minY = Math.min(minY, point.y);
+      maxX = Math.max(maxX, point.x);
+      maxY = Math.max(maxY, point.y);
+    });
+  });
+  if (!Number.isFinite(minX) || !Number.isFinite(minY)) return null;
+  const padding = 5;
+  const width = Math.max(1, maxX - minX + padding * 2);
+  const height = Math.max(1, maxY - minY + padding * 2);
+  return {
+    viewBox: `${minX - padding} ${minY - padding} ${width} ${height}`,
+    polylines,
+  };
+}
+
+function parseGcodeToPolylines(gcodeText) {
+  if (!gcodeText) return [];
+  const polylines = [];
+  let current = [];
+  let x = 0;
+  let y = 0;
+
+  gcodeText.split(/\r?\n/).forEach((rawLine) => {
+    const line = rawLine.trim();
+    if (!line || line.startsWith(';')) return;
+    const command = line.match(/^(G0|G00|G1|G01)\b/i)?.[0]?.toUpperCase();
+    if (!command) return;
+
+    const xMatch = line.match(/X(-?\d+(\.\d+)?)/i);
+    const yMatch = line.match(/Y(-?\d+(\.\d+)?)/i);
+    const nextX = xMatch ? Number(xMatch[1]) : x;
+    const nextY = yMatch ? Number(yMatch[1]) : y;
+
+    if (command === 'G0' || command === 'G00') {
+      if (current.length > 1) {
+        polylines.push(current);
+      }
+      current = [];
+      if (xMatch || yMatch) {
+        current.push({ x: nextX, y: nextY });
+      }
+    } else if (command === 'G1' || command === 'G01') {
+      if (current.length === 0) {
+        current.push({ x, y });
+      }
+      current.push({ x: nextX, y: nextY });
+    }
+
+    x = nextX;
+    y = nextY;
+  });
+
+  if (current.length > 1) {
+    polylines.push(current);
+  }
+
+  return polylines;
+}
+
 function headersToObject(headers) {
   if (!headers) return {};
   return Array.from(headers.entries()).reduce((acc, [key, value]) => {
@@ -77,10 +154,14 @@ function CncProcessingPage() {
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState('');
   const [download, setDownload] = useState(null);
+  const [preview, setPreview] = useState(null);
+  const [animatePreview, setAnimatePreview] = useState(true);
+  const [showWoodPreview, setShowWoodPreview] = useState(true);
   const [steps, setSteps] = useState([]);
   const [apiLogs, setApiLogs] = useState([]);
   const stepId = useRef(0);
   const logId = useRef(0);
+  const woodCanvasRef = useRef(null);
 
   const addStep = (label, status, details = '') => {
     stepId.current += 1;
@@ -121,6 +202,86 @@ function CncProcessingPage() {
     return () => clearInterval(id);
   }, [status]);
 
+  useEffect(() => {
+    if (!showWoodPreview || !preview?.polylines?.length) return;
+    const canvas = woodCanvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    const box = parseViewBox(preview.viewBox);
+    if (!box) return;
+
+    const targetWidth = 640;
+    const targetHeight = 360;
+    canvas.width = targetWidth;
+    canvas.height = targetHeight;
+
+    const gradient = ctx.createLinearGradient(0, 0, targetWidth, targetHeight);
+    gradient.addColorStop(0, '#f8e7c2');
+    gradient.addColorStop(0.5, '#e8c08e');
+    gradient.addColorStop(1, '#d1a073');
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, targetWidth, targetHeight);
+
+    ctx.globalAlpha = 0.25;
+    for (let i = 0; i < 18; i += 1) {
+      ctx.fillStyle = i % 2 === 0 ? '#d9b085' : '#e0bf97';
+      const y = (targetHeight / 18) * i;
+      ctx.fillRect(0, y, targetWidth, targetHeight / 18);
+    }
+    ctx.globalAlpha = 1;
+
+    const scale = Math.min(
+      targetWidth / box.width,
+      targetHeight / box.height,
+    );
+    const offsetX = (targetWidth - box.width * scale) / 2 - box.minX * scale;
+    const offsetY = (targetHeight - box.height * scale) / 2 - box.minY * scale;
+
+    ctx.lineJoin = 'round';
+    ctx.lineCap = 'round';
+    ctx.strokeStyle = '#3f2a19';
+    ctx.lineWidth = 1.6;
+    ctx.shadowColor = 'rgba(30, 15, 5, 0.35)';
+    ctx.shadowBlur = 3;
+    ctx.shadowOffsetY = 1;
+
+    preview.polylines.forEach((polyline) => {
+      if (!polyline.length) return;
+      ctx.beginPath();
+      polyline.forEach((point, index) => {
+        const x = point.x * scale + offsetX;
+        const y = point.y * scale + offsetY;
+        if (index === 0) {
+          ctx.moveTo(x, y);
+        } else {
+          ctx.lineTo(x, y);
+        }
+      });
+      ctx.stroke();
+    });
+  }, [preview, showWoodPreview]);
+
+  useEffect(() => {
+    if (preview?.polylines?.length) return;
+    if (!download?.url || outputFormat !== 'gcode') return;
+    let isActive = true;
+    fetch(download.url, { credentials: 'include' })
+      .then((res) => (res.ok ? res.text() : ''))
+      .then((text) => {
+        if (!isActive || !text) return;
+        const polylines = parseGcodeToPolylines(text);
+        const fallbackPreview = buildPreviewFromPolylines(polylines);
+        if (fallbackPreview) {
+          setPreview(fallbackPreview);
+        }
+      })
+      .catch(() => undefined);
+    return () => {
+      isActive = false;
+    };
+  }, [download?.url, outputFormat, preview]);
+
   const selectedFileLabel = useMemo(
     () => (file ? `${file.name} (${Math.round(file.size / 1024)} KB)` : 'No file selected'),
     [file],
@@ -131,6 +292,7 @@ function CncProcessingPage() {
     setFile(selectedFile);
     setError('');
     setDownload(null);
+    setPreview(null);
     setStatus('idle');
     setProgress(0);
     if (selectedFile) {
@@ -144,6 +306,7 @@ function CncProcessingPage() {
     event.preventDefault();
     setError('');
     setDownload(null);
+    setPreview(null);
     addStep('Validation started', 'success');
 
     if (!file) {
@@ -267,10 +430,12 @@ function CncProcessingPage() {
         } else {
           setDownload({ url: '', filename: info?.filename || 'cnc-output' });
         }
+        setPreview(data?.preview || null);
       } else {
         const blob = await res.blob();
         const url = window.URL.createObjectURL(blob);
         setDownload({ url, filename: `cnc-output.${outputFormat}` });
+        setPreview(null);
       }
 
       addStep('CNC processing completed', 'success');
@@ -288,6 +453,7 @@ function CncProcessingPage() {
   }
 
   const isBusy = status === 'uploading';
+  const hasPreview = preview?.polylines?.length > 0;
   const disabledReason = useMemo(() => {
     if (isBusy) {
       return 'Conversion in progress. Please wait for it to finish.';
@@ -304,6 +470,12 @@ function CncProcessingPage() {
 
   return (
     <div className="mx-auto max-w-3xl p-6">
+      <style>{`
+        @keyframes cnc-draw {
+          from { stroke-dashoffset: 1; }
+          to { stroke-dashoffset: 0; }
+        }
+      `}</style>
       <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
         <div className="mb-6">
           <h1 className="text-2xl font-semibold text-slate-900">
@@ -384,10 +556,10 @@ function CncProcessingPage() {
             </div>
           )}
 
-          {status === 'success' && (
-            <div className="rounded-md border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">
-              <p className="font-medium">Conversion complete.</p>
-              {download?.url ? (
+      {status === 'success' && (
+        <div className="rounded-md border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">
+          <p className="font-medium">Conversion complete.</p>
+          {download?.url ? (
                 <a
                   href={download.url}
                   download={download.filename}
@@ -398,8 +570,97 @@ function CncProcessingPage() {
               ) : (
                 <p className="mt-2">Your file is ready. Check with the backend for the download link.</p>
               )}
+        </div>
+      )}
+
+      {status === 'success' && (
+        <div className="rounded-md border border-slate-200 bg-white p-4 text-sm text-slate-700">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="text-sm font-medium text-slate-900">Toolpath preview</p>
+              <p className="text-xs text-slate-500">
+                {hasPreview
+                  ? 'Simulated carving path based on the converted vector data.'
+                  : 'Preview will appear once the toolpath data is available.'}
+              </p>
+            </div>
+            <label className="flex items-center gap-2 text-xs text-slate-500">
+              <input
+                type="checkbox"
+                checked={animatePreview}
+                onChange={(event) => setAnimatePreview(event.target.checked)}
+                disabled={!hasPreview}
+                className="h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-slate-400"
+              />
+              Animate toolpath
+            </label>
+          </div>
+          {hasPreview ? (
+            <div className="mt-4 rounded-md border border-slate-200 bg-slate-50 p-3">
+              <svg
+                viewBox={preview.viewBox}
+                className="h-64 w-full"
+                preserveAspectRatio="xMidYMid meet"
+              >
+                {preview.polylines.map((polyline, index) => (
+                  <polyline
+                    key={`${index + 1}`}
+                    points={polyline.map((point) => `${point.x},${point.y}`).join(' ')}
+                    fill="none"
+                    stroke="#0f172a"
+                    strokeWidth="0.7"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    pathLength="1"
+                    style={
+                      animatePreview
+                        ? {
+                            strokeDasharray: 1,
+                            strokeDashoffset: 1,
+                            animation: 'cnc-draw 3s ease forwards',
+                          }
+                        : undefined
+                    }
+                  />
+                ))}
+              </svg>
+            </div>
+          ) : (
+            <div className="mt-4 rounded-md border border-dashed border-slate-200 bg-slate-50 p-6 text-center text-xs text-slate-500">
+              Toolpath preview pending.
             </div>
           )}
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="text-sm font-medium text-slate-900">Carved wood simulation</p>
+              <p className="text-xs text-slate-500">
+                {hasPreview
+                  ? 'Imitated real-world finish showing the toolpath carved into wood.'
+                  : 'Wood simulation will appear after toolpath data is ready.'}
+              </p>
+            </div>
+            <label className="flex items-center gap-2 text-xs text-slate-500">
+              <input
+                type="checkbox"
+                checked={showWoodPreview}
+                onChange={(event) => setShowWoodPreview(event.target.checked)}
+                disabled={!hasPreview}
+                className="h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-slate-400"
+              />
+              Show wood preview
+            </label>
+          </div>
+          {showWoodPreview && hasPreview ? (
+            <div className="mt-3 overflow-hidden rounded-md border border-slate-200 bg-white">
+              <canvas ref={woodCanvasRef} className="h-64 w-full" />
+            </div>
+          ) : (
+            <div className="mt-3 rounded-md border border-dashed border-slate-200 bg-white p-6 text-center text-xs text-slate-500">
+              Carved wood simulation pending.
+            </div>
+          )}
+        </div>
+      )}
 
           {error && (
             <div className="rounded-md border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800">
