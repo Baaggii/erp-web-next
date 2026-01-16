@@ -4457,30 +4457,33 @@ const RowFormModal = function RowFormModal({
       return `<table class="data-table"><thead><tr>${header}</tr></thead><tbody>${body}</tbody></table>`;
     };
 
+    const wrapSection = (title, table) =>
+      table ? `<div class="print-section"><h3>${title}</h3>${table}</div>` : '';
+
     const signatureHtml = () => {
       if (signatureCols.length === 0) return '';
       const table = columnTableHtml(signatureCols, activeFormVals, true);
       if (!table) return '';
-      return `<h3>Signature</h3>${table}`;
+      return wrapSection('Signature', table);
     };
 
     let html = '<html><head><title>Print</title>';
     html +=
-      '<style>@media print{body{margin:1rem;font-size:12px}}table{width:100%;border-collapse:collapse;margin-bottom:1rem;}th,td{border:1px solid #666;padding:4px;text-align:left;}h3{margin:0 0 4px 0;font-weight:600;}</style>';
+      '<style>@media print{body{margin:1rem;font-size:12px}}table{width:100%;border-collapse:collapse;margin:0;}th,td{border:1px solid #666;padding:4px;text-align:left;}h3{margin:0 0 4px 0;font-weight:600;} .print-section{border:1px solid #666;padding:6px;margin-bottom:10px;}</style>';
     html += '</head><body>';
     if (h.length) {
       const table = columnTableHtml(h, activeFormVals, true);
-      if (table) html += `<h3>Header</h3>${table}`;
+      html += wrapSection('Header', table);
     }
     if (m.length) {
       const mainTable = mainTableHtml();
-      if (mainTable) html += `<h3>Main</h3>${mainTable}`;
+      html += wrapSection('Main', mainTable);
     }
     if (f.length) {
       const table = columnTableHtml(f, activeFormVals, true);
-      if (table) html += `<h3>Footer</h3>${table}`;
+      html += wrapSection('Footer', table);
     }
-    if (signatureCols.length) html += signatureHtml();
+    html += signatureHtml();
     html += '</body></html>';
     if (userSettings?.printerId) {
       fetch(`${API_BASE}/print`, {
