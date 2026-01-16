@@ -68,10 +68,6 @@ async function readResponseBody(response, contentType) {
   }
 }
 
-function stripHtml(value = '') {
-  return value.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
-}
-
 function CncProcessingPage() {
   const { addToast } = useToast();
   const [file, setFile] = useState(null);
@@ -246,17 +242,12 @@ function CncProcessingPage() {
       });
 
       if (!res.ok) {
-        let message = res.statusText || `Request failed (${res.status})`;
-        if (responseBody?.body) {
-          if (typeof responseBody.body === 'object' && responseBody.body?.message) {
-            message = responseBody.body.message;
-          }
-          if (typeof responseBody.body === 'string') {
-            const textMessage = stripHtml(responseBody.body);
-            if (textMessage) {
-              message = textMessage;
-            }
-          }
+        let message = res.statusText || 'Conversion failed';
+        if (responseBody?.body && typeof responseBody.body === 'object') {
+          if (responseBody.body?.message) message = responseBody.body.message;
+        }
+        if (contentType.includes('text/html')) {
+          message = 'CNC processing failed on server. Check backend logs.';
         }
         if (res.status === 415) {
           message = 'Unsupported file type. Please upload a PNG, JPG, SVG, or DXF file.';
