@@ -68,10 +68,6 @@ async function readResponseBody(response, contentType) {
   }
 }
 
-function stripHtml(value = '') {
-  return value.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
-}
-
 function CncProcessingPage() {
   const { addToast } = useToast();
   const [file, setFile] = useState(null);
@@ -206,87 +202,52 @@ function CncProcessingPage() {
       }
       addStep('CSRF token received', 'success');
       addStep('Uploading file for CNC processing', 'success');
-      const conversionPayload = {
-        file: {
-          name: file.name,
-          size: file.size,
-          type: file.type || 'unknown',
+      const conversionRequest = {
+        url: `${API_BASE}/cnc_processing`,
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'X-CSRF-Token': csrfToken,
         },
-        conversionType: processingType,
-        outputFormat,
+        body: {
+          file: {
+            name: file.name,
+            size: file.size,
+            type: file.type || 'unknown',
+          },
+          conversionType: processingType,
+          outputFormat,
+        },
       };
-      const cncEndpoints = [
-        `${API_BASE}/cnc_processing/`,
-        `${API_BASE}/cnc_processing`,
-      ];
-
-      const sendCncRequest = async (url) => {
-        const conversionRequest = {
-          url,
-          method: 'POST',
-          credentials: 'include',
-          headers: {
-            'X-CSRF-Token': csrfToken,
-          },
-          body: conversionPayload,
-        };
-        const response = await fetch(url, {
-          method: 'POST',
-          body: formData,
-          credentials: 'include',
-          headers: {
-            'X-CSRF-Token': csrfToken,
-          },
-        });
-        const responseContentType = response.headers.get('content-type') || '';
-        const responseBody = await readResponseBody(response.clone(), responseContentType);
-        addApiLog({
-          name: 'CNC processing request',
-          request: conversionRequest,
-          response: {
-            status: response.status,
-            statusText: response.statusText,
-            headers: headersToObject(response.headers),
-            body: responseBody.body,
-            bodyError: responseBody.error,
-          },
-        });
-        return { response, responseContentType, responseBody };
-      };
-
-      let attempt = await sendCncRequest(cncEndpoints[0]);
-      const responseText =
-        typeof attempt.responseBody?.body === 'string' ? attempt.responseBody.body : '';
-      if (
-        !attempt.response.ok &&
-        attempt.response.status === 404 &&
-        responseText.includes('Cannot POST') &&
-        cncEndpoints[1]
-      ) {
-        addStep(
-          'Retrying CNC processing with alternate endpoint',
-          'success',
-          `Retrying ${cncEndpoints[1]}`,
-        );
-        attempt = await sendCncRequest(cncEndpoints[1]);
-      }
-
-      const res = attempt.response;
-      const contentType = attempt.responseContentType;
-      const responseBody = attempt.responseBody;
+      const res = await fetch(conversionRequest.url, {
+        method: 'POST',
+        body: formData,
+        credentials: 'include',
+        headers: {
+          'X-CSRF-Token': csrfToken,
+        },
+      });
+      const contentType = res.headers.get('content-type') || '';
+      const responseBody = await readResponseBody(res.clone(), contentType);
+      addApiLog({
+        name: 'CNC processing request',
+        request: conversionRequest,
+        response: {
+          status: res.status,
+          statusText: res.statusText,
+          headers: headersToObject(res.headers),
+          body: responseBody.body,
+          bodyError: responseBody.error,
+        },
+      });
 
       if (!res.ok) {
-        let message = res.statusText || `Request failed (${res.status})`;
-        if (responseBody?.body) {
-          if (typeof responseBody.body === 'object' && responseBody.body?.message) {
-            message = responseBody.body.message;
-          }
-          if (typeof responseBody.body === 'string') {
-            const textMessage = stripHtml(responseBody.body);
-            if (textMessage) {
-              message = textMessage;
-            }
-          }
+        let message = res.statusText || 'Conversion failed';
+        if (responseBody?.body && typeof responseBody.body === 'object') {
+          if (responseBody.body?.message) message = responseBody.body.message;
+        }
+        if (contentType.includes('text/html')) {
+          message = 'CNC processing failed on server. Check backend logs.';
         }
         if (res.status === 415) {
           message = 'Unsupported file type. Please upload a PNG, JPG, SVG, or DXF file.';
