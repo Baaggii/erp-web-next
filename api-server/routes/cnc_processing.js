@@ -65,9 +65,15 @@ router.post(
         options: { conversionType: req.body.conversionType },
       });
 
+      const baseUrl = `${req.protocol}://${req.get('host')}`;
+      const downloadUrl = `${baseUrl}/api/cnc_processing/download/${result.id}`;
+
       console.log('[CNC] Processing success', result);
 
-      return res.json(result);
+      return res.json({
+        ...result,
+        downloadUrl,
+      });
     } catch (err) {
       console.error('[CNC ERROR]', err);
       return res.status(500).json({
