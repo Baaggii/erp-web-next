@@ -92,6 +92,7 @@ function CncProcessingPage() {
   const stepId = useRef(0);
   const logId = useRef(0);
   const woodCanvasRef = useRef(null);
+  const showWoodPreview = Boolean(preview?.polylines?.length);
 
   const addStep = (label, status, details = '') => {
     stepId.current += 1;
