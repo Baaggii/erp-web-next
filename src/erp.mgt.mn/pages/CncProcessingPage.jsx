@@ -77,6 +77,8 @@ function CncProcessingPage() {
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState('');
   const [download, setDownload] = useState(null);
+  const [preview, setPreview] = useState(null);
+  const [animatePreview, setAnimatePreview] = useState(true);
   const [steps, setSteps] = useState([]);
   const [apiLogs, setApiLogs] = useState([]);
   const stepId = useRef(0);
@@ -131,6 +133,7 @@ function CncProcessingPage() {
     setFile(selectedFile);
     setError('');
     setDownload(null);
+    setPreview(null);
     setStatus('idle');
     setProgress(0);
     if (selectedFile) {
@@ -144,6 +147,7 @@ function CncProcessingPage() {
     event.preventDefault();
     setError('');
     setDownload(null);
+    setPreview(null);
     addStep('Validation started', 'success');
 
     if (!file) {
@@ -267,10 +271,12 @@ function CncProcessingPage() {
         } else {
           setDownload({ url: '', filename: info?.filename || 'cnc-output' });
         }
+        setPreview(data?.preview || null);
       } else {
         const blob = await res.blob();
         const url = window.URL.createObjectURL(blob);
         setDownload({ url, filename: `cnc-output.${outputFormat}` });
+        setPreview(null);
       }
 
       addStep('CNC processing completed', 'success');
@@ -304,6 +310,12 @@ function CncProcessingPage() {
 
   return (
     <div className="mx-auto max-w-3xl p-6">
+      <style>{`
+        @keyframes cnc-draw {
+          from { stroke-dashoffset: 1; }
+          to { stroke-dashoffset: 0; }
+        }
+      `}</style>
       <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
         <div className="mb-6">
           <h1 className="text-2xl font-semibold text-slate-900">
@@ -384,10 +396,10 @@ function CncProcessingPage() {
             </div>
           )}
 
-          {status === 'success' && (
-            <div className="rounded-md border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">
-              <p className="font-medium">Conversion complete.</p>
-              {download?.url ? (
+      {status === 'success' && (
+        <div className="rounded-md border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">
+          <p className="font-medium">Conversion complete.</p>
+          {download?.url ? (
                 <a
                   href={download.url}
                   download={download.filename}
@@ -398,8 +410,59 @@ function CncProcessingPage() {
               ) : (
                 <p className="mt-2">Your file is ready. Check with the backend for the download link.</p>
               )}
+        </div>
+      )}
+
+      {preview?.polylines?.length > 0 && (
+        <div className="rounded-md border border-slate-200 bg-white p-4 text-sm text-slate-700">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="text-sm font-medium text-slate-900">Toolpath preview</p>
+              <p className="text-xs text-slate-500">
+                Simulated carving path based on the converted vector data.
+              </p>
             </div>
-          )}
+            <label className="flex items-center gap-2 text-xs text-slate-500">
+              <input
+                type="checkbox"
+                checked={animatePreview}
+                onChange={(event) => setAnimatePreview(event.target.checked)}
+                className="h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-slate-400"
+              />
+              Animate toolpath
+            </label>
+          </div>
+          <div className="mt-4 rounded-md border border-slate-200 bg-slate-50 p-3">
+            <svg
+              viewBox={preview.viewBox}
+              className="h-64 w-full"
+              preserveAspectRatio="xMidYMid meet"
+            >
+              {preview.polylines.map((polyline, index) => (
+                <polyline
+                  key={`${index + 1}`}
+                  points={polyline.map((point) => `${point.x},${point.y}`).join(' ')}
+                  fill="none"
+                  stroke="#0f172a"
+                  strokeWidth="0.7"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  pathLength="1"
+                  style={
+                    animatePreview
+                      ? {
+                          strokeDasharray: 1,
+                          strokeDashoffset: 1,
+                          animation: 'cnc-draw 3s ease forwards',
+                        }
+                      : undefined
+                  }
+                />
+              ))}
+            </svg>
+          </div>
+        </div>
+      )}
 
           {error && (
             <div className="rounded-md border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800">
