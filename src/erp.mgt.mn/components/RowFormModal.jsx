@@ -4466,7 +4466,7 @@ const RowFormModal = function RowFormModal({
 
     let html = '<html><head><title>Print</title>';
     html +=
-      '<style>@media print{body{margin:1rem;font-size:12px}}table{width:100%;border-collapse:collapse;margin-bottom:1rem;}th,td{padding:4px;text-align:left;}.print-main-table th,.print-main-table td{border:1px solid #666;}h3{margin:0 0 4px 0;font-weight:600;}</style>';
+      '<style>@page{size:auto;margin:1rem;}@media print{body{margin:0;font-size:small;width:max-content;}}table{width:auto;border-collapse:collapse;margin-bottom:1rem;}th,td{padding:4px;text-align:left;}.print-main-table th,.print-main-table td{border:1px solid #666;}h3{margin:0 0 4px 0;font-weight:600;}</style>';
     html += '</head><body>';
     if (h.length) {
       const table = columnTableHtml(h, activeFormVals, true);
