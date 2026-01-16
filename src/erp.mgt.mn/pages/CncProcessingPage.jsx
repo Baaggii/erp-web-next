@@ -53,75 +53,6 @@ function parseViewBox(viewBox) {
   return { minX, minY, width, height };
 }
 
-function buildPreviewFromPolylines(polylines) {
-  if (!polylines?.length) return null;
-  let minX = Infinity;
-  let minY = Infinity;
-  let maxX = -Infinity;
-  let maxY = -Infinity;
-  polylines.forEach((points) => {
-    points.forEach((point) => {
-      if (!Number.isFinite(point.x) || !Number.isFinite(point.y)) return;
-      minX = Math.min(minX, point.x);
-      minY = Math.min(minY, point.y);
-      maxX = Math.max(maxX, point.x);
-      maxY = Math.max(maxY, point.y);
-    });
-  });
-  if (!Number.isFinite(minX) || !Number.isFinite(minY)) return null;
-  const padding = 5;
-  const width = Math.max(1, maxX - minX + padding * 2);
-  const height = Math.max(1, maxY - minY + padding * 2);
-  return {
-    viewBox: `${minX - padding} ${minY - padding} ${width} ${height}`,
-    polylines,
-  };
-}
-
-function parseGcodeToPolylines(gcodeText) {
-  if (!gcodeText) return [];
-  const polylines = [];
-  let current = [];
-  let x = 0;
-  let y = 0;
-
-  gcodeText.split(/\r?\n/).forEach((rawLine) => {
-    const line = rawLine.trim();
-    if (!line || line.startsWith(';')) return;
-    const command = line.match(/^(G0|G00|G1|G01)\b/i)?.[0]?.toUpperCase();
-    if (!command) return;
-
-    const xMatch = line.match(/X(-?\d+(\.\d+)?)/i);
-    const yMatch = line.match(/Y(-?\d+(\.\d+)?)/i);
-    const nextX = xMatch ? Number(xMatch[1]) : x;
-    const nextY = yMatch ? Number(yMatch[1]) : y;
-
-    if (command === 'G0' || command === 'G00') {
-      if (current.length > 1) {
-        polylines.push(current);
-      }
-      current = [];
-      if (xMatch || yMatch) {
-        current.push({ x: nextX, y: nextY });
-      }
-    } else if (command === 'G1' || command === 'G01') {
-      if (current.length === 0) {
-        current.push({ x, y });
-      }
-      current.push({ x: nextX, y: nextY });
-    }
-
-    x = nextX;
-    y = nextY;
-  });
-
-  if (current.length > 1) {
-    polylines.push(current);
-  }
-
-  return polylines;
-}
-
 function headersToObject(headers) {
   if (!headers) return {};
   return Array.from(headers.entries()).reduce((acc, [key, value]) => {
@@ -156,12 +87,12 @@ function CncProcessingPage() {
   const [download, setDownload] = useState(null);
   const [preview, setPreview] = useState(null);
   const [animatePreview, setAnimatePreview] = useState(true);
-  const [showWoodPreview, setShowWoodPreview] = useState(true);
   const [steps, setSteps] = useState([]);
   const [apiLogs, setApiLogs] = useState([]);
   const stepId = useRef(0);
   const logId = useRef(0);
   const woodCanvasRef = useRef(null);
+  const showWoodPreview = Boolean(preview?.polylines?.length);
 
   const addStep = (label, status, details = '') => {
     stepId.current += 1;
@@ -261,26 +192,6 @@ function CncProcessingPage() {
       ctx.stroke();
     });
   }, [preview, showWoodPreview]);
-
-  useEffect(() => {
-    if (preview?.polylines?.length) return;
-    if (!download?.url || outputFormat !== 'gcode') return;
-    let isActive = true;
-    fetch(download.url, { credentials: 'include' })
-      .then((res) => (res.ok ? res.text() : ''))
-      .then((text) => {
-        if (!isActive || !text) return;
-        const polylines = parseGcodeToPolylines(text);
-        const fallbackPreview = buildPreviewFromPolylines(polylines);
-        if (fallbackPreview) {
-          setPreview(fallbackPreview);
-        }
-      })
-      .catch(() => undefined);
-    return () => {
-      isActive = false;
-    };
-  }, [download?.url, outputFormat, preview]);
 
   const selectedFileLabel = useMemo(
     () => (file ? `${file.name} (${Math.round(file.size / 1024)} KB)` : 'No file selected'),
@@ -573,15 +484,13 @@ function CncProcessingPage() {
         </div>
       )}
 
-      {status === 'success' && (
+      {preview?.polylines?.length > 0 && (
         <div className="rounded-md border border-slate-200 bg-white p-4 text-sm text-slate-700">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <p className="text-sm font-medium text-slate-900">Toolpath preview</p>
               <p className="text-xs text-slate-500">
-                {hasPreview
-                  ? 'Simulated carving path based on the converted vector data.'
-                  : 'Preview will appear once the toolpath data is available.'}
+                Simulated carving path based on the converted vector data.
               </p>
             </div>
             <label className="flex items-center gap-2 text-xs text-slate-500">
@@ -589,76 +498,40 @@ function CncProcessingPage() {
                 type="checkbox"
                 checked={animatePreview}
                 onChange={(event) => setAnimatePreview(event.target.checked)}
-                disabled={!hasPreview}
                 className="h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-slate-400"
               />
               Animate toolpath
             </label>
           </div>
-          {hasPreview ? (
-            <div className="mt-4 rounded-md border border-slate-200 bg-slate-50 p-3">
-              <svg
-                viewBox={preview.viewBox}
-                className="h-64 w-full"
-                preserveAspectRatio="xMidYMid meet"
-              >
-                {preview.polylines.map((polyline, index) => (
-                  <polyline
-                    key={`${index + 1}`}
-                    points={polyline.map((point) => `${point.x},${point.y}`).join(' ')}
-                    fill="none"
-                    stroke="#0f172a"
-                    strokeWidth="0.7"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    pathLength="1"
-                    style={
-                      animatePreview
-                        ? {
-                            strokeDasharray: 1,
-                            strokeDashoffset: 1,
-                            animation: 'cnc-draw 3s ease forwards',
-                          }
-                        : undefined
-                    }
-                  />
-                ))}
-              </svg>
-            </div>
-          ) : (
-            <div className="mt-4 rounded-md border border-dashed border-slate-200 bg-slate-50 p-6 text-center text-xs text-slate-500">
-              Toolpath preview pending.
-            </div>
-          )}
-          <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <p className="text-sm font-medium text-slate-900">Carved wood simulation</p>
-              <p className="text-xs text-slate-500">
-                {hasPreview
-                  ? 'Imitated real-world finish showing the toolpath carved into wood.'
-                  : 'Wood simulation will appear after toolpath data is ready.'}
-              </p>
-            </div>
-            <label className="flex items-center gap-2 text-xs text-slate-500">
-              <input
-                type="checkbox"
-                checked={showWoodPreview}
-                onChange={(event) => setShowWoodPreview(event.target.checked)}
-                disabled={!hasPreview}
-                className="h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-slate-400"
-              />
-              Show wood preview
-            </label>
+          <div className="mt-4 rounded-md border border-slate-200 bg-slate-50 p-3">
+            <svg
+              viewBox={preview.viewBox}
+              className="h-64 w-full"
+              preserveAspectRatio="xMidYMid meet"
+            >
+              {preview.polylines.map((polyline, index) => (
+                <polyline
+                  key={`${index + 1}`}
+                  points={polyline.map((point) => `${point.x},${point.y}`).join(' ')}
+                  fill="none"
+                  stroke="#0f172a"
+                  strokeWidth="0.7"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  pathLength="1"
+                  style={
+                    animatePreview
+                      ? {
+                          strokeDasharray: 1,
+                          strokeDashoffset: 1,
+                          animation: 'cnc-draw 3s ease forwards',
+                        }
+                      : undefined
+                  }
+                />
+              ))}
+            </svg>
           </div>
-          {showWoodPreview && hasPreview ? (
-            <div className="mt-3 overflow-hidden rounded-md border border-slate-200 bg-white">
-              <canvas ref={woodCanvasRef} className="h-64 w-full" />
-            </div>
-          ) : (
-            <div className="mt-3 rounded-md border border-dashed border-slate-200 bg-white p-6 text-center text-xs text-slate-500">
-              Carved wood simulation pending.
-            </div>
-          )}
         </div>
       )}
 
