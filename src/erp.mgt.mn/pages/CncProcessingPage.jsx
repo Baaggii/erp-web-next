@@ -87,7 +87,6 @@ function CncProcessingPage() {
   const [download, setDownload] = useState(null);
   const [preview, setPreview] = useState(null);
   const [animatePreview, setAnimatePreview] = useState(true);
-  const [showWoodPreview, setShowWoodPreview] = useState(true);
   const [steps, setSteps] = useState([]);
   const [apiLogs, setApiLogs] = useState([]);
   const stepId = useRef(0);
@@ -531,28 +530,6 @@ function CncProcessingPage() {
               ))}
             </svg>
           </div>
-          <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <p className="text-sm font-medium text-slate-900">Carved wood simulation</p>
-              <p className="text-xs text-slate-500">
-                Imitated real-world finish showing the toolpath carved into wood.
-              </p>
-            </div>
-            <label className="flex items-center gap-2 text-xs text-slate-500">
-              <input
-                type="checkbox"
-                checked={showWoodPreview}
-                onChange={(event) => setShowWoodPreview(event.target.checked)}
-                className="h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-slate-400"
-              />
-              Show wood preview
-            </label>
-          </div>
-          {showWoodPreview && (
-            <div className="mt-3 overflow-hidden rounded-md border border-slate-200 bg-white">
-              <canvas ref={woodCanvasRef} className="h-64 w-full" />
-            </div>
-          )}
         </div>
       )}
 
