@@ -531,6 +531,25 @@ function CncProcessingPage() {
               ))}
             </svg>
           </div>
+          {showWoodPreview && (
+            <div className="mt-4 rounded-md border border-slate-200 bg-slate-50 p-3">
+              <p className="text-xs font-medium text-slate-600">
+                Imitated wood carving result (based on the processed file)
+              </p>
+              <p className="mt-1 text-[11px] text-slate-500">
+                This preview renders the full toolpath onto a wood texture so the carved result is
+                visible.
+              </p>
+              <div className="mt-3 overflow-hidden rounded-md border border-slate-200 bg-white">
+                <canvas
+                  ref={woodCanvasRef}
+                  className="h-48 w-full"
+                  role="img"
+                  aria-label="Simulated wood carving preview"
+                />
+              </div>
+            </div>
+          )}
         </div>
       )}
 
