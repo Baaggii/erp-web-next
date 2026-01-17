@@ -6665,14 +6665,49 @@ const TableManager = forwardRef(function TableManager({
 
   const buildPrintPayloadFromRows = useCallback(
     (rowsToPrint) => {
-      const items = Array.isArray(rowsToPrint)
-        ? rowsToPrint
-            .filter((row) => row && typeof row === 'object')
-            .map((row) => buildPrintPayloadFromRow(row))
+      const itemsMap = new Map();
+      const groupedFields = [
+        ...new Set([
+          ...headerFields,
+          ...footerFields,
+          ...(formConfig?.signatureFields || []),
+        ]),
+      ];
+      const normalizeGroupValue = (value) => {
+        if (Array.isArray(value)) return value.map(normalizeGroupValue);
+        if (value && typeof value === 'object') {
+          const candidate =
+            value.value !== undefined && value.value !== null ? value.value : value;
+          const normalized = normalizeSearchValue(candidate);
+          return normalized ?? candidate;
+        }
+        const normalized = normalizeSearchValue(value);
+        return normalized ?? value;
+      };
+      const buildGroupKey = (row) => {
+        if (groupedFields.length === 0) return 'default';
+        const keyData = {};
+        groupedFields.forEach((field) => {
+          keyData[field] = normalizeGroupValue(row?.[field] ?? null);
+        });
+        return JSON.stringify(keyData);
+      };
+      const rowsList = Array.isArray(rowsToPrint)
+        ? rowsToPrint.filter((row) => row && typeof row === 'object')
         : [];
-      return { formRows: items };
+      rowsList.forEach((row) => {
+        const key = buildGroupKey(row);
+        const existing = itemsMap.get(key);
+        if (existing) {
+          existing.gridRows.push(row);
+          return;
+        }
+        const formVals = row && typeof row === 'object' ? { ...row } : {};
+        itemsMap.set(key, { formVals, gridRows: [row] });
+      });
+      return { formRows: Array.from(itemsMap.values()) };
     },
-    [buildPrintPayloadFromRow],
+    [footerFields, formConfig?.signatureFields, headerFields, normalizeSearchValue],
   );
 
   const openPrintModalForRows = useCallback(
@@ -6861,7 +6896,51 @@ const TableManager = forwardRef(function TableManager({
               '</tr>',
           )
           .join('');
-        return `<table class="print-main-table"><thead><tr>${header}</tr></thead><tbody>${body}</tbody></table>`;
+        const sumColumns = used.filter(
+          (c) =>
+            c === 'TotalCur' ||
+            c === 'TotalAmt' ||
+            totalCurrencySet.has(c) ||
+            totalAmountSet.has(c),
+        );
+        const sums = {};
+        gridRows.forEach((row) => {
+          sumColumns.forEach((col) => {
+            const raw = row?.[col];
+            const parsed = Number(String(raw ?? 0).replace(',', '.'));
+            if (Number.isFinite(parsed)) {
+              sums[col] = (sums[col] || 0) + parsed;
+            }
+          });
+        });
+        const totalRow = [
+          '<tr>',
+          `<td><strong>НИЙТ</strong></td>`,
+          ...used.slice(1).map((col) => {
+            if (sumColumns.includes(col)) {
+              const value = sums[col] || 0;
+              const formatted =
+                col === 'TotalCur' || totalCurrencySet.has(col)
+                  ? currencyFmt.format(value)
+                  : value;
+              return `<td><strong>${formatted}</strong></td>`;
+            }
+            return '<td></td>';
+          }),
+          '</tr>',
+        ].join('');
+        const countRow =
+          used.length === 1
+            ? `<tr><td><strong>мөрийн тоо: ${gridRows.length}</strong></td></tr>`
+            : [
+                '<tr>',
+                `<td><strong>мөрийн тоо</strong></td>`,
+                `<td><strong>${gridRows.length}</strong></td>`,
+                ...used.slice(2).map(() => '<td></td>'),
+                '</tr>',
+              ].join('');
+        const footer = `<tfoot>${totalRow}${countRow}</tfoot>`;
+        return `<table class="print-main-table"><thead><tr>${header}</tr></thead><tbody>${body}</tbody>${footer}</table>`;
       };
 
       const signatureHtml = (cols, formVals) => {
@@ -6995,6 +7074,8 @@ const TableManager = forwardRef(function TableManager({
       relationOpts,
       refRows,
       selectedRowForPrint,
+      totalAmountSet,
+      totalCurrencySet,
       userSettings,
     ],
   );
