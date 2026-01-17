@@ -1575,6 +1575,15 @@ const TableManager = forwardRef(function TableManager({
   }, [typeFilter, formConfig, validCols]);
 
   useEffect(() => {
+    if (!formConfig?.transactionTypeField) {
+      cacheTemporaryFilter('', '');
+      return;
+    }
+    const normalizedTypeFilter = typeof typeFilter === 'string' ? typeFilter.trim() : typeFilter;
+    cacheTemporaryFilter(formConfig.transactionTypeField, normalizedTypeFilter);
+  }, [formConfig?.transactionTypeField, typeFilter]);
+
+  useEffect(() => {
     async function loadRequests() {
       if (!requestStatus) {
         setRequestIdSet(new Set());
