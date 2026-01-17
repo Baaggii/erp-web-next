@@ -6228,6 +6228,9 @@ export async function listTransactions({
             return;
           }
           const key = String(recordId);
+          if (!isActiveReportLockRow(lockRow)) {
+            return;
+          }
           const existing = lockMetadataMap.get(key);
           const resolved = prioritizeLockRow(existing, lockRow);
           lockMetadataMap.set(key, resolved || null);
@@ -6249,7 +6252,9 @@ export async function listTransactions({
         ? null
         : String(metadata.status).trim().toLowerCase() || null;
     const lockedFromMetadata =
-      normalizedStatus && lockStatusSet.has(normalizedStatus);
+      normalizedStatus &&
+      lockStatusSet.has(normalizedStatus) &&
+      isActiveReportLockRow(metadata);
     return {
       ...row,
       locked: Boolean(row?.locked) || Boolean(lockedFromMetadata),
@@ -6263,6 +6268,20 @@ const REPORT_TRANSACTION_LOCK_STATUS = {
   pending: 'pending',
   locked: 'locked',
 };
+
+function isActiveReportLockRow(row) {
+  if (!row || typeof row !== 'object') return false;
+  const status = row.status ? String(row.status).trim().toLowerCase() : '';
+  if (status === REPORT_TRANSACTION_LOCK_STATUS.locked) return true;
+  if (status !== REPORT_TRANSACTION_LOCK_STATUS.pending) return false;
+  const requestId = row.request_id ?? row.requestId;
+  if (requestId === undefined || requestId === null || requestId === '') {
+    return false;
+  }
+  const numeric = Number(requestId);
+  if (Number.isFinite(numeric)) return numeric > 0;
+  return true;
+}
 
 export async function lockTransactionsForReport(
   {
@@ -7811,6 +7830,7 @@ export async function getProcedureLockCandidates(
               const recordId = row?.record_id;
               if (recordId === undefined || recordId === null) return;
               const key = String(recordId);
+              if (!isActiveReportLockRow(row)) return;
               const existing = lockMap.get(key);
               const resolved = resolveLockMetadata(existing, row);
               lockMap.set(key, resolved);
@@ -7825,7 +7845,7 @@ export async function getProcedureLockCandidates(
         const recordId = String(candidate.recordId);
         const lockRow = lockMap.get(recordId) || null;
         const lockStatus = lockRow?.status || null;
-        const locked = statusOrder.includes(lockStatus);
+        const locked = Boolean(lockRow && isActiveReportLockRow(lockRow));
         const lockedBy =
           lockRow?.finalized_by ??
           lockRow?.status_changed_by ??
