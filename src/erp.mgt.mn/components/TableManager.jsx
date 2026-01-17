@@ -479,20 +479,36 @@ function isTruthyFlag(value) {
   return true;
 }
 
-function rowHasActiveLock(row) {
-  if (!row) return false;
-  const metadata = coalesce(row, 'lockMetadata', 'lock_metadata');
+function rowHasActiveLock(row, metadataOverride = null) {
+  if (!row && !metadataOverride) return false;
+  const metadata =
+    metadataOverride ?? coalesce(row, 'lockMetadata', 'lock_metadata');
+  const requestInfo = coalesce(metadata, 'request', 'latest_request');
+  const requestId =
+    coalesce(metadata, 'request_id', 'requestId') ??
+    coalesce(requestInfo, 'request_id', 'requestId', 'id') ??
+    coalesce(row, 'request_id', 'requestId');
+  const requestStatus = normalizeLockStatus(
+    coalesce(metadata, 'request_status', 'requestStatus') ??
+      coalesce(row, 'request_status', 'requestStatus'),
+  );
+  const hasRequestContext = Boolean(requestId || requestStatus);
   const statusCandidates = [
     metadata?.status,
+    metadata?.lock_status,
     coalesce(row, 'lockStatus', 'lock_status', 'requestStatus', 'request_status'),
   ];
   for (const candidate of statusCandidates) {
     const normalized = normalizeLockStatus(candidate);
-    if (normalized && ACTIVE_LOCK_STATUSES.has(normalized)) {
-      return true;
+    if (!normalized || !ACTIVE_LOCK_STATUSES.has(normalized)) {
+      continue;
     }
+    if (normalized === 'pending' && !hasRequestContext) {
+      continue;
+    }
+    return true;
   }
-  return Boolean(row.locked);
+  return Boolean(row?.locked);
 }
 
 function formatMetaDate(value) {
@@ -7898,7 +7914,7 @@ const TableManager = forwardRef(function TableManager({
             const ridKey =
               rid === undefined || rid === null ? null : String(rid);
             const lockInfo = ridKey ? lockMetadataById[ridKey] : null;
-            const locked = rowHasActiveLock(r);
+            const locked = rowHasActiveLock(r, lockInfo);
             const lockCreatedAt =
               formatMetaDate(
                 coalesce(lockInfo, 'created_at', 'createdAt', 'locked_at', 'lockedAt') ||
