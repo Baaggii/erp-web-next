@@ -4257,15 +4257,28 @@ const RowFormModal = function RowFormModal({
       return result.printPayload;
     }
     if (result.formVals || result.gridRows) {
-      return buildPrintPayload(
+      const payload = buildPrintPayload(
         Array.isArray(result.gridRows) ? result.gridRows : rowsOverride,
         result.formVals || null,
       );
+      if (result.isReceipt !== undefined) {
+        payload.isReceipt = result.isReceipt;
+      }
+      return payload;
     }
-    return buildPrintPayload(rowsOverride, result);
+    const payload = buildPrintPayload(rowsOverride, result);
+    if (result.isReceipt !== undefined) {
+      payload.isReceipt = result.isReceipt;
+    }
+    return payload;
   }
   function openPrintModal(payload) {
-    setPrintPayload(payload || buildPrintPayload());
+    const basePayload = payload || buildPrintPayload();
+    const normalizedPayload = {
+      ...basePayload,
+      isReceipt: basePayload?.isReceipt ?? posApiEnabled,
+    };
+    setPrintPayload(normalizedPayload);
     setPrintEmpSelected(true);
     setPrintCustSelected(false);
     setPrintCopies('1');
@@ -4280,13 +4293,14 @@ const RowFormModal = function RowFormModal({
     const modes = [];
     if (printEmpSelected) modes.push('emp');
     if (printCustSelected) modes.push('cust');
-    handlePrint(modes, payload, printCopies);
+    handlePrint(modes, payload, printCopies, { isReceipt: payload?.isReceipt });
     closePrintModal();
   }
 
-  function handlePrint(modes = [], payload = null, copiesValue = 1) {
+  function handlePrint(modes = [], payload = null, copiesValue = 1, options = {}) {
     if (!Array.isArray(modes) || modes.length === 0) return;
     const activePayload = payload || buildPrintPayload();
+    const isReceipt = Boolean(options?.isReceipt ?? activePayload?.isReceipt);
     const activeFormVals = activePayload.formVals || formVals;
     const activeGridRows = Array.isArray(activePayload.gridRows)
       ? activePayload.gridRows
@@ -4514,22 +4528,32 @@ const RowFormModal = function RowFormModal({
       if (!Number.isFinite(parsed)) return null;
       return parsed;
     };
-    const printMargin =
-      normalizePrintNumber(printConfig.printMargin ?? printConfig.margin) ??
-      normalizePrintNumber(printConfig.receiptMargin);
-    const printGap =
-      normalizePrintNumber(printConfig.printGap ?? printConfig.gap) ??
-      normalizePrintNumber(printConfig.receiptGap);
-    const printFontSize =
-      normalizePrintNumber(printConfig.printFontSize ?? printConfig.fontSize ?? printConfig.textSize) ??
-      normalizePrintNumber(printConfig.receiptFontSize);
-    const pageMargin = printMargin !== null ? `${printMargin}mm` : '1rem';
-    const fontSize = printFontSize !== null ? `${printFontSize}px` : 'smaller';
-    const gapSize = printGap !== null ? `${printGap}mm` : '0.75rem';
-    const groupSpacing = printGap !== null ? `${printGap}mm` : '1rem';
+    const receiptMargin = normalizePrintNumber(printConfig.receiptMargin);
+    const receiptGap = normalizePrintNumber(printConfig.receiptGap);
+    const receiptFontSize = normalizePrintNumber(printConfig.receiptFontSize);
+    const receiptWidth = normalizePrintNumber(printConfig.receiptWidth);
+    const receiptHeight = normalizePrintNumber(printConfig.receiptHeight);
+    const printMargin = normalizePrintNumber(printConfig.printMargin ?? printConfig.margin);
+    const printGap = normalizePrintNumber(printConfig.printGap ?? printConfig.gap);
+    const printFontSize = normalizePrintNumber(
+      printConfig.printFontSize ?? printConfig.fontSize ?? printConfig.textSize,
+    );
+    const pageMarginValue = isReceipt ? receiptMargin : printMargin;
+    const fontSizeValue = isReceipt ? receiptFontSize : printFontSize;
+    const gapValue = isReceipt ? receiptGap : printGap;
+    const pageMargin = pageMarginValue !== null ? `${pageMarginValue}mm` : isReceipt ? '0' : '1rem';
+    const fontSize = fontSizeValue !== null ? `${fontSizeValue}px` : isReceipt ? 'inherit' : 'smaller';
+    const gapSize = gapValue !== null ? `${gapValue}mm` : '0.75rem';
+    const groupSpacing = gapValue !== null ? `${gapValue}mm` : '1rem';
+    const pageWidth = receiptWidth ? `${receiptWidth}mm` : 'auto';
+    const pageHeight = receiptHeight ? `${receiptHeight}mm` : 'auto';
+    const pageSize =
+      isReceipt && receiptWidth && receiptHeight ? `${pageWidth} ${pageHeight}` : 'auto';
+    const sheetWidthRule =
+      isReceipt && receiptWidth ? `width:${pageWidth};` : 'max-width:100%;';
     let html = '<html><head><title>Print</title>';
     html +=
-      `<style>@page{size:auto;margin:${pageMargin};}@media print{body{margin:0;}.print-group{break-inside:avoid;page-break-inside:avoid;}}body{margin:0;} .print-sheet{font-size:${fontSize};max-width:100%;} .print-group{margin-bottom:${groupSpacing};} .print-copies{display:grid;grid-template-columns:1fr;gap:${gapSize};} .print-copies.print-copies-grid{grid-template-columns:repeat(2,minmax(0,1fr));} .print-item{break-inside:avoid;} table{width:100%;border-collapse:collapse;margin-bottom:1rem;table-layout:auto;} th,td{padding:4px;text-align:left;vertical-align:top;overflow-wrap:anywhere;word-break:break-word;white-space:normal;} .print-main-table th,.print-main-table td{border:1px solid #666;} h3{margin:0 0 4px 0;font-weight:600;}</style>`;
+      `<style>@page{size:${pageSize};margin:${pageMargin};}@media print{body{margin:0;}.print-group{break-inside:avoid;page-break-inside:avoid;}}body{margin:0;} .print-sheet{font-size:${fontSize};${sheetWidthRule}} .print-group{margin-bottom:${groupSpacing};} .print-copies{display:grid;grid-template-columns:1fr;gap:${gapSize};} .print-copies.print-copies-grid{grid-template-columns:repeat(2,minmax(0,1fr));} .print-item{break-inside:avoid;} table{width:100%;border-collapse:collapse;margin-bottom:1rem;table-layout:auto;} th,td{padding:4px;text-align:left;vertical-align:top;overflow-wrap:anywhere;word-break:break-word;white-space:normal;} .print-main-table th,.print-main-table td{border:1px solid #666;} h3{margin:0 0 4px 0;font-weight:600;}</style>`;
     html += `</head><body><div class="print-sheet">${sections}</div></body></html>`;
     if (userSettings?.printerId) {
       fetch(`${API_BASE}/print`, {
