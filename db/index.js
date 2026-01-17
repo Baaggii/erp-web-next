@@ -4845,38 +4845,6 @@ export async function deleteProcedure(name, { allowProtected = false } = {}) {
   await adminPool.query(`DROP PROCEDURE IF EXISTS \`${name}\``);
 }
 
-async function buildProcedureSqlFromInfoSchema(name, conn) {
-  const [routineRows] = await conn.query(
-    `SELECT ROUTINE_DEFINITION
-       FROM information_schema.ROUTINES
-      WHERE ROUTINE_SCHEMA = DATABASE()
-        AND ROUTINE_NAME = ?`,
-    [name],
-  );
-  const definition = routineRows?.[0]?.ROUTINE_DEFINITION;
-  if (!definition) return null;
-
-  const [paramRows] = await conn.query(
-    `SELECT PARAMETER_MODE, PARAMETER_NAME, DTD_IDENTIFIER
-       FROM information_schema.PARAMETERS
-      WHERE SPECIFIC_SCHEMA = DATABASE()
-        AND SPECIFIC_NAME = ?
-      ORDER BY ORDINAL_POSITION`,
-    [name],
-  );
-  const params = (paramRows || [])
-    .filter((p) => p.PARAMETER_NAME)
-    .map((p) => {
-      const mode = p.PARAMETER_MODE ? `${p.PARAMETER_MODE} ` : '';
-      const paramName = `\`${p.PARAMETER_NAME}\``;
-      const type = p.DTD_IDENTIFIER ? ` ${p.DTD_IDENTIFIER}` : '';
-      return `${mode}${paramName}${type}`.trim();
-    })
-    .join(', ');
-
-  return `CREATE PROCEDURE \`${name}\`(${params})\n${definition}`;
-}
-
 export async function getProcedureSql(name) {
   if (!name) return null;
   try {
@@ -4886,7 +4854,11 @@ export async function getProcedureSql(name) {
     if (text) return text;
   } catch {}
   try {
-    return await buildProcedureSqlFromInfoSchema(name, pool);
+    const [rows] = await pool.query(
+      `SELECT ROUTINE_DEFINITION FROM information_schema.ROUTINES WHERE ROUTINE_SCHEMA = DATABASE() AND ROUTINE_NAME = ?`,
+      [name],
+    );
+    return rows?.[0]?.ROUTINE_DEFINITION || null;
   } catch {
     return null;
   }
@@ -4901,7 +4873,11 @@ export async function getStoredProcedureSql(name) {
     if (text) return text;
   } catch {}
   try {
-    return await buildProcedureSqlFromInfoSchema(name, adminPool);
+    const [rows] = await pool.query(
+      `SELECT ROUTINE_DEFINITION FROM information_schema.ROUTINES WHERE ROUTINE_SCHEMA = DATABASE() AND ROUTINE_NAME = ?`,
+      [name],
+    );
+    return rows?.[0]?.ROUTINE_DEFINITION || null;
   } catch {
     return null;
   }
