@@ -70,6 +70,14 @@ router.post(
           outputWidthMm: req.body.outputWidthMm,
           outputHeightMm: req.body.outputHeightMm,
           keepAspectRatio: req.body.keepAspectRatio,
+          toolId: req.body.toolId,
+          toolDiameterOverrideMm: req.body.toolDiameterOverrideMm,
+          operations: req.body.operations,
+          feedRateXY: req.body.feedRateXY,
+          feedRateZ: req.body.feedRateZ,
+          maxStepDownMm: req.body.maxStepDownMm,
+          stepOverPercent: req.body.stepOverPercent,
+          safeHeightMm: req.body.safeHeightMm,
         },
       });
 

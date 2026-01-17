@@ -13,7 +13,46 @@ const outputOptions = [
   { value: 'dxf', label: 'DXF' },
 ];
 
-const supportedExtensions = ['.png', '.jpg', '.jpeg', '.svg', '.dxf'];
+const toolLibrary = [
+  {
+    id: 'flat-3',
+    name: 'Flat Endmill 3mm',
+    type: 'flat',
+    diameterMm: 3,
+    maxDepthMm: 6,
+  },
+  {
+    id: 'flat-6',
+    name: 'Flat Endmill 6mm',
+    type: 'flat',
+    diameterMm: 6,
+    maxDepthMm: 10,
+  },
+  {
+    id: 'ball-3',
+    name: 'Ball Nose 3mm',
+    type: 'ball',
+    diameterMm: 3,
+    maxDepthMm: 6,
+  },
+  {
+    id: 'ball-6',
+    name: 'Ball Nose 6mm',
+    type: 'ball',
+    diameterMm: 6,
+    maxDepthMm: 10,
+  },
+  {
+    id: 'vbit-60',
+    name: 'V-Bit 60°',
+    type: 'vbit',
+    diameterMm: 6,
+    angleDeg: 60,
+    maxDepthMm: 6,
+  },
+];
+
+const supportedExtensions = ['.png', '.jpg', '.jpeg', '.svg', '.dxf', '.stl'];
 const supportedMimeTypes = new Set([
   'image/png',
   'image/jpeg',
@@ -24,6 +63,9 @@ const supportedMimeTypes = new Set([
   'application/dxf',
   'application/vnd.dxf',
   'image/vnd.dxf',
+  'model/stl',
+  'application/sla',
+  'application/vnd.ms-pki.stl',
 ]);
 const woodSurfaceOptions = [
   {
@@ -59,6 +101,14 @@ const defaultMaterialSize = {
   thickness: 18,
 };
 
+const defaultCamParams = {
+  feedRateXY: 800,
+  feedRateZ: 300,
+  maxStepDownMm: 1.5,
+  stepOverPercent: 40,
+  safeHeightMm: 5,
+};
+
 function isSupportedFile(file) {
   if (!file) return false;
   if (supportedMimeTypes.has(file.type)) return true;
@@ -82,6 +132,11 @@ function formatDimension(value) {
   if (!Number.isFinite(value)) return '';
   if (Number.isInteger(value)) return String(value);
   return value.toFixed(2).replace(/\.00$/, '');
+}
+
+function getToolStrokeWidth(diameterMm) {
+  if (!Number.isFinite(diameterMm)) return 0.8;
+  return Math.max(0.6, diameterMm * 0.35);
 }
 
 function parseViewBox(viewBox) {
@@ -298,6 +353,70 @@ function drawReliefPreview(ctx, width, height, viewBox, polylines, mode) {
   ctx.strokeRect(rectX, rectY, rectWidth, rectHeight);
 }
 
+function drawHeightFieldSurface(ctx, width, height, viewBox, heightField, meta, options) {
+  if (!viewBox || !heightField || !meta) return;
+  const { cols, rows } = meta;
+  if (!cols || !rows) return;
+  ctx.clearRect(0, 0, width, height);
+
+  const scale = Math.min(width / viewBox.width, height / viewBox.height);
+  const offsetX = (width - viewBox.width * scale) / 2 - viewBox.minX * scale;
+  const offsetY = (height - viewBox.height * scale) / 2 - viewBox.minY * scale;
+  const rectX = viewBox.minX * scale + offsetX;
+  const rectY = viewBox.minY * scale + offsetY;
+  const rectWidth = viewBox.width * scale;
+  const rectHeight = viewBox.height * scale;
+
+  const cellWidth = rectWidth / cols;
+  const cellHeight = rectHeight / rows;
+  const baseTexture = options?.texture;
+  if (baseTexture) {
+    const pattern = ctx.createPattern(baseTexture, 'repeat');
+    if (pattern) {
+      ctx.fillStyle = pattern;
+      ctx.fillRect(0, 0, width, height);
+    }
+  } else {
+    ctx.fillStyle = createWoodGradient(ctx, width, height, options?.surface || 'oak');
+    ctx.fillRect(0, 0, width, height);
+  }
+
+  const light = { x: -0.4, y: -0.6, z: 1 };
+  const lightLen = Math.hypot(light.x, light.y, light.z);
+  const lx = light.x / lightLen;
+  const ly = light.y / lightLen;
+  const lz = light.z / lightLen;
+  const maxHeight = options?.materialThicknessMm
+    ? Number(options.materialThicknessMm)
+    : heightField.reduce((max, row) => Math.max(max, ...row), 0);
+
+  for (let y = 1; y < rows - 1; y += 1) {
+    for (let x = 1; x < cols - 1; x += 1) {
+      const hL = heightField[y][x - 1];
+      const hR = heightField[y][x + 1];
+      const hU = heightField[y - 1][x];
+      const hD = heightField[y + 1][x];
+      const dx = (hL - hR) * 0.5;
+      const dy = (hU - hD) * 0.5;
+      const dz = 1;
+      const len = Math.hypot(dx, dy, dz) || 1;
+      const nx = dx / len;
+      const ny = dy / len;
+      const nz = dz / len;
+      const shade = Math.max(0, nx * lx + ny * ly + nz * lz);
+      const depth = heightField[y][x];
+      const depthShade = Math.min(0.6, (1 - depth / maxHeight) * 0.8);
+      const intensity = 0.4 + shade * 0.6 + depthShade;
+      ctx.fillStyle = `rgba(40, 28, 18, ${0.35 - intensity * 0.25})`;
+      ctx.fillRect(rectX + x * cellWidth, rectY + y * cellHeight, cellWidth, cellHeight);
+    }
+  }
+
+  ctx.strokeStyle = 'rgba(15, 23, 42, 0.35)';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(rectX, rectY, rectWidth, rectHeight);
+}
+
 function loadWoodTexture(url) {
   return new Promise((resolve, reject) => {
     if (!url) {
@@ -340,6 +459,10 @@ function CncProcessingPage() {
   const [file, setFile] = useState(null);
   const [processingType, setProcessingType] = useState(processingOptions[0].value);
   const [outputFormat, setOutputFormat] = useState(outputOptions[0].value);
+  const [toolId, setToolId] = useState('');
+  const [toolDiameterOverrideEnabled, setToolDiameterOverrideEnabled] = useState(false);
+  const [toolDiameterOverrideMm, setToolDiameterOverrideMm] = useState('');
+  const [operations, setOperations] = useState([]);
   const [status, setStatus] = useState('idle');
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState('');
@@ -362,8 +485,18 @@ function CncProcessingPage() {
   const [outputWidthMm, setOutputWidthMm] = useState(String(defaultMaterialSize.width));
   const [outputHeightMm, setOutputHeightMm] = useState(String(defaultMaterialSize.height));
   const [keepAspectRatio, setKeepAspectRatio] = useState(true);
+  const [feedRateXY, setFeedRateXY] = useState(String(defaultCamParams.feedRateXY));
+  const [feedRateZ, setFeedRateZ] = useState(String(defaultCamParams.feedRateZ));
+  const [maxStepDownMm, setMaxStepDownMm] = useState(
+    String(defaultCamParams.maxStepDownMm),
+  );
+  const [stepOverPercent, setStepOverPercent] = useState(
+    String(defaultCamParams.stepOverPercent),
+  );
+  const [safeHeightMm, setSafeHeightMm] = useState(String(defaultCamParams.safeHeightMm));
   const stepId = useRef(0);
   const logId = useRef(0);
+  const operationId = useRef(0);
   const submitLock = useRef(false);
   const prevMaterialSize = useRef({
     width: defaultMaterialSize.width,
@@ -377,6 +510,13 @@ function CncProcessingPage() {
   const modalModelCanvasRef = useRef(null);
   const toolpathClipId = useId();
   const toolpathModalClipId = useId();
+  const selectedTool = useMemo(
+    () => toolLibrary.find((tool) => tool.id === toolId) || null,
+    [toolId],
+  );
+  const effectiveToolDiameter = toolDiameterOverrideEnabled
+    ? Number(toolDiameterOverrideMm)
+    : selectedTool?.diameterMm;
   const viewBox = useMemo(() => parseViewBox(preview?.viewBox), [preview?.viewBox]);
   const carvedPolylines = useMemo(() => {
     if (!preview?.polylines?.length) return [];
@@ -392,6 +532,16 @@ function CncProcessingPage() {
   const showHeightmapPreview =
     carvedPolylines.length > 0 && activeConversionType === '2_5d_heightmap';
   const showModelPreview = carvedPolylines.length > 0 && activeConversionType === '3d_model';
+  const previewOperations = preview?.operations?.length
+    ? preview.operations
+    : [
+        {
+          id: 'single',
+          polylines: preview?.polylines || [],
+          color: '#0f172a',
+          toolDiameterMm: preview?.tool?.diameterMm,
+        },
+      ];
 
   const addStep = (label, status, details = '') => {
     stepId.current += 1;
@@ -419,6 +569,29 @@ function CncProcessingPage() {
     ]);
   };
 
+  const addOperation = () => {
+    operationId.current += 1;
+    setOperations((prev) => [
+      ...prev,
+      {
+        id: `op-${operationId.current}`,
+        toolId: toolId || toolLibrary[0]?.id || '',
+        strategy: 'outline',
+        geometrySubset: '',
+      },
+    ]);
+  };
+
+  const updateOperation = (id, updates) => {
+    setOperations((prev) =>
+      prev.map((operation) => (operation.id === id ? { ...operation, ...updates } : operation)),
+    );
+  };
+
+  const removeOperation = (id) => {
+    setOperations((prev) => prev.filter((operation) => operation.id !== id));
+  };
+
   useEffect(() => {
     addStep('Page loaded', 'success');
   }, []);
@@ -443,6 +616,16 @@ function CncProcessingPage() {
     }
     prevMaterialSize.current = { width, height };
   }, [materialWidthMm, materialHeightMm, outputWidthMm, outputHeightMm]);
+
+  useEffect(() => {
+    if (!toolDiameterOverrideEnabled) {
+      setToolDiameterOverrideMm('');
+      return;
+    }
+    if (!toolDiameterOverrideMm && selectedTool?.diameterMm) {
+      setToolDiameterOverrideMm(String(selectedTool.diameterMm));
+    }
+  }, [toolDiameterOverrideEnabled, selectedTool, toolDiameterOverrideMm]);
 
   useEffect(() => {
     let isActive = true;
@@ -512,6 +695,15 @@ function CncProcessingPage() {
       canvas.width = targetWidth;
       canvas.height = targetHeight;
 
+      if (preview?.heightField && preview?.heightFieldMeta) {
+        drawHeightFieldSurface(ctx, targetWidth, targetHeight, viewBox, preview.heightField, preview.heightFieldMeta, {
+          texture,
+          surface: woodSurface,
+          materialThicknessMm: preview.materialThicknessMm,
+        });
+        return;
+      }
+
       drawWoodPattern(ctx, targetWidth, targetHeight, woodSurface, texture);
 
       const scale = Math.min(
@@ -565,7 +757,14 @@ function CncProcessingPage() {
       ctx.lineWidth = 1.2;
       ctx.strokeRect(rectX, rectY, rectWidth, rectHeight);
     });
-  }, [carvedPolylines, showWoodPreview, viewBox, woodSurface, woodTextureRevision]);
+  }, [
+    carvedPolylines,
+    preview,
+    showWoodPreview,
+    viewBox,
+    woodSurface,
+    woodTextureRevision,
+  ]);
 
   useEffect(() => {
     if ((!showHeightmapPreview && !showModelPreview) || !carvedPolylines.length) return;
@@ -588,6 +787,15 @@ function CncProcessingPage() {
       canvas.width = targetWidth;
       canvas.height = targetHeight;
 
+      if (preview?.heightField && preview?.heightFieldMeta) {
+        drawHeightFieldSurface(ctx, targetWidth, targetHeight, viewBox, preview.heightField, preview.heightFieldMeta, {
+          surface: woodSurface,
+          texture: woodTextures[woodSurface],
+          materialThicknessMm: preview.materialThicknessMm,
+        });
+        return;
+      }
+
       drawReliefPreview(ctx, targetWidth, targetHeight, viewBox, carvedPolylines, mode);
     });
   }, [
@@ -596,6 +804,9 @@ function CncProcessingPage() {
     showModelPreview,
     viewBox,
     resultConversionType,
+    preview,
+    woodSurface,
+    woodTextures,
   ]);
 
   const selectedFileLabel = useMemo(
@@ -715,7 +926,7 @@ function CncProcessingPage() {
       return;
     }
     if (!isSupportedFile(file)) {
-      const message = 'Unsupported file type. Please upload a PNG, JPG, SVG, or DXF file.';
+      const message = 'Unsupported file type. Please upload a PNG, JPG, SVG, DXF, or STL file.';
       setError(message);
       addToast(message, 'error');
       addStep('Validation failed', 'fail', message);
@@ -733,6 +944,17 @@ function CncProcessingPage() {
     setStatus('uploading');
     setProgress(10);
 
+    const operationsPayload = operations.map((operation) => ({
+      id: operation.id,
+      toolId: operation.toolId,
+      strategy: operation.strategy,
+      geometrySubset: operation.geometrySubset
+        .split(',')
+        .map((value) => Number(value.trim()))
+        .filter((value) => Number.isFinite(value) && value > 0)
+        .map((value) => value - 1),
+    }));
+
     const formData = new FormData();
     formData.append('file', file);
     formData.append('conversionType', processingType);
@@ -743,6 +965,20 @@ function CncProcessingPage() {
     formData.append('outputWidthMm', outputWidthMm);
     formData.append('outputHeightMm', outputHeightMm);
     formData.append('keepAspectRatio', keepAspectRatio);
+    if (toolId) {
+      formData.append('toolId', toolId);
+    }
+    if (toolDiameterOverrideEnabled && toolDiameterOverrideMm) {
+      formData.append('toolDiameterOverrideMm', toolDiameterOverrideMm);
+    }
+    if (operationsPayload.length) {
+      formData.append('operations', JSON.stringify(operationsPayload));
+    }
+    formData.append('feedRateXY', feedRateXY);
+    formData.append('feedRateZ', feedRateZ);
+    formData.append('maxStepDownMm', maxStepDownMm);
+    formData.append('stepOverPercent', stepOverPercent);
+    formData.append('safeHeightMm', safeHeightMm);
 
     try {
       addStep('Requesting CSRF token', 'success');
@@ -799,6 +1035,14 @@ function CncProcessingPage() {
           outputWidthMm,
           outputHeightMm,
           keepAspectRatio,
+          toolId,
+          toolDiameterOverrideMm: toolDiameterOverrideEnabled ? toolDiameterOverrideMm : undefined,
+          operations: operationsPayload.length ? operationsPayload : undefined,
+          feedRateXY,
+          feedRateZ,
+          maxStepDownMm,
+          stepOverPercent,
+          safeHeightMm,
         },
       };
       const res = await fetch(conversionRequest.url, {
@@ -835,7 +1079,7 @@ function CncProcessingPage() {
           message = 'CNC processing failed on server. Check backend logs.';
         }
         if (res.status === 415) {
-          message = 'Unsupported file type. Please upload a PNG, JPG, SVG, or DXF file.';
+          message = 'Unsupported file type. Please upload a PNG, JPG, SVG, DXF, or STL file.';
         }
         addStep('CNC processing failed', 'fail', message);
         throw new Error(message);
@@ -886,7 +1130,7 @@ function CncProcessingPage() {
       return 'Select a PNG, JPG, SVG, or DXF file to enable conversion.';
     }
     if (!isSupportedFile(file)) {
-      return 'Unsupported file type. Please upload a PNG, JPG, SVG, or DXF file.';
+      return 'Unsupported file type. Please upload a PNG, JPG, SVG, DXF, or STL file.';
     }
     return '';
   }, [file, isBusy]);
@@ -922,7 +1166,7 @@ function CncProcessingPage() {
               <input
                 id="cnc-file"
                 type="file"
-                accept="image/*,.svg,.dxf"
+                accept="image/*,.svg,.dxf,.stl"
                 onChange={handleFileChange}
                 className="text-sm text-slate-700 file:mr-4 file:rounded-md file:border-0 file:bg-slate-900 file:px-3 file:py-2 file:text-sm file:font-medium file:text-white hover:file:bg-slate-700"
               />
@@ -985,6 +1229,72 @@ function CncProcessingPage() {
                   </option>
                 ))}
               </select>
+          </div>
+        </div>
+
+          <div className="rounded-md border border-slate-200 bg-slate-50 p-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <p className="text-sm font-medium text-slate-800">Tool selection</p>
+                <p className="text-xs text-slate-500">
+                  Choose a cutter to control toolpath width, offsets, and carving behavior.
+                </p>
+              </div>
+              <span className="text-[11px] text-slate-500">
+                {selectedTool ? selectedTool.type.toUpperCase() : 'LEGACY'}
+              </span>
+            </div>
+            <div className="mt-4 grid gap-4 md:grid-cols-3">
+              <label className="text-xs text-slate-600">
+                Tool
+                <select
+                  value={toolId}
+                  onChange={(event) => setToolId(event.target.value)}
+                  className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700"
+                >
+                  <option value="">Legacy (no tool offset)</option>
+                  {toolLibrary.map((tool) => (
+                    <option key={tool.id} value={tool.id}>
+                      {tool.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="text-xs text-slate-600">
+                Diameter (mm)
+                <input
+                  type="number"
+                  min="0.1"
+                  step="0.1"
+                  value={
+                    toolDiameterOverrideEnabled
+                      ? toolDiameterOverrideMm
+                      : effectiveToolDiameter || ''
+                  }
+                  readOnly={!toolDiameterOverrideEnabled}
+                  onChange={(event) => setToolDiameterOverrideMm(event.target.value)}
+                  className={`mt-1 w-full rounded-md border px-3 py-2 text-sm ${
+                    toolDiameterOverrideEnabled
+                      ? 'border-slate-300 text-slate-700'
+                      : 'border-slate-200 bg-slate-100 text-slate-500'
+                  }`}
+                />
+              </label>
+              <div className="space-y-2 text-xs text-slate-600">
+                <span className="font-medium text-slate-700">Advanced override</span>
+                <label className="flex items-center gap-2 text-xs text-slate-600">
+                  <input
+                    type="checkbox"
+                    checked={toolDiameterOverrideEnabled}
+                    onChange={(event) => setToolDiameterOverrideEnabled(event.target.checked)}
+                    className="h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-slate-400"
+                  />
+                  Override diameter
+                </label>
+                <p className="text-[11px] text-slate-500">
+                  Use a custom diameter if your cutter differs from the preset.
+                </p>
+              </div>
             </div>
           </div>
 
@@ -1081,6 +1391,159 @@ function CncProcessingPage() {
             )}
           </div>
 
+          <div className="rounded-md border border-slate-200 bg-slate-50 p-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <p className="text-sm font-medium text-slate-800">CAM parameters</p>
+                <p className="text-xs text-slate-500">
+                  Control feed rates and step-down to prevent tool overload.
+                </p>
+              </div>
+            </div>
+            <div className="mt-4 grid gap-4 md:grid-cols-3">
+              <label className="text-xs text-slate-600">
+                Feed rate XY (mm/min)
+                <input
+                  type="number"
+                  min="1"
+                  step="1"
+                  value={feedRateXY}
+                  onChange={(event) => setFeedRateXY(event.target.value)}
+                  className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-700"
+                />
+              </label>
+              <label className="text-xs text-slate-600">
+                Feed rate Z (mm/min)
+                <input
+                  type="number"
+                  min="1"
+                  step="1"
+                  value={feedRateZ}
+                  onChange={(event) => setFeedRateZ(event.target.value)}
+                  className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-700"
+                />
+              </label>
+              <label className="text-xs text-slate-600">
+                Safe height (mm)
+                <input
+                  type="number"
+                  min="0.1"
+                  step="0.1"
+                  value={safeHeightMm}
+                  onChange={(event) => setSafeHeightMm(event.target.value)}
+                  className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-700"
+                />
+              </label>
+              <label className="text-xs text-slate-600">
+                Max step-down (mm)
+                <input
+                  type="number"
+                  min="0.1"
+                  step="0.1"
+                  value={maxStepDownMm}
+                  onChange={(event) => setMaxStepDownMm(event.target.value)}
+                  className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-700"
+                />
+              </label>
+              <label className="text-xs text-slate-600">
+                Stepover (%)
+                <input
+                  type="number"
+                  min="1"
+                  step="1"
+                  value={stepOverPercent}
+                  onChange={(event) => setStepOverPercent(event.target.value)}
+                  className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-700"
+                />
+              </label>
+            </div>
+          </div>
+
+          <div className="rounded-md border border-slate-200 bg-slate-50 p-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <p className="text-sm font-medium text-slate-800">Multi-tool operations</p>
+                <p className="text-xs text-slate-500">
+                  Assign tools to geometry groups. Use comma-separated polyline indices from the
+                  preview (1-based).
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={addOperation}
+                className="rounded-md border border-slate-300 bg-white px-3 py-1 text-xs text-slate-700 hover:border-slate-400"
+              >
+                Add operation
+              </button>
+            </div>
+            {operations.length === 0 ? (
+              <p className="mt-3 text-xs text-slate-500">
+                No operations defined. The selected tool will be used for the entire job.
+              </p>
+            ) : (
+              <div className="mt-4 space-y-3">
+                {operations.map((operation) => (
+                  <div
+                    key={operation.id}
+                    className="rounded-md border border-slate-200 bg-white p-3"
+                  >
+                    <div className="grid gap-3 md:grid-cols-4">
+                      <label className="text-xs text-slate-600">
+                        Tool
+                        <select
+                          value={operation.toolId}
+                          onChange={(event) =>
+                            updateOperation(operation.id, { toolId: event.target.value })
+                          }
+                          className="mt-1 w-full rounded-md border border-slate-300 bg-white px-2 py-2 text-sm text-slate-700"
+                        >
+                          {toolLibrary.map((tool) => (
+                            <option key={tool.id} value={tool.id}>
+                              {tool.name}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label className="text-xs text-slate-600">
+                        Strategy
+                        <input
+                          type="text"
+                          value={operation.strategy}
+                          onChange={(event) =>
+                            updateOperation(operation.id, { strategy: event.target.value })
+                          }
+                          className="mt-1 w-full rounded-md border border-slate-300 px-2 py-2 text-sm text-slate-700"
+                        />
+                      </label>
+                      <label className="text-xs text-slate-600 md:col-span-2">
+                        Geometry subset (indices)
+                        <input
+                          type="text"
+                          placeholder="e.g. 1, 2, 5"
+                          value={operation.geometrySubset}
+                          onChange={(event) =>
+                            updateOperation(operation.id, { geometrySubset: event.target.value })
+                          }
+                          className="mt-1 w-full rounded-md border border-slate-300 px-2 py-2 text-sm text-slate-700"
+                        />
+                      </label>
+                    </div>
+                    <div className="mt-2 flex items-center justify-between text-xs text-slate-500">
+                      <span>ID: {operation.id}</span>
+                      <button
+                        type="button"
+                        onClick={() => removeOperation(operation.id)}
+                        className="text-rose-600 hover:text-rose-700"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
           {isBusy && (
             <div className="space-y-2">
               <div className="flex items-center justify-between text-xs text-slate-500">
@@ -1134,6 +1597,19 @@ function CncProcessingPage() {
               </label>
             )}
           </div>
+          {previewOperations.length > 1 && (
+            <div className="mt-3 flex flex-wrap items-center gap-3 text-[11px] text-slate-500">
+              {previewOperations.map((operation) => (
+                <div key={operation.id} className="flex items-center gap-2">
+                  <span
+                    className="inline-flex h-2.5 w-2.5 rounded-full"
+                    style={{ backgroundColor: operation.color || '#0f172a' }}
+                  />
+                  <span>{operation.toolName || 'Tool'} ({operation.strategy || 'outline'})</span>
+                </div>
+              ))}
+            </div>
+          )}
           <div className="mt-4 grid gap-4 md:grid-cols-2">
             {activeConversionType === '2d_outline' && (
               <div className="rounded-md border border-slate-200 bg-slate-50 p-3">
@@ -1177,27 +1653,29 @@ function CncProcessingPage() {
                         />
                       )}
                       <g clipPath={viewBox ? `url(#${toolpathClipId})` : undefined}>
-                        {preview.polylines.map((polyline, index) => (
-                          <polyline
-                            key={`${index + 1}`}
-                            points={polyline.map((point) => `${point.x},${point.y}`).join(' ')}
-                            fill="none"
-                            stroke="#0f172a"
-                            strokeWidth="0.7"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            pathLength="1"
-                            style={
-                              animatePreview
-                                ? {
-                                    strokeDasharray: 1,
-                                    strokeDashoffset: 1,
-                                    animation: 'cnc-draw 3s ease forwards',
-                                  }
-                                : undefined
-                            }
-                          />
-                        ))}
+                        {previewOperations.map((operation) =>
+                          operation.polylines.map((polyline, index) => (
+                            <polyline
+                              key={`${operation.id}-${index + 1}`}
+                              points={polyline.map((point) => `${point.x},${point.y}`).join(' ')}
+                              fill="none"
+                              stroke={operation.color || '#0f172a'}
+                              strokeWidth={getToolStrokeWidth(operation.toolDiameterMm)}
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              pathLength="1"
+                              style={
+                                animatePreview
+                                  ? {
+                                      strokeDasharray: 1,
+                                      strokeDashoffset: 1,
+                                      animation: 'cnc-draw 3s ease forwards',
+                                    }
+                                  : undefined
+                              }
+                            />
+                          )),
+                        )}
                       </g>
                     </svg>
                   </div>
@@ -1314,7 +1792,7 @@ function CncProcessingPage() {
               {isBusy ? 'Processing…' : 'Start conversion'}
             </button>
             <p className="text-xs text-slate-500">
-              Supported formats: PNG, JPG, SVG, and DXF files.
+              Supported formats: PNG, JPG, SVG, DXF, and STL files.
             </p>
           </div>
         </form>
@@ -1446,17 +1924,19 @@ function CncProcessingPage() {
                     />
                   )}
                   <g clipPath={viewBox ? `url(#${toolpathModalClipId})` : undefined}>
-                    {preview?.polylines?.map((polyline, index) => (
-                      <polyline
-                        key={`${index + 1}`}
-                        points={polyline.map((point) => `${point.x},${point.y}`).join(' ')}
-                        fill="none"
-                        stroke="#0f172a"
-                        strokeWidth="0.9"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      />
-                    ))}
+                    {previewOperations.map((operation) =>
+                      operation.polylines.map((polyline, index) => (
+                        <polyline
+                          key={`${operation.id}-${index + 1}`}
+                          points={polyline.map((point) => `${point.x},${point.y}`).join(' ')}
+                          fill="none"
+                          stroke={operation.color || '#0f172a'}
+                          strokeWidth={getToolStrokeWidth(operation.toolDiameterMm)}
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                      )),
+                    )}
                   </g>
                 </svg>
               )}
