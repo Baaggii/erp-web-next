@@ -75,6 +75,7 @@ router.post(
           operations: req.body.operations,
           feedRateXY: req.body.feedRateXY,
           feedRateZ: req.body.feedRateZ,
+          spindleSpeed: req.body.spindleSpeed,
           maxStepDownMm: req.body.maxStepDownMm,
           stepOverPercent: req.body.stepOverPercent,
           safeHeightMm: req.body.safeHeightMm,

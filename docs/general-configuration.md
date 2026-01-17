@@ -85,12 +85,15 @@ The settings can be edited in the **General Configuration** screen
 ## CNC Processing API
 
 The CNC conversion endpoint lives at `POST /api/cnc_processing` and accepts
-multipart form data with a `file` upload (PNG, JPG, SVG, DXF). Optional
+multipart form data with a `file` upload (PNG, JPG, SVG, DXF, STL). Optional
 parameters such as `outputFormat` (`gcode` or `dxf`), `conversionType`,
-`step`, `feedRate`, `cutDepth`, `safeHeight`, and `plungeRate` let developers
-tune vectorization and toolpath generation. The response includes the output
-`fileName`, `downloadUrl`, and `processingTimeMs`. Use
-`GET /api/cnc_processing/download/:id` to download the generated file.
+material dimensions (`materialWidthMm`, `materialHeightMm`, `materialThicknessMm`),
+output size (`outputWidthMm`, `outputHeightMm`, `keepAspectRatio`), tool selection
+(`toolId`, `toolDiameterOverrideMm`, `operations`), and CAM settings
+(`feedRateXY`, `feedRateZ`, `spindleSpeed`, `maxStepDownMm`, `stepOverPercent`,
+`safeHeightMm`) let developers tune vectorization and toolpath generation. The
+response includes the output `fileName`, `downloadUrl`, `material`, and `output`
+metadata. Use `GET /api/cnc_processing/download/:id` to download the generated file.
 Requests are rate limited (20 requests per 15 minutes per user) and require the
 developer permission key `cnc_processing`.
 
@@ -108,7 +111,16 @@ curl -X POST http://localhost:3000/api/cnc_processing \\
   -H "Authorization: Bearer <token>" \\
   -F "file=@sample.png" \\
   -F "conversionType=2d_outline" \\
-  -F "outputFormat=gcode"
+  -F "outputFormat=gcode" \\
+  -F "materialWidthMm=300" \\
+  -F "materialHeightMm=200" \\
+  -F "materialThicknessMm=18" \\
+  -F "outputWidthMm=240" \\
+  -F "outputHeightMm=160" \\
+  -F "toolId=flat-6" \\
+  -F "feedRateXY=1100" \\
+  -F "feedRateZ=350" \\
+  -F "spindleSpeed=12000"
 ```
 
 **Example response**
@@ -117,9 +129,17 @@ curl -X POST http://localhost:3000/api/cnc_processing \\
 {
   "fileName": "sample.gcode",
   "downloadUrl": "http://localhost:3000/api/cnc_processing/download/abc123",
-  "processingTimeMs": 812,
   "outputFormat": "gcode",
-  "conversionType": "vectorize"
+  "conversionType": "2d_outline",
+  "material": {
+    "widthMm": 300,
+    "heightMm": 200,
+    "thicknessMm": 18
+  },
+  "output": {
+    "widthMm": 240,
+    "heightMm": 160
+  }
 }
 ```
 
@@ -128,7 +148,8 @@ curl -X POST http://localhost:3000/api/cnc_processing \\
 ```gcode
 G21
 G90
-G1 X0 Y0 F800
+M3 S12000
+G1 X0 Y0 F1100
 G1 X10 Y0
 M2
 ```

@@ -4,6 +4,7 @@ import os from 'os';
 import crypto from 'crypto';
 import potrace from 'potrace';
 import { svgPathProperties } from 'svg-path-properties';
+import toolLibrary from '../data/toolLibrary.json' assert { type: 'json' };
 
 const OUTPUT_DIR = path.join(os.tmpdir(), 'erp-cnc');
 const outputRegistry = new Map();
@@ -30,49 +31,10 @@ const ALLOWED_EXTENSIONS = new Set([
   '.stl',
 ]);
 
-const TOOL_LIBRARY = [
-  {
-    id: 'flat-3',
-    name: 'Flat Endmill 3mm',
-    type: 'flat',
-    diameterMm: 3,
-    maxDepthMm: 6,
-    toolNumber: 1,
-  },
-  {
-    id: 'flat-6',
-    name: 'Flat Endmill 6mm',
-    type: 'flat',
-    diameterMm: 6,
-    maxDepthMm: 10,
-    toolNumber: 2,
-  },
-  {
-    id: 'ball-3',
-    name: 'Ball Nose 3mm',
-    type: 'ball',
-    diameterMm: 3,
-    maxDepthMm: 6,
-    toolNumber: 3,
-  },
-  {
-    id: 'ball-6',
-    name: 'Ball Nose 6mm',
-    type: 'ball',
-    diameterMm: 6,
-    maxDepthMm: 10,
-    toolNumber: 4,
-  },
-  {
-    id: 'vbit-60',
-    name: 'V-Bit 60°',
-    type: 'vbit',
-    diameterMm: 6,
-    angleDeg: 60,
-    maxDepthMm: 6,
-    toolNumber: 5,
-  },
-];
+const TOOL_LIBRARY = (toolLibrary || []).map((tool) => ({
+  ...tool,
+  type: tool.shape || tool.type || 'flat',
+}));
 
 const TOOL_COLORS = ['#2563eb', '#db2777', '#059669', '#f59e0b', '#7c3aed'];
 
@@ -292,6 +254,10 @@ function scalePolylines({
     polylines: scaled,
     scaledWidth,
     scaledHeight,
+    scaleX,
+    scaleY,
+    appliedScaleX,
+    appliedScaleY,
   };
 }
 
@@ -335,9 +301,13 @@ function resolveTool(options = {}) {
       id: 'legacy',
       name: 'Legacy toolpath',
       type: 'flat',
+      shape: 'flat',
       diameterMm: 0,
       maxDepthMm: Infinity,
       toolNumber: 0,
+      defaultFeedRateXY: 1200,
+      defaultFeedRateZ: 600,
+      defaultSpindleSpeed: 1000,
     };
   }
   const baseTool = getToolById(toolId);
@@ -350,6 +320,8 @@ function resolveTool(options = {}) {
   const diameterMm = overrideDiameter && overrideDiameter > 0 ? overrideDiameter : baseTool.diameterMm;
   return {
     ...baseTool,
+    type: baseTool.shape || baseTool.type || 'flat',
+    shape: baseTool.shape || baseTool.type || 'flat',
     diameterMm,
   };
 }
@@ -647,8 +619,6 @@ function simulateHeightField(operations, material, options) {
 }
 
 function generateGcode(operations, options) {
-  const feedRateXY = parseOptionalNumber(options.feedRateXY, 1200);
-  const feedRateZ = parseOptionalNumber(options.feedRateZ, 600);
   const safeHeight = parseOptionalNumber(options.safeHeightMm, options.safeHeight ?? 5);
   const cutDepth = parseOptionalNumber(options.cutDepthMm, options.cutDepth ?? -1);
   const maxStepDownMm = parseOptionalNumber(options.maxStepDownMm, 1.5);
@@ -658,15 +628,28 @@ function generateGcode(operations, options) {
   const maxX = Number.isFinite(materialWidthMm) ? materialWidthMm : Infinity;
   const maxY = Number.isFinite(materialHeightMm) ? materialHeightMm : Infinity;
 
-  const lines = ['G21', 'G90', `G0 Z${formatNumber(safeHeight)}`, 'M3 S1000'];
+  const lines = ['G21', 'G90', `G0 Z${formatNumber(safeHeight)}`];
 
   operations.forEach((operation, index) => {
     const tool = operation.tool;
+    const feedRateXY = parseOptionalNumber(
+      options.feedRateXY,
+      tool?.defaultFeedRateXY ?? 1200,
+    );
+    const feedRateZ = parseOptionalNumber(
+      options.feedRateZ,
+      tool?.defaultFeedRateZ ?? 600,
+    );
+    const spindleSpeed = parseOptionalNumber(
+      options.spindleSpeed,
+      tool?.defaultSpindleSpeed ?? 1000,
+    );
     const toolNumber = tool?.toolNumber ?? index + 1;
     if (toolNumber) {
       lines.push(`T${toolNumber} M6`);
       lines.push(`; Tool: ${tool?.name || 'Unknown'}`);
     }
+    lines.push(`M3 S${formatNumber(spindleSpeed)}`);
     const targetDepth = Math.min(
       Math.abs(cutDepth),
       materialThicknessMm || Math.abs(cutDepth),
@@ -754,13 +737,18 @@ function buildPreview(operations, tool, heightFieldData = null) {
     toolLibrary: TOOL_LIBRARY,
     tool: tool
       ? {
-          id: tool.id,
-          name: tool.name,
-          type: tool.type,
-          diameterMm: tool.diameterMm,
-          angleDeg: tool.angleDeg,
-          maxDepthMm: tool.maxDepthMm,
-        }
+      id: tool.id,
+      name: tool.name,
+      type: tool.type,
+      shape: tool.shape,
+      diameterMm: tool.diameterMm,
+      angleDeg: tool.angleDeg,
+      maxDepthMm: tool.maxDepthMm,
+      fluteLengthMm: tool.fluteLengthMm,
+      defaultFeedRateXY: tool.defaultFeedRateXY,
+      defaultFeedRateZ: tool.defaultFeedRateZ,
+      defaultSpindleSpeed: tool.defaultSpindleSpeed,
+    }
       : null,
     heightField: heightFieldData?.heightField || null,
     heightFieldMeta: heightFieldData
@@ -814,6 +802,11 @@ export async function processCncFile({
   let outputMime;
   let outputExtension;
   let preview = null;
+  let materialWidthMm = null;
+  let materialHeightMm = null;
+  let materialThicknessMm = null;
+  let scaledResult = null;
+  let scaleMeta = null;
 
   if (dxf && normalizedOutput === 'dxf') {
     outputContent = file.buffer;
@@ -821,9 +814,9 @@ export async function processCncFile({
     outputExtension = '.dxf';
   } else {
     const tool = resolveTool(options);
-    const materialWidthMm = parseDimensionValue(options.materialWidthMm, 'Material width');
-    const materialHeightMm = parseDimensionValue(options.materialHeightMm, 'Material height');
-    const materialThicknessMm = parseDimensionValue(
+    materialWidthMm = parseDimensionValue(options.materialWidthMm, 'Material width');
+    materialHeightMm = parseDimensionValue(options.materialHeightMm, 'Material height');
+    materialThicknessMm = parseDimensionValue(
       options.materialThicknessMm,
       'Material thickness',
     );
@@ -838,7 +831,6 @@ export async function processCncFile({
     }
 
     let scaledPolylines = [];
-    let scaledResult = null;
 
     if (stl) {
       const mesh = parseStl(file.buffer);
@@ -856,12 +848,21 @@ export async function processCncFile({
       }
       const scaleX = outputWidthMm / (meshBounds.maxX - meshBounds.minX);
       const scaleY = outputHeightMm / (meshBounds.maxY - meshBounds.minY);
-      const uniformScale = keepAspectRatio ? Math.min(scaleX, scaleY) : 1;
+      const uniformScale = Math.min(scaleX, scaleY);
+      const appliedScaleX = keepAspectRatio ? uniformScale : scaleX;
+      const appliedScaleY = keepAspectRatio ? uniformScale : scaleY;
+      const appliedScaleZ = keepAspectRatio ? uniformScale : Math.min(scaleX, scaleY);
+      scaleMeta = {
+        scaleX,
+        scaleY,
+        appliedScaleX,
+        appliedScaleY,
+      };
       scaledPolylines = toolpaths.map((polyline) =>
         polyline.map((point) => ({
-          x: clampValue((point.x - meshBounds.minX) * uniformScale, 0, materialWidthMm),
-          y: clampValue((point.y - meshBounds.minY) * uniformScale, 0, materialHeightMm),
-          z: -Math.max(0, (meshBounds.maxZ - point.z) * uniformScale),
+          x: clampValue((point.x - meshBounds.minX) * appliedScaleX, 0, materialWidthMm),
+          y: clampValue((point.y - meshBounds.minY) * appliedScaleY, 0, materialHeightMm),
+          z: -Math.max(0, (meshBounds.maxZ - point.z) * appliedScaleZ),
         })),
       );
       scaledResult = {
@@ -907,6 +908,12 @@ export async function processCncFile({
         keepAspectRatio,
       });
       scaledPolylines = scaledResult.polylines;
+      scaleMeta = {
+        scaleX: scaledResult.scaleX,
+        scaleY: scaledResult.scaleY,
+        appliedScaleX: scaledResult.appliedScaleX,
+        appliedScaleY: scaledResult.appliedScaleY,
+      };
     }
 
     const operations = buildOperations(scaledPolylines, options, tool).map((operation) => {
@@ -936,6 +943,7 @@ export async function processCncFile({
       preview.outputWidthMm = scaledResult?.scaledWidth || outputWidthMm;
       preview.outputHeightMm = scaledResult?.scaledHeight || outputHeightMm;
       preview.toolRadiusMm = tool.diameterMm / 2;
+      preview.scale = scaleMeta;
     }
 
     if (normalizedOutput === 'gcode') {
@@ -969,6 +977,20 @@ export async function processCncFile({
     createdAt: Date.now(),
     preview,
     conversionType,
+    material: Number.isFinite(materialWidthMm)
+      ? {
+          widthMm: materialWidthMm,
+          heightMm: materialHeightMm,
+          thicknessMm: materialThicknessMm,
+        }
+      : null,
+    output: scaledResult
+      ? {
+          widthMm: scaledResult?.scaledWidth || null,
+          heightMm: scaledResult?.scaledHeight || null,
+          scale: scaleMeta,
+        }
+      : null,
   };
   outputRegistry.set(id, metadata);
   return metadata;
