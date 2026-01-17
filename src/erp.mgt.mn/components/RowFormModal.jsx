@@ -26,6 +26,7 @@ import {
   formatJsonList,
   normalizeInputValue,
 } from '../utils/jsonValueFormatting.js';
+import normalizeRelationKey from '../utils/normalizeRelationKey.js';
 
 const DEFAULT_RECEIPT_TYPES = ['B2C', 'B2B_SALE', 'B2B_PURCHASE', 'STOCK_QR'];
 
@@ -45,7 +46,7 @@ function normalizeRelationOptionKey(value) {
       return null;
     }
   }
-  return String(value);
+  return normalizeRelationKey(value);
 }
 
 function extractGenerationDependencies(expression = '') {
