@@ -1063,11 +1063,15 @@ export default function Reports() {
       setLockSelections({});
       setLockExclusions({});
       setPendingExclusion(null);
+      const requestId = result?.lockRequestId;
+      if (!requestId) {
+        setLockFetchPending(false);
+        return;
+      }
       const params = new URLSearchParams();
       if (branch) params.set('branchId', branch);
       if (department) params.set('departmentId', department);
       try {
-        const requestId = result?.lockRequestId;
         const res = await fetch(
           `/api/procedures/locks${
             params.toString() ? `?${params.toString()}` : ''
@@ -1081,7 +1085,7 @@ export default function Reports() {
               params: Array.isArray(result.orderedParams)
                 ? result.orderedParams
                 : [],
-              ...(requestId ? { requestId } : {}),
+              requestId,
             }),
           },
         );
@@ -1517,6 +1521,7 @@ export default function Reports() {
           body: JSON.stringify({
             name: selectedProc,
             params: finalParams,
+            collectLocks: populateLockCandidates,
           }),
         },
       );
