@@ -1150,6 +1150,8 @@ async function enrichTemporaryMetadata(rows, companyId) {
 export async function listTemporarySubmissions({
   scope,
   tableName,
+  formName,
+  configName,
   empId,
   companyId,
   status,
@@ -1191,6 +1193,22 @@ export async function listTemporarySubmissions({
   if (tableName) {
     conditions.push('table_name = ?');
     params.push(tableName);
+  }
+  const normalizedFormName =
+    formName !== undefined && formName !== null ? String(formName).trim() : '';
+  const normalizedConfigName =
+    configName !== undefined && configName !== null ? String(configName).trim() : '';
+  const nameFilters = [];
+  if (normalizedFormName) {
+    nameFilters.push(normalizedFormName);
+  }
+  if (normalizedConfigName && normalizedConfigName !== normalizedFormName) {
+    nameFilters.push(normalizedConfigName);
+  }
+  if (nameFilters.length > 0) {
+    const placeholders = nameFilters.map(() => '?').join(', ');
+    conditions.push(`(form_name IN (${placeholders}) OR config_name IN (${placeholders}))`);
+    params.push(...nameFilters, ...nameFilters);
   }
   if (scope === 'review') {
     conditions.push(
@@ -1366,12 +1384,20 @@ function shouldForcePromote(forcePromoteFlag, payloadJson) {
 export async function getTemporarySummary(
   empId,
   companyId,
-  { tableName = null, transactionTypeField = null, transactionTypeValue = null } = {},
+  {
+    tableName = null,
+    formName = null,
+    configName = null,
+    transactionTypeField = null,
+    transactionTypeValue = null,
+  } = {},
 ) {
   await ensureTemporaryTable();
   const createdRows = await listTemporarySubmissions({
     scope: 'created',
     tableName,
+    formName,
+    configName,
     empId,
     companyId,
     status: 'any',
@@ -1382,6 +1408,8 @@ export async function getTemporarySummary(
   const reviewRows = await listTemporarySubmissions({
     scope: 'review',
     tableName,
+    formName,
+    configName,
     empId,
     companyId,
     status: 'any',
