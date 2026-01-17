@@ -121,22 +121,6 @@ function addRelationRowEntry(map, key, row) {
   }
 }
 
-function getRelationRowFromMap(map, value) {
-  if (!map || value === undefined || value === null) return null;
-  if (Object.prototype.hasOwnProperty.call(map, value)) return map[value];
-  const stringKey = typeof value === 'string' ? value : String(value);
-  if (Object.prototype.hasOwnProperty.call(map, stringKey)) return map[stringKey];
-  const normalizedKey = normalizeRelationKey(value);
-  if (normalizedKey && Object.prototype.hasOwnProperty.call(map, normalizedKey)) {
-    return map[normalizedKey];
-  }
-  const resolved = resolveScopeId(value);
-  if (resolved !== value) {
-    return getRelationRowFromMap(map, resolved);
-  }
-  return null;
-}
-
 function sanitizeName(name) {
   return String(normalizeSearchValue(name))
     .toLowerCase()
@@ -1025,6 +1009,14 @@ const TableManager = forwardRef(function TableManager({
       if (table) {
         params.set('table', table);
       }
+      const temporaryFormName = formName || formConfig?.formName || formConfig?.configName || '';
+      const temporaryConfigName = formConfig?.configName || formName || '';
+      if (temporaryFormName) {
+        params.set('formName', temporaryFormName);
+      }
+      if (temporaryConfigName) {
+        params.set('configName', temporaryConfigName);
+      }
       const transactionTypeField = formConfig?.transactionTypeField || '';
       const normalizedTypeFilter = typeof typeFilter === 'string' ? typeFilter.trim() : typeFilter;
       if (transactionTypeField && normalizedTypeFilter) {
@@ -1076,6 +1068,9 @@ const TableManager = forwardRef(function TableManager({
     availableTemporaryScopes,
     defaultTemporaryScope,
     table,
+    formName,
+    formConfig?.formName,
+    formConfig?.configName,
     formConfig?.transactionTypeField,
     typeFilter,
   ]);
@@ -1609,6 +1604,15 @@ const TableManager = forwardRef(function TableManager({
       }
     }
   }, [typeFilter, formConfig, validCols]);
+
+  useEffect(() => {
+    if (!formConfig?.transactionTypeField) {
+      cacheTemporaryFilter('', '');
+      return;
+    }
+    const normalizedTypeFilter = typeof typeFilter === 'string' ? typeFilter.trim() : typeFilter;
+    cacheTemporaryFilter(formConfig.transactionTypeField, normalizedTypeFilter);
+  }, [formConfig?.transactionTypeField, typeFilter]);
 
   useEffect(() => {
     async function loadRequests() {
@@ -5063,6 +5067,14 @@ const TableManager = forwardRef(function TableManager({
       const preserveScope = Boolean(options?.preserveScope);
       const params = new URLSearchParams();
       params.set('scope', targetScope);
+      const temporaryFormName = formName || formConfig?.formName || formConfig?.configName || '';
+      const temporaryConfigName = formConfig?.configName || formName || '';
+      if (temporaryFormName) {
+        params.set('formName', temporaryFormName);
+      }
+      if (temporaryConfigName) {
+        params.set('configName', temporaryConfigName);
+      }
       const transactionTypeField = formConfig?.transactionTypeField || '';
       const normalizedTypeFilter = typeof typeFilter === 'string' ? typeFilter.trim() : typeFilter;
       if (transactionTypeField && normalizedTypeFilter) {
@@ -5166,6 +5178,9 @@ const TableManager = forwardRef(function TableManager({
       availableTemporaryScopes,
       defaultTemporaryScope,
       temporarySummary,
+      formName,
+      formConfig?.formName,
+      formConfig?.configName,
       formConfig?.transactionTypeField,
       typeFilter,
     ],
@@ -6893,15 +6908,27 @@ const TableManager = forwardRef(function TableManager({
         return formatted ?? '';
       };
 
-      const columnTableHtml = (cols, row, skipEmpty = false, className = '') => {
+      const columnTableHtml = (cols, row, skipEmpty = false, className = '', isSignature = false) => {
         const filtered = cols.filter((c) =>
           skipEmpty
             ? row?.[c] !== '' && row?.[c] !== null && row?.[c] !== 0 && row?.[c] !== undefined
             : true,
         );
         if (filtered.length === 0) return '';
+        if (isSignature) {
+          const rows = filtered
+            .map((c) => {
+              const value = resolvePrintValue(c, row);
+              return `<tr><th>${labels[c] || c}</th><td style="text-align:right; padding-left:50mm;">${value}</td></tr>`;
+            })
+            .join('');
+          return `<table${className ? ` class="${className}"` : ''}><tbody>${rows}</tbody></table>`;
+        }
         const header = filtered.map((c) => `<th>${labels[c] || c}</th>`).join('');
-        const values = filtered.map((c) => `<td>${resolvePrintValue(c, row)}</td>`).join('');
+        const valueStyle = isSignature ? ' style="text-align:right; padding-left:50mm;"' : '';
+        const values = filtered
+          .map((c) => `<td${valueStyle}>${resolvePrintValue(c, row)}</td>`)
+          .join('');
         return `<table${className ? ` class="${className}"` : ''}><thead><tr>${header}</tr></thead><tbody><tr>${values}</tr></tbody></table>`;
       };
 
@@ -6975,7 +7002,7 @@ const TableManager = forwardRef(function TableManager({
 
       const signatureHtml = (cols, formVals) => {
         if (cols.length === 0) return '';
-        const table = columnTableHtml(cols, formVals, true, 'print-signature-table');
+        const table = columnTableHtml(cols, formVals, true, 'print-signature-table', true);
         if (!table) return '';
         return `<h3>Signature</h3>${table}`;
       };
