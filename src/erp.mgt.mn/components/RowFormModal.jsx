@@ -4551,14 +4551,9 @@ const RowFormModal = function RowFormModal({
       isReceipt && receiptWidth && receiptHeight ? `${pageWidth} ${pageHeight}` : 'auto';
     const sheetWidthRule =
       isReceipt && receiptWidth ? `width:${pageWidth};` : 'max-width:100%;';
-    const toPixels = (mm) => Math.round(mm * 3.7795);
-    const windowFeatures =
-      isReceipt && receiptWidth && receiptHeight
-        ? `width=${toPixels(receiptWidth)},height=${toPixels(receiptHeight)}`
-        : undefined;
     let html = '<html><head><title>Print</title>';
     html +=
-      `<style>@page{size:${pageSize};margin:${pageMargin};}@media print{body{margin:0;}.print-group{break-inside:avoid;page-break-inside:avoid;}}body{margin:0;font-size:${fontSize};} .print-sheet{font-size:inherit;${sheetWidthRule}} .print-group{margin-bottom:${groupSpacing};} .print-copies{display:grid;grid-template-columns:1fr;gap:${gapSize};} .print-copies.print-copies-grid{grid-template-columns:repeat(2,minmax(0,1fr));} .print-item{break-inside:avoid;} table{width:100%;border-collapse:collapse;margin-bottom:1rem;table-layout:auto;} th,td{padding:4px;text-align:left;vertical-align:top;overflow-wrap:anywhere;word-break:break-word;white-space:normal;} .print-main-table th,.print-main-table td{border:1px solid #666;} h3{margin:0 0 4px 0;font-weight:600;}</style>`;
+      `<style>@page{size:${pageSize};margin:${pageMargin};}@media print{body{margin:0;}.print-group{break-inside:avoid;page-break-inside:avoid;}}body{margin:0;} .print-sheet{font-size:${fontSize};${sheetWidthRule}} .print-group{margin-bottom:${groupSpacing};} .print-copies{display:grid;grid-template-columns:1fr;gap:${gapSize};} .print-copies.print-copies-grid{grid-template-columns:repeat(2,minmax(0,1fr));} .print-item{break-inside:avoid;} table{width:100%;border-collapse:collapse;margin-bottom:1rem;table-layout:auto;} th,td{padding:4px;text-align:left;vertical-align:top;overflow-wrap:anywhere;word-break:break-word;white-space:normal;} .print-main-table th,.print-main-table td{border:1px solid #666;} h3{margin:0 0 4px 0;font-weight:600;}</style>`;
     html += `</head><body><div class="print-sheet">${sections}</div></body></html>`;
     if (userSettings?.printerId) {
       fetch(`${API_BASE}/print`, {
