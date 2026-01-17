@@ -6673,22 +6673,11 @@ const TableManager = forwardRef(function TableManager({
           ...(formConfig?.signatureFields || []),
         ]),
       ];
-      const normalizeGroupValue = (value) => {
-        if (Array.isArray(value)) return value.map(normalizeGroupValue);
-        if (value && typeof value === 'object') {
-          const candidate =
-            value.value !== undefined && value.value !== null ? value.value : value;
-          const normalized = normalizeSearchValue(candidate);
-          return normalized ?? candidate;
-        }
-        const normalized = normalizeSearchValue(value);
-        return normalized ?? value;
-      };
       const buildGroupKey = (row) => {
         if (groupedFields.length === 0) return 'default';
         const keyData = {};
         groupedFields.forEach((field) => {
-          keyData[field] = normalizeGroupValue(row?.[field] ?? null);
+          keyData[field] = row?.[field] ?? null;
         });
         return JSON.stringify(keyData);
       };
@@ -6707,7 +6696,7 @@ const TableManager = forwardRef(function TableManager({
       });
       return { formRows: Array.from(itemsMap.values()) };
     },
-    [footerFields, formConfig?.signatureFields, headerFields, normalizeSearchValue],
+    [footerFields, formConfig?.signatureFields, headerFields],
   );
 
   const openPrintModalForRows = useCallback(
