@@ -21,6 +21,7 @@ export default function ReportSnapshotViewer({
   snapshot,
   formatValue = defaultFormatValue,
   emptyMessage = 'No snapshot captured.',
+  showTotalRowCount = true,
   style = {},
 }) {
   const normalizedSnapshot = useMemo(
@@ -146,9 +147,11 @@ export default function ReportSnapshotViewer({
           }}
         >
           <span style={{ fontWeight: 'bold' }}>Large snapshot captured</span>
-          <span style={{ color: '#6b7280' }}>
-            Showing {startRow}-{Math.max(startRow, endRow)} of {totalRows} rows.
-          </span>
+          {showTotalRowCount && (
+            <span style={{ color: '#6b7280' }}>
+              Showing {startRow}-{Math.max(startRow, endRow)} of {totalRows} rows.
+            </span>
+          )}
           <label style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
             Rows per page
             <select
@@ -264,9 +267,11 @@ export default function ReportSnapshotViewer({
             gap: '0.5rem',
           }}
         >
-          <span>
-            Showing {startRow}-{Math.max(startRow, endRow)} of {totalRows} rows
-          </span>
+          {showTotalRowCount && (
+            <span>
+              Showing {startRow}-{Math.max(startRow, endRow)} of {totalRows} rows
+            </span>
+          )}
           <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
             <button
               type="button"

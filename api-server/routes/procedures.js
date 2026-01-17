@@ -182,7 +182,7 @@ router.post('/', requireAuth, async (req, res, next) => {
     const rawGid = req.body?.g_id ?? req.query?.g_id ?? aliasGid;
     const validCompany = await validateCompanyForGid(companyId, rawGid, res);
     if (!validCompany) return;
-    const row = await callStoredProcedure(
+    const { row, reportCapabilities } = await callStoredProcedure(
       name,
       Array.isArray(params) ? params : [],
       Array.isArray(aliases) ? aliases : [],
@@ -194,7 +194,11 @@ router.post('/', requireAuth, async (req, res, next) => {
         },
       },
     );
-    res.json({ row, lockRequestId: collectLocks ? lockRequestId : null });
+    res.json({
+      row,
+      lockRequestId: collectLocks ? lockRequestId : null,
+      reportCapabilities,
+    });
   } catch (err) {
     next(err);
   }
