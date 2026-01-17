@@ -6571,7 +6571,9 @@ export async function getReportLockCandidatesForRequest(
       }
       const key = `${tableName}#${recordId}`;
       const lockStatus = row?.status || null;
-      const locked = Boolean(isActiveReportLockRow(row));
+      const locked =
+        lockStatus === REPORT_TRANSACTION_LOCK_STATUS.locked ||
+        lockStatus === REPORT_TRANSACTION_LOCK_STATUS.pending;
       const lockedBy =
         row?.finalized_by ?? row?.status_changed_by ?? row?.created_by ?? null;
       const lockedAt =
