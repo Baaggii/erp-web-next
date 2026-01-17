@@ -6,6 +6,7 @@ import {
   setAllowedReport,
   removeAllowedReport,
 } from '../services/reportAccessConfig.js';
+import { listReportProcedures } from '../../db/index.js';
 
 const router = express.Router();
 
@@ -13,12 +14,19 @@ router.get('/', requireAuth, async (req, res, next) => {
   try {
     const companyId = Number(req.query.companyId ?? req.user.companyId);
     const proc = req.query.proc;
+    const liveProcedures = new Set(await listReportProcedures());
     if (proc) {
+      if (!liveProcedures.has(proc)) {
+        return res.status(404).json({ message: 'Procedure not found' });
+      }
       const { config, isDefault } = await getAllowedReport(proc, companyId);
       res.json({ ...config, isDefault });
     } else {
       const { config, isDefault } = await listAllowedReports(companyId);
-      res.json({ allowedReports: config, isDefault });
+      const filtered = Object.fromEntries(
+        Object.entries(config).filter(([name]) => liveProcedures.has(name)),
+      );
+      res.json({ allowedReports: filtered, isDefault });
     }
   } catch (err) {
     next(err);
