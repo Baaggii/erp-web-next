@@ -93,6 +93,7 @@ function CncProcessingPage() {
   const [apiLogs, setApiLogs] = useState([]);
   const stepId = useRef(0);
   const logId = useRef(0);
+  const submitLock = useRef(false);
   const woodCanvasRef = useRef(null);
   const woodModalCanvasRef = useRef(null);
   const showWoodPreview = Boolean(preview?.polylines?.length);
@@ -262,7 +263,8 @@ function CncProcessingPage() {
 
   async function handleSubmit(event) {
     event.preventDefault();
-    if (status === 'uploading') return;
+    if (submitLock.current) return;
+    submitLock.current = true;
     setError('');
     setDownload(null);
     setPreview(null);
@@ -273,6 +275,7 @@ function CncProcessingPage() {
       setError(message);
       addToast(message, 'error');
       addStep('Validation failed', 'fail', message);
+      submitLock.current = false;
       return;
     }
     if (!isSupportedFile(file)) {
@@ -280,6 +283,7 @@ function CncProcessingPage() {
       setError(message);
       addToast(message, 'error');
       addStep('Validation failed', 'fail', message);
+      submitLock.current = false;
       return;
     }
     addStep('Validation complete', 'success');
@@ -409,10 +413,13 @@ function CncProcessingPage() {
       setProgress(0);
       addStep('Conversion failed', 'fail', message);
       addToast(message, 'error');
+    } finally {
+      submitLock.current = false;
     }
   }
 
   const isBusy = status === 'uploading';
+  const hasPreview = preview?.polylines?.length > 0;
   const disabledReason = useMemo(() => {
     if (isBusy) {
       return 'Conversion in progress. Please wait for it to finish.';
@@ -707,6 +714,25 @@ function CncProcessingPage() {
               </button>
             )}
           </div>
+          {showWoodPreview && (
+            <div className="mt-4 rounded-md border border-slate-200 bg-slate-50 p-3">
+              <p className="text-xs font-medium text-slate-600">
+                Imitated wood carving result (based on the processed file)
+              </p>
+              <p className="mt-1 text-[11px] text-slate-500">
+                This preview renders the full toolpath onto a wood texture so the carved result is
+                visible.
+              </p>
+              <div className="mt-3 overflow-hidden rounded-md border border-slate-200 bg-white">
+                <canvas
+                  ref={woodCanvasRef}
+                  className="h-48 w-full"
+                  role="img"
+                  aria-label="Simulated wood carving preview"
+                />
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -719,6 +745,7 @@ function CncProcessingPage() {
           <div className="flex items-center justify-between gap-4">
             <button
               type="submit"
+              onClick={handleSubmit}
               disabled={!canSubmit}
               title={disabledReason}
               className="inline-flex items-center justify-center rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:bg-slate-400"
