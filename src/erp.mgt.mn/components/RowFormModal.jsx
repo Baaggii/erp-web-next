@@ -3643,7 +3643,7 @@ const RowFormModal = function RowFormModal({
           }
         };
         values.forEach((item) => {
-          const row = relationRows[item] || relationRows[String(item)];
+          const row = getRelationRowFromMap(relationRows, item);
           if (row && resolvedRelationConfig) {
             const identifier =
               getRowValueCaseInsensitive(row, resolvedRelationConfig.idField || resolvedRelationConfig.column) ??
@@ -3667,9 +3667,9 @@ const RowFormModal = function RowFormModal({
         !resolvedOptionLabel &&
         resolvedRelationConfig &&
         val !== undefined &&
-        relationData[c]?.[val]
+        getRelationRowFromMap(relationData[c], val)
       ) {
-        const row = relationData[c][val];
+        const row = getRelationRowFromMap(relationData[c], val);
         const cfg = resolvedRelationConfig;
         const parts = [];
         const identifier = getRowValueCaseInsensitive(
@@ -3688,9 +3688,9 @@ const RowFormModal = function RowFormModal({
         !resolvedOptionLabel &&
         viewSourceMap[c] &&
         val !== undefined &&
-        relationData[c]?.[val]
+        getRelationRowFromMap(relationData[c], val)
       ) {
-        const row = relationData[c][val];
+        const row = getRelationRowFromMap(relationData[c], val);
         const cfg = viewDisplays[viewSourceMap[c]] || {};
         const parts = [];
         const identifier = getRowValueCaseInsensitive(
@@ -3709,9 +3709,9 @@ const RowFormModal = function RowFormModal({
         !resolvedOptionLabel &&
         autoSelectForField?.config &&
         val !== undefined &&
-        relationData[c]?.[val]
+        getRelationRowFromMap(relationData[c], val)
       ) {
-        const row = relationData[c][val];
+        const row = getRelationRowFromMap(relationData[c], val);
         const cfg = autoSelectForField?.config || {};
         const parts = [];
         const identifier = getRowValueCaseInsensitive(row, cfg.idField);

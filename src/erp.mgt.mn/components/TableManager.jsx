@@ -6121,6 +6121,10 @@ const TableManager = forwardRef(function TableManager({
     labelMap[col] = {};
     opts.forEach((o) => {
       labelMap[col][o.value] = o.label;
+      const normalizedKey = normalizeRelationKey(o.value);
+      if (normalizedKey) {
+        labelMap[col][normalizedKey] = o.label;
+      }
     });
   });
 
@@ -6142,10 +6146,7 @@ const TableManager = forwardRef(function TableManager({
           const cacheKey = key === undefined || key === null ? '' : String(key);
           if (!cacheKey) return;
           if (jsonRelationLabels[column]?.[cacheKey]) return;
-          const cachedRow =
-            relationRows[cacheKey] ||
-            relationRows[String(relationId ?? '')] ||
-            relationRows[key];
+          const cachedRow = getRelationRowFromMap(relationRows, key);
           if (cachedRow && typeof cachedRow === 'object') {
             if (!immediateUpdates[column]) immediateUpdates[column] = {};
             immediateUpdates[column][cacheKey] = formatRelationDisplay(
@@ -6434,7 +6435,7 @@ const TableManager = forwardRef(function TableManager({
               typeof normalized === 'number' ||
               typeof normalized === 'boolean');
           if (isLookupFriendly) {
-            const mapped = labelMap[column]?.[normalized];
+            const mapped = labelMap[column]?.[normalizeRelationKey(normalized)];
             if (mapped !== undefined) {
               return mapped;
             }
@@ -6837,17 +6838,14 @@ const TableManager = forwardRef(function TableManager({
           value && typeof value === 'object' && !Array.isArray(value) && value.value !== undefined
             ? value.value
             : labelWrapper;
-        const normalizedValueKey = normalizeSearchValue(baseValue);
+        const normalizedValueKey = normalizeRelationKey(normalizeSearchValue(baseValue));
         if (relationOpts[col] && normalizedValueKey !== undefined && labelMap[col]) {
           const optionLabel = labelMap[col][normalizedValueKey];
           if (optionLabel !== undefined) return optionLabel;
         }
         if (relationConfigs[col]?.table && normalizedValueKey !== undefined && normalizedValueKey !== null) {
           const relationRows = refRows[col] || {};
-          const rowData =
-            relationRows[normalizedValueKey] ||
-            relationRows[String(normalizedValueKey)] ||
-            relationRows[String(resolveScopeId(normalizedValueKey))];
+          const rowData = getRelationRowFromMap(relationRows, normalizedValueKey);
           if (rowData && typeof rowData === 'object') {
             return formatRelationDisplay(rowData, relationConfigs[col], normalizedValueKey);
           }
@@ -6855,10 +6853,7 @@ const TableManager = forwardRef(function TableManager({
         const displayInfo = relationDisplayMap[col];
         if (displayInfo && normalizedValueKey !== undefined && normalizedValueKey !== null) {
           const relationRows = refRows[displayInfo.sourceColumn] || {};
-          const rowData =
-            relationRows[normalizedValueKey] ||
-            relationRows[String(normalizedValueKey)] ||
-            relationRows[String(resolveScopeId(normalizedValueKey))];
+          const rowData = getRelationRowFromMap(relationRows, normalizedValueKey);
           if (rowData && typeof rowData === 'object') {
             return formatRelationDisplay(rowData, displayInfo.config, normalizedValueKey);
           }
@@ -6885,10 +6880,7 @@ const TableManager = forwardRef(function TableManager({
                 parts.push(cachedLabel);
                 return;
               }
-              const relationRow =
-                rowsMap[key] ||
-                rowsMap[String(key)] ||
-                rowsMap[String(relationId ?? '')];
+              const relationRow = getRelationRowFromMap(rowsMap, key);
               if (relationRow && typeof relationRow === 'object') {
                 const formatted = formatRelationDisplay(relationRow, relationConfig, key);
                 if (formatted || formatted === 0 || formatted === false) {
@@ -8046,7 +8038,8 @@ const TableManager = forwardRef(function TableManager({
                   ? { config: relationConfig, sourceColumn: c }
                   : relationDisplayMap[c];
                 const raw = relationOpts[c]
-                  ? labelMap[c][rawValue] || (rawValue == null ? '' : String(rawValue))
+                  ? labelMap[c][normalizeRelationKey(rawValue)] ||
+                    (rawValue == null ? '' : String(rawValue))
                   : rawValue == null
                   ? ''
                   : String(rawValue);
@@ -8068,10 +8061,7 @@ const TableManager = forwardRef(function TableManager({
                         parts.push(cachedLabel);
                         return;
                       }
-                      const row =
-                        rowsMap[key] ||
-                        rowsMap[String(key)] ||
-                        rowsMap[String(relationId ?? '')];
+                      const row = getRelationRowFromMap(rowsMap, key);
                       if (row && typeof row === 'object') {
                         const formatted = formatRelationDisplay(
                           row,
