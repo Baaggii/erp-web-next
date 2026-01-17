@@ -81,6 +81,8 @@ router.post(
           safeHeightMm: req.body.safeHeightMm,
           imageWidthPx: req.body.imageWidthPx,
           imageHeightPx: req.body.imageHeightPx,
+          heightFieldResolutionX: req.body.heightFieldResolutionX,
+          heightFieldResolutionY: req.body.heightFieldResolutionY,
           heightFieldMaxDepthMm: req.body.heightFieldMaxDepthMm,
           heightFieldSmoothingEnabled: req.body.heightFieldSmoothingEnabled,
           heightFieldSmoothingRadius: req.body.heightFieldSmoothingRadius,

@@ -361,9 +361,22 @@ function drawHeightFieldSurface(ctx, width, height, viewBox, heightField, meta, 
   const rectY = viewBox.minY * scale + offsetY;
   const rectWidth = viewBox.width * scale;
   const rectHeight = viewBox.height * scale;
-
-  const cellWidth = rectWidth / cols;
-  const cellHeight = rectHeight / rows;
+  const materialWidthMm = Number(options?.materialWidthMm ?? meta.widthMm);
+  const materialHeightMm = Number(options?.materialHeightMm ?? meta.heightMm);
+  const materialRatio =
+    Number.isFinite(materialWidthMm) && materialWidthMm > 0
+      ? materialWidthMm / (materialHeightMm || 1)
+      : null;
+  const baseCellHeight = rectHeight / rows;
+  const baseCellWidth = rectWidth / cols;
+  const cellHeight = materialRatio
+    ? Math.min(baseCellHeight, rectWidth / (cols * materialRatio))
+    : baseCellHeight;
+  const cellWidth = materialRatio ? cellHeight * materialRatio : baseCellWidth;
+  const gridWidth = cellWidth * cols;
+  const gridHeight = cellHeight * rows;
+  const gridOffsetX = rectX + (rectWidth - gridWidth) / 2;
+  const gridOffsetY = rectY + (rectHeight - gridHeight) / 2;
   const baseTexture = options?.texture;
   if (baseTexture) {
     const pattern = ctx.createPattern(baseTexture, 'repeat');
@@ -381,18 +394,28 @@ function drawHeightFieldSurface(ctx, width, height, viewBox, heightField, meta, 
   const lx = light.x / lightLen;
   const ly = light.y / lightLen;
   const lz = light.z / lightLen;
-  const maxHeight = options?.heightFieldMaxDepthMm
-    ? Number(options.heightFieldMaxDepthMm)
-    : options?.materialThicknessMm
-      ? Number(options.materialThicknessMm)
-    : heightField.reduce((max, row) => Math.max(max, ...row), 0);
+  const { minHeight, maxHeight } = heightField.reduce(
+    (acc, row) => {
+      row.forEach((value) => {
+        acc.minHeight = Math.min(acc.minHeight, value);
+        acc.maxHeight = Math.max(acc.maxHeight, value);
+      });
+      return acc;
+    },
+    { minHeight: Number.POSITIVE_INFINITY, maxHeight: Number.NEGATIVE_INFINITY },
+  );
+  const maxDepth = Math.max(0.1, maxHeight - minHeight);
+  const invertYAxis = meta.yAxis === 'up' || options?.invertYAxis;
 
   for (let y = 1; y < rows - 1; y += 1) {
+    const sampleY = invertYAxis ? rows - 1 - y : y;
+    const sampleYUp = sampleY - 1;
+    const sampleYDown = sampleY + 1;
     for (let x = 1; x < cols - 1; x += 1) {
-      const hL = heightField[y][x - 1];
-      const hR = heightField[y][x + 1];
-      const hU = heightField[y - 1][x];
-      const hD = heightField[y + 1][x];
+      const hL = heightField[sampleY][x - 1];
+      const hR = heightField[sampleY][x + 1];
+      const hU = heightField[sampleYUp][x];
+      const hD = heightField[sampleYDown][x];
       const dx = (hL - hR) * 0.5;
       const dy = (hU - hD) * 0.5;
       const dz = 1;
@@ -401,17 +424,38 @@ function drawHeightFieldSurface(ctx, width, height, viewBox, heightField, meta, 
       const ny = dy / len;
       const nz = dz / len;
       const shade = Math.max(0, nx * lx + ny * ly + nz * lz);
-      const depth = heightField[y][x];
-      const depthShade = Math.min(0.6, (1 - depth / maxHeight) * 0.8);
+      const depth = maxHeight - heightField[sampleY][x];
+      const depthShade = Math.min(0.6, (1 - depth / maxDepth) * 0.8);
       const intensity = 0.4 + shade * 0.6 + depthShade;
       ctx.fillStyle = `rgba(40, 28, 18, ${0.35 - intensity * 0.25})`;
-      ctx.fillRect(rectX + x * cellWidth, rectY + y * cellHeight, cellWidth, cellHeight);
+      ctx.fillRect(
+        gridOffsetX + x * cellWidth,
+        gridOffsetY + y * cellHeight,
+        cellWidth,
+        cellHeight,
+      );
     }
   }
 
   ctx.strokeStyle = 'rgba(15, 23, 42, 0.35)';
   ctx.lineWidth = 1;
-  ctx.strokeRect(rectX, rectY, rectWidth, rectHeight);
+  ctx.strokeRect(gridOffsetX, gridOffsetY, gridWidth, gridHeight);
+}
+
+function getPreviewCanvasSize(materialWidthMm, materialHeightMm, maxWidth = 640, maxHeight = 360) {
+  const widthMm = Number(materialWidthMm);
+  const heightMm = Number(materialHeightMm);
+  if (!Number.isFinite(widthMm) || !Number.isFinite(heightMm) || widthMm <= 0 || heightMm <= 0) {
+    return { width: maxWidth, height: maxHeight };
+  }
+  const ratio = widthMm / heightMm;
+  let width = maxWidth;
+  let height = width / ratio;
+  if (height > maxHeight) {
+    height = maxHeight;
+    width = height * ratio;
+  }
+  return { width: Math.round(width), height: Math.round(height) };
 }
 
 function loadWoodTexture(url) {
@@ -487,6 +531,8 @@ function CncProcessingPage() {
   const [heightFieldMaxDepthMm, setHeightFieldMaxDepthMm] = useState(
     String(defaultMaterialSize.thickness),
   );
+  const [heightFieldResolutionX, setHeightFieldResolutionX] = useState('140');
+  const [heightFieldResolutionY, setHeightFieldResolutionY] = useState('140');
   const [heightFieldSmoothingEnabled, setHeightFieldSmoothingEnabled] = useState(true);
   const [heightFieldSmoothingRadius, setHeightFieldSmoothingRadius] = useState('1');
   const [feedRateXY, setFeedRateXY] = useState(String(defaultCamParams.feedRateXY));
@@ -745,8 +791,9 @@ function CncProcessingPage() {
       const ctx = canvas.getContext('2d');
       if (!ctx) return;
 
-      const targetWidth = 640;
-      const targetHeight = 360;
+      const { width: targetWidth, height: targetHeight } = preview?.heightField
+        ? getPreviewCanvasSize(preview.materialWidthMm, preview.materialHeightMm)
+        : { width: 640, height: 360 };
       canvas.width = targetWidth;
       canvas.height = targetHeight;
 
@@ -755,6 +802,8 @@ function CncProcessingPage() {
           texture,
           surface: woodSurface,
           materialThicknessMm: preview.materialThicknessMm,
+          materialWidthMm: preview.materialWidthMm,
+          materialHeightMm: preview.materialHeightMm,
           heightFieldMaxDepthMm: preview?.heightFieldMeta?.maxDepthMm,
         });
         return;
@@ -838,8 +887,9 @@ function CncProcessingPage() {
       const ctx = canvas.getContext('2d');
       if (!ctx) return;
 
-      const targetWidth = 640;
-      const targetHeight = 360;
+      const { width: targetWidth, height: targetHeight } = preview?.heightField
+        ? getPreviewCanvasSize(preview.materialWidthMm, preview.materialHeightMm)
+        : { width: 640, height: 360 };
       canvas.width = targetWidth;
       canvas.height = targetHeight;
 
@@ -848,6 +898,8 @@ function CncProcessingPage() {
           surface: woodSurface,
           texture: woodTextures[woodSurface],
           materialThicknessMm: preview.materialThicknessMm,
+          materialWidthMm: preview.materialWidthMm,
+          materialHeightMm: preview.materialHeightMm,
           heightFieldMaxDepthMm: preview?.heightFieldMeta?.maxDepthMm,
         });
         return;
@@ -1044,6 +1096,8 @@ function CncProcessingPage() {
       formData.append('imageWidthPx', imageIntrinsicSize.width);
       formData.append('imageHeightPx', imageIntrinsicSize.height);
     }
+    formData.append('heightFieldResolutionX', heightFieldResolutionX);
+    formData.append('heightFieldResolutionY', heightFieldResolutionY);
     formData.append('heightFieldMaxDepthMm', heightFieldMaxDepthMm);
     formData.append('heightFieldSmoothingEnabled', heightFieldSmoothingEnabled);
     formData.append('heightFieldSmoothingRadius', heightFieldSmoothingRadius);
@@ -1114,6 +1168,8 @@ function CncProcessingPage() {
           safeHeightMm,
           imageWidthPx: imageIntrinsicSize.width,
           imageHeightPx: imageIntrinsicSize.height,
+          heightFieldResolutionX,
+          heightFieldResolutionY,
           heightFieldMaxDepthMm,
           heightFieldSmoothingEnabled,
           heightFieldSmoothingRadius,
@@ -1619,6 +1675,28 @@ function CncProcessingPage() {
                   max={maxDepthLimit}
                   value={heightFieldMaxDepthMm}
                   onChange={(event) => setHeightFieldMaxDepthMm(event.target.value)}
+                  className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-700"
+                />
+              </label>
+              <label className="text-xs text-slate-600">
+                Preview resolution X (cols)
+                <input
+                  type="number"
+                  min="20"
+                  step="1"
+                  value={heightFieldResolutionX}
+                  onChange={(event) => setHeightFieldResolutionX(event.target.value)}
+                  className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-700"
+                />
+              </label>
+              <label className="text-xs text-slate-600">
+                Preview resolution Y (rows)
+                <input
+                  type="number"
+                  min="20"
+                  step="1"
+                  value={heightFieldResolutionY}
+                  onChange={(event) => setHeightFieldResolutionY(event.target.value)}
                   className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-700"
                 />
               </label>

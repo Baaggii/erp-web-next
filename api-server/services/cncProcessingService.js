@@ -539,9 +539,24 @@ function resolveHeightFieldGrid({
   widthMm,
   heightMm,
   resolution,
+  resolutionX,
+  resolutionY,
   imageWidthPx,
   imageHeightPx,
 }) {
+  const explicitCols = Number.isFinite(resolutionX) ? Math.max(10, Math.round(resolutionX)) : null;
+  const explicitRows = Number.isFinite(resolutionY) ? Math.max(10, Math.round(resolutionY)) : null;
+  if (explicitCols && explicitRows) {
+    return { cols: explicitCols, rows: explicitRows };
+  }
+  if (explicitCols) {
+    const fallbackRows = Math.max(10, Math.round((explicitCols * heightMm) / widthMm));
+    return { cols: explicitCols, rows: fallbackRows };
+  }
+  if (explicitRows) {
+    const fallbackCols = Math.max(10, Math.round((explicitRows * widthMm) / heightMm));
+    return { cols: fallbackCols, rows: explicitRows };
+  }
   const fallbackCols = Math.max(10, Math.round(resolution));
   const fallbackRows = Math.max(10, Math.round((resolution * heightMm) / widthMm));
   if (!Number.isFinite(imageWidthPx) || !Number.isFinite(imageHeightPx)) {
@@ -556,12 +571,16 @@ function resolveHeightFieldGrid({
 
 function createHeightField(widthMm, heightMm, thicknessMm, options = {}) {
   const resolution = parseOptionalNumber(options.resolution, 140);
+  const resolutionX = parseOptionalNumber(options.resolutionX, null);
+  const resolutionY = parseOptionalNumber(options.resolutionY, null);
   const imageWidthPx = parseOptionalNumber(options.imageWidthPx, null);
   const imageHeightPx = parseOptionalNumber(options.imageHeightPx, null);
   const { cols, rows } = resolveHeightFieldGrid({
     widthMm,
     heightMm,
     resolution,
+    resolutionX,
+    resolutionY,
     imageWidthPx,
     imageHeightPx,
   });
@@ -648,6 +667,8 @@ function applyToolFootprint(heightField, cols, rows, material, tool, point, targ
 
 function simulateHeightField(operations, material, options) {
   const resolution = parseOptionalNumber(options.heightFieldResolution, 140);
+  const resolutionX = parseOptionalNumber(options.heightFieldResolutionX, null);
+  const resolutionY = parseOptionalNumber(options.heightFieldResolutionY, null);
   const imageWidthPx = parseOptionalNumber(options.imageWidthPx, null);
   const imageHeightPx = parseOptionalNumber(options.imageHeightPx, null);
   const { heightField, cols, rows } = createHeightField(
@@ -656,6 +677,8 @@ function simulateHeightField(operations, material, options) {
     material.thicknessMm,
     {
       resolution,
+      resolutionX,
+      resolutionY,
       imageWidthPx,
       imageHeightPx,
     },
@@ -697,7 +720,15 @@ function simulateHeightField(operations, material, options) {
       ? smoothHeightField(heightField, smoothingRadius)
       : heightField;
   const clampedField = clampHeightField(smoothedField, material.minHeightMm, material.thicknessMm);
-  return { heightField: clampedField, cols, rows, maxDepthMm: depthScale };
+  return {
+    heightField: clampedField,
+    cols,
+    rows,
+    maxDepthMm: depthScale,
+    widthMm: material.widthMm,
+    heightMm: material.heightMm,
+    yAxis: options.heightFieldYAxis || 'down',
+  };
 }
 
 function generateGcode(operations, options) {
@@ -838,6 +869,9 @@ function buildPreview(operations, tool, heightFieldData = null) {
           cols: heightFieldData.cols,
           rows: heightFieldData.rows,
           maxDepthMm: heightFieldData.maxDepthMm,
+          widthMm: heightFieldData.widthMm,
+          heightMm: heightFieldData.heightMm,
+          yAxis: heightFieldData.yAxis,
         }
       : null,
   };
@@ -1015,7 +1049,10 @@ export async function processCncFile({
       maxDepthMm: materialThicknessMm,
     };
 
-    const heightFieldData = simulateHeightField(operations, material, options);
+    const heightFieldData = simulateHeightField(operations, material, {
+      ...options,
+      heightFieldYAxis: dxf || stl ? 'up' : 'down',
+    });
 
     preview = buildPreview(operations, tool, heightFieldData);
     if (preview) {

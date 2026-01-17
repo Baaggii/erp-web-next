@@ -60,4 +60,77 @@ if (typeof mock.import !== 'function') {
       mock.restoreAll();
     }
   });
+
+  test('processCncFile uses height-field resolution settings for preview scaling', async () => {
+    const { processCncFile } = await mock.import(
+      '../../api-server/services/cncProcessingService.js',
+      {
+        potrace: {
+          default: {
+            trace: () => {},
+          },
+        },
+      },
+    );
+    const file = {
+      originalname: 'sample.svg',
+      mimetype: 'image/svg+xml',
+      buffer: Buffer.from(svgFixture),
+    };
+
+    const outputs = [];
+    try {
+      const cases = [
+        {
+          materialWidthMm: 200,
+          materialHeightMm: 100,
+          outputWidthMm: 200,
+          outputHeightMm: 100,
+          heightFieldResolutionX: 200,
+          heightFieldResolutionY: 100,
+          expectedViewBox: '0 0 200 100',
+          expectedCols: 200,
+          expectedRows: 100,
+        },
+        {
+          materialWidthMm: 150,
+          materialHeightMm: 90,
+          outputWidthMm: 150,
+          outputHeightMm: 90,
+          heightFieldResolutionX: 180,
+          heightFieldResolutionY: 120,
+          expectedViewBox: '0 0 150 90',
+          expectedCols: 180,
+          expectedRows: 120,
+        },
+      ];
+
+      for (const entry of cases) {
+        const result = await processCncFile({
+          file,
+          outputFormat: 'gcode',
+          options: {
+            materialWidthMm: entry.materialWidthMm,
+            materialHeightMm: entry.materialHeightMm,
+            materialThicknessMm: 8,
+            outputWidthMm: entry.outputWidthMm,
+            outputHeightMm: entry.outputHeightMm,
+            keepAspectRatio: false,
+            toolId: 'ball-3',
+            heightFieldResolutionX: entry.heightFieldResolutionX,
+            heightFieldResolutionY: entry.heightFieldResolutionY,
+          },
+        });
+        outputs.push(result.path);
+        assert.ok(result.preview);
+        assert.equal(result.preview.viewBox, entry.expectedViewBox);
+        assert.equal(result.preview.heightFieldMeta.cols, entry.expectedCols);
+        assert.equal(result.preview.heightFieldMeta.rows, entry.expectedRows);
+        assert.equal(result.preview.heightFieldMeta.yAxis, 'down');
+      }
+    } finally {
+      await Promise.all(outputs.map((pathToDelete) => fs.rm(pathToDelete, { force: true })));
+      mock.restoreAll();
+    }
+  });
 }
