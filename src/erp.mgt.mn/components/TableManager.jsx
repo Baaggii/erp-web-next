@@ -180,20 +180,6 @@ function resolveScopeId(value) {
   return value;
 }
 
-function normalizeRelationKey(value) {
-  if (value === undefined || value === null) return null;
-  if (typeof value === 'object') {
-    if (Object.prototype.hasOwnProperty.call(value, 'value')) {
-      return normalizeRelationKey(value.value);
-    }
-    if (Object.prototype.hasOwnProperty.call(value, 'id')) {
-      return normalizeRelationKey(value.id);
-    }
-  }
-  if (typeof value === 'string') return value.trim();
-  return String(value);
-}
-
 const LABEL_WRAPPER_KEYS = new Set([
   'value',
   'label',
@@ -2109,10 +2095,6 @@ const TableManager = forwardRef(function TableManager({
         });
         if (val !== undefined) {
           optionRows[val] = row;
-          const normalizedKey = normalizeRelationKey(val);
-          if (normalizedKey !== null && normalizedKey !== '') {
-            optionRows[normalizedKey] = row;
-          }
         }
         return {
           value: val,
@@ -2307,10 +2289,6 @@ const TableManager = forwardRef(function TableManager({
               const identifier = row[idKey];
               if (identifier !== undefined && identifier !== null) {
                 aliasRows[identifier] = row;
-                const normalizedKey = normalizeRelationKey(identifier);
-                if (normalizedKey !== null && normalizedKey !== '') {
-                  aliasRows[normalizedKey] = row;
-                }
               }
             });
             if (Object.keys(aliasRows).length > 0) {
@@ -3464,10 +3442,8 @@ const TableManager = forwardRef(function TableManager({
         const tryKeys = [];
         if (relationId !== undefined && relationId !== null) {
           tryKeys.push(relationId);
-          const normalizedId = normalizeRelationKey(relationId);
-          if (normalizedId !== null && normalizedId !== '') {
-            tryKeys.push(normalizedId);
-          }
+          const strRelationId = String(relationId).trim();
+          if (strRelationId) tryKeys.push(strRelationId);
         }
         for (const key of tryKeys) {
           if (!Object.prototype.hasOwnProperty.call(map, key)) continue;

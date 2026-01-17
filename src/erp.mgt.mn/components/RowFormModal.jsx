@@ -45,7 +45,6 @@ function normalizeRelationOptionKey(value) {
       return null;
     }
   }
-  if (typeof value === 'string') return value.trim();
   return String(value);
 }
 
@@ -486,42 +485,6 @@ const RowFormModal = function RowFormModal({
     });
     return lookup;
   }, [relationsKey, columnCaseMapKey]);
-
-  const getRelationRowMap = useCallback(
-    (column) => {
-      if (!column || !relationData || typeof relationData !== 'object') return null;
-      const direct = relationData[column];
-      if (direct && typeof direct === 'object') return direct;
-      const lower = String(column).toLowerCase();
-      const lowerMatch = relationData[lower];
-      if (lowerMatch && typeof lowerMatch === 'object') return lowerMatch;
-      const mapped = columnCaseMap[lower];
-      if (mapped && relationData[mapped] && typeof relationData[mapped] === 'object') {
-        return relationData[mapped];
-      }
-      return null;
-    },
-    [relationData, columnCaseMap],
-  );
-
-  const getRelationRow = useCallback(
-    (column, value) => {
-      const map = getRelationRowMap(column);
-      if (!map || value === undefined || value === null) return null;
-      if (Object.prototype.hasOwnProperty.call(map, value)) {
-        return map[value];
-      }
-      const normalizedValue = normalizeRelationOptionKey(value);
-      if (
-        normalizedValue &&
-        Object.prototype.hasOwnProperty.call(map, normalizedValue)
-      ) {
-        return map[normalizedValue];
-      }
-      return null;
-    },
-    [getRelationRowMap],
-  );
 
   const tableRelationsConfig = React.useMemo(() => {
     if (!table) return {};
@@ -981,14 +944,14 @@ const RowFormModal = function RowFormModal({
       if (filterValue === undefined || filterValue === null || filterValue === '') {
         return hasCombination ? [] : options;
       }
-      const columnRows = getRelationRowMap(column);
+      const columnRows = relationData[column];
       if (!columnRows || typeof columnRows !== 'object') return options;
       const normalizedFilter = String(filterValue);
       return options.filter((opt) => {
         if (!opt) return false;
         const rawValue =
           typeof opt.value === 'object' && opt.value !== null ? opt.value.value : opt.value;
-        const row = getRelationRow(column, rawValue);
+        const row = columnRows[rawValue];
         if (!row || typeof row !== 'object') return false;
         const targetValue = getRowValueCaseInsensitive(row, targetColumn);
         if (targetValue === undefined || targetValue === null || targetValue === '') {
@@ -997,14 +960,7 @@ const RowFormModal = function RowFormModal({
         return String(targetValue) === normalizedFilter;
       });
     },
-    [
-      getAutoSelectConfig,
-      getRowValueCaseInsensitive,
-      getRelationRow,
-      getRelationRowMap,
-      relationConfigMap,
-      resolveCombinationFilters,
-    ],
+    [getAutoSelectConfig, getRowValueCaseInsensitive, relationConfigMap, relationData, resolveCombinationFilters],
   );
   const extraKeys = React.useMemo(() => Object.keys(extraVals || {}), [extraVals]);
   const extraKeyLookup = React.useMemo(() => {
@@ -3218,7 +3174,7 @@ const RowFormModal = function RowFormModal({
       ? conf.idField || conf.column
       : auto?.config?.idField || viewDisplays[viewTbl]?.idField || col;
     if (!table || val === undefined || val === '') return;
-    let row = getRelationRow(col, val);
+    let row = relationData[col]?.[val];
     if (!row) {
       try {
         const res = await fetch(
@@ -3677,7 +3633,7 @@ const RowFormModal = function RowFormModal({
       }
       if (fieldTypeMap[c] === 'json') {
         const values = normalizeJsonArrayForState(val);
-        const relationRows = getRelationRowMap(c) || {};
+        const relationRows = relationData[c] || {};
         const parts = [];
         const pushFormattedPart = (input) => {
           const formatted = formatJsonItem(input);
@@ -3686,7 +3642,7 @@ const RowFormModal = function RowFormModal({
           }
         };
         values.forEach((item) => {
-          const row = getRelationRow(c, item);
+          const row = relationRows[item] || relationRows[String(item)];
           if (row && resolvedRelationConfig) {
             const identifier =
               getRowValueCaseInsensitive(row, resolvedRelationConfig.idField || resolvedRelationConfig.column) ??
@@ -3709,66 +3665,63 @@ const RowFormModal = function RowFormModal({
       } else if (
         !resolvedOptionLabel &&
         resolvedRelationConfig &&
-        val !== undefined
+        val !== undefined &&
+        relationData[c]?.[val]
       ) {
-        const row = getRelationRow(c, val);
-        if (row) {
-          const cfg = resolvedRelationConfig;
-          const parts = [];
-          const identifier = getRowValueCaseInsensitive(
-            row,
-            cfg.idField || cfg.column,
+        const row = relationData[c][val];
+        const cfg = resolvedRelationConfig;
+        const parts = [];
+        const identifier = getRowValueCaseInsensitive(
+          row,
+          cfg.idField || cfg.column,
         );
         if (identifier !== undefined && identifier !== null) {
           parts.push(identifier);
         }
         if (parts.length === 0) parts.push(val);
-          (cfg.displayFields || []).forEach((df) => {
-            if (row[df] !== undefined) parts.push(row[df]);
-          });
-          display = parts.join(' - ');
-        }
+        (cfg.displayFields || []).forEach((df) => {
+          if (row[df] !== undefined) parts.push(row[df]);
+        });
+        display = parts.join(' - ');
       } else if (
         !resolvedOptionLabel &&
         viewSourceMap[c] &&
-        val !== undefined
+        val !== undefined &&
+        relationData[c]?.[val]
       ) {
-        const row = getRelationRow(c, val);
-        if (row) {
-          const cfg = viewDisplays[viewSourceMap[c]] || {};
-          const parts = [];
-          const identifier = getRowValueCaseInsensitive(
-            row,
+        const row = relationData[c][val];
+        const cfg = viewDisplays[viewSourceMap[c]] || {};
+        const parts = [];
+        const identifier = getRowValueCaseInsensitive(
+          row,
           cfg.idField || c,
         );
         if (identifier !== undefined && identifier !== null) {
           parts.push(identifier);
         }
         if (parts.length === 0) parts.push(val);
-          (cfg.displayFields || []).forEach((df) => {
-            if (row[df] !== undefined) parts.push(row[df]);
-          });
-          display = parts.join(' - ');
-        }
+        (cfg.displayFields || []).forEach((df) => {
+          if (row[df] !== undefined) parts.push(row[df]);
+        });
+        display = parts.join(' - ');
       } else if (
         !resolvedOptionLabel &&
         autoSelectForField?.config &&
-        val !== undefined
+        val !== undefined &&
+        relationData[c]?.[val]
       ) {
-        const row = getRelationRow(c, val);
-        if (row) {
-          const cfg = autoSelectForField?.config || {};
-          const parts = [];
-          const identifier = getRowValueCaseInsensitive(row, cfg.idField);
+        const row = relationData[c][val];
+        const cfg = autoSelectForField?.config || {};
+        const parts = [];
+        const identifier = getRowValueCaseInsensitive(row, cfg.idField);
         if (identifier !== undefined && identifier !== null) {
           parts.push(identifier);
         }
         if (parts.length === 0) parts.push(val);
-          (cfg.displayFields || []).forEach((df) => {
-            if (row[df] !== undefined) parts.push(row[df]);
-          });
-          display = parts.join(' - ');
-        }
+        (cfg.displayFields || []).forEach((df) => {
+          if (row[df] !== undefined) parts.push(row[df]);
+        });
+        display = parts.join(' - ');
       }
       if (isNumericField && display !== undefined && display !== null && display !== '') {
         display = formatNumericValue(c, display);
@@ -4399,70 +4352,67 @@ const RowFormModal = function RowFormModal({
       if (
         resolvedRelationConfig &&
         baseValue !== undefined &&
-        baseValue !== null
+        baseValue !== null &&
+        relationData[col]?.[baseValue]
       ) {
-        const rowData = getRelationRow(col, baseValue);
-        if (rowData) {
-          const parts = [];
-          const identifier = getRowValueCaseInsensitive(
-            rowData,
-            resolvedRelationConfig.idField || resolvedRelationConfig.column,
-          );
-          if (identifier !== undefined && identifier !== null) {
-            parts.push(identifier);
-          }
-          if (parts.length === 0 && baseValue !== undefined && baseValue !== null) {
-            parts.push(baseValue);
-          }
-          (resolvedRelationConfig.displayFields || []).forEach((df) => {
-            if (rowData[df] !== undefined) parts.push(rowData[df]);
-          });
-          return parts.join(' - ');
+        const rowData = relationData[col][baseValue];
+        const parts = [];
+        const identifier = getRowValueCaseInsensitive(
+          rowData,
+          resolvedRelationConfig.idField || resolvedRelationConfig.column,
+        );
+        if (identifier !== undefined && identifier !== null) {
+          parts.push(identifier);
         }
+        if (parts.length === 0 && baseValue !== undefined && baseValue !== null) {
+          parts.push(baseValue);
+        }
+        (resolvedRelationConfig.displayFields || []).forEach((df) => {
+          if (rowData[df] !== undefined) parts.push(rowData[df]);
+        });
+        return parts.join(' - ');
       }
       if (
         viewSourceMap[col] &&
         baseValue !== undefined &&
-        baseValue !== null
+        baseValue !== null &&
+        relationData[col]?.[baseValue]
       ) {
-        const rowData = getRelationRow(col, baseValue);
-        if (rowData) {
-          const cfg = viewDisplays[viewSourceMap[col]] || {};
-          const parts = [];
-          const identifier = getRowValueCaseInsensitive(rowData, cfg.idField || col);
-          if (identifier !== undefined && identifier !== null) {
-            parts.push(identifier);
-          }
-          if (parts.length === 0 && baseValue !== undefined && baseValue !== null) {
-            parts.push(baseValue);
-          }
-          (cfg.displayFields || []).forEach((df) => {
-            if (rowData[df] !== undefined) parts.push(rowData[df]);
-          });
-          return parts.join(' - ');
+        const rowData = relationData[col][baseValue];
+        const cfg = viewDisplays[viewSourceMap[col]] || {};
+        const parts = [];
+        const identifier = getRowValueCaseInsensitive(rowData, cfg.idField || col);
+        if (identifier !== undefined && identifier !== null) {
+          parts.push(identifier);
         }
+        if (parts.length === 0 && baseValue !== undefined && baseValue !== null) {
+          parts.push(baseValue);
+        }
+        (cfg.displayFields || []).forEach((df) => {
+          if (rowData[df] !== undefined) parts.push(rowData[df]);
+        });
+        return parts.join(' - ');
       }
       if (
         getAutoSelectConfig(col)?.config &&
         baseValue !== undefined &&
-        baseValue !== null
+        baseValue !== null &&
+        relationData[col]?.[baseValue]
       ) {
-        const rowData = getRelationRow(col, baseValue);
-        if (rowData) {
-          const cfg = getAutoSelectConfig(col)?.config || {};
-          const parts = [];
-          const identifier = getRowValueCaseInsensitive(rowData, cfg.idField);
-          if (identifier !== undefined && identifier !== null) {
-            parts.push(identifier);
-          }
-          if (parts.length === 0 && baseValue !== undefined && baseValue !== null) {
-            parts.push(baseValue);
-          }
-          (cfg.displayFields || []).forEach((df) => {
-            if (rowData[df] !== undefined) parts.push(rowData[df]);
-          });
-          return parts.join(' - ');
+        const rowData = relationData[col][baseValue];
+        const cfg = getAutoSelectConfig(col)?.config || {};
+        const parts = [];
+        const identifier = getRowValueCaseInsensitive(rowData, cfg.idField);
+        if (identifier !== undefined && identifier !== null) {
+          parts.push(identifier);
         }
+        if (parts.length === 0 && baseValue !== undefined && baseValue !== null) {
+          parts.push(baseValue);
+        }
+        (cfg.displayFields || []).forEach((df) => {
+          if (rowData[df] !== undefined) parts.push(rowData[df]);
+        });
+        return parts.join(' - ');
       }
       if (labelWrapper !== undefined && labelWrapper !== null && labelWrapper !== '') {
         return labelWrapper;
