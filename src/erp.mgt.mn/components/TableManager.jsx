@@ -6845,25 +6845,7 @@ const TableManager = forwardRef(function TableManager({
         if (Number.isNaN(parsed) || parsed < 1) return 1;
         return parsed;
       };
-      const normalizePrintNumber = (value, fallback = null) => {
-        const parsed = Number.parseFloat(value);
-        if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
-        return parsed;
-      };
       const copies = normalizeCopies(copiesValue);
-      const receiptFontSize = normalizePrintNumber(generalConfig?.print?.receiptFontSize);
-      const receiptWidth = normalizePrintNumber(generalConfig?.print?.receiptWidth);
-      const receiptHeight = normalizePrintNumber(generalConfig?.print?.receiptHeight);
-      const receiptMargin = normalizePrintNumber(generalConfig?.print?.receiptMargin);
-      const fontSizeRule = receiptFontSize ? `${receiptFontSize}px` : 'inherit';
-      const pageWidth = receiptWidth ? `${receiptWidth}mm` : null;
-      const pageHeight = receiptHeight ? `${receiptHeight}mm` : null;
-      const pageMargin = receiptMargin ? `${receiptMargin}mm` : '0';
-      const pageSize =
-        receiptWidth || receiptHeight
-          ? `${pageWidth || 'auto'} ${pageHeight || 'auto'}`
-          : 'auto';
-      const sheetMaxWidth = pageWidth || '100%';
       const buildSection = (mode) => {
         const list = mode === 'emp' ? formConfig?.printEmpField || [] : formConfig?.printCustField || [];
         const allowed = new Set(list.length > 0 ? list : [...headerCols, ...mainCols, ...footerCols]);
@@ -6905,7 +6887,7 @@ const TableManager = forwardRef(function TableManager({
 
       let html = '<html><head><title>Print</title>';
       html +=
-        `<style>@page{size:${pageSize};margin:${pageMargin};}@media print{body{margin:0;}.print-group{break-inside:avoid;page-break-inside:avoid;}}body{margin:0;} .print-sheet{font-size:${fontSizeRule};max-width:${sheetMaxWidth};width:100%;margin:0 auto;box-sizing:border-box;} .print-group{margin-bottom:1rem;} .print-copies{display:grid;grid-template-columns:1fr;gap:0.75rem;} .print-copies.print-copies-grid{grid-template-columns:repeat(2,minmax(0,1fr));} .print-item{break-inside:avoid;} table{width:100%;border-collapse:collapse;margin-bottom:1rem;table-layout:auto;} th,td{padding:4px;text-align:left;vertical-align:top;overflow-wrap:anywhere;word-break:break-word;white-space:normal;} .print-main-table th,.print-main-table td{border:1px solid #666;} h3{margin:0 0 4px 0;font-weight:600;}</style>`;
+        '<style>@page{size:auto;margin:1rem;}@media print{body{margin:0;}.print-group{break-inside:avoid;page-break-inside:avoid;}}body{margin:0;} .print-sheet{font-size:smaller;max-width:100%;} .print-group{margin-bottom:1rem;} .print-copies{display:grid;grid-template-columns:1fr;gap:0.75rem;} .print-copies.print-copies-grid{grid-template-columns:repeat(2,minmax(0,1fr));} .print-item{break-inside:avoid;} table{width:100%;border-collapse:collapse;margin-bottom:1rem;table-layout:auto;} th,td{padding:4px;text-align:left;vertical-align:top;overflow-wrap:anywhere;word-break:break-word;white-space:normal;} .print-main-table th,.print-main-table td{border:1px solid #666;} h3{margin:0 0 4px 0;font-weight:600;}</style>';
       html += `</head><body><div class="print-sheet">${sections}</div></body></html>`;
 
       if (userSettings?.printerId) {
