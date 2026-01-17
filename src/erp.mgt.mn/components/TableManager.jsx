@@ -7138,8 +7138,18 @@ const TableManager = forwardRef(function TableManager({
   );
 
   const confirmPrintSelection = useCallback(() => {
-    const payload = printPayload || buildPrintPayloadFromRow(selectedRowForPrint);
-    if (!payload) return;
+    const fallbackPayload =
+      !printPayload && selectedRowsForPrint.length > 0
+        ? buildPrintPayloadFromRows(selectedRowsForPrint)
+        : null;
+    const payload =
+      printPayload ||
+      fallbackPayload ||
+      buildPrintPayloadFromRow(selectedRowForPrint);
+    if (!payload) {
+      addToast(t('print_payload_missing', 'Unable to prepare print data.'), 'error');
+      return;
+    }
     const normalizedPayload = {
       ...payload,
       isReceipt: payload?.isReceipt ?? formConfig?.posApiEnabled,
@@ -7152,6 +7162,8 @@ const TableManager = forwardRef(function TableManager({
     });
     closePrintModal();
   }, [
+    addToast,
+    buildPrintPayloadFromRows,
     buildPrintPayloadFromRow,
     closePrintModal,
     handlePrintSelection,
@@ -7161,6 +7173,8 @@ const TableManager = forwardRef(function TableManager({
     printCopies,
     printPayload,
     selectedRowForPrint,
+    selectedRowsForPrint,
+    t,
   ]);
 
   const uploadCfg = uploadRow ? getConfigForRow(uploadRow) : {};
