@@ -202,7 +202,7 @@ export default function Reports() {
   const [pendingExclusion, setPendingExclusion] = useState(null);
   const [lockFetchPending, setLockFetchPending] = useState(false);
   const [lockFetchError, setLockFetchError] = useState('');
-  const [populateLockCandidates, setPopulateLockCandidates] = useState(true);
+  const [populateLockCandidates, setPopulateLockCandidates] = useState(false);
   const [lockAcknowledged, setLockAcknowledged] = useState(false);
   const [lockRequestSubmitted, setLockRequestSubmitted] = useState(false);
   const [approvalReason, setApprovalReason] = useState('');
