@@ -140,8 +140,10 @@ function isTravelPolyline(polyline, maxDimension) {
   const end = polyline[polyline.length - 1];
   const direct = Math.hypot(end.x - start.x, end.y - start.y);
   const straightness = direct / length;
-  const longStraight = direct > maxDimension * 0.25 && straightness > 0.98;
-  const shortHop = polyline.length <= 2 && direct > maxDimension * 0.15;
+  const averageTurnAngle = calculateAverageTurnAngle(polyline);
+  const nearlyStraight = straightness > 0.998 && averageTurnAngle < 0.05;
+  const longStraight = direct > maxDimension * 0.25 && straightness > 0.99;
+  const shortHop = polyline.length <= 3 && direct > maxDimension * 0.04 && nearlyStraight;
   return longStraight || shortHop;
 }
 
