@@ -6784,17 +6784,17 @@ const TableManager = forwardRef(function TableManager({
         : [];
       rowsList.forEach((row) => {
         const key = buildGroupKey(row);
+        const rowPayload = buildPrintPayloadFromRow(row);
         const existing = itemsMap.get(key);
         if (existing) {
-          existing.gridRows.push(row);
+          existing.gridRows.push(...rowPayload.gridRows);
           return;
         }
-        const formVals = row && typeof row === 'object' ? { ...row } : {};
-        itemsMap.set(key, { formVals, gridRows: [row] });
+        itemsMap.set(key, { formVals: rowPayload.formVals, gridRows: [...rowPayload.gridRows] });
       });
       return { formRows: Array.from(itemsMap.values()) };
     },
-    [footerFields, formConfig?.signatureFields, headerFields],
+    [buildPrintPayloadFromRow, footerFields, formConfig?.signatureFields, headerFields],
   );
 
   const openPrintModalForRows = useCallback(
