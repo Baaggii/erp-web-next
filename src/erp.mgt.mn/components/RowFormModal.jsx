@@ -4431,7 +4431,13 @@ const RowFormModal = function RowFormModal({
       return formatted ?? '';
     };
 
-    const columnTableHtml = (cols, row = activeFormVals, skipEmpty = false, className = '') => {
+    const columnTableHtml = (
+      cols,
+      row = activeFormVals,
+      skipEmpty = false,
+      className = '',
+      isSignature = false,
+    ) => {
       const filtered = cols.filter((c) =>
         skipEmpty
           ? row?.[c] !== '' && row?.[c] !== null && row?.[c] !== 0 && row?.[c] !== undefined
@@ -4439,7 +4445,10 @@ const RowFormModal = function RowFormModal({
       );
       if (filtered.length === 0) return '';
       const header = filtered.map((c) => `<th>${labels[c] || c}</th>`).join('');
-      const values = filtered.map((c) => `<td>${resolvePrintValue(c, row)}</td>`).join('');
+      const valueStyle = isSignature ? ' style="text-align:right; padding-left:50mm;"' : '';
+      const values = filtered
+        .map((c) => `<td${valueStyle}>${resolvePrintValue(c, row)}</td>`)
+        .join('');
       return `<table${className ? ` class="${className}"` : ''}><thead><tr>${header}</tr></thead><tbody><tr>${values}</tr></tbody></table>`;
     };
 
@@ -4472,7 +4481,7 @@ const RowFormModal = function RowFormModal({
 
     const signatureHtml = (cols) => {
       if (cols.length === 0) return '';
-      const table = columnTableHtml(cols, activeFormVals, true, 'print-signature-table');
+      const table = columnTableHtml(cols, activeFormVals, true, 'print-signature-table', true);
       if (!table) return '';
       return `<h3>Signature</h3>${table}`;
     };
