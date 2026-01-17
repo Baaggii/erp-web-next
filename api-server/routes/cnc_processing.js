@@ -79,6 +79,11 @@ router.post(
           maxStepDownMm: req.body.maxStepDownMm,
           stepOverPercent: req.body.stepOverPercent,
           safeHeightMm: req.body.safeHeightMm,
+          imageWidthPx: req.body.imageWidthPx,
+          imageHeightPx: req.body.imageHeightPx,
+          heightFieldMaxDepthMm: req.body.heightFieldMaxDepthMm,
+          heightFieldSmoothingEnabled: req.body.heightFieldSmoothingEnabled,
+          heightFieldSmoothingRadius: req.body.heightFieldSmoothingRadius,
         },
       });
 

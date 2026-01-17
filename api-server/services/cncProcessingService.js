@@ -535,9 +535,36 @@ function generateMeshToolpaths(mesh, options, tool) {
   return toolpaths;
 }
 
-function createHeightField(widthMm, heightMm, thicknessMm, resolution = 140) {
-  const cols = Math.max(10, Math.round(resolution));
-  const rows = Math.max(10, Math.round((resolution * heightMm) / widthMm));
+function resolveHeightFieldGrid({
+  widthMm,
+  heightMm,
+  resolution,
+  imageWidthPx,
+  imageHeightPx,
+}) {
+  const fallbackCols = Math.max(10, Math.round(resolution));
+  const fallbackRows = Math.max(10, Math.round((resolution * heightMm) / widthMm));
+  if (!Number.isFinite(imageWidthPx) || !Number.isFinite(imageHeightPx)) {
+    return { cols: fallbackCols, rows: fallbackRows };
+  }
+  const maxDimension = Math.max(imageWidthPx, imageHeightPx);
+  const scale = maxDimension > 0 ? Math.min(1, resolution / maxDimension) : 1;
+  const cols = Math.max(10, Math.round(imageWidthPx * scale));
+  const rows = Math.max(10, Math.round(imageHeightPx * scale));
+  return { cols, rows };
+}
+
+function createHeightField(widthMm, heightMm, thicknessMm, options = {}) {
+  const resolution = parseOptionalNumber(options.resolution, 140);
+  const imageWidthPx = parseOptionalNumber(options.imageWidthPx, null);
+  const imageHeightPx = parseOptionalNumber(options.imageHeightPx, null);
+  const { cols, rows } = resolveHeightFieldGrid({
+    widthMm,
+    heightMm,
+    resolution,
+    imageWidthPx,
+    imageHeightPx,
+  });
   const heightField = Array.from({ length: rows }, () =>
     Array.from({ length: cols }, () => thicknessMm),
   );
@@ -546,6 +573,38 @@ function createHeightField(widthMm, heightMm, thicknessMm, resolution = 140) {
     cols,
     rows,
   };
+}
+
+function smoothHeightField(heightField, radius) {
+  if (!Array.isArray(heightField) || !heightField.length) return heightField;
+  const rows = heightField.length;
+  const cols = heightField[0]?.length || 0;
+  if (!rows || !cols || radius <= 0) return heightField;
+  const next = Array.from({ length: rows }, () => Array(cols).fill(0));
+  for (let y = 0; y < rows; y += 1) {
+    for (let x = 0; x < cols; x += 1) {
+      let sum = 0;
+      let count = 0;
+      for (let dy = -radius; dy <= radius; dy += 1) {
+        for (let dx = -radius; dx <= radius; dx += 1) {
+          const ny = y + dy;
+          const nx = x + dx;
+          if (ny < 0 || ny >= rows || nx < 0 || nx >= cols) continue;
+          sum += heightField[ny][nx];
+          count += 1;
+        }
+      }
+      next[y][x] = count ? sum / count : heightField[y][x];
+    }
+  }
+  return next;
+}
+
+function clampHeightField(heightField, minValue, maxValue) {
+  if (!Array.isArray(heightField)) return heightField;
+  return heightField.map((row) =>
+    row.map((value) => clampValue(value, minValue, maxValue)),
+  );
 }
 
 function applyToolFootprint(heightField, cols, rows, material, tool, point, targetDepthMm) {
@@ -589,13 +648,23 @@ function applyToolFootprint(heightField, cols, rows, material, tool, point, targ
 
 function simulateHeightField(operations, material, options) {
   const resolution = parseOptionalNumber(options.heightFieldResolution, 140);
+  const imageWidthPx = parseOptionalNumber(options.imageWidthPx, null);
+  const imageHeightPx = parseOptionalNumber(options.imageHeightPx, null);
   const { heightField, cols, rows } = createHeightField(
     material.widthMm,
     material.heightMm,
     material.thicknessMm,
-    resolution,
+    {
+      resolution,
+      imageWidthPx,
+      imageHeightPx,
+    },
   );
   const maxDepth = Math.min(material.thicknessMm, material.maxDepthMm);
+  const requestedDepth = parseOptionalNumber(options.heightFieldMaxDepthMm, maxDepth);
+  const depthScale = clampValue(requestedDepth ?? maxDepth, 0.1, maxDepth);
+  const cellWidth = material.widthMm / cols;
+  const cellHeight = material.heightMm / rows;
   operations.forEach((operation) => {
     const tool = operation.tool;
     operation.polylines.forEach((polyline) => {
@@ -603,19 +672,32 @@ function simulateHeightField(operations, material, options) {
         const start = polyline[i - 1];
         const end = polyline[i];
         const segmentLength = Math.hypot(end.x - start.x, end.y - start.y);
-        const step = Math.max(0.6, (tool.diameterMm || 1) * 0.35);
+        const toolStep = Math.max(0.4, (tool.diameterMm || 1) * 0.35);
+        const gridStep = Math.min(cellWidth, cellHeight);
+        const step = Math.max(0.2, Math.min(toolStep, gridStep));
         const steps = Math.max(1, Math.ceil(segmentLength / step));
         for (let s = 0; s <= steps; s += 1) {
           const t = steps === 0 ? 0 : s / steps;
           const x = start.x + (end.x - start.x) * t;
           const y = start.y + (end.y - start.y) * t;
-          const z = Number.isFinite(end.z) ? Math.abs(end.z) : maxDepth;
+          const z = Number.isFinite(end.z)
+            ? Math.min(Math.abs(end.z), depthScale)
+            : depthScale;
           applyToolFootprint(heightField, cols, rows, material, tool, { x, y }, z);
         }
       }
     });
   });
-  return { heightField, cols, rows };
+  const smoothingEnabled = parseBooleanValue(options.heightFieldSmoothingEnabled, false);
+  const smoothingRadius = Math.round(
+    parseOptionalNumber(options.heightFieldSmoothingRadius, 1) || 1,
+  );
+  const smoothedField =
+    smoothingEnabled && smoothingRadius > 0
+      ? smoothHeightField(heightField, smoothingRadius)
+      : heightField;
+  const clampedField = clampHeightField(smoothedField, material.minHeightMm, material.thicknessMm);
+  return { heightField: clampedField, cols, rows, maxDepthMm: depthScale };
 }
 
 function generateGcode(operations, options) {
@@ -755,6 +837,7 @@ function buildPreview(operations, tool, heightFieldData = null) {
       ? {
           cols: heightFieldData.cols,
           rows: heightFieldData.rows,
+          maxDepthMm: heightFieldData.maxDepthMm,
         }
       : null,
   };
