@@ -159,6 +159,14 @@ export default function GeneralConfiguration() {
             General
           </button>
         </TooltipWrapper>
+        <TooltipWrapper title={t('tab_print', { ns: 'tooltip', defaultValue: 'Receipt print settings' })}>
+          <button
+            className={`tab-button ${tab === 'print' ? 'active' : ''}`}
+            onClick={() => setTab('print')}
+          >
+            Print
+          </button>
+        </TooltipWrapper>
         <TooltipWrapper title={t('tab_images', { ns: 'tooltip', defaultValue: 'Image options' })}>
           <button
             className={`tab-button ${tab === 'images' ? 'active' : ''}`}
@@ -185,6 +193,9 @@ export default function GeneralConfiguration() {
         </button>
         <button onClick={() => setTab('general')} disabled={tab === 'general'} style={{ marginLeft: '0.5rem' }}>
           General
+        </button>
+        <button onClick={() => setTab('print')} disabled={tab === 'print'} style={{ marginLeft: '0.5rem' }}>
+          Print
         </button>
         <button onClick={() => setTab('images')} disabled={tab === 'images'} style={{ marginLeft: '0.5rem' }}>
           Images
@@ -272,6 +283,79 @@ export default function GeneralConfiguration() {
                   type="number"
                   inputMode="decimal"
                   value={active.boxMaxHeight ?? ''}
+                  onChange={handleChange}
+                />
+              </label>
+            </TooltipWrapper>
+          </div>
+        </>
+      ) : tab === 'print' ? (
+        <>
+          <div style={{ marginBottom: '0.5rem' }}>
+            <TooltipWrapper title={t('receipt_font_size', { ns: 'tooltip', defaultValue: 'Receipt font size' })}>
+              <label>
+                Receipt Font Size{' '}
+                <input
+                  name="receiptFontSize"
+                  type="number"
+                  inputMode="decimal"
+                  value={active.receiptFontSize ?? ''}
+                  onChange={handleChange}
+                />
+              </label>
+            </TooltipWrapper>
+          </div>
+          <div style={{ marginBottom: '0.5rem' }}>
+            <TooltipWrapper title={t('receipt_width', { ns: 'tooltip', defaultValue: 'Receipt width (mm)' })}>
+              <label>
+                Receipt Width (mm){' '}
+                <input
+                  name="receiptWidth"
+                  type="number"
+                  inputMode="decimal"
+                  value={active.receiptWidth ?? ''}
+                  onChange={handleChange}
+                />
+              </label>
+            </TooltipWrapper>
+          </div>
+          <div style={{ marginBottom: '0.5rem' }}>
+            <TooltipWrapper title={t('receipt_height', { ns: 'tooltip', defaultValue: 'Receipt height (mm)' })}>
+              <label>
+                Receipt Height (mm){' '}
+                <input
+                  name="receiptHeight"
+                  type="number"
+                  inputMode="decimal"
+                  value={active.receiptHeight ?? ''}
+                  onChange={handleChange}
+                />
+              </label>
+            </TooltipWrapper>
+          </div>
+          <div style={{ marginBottom: '0.5rem' }}>
+            <TooltipWrapper title={t('receipt_margin', { ns: 'tooltip', defaultValue: 'Receipt margin (mm)' })}>
+              <label>
+                Receipt Margin (mm){' '}
+                <input
+                  name="receiptMargin"
+                  type="number"
+                  inputMode="decimal"
+                  value={active.receiptMargin ?? ''}
+                  onChange={handleChange}
+                />
+              </label>
+            </TooltipWrapper>
+          </div>
+          <div style={{ marginBottom: '0.5rem' }}>
+            <TooltipWrapper title={t('receipt_gap', { ns: 'tooltip', defaultValue: 'Receipt gap (mm)' })}>
+              <label>
+                Receipt Gap (mm){' '}
+                <input
+                  name="receiptGap"
+                  type="number"
+                  inputMode="decimal"
+                  value={active.receiptGap ?? ''}
                   onChange={handleChange}
                 />
               </label>

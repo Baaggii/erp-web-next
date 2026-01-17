@@ -49,6 +49,13 @@ const defaults = {
     cleanupDays: 30,
     ignoreOnSearch: ['deleted_images'],
   },
+  print: {
+    receiptFontSize: 12,
+    receiptWidth: 80,
+    receiptHeight: 200,
+    receiptMargin: 5,
+    receiptGap: 4,
+  },
 };
 
 function coerceBoolean(value, fallback = false) {
@@ -101,7 +108,7 @@ async function readConfig(companyId = 0) {
     const data = await fs.readFile(filePath, 'utf8');
     const parsed = JSON.parse(data);
     let result;
-    if (parsed.forms || parsed.pos || parsed.general || parsed.images) {
+    if (parsed.forms || parsed.pos || parsed.general || parsed.images || parsed.print) {
       const { imageStorage, ...restGeneral } = parsed.general || {};
       const images = parsed.images || imageStorage || {};
       result = {
@@ -115,6 +122,10 @@ async function readConfig(companyId = 0) {
           ...defaults.images,
           ...images,
         },
+        print: {
+          ...defaults.print,
+          ...(parsed.print || {}),
+        },
       };
     } else {
       // migrate older flat structure to new nested layout
@@ -123,6 +134,7 @@ async function readConfig(companyId = 0) {
         pos: { ...defaults.pos },
         general: { ...defaults.general },
         images: { ...defaults.images },
+        print: { ...defaults.print },
       };
     }
     result.general.workplaceFetchToastEnabled = coerceBoolean(
@@ -169,6 +181,9 @@ export async function updateGeneralConfig(updates = {}, companyId = 0) {
   }
   if (updates.images) {
     Object.assign(cfg.images, updates.images);
+  }
+  if (updates.print) {
+    Object.assign(cfg.print, updates.print);
   }
   await writeConfig(cfg, companyId);
   return { ...cfg, isDefault: false };

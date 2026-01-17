@@ -180,6 +180,7 @@ const RowFormModal = function RowFormModal({
   const generalConfig = useGeneralConfig();
   const cfg = generalConfig[scope] || {};
   const general = generalConfig.general || {};
+  const printConfig = generalConfig.print || {};
   const { t } = useTranslation(['translation', 'tooltip']);
   const formatReceiptTypeLabel = React.useCallback(
     (type) => {
@@ -1222,6 +1223,7 @@ const RowFormModal = function RowFormModal({
   const [printModalOpen, setPrintModalOpen] = useState(false);
   const [printEmpSelected, setPrintEmpSelected] = useState(true);
   const [printCustSelected, setPrintCustSelected] = useState(false);
+  const [printCopies, setPrintCopies] = useState('1');
   const [printPayload, setPrintPayload] = useState(null);
   const [infoPayload, setInfoPayload] = useState({});
   const [infoResponse, setInfoResponse] = useState(null);
@@ -4266,6 +4268,7 @@ const RowFormModal = function RowFormModal({
     setPrintPayload(payload || buildPrintPayload());
     setPrintEmpSelected(true);
     setPrintCustSelected(false);
+    setPrintCopies('1');
     setPrintModalOpen(true);
   }
   function closePrintModal() {
@@ -4274,24 +4277,20 @@ const RowFormModal = function RowFormModal({
   }
   function confirmPrintSelection() {
     const payload = printPayload || buildPrintPayload();
-    if (printEmpSelected) handlePrint('emp', payload);
-    if (printCustSelected) handlePrint('cust', payload);
+    const modes = [];
+    if (printEmpSelected) modes.push('emp');
+    if (printCustSelected) modes.push('cust');
+    handlePrint(modes, payload, printCopies);
     closePrintModal();
   }
 
-  function handlePrint(mode, payload = null) {
+  function handlePrint(modes = [], payload = null, copiesValue = 1) {
+    if (!Array.isArray(modes) || modes.length === 0) return;
     const activePayload = payload || buildPrintPayload();
     const activeFormVals = activePayload.formVals || formVals;
     const activeGridRows = Array.isArray(activePayload.gridRows)
       ? activePayload.gridRows
       : gridRows;
-    const all = [...headerCols, ...mainCols, ...footerCols, ...signatureFields];
-    const list = mode === 'emp' ? printEmpField : printCustField;
-    const allowed = new Set(list.length > 0 ? list : all);
-    const signatureCols = signatureFields.filter((c) => allowed.has(c));
-    const h = headerCols.filter((c) => allowed.has(c));
-    const m = mainCols.filter((c) => allowed.has(c));
-    const f = footerCols.filter((c) => allowed.has(c));
     const labelMap = {};
     Object.entries(relations).forEach(([col, opts]) => {
       labelMap[col] = {};
@@ -4430,20 +4429,20 @@ const RowFormModal = function RowFormModal({
       return `<table${className ? ` class="${className}"` : ''}><thead><tr>${header}</tr></thead><tbody><tr>${values}</tr></tbody></table>`;
     };
 
-    const mainTableHtml = () => {
+    const mainTableHtml = (cols) => {
       if (!useGrid) {
-        return columnTableHtml(m, activeFormVals, true, 'print-main-table');
+        return columnTableHtml(cols, activeFormVals, true, 'print-main-table');
       }
       if (!Array.isArray(activeGridRows) || activeGridRows.length === 0) {
-        return columnTableHtml(m, activeFormVals, true, 'print-main-table');
+        return columnTableHtml(cols, activeFormVals, true, 'print-main-table');
       }
-      const used = m.filter((c) =>
+      const used = cols.filter((c) =>
         activeGridRows.some(
           (r) => r[c] !== '' && r[c] !== null && r[c] !== 0 && r[c] !== undefined,
         ),
       );
       if (used.length === 0) {
-        return columnTableHtml(m, activeFormVals, true, 'print-main-table');
+        return columnTableHtml(cols, activeFormVals, true, 'print-main-table');
       }
       const header = used.map((c) => `<th>${labels[c] || c}</th>`).join('');
       const body = activeGridRows
@@ -4457,31 +4456,83 @@ const RowFormModal = function RowFormModal({
       return `<table class="print-main-table"><thead><tr>${header}</tr></thead><tbody>${body}</tbody></table>`;
     };
 
-    const signatureHtml = () => {
-      if (signatureCols.length === 0) return '';
-      const table = columnTableHtml(signatureCols, activeFormVals, true, 'print-signature-table');
+    const signatureHtml = (cols) => {
+      if (cols.length === 0) return '';
+      const table = columnTableHtml(cols, activeFormVals, true, 'print-signature-table');
       if (!table) return '';
       return `<h3>Signature</h3>${table}`;
     };
 
+    const normalizeCopies = (value) => {
+      const parsed = Number.parseInt(value, 10);
+      if (Number.isNaN(parsed) || parsed < 1) return 1;
+      return parsed;
+    };
+    const normalizePrintNumber = (value, fallback = null) => {
+      const parsed = Number.parseFloat(value);
+      if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
+      return parsed;
+    };
+    const copies = normalizeCopies(copiesValue);
+    const receiptFontSize = normalizePrintNumber(printConfig.receiptFontSize);
+    const receiptWidth = normalizePrintNumber(printConfig.receiptWidth);
+    const receiptHeight = normalizePrintNumber(printConfig.receiptHeight);
+    const receiptMargin = normalizePrintNumber(printConfig.receiptMargin);
+    const receiptGap = normalizePrintNumber(printConfig.receiptGap);
+    const fontSizeRule = receiptFontSize ? `${receiptFontSize}px` : 'inherit';
+    const pageWidth = receiptWidth ? `${receiptWidth}mm` : null;
+    const pageHeight = receiptHeight ? `${receiptHeight}mm` : null;
+    const pageMargin = receiptMargin ? `${receiptMargin}mm` : '0';
+    const gapRule = receiptGap ? `${receiptGap}mm` : '0.75rem';
+    const pageSize =
+      receiptWidth || receiptHeight
+        ? `${pageWidth || 'auto'} ${pageHeight || 'auto'}`
+        : 'auto';
+    const sheetMaxWidth = pageWidth || '100%';
+    const all = [...headerCols, ...mainCols, ...footerCols, ...signatureFields];
+    const buildSection = (mode) => {
+      const list = mode === 'emp' ? printEmpField : printCustField;
+      const allowed = new Set(list.length > 0 ? list : all);
+      const signatureCols = signatureFields.filter((c) => allowed.has(c));
+      const h = headerCols.filter((c) => allowed.has(c));
+      const m = mainCols.filter((c) => allowed.has(c));
+      const f = footerCols.filter((c) => allowed.has(c));
+      let section = '';
+      if (h.length) {
+        const table = columnTableHtml(h, activeFormVals, true);
+        if (table) section += `<h3>Header</h3>${table}`;
+      }
+      if (m.length) {
+        const mainTable = mainTableHtml(m);
+        if (mainTable) section += `<h3>Main</h3>${mainTable}`;
+      }
+      if (f.length) {
+        const table = columnTableHtml(f, activeFormVals, true);
+        if (table) section += `<h3>Footer</h3>${table}`;
+      }
+      if (signatureCols.length) {
+        const signatureBlock = signatureHtml(signatureCols);
+        if (signatureBlock) section += signatureBlock;
+      }
+      return section;
+    };
+    const renderCopies = (section) => {
+      const items = Array.from({ length: copies }, () => `<div class="print-item">${section}</div>`).join('');
+      const className = copies > 1 ? 'print-copies print-copies-grid' : 'print-copies';
+      return `<div class="${className}">${items}</div>`;
+    };
+    const sections = modes
+      .map((mode) => {
+        const section = buildSection(mode);
+        if (!section) return '';
+        return `<section class="print-group">${renderCopies(section)}</section>`;
+      })
+      .join('');
+
     let html = '<html><head><title>Print</title>';
     html +=
-      '<style>@page{size:auto;margin:1rem;}@media print{body{margin:0;font-size:small;width:max-content;}}table{width:auto;border-collapse:collapse;margin-bottom:1rem;}th,td{padding:4px;text-align:left;}.print-main-table th,.print-main-table td{border:1px solid #666;}h3{margin:0 0 4px 0;font-weight:600;}</style>';
-    html += '</head><body>';
-    if (h.length) {
-      const table = columnTableHtml(h, activeFormVals, true);
-      if (table) html += `<h3>Header</h3>${table}`;
-    }
-    if (m.length) {
-      const mainTable = mainTableHtml();
-      if (mainTable) html += `<h3>Main</h3>${mainTable}`;
-    }
-    if (f.length) {
-      const table = columnTableHtml(f, activeFormVals, true);
-      if (table) html += `<h3>Footer</h3>${table}`;
-    }
-    if (signatureCols.length) html += signatureHtml();
-    html += '</body></html>';
+      `<style>@page{size:${pageSize};margin:${pageMargin};}@media print{body{margin:0;}.print-group{break-inside:avoid;page-break-inside:avoid;}}body{margin:0;font-size:${fontSizeRule};-webkit-text-size-adjust:100%;text-size-adjust:100%;} .print-sheet{font-size:inherit;max-width:${sheetMaxWidth};width:100%;margin:0 auto;box-sizing:border-box;} .print-group{margin-bottom:${gapRule};} .print-copies{display:grid;grid-template-columns:1fr;gap:${gapRule};} .print-copies.print-copies-grid{grid-template-columns:repeat(2,minmax(0,1fr));} .print-item{break-inside:avoid;} table{width:100%;border-collapse:collapse;margin-bottom:1rem;table-layout:auto;} th,td{padding:4px;text-align:left;vertical-align:top;overflow-wrap:anywhere;word-break:break-word;white-space:normal;} .print-main-table th,.print-main-table td{border:1px solid #666;} h3{margin:0 0 4px 0;font-weight:600;}</style>`;
+    html += `</head><body><div class="print-sheet">${sections}</div></body></html>`;
     if (userSettings?.printerId) {
       fetch(`${API_BASE}/print`, {
         method: 'POST',
@@ -4793,6 +4844,17 @@ const RowFormModal = function RowFormModal({
                 <span>{t('printCust', 'Print Cust')}</span>
               </label>
             </div>
+            <label className="flex items-center gap-2 text-sm text-gray-700">
+              <span className="min-w-[80px]">{t('copies', 'Copies')}</span>
+              <input
+                type="number"
+                min="1"
+                step="1"
+                className="w-24 rounded border border-gray-300 px-2 py-1 text-sm"
+                value={printCopies}
+                onChange={(e) => setPrintCopies(e.target.value)}
+              />
+            </label>
             <div className="flex justify-end gap-2">
               <button
                 type="button"
