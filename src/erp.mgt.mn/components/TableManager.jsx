@@ -6665,14 +6665,38 @@ const TableManager = forwardRef(function TableManager({
 
   const buildPrintPayloadFromRows = useCallback(
     (rowsToPrint) => {
-      const items = Array.isArray(rowsToPrint)
-        ? rowsToPrint
-            .filter((row) => row && typeof row === 'object')
-            .map((row) => buildPrintPayloadFromRow(row))
+      const itemsMap = new Map();
+      const groupedFields = [
+        ...new Set([
+          ...headerFields,
+          ...footerFields,
+          ...(formConfig?.signatureFields || []),
+        ]),
+      ];
+      const buildGroupKey = (row) => {
+        if (groupedFields.length === 0) return 'default';
+        const keyData = {};
+        groupedFields.forEach((field) => {
+          keyData[field] = row?.[field] ?? null;
+        });
+        return JSON.stringify(keyData);
+      };
+      const rowsList = Array.isArray(rowsToPrint)
+        ? rowsToPrint.filter((row) => row && typeof row === 'object')
         : [];
-      return { formRows: items };
+      rowsList.forEach((row) => {
+        const key = buildGroupKey(row);
+        const existing = itemsMap.get(key);
+        if (existing) {
+          existing.gridRows.push(row);
+          return;
+        }
+        const formVals = row && typeof row === 'object' ? { ...row } : {};
+        itemsMap.set(key, { formVals, gridRows: [row] });
+      });
+      return { formRows: Array.from(itemsMap.values()) };
     },
-    [buildPrintPayloadFromRow],
+    [footerFields, formConfig?.signatureFields, headerFields],
   );
 
   const openPrintModalForRows = useCallback(
