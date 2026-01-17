@@ -867,49 +867,6 @@ const RowFormModal = function RowFormModal({
     },
     [autoSelectConfigs, columnCaseMap, formVals, relationConfigMap],
   );
-  const mergeFilters = useCallback((base, extra) => {
-    const merged = { ...(base || {}) };
-    Object.entries(extra || {}).forEach(([field, value]) => {
-      if (value === undefined || value === null || value === '') return;
-      if (merged[field] === undefined) merged[field] = value;
-    });
-    return Object.keys(merged).length > 0 ? merged : undefined;
-  }, []);
-  const buildViewSourceFilters = useCallback(
-    (view, excludeField) => {
-      if (!view) return {};
-      const viewCols = viewColumns?.[view] || [];
-      const viewColSet = new Set(
-        viewCols
-          .map((entry) => (typeof entry === 'string' ? entry : entry?.name))
-          .filter((entry) => entry)
-          .map((entry) => String(entry).toLowerCase()),
-      );
-      const hasViewCols = viewColSet.size > 0;
-      const filters = {};
-      Object.entries(viewSourceMap).forEach(([field, mappedView]) => {
-        if (mappedView !== view) return;
-        if (
-          excludeField &&
-          String(field).toLowerCase() === String(excludeField).toLowerCase()
-        )
-          return;
-        const mappedField =
-          columnCaseMap[String(field).toLowerCase()] || field;
-        if (hasViewCols && !viewColSet.has(String(mappedField).toLowerCase())) return;
-        let value = formVals?.[mappedField];
-        if (value === undefined) value = formVals?.[field];
-        if (value === undefined || value === null || value === '') return;
-        if (typeof value === 'object' && value !== null && 'value' in value) {
-          value = value.value;
-        }
-        if (value === undefined || value === null || value === '') return;
-        if (filters[mappedField] === undefined) filters[mappedField] = value;
-      });
-      return filters;
-    },
-    [columnCaseMap, formVals, viewColumns, viewSourceMap],
-  );
 
   function getImageFolder(row) {
     if (!row || !row._saved) return table;
@@ -3939,8 +3896,6 @@ const RowFormModal = function RowFormModal({
         const view = viewSourceMap[c];
         const cfg = viewDisplays[view] || {};
         const comboFilters = resolveCombinationFilters(c, cfg);
-        const viewFilters = buildViewSourceFilters(view, c);
-        const mergedFilters = mergeFilters(comboFilters, viewFilters);
         const hasCombination = Boolean(
           cfg?.combinationSourceColumn && cfg?.combinationTargetColumn,
         );
@@ -3986,7 +3941,7 @@ const RowFormModal = function RowFormModal({
               inputRef={(el) => (inputRefs.current[c] = el)}
               inputStyle={inputStyle}
               companyId={company}
-              filters={mergedFilters}
+              filters={comboFilters || undefined}
               shouldFetch={combinationReady}
             />
           )

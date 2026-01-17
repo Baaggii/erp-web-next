@@ -623,49 +623,6 @@ function InlineTransactionTable(
     },
     [relationConfigMap, autoSelectConfigs, columnCaseMap, getRowValueCaseInsensitive],
   );
-  const mergeFilters = useCallback((base, extra) => {
-    const merged = { ...(base || {}) };
-    Object.entries(extra || {}).forEach(([field, value]) => {
-      if (value === undefined || value === null || value === '') return;
-      if (merged[field] === undefined) merged[field] = value;
-    });
-    return Object.keys(merged).length > 0 ? merged : undefined;
-  }, []);
-  const buildViewSourceFilters = useCallback(
-    (view, rowObj, excludeField) => {
-      if (!view || !rowObj) return {};
-      const viewCols = viewColumns?.[view] || [];
-      const viewColSet = new Set(
-        viewCols
-          .map((entry) => (typeof entry === 'string' ? entry : entry?.name))
-          .filter((entry) => entry)
-          .map((entry) => String(entry).toLowerCase()),
-      );
-      const hasViewCols = viewColSet.size > 0;
-      const filters = {};
-      Object.entries(viewSourceMap).forEach(([field, mappedView]) => {
-        if (mappedView !== view) return;
-        if (
-          excludeField &&
-          String(field).toLowerCase() === String(excludeField).toLowerCase()
-        )
-          return;
-        const mappedField =
-          columnCaseMap[String(field).toLowerCase()] || field;
-        if (hasViewCols && !viewColSet.has(String(mappedField).toLowerCase())) return;
-        let value = getRowValueCaseInsensitive(rowObj, mappedField);
-        if (value === undefined) value = getRowValueCaseInsensitive(rowObj, field);
-        if (value === undefined || value === null || value === '') return;
-        if (typeof value === 'object' && value !== null && 'value' in value) {
-          value = value.value;
-        }
-        if (value === undefined || value === null || value === '') return;
-        if (filters[mappedField] === undefined) filters[mappedField] = value;
-      });
-      return filters;
-    },
-    [columnCaseMap, getRowValueCaseInsensitive, viewColumns, viewSourceMap],
-  );
 
   const getAutoSelectConfig = React.useCallback(
     (column, rowObj = null) => {
@@ -2537,8 +2494,6 @@ function InlineTransactionTable(
       const view = viewSourceMap[f];
       const cfg = viewDisplays[view] || {};
       const comboFilters = resolveCombinationFilters(rows[idx], f, cfg);
-      const viewFilters = buildViewSourceFilters(view, rows[idx], f);
-      const mergedFilters = mergeFilters(comboFilters, viewFilters);
       const hasCombination = Boolean(
         cfg?.combinationSourceColumn && cfg?.combinationTargetColumn,
       );
@@ -2568,7 +2523,7 @@ function InlineTransactionTable(
           className={invalid ? 'border-red-500 bg-red-100' : ''}
           inputStyle={inputStyle}
           companyId={company}
-          filters={mergedFilters}
+          filters={comboFilters || undefined}
           shouldFetch={combinationReady}
         />
       );
