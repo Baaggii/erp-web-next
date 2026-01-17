@@ -4868,8 +4868,16 @@ export async function getStoredProcedureSql(name) {
   if (!name) return null;
   try {
     const sql = mysql.format('SHOW CREATE PROCEDURE ??', [name]);
-    const [rows] = await pool.query(sql);
-    return rows?.[0]?.['Create Procedure'] || null;
+    const [rows] = await adminPool.query(sql);
+    const text = rows?.[0]?.['Create Procedure'];
+    if (text) return text;
+  } catch {}
+  try {
+    const [rows] = await pool.query(
+      `SELECT ROUTINE_DEFINITION FROM information_schema.ROUTINES WHERE ROUTINE_SCHEMA = DATABASE() AND ROUTINE_NAME = ?`,
+      [name],
+    );
+    return rows?.[0]?.ROUTINE_DEFINITION || null;
   } catch {
     return null;
   }
