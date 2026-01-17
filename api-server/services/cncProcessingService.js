@@ -102,13 +102,146 @@ function formatNumber(value) {
   return Number(value).toFixed(3);
 }
 
+function clampValue(value, min, max) {
+  return Math.min(Math.max(value, min), max);
+}
+
+function parseDimensionValue(value, label) {
+  if (value === undefined || value === null || value === '') {
+    const err = new Error(`${label} is required`);
+    err.status = 400;
+    throw err;
+  }
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric <= 0) {
+    const err = new Error(`${label} must be greater than 0`);
+    err.status = 400;
+    throw err;
+  }
+  return numeric;
+}
+
+function parseBooleanValue(value, fallback = true) {
+  if (value === undefined || value === null || value === '') return fallback;
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'number') return value === 1;
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    if (['true', '1', 'yes', 'on'].includes(normalized)) return true;
+    if (['false', '0', 'no', 'off'].includes(normalized)) return false;
+  }
+  return fallback;
+}
+
+function getPolylineBounds(polylines) {
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  polylines.forEach((points) => {
+    points.forEach((point) => {
+      if (!Number.isFinite(point.x) || !Number.isFinite(point.y)) return;
+      minX = Math.min(minX, point.x);
+      minY = Math.min(minY, point.y);
+      maxX = Math.max(maxX, point.x);
+      maxY = Math.max(maxY, point.y);
+    });
+  });
+  if (!Number.isFinite(minX) || !Number.isFinite(minY)) {
+    const err = new Error('Unable to determine geometry bounds');
+    err.status = 422;
+    throw err;
+  }
+  const width = maxX - minX;
+  const height = maxY - minY;
+  if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
+    const err = new Error('Invalid geometry size detected');
+    err.status = 422;
+    throw err;
+  }
+  return {
+    minX,
+    minY,
+    maxX,
+    maxY,
+    width,
+    height,
+  };
+}
+
+function normalizePolylines(polylines, bounds) {
+  return polylines.map((points) =>
+    points.map((point) => ({
+      x: (point.x - bounds.minX) / bounds.width,
+      y: (point.y - bounds.minY) / bounds.height,
+    })),
+  );
+}
+
+function scalePolylines({
+  normalizedPolylines,
+  bounds,
+  outputWidthMm,
+  outputHeightMm,
+  materialWidthMm,
+  materialHeightMm,
+  keepAspectRatio,
+}) {
+  const scaleX = outputWidthMm / bounds.width;
+  const scaleY = outputHeightMm / bounds.height;
+  let appliedScaleX = scaleX;
+  let appliedScaleY = scaleY;
+  let scaledWidth = outputWidthMm;
+  let scaledHeight = outputHeightMm;
+
+  if (keepAspectRatio) {
+    const uniformScale = Math.min(scaleX, scaleY);
+    appliedScaleX = uniformScale;
+    appliedScaleY = uniformScale;
+    scaledWidth = bounds.width * uniformScale;
+    scaledHeight = bounds.height * uniformScale;
+  }
+
+  const scaled = normalizedPolylines.map((points) =>
+    points.map((point) => {
+      const x = keepAspectRatio
+        ? point.x * bounds.width * appliedScaleX
+        : point.x * outputWidthMm;
+      const y = keepAspectRatio
+        ? point.y * bounds.height * appliedScaleY
+        : point.y * outputHeightMm;
+      return {
+        x: clampValue(x, 0, materialWidthMm),
+        y: clampValue(y, 0, materialHeightMm),
+      };
+    }),
+  );
+
+  return {
+    polylines: scaled,
+    scaledWidth,
+    scaledHeight,
+  };
+}
+
 function generateGcode(polylines, options) {
   const {
     feedRate = 1200,
     plungeRate = 600,
     safeHeight = 5,
     cutDepth = -1,
+    materialThicknessMm,
+    materialWidthMm,
+    materialHeightMm,
   } = options;
+
+  const maxDepth = Number.isFinite(materialThicknessMm)
+    ? Math.max(0, materialThicknessMm)
+    : Math.abs(cutDepth);
+  const boundedCutDepth = -Math.min(Math.abs(cutDepth), maxDepth);
+
+  const maxX = Number.isFinite(materialWidthMm) ? materialWidthMm : Infinity;
+  const maxY = Number.isFinite(materialHeightMm) ? materialHeightMm : Infinity;
 
   const lines = [
     'G21',
@@ -120,11 +253,15 @@ function generateGcode(polylines, options) {
   polylines.forEach((points) => {
     const [first, ...rest] = points;
     if (!first) return;
-    lines.push(`G0 X${formatNumber(first.x)} Y${formatNumber(first.y)}`);
-    lines.push(`G1 Z${formatNumber(cutDepth)} F${formatNumber(plungeRate)}`);
+    const startX = clampValue(first.x, 0, maxX);
+    const startY = clampValue(first.y, 0, maxY);
+    lines.push(`G0 X${formatNumber(startX)} Y${formatNumber(startY)}`);
+    lines.push(`G1 Z${formatNumber(boundedCutDepth)} F${formatNumber(plungeRate)}`);
     lines.push(`G1 F${formatNumber(feedRate)}`);
     rest.forEach((point) => {
-      lines.push(`G1 X${formatNumber(point.x)} Y${formatNumber(point.y)}`);
+      const x = clampValue(point.x, 0, maxX);
+      const y = clampValue(point.y, 0, maxY);
+      lines.push(`G1 X${formatNumber(x)} Y${formatNumber(y)}`);
     });
     lines.push(`G0 Z${formatNumber(safeHeight)}`);
   });
@@ -153,27 +290,7 @@ function generateDxf(polylines) {
 
 function buildPreview(polylines) {
   if (!polylines?.length) return null;
-  let minX = Infinity;
-  let minY = Infinity;
-  let maxX = -Infinity;
-  let maxY = -Infinity;
-  polylines.forEach((points) => {
-    points.forEach((point) => {
-      if (!Number.isFinite(point.x) || !Number.isFinite(point.y)) return;
-      minX = Math.min(minX, point.x);
-      minY = Math.min(minY, point.y);
-      maxX = Math.max(maxX, point.x);
-      maxY = Math.max(maxY, point.y);
-    });
-  });
-  if (!Number.isFinite(minX) || !Number.isFinite(minY)) return null;
-  const padding = 5;
-  const width = Math.max(1, maxX - minX + padding * 2);
-  const height = Math.max(1, maxY - minY + padding * 2);
-  return {
-    viewBox: `${minX - padding} ${minY - padding} ${width} ${height}`,
-    polylines,
-  };
+  return { polylines };
 }
 
 async function ensureOutputDir() {
@@ -218,6 +335,22 @@ export async function processCncFile({
     outputMime = 'application/dxf';
     outputExtension = '.dxf';
   } else {
+    const materialWidthMm = parseDimensionValue(options.materialWidthMm, 'Material width');
+    const materialHeightMm = parseDimensionValue(options.materialHeightMm, 'Material height');
+    const materialThicknessMm = parseDimensionValue(
+      options.materialThicknessMm,
+      'Material thickness',
+    );
+    const outputWidthMm = parseDimensionValue(options.outputWidthMm, 'Output width');
+    const outputHeightMm = parseDimensionValue(options.outputHeightMm, 'Output height');
+    const keepAspectRatio = parseBooleanValue(options.keepAspectRatio, true);
+
+    if (outputWidthMm > materialWidthMm || outputHeightMm > materialHeightMm) {
+      const err = new Error('Output size exceeds material bounds');
+      err.status = 400;
+      throw err;
+    }
+
     let svgText;
     if (svg) {
       svgText = file.buffer.toString('utf8');
@@ -244,14 +377,41 @@ export async function processCncFile({
       throw err;
     }
 
-    preview = buildPreview(polylines);
+    const bounds = getPolylineBounds(polylines);
+    const normalizedPolylines = normalizePolylines(polylines, bounds);
+    const scaledResult = scalePolylines({
+      normalizedPolylines,
+      bounds,
+      outputWidthMm,
+      outputHeightMm,
+      materialWidthMm,
+      materialHeightMm,
+      keepAspectRatio,
+    });
+
+    const scaledPolylines = scaledResult.polylines;
+
+    preview = buildPreview(scaledPolylines);
+    if (preview) {
+      preview.viewBox = `0 0 ${materialWidthMm} ${materialHeightMm}`;
+      preview.materialWidthMm = materialWidthMm;
+      preview.materialHeightMm = materialHeightMm;
+      preview.materialThicknessMm = materialThicknessMm;
+      preview.outputWidthMm = scaledResult.scaledWidth;
+      preview.outputHeightMm = scaledResult.scaledHeight;
+    }
 
     if (normalizedOutput === 'gcode') {
-      outputContent = generateGcode(polylines, options);
+      outputContent = generateGcode(scaledPolylines, {
+        ...options,
+        materialWidthMm,
+        materialHeightMm,
+        materialThicknessMm,
+      });
       outputMime = 'text/plain';
       outputExtension = '.gcode';
     } else {
-      outputContent = generateDxf(polylines);
+      outputContent = generateDxf(scaledPolylines);
       outputMime = 'application/dxf';
       outputExtension = '.dxf';
     }

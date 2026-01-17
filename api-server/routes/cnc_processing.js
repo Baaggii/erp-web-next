@@ -62,7 +62,15 @@ router.post(
       const result = await processCncFile({
         file: req.file,
         outputFormat: req.body.outputFormat,
-        options: { conversionType: req.body.conversionType },
+        options: {
+          conversionType: req.body.conversionType,
+          materialWidthMm: req.body.materialWidthMm,
+          materialHeightMm: req.body.materialHeightMm,
+          materialThicknessMm: req.body.materialThicknessMm,
+          outputWidthMm: req.body.outputWidthMm,
+          outputHeightMm: req.body.outputHeightMm,
+          keepAspectRatio: req.body.keepAspectRatio,
+        },
       });
 
       const baseUrl = `${req.protocol}://${req.get('host')}`;
@@ -76,7 +84,8 @@ router.post(
       });
     } catch (err) {
       console.error('[CNC ERROR]', err);
-      return res.status(500).json({
+      const status = err.status || 500;
+      return res.status(status).json({
         message: err.message || 'CNC processing failed',
       });
     }

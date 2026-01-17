@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { useToast } from '../context/ToastContext.jsx';
 import { API_BASE } from '../utils/apiBase.js';
 
@@ -53,6 +53,12 @@ const woodSurfaceOptions = [
   },
 ];
 
+const defaultMaterialSize = {
+  width: 300,
+  height: 200,
+  thickness: 18,
+};
+
 function isSupportedFile(file) {
   if (!file) return false;
   if (supportedMimeTypes.has(file.type)) return true;
@@ -70,6 +76,12 @@ function extractDownloadInfo(data) {
 
 function formatTimestamp(date = new Date()) {
   return date.toLocaleString();
+}
+
+function formatDimension(value) {
+  if (!Number.isFinite(value)) return '';
+  if (Number.isInteger(value)) return String(value);
+  return value.toFixed(2).replace(/\.00$/, '');
 }
 
 function parseViewBox(viewBox) {
@@ -201,6 +213,10 @@ function drawReliefPreview(ctx, width, height, viewBox, polylines, mode) {
   const scale = Math.min(width / viewBox.width, height / viewBox.height);
   const offsetX = (width - viewBox.width * scale) / 2 - viewBox.minX * scale;
   const offsetY = (height - viewBox.height * scale) / 2 - viewBox.minY * scale;
+  const rectX = viewBox.minX * scale + offsetX;
+  const rectY = viewBox.minY * scale + offsetY;
+  const rectWidth = viewBox.width * scale;
+  const rectHeight = viewBox.height * scale;
 
   ctx.lineJoin = 'round';
   ctx.lineCap = 'round';
@@ -209,6 +225,11 @@ function drawReliefPreview(ctx, width, height, viewBox, polylines, mode) {
   const depthOffset = mode === 'model' ? 1.6 : 1;
   const baseStroke = mode === 'model' ? 6 : 4;
   const shadowColor = mode === 'model' ? 'rgba(15, 23, 42, 0.12)' : 'rgba(30, 41, 59, 0.08)';
+
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(rectX, rectY, rectWidth, rectHeight);
+  ctx.clip();
 
   for (let layer = depthSteps; layer > 0; layer -= 1) {
     const shift = layer * depthOffset;
@@ -269,6 +290,12 @@ function drawReliefPreview(ctx, width, height, viewBox, polylines, mode) {
     });
     ctx.stroke();
   });
+
+  ctx.restore();
+
+  ctx.strokeStyle = 'rgba(15, 23, 42, 0.4)';
+  ctx.lineWidth = 1.2;
+  ctx.strokeRect(rectX, rectY, rectWidth, rectHeight);
 }
 
 function loadWoodTexture(url) {
@@ -327,15 +354,29 @@ function CncProcessingPage() {
   const [woodSurface, setWoodSurface] = useState(woodSurfaceOptions[0].value);
   const [woodTextures, setWoodTextures] = useState({});
   const [woodTextureRevision, setWoodTextureRevision] = useState(0);
+  const [materialWidthMm, setMaterialWidthMm] = useState(String(defaultMaterialSize.width));
+  const [materialHeightMm, setMaterialHeightMm] = useState(String(defaultMaterialSize.height));
+  const [materialThicknessMm, setMaterialThicknessMm] = useState(
+    String(defaultMaterialSize.thickness),
+  );
+  const [outputWidthMm, setOutputWidthMm] = useState(String(defaultMaterialSize.width));
+  const [outputHeightMm, setOutputHeightMm] = useState(String(defaultMaterialSize.height));
+  const [keepAspectRatio, setKeepAspectRatio] = useState(true);
   const stepId = useRef(0);
   const logId = useRef(0);
   const submitLock = useRef(false);
+  const prevMaterialSize = useRef({
+    width: defaultMaterialSize.width,
+    height: defaultMaterialSize.height,
+  });
   const woodCanvasRef = useRef(null);
   const modalWoodCanvasRef = useRef(null);
   const heightmapCanvasRef = useRef(null);
   const modalHeightmapCanvasRef = useRef(null);
   const modelCanvasRef = useRef(null);
   const modalModelCanvasRef = useRef(null);
+  const toolpathClipId = useId();
+  const toolpathModalClipId = useId();
   const viewBox = useMemo(() => parseViewBox(preview?.viewBox), [preview?.viewBox]);
   const carvedPolylines = useMemo(() => {
     if (!preview?.polylines?.length) return [];
@@ -381,6 +422,27 @@ function CncProcessingPage() {
   useEffect(() => {
     addStep('Page loaded', 'success');
   }, []);
+
+  useEffect(() => {
+    const width = Number(materialWidthMm);
+    const height = Number(materialHeightMm);
+    if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
+      return;
+    }
+    const previous = prevMaterialSize.current;
+    const outputWidth = Number(outputWidthMm);
+    const outputHeight = Number(outputHeightMm);
+    if (
+      Number.isFinite(outputWidth) &&
+      Number.isFinite(outputHeight) &&
+      Math.abs(outputWidth - previous.width) < 0.001 &&
+      Math.abs(outputHeight - previous.height) < 0.001
+    ) {
+      setOutputWidthMm(formatDimension(width));
+      setOutputHeightMm(formatDimension(height));
+    }
+    prevMaterialSize.current = { width, height };
+  }, [materialWidthMm, materialHeightMm, outputWidthMm, outputHeightMm]);
 
   useEffect(() => {
     let isActive = true;
@@ -458,9 +520,18 @@ function CncProcessingPage() {
       );
       const offsetX = (targetWidth - viewBox.width * scale) / 2 - viewBox.minX * scale;
       const offsetY = (targetHeight - viewBox.height * scale) / 2 - viewBox.minY * scale;
+      const rectX = viewBox.minX * scale + offsetX;
+      const rectY = viewBox.minY * scale + offsetY;
+      const rectWidth = viewBox.width * scale;
+      const rectHeight = viewBox.height * scale;
 
       ctx.lineJoin = 'round';
       ctx.lineCap = 'round';
+
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(rectX, rectY, rectWidth, rectHeight);
+      ctx.clip();
 
       carvedPolylines.forEach((polyline) => {
         if (!polyline.length) return;
@@ -487,6 +558,12 @@ function CncProcessingPage() {
         ctx.shadowOffsetY = -1;
         ctx.stroke();
       });
+
+      ctx.restore();
+
+      ctx.strokeStyle = 'rgba(74, 46, 26, 0.45)';
+      ctx.lineWidth = 1.2;
+      ctx.strokeRect(rectX, rectY, rectWidth, rectHeight);
     });
   }, [carvedPolylines, showWoodPreview, viewBox, woodSurface, woodTextureRevision]);
 
@@ -525,6 +602,84 @@ function CncProcessingPage() {
     () => (file ? `${file.name} (${Math.round(file.size / 1024)} KB)` : 'No file selected'),
     [file],
   );
+
+  const sizeValidationMessage = useMemo(() => {
+    const materialWidth = Number(materialWidthMm);
+    const materialHeight = Number(materialHeightMm);
+    const materialThickness = Number(materialThicknessMm);
+    const outputWidth = Number(outputWidthMm);
+    const outputHeight = Number(outputHeightMm);
+    if (
+      !Number.isFinite(materialWidth) ||
+      !Number.isFinite(materialHeight) ||
+      !Number.isFinite(materialThickness) ||
+      !Number.isFinite(outputWidth) ||
+      !Number.isFinite(outputHeight)
+    ) {
+      return 'All material and output dimensions must be numbers.';
+    }
+    if (
+      materialWidth <= 0 ||
+      materialHeight <= 0 ||
+      materialThickness <= 0 ||
+      outputWidth <= 0 ||
+      outputHeight <= 0
+    ) {
+      return 'All material and output dimensions must be greater than 0.';
+    }
+    if (outputWidth > materialWidth || outputHeight > materialHeight) {
+      return 'Output size exceeds material bounds.';
+    }
+    return '';
+  }, [
+    materialWidthMm,
+    materialHeightMm,
+    materialThicknessMm,
+    outputWidthMm,
+    outputHeightMm,
+  ]);
+
+  function handleOutputWidthChange(event) {
+    const value = event.target.value;
+    const nextWidth = Number(value);
+    const currentWidth = Number(outputWidthMm);
+    const currentHeight = Number(outputHeightMm);
+    if (
+      keepAspectRatio &&
+      Number.isFinite(nextWidth) &&
+      nextWidth > 0 &&
+      Number.isFinite(currentWidth) &&
+      currentWidth > 0 &&
+      Number.isFinite(currentHeight) &&
+      currentHeight > 0
+    ) {
+      const ratio = currentHeight / currentWidth;
+      const nextHeight = nextWidth * ratio;
+      setOutputHeightMm(formatDimension(nextHeight));
+    }
+    setOutputWidthMm(value);
+  }
+
+  function handleOutputHeightChange(event) {
+    const value = event.target.value;
+    const nextHeight = Number(value);
+    const currentWidth = Number(outputWidthMm);
+    const currentHeight = Number(outputHeightMm);
+    if (
+      keepAspectRatio &&
+      Number.isFinite(nextHeight) &&
+      nextHeight > 0 &&
+      Number.isFinite(currentWidth) &&
+      currentWidth > 0 &&
+      Number.isFinite(currentHeight) &&
+      currentHeight > 0
+    ) {
+      const ratio = currentWidth / currentHeight;
+      const nextWidth = nextHeight * ratio;
+      setOutputWidthMm(formatDimension(nextWidth));
+    }
+    setOutputHeightMm(value);
+  }
 
   function handleFileChange(event) {
     const selectedFile = event.target.files?.[0] || null;
@@ -567,6 +722,13 @@ function CncProcessingPage() {
       submitLock.current = false;
       return;
     }
+    if (sizeValidationMessage) {
+      setError(sizeValidationMessage);
+      addToast(sizeValidationMessage, 'error');
+      addStep('Validation failed', 'fail', sizeValidationMessage);
+      submitLock.current = false;
+      return;
+    }
     addStep('Validation complete', 'success');
     setStatus('uploading');
     setProgress(10);
@@ -575,6 +737,12 @@ function CncProcessingPage() {
     formData.append('file', file);
     formData.append('conversionType', processingType);
     formData.append('outputFormat', outputFormat);
+    formData.append('materialWidthMm', materialWidthMm);
+    formData.append('materialHeightMm', materialHeightMm);
+    formData.append('materialThicknessMm', materialThicknessMm);
+    formData.append('outputWidthMm', outputWidthMm);
+    formData.append('outputHeightMm', outputHeightMm);
+    formData.append('keepAspectRatio', keepAspectRatio);
 
     try {
       addStep('Requesting CSRF token', 'success');
@@ -625,6 +793,12 @@ function CncProcessingPage() {
           },
           conversionType: processingType,
           outputFormat,
+          materialWidthMm,
+          materialHeightMm,
+          materialThicknessMm,
+          outputWidthMm,
+          outputHeightMm,
+          keepAspectRatio,
         },
       };
       const res = await fetch(conversionRequest.url, {
@@ -814,6 +988,99 @@ function CncProcessingPage() {
             </div>
           </div>
 
+          <div className="rounded-md border border-slate-200 bg-slate-50 p-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <p className="text-sm font-medium text-slate-800">Material &amp; Output Size</p>
+                <p className="text-xs text-slate-500">
+                  Provide real-world dimensions (mm) to match CNC scale.
+                </p>
+              </div>
+              <label className="flex items-center gap-2 text-xs text-slate-600">
+                <input
+                  type="checkbox"
+                  checked={keepAspectRatio}
+                  onChange={(event) => setKeepAspectRatio(event.target.checked)}
+                  className="h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-slate-400"
+                />
+                Keep aspect ratio
+              </label>
+            </div>
+            <div className="mt-4 grid gap-4 md:grid-cols-3">
+              <div className="space-y-2">
+                <p className="text-xs font-semibold uppercase text-slate-500">Material (mm)</p>
+                <div className="grid gap-3">
+                  <label className="text-xs text-slate-600">
+                    Width
+                    <input
+                      type="number"
+                      min="0.1"
+                      step="0.1"
+                      value={materialWidthMm}
+                      onChange={(event) => setMaterialWidthMm(event.target.value)}
+                      className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-700"
+                    />
+                  </label>
+                  <label className="text-xs text-slate-600">
+                    Height
+                    <input
+                      type="number"
+                      min="0.1"
+                      step="0.1"
+                      value={materialHeightMm}
+                      onChange={(event) => setMaterialHeightMm(event.target.value)}
+                      className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-700"
+                    />
+                  </label>
+                  <label className="text-xs text-slate-600">
+                    Thickness
+                    <input
+                      type="number"
+                      min="0.1"
+                      step="0.1"
+                      value={materialThicknessMm}
+                      onChange={(event) => setMaterialThicknessMm(event.target.value)}
+                      className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-700"
+                    />
+                  </label>
+                </div>
+              </div>
+              <div className="space-y-2 md:col-span-2">
+                <p className="text-xs font-semibold uppercase text-slate-500">Output size (mm)</p>
+                <div className="grid gap-3 md:grid-cols-2">
+                  <label className="text-xs text-slate-600">
+                    Width
+                    <input
+                      type="number"
+                      min="0.1"
+                      step="0.1"
+                      value={outputWidthMm}
+                      onChange={handleOutputWidthChange}
+                      className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-700"
+                    />
+                  </label>
+                  <label className="text-xs text-slate-600">
+                    Height
+                    <input
+                      type="number"
+                      min="0.1"
+                      step="0.1"
+                      value={outputHeightMm}
+                      onChange={handleOutputHeightChange}
+                      className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-700"
+                    />
+                  </label>
+                </div>
+                <p className="text-[11px] text-slate-500">
+                  Output dimensions must fit within the selected material.
+                </p>
+              </div>
+            </div>
+            {sizeValidationMessage && (
+              <p className="mt-3 text-xs text-rose-600">{sizeValidationMessage}</p>
+            )}
+          </div>
+
           {isBusy && (
             <div className="space-y-2">
               <div className="flex items-center justify-between text-xs text-slate-500">
@@ -886,27 +1153,52 @@ function CncProcessingPage() {
                       className="h-full w-full"
                       preserveAspectRatio="xMidYMid meet"
                     >
-                      {preview.polylines.map((polyline, index) => (
-                        <polyline
-                          key={`${index + 1}`}
-                          points={polyline.map((point) => `${point.x},${point.y}`).join(' ')}
+                      {viewBox && (
+                        <defs>
+                          <clipPath id={toolpathClipId}>
+                            <rect
+                              x={viewBox.minX}
+                              y={viewBox.minY}
+                              width={viewBox.width}
+                              height={viewBox.height}
+                            />
+                          </clipPath>
+                        </defs>
+                      )}
+                      {viewBox && (
+                        <rect
+                          x={viewBox.minX}
+                          y={viewBox.minY}
+                          width={viewBox.width}
+                          height={viewBox.height}
                           fill="none"
-                          stroke="#0f172a"
-                          strokeWidth="0.7"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          pathLength="1"
-                          style={
-                            animatePreview
-                              ? {
-                                  strokeDasharray: 1,
-                                  strokeDashoffset: 1,
-                                  animation: 'cnc-draw 3s ease forwards',
-                                }
-                              : undefined
-                          }
+                          stroke="rgba(15, 23, 42, 0.4)"
+                          strokeWidth="0.8"
                         />
-                      ))}
+                      )}
+                      <g clipPath={viewBox ? `url(#${toolpathClipId})` : undefined}>
+                        {preview.polylines.map((polyline, index) => (
+                          <polyline
+                            key={`${index + 1}`}
+                            points={polyline.map((point) => `${point.x},${point.y}`).join(' ')}
+                            fill="none"
+                            stroke="#0f172a"
+                            strokeWidth="0.7"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            pathLength="1"
+                            style={
+                              animatePreview
+                                ? {
+                                    strokeDasharray: 1,
+                                    strokeDashoffset: 1,
+                                    animation: 'cnc-draw 3s ease forwards',
+                                  }
+                                : undefined
+                            }
+                          />
+                        ))}
+                      </g>
                     </svg>
                   </div>
                 </button>
@@ -1130,17 +1422,42 @@ function CncProcessingPage() {
                   className="h-[60vh] w-full"
                   preserveAspectRatio="xMidYMid meet"
                 >
-                  {preview?.polylines?.map((polyline, index) => (
-                    <polyline
-                      key={`${index + 1}`}
-                      points={polyline.map((point) => `${point.x},${point.y}`).join(' ')}
+                  {viewBox && (
+                    <defs>
+                      <clipPath id={toolpathModalClipId}>
+                        <rect
+                          x={viewBox.minX}
+                          y={viewBox.minY}
+                          width={viewBox.width}
+                          height={viewBox.height}
+                        />
+                      </clipPath>
+                    </defs>
+                  )}
+                  {viewBox && (
+                    <rect
+                      x={viewBox.minX}
+                      y={viewBox.minY}
+                      width={viewBox.width}
+                      height={viewBox.height}
                       fill="none"
-                      stroke="#0f172a"
-                      strokeWidth="0.9"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
+                      stroke="rgba(15, 23, 42, 0.4)"
+                      strokeWidth="1"
                     />
-                  ))}
+                  )}
+                  <g clipPath={viewBox ? `url(#${toolpathModalClipId})` : undefined}>
+                    {preview?.polylines?.map((polyline, index) => (
+                      <polyline
+                        key={`${index + 1}`}
+                        points={polyline.map((point) => `${point.x},${point.y}`).join(' ')}
+                        fill="none"
+                        stroke="#0f172a"
+                        strokeWidth="0.9"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                    ))}
+                  </g>
                 </svg>
               )}
               {previewModal === 'carving' && (
