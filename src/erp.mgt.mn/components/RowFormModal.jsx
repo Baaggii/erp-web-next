@@ -4245,12 +4245,36 @@ const RowFormModal = function RowFormModal({
     );
   }
 
+  function resolveRowPrintId(row) {
+    if (!row || typeof row !== 'object') return null;
+    const id =
+      row.id ??
+      row.Id ??
+      row.ID ??
+      row.rowId ??
+      row.RowId ??
+      row._id ??
+      row.uuid ??
+      row.UUID;
+    if (id === undefined || id === null || id === '') return null;
+    return String(id);
+  }
+  function dedupePrintRows(rows = []) {
+    const seen = new Set();
+    return rows.filter((row) => {
+      const key = resolveRowPrintId(row);
+      if (!key) return true;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }
   function buildPrintPayload(rowsOverride = null, formValsOverride = null) {
+    const sourceRows = Array.isArray(rowsOverride) ? rowsOverride : gridRows;
+    const uniqueRows = dedupePrintRows(sourceRows);
     return {
       formVals: formValsOverride ? { ...formValsOverride } : { ...formVals },
-      gridRows: Array.isArray(rowsOverride)
-        ? rowsOverride.map((row) => ({ ...row }))
-        : gridRows.map((row) => ({ ...row })),
+      gridRows: uniqueRows.map((row) => ({ ...row })),
     };
   }
   function resolvePrintPayloadFromResult(result, rowsOverride = null) {
