@@ -116,7 +116,16 @@ function CncProcessingPage() {
   const submitLock = useRef(false);
   const woodCanvasRef = useRef(null);
   const modalWoodCanvasRef = useRef(null);
-  const showWoodPreview = Boolean(preview?.polylines?.length);
+  const viewBox = useMemo(() => parseViewBox(preview?.viewBox), [preview?.viewBox]);
+  const carvedPolylines = useMemo(() => {
+    if (!preview?.polylines?.length) return [];
+    if (!viewBox) return preview.polylines;
+    const maxDistance = Math.max(viewBox.width, viewBox.height) * 0.05;
+    return preview.polylines.flatMap((polyline) =>
+      splitPolylineByDistance(polyline, maxDistance),
+    );
+  }, [preview, viewBox]);
+  const showWoodPreview = carvedPolylines.length > 0;
 
   const addStep = (label, status, details = '') => {
     stepId.current += 1;
@@ -174,11 +183,10 @@ function CncProcessingPage() {
   }, [status]);
 
   useEffect(() => {
-    if (!showWoodPreview || !preview?.polylines?.length) return;
+    if (!showWoodPreview || !carvedPolylines.length) return;
     const canvases = [woodCanvasRef.current, modalWoodCanvasRef.current].filter(Boolean);
     if (canvases.length === 0) return;
-    const box = parseViewBox(preview.viewBox);
-    if (!box) return;
+    if (!viewBox) return;
 
     canvases.forEach((canvas) => {
       const ctx = canvas.getContext('2d');
@@ -205,16 +213,16 @@ function CncProcessingPage() {
       ctx.globalAlpha = 1;
 
       const scale = Math.min(
-        targetWidth / box.width,
-        targetHeight / box.height,
+        targetWidth / viewBox.width,
+        targetHeight / viewBox.height,
       );
-      const offsetX = (targetWidth - box.width * scale) / 2 - box.minX * scale;
-      const offsetY = (targetHeight - box.height * scale) / 2 - box.minY * scale;
+      const offsetX = (targetWidth - viewBox.width * scale) / 2 - viewBox.minX * scale;
+      const offsetY = (targetHeight - viewBox.height * scale) / 2 - viewBox.minY * scale;
 
       ctx.lineJoin = 'round';
       ctx.lineCap = 'round';
 
-      preview.polylines.forEach((polyline) => {
+      carvedPolylines.forEach((polyline) => {
         if (!polyline.length) return;
         ctx.beginPath();
         polyline.forEach((point, index) => {
@@ -240,7 +248,7 @@ function CncProcessingPage() {
         ctx.stroke();
       });
     });
-  }, [preview, showWoodPreview]);
+  }, [carvedPolylines, showWoodPreview, viewBox]);
 
   const selectedFileLabel = useMemo(
     () => (file ? `${file.name} (${Math.round(file.size / 1024)} KB)` : 'No file selected'),
@@ -469,25 +477,6 @@ function CncProcessingPage() {
               />
               <span className="text-xs text-slate-500">{selectedFileLabel}</span>
             </div>
-            {hasSourcePreview && (
-              <div className="rounded-md border border-slate-200 bg-slate-50 p-3">
-                <p className="text-xs font-medium text-slate-600">Initial image preview</p>
-                <div className="mt-3 flex justify-start">
-                  <button
-                    type="button"
-                    onClick={() => setPreviewModal('source')}
-                    className="flex h-28 w-36 items-center justify-center overflow-hidden rounded-md border border-slate-200 bg-white shadow-sm transition hover:border-slate-300"
-                    aria-label="Open initial image preview"
-                  >
-                    <img
-                      src={sourcePreviewUrl}
-                      alt="Initial uploaded file preview"
-                      className="h-full w-full object-contain"
-                    />
-                  </button>
-                </div>
-              </div>
-            )}
           </div>
 
           <div className="grid gap-4 md:grid-cols-2">
@@ -560,66 +549,90 @@ function CncProcessingPage() {
         </div>
       )}
 
-      {preview?.polylines?.length > 0 && (
+      {(preview?.polylines?.length > 0 || hasSourcePreview) && (
         <div className="rounded-md border border-slate-200 bg-white p-4 text-sm text-slate-700">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <p className="text-sm font-medium text-slate-900">Toolpath preview</p>
+              <p className="text-sm font-medium text-slate-900">Preview outputs</p>
               <p className="text-xs text-slate-500">
-                Simulated carving path based on the converted vector data.
+                Tap any preview to open a larger view.
               </p>
             </div>
-            <label className="flex items-center gap-2 text-xs text-slate-500">
-              <input
-                type="checkbox"
-                checked={animatePreview}
-                onChange={(event) => setAnimatePreview(event.target.checked)}
-                className="h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-slate-400"
-              />
-              Animate toolpath
-            </label>
+            {preview?.polylines?.length > 0 && (
+              <label className="flex items-center gap-2 text-xs text-slate-500">
+                <input
+                  type="checkbox"
+                  checked={animatePreview}
+                  onChange={(event) => setAnimatePreview(event.target.checked)}
+                  className="h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-slate-400"
+                />
+                Animate toolpath
+              </label>
+            )}
           </div>
-          <div className="mt-4 grid gap-4 lg:grid-cols-2">
-            <div className="rounded-md border border-slate-200 bg-slate-50 p-3">
-              <p className="text-xs font-medium text-slate-600">Toolpath preview</p>
-              <p className="mt-1 text-[11px] text-slate-500">
-                Tap to open a larger toolpath view.
-              </p>
-              <button
-                type="button"
-                onClick={() => setPreviewModal('toolpath')}
-                className="mt-3 w-full overflow-hidden rounded-md border border-slate-200 bg-white transition hover:border-slate-300"
-                aria-label="Open toolpath preview"
-              >
-                <svg
-                  viewBox={preview.viewBox}
-                  className="h-52 w-full"
-                  preserveAspectRatio="xMidYMid meet"
+          <div className="mt-4 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            {hasSourcePreview && (
+              <div className="rounded-md border border-slate-200 bg-slate-50 p-3">
+                <p className="text-xs font-medium text-slate-600">Initial image preview</p>
+                <p className="mt-1 text-[11px] text-slate-500">
+                  Tap to open the full-size source image.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setPreviewModal('source')}
+                  className="mt-3 w-full overflow-hidden rounded-md border border-slate-200 bg-white transition hover:border-slate-300"
+                  aria-label="Open initial image preview"
                 >
-                  {preview.polylines.map((polyline, index) => (
-                    <polyline
-                      key={`${index + 1}`}
-                      points={polyline.map((point) => `${point.x},${point.y}`).join(' ')}
-                      fill="none"
-                      stroke="#0f172a"
-                      strokeWidth="0.7"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      pathLength="1"
-                      style={
-                        animatePreview
-                          ? {
-                              strokeDasharray: 1,
-                              strokeDashoffset: 1,
-                              animation: 'cnc-draw 3s ease forwards',
-                            }
-                          : undefined
-                      }
-                    />
-                  ))}
-                </svg>
-              </button>
-            </div>
+                  <img
+                    src={sourcePreviewUrl}
+                    alt="Initial uploaded file preview"
+                    className="h-52 w-full object-contain"
+                  />
+                </button>
+              </div>
+            )}
+            {preview?.polylines?.length > 0 && (
+              <div className="rounded-md border border-slate-200 bg-slate-50 p-3">
+                <p className="text-xs font-medium text-slate-600">Toolpath preview</p>
+                <p className="mt-1 text-[11px] text-slate-500">
+                  Tap to open a larger toolpath view.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setPreviewModal('toolpath')}
+                  className="mt-3 w-full overflow-hidden rounded-md border border-slate-200 bg-white transition hover:border-slate-300"
+                  aria-label="Open toolpath preview"
+                >
+                  <svg
+                    viewBox={preview.viewBox}
+                    className="h-52 w-full"
+                    preserveAspectRatio="xMidYMid meet"
+                  >
+                    {preview.polylines.map((polyline, index) => (
+                      <polyline
+                        key={`${index + 1}`}
+                        points={polyline.map((point) => `${point.x},${point.y}`).join(' ')}
+                        fill="none"
+                        stroke="#0f172a"
+                        strokeWidth="0.7"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        pathLength="1"
+                        style={
+                          animatePreview
+                            ? {
+                                strokeDasharray: 1,
+                                strokeDashoffset: 1,
+                                animation: 'cnc-draw 3s ease forwards',
+                              }
+                            : undefined
+                        }
+                      />
+                    ))}
+                  </svg>
+                </button>
+              </div>
+            )}
             {showWoodPreview && (
               <div className="rounded-md border border-slate-200 bg-slate-50 p-3">
                 <p className="text-xs font-medium text-slate-600">
