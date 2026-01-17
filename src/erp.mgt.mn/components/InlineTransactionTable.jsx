@@ -39,6 +39,20 @@ function normalizeNumberInput(value) {
   return value.replace(',', '.');
 }
 
+function normalizeRelationKey(value) {
+  if (value === undefined || value === null) return null;
+  if (typeof value === 'object') {
+    if (Object.prototype.hasOwnProperty.call(value, 'value')) {
+      return normalizeRelationKey(value.value);
+    }
+    if (Object.prototype.hasOwnProperty.call(value, 'id')) {
+      return normalizeRelationKey(value.id);
+    }
+  }
+  if (typeof value === 'string') return value.trim();
+  return String(value);
+}
+
 function InlineTransactionTable(
   {
     fields = [],
@@ -438,9 +452,9 @@ function InlineTransactionTable(
       if (Object.prototype.hasOwnProperty.call(map, rawValue)) {
         return map[rawValue];
       }
-      const stringKey = String(rawValue);
-      if (Object.prototype.hasOwnProperty.call(map, stringKey)) {
-        return map[stringKey];
+      const normalizedKey = normalizeRelationKey(rawValue);
+      if (normalizedKey && Object.prototype.hasOwnProperty.call(map, normalizedKey)) {
+        return map[normalizedKey];
       }
       return null;
     },
