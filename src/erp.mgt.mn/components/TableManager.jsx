@@ -6901,6 +6901,15 @@ const TableManager = forwardRef(function TableManager({
             : true,
         );
         if (filtered.length === 0) return '';
+        if (isSignature) {
+          const rows = filtered
+            .map((c) => {
+              const value = resolvePrintValue(c, row);
+              return `<tr><th>${labels[c] || c}</th><td style="text-align:right; padding-left:50mm;">${value}</td></tr>`;
+            })
+            .join('');
+          return `<table${className ? ` class="${className}"` : ''}><tbody>${rows}</tbody></table>`;
+        }
         const header = filtered.map((c) => `<th>${labels[c] || c}</th>`).join('');
         const valueStyle = isSignature ? ' style="text-align:right; padding-left:50mm;"' : '';
         const values = filtered
