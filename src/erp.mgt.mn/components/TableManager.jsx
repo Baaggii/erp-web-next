@@ -31,6 +31,7 @@ import { useTranslation } from 'react-i18next';
 import TooltipWrapper from './TooltipWrapper.jsx';
 import AsyncSearchSelect from './AsyncSearchSelect.jsx';
 import normalizeDateInput from '../utils/normalizeDateInput.js';
+import normalizeRelationKey from '../utils/normalizeRelationKey.js';
 import { evaluateTransactionFormAccess } from '../utils/transactionFormAccess.js';
 import {
   applyGeneratedColumnEvaluators,
@@ -1981,9 +1982,16 @@ const TableManager = forwardRef(function TableManager({
           cfg: nestedCfg,
           nestedLookups: {},
         });
-        const valueKey =
-          typeof val === 'string' || typeof val === 'number' ? String(val) : val;
-        labelMap[valueKey] = label;
+        const normalizedKey = normalizeRelationKey(val);
+        if (normalizedKey !== null && normalizedKey !== '') {
+          labelMap[normalizedKey] = label;
+        }
+        if (
+          (typeof val === 'string' || typeof val === 'number' || typeof val === 'boolean') &&
+          String(val) !== normalizedKey
+        ) {
+          labelMap[val] = label;
+        }
       });
 
       nestedLabelCache[cacheKey] = labelMap;
@@ -2083,7 +2091,16 @@ const TableManager = forwardRef(function TableManager({
           nestedLookups: nestedDisplayLookups,
         });
         if (val !== undefined) {
-          optionRows[val] = row;
+          const normalizedKey = normalizeRelationKey(val);
+          if (normalizedKey !== null && normalizedKey !== '') {
+            optionRows[normalizedKey] = row;
+          }
+          if (
+            (typeof val === 'string' || typeof val === 'number' || typeof val === 'boolean') &&
+            String(val) !== normalizedKey
+          ) {
+            optionRows[val] = row;
+          }
         }
         return {
           value: val,
@@ -2277,7 +2294,18 @@ const TableManager = forwardRef(function TableManager({
               const idKey = keyMap[idFieldName.toLowerCase()] || idFieldName;
               const identifier = row[idKey];
               if (identifier !== undefined && identifier !== null) {
-                aliasRows[identifier] = row;
+                const normalizedKey = normalizeRelationKey(identifier);
+                if (normalizedKey !== null && normalizedKey !== '') {
+                  aliasRows[normalizedKey] = row;
+                }
+                if (
+                  (typeof identifier === 'string' ||
+                    typeof identifier === 'number' ||
+                    typeof identifier === 'boolean') &&
+                  String(identifier) !== normalizedKey
+                ) {
+                  aliasRows[identifier] = row;
+                }
               }
             });
             if (Object.keys(aliasRows).length > 0) {
@@ -6056,7 +6084,17 @@ const TableManager = forwardRef(function TableManager({
   Object.entries(relationOpts).forEach(([col, opts]) => {
     labelMap[col] = {};
     opts.forEach((o) => {
-      labelMap[col][o.value] = o.label;
+      const normalizedKey = normalizeRelationKey(o.value);
+      if (normalizedKey !== null && normalizedKey !== '') {
+        labelMap[col][normalizedKey] = o.label;
+      }
+      const rawKey = o.value;
+      if (
+        (typeof rawKey === 'string' || typeof rawKey === 'number' || typeof rawKey === 'boolean') &&
+        String(rawKey) !== normalizedKey
+      ) {
+        labelMap[col][rawKey] = o.label;
+      }
     });
   });
 
@@ -6773,7 +6811,7 @@ const TableManager = forwardRef(function TableManager({
           value && typeof value === 'object' && !Array.isArray(value) && value.value !== undefined
             ? value.value
             : labelWrapper;
-        const normalizedValueKey = normalizeSearchValue(baseValue);
+        const normalizedValueKey = normalizeRelationKey(baseValue);
         if (relationOpts[col] && normalizedValueKey !== undefined && labelMap[col]) {
           const optionLabel = labelMap[col][normalizedValueKey];
           if (optionLabel !== undefined) return optionLabel;
