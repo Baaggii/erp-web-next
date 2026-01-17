@@ -4563,7 +4563,7 @@ const RowFormModal = function RowFormModal({
         body: JSON.stringify({ printerId: userSettings.printerId, content: html }),
       }).catch((err) => console.error('Print failed', err));
     } else {
-      const w = window.open('', '_blank');
+      const w = window.open('', '_blank', windowFeatures);
       if (!w) return;
       w.document.write(html);
       w.document.close();
