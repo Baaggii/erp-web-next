@@ -58,6 +58,7 @@ export default function AllowedReportsConfig() {
   const [permissions, setPermissions] = useState([]);
   const [isDefault, setIsDefault] = useState(false);
   const [procOptions, setProcOptions] = useState([]);
+  const [missingProcedures, setMissingProcedures] = useState([]);
   const [branchRows, setBranchRows] = useState([]);
   const [branchCfg, setBranchCfg] = useState({});
   const [deptRows, setDeptRows] = useState([]);
@@ -72,6 +73,7 @@ export default function AllowedReportsConfig() {
   const [selectedRule, setSelectedRule] = useState('');
   const columnResizeRef = useRef({ key: null, startX: 0, startWidth: 0 });
   const rulesResizeRef = useRef({ active: false, startX: 0, startWidth: 0 });
+  const missingPromptedRef = useRef(false);
   const [columnWidths, setColumnWidths] = useState(() => {
     if (typeof window === 'undefined') {
       return { ...COLUMN_DEFAULT_WIDTHS };
@@ -206,11 +208,13 @@ export default function AllowedReportsConfig() {
       .then((data) => {
         setReports(data.allowedReports || {});
         setIsDefault(!!data.isDefault);
+        setMissingProcedures(data.missingProcedures || []);
         setIsLoading(false);
       })
       .catch(() => {
         setReports({});
         setIsDefault(true);
+        setMissingProcedures([]);
         setIsLoading(false);
       });
 
@@ -269,6 +273,41 @@ export default function AllowedReportsConfig() {
       .then(setPermCfg)
       .catch(() => setPermCfg({ idField: null, displayFields: [] }));
   }, []);
+
+  useEffect(() => {
+    if (missingPromptedRef.current) return;
+    if (!missingProcedures.length) return;
+    missingPromptedRef.current = true;
+    const label =
+      missingProcedures.length === 1
+        ? `The report access rule references a missing procedure: ${missingProcedures[0]}. Remove it?`
+        : `Report access rules reference missing procedures:\n${missingProcedures.join(
+            '\n',
+          )}\n\nRemove them?`;
+    if (!window.confirm(label)) return;
+    Promise.all(
+      missingProcedures.map((name) => {
+        const params = new URLSearchParams({ proc: name });
+        return fetch(`/api/report_access?${params.toString()}`, {
+          method: 'DELETE',
+          credentials: 'include',
+        });
+      }),
+    )
+      .then((responses) => {
+        const failed = responses.some((res) => !res.ok);
+        if (failed) {
+          addToast('Failed to remove missing procedures', 'error');
+          return;
+        }
+        setMissingProcedures([]);
+        refreshModules();
+        addToast('Removed missing procedures', 'success');
+      })
+      .catch(() => {
+        addToast('Failed to remove missing procedures', 'error');
+      });
+  }, [addToast, missingProcedures]);
 
   const procLabels = generalConfig?.general?.procLabels || {};
   const procedureKeys = useMemo(() => Object.keys(reports || {}), [reports]);
