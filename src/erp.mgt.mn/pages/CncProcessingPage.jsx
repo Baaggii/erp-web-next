@@ -25,6 +25,10 @@ const supportedMimeTypes = new Set([
   'application/vnd.dxf',
   'image/vnd.dxf',
 ]);
+const woodSurfaceOptions = [
+  { value: 'soft', label: 'Soft wood' },
+  { value: 'hard', label: 'Hard wood' },
+];
 
 function isSupportedFile(file) {
   if (!file) return false;
@@ -73,6 +77,66 @@ function splitPolylineByDistance(polyline, maxDistance) {
   return segments;
 }
 
+function calculatePolylineLength(polyline) {
+  if (!polyline || polyline.length < 2) return 0;
+  return polyline.reduce((length, point, index) => {
+    if (index === 0) return length;
+    const prev = polyline[index - 1];
+    return length + Math.hypot(point.x - prev.x, point.y - prev.y);
+  }, 0);
+}
+
+function calculateAverageTurnAngle(polyline) {
+  if (!polyline || polyline.length < 3) return 0;
+  let angleSum = 0;
+  let count = 0;
+  for (let i = 1; i < polyline.length - 1; i += 1) {
+    const prev = polyline[i - 1];
+    const current = polyline[i];
+    const next = polyline[i + 1];
+    const v1x = current.x - prev.x;
+    const v1y = current.y - prev.y;
+    const v2x = next.x - current.x;
+    const v2y = next.y - current.y;
+    const dot = v1x * v2x + v1y * v2y;
+    const mag1 = Math.hypot(v1x, v1y);
+    const mag2 = Math.hypot(v2x, v2y);
+    if (mag1 === 0 || mag2 === 0) continue;
+    const cosAngle = Math.min(1, Math.max(-1, dot / (mag1 * mag2)));
+    angleSum += Math.acos(cosAngle);
+    count += 1;
+  }
+  return count ? angleSum / count : 0;
+}
+
+function createWoodGradient(ctx, width, height, surface) {
+  const gradient = ctx.createLinearGradient(0, 0, width, height);
+  if (surface === 'hard') {
+    gradient.addColorStop(0, '#f1d9b5');
+    gradient.addColorStop(0.45, '#c58a55');
+    gradient.addColorStop(1, '#a66a3a');
+  } else {
+    gradient.addColorStop(0, '#f9e9cc');
+    gradient.addColorStop(0.5, '#e1b98f');
+    gradient.addColorStop(1, '#cfa276');
+  }
+  return gradient;
+}
+
+function drawWoodPattern(ctx, width, height, surface) {
+  ctx.fillStyle = createWoodGradient(ctx, width, height, surface);
+  ctx.fillRect(0, 0, width, height);
+  ctx.globalAlpha = surface === 'hard' ? 0.35 : 0.25;
+  const bands = surface === 'hard' ? 22 : 16;
+  for (let i = 0; i < bands; i += 1) {
+    const shade = i % 2 === 0 ? '#d2a070' : '#e6c29a';
+    ctx.fillStyle = shade;
+    const y = (height / bands) * i;
+    ctx.fillRect(0, y, width, height / bands);
+  }
+  ctx.globalAlpha = 1;
+}
+
 function headersToObject(headers) {
   if (!headers) return {};
   return Array.from(headers.entries()).reduce((acc, [key, value]) => {
@@ -111,12 +175,35 @@ function CncProcessingPage() {
   const [apiLogs, setApiLogs] = useState([]);
   const [sourcePreviewUrl, setSourcePreviewUrl] = useState('');
   const [previewModal, setPreviewModal] = useState(null);
+  const [woodSurface, setWoodSurface] = useState(woodSurfaceOptions[0].value);
   const stepId = useRef(0);
   const logId = useRef(0);
   const submitLock = useRef(false);
   const woodCanvasRef = useRef(null);
   const modalWoodCanvasRef = useRef(null);
-  const showWoodPreview = Boolean(preview?.polylines?.length);
+  const viewBox = useMemo(() => parseViewBox(preview?.viewBox), [preview?.viewBox]);
+  const carvedPolylines = useMemo(() => {
+    if (!preview?.polylines?.length) return [];
+    if (!viewBox) return preview.polylines;
+    const maxDistance = Math.max(viewBox.width, viewBox.height) * 0.015;
+    const splitPolylines = preview.polylines.flatMap((polyline) =>
+      splitPolylineByDistance(polyline, maxDistance),
+    );
+    const lengths = splitPolylines.map(calculatePolylineLength).filter((length) => length > 0);
+    const averageLength = lengths.length
+      ? lengths.reduce((sum, length) => sum + length, 0) / lengths.length
+      : 0;
+    const maxAllowedLength = averageLength * 4;
+    return splitPolylines.filter((polyline) => {
+      const length = calculatePolylineLength(polyline);
+      if (!length) return false;
+      const averageTurnAngle = calculateAverageTurnAngle(polyline);
+      const isStraight = averageTurnAngle < Math.PI / 18;
+      const isLong = length > maxAllowedLength && maxAllowedLength > 0;
+      return !(isStraight && isLong);
+    });
+  }, [preview, viewBox]);
+  const showWoodPreview = carvedPolylines.length > 0;
 
   const addStep = (label, status, details = '') => {
     stepId.current += 1;
@@ -174,11 +261,10 @@ function CncProcessingPage() {
   }, [status]);
 
   useEffect(() => {
-    if (!showWoodPreview || !preview?.polylines?.length) return;
+    if (!showWoodPreview || !carvedPolylines.length) return;
     const canvases = [woodCanvasRef.current, modalWoodCanvasRef.current].filter(Boolean);
     if (canvases.length === 0) return;
-    const box = parseViewBox(preview.viewBox);
-    if (!box) return;
+    if (!viewBox) return;
 
     canvases.forEach((canvas) => {
       const ctx = canvas.getContext('2d');
@@ -189,32 +275,19 @@ function CncProcessingPage() {
       canvas.width = targetWidth;
       canvas.height = targetHeight;
 
-      const gradient = ctx.createLinearGradient(0, 0, targetWidth, targetHeight);
-      gradient.addColorStop(0, '#f8e7c2');
-      gradient.addColorStop(0.5, '#e8c08e');
-      gradient.addColorStop(1, '#d1a073');
-      ctx.fillStyle = gradient;
-      ctx.fillRect(0, 0, targetWidth, targetHeight);
-
-      ctx.globalAlpha = 0.25;
-      for (let i = 0; i < 18; i += 1) {
-        ctx.fillStyle = i % 2 === 0 ? '#d9b085' : '#e0bf97';
-        const y = (targetHeight / 18) * i;
-        ctx.fillRect(0, y, targetWidth, targetHeight / 18);
-      }
-      ctx.globalAlpha = 1;
+      drawWoodPattern(ctx, targetWidth, targetHeight, woodSurface);
 
       const scale = Math.min(
-        targetWidth / box.width,
-        targetHeight / box.height,
+        targetWidth / viewBox.width,
+        targetHeight / viewBox.height,
       );
-      const offsetX = (targetWidth - box.width * scale) / 2 - box.minX * scale;
-      const offsetY = (targetHeight - box.height * scale) / 2 - box.minY * scale;
+      const offsetX = (targetWidth - viewBox.width * scale) / 2 - viewBox.minX * scale;
+      const offsetY = (targetHeight - viewBox.height * scale) / 2 - viewBox.minY * scale;
 
       ctx.lineJoin = 'round';
       ctx.lineCap = 'round';
 
-      preview.polylines.forEach((polyline) => {
+      carvedPolylines.forEach((polyline) => {
         if (!polyline.length) return;
         ctx.beginPath();
         polyline.forEach((point, index) => {
@@ -240,7 +313,7 @@ function CncProcessingPage() {
         ctx.stroke();
       });
     });
-  }, [preview, showWoodPreview]);
+  }, [carvedPolylines, showWoodPreview, viewBox, woodSurface]);
 
   const selectedFileLabel = useMemo(
     () => (file ? `${file.name} (${Math.round(file.size / 1024)} KB)` : 'No file selected'),
@@ -472,11 +545,11 @@ function CncProcessingPage() {
             {hasSourcePreview && (
               <div className="rounded-md border border-slate-200 bg-slate-50 p-3">
                 <p className="text-xs font-medium text-slate-600">Initial image preview</p>
-                <div className="mt-3 flex justify-start">
+                <div className="mt-2 flex justify-start">
                   <button
                     type="button"
                     onClick={() => setPreviewModal('source')}
-                    className="flex h-28 w-36 items-center justify-center overflow-hidden rounded-md border border-slate-200 bg-white shadow-sm transition hover:border-slate-300"
+                    className="flex h-20 w-28 items-center justify-center overflow-hidden rounded-md border border-slate-200 bg-white shadow-sm transition hover:border-slate-300"
                     aria-label="Open initial image preview"
                   >
                     <img
@@ -564,9 +637,9 @@ function CncProcessingPage() {
         <div className="rounded-md border border-slate-200 bg-white p-4 text-sm text-slate-700">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <p className="text-sm font-medium text-slate-900">Toolpath preview</p>
+              <p className="text-sm font-medium text-slate-900">Preview outputs</p>
               <p className="text-xs text-slate-500">
-                Simulated carving path based on the converted vector data.
+                Tap any preview to open a larger view.
               </p>
             </div>
             <label className="flex items-center gap-2 text-xs text-slate-500">
@@ -579,7 +652,7 @@ function CncProcessingPage() {
               Animate toolpath
             </label>
           </div>
-          <div className="mt-4 grid gap-4 lg:grid-cols-2">
+          <div className="mt-4 grid gap-4 md:grid-cols-2">
             <div className="rounded-md border border-slate-200 bg-slate-50 p-3">
               <p className="text-xs font-medium text-slate-600">Toolpath preview</p>
               <p className="mt-1 text-[11px] text-slate-500">
@@ -622,12 +695,30 @@ function CncProcessingPage() {
             </div>
             {showWoodPreview && (
               <div className="rounded-md border border-slate-200 bg-slate-50 p-3">
-                <p className="text-xs font-medium text-slate-600">
-                  Imitated wood carving result (based on the processed file)
-                </p>
-                <p className="mt-1 text-[11px] text-slate-500">
-                  Carved impression preview over a wood surface.
-                </p>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <p className="text-xs font-medium text-slate-600">
+                      Imitated wood carving result (based on the processed file)
+                    </p>
+                    <p className="mt-1 text-[11px] text-slate-500">
+                      Carved impression preview over a wood surface.
+                    </p>
+                  </div>
+                  <label className="flex items-center gap-2 text-[11px] text-slate-500">
+                    <span>Surface</span>
+                    <select
+                      value={woodSurface}
+                      onChange={(event) => setWoodSurface(event.target.value)}
+                      className="rounded-md border border-slate-300 bg-white px-2 py-1 text-[11px] text-slate-700"
+                    >
+                      {woodSurfaceOptions.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
                 <button
                   type="button"
                   onClick={() => setPreviewModal('carving')}
