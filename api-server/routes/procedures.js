@@ -17,6 +17,14 @@ const rateLimits = new Map();
 
 const router = express.Router();
 
+function isTruthyFlag(value) {
+  if (value === true || value === 1) return true;
+  if (typeof value === 'string') {
+    return value.trim().toLowerCase() === 'true';
+  }
+  return false;
+}
+
 function resolveCompanyId(req) {
   const rawCompanyId = req.query?.companyId ?? req.user?.companyId;
   const companyId = Number(rawCompanyId);
@@ -137,11 +145,10 @@ router.post('/locks', requireAuth, async (req, res, next) => {
 router.post('/', requireAuth, async (req, res, next) => {
   try {
     const { name, params, aliases } = req.body || {};
-    const collectLocks = Boolean(
-      req.body?.collectLocks ??
-        req.body?.collect_lock_candidates ??
-        req.body?.populateLockCandidates,
-    );
+    const collectLocks =
+      isTruthyFlag(req.body?.collectLocks) ||
+      isTruthyFlag(req.body?.collect_lock_candidates) ||
+      isTruthyFlag(req.body?.populateLockCandidates);
     const providedLockRequestId =
       req.body?.lockRequestId ??
       req.body?.lock_request_id ??
