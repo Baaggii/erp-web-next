@@ -185,23 +185,10 @@ function CncProcessingPage() {
   const carvedPolylines = useMemo(() => {
     if (!preview?.polylines?.length) return [];
     if (!viewBox) return preview.polylines;
-    const maxDistance = Math.max(viewBox.width, viewBox.height) * 0.015;
-    const splitPolylines = preview.polylines.flatMap((polyline) =>
+    const maxDistance = Math.max(viewBox.width, viewBox.height) * 0.05;
+    return preview.polylines.flatMap((polyline) =>
       splitPolylineByDistance(polyline, maxDistance),
     );
-    const lengths = splitPolylines.map(calculatePolylineLength).filter((length) => length > 0);
-    const averageLength = lengths.length
-      ? lengths.reduce((sum, length) => sum + length, 0) / lengths.length
-      : 0;
-    const maxAllowedLength = averageLength * 4;
-    return splitPolylines.filter((polyline) => {
-      const length = calculatePolylineLength(polyline);
-      if (!length) return false;
-      const averageTurnAngle = calculateAverageTurnAngle(polyline);
-      const isStraight = averageTurnAngle < Math.PI / 18;
-      const isLong = length > maxAllowedLength && maxAllowedLength > 0;
-      return !(isStraight && isLong);
-    });
   }, [preview, viewBox]);
   const showWoodPreview = carvedPolylines.length > 0;
 
@@ -313,7 +300,7 @@ function CncProcessingPage() {
         ctx.stroke();
       });
     });
-  }, [carvedPolylines, showWoodPreview, viewBox, woodSurface]);
+  }, [carvedPolylines, showWoodPreview, viewBox]);
 
   const selectedFileLabel = useMemo(
     () => (file ? `${file.name} (${Math.round(file.size / 1024)} KB)` : 'No file selected'),
@@ -542,25 +529,6 @@ function CncProcessingPage() {
               />
               <span className="text-xs text-slate-500">{selectedFileLabel}</span>
             </div>
-            {hasSourcePreview && (
-              <div className="rounded-md border border-slate-200 bg-slate-50 p-3">
-                <p className="text-xs font-medium text-slate-600">Initial image preview</p>
-                <div className="mt-2 flex justify-start">
-                  <button
-                    type="button"
-                    onClick={() => setPreviewModal('source')}
-                    className="flex h-20 w-28 items-center justify-center overflow-hidden rounded-md border border-slate-200 bg-white shadow-sm transition hover:border-slate-300"
-                    aria-label="Open initial image preview"
-                  >
-                    <img
-                      src={sourcePreviewUrl}
-                      alt="Initial uploaded file preview"
-                      className="h-full w-full object-contain"
-                    />
-                  </button>
-                </div>
-              </div>
-            )}
           </div>
 
           <div className="grid gap-4 md:grid-cols-2">
@@ -633,7 +601,7 @@ function CncProcessingPage() {
         </div>
       )}
 
-      {preview?.polylines?.length > 0 && (
+      {(preview?.polylines?.length > 0 || hasSourcePreview) && (
         <div className="rounded-md border border-slate-200 bg-white p-4 text-sm text-slate-700">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
@@ -642,57 +610,81 @@ function CncProcessingPage() {
                 Tap any preview to open a larger view.
               </p>
             </div>
-            <label className="flex items-center gap-2 text-xs text-slate-500">
-              <input
-                type="checkbox"
-                checked={animatePreview}
-                onChange={(event) => setAnimatePreview(event.target.checked)}
-                className="h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-slate-400"
-              />
-              Animate toolpath
-            </label>
+            {preview?.polylines?.length > 0 && (
+              <label className="flex items-center gap-2 text-xs text-slate-500">
+                <input
+                  type="checkbox"
+                  checked={animatePreview}
+                  onChange={(event) => setAnimatePreview(event.target.checked)}
+                  className="h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-slate-400"
+                />
+                Animate toolpath
+              </label>
+            )}
           </div>
-          <div className="mt-4 grid gap-4 md:grid-cols-2">
-            <div className="rounded-md border border-slate-200 bg-slate-50 p-3">
-              <p className="text-xs font-medium text-slate-600">Toolpath preview</p>
-              <p className="mt-1 text-[11px] text-slate-500">
-                Tap to open a larger toolpath view.
-              </p>
-              <button
-                type="button"
-                onClick={() => setPreviewModal('toolpath')}
-                className="mt-3 w-full overflow-hidden rounded-md border border-slate-200 bg-white transition hover:border-slate-300"
-                aria-label="Open toolpath preview"
-              >
-                <svg
-                  viewBox={preview.viewBox}
-                  className="h-52 w-full"
-                  preserveAspectRatio="xMidYMid meet"
+          <div className="mt-4 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            {hasSourcePreview && (
+              <div className="rounded-md border border-slate-200 bg-slate-50 p-3">
+                <p className="text-xs font-medium text-slate-600">Initial image preview</p>
+                <p className="mt-1 text-[11px] text-slate-500">
+                  Tap to open the full-size source image.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setPreviewModal('source')}
+                  className="mt-3 w-full overflow-hidden rounded-md border border-slate-200 bg-white transition hover:border-slate-300"
+                  aria-label="Open initial image preview"
                 >
-                  {preview.polylines.map((polyline, index) => (
-                    <polyline
-                      key={`${index + 1}`}
-                      points={polyline.map((point) => `${point.x},${point.y}`).join(' ')}
-                      fill="none"
-                      stroke="#0f172a"
-                      strokeWidth="0.7"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      pathLength="1"
-                      style={
-                        animatePreview
-                          ? {
-                              strokeDasharray: 1,
-                              strokeDashoffset: 1,
-                              animation: 'cnc-draw 3s ease forwards',
-                            }
-                          : undefined
-                      }
-                    />
-                  ))}
-                </svg>
-              </button>
-            </div>
+                  <img
+                    src={sourcePreviewUrl}
+                    alt="Initial uploaded file preview"
+                    className="h-52 w-full object-contain"
+                  />
+                </button>
+              </div>
+            )}
+            {preview?.polylines?.length > 0 && (
+              <div className="rounded-md border border-slate-200 bg-slate-50 p-3">
+                <p className="text-xs font-medium text-slate-600">Toolpath preview</p>
+                <p className="mt-1 text-[11px] text-slate-500">
+                  Tap to open a larger toolpath view.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setPreviewModal('toolpath')}
+                  className="mt-3 w-full overflow-hidden rounded-md border border-slate-200 bg-white transition hover:border-slate-300"
+                  aria-label="Open toolpath preview"
+                >
+                  <svg
+                    viewBox={preview.viewBox}
+                    className="h-52 w-full"
+                    preserveAspectRatio="xMidYMid meet"
+                  >
+                    {preview.polylines.map((polyline, index) => (
+                      <polyline
+                        key={`${index + 1}`}
+                        points={polyline.map((point) => `${point.x},${point.y}`).join(' ')}
+                        fill="none"
+                        stroke="#0f172a"
+                        strokeWidth="0.7"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        pathLength="1"
+                        style={
+                          animatePreview
+                            ? {
+                                strokeDasharray: 1,
+                                strokeDashoffset: 1,
+                                animation: 'cnc-draw 3s ease forwards',
+                              }
+                            : undefined
+                        }
+                      />
+                    ))}
+                  </svg>
+                </button>
+              </div>
+            )}
             {showWoodPreview && (
               <div className="rounded-md border border-slate-200 bg-slate-50 p-3">
                 <div className="flex flex-wrap items-center justify-between gap-2">

@@ -6913,6 +6913,7 @@ const TableManager = forwardRef(function TableManager({
       formColumns,
       formConfig,
       formatRelationDisplay,
+      generalConfig,
       headerFields,
       jsonRelationLabels,
       labelMap,
