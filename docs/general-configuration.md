@@ -27,6 +27,12 @@
   },
   "images": {
     "basePath": "uploads"
+  },
+  "print": {
+    "receiptFontSize": 12,
+    "receiptWidth": 80,
+    "receiptHeight": 200,
+    "receiptMargin": 5
   }
 }
 ```
@@ -62,6 +68,11 @@ value `"uploads"` creates files under `<repo>/uploads/<table>/`.
 
 `ignoreOnSearch` lets administrators specify folder names to skip when searching
 for images via the context-menu search feature.
+
+The **Print** section controls receipt output sizing for printed documents.
+`receiptFontSize` sets the base font size (px), while `receiptWidth`,
+`receiptHeight`, and `receiptMargin` (all in mm) are applied to the print page
+size and margins for receipt printing.
 
 The settings can be edited in the **General Configuration** screen
 (module key `general_configuration`) under the Settings menu.

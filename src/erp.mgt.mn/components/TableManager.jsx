@@ -533,6 +533,7 @@ const TableManager = forwardRef(function TableManager({
   const [printModalOpen, setPrintModalOpen] = useState(false);
   const [printEmpSelected, setPrintEmpSelected] = useState(true);
   const [printCustSelected, setPrintCustSelected] = useState(false);
+  const [printCopies, setPrintCopies] = useState('1');
   const [printPayload, setPrintPayload] = useState(null);
   const [localRefresh, setLocalRefresh] = useState(0);
   const [procTriggers, setProcTriggers] = useState({});
@@ -6658,6 +6659,7 @@ const TableManager = forwardRef(function TableManager({
       setPrintPayload(payload);
       setPrintEmpSelected(true);
       setPrintCustSelected(false);
+      setPrintCopies('1');
       setPrintModalOpen(true);
     },
     [buildPrintPayloadFromRow],
@@ -6671,6 +6673,7 @@ const TableManager = forwardRef(function TableManager({
       setPrintPayload(resolvedPayload);
       setPrintEmpSelected(true);
       setPrintCustSelected(false);
+      setPrintCopies('1');
       setPrintModalOpen(true);
     },
     [buildPrintPayloadFromRow, editing, gridRows],
@@ -6682,8 +6685,8 @@ const TableManager = forwardRef(function TableManager({
   }, []);
 
   const handlePrintSelection = useCallback(
-    (mode, payload) => {
-      if (!payload) return;
+    (modes, payload, copiesValue = 1) => {
+      if (!payload || !Array.isArray(modes) || modes.length === 0) return;
       const activePayload = payload || buildPrintPayloadFromRow(selectedRowForPrint);
       const activeFormVals = activePayload.formVals || {};
       const activeGridRows = Array.isArray(activePayload.gridRows)
@@ -6695,12 +6698,7 @@ const TableManager = forwardRef(function TableManager({
       const mainCols = hasDefinedSections ? mainFields : formColumns;
       const footerCols = hasDefinedSections ? footerFields : [];
       const signatureFields = formConfig?.signatureFields || [];
-      const list = mode === 'emp' ? formConfig?.printEmpField || [] : formConfig?.printCustField || [];
-      const allowed = new Set(list.length > 0 ? list : [...headerCols, ...mainCols, ...footerCols]);
       const signatureSet = new Set(signatureFields);
-      const h = headerCols.filter((c) => allowed.has(c) && !signatureSet.has(c));
-      const m = mainCols.filter((c) => allowed.has(c) && !signatureSet.has(c));
-      const f = footerCols.filter((c) => allowed.has(c) && !signatureSet.has(c));
       const labelKeys = ['label', 'name', 'title', 'text', 'display', 'displayName', 'code'];
       const resolveLabelWrapperValue = (value) => {
         if (value === undefined || value === null) return value;
@@ -6811,17 +6809,17 @@ const TableManager = forwardRef(function TableManager({
         return `<table${className ? ` class="${className}"` : ''}><thead><tr>${header}</tr></thead><tbody><tr>${values}</tr></tbody></table>`;
       };
 
-      const mainTableHtml = () => {
+      const mainTableHtml = (cols) => {
         if (!Array.isArray(activeGridRows) || activeGridRows.length === 0) {
-          return columnTableHtml(m, activeFormVals, true, 'print-main-table');
+          return columnTableHtml(cols, activeFormVals, true, 'print-main-table');
         }
-        const used = m.filter((c) =>
+        const used = cols.filter((c) =>
           activeGridRows.some(
             (r) => r[c] !== '' && r[c] !== null && r[c] !== 0 && r[c] !== undefined,
           ),
         );
         if (used.length === 0) {
-          return columnTableHtml(m, activeFormVals, true, 'print-main-table');
+          return columnTableHtml(cols, activeFormVals, true, 'print-main-table');
         }
         const header = used.map((c) => `<th>${labels[c] || c}</th>`).join('');
         const body = activeGridRows
@@ -6835,33 +6833,77 @@ const TableManager = forwardRef(function TableManager({
         return `<table class="print-main-table"><thead><tr>${header}</tr></thead><tbody>${body}</tbody></table>`;
       };
 
-      const signatureHtml = () => {
-        if (signatureFields.length === 0) return '';
-        const cols = signatureFields.filter((c) => allowed.has(c));
+      const signatureHtml = (cols) => {
+        if (cols.length === 0) return '';
         const table = columnTableHtml(cols, activeFormVals, true, 'print-signature-table');
         if (!table) return '';
         return `<h3>Signature</h3>${table}`;
       };
 
+      const normalizeCopies = (value) => {
+        const parsed = Number.parseInt(value, 10);
+        if (Number.isNaN(parsed) || parsed < 1) return 1;
+        return parsed;
+      };
+      const normalizePrintNumber = (value, fallback = null) => {
+        const parsed = Number.parseFloat(value);
+        if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
+        return parsed;
+      };
+      const copies = normalizeCopies(copiesValue);
+      const receiptFontSize = normalizePrintNumber(generalConfig?.print?.receiptFontSize);
+      const receiptWidth = normalizePrintNumber(generalConfig?.print?.receiptWidth);
+      const receiptHeight = normalizePrintNumber(generalConfig?.print?.receiptHeight);
+      const receiptMargin = normalizePrintNumber(generalConfig?.print?.receiptMargin);
+      const fontSizeRule = receiptFontSize ? `${receiptFontSize}px` : 'inherit';
+      const pageWidth = receiptWidth ? `${receiptWidth}mm` : 'auto';
+      const pageHeight = receiptHeight ? `${receiptHeight}mm` : 'auto';
+      const pageMargin = receiptMargin ? `${receiptMargin}mm` : '0';
+      const pageSize =
+        receiptWidth && receiptHeight ? `${pageWidth} ${pageHeight}` : 'auto';
+      const buildSection = (mode) => {
+        const list = mode === 'emp' ? formConfig?.printEmpField || [] : formConfig?.printCustField || [];
+        const allowed = new Set(list.length > 0 ? list : [...headerCols, ...mainCols, ...footerCols]);
+        const h = headerCols.filter((c) => allowed.has(c) && !signatureSet.has(c));
+        const m = mainCols.filter((c) => allowed.has(c) && !signatureSet.has(c));
+        const f = footerCols.filter((c) => allowed.has(c) && !signatureSet.has(c));
+        const signatureCols = signatureFields.filter((c) => allowed.has(c));
+        let section = '';
+        if (h.length) {
+          const table = columnTableHtml(h, activeFormVals, true);
+          if (table) section += `<h3>Header</h3>${table}`;
+        }
+        if (m.length) {
+          const mainTable = mainTableHtml(m);
+          if (mainTable) section += `<h3>Main</h3>${mainTable}`;
+        }
+        if (f.length) {
+          const table = columnTableHtml(f, activeFormVals, true);
+          if (table) section += `<h3>Footer</h3>${table}`;
+        }
+        if (signatureCols.length) {
+          const signatureBlock = signatureHtml(signatureCols);
+          if (signatureBlock) section += signatureBlock;
+        }
+        return section;
+      };
+      const renderCopies = (section) => {
+        const items = Array.from({ length: copies }, () => `<div class="print-item">${section}</div>`).join('');
+        const className = copies > 1 ? 'print-copies print-copies-grid' : 'print-copies';
+        return `<div class="${className}">${items}</div>`;
+      };
+      const sections = modes
+        .map((mode) => {
+          const section = buildSection(mode);
+          if (!section) return '';
+          return `<section class="print-group">${renderCopies(section)}</section>`;
+        })
+        .join('');
+
       let html = '<html><head><title>Print</title>';
       html +=
-        '<style>@page{size:auto;margin:1rem;}@media print{body{margin:0;font-size:small;width:max-content;}}table{width:auto;border-collapse:collapse;margin-bottom:1rem;}th,td{padding:4px;text-align:left;}.print-main-table th,.print-main-table td{border:1px solid #666;}h3{margin:0 0 4px 0;font-weight:600;}</style>';
-      html += '</head><body>';
-      if (h.length) {
-        const table = columnTableHtml(h, activeFormVals, true);
-        if (table) html += `<h3>Header</h3>${table}`;
-      }
-      if (m.length) {
-        const mainTable = mainTableHtml();
-        if (mainTable) html += `<h3>Main</h3>${mainTable}`;
-      }
-      if (f.length) {
-        const table = columnTableHtml(f, activeFormVals, true);
-        if (table) html += `<h3>Footer</h3>${table}`;
-      }
-      const signatureBlock = signatureHtml();
-      if (signatureBlock) html += signatureBlock;
-      html += '</body></html>';
+        `<style>@page{size:${pageSize};margin:${pageMargin};}@media print{body{margin:0;}.print-group{break-inside:avoid;page-break-inside:avoid;}}body{margin:0;} .print-sheet{font-size:${fontSizeRule};max-width:${pageWidth};width:${pageWidth};} .print-group{margin-bottom:1rem;} .print-copies{display:grid;grid-template-columns:1fr;gap:0.75rem;} .print-copies.print-copies-grid{grid-template-columns:repeat(2,minmax(0,1fr));} .print-item{break-inside:avoid;} table{width:100%;border-collapse:collapse;margin-bottom:1rem;table-layout:auto;} th,td{padding:4px;text-align:left;vertical-align:top;overflow-wrap:anywhere;word-break:break-word;white-space:normal;} .print-main-table th,.print-main-table td{border:1px solid #666;} h3{margin:0 0 4px 0;font-weight:600;}</style>`;
+      html += `</head><body><div class="print-sheet">${sections}</div></body></html>`;
 
       if (userSettings?.printerId) {
         fetch(`${API_BASE}/print`, {
@@ -6886,6 +6928,7 @@ const TableManager = forwardRef(function TableManager({
       formColumns,
       formConfig,
       formatRelationDisplay,
+      generalConfig,
       headerFields,
       jsonRelationLabels,
       labelMap,
@@ -6908,7 +6951,7 @@ const TableManager = forwardRef(function TableManager({
     const modeList = [];
     if (printEmpSelected) modeList.push('emp');
     if (printCustSelected) modeList.push('cust');
-    modeList.forEach((mode) => handlePrintSelection(mode, payload));
+    handlePrintSelection(modeList, payload, printCopies);
     closePrintModal();
   }, [
     buildPrintPayloadFromRow,
@@ -6916,6 +6959,7 @@ const TableManager = forwardRef(function TableManager({
     handlePrintSelection,
     printCustSelected,
     printEmpSelected,
+    printCopies,
     printPayload,
     selectedRowForPrint,
   ]);
@@ -8355,6 +8399,17 @@ const TableManager = forwardRef(function TableManager({
                 <span>{t('printCust', 'Print Cust')}</span>
               </label>
             </div>
+            <label className="flex items-center gap-2 text-sm text-gray-700">
+              <span className="min-w-[80px]">{t('copies', 'Copies')}</span>
+              <input
+                type="number"
+                min="1"
+                step="1"
+                className="w-24 rounded border border-gray-300 px-2 py-1 text-sm"
+                value={printCopies}
+                onChange={(e) => setPrintCopies(e.target.value)}
+              />
+            </label>
             <div className="flex justify-end gap-2">
               <button
                 type="button"

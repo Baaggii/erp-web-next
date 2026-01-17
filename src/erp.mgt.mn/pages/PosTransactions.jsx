@@ -3357,19 +3357,40 @@ export default function PosTransactionsPage() {
 
   function handlePrintEbarimtPreview() {
     if (!ebarimtPreview || !ebarimtQrImage) return;
-    const printWindow = window.open('', '_blank', 'width=420,height=640');
+    const normalizePrintNumber = (value, fallback = null) => {
+      const parsed = Number.parseFloat(value);
+      if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
+      return parsed;
+    };
+    const receiptFontSize = normalizePrintNumber(generalConfig?.print?.receiptFontSize);
+    const receiptWidth = normalizePrintNumber(generalConfig?.print?.receiptWidth);
+    const receiptHeight = normalizePrintNumber(generalConfig?.print?.receiptHeight);
+    const receiptMargin = normalizePrintNumber(generalConfig?.print?.receiptMargin);
+    const fontSizeRule = receiptFontSize ? `${receiptFontSize}px` : 'inherit';
+    const pageWidth = receiptWidth ? `${receiptWidth}mm` : 'auto';
+    const pageHeight = receiptHeight ? `${receiptHeight}mm` : 'auto';
+    const pageMargin = receiptMargin ? `${receiptMargin}mm` : '0';
+    const pageSize =
+      receiptWidth && receiptHeight ? `${pageWidth} ${pageHeight}` : 'auto';
+    const toPixels = (mm) => Math.round(mm * 3.7795);
+    const windowFeatures =
+      receiptWidth && receiptHeight
+        ? `width=${toPixels(receiptWidth)},height=${toPixels(receiptHeight)}`
+        : undefined;
+    const printWindow = window.open('', '_blank', windowFeatures);
     if (!printWindow) {
       addToast('Unable to open print window', 'error');
       return;
     }
     printWindow.document.open();
     printWindow.document.write(
-      '<!DOCTYPE html><html><head><title>Ebarimt receipt</title></head>' +
-        '<body style="font-family: sans-serif; display: flex; flex-direction: column; align-items: center; gap: 0.5rem; padding: 1rem;">' +
-        '</body></html>',
+      '<!DOCTYPE html><html><head><title>Ebarimt receipt</title>' +
+        `<style>@page{size:${pageSize};margin:${pageMargin};}body{margin:0;font-family:sans-serif;font-size:${fontSizeRule};} .receipt-sheet{display:flex;flex-direction:column;align-items:center;gap:0.5rem;padding:${pageMargin};width:${pageWidth};}</style>` +
+        '</head><body><div class="receipt-sheet"></div></body></html>',
     );
     printWindow.document.close();
     const { document: doc } = printWindow;
+    const container = doc.querySelector('.receipt-sheet') || doc.body;
     const createRow = (label, value) => {
       if (!value) return null;
       const row = doc.createElement('div');
@@ -3378,24 +3399,24 @@ export default function PosTransactionsPage() {
     };
     const title = doc.createElement('h2');
     title.textContent = 'Ebarimt receipt';
-    doc.body.appendChild(title);
+    container.appendChild(title);
     const billRow = createRow('Bill ID', ebarimtPreview.billId || '-');
-    if (billRow) doc.body.appendChild(billRow);
+    if (billRow) container.appendChild(billRow);
     if (ebarimtPreview.invoiceNo) {
       const invoiceRow = createRow('Invoice No', ebarimtPreview.invoiceNo);
-      if (invoiceRow) doc.body.appendChild(invoiceRow);
+      if (invoiceRow) container.appendChild(invoiceRow);
     }
     if (ebarimtPreview.status) {
       const statusRow = createRow('Status', ebarimtPreview.status);
-      if (statusRow) doc.body.appendChild(statusRow);
+      if (statusRow) container.appendChild(statusRow);
     }
     if (ebarimtPreview.lottery) {
       const lotteryRow = createRow('Lottery', ebarimtPreview.lottery);
-      if (lotteryRow) doc.body.appendChild(lotteryRow);
+      if (lotteryRow) container.appendChild(lotteryRow);
     }
     if (ebarimtPreview.errorMessage) {
       const messageRow = createRow('Message', ebarimtPreview.errorMessage);
-      if (messageRow) doc.body.appendChild(messageRow);
+      if (messageRow) container.appendChild(messageRow);
     }
     const img = doc.createElement('img');
     img.src = ebarimtQrImage;
@@ -3404,7 +3425,7 @@ export default function PosTransactionsPage() {
     img.style.height = '260px';
     img.style.border = '1px solid #ccc';
     img.style.padding = '0.5rem';
-    doc.body.appendChild(img);
+    container.appendChild(img);
     printWindow.focus();
     printWindow.print();
   }
