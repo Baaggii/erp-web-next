@@ -44,7 +44,6 @@ import { computeTemporaryPromotionOptions } from '../utils/temporaryPromotionOpt
 import NotificationDots from './NotificationDots.jsx';
 import { formatJsonItem, formatJsonList } from '../utils/jsonValueFormatting.js';
 import normalizeRelationKey from '../utils/normalizeRelationKey.js';
-import getRelationRowFromMap from '../utils/getRelationRowFromMap.js';
 
 const TEMPORARY_FILTER_CACHE_KEY = 'temporary-transaction-filter';
 
