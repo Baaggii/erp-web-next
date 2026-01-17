@@ -30,31 +30,26 @@ const woodSurfaceOptions = [
     value: 'oak',
     label: 'Oak',
     textureUrl: 'https://upload.wikimedia.org/wikipedia/commons/7/7f/Oak_wood_texture.jpg',
-    grain: { density: 18, wobble: 6, contrast: 0.32 },
   },
   {
     value: 'walnut',
     label: 'Walnut',
     textureUrl: 'https://upload.wikimedia.org/wikipedia/commons/9/9d/Walnut_wood_texture.jpg',
-    grain: { density: 14, wobble: 9, contrast: 0.4 },
   },
   {
     value: 'maple',
     label: 'Maple',
     textureUrl: 'https://upload.wikimedia.org/wikipedia/commons/1/12/Maple_wood_texture.jpg',
-    grain: { density: 22, wobble: 4, contrast: 0.24 },
   },
   {
     value: 'pine',
     label: 'Pine',
     textureUrl: 'https://upload.wikimedia.org/wikipedia/commons/2/2f/Pine_wood_texture.jpg',
-    grain: { density: 16, wobble: 7, contrast: 0.28 },
   },
   {
     value: 'cherry',
     label: 'Cherry',
     textureUrl: 'https://upload.wikimedia.org/wikipedia/commons/8/8b/Cherry_wood_texture.jpg',
-    grain: { density: 20, wobble: 5, contrast: 0.3 },
   },
 ];
 
@@ -167,9 +162,6 @@ function createWoodGradient(ctx, width, height, surface) {
 }
 
 function drawWoodPattern(ctx, width, height, surface, texture) {
-  const grainConfig =
-    woodSurfaceOptions.find((option) => option.value === surface)?.grain ||
-    woodSurfaceOptions[0].grain;
   const gradient = createWoodGradient(ctx, width, height, surface);
   if (texture) {
     const pattern = ctx.createPattern(texture, 'repeat');
@@ -184,15 +176,14 @@ function drawWoodPattern(ctx, width, height, surface, texture) {
   } else {
     ctx.fillStyle = gradient;
     ctx.fillRect(0, 0, width, height);
-    ctx.globalAlpha = grainConfig.contrast;
+    ctx.globalAlpha = 0.18;
     ctx.strokeStyle = 'rgba(93, 57, 35, 0.4)';
     ctx.lineWidth = 1.2;
-    for (let i = 0; i < grainConfig.density; i += 1) {
-      const y = (height / grainConfig.density) * i + 6;
+    for (let i = 0; i < 16; i += 1) {
+      const y = (height / 16) * i + 6;
       ctx.beginPath();
       for (let x = 0; x <= width; x += 40) {
-        const offset =
-          Math.sin((x / width) * Math.PI * 2 + i) * grainConfig.wobble;
+        const offset = Math.sin((x / width) * Math.PI * 2 + i) * 6;
         ctx.lineTo(x, y + offset);
       }
       ctx.stroke();
