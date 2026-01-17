@@ -4,6 +4,7 @@ import {
   deleteTableRow,
   listTableColumns,
   getPrimaryKeyColumns,
+  reassignReportTransactionLocks,
 } from '../../db/index.js';
 import { logUserAction } from './userActivityLog.js';
 import { isDeepStrictEqual } from 'util';
@@ -543,6 +544,15 @@ function normalizeReportApprovalPayload(raw) {
     if (!Number.isNaN(date.getTime())) executedAt = date.toISOString();
   }
   const normalized = { ...(raw || {}) };
+  const lockRequestId =
+    raw.lockRequestId ?? raw.lock_request_id ?? raw.requestId ?? raw.request_id;
+  if (
+    lockRequestId !== undefined &&
+    lockRequestId !== null &&
+    String(lockRequestId).trim()
+  ) {
+    normalized.lockRequestId = lockRequestId;
+  }
   normalized.procedure = procedure.trim();
   normalized.parameters = parameters;
   normalized.transactions = transactions;
@@ -555,6 +565,12 @@ function normalizeSupervisorEmpId(value) {
   if (value === undefined || value === null) return null;
   const trimmed = String(value).trim();
   return trimmed ? trimmed.toUpperCase() : null;
+}
+
+function normalizeLockRequestId(value) {
+  if (value === undefined || value === null) return null;
+  const trimmed = String(value).trim();
+  return trimmed ? trimmed : null;
 }
 
 function normalizeStatuses(status) {
@@ -610,7 +626,9 @@ export async function createRequest({
     let finalProposed = parsedInput ?? proposedData;
     let originalData = null;
     if (requestType === 'report_approval') {
-      const normalizedPayload = normalizeReportApprovalPayload(parsedInput ?? proposedData);
+      const normalizedPayload = normalizeReportApprovalPayload(
+        parsedInput ?? proposedData,
+      );
       if (!normalizedPayload) {
         const err = new Error('invalid_report_payload');
         err.status = 400;
@@ -676,6 +694,12 @@ export async function createRequest({
         throw err;
       }
     }
+    const lockRequestId =
+      requestType === 'report_approval'
+        ? normalizeLockRequestId(
+            finalProposed?.lockRequestId ?? finalProposed?.lock_request_id,
+          )
+        : null;
     const [result] = await conn.query(
       `INSERT INTO pending_request (company_id, table_name, record_id, emp_id, senior_empid, request_type, request_reason, proposed_data, original_data, created_by)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -712,15 +736,29 @@ export async function createRequest({
       conn,
     );
     if (requestType === 'report_approval') {
-      await createReportApprovalLocks(
-        {
-          companyId,
-          requestId,
-          transactions: finalProposed.transactions,
-          createdBy: normalizedEmp,
-        },
-        conn,
-      );
+      let reassigned = false;
+      if (lockRequestId) {
+        const updated = await reassignReportTransactionLocks(
+          {
+            fromRequestId: lockRequestId,
+            toRequestId: requestId,
+            companyId,
+          },
+          conn,
+        );
+        reassigned = updated > 0;
+      }
+      if (!reassigned) {
+        await createReportApprovalLocks(
+          {
+            companyId,
+            requestId,
+            transactions: finalProposed.transactions,
+            createdBy: normalizedEmp,
+          },
+          conn,
+        );
+      }
     }
     if (senior) {
       await conn.query(

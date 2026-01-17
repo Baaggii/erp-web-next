@@ -6,6 +6,7 @@ import {
   getProcedureParams,
   getProcedureRawRows,
   getProcedureLockCandidates,
+  getReportLockCandidatesForRequest,
   pool,
 } from '../../db/index.js';
 import { listPermittedProcedures } from '../utils/reportProcedures.js';
@@ -30,6 +31,12 @@ function isRateLimited(key) {
   recent.push(now);
   rateLimits.set(key, recent);
   return false;
+}
+
+function generateLockRequestId() {
+  const now = Date.now();
+  const random = Math.floor(Math.random() * 1000);
+  return -1 * (now * 1000 + random);
 }
 
 async function validateCompanyForGid(companyId, gId, res) {
@@ -93,11 +100,20 @@ router.get('/:name/params', requireAuth, async (req, res, next) => {
 
 router.post('/locks', requireAuth, async (req, res, next) => {
   try {
-    const { name, params, aliases } = req.body || {};
-    if (!name) return res.status(400).json({ message: 'name required' });
+    const { name, params, aliases, requestId, request_id } = req.body || {};
+    const lockRequestId =
+      requestId ?? request_id ?? req.body?.lockRequestId ?? req.body?.lock_request_id;
     const { branchId, departmentId } = req.query;
     const companyId = resolveCompanyId(req);
     if (!companyId) return res.status(400).json({ message: 'companyId required' });
+    if (lockRequestId !== undefined && lockRequestId !== null && lockRequestId !== '') {
+      const lockCandidates = await getReportLockCandidatesForRequest(lockRequestId, {
+        companyId,
+      });
+      res.json({ lockCandidates, requestId: lockRequestId });
+      return;
+    }
+    if (!name) return res.status(400).json({ message: 'name required' });
     const { procedures } = await listPermittedProcedures(
       { branchId, departmentId },
       companyId,
@@ -121,6 +137,22 @@ router.post('/locks', requireAuth, async (req, res, next) => {
 router.post('/', requireAuth, async (req, res, next) => {
   try {
     const { name, params, aliases } = req.body || {};
+    const collectLocks = Boolean(
+      req.body?.collectLocks ??
+        req.body?.collect_lock_candidates ??
+        req.body?.populateLockCandidates,
+    );
+    const providedLockRequestId =
+      req.body?.lockRequestId ??
+      req.body?.lock_request_id ??
+      req.body?.requestId ??
+      req.body?.request_id;
+    const lockRequestId =
+      collectLocks && (providedLockRequestId || providedLockRequestId === 0)
+        ? providedLockRequestId
+        : collectLocks
+        ? generateLockRequestId()
+        : null;
     if (!name) return res.status(400).json({ message: 'name required' });
     const { branchId, departmentId } = req.query;
     const companyId = resolveCompanyId(req);
@@ -147,8 +179,15 @@ router.post('/', requireAuth, async (req, res, next) => {
       name,
       Array.isArray(params) ? params : [],
       Array.isArray(aliases) ? aliases : [],
+      {
+        session: {
+          collectUsedRows: collectLocks,
+          requestId: lockRequestId,
+          empId: req.user?.empid ?? null,
+        },
+      },
     );
-    res.json({ row });
+    res.json({ row, lockRequestId: collectLocks ? lockRequestId : null });
   } catch (err) {
     next(err);
   }

@@ -880,7 +880,10 @@ export default function Reports() {
   const lockParamSignature = useMemo(() => {
     if (!result || !Array.isArray(result.orderedParams)) return '';
     try {
-      return JSON.stringify(result.orderedParams);
+      return JSON.stringify({
+        params: result.orderedParams,
+        requestId: result.lockRequestId || null,
+      });
     } catch {
       return '';
     }
@@ -1057,6 +1060,11 @@ export default function Reports() {
       setLockSelections({});
       setLockExclusions({});
       setPendingExclusion(null);
+      const requestId = result?.lockRequestId;
+      if (!requestId) {
+        setLockFetchPending(false);
+        return;
+      }
       const params = new URLSearchParams();
       if (branch) params.set('branchId', branch);
       if (department) params.set('departmentId', department);
@@ -1074,6 +1082,7 @@ export default function Reports() {
               params: Array.isArray(result.orderedParams)
                 ? result.orderedParams
                 : [],
+              requestId,
             }),
           },
         );
@@ -1510,7 +1519,11 @@ export default function Reports() {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
-          body: JSON.stringify({ name: selectedProc, params: finalParams }),
+          body: JSON.stringify({
+            name: selectedProc,
+            params: finalParams,
+            collectLocks: populateLockCandidates,
+          }),
         },
       );
       if (res.ok) {
@@ -1537,6 +1550,7 @@ export default function Reports() {
           rows,
           fieldTypeMap: data.fieldTypeMap || {},
           orderedParams: finalParams,
+          lockRequestId: data.lockRequestId || null,
         });
       } else {
         const detailedMessage =
@@ -2946,6 +2960,7 @@ export default function Reports() {
     const proposedData = {
       procedure: snapshot?.procedure || result.name,
       parameters: snapshot?.params || result.params,
+      lockRequestId: result?.lockRequestId || null,
       transactions: lockCandidates
         .filter((candidate) => lockSelections[getCandidateKey(candidate)])
         .map((candidate) => serializeCandidateForRequest(candidate))
