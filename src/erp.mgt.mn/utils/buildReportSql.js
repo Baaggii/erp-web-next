@@ -5,8 +5,13 @@
  * @param {object} definition
  * @returns {string} SQL string
  */
-export default function buildReportSql(definition = {}) {
+export default function buildReportSql(definition = {}, options = {}) {
   if (!definition.from) throw new Error('definition.from is required');
+  const { tableReplacements = {} } = options;
+
+  function resolveTableName(table) {
+    return tableReplacements?.[table] || table;
+  }
 
   function build(def) {
     const parts = [];
@@ -46,13 +51,17 @@ export default function buildReportSql(definition = {}) {
 
     // FROM clause
     parts.push(
-      `FROM ${def.from.table}` + (def.from.alias ? ` ${def.from.alias}` : ''),
+      `FROM ${resolveTableName(def.from.table)}` +
+        (def.from.alias ? ` ${def.from.alias}` : ''),
     );
 
     // JOIN clauses
     (def.joins || []).forEach(({ table, alias, type = 'JOIN', on }) => {
       if (!on) return;
-      parts.push(`${type} ${table}` + (alias ? ` ${alias}` : '') + ` ON ${on}`);
+      const joinTable = resolveTableName(table);
+      parts.push(
+        `${type} ${joinTable}` + (alias ? ` ${alias}` : '') + ` ON ${on}`,
+      );
     });
 
     // WHERE clause
@@ -120,4 +129,3 @@ export default function buildReportSql(definition = {}) {
   });
   return combined;
 }
-

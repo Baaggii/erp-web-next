@@ -10,13 +10,21 @@ import buildReportSql from './buildReportSql.js';
  * @returns {string}
  */
 export default function buildStoredProcedure(definition = {}) {
-  const { name, params = [], report, prefix = '', config } = definition;
+  const {
+    name,
+    params = [],
+    report,
+    prefix = '',
+    config,
+    reportSqlOptions = {},
+    preStatements = [],
+  } = definition;
   if (!name) throw new Error('procedure name is required');
   if (!report) throw new Error('report definition is required');
 
   const procName = `${prefix}${name}`;
   const paramLines = params.map((p) => `IN ${p.name} ${p.type}`).join(',\n  ');
-  let selectSql = buildReportSql(report);
+  let selectSql = buildReportSql(report, reportSqlOptions);
   params.forEach((p) => {
     const re = new RegExp(`:${p.name}\\b`, 'g');
     selectSql = selectSql.replace(re, p.name);
@@ -24,6 +32,19 @@ export default function buildStoredProcedure(definition = {}) {
   selectSql = selectSql
     .split('\n')
     .map((l) => `  ${l}`)
+    .join('\n');
+
+  const preSql = preStatements
+    .filter(Boolean)
+    .map((statement) => {
+      const trimmed = statement.trim().replace(/;+$/, '');
+      const withSemicolon = trimmed ? `${trimmed};` : '';
+      return withSemicolon
+        .split('\n')
+        .map((line) => `  ${line}`)
+        .join('\n');
+    })
+    .filter(Boolean)
     .join('\n');
 
   const configBlock = `  /*REPORT_BUILDER_CONFIG ${JSON.stringify(
@@ -37,6 +58,7 @@ export default function buildStoredProcedure(definition = {}) {
     paramLines ? `  ${paramLines}` : '',
     ')',
     'BEGIN',
+    preSql,
     selectSql + ';',
     configBlock,
     'END $$',
