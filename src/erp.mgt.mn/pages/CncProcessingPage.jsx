@@ -141,10 +141,11 @@ function isTravelPolyline(polyline, maxDimension) {
   const direct = Math.hypot(end.x - start.x, end.y - start.y);
   const straightness = direct / length;
   const averageTurnAngle = calculateAverageTurnAngle(polyline);
-  const nearlyStraight = straightness > 0.998 && averageTurnAngle < 0.05;
-  const longStraight = direct > maxDimension * 0.25 && straightness > 0.99;
-  const shortHop = polyline.length <= 3 && direct > maxDimension * 0.04 && nearlyStraight;
-  return longStraight || shortHop;
+  const nearlyStraight = straightness > 0.995 || averageTurnAngle < 0.08;
+  const longStraight = direct > maxDimension * 0.2 && straightness > 0.98;
+  const shortHop = polyline.length <= 3 && direct > maxDimension * 0.015 && nearlyStraight;
+  const straightRun = length > maxDimension * 0.02 && nearlyStraight;
+  return longStraight || shortHop || straightRun;
 }
 
 function createWoodGradient(ctx, width, height, surface) {
@@ -259,7 +260,7 @@ function CncProcessingPage() {
     if (!preview?.polylines?.length) return [];
     if (!viewBox) return preview.polylines;
     const maxDimension = Math.max(viewBox.width, viewBox.height);
-    const maxDistance = maxDimension * 0.05;
+    const maxDistance = maxDimension * 0.02;
     return preview.polylines
       .flatMap((polyline) => splitPolylineByDistance(polyline, maxDistance))
       .filter((polyline) => !isTravelPolyline(polyline, maxDimension));
