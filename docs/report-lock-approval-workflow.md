@@ -22,8 +22,9 @@ report execution without touching the lock workflow.
 
 1. **Run report** – The user runs the stored procedure with parameters.
 2. **(Optional) Populate lock candidates** – When the checkbox is enabled, the API
-   collects candidate locks and stores them in `report_transaction_locks` with a
-   `pending` status.
+   sets `@collect_used_rows = 1`, runs the stored procedure, and then reads
+   `SELECT * FROM tmp_used_rows` on the same connection. The resulting rows are
+   returned to the UI as **Transactions marked for locking**.
 3. **Select candidates** – The user selects which rows should be locked and can
    exclude any ineligible rows with a reason.
 4. **Request approval** – The user explicitly submits a lock request.
