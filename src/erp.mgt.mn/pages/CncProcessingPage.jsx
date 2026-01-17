@@ -132,6 +132,19 @@ function calculateAverageTurnAngle(polyline) {
   return count ? angleSum / count : 0;
 }
 
+function isTravelPolyline(polyline, maxDimension) {
+  if (!polyline || polyline.length < 2) return true;
+  const length = calculatePolylineLength(polyline);
+  if (!Number.isFinite(length) || length === 0) return true;
+  const start = polyline[0];
+  const end = polyline[polyline.length - 1];
+  const direct = Math.hypot(end.x - start.x, end.y - start.y);
+  const straightness = direct / length;
+  const longStraight = direct > maxDimension * 0.25 && straightness > 0.98;
+  const shortHop = polyline.length <= 2 && direct > maxDimension * 0.15;
+  return longStraight || shortHop;
+}
+
 function createWoodGradient(ctx, width, height, surface) {
   const gradient = ctx.createLinearGradient(0, 0, width, height);
   const tones = {
@@ -243,10 +256,11 @@ function CncProcessingPage() {
   const carvedPolylines = useMemo(() => {
     if (!preview?.polylines?.length) return [];
     if (!viewBox) return preview.polylines;
-    const maxDistance = Math.max(viewBox.width, viewBox.height) * 0.05;
-    return preview.polylines.flatMap((polyline) =>
-      splitPolylineByDistance(polyline, maxDistance),
-    );
+    const maxDimension = Math.max(viewBox.width, viewBox.height);
+    const maxDistance = maxDimension * 0.05;
+    return preview.polylines
+      .flatMap((polyline) => splitPolylineByDistance(polyline, maxDistance))
+      .filter((polyline) => !isTravelPolyline(polyline, maxDimension));
   }, [preview, viewBox]);
   const showWoodPreview = carvedPolylines.length > 0;
 
