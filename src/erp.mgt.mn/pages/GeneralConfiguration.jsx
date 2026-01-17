@@ -292,6 +292,52 @@ export default function GeneralConfiguration() {
       ) : tab === 'print' ? (
         <>
           <div style={{ marginBottom: '0.5rem' }}>
+            <TooltipWrapper
+              title={t('print_font_size', { ns: 'tooltip', defaultValue: 'Print font size (px)' })}
+            >
+              <label>
+                Print Font Size (px){' '}
+                <input
+                  name="printFontSize"
+                  type="number"
+                  inputMode="decimal"
+                  value={active.printFontSize ?? ''}
+                  onChange={handleChange}
+                />
+              </label>
+            </TooltipWrapper>
+          </div>
+          <div style={{ marginBottom: '0.5rem' }}>
+            <TooltipWrapper
+              title={t('print_margin', { ns: 'tooltip', defaultValue: 'Print margin (mm)' })}
+            >
+              <label>
+                Print Margin (mm){' '}
+                <input
+                  name="printMargin"
+                  type="number"
+                  inputMode="decimal"
+                  value={active.printMargin ?? ''}
+                  onChange={handleChange}
+                />
+              </label>
+            </TooltipWrapper>
+          </div>
+          <div style={{ marginBottom: '0.5rem' }}>
+            <TooltipWrapper title={t('print_gap', { ns: 'tooltip', defaultValue: 'Print gap (mm)' })}>
+              <label>
+                Print Gap (mm){' '}
+                <input
+                  name="printGap"
+                  type="number"
+                  inputMode="decimal"
+                  value={active.printGap ?? ''}
+                  onChange={handleChange}
+                />
+              </label>
+            </TooltipWrapper>
+          </div>
+          <div style={{ marginBottom: '0.5rem' }}>
             <TooltipWrapper title={t('receipt_font_size', { ns: 'tooltip', defaultValue: 'Receipt font size' })}>
               <label>
                 Receipt Font Size{' '}

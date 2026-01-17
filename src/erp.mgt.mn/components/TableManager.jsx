@@ -727,6 +727,7 @@ const TableManager = forwardRef(function TableManager({
   const generalConfig = useGeneralConfig();
   const txnToastEnabled = generalConfig.general?.txnToastEnabled;
   const ebarimtToastEnabled = generalConfig.general?.ebarimtToastEnabled;
+  const printConfig = generalConfig.print || {};
   const { addToast } = useToast();
   const canRequestStatus = isSubordinate;
   const posApiErrorSignatureRef = useRef('');
@@ -6885,9 +6886,27 @@ const TableManager = forwardRef(function TableManager({
         })
         .join('');
 
+      const normalizePrintNumber = (value) => {
+        const parsed = Number.parseFloat(value);
+        if (!Number.isFinite(parsed)) return null;
+        return parsed;
+      };
+      const printMargin =
+        normalizePrintNumber(printConfig.printMargin ?? printConfig.margin) ??
+        normalizePrintNumber(printConfig.receiptMargin);
+      const printGap =
+        normalizePrintNumber(printConfig.printGap ?? printConfig.gap) ??
+        normalizePrintNumber(printConfig.receiptGap);
+      const printFontSize =
+        normalizePrintNumber(printConfig.printFontSize ?? printConfig.fontSize ?? printConfig.textSize) ??
+        normalizePrintNumber(printConfig.receiptFontSize);
+      const pageMargin = printMargin !== null ? `${printMargin}mm` : '1rem';
+      const fontSize = printFontSize !== null ? `${printFontSize}px` : 'smaller';
+      const gapSize = printGap !== null ? `${printGap}mm` : '0.75rem';
+      const groupSpacing = printGap !== null ? `${printGap}mm` : '1rem';
       let html = '<html><head><title>Print</title>';
       html +=
-        '<style>@page{size:auto;margin:1rem;}@media print{body{margin:0;}.print-group{break-inside:avoid;page-break-inside:avoid;}}body{margin:0;} .print-sheet{font-size:smaller;max-width:100%;} .print-group{margin-bottom:1rem;} .print-copies{display:grid;grid-template-columns:1fr;gap:0.75rem;} .print-copies.print-copies-grid{grid-template-columns:repeat(2,minmax(0,1fr));} .print-item{break-inside:avoid;} table{width:100%;border-collapse:collapse;margin-bottom:1rem;table-layout:auto;} th,td{padding:4px;text-align:left;vertical-align:top;overflow-wrap:anywhere;word-break:break-word;white-space:normal;} .print-main-table th,.print-main-table td{border:1px solid #666;} h3{margin:0 0 4px 0;font-weight:600;}</style>';
+        `<style>@page{size:auto;margin:${pageMargin};}@media print{body{margin:0;}.print-group{break-inside:avoid;page-break-inside:avoid;}}body{margin:0;} .print-sheet{font-size:${fontSize};max-width:100%;} .print-group{margin-bottom:${groupSpacing};} .print-copies{display:grid;grid-template-columns:1fr;gap:${gapSize};} .print-copies.print-copies-grid{grid-template-columns:repeat(2,minmax(0,1fr));} .print-item{break-inside:avoid;} table{width:100%;border-collapse:collapse;margin-bottom:1rem;table-layout:auto;} th,td{padding:4px;text-align:left;vertical-align:top;overflow-wrap:anywhere;word-break:break-word;white-space:normal;} .print-main-table th,.print-main-table td{border:1px solid #666;} h3{margin:0 0 4px 0;font-weight:600;}</style>`;
       html += `</head><body><div class="print-sheet">${sections}</div></body></html>`;
 
       if (userSettings?.printerId) {
