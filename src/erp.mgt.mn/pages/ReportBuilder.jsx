@@ -1,12 +1,14 @@
 import React, { useEffect, useState, useContext, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import buildStoredProcedure from '../utils/buildStoredProcedure.js';
+import buildTenantNormalizedProcedure from '../utils/buildTenantNormalizedProcedure.js';
 import buildReportSql from '../utils/buildReportSql.js';
 import ErrorBoundary from '../components/ErrorBoundary.jsx';
 import useGeneralConfig from '../hooks/useGeneralConfig.js';
 import formatSqlValue from '../utils/formatSqlValue.js';
 import parseProcedureConfig from '../../../utils/parseProcedureConfig.js';
 import reportDefinitionToConfig from '../utils/reportDefinitionToConfig.js';
+import fetchTenantTableOptions from '../utils/fetchTenantTableOptions.js';
 import { useToast } from '../context/ToastContext.jsx';
 import { AuthContext } from '../context/AuthContext.jsx';
 import I18nContext from '../context/I18nContext.jsx';
@@ -114,6 +116,8 @@ function ReportBuilderInner() {
   );
   const [viewNames, setViewNames] = usePerTabState(() => [], activeTab);
   const [selectedView, setSelectedView] = usePerTabState('', activeTab);
+  const [tenantTableFlags, setTenantTableFlags] = useState({});
+  const [applyTenantIsolation, setApplyTenantIsolation] = useState(true);
   const { addToast } = useToast();
   const { company, permissions, session } = useContext(AuthContext);
   const { t: i18nextT } = useTranslation(['translation', 'tooltip']);
@@ -205,6 +209,26 @@ function ReportBuilderInner() {
     }
     fetchTables();
   }, []);
+
+  useEffect(() => {
+    let isMounted = true;
+    fetchTenantTableOptions()
+      .then((options) => {
+        if (!isMounted) return;
+        const map = (options || []).reduce((acc, item) => {
+          if (item?.tableName) acc[item.tableName] = item;
+          return acc;
+        }, {});
+        setTenantTableFlags(map);
+      })
+      .catch((err) => {
+        console.error(err);
+        addToast?.('Failed to load tenant table metadata', 'error');
+      });
+    return () => {
+      isMounted = false;
+    };
+  }, [addToast]);
 
   useEffect(() => {
     if (!fromTable && tables[0]) {
@@ -1334,12 +1358,16 @@ function ReportBuilderInner() {
         : company
         ? `${company}_${procName}`
         : procName;
-      const built = buildStoredProcedure({
+      const buildProc = applyTenantIsolation
+        ? buildTenantNormalizedProcedure
+        : buildStoredProcedure;
+      const built = buildProc({
         name: procedureName,
         params: p,
         report,
         prefix,
         config,
+        tenantTableFlags,
       });
       setProcSql(built);
       setError('');
@@ -3211,6 +3239,15 @@ function ReportBuilderInner() {
           <button onClick={handleGenerateProc} style={{ marginLeft: '0.5rem' }}>
             {t('reportBuilder.createProcedure', 'Create Procedure')}
           </button>
+          <label style={{ marginLeft: '0.75rem' }}>
+            <input
+              type="checkbox"
+              checked={applyTenantIsolation}
+              onChange={(e) => setApplyTenantIsolation(e.target.checked)}
+              style={{ marginRight: '0.25rem' }}
+            />
+            {t('reportBuilder.applyTenantIsolation', 'Apply tenant isolation')}
+          </label>
         </section>
 
         {isCodeTab && (
@@ -3356,7 +3393,7 @@ function ReportBuilderInner() {
           </button>
         </section>
 
-        {procFileText && (
+        {procFileText && isCodeTab && (
           <section style={{ marginTop: '1rem' }}>
             <h3>{t('reportBuilder.editLoadedSql', 'Edit Loaded SQL')}</h3>
             <textarea
