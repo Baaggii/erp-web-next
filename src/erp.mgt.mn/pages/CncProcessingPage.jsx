@@ -89,10 +89,13 @@ function CncProcessingPage() {
   const [animatePreview, setAnimatePreview] = useState(true);
   const [steps, setSteps] = useState([]);
   const [apiLogs, setApiLogs] = useState([]);
+  const [sourcePreviewUrl, setSourcePreviewUrl] = useState('');
+  const [previewModal, setPreviewModal] = useState(null);
   const stepId = useRef(0);
   const logId = useRef(0);
   const submitLock = useRef(false);
   const woodCanvasRef = useRef(null);
+  const modalWoodCanvasRef = useRef(null);
   const showWoodPreview = Boolean(preview?.polylines?.length);
 
   const addStep = (label, status, details = '') => {
@@ -126,6 +129,22 @@ function CncProcessingPage() {
   }, []);
 
   useEffect(() => {
+    if (!file) {
+      setSourcePreviewUrl('');
+      return undefined;
+    }
+    if (!file.type.startsWith('image/')) {
+      setSourcePreviewUrl('');
+      return undefined;
+    }
+    const url = URL.createObjectURL(file);
+    setSourcePreviewUrl(url);
+    return () => {
+      URL.revokeObjectURL(url);
+    };
+  }, [file]);
+
+  useEffect(() => {
     if (status !== 'uploading') return undefined;
     setProgress(10);
     const id = setInterval(() => {
@@ -136,61 +155,70 @@ function CncProcessingPage() {
 
   useEffect(() => {
     if (!showWoodPreview || !preview?.polylines?.length) return;
-    const canvas = woodCanvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
+    const canvases = [woodCanvasRef.current, modalWoodCanvasRef.current].filter(Boolean);
+    if (canvases.length === 0) return;
     const box = parseViewBox(preview.viewBox);
     if (!box) return;
 
-    const targetWidth = 640;
-    const targetHeight = 360;
-    canvas.width = targetWidth;
-    canvas.height = targetHeight;
+    canvases.forEach((canvas) => {
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
 
-    const gradient = ctx.createLinearGradient(0, 0, targetWidth, targetHeight);
-    gradient.addColorStop(0, '#f8e7c2');
-    gradient.addColorStop(0.5, '#e8c08e');
-    gradient.addColorStop(1, '#d1a073');
-    ctx.fillStyle = gradient;
-    ctx.fillRect(0, 0, targetWidth, targetHeight);
+      const targetWidth = 640;
+      const targetHeight = 360;
+      canvas.width = targetWidth;
+      canvas.height = targetHeight;
 
-    ctx.globalAlpha = 0.25;
-    for (let i = 0; i < 18; i += 1) {
-      ctx.fillStyle = i % 2 === 0 ? '#d9b085' : '#e0bf97';
-      const y = (targetHeight / 18) * i;
-      ctx.fillRect(0, y, targetWidth, targetHeight / 18);
-    }
-    ctx.globalAlpha = 1;
+      const gradient = ctx.createLinearGradient(0, 0, targetWidth, targetHeight);
+      gradient.addColorStop(0, '#f8e7c2');
+      gradient.addColorStop(0.5, '#e8c08e');
+      gradient.addColorStop(1, '#d1a073');
+      ctx.fillStyle = gradient;
+      ctx.fillRect(0, 0, targetWidth, targetHeight);
 
-    const scale = Math.min(
-      targetWidth / box.width,
-      targetHeight / box.height,
-    );
-    const offsetX = (targetWidth - box.width * scale) / 2 - box.minX * scale;
-    const offsetY = (targetHeight - box.height * scale) / 2 - box.minY * scale;
+      ctx.globalAlpha = 0.25;
+      for (let i = 0; i < 18; i += 1) {
+        ctx.fillStyle = i % 2 === 0 ? '#d9b085' : '#e0bf97';
+        const y = (targetHeight / 18) * i;
+        ctx.fillRect(0, y, targetWidth, targetHeight / 18);
+      }
+      ctx.globalAlpha = 1;
 
-    ctx.lineJoin = 'round';
-    ctx.lineCap = 'round';
-    ctx.strokeStyle = '#3f2a19';
-    ctx.lineWidth = 1.6;
-    ctx.shadowColor = 'rgba(30, 15, 5, 0.35)';
-    ctx.shadowBlur = 3;
-    ctx.shadowOffsetY = 1;
+      const scale = Math.min(
+        targetWidth / box.width,
+        targetHeight / box.height,
+      );
+      const offsetX = (targetWidth - box.width * scale) / 2 - box.minX * scale;
+      const offsetY = (targetHeight - box.height * scale) / 2 - box.minY * scale;
 
-    preview.polylines.forEach((polyline) => {
-      if (!polyline.length) return;
-      ctx.beginPath();
-      polyline.forEach((point, index) => {
-        const x = point.x * scale + offsetX;
-        const y = point.y * scale + offsetY;
-        if (index === 0) {
-          ctx.moveTo(x, y);
-        } else {
-          ctx.lineTo(x, y);
-        }
+      ctx.lineJoin = 'round';
+      ctx.lineCap = 'round';
+
+      preview.polylines.forEach((polyline) => {
+        if (!polyline.length) return;
+        ctx.beginPath();
+        polyline.forEach((point, index) => {
+          const x = point.x * scale + offsetX;
+          const y = point.y * scale + offsetY;
+          if (index === 0) {
+            ctx.moveTo(x, y);
+          } else {
+            ctx.lineTo(x, y);
+          }
+        });
+        ctx.strokeStyle = 'rgba(74, 46, 26, 0.55)';
+        ctx.lineWidth = 4;
+        ctx.shadowColor = 'rgba(64, 36, 16, 0.4)';
+        ctx.shadowBlur = 6;
+        ctx.shadowOffsetY = 2;
+        ctx.stroke();
+
+        ctx.strokeStyle = 'rgba(255, 244, 230, 0.6)';
+        ctx.lineWidth = 2;
+        ctx.shadowBlur = 0;
+        ctx.shadowOffsetY = -1;
+        ctx.stroke();
       });
-      ctx.stroke();
     });
   }, [preview, showWoodPreview]);
 
@@ -373,6 +401,7 @@ function CncProcessingPage() {
 
   const isBusy = status === 'uploading';
   const hasPreview = preview?.polylines?.length > 0;
+  const hasSourcePreview = Boolean(sourcePreviewUrl);
   const disabledReason = useMemo(() => {
     if (isBusy) {
       return 'Conversion in progress. Please wait for it to finish.';
@@ -420,6 +449,25 @@ function CncProcessingPage() {
               />
               <span className="text-xs text-slate-500">{selectedFileLabel}</span>
             </div>
+            {hasSourcePreview && (
+              <div className="rounded-md border border-slate-200 bg-slate-50 p-3">
+                <p className="text-xs font-medium text-slate-600">Initial image preview</p>
+                <div className="mt-3 flex justify-start">
+                  <button
+                    type="button"
+                    onClick={() => setPreviewModal('source')}
+                    className="flex h-28 w-36 items-center justify-center overflow-hidden rounded-md border border-slate-200 bg-white shadow-sm transition hover:border-slate-300"
+                    aria-label="Open initial image preview"
+                  >
+                    <img
+                      src={sourcePreviewUrl}
+                      alt="Initial uploaded file preview"
+                      className="h-full w-full object-contain"
+                    />
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="grid gap-4 md:grid-cols-2">
@@ -511,54 +559,71 @@ function CncProcessingPage() {
               Animate toolpath
             </label>
           </div>
-          <div className="mt-4 rounded-md border border-slate-200 bg-slate-50 p-3">
-            <svg
-              viewBox={preview.viewBox}
-              className="h-64 w-full"
-              preserveAspectRatio="xMidYMid meet"
-            >
-              {preview.polylines.map((polyline, index) => (
-                <polyline
-                  key={`${index + 1}`}
-                  points={polyline.map((point) => `${point.x},${point.y}`).join(' ')}
-                  fill="none"
-                  stroke="#0f172a"
-                  strokeWidth="0.7"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  pathLength="1"
-                  style={
-                    animatePreview
-                      ? {
-                          strokeDasharray: 1,
-                          strokeDashoffset: 1,
-                          animation: 'cnc-draw 3s ease forwards',
-                        }
-                      : undefined
-                  }
-                />
-              ))}
-            </svg>
-          </div>
-          {showWoodPreview && (
-            <div className="mt-4 rounded-md border border-slate-200 bg-slate-50 p-3">
-              <p className="text-xs font-medium text-slate-600">
-                Imitated wood carving result (based on the processed file)
-              </p>
+          <div className="mt-4 grid gap-4 lg:grid-cols-2">
+            <div className="rounded-md border border-slate-200 bg-slate-50 p-3">
+              <p className="text-xs font-medium text-slate-600">Toolpath preview</p>
               <p className="mt-1 text-[11px] text-slate-500">
-                This preview renders the full toolpath onto a wood texture so the carved result is
-                visible.
+                Tap to open a larger toolpath view.
               </p>
-              <div className="mt-3 overflow-hidden rounded-md border border-slate-200 bg-white">
-                <canvas
-                  ref={woodCanvasRef}
-                  className="h-48 w-full"
-                  role="img"
-                  aria-label="Simulated wood carving preview"
-                />
-              </div>
+              <button
+                type="button"
+                onClick={() => setPreviewModal('toolpath')}
+                className="mt-3 w-full overflow-hidden rounded-md border border-slate-200 bg-white transition hover:border-slate-300"
+                aria-label="Open toolpath preview"
+              >
+                <svg
+                  viewBox={preview.viewBox}
+                  className="h-52 w-full"
+                  preserveAspectRatio="xMidYMid meet"
+                >
+                  {preview.polylines.map((polyline, index) => (
+                    <polyline
+                      key={`${index + 1}`}
+                      points={polyline.map((point) => `${point.x},${point.y}`).join(' ')}
+                      fill="none"
+                      stroke="#0f172a"
+                      strokeWidth="0.7"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      pathLength="1"
+                      style={
+                        animatePreview
+                          ? {
+                              strokeDasharray: 1,
+                              strokeDashoffset: 1,
+                              animation: 'cnc-draw 3s ease forwards',
+                            }
+                          : undefined
+                      }
+                    />
+                  ))}
+                </svg>
+              </button>
             </div>
-          )}
+            {showWoodPreview && (
+              <div className="rounded-md border border-slate-200 bg-slate-50 p-3">
+                <p className="text-xs font-medium text-slate-600">
+                  Imitated wood carving result (based on the processed file)
+                </p>
+                <p className="mt-1 text-[11px] text-slate-500">
+                  Carved impression preview over a wood surface.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setPreviewModal('carving')}
+                  className="mt-3 w-full overflow-hidden rounded-md border border-slate-200 bg-white transition hover:border-slate-300"
+                  aria-label="Open carved wood preview"
+                >
+                  <canvas
+                    ref={woodCanvasRef}
+                    className="h-52 w-full"
+                    role="img"
+                    aria-label="Simulated wood carving preview"
+                  />
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       )}
 
@@ -657,6 +722,70 @@ function CncProcessingPage() {
           </div>
         </section>
       </div>
+      {previewModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4"
+          role="dialog"
+          aria-modal="true"
+        >
+          <div className="w-full max-w-4xl rounded-lg bg-white p-4 shadow-xl">
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-semibold text-slate-800">
+                {previewModal === 'toolpath' && 'Toolpath preview'}
+                {previewModal === 'carving' && 'Imitated wood carving result'}
+                {previewModal === 'source' && 'Initial image preview'}
+              </p>
+              <button
+                type="button"
+                onClick={() => setPreviewModal(null)}
+                className="rounded-md border border-slate-200 px-2 py-1 text-xs text-slate-600 hover:border-slate-300 hover:text-slate-800"
+              >
+                Close
+              </button>
+            </div>
+            <div className="mt-4 rounded-md border border-slate-200 bg-slate-50 p-4">
+              {previewModal === 'toolpath' && (
+                <svg
+                  viewBox={preview?.viewBox}
+                  className="h-[60vh] w-full"
+                  preserveAspectRatio="xMidYMid meet"
+                >
+                  {preview?.polylines?.map((polyline, index) => (
+                    <polyline
+                      key={`${index + 1}`}
+                      points={polyline.map((point) => `${point.x},${point.y}`).join(' ')}
+                      fill="none"
+                      stroke="#0f172a"
+                      strokeWidth="0.9"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  ))}
+                </svg>
+              )}
+              {previewModal === 'carving' && (
+                <div className="flex h-[60vh] items-center justify-center">
+                  <canvas
+                    ref={modalWoodCanvasRef}
+                    className="h-full w-full max-h-[60vh]"
+                    role="img"
+                    aria-label="Simulated wood carving preview"
+                  />
+                </div>
+              )}
+              {previewModal === 'source' && (
+                <div className="flex h-[60vh] items-center justify-center">
+                  <img
+                    src={sourcePreviewUrl}
+                    alt="Initial uploaded file preview"
+                    className="h-full max-h-[60vh] w-full object-contain"
+                  />
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
