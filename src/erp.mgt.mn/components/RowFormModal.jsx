@@ -21,6 +21,7 @@ import extractCombinationFilterValue from '../utils/extractCombinationFilterValu
 import useGeneralConfig from '../hooks/useGeneralConfig.js';
 import { API_BASE } from '../utils/apiBase.js';
 import slugify from '../utils/slugify.js';
+import normalizeRelationKey from '../utils/normalizeRelationKey.js';
 import {
   formatJsonItem,
   formatJsonList,
@@ -30,22 +31,19 @@ import {
 const DEFAULT_RECEIPT_TYPES = ['B2C', 'B2B_SALE', 'B2B_PURCHASE', 'STOCK_QR'];
 
 function normalizeRelationOptionKey(value) {
-  if (value === undefined || value === null) return null;
-  if (typeof value === 'object') {
-    if (Object.prototype.hasOwnProperty.call(value, 'value')) {
-      return normalizeRelationOptionKey(value.value);
-    }
-    if (Object.prototype.hasOwnProperty.call(value, 'id')) {
-      return normalizeRelationOptionKey(value.id);
-    }
-    try {
-      return JSON.stringify(value);
-    } catch (err) {
-      console.warn('Failed to normalize relation option value', err);
-      return null;
-    }
+  return normalizeRelationKey(value);
+}
+
+function getRelationRowByKey(relationRows, value) {
+  if (!relationRows || value === undefined || value === null) return null;
+  const normalizedKey = normalizeRelationKey(value);
+  if (normalizedKey !== null && relationRows[normalizedKey] !== undefined) {
+    return relationRows[normalizedKey];
   }
-  return String(value);
+  if (relationRows[value] !== undefined) return relationRows[value];
+  const stringKey = String(value);
+  if (relationRows[stringKey] !== undefined) return relationRows[stringKey];
+  return null;
 }
 
 function extractGenerationDependencies(expression = '') {
@@ -951,7 +949,7 @@ const RowFormModal = function RowFormModal({
         if (!opt) return false;
         const rawValue =
           typeof opt.value === 'object' && opt.value !== null ? opt.value.value : opt.value;
-        const row = columnRows[rawValue];
+        const row = getRelationRowByKey(columnRows, rawValue);
         if (!row || typeof row !== 'object') return false;
         const targetValue = getRowValueCaseInsensitive(row, targetColumn);
         if (targetValue === undefined || targetValue === null || targetValue === '') {
@@ -3174,7 +3172,7 @@ const RowFormModal = function RowFormModal({
       ? conf.idField || conf.column
       : auto?.config?.idField || viewDisplays[viewTbl]?.idField || col;
     if (!table || val === undefined || val === '') return;
-    let row = relationData[col]?.[val];
+    let row = getRelationRowByKey(relationData[col], val);
     if (!row) {
       try {
         const res = await fetch(
@@ -3642,7 +3640,7 @@ const RowFormModal = function RowFormModal({
           }
         };
         values.forEach((item) => {
-          const row = relationRows[item] || relationRows[String(item)];
+          const row = getRelationRowByKey(relationRows, item);
           if (row && resolvedRelationConfig) {
             const identifier =
               getRowValueCaseInsensitive(row, resolvedRelationConfig.idField || resolvedRelationConfig.column) ??
@@ -3662,66 +3660,57 @@ const RowFormModal = function RowFormModal({
           }
         });
         display = parts.join(', ');
-      } else if (
-        !resolvedOptionLabel &&
-        resolvedRelationConfig &&
-        val !== undefined &&
-        relationData[c]?.[val]
-      ) {
-        const row = relationData[c][val];
-        const cfg = resolvedRelationConfig;
-        const parts = [];
-        const identifier = getRowValueCaseInsensitive(
-          row,
-          cfg.idField || cfg.column,
-        );
-        if (identifier !== undefined && identifier !== null) {
-          parts.push(identifier);
+      } else if (!resolvedOptionLabel && resolvedRelationConfig && val !== undefined) {
+        const row = getRelationRowByKey(relationData[c], val);
+        if (row) {
+          const cfg = resolvedRelationConfig;
+          const parts = [];
+          const identifier = getRowValueCaseInsensitive(
+            row,
+            cfg.idField || cfg.column,
+          );
+          if (identifier !== undefined && identifier !== null) {
+            parts.push(identifier);
+          }
+          if (parts.length === 0) parts.push(val);
+          (cfg.displayFields || []).forEach((df) => {
+            if (row[df] !== undefined) parts.push(row[df]);
+          });
+          display = parts.join(' - ');
         }
-        if (parts.length === 0) parts.push(val);
-        (cfg.displayFields || []).forEach((df) => {
-          if (row[df] !== undefined) parts.push(row[df]);
-        });
-        display = parts.join(' - ');
-      } else if (
-        !resolvedOptionLabel &&
-        viewSourceMap[c] &&
-        val !== undefined &&
-        relationData[c]?.[val]
-      ) {
-        const row = relationData[c][val];
-        const cfg = viewDisplays[viewSourceMap[c]] || {};
-        const parts = [];
-        const identifier = getRowValueCaseInsensitive(
-          row,
-          cfg.idField || c,
-        );
-        if (identifier !== undefined && identifier !== null) {
-          parts.push(identifier);
+      } else if (!resolvedOptionLabel && viewSourceMap[c] && val !== undefined) {
+        const row = getRelationRowByKey(relationData[c], val);
+        if (row) {
+          const cfg = viewDisplays[viewSourceMap[c]] || {};
+          const parts = [];
+          const identifier = getRowValueCaseInsensitive(
+            row,
+            cfg.idField || c,
+          );
+          if (identifier !== undefined && identifier !== null) {
+            parts.push(identifier);
+          }
+          if (parts.length === 0) parts.push(val);
+          (cfg.displayFields || []).forEach((df) => {
+            if (row[df] !== undefined) parts.push(row[df]);
+          });
+          display = parts.join(' - ');
         }
-        if (parts.length === 0) parts.push(val);
-        (cfg.displayFields || []).forEach((df) => {
-          if (row[df] !== undefined) parts.push(row[df]);
-        });
-        display = parts.join(' - ');
-      } else if (
-        !resolvedOptionLabel &&
-        autoSelectForField?.config &&
-        val !== undefined &&
-        relationData[c]?.[val]
-      ) {
-        const row = relationData[c][val];
-        const cfg = autoSelectForField?.config || {};
-        const parts = [];
-        const identifier = getRowValueCaseInsensitive(row, cfg.idField);
-        if (identifier !== undefined && identifier !== null) {
-          parts.push(identifier);
+      } else if (!resolvedOptionLabel && autoSelectForField?.config && val !== undefined) {
+        const row = getRelationRowByKey(relationData[c], val);
+        if (row) {
+          const cfg = autoSelectForField?.config || {};
+          const parts = [];
+          const identifier = getRowValueCaseInsensitive(row, cfg.idField);
+          if (identifier !== undefined && identifier !== null) {
+            parts.push(identifier);
+          }
+          if (parts.length === 0) parts.push(val);
+          (cfg.displayFields || []).forEach((df) => {
+            if (row[df] !== undefined) parts.push(row[df]);
+          });
+          display = parts.join(' - ');
         }
-        if (parts.length === 0) parts.push(val);
-        (cfg.displayFields || []).forEach((df) => {
-          if (row[df] !== undefined) parts.push(row[df]);
-        });
-        display = parts.join(' - ');
       }
       if (isNumericField && display !== undefined && display !== null && display !== '') {
         display = formatNumericValue(c, display);
@@ -4349,13 +4338,9 @@ const RowFormModal = function RowFormModal({
         const optionLabel = optionLabelMap[normalizedValueKey];
         if (optionLabel !== undefined) return optionLabel;
       }
-      if (
-        resolvedRelationConfig &&
-        baseValue !== undefined &&
-        baseValue !== null &&
-        relationData[col]?.[baseValue]
-      ) {
-        const rowData = relationData[col][baseValue];
+      if (resolvedRelationConfig && baseValue !== undefined && baseValue !== null) {
+        const rowData = getRelationRowByKey(relationData[col], baseValue);
+        if (rowData) {
         const parts = [];
         const identifier = getRowValueCaseInsensitive(
           rowData,
@@ -4371,14 +4356,11 @@ const RowFormModal = function RowFormModal({
           if (rowData[df] !== undefined) parts.push(rowData[df]);
         });
         return parts.join(' - ');
+        }
       }
-      if (
-        viewSourceMap[col] &&
-        baseValue !== undefined &&
-        baseValue !== null &&
-        relationData[col]?.[baseValue]
-      ) {
-        const rowData = relationData[col][baseValue];
+      if (viewSourceMap[col] && baseValue !== undefined && baseValue !== null) {
+        const rowData = getRelationRowByKey(relationData[col], baseValue);
+        if (rowData) {
         const cfg = viewDisplays[viewSourceMap[col]] || {};
         const parts = [];
         const identifier = getRowValueCaseInsensitive(rowData, cfg.idField || col);
@@ -4392,14 +4374,11 @@ const RowFormModal = function RowFormModal({
           if (rowData[df] !== undefined) parts.push(rowData[df]);
         });
         return parts.join(' - ');
+        }
       }
-      if (
-        getAutoSelectConfig(col)?.config &&
-        baseValue !== undefined &&
-        baseValue !== null &&
-        relationData[col]?.[baseValue]
-      ) {
-        const rowData = relationData[col][baseValue];
+      if (getAutoSelectConfig(col)?.config && baseValue !== undefined && baseValue !== null) {
+        const rowData = getRelationRowByKey(relationData[col], baseValue);
+        if (rowData) {
         const cfg = getAutoSelectConfig(col)?.config || {};
         const parts = [];
         const identifier = getRowValueCaseInsensitive(rowData, cfg.idField);
@@ -4413,6 +4392,7 @@ const RowFormModal = function RowFormModal({
           if (rowData[df] !== undefined) parts.push(rowData[df]);
         });
         return parts.join(' - ');
+        }
       }
       if (labelWrapper !== undefined && labelWrapper !== null && labelWrapper !== '') {
         return labelWrapper;
