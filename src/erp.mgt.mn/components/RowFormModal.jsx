@@ -4245,12 +4245,48 @@ const RowFormModal = function RowFormModal({
     );
   }
 
+  function resolveRowPrintId(row) {
+    if (!row || typeof row !== 'object') return null;
+    const id =
+      row.id ??
+      row.Id ??
+      row.ID ??
+      row.rowId ??
+      row.RowId ??
+      row._id ??
+      row.uuid ??
+      row.UUID;
+    if (id === undefined || id === null || id === '') return null;
+    return String(id);
+  }
+  function stableRowSignature(value) {
+    if (value === null || value === undefined) return String(value);
+    if (Array.isArray(value)) {
+      return `[${value.map((item) => stableRowSignature(item)).join(',')}]`;
+    }
+    if (typeof value === 'object') {
+      const keys = Object.keys(value).sort();
+      const parts = keys.map((key) => `${key}:${stableRowSignature(value[key])}`);
+      return `{${parts.join(',')}}`;
+    }
+    return JSON.stringify(value);
+  }
+  function dedupePrintRows(rows = []) {
+    const seen = new Set();
+    return rows.filter((row) => {
+      const key = resolveRowPrintId(row) ?? stableRowSignature(row);
+      if (!key) return true;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }
   function buildPrintPayload(rowsOverride = null, formValsOverride = null) {
+    const sourceRows = Array.isArray(rowsOverride) ? rowsOverride : gridRows;
+    const uniqueRows = dedupePrintRows(sourceRows);
     return {
       formVals: formValsOverride ? { ...formValsOverride } : { ...formVals },
-      gridRows: Array.isArray(rowsOverride)
-        ? rowsOverride.map((row) => ({ ...row }))
-        : gridRows.map((row) => ({ ...row })),
+      gridRows: uniqueRows.map((row) => ({ ...row })),
     };
   }
   function resolvePrintPayloadFromResult(result, rowsOverride = null) {
