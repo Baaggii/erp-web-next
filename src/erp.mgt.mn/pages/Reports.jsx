@@ -1628,6 +1628,7 @@ export default function Reports() {
           reportCapabilities: normalizeReportCapabilities(data.reportCapabilities),
           orderedParams: finalParams,
           lockRequestId: data.lockRequestId || null,
+          lockCandidates: data.lockCandidates,
         });
       } else {
         const detailedMessage =
