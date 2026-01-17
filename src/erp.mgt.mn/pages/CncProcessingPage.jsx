@@ -192,6 +192,176 @@ function drawWoodPattern(ctx, width, height, surface, texture) {
   }
 }
 
+function drawReliefPreview(ctx, width, height, viewBox, polylines, mode) {
+  if (!viewBox || !polylines?.length) return;
+  ctx.clearRect(0, 0, width, height);
+  ctx.fillStyle = mode === 'model' ? '#e2e8f0' : '#f8fafc';
+  ctx.fillRect(0, 0, width, height);
+
+  const scale = Math.min(width / viewBox.width, height / viewBox.height);
+  const offsetX = (width - viewBox.width * scale) / 2 - viewBox.minX * scale;
+  const offsetY = (height - viewBox.height * scale) / 2 - viewBox.minY * scale;
+
+  ctx.lineJoin = 'round';
+  ctx.lineCap = 'round';
+
+  const depthSteps = mode === 'model' ? 8 : 4;
+  const depthOffset = mode === 'model' ? 1.6 : 1;
+  const baseStroke = mode === 'model' ? 6 : 4;
+  const shadowColor = mode === 'model' ? 'rgba(15, 23, 42, 0.12)' : 'rgba(30, 41, 59, 0.08)';
+
+  for (let layer = depthSteps; layer > 0; layer -= 1) {
+    const shift = layer * depthOffset;
+    ctx.strokeStyle = shadowColor;
+    ctx.lineWidth = baseStroke + layer * 0.4;
+    polylines.forEach((polyline) => {
+      if (!polyline.length) return;
+      ctx.beginPath();
+      polyline.forEach((point, index) => {
+        const x = point.x * scale + offsetX + shift;
+        const y = point.y * scale + offsetY + shift;
+        if (index === 0) {
+          ctx.moveTo(x, y);
+        } else {
+          ctx.lineTo(x, y);
+        }
+      });
+      ctx.stroke();
+    });
+  }
+
+  ctx.shadowColor = mode === 'model' ? 'rgba(15, 23, 42, 0.35)' : 'rgba(30, 41, 59, 0.25)';
+  ctx.shadowBlur = mode === 'model' ? 10 : 6;
+  ctx.shadowOffsetY = mode === 'model' ? 4 : 3;
+  ctx.strokeStyle = mode === 'model' ? '#0f172a' : '#1f2937';
+  ctx.lineWidth = mode === 'model' ? 2.4 : 1.8;
+
+  polylines.forEach((polyline) => {
+    if (!polyline.length) return;
+    ctx.beginPath();
+    polyline.forEach((point, index) => {
+      const x = point.x * scale + offsetX;
+      const y = point.y * scale + offsetY;
+      if (index === 0) {
+        ctx.moveTo(x, y);
+      } else {
+        ctx.lineTo(x, y);
+      }
+    });
+    ctx.stroke();
+  });
+
+  ctx.shadowBlur = 0;
+  ctx.shadowOffsetY = 0;
+  ctx.strokeStyle = mode === 'model' ? 'rgba(248, 250, 252, 0.7)' : 'rgba(226, 232, 240, 0.7)';
+  ctx.lineWidth = mode === 'model' ? 1.2 : 1;
+  polylines.forEach((polyline) => {
+    if (!polyline.length) return;
+    ctx.beginPath();
+    polyline.forEach((point, index) => {
+      const x = point.x * scale + offsetX - 1;
+      const y = point.y * scale + offsetY - 1;
+      if (index === 0) {
+        ctx.moveTo(x, y);
+      } else {
+        ctx.lineTo(x, y);
+      }
+    });
+    ctx.stroke();
+  });
+}
+
+function loadSourceImage(url) {
+  return new Promise((resolve, reject) => {
+    if (!url) {
+      resolve(null);
+      return;
+    }
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error('Unable to load source image'));
+    img.src = url;
+  });
+}
+
+function buildHeightmap(image, width, height) {
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return null;
+  ctx.drawImage(image, 0, 0, width, height);
+  const imageData = ctx.getImageData(0, 0, width, height);
+  const { data } = imageData;
+  const heights = new Float32Array(width * height);
+  for (let i = 0; i < data.length; i += 4) {
+    const r = data[i];
+    const g = data[i + 1];
+    const b = data[i + 2];
+    const lum = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
+    heights[i / 4] = Math.pow(lum, 1.1);
+  }
+  return { heights, width, height };
+}
+
+function drawHeightmapPreview(ctx, width, height, image) {
+  const map = buildHeightmap(image, width, height);
+  if (!map) return;
+  const imageData = ctx.createImageData(width, height);
+  const { data } = imageData;
+  map.heights.forEach((value, index) => {
+    const shade = Math.round(value * 255);
+    const offset = index * 4;
+    data[offset] = shade;
+    data[offset + 1] = shade;
+    data[offset + 2] = shade;
+    data[offset + 3] = 255;
+  });
+  ctx.putImageData(imageData, 0, 0);
+}
+
+function drawModelPreview(ctx, width, height, image) {
+  const map = buildHeightmap(image, width, height);
+  if (!map) return;
+  const imageData = ctx.createImageData(width, height);
+  const { data } = imageData;
+  const { heights } = map;
+  const light = { x: 0.6, y: 0.6, z: 0.5 };
+  const lightLength = Math.hypot(light.x, light.y, light.z);
+  const lx = light.x / lightLength;
+  const ly = light.y / lightLength;
+  const lz = light.z / lightLength;
+  const strength = 3.2;
+
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      const index = y * width + x;
+      const left = heights[index - 1] ?? heights[index];
+      const right = heights[index + 1] ?? heights[index];
+      const up = heights[index - width] ?? heights[index];
+      const down = heights[index + width] ?? heights[index];
+      const dx = (right - left) * strength;
+      const dy = (down - up) * strength;
+      const nx = -dx;
+      const ny = -dy;
+      const nz = 1;
+      const nLength = Math.hypot(nx, ny, nz) || 1;
+      const dot = Math.max(0, (nx * lx + ny * ly + nz * lz) / nLength);
+      const ambient = 0.35;
+      const diffuse = 0.65 * dot;
+      const heightBoost = 0.55 + 0.45 * heights[index];
+      const shade = Math.min(1, (ambient + diffuse) * heightBoost);
+      const base = Math.round(220 * shade);
+      const offset = index * 4;
+      data[offset] = Math.min(255, Math.round(base * 0.95));
+      data[offset + 1] = base;
+      data[offset + 2] = Math.min(255, Math.round(base * 1.05));
+      data[offset + 3] = 255;
+    }
+  }
+  ctx.putImageData(imageData, 0, 0);
+}
+
 function loadWoodTexture(url) {
   return new Promise((resolve, reject) => {
     if (!url) {
@@ -244,6 +414,7 @@ function CncProcessingPage() {
   const [apiLogs, setApiLogs] = useState([]);
   const [sourcePreviewUrl, setSourcePreviewUrl] = useState('');
   const [previewModal, setPreviewModal] = useState(null);
+  const [resultConversionType, setResultConversionType] = useState(processingOptions[0].value);
   const [woodSurface, setWoodSurface] = useState(woodSurfaceOptions[0].value);
   const [woodTextures, setWoodTextures] = useState({});
   const [woodTextureRevision, setWoodTextureRevision] = useState(0);
@@ -252,6 +423,10 @@ function CncProcessingPage() {
   const submitLock = useRef(false);
   const woodCanvasRef = useRef(null);
   const modalWoodCanvasRef = useRef(null);
+  const heightmapCanvasRef = useRef(null);
+  const modalHeightmapCanvasRef = useRef(null);
+  const modelCanvasRef = useRef(null);
+  const modalModelCanvasRef = useRef(null);
   const viewBox = useMemo(() => parseViewBox(preview?.viewBox), [preview?.viewBox]);
   const carvedPolylines = useMemo(() => {
     if (!preview?.polylines?.length) return [];
@@ -262,7 +437,11 @@ function CncProcessingPage() {
       .flatMap((polyline) => splitPolylineByDistance(polyline, maxDistance))
       .filter((polyline) => !isTravelPolyline(polyline, maxDimension));
   }, [preview, viewBox]);
-  const showWoodPreview = carvedPolylines.length > 0;
+  const activeConversionType = preview ? resultConversionType : processingType;
+  const showWoodPreview = carvedPolylines.length > 0 && activeConversionType === '2d_outline';
+  const showHeightmapPreview =
+    carvedPolylines.length > 0 && activeConversionType === '2_5d_heightmap';
+  const showModelPreview = carvedPolylines.length > 0 && activeConversionType === '3d_model';
 
   const addStep = (label, status, details = '') => {
     stepId.current += 1;
@@ -402,6 +581,69 @@ function CncProcessingPage() {
     });
   }, [carvedPolylines, showWoodPreview, viewBox, woodSurface, woodTextureRevision]);
 
+  useEffect(() => {
+    if (!showHeightmapPreview && !showModelPreview) return;
+    const canvases = [
+      showHeightmapPreview ? heightmapCanvasRef.current : null,
+      showHeightmapPreview ? modalHeightmapCanvasRef.current : null,
+      showModelPreview ? modelCanvasRef.current : null,
+      showModelPreview ? modalModelCanvasRef.current : null,
+    ].filter(Boolean);
+    if (canvases.length === 0) return;
+
+    let isActive = true;
+    const targetWidth = 640;
+    const targetHeight = 360;
+    const drawFallback = () => {
+      if (!viewBox || !carvedPolylines.length) return;
+      const mode = showModelPreview ? 'model' : 'heightmap';
+      canvases.forEach((canvas) => {
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return;
+        canvas.width = targetWidth;
+        canvas.height = targetHeight;
+        drawReliefPreview(ctx, targetWidth, targetHeight, viewBox, carvedPolylines, mode);
+      });
+    };
+
+    const drawFromImage = async () => {
+      try {
+        const image = await loadSourceImage(sourcePreviewUrl);
+        if (!isActive || !image) return;
+        canvases.forEach((canvas) => {
+          const ctx = canvas.getContext('2d');
+          if (!ctx) return;
+          canvas.width = targetWidth;
+          canvas.height = targetHeight;
+          if (showModelPreview) {
+            drawModelPreview(ctx, targetWidth, targetHeight, image);
+          } else {
+            drawHeightmapPreview(ctx, targetWidth, targetHeight, image);
+          }
+        });
+      } catch (err) {
+        if (isActive) drawFallback();
+      }
+    };
+
+    if (sourcePreviewUrl) {
+      drawFromImage();
+    } else {
+      drawFallback();
+    }
+
+    return () => {
+      isActive = false;
+    };
+  }, [
+    carvedPolylines,
+    showHeightmapPreview,
+    showModelPreview,
+    viewBox,
+    sourcePreviewUrl,
+    resultConversionType,
+  ]);
+
   const selectedFileLabel = useMemo(
     () => (file ? `${file.name} (${Math.round(file.size / 1024)} KB)` : 'No file selected'),
     [file],
@@ -415,6 +657,7 @@ function CncProcessingPage() {
     setPreview(null);
     setStatus('idle');
     setProgress(0);
+    setResultConversionType(processingType);
     if (selectedFile) {
       addStep('File selected', 'success', `${selectedFile.name} (${selectedFile.type || 'unknown'})`);
     } else {
@@ -556,11 +799,13 @@ function CncProcessingPage() {
           setDownload({ url: '', filename: info?.filename || 'cnc-output' });
         }
         setPreview(data?.preview || null);
+        setResultConversionType(data?.conversionType || processingType);
       } else {
         const blob = await res.blob();
         const url = window.URL.createObjectURL(blob);
         setDownload({ url, filename: `cnc-output.${outputFormat}` });
         setPreview(null);
+        setResultConversionType(processingType);
       }
 
       addStep('CNC processing completed', 'success');
@@ -595,6 +840,9 @@ function CncProcessingPage() {
     return '';
   }, [file, isBusy]);
   const canSubmit = !disabledReason;
+  const activeConversionLabel =
+    processingOptions.find((option) => option.value === activeConversionType)?.label ||
+    'Processing';
 
   return (
     <div className="mx-auto max-w-6xl p-6">
@@ -721,16 +969,16 @@ function CncProcessingPage() {
         </div>
       )}
 
-      {preview?.polylines?.length > 0 && (
+      {hasPreview && (
         <div className="rounded-md border border-slate-200 bg-white p-4 text-sm text-slate-700">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <p className="text-sm font-medium text-slate-900">Output previews</p>
               <p className="text-xs text-slate-500">
-                Tap any preview to open a larger view.
+                Showing results for {activeConversionLabel}. Tap any preview to open a larger view.
               </p>
             </div>
-            {preview?.polylines?.length > 0 && (
+            {activeConversionType === '2d_outline' && (
               <label className="flex items-center gap-2 text-xs text-slate-500">
                 <input
                   type="checkbox"
@@ -743,7 +991,7 @@ function CncProcessingPage() {
             )}
           </div>
           <div className="mt-4 grid gap-4 md:grid-cols-2">
-            {preview?.polylines?.length > 0 && (
+            {activeConversionType === '2d_outline' && (
               <div className="rounded-md border border-slate-200 bg-slate-50 p-3">
                 <p className="text-xs font-medium text-slate-600">Toolpath preview</p>
                 <p className="mt-1 text-[11px] text-slate-500">
@@ -825,6 +1073,52 @@ function CncProcessingPage() {
                       className="h-full w-full"
                       role="img"
                       aria-label="Simulated wood carving preview"
+                    />
+                  </div>
+                </button>
+              </div>
+            )}
+            {showHeightmapPreview && (
+              <div className="rounded-md border border-slate-200 bg-slate-50 p-3">
+                <p className="text-xs font-medium text-slate-600">2.5D heightmap preview</p>
+                <p className="mt-1 text-[11px] text-slate-500">
+                  Grayscale heightmap derived from the source image or fallback outlines.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setPreviewModal('heightmap')}
+                  className="mt-3 w-full overflow-hidden rounded-md border border-slate-200 bg-white transition hover:border-slate-300"
+                  aria-label="Open heightmap preview"
+                >
+                  <div className="aspect-[16/9] w-full">
+                    <canvas
+                      ref={heightmapCanvasRef}
+                      className="h-full w-full"
+                      role="img"
+                      aria-label="2.5D heightmap preview"
+                    />
+                  </div>
+                </button>
+              </div>
+            )}
+            {showModelPreview && (
+              <div className="rounded-md border border-slate-200 bg-slate-50 p-3">
+                <p className="text-xs font-medium text-slate-600">3D model preview</p>
+                <p className="mt-1 text-[11px] text-slate-500">
+                  Relief shading derived from the heightmap to visualize depth.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setPreviewModal('model')}
+                  className="mt-3 w-full overflow-hidden rounded-md border border-slate-200 bg-white transition hover:border-slate-300"
+                  aria-label="Open 3D model preview"
+                >
+                  <div className="aspect-[16/9] w-full">
+                    <canvas
+                      ref={modelCanvasRef}
+                      className="h-full w-full"
+                      role="img"
+                      aria-label="3D model preview"
                     />
                   </div>
                 </button>
@@ -940,6 +1234,8 @@ function CncProcessingPage() {
               <p className="text-sm font-semibold text-slate-800">
                 {previewModal === 'toolpath' && 'Toolpath preview'}
                 {previewModal === 'carving' && 'Imitated wood carving result'}
+                {previewModal === 'heightmap' && '2.5D heightmap preview'}
+                {previewModal === 'model' && '3D model preview'}
                 {previewModal === 'source' && 'Initial image preview'}
               </p>
               <button
@@ -977,6 +1273,26 @@ function CncProcessingPage() {
                     className="h-full w-full max-h-[60vh]"
                     role="img"
                     aria-label="Simulated wood carving preview"
+                  />
+                </div>
+              )}
+              {previewModal === 'heightmap' && (
+                <div className="flex h-[60vh] items-center justify-center">
+                  <canvas
+                    ref={modalHeightmapCanvasRef}
+                    className="h-full w-full max-h-[60vh]"
+                    role="img"
+                    aria-label="2.5D heightmap preview"
+                  />
+                </div>
+              )}
+              {previewModal === 'model' && (
+                <div className="flex h-[60vh] items-center justify-center">
+                  <canvas
+                    ref={modalModelCanvasRef}
+                    className="h-full w-full max-h-[60vh]"
+                    role="img"
+                    aria-label="3D model preview"
                   />
                 </div>
               )}

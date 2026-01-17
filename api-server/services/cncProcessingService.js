@@ -191,6 +191,7 @@ export async function processCncFile({
 }) {
   const extension = validateUpload(file);
   const normalizedOutput = outputFormat?.toLowerCase() || 'gcode';
+  const conversionType = options.conversionType || '2d_outline';
   if (!['gcode', 'dxf'].includes(normalizedOutput)) {
     const err = new Error('Unsupported output format');
     err.status = 400;
@@ -270,6 +271,7 @@ export async function processCncFile({
     mimeType: outputMime,
     createdAt: Date.now(),
     preview,
+    conversionType,
   };
   outputRegistry.set(id, metadata);
   return metadata;
