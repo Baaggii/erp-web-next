@@ -61,6 +61,7 @@ export default function ReportTable({
   rows = [],
   buttonPerms = {},
   fieldTypeMap = {},
+  maxHeight = 'min(70vh, calc(100vh - 20rem))',
   onSnapshotReady,
 }) {
   const { user, company } = useContext(AuthContext);
@@ -608,7 +609,7 @@ export default function ReportTable({
         style={{
           position: 'relative',
           maxWidth: '100%',
-          maxHeight: '70vh',
+          maxHeight,
           overflow: 'auto',
           border: '1px solid #d1d5db',
           borderRadius: '0.5rem',
@@ -978,4 +979,3 @@ export default function ReportTable({
     </div>
   );
 }
-
