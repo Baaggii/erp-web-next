@@ -550,11 +550,13 @@ const TableManager = forwardRef(function TableManager({
   const [activeTemporaryDraftId, setActiveTemporaryDraftId] = useState(null);
   const [gridRows, setGridRows] = useState([]);
   const [selectedRows, setSelectedRows] = useState(new Set());
+  const selectedRowsMapRef = useRef(new Map());
   const [printModalOpen, setPrintModalOpen] = useState(false);
   const [printEmpSelected, setPrintEmpSelected] = useState(true);
   const [printCustSelected, setPrintCustSelected] = useState(false);
   const [printCopies, setPrintCopies] = useState('1');
   const [printPayload, setPrintPayload] = useState(null);
+  const [printSelectionLoading, setPrintSelectionLoading] = useState(false);
   const [localRefresh, setLocalRefresh] = useState(0);
   const [procTriggers, setProcTriggers] = useState({});
   const [lockMetadataById, setLockMetadataById] = useState({});
@@ -3700,25 +3702,47 @@ const TableManager = forwardRef(function TableManager({
     }
   }
 
-  function toggleRow(id) {
+  function toggleRow(row, id) {
     setSelectedRows((s) => {
       const next = new Set(s);
       if (next.has(id)) {
         next.delete(id);
+        selectedRowsMapRef.current.delete(String(id));
       } else {
         next.add(id);
+        if (row) {
+          selectedRowsMapRef.current.set(String(id), row);
+        }
       }
       return next;
     });
   }
 
   function selectCurrentPage() {
-    setSelectedRows(new Set(rows.map((r) => getRowId(r)).filter((id) => id !== undefined)));
+    const nextIds = rows
+      .map((r) => getRowId(r))
+      .filter((id) => id !== undefined);
+    const nextMap = new Map();
+    rows.forEach((row) => {
+      const id = getRowId(row);
+      if (id !== undefined) {
+        nextMap.set(String(id), row);
+      }
+    });
+    selectedRowsMapRef.current = nextMap;
+    setSelectedRows(new Set(nextIds));
   }
 
   function deselectAll() {
+    selectedRowsMapRef.current = new Map();
     setSelectedRows(new Set());
   }
+
+  useEffect(() => {
+    if (selectedRows.size === 0) {
+      selectedRowsMapRef.current = new Map();
+    }
+  }, [selectedRows]);
 
   function handleFieldChange(changes) {
     if (!editing) return;
@@ -6710,10 +6734,26 @@ const TableManager = forwardRef(function TableManager({
   const selectedRowsForPrint = useMemo(() => {
     if (selectedRows.size === 0) return [];
     const selectedIds = new Set(Array.from(selectedRows, (id) => String(id)));
-    return rows.filter((row) => {
-      const rid = getRowId(row);
-      return rid !== undefined && selectedIds.has(String(rid));
+    const resolved = [];
+    const seen = new Set();
+    selectedRows.forEach((id) => {
+      const key = String(id);
+      const cached = selectedRowsMapRef.current.get(key);
+      if (cached) {
+        resolved.push(cached);
+        seen.add(key);
+      }
     });
+    rows.forEach((row) => {
+      const rid = getRowId(row);
+      if (rid === undefined) return;
+      const key = String(rid);
+      if (!selectedIds.has(key) || seen.has(key)) return;
+      selectedRowsMapRef.current.set(key, row);
+      resolved.push(row);
+      seen.add(key);
+    });
+    return resolved;
   }, [rows, selectedRows]);
 
   const buildPrintPayloadFromRow = useCallback(
@@ -6779,6 +6819,39 @@ const TableManager = forwardRef(function TableManager({
     },
     [buildPrintPayloadFromRows, formConfig?.posApiEnabled],
   );
+
+  const resolveSelectedRowsForPrint = useCallback(async () => {
+    if (selectedRowsForPrint.length > 0) {
+      return selectedRowsForPrint;
+    }
+    if (!table || selectedRows.size === 0) {
+      return [];
+    }
+    const ids = Array.from(selectedRows).filter((id) => id !== undefined && id !== null);
+    if (ids.length === 0) return [];
+    const fetchedRows = [];
+    const requests = await Promise.allSettled(
+      ids.map((id) =>
+        fetch(`/api/tables/${encodeURIComponent(table)}/${encodeURIComponent(id)}`, {
+          credentials: 'include',
+        }),
+      ),
+    );
+    for (const result of requests) {
+      if (result.status !== 'fulfilled') continue;
+      const res = result.value;
+      if (!res.ok) continue;
+      const row = await res.json().catch(() => null);
+      if (row && typeof row === 'object') {
+        fetchedRows.push(row);
+        const rid = getRowId(row);
+        if (rid !== undefined && rid !== null) {
+          selectedRowsMapRef.current.set(String(rid), row);
+        }
+      }
+    }
+    return fetchedRows;
+  }, [getRowId, selectedRows, selectedRowsForPrint, table]);
 
   const openPrintModalForPayload = useCallback(
     (payload) => {
@@ -7369,9 +7442,22 @@ const TableManager = forwardRef(function TableManager({
         {selectedRows.size > 0 && (
           <TooltipWrapper title={t('print_selected', { ns: 'tooltip', defaultValue: 'Print selected transaction' })}>
             <button
-              onClick={() => {
-                if (selectedRowsForPrint.length === 0) return;
-                openPrintModalForRows(selectedRowsForPrint);
+              onClick={async () => {
+                if (printSelectionLoading) return;
+                setPrintSelectionLoading(true);
+                try {
+                  const rowsToPrint = await resolveSelectedRowsForPrint();
+                  if (rowsToPrint.length === 0) {
+                    addToast(
+                      t('print_selected_empty', 'No selected rows available to print.'),
+                      'error',
+                    );
+                    return;
+                  }
+                  openPrintModalForRows(rowsToPrint);
+                } finally {
+                  setPrintSelectionLoading(false);
+                }
               }}
               style={{ marginLeft: '0.5rem' }}
             >
@@ -8008,7 +8094,7 @@ const TableManager = forwardRef(function TableManager({
                       type="checkbox"
                       disabled={rid === undefined}
                       checked={rid !== undefined && selectedRows.has(rid)}
-                      onChange={() => rid !== undefined && toggleRow(rid)}
+                      onChange={() => rid !== undefined && toggleRow(r, rid)}
                     />
                   </div>
                 </td>
