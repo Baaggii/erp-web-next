@@ -3253,7 +3253,7 @@ export default function Reports() {
             minHeight: 0,
           }}
         >
-          <div style={{ flex: '1 1 auto', minHeight: 0 }}>
+          <div style={{ flex: '0 0 auto', minHeight: 'auto' }}>
             <ReportTable
               procedure={result.name}
               params={result.params}
