@@ -204,6 +204,7 @@ export default function Reports() {
   const [lockFetchError, setLockFetchError] = useState('');
   const [populateLockCandidates, setPopulateLockCandidates] = useState(true);
   const [lockAcknowledged, setLockAcknowledged] = useState(false);
+  const [lockRequestSubmitted, setLockRequestSubmitted] = useState(false);
   const [approvalReason, setApprovalReason] = useState('');
   const [requestingApproval, setRequestingApproval] = useState(false);
   const [approvalModalOpen, setApprovalModalOpen] = useState(false);
@@ -1037,11 +1038,13 @@ export default function Reports() {
     setLockFetchError('');
     setLockFetchPending(false);
     setLockAcknowledged(false);
+    setLockRequestSubmitted(false);
   }, [selectedProc]);
 
   useEffect(() => {
     let cancelled = false;
     setLockAcknowledged(false);
+    setLockRequestSubmitted(false);
     if (!result || !result.name || !populateLockCandidates) {
       setLockCandidates([]);
       setLockSelections({});
@@ -1158,11 +1161,7 @@ export default function Reports() {
         normalized.forEach((candidate) => {
           const key = getCandidateKey(candidate);
           if (!key) return;
-          if (candidate?.locked) {
-            initialSelections[key] = false;
-          } else {
-            initialSelections[key] = true;
-          }
+          initialSelections[key] = false;
         });
         setLockSelections(initialSelections);
         setLockFetchError('');
@@ -1544,6 +1543,7 @@ export default function Reports() {
         setLockFetchError('');
         setLockFetchPending(false);
         setLockAcknowledged(false);
+        setLockRequestSubmitted(false);
         setResult({
           name: selectedProc,
           params: paramMap,
@@ -1796,6 +1796,7 @@ export default function Reports() {
     (candidate, checked) => {
       const key = getCandidateKey(candidate);
       if (!key) return;
+      if (lockRequestSubmitted) return;
       if (candidate?.locked) return;
       if (checked) {
         updateLockSelection(key, true);
@@ -1809,17 +1810,18 @@ export default function Reports() {
         error: '',
       });
     },
-    [getCandidateKey, lockExclusions, updateLockSelection],
+    [getCandidateKey, lockExclusions, lockRequestSubmitted, updateLockSelection],
   );
 
   const handleEditExclusion = useCallback(
     (key) => {
+      if (lockRequestSubmitted) return;
       const candidate = lockCandidateMap.get(key);
       if (!candidate) return;
       const existingReason = lockExclusions[key]?.reason || '';
       setPendingExclusion({ key, candidate, reason: existingReason, error: '' });
     },
-    [lockCandidateMap, lockExclusions],
+    [lockCandidateMap, lockExclusions, lockRequestSubmitted],
   );
 
   const confirmPendingExclusion = useCallback(() => {
@@ -1863,15 +1865,16 @@ export default function Reports() {
   }, []);
 
   const excludedLockCount = useMemo(() => {
-    if (!Array.isArray(lockCandidates) || lockCandidates.length === 0) {
+    const excludedKeys = Object.keys(lockExclusions || {});
+    if (!excludedKeys.length) {
       return 0;
     }
-    return lockCandidates.reduce((count, candidate) => {
-      if (candidate?.locked) return count;
-      const key = getCandidateKey(candidate);
-      return lockSelections[key] ? count : count + 1;
+    return excludedKeys.reduce((count, key) => {
+      const candidate = lockCandidateMap.get(key);
+      if (!candidate || candidate?.locked) return count;
+      return lockExclusions[key]?.reason ? count + 1 : count;
     }, 0);
-  }, [lockCandidates, lockSelections, getCandidateKey]);
+  }, [lockCandidateMap, lockExclusions]);
 
   const formatSnapshotCell = useCallback(
     (value, column, fieldTypes = {}) => {
@@ -2796,6 +2799,10 @@ export default function Reports() {
 
   async function handleRequestApproval() {
     if (!canRequestApproval) return;
+    if (lockRequestSubmitted) {
+      addToast('Approval request already submitted', 'error');
+      return;
+    }
     if (!result) {
       addToast('Run a report before requesting approval', 'error');
       return;
@@ -2943,17 +2950,22 @@ export default function Reports() {
       };
     };
 
-    const excludedTransactions = lockCandidates
-      .filter((candidate) => !candidate?.locked)
-      .filter((candidate) => !lockSelections[getCandidateKey(candidate)])
-      .map((candidate) => {
-        const key = getCandidateKey(candidate);
-        const info = lockExclusions[key];
-        const reason = (info?.reason || '').trim();
-        return serializeCandidateForRequest(candidate, { reason });
-      })
-      .filter(Boolean);
-    if (excludedTransactions.some((tx) => !tx.reason)) {
+    const excludedTransactions = [];
+    let missingExclusionReason = false;
+    Object.entries(lockExclusions || {}).forEach(([key, info]) => {
+      const candidate = lockCandidateMap.get(key);
+      if (!candidate || candidate?.locked) return;
+      const reason = (info?.reason || '').trim();
+      if (!reason) {
+        missingExclusionReason = true;
+        return;
+      }
+      const serialized = serializeCandidateForRequest(candidate, { reason });
+      if (serialized) {
+        excludedTransactions.push(serialized);
+      }
+    });
+    if (missingExclusionReason) {
       addToast('Provide a reason for each excluded transaction', 'error');
       return;
     }
@@ -2996,6 +3008,7 @@ export default function Reports() {
         throw new Error(err.message || 'Failed to submit approval request');
       }
       addToast('Report approval request submitted', 'success');
+      setLockRequestSubmitted(true);
       setApprovalReason('');
       setLockAcknowledged(false);
       window.dispatchEvent(new Event('pending-request-refresh'));
@@ -3457,9 +3470,12 @@ export default function Reports() {
                                           .toUpperCase() +
                                         candidate.lockStatus.slice(1)
                                       : '';
+                                    const isExcluded = Boolean(
+                                      exclusionInfo?.reason,
+                                    );
                                     let statusColor = '#047857';
-                                    let statusText = 'Will lock';
-                                    let statusDetails = 'Selectable for approval';
+                                    let statusText = 'Selected for locking';
+                                    let statusDetails = 'Ready for approval.';
                                     if (locked) {
                                       statusColor = '#b91c1c';
                                       statusText = `Locked${
@@ -3472,13 +3488,17 @@ export default function Reports() {
                                           ? ` on ${formatDateTime(candidate.lockedAt)}`
                                           : ''
                                       }`;
-                                    } else if (!checked) {
+                                    } else if (!checked && isExcluded) {
                                       statusColor = '#92400e';
                                       statusText = 'Excluded from locking';
+                                      statusDetails = exclusionInfo?.reason
+                                        ? `Reason: ${exclusionInfo.reason}`
+                                        : 'Reason not provided.';
+                                    } else if (!checked) {
+                                      statusColor = '#6b7280';
+                                      statusText = 'Not selected';
                                       statusDetails =
-                                        exclusionInfo?.reason
-                                          ? `Reason: ${exclusionInfo.reason}`
-                                          : 'Provide a reason to exclude this transaction.';
+                                        'Select this transaction to request locking.';
                                     }
                                     return (
                                       <tr
@@ -3496,7 +3516,7 @@ export default function Reports() {
                                           <input
                                             type="checkbox"
                                             checked={checked}
-                                            disabled={locked}
+                                            disabled={locked || lockRequestSubmitted}
                                             onChange={(e) =>
                                               handleLockCheckboxChange(
                                                 candidate,
@@ -3555,6 +3575,7 @@ export default function Reports() {
                                                   handleEditExclusion(key)
                                                 }
                                                 style={{ fontSize: '0.85rem' }}
+                                                disabled={lockRequestSubmitted}
                                               >
                                                 Edit reason
                                               </button>
@@ -3602,6 +3623,11 @@ export default function Reports() {
                     No transactions were reported for locking.
                   </p>
                 )}
+                {lockRequestSubmitted && (
+                  <p style={{ marginTop: '0.75rem', color: '#6b7280' }}>
+                    Approval request submitted. Lock selections are now read-only.
+                  </p>
+                )}
               </div>
               <label
                 style={{
@@ -3616,6 +3642,7 @@ export default function Reports() {
                   checked={lockAcknowledged}
                   onChange={(e) => setLockAcknowledged(e.target.checked)}
                   style={{ marginTop: '0.2rem' }}
+                  disabled={lockRequestSubmitted}
                 />
                 <span>
                   I have reviewed all listed transactions and accept
@@ -3631,6 +3658,7 @@ export default function Reports() {
                   onChange={(e) => setApprovalReason(e.target.value)}
                   style={{ width: '100%', minHeight: '4rem', marginTop: '0.25rem' }}
                   placeholder="Explain why this report should be approved"
+                  disabled={lockRequestSubmitted}
                 />
               </div>
               <div style={{ marginTop: '0.75rem' }}>
@@ -3638,6 +3666,7 @@ export default function Reports() {
                   onClick={handleRequestApproval}
                   disabled={
                     requestingApproval ||
+                    lockRequestSubmitted ||
                     lockFetchPending ||
                     !selectedLockCount ||
                     !lockAcknowledged ||

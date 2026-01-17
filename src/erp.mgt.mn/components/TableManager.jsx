@@ -406,7 +406,14 @@ const requestStatusLabels = {
   declined: 'Declined',
 };
 
-const ACTIVE_LOCK_STATUSES = new Set(['pending', 'locked']);
+const ACTIVE_LOCK_STATUSES = new Set([
+  'pending',
+  'locked',
+  'approved',
+  'accepted',
+  'active',
+  'activated',
+]);
 
 function coalesce(obj, ...keys) {
   if (!obj) return undefined;
