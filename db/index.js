@@ -7298,7 +7298,19 @@ export async function callStoredProcedure(
     const rawCaps = Array.isArray(capRows) ? capRows[0]?.report_capabilities : null;
     const reportCapabilities = normalizeReportCapabilities(rawCaps);
 
-    return { row: first, reportCapabilities };
+    let lockCandidates = [];
+    if (session.collectUsedRows) {
+      try {
+        const [lockRows] = await conn.query('SELECT * FROM tmp_used_rows');
+        lockCandidates = Array.isArray(lockRows) ? lockRows : [];
+      } catch (err) {
+        if (err?.code !== 'ER_NO_SUCH_TABLE') {
+          throw err;
+        }
+      }
+    }
+
+    return { row: first, reportCapabilities, lockCandidates };
   } finally {
     conn.release();
   }
