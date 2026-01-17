@@ -947,6 +947,12 @@ export default function Reports() {
       const recordId =
         candidate.recordId ??
         candidate.record_id ??
+        candidate.lock_record_id ??
+        candidate.lockRecordId ??
+        candidate.transaction_id ??
+        candidate.transactionId ??
+        candidate.tx_id ??
+        candidate.txId ??
         candidate.id ??
         candidate.recordID;
       if (recordId === undefined || recordId === null) return `${table}#`;
@@ -965,6 +971,12 @@ export default function Reports() {
           const rawId =
             candidate.recordId ??
             candidate.record_id ??
+            candidate.lock_record_id ??
+            candidate.lockRecordId ??
+            candidate.transaction_id ??
+            candidate.transactionId ??
+            candidate.tx_id ??
+            candidate.txId ??
             candidate.id ??
             candidate.recordID;
           if (!tableName || rawId === null || rawId === undefined) {
