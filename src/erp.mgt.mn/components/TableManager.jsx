@@ -6642,6 +6642,15 @@ const TableManager = forwardRef(function TableManager({
     return match || null;
   }, [rows, selectedRows]);
 
+  const selectedRowsForPrint = useMemo(() => {
+    if (selectedRows.size === 0) return [];
+    const selectedIds = new Set(Array.from(selectedRows, (id) => String(id)));
+    return rows.filter((row) => {
+      const rid = getRowId(row);
+      return rid !== undefined && selectedIds.has(String(rid));
+    });
+  }, [rows, selectedRows]);
+
   const buildPrintPayloadFromRow = useCallback(
     (row) => {
       const baseRow = row && typeof row === 'object' ? { ...row } : {};
@@ -6654,9 +6663,21 @@ const TableManager = forwardRef(function TableManager({
     [normalizeJsonArray],
   );
 
-  const openPrintModalForRow = useCallback(
-    (row) => {
-      const payload = buildPrintPayloadFromRow(row);
+  const buildPrintPayloadFromRows = useCallback(
+    (rowsToPrint) => {
+      const items = Array.isArray(rowsToPrint)
+        ? rowsToPrint
+            .filter((row) => row && typeof row === 'object')
+            .map((row) => buildPrintPayloadFromRow(row))
+        : [];
+      return { formRows: items };
+    },
+    [buildPrintPayloadFromRow],
+  );
+
+  const openPrintModalForRows = useCallback(
+    (rowsToPrint) => {
+      const payload = buildPrintPayloadFromRows(rowsToPrint);
       const normalizedPayload = {
         ...payload,
         isReceipt: payload?.isReceipt ?? formConfig?.posApiEnabled,
@@ -6667,7 +6688,7 @@ const TableManager = forwardRef(function TableManager({
       setPrintCopies('1');
       setPrintModalOpen(true);
     },
-    [buildPrintPayloadFromRow, formConfig?.posApiEnabled],
+    [buildPrintPayloadFromRows, formConfig?.posApiEnabled],
   );
 
   const openPrintModalForPayload = useCallback(
@@ -6698,10 +6719,10 @@ const TableManager = forwardRef(function TableManager({
       if (!payload || !Array.isArray(modes) || modes.length === 0) return;
       const activePayload = payload || buildPrintPayloadFromRow(selectedRowForPrint);
       const isReceipt = Boolean(options?.isReceipt ?? activePayload?.isReceipt);
-      const activeFormVals = activePayload.formVals || {};
-      const activeGridRows = Array.isArray(activePayload.gridRows)
-        ? activePayload.gridRows
-        : [];
+      const rowPayloads =
+        Array.isArray(activePayload.formRows) && activePayload.formRows.length > 0
+          ? activePayload.formRows
+          : [activePayload];
       const allFields = [...headerFields, ...mainFields, ...footerFields];
       const hasDefinedSections = allFields.length > 0;
       const headerCols = hasDefinedSections ? headerFields : [];
@@ -6759,7 +6780,7 @@ const TableManager = forwardRef(function TableManager({
         }
         return baseValue ?? '';
       };
-      const resolvePrintValue = (col, row = activeFormVals) => {
+      const resolvePrintValue = (col, row) => {
         const raw = row?.[col];
         if (fieldTypeMap[col] === 'json') {
           const arr = normalizeJsonArray(raw);
@@ -6807,7 +6828,7 @@ const TableManager = forwardRef(function TableManager({
         return formatted ?? '';
       };
 
-      const columnTableHtml = (cols, row = activeFormVals, skipEmpty = false, className = '') => {
+      const columnTableHtml = (cols, row, skipEmpty = false, className = '') => {
         const filtered = cols.filter((c) =>
           skipEmpty
             ? row?.[c] !== '' && row?.[c] !== null && row?.[c] !== 0 && row?.[c] !== undefined
@@ -6819,20 +6840,20 @@ const TableManager = forwardRef(function TableManager({
         return `<table${className ? ` class="${className}"` : ''}><thead><tr>${header}</tr></thead><tbody><tr>${values}</tr></tbody></table>`;
       };
 
-      const mainTableHtml = (cols) => {
-        if (!Array.isArray(activeGridRows) || activeGridRows.length === 0) {
-          return columnTableHtml(cols, activeFormVals, true, 'print-main-table');
+      const mainTableHtml = (cols, formVals, gridRows) => {
+        if (!Array.isArray(gridRows) || gridRows.length === 0) {
+          return columnTableHtml(cols, formVals, true, 'print-main-table');
         }
         const used = cols.filter((c) =>
-          activeGridRows.some(
+          gridRows.some(
             (r) => r[c] !== '' && r[c] !== null && r[c] !== 0 && r[c] !== undefined,
           ),
         );
         if (used.length === 0) {
-          return columnTableHtml(cols, activeFormVals, true, 'print-main-table');
+          return columnTableHtml(cols, formVals, true, 'print-main-table');
         }
         const header = used.map((c) => `<th>${labels[c] || c}</th>`).join('');
-        const body = activeGridRows
+        const body = gridRows
           .map(
             (r) =>
               '<tr>' +
@@ -6843,9 +6864,9 @@ const TableManager = forwardRef(function TableManager({
         return `<table class="print-main-table"><thead><tr>${header}</tr></thead><tbody>${body}</tbody></table>`;
       };
 
-      const signatureHtml = (cols) => {
+      const signatureHtml = (cols, formVals) => {
         if (cols.length === 0) return '';
-        const table = columnTableHtml(cols, activeFormVals, true, 'print-signature-table');
+        const table = columnTableHtml(cols, formVals, true, 'print-signature-table');
         if (!table) return '';
         return `<h3>Signature</h3>${table}`;
       };
@@ -6856,7 +6877,7 @@ const TableManager = forwardRef(function TableManager({
         return parsed;
       };
       const copies = normalizeCopies(copiesValue);
-      const buildSection = (mode) => {
+      const buildSection = (mode, formVals, gridRows) => {
         const list = mode === 'emp' ? formConfig?.printEmpField || [] : formConfig?.printCustField || [];
         const allowed = new Set(list.length > 0 ? list : [...headerCols, ...mainCols, ...footerCols]);
         const h = headerCols.filter((c) => allowed.has(c) && !signatureSet.has(c));
@@ -6865,19 +6886,19 @@ const TableManager = forwardRef(function TableManager({
         const signatureCols = signatureFields.filter((c) => allowed.has(c));
         let section = '';
         if (h.length) {
-          const table = columnTableHtml(h, activeFormVals, true);
+          const table = columnTableHtml(h, formVals, true);
           if (table) section += `<h3>Header</h3>${table}`;
         }
         if (m.length) {
-          const mainTable = mainTableHtml(m);
+          const mainTable = mainTableHtml(m, formVals, gridRows);
           if (mainTable) section += `<h3>Main</h3>${mainTable}`;
         }
         if (f.length) {
-          const table = columnTableHtml(f, activeFormVals, true);
+          const table = columnTableHtml(f, formVals, true);
           if (table) section += `<h3>Footer</h3>${table}`;
         }
         if (signatureCols.length) {
-          const signatureBlock = signatureHtml(signatureCols);
+          const signatureBlock = signatureHtml(signatureCols, formVals);
           if (signatureBlock) section += signatureBlock;
         }
         return section;
@@ -6887,11 +6908,15 @@ const TableManager = forwardRef(function TableManager({
         const className = copies > 1 ? 'print-copies print-copies-grid' : 'print-copies';
         return `<div class="${className}">${items}</div>`;
       };
-      const sections = modes
-        .map((mode) => {
-          const section = buildSection(mode);
-          if (!section) return '';
-          return `<section class="print-group">${renderCopies(section)}</section>`;
+      const sections = rowPayloads
+        .flatMap((rowPayload) => {
+          const activeFormVals = rowPayload?.formVals || {};
+          const activeGridRows = Array.isArray(rowPayload?.gridRows) ? rowPayload.gridRows : [];
+          return modes.map((mode) => {
+            const section = buildSection(mode, activeFormVals, activeGridRows);
+            if (!section) return '';
+            return `<section class="print-group">${renderCopies(section)}</section>`;
+          });
         })
         .join('');
 
@@ -7207,16 +7232,9 @@ const TableManager = forwardRef(function TableManager({
           <TooltipWrapper title={t('print_selected', { ns: 'tooltip', defaultValue: 'Print selected transaction' })}>
             <button
               onClick={() => {
-                if (!selectedRowForPrint || selectedRows.size !== 1) {
-                  addToast(
-                    t('print_select_one', 'Select a single transaction to print'),
-                    'error',
-                  );
-                  return;
-                }
-                openPrintModalForRow(selectedRowForPrint);
+                if (selectedRowsForPrint.length === 0) return;
+                openPrintModalForRows(selectedRowsForPrint);
               }}
-              disabled={selectedRows.size !== 1}
               style={{ marginLeft: '0.5rem' }}
             >
               {t('print', 'Print')}
