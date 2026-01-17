@@ -4873,11 +4873,51 @@ export async function getStoredProcedureSql(name) {
     if (text) return text;
   } catch {}
   try {
-    const [rows] = await pool.query(
-      `SELECT ROUTINE_DEFINITION FROM information_schema.ROUTINES WHERE ROUTINE_SCHEMA = DATABASE() AND ROUTINE_NAME = ?`,
+    const [routineRows] = await adminPool.query(
+      `SELECT ROUTINE_DEFINITION, DEFINER, SECURITY_TYPE, SQL_DATA_ACCESS, DETERMINISTIC
+       FROM information_schema.ROUTINES
+       WHERE ROUTINE_SCHEMA = DATABASE() AND ROUTINE_NAME = ?`,
       [name],
     );
-    return rows?.[0]?.ROUTINE_DEFINITION || null;
+    const routine = routineRows?.[0];
+    if (!routine?.ROUTINE_DEFINITION) return null;
+    const [paramRows] = await adminPool.query(
+      `SELECT PARAMETER_MODE, PARAMETER_NAME, DTD_IDENTIFIER
+       FROM information_schema.PARAMETERS
+       WHERE SPECIFIC_SCHEMA = DATABASE() AND SPECIFIC_NAME = ?
+       ORDER BY ORDINAL_POSITION`,
+      [name],
+    );
+    const params = (paramRows || [])
+      .map((row) => {
+        const mode = row.PARAMETER_MODE ? `${row.PARAMETER_MODE} ` : '';
+        const paramName = row.PARAMETER_NAME ? `\`${row.PARAMETER_NAME}\`` : '';
+        const type = row.DTD_IDENTIFIER ? ` ${row.DTD_IDENTIFIER}` : '';
+        return `${mode}${paramName}${type}`.trim();
+      })
+      .filter(Boolean)
+      .join(', ');
+    let definer = '';
+    if (routine.DEFINER) {
+      const [defUser, defHost = '%'] = routine.DEFINER.split('@');
+      definer = `DEFINER=\`${defUser}\`@\`${defHost}\` `;
+    }
+    const deterministic = routine.DETERMINISTIC === 'YES'
+      ? 'DETERMINISTIC'
+      : 'NOT DETERMINISTIC';
+    const sqlDataAccess = routine.SQL_DATA_ACCESS || 'CONTAINS SQL';
+    const security = routine.SECURITY_TYPE
+      ? `SQL SECURITY ${routine.SECURITY_TYPE}`
+      : '';
+    return [
+      `CREATE ${definer}PROCEDURE \`${name}\`(${params})`,
+      deterministic,
+      sqlDataAccess,
+      security,
+      routine.ROUTINE_DEFINITION.trim(),
+    ]
+      .filter(Boolean)
+      .join('\n');
   } catch {
     return null;
   }
