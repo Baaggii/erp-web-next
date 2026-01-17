@@ -194,12 +194,6 @@ function CncProcessingPage() {
       ctx.lineJoin = 'round';
       ctx.lineCap = 'round';
 
-      ctx.globalCompositeOperation = 'multiply';
-      ctx.strokeStyle = 'rgba(74, 46, 26, 0.22)';
-      ctx.lineWidth = 12;
-      ctx.shadowColor = 'rgba(64, 36, 16, 0.35)';
-      ctx.shadowBlur = 10;
-      ctx.shadowOffsetY = 3;
       preview.polylines.forEach((polyline) => {
         if (!polyline.length) return;
         ctx.beginPath();
@@ -212,30 +206,19 @@ function CncProcessingPage() {
             ctx.lineTo(x, y);
           }
         });
+        ctx.strokeStyle = 'rgba(74, 46, 26, 0.55)';
+        ctx.lineWidth = 4;
+        ctx.shadowColor = 'rgba(64, 36, 16, 0.4)';
+        ctx.shadowBlur = 6;
+        ctx.shadowOffsetY = 2;
+        ctx.stroke();
+
+        ctx.strokeStyle = 'rgba(255, 244, 230, 0.6)';
+        ctx.lineWidth = 2;
+        ctx.shadowBlur = 0;
+        ctx.shadowOffsetY = -1;
         ctx.stroke();
       });
-
-      ctx.globalCompositeOperation = 'screen';
-      ctx.strokeStyle = 'rgba(255, 245, 234, 0.25)';
-      ctx.lineWidth = 8;
-      ctx.shadowBlur = 0;
-      ctx.shadowOffsetY = -2;
-      preview.polylines.forEach((polyline) => {
-        if (!polyline.length) return;
-        ctx.beginPath();
-        polyline.forEach((point, index) => {
-          const x = point.x * scale + offsetX;
-          const y = point.y * scale + offsetY;
-          if (index === 0) {
-            ctx.moveTo(x, y);
-          } else {
-            ctx.lineTo(x, y);
-          }
-        });
-        ctx.stroke();
-      });
-
-      ctx.globalCompositeOperation = 'source-over';
     });
   }, [preview, showWoodPreview]);
 
@@ -466,6 +449,25 @@ function CncProcessingPage() {
               />
               <span className="text-xs text-slate-500">{selectedFileLabel}</span>
             </div>
+            {hasSourcePreview && (
+              <div className="rounded-md border border-slate-200 bg-slate-50 p-3">
+                <p className="text-xs font-medium text-slate-600">Initial image preview</p>
+                <div className="mt-3 flex justify-start">
+                  <button
+                    type="button"
+                    onClick={() => setPreviewModal('source')}
+                    className="flex h-28 w-36 items-center justify-center overflow-hidden rounded-md border border-slate-200 bg-white shadow-sm transition hover:border-slate-300"
+                    aria-label="Open initial image preview"
+                  >
+                    <img
+                      src={sourcePreviewUrl}
+                      alt="Initial uploaded file preview"
+                      className="h-full w-full object-contain"
+                    />
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="grid gap-4 md:grid-cols-2">
@@ -557,30 +559,7 @@ function CncProcessingPage() {
               Animate toolpath
             </label>
           </div>
-          <div className="mt-4 grid gap-4 md:grid-cols-3">
-            <div className="rounded-md border border-slate-200 bg-slate-50 p-3">
-              <p className="text-xs font-medium text-slate-600">Initial image preview</p>
-              <p className="mt-1 text-[11px] text-slate-500">
-                Tap to open a larger source view.
-              </p>
-              <button
-                type="button"
-                onClick={() => setPreviewModal('source')}
-                className="mt-3 flex h-52 w-full items-center justify-center overflow-hidden rounded-md border border-slate-200 bg-white transition hover:border-slate-300"
-                aria-label="Open initial image preview"
-                disabled={!hasSourcePreview}
-              >
-                {hasSourcePreview ? (
-                  <img
-                    src={sourcePreviewUrl}
-                    alt="Initial uploaded file preview"
-                    className="h-full w-full object-contain"
-                  />
-                ) : (
-                  <span className="text-xs text-slate-400">No source preview available</span>
-                )}
-              </button>
-            </div>
+          <div className="mt-4 grid gap-4 lg:grid-cols-2">
             <div className="rounded-md border border-slate-200 bg-slate-50 p-3">
               <p className="text-xs font-medium text-slate-600">Toolpath preview</p>
               <p className="mt-1 text-[11px] text-slate-500">
