@@ -110,11 +110,11 @@ function getToolShapeLabel(shape) {
   return shape;
 }
 
-function ToolShapePreview({ shape, diameterMm }) {
+function ToolShapePreview({ shape, diameterMm, className = 'h-12 w-12' }) {
   const stroke = '#0f172a';
   const fill = '#e2e8f0';
   return (
-    <svg viewBox="0 0 80 80" className="h-12 w-12">
+    <svg viewBox="0 0 80 80" className={className}>
       <rect x="2" y="2" width="76" height="76" rx="12" fill="#f8fafc" stroke="#e2e8f0" />
       {shape === 'vbit' ? (
         <polygon points="40,18 62,58 18,58" fill={fill} stroke={stroke} strokeWidth="2" />
@@ -381,8 +381,10 @@ function drawHeightFieldSurface(ctx, width, height, viewBox, heightField, meta, 
   const lx = light.x / lightLen;
   const ly = light.y / lightLen;
   const lz = light.z / lightLen;
-  const maxHeight = options?.materialThicknessMm
-    ? Number(options.materialThicknessMm)
+  const maxHeight = options?.heightFieldMaxDepthMm
+    ? Number(options.heightFieldMaxDepthMm)
+    : options?.materialThicknessMm
+      ? Number(options.materialThicknessMm)
     : heightField.reduce((max, row) => Math.max(max, ...row), 0);
 
   for (let y = 1; y < rows - 1; y += 1) {
@@ -467,6 +469,8 @@ function CncProcessingPage() {
   const [steps, setSteps] = useState([]);
   const [apiLogs, setApiLogs] = useState([]);
   const [sourcePreviewUrl, setSourcePreviewUrl] = useState('');
+  const [imageIntrinsicSize, setImageIntrinsicSize] = useState({ width: null, height: null });
+  const [autoFitOutput, setAutoFitOutput] = useState(true);
   const [previewModal, setPreviewModal] = useState(null);
   const [resultConversionType, setResultConversionType] = useState(processingOptions[0].value);
   const [woodSurface, setWoodSurface] = useState(woodSurfaceOptions[0].value);
@@ -480,6 +484,11 @@ function CncProcessingPage() {
   const [outputWidthMm, setOutputWidthMm] = useState(String(defaultMaterialSize.width));
   const [outputHeightMm, setOutputHeightMm] = useState(String(defaultMaterialSize.height));
   const [keepAspectRatio, setKeepAspectRatio] = useState(true);
+  const [heightFieldMaxDepthMm, setHeightFieldMaxDepthMm] = useState(
+    String(defaultMaterialSize.thickness),
+  );
+  const [heightFieldSmoothingEnabled, setHeightFieldSmoothingEnabled] = useState(true);
+  const [heightFieldSmoothingRadius, setHeightFieldSmoothingRadius] = useState('1');
   const [feedRateXY, setFeedRateXY] = useState(String(defaultCamParams.feedRateXY));
   const [feedRateZ, setFeedRateZ] = useState(String(defaultCamParams.feedRateZ));
   const [spindleSpeed, setSpindleSpeed] = useState(String(defaultCamParams.spindleSpeed));
@@ -598,20 +607,30 @@ function CncProcessingPage() {
     if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
       return;
     }
-    const previous = prevMaterialSize.current;
-    const outputWidth = Number(outputWidthMm);
-    const outputHeight = Number(outputHeightMm);
-    if (
-      Number.isFinite(outputWidth) &&
-      Number.isFinite(outputHeight) &&
-      Math.abs(outputWidth - previous.width) < 0.001 &&
-      Math.abs(outputHeight - previous.height) < 0.001
-    ) {
-      setOutputWidthMm(formatDimension(width));
-      setOutputHeightMm(formatDimension(height));
+    if (autoFitOutput && keepAspectRatio && imageIntrinsicSize.width && imageIntrinsicSize.height) {
+      const scale = Math.min(width / imageIntrinsicSize.width, height / imageIntrinsicSize.height);
+      if (Number.isFinite(scale) && scale > 0) {
+        setOutputWidthMm(formatDimension(imageIntrinsicSize.width * scale));
+        setOutputHeightMm(formatDimension(imageIntrinsicSize.height * scale));
+      }
     }
     prevMaterialSize.current = { width, height };
-  }, [materialWidthMm, materialHeightMm, outputWidthMm, outputHeightMm]);
+  }, [
+    materialWidthMm,
+    materialHeightMm,
+    autoFitOutput,
+    keepAspectRatio,
+    imageIntrinsicSize,
+  ]);
+
+  useEffect(() => {
+    const thickness = Number(materialThicknessMm);
+    const currentDepth = Number(heightFieldMaxDepthMm);
+    if (!Number.isFinite(thickness) || thickness <= 0) return;
+    if (!Number.isFinite(currentDepth) || currentDepth > thickness) {
+      setHeightFieldMaxDepthMm(formatDimension(thickness));
+    }
+  }, [materialThicknessMm, heightFieldMaxDepthMm]);
 
   useEffect(() => {
     if (!toolDiameterOverrideEnabled) {
@@ -679,6 +698,34 @@ function CncProcessingPage() {
   }, [file]);
 
   useEffect(() => {
+    if (!file) {
+      setImageIntrinsicSize({ width: null, height: null });
+      return undefined;
+    }
+    if (!file.type.startsWith('image/')) {
+      setImageIntrinsicSize({ width: null, height: null });
+      return undefined;
+    }
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      setImageIntrinsicSize({
+        width: img.naturalWidth || img.width,
+        height: img.naturalHeight || img.height,
+      });
+      URL.revokeObjectURL(url);
+    };
+    img.onerror = () => {
+      setImageIntrinsicSize({ width: null, height: null });
+      URL.revokeObjectURL(url);
+    };
+    img.src = url;
+    return () => {
+      URL.revokeObjectURL(url);
+    };
+  }, [file]);
+
+  useEffect(() => {
     if (status !== 'uploading') return undefined;
     setProgress(10);
     const id = setInterval(() => {
@@ -708,6 +755,7 @@ function CncProcessingPage() {
           texture,
           surface: woodSurface,
           materialThicknessMm: preview.materialThicknessMm,
+          heightFieldMaxDepthMm: preview?.heightFieldMeta?.maxDepthMm,
         });
         return;
       }
@@ -800,6 +848,7 @@ function CncProcessingPage() {
           surface: woodSurface,
           texture: woodTextures[woodSurface],
           materialThicknessMm: preview.materialThicknessMm,
+          heightFieldMaxDepthMm: preview?.heightFieldMeta?.maxDepthMm,
         });
         return;
       }
@@ -860,6 +909,7 @@ function CncProcessingPage() {
 
   function handleOutputWidthChange(event) {
     const value = event.target.value;
+    setAutoFitOutput(false);
     const nextWidth = Number(value);
     const currentWidth = Number(outputWidthMm);
     const currentHeight = Number(outputHeightMm);
@@ -881,6 +931,7 @@ function CncProcessingPage() {
 
   function handleOutputHeightChange(event) {
     const value = event.target.value;
+    setAutoFitOutput(false);
     const nextHeight = Number(value);
     const currentWidth = Number(outputWidthMm);
     const currentHeight = Number(outputHeightMm);
@@ -908,6 +959,7 @@ function CncProcessingPage() {
     setPreview(null);
     setStatus('idle');
     setProgress(0);
+    setAutoFitOutput(true);
     setResultConversionType(processingType);
     if (selectedFile) {
       addStep('File selected', 'success', `${selectedFile.name} (${selectedFile.type || 'unknown'})`);
@@ -988,6 +1040,13 @@ function CncProcessingPage() {
     formData.append('maxStepDownMm', maxStepDownMm);
     formData.append('stepOverPercent', stepOverPercent);
     formData.append('safeHeightMm', safeHeightMm);
+    if (imageIntrinsicSize.width && imageIntrinsicSize.height) {
+      formData.append('imageWidthPx', imageIntrinsicSize.width);
+      formData.append('imageHeightPx', imageIntrinsicSize.height);
+    }
+    formData.append('heightFieldMaxDepthMm', heightFieldMaxDepthMm);
+    formData.append('heightFieldSmoothingEnabled', heightFieldSmoothingEnabled);
+    formData.append('heightFieldSmoothingRadius', heightFieldSmoothingRadius);
 
     try {
       addStep('Requesting CSRF token', 'success');
@@ -1053,6 +1112,11 @@ function CncProcessingPage() {
           maxStepDownMm,
           stepOverPercent,
           safeHeightMm,
+          imageWidthPx: imageIntrinsicSize.width,
+          imageHeightPx: imageIntrinsicSize.height,
+          heightFieldMaxDepthMm,
+          heightFieldSmoothingEnabled,
+          heightFieldSmoothingRadius,
         },
       };
       const res = await fetch(conversionRequest.url, {
@@ -1132,6 +1196,19 @@ function CncProcessingPage() {
   const isBusy = status === 'uploading';
   const hasPreview = preview?.polylines?.length > 0;
   const hasSourcePreview = Boolean(sourcePreviewUrl);
+  const maxDepthLimit = useMemo(() => {
+    const thickness = Number(materialThicknessMm);
+    if (!Number.isFinite(thickness) || thickness <= 0) return 1;
+    return thickness;
+  }, [materialThicknessMm]);
+  const materialSummary = preview?.materialWidthMm
+    ? `${formatDimension(preview.materialWidthMm)} × ${formatDimension(preview.materialHeightMm)} × ${formatDimension(preview.materialThicknessMm)} mm`
+    : '';
+  const toolSummary = selectedTool
+    ? `${getToolShapeLabel(selectedTool.shape)} · ${formatDimension(
+        effectiveToolDiameter || selectedTool.diameterMm,
+      )} mm`
+    : 'Legacy toolpath';
   const disabledReason = useMemo(() => {
     if (isBusy) {
       return 'Conversion in progress. Please wait for it to finish.';
@@ -1337,7 +1414,12 @@ function CncProcessingPage() {
                 <input
                   type="checkbox"
                   checked={keepAspectRatio}
-                  onChange={(event) => setKeepAspectRatio(event.target.checked)}
+                  onChange={(event) => {
+                    setKeepAspectRatio(event.target.checked);
+                    if (event.target.checked) {
+                      setAutoFitOutput(true);
+                    }
+                  }}
                   className="h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-slate-400"
                 />
                 Keep aspect ratio
@@ -1500,6 +1582,75 @@ function CncProcessingPage() {
           <div className="rounded-md border border-slate-200 bg-slate-50 p-4">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div>
+                <p className="text-sm font-medium text-slate-800">Height-field depth control</p>
+                <p className="text-xs text-slate-500">
+                  Adjust how deep the darkest areas should carve relative to material thickness.
+                </p>
+              </div>
+              <label className="flex items-center gap-2 text-xs text-slate-600">
+                <input
+                  type="checkbox"
+                  checked={heightFieldSmoothingEnabled}
+                  onChange={(event) => setHeightFieldSmoothingEnabled(event.target.checked)}
+                  className="h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-slate-400"
+                />
+                Smooth height-field
+              </label>
+            </div>
+            <div className="mt-4 grid gap-4 md:grid-cols-3">
+              <label className="text-xs text-slate-600 md:col-span-2">
+                Max carving depth (mm)
+                <input
+                  type="range"
+                  min="0.1"
+                  max={maxDepthLimit}
+                  step="0.1"
+                  value={heightFieldMaxDepthMm}
+                  onChange={(event) => setHeightFieldMaxDepthMm(event.target.value)}
+                  className="mt-2 w-full accent-slate-900"
+                />
+              </label>
+              <label className="text-xs text-slate-600">
+                Depth value
+                <input
+                  type="number"
+                  min="0.1"
+                  step="0.1"
+                  max={maxDepthLimit}
+                  value={heightFieldMaxDepthMm}
+                  onChange={(event) => setHeightFieldMaxDepthMm(event.target.value)}
+                  className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-700"
+                />
+              </label>
+              <label className="text-xs text-slate-600">
+                Smoothing radius (px)
+                <input
+                  type="number"
+                  min="1"
+                  max="6"
+                  step="1"
+                  value={heightFieldSmoothingRadius}
+                  disabled={!heightFieldSmoothingEnabled}
+                  onChange={(event) => setHeightFieldSmoothingRadius(event.target.value)}
+                  className={`mt-1 w-full rounded-md border px-3 py-2 text-sm ${
+                    heightFieldSmoothingEnabled
+                      ? 'border-slate-300 text-slate-700'
+                      : 'border-slate-200 bg-slate-100 text-slate-500'
+                  }`}
+                />
+              </label>
+              <div className="md:col-span-3">
+                <p className="text-[11px] text-slate-500">
+                  Depth is clamped to material thickness. Smoothing reduces spike artifacts in the
+                  simulated relief.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="rounded-md border border-slate-200 bg-slate-50 p-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
                 <p className="text-sm font-medium text-slate-800">Multi-tool operations</p>
                 <p className="text-xs text-slate-500">
                   Assign tools to geometry groups. Use comma-separated polyline indices from the
@@ -1635,6 +1786,36 @@ function CncProcessingPage() {
               </label>
             )}
           </div>
+          {(materialSummary || toolSummary) && (
+            <div className="mt-3 flex flex-wrap items-center gap-3 text-[11px] text-slate-500">
+              <div className="flex items-center gap-2 rounded-md border border-slate-200 bg-slate-50 px-3 py-2">
+                <ToolShapePreview
+                  shape={selectedTool?.shape}
+                  diameterMm={effectiveToolDiameter || selectedTool?.diameterMm}
+                  className="h-10 w-10"
+                />
+                <div>
+                  <p className="text-xs font-semibold text-slate-700">Cutter</p>
+                  <p className="text-[11px] text-slate-500">{toolSummary}</p>
+                </div>
+              </div>
+              {materialSummary && (
+                <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2">
+                  <p className="text-xs font-semibold text-slate-700">Material</p>
+                  <p className="text-[11px] text-slate-500">{materialSummary}</p>
+                </div>
+              )}
+              {preview?.outputWidthMm && preview?.outputHeightMm && (
+                <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2">
+                  <p className="text-xs font-semibold text-slate-700">Output</p>
+                  <p className="text-[11px] text-slate-500">
+                    {formatDimension(preview.outputWidthMm)} ×{' '}
+                    {formatDimension(preview.outputHeightMm)} mm
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
           {previewOperations.length > 1 && (
             <div className="mt-3 flex flex-wrap items-center gap-3 text-[11px] text-slate-500">
               {previewOperations.map((operation) => (
