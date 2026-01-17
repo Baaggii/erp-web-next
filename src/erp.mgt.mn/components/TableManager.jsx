@@ -43,6 +43,7 @@ import { resolveDisabledFieldState } from './tableManagerDisabledFields.js';
 import { computeTemporaryPromotionOptions } from '../utils/temporaryPromotionOptions.js';
 import NotificationDots from './NotificationDots.jsx';
 import { formatJsonItem, formatJsonList } from '../utils/jsonValueFormatting.js';
+import normalizeRelationKey from '../utils/normalizeRelationKey.js';
 
 const TEMPORARY_FILTER_CACHE_KEY = 'temporary-transaction-filter';
 
@@ -99,6 +100,41 @@ function normalizeSearchValue(value) {
     if (value.label !== undefined && value.label !== null) return value.label;
   }
   return value;
+}
+
+function addRelationRowEntry(map, key, row) {
+  if (!map || key === undefined || key === null) return;
+  if (!Object.prototype.hasOwnProperty.call(map, key)) {
+    map[key] = row;
+  }
+  const stringKey = typeof key === 'string' ? key : String(key);
+  if (!Object.prototype.hasOwnProperty.call(map, stringKey)) {
+    map[stringKey] = row;
+  }
+  const normalizedKey = normalizeRelationKey(key);
+  if (
+    normalizedKey !== null &&
+    normalizedKey !== undefined &&
+    !Object.prototype.hasOwnProperty.call(map, normalizedKey)
+  ) {
+    map[normalizedKey] = row;
+  }
+}
+
+function getRelationRowFromMap(map, value) {
+  if (!map || value === undefined || value === null) return null;
+  if (Object.prototype.hasOwnProperty.call(map, value)) return map[value];
+  const stringKey = typeof value === 'string' ? value : String(value);
+  if (Object.prototype.hasOwnProperty.call(map, stringKey)) return map[stringKey];
+  const normalizedKey = normalizeRelationKey(value);
+  if (normalizedKey && Object.prototype.hasOwnProperty.call(map, normalizedKey)) {
+    return map[normalizedKey];
+  }
+  const resolved = resolveScopeId(value);
+  if (resolved !== value) {
+    return getRelationRowFromMap(map, resolved);
+  }
+  return null;
 }
 
 function sanitizeName(name) {
@@ -2094,7 +2130,7 @@ const TableManager = forwardRef(function TableManager({
           nestedLookups: nestedDisplayLookups,
         });
         if (val !== undefined) {
-          optionRows[val] = row;
+          addRelationRowEntry(optionRows, val, row);
         }
         return {
           value: val,
@@ -2288,7 +2324,7 @@ const TableManager = forwardRef(function TableManager({
               const idKey = keyMap[idFieldName.toLowerCase()] || idFieldName;
               const identifier = row[idKey];
               if (identifier !== undefined && identifier !== null) {
-                aliasRows[identifier] = row;
+                addRelationRowEntry(aliasRows, identifier, row);
               }
             });
             if (Object.keys(aliasRows).length > 0) {
@@ -3444,6 +3480,8 @@ const TableManager = forwardRef(function TableManager({
           tryKeys.push(relationId);
           const strRelationId = String(relationId).trim();
           if (strRelationId) tryKeys.push(strRelationId);
+          const normalizedKey = normalizeRelationKey(strRelationId);
+          if (normalizedKey) tryKeys.push(normalizedKey);
         }
         for (const key of tryKeys) {
           if (!Object.prototype.hasOwnProperty.call(map, key)) continue;
@@ -6068,6 +6106,10 @@ const TableManager = forwardRef(function TableManager({
     labelMap[col] = {};
     opts.forEach((o) => {
       labelMap[col][o.value] = o.label;
+      const normalizedKey = normalizeRelationKey(o.value);
+      if (normalizedKey) {
+        labelMap[col][normalizedKey] = o.label;
+      }
     });
   });
 
@@ -6089,10 +6131,7 @@ const TableManager = forwardRef(function TableManager({
           const cacheKey = key === undefined || key === null ? '' : String(key);
           if (!cacheKey) return;
           if (jsonRelationLabels[column]?.[cacheKey]) return;
-          const cachedRow =
-            relationRows[cacheKey] ||
-            relationRows[String(relationId ?? '')] ||
-            relationRows[key];
+          const cachedRow = getRelationRowFromMap(relationRows, key);
           if (cachedRow && typeof cachedRow === 'object') {
             if (!immediateUpdates[column]) immediateUpdates[column] = {};
             immediateUpdates[column][cacheKey] = formatRelationDisplay(
@@ -6381,7 +6420,7 @@ const TableManager = forwardRef(function TableManager({
               typeof normalized === 'number' ||
               typeof normalized === 'boolean');
           if (isLookupFriendly) {
-            const mapped = labelMap[column]?.[normalized];
+            const mapped = labelMap[column]?.[normalizeRelationKey(normalized)];
             if (mapped !== undefined) {
               return mapped;
             }
@@ -6784,17 +6823,14 @@ const TableManager = forwardRef(function TableManager({
           value && typeof value === 'object' && !Array.isArray(value) && value.value !== undefined
             ? value.value
             : labelWrapper;
-        const normalizedValueKey = normalizeSearchValue(baseValue);
+        const normalizedValueKey = normalizeRelationKey(normalizeSearchValue(baseValue));
         if (relationOpts[col] && normalizedValueKey !== undefined && labelMap[col]) {
           const optionLabel = labelMap[col][normalizedValueKey];
           if (optionLabel !== undefined) return optionLabel;
         }
         if (relationConfigs[col]?.table && normalizedValueKey !== undefined && normalizedValueKey !== null) {
           const relationRows = refRows[col] || {};
-          const rowData =
-            relationRows[normalizedValueKey] ||
-            relationRows[String(normalizedValueKey)] ||
-            relationRows[String(resolveScopeId(normalizedValueKey))];
+          const rowData = getRelationRowFromMap(relationRows, normalizedValueKey);
           if (rowData && typeof rowData === 'object') {
             return formatRelationDisplay(rowData, relationConfigs[col], normalizedValueKey);
           }
@@ -6802,10 +6838,7 @@ const TableManager = forwardRef(function TableManager({
         const displayInfo = relationDisplayMap[col];
         if (displayInfo && normalizedValueKey !== undefined && normalizedValueKey !== null) {
           const relationRows = refRows[displayInfo.sourceColumn] || {};
-          const rowData =
-            relationRows[normalizedValueKey] ||
-            relationRows[String(normalizedValueKey)] ||
-            relationRows[String(resolveScopeId(normalizedValueKey))];
+          const rowData = getRelationRowFromMap(relationRows, normalizedValueKey);
           if (rowData && typeof rowData === 'object') {
             return formatRelationDisplay(rowData, displayInfo.config, normalizedValueKey);
           }
@@ -6832,10 +6865,7 @@ const TableManager = forwardRef(function TableManager({
                 parts.push(cachedLabel);
                 return;
               }
-              const relationRow =
-                rowsMap[key] ||
-                rowsMap[String(key)] ||
-                rowsMap[String(relationId ?? '')];
+              const relationRow = getRelationRowFromMap(rowsMap, key);
               if (relationRow && typeof relationRow === 'object') {
                 const formatted = formatRelationDisplay(relationRow, relationConfig, key);
                 if (formatted || formatted === 0 || formatted === false) {
@@ -7981,7 +8011,8 @@ const TableManager = forwardRef(function TableManager({
                   ? { config: relationConfig, sourceColumn: c }
                   : relationDisplayMap[c];
                 const raw = relationOpts[c]
-                  ? labelMap[c][rawValue] || (rawValue == null ? '' : String(rawValue))
+                  ? labelMap[c][normalizeRelationKey(rawValue)] ||
+                    (rawValue == null ? '' : String(rawValue))
                   : rawValue == null
                   ? ''
                   : String(rawValue);
@@ -8003,10 +8034,7 @@ const TableManager = forwardRef(function TableManager({
                         parts.push(cachedLabel);
                         return;
                       }
-                      const row =
-                        rowsMap[key] ||
-                        rowsMap[String(key)] ||
-                        rowsMap[String(relationId ?? '')];
+                      const row = getRelationRowFromMap(rowsMap, key);
                       if (row && typeof row === 'object') {
                         const formatted = formatRelationDisplay(
                           row,

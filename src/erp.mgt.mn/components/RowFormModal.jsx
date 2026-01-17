@@ -26,6 +26,7 @@ import {
   formatJsonList,
   normalizeInputValue,
 } from '../utils/jsonValueFormatting.js';
+import normalizeRelationKey from '../utils/normalizeRelationKey.js';
 
 const DEFAULT_RECEIPT_TYPES = ['B2C', 'B2B_SALE', 'B2B_PURCHASE', 'STOCK_QR'];
 
@@ -45,7 +46,19 @@ function normalizeRelationOptionKey(value) {
       return null;
     }
   }
-  return String(value);
+  return normalizeRelationKey(value);
+}
+
+function getRelationRowFromMap(map, value) {
+  if (!map || value === undefined || value === null) return null;
+  if (Object.prototype.hasOwnProperty.call(map, value)) return map[value];
+  const stringKey = typeof value === 'string' ? value : String(value);
+  if (Object.prototype.hasOwnProperty.call(map, stringKey)) return map[stringKey];
+  const normalizedKey = normalizeRelationKey(value);
+  if (normalizedKey && Object.prototype.hasOwnProperty.call(map, normalizedKey)) {
+    return map[normalizedKey];
+  }
+  return null;
 }
 
 function extractGenerationDependencies(expression = '') {
@@ -3642,7 +3655,7 @@ const RowFormModal = function RowFormModal({
           }
         };
         values.forEach((item) => {
-          const row = relationRows[item] || relationRows[String(item)];
+          const row = getRelationRowFromMap(relationRows, item);
           if (row && resolvedRelationConfig) {
             const identifier =
               getRowValueCaseInsensitive(row, resolvedRelationConfig.idField || resolvedRelationConfig.column) ??
@@ -3666,9 +3679,9 @@ const RowFormModal = function RowFormModal({
         !resolvedOptionLabel &&
         resolvedRelationConfig &&
         val !== undefined &&
-        relationData[c]?.[val]
+        getRelationRowFromMap(relationData[c], val)
       ) {
-        const row = relationData[c][val];
+        const row = getRelationRowFromMap(relationData[c], val);
         const cfg = resolvedRelationConfig;
         const parts = [];
         const identifier = getRowValueCaseInsensitive(
@@ -3687,9 +3700,9 @@ const RowFormModal = function RowFormModal({
         !resolvedOptionLabel &&
         viewSourceMap[c] &&
         val !== undefined &&
-        relationData[c]?.[val]
+        getRelationRowFromMap(relationData[c], val)
       ) {
-        const row = relationData[c][val];
+        const row = getRelationRowFromMap(relationData[c], val);
         const cfg = viewDisplays[viewSourceMap[c]] || {};
         const parts = [];
         const identifier = getRowValueCaseInsensitive(
@@ -3708,9 +3721,9 @@ const RowFormModal = function RowFormModal({
         !resolvedOptionLabel &&
         autoSelectForField?.config &&
         val !== undefined &&
-        relationData[c]?.[val]
+        getRelationRowFromMap(relationData[c], val)
       ) {
-        const row = relationData[c][val];
+        const row = getRelationRowFromMap(relationData[c], val);
         const cfg = autoSelectForField?.config || {};
         const parts = [];
         const identifier = getRowValueCaseInsensitive(row, cfg.idField);
