@@ -23,13 +23,10 @@ router.get('/', requireAuth, async (req, res, next) => {
       res.json({ ...config, isDefault });
     } else {
       const { config, isDefault } = await listAllowedReports(companyId);
-      const missingProcedures = Object.keys(config).filter(
-        (name) => !liveProcedures.has(name),
-      );
       const filtered = Object.fromEntries(
         Object.entries(config).filter(([name]) => liveProcedures.has(name)),
       );
-      res.json({ allowedReports: filtered, isDefault, missingProcedures });
+      res.json({ allowedReports: filtered, isDefault });
     }
   } catch (err) {
     next(err);
