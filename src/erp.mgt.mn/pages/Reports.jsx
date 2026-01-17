@@ -3356,7 +3356,6 @@ export default function Reports() {
               rows={result.rows}
               buttonPerms={buttonPerms}
               fieldTypeMap={result.fieldTypeMap}
-              showTotalRowCount={showTotalRowCount}
               onSnapshotReady={snapshotSupported ? handleSnapshotReady : undefined}
             />
           </div>
