@@ -180,6 +180,7 @@ const RowFormModal = function RowFormModal({
   const generalConfig = useGeneralConfig();
   const cfg = generalConfig[scope] || {};
   const general = generalConfig.general || {};
+  const printConfig = generalConfig.print || {};
   const { t } = useTranslation(['translation', 'tooltip']);
   const formatReceiptTypeLabel = React.useCallback(
     (type) => {
