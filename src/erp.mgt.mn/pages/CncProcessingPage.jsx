@@ -53,6 +53,26 @@ function parseViewBox(viewBox) {
   return { minX, minY, width, height };
 }
 
+function splitPolylineByDistance(polyline, maxDistance) {
+  if (!polyline || polyline.length === 0) return [];
+  if (!Number.isFinite(maxDistance) || maxDistance <= 0) return [polyline];
+  const segments = [];
+  let current = [polyline[0]];
+  for (let i = 1; i < polyline.length; i += 1) {
+    const prev = polyline[i - 1];
+    const point = polyline[i];
+    const distance = Math.hypot(point.x - prev.x, point.y - prev.y);
+    if (distance > maxDistance) {
+      if (current.length > 1) segments.push(current);
+      current = [point];
+    } else {
+      current.push(point);
+    }
+  }
+  if (current.length > 1) segments.push(current);
+  return segments;
+}
+
 function headersToObject(headers) {
   if (!headers) return {};
   return Array.from(headers.entries()).reduce((acc, [key, value]) => {
@@ -417,7 +437,7 @@ function CncProcessingPage() {
   const canSubmit = !disabledReason;
 
   return (
-    <div className="mx-auto max-w-3xl p-6">
+    <div className="mx-auto max-w-6xl p-6">
       <style>{`
         @keyframes cnc-draw {
           from { stroke-dashoffset: 1; }
