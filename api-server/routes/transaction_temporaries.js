@@ -18,6 +18,8 @@ router.get('/summary', requireAuth, async (req, res, next) => {
   try {
     const summary = await getTemporarySummary(req.user.empid, req.user.companyId, {
       tableName: req.query.table || null,
+      formName: req.query.formName || null,
+      configName: req.query.configName || null,
       transactionTypeField: req.query.transactionTypeField || null,
       transactionTypeValue: req.query.transactionTypeValue || null,
     });
@@ -45,6 +47,8 @@ router.get('/', requireAuth, async (req, res, next) => {
     const {
       scope = 'created',
       table,
+      formName = null,
+      configName = null,
       status,
       limit,
       offset,
@@ -62,6 +66,8 @@ router.get('/', requireAuth, async (req, res, next) => {
     const list = await listTemporarySubmissions({
       scope: normalizedScope,
       tableName: table || null,
+      formName,
+      configName,
       empId: req.user.empid,
       companyId: req.user.companyId,
       status: normalizedStatus,
@@ -82,6 +88,8 @@ router.get('/grouped', requireAuth, async (req, res, next) => {
     const {
       scope = 'created',
       table,
+      formName = null,
+      configName = null,
       status,
       limit,
       offset,
@@ -99,6 +107,8 @@ router.get('/grouped', requireAuth, async (req, res, next) => {
     const list = await listTemporarySubmissionGroups({
       scope: normalizedScope,
       tableName: table || null,
+      formName,
+      configName,
       empId: req.user.empid,
       companyId: req.user.companyId,
       status: normalizedStatus,

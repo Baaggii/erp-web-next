@@ -1009,6 +1009,14 @@ const TableManager = forwardRef(function TableManager({
       if (table) {
         params.set('table', table);
       }
+      const temporaryFormName = formName || formConfig?.formName || formConfig?.configName || '';
+      const temporaryConfigName = formConfig?.configName || formName || '';
+      if (temporaryFormName) {
+        params.set('formName', temporaryFormName);
+      }
+      if (temporaryConfigName) {
+        params.set('configName', temporaryConfigName);
+      }
       const transactionTypeField = formConfig?.transactionTypeField || '';
       const normalizedTypeFilter = typeof typeFilter === 'string' ? typeFilter.trim() : typeFilter;
       if (transactionTypeField && normalizedTypeFilter) {
@@ -1060,6 +1068,9 @@ const TableManager = forwardRef(function TableManager({
     availableTemporaryScopes,
     defaultTemporaryScope,
     table,
+    formName,
+    formConfig?.formName,
+    formConfig?.configName,
     formConfig?.transactionTypeField,
     typeFilter,
   ]);
@@ -5056,6 +5067,14 @@ const TableManager = forwardRef(function TableManager({
       const preserveScope = Boolean(options?.preserveScope);
       const params = new URLSearchParams();
       params.set('scope', targetScope);
+      const temporaryFormName = formName || formConfig?.formName || formConfig?.configName || '';
+      const temporaryConfigName = formConfig?.configName || formName || '';
+      if (temporaryFormName) {
+        params.set('formName', temporaryFormName);
+      }
+      if (temporaryConfigName) {
+        params.set('configName', temporaryConfigName);
+      }
       const transactionTypeField = formConfig?.transactionTypeField || '';
       const normalizedTypeFilter = typeof typeFilter === 'string' ? typeFilter.trim() : typeFilter;
       if (transactionTypeField && normalizedTypeFilter) {
@@ -5159,6 +5178,9 @@ const TableManager = forwardRef(function TableManager({
       availableTemporaryScopes,
       defaultTemporaryScope,
       temporarySummary,
+      formName,
+      formConfig?.formName,
+      formConfig?.configName,
       formConfig?.transactionTypeField,
       typeFilter,
     ],
