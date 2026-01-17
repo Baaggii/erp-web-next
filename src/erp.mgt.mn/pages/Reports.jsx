@@ -177,6 +177,28 @@ function normalizeSqlDiagnosticValue(value) {
 
 const REPORT_REQUEST_TABLE = 'report_transaction_locks';
 const ALL_WORKPLACE_OPTION = '__ALL_WORKPLACE_SESSIONS__';
+const DEFAULT_REPORT_CAPABILITIES = {
+  showTotalRowCount: true,
+  supportsApproval: true,
+  supportsSnapshot: true,
+};
+
+function normalizeReportCapabilities(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return { ...DEFAULT_REPORT_CAPABILITIES };
+  }
+  const normalized = { ...DEFAULT_REPORT_CAPABILITIES };
+  if ('showTotalRowCount' in value) {
+    normalized.showTotalRowCount = value.showTotalRowCount === false ? false : true;
+  }
+  if ('supportsApproval' in value) {
+    normalized.supportsApproval = value.supportsApproval === false ? false : true;
+  }
+  if ('supportsSnapshot' in value) {
+    normalized.supportsSnapshot = value.supportsSnapshot === false ? false : true;
+  }
+  return normalized;
+}
 
 export default function Reports() {
   const { company, branch, department, position, workplace, user, session } =
@@ -231,6 +253,13 @@ export default function Reports() {
   const workplaceSelectionTouchedRef = useRef(false);
   const manualInputRefs = useRef({});
   const runButtonRef = useRef(null);
+  const reportCapabilities = useMemo(
+    () => normalizeReportCapabilities(result?.reportCapabilities),
+    [result?.reportCapabilities],
+  );
+  const showTotalRowCount = reportCapabilities.showTotalRowCount !== false;
+  const approvalSupported = reportCapabilities.supportsApproval !== false;
+  const snapshotSupported = reportCapabilities.supportsSnapshot !== false;
   const baseWorkplaceAssignments = useMemo(
     () =>
       Array.isArray(session?.workplace_assignments)
@@ -926,18 +955,36 @@ export default function Reports() {
     [getCandidateTable],
   );
 
-  const handleSnapshotReady = useCallback((data) => {
-    setSnapshot(data || null);
-  }, []);
+  const handleSnapshotReady = useCallback(
+    (data) => {
+      if (!snapshotSupported) return;
+      setSnapshot(data || null);
+    },
+    [snapshotSupported],
+  );
+
+  useEffect(() => {
+    if (!snapshotSupported) {
+      setSnapshot(null);
+    }
+  }, [snapshotSupported]);
+
+  useEffect(() => {
+    if (!approvalSupported) {
+      setPopulateLockCandidates(false);
+    }
+  }, [approvalSupported]);
 
   const hasSupervisor = useMemo(
     () =>
       Number(session?.senior_empid) > 0 || Number(session?.senior_plan_empid) > 0,
     [session?.senior_empid, session?.senior_plan_empid],
   );
-  const canRequestApproval = Boolean(session?.senior_plan_empid);
-  const canReviewApprovals = !hasSupervisor;
-  const showApprovalControls = canRequestApproval || canReviewApprovals;
+  const canRequestApproval =
+    approvalSupported && Boolean(session?.senior_plan_empid);
+  const canReviewApprovals = approvalSupported && !hasSupervisor;
+  const showApprovalControls =
+    approvalSupported && (canRequestApproval || canReviewApprovals);
 
   function getLabel(name) {
     return (
@@ -1549,6 +1596,7 @@ export default function Reports() {
           params: paramMap,
           rows,
           fieldTypeMap: data.fieldTypeMap || {},
+          reportCapabilities: normalizeReportCapabilities(data.reportCapabilities),
           orderedParams: finalParams,
           lockRequestId: data.lockRequestId || null,
         });
@@ -1908,6 +1956,9 @@ export default function Reports() {
   }, []);
 
   function renderSnapshotTable(snapshotData) {
+    if (!snapshotSupported) {
+      return null;
+    }
     if (!snapshotData || typeof snapshotData !== 'object') {
       return <p style={{ marginTop: '0.25rem' }}>No snapshot captured.</p>;
     }
@@ -1915,6 +1966,7 @@ export default function Reports() {
       <ReportSnapshotViewer
         snapshot={snapshotData}
         emptyMessage="No snapshot captured."
+        showTotalRowCount={showTotalRowCount}
         formatValue={(value, column, fieldTypes) =>
           formatSnapshotCell(value, column, fieldTypes)
         }
@@ -1923,6 +1975,9 @@ export default function Reports() {
   }
 
   function renderCandidateSnapshot(candidate, fallbackColumns = []) {
+    if (!snapshotSupported) {
+      return null;
+    }
     const snapshot = candidate?.snapshot;
     if (!snapshot || typeof snapshot !== 'object') {
       return (
@@ -2534,7 +2589,7 @@ export default function Reports() {
               style={{
                 borderCollapse: 'collapse',
                 width: '100%',
-                minWidth: showDetailsColumn ? '40rem' : '32rem',
+                minWidth: showDetailsColumn || snapshotSupported ? '40rem' : '32rem',
               }}
             >
               <thead style={{ background: '#e5e7eb' }}>
@@ -2580,16 +2635,18 @@ export default function Reports() {
                   >
                     Status
                   </th>
-                  <th
-                    style={{
-                      textAlign: 'left',
-                      padding: '0.25rem',
-                      border: '1px solid #d1d5db',
-                      minWidth: '12rem',
-                    }}
-                  >
-                    Snapshot
-                  </th>
+                  {snapshotSupported && (
+                    <th
+                      style={{
+                        textAlign: 'left',
+                        padding: '0.25rem',
+                        border: '1px solid #d1d5db',
+                        minWidth: '12rem',
+                      }}
+                    >
+                      Snapshot
+                    </th>
+                  )}
                 </tr>
               </thead>
               <tbody>
@@ -2599,7 +2656,8 @@ export default function Reports() {
                   const hasSnapshot = Boolean(record.snapshot);
                   const hasRequestContext =
                     requestId !== null && requestId !== undefined;
-                  const canToggle = hasSnapshot || hasRequestContext;
+                  const canToggle =
+                    snapshotSupported && (hasSnapshot || hasRequestContext);
                   const statusColor =
                     listType === 'excluded' ? '#b91c1c' : '#047857';
                   const statusText = listType === 'excluded' ? 'Excluded' : 'Included';
@@ -2662,41 +2720,43 @@ export default function Reports() {
                             {statusDetails}
                           </div>
                         </td>
-                        <td
-                          style={{
-                            padding: '0.25rem',
-                            border: '1px solid #d1d5db',
-                          }}
-                        >
-                          {canToggle ? (
-                            <>
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  handleTransactionDetailsToggle(
-                                    detailKey,
-                                    hasRequestContext ? requestId : null,
-                                    !hasSnapshot,
-                                  )
-                                }
-                                style={{ fontSize: '0.85rem' }}
-                              >
-                                {isExpanded
-                                  ? 'Hide details'
-                                  : hasSnapshot
-                                  ? 'View snapshot'
-                                  : 'View details'}
-                              </button>
-                              {isExpanded && (
-                                <div style={{ marginTop: '0.25rem' }}>
-                                  {renderExpandedContent(record)}
-                                </div>
-                              )}
-                            </>
-                          ) : (
-                            <span>—</span>
-                          )}
-                        </td>
+                        {snapshotSupported && (
+                          <td
+                            style={{
+                              padding: '0.25rem',
+                              border: '1px solid #d1d5db',
+                            }}
+                          >
+                            {canToggle ? (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    handleTransactionDetailsToggle(
+                                      detailKey,
+                                      hasRequestContext ? requestId : null,
+                                      !hasSnapshot,
+                                    )
+                                  }
+                                  style={{ fontSize: '0.85rem' }}
+                                >
+                                  {isExpanded
+                                    ? 'Hide details'
+                                    : hasSnapshot
+                                    ? 'View snapshot'
+                                    : 'View details'}
+                                </button>
+                                {isExpanded && (
+                                  <div style={{ marginTop: '0.25rem' }}>
+                                    {renderExpandedContent(record)}
+                                  </div>
+                                )}
+                              </>
+                            ) : (
+                              <span>—</span>
+                            )}
+                          </td>
+                        )}
                       </tr>
                     </React.Fragment>
                   );
@@ -2718,7 +2778,7 @@ export default function Reports() {
             <strong>Executed:</strong> {formatDateTime(meta.executed_at)}
           </div>
         )}
-        {rowCount !== null && (
+        {showTotalRowCount && rowCount !== null && (
           <div>
             <strong>Rows in result:</strong> {rowCount}
           </div>
@@ -2782,10 +2842,12 @@ export default function Reports() {
             <p style={{ margin: '0.25rem 0 0' }}>No transactions excluded.</p>
           )}
         </div>
-        <div style={{ marginTop: '0.5rem' }}>
-          <strong>Snapshot</strong>
-          {renderSnapshotTable(meta.snapshot)}
-        </div>
+        {snapshotSupported && (
+          <div style={{ marginTop: '0.5rem' }}>
+            <strong>Snapshot</strong>
+            {renderSnapshotTable(meta.snapshot)}
+          </div>
+        )}
       </div>
     );
   }
@@ -2827,7 +2889,7 @@ export default function Reports() {
       addToast('Approval reason is required', 'error');
       return;
     }
-    if (!snapshot) {
+    if (snapshotSupported && !snapshot) {
       addToast('Unable to capture report snapshot', 'error');
       return;
     }
@@ -2893,50 +2955,52 @@ export default function Reports() {
         payload.locked = true;
       }
 
-      const rawSnapshot =
-        resolveSnapshotSource(candidate) ||
-        (candidate.snapshot &&
-        typeof candidate.snapshot === 'object' &&
-        !Array.isArray(candidate.snapshot)
-          ? candidate.snapshot
-          : null);
-      const {
-        row: normalizedSnapshot,
-        columns: derivedColumns,
-        fieldTypeMap,
-      } = normalizeSnapshotRecord(rawSnapshot || {});
-      if (normalizedSnapshot) {
-        payload.snapshot = normalizedSnapshot;
-        let snapshotColumns = [];
-        if (Array.isArray(candidate.snapshotColumns)) {
-          snapshotColumns = candidate.snapshotColumns;
-        } else if (Array.isArray(candidate.snapshot_columns)) {
-          snapshotColumns = candidate.snapshot_columns;
-        } else if (Array.isArray(candidate.columns)) {
-          snapshotColumns = candidate.columns;
-        }
-        snapshotColumns = snapshotColumns
-          .map((col) => (col === null || col === undefined ? '' : String(col)))
-          .filter(Boolean);
-        if (!snapshotColumns.length && Array.isArray(derivedColumns)) {
-          snapshotColumns = derivedColumns;
-        }
-        if (snapshotColumns.length) {
-          payload.snapshotColumns = snapshotColumns;
-        }
-        const snapshotFieldTypeMap =
-          candidate.snapshotFieldTypeMap ||
-          candidate.snapshot_field_type_map ||
-          candidate.fieldTypeMap ||
-          candidate.field_type_map ||
-          fieldTypeMap ||
-          {};
-        if (
-          snapshotFieldTypeMap &&
-          typeof snapshotFieldTypeMap === 'object' &&
-          Object.keys(snapshotFieldTypeMap).length
-        ) {
-          payload.snapshotFieldTypeMap = snapshotFieldTypeMap;
+      if (snapshotSupported) {
+        const rawSnapshot =
+          resolveSnapshotSource(candidate) ||
+          (candidate.snapshot &&
+          typeof candidate.snapshot === 'object' &&
+          !Array.isArray(candidate.snapshot)
+            ? candidate.snapshot
+            : null);
+        const {
+          row: normalizedSnapshot,
+          columns: derivedColumns,
+          fieldTypeMap,
+        } = normalizeSnapshotRecord(rawSnapshot || {});
+        if (normalizedSnapshot) {
+          payload.snapshot = normalizedSnapshot;
+          let snapshotColumns = [];
+          if (Array.isArray(candidate.snapshotColumns)) {
+            snapshotColumns = candidate.snapshotColumns;
+          } else if (Array.isArray(candidate.snapshot_columns)) {
+            snapshotColumns = candidate.snapshot_columns;
+          } else if (Array.isArray(candidate.columns)) {
+            snapshotColumns = candidate.columns;
+          }
+          snapshotColumns = snapshotColumns
+            .map((col) => (col === null || col === undefined ? '' : String(col)))
+            .filter(Boolean);
+          if (!snapshotColumns.length && Array.isArray(derivedColumns)) {
+            snapshotColumns = derivedColumns;
+          }
+          if (snapshotColumns.length) {
+            payload.snapshotColumns = snapshotColumns;
+          }
+          const snapshotFieldTypeMap =
+            candidate.snapshotFieldTypeMap ||
+            candidate.snapshot_field_type_map ||
+            candidate.fieldTypeMap ||
+            candidate.field_type_map ||
+            fieldTypeMap ||
+            {};
+          if (
+            snapshotFieldTypeMap &&
+            typeof snapshotFieldTypeMap === 'object' &&
+            Object.keys(snapshotFieldTypeMap).length
+          ) {
+            payload.snapshotFieldTypeMap = snapshotFieldTypeMap;
+          }
         }
       }
 
@@ -2978,14 +3042,16 @@ export default function Reports() {
         .map((candidate) => serializeCandidateForRequest(candidate))
         .filter(Boolean),
       excludedTransactions,
-      snapshot: {
+      executed_at: snapshot?.executed_at || new Date().toISOString(),
+    };
+    if (snapshotSupported) {
+      proposedData.snapshot = {
         columns: snapshot?.columns || [],
         rows: snapshot?.rows || [],
         fieldTypeMap: snapshot?.fieldTypeMap || {},
         rowCount: snapshot?.rowCount ?? snapshot?.rows?.length ?? 0,
-      },
-      executed_at: snapshot?.executed_at || new Date().toISOString(),
-    };
+      };
+    }
     setRequestingApproval(true);
     try {
       const recordId = `report-${Date.now()}-${Math.random()
@@ -3237,23 +3303,25 @@ export default function Reports() {
                 />
               );
             })}
-            <label
-              style={{
-                marginLeft: '0.5rem',
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '0.25rem',
-              }}
-            >
-              <input
-                type="checkbox"
-                checked={populateLockCandidates}
-                onChange={(event) =>
-                  setPopulateLockCandidates(event.target.checked)
-                }
-              />
-              <span>Populate lock candidates after running</span>
-            </label>
+            {approvalSupported && (
+              <label
+                style={{
+                  marginLeft: '0.5rem',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '0.25rem',
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={populateLockCandidates}
+                  onChange={(event) =>
+                    setPopulateLockCandidates(event.target.checked)
+                  }
+                />
+                <span>Populate lock candidates after running</span>
+              </label>
+            )}
             <button
               onClick={runReport}
               style={{ marginLeft: '0.5rem' }}
@@ -3288,7 +3356,7 @@ export default function Reports() {
               rows={result.rows}
               buttonPerms={buttonPerms}
               fieldTypeMap={result.fieldTypeMap}
-              onSnapshotReady={handleSnapshotReady}
+              onSnapshotReady={snapshotSupported ? handleSnapshotReady : undefined}
             />
           </div>
           {canRequestApproval && (
@@ -3440,15 +3508,17 @@ export default function Reports() {
                                     >
                                       Status
                                     </th>
-                                    <th
-                                      style={{
-                                        textAlign: 'left',
-                                        padding: '0.25rem',
-                                        border: '1px solid #d1d5db',
-                                      }}
-                                    >
-                                      Snapshot
-                                    </th>
+                                    {snapshotSupported && (
+                                      <th
+                                        style={{
+                                          textAlign: 'left',
+                                          padding: '0.25rem',
+                                          border: '1px solid #d1d5db',
+                                        }}
+                                      >
+                                        Snapshot
+                                      </th>
+                                    )}
                                   </tr>
                                 </thead>
                                 <tbody>
@@ -3582,31 +3652,33 @@ export default function Reports() {
                                             </div>
                                           )}
                                         </td>
-                                        <td
-                                          style={{
-                                            padding: '0.25rem',
-                                            border: '1px solid #d1d5db',
-                                            minWidth: '10rem',
-                                          }}
-                                        >
-                                          {candidate?.snapshot ? (
-                                            <details>
-                                              <summary
-                                                style={{ cursor: 'pointer' }}
-                                              >
-                                                View snapshot
-                                              </summary>
-                                              <div style={{ marginTop: '0.25rem' }}>
-                                                {renderCandidateSnapshot(
-                                                  candidate,
-                                                  bucket.columns,
-                                                )}
-                                              </div>
-                                            </details>
-                                          ) : (
-                                            <span>—</span>
-                                          )}
-                                        </td>
+                                        {snapshotSupported && (
+                                          <td
+                                            style={{
+                                              padding: '0.25rem',
+                                              border: '1px solid #d1d5db',
+                                              minWidth: '10rem',
+                                            }}
+                                          >
+                                            {candidate?.snapshot ? (
+                                              <details>
+                                                <summary
+                                                  style={{ cursor: 'pointer' }}
+                                                >
+                                                  View snapshot
+                                                </summary>
+                                                <div style={{ marginTop: '0.25rem' }}>
+                                                  {renderCandidateSnapshot(
+                                                    candidate,
+                                                    bucket.columns,
+                                                  )}
+                                                </div>
+                                              </details>
+                                            ) : (
+                                              <span>—</span>
+                                            )}
+                                          </td>
+                                        )}
                                       </tr>
                                     );
                                   })}
@@ -3671,7 +3743,7 @@ export default function Reports() {
                     !selectedLockCount ||
                     !lockAcknowledged ||
                     !approvalReason.trim() ||
-                    !snapshot
+                    (snapshotSupported && !snapshot)
                   }
                 >
                   {requestingApproval ? 'Submitting…' : 'Request approval'}
