@@ -32,17 +32,34 @@ export function tenantConfigPath(file, companyId = 0) {
 
 export async function getConfigPath(file, companyId = 0) {
   const tenant = tenantConfigPath(file, companyId);
+  const base = path.join(CONFIG_BASE_PATH, file);
   try {
     await fs.access(tenant);
     return { path: tenant, isDefault: false };
   } catch {
-    return { path: tenantConfigPath(file, 0), isDefault: true };
+    const fallback = tenantConfigPath(file, 0);
+    try {
+      await fs.access(fallback);
+      return { path: fallback, isDefault: true };
+    } catch {
+      try {
+        await fs.access(base);
+        return { path: base, isDefault: true };
+      } catch {
+        return { path: fallback, isDefault: true };
+      }
+    }
   }
 }
 
 export function getConfigPathSync(file, companyId = 0) {
   const tenant = tenantConfigPath(file, companyId);
+  const base = path.join(CONFIG_BASE_PATH, file);
   return existsSync(tenant)
     ? { path: tenant, isDefault: false }
-    : { path: tenantConfigPath(file, 0), isDefault: true };
+    : existsSync(tenantConfigPath(file, 0))
+      ? { path: tenantConfigPath(file, 0), isDefault: true }
+      : existsSync(base)
+        ? { path: base, isDefault: true }
+        : { path: tenantConfigPath(file, 0), isDefault: true };
 }

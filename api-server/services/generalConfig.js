@@ -50,6 +50,9 @@ const defaults = {
     ignoreOnSearch: ['deleted_images'],
   },
   print: {
+    printFontSize: 13,
+    printMargin: 4,
+    printGap: 3,
     receiptFontSize: 12,
     receiptWidth: 80,
     receiptHeight: 200,
