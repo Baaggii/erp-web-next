@@ -29,6 +29,9 @@
     "basePath": "uploads"
   },
   "print": {
+    "printFontSize": 13,
+    "printMargin": 4,
+    "printGap": 3,
     "receiptFontSize": 12,
     "receiptWidth": 80,
     "receiptHeight": 200,
@@ -70,9 +73,11 @@ value `"uploads"` creates files under `<repo>/uploads/<table>/`.
 for images via the context-menu search feature.
 
 The **Print** section controls receipt output sizing for printed documents.
-`receiptFontSize` sets the base font size (px), while `receiptWidth`,
-`receiptHeight`, and `receiptMargin` (all in mm) are applied to the print page
-size and margins for receipt printing.
+`printFontSize` (px) sets the base text size for transaction printouts, while
+`printMargin` and `printGap` (mm) adjust page margins and spacing between copies
+and sections. `receiptFontSize` sets the base font size (px) for receipts,
+while `receiptWidth`, `receiptHeight`, and `receiptMargin` (all in mm) are
+applied to the print page size and margins for receipt printing.
 
 The settings can be edited in the **General Configuration** screen
 (module key `general_configuration`) under the Settings menu.
