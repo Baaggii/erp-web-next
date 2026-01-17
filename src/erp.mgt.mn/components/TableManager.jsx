@@ -454,6 +454,20 @@ function normalizeLockStatus(value) {
   return normalized || null;
 }
 
+function isActiveReportLockRow(row) {
+  if (!row || typeof row !== 'object') return false;
+  const status = normalizeLockStatus(row.status);
+  if (status === 'locked') return true;
+  if (status !== 'pending') return false;
+  const requestId = coalesce(row, 'request_id', 'requestId');
+  if (requestId === undefined || requestId === null || requestId === '') {
+    return false;
+  }
+  const numeric = Number(requestId);
+  if (Number.isFinite(numeric)) return numeric > 0;
+  return true;
+}
+
 function normalizeWorkflowStatus(value) {
   if (value === undefined || value === null) return null;
   const normalized = String(value).trim().toLowerCase();
@@ -482,6 +496,9 @@ function rowHasActiveLock(row) {
   for (const candidate of statusCandidates) {
     const normalized = normalizeLockStatus(candidate);
     if (normalized && ACTIVE_LOCK_STATUSES.has(normalized)) {
+      if (normalized === 'pending' && !isActiveReportLockRow(metadata)) {
+        continue;
+      }
       return true;
     }
   }

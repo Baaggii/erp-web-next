@@ -6228,6 +6228,9 @@ export async function listTransactions({
             return;
           }
           const key = String(recordId);
+          if (!isActiveReportLockRow(lockRow)) {
+            return;
+          }
           const existing = lockMetadataMap.get(key);
           const resolved = prioritizeLockRow(existing, lockRow);
           lockMetadataMap.set(key, resolved || null);
@@ -6249,7 +6252,9 @@ export async function listTransactions({
         ? null
         : String(metadata.status).trim().toLowerCase() || null;
     const lockedFromMetadata =
-      normalizedStatus && lockStatusSet.has(normalizedStatus);
+      normalizedStatus &&
+      lockStatusSet.has(normalizedStatus) &&
+      isActiveReportLockRow(metadata);
     return {
       ...row,
       locked: Boolean(row?.locked) || Boolean(lockedFromMetadata),
@@ -6263,6 +6268,20 @@ const REPORT_TRANSACTION_LOCK_STATUS = {
   pending: 'pending',
   locked: 'locked',
 };
+
+function isActiveReportLockRow(row) {
+  if (!row || typeof row !== 'object') return false;
+  const status = row.status ? String(row.status).trim().toLowerCase() : '';
+  if (status === REPORT_TRANSACTION_LOCK_STATUS.locked) return true;
+  if (status !== REPORT_TRANSACTION_LOCK_STATUS.pending) return false;
+  const requestId = row.request_id ?? row.requestId;
+  if (requestId === undefined || requestId === null || requestId === '') {
+    return false;
+  }
+  const numeric = Number(requestId);
+  if (Number.isFinite(numeric)) return numeric > 0;
+  return true;
+}
 
 export async function lockTransactionsForReport(
   {
@@ -6342,6 +6361,27 @@ export async function lockTransactionsForReport(
   return normalized;
 }
 
+export async function reassignReportTransactionLocks(
+  { fromRequestId, toRequestId, companyId },
+  conn = pool,
+) {
+  if (!fromRequestId || !toRequestId) return 0;
+  if (String(fromRequestId) === String(toRequestId)) return 0;
+  const params = [toRequestId, fromRequestId];
+  let companyClause = '';
+  if (companyId !== undefined && companyId !== null && companyId !== '') {
+    companyClause = ' AND company_id = ?';
+    params.push(companyId);
+  }
+  const [result] = await conn.query(
+    `UPDATE report_transaction_locks
+        SET request_id = ?, updated_at = NOW()
+      WHERE request_id = ?${companyClause}`,
+    params,
+  );
+  return result?.affectedRows ?? 0;
+}
+
 export async function activateReportTransactionLocks(
   { requestId, finalizedBy },
   conn = pool,
@@ -6363,6 +6403,231 @@ export async function releaseReportTransactionLocks(
   await conn.query('DELETE FROM report_transaction_locks WHERE request_id = ?', [
     requestId,
   ]);
+}
+
+export async function getReportLockCandidatesForRequest(
+  requestId,
+  options = {},
+) {
+  if (requestId === undefined || requestId === null || requestId === '') {
+    return [];
+  }
+  const {
+    companyId,
+    tenantFilters,
+    resolveSnapshotRow,
+    resolveAlternateSnapshotRow,
+  } = options || {};
+  const normalizedRequestId = String(requestId).trim();
+  if (!normalizedRequestId) return [];
+  const conn = await pool.getConnection();
+  const toDisplayString = (value) => {
+    if (value === undefined || value === null) return null;
+    if (typeof value === 'string') {
+      const trimmed = value.trim();
+      return trimmed.length ? trimmed : null;
+    }
+    if (typeof value === 'number') {
+      return Number.isFinite(value) ? String(value) : null;
+    }
+    if (typeof value === 'boolean') {
+      return value ? 'Yes' : 'No';
+    }
+    return null;
+  };
+  const findFieldValue = (row, tokens) => {
+    if (!row || typeof row !== 'object') return null;
+    const entries = Object.entries(row).map(([key, value]) => ({
+      key,
+      normalized: String(key || '').trim().toLowerCase(),
+      value: toDisplayString(value),
+    }));
+    const matches = [];
+    entries.forEach((entry) => {
+      if (!entry.value) return;
+      tokens.forEach((token, idx) => {
+        const normalizedToken = token.toLowerCase();
+        if (entry.normalized === normalizedToken) {
+          matches.push({ entry, tokenIdx: idx, score: 0 });
+        } else if (entry.normalized.endsWith(normalizedToken)) {
+          matches.push({ entry, tokenIdx: idx, score: 1 });
+        } else if (entry.normalized.includes(normalizedToken)) {
+          matches.push({ entry, tokenIdx: idx, score: 2 });
+        }
+      });
+    });
+    if (!matches.length) return null;
+    matches.sort((a, b) => {
+      if (a.score !== b.score) return a.score - b.score;
+      if (a.tokenIdx !== b.tokenIdx) return a.tokenIdx - b.tokenIdx;
+      return a.entry.normalized.length - b.entry.normalized.length;
+    });
+    return matches[0]?.entry?.value ?? null;
+  };
+  const deriveLabelMetadata = (row) => {
+    if (!row || typeof row !== 'object') {
+      return { label: null, description: null };
+    }
+    const primaryNameTokens = [
+      'label',
+      'name',
+      'full_name',
+      'fullname',
+      'ner',
+      'title',
+    ];
+    const secondaryNameTokens = [
+      'description',
+      'desc',
+      'note',
+      'notes',
+      'detail',
+      'details',
+      'info',
+      'information',
+      'remark',
+      'remarks',
+    ];
+    const codeTokens = [
+      'code',
+      'code_value',
+      'codevalue',
+      'registration',
+      'reg',
+      'serial',
+      'number',
+      'no',
+      'reference',
+      'ref',
+    ];
+
+    const nameValue = findFieldValue(row, primaryNameTokens);
+    const detailValue = findFieldValue(row, secondaryNameTokens);
+    const codeValue = findFieldValue(row, codeTokens);
+
+    let label = null;
+    if (nameValue && codeValue) {
+      label = `${codeValue} — ${nameValue}`;
+    } else if (nameValue) {
+      label = nameValue;
+    } else if (codeValue) {
+      label = codeValue;
+    }
+
+    let description = null;
+    if (detailValue && detailValue !== label) {
+      description = detailValue;
+    } else if (nameValue && label !== nameValue) {
+      description = nameValue;
+    } else if (detailValue) {
+      description = detailValue;
+    }
+
+    return { label, description };
+  };
+  try {
+    const params = [normalizedRequestId];
+    let companyClause = '';
+    if (companyId !== undefined && companyId !== null && companyId !== '') {
+      companyClause = ' AND company_id = ?';
+      params.push(companyId);
+    }
+    const [rows] = await conn.query(
+      `SELECT *
+         FROM report_transaction_locks
+        WHERE request_id = ?${companyClause}`,
+      params,
+    );
+    if (!Array.isArray(rows) || rows.length === 0) {
+      return [];
+    }
+
+    const getSnapshotRow =
+      typeof resolveSnapshotRow === 'function'
+        ? resolveSnapshotRow
+        : (table, id, contextOptions = {}) =>
+            getTableRowById(table, id, {
+              defaultCompanyId: companyId,
+              includeDeleted: true,
+              ...contextOptions,
+            });
+
+    const getAlternateSnapshot =
+      typeof resolveAlternateSnapshotRow === 'function'
+        ? resolveAlternateSnapshotRow
+        : (table, id, extraOptions = {}) =>
+            fetchSnapshotRowByAlternateKey(table, id, {
+              companyId,
+              tenantFilters,
+              ...extraOptions,
+            });
+
+    const candidates = [];
+    for (const row of rows) {
+      const tableName = row?.table_name;
+      const recordId = row?.record_id;
+      if (!tableName || recordId === undefined || recordId === null) {
+        continue;
+      }
+      const key = `${tableName}#${recordId}`;
+      const lockStatus = row?.status || null;
+      const locked = Boolean(isActiveReportLockRow(row));
+      const lockedBy =
+        row?.finalized_by ?? row?.status_changed_by ?? row?.created_by ?? null;
+      const lockedAt =
+        row?.finalized_at ??
+        row?.status_changed_at ??
+        row?.updated_at ??
+        row?.created_at ??
+        null;
+      const candidate = {
+        tableName,
+        recordId: String(recordId),
+        key,
+        locked: Boolean(locked),
+        lockStatus,
+        lockedBy,
+        lockedAt,
+        lockMetadata: row,
+      };
+
+      let snapshotRow = null;
+      try {
+        snapshotRow = await getSnapshotRow(tableName, recordId, {
+          companyId,
+          tenantFilters,
+        });
+      } catch (err) {
+        if (err?.status !== 400 && err?.code !== 'ER_NO_SUCH_TABLE') {
+          throw err;
+        }
+      }
+
+      if (!snapshotRow) {
+        snapshotRow = await getAlternateSnapshot(tableName, recordId, {
+          companyId,
+          tenantFilters,
+        });
+      }
+
+      if (snapshotRow && typeof snapshotRow === 'object') {
+        candidate.snapshot = snapshotRow;
+        candidate.snapshotColumns = Object.keys(snapshotRow);
+        const { label, description } = deriveLabelMetadata(snapshotRow);
+        if (label) candidate.label = label;
+        if (description) candidate.description = description;
+        candidate.context = { snapshot: snapshotRow };
+      } else {
+        candidate.snapshot = null;
+        candidate.snapshotColumns = [];
+      }
+
+      candidates.push(candidate);
+    }
+    return candidates;
+  } finally {
+    conn.release();
+  }
 }
 
 export async function listLockedTransactions(
@@ -6912,9 +7177,29 @@ export async function getReportApprovalRecord(requestId, conn = pool) {
   };
 }
 
-export async function callStoredProcedure(name, params = [], aliases = []) {
+async function applyReportLockSessionVars(
+  conn,
+  { collectUsedRows = false, requestId = null, empId = null } = {},
+) {
+  const collectFlag = collectUsedRows ? 1 : 0;
+  await conn.query('SET @collect_used_rows = ?', [collectFlag]);
+  await conn.query('SET @request_id = ?', [requestId ?? null]);
+  await conn.query('SET @emp_id = ?', [empId ?? null]);
+}
+
+export async function callStoredProcedure(
+  name,
+  params = [],
+  aliases = [],
+  options = {},
+) {
   const conn = await pool.getConnection();
   try {
+    const session =
+      options && typeof options === 'object' && options.session
+        ? options.session
+        : {};
+    await applyReportLockSessionVars(conn, session);
     const callParts = [];
     const callArgs = [];
     const outVars = [];
@@ -7402,6 +7687,7 @@ export async function getProcedureLockCandidates(
   };
 
   try {
+    await applyReportLockSessionVars(conn, { collectUsedRows: false });
     for (const variable of candidateVariables) {
       try {
         await conn.query(`SET ${variable} = JSON_ARRAY()`);
@@ -7542,6 +7828,7 @@ export async function getProcedureLockCandidates(
               const recordId = row?.record_id;
               if (recordId === undefined || recordId === null) return;
               const key = String(recordId);
+              if (!isActiveReportLockRow(row)) return;
               const existing = lockMap.get(key);
               const resolved = resolveLockMetadata(existing, row);
               lockMap.set(key, resolved);
@@ -7556,7 +7843,7 @@ export async function getProcedureLockCandidates(
         const recordId = String(candidate.recordId);
         const lockRow = lockMap.get(recordId) || null;
         const lockStatus = lockRow?.status || null;
-        const locked = statusOrder.includes(lockStatus);
+        const locked = Boolean(lockRow && isActiveReportLockRow(lockRow));
         const lockedBy =
           lockRow?.finalized_by ??
           lockRow?.status_changed_by ??
