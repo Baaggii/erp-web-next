@@ -189,16 +189,13 @@ function normalizeReportCapabilities(value) {
   }
   const normalized = { ...DEFAULT_REPORT_CAPABILITIES };
   if ('showTotalRowCount' in value) {
-    normalized.showTotalRowCount = normalizeBoolean(
-      value.showTotalRowCount,
-      true,
-    );
+    normalized.showTotalRowCount = value.showTotalRowCount === false ? false : true;
   }
   if ('supportsApproval' in value) {
-    normalized.supportsApproval = normalizeBoolean(value.supportsApproval, true);
+    normalized.supportsApproval = value.supportsApproval === false ? false : true;
   }
   if ('supportsSnapshot' in value) {
-    normalized.supportsSnapshot = normalizeBoolean(value.supportsSnapshot, true);
+    normalized.supportsSnapshot = value.supportsSnapshot === false ? false : true;
   }
   return normalized;
 }
@@ -3359,7 +3356,6 @@ export default function Reports() {
               rows={result.rows}
               buttonPerms={buttonPerms}
               fieldTypeMap={result.fieldTypeMap}
-              showTotalRowCount={showTotalRowCount}
               onSnapshotReady={snapshotSupported ? handleSnapshotReady : undefined}
             />
           </div>

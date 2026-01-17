@@ -4845,38 +4845,6 @@ export async function deleteProcedure(name, { allowProtected = false } = {}) {
   await adminPool.query(`DROP PROCEDURE IF EXISTS \`${name}\``);
 }
 
-async function buildProcedureSqlFromInfoSchema(name, conn) {
-  const [routineRows] = await conn.query(
-    `SELECT ROUTINE_DEFINITION
-       FROM information_schema.ROUTINES
-      WHERE ROUTINE_SCHEMA = DATABASE()
-        AND ROUTINE_NAME = ?`,
-    [name],
-  );
-  const definition = routineRows?.[0]?.ROUTINE_DEFINITION;
-  if (!definition) return null;
-
-  const [paramRows] = await conn.query(
-    `SELECT PARAMETER_MODE, PARAMETER_NAME, DTD_IDENTIFIER
-       FROM information_schema.PARAMETERS
-      WHERE SPECIFIC_SCHEMA = DATABASE()
-        AND SPECIFIC_NAME = ?
-      ORDER BY ORDINAL_POSITION`,
-    [name],
-  );
-  const params = (paramRows || [])
-    .filter((p) => p.PARAMETER_NAME)
-    .map((p) => {
-      const mode = p.PARAMETER_MODE ? `${p.PARAMETER_MODE} ` : '';
-      const paramName = `\`${p.PARAMETER_NAME}\``;
-      const type = p.DTD_IDENTIFIER ? ` ${p.DTD_IDENTIFIER}` : '';
-      return `${mode}${paramName}${type}`.trim();
-    })
-    .join(', ');
-
-  return `CREATE PROCEDURE \`${name}\`(${params})\n${definition}`;
-}
-
 export async function getProcedureSql(name) {
   if (!name) return null;
   try {
@@ -4886,7 +4854,11 @@ export async function getProcedureSql(name) {
     if (text) return text;
   } catch {}
   try {
-    return await buildProcedureSqlFromInfoSchema(name, pool);
+    const [rows] = await pool.query(
+      `SELECT ROUTINE_DEFINITION FROM information_schema.ROUTINES WHERE ROUTINE_SCHEMA = DATABASE() AND ROUTINE_NAME = ?`,
+      [name],
+    );
+    return rows?.[0]?.ROUTINE_DEFINITION || null;
   } catch {
     return null;
   }
@@ -4901,7 +4873,51 @@ export async function getStoredProcedureSql(name) {
     if (text) return text;
   } catch {}
   try {
-    return await buildProcedureSqlFromInfoSchema(name, adminPool);
+    const [routineRows] = await adminPool.query(
+      `SELECT ROUTINE_DEFINITION, DEFINER, SECURITY_TYPE, SQL_DATA_ACCESS, DETERMINISTIC
+       FROM information_schema.ROUTINES
+       WHERE ROUTINE_SCHEMA = DATABASE() AND ROUTINE_NAME = ?`,
+      [name],
+    );
+    const routine = routineRows?.[0];
+    if (!routine?.ROUTINE_DEFINITION) return null;
+    const [paramRows] = await adminPool.query(
+      `SELECT PARAMETER_MODE, PARAMETER_NAME, DTD_IDENTIFIER
+       FROM information_schema.PARAMETERS
+       WHERE SPECIFIC_SCHEMA = DATABASE() AND SPECIFIC_NAME = ?
+       ORDER BY ORDINAL_POSITION`,
+      [name],
+    );
+    const params = (paramRows || [])
+      .map((row) => {
+        const mode = row.PARAMETER_MODE ? `${row.PARAMETER_MODE} ` : '';
+        const paramName = row.PARAMETER_NAME ? `\`${row.PARAMETER_NAME}\`` : '';
+        const type = row.DTD_IDENTIFIER ? ` ${row.DTD_IDENTIFIER}` : '';
+        return `${mode}${paramName}${type}`.trim();
+      })
+      .filter(Boolean)
+      .join(', ');
+    let definer = '';
+    if (routine.DEFINER) {
+      const [defUser, defHost = '%'] = routine.DEFINER.split('@');
+      definer = `DEFINER=\`${defUser}\`@\`${defHost}\` `;
+    }
+    const deterministic = routine.DETERMINISTIC === 'YES'
+      ? 'DETERMINISTIC'
+      : 'NOT DETERMINISTIC';
+    const sqlDataAccess = routine.SQL_DATA_ACCESS || 'CONTAINS SQL';
+    const security = routine.SECURITY_TYPE
+      ? `SQL SECURITY ${routine.SECURITY_TYPE}`
+      : '';
+    return [
+      `CREATE ${definer}PROCEDURE \`${name}\`(${params})`,
+      deterministic,
+      sqlDataAccess,
+      security,
+      routine.ROUTINE_DEFINITION.trim(),
+    ]
+      .filter(Boolean)
+      .join('\n');
   } catch {
     return null;
   }
@@ -7218,21 +7234,6 @@ export async function callStoredProcedure(
       supportsSnapshot: true,
     };
 
-    const normalizeCapabilityValue = (value, defaultValue = true) => {
-      if (value === undefined || value === null) return defaultValue;
-      if (typeof value === 'boolean') return value;
-      if (typeof value === 'number') return Number.isFinite(value) ? value !== 0 : defaultValue;
-      if (typeof value === 'bigint') return value !== 0n;
-      if (typeof value === 'string') {
-        const normalized = value.trim().toLowerCase();
-        if (!normalized) return defaultValue;
-        if (['false', '0', 'no', 'off'].includes(normalized)) return false;
-        if (['true', '1', 'yes', 'on'].includes(normalized)) return true;
-        return defaultValue;
-      }
-      return defaultValue;
-    };
-
     const normalizeReportCapabilities = (value) => {
       if (!value) return { ...defaultReportCapabilities };
       let parsed = value;
@@ -7248,22 +7249,13 @@ export async function callStoredProcedure(
       }
       const normalized = { ...defaultReportCapabilities };
       if ('showTotalRowCount' in parsed) {
-        normalized.showTotalRowCount = normalizeCapabilityValue(
-          parsed.showTotalRowCount,
-          true,
-        );
+        normalized.showTotalRowCount = parsed.showTotalRowCount === false ? false : true;
       }
       if ('supportsApproval' in parsed) {
-        normalized.supportsApproval = normalizeCapabilityValue(
-          parsed.supportsApproval,
-          true,
-        );
+        normalized.supportsApproval = parsed.supportsApproval === false ? false : true;
       }
       if ('supportsSnapshot' in parsed) {
-        normalized.supportsSnapshot = normalizeCapabilityValue(
-          parsed.supportsSnapshot,
-          true,
-        );
+        normalized.supportsSnapshot = parsed.supportsSnapshot === false ? false : true;
       }
       return normalized;
     };
