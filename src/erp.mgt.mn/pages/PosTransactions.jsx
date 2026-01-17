@@ -3366,17 +3366,12 @@ export default function PosTransactionsPage() {
     const receiptWidth = normalizePrintNumber(generalConfig?.print?.receiptWidth);
     const receiptHeight = normalizePrintNumber(generalConfig?.print?.receiptHeight);
     const receiptMargin = normalizePrintNumber(generalConfig?.print?.receiptMargin);
-    const receiptGap = normalizePrintNumber(generalConfig?.print?.receiptGap);
     const fontSizeRule = receiptFontSize ? `${receiptFontSize}px` : 'inherit';
-    const pageWidth = receiptWidth ? `${receiptWidth}mm` : null;
-    const pageHeight = receiptHeight ? `${receiptHeight}mm` : null;
+    const pageWidth = receiptWidth ? `${receiptWidth}mm` : 'auto';
+    const pageHeight = receiptHeight ? `${receiptHeight}mm` : 'auto';
     const pageMargin = receiptMargin ? `${receiptMargin}mm` : '0';
-    const gapRule = receiptGap ? `${receiptGap}mm` : '0.5rem';
     const pageSize =
-      receiptWidth || receiptHeight
-        ? `${pageWidth || 'auto'} ${pageHeight || 'auto'}`
-        : 'auto';
-    const sheetMaxWidth = pageWidth || '100%';
+      receiptWidth && receiptHeight ? `${pageWidth} ${pageHeight}` : 'auto';
     const toPixels = (mm) => Math.round(mm * 3.7795);
     const windowFeatures =
       receiptWidth && receiptHeight
@@ -3390,7 +3385,7 @@ export default function PosTransactionsPage() {
     printWindow.document.open();
     printWindow.document.write(
       '<!DOCTYPE html><html><head><title>Ebarimt receipt</title>' +
-        `<style>@page{size:${pageSize};margin:${pageMargin};}body{margin:0;font-family:sans-serif;font-size:${fontSizeRule};-webkit-text-size-adjust:100%;text-size-adjust:100%;} .receipt-sheet{display:flex;flex-direction:column;align-items:center;gap:${gapRule};padding:${pageMargin};width:100%;max-width:${sheetMaxWidth};margin:0 auto;box-sizing:border-box;}</style>` +
+        `<style>@page{size:${pageSize};margin:${pageMargin};}body{margin:0;font-family:sans-serif;font-size:${fontSizeRule};} .receipt-sheet{display:flex;flex-direction:column;align-items:center;gap:0.5rem;padding:${pageMargin};width:${pageWidth};}</style>` +
         '</head><body><div class="receipt-sheet"></div></body></html>',
     );
     printWindow.document.close();

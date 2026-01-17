@@ -347,20 +347,6 @@ export default function GeneralConfiguration() {
               </label>
             </TooltipWrapper>
           </div>
-          <div style={{ marginBottom: '0.5rem' }}>
-            <TooltipWrapper title={t('receipt_gap', { ns: 'tooltip', defaultValue: 'Receipt gap (mm)' })}>
-              <label>
-                Receipt Gap (mm){' '}
-                <input
-                  name="receiptGap"
-                  type="number"
-                  inputMode="decimal"
-                  value={active.receiptGap ?? ''}
-                  onChange={handleChange}
-                />
-              </label>
-            </TooltipWrapper>
-          </div>
         </>
       ) : tab === 'images' ? (
         <>

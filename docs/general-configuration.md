@@ -32,8 +32,7 @@
     "receiptFontSize": 12,
     "receiptWidth": 80,
     "receiptHeight": 200,
-    "receiptMargin": 5,
-    "receiptGap": 4
+    "receiptMargin": 5
   }
 }
 ```
@@ -72,8 +71,8 @@ for images via the context-menu search feature.
 
 The **Print** section controls receipt output sizing for printed documents.
 `receiptFontSize` sets the base font size (px), while `receiptWidth`,
-`receiptHeight`, `receiptMargin`, and `receiptGap` (all in mm) are applied to the
-print page size, margins, and spacing between printed copies.
+`receiptHeight`, and `receiptMargin` (all in mm) are applied to the print page
+size and margins for receipt printing.
 
 The settings can be edited in the **General Configuration** screen
 (module key `general_configuration`) under the Settings menu.

@@ -54,7 +54,6 @@ const defaults = {
     receiptWidth: 80,
     receiptHeight: 200,
     receiptMargin: 5,
-    receiptGap: 4,
   },
 };
 
