@@ -543,29 +543,68 @@ function resolveHeightFieldGrid({
   resolutionY,
   imageWidthPx,
   imageHeightPx,
+  minCols,
+  minRows,
 }) {
+  const aspectRatio =
+    Number.isFinite(widthMm) && Number.isFinite(heightMm) && heightMm > 0
+      ? widthMm / heightMm
+      : null;
   const explicitCols = Number.isFinite(resolutionX) ? Math.max(10, Math.round(resolutionX)) : null;
   const explicitRows = Number.isFinite(resolutionY) ? Math.max(10, Math.round(resolutionY)) : null;
   if (explicitCols && explicitRows) {
     return { cols: explicitCols, rows: explicitRows };
   }
   if (explicitCols) {
-    const fallbackRows = Math.max(10, Math.round((explicitCols * heightMm) / widthMm));
+    const fallbackRows =
+      aspectRatio && aspectRatio > 0
+        ? Math.max(10, Math.round(explicitCols / aspectRatio))
+        : Math.max(10, Math.round((explicitCols * heightMm) / widthMm));
     return { cols: explicitCols, rows: fallbackRows };
   }
   if (explicitRows) {
-    const fallbackCols = Math.max(10, Math.round((explicitRows * widthMm) / heightMm));
+    const fallbackCols =
+      aspectRatio && aspectRatio > 0
+        ? Math.max(10, Math.round(explicitRows * aspectRatio))
+        : Math.max(10, Math.round((explicitRows * widthMm) / heightMm));
     return { cols: fallbackCols, rows: explicitRows };
   }
-  const fallbackCols = Math.max(10, Math.round(resolution));
-  const fallbackRows = Math.max(10, Math.round((resolution * heightMm) / widthMm));
-  if (!Number.isFinite(imageWidthPx) || !Number.isFinite(imageHeightPx)) {
-    return { cols: fallbackCols, rows: fallbackRows };
+
+  const baseResolution = Math.max(10, Math.round(resolution));
+  let targetCount = baseResolution;
+  if (Number.isFinite(imageWidthPx) && Number.isFinite(imageHeightPx)) {
+    const maxDimension = Math.max(imageWidthPx, imageHeightPx);
+    const scale = maxDimension > 0 ? Math.min(1, resolution / maxDimension) : 1;
+    targetCount = Math.max(10, Math.round(maxDimension * scale));
   }
-  const maxDimension = Math.max(imageWidthPx, imageHeightPx);
-  const scale = maxDimension > 0 ? Math.min(1, resolution / maxDimension) : 1;
-  const cols = Math.max(10, Math.round(imageWidthPx * scale));
-  const rows = Math.max(10, Math.round(imageHeightPx * scale));
+
+  let cols = Math.max(10, Math.round(targetCount));
+  let rows = Math.max(10, Math.round(targetCount));
+  if (aspectRatio && aspectRatio > 0) {
+    if (aspectRatio >= 1) {
+      cols = Math.max(10, Math.round(targetCount));
+      rows = Math.max(10, Math.round(targetCount / aspectRatio));
+    } else {
+      rows = Math.max(10, Math.round(targetCount));
+      cols = Math.max(10, Math.round(targetCount * aspectRatio));
+    }
+  } else {
+    rows = Math.max(10, Math.round((baseResolution * heightMm) / widthMm));
+  }
+
+  if (Number.isFinite(minCols) && minCols > cols) {
+    cols = Math.max(10, Math.round(minCols));
+    if (aspectRatio && aspectRatio > 0) {
+      rows = Math.max(10, Math.round(cols / aspectRatio));
+    }
+  }
+  if (Number.isFinite(minRows) && minRows > rows) {
+    rows = Math.max(10, Math.round(minRows));
+    if (aspectRatio && aspectRatio > 0) {
+      cols = Math.max(10, Math.round(rows * aspectRatio));
+    }
+  }
+
   return { cols, rows };
 }
 
@@ -575,6 +614,8 @@ function createHeightField(widthMm, heightMm, thicknessMm, options = {}) {
   const resolutionY = parseOptionalNumber(options.resolutionY, null);
   const imageWidthPx = parseOptionalNumber(options.imageWidthPx, null);
   const imageHeightPx = parseOptionalNumber(options.imageHeightPx, null);
+  const minCols = parseOptionalNumber(options.minCols, null);
+  const minRows = parseOptionalNumber(options.minRows, null);
   const { cols, rows } = resolveHeightFieldGrid({
     widthMm,
     heightMm,
@@ -583,14 +624,21 @@ function createHeightField(widthMm, heightMm, thicknessMm, options = {}) {
     resolutionY,
     imageWidthPx,
     imageHeightPx,
+    minCols,
+    minRows,
   });
   const heightField = Array.from({ length: rows }, () =>
     Array.from({ length: cols }, () => thicknessMm),
   );
+  const aspectRatio =
+    Number.isFinite(widthMm) && Number.isFinite(heightMm) && heightMm > 0
+      ? widthMm / heightMm
+      : null;
   return {
     heightField,
     cols,
     rows,
+    aspectRatio,
   };
 }
 
@@ -630,6 +678,7 @@ function applyToolFootprint(heightField, cols, rows, material, tool, point, targ
   const radius = Math.max(0.1, tool.diameterMm / 2 || 0.1);
   const cellWidth = material.widthMm / cols;
   const cellHeight = material.heightMm / rows;
+  const feather = Math.max(cellWidth, cellHeight);
   const centerX = point.x;
   const centerY = point.y;
   const depth = Math.min(targetDepthMm, tool.maxDepthMm || targetDepthMm);
@@ -645,9 +694,15 @@ function applyToolFootprint(heightField, cols, rows, material, tool, point, targ
       const dx = worldX - centerX;
       const dy = worldY - centerY;
       const dist = Math.hypot(dx, dy);
+      if (dist > radius + feather) continue;
+      let edgeBlend = 1;
+      if (dist > radius - feather) {
+        const t = clampValue((radius - dist) / feather, 0, 1);
+        edgeBlend = t * t * (3 - 2 * t);
+      }
       let removal = 0;
       if (tool.type === 'flat') {
-        if (Math.abs(dx) <= radius && Math.abs(dy) <= radius) removal = depth;
+        if (dist <= radius) removal = depth;
       } else if (tool.type === 'ball') {
         if (dist <= radius) {
           const cap = radius - Math.sqrt(Math.max(0, radius * radius - dist * dist));
@@ -659,7 +714,10 @@ function applyToolFootprint(heightField, cols, rows, material, tool, point, targ
         removal = Math.max(0, depth - maxDepth);
       }
       if (removal > 0) {
-        heightField[y][x] = Math.max(material.minHeightMm, heightField[y][x] - removal);
+        heightField[y][x] = Math.max(
+          material.minHeightMm,
+          heightField[y][x] - removal * edgeBlend,
+        );
       }
     }
   }
@@ -671,6 +729,18 @@ function simulateHeightField(operations, material, options) {
   const resolutionY = parseOptionalNumber(options.heightFieldResolutionY, null);
   const imageWidthPx = parseOptionalNumber(options.imageWidthPx, null);
   const imageHeightPx = parseOptionalNumber(options.imageHeightPx, null);
+  const toolDiameters = operations
+    .map((operation) => operation.tool?.diameterMm)
+    .filter((value) => Number.isFinite(value) && value > 0);
+  const minToolDiameter = toolDiameters.length ? Math.min(...toolDiameters) : null;
+  const maxAdaptiveGrid = 600;
+  const minCellSize = minToolDiameter ? Math.max(0.2, minToolDiameter / 4) : null;
+  const minCols = minCellSize
+    ? Math.min(maxAdaptiveGrid, Math.ceil(material.widthMm / minCellSize))
+    : null;
+  const minRows = minCellSize
+    ? Math.min(maxAdaptiveGrid, Math.ceil(material.heightMm / minCellSize))
+    : null;
   const { heightField, cols, rows } = createHeightField(
     material.widthMm,
     material.heightMm,
@@ -681,6 +751,8 @@ function simulateHeightField(operations, material, options) {
       resolutionY,
       imageWidthPx,
       imageHeightPx,
+      minCols,
+      minRows,
     },
   );
   const maxDepth = Math.min(material.thicknessMm, material.maxDepthMm);
@@ -727,6 +799,10 @@ function simulateHeightField(operations, material, options) {
     maxDepthMm: depthScale,
     widthMm: material.widthMm,
     heightMm: material.heightMm,
+    aspectRatio:
+      Number.isFinite(material.widthMm) && Number.isFinite(material.heightMm) && material.heightMm > 0
+        ? material.widthMm / material.heightMm
+        : null,
     yAxis: options.heightFieldYAxis || 'down',
   };
 }
@@ -871,6 +947,7 @@ function buildPreview(operations, tool, heightFieldData = null) {
           maxDepthMm: heightFieldData.maxDepthMm,
           widthMm: heightFieldData.widthMm,
           heightMm: heightFieldData.heightMm,
+          aspectRatio: heightFieldData.aspectRatio,
           yAxis: heightFieldData.yAxis,
         }
       : null,
