@@ -1477,6 +1477,17 @@ const TableManager = forwardRef(function TableManager({
         if (validCols.has(f)) newFilters[f] = user.empid;
       });
     }
+    if (formConfig?.defaultValues) {
+      const editableDefaults = new Set(
+        (formConfig.editableDefaultFields || []).map((f) => resolveCanonicalKey(f) || f),
+      );
+      Object.entries(formConfig.defaultValues).forEach(([rawKey, value]) => {
+        if (value === undefined || value === '') return;
+        const canonicalKey = resolveCanonicalKey(rawKey) || rawKey;
+        if (!canonicalKey || editableDefaults.has(canonicalKey)) return;
+        if (validCols.has(canonicalKey)) newFilters[canonicalKey] = value;
+      });
+    }
     if (Object.keys(newFilters).length > 0) {
       setFilters((f) => ({ ...f, ...newFilters }));
     }
