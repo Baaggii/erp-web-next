@@ -61,6 +61,7 @@ export default function ReportTable({
   rows = [],
   buttonPerms = {},
   fieldTypeMap = {},
+  showTotalRowCount = true,
   maxHeight = 'min(70vh, calc(100vh - 20rem))',
   onSnapshotReady,
 }) {
@@ -749,7 +750,7 @@ export default function ReportTable({
               </tr>
             ))}
           </tbody>
-          {numericColumns.length > 0 && (
+          {showTotalRowCount && numericColumns.length > 0 && (
             <tfoot>
               <tr>
                 {columns.map((col, idx) => (
