@@ -1030,7 +1030,7 @@ export default function Reports() {
     setManualParams({});
     setApprovalReason('');
     setSnapshot(null);
-    setPopulateLockCandidates(true);
+    setPopulateLockCandidates(false);
     setLockCandidates([]);
     setLockSelections({});
     setLockExclusions({});
