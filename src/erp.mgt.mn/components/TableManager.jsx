@@ -43,7 +43,6 @@ import { resolveDisabledFieldState } from './tableManagerDisabledFields.js';
 import { computeTemporaryPromotionOptions } from '../utils/temporaryPromotionOptions.js';
 import NotificationDots from './NotificationDots.jsx';
 import { formatJsonItem, formatJsonList } from '../utils/jsonValueFormatting.js';
-import normalizeRelationKey from '../utils/normalizeRelationKey.js';
 
 const TEMPORARY_FILTER_CACHE_KEY = 'temporary-transaction-filter';
 
@@ -100,25 +99,6 @@ function normalizeSearchValue(value) {
     if (value.label !== undefined && value.label !== null) return value.label;
   }
   return value;
-}
-
-function addRelationRowEntry(map, key, row) {
-  if (!map || key === undefined || key === null) return;
-  if (!Object.prototype.hasOwnProperty.call(map, key)) {
-    map[key] = row;
-  }
-  const stringKey = typeof key === 'string' ? key : String(key);
-  if (!Object.prototype.hasOwnProperty.call(map, stringKey)) {
-    map[stringKey] = row;
-  }
-  const normalizedKey = normalizeRelationKey(key);
-  if (
-    normalizedKey !== null &&
-    normalizedKey !== undefined &&
-    !Object.prototype.hasOwnProperty.call(map, normalizedKey)
-  ) {
-    map[normalizedKey] = row;
-  }
 }
 
 function sanitizeName(name) {
@@ -2134,7 +2114,7 @@ const TableManager = forwardRef(function TableManager({
           nestedLookups: nestedDisplayLookups,
         });
         if (val !== undefined) {
-          addRelationRowEntry(optionRows, val, row);
+          optionRows[val] = row;
         }
         return {
           value: val,
@@ -2328,7 +2308,7 @@ const TableManager = forwardRef(function TableManager({
               const idKey = keyMap[idFieldName.toLowerCase()] || idFieldName;
               const identifier = row[idKey];
               if (identifier !== undefined && identifier !== null) {
-                addRelationRowEntry(aliasRows, identifier, row);
+                aliasRows[identifier] = row;
               }
             });
             if (Object.keys(aliasRows).length > 0) {
@@ -3484,8 +3464,6 @@ const TableManager = forwardRef(function TableManager({
           tryKeys.push(relationId);
           const strRelationId = String(relationId).trim();
           if (strRelationId) tryKeys.push(strRelationId);
-          const normalizedKey = normalizeRelationKey(strRelationId);
-          if (normalizedKey) tryKeys.push(normalizedKey);
         }
         for (const key of tryKeys) {
           if (!Object.prototype.hasOwnProperty.call(map, key)) continue;

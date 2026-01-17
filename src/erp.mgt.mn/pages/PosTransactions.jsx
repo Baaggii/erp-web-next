@@ -22,7 +22,6 @@ import { fetchTriggersForTables } from '../utils/fetchTriggersForTables.js';
 import { valuesEqual } from '../utils/generatedColumns.js';
 import { hasTransactionFormAccess } from '../utils/transactionFormAccess.js';
 import { resolveWorkplacePositionForContext } from '../utils/workplaceResolver.js';
-import normalizeRelationKey from '../utils/normalizeRelationKey.js';
 import {
   isModuleLicensed,
   isModulePermissionGranted,
@@ -58,25 +57,6 @@ function toReadableString(value) {
   }
   if (typeof value === 'boolean') return value ? 'true' : 'false';
   return '';
-}
-
-function addRelationRowEntry(map, key, row) {
-  if (!map || key === undefined || key === null) return;
-  if (!Object.prototype.hasOwnProperty.call(map, key)) {
-    map[key] = row;
-  }
-  const stringKey = typeof key === 'string' ? key : String(key);
-  if (!Object.prototype.hasOwnProperty.call(map, stringKey)) {
-    map[stringKey] = row;
-  }
-  const normalizedKey = normalizeRelationKey(key);
-  if (
-    normalizedKey !== null &&
-    normalizedKey !== undefined &&
-    !Object.prototype.hasOwnProperty.call(map, normalizedKey)
-  ) {
-    map[normalizedKey] = row;
-  }
 }
 
 function humanizeKeyName(key) {
@@ -1927,7 +1907,7 @@ export default function PosTransactionsPage() {
             );
             const label = parts.join(' - ');
             opts.push({ value: val, label });
-            addRelationRowEntry(rMap, val, row);
+            rMap[val] = row;
           });
           if (opts.length > 0) dataMap[r.COLUMN_NAME] = opts;
           if (Object.keys(rMap).length > 0) rowMap[r.COLUMN_NAME] = rMap;
