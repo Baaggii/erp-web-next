@@ -7207,9 +7207,66 @@ export async function callStoredProcedure(
         ? options.session
         : {};
     await applyReportLockSessionVars(conn, session);
+    await conn.query('SET @report_capabilities = NULL');
     const callParts = [];
     const callArgs = [];
     const outVars = [];
+
+    const defaultReportCapabilities = {
+      showTotalRowCount: true,
+      supportsApproval: true,
+      supportsSnapshot: true,
+    };
+
+    const normalizeCapabilityValue = (value, defaultValue = true) => {
+      if (value === undefined || value === null) return defaultValue;
+      if (typeof value === 'boolean') return value;
+      if (typeof value === 'number') return Number.isFinite(value) ? value !== 0 : defaultValue;
+      if (typeof value === 'bigint') return value !== 0n;
+      if (typeof value === 'string') {
+        const normalized = value.trim().toLowerCase();
+        if (!normalized) return defaultValue;
+        if (['false', '0', 'no', 'off'].includes(normalized)) return false;
+        if (['true', '1', 'yes', 'on'].includes(normalized)) return true;
+        return defaultValue;
+      }
+      return defaultValue;
+    };
+
+    const normalizeReportCapabilities = (value) => {
+      if (!value) return { ...defaultReportCapabilities };
+      let parsed = value;
+      if (typeof value === 'string') {
+        try {
+          parsed = JSON.parse(value);
+        } catch {
+          return { ...defaultReportCapabilities };
+        }
+      }
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        return { ...defaultReportCapabilities };
+      }
+      const normalized = { ...defaultReportCapabilities };
+      if ('showTotalRowCount' in parsed) {
+        normalized.showTotalRowCount = normalizeCapabilityValue(
+          parsed.showTotalRowCount,
+          true,
+        );
+      }
+      if ('supportsApproval' in parsed) {
+        normalized.supportsApproval = normalizeCapabilityValue(
+          parsed.supportsApproval,
+          true,
+        );
+      }
+      if ('supportsSnapshot' in parsed) {
+        normalized.supportsSnapshot = normalizeCapabilityValue(
+          parsed.supportsSnapshot,
+          true,
+        );
+      }
+      return normalized;
+    };
 
     for (let i = 0; i < params.length; i++) {
       const alias = aliases[i];
@@ -7243,7 +7300,13 @@ export async function callStoredProcedure(
       if (alias && !(alias in first)) first[alias] = null;
     });
 
-    return first;
+    const [capRows] = await conn.query(
+      'SELECT @report_capabilities AS report_capabilities',
+    );
+    const rawCaps = Array.isArray(capRows) ? capRows[0]?.report_capabilities : null;
+    const reportCapabilities = normalizeReportCapabilities(rawCaps);
+
+    return { row: first, reportCapabilities };
   } finally {
     conn.release();
   }
