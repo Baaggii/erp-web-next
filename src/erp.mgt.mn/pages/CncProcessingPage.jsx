@@ -271,97 +271,6 @@ function drawReliefPreview(ctx, width, height, viewBox, polylines, mode) {
   });
 }
 
-function loadSourceImage(url) {
-  return new Promise((resolve, reject) => {
-    if (!url) {
-      resolve(null);
-      return;
-    }
-    const img = new Image();
-    img.onload = () => resolve(img);
-    img.onerror = () => reject(new Error('Unable to load source image'));
-    img.src = url;
-  });
-}
-
-function buildHeightmap(image, width, height) {
-  const canvas = document.createElement('canvas');
-  canvas.width = width;
-  canvas.height = height;
-  const ctx = canvas.getContext('2d');
-  if (!ctx) return null;
-  ctx.drawImage(image, 0, 0, width, height);
-  const imageData = ctx.getImageData(0, 0, width, height);
-  const { data } = imageData;
-  const heights = new Float32Array(width * height);
-  for (let i = 0; i < data.length; i += 4) {
-    const r = data[i];
-    const g = data[i + 1];
-    const b = data[i + 2];
-    const lum = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
-    heights[i / 4] = Math.pow(lum, 1.1);
-  }
-  return { heights, width, height };
-}
-
-function drawHeightmapPreview(ctx, width, height, image) {
-  const map = buildHeightmap(image, width, height);
-  if (!map) return;
-  const imageData = ctx.createImageData(width, height);
-  const { data } = imageData;
-  map.heights.forEach((value, index) => {
-    const shade = Math.round(value * 255);
-    const offset = index * 4;
-    data[offset] = shade;
-    data[offset + 1] = shade;
-    data[offset + 2] = shade;
-    data[offset + 3] = 255;
-  });
-  ctx.putImageData(imageData, 0, 0);
-}
-
-function drawModelPreview(ctx, width, height, image) {
-  const map = buildHeightmap(image, width, height);
-  if (!map) return;
-  const imageData = ctx.createImageData(width, height);
-  const { data } = imageData;
-  const { heights } = map;
-  const light = { x: 0.6, y: 0.6, z: 0.5 };
-  const lightLength = Math.hypot(light.x, light.y, light.z);
-  const lx = light.x / lightLength;
-  const ly = light.y / lightLength;
-  const lz = light.z / lightLength;
-  const strength = 3.2;
-
-  for (let y = 0; y < height; y += 1) {
-    for (let x = 0; x < width; x += 1) {
-      const index = y * width + x;
-      const left = heights[index - 1] ?? heights[index];
-      const right = heights[index + 1] ?? heights[index];
-      const up = heights[index - width] ?? heights[index];
-      const down = heights[index + width] ?? heights[index];
-      const dx = (right - left) * strength;
-      const dy = (down - up) * strength;
-      const nx = -dx;
-      const ny = -dy;
-      const nz = 1;
-      const nLength = Math.hypot(nx, ny, nz) || 1;
-      const dot = Math.max(0, (nx * lx + ny * ly + nz * lz) / nLength);
-      const ambient = 0.35;
-      const diffuse = 0.65 * dot;
-      const heightBoost = 0.55 + 0.45 * heights[index];
-      const shade = Math.min(1, (ambient + diffuse) * heightBoost);
-      const base = Math.round(220 * shade);
-      const offset = index * 4;
-      data[offset] = Math.min(255, Math.round(base * 0.95));
-      data[offset + 1] = base;
-      data[offset + 2] = Math.min(255, Math.round(base * 1.05));
-      data[offset + 3] = 255;
-    }
-  }
-  ctx.putImageData(imageData, 0, 0);
-}
-
 function loadWoodTexture(url) {
   return new Promise((resolve, reject) => {
     if (!url) {
@@ -582,7 +491,9 @@ function CncProcessingPage() {
   }, [carvedPolylines, showWoodPreview, viewBox, woodSurface, woodTextureRevision]);
 
   useEffect(() => {
-    if (!showHeightmapPreview && !showModelPreview) return;
+    if ((!showHeightmapPreview && !showModelPreview) || !carvedPolylines.length) return;
+    if (!viewBox) return;
+    const mode = showModelPreview ? 'model' : 'heightmap';
     const canvases = [
       showHeightmapPreview ? heightmapCanvasRef.current : null,
       showHeightmapPreview ? modalHeightmapCanvasRef.current : null,
@@ -591,56 +502,22 @@ function CncProcessingPage() {
     ].filter(Boolean);
     if (canvases.length === 0) return;
 
-    let isActive = true;
-    const targetWidth = 640;
-    const targetHeight = 360;
-    const drawFallback = () => {
-      if (!viewBox || !carvedPolylines.length) return;
-      const mode = showModelPreview ? 'model' : 'heightmap';
-      canvases.forEach((canvas) => {
-        const ctx = canvas.getContext('2d');
-        if (!ctx) return;
-        canvas.width = targetWidth;
-        canvas.height = targetHeight;
-        drawReliefPreview(ctx, targetWidth, targetHeight, viewBox, carvedPolylines, mode);
-      });
-    };
+    canvases.forEach((canvas) => {
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
 
-    const drawFromImage = async () => {
-      try {
-        const image = await loadSourceImage(sourcePreviewUrl);
-        if (!isActive || !image) return;
-        canvases.forEach((canvas) => {
-          const ctx = canvas.getContext('2d');
-          if (!ctx) return;
-          canvas.width = targetWidth;
-          canvas.height = targetHeight;
-          if (showModelPreview) {
-            drawModelPreview(ctx, targetWidth, targetHeight, image);
-          } else {
-            drawHeightmapPreview(ctx, targetWidth, targetHeight, image);
-          }
-        });
-      } catch (err) {
-        if (isActive) drawFallback();
-      }
-    };
+      const targetWidth = 640;
+      const targetHeight = 360;
+      canvas.width = targetWidth;
+      canvas.height = targetHeight;
 
-    if (sourcePreviewUrl) {
-      drawFromImage();
-    } else {
-      drawFallback();
-    }
-
-    return () => {
-      isActive = false;
-    };
+      drawReliefPreview(ctx, targetWidth, targetHeight, viewBox, carvedPolylines, mode);
+    });
   }, [
     carvedPolylines,
     showHeightmapPreview,
     showModelPreview,
     viewBox,
-    sourcePreviewUrl,
     resultConversionType,
   ]);
 
@@ -1082,7 +959,7 @@ function CncProcessingPage() {
               <div className="rounded-md border border-slate-200 bg-slate-50 p-3">
                 <p className="text-xs font-medium text-slate-600">2.5D heightmap preview</p>
                 <p className="mt-1 text-[11px] text-slate-500">
-                  Grayscale heightmap derived from the source image or fallback outlines.
+                  Height impressions derived from the processed outlines.
                 </p>
                 <button
                   type="button"
@@ -1105,7 +982,7 @@ function CncProcessingPage() {
               <div className="rounded-md border border-slate-200 bg-slate-50 p-3">
                 <p className="text-xs font-medium text-slate-600">3D model preview</p>
                 <p className="mt-1 text-[11px] text-slate-500">
-                  Relief shading derived from the heightmap to visualize depth.
+                  Relief shading to visualize raised/lowered surfaces.
                 </p>
                 <button
                   type="button"
