@@ -27,6 +27,7 @@ import {
   normalizeInputValue,
 } from '../utils/jsonValueFormatting.js';
 import normalizeRelationKey from '../utils/normalizeRelationKey.js';
+import getRelationRowFromMap from '../utils/getRelationRowFromMap.js';
 
 const DEFAULT_RECEIPT_TYPES = ['B2C', 'B2B_SALE', 'B2B_PURCHASE', 'STOCK_QR'];
 
