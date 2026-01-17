@@ -117,6 +117,7 @@ if (!haveRTL) {
 
     assert.ok(screen.getByText('CNC Converter'));
     assert.ok(screen.getByLabelText('Source file'));
+    assert.ok(screen.getByLabelText('Spindle speed (RPM)'));
     assert.ok(screen.getByRole('button', { name: 'Start conversion' }));
 
     await cleanupAll();

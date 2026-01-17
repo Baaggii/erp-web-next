@@ -1,5 +1,6 @@
 import React, { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { useToast } from '../context/ToastContext.jsx';
+import toolLibrary from '../data/toolLibrary.js';
 import { API_BASE } from '../utils/apiBase.js';
 
 const processingOptions = [
@@ -11,45 +12,6 @@ const processingOptions = [
 const outputOptions = [
   { value: 'gcode', label: 'G-code' },
   { value: 'dxf', label: 'DXF' },
-];
-
-const toolLibrary = [
-  {
-    id: 'flat-3',
-    name: 'Flat Endmill 3mm',
-    type: 'flat',
-    diameterMm: 3,
-    maxDepthMm: 6,
-  },
-  {
-    id: 'flat-6',
-    name: 'Flat Endmill 6mm',
-    type: 'flat',
-    diameterMm: 6,
-    maxDepthMm: 10,
-  },
-  {
-    id: 'ball-3',
-    name: 'Ball Nose 3mm',
-    type: 'ball',
-    diameterMm: 3,
-    maxDepthMm: 6,
-  },
-  {
-    id: 'ball-6',
-    name: 'Ball Nose 6mm',
-    type: 'ball',
-    diameterMm: 6,
-    maxDepthMm: 10,
-  },
-  {
-    id: 'vbit-60',
-    name: 'V-Bit 60°',
-    type: 'vbit',
-    diameterMm: 6,
-    angleDeg: 60,
-    maxDepthMm: 6,
-  },
 ];
 
 const supportedExtensions = ['.png', '.jpg', '.jpeg', '.svg', '.dxf', '.stl'];
@@ -107,6 +69,7 @@ const defaultCamParams = {
   maxStepDownMm: 1.5,
   stepOverPercent: 40,
   safeHeightMm: 5,
+  spindleSpeed: 12000,
 };
 
 function isSupportedFile(file) {
@@ -137,6 +100,38 @@ function formatDimension(value) {
 function getToolStrokeWidth(diameterMm) {
   if (!Number.isFinite(diameterMm)) return 0.8;
   return Math.max(0.6, diameterMm * 0.35);
+}
+
+function getToolShapeLabel(shape) {
+  if (!shape) return 'Unknown';
+  if (shape === 'flat') return 'Flat';
+  if (shape === 'ball') return 'Ball nose';
+  if (shape === 'vbit') return 'V-bit';
+  return shape;
+}
+
+function ToolShapePreview({ shape, diameterMm }) {
+  const stroke = '#0f172a';
+  const fill = '#e2e8f0';
+  return (
+    <svg viewBox="0 0 80 80" className="h-12 w-12">
+      <rect x="2" y="2" width="76" height="76" rx="12" fill="#f8fafc" stroke="#e2e8f0" />
+      {shape === 'vbit' ? (
+        <polygon points="40,18 62,58 18,58" fill={fill} stroke={stroke} strokeWidth="2" />
+      ) : (
+        <circle cx="40" cy="40" r="20" fill={fill} stroke={stroke} strokeWidth="2" />
+      )}
+      <text
+        x="40"
+        y="70"
+        fontSize="10"
+        textAnchor="middle"
+        fill={stroke}
+      >
+        {Number.isFinite(diameterMm) ? `${diameterMm}mm` : '--'}
+      </text>
+    </svg>
+  );
 }
 
 function parseViewBox(viewBox) {
@@ -487,6 +482,7 @@ function CncProcessingPage() {
   const [keepAspectRatio, setKeepAspectRatio] = useState(true);
   const [feedRateXY, setFeedRateXY] = useState(String(defaultCamParams.feedRateXY));
   const [feedRateZ, setFeedRateZ] = useState(String(defaultCamParams.feedRateZ));
+  const [spindleSpeed, setSpindleSpeed] = useState(String(defaultCamParams.spindleSpeed));
   const [maxStepDownMm, setMaxStepDownMm] = useState(
     String(defaultCamParams.maxStepDownMm),
   );
@@ -626,6 +622,18 @@ function CncProcessingPage() {
       setToolDiameterOverrideMm(String(selectedTool.diameterMm));
     }
   }, [toolDiameterOverrideEnabled, selectedTool, toolDiameterOverrideMm]);
+
+  useEffect(() => {
+    if (!selectedTool) {
+      setFeedRateXY(String(defaultCamParams.feedRateXY));
+      setFeedRateZ(String(defaultCamParams.feedRateZ));
+      setSpindleSpeed(String(defaultCamParams.spindleSpeed));
+      return;
+    }
+    setFeedRateXY(String(selectedTool.defaultFeedRateXY ?? defaultCamParams.feedRateXY));
+    setFeedRateZ(String(selectedTool.defaultFeedRateZ ?? defaultCamParams.feedRateZ));
+    setSpindleSpeed(String(selectedTool.defaultSpindleSpeed ?? defaultCamParams.spindleSpeed));
+  }, [selectedTool]);
 
   useEffect(() => {
     let isActive = true;
@@ -976,6 +984,7 @@ function CncProcessingPage() {
     }
     formData.append('feedRateXY', feedRateXY);
     formData.append('feedRateZ', feedRateZ);
+    formData.append('spindleSpeed', spindleSpeed);
     formData.append('maxStepDownMm', maxStepDownMm);
     formData.append('stepOverPercent', stepOverPercent);
     formData.append('safeHeightMm', safeHeightMm);
@@ -1040,6 +1049,7 @@ function CncProcessingPage() {
           operations: operationsPayload.length ? operationsPayload : undefined,
           feedRateXY,
           feedRateZ,
+          spindleSpeed,
           maxStepDownMm,
           stepOverPercent,
           safeHeightMm,
@@ -1241,10 +1251,10 @@ function CncProcessingPage() {
                 </p>
               </div>
               <span className="text-[11px] text-slate-500">
-                {selectedTool ? selectedTool.type.toUpperCase() : 'LEGACY'}
+                {selectedTool ? selectedTool.shape.toUpperCase() : 'LEGACY'}
               </span>
             </div>
-            <div className="mt-4 grid gap-4 md:grid-cols-3">
+            <div className="mt-4 grid gap-4 md:grid-cols-4">
               <label className="text-xs text-slate-600">
                 Tool
                 <select
@@ -1260,6 +1270,23 @@ function CncProcessingPage() {
                   ))}
                 </select>
               </label>
+              <div className="space-y-2 text-xs text-slate-600">
+                <span className="font-medium text-slate-700">Cutter profile</span>
+                <div className="flex items-center gap-3 rounded-md border border-slate-200 bg-white px-3 py-2">
+                  <ToolShapePreview
+                    shape={selectedTool?.shape}
+                    diameterMm={effectiveToolDiameter || selectedTool?.diameterMm}
+                  />
+                  <div className="space-y-1">
+                    <p className="text-xs font-semibold text-slate-700">
+                      {getToolShapeLabel(selectedTool?.shape)}
+                    </p>
+                    <p className="text-[11px] text-slate-500">
+                      Flute: {selectedTool?.fluteLengthMm ? `${selectedTool.fluteLengthMm}mm` : '—'}
+                    </p>
+                  </div>
+                </div>
+              </div>
               <label className="text-xs text-slate-600">
                 Diameter (mm)
                 <input
@@ -1420,6 +1447,17 @@ function CncProcessingPage() {
                   step="1"
                   value={feedRateZ}
                   onChange={(event) => setFeedRateZ(event.target.value)}
+                  className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-700"
+                />
+              </label>
+              <label className="text-xs text-slate-600">
+                Spindle speed (RPM)
+                <input
+                  type="number"
+                  min="1000"
+                  step="100"
+                  value={spindleSpeed}
+                  onChange={(event) => setSpindleSpeed(event.target.value)}
                   className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-700"
                 />
               </label>
