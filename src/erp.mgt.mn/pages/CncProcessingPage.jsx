@@ -254,12 +254,8 @@ function drawWoodPattern(ctx, width, height, surface, texture) {
   }
 }
 
-function drawReliefPreview(ctx, width, height, viewBox, polylines, mode) {
-  if (!viewBox || !polylines?.length) return;
-  ctx.clearRect(0, 0, width, height);
-  ctx.fillStyle = mode === 'model' ? '#e2e8f0' : '#f8fafc';
-  ctx.fillRect(0, 0, width, height);
-
+function createPreviewTransform(viewBox, width, height) {
+  if (!viewBox) return null;
   const scale = Math.min(width / viewBox.width, height / viewBox.height);
   const offsetX = (width - viewBox.width * scale) / 2 - viewBox.minX * scale;
   const offsetY = (height - viewBox.height * scale) / 2 - viewBox.minY * scale;
@@ -267,6 +263,38 @@ function drawReliefPreview(ctx, width, height, viewBox, polylines, mode) {
   const rectY = viewBox.minY * scale + offsetY;
   const rectWidth = viewBox.width * scale;
   const rectHeight = viewBox.height * scale;
+  const mapPoint = (point, yAxis = 'down') => {
+    const normalizedY =
+      yAxis === 'up'
+        ? viewBox.minY + viewBox.height - (point.y - viewBox.minY)
+        : point.y;
+    return {
+      x: point.x * scale + offsetX,
+      y: normalizedY * scale + offsetY,
+    };
+  };
+  return {
+    scale,
+    offsetX,
+    offsetY,
+    rectX,
+    rectY,
+    rectWidth,
+    rectHeight,
+    mapPoint,
+  };
+}
+
+function drawReliefPreview(ctx, width, height, viewBox, polylines, mode, options = {}) {
+  if (!viewBox || !polylines?.length) return;
+  const transform = createPreviewTransform(viewBox, width, height);
+  if (!transform) return;
+  ctx.clearRect(0, 0, width, height);
+  ctx.fillStyle = mode === 'model' ? '#e2e8f0' : '#f8fafc';
+  ctx.fillRect(0, 0, width, height);
+
+  const { rectX, rectY, rectWidth, rectHeight } = transform;
+  const yAxis = options?.yAxis || 'down';
 
   ctx.lineJoin = 'round';
   ctx.lineCap = 'round';
@@ -289,12 +317,13 @@ function drawReliefPreview(ctx, width, height, viewBox, polylines, mode) {
       if (!polyline.length) return;
       ctx.beginPath();
       polyline.forEach((point, index) => {
-        const x = point.x * scale + offsetX + shift;
-        const y = point.y * scale + offsetY + shift;
+        const { x, y } = transform.mapPoint(point, yAxis);
+        const shiftedX = x + shift;
+        const shiftedY = y + shift;
         if (index === 0) {
-          ctx.moveTo(x, y);
+          ctx.moveTo(shiftedX, shiftedY);
         } else {
-          ctx.lineTo(x, y);
+          ctx.lineTo(shiftedX, shiftedY);
         }
       });
       ctx.stroke();
@@ -311,8 +340,7 @@ function drawReliefPreview(ctx, width, height, viewBox, polylines, mode) {
     if (!polyline.length) return;
     ctx.beginPath();
     polyline.forEach((point, index) => {
-      const x = point.x * scale + offsetX;
-      const y = point.y * scale + offsetY;
+      const { x, y } = transform.mapPoint(point, yAxis);
       if (index === 0) {
         ctx.moveTo(x, y);
       } else {
@@ -330,12 +358,11 @@ function drawReliefPreview(ctx, width, height, viewBox, polylines, mode) {
     if (!polyline.length) return;
     ctx.beginPath();
     polyline.forEach((point, index) => {
-      const x = point.x * scale + offsetX - 1;
-      const y = point.y * scale + offsetY - 1;
+      const { x, y } = transform.mapPoint(point, yAxis);
       if (index === 0) {
-        ctx.moveTo(x, y);
+        ctx.moveTo(x - 1, y - 1);
       } else {
-        ctx.lineTo(x, y);
+        ctx.lineTo(x - 1, y - 1);
       }
     });
     ctx.stroke();
@@ -350,29 +377,31 @@ function drawReliefPreview(ctx, width, height, viewBox, polylines, mode) {
 
 function drawHeightFieldSurface(ctx, width, height, viewBox, heightField, meta, options) {
   if (!viewBox || !heightField || !meta) return;
+  const transform = createPreviewTransform(viewBox, width, height);
+  if (!transform) return;
   const { cols, rows } = meta;
   if (!cols || !rows) return;
   ctx.clearRect(0, 0, width, height);
 
-  const scale = Math.min(width / viewBox.width, height / viewBox.height);
-  const offsetX = (width - viewBox.width * scale) / 2 - viewBox.minX * scale;
-  const offsetY = (height - viewBox.height * scale) / 2 - viewBox.minY * scale;
-  const rectX = viewBox.minX * scale + offsetX;
-  const rectY = viewBox.minY * scale + offsetY;
-  const rectWidth = viewBox.width * scale;
-  const rectHeight = viewBox.height * scale;
+  const { rectX, rectY, rectWidth, rectHeight } = transform;
   const materialWidthMm = Number(options?.materialWidthMm ?? meta.widthMm);
   const materialHeightMm = Number(options?.materialHeightMm ?? meta.heightMm);
   const materialRatio =
-    Number.isFinite(materialWidthMm) && materialWidthMm > 0
-      ? materialWidthMm / (materialHeightMm || 1)
+    Number.isFinite(meta.aspectRatio) && meta.aspectRatio > 0
+      ? meta.aspectRatio
+      : Number.isFinite(materialWidthMm) && materialWidthMm > 0
+          ? materialWidthMm / (materialHeightMm || 1)
       : null;
-  const baseCellHeight = rectHeight / rows;
-  const baseCellWidth = rectWidth / cols;
-  const cellHeight = materialRatio
-    ? Math.min(baseCellHeight, rectWidth / (cols * materialRatio))
-    : baseCellHeight;
-  const cellWidth = materialRatio ? cellHeight * materialRatio : baseCellWidth;
+  let cellWidth = rectWidth / cols;
+  let cellHeight = rectHeight / rows;
+  if (materialRatio) {
+    cellHeight = rectHeight / rows;
+    cellWidth = cellHeight * materialRatio;
+    if (cellWidth * cols > rectWidth) {
+      cellWidth = rectWidth / cols;
+      cellHeight = materialRatio ? cellWidth / materialRatio : cellHeight;
+    }
+  }
   const gridWidth = cellWidth * cols;
   const gridHeight = cellHeight * rows;
   const gridOffsetX = rectX + (rectWidth - gridWidth) / 2;
@@ -811,16 +840,10 @@ function CncProcessingPage() {
 
       drawWoodPattern(ctx, targetWidth, targetHeight, woodSurface, texture);
 
-      const scale = Math.min(
-        targetWidth / viewBox.width,
-        targetHeight / viewBox.height,
-      );
-      const offsetX = (targetWidth - viewBox.width * scale) / 2 - viewBox.minX * scale;
-      const offsetY = (targetHeight - viewBox.height * scale) / 2 - viewBox.minY * scale;
-      const rectX = viewBox.minX * scale + offsetX;
-      const rectY = viewBox.minY * scale + offsetY;
-      const rectWidth = viewBox.width * scale;
-      const rectHeight = viewBox.height * scale;
+      const transform = createPreviewTransform(viewBox, targetWidth, targetHeight);
+      if (!transform) return;
+      const { rectX, rectY, rectWidth, rectHeight } = transform;
+      const yAxis = preview?.heightFieldMeta?.yAxis || 'down';
 
       ctx.lineJoin = 'round';
       ctx.lineCap = 'round';
@@ -834,8 +857,7 @@ function CncProcessingPage() {
         if (!polyline.length) return;
         ctx.beginPath();
         polyline.forEach((point, index) => {
-          const x = point.x * scale + offsetX;
-          const y = point.y * scale + offsetY;
+          const { x, y } = transform.mapPoint(point, yAxis);
           if (index === 0) {
             ctx.moveTo(x, y);
           } else {
@@ -905,7 +927,9 @@ function CncProcessingPage() {
         return;
       }
 
-      drawReliefPreview(ctx, targetWidth, targetHeight, viewBox, carvedPolylines, mode);
+      drawReliefPreview(ctx, targetWidth, targetHeight, viewBox, carvedPolylines, mode, {
+        yAxis: preview?.heightFieldMeta?.yAxis,
+      });
     });
   }, [
     carvedPolylines,
