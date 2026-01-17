@@ -26,7 +26,6 @@ import {
 import extractCombinationFilterValue from '../utils/extractCombinationFilterValue.js';
 import selectDisplayFieldsForRelation from '../utils/selectDisplayFieldsForRelation.js';
 import { formatJsonList, normalizeInputValue } from '../utils/jsonValueFormatting.js';
-import normalizeRelationKey from '../utils/normalizeRelationKey.js';
 
 const currencyFmt = new Intl.NumberFormat('en-US', {
   minimumFractionDigits: 2,
@@ -436,10 +435,6 @@ function InlineTransactionTable(
     (field, rawValue) => {
       const map = getRelationRowMap(field);
       if (!map || rawValue === undefined || rawValue === null) return null;
-      const normalizedKey = normalizeRelationKey(rawValue);
-      if (normalizedKey !== null && Object.prototype.hasOwnProperty.call(map, normalizedKey)) {
-        return map[normalizedKey];
-      }
       if (Object.prototype.hasOwnProperty.call(map, rawValue)) {
         return map[rawValue];
       }
@@ -697,11 +692,7 @@ function InlineTransactionTable(
         if (!opt) return false;
         const rawValue =
           typeof opt.value === 'object' && opt.value !== null ? opt.value.value : opt.value;
-        const normalizedKey = normalizeRelationKey(rawValue);
-        const row =
-          (normalizedKey !== null ? columnRows?.[normalizedKey] : null) ??
-          columnRows?.[rawValue] ??
-          columnRows?.[String(rawValue)];
+        const row = columnRows?.[rawValue] ?? columnRows?.[String(rawValue)];
         if (!row || typeof row !== 'object') return false;
         const targetValue = getRowValueCaseInsensitive(row, targetColumn);
         if (targetValue === undefined || targetValue === null || targetValue === '') {
