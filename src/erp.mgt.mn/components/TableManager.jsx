@@ -6885,7 +6885,51 @@ const TableManager = forwardRef(function TableManager({
               '</tr>',
           )
           .join('');
-        return `<table class="print-main-table"><thead><tr>${header}</tr></thead><tbody>${body}</tbody></table>`;
+        const sumColumns = used.filter(
+          (c) =>
+            c === 'TotalCur' ||
+            c === 'TotalAmt' ||
+            totalCurrencySet.has(c) ||
+            totalAmountSet.has(c),
+        );
+        const sums = {};
+        gridRows.forEach((row) => {
+          sumColumns.forEach((col) => {
+            const raw = row?.[col];
+            const parsed = Number(String(raw ?? 0).replace(',', '.'));
+            if (Number.isFinite(parsed)) {
+              sums[col] = (sums[col] || 0) + parsed;
+            }
+          });
+        });
+        const totalRow = [
+          '<tr>',
+          `<td><strong>НИЙТ</strong></td>`,
+          ...used.slice(1).map((col) => {
+            if (sumColumns.includes(col)) {
+              const value = sums[col] || 0;
+              const formatted =
+                col === 'TotalCur' || totalCurrencySet.has(col)
+                  ? currencyFmt.format(value)
+                  : value;
+              return `<td><strong>${formatted}</strong></td>`;
+            }
+            return '<td></td>';
+          }),
+          '</tr>',
+        ].join('');
+        const countRow =
+          used.length === 1
+            ? `<tr><td><strong>мөрийн тоо: ${gridRows.length}</strong></td></tr>`
+            : [
+                '<tr>',
+                `<td><strong>мөрийн тоо</strong></td>`,
+                `<td><strong>${gridRows.length}</strong></td>`,
+                ...used.slice(2).map(() => '<td></td>'),
+                '</tr>',
+              ].join('');
+        const footer = `<tfoot>${totalRow}${countRow}</tfoot>`;
+        return `<table class="print-main-table"><thead><tr>${header}</tr></thead><tbody>${body}</tbody>${footer}</table>`;
       };
 
       const signatureHtml = (cols, formVals) => {
@@ -7019,6 +7063,8 @@ const TableManager = forwardRef(function TableManager({
       relationOpts,
       refRows,
       selectedRowForPrint,
+      totalAmountSet,
+      totalCurrencySet,
       userSettings,
     ],
   );
