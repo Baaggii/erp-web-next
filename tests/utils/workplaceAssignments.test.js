@@ -32,3 +32,35 @@ test('normalizeWorkplaceAssignments keeps bigint identifiers', () => {
     },
   ]);
 });
+
+test('normalizeWorkplaceAssignments keeps multiple assignments for the same workplace', () => {
+  const { assignments } = normalizeWorkplaceAssignments([
+    {
+      company_id: 1,
+      branch_id: 10,
+      workplace_id: 5,
+      workplace_name: 'North',
+    },
+    {
+      company_id: 1,
+      branch_id: 11,
+      workplace_id: 5,
+      workplace_name: 'North',
+    },
+  ]);
+
+  assert.deepEqual(assignments, [
+    {
+      company_id: 1,
+      branch_id: 10,
+      workplace_id: 5,
+      workplace_name: 'North',
+    },
+    {
+      company_id: 1,
+      branch_id: 11,
+      workplace_id: 5,
+      workplace_name: 'North',
+    },
+  ]);
+});
