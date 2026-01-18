@@ -3753,7 +3753,6 @@ export function Header({
       : [];
     const labels = [];
     const seenComposite = new Set();
-    const seenWorkplaceIds = new Set();
     const seenSessionIds = new Set();
     const buildPositionSuffix = (workplaceId) => {
       if (workplaceId === null || workplaceId === undefined) return null;
@@ -3790,35 +3789,39 @@ export function Header({
           ? assignment.workplace_id
           : assignment.workplaceId;
       const normalizedWorkplaceId = parseId(workplaceId);
-      const compositeKey = `${normalizedWorkplaceId ?? ''}`;
+      const compositeKey = [
+        normalizedWorkplaceId ?? '',
+        normalizeText(assignment.workplace_name ?? assignment.workplaceName) ?? '',
+        normalizeText(assignment.department_name ?? assignment.departmentName) ?? '',
+        normalizeText(assignment.branch_name ?? assignment.branchName) ?? '',
+      ].join('|');
       if (seenComposite.has(compositeKey)) return;
-      if (normalizedWorkplaceId != null && seenWorkplaceIds.has(normalizedWorkplaceId)) {
-        return;
-      }
       seenComposite.add(compositeKey);
-      if (normalizedWorkplaceId != null) {
-        seenWorkplaceIds.add(normalizedWorkplaceId);
-      }
       const idParts = [];
-      if (assignment.workplace_id != null) {
-        idParts.push(`#${assignment.workplace_id}`);
+      if (normalizedWorkplaceId != null) {
+        idParts.push(`#${normalizedWorkplaceId}`);
       }
       const idLabel = idParts.join(' · ');
-      const baseName = assignment.workplace_name
-        ? String(assignment.workplace_name).trim()
+      const baseName = assignment.workplace_name ?? assignment.workplaceName
+        ? String(assignment.workplace_name ?? assignment.workplaceName).trim()
         : '';
       const contextParts = [];
-      if (assignment.department_name) {
-        contextParts.push(String(assignment.department_name).trim());
+      if (assignment.department_name ?? assignment.departmentName) {
+        contextParts.push(
+          String(assignment.department_name ?? assignment.departmentName).trim(),
+        );
       }
-      if (assignment.branch_name) {
-        contextParts.push(String(assignment.branch_name).trim());
+      if (assignment.branch_name ?? assignment.branchName) {
+        contextParts.push(String(assignment.branch_name ?? assignment.branchName).trim());
       }
       const context = contextParts.filter(Boolean).join(' / ');
       const positionSuffix = buildPositionSuffix(normalizedWorkplaceId ?? workplaceId);
       const labelParts = [idLabel, baseName, context, positionSuffix].filter(
         (part) => part && part.length,
       );
+      if (!labelParts.length && normalizedWorkplaceId != null) {
+        labelParts.push(`Workplace #${normalizedWorkplaceId}`);
+      }
       if (labelParts.length) {
         labels.push(labelParts.join(' – '));
       }
@@ -3828,15 +3831,15 @@ export function Header({
       if (session.workplace_id != null) {
         idParts.push(`#${session.workplace_id}`);
       }
-      const baseName = session.workplace_name
-        ? String(session.workplace_name).trim()
+      const baseName = session.workplace_name ?? session.workplaceName
+        ? String(session.workplace_name ?? session.workplaceName).trim()
         : '';
       const contextParts = [];
-      if (session.department_name) {
-        contextParts.push(String(session.department_name).trim());
+      if (session.department_name ?? session.departmentName) {
+        contextParts.push(String(session.department_name ?? session.departmentName).trim());
       }
-      if (session.branch_name) {
-        contextParts.push(String(session.branch_name).trim());
+      if (session.branch_name ?? session.branchName) {
+        contextParts.push(String(session.branch_name ?? session.branchName).trim());
       }
       const context = contextParts.filter(Boolean).join(' / ');
       const positionSuffix = buildPositionSuffix(session.workplace_id ?? session.workplaceId);
