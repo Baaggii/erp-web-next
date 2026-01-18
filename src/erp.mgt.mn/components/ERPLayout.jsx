@@ -3791,9 +3791,9 @@ export function Header({
       const normalizedWorkplaceId = parseId(workplaceId);
       const compositeKey = [
         normalizedWorkplaceId ?? '',
-        normalizeText(assignment.workplace_name ?? assignment.workplaceName) ?? '',
-        normalizeText(assignment.department_name ?? assignment.departmentName) ?? '',
-        normalizeText(assignment.branch_name ?? assignment.branchName) ?? '',
+        normalizeText(assignment.workplace_name) ?? '',
+        normalizeText(assignment.department_name) ?? '',
+        normalizeText(assignment.branch_name) ?? '',
       ].join('|');
       if (seenComposite.has(compositeKey)) return;
       seenComposite.add(compositeKey);
