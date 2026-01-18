@@ -107,10 +107,12 @@ export function normalizeEmploymentSession(session, assignments = []) {
   const normalizedWorkplaceId = normalizeNumericId(
     session.workplace_id ?? session.workplaceId,
   );
-  const fallbackWorkplaceId =
-    normalizedWorkplaceId ??
-    (normalizedAssignments.find((item) => item.workplace_id !== null)?.workplace_id ??
-      null);
+  let fallbackWorkplaceId = normalizedWorkplaceId ?? null;
+  if (fallbackWorkplaceId === null) {
+    if (normalizedAssignments.length === 1) {
+      fallbackWorkplaceId = normalizedAssignments[0]?.workplace_id ?? null;
+    }
+  }
 
   const fallbackDefaults = {
     ...session,
