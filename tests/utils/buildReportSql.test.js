@@ -74,21 +74,3 @@ test('buildReportSql applies table replacements', () => {
   assert.ok(sql.includes('FROM tmp_orders o'));
   assert.ok(sql.includes('JOIN tmp_customers c'));
 });
-
-test('buildReportSql replaces tables inside subqueries', () => {
-  const sql = buildReportSql(
-    {
-      from: {
-        table: '(SELECT * FROM orders WHERE orders.status = \"open\")',
-        alias: 'o',
-      },
-      select: [{ expr: 'o.id' }],
-    },
-    {
-      tableReplacements: {
-        orders: 'tmp_orders',
-      },
-    },
-  );
-  assert.ok(sql.includes('FROM (SELECT * FROM tmp_orders'));
-});

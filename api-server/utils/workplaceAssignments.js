@@ -18,7 +18,6 @@ export function normalizeNumericId(value) {
 
 export function normalizeWorkplaceAssignments(assignments = []) {
   const normalized = [];
-  const seen = new Set();
 
   assignments.forEach((assignment) => {
     if (!assignment || typeof assignment !== 'object') return;
@@ -27,10 +26,6 @@ export function normalizeWorkplaceAssignments(assignments = []) {
     );
 
     if (workplaceId === null) return;
-
-    const key = `${workplaceId}`;
-    if (seen.has(key)) return;
-    seen.add(key);
 
     const normalizedAssignment = {
       ...assignment,

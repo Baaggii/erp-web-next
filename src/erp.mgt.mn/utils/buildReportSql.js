@@ -9,25 +9,8 @@ export default function buildReportSql(definition = {}, options = {}) {
   if (!definition.from) throw new Error('definition.from is required');
   const { tableReplacements = {} } = options;
 
-  function escapeRegExp(value) {
-    return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  }
-
-  function replaceTableNames(value) {
-    let result = value;
-    Object.entries(tableReplacements || {}).forEach(([source, target]) => {
-      if (!source || !target) return;
-      const re = new RegExp(`\\b${escapeRegExp(source)}\\b`, 'g');
-      result = result.replace(re, target);
-    });
-    return result;
-  }
-
   function resolveTableName(table) {
-    if (!table) return table;
-    if (tableReplacements?.[table]) return tableReplacements[table];
-    if (/\s|\(|\)/.test(table)) return replaceTableNames(table);
-    return table;
+    return tableReplacements?.[table] || table;
   }
 
   function build(def) {

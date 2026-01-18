@@ -14,39 +14,17 @@ function normalizeTenantFlags(flags) {
   return flags || {};
 }
 
-function extractTablesFromFragment(fragment, knownTables) {
-  if (!fragment || !knownTables?.length) return [];
-  const matches = [];
-  knownTables.forEach((table) => {
-    const re = new RegExp(`\\b${table}\\b`, 'i');
-    if (re.test(fragment)) matches.push(table);
-  });
-  return matches;
-}
-
-function collectTableEntries(definition, knownTables = []) {
+function collectTableEntries(definition) {
   const entries = [];
   if (definition?.from?.table) {
     entries.push({
       table: definition.from.table,
       alias: definition.from.alias,
     });
-    if (/\s|\(|\)/.test(definition.from.table)) {
-      extractTablesFromFragment(definition.from.table, knownTables).forEach(
-        (table) => {
-          entries.push({ table, alias: definition.from.alias });
-        },
-      );
-    }
   }
   (definition?.joins || []).forEach((join) => {
     if (!join?.table) return;
     entries.push({ table: join.table, alias: join.alias });
-    if (/\s|\(|\)/.test(join.table)) {
-      extractTablesFromFragment(join.table, knownTables).forEach((table) => {
-        entries.push({ table, alias: join.alias });
-      });
-    }
   });
   return entries;
 }
@@ -115,12 +93,9 @@ export default function buildTenantNormalizedProcedure(definition = {}) {
   if (!report) throw new Error('report definition is required');
 
   const flagsMap = normalizeTenantFlags(tenantTableFlags);
-  const knownTables = Object.keys(flagsMap || {});
   const allEntries = [
-    ...collectTableEntries(report, knownTables),
-    ...((report?.unions || []).flatMap((unionDef) =>
-      collectTableEntries(unionDef, knownTables),
-    )),
+    ...collectTableEntries(report),
+    ...((report?.unions || []).flatMap((unionDef) => collectTableEntries(unionDef))),
   ];
 
   const uniqueTables = Array.from(

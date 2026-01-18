@@ -69,26 +69,3 @@ test('buildTenantNormalizedProcedure replaces union tables and warns on unknown'
   assert.ok(sql.includes('JOIN unknown_table u'));
   assert.ok(warnings.some((msg) => msg.includes('unknown_table')));
 });
-
-test('buildTenantNormalizedProcedure normalizes tables in subquery FROM', () => {
-  const sql = buildTenantNormalizedProcedure({
-    name: 'orders_filtered',
-    report: {
-      from: {
-        table: '(SELECT * FROM orders WHERE orders.status = \"open\")',
-        alias: 'o',
-      },
-      select: [{ expr: 'o.id' }],
-    },
-    tenantTableFlags: {
-      orders: { isShared: 0 },
-    },
-  });
-
-  assert.ok(
-    sql.includes(
-      "CALL create_tenant_temp_table('orders', 'tmp_orders', session_company_id);",
-    ),
-  );
-  assert.ok(sql.includes('FROM (SELECT * FROM tmp_orders'));
-});

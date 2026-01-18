@@ -7298,7 +7298,42 @@ export async function callStoredProcedure(
     const rawCaps = Array.isArray(capRows) ? capRows[0]?.report_capabilities : null;
     const reportCapabilities = normalizeReportCapabilities(rawCaps);
 
-    return { row: first, reportCapabilities };
+    let lockCandidates = [];
+    if (session.collectUsedRows) {
+      try {
+        const [lockRows] = await conn.query('SELECT * FROM tmp_used_rows');
+        lockCandidates = Array.isArray(lockRows)
+          ? lockRows
+              .map((row) => {
+                if (!row || typeof row !== 'object') return null;
+                const tableName = row.src_table ?? row.table_name ?? row.tableName;
+                const recordId = row.record_id ?? row.recordId ?? row.id;
+                if (!tableName || recordId === undefined || recordId === null) {
+                  return null;
+                }
+                const candidate = {
+                  ...row,
+                  tableName: String(tableName).trim(),
+                  recordId: String(recordId),
+                };
+                if (row.usage_type !== undefined) {
+                  candidate.usageType = row.usage_type;
+                }
+                if (!candidate.table) {
+                  candidate.table = candidate.tableName;
+                }
+                return candidate;
+              })
+              .filter(Boolean)
+          : [];
+      } catch (err) {
+        if (err?.code !== 'ER_NO_SUCH_TABLE') {
+          throw err;
+        }
+      }
+    }
+
+    return { row: first, reportCapabilities, lockCandidates };
   } finally {
     conn.release();
   }
