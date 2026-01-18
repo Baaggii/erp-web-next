@@ -54,3 +54,41 @@ test('buildReportSql handles recursive aliases without hanging', () => {
   });
   assert.ok(sql.includes('SELECT'));
 });
+
+test('buildReportSql applies table replacements', () => {
+  const sql = buildReportSql(
+    {
+      from: { table: 'orders', alias: 'o' },
+      select: [{ expr: 'o.id' }],
+      joins: [
+        { table: 'customers', alias: 'c', on: 'o.customer_id = c.id' },
+      ],
+    },
+    {
+      tableReplacements: {
+        orders: 'tmp_orders',
+        customers: 'tmp_customers',
+      },
+    },
+  );
+  assert.ok(sql.includes('FROM tmp_orders o'));
+  assert.ok(sql.includes('JOIN tmp_customers c'));
+});
+
+test('buildReportSql replaces tables inside subqueries', () => {
+  const sql = buildReportSql(
+    {
+      from: {
+        table: '(SELECT * FROM orders WHERE orders.status = \"open\")',
+        alias: 'o',
+      },
+      select: [{ expr: 'o.id' }],
+    },
+    {
+      tableReplacements: {
+        orders: 'tmp_orders',
+      },
+    },
+  );
+  assert.ok(sql.includes('FROM (SELECT * FROM tmp_orders'));
+});
