@@ -3802,15 +3802,17 @@ export function Header({
         idParts.push(`#${normalizedWorkplaceId}`);
       }
       const idLabel = idParts.join(' · ');
-      const baseName = assignment.workplace_name
-        ? String(assignment.workplace_name).trim()
+      const baseName = assignment.workplace_name ?? assignment.workplaceName
+        ? String(assignment.workplace_name ?? assignment.workplaceName).trim()
         : '';
       const contextParts = [];
-      if (assignment.department_name) {
-        contextParts.push(String(assignment.department_name).trim());
+      if (assignment.department_name ?? assignment.departmentName) {
+        contextParts.push(
+          String(assignment.department_name ?? assignment.departmentName).trim(),
+        );
       }
-      if (assignment.branch_name) {
-        contextParts.push(String(assignment.branch_name).trim());
+      if (assignment.branch_name ?? assignment.branchName) {
+        contextParts.push(String(assignment.branch_name ?? assignment.branchName).trim());
       }
       const context = contextParts.filter(Boolean).join(' / ');
       const positionSuffix = buildPositionSuffix(normalizedWorkplaceId ?? workplaceId);
@@ -3829,15 +3831,15 @@ export function Header({
       if (session.workplace_id != null) {
         idParts.push(`#${session.workplace_id}`);
       }
-      const baseName = session.workplace_name
-        ? String(session.workplace_name).trim()
+      const baseName = session.workplace_name ?? session.workplaceName
+        ? String(session.workplace_name ?? session.workplaceName).trim()
         : '';
       const contextParts = [];
-      if (session.department_name) {
-        contextParts.push(String(session.department_name).trim());
+      if (session.department_name ?? session.departmentName) {
+        contextParts.push(String(session.department_name ?? session.departmentName).trim());
       }
-      if (session.branch_name) {
-        contextParts.push(String(session.branch_name).trim());
+      if (session.branch_name ?? session.branchName) {
+        contextParts.push(String(session.branch_name ?? session.branchName).trim());
       }
       const context = contextParts.filter(Boolean).join(' / ');
       const positionSuffix = buildPositionSuffix(session.workplace_id ?? session.workplaceId);
