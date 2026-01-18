@@ -57,9 +57,9 @@ export default function AppLayout({ children, title }) {
       const normalizedWorkplaceId = parseId(workplaceId);
       const labelKey = [
         normalizedWorkplaceId ?? '',
-        normalizeLabelPart(assignment.workplace_name ?? assignment.workplaceName),
-        normalizeLabelPart(assignment.department_name ?? assignment.departmentName),
-        normalizeLabelPart(assignment.branch_name ?? assignment.branchName),
+        normalizeLabelPart(assignment.workplace_name),
+        normalizeLabelPart(assignment.department_name),
+        normalizeLabelPart(assignment.branch_name),
       ].join('|');
       if (seenLabels.has(labelKey)) {
         return null;
