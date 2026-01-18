@@ -117,7 +117,6 @@ export function normalizeEmploymentSession(session, assignments = []) {
   };
 
   const hydratedAssignments = [];
-  const assignmentKeys = new Set();
   normalizedAssignments.forEach((assignment) => {
     const normalizedAssignment = buildNormalizedAssignment(
       assignment,
@@ -127,9 +126,6 @@ export function normalizeEmploymentSession(session, assignments = []) {
     if (!normalizedAssignment) {
       return;
     }
-    const key = `${normalizedAssignment.workplaceId ?? 'null'}`;
-    if (assignmentKeys.has(key)) return;
-    assignmentKeys.add(key);
     hydratedAssignments.push(normalizedAssignment);
   });
 
@@ -140,11 +136,7 @@ export function normalizeEmploymentSession(session, assignments = []) {
       { fallbackMeta: true },
     );
     if (fallbackAssignment) {
-      const key = `${fallbackAssignment.workplaceId ?? 'null'}`;
-      if (!assignmentKeys.has(key)) {
-        assignmentKeys.add(key);
-        hydratedAssignments.push(fallbackAssignment);
-      }
+      hydratedAssignments.push(fallbackAssignment);
     }
   }
 
