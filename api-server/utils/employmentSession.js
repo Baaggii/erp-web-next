@@ -104,7 +104,9 @@ export function normalizeEmploymentSession(session, assignments = []) {
 
   const { assignments: normalizedAssignments } =
     normalizeWorkplaceAssignments(assignments);
-  const normalizedWorkplaceId = normalizeNumericId(session.workplace_id);
+  const normalizedWorkplaceId = normalizeNumericId(
+    session.workplace_id ?? session.workplaceId,
+  );
   const fallbackWorkplaceId =
     normalizedWorkplaceId ??
     (normalizedAssignments.find((item) => item.workplace_id !== null)?.workplace_id ??
