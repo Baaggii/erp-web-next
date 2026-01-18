@@ -55,11 +55,7 @@ export default function normalizeEmploymentSession(session) {
     session.workplace_id ?? session.workplaceId,
   );
 
-  const fallbackWorkplaceId =
-    normalizedWorkplaceId ??
-    normalizedAssignments.find((assignment) => assignment.workplace_id !== null)
-      ?.workplace_id ??
-    null;
+  const fallbackWorkplaceId = normalizedWorkplaceId ?? null;
 
   return {
     ...session,

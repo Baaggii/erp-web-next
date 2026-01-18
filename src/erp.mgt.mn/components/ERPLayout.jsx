@@ -3752,8 +3752,7 @@ export function Header({
       ? session.workplace_assignments
       : [];
     const labels = [];
-    const seenComposite = new Set();
-    const seenSessionIds = new Set();
+    const seenWorkplaceIds = new Set();
     const buildPositionSuffix = (workplaceId) => {
       if (workplaceId === null || workplaceId === undefined) return null;
       const entry = workplacePositions?.[workplaceId];
@@ -3789,14 +3788,10 @@ export function Header({
           ? assignment.workplace_id
           : assignment.workplaceId;
       const normalizedWorkplaceId = parseId(workplaceId);
-      const compositeKey = [
-        normalizedWorkplaceId ?? '',
-        normalizeText(assignment.workplace_name) ?? '',
-        normalizeText(assignment.department_name) ?? '',
-        normalizeText(assignment.branch_name) ?? '',
-      ].join('|');
-      if (seenComposite.has(compositeKey)) return;
-      seenComposite.add(compositeKey);
+      if (normalizedWorkplaceId != null) {
+        if (seenWorkplaceIds.has(normalizedWorkplaceId)) return;
+        seenWorkplaceIds.add(normalizedWorkplaceId);
+      }
       const idParts = [];
       if (normalizedWorkplaceId != null) {
         idParts.push(`#${normalizedWorkplaceId}`);
