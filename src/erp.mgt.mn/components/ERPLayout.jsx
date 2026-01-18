@@ -3798,8 +3798,8 @@ export function Header({
       if (seenComposite.has(compositeKey)) return;
       seenComposite.add(compositeKey);
       const idParts = [];
-      if (assignment.workplace_id != null) {
-        idParts.push(`#${assignment.workplace_id}`);
+      if (normalizedWorkplaceId != null) {
+        idParts.push(`#${normalizedWorkplaceId}`);
       }
       const idLabel = idParts.join(' · ');
       const baseName = assignment.workplace_name
@@ -3817,6 +3817,9 @@ export function Header({
       const labelParts = [idLabel, baseName, context, positionSuffix].filter(
         (part) => part && part.length,
       );
+      if (!labelParts.length && normalizedWorkplaceId != null) {
+        labelParts.push(`Workplace #${normalizedWorkplaceId}`);
+      }
       if (labelParts.length) {
         labels.push(labelParts.join(' – '));
       }
