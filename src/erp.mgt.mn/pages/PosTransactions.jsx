@@ -29,6 +29,12 @@ import {
 } from '../utils/moduleAccess.js';
 import { withPosApiEndpointMetadata } from '../utils/posApiConfig.js';
 import {
+  mmToPixels,
+  normalizePrintNumber,
+  openPrintWindow,
+  resolvePrintSettings,
+} from '../utils/printUtils.js';
+import {
   isPlainRecord,
   assignArrayMetadata,
   cloneArrayWithMetadata,
@@ -3377,79 +3383,73 @@ export default function PosTransactionsPage() {
 
   function handlePrintEbarimtPreview() {
     if (!ebarimtPreview || !ebarimtQrImage) return;
-    const normalizePrintNumber = (value, fallback = null) => {
-      const parsed = Number.parseFloat(value);
-      if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
-      return parsed;
-    };
-    const receiptFontSize = normalizePrintNumber(generalConfig?.print?.receiptFontSize);
-    const receiptWidth = normalizePrintNumber(generalConfig?.print?.receiptWidth);
-    const receiptHeight = normalizePrintNumber(generalConfig?.print?.receiptHeight);
-    const receiptMargin = normalizePrintNumber(generalConfig?.print?.receiptMargin);
-    const fontSizeRule = receiptFontSize ? `${receiptFontSize}px` : 'inherit';
-    const pageWidth = receiptWidth ? `${receiptWidth}mm` : 'auto';
-    const pageHeight = receiptHeight ? `${receiptHeight}mm` : 'auto';
-    const pageMargin = receiptMargin ? `${receiptMargin}mm` : '0';
-    const pageSize =
-      receiptWidth && receiptHeight ? `${pageWidth} ${pageHeight}` : 'auto';
-    const sheetWidthRule = receiptWidth
-      ? `width:${pageWidth};max-width:${pageWidth};`
-      : 'width:100%;max-width:100%;';
-    const toPixels = (mm) => Math.round(mm * 3.7795);
+    const receiptWidth = normalizePrintNumber(generalConfig?.print?.receiptWidth, { min: 0.01 });
+    const receiptHeight = normalizePrintNumber(generalConfig?.print?.receiptHeight, { min: 0.01 });
+    const {
+      pageSizeRule,
+      pageMargin,
+      fontSize,
+      sheetWidthRule,
+    } = resolvePrintSettings({
+      printConfig: generalConfig?.print,
+      isReceipt: true,
+      receiptSheetWidthFallback: 'width:100%;max-width:100%;',
+    });
     const windowFeatures =
       receiptWidth && receiptHeight
-        ? `width=${toPixels(receiptWidth)},height=${toPixels(receiptHeight)}`
+        ? `width=${mmToPixels(receiptWidth)},height=${mmToPixels(receiptHeight)}`
         : undefined;
-    const printWindow = window.open('', '_blank', windowFeatures);
-    if (!printWindow) {
-      addToast('Unable to open print window', 'error');
-      return;
-    }
-    printWindow.document.open();
-    printWindow.document.write(
+    const html =
       '<!DOCTYPE html><html><head><title>Ebarimt receipt</title>' +
-        `<style>@page{size:${pageSize};margin:${pageMargin};}body{margin:0;font-family:sans-serif;font-size:${fontSizeRule};} .receipt-sheet{display:flex;flex-direction:column;align-items:center;gap:0.5rem;padding:${pageMargin};${sheetWidthRule}}</style>` +
-        '</head><body><div class="receipt-sheet"></div></body></html>',
-    );
-    printWindow.document.close();
-    const { document: doc } = printWindow;
-    const container = doc.querySelector('.receipt-sheet') || doc.body;
-    const createRow = (label, value) => {
-      if (!value) return null;
-      const row = doc.createElement('div');
-      row.textContent = `${label}: ${value}`;
-      return row;
-    };
-    const title = doc.createElement('h2');
-    title.textContent = 'Ebarimt receipt';
-    container.appendChild(title);
-    const billRow = createRow('Bill ID', ebarimtPreview.billId || '-');
-    if (billRow) container.appendChild(billRow);
-    if (ebarimtPreview.invoiceNo) {
-      const invoiceRow = createRow('Invoice No', ebarimtPreview.invoiceNo);
-      if (invoiceRow) container.appendChild(invoiceRow);
-    }
-    if (ebarimtPreview.status) {
-      const statusRow = createRow('Status', ebarimtPreview.status);
-      if (statusRow) container.appendChild(statusRow);
-    }
-    if (ebarimtPreview.lottery) {
-      const lotteryRow = createRow('Lottery', ebarimtPreview.lottery);
-      if (lotteryRow) container.appendChild(lotteryRow);
-    }
-    if (ebarimtPreview.errorMessage) {
-      const messageRow = createRow('Message', ebarimtPreview.errorMessage);
-      if (messageRow) container.appendChild(messageRow);
-    }
-    const img = doc.createElement('img');
-    img.src = ebarimtQrImage;
-    img.alt = 'Ebarimt QR code';
-    img.style.width = '260px';
-    img.style.height = '260px';
-    img.style.border = '1px solid #ccc';
-    img.style.padding = '0.5rem';
-    container.appendChild(img);
-    printWindow.focus();
+      `<style>@page{size:${pageSizeRule};margin:${pageMargin};}` +
+      `body{margin:0;font-family:sans-serif;font-size:${fontSize};}` +
+      `.receipt-sheet{display:flex;flex-direction:column;align-items:center;gap:0.5rem;padding:${pageMargin};${sheetWidthRule}}</style>` +
+      '</head><body><div class="receipt-sheet"></div></body></html>';
+    const printWindow = openPrintWindow({
+      html,
+      windowFeatures,
+      onOpenError: () => addToast('Unable to open print window', 'error'),
+      onReady: (win) => {
+        const { document: doc } = win;
+        const container = doc.querySelector('.receipt-sheet') || doc.body;
+        const createRow = (label, value) => {
+          if (!value) return null;
+          const row = doc.createElement('div');
+          row.textContent = `${label}: ${value}`;
+          return row;
+        };
+        const title = doc.createElement('h2');
+        title.textContent = 'Ebarimt receipt';
+        container.appendChild(title);
+        const billRow = createRow('Bill ID', ebarimtPreview.billId || '-');
+        if (billRow) container.appendChild(billRow);
+        if (ebarimtPreview.invoiceNo) {
+          const invoiceRow = createRow('Invoice No', ebarimtPreview.invoiceNo);
+          if (invoiceRow) container.appendChild(invoiceRow);
+        }
+        if (ebarimtPreview.status) {
+          const statusRow = createRow('Status', ebarimtPreview.status);
+          if (statusRow) container.appendChild(statusRow);
+        }
+        if (ebarimtPreview.lottery) {
+          const lotteryRow = createRow('Lottery', ebarimtPreview.lottery);
+          if (lotteryRow) container.appendChild(lotteryRow);
+        }
+        if (ebarimtPreview.errorMessage) {
+          const messageRow = createRow('Message', ebarimtPreview.errorMessage);
+          if (messageRow) container.appendChild(messageRow);
+        }
+        const img = doc.createElement('img');
+        img.src = ebarimtQrImage;
+        img.alt = 'Ebarimt QR code';
+        img.style.width = '260px';
+        img.style.height = '260px';
+        img.style.border = '1px solid #ccc';
+        img.style.padding = '0.5rem';
+        container.appendChild(img);
+      },
+    });
+    if (!printWindow) return;
     printWindow.print();
   }
 
