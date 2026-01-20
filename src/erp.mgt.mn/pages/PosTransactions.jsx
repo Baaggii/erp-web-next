@@ -3392,6 +3392,9 @@ export default function PosTransactionsPage() {
     const pageMargin = receiptMargin ? `${receiptMargin}mm` : '0';
     const pageSize =
       receiptWidth && receiptHeight ? `${pageWidth} ${pageHeight}` : 'auto';
+    const sheetWidthRule = receiptWidth
+      ? `width:${pageWidth};max-width:${pageWidth};`
+      : 'width:100%;max-width:100%;';
     const toPixels = (mm) => Math.round(mm * 3.7795);
     const windowFeatures =
       receiptWidth && receiptHeight
@@ -3405,7 +3408,7 @@ export default function PosTransactionsPage() {
     printWindow.document.open();
     printWindow.document.write(
       '<!DOCTYPE html><html><head><title>Ebarimt receipt</title>' +
-        `<style>@page{size:${pageSize};margin:${pageMargin};}body{margin:0;font-family:sans-serif;font-size:${fontSizeRule};} .receipt-sheet{display:flex;flex-direction:column;align-items:center;gap:0.5rem;padding:${pageMargin};width:${pageWidth};}</style>` +
+        `<style>@page{size:${pageSize};margin:${pageMargin};}body{margin:0;font-family:sans-serif;font-size:${fontSizeRule};} .receipt-sheet{display:flex;flex-direction:column;align-items:center;gap:0.5rem;padding:${pageMargin};${sheetWidthRule}}</style>` +
         '</head><body><div class="receipt-sheet"></div></body></html>',
     );
     printWindow.document.close();
