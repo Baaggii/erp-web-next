@@ -3387,17 +3387,15 @@ export default function PosTransactionsPage() {
     const receiptHeight = normalizePrintNumber(generalConfig?.print?.receiptHeight);
     const receiptMargin = normalizePrintNumber(generalConfig?.print?.receiptMargin);
     const fontSizeRule = receiptFontSize ? `${receiptFontSize}px` : 'inherit';
-    const pageWidth = receiptWidth ? `${receiptWidth}mm` : 'auto';
-    const pageHeight = receiptHeight ? `${receiptHeight}mm` : 'auto';
+    const pageWidth = receiptWidth ? `${receiptWidth}mm` : null;
+    const pageHeight = receiptHeight ? `${receiptHeight}mm` : null;
     const pageMargin = receiptMargin ? `${receiptMargin}mm` : '0';
     const pageSize =
-      receiptWidth && receiptHeight ? `${pageWidth} ${pageHeight}` : 'auto';
-    const toPixels = (mm) => Math.round(mm * 3.7795);
-    const windowFeatures =
-      receiptWidth && receiptHeight
-        ? `width=${toPixels(receiptWidth)},height=${toPixels(receiptHeight)}`
-        : undefined;
-    const printWindow = window.open('', '_blank', windowFeatures);
+      pageWidth && pageHeight ? `${pageWidth} ${pageHeight}` : 'auto';
+    const sheetWidthRule = pageWidth
+      ? `min-width:${pageWidth};width:auto;max-width:none;`
+      : 'width:auto;max-width:none;';
+    const printWindow = window.open('', '_blank');
     if (!printWindow) {
       addToast('Unable to open print window', 'error');
       return;
@@ -3405,7 +3403,7 @@ export default function PosTransactionsPage() {
     printWindow.document.open();
     printWindow.document.write(
       '<!DOCTYPE html><html><head><title>Ebarimt receipt</title>' +
-        `<style>@page{size:${pageSize};margin:${pageMargin};}body{margin:0;font-family:sans-serif;font-size:${fontSizeRule};} .receipt-sheet{display:flex;flex-direction:column;align-items:center;gap:0.5rem;padding:${pageMargin};width:${pageWidth};}</style>` +
+        `<style>@page{size:${pageSize};margin:${pageMargin};}body{margin:0;font-family:sans-serif;font-size:${fontSizeRule};} .receipt-sheet{display:flex;flex-direction:column;align-items:center;gap:0.5rem;padding:${pageMargin};${sheetWidthRule}}</style>` +
         '</head><body><div class="receipt-sheet"></div></body></html>',
     );
     printWindow.document.close();
