@@ -1501,11 +1501,10 @@ export async function getEmploymentSessions(empid, options = {}) {
       es.department_id,
       es.workplace_id,
       es.pos_no,
-      DATE_FORMAT(es.start_date, '%Y-%m') AS ym,
       es.start_date,
       es.end_date,
       ROW_NUMBER() OVER (
-        PARTITION BY es.emp_id, es.workplace_id, DATE_FORMAT(es.start_date, '%Y-%m')
+        PARTITION BY es.emp_id, es.workplace_id
         ORDER BY es.start_date DESC, es.id DESC
       ) AS rn
     FROM tbl_employment_schedule es
@@ -1516,6 +1515,43 @@ export async function getEmploymentSessions(empid, options = {}) {
   ),
   latest_schedule AS (
     SELECT * FROM ranked_schedule WHERE rn = 1
+  ),
+  latest_employment AS (
+    SELECT
+      e.*,
+      ROW_NUMBER() OVER (
+        PARTITION BY e.employment_emp_id, e.employment_workplace_id
+        ORDER BY e.employment_date DESC, e.id DESC
+      ) AS rn
+    FROM tbl_employment e
+    WHERE e.employment_emp_id = ?
+      AND e.deleted_at IS NULL
+  ),
+  latest_assignments AS (
+    SELECT
+      ls.emp_id AS employment_emp_id,
+      ls.company_id AS employment_company_id,
+      ls.branch_id AS employment_branch_id,
+      ls.department_id AS employment_department_id,
+      ls.workplace_id AS employment_workplace_id,
+      ls.start_date AS assignment_start_date,
+      ls.end_date AS assignment_end_date,
+      ls.pos_no AS assignment_pos_no,
+      'schedule' AS assignment_source
+    FROM latest_schedule ls
+    UNION ALL
+    SELECT
+      le.employment_emp_id,
+      le.employment_company_id,
+      le.employment_branch_id,
+      le.employment_department_id,
+      le.employment_workplace_id,
+      le.employment_date,
+      NULL,
+      NULL,
+      'employment'
+    FROM latest_employment le
+    WHERE le.rn = 1
   )
   SELECT
     e.employment_company_id AS company_id,
@@ -1524,43 +1560,41 @@ export async function getEmploymentSessions(empid, options = {}) {
     ${branchRel.nameExpr} AS branch_name,
     e.employment_department_id AS department_id,
     ${deptRel.nameExpr} AS department_name,
-    ls.workplace_id AS workplace_id,
+    e.employment_workplace_id AS workplace_id,
     cw.workplace_name AS workplace_name,
-    ls.ym AS workplace_month,
-    ls.start_date AS workplace_start_date,
-    ls.end_date AS workplace_end_date,
-    ls.pos_no AS pos_no,
-    e.employment_position_id AS position_id,
-    e.employment_senior_empid AS senior_empid,
-    e.employment_senior_plan_empid AS senior_plan_empid,
+    DATE_FORMAT(e.assignment_start_date, '%Y-%m') AS workplace_month,
+    e.assignment_start_date AS workplace_start_date,
+    e.assignment_end_date AS workplace_end_date,
+    e.assignment_pos_no AS pos_no,
+    le.employment_position_id AS position_id,
+    le.employment_senior_empid AS senior_empid,
+    le.employment_senior_plan_empid AS senior_plan_empid,
     ${empName} AS employee_name,
-    e.employment_user_level AS user_level,
+    le.employment_user_level AS user_level,
     ul.name AS user_level_name,
     GROUP_CONCAT(DISTINCT up.action_key) AS permission_list
-  FROM tbl_employment e
+  FROM latest_assignments e
   ${companyRel.join}
   ${branchRel.join}
   ${deptRel.join}
-  LEFT JOIN latest_schedule ls
-    ON ls.emp_id = e.employment_emp_id
-   AND ls.company_id = e.employment_company_id
-   AND ls.branch_id = e.employment_branch_id
-   AND ls.department_id = e.employment_department_id
-  LEFT JOIN code_workplace cw ON cw.workplace_id = ls.workplace_id AND cw.company_id = e.employment_company_id
+  LEFT JOIN latest_employment le
+    ON le.employment_emp_id = e.employment_emp_id
+   AND le.employment_workplace_id = e.employment_workplace_id
+   AND le.rn = 1
+  LEFT JOIN code_workplace cw ON cw.workplace_id = e.employment_workplace_id AND cw.company_id = e.employment_company_id
   LEFT JOIN tbl_employee emp ON e.employment_emp_id = emp.emp_id
-  LEFT JOIN user_levels ul ON e.employment_user_level = ul.userlevel_id
+  LEFT JOIN user_levels ul ON le.employment_user_level = ul.userlevel_id
   LEFT JOIN user_level_permissions up ON up.userlevel_id = ul.userlevel_id AND up.action = 'permission' AND up.company_id IN (${GLOBAL_COMPANY_ID}, e.employment_company_id)
-  WHERE e.employment_emp_id = ? AND e.deleted_at IS NULL
   GROUP BY e.employment_company_id, company_name,
            e.employment_branch_id, branch_name,
            e.employment_department_id, department_name,
-           ls.workplace_id, cw.workplace_name,
-           ls.ym, ls.start_date, ls.end_date, ls.pos_no,
-           e.employment_position_id,
-           e.employment_senior_empid,
-           e.employment_senior_plan_empid,
-           employee_name, e.employment_user_level, ul.name
-  ORDER BY company_name, department_name, branch_name, workplace_name, user_level_name, ls.ym DESC, ls.start_date DESC`;
+           e.employment_workplace_id, cw.workplace_name,
+           workplace_month, e.assignment_start_date, e.assignment_end_date, e.assignment_pos_no,
+           le.employment_position_id,
+           le.employment_senior_empid,
+           le.employment_senior_plan_empid,
+           employee_name, le.employment_user_level, ul.name
+  ORDER BY company_name, department_name, branch_name, workplace_name, user_level_name, workplace_month DESC, e.assignment_start_date DESC`;
 
   const normalizedSql = sql.replace(/`/g, "");
   const params = [empid, ...scheduleDateParams, empid];
@@ -1573,7 +1607,72 @@ export async function getEmploymentSessions(empid, options = {}) {
     });
     rows = [];
   }
-  const sessions = rows.map(mapEmploymentRow);
+  let sessions = rows.map(mapEmploymentRow);
+  if (sessions.length === 0) {
+    let employmentRowExists = false;
+    try {
+      const [employmentRows] = await pool.query(
+        "SELECT 1 FROM tbl_employment WHERE employment_emp_id = ? AND deleted_at IS NULL LIMIT 1",
+        [empid],
+      );
+      employmentRowExists = employmentRows.length > 0;
+    } catch (err) {
+      console.warn("Employment existence check failed; skipping fallback", {
+        error: err?.message || err,
+      });
+    }
+
+    if (employmentRowExists) {
+      const fallbackSql = `SELECT
+        e.employment_company_id AS company_id,
+        ${companyRel.nameExpr} AS company_name,
+        e.employment_branch_id AS branch_id,
+        ${branchRel.nameExpr} AS branch_name,
+        e.employment_department_id AS department_id,
+        ${deptRel.nameExpr} AS department_name,
+        e.employment_workplace_id AS workplace_id,
+        cw.workplace_name AS workplace_name,
+        DATE_FORMAT(e.employment_date, '%Y-%m') AS workplace_month,
+        e.employment_date AS workplace_start_date,
+        NULL AS workplace_end_date,
+        NULL AS pos_no,
+        e.employment_position_id AS position_id,
+        e.employment_senior_empid AS senior_empid,
+        e.employment_senior_plan_empid AS senior_plan_empid,
+        ${empName} AS employee_name,
+        e.employment_user_level AS user_level,
+        ul.name AS user_level_name,
+        GROUP_CONCAT(DISTINCT up.action_key) AS permission_list
+      FROM tbl_employment e
+      ${companyRel.join}
+      ${branchRel.join}
+      ${deptRel.join}
+      LEFT JOIN code_workplace cw ON cw.workplace_id = e.employment_workplace_id AND cw.company_id = e.employment_company_id
+      LEFT JOIN tbl_employee emp ON e.employment_emp_id = emp.emp_id
+      LEFT JOIN user_levels ul ON e.employment_user_level = ul.userlevel_id
+      LEFT JOIN user_level_permissions up ON up.userlevel_id = ul.userlevel_id AND up.action = 'permission' AND up.company_id IN (${GLOBAL_COMPANY_ID}, e.employment_company_id)
+      WHERE e.employment_emp_id = ? AND e.deleted_at IS NULL
+      GROUP BY e.employment_company_id, company_name,
+               e.employment_branch_id, branch_name,
+               e.employment_department_id, department_name,
+               e.employment_workplace_id, cw.workplace_name,
+               workplace_month, e.employment_date,
+               e.employment_position_id,
+               e.employment_senior_empid,
+               e.employment_senior_plan_empid,
+               employee_name, e.employment_user_level, ul.name
+      ORDER BY e.employment_date DESC, e.id DESC
+      LIMIT 1`;
+      try {
+        const [fallbackRows] = await pool.query(fallbackSql, [empid]);
+        sessions = fallbackRows.map(mapEmploymentRow);
+      } catch (err) {
+        console.warn("Employment fallback query failed; returning empty list", {
+          error: err?.message || err,
+        });
+      }
+    }
+  }
   if (options?.includeDiagnostics) {
     const sqlText =
       typeof normalizedSql === 'string' ? normalizedSql : String(normalizedSql ?? '');
