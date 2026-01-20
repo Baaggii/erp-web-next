@@ -4595,7 +4595,7 @@ const RowFormModal = function RowFormModal({
     const heightValue = isReceipt ? receiptHeight : printHeight;
     const pageWidth = widthValue ? `${widthValue}mm` : null;
     const pageHeight = heightValue ? `${heightValue}mm` : null;
-    const pageSize = pageWidth && pageHeight ? `${pageWidth} ${pageHeight}` : 'auto';
+    const pageSize = pageWidth && pageHeight ? `${pageWidth} ${pageHeight}` : isReceipt ? 'auto' : 'A4';
     const pageSizeRule = pageSize;
     const sheetWidthRule = pageWidth
       ? `width:${pageWidth};max-width:${pageWidth};`
