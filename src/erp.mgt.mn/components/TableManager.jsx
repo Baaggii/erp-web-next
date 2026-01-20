@@ -7115,11 +7115,6 @@ const TableManager = forwardRef(function TableManager({
         : isReceipt
           ? 'max-width:100%;'
           : 'max-width:210mm;';
-      const scopeConfig = generalConfig[formConfig?.scope || 'forms'] || {};
-      const boxMaxWidth = Number.parseFloat(scopeConfig.boxMaxWidth);
-      const boxMaxHeight = Number.parseFloat(scopeConfig.boxMaxHeight);
-      const resolvedBoxMaxWidth = Number.isFinite(boxMaxWidth) ? boxMaxWidth : 150;
-      const resolvedBoxMaxHeight = Number.isFinite(boxMaxHeight) ? boxMaxHeight : 150;
       let html = '<html><head><title>Print</title>';
       html +=
         `<style>@page{size:${pageSizeRule};margin:${pageMargin};}@media print{body{margin:0;}.print-group{break-inside:avoid;page-break-inside:avoid;}}body{margin:0;} .print-sheet{box-sizing:border-box;font-size:${fontSize};${sheetWidthRule}} .print-sheet,.print-sheet *{font-size:${fontSize} !important;} .print-group{margin-bottom:${groupSpacing};} .print-copies{display:grid;grid-template-columns:1fr;gap:${gapSize};} .print-copies.print-copies-grid{grid-template-columns:repeat(2,minmax(0,1fr));} .print-item{break-inside:avoid;} table{width:100%;border-collapse:collapse;margin-bottom:1rem;table-layout:fixed;} th,td{padding:4px;text-align:left;vertical-align:top;overflow-wrap:anywhere;word-break:break-word;white-space:normal;} img,svg,canvas{max-width:100%;height:auto;} .print-main-table th,.print-main-table td{border:1px solid #666;} .print-signature-table{table-layout:fixed;} .print-signature-table th{width:45%;} .print-signature-table td{width:55%;text-align:right;overflow-wrap:break-word;word-break:normal;white-space:normal;} h3{margin:0 0 4px 0;font-weight:600;}</style>`;
