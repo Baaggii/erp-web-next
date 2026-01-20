@@ -7106,12 +7106,8 @@ const TableManager = forwardRef(function TableManager({
       const groupSpacing = gapValue !== null ? `${gapValue}mm` : '1rem';
       const widthValue = isReceipt ? receiptWidth : printWidth;
       const heightValue = isReceipt ? receiptHeight : printHeight;
-      const [resolvedWidthValue, resolvedHeightValue] =
-        !isReceipt && widthValue && heightValue && widthValue > heightValue
-          ? [heightValue, widthValue]
-          : [widthValue, heightValue];
-      const pageWidth = resolvedWidthValue ? `${resolvedWidthValue}mm` : null;
-      const pageHeight = resolvedHeightValue ? `${resolvedHeightValue}mm` : null;
+      const pageWidth = widthValue ? `${widthValue}mm` : null;
+      const pageHeight = heightValue ? `${heightValue}mm` : null;
       const pageSize = pageWidth && pageHeight ? `${pageWidth} ${pageHeight}` : isReceipt ? 'auto' : 'A4';
       const pageSizeRule = isReceipt ? pageSize : `${pageSize} portrait`;
       const sheetWidthRule = pageWidth
