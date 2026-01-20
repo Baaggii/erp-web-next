@@ -3707,7 +3707,7 @@ export function Header({
   onResetGuide,
   hasUpdateAvailable = false,
 }) {
-  const { session, workplacePositionMap } = useContext(AuthContext);
+  const { session } = useContext(AuthContext);
   const { lang, setLang, t } = useContext(LangContext);
   const { anyHasNew, notificationColors } = useContext(PendingRequestContext);
   const handleRefresh = () => {
@@ -3728,8 +3728,6 @@ export function Header({
   }, [anyHasNew, notificationColors]);
 
   const [positionLabel, setPositionLabel] = useState(null);
-  const workplacePositions = workplacePositionMap || {};
-
   const normalizeText = useCallback((value) => {
     if (value === null || value === undefined) return null;
     const text = String(value).trim();
@@ -3753,20 +3751,6 @@ export function Header({
       : [];
     const labels = [];
     const seenWorkplaceIds = new Set();
-    const buildPositionSuffix = (workplaceId) => {
-      if (workplaceId === null || workplaceId === undefined) return null;
-      const entry = workplacePositions?.[workplaceId];
-      if (!entry) return null;
-      const idValue =
-        entry.positionId === null || entry.positionId === undefined
-          ? null
-          : String(entry.positionId).trim();
-      const idText = idValue ? `#${idValue}` : '';
-      const nameText = preferNameLikeText(entry.positionName) ?? normalizeText(entry.positionName);
-      const parts = [idText, nameText].filter(Boolean);
-      if (parts.length === 0) return null;
-      return `position ${parts.join(' · ')}`;
-    };
     const parseId = (value) => {
       if (value === null || value === undefined) return null;
       if (typeof value === 'number') {
@@ -3810,8 +3794,7 @@ export function Header({
         contextParts.push(String(assignment.branch_name ?? assignment.branchName).trim());
       }
       const context = contextParts.filter(Boolean).join(' / ');
-      const positionSuffix = buildPositionSuffix(normalizedWorkplaceId ?? workplaceId);
-      const labelParts = [idLabel, baseName, context, positionSuffix].filter(
+      const labelParts = [idLabel, baseName, context].filter(
         (part) => part && part.length,
       );
       if (!labelParts.length && normalizedWorkplaceId != null) {
@@ -3837,8 +3820,7 @@ export function Header({
         contextParts.push(String(session.branch_name ?? session.branchName).trim());
       }
       const context = contextParts.filter(Boolean).join(' / ');
-      const positionSuffix = buildPositionSuffix(session.workplace_id ?? session.workplaceId);
-      const fallbackParts = [idParts.join(' · '), baseName, context, positionSuffix].filter(
+      const fallbackParts = [idParts.join(' · '), baseName, context].filter(
         (part) => part && part.length,
       );
       if (fallbackParts.length) {
@@ -3846,7 +3828,7 @@ export function Header({
       }
     }
     return labels;
-  }, [normalizeText, preferNameLikeText, session, workplacePositions]);
+  }, [normalizeText, preferNameLikeText, session]);
 
   const userDetails = useMemo(() => {
     const items = [];
