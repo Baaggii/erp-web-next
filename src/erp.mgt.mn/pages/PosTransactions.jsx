@@ -3393,7 +3393,7 @@ export default function PosTransactionsPage() {
     const pageSize =
       pageWidth && pageHeight ? `${pageWidth} ${pageHeight}` : 'auto';
     const sheetWidthRule = pageWidth
-      ? `min-width:${pageWidth};width:auto;max-width:none;`
+      ? `width:${pageWidth};max-width:${pageWidth};`
       : 'width:auto;max-width:none;';
     const printWindow = window.open('', '_blank');
     if (!printWindow) {
