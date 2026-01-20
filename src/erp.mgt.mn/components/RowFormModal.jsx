@@ -28,6 +28,7 @@ import {
 } from '../utils/jsonValueFormatting.js';
 import normalizeRelationKey from '../utils/normalizeRelationKey.js';
 import getRelationRowFromMap from '../utils/getRelationRowFromMap.js';
+import { buildPrintHtml, dispatchPrint, resolvePrintSettings } from '../utils/printUtils.js';
 
 const DEFAULT_RECEIPT_TYPES = ['B2C', 'B2B_SALE', 'B2B_PURCHASE', 'STOCK_QR'];
 
@@ -4567,66 +4568,24 @@ const RowFormModal = function RowFormModal({
       })
       .join('');
 
-    const normalizePrintNumber = (value) => {
-      const parsed = Number.parseFloat(value);
-      if (!Number.isFinite(parsed)) return null;
-      return parsed;
-    };
-    const receiptMargin = normalizePrintNumber(printConfig.receiptMargin);
-    const receiptGap = normalizePrintNumber(printConfig.receiptGap);
-    const receiptFontSize = normalizePrintNumber(printConfig.receiptFontSize);
-    const receiptWidth = normalizePrintNumber(printConfig.receiptWidth);
-    const receiptHeight = normalizePrintNumber(printConfig.receiptHeight);
-    const printWidth = normalizePrintNumber(printConfig.printWidth);
-    const printHeight = normalizePrintNumber(printConfig.printHeight);
-    const printMargin = normalizePrintNumber(printConfig.printMargin ?? printConfig.margin);
-    const printGap = normalizePrintNumber(printConfig.printGap ?? printConfig.gap);
-    const printFontSize = normalizePrintNumber(
-      printConfig.printFontSize ?? printConfig.fontSize ?? printConfig.textSize,
-    );
-    const pageMarginValue = isReceipt ? receiptMargin : printMargin;
-    const fontSizeValue = isReceipt ? receiptFontSize : printFontSize;
-    const gapValue = isReceipt ? receiptGap : printGap;
-    const pageMargin = pageMarginValue !== null ? `${pageMarginValue}mm` : isReceipt ? '0' : '1rem';
-    const fontSize = fontSizeValue !== null ? `${fontSizeValue}px` : isReceipt ? 'inherit' : 'smaller';
-    const gapSize = gapValue !== null ? `${gapValue}mm` : '0.75rem';
-    const groupSpacing = gapValue !== null ? `${gapValue}mm` : '1rem';
-    const widthValue = isReceipt ? receiptWidth : printWidth;
-    const heightValue = isReceipt ? receiptHeight : printHeight;
-    const [resolvedWidthValue, resolvedHeightValue] =
-      !isReceipt && widthValue && heightValue && widthValue > heightValue
-        ? [heightValue, widthValue]
-        : [widthValue, heightValue];
-    const pageWidth = resolvedWidthValue ? `${resolvedWidthValue}mm` : null;
-    const pageHeight = resolvedHeightValue ? `${resolvedHeightValue}mm` : null;
-    const pageSize = pageWidth && pageHeight ? `${pageWidth} ${pageHeight}` : isReceipt ? 'auto' : 'A4';
-    const pageSizeRule = isReceipt ? pageSize : `${pageSize} portrait`;
-    const sheetWidthRule = pageWidth
-      ? `width:${pageWidth};max-width:${pageWidth};`
-      : isReceipt
-        ? 'max-width:100%;'
-        : 'max-width:210mm;';
-    const resolvedBoxMaxWidth = Number.isFinite(boxMaxWidth) ? boxMaxWidth : 150;
-    const resolvedBoxMaxHeight = Number.isFinite(boxMaxHeight) ? boxMaxHeight : 150;
-    let html = '<html><head><title>Print</title>';
-    html +=
-      `<style>@page{size:${pageSizeRule};margin:${pageMargin};}@media print{body{margin:0;}.print-group{break-inside:avoid;page-break-inside:avoid;}}body{margin:0;} .print-sheet{box-sizing:border-box;font-size:${fontSize};${sheetWidthRule}} .print-sheet,.print-sheet *{font-size:${fontSize} !important;} .print-group{margin-bottom:${groupSpacing};} .print-copies{display:grid;grid-template-columns:1fr;gap:${gapSize};} .print-copies.print-copies-grid{grid-template-columns:repeat(2,minmax(0,1fr));} .print-item{break-inside:avoid;} table{width:100%;border-collapse:collapse;margin-bottom:1rem;table-layout:fixed;} th,td{padding:4px;text-align:left;vertical-align:top;overflow-wrap:anywhere;word-break:break-word;white-space:normal;} img,svg,canvas{max-width:100%;height:auto;} .print-main-table th,.print-main-table td{border:1px solid #666;} .print-signature-table{table-layout:fixed;} .print-signature-table th{width:45%;} .print-signature-table td{width:55%;text-align:right;overflow-wrap:break-word;word-break:normal;white-space:normal;} h3{margin:0 0 4px 0;font-weight:600;}</style>`;
-    html += `</head><body><div class="print-sheet">${sections}</div></body></html>`;
-    if (userSettings?.printerId) {
-      fetch(`${API_BASE}/print`, {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ printerId: userSettings.printerId, content: html }),
-      }).catch((err) => console.error('Print failed', err));
-    } else {
-      const w = window.open('', '_blank');
-      if (!w) return;
-      w.document.write(html);
-      w.document.close();
-      w.focus();
-      w.print();
-    }
+    const {
+      pageSizeRule,
+      pageMargin,
+      fontSize,
+      gapSize,
+      groupSpacing,
+      sheetWidthRule,
+    } = resolvePrintSettings({ printConfig, isReceipt });
+    const html = buildPrintHtml({
+      sections,
+      pageSizeRule,
+      pageMargin,
+      fontSize,
+      gapSize,
+      groupSpacing,
+      sheetWidthRule,
+    });
+    dispatchPrint({ html, printerId: userSettings?.printerId, apiBase: API_BASE });
   }
 
   const showTemporarySaveButton =
