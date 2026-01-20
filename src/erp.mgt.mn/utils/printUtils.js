@@ -12,6 +12,8 @@ export const resolvePrintSettings = ({
   printSheetWidthFallback = 'max-width:210mm;',
   pageSizeFallbackReceipt = 'auto',
   pageSizeFallbackPrint = 'A4',
+  enforcePortrait = true,
+  swapLandscapeDimensions = true,
 } = {}) => {
   const receiptMargin = normalizePrintNumber(printConfig.receiptMargin);
   const receiptGap = normalizePrintNumber(printConfig.receiptGap);
@@ -36,8 +38,10 @@ export const resolvePrintSettings = ({
 
   const widthValue = isReceipt ? receiptWidth : printWidth;
   const heightValue = isReceipt ? receiptHeight : printHeight;
-  const resolvedWidthValue = widthValue;
-  const resolvedHeightValue = heightValue;
+  const shouldSwap = !isReceipt && swapLandscapeDimensions && widthValue && heightValue && widthValue > heightValue;
+  const [resolvedWidthValue, resolvedHeightValue] = shouldSwap
+    ? [heightValue, widthValue]
+    : [widthValue, heightValue];
   const pageWidth = resolvedWidthValue ? `${resolvedWidthValue}mm` : null;
   const pageHeight = resolvedHeightValue ? `${resolvedHeightValue}mm` : null;
   const pageSize =
@@ -46,7 +50,7 @@ export const resolvePrintSettings = ({
       : isReceipt
         ? pageSizeFallbackReceipt
         : pageSizeFallbackPrint;
-  const pageSizeRule = pageSize;
+  const pageSizeRule = isReceipt ? pageSize : enforcePortrait ? `${pageSize} portrait` : pageSize;
   const sheetWidthRule = pageWidth
     ? `width:${pageWidth};max-width:${pageWidth};`
     : isReceipt

@@ -11,6 +11,7 @@ import {
   listReportProcedures,
   deleteProcedure,
   getStoredProcedureSql,
+  getProcedureSql,
   listDatabaseViews,
   getViewSql,
   deleteView,
@@ -147,7 +148,10 @@ router.post('/procedures', async (req, res, next) => {
 router.get('/procedures/:name', async (req, res, next) => {
   try {
     const { name } = req.params;
-    const sql = await getStoredProcedureSql(name);
+    let sql = await getStoredProcedureSql(name);
+    if (!sql) {
+      sql = await getProcedureSql(name);
+    }
     if (!sql) return res.status(404).json({ message: 'Procedure not found' });
     res.json({ sql });
   } catch (err) {
@@ -162,7 +166,10 @@ router.post(
     try {
       const { name } = req.params;
       const companyId = Number(req.query.companyId ?? req.user.companyId);
-      const sql = await getStoredProcedureSql(name);
+      let sql = await getStoredProcedureSql(name);
+      if (!sql) {
+        sql = await getProcedureSql(name);
+      }
       if (!sql) return res.status(404).json({ message: 'Procedure not found' });
       const config = await generateProcedureConfig(name, sql, companyId);
       res.json({ ok: true, config });
