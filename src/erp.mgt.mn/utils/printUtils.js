@@ -12,8 +12,7 @@ export const resolvePrintSettings = ({
   printSheetWidthFallback = 'max-width:210mm;',
   pageSizeFallbackReceipt = 'auto',
   pageSizeFallbackPrint = 'A4',
-  enforcePortrait = true,
-  swapLandscapeDimensions = true,
+  defaultOrientation = 'portrait',
 } = {}) => {
   const receiptMargin = normalizePrintNumber(printConfig.receiptMargin);
   const receiptGap = normalizePrintNumber(printConfig.receiptGap);
@@ -38,19 +37,23 @@ export const resolvePrintSettings = ({
 
   const widthValue = isReceipt ? receiptWidth : printWidth;
   const heightValue = isReceipt ? receiptHeight : printHeight;
-  const shouldSwap = !isReceipt && swapLandscapeDimensions && widthValue && heightValue && widthValue > heightValue;
-  const [resolvedWidthValue, resolvedHeightValue] = shouldSwap
-    ? [heightValue, widthValue]
-    : [widthValue, heightValue];
-  const pageWidth = resolvedWidthValue ? `${resolvedWidthValue}mm` : null;
-  const pageHeight = resolvedHeightValue ? `${resolvedHeightValue}mm` : null;
+  const pageWidth = widthValue ? `${widthValue}mm` : null;
+  const pageHeight = heightValue ? `${heightValue}mm` : null;
+  const orientation =
+    !isReceipt && typeof printConfig.orientation === 'string'
+      ? printConfig.orientation
+      : !isReceipt && typeof printConfig.printOrientation === 'string'
+        ? printConfig.printOrientation
+        : isReceipt
+          ? null
+          : defaultOrientation;
   const pageSize =
     pageWidth && pageHeight
       ? `${pageWidth} ${pageHeight}`
       : isReceipt
         ? pageSizeFallbackReceipt
         : pageSizeFallbackPrint;
-  const pageSizeRule = isReceipt ? pageSize : enforcePortrait ? `${pageSize} portrait` : pageSize;
+  const pageSizeRule = isReceipt ? pageSize : orientation ? `${pageSize} ${orientation}` : pageSize;
   const sheetWidthRule = pageWidth
     ? `width:${pageWidth};max-width:${pageWidth};`
     : isReceipt
@@ -79,13 +82,32 @@ export const buildPrintHtml = ({
   sheetWidthRule,
   groupSpacing,
   gapSize,
+  enableShrinkToFit = true,
 } = {}) => {
+  const shrinkToFitScript = enableShrinkToFit
+    ? '<script>' +
+      'window.addEventListener("load",()=>{' +
+      'const sheet=document.querySelector(".print-sheet");' +
+      'const scaleTarget=document.querySelector(".print-scale");' +
+      'if(!sheet||!scaleTarget)return;' +
+      'const available=sheet.clientWidth;' +
+      'const contentWidth=scaleTarget.scrollWidth;' +
+      'if(available&&contentWidth&&contentWidth>available){' +
+      'const scale=available/contentWidth;' +
+      'scaleTarget.style.transform=`scale(${scale})`;' +
+      'scaleTarget.style.transformOrigin="top left";' +
+      'scaleTarget.style.width=`${contentWidth}px`;' +
+      '}' +
+      '});' +
+      '</script>'
+    : '';
   return (
     '<html><head>' +
     `<title>${title}</title>` +
     `<style>@page{size:${pageSizeRule};margin:${pageMargin};}` +
     '@media print{body{margin:0;}.print-group{break-inside:avoid;page-break-inside:avoid;}}' +
     `body{margin:0;} .print-sheet{box-sizing:border-box;font-size:${fontSize};${sheetWidthRule}}` +
+    ' .print-scale{display:inline-block;max-width:100%;}' +
     ` .print-sheet,.print-sheet *{font-size:${fontSize} !important;}` +
     ` .print-group{margin-bottom:${groupSpacing};}` +
     ` .print-copies{display:grid;grid-template-columns:1fr;gap:${gapSize};}` +
@@ -99,7 +121,7 @@ export const buildPrintHtml = ({
     ' .print-signature-table th{width:45%;}' +
     ' .print-signature-table td{width:55%;text-align:right;overflow-wrap:break-word;word-break:normal;white-space:normal;}' +
     ' h3{margin:0 0 4px 0;font-weight:600;}</style>' +
-    `</head><body><div class="print-sheet">${sections}</div></body></html>`
+    `</head><body><div class="print-sheet"><div class="print-scale">${sections}</div></div>${shrinkToFitScript}</body></html>`
   );
 };
 
