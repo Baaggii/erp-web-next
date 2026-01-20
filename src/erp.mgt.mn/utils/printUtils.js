@@ -12,8 +12,8 @@ export const resolvePrintSettings = ({
   printSheetWidthFallback = 'max-width:210mm;',
   pageSizeFallbackReceipt = 'auto',
   pageSizeFallbackPrint = 'A4',
-  enforcePortrait = false,
-  swapLandscapeDimensions = false,
+  enforcePortrait = true,
+  swapLandscapeDimensions = true,
 } = {}) => {
   const receiptMargin = normalizePrintNumber(printConfig.receiptMargin);
   const receiptGap = normalizePrintNumber(printConfig.receiptGap);
