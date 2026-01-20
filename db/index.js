@@ -1520,7 +1520,7 @@ export async function getEmploymentSessions(empid, options = {}) {
     SELECT
       e.*,
       ROW_NUMBER() OVER (
-        PARTITION BY e.employment_emp_id, e.employment_workplace_id
+        PARTITION BY e.employment_emp_id, e.employment_company_id
         ORDER BY e.employment_date DESC, e.id DESC
       ) AS rn
     FROM tbl_employment e
@@ -1545,7 +1545,7 @@ export async function getEmploymentSessions(empid, options = {}) {
       le.employment_company_id,
       le.employment_branch_id,
       le.employment_department_id,
-      le.employment_workplace_id,
+      NULL AS employment_workplace_id,
       le.employment_date,
       NULL,
       NULL,
@@ -1579,7 +1579,7 @@ export async function getEmploymentSessions(empid, options = {}) {
   ${deptRel.join}
   LEFT JOIN latest_employment le
     ON le.employment_emp_id = e.employment_emp_id
-   AND le.employment_workplace_id = e.employment_workplace_id
+   AND le.employment_company_id = e.employment_company_id
    AND le.rn = 1
   LEFT JOIN code_workplace cw ON cw.workplace_id = e.employment_workplace_id AND cw.company_id = e.employment_company_id
   LEFT JOIN tbl_employee emp ON e.employment_emp_id = emp.emp_id
@@ -1630,8 +1630,8 @@ export async function getEmploymentSessions(empid, options = {}) {
         ${branchRel.nameExpr} AS branch_name,
         e.employment_department_id AS department_id,
         ${deptRel.nameExpr} AS department_name,
-        e.employment_workplace_id AS workplace_id,
-        cw.workplace_name AS workplace_name,
+        NULL AS workplace_id,
+        NULL AS workplace_name,
         DATE_FORMAT(e.employment_date, '%Y-%m') AS workplace_month,
         e.employment_date AS workplace_start_date,
         NULL AS workplace_end_date,
@@ -1647,7 +1647,6 @@ export async function getEmploymentSessions(empid, options = {}) {
       ${companyRel.join}
       ${branchRel.join}
       ${deptRel.join}
-      LEFT JOIN code_workplace cw ON cw.workplace_id = e.employment_workplace_id AND cw.company_id = e.employment_company_id
       LEFT JOIN tbl_employee emp ON e.employment_emp_id = emp.emp_id
       LEFT JOIN user_levels ul ON e.employment_user_level = ul.userlevel_id
       LEFT JOIN user_level_permissions up ON up.userlevel_id = ul.userlevel_id AND up.action = 'permission' AND up.company_id IN (${GLOBAL_COMPANY_ID}, e.employment_company_id)
@@ -1655,7 +1654,6 @@ export async function getEmploymentSessions(empid, options = {}) {
       GROUP BY e.employment_company_id, company_name,
                e.employment_branch_id, branch_name,
                e.employment_department_id, department_name,
-               e.employment_workplace_id, cw.workplace_name,
                workplace_month, e.employment_date,
                e.employment_position_id,
                e.employment_senior_empid,
