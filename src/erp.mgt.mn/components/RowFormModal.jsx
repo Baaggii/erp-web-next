@@ -4474,7 +4474,7 @@ const RowFormModal = function RowFormModal({
         const rows = filtered
           .map((c) => {
             const value = resolvePrintValue(c, row);
-            return `<tr><th>${labels[c] || c}</th><td style="text-align:right; padding-left:50mm;">${value}</td></tr>`;
+            return `<tr><th class="print-signature-label">${labels[c] || c}</th><td class="print-signature-value">${value}</td></tr>`;
           })
           .join('');
         return `<table${className ? ` class="${className}"` : ''}><tbody>${rows}</tbody></table>`;
@@ -4603,7 +4603,7 @@ const RowFormModal = function RowFormModal({
         : 'max-width:210mm;';
     let html = '<html><head><title>Print</title>';
     html +=
-      `<style>@page{size:${pageSize};margin:${pageMargin};}@media print{body{margin:0;}.print-group{break-inside:avoid;page-break-inside:avoid;}}body{margin:0;} .print-sheet{font-size:${fontSize};${sheetWidthRule}} .print-sheet,.print-sheet *{font-size:${fontSize} !important;} .print-group{margin-bottom:${groupSpacing};} .print-copies{display:grid;grid-template-columns:1fr;gap:${gapSize};} .print-copies.print-copies-grid{grid-template-columns:repeat(2,minmax(0,1fr));} .print-item{break-inside:avoid;} table{width:100%;border-collapse:collapse;margin-bottom:1rem;table-layout:auto;} th,td{padding:4px;text-align:left;vertical-align:top;overflow-wrap:anywhere;word-break:break-word;white-space:normal;} .print-main-table th,.print-main-table td{border:1px solid #666;} h3{margin:0 0 4px 0;font-weight:600;}</style>`;
+      `<style>@page{size:${pageSize};margin:${pageMargin};}@media print{body{margin:0;}.print-group{break-inside:avoid;page-break-inside:avoid;}}body{margin:0;} .print-sheet{font-size:${fontSize};${sheetWidthRule}} .print-sheet,.print-sheet *{font-size:${fontSize} !important;} .print-group{margin-bottom:${groupSpacing};} .print-copies{display:grid;grid-template-columns:1fr;gap:${gapSize};} .print-copies.print-copies-grid{grid-template-columns:repeat(2,minmax(0,1fr));} .print-item{break-inside:avoid;} table{width:100%;border-collapse:collapse;margin-bottom:1rem;table-layout:auto;} th,td{padding:4px;text-align:left;vertical-align:top;overflow-wrap:anywhere;word-break:break-word;white-space:normal;} .print-main-table th,.print-main-table td{border:1px solid #666;} .print-signature-table{table-layout:fixed;} .print-signature-table th{width:45%;} .print-signature-table td{width:55%;text-align:right;overflow-wrap:break-word;word-break:normal;white-space:normal;} h3{margin:0 0 4px 0;font-weight:600;}</style>`;
     html += `</head><body><div class="print-sheet">${sections}</div></body></html>`;
     if (userSettings?.printerId) {
       fetch(`${API_BASE}/print`, {
