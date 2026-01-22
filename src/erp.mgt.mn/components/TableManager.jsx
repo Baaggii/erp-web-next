@@ -6934,13 +6934,13 @@ const TableManager = forwardRef(function TableManager({
 
       const columnTableHtml = (cols, row, skipEmpty = false, className = '', isSignature = false) => {
         const filtered = cols.filter((c) => {
-          if (!skipEmpty) return true;
-          if (isSignature) {
-            const value = resolvePrintValue(c, row);
-            return value !== '' && value !== null && value !== undefined;
-          }
-          return row?.[c] !== '' && row?.[c] !== null && row?.[c] !== 0 && row?.[c] !== undefined;
-        });
+        if (!skipEmpty) return true;
+        if (isSignature) {
+          const value = resolvePrintValue(c, row);
+          return value !== '' && value !== null && value !== 0 && value !== undefined;
+        }
+        return row?.[c] !== '' && row?.[c] !== null && row?.[c] !== 0 && row?.[c] !== undefined;
+      });
         if (filtered.length === 0) return '';
         if (isSignature) {
           const rows = filtered
@@ -7042,8 +7042,10 @@ const TableManager = forwardRef(function TableManager({
       const copies = normalizeCopies(copiesValue);
       const buildSection = (mode, formVals, gridRows) => {
         const list = mode === 'emp' ? formConfig?.printEmpField || [] : formConfig?.printCustField || [];
-        const allowedBase = list.length > 0 ? list : [...headerCols, ...mainCols, ...footerCols];
-        const allowed = new Set([...allowedBase, ...signatureFields]);
+        const allowedBase = list.length > 0
+          ? list
+          : [...headerCols, ...mainCols, ...footerCols, ...signatureFields];
+        const allowed = new Set(allowedBase);
         const h = headerCols.filter((c) => allowed.has(c) && !signatureSet.has(c));
         const m = mainCols.filter((c) => allowed.has(c) && !signatureSet.has(c));
         const f = footerCols.filter((c) => allowed.has(c) && !signatureSet.has(c));
