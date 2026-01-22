@@ -4464,11 +4464,14 @@ const RowFormModal = function RowFormModal({
       className = '',
       isSignature = false,
     ) => {
-      const filtered = cols.filter((c) =>
-        skipEmpty
-          ? row?.[c] !== '' && row?.[c] !== null && row?.[c] !== 0 && row?.[c] !== undefined
-          : true,
-      );
+      const filtered = cols.filter((c) => {
+        if (!skipEmpty) return true;
+        if (isSignature) {
+          const value = resolvePrintValue(c, row);
+          return value !== '' && value !== null && value !== undefined && value !== 0;
+        }
+        return row?.[c] !== '' && row?.[c] !== null && row?.[c] !== 0 && row?.[c] !== undefined;
+      });
       if (filtered.length === 0) return '';
       if (isSignature) {
         const rows = filtered
@@ -4530,7 +4533,8 @@ const RowFormModal = function RowFormModal({
     const all = [...headerCols, ...mainCols, ...footerCols, ...signatureFields];
     const buildSection = (mode) => {
       const list = mode === 'emp' ? printEmpField : printCustField;
-      const allowed = new Set(list.length > 0 ? list : all);
+      const allowedBase = list.length > 0 ? list : all;
+      const allowed = new Set([...allowedBase, ...signatureFields]);
       const signatureCols = signatureFields.filter((c) => allowed.has(c));
       const h = headerCols.filter((c) => allowed.has(c));
       const m = mainCols.filter((c) => allowed.has(c));
