@@ -4464,14 +4464,11 @@ const RowFormModal = function RowFormModal({
       className = '',
       isSignature = false,
     ) => {
-      const filtered = cols.filter((c) => {
-        if (!skipEmpty) return true;
-        if (isSignature) {
-          const value = resolvePrintValue(c, row);
-          return value !== '' && value !== null && value !== undefined;
-        }
-        return row?.[c] !== '' && row?.[c] !== null && row?.[c] !== 0 && row?.[c] !== undefined;
-      });
+      const filtered = cols.filter((c) =>
+        skipEmpty
+          ? row?.[c] !== '' && row?.[c] !== null && row?.[c] !== 0 && row?.[c] !== undefined
+          : true,
+      );
       if (filtered.length === 0) return '';
       if (isSignature) {
         const rows = filtered
