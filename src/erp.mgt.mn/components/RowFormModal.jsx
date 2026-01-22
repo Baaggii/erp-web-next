@@ -4468,7 +4468,7 @@ const RowFormModal = function RowFormModal({
         if (!skipEmpty) return true;
         if (isSignature) {
           const value = resolvePrintValue(c, row);
-          return value !== '' && value !== null && value !== undefined && value !== 0;
+          return value !== '' && value !== null && value !== undefined;
         }
         return row?.[c] !== '' && row?.[c] !== null && row?.[c] !== 0 && row?.[c] !== undefined;
       });
