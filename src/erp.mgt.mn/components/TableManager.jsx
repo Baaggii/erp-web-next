@@ -7042,8 +7042,10 @@ const TableManager = forwardRef(function TableManager({
       const copies = normalizeCopies(copiesValue);
       const buildSection = (mode, formVals, gridRows) => {
         const list = mode === 'emp' ? formConfig?.printEmpField || [] : formConfig?.printCustField || [];
-        const allowedBase = list.length > 0 ? list : [...headerCols, ...mainCols, ...footerCols];
-        const allowed = new Set([...allowedBase, ...signatureFields]);
+        const allowedBase = list.length > 0
+          ? list
+          : [...headerCols, ...mainCols, ...footerCols, ...signatureFields];
+        const allowed = new Set(allowedBase);
         const h = headerCols.filter((c) => allowed.has(c) && !signatureSet.has(c));
         const m = mainCols.filter((c) => allowed.has(c) && !signatureSet.has(c));
         const f = footerCols.filter((c) => allowed.has(c) && !signatureSet.has(c));
