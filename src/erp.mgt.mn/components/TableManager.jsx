@@ -576,8 +576,8 @@ const TableManager = forwardRef(function TableManager({
   const [selectedRows, setSelectedRows] = useState(new Set());
   const [printModalOpen, setPrintModalOpen] = useState(false);
   const [printEmpSelected, setPrintEmpSelected] = useState(true);
-  const [printCustSelected, setPrintCustSelected] = useState(false);
-  const [printCopies, setPrintCopies] = useState('1');
+  const [printCustSelected, setPrintCustSelected] = useState(true);
+  const [printCopies, setPrintCopies] = useState('2');
   const [printPayload, setPrintPayload] = useState(null);
   const [localRefresh, setLocalRefresh] = useState(0);
   const [procTriggers, setProcTriggers] = useState({});
@@ -6797,8 +6797,8 @@ const TableManager = forwardRef(function TableManager({
       };
       setPrintPayload(normalizedPayload);
       setPrintEmpSelected(true);
-      setPrintCustSelected(false);
-      setPrintCopies('1');
+      setPrintCustSelected(true);
+      setPrintCopies('2');
       setPrintModalOpen(true);
     },
     [buildPrintPayloadFromRows, formConfig?.posApiEnabled],
@@ -6815,8 +6815,8 @@ const TableManager = forwardRef(function TableManager({
       };
       setPrintPayload(normalizedPayload);
       setPrintEmpSelected(true);
-      setPrintCustSelected(false);
-      setPrintCopies('1');
+      setPrintCustSelected(true);
+      setPrintCopies('2');
       setPrintModalOpen(true);
     },
     [buildPrintPayloadFromRow, editing, formConfig?.posApiEnabled, gridRows],
@@ -8398,6 +8398,7 @@ const TableManager = forwardRef(function TableManager({
                     border: '1px solid #d1d5db',
                     textAlign: columnAlign[c],
                     fontWeight: 'bold',
+                    whiteSpace: 'nowrap',
                   }}
                 >
                   {val}
