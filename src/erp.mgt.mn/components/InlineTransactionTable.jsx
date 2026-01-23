@@ -2687,7 +2687,11 @@ function InlineTransactionTable(
                   val = totals.sums[f];
                 }
                 return (
-                  <td key={f} className="border px-1 py-1 font-semibold" style={colStyle}>
+                  <td
+                    key={f}
+                    className="border px-1 py-1 font-semibold"
+                    style={{ ...colStyle, whiteSpace: 'nowrap' }}
+                  >
                     {val}
                   </td>
                 );
