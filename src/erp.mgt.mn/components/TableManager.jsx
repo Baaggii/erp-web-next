@@ -576,7 +576,7 @@ const TableManager = forwardRef(function TableManager({
   const [selectedRows, setSelectedRows] = useState(new Set());
   const [printModalOpen, setPrintModalOpen] = useState(false);
   const [printEmpSelected, setPrintEmpSelected] = useState(true);
-  const [printCustSelected, setPrintCustSelected] = useState(false);
+  const [printCustSelected, setPrintCustSelected] = useState(true);
   const [printCopies, setPrintCopies] = useState('1');
   const [printPayload, setPrintPayload] = useState(null);
   const [localRefresh, setLocalRefresh] = useState(0);
@@ -6797,7 +6797,7 @@ const TableManager = forwardRef(function TableManager({
       };
       setPrintPayload(normalizedPayload);
       setPrintEmpSelected(true);
-      setPrintCustSelected(false);
+      setPrintCustSelected(true);
       setPrintCopies('1');
       setPrintModalOpen(true);
     },
@@ -6815,7 +6815,7 @@ const TableManager = forwardRef(function TableManager({
       };
       setPrintPayload(normalizedPayload);
       setPrintEmpSelected(true);
-      setPrintCustSelected(false);
+      setPrintCustSelected(true);
       setPrintCopies('1');
       setPrintModalOpen(true);
     },
@@ -8398,6 +8398,7 @@ const TableManager = forwardRef(function TableManager({
                     border: '1px solid #d1d5db',
                     textAlign: columnAlign[c],
                     fontWeight: 'bold',
+                    whiteSpace: 'nowrap',
                   }}
                 >
                   {val}

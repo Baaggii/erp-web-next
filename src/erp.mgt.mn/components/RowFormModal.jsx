@@ -1224,7 +1224,7 @@ const RowFormModal = function RowFormModal({
   );
   const [printModalOpen, setPrintModalOpen] = useState(false);
   const [printEmpSelected, setPrintEmpSelected] = useState(true);
-  const [printCustSelected, setPrintCustSelected] = useState(false);
+  const [printCustSelected, setPrintCustSelected] = useState(true);
   const [printCopies, setPrintCopies] = useState('1');
   const [printPayload, setPrintPayload] = useState(null);
   const [infoPayload, setInfoPayload] = useState({});
@@ -4201,6 +4201,7 @@ const RowFormModal = function RowFormModal({
                     <td
                       key={c}
                       className="border px-2 py-1 font-semibold"
+                      style={{ whiteSpace: 'nowrap' }}
                     >
                       {val !== '' ? val : ''}
                     </td>
@@ -4306,7 +4307,7 @@ const RowFormModal = function RowFormModal({
     };
     setPrintPayload(normalizedPayload);
     setPrintEmpSelected(true);
-    setPrintCustSelected(false);
+    setPrintCustSelected(true);
     setPrintCopies('1');
     setPrintModalOpen(true);
   }
