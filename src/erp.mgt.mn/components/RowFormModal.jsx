@@ -4201,6 +4201,7 @@ const RowFormModal = function RowFormModal({
                     <td
                       key={c}
                       className="border px-2 py-1 font-semibold"
+                      style={{ whiteSpace: 'nowrap' }}
                     >
                       {val !== '' ? val : ''}
                     </td>

@@ -8412,6 +8412,7 @@ const TableManager = forwardRef(function TableManager({
                     border: '1px solid #d1d5db',
                     textAlign: columnAlign[c],
                     fontWeight: 'bold',
+                    whiteSpace: 'nowrap',
                   }}
                 >
                   {val}
