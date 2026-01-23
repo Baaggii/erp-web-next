@@ -4527,6 +4527,7 @@ const RowFormModal = function RowFormModal({
       return parsed;
     };
     const copies = normalizeCopies(copiesValue);
+    const useModeGrid = copies === 1 && modes.length > 1;
     const all = [...headerCols, ...mainCols, ...footerCols, ...signatureFields];
     const buildSection = (mode) => {
       const list = mode === 'emp' ? printEmpField : printCustField;
@@ -4559,13 +4560,22 @@ const RowFormModal = function RowFormModal({
       const className = copies > 1 ? 'print-copies print-copies-grid' : 'print-copies';
       return `<div class="${className}">${items}</div>`;
     };
-    const sections = modes
+    const modeSections = modes
       .map((mode) => {
         const section = buildSection(mode);
         if (!section) return '';
-        return `<section class="print-group">${renderCopies(section)}</section>`;
+        const content = renderCopies(section);
+        if (useModeGrid) {
+          return `<div class="print-mode">${content}</div>`;
+        }
+        return `<section class="print-group">${content}</section>`;
       })
-      .join('');
+      .filter(Boolean);
+    const sections = useModeGrid
+      ? modeSections.length
+        ? `<section class="print-group print-group-grid" style="grid-template-columns:repeat(${modeSections.length},minmax(0,1fr));">${modeSections.join('')}</section>`
+        : ''
+      : modeSections.join('');
 
     const normalizePrintNumber = (value) => {
       const parsed = Number.parseFloat(value);
@@ -4602,7 +4612,7 @@ const RowFormModal = function RowFormModal({
       : 'width:100%;';
     let html = '<html><head><title>Print</title>';
     html +=
-      `<style>@page{size:${pageSizeRule};margin:${pageMargin};}@media print{body{margin:0;}.print-group{break-inside:avoid;page-break-inside:avoid;}}body{margin:0;} .print-sheet{box-sizing:border-box;font-size:${fontSize};${sheetWidthRule}} .print-sheet,.print-sheet *{font-size:${fontSize} !important;} .print-group{margin-bottom:${groupSpacing};} .print-copies{display:grid;grid-template-columns:1fr;gap:${gapSize};} .print-copies.print-copies-grid{grid-template-columns:repeat(2,minmax(0,1fr));} .print-item{break-inside:avoid;} table{width:100%;border-collapse:collapse;margin-bottom:1rem;table-layout:auto;} th,td{padding:4px;text-align:left;vertical-align:top;overflow-wrap:anywhere;word-break:break-word;white-space:normal;max-width:100%;} img,svg,canvas{max-width:100%;height:auto;} .print-main-table th,.print-main-table td{border:1px solid #666;} .print-signature-table{table-layout:fixed;} .print-signature-table th{width:45%;} .print-signature-table td{width:55%;text-align:right;overflow-wrap:break-word;word-break:normal;white-space:normal;} h3{margin:0 0 4px 0;font-weight:600;}</style>`;
+      `<style>@page{size:${pageSizeRule};margin:${pageMargin};}@media print{body{margin:0;}.print-group{break-inside:avoid;page-break-inside:avoid;}}body{margin:0;} .print-sheet{box-sizing:border-box;font-size:${fontSize};${sheetWidthRule}} .print-sheet,.print-sheet *{font-size:${fontSize} !important;} .print-group{margin-bottom:${groupSpacing};} .print-group-grid{display:grid;align-items:start;gap:${gapSize};} .print-mode{break-inside:avoid;} .print-copies{display:grid;grid-template-columns:1fr;gap:${gapSize};} .print-copies.print-copies-grid{grid-template-columns:repeat(2,minmax(0,1fr));} .print-item{break-inside:avoid;} table{width:100%;border-collapse:collapse;margin-bottom:1rem;table-layout:auto;} th,td{padding:4px;text-align:left;vertical-align:top;overflow-wrap:anywhere;word-break:break-word;white-space:normal;max-width:100%;} img,svg,canvas{max-width:100%;height:auto;} .print-main-table th,.print-main-table td{border:1px solid #666;} .print-signature-table{table-layout:fixed;} .print-signature-table th{width:45%;} .print-signature-table td{width:55%;text-align:right;overflow-wrap:break-word;word-break:normal;white-space:normal;} h3{margin:0 0 4px 0;font-weight:600;}</style>`;
     html += `</head><body><div class="print-sheet">${sections}</div></body></html>`;
     if (userSettings?.printerId) {
       fetch(`${API_BASE}/print`, {
