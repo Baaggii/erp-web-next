@@ -1272,7 +1272,7 @@ export async function detectIncompleteImages(
   companyId = 0,
   signal,
 ) {
-  const { baseDir } = await getDirs(companyId);
+  const { baseDir, ignore } = await getDirs(companyId);
   const codes = await fetchTxnCodes();
   let results = [];
   const skipped = [];
@@ -1291,7 +1291,8 @@ export async function detectIncompleteImages(
 
   for (const entry of dirs) {
     signal?.throwIfAborted();
-    if (!entry.isDirectory() || !entry.name.startsWith('transactions_')) continue;
+    if (!entry.isDirectory()) continue;
+    if (ignore.includes(entry.name.toLowerCase())) continue;
     const dirPath = path.join(baseDir, entry.name);
     let files;
     try {
