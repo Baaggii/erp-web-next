@@ -6,7 +6,7 @@ import React, {
   useRef,
   useState,
 } from 'react';
-import { useReactTable } from '@tanstack/react-table';
+import { getCoreRowModel, useReactTable } from '@tanstack/react-table';
 import { AuthContext } from '../context/AuthContext.jsx';
 import useGeneralConfig, { updateCache } from '../hooks/useGeneralConfig.js';
 import useHeaderMappings from '../hooks/useHeaderMappings.js';
@@ -448,6 +448,7 @@ export default function ReportTable({
   const table = useReactTable({
     data: sorted,
     columns: columnDefs,
+    getCoreRowModel: getCoreRowModel(),
     state: { rowSelection: resolvedRowSelection },
     onRowSelectionChange: handleRowSelectionChange,
     getRowId: resolveRowId,
