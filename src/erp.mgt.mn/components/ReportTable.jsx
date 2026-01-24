@@ -40,6 +40,12 @@ function formatNumber(val) {
   return Number.isNaN(num) ? '' : numberFmt.format(num);
 }
 
+function isNumericValue(value) {
+  if (value === null || value === undefined || value === '') return false;
+  const num = Number(String(value).replace(',', '.'));
+  return !Number.isNaN(num);
+}
+
 function formatCellValue(val, placeholder) {
   if (val === null || val === undefined) return '';
   let str;
@@ -305,18 +311,16 @@ export default function ReportTable({
 
   const numericColumns = useMemo(
     () =>
-      columns.filter((c) =>
-        sorted.some(
-          (r) => {
-            const value = resolveCell(r, c).value;
-            return (
-              value !== null &&
-              value !== '' &&
-              !isNaN(Number(String(value).replace(',', '.')))
-            );
-          },
-        ),
-      ),
+      columns.filter((c) => {
+        let hasValue = false;
+        for (const row of sorted) {
+          const value = resolveCell(row, c).value;
+          if (value === null || value === undefined || value === '') continue;
+          hasValue = true;
+          if (!isNumericValue(value)) return false;
+        }
+        return hasValue;
+      }),
     [columns, sorted, resolveCell],
   );
 
