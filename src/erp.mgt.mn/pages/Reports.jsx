@@ -2040,35 +2040,30 @@ export default function Reports() {
 
   const handleDrilldown = useCallback(({ report, filters }) => {
     if (!report) return;
-    setPendingDrilldown({
-      report,
-      filters: {
-        row_ids: filters?.__row_ids ?? filters?.row_ids,
-        tr_date: filters?.tr_date,
-        tr_type: filters?.tr_type,
-        manuf_id: filters?.manuf_id,
-      },
-    });
+    setPendingDrilldown({ report, filters: filters || {} });
     setSelectedProc(report);
-    setManualParams({});
   }, []);
 
   useEffect(() => {
     if (!pendingDrilldown || selectedProc !== pendingDrilldown.report) return;
-    if (!Array.isArray(procParams)) return;
-    const allowedKeys = new Set(['row_ids', 'tr_date', 'tr_type', 'manuf_id']);
+    if (!Array.isArray(procParams) || procParams.length === 0) return;
+    const filterEntries = Object.entries(pendingDrilldown.filters || {});
+    if (!filterEntries.length) return;
     const updates = {};
     procParams.forEach((param) => {
       if (typeof param !== 'string') return;
-      const normalized = normalizeParamName(param);
-      allowedKeys.forEach((key) => {
+      const normalizedParam = normalizeParamName(param);
+      if (!normalizedParam) return;
+      filterEntries.forEach(([key, value]) => {
         const normalizedKey = normalizeParamName(key);
-        if (normalized.includes(normalizedKey)) {
-          updates[param] = pendingDrilldown.filters?.[key];
+        if (normalizedKey && normalizedParam.includes(normalizedKey)) {
+          updates[param] = value;
         }
       });
     });
-    setManualParams(updates);
+    if (Object.keys(updates).length) {
+      setManualParams((prev) => ({ ...prev, ...updates }));
+    }
   }, [pendingDrilldown, procParams, selectedProc]);
 
   useEffect(() => {
