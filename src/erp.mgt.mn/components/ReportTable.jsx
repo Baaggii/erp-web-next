@@ -256,19 +256,6 @@ export default function ReportTable({
     });
   }, [filtered, sort, resolveCell]);
 
-  const columnAlign = useMemo(() => {
-    const map = {};
-    columns.forEach((c) => {
-      const sample = sorted.find((r) => {
-        const val = resolveCell(r, c).value;
-        return val !== null && val !== undefined;
-      });
-      const sampleValue = sample ? resolveCell(sample, c).value : undefined;
-      map[c] = typeof sampleValue === 'number' ? 'right' : 'left';
-    });
-    return map;
-  }, [columns, sorted, resolveCell]);
-
   const columnWidths = useMemo(() => {
     const map = {};
     if (sorted.length === 0) return map;
@@ -325,6 +312,14 @@ export default function ReportTable({
       ),
     [columns, sorted, resolveCell],
   );
+
+  const columnAlign = useMemo(() => {
+    const map = {};
+    columns.forEach((c) => {
+      map[c] = numericColumns.includes(c) ? 'right' : 'left';
+    });
+    return map;
+  }, [columns, numericColumns]);
 
   const totals = useMemo(() => {
     const sums = {};
