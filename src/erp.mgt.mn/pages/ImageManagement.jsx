@@ -664,7 +664,7 @@ export default function ImageManagement() {
         return;
       }
       if (res.ok) {
-        const data = await res.json();
+        const data = await res.json().catch(() => ({}));
         const list = Array.isArray(data.list)
           ? data.list
               .slice()
