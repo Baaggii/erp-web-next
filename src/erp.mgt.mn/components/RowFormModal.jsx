@@ -1225,16 +1225,9 @@ const RowFormModal = function RowFormModal({
   const [printModalOpen, setPrintModalOpen] = useState(false);
   const [printEmpSelected, setPrintEmpSelected] = useState(true);
   const [printCustSelected, setPrintCustSelected] = useState(true);
-  const [printCopies, setPrintCopies] = useState('2');
+  const [printCopies, setPrintCopies] = useState('1');
+  const skipPrintCopiesAutoRef = useRef(true);
   const [printPayload, setPrintPayload] = useState(null);
-  const printDefaultRef = useRef('2');
-
-  useEffect(() => {
-    if (!printModalOpen) return;
-    const nextDefault = printEmpSelected && printCustSelected ? '1' : '2';
-    setPrintCopies((prev) => (prev === printDefaultRef.current ? nextDefault : prev));
-    printDefaultRef.current = nextDefault;
-  }, [printModalOpen, printEmpSelected, printCustSelected]);
   const [infoPayload, setInfoPayload] = useState({});
   const [infoResponse, setInfoResponse] = useState(null);
   const [infoError, setInfoError] = useState(null);
@@ -1282,6 +1275,15 @@ const RowFormModal = function RowFormModal({
       return next;
     });
   }, [infoModalOpen, activeInfoEndpointId, infoEndpoints, getFieldDefaultFromRecord]);
+  useEffect(() => {
+    if (skipPrintCopiesAutoRef.current) {
+      skipPrintCopiesAutoRef.current = false;
+      return;
+    }
+    if (printEmpSelected || printCustSelected) {
+      setPrintCopies('2');
+    }
+  }, [printEmpSelected, printCustSelected]);
   const formValsRef = useRef(formVals);
   const extraValsRef = useRef(extraVals);
   const manualOverrideRef = useRef(new Map());
@@ -4316,8 +4318,8 @@ const RowFormModal = function RowFormModal({
     setPrintPayload(normalizedPayload);
     setPrintEmpSelected(true);
     setPrintCustSelected(true);
-    setPrintCopies('2');
-    printDefaultRef.current = '2';
+    skipPrintCopiesAutoRef.current = true;
+    setPrintCopies('1');
     setPrintModalOpen(true);
   }
   function closePrintModal() {
