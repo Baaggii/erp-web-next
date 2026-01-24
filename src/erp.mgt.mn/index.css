@@ -381,7 +381,8 @@ td {
 
 th {
   white-space: normal;
-  word-break: break-word;
+  word-break: normal;
+  overflow-wrap: normal;
   padding: 0.5rem;
   font-weight: 600;
   text-align: left;
