@@ -822,6 +822,7 @@ export async function createBulkEditRequest({
   value,
   requestReason,
   companyId = 0,
+  reportPayload = null,
 }) {
   await ensureValidTableName(tableName);
   if (!requestReason || !String(requestReason).trim()) {
@@ -895,6 +896,7 @@ export async function createBulkEditRequest({
     const payload = {
       recordIds: normalizedRecordIds,
       updates: { [resolvedField]: value },
+      ...(reportPayload ? { report_payload: reportPayload } : {}),
     };
     const recordIdSignature = JSON.stringify({
       ids: normalizedRecordIds,

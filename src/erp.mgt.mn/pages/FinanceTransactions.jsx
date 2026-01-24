@@ -1107,9 +1107,10 @@ useEffect(() => {
           procedure={reportResult.name}
           params={reportResult.params}
           rows={reportResult.rows}
-           buttonPerms={buttonPerms}
-           fieldTypeMap={reportResult.fieldTypeMap}
-           fieldLineage={reportResult.fieldLineage}
+          buttonPerms={buttonPerms}
+          fieldTypeMap={reportResult.fieldTypeMap}
+          fieldLineage={reportResult.fieldLineage}
+          enableRowSelection={true}
         />
       )}
       {transactionNames.length === 0 && (
