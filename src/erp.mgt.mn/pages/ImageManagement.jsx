@@ -99,6 +99,7 @@ export default function ImageManagement() {
   const [folderFiles, setFolderFiles] = useState([]);
   const [uploadSummary, setUploadSummary] = useState(null);
   const [pendingSummary, setPendingSummary] = useState(null);
+  const [scanFolders, setScanFolders] = useState([]);
   const [pageSize, setPageSize] = useState(200);
   const detectAbortRef = useRef();
   const scanCancelRef = useRef(false);
@@ -645,6 +646,7 @@ export default function ImageManagement() {
     const controller = new AbortController();
     detectAbortRef.current = controller;
     setActiveOp('detect');
+    setScanFolders([]);
     try {
       const res = await fetch(
         `/api/transaction_images/detect_incomplete?page=${p}&pageSize=${pageSize}${company != null ? `&companyId=${encodeURIComponent(company)}` : ''}`,
@@ -682,6 +684,7 @@ export default function ImageManagement() {
         hostIgnoredRef.current = miss;
         setHostIgnoredPage(1);
         setPendingSummary(data.summary || null);
+        setScanFolders(Array.isArray(data.summary?.folders) ? data.summary.folders : []);
         setHasMore(!!data.hasMore);
         setSelected([]);
         setHostIgnoredSel([]);
@@ -703,6 +706,7 @@ export default function ImageManagement() {
         hostIgnoredRef.current = [];
         setHostIgnoredPage(1);
         setPendingSummary(null);
+        setScanFolders([]);
         setHasMore(false);
         persistAll({ uploads: uploadsRef.current, ignored: ignoredRef.current, folderName, pending: [], hostIgnored: [] });
       }
@@ -715,6 +719,7 @@ export default function ImageManagement() {
         hostIgnoredRef.current = [];
         setHostIgnoredPage(1);
         setPendingSummary(null);
+        setScanFolders([]);
         setHasMore(false);
         persistAll({ uploads: uploadsRef.current, ignored: ignoredRef.current, folderName, pending: [], hostIgnored: [] });
       }
@@ -1524,6 +1529,22 @@ export default function ImageManagement() {
             <button type="button" onClick={() => detectFromHost(1)} style={{ marginRight: '0.5rem' }}>
               Detect from host
             </button>
+            {activeOp === 'detect' && (
+              <span style={{ marginRight: '0.5rem' }}>
+                Scanning folders
+                {scanFolders.length ? `: ${scanFolders.join(', ')}` : '…'}
+              </span>
+            )}
+            {activeOp !== 'detect' && scanFolders.length > 0 && (
+              <span style={{ marginRight: '0.5rem' }}>
+                Scanned folders: {scanFolders.join(', ')}
+              </span>
+            )}
+            {activeOp !== 'detect' && pendingSummary && scanFolders.length === 0 && (
+              <span style={{ marginRight: '0.5rem' }}>
+                Scanned folders: none found.
+              </span>
+            )}
             <label style={{ marginRight: '0.5rem' }}>
               Page Size:{' '}
               <input
@@ -1577,7 +1598,7 @@ export default function ImageManagement() {
               Last
             </button>
           </div>
-          {pendingSummary && (
+          {pendingSummary && activeOp !== 'detect' && (
             <p style={{ marginBottom: '0.5rem' }}>
               {`Scanned ${pendingSummary.totalFiles || 0} file(s) in ${pendingSummary.folders?.length || 0} folder(s)`}
               {pendingSummary.folders?.length ? ` (${pendingSummary.folders.join(', ')})` : ''}
