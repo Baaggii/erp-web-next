@@ -2040,28 +2040,30 @@ export default function Reports() {
 
   const handleDrilldown = useCallback(({ report, filters }) => {
     if (!report) return;
-    setPendingDrilldown({
-      report,
-      filters: {
-        row_ids: filters?.__row_ids ?? filters?.row_ids,
-      },
-    });
+    setPendingDrilldown({ report, filters: filters || {} });
     setSelectedProc(report);
-    setManualParams({});
   }, []);
 
   useEffect(() => {
     if (!pendingDrilldown || selectedProc !== pendingDrilldown.report) return;
-    if (!Array.isArray(procParams)) return;
+    if (!Array.isArray(procParams) || procParams.length === 0) return;
+    const filterEntries = Object.entries(pendingDrilldown.filters || {});
+    if (!filterEntries.length) return;
     const updates = {};
     procParams.forEach((param) => {
       if (typeof param !== 'string') return;
-      const normalized = normalizeParamName(param);
-      if (normalized.includes('rowids')) {
-        updates[param] = pendingDrilldown.filters?.row_ids;
-      }
+      const normalizedParam = normalizeParamName(param);
+      if (!normalizedParam) return;
+      filterEntries.forEach(([key, value]) => {
+        const normalizedKey = normalizeParamName(key);
+        if (normalizedKey && normalizedParam.includes(normalizedKey)) {
+          updates[param] = value;
+        }
+      });
     });
-    setManualParams(updates);
+    if (Object.keys(updates).length) {
+      setManualParams((prev) => ({ ...prev, ...updates }));
+    }
   }, [pendingDrilldown, procParams, selectedProc]);
 
   useEffect(() => {
@@ -2070,6 +2072,13 @@ export default function Reports() {
     runReport();
     setPendingDrilldown(null);
   }, [pendingDrilldown, selectedProc, allParamsProvided, runReport]);
+
+  useEffect(() => {
+    if (!pendingDrilldown) return;
+    if (!selectedProc || selectedProc !== pendingDrilldown.report) {
+      setPendingDrilldown(null);
+    }
+  }, [pendingDrilldown, selectedProc]);
 
   const selectedLockCount = useMemo(() => {
     if (!Array.isArray(lockCandidates) || lockCandidates.length === 0)
@@ -3639,7 +3648,11 @@ export default function Reports() {
         <select
           value={selectedProc}
           onChange={(e) => {
-            setSelectedProc(e.target.value);
+            const nextProc = e.target.value;
+            if (pendingDrilldown && nextProc !== pendingDrilldown.report) {
+              setPendingDrilldown(null);
+            }
+            setSelectedProc(nextProc);
             setDatePreset('custom');
             setStartDate('');
             setEndDate('');
