@@ -1283,22 +1283,27 @@ export async function detectIncompleteImages(
   let totalFiles = 0;
   let incompleteFound = 0;
   const folders = new Set();
-  const recordFolder = (folderName) => {
-    const label = folderName || '(root)';
-    if (label) folders.add(label);
-  };
-  const scanFiles = async (dirPath, folderName = '') => {
+  try {
+    dirs = await fs.readdir(baseDir, { withFileTypes: true });
+  } catch {
+    return { list: results, hasMore, summary: { totalFiles: 0, folders: [], incompleteFound: 0, processed: 0 } };
+  }
+
+  for (const entry of dirs) {
+    signal?.throwIfAborted();
+    if (!entry.isDirectory()) continue;
+    if (ignore.includes(entry.name.toLowerCase())) continue;
+    const dirPath = path.join(baseDir, entry.name);
     let files;
     try {
       files = await fs.readdir(dirPath, { withFileTypes: true });
     } catch {
       return;
     }
-    const fileEntries = files.filter((entry) => entry.isFile());
-    if (!fileEntries.length) return;
+    if (!files.length) return;
     recordFolder(folderName);
-    totalFiles += fileEntries.length;
-    for (const entry of fileEntries) {
+    totalFiles += files.length;
+    for (const f of files) {
       signal?.throwIfAborted();
       const ext = path.extname(entry.name);
       const base = path.basename(entry.name, ext);
@@ -1313,8 +1318,8 @@ export async function detectIncompleteImages(
         suffix = `_${save.ts}_${save.rand}`;
         if (!isTemporaryGeneratedName(base) && hasTxnCode(base, unique, codes)) {
           skipped.push({
-            currentName: entry.name,
-            newName: entry.name,
+            currentName: f,
+            newName: f,
             folder: folderName,
             folderDisplay: '/' + folderName,
             currentPath: filePath,
@@ -1341,8 +1346,8 @@ export async function detectIncompleteImages(
         }
         if (!unique) {
           skipped.push({
-            currentName: entry.name,
-            newName: entry.name,
+            currentName: f,
+            newName: f,
             folder: folderName,
             folderDisplay: '/' + folderName,
             currentPath: filePath,
@@ -1352,8 +1357,8 @@ export async function detectIncompleteImages(
         }
         if (!isTemporaryGeneratedName(base) && hasTxnCode(base, unique, codes)) {
           skipped.push({
-            currentName: entry.name,
-            newName: entry.name,
+            currentName: f,
+            newName: f,
             folder: folderName,
             folderDisplay: '/' + folderName,
             currentPath: filePath,
@@ -1383,8 +1388,8 @@ export async function detectIncompleteImages(
       }
       if (!found) {
         skipped.push({
-          currentName: entry.name,
-          newName: entry.name,
+          currentName: f,
+          newName: f,
           folder: folderName,
           folderDisplay: '/' + folderName,
           currentPath: filePath,
@@ -1474,8 +1479,8 @@ export async function detectIncompleteImages(
       }
       if (!newBase) {
         skipped.push({
-          currentName: entry.name,
-          newName: entry.name,
+          currentName: f,
+          newName: f,
           folder: folderName,
           folderDisplay: '/' + folderName,
           currentPath: filePath,
