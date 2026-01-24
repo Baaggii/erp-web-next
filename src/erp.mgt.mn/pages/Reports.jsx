@@ -1637,6 +1637,7 @@ export default function Reports() {
           params: paramMap,
           rows,
           fieldTypeMap: data.fieldTypeMap || {},
+          fieldLineage: data.fieldLineage || {},
           reportCapabilities: normalizeReportCapabilities(data.reportCapabilities),
           orderedParams: finalParams,
           lockRequestId: data.lockRequestId || null,
@@ -3398,6 +3399,7 @@ export default function Reports() {
               rows={result.rows}
               buttonPerms={buttonPerms}
               fieldTypeMap={result.fieldTypeMap}
+              fieldLineage={result.fieldLineage}
               showTotalRowCount={showTotalRowCount}
               onSnapshotReady={snapshotSupported ? handleSnapshotReady : undefined}
             />
