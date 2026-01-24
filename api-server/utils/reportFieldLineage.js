@@ -62,44 +62,6 @@ function findTopLevelIndex(sql, keyword) {
   return -1;
 }
 
-function findTopLevelChar(sql, char) {
-  let depth = 0;
-  let inSingle = false;
-  let inDouble = false;
-  let inBacktick = false;
-  for (let i = 0; i < sql.length; i++) {
-    const ch = sql[i];
-    if (inSingle) {
-      if (ch === "'" && sql[i - 1] !== '\\') inSingle = false;
-      continue;
-    }
-    if (inDouble) {
-      if (ch === '"' && sql[i - 1] !== '\\') inDouble = false;
-      continue;
-    }
-    if (inBacktick) {
-      if (ch === '`') inBacktick = false;
-      continue;
-    }
-    if (ch === "'") {
-      inSingle = true;
-      continue;
-    }
-    if (ch === '"') {
-      inDouble = true;
-      continue;
-    }
-    if (ch === '`') {
-      inBacktick = true;
-      continue;
-    }
-    if (ch === '(') depth++;
-    if (ch === ')') depth = Math.max(0, depth - 1);
-    if (depth === 0 && ch === char) return i;
-  }
-  return -1;
-}
-
 function findTopLevelEnd(sql, startIdx) {
   const endings = ['WHERE', 'GROUP BY', 'HAVING', 'ORDER BY', 'LIMIT', 'UNION'];
   let endIdx = sql.length;
@@ -169,7 +131,7 @@ function extractSelectSql(sql) {
   const selectIdx = findTopLevelIndex(body, 'SELECT');
   if (selectIdx === -1) return '';
   let selectSql = body.slice(selectIdx);
-  const semicolonIdx = findTopLevelChar(selectSql, ';');
+  const semicolonIdx = findTopLevelIndex(selectSql, ';');
   if (semicolonIdx !== -1) {
     selectSql = selectSql.slice(0, semicolonIdx);
   }
@@ -237,61 +199,6 @@ function parseColumnReference(expr) {
     return { alias: '', column: parts[0] };
   }
   return null;
-}
-
-function unwrapParens(expr) {
-  let value = expr.trim();
-  while (value.startsWith('(') && value.endsWith(')')) {
-    let depth = 0;
-    let isWrapped = true;
-    for (let i = 0; i < value.length; i++) {
-      const ch = value[i];
-      if (ch === '(') depth++;
-      if (ch === ')') depth--;
-      if (depth === 0 && i < value.length - 1) {
-        isWrapped = false;
-        break;
-      }
-    }
-    if (!isWrapped) break;
-    value = value.slice(1, -1).trim();
-  }
-  return value;
-}
-
-function extractColumnFromCast(expr) {
-  const upper = expr.toUpperCase();
-  const asIdx = upper.indexOf(' AS ');
-  const inner = asIdx === -1 ? expr : expr.slice(0, asIdx);
-  return inner.trim();
-}
-
-function extractFirstArg(expr) {
-  const parts = splitTopLevel(expr);
-  return parts.length ? parts[0] : expr;
-}
-
-function extractColumnReference(expr) {
-  if (!expr) return null;
-  const trimmed = unwrapParens(expr);
-  if (/\b(SUM|COUNT|AVG|MIN|MAX)\s*\(/i.test(trimmed)) return null;
-  const distinctMatch = trimmed.match(/^DISTINCT\s+(.+)$/i);
-  const distinctExpr = distinctMatch ? distinctMatch[1].trim() : trimmed;
-  const direct = parseColumnReference(distinctExpr);
-  if (direct) return direct;
-
-  const funcMatch = distinctExpr.match(/^([a-zA-Z0-9_]+)\s*\(([\s\S]*)\)$/);
-  if (!funcMatch) return null;
-  const funcName = funcMatch[1].toUpperCase();
-  let inner = funcMatch[2] || '';
-  inner = unwrapParens(inner);
-  if (!inner) return null;
-  if (funcName === 'CAST' || funcName === 'CONVERT') {
-    const castExpr = extractColumnFromCast(inner);
-    return extractColumnReference(castExpr);
-  }
-  const firstArg = extractFirstArg(inner);
-  return extractColumnReference(firstArg);
 }
 
 async function resolveRelationInfo(table, column, companyId, relationCache) {
@@ -366,7 +273,7 @@ export async function buildReportFieldLineage(procedureName, companyId = 0) {
 
     for (const item of selectItems) {
       const { expr, alias } = parseSelectAlias(item);
-      const columnRef = extractColumnReference(expr);
+      const columnRef = parseColumnReference(expr);
       const outputField =
         alias ||
         (columnRef && columnRef.column ? columnRef.column : expr);

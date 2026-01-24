@@ -901,7 +901,7 @@ export default function GeneralConfiguration() {
             </TooltipWrapper>
           </div>
         </>
-      )}
+      ) : null}
       <div>
         <button onClick={handleImport} style={{ marginRight: '0.5rem' }}>
           Import Defaults
