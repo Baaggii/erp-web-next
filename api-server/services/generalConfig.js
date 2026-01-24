@@ -44,6 +44,9 @@ const defaults = {
     reportProcPrefix: '',
     reportViewPrefix: '',
   },
+  reports: {
+    showReportLineageInfo: false,
+  },
   images: {
     basePath: 'uploads',
     cleanupDays: 30,
@@ -110,7 +113,14 @@ async function readConfig(companyId = 0) {
     const data = await fs.readFile(filePath, 'utf8');
     const parsed = JSON.parse(data);
     let result;
-    if (parsed.forms || parsed.pos || parsed.general || parsed.images || parsed.print) {
+    if (
+      parsed.forms ||
+      parsed.pos ||
+      parsed.general ||
+      parsed.images ||
+      parsed.print ||
+      parsed.reports
+    ) {
       const { imageStorage, ...restGeneral } = parsed.general || {};
       const images = parsed.images || imageStorage || {};
       result = {
@@ -119,6 +129,10 @@ async function readConfig(companyId = 0) {
         general: {
           ...defaults.general,
           ...restGeneral,
+        },
+        reports: {
+          ...defaults.reports,
+          ...(parsed.reports || {}),
         },
         images: {
           ...defaults.images,
@@ -135,6 +149,7 @@ async function readConfig(companyId = 0) {
         forms: { ...defaults.forms, ...parsed },
         pos: { ...defaults.pos },
         general: { ...defaults.general },
+        reports: { ...defaults.reports },
         images: { ...defaults.images },
         print: { ...defaults.print },
       };
@@ -183,6 +198,9 @@ export async function updateGeneralConfig(updates = {}, companyId = 0) {
   }
   if (updates.images) {
     Object.assign(cfg.images, updates.images);
+  }
+  if (updates.reports) {
+    Object.assign(cfg.reports, updates.reports);
   }
   if (updates.print) {
     Object.assign(cfg.print, updates.print);
