@@ -88,6 +88,11 @@ export default function ReportTable({
   showTotalRowCount = true,
   maxHeight = 'min(70vh, calc(100vh - 20rem))',
   onSnapshotReady,
+  enableRowSelection,
+  rowGranularity = 'transaction',
+  drilldownReport = null,
+  onDrilldown,
+  excludeColumns,
   rowSelection: externalRowSelection,
   onRowSelectionChange,
   getRowId: getRowIdProp,
@@ -108,10 +113,20 @@ export default function ReportTable({
   const headerCheckboxRef = useRef(null);
   const selectionColumnWidth = ch(6);
 
-  const columns = useMemo(
-    () => (rows && rows.length ? Object.keys(rows[0]) : []),
-    [rows],
-  );
+  const normalizedExcludedColumns = useMemo(() => {
+    if (!excludeColumns) return new Set();
+    if (excludeColumns instanceof Set) return excludeColumns;
+    if (Array.isArray(excludeColumns)) return new Set(excludeColumns);
+    return new Set();
+  }, [excludeColumns]);
+  const columns = useMemo(() => {
+    if (!rows || rows.length === 0) return [];
+    const base = Object.keys(rows[0]);
+    if (!normalizedExcludedColumns.size) return base;
+    return base.filter((col) => !normalizedExcludedColumns.has(col));
+  }, [rows, normalizedExcludedColumns]);
+  const rowSelectionEnabled = enableRowSelection === true;
+  const isAggregated = rowGranularity === 'aggregated';
   const resolvedRowSelection =
     externalRowSelection !== undefined ? externalRowSelection : internalRowSelection;
   const lineageMap = useMemo(
@@ -198,6 +213,7 @@ export default function ReportTable({
 
   const handleRowSelectionChange = useCallback(
     (updater) => {
+      if (!rowSelectionEnabled) return;
       if (typeof onRowSelectionChange === 'function') {
         onRowSelectionChange(updater);
         return;
@@ -206,7 +222,7 @@ export default function ReportTable({
         typeof updater === 'function' ? updater(prev) : updater || {},
       );
     },
-    [onRowSelectionChange],
+    [onRowSelectionChange, rowSelectionEnabled],
   );
 
 
@@ -452,14 +468,15 @@ export default function ReportTable({
     state: { rowSelection: resolvedRowSelection },
     onRowSelectionChange: handleRowSelectionChange,
     getRowId: resolveRowId,
-    enableRowSelection: true,
-    enableMultiRowSelection: true,
+    enableRowSelection: rowSelectionEnabled === true,
+    enableMultiRowSelection: rowSelectionEnabled === true,
   });
 
   useEffect(() => {
     if (!headerCheckboxRef.current) return;
-    headerCheckboxRef.current.indeterminate = table.getIsSomeRowsSelected();
-  }, [table, resolvedRowSelection]);
+    headerCheckboxRef.current.indeterminate =
+      rowSelectionEnabled && table.getIsSomeRowsSelected();
+  }, [table, resolvedRowSelection, rowSelectionEnabled]);
 
   function toggleSort(col) {
     setSort((prev) =>
@@ -469,7 +486,28 @@ export default function ReportTable({
     );
   }
 
+  const handleRowClick = useCallback(
+    (row) => {
+      if (!isAggregated || !drilldownReport || typeof onDrilldown !== 'function') {
+        return;
+      }
+      const rowIds = row?.__row_ids;
+      if (!rowIds) return;
+      onDrilldown({
+        report: drilldownReport,
+        filters: {
+          row_ids: rowIds,
+          tr_date: row?.tr_date,
+          tr_type: row?.tr_type,
+          manuf_id: row?.manuf_id,
+        },
+      });
+    },
+    [isAggregated, drilldownReport, onDrilldown],
+  );
+
   function handleCellClick(col, value, row) {
+    if (isAggregated && drilldownReport) return;
     const num = Number(String(value).replace(',', '.'));
     if (!procedure || Number.isNaN(num) || num <= 0) return;
     rowToast(`Procedure: ${procedure}`, 'info');
@@ -827,8 +865,13 @@ export default function ReportTable({
                 <input
                   ref={headerCheckboxRef}
                   type="checkbox"
-                  checked={table.getIsAllRowsSelected()}
-                  onChange={table.getToggleAllRowsSelectedHandler()}
+                  checked={rowSelectionEnabled && table.getIsAllRowsSelected()}
+                  onChange={
+                    rowSelectionEnabled
+                      ? table.getToggleAllRowsSelectedHandler()
+                      : undefined
+                  }
+                  disabled={!rowSelectionEnabled}
                 />
               </th>
               {columns.map((col) => (
@@ -931,7 +974,15 @@ export default function ReportTable({
               const rowId = resolveRowId(row, (page - 1) * perPage + idx);
               const tableRow = table.getRowModel().rowsById[rowId];
               return (
-                <tr key={rowId}>
+                <tr
+                  key={rowId}
+                  onClick={() => handleRowClick(row)}
+                  style={
+                    isAggregated && drilldownReport
+                      ? { cursor: 'pointer' }
+                      : undefined
+                  }
+                >
                   <td
                     style={{
                       padding: '0.5rem',
@@ -949,8 +1000,13 @@ export default function ReportTable({
                   >
                     <input
                       type="checkbox"
-                      checked={tableRow?.getIsSelected() || false}
-                      onChange={tableRow?.getToggleSelectedHandler()}
+                      checked={rowSelectionEnabled && tableRow?.getIsSelected()}
+                      onChange={
+                        rowSelectionEnabled
+                          ? tableRow?.getToggleSelectedHandler()
+                          : undefined
+                      }
+                      disabled={!rowSelectionEnabled}
                     />
                   </td>
                   {columns.map((col) => {

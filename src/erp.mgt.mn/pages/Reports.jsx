@@ -35,6 +35,12 @@ const DATE_PARAM_ALLOWLIST = new Set([
   'fromdatetime',
   'todatetime',
 ]);
+const INTERNAL_COLS = new Set([
+  '__row_ids',
+  '__row_count',
+  '__row_granularity',
+  '__drilldown_report',
+]);
 
 function normalizeParamName(name) {
   return String(name || '')
@@ -250,6 +256,7 @@ export default function Reports() {
   const [approvalError, setApprovalError] = useState('');
   const [approvalData, setApprovalData] = useState({ incoming: [], outgoing: [] });
   const [respondingRequestId, setRespondingRequestId] = useState(null);
+  const [pendingDrilldown, setPendingDrilldown] = useState(null);
   const [expandedTransactionDetails, setExpandedTransactionDetails] = useState({});
   const [workplaceAssignmentsForPeriod, setWorkplaceAssignmentsForPeriod] =
     useState(null);
@@ -297,10 +304,16 @@ export default function Reports() {
     [rowIdFields],
   );
   const reportColumns = useMemo(
-    () => (Array.isArray(result?.rows) && result.rows.length ? Object.keys(result.rows[0]) : []),
+    () =>
+      Array.isArray(result?.rows) && result.rows.length
+        ? Object.keys(result.rows[0]).filter((col) => !INTERNAL_COLS.has(col))
+        : [],
     [result?.rows],
   );
   const reportHeaderMap = useHeaderMappings(reportColumns);
+  const rowGranularity = result?.reportMeta?.rowGranularity ?? 'transaction';
+  const drilldownReport = result?.reportMeta?.drilldownReport ?? null;
+  const isAggregated = rowGranularity === 'aggregated';
   const selectedReportRows = useMemo(() => {
     if (!Array.isArray(result?.rows) || result.rows.length === 0) return [];
     return result.rows.filter((row, idx) =>
@@ -1685,6 +1698,10 @@ export default function Reports() {
           name: selectedProc,
           params: paramMap,
           rows,
+          reportMeta: {
+            rowGranularity: rows[0]?.__row_granularity ?? 'transaction',
+            drilldownReport: rows[0]?.__drilldown_report ?? null,
+          },
           fieldTypeMap: data.fieldTypeMap || {},
           fieldLineage: data.fieldLineage || {},
           reportCapabilities: normalizeReportCapabilities(data.reportCapabilities),
@@ -1851,12 +1868,31 @@ export default function Reports() {
     [bulkUpdateOptions, bulkUpdateField],
   );
 
+  const hasBulkUpdatePermission =
+    buttonPerms['Bulk Update'] ||
+    buttonPerms['Edit transaction'] ||
+    buttonPerms['Edit'] ||
+    buttonPerms['Update'];
+
   const canBulkUpdate =
+    !isAggregated &&
     bulkUpdateOptions.length > 0 &&
-    (buttonPerms['Bulk Update'] ||
-      buttonPerms['Edit transaction'] ||
-      buttonPerms['Edit'] ||
-      buttonPerms['Update']);
+    hasBulkUpdatePermission;
+
+  const bulkUpdateRecordCount = useMemo(() => {
+    if (!isAggregated) return selectedReportRows.length;
+    return selectedReportRows.reduce((sum, row) => {
+      const explicitCount = Number(row?.__row_count);
+      if (Number.isFinite(explicitCount)) {
+        return sum + explicitCount;
+      }
+      const ids = String(row?.__row_ids ?? '')
+        .split(',')
+        .map((id) => id.trim())
+        .filter(Boolean);
+      return sum + ids.length;
+    }, 0);
+  }, [isAggregated, selectedReportRows]);
 
   const handleBulkUpdateSubmit = useCallback(async () => {
     if (!selectedReportRows.length) {
@@ -1893,14 +1929,34 @@ export default function Reports() {
           'The report does not include all primary key fields for bulk updates.',
         );
       }
-      const recordIds = selectedReportRows.map((row) => {
-        const values = pkReportColumns.map((col) => row?.[col]);
-        if (values.some((value) => value === undefined || value === null || value === '')) {
-          throw new Error('One or more selected rows are missing primary key values.');
-        }
-        if (values.length === 1) return values[0];
-        return JSON.stringify(values);
-      });
+      const recordIds = isAggregated
+        ? Array.from(
+            new Set(
+              selectedReportRows.flatMap((row) =>
+                String(row?.__row_ids ?? '')
+                  .split(',')
+                  .map((id) => id.trim())
+                  .filter(Boolean),
+              ),
+            ),
+          )
+        : selectedReportRows.map((row) => {
+            const values = pkReportColumns.map((col) => row?.[col]);
+            if (
+              values.some(
+                (value) => value === undefined || value === null || value === '',
+              )
+            ) {
+              throw new Error(
+                'One or more selected rows are missing primary key values.',
+              );
+            }
+            if (values.length === 1) return values[0];
+            return JSON.stringify(values);
+          });
+      if (recordIds.length === 0) {
+        throw new Error('No record identifiers were resolved for the selected rows.');
+      }
       const fieldType = selectedBulkField.fieldType;
       const placeholder =
         fieldType === 'time'
@@ -1911,6 +1967,33 @@ export default function Reports() {
       const normalizedValue = placeholder
         ? normalizeDateInput(String(bulkUpdateValue ?? ''), placeholder)
         : bulkUpdateValue;
+      const drilldownExpansions = isAggregated
+        ? selectedReportRows.map((row) => {
+            const rowIds = String(row?.__row_ids ?? '')
+              .split(',')
+              .map((id) => id.trim())
+              .filter(Boolean);
+            return {
+              group_keys: {
+                tr_date: row?.tr_date,
+                tr_type: row?.tr_type,
+                manuf_id: row?.manuf_id,
+              },
+              record_ids: rowIds,
+              row_count: Number(row?.__row_count) || rowIds.length,
+            };
+          })
+        : [];
+      const reportPayload = isAggregated
+        ? drilldownExpansions.length === 1
+          ? { source: 'aggregated_report', ...drilldownExpansions[0] }
+          : {
+              source: 'aggregated_report',
+              expansions: drilldownExpansions,
+              record_ids: recordIds,
+              row_count: bulkUpdateRecordCount,
+            }
+        : null;
       const res = await fetch('/api/pending_request/bulk_edit', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1921,6 +2004,7 @@ export default function Reports() {
           field: selectedBulkField.sourceColumn,
           value: normalizedValue,
           request_reason: bulkUpdateReason,
+          report_payload: reportPayload,
         }),
       });
       if (!res.ok) {
@@ -1950,7 +2034,44 @@ export default function Reports() {
     reportColumns,
     addToast,
     runReport,
+    isAggregated,
+    bulkUpdateRecordCount,
   ]);
+
+  const handleDrilldown = useCallback(({ report, filters }) => {
+    if (!report) return;
+    setPendingDrilldown({ report, filters: filters || {} });
+    setSelectedProc(report);
+  }, []);
+
+  useEffect(() => {
+    if (!pendingDrilldown || selectedProc !== pendingDrilldown.report) return;
+    if (!Array.isArray(procParams) || procParams.length === 0) return;
+    const filterEntries = Object.entries(pendingDrilldown.filters || {});
+    if (!filterEntries.length) return;
+    const updates = {};
+    procParams.forEach((param) => {
+      if (typeof param !== 'string') return;
+      const normalizedParam = normalizeParamName(param);
+      if (!normalizedParam) return;
+      filterEntries.forEach(([key, value]) => {
+        const normalizedKey = normalizeParamName(key);
+        if (normalizedKey && normalizedParam.includes(normalizedKey)) {
+          updates[param] = value;
+        }
+      });
+    });
+    if (Object.keys(updates).length) {
+      setManualParams((prev) => ({ ...prev, ...updates }));
+    }
+  }, [pendingDrilldown, procParams, selectedProc]);
+
+  useEffect(() => {
+    if (!pendingDrilldown || selectedProc !== pendingDrilldown.report) return;
+    if (!allParamsProvided) return;
+    runReport();
+    setPendingDrilldown(null);
+  }, [pendingDrilldown, selectedProc, allParamsProvided, runReport]);
 
   const selectedLockCount = useMemo(() => {
     if (!Array.isArray(lockCandidates) || lockCandidates.length === 0)
@@ -3686,6 +3807,11 @@ export default function Reports() {
               rowSelection={rowSelection}
               onRowSelectionChange={handleRowSelectionChange}
               getRowId={getReportRowId}
+              enableRowSelection={!isAggregated}
+              rowGranularity={rowGranularity}
+              drilldownReport={drilldownReport}
+              onDrilldown={handleDrilldown}
+              excludeColumns={INTERNAL_COLS}
             />
           </div>
           <div
@@ -3722,9 +3848,15 @@ export default function Reports() {
             >
               Update Selected
             </button>
-            {!rowIdFields.length && (
+            {isAggregated && (
               <span style={{ color: '#b45309' }}>
-                Selection uses row position because primary keys are unavailable.
+                Aggregated row represents{' '}
+                {Number(result?.rows?.[0]?.__row_count) ||
+                  String(result?.rows?.[0]?.__row_ids ?? '')
+                    .split(',')
+                    .map((id) => id.trim())
+                    .filter(Boolean).length}{' '}
+                transactions. Drill down to view and select individual records.
               </span>
             )}
           </div>
@@ -4145,8 +4277,9 @@ export default function Reports() {
               selected rows carefully before submitting for approval.
             </p>
             <div>
-              <strong>{selectedReportRows.length}</strong> row
-              {selectedReportRows.length === 1 ? '' : 's'} will be updated.
+              You are about to update <strong>{bulkUpdateRecordCount}</strong>{' '}
+              transaction{bulkUpdateRecordCount === 1 ? '' : 's'}. This action
+              requires approval.
             </div>
             <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
               Field to update
@@ -4194,8 +4327,8 @@ export default function Reports() {
                 onChange={(event) => setBulkUpdateConfirmed(event.target.checked)}
               />
               <span>
-                I understand this will update {selectedReportRows.length} row
-                {selectedReportRows.length === 1 ? '' : 's'}.
+                I understand this will update {bulkUpdateRecordCount} transaction
+                {bulkUpdateRecordCount === 1 ? '' : 's'}.
               </span>
             </label>
             {rowIdTable &&

@@ -29,6 +29,7 @@ router.post('/bulk_edit', requireAuth, pendingRequestLimiter, async (req, res, n
       field,
       value,
       request_reason,
+      report_payload,
     } = req.body || {};
     if (!table_name || !Array.isArray(record_ids) || record_ids.length === 0 || !field) {
       return res.status(400).json({
@@ -46,6 +47,7 @@ router.post('/bulk_edit', requireAuth, pendingRequestLimiter, async (req, res, n
       value,
       requestReason: request_reason,
       companyId: req.user.companyId,
+      reportPayload: report_payload,
     });
     const io = req.app.get('io');
     if (io && result?.senior_empid) {
