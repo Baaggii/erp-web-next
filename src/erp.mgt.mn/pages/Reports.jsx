@@ -2073,6 +2073,13 @@ export default function Reports() {
     setPendingDrilldown(null);
   }, [pendingDrilldown, selectedProc, allParamsProvided, runReport]);
 
+  useEffect(() => {
+    if (!pendingDrilldown) return;
+    if (!selectedProc || selectedProc !== pendingDrilldown.report) {
+      setPendingDrilldown(null);
+    }
+  }, [pendingDrilldown, selectedProc]);
+
   const selectedLockCount = useMemo(() => {
     if (!Array.isArray(lockCandidates) || lockCandidates.length === 0)
       return 0;
@@ -3641,7 +3648,11 @@ export default function Reports() {
         <select
           value={selectedProc}
           onChange={(e) => {
-            setSelectedProc(e.target.value);
+            const nextProc = e.target.value;
+            if (pendingDrilldown && nextProc !== pendingDrilldown.report) {
+              setPendingDrilldown(null);
+            }
+            setSelectedProc(nextProc);
             setDatePreset('custom');
             setStartDate('');
             setEndDate('');
