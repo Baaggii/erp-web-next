@@ -2,6 +2,7 @@ import express from 'express';
 import { requireAuth } from '../middlewares/auth.js';
 import {
   createRequest,
+  createBulkEditRequest,
   listRequests,
   listRequestsByEmp,
   respondRequest,
@@ -10,6 +11,56 @@ import {
 
 
 const router = express.Router();
+
+router.post('/bulk_edit', requireAuth, async (req, res, next) => {
+  try {
+    const {
+      table_name,
+      record_ids,
+      field,
+      value,
+      request_reason,
+    } = req.body || {};
+    if (!table_name || !Array.isArray(record_ids) || record_ids.length === 0 || !field) {
+      return res.status(400).json({
+        message: 'table_name, record_ids, and field are required',
+      });
+    }
+    if (!request_reason || !String(request_reason).trim()) {
+      return res.status(400).json({ message: 'request_reason is required' });
+    }
+    const result = await createBulkEditRequest({
+      tableName: table_name,
+      recordIds: record_ids,
+      empId: req.user.empid,
+      field,
+      value,
+      requestReason: request_reason,
+      companyId: req.user.companyId,
+    });
+    const io = req.app.get('io');
+    if (io && result?.senior_empid) {
+      io.to(`user:${result.senior_empid}`).emit('newRequest', {
+        requestId: result.request_id,
+        tableName: table_name,
+        recordId: result.record_id,
+        requestType: 'bulk_edit',
+      });
+    }
+    res.status(201).json(result);
+  } catch (err) {
+    if (err.status === 400 && err.message === 'invalid table_name') {
+      return res.status(400).json({ message: 'invalid table_name' });
+    }
+    if (err.status === 409) {
+      return res.status(409).json({ message: err.message });
+    }
+    if (err.status === 423) {
+      return res.status(423).json({ message: err.message });
+    }
+    next(err);
+  }
+});
 
 router.post('/', requireAuth, async (req, res, next) => {
   try {
@@ -25,6 +76,9 @@ router.post('/', requireAuth, async (req, res, next) => {
 
     if (!ALLOWED_REQUEST_TYPES.has(request_type)) {
       return res.status(400).json({ message: 'invalid request_type' });
+    }
+    if (request_type === 'bulk_edit') {
+      return res.status(400).json({ message: 'Use the bulk_edit endpoint' });
     }
     const result = await createRequest({
       tableName: table_name,
@@ -51,6 +105,9 @@ router.post('/', requireAuth, async (req, res, next) => {
     }
     if (err.status === 400 && err.message === 'invalid_report_payload') {
       return res.status(400).json({ message: 'invalid report_approval payload' });
+    }
+    if (err.status === 400 && err.message === 'invalid_bulk_payload') {
+      return res.status(400).json({ message: 'invalid bulk update payload' });
     }
     next(err);
   }

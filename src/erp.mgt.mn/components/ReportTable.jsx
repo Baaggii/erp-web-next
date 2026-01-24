@@ -6,6 +6,7 @@ import React, {
   useRef,
   useState,
 } from 'react';
+import { useReactTable } from '@tanstack/react-table';
 import { AuthContext } from '../context/AuthContext.jsx';
 import useGeneralConfig, { updateCache } from '../hooks/useGeneralConfig.js';
 import useHeaderMappings from '../hooks/useHeaderMappings.js';
@@ -87,6 +88,9 @@ export default function ReportTable({
   showTotalRowCount = true,
   maxHeight = 'min(70vh, calc(100vh - 20rem))',
   onSnapshotReady,
+  rowSelection: externalRowSelection,
+  onRowSelectionChange,
+  getRowId: getRowIdProp,
 }) {
   const { user, company } = useContext(AuthContext);
   const generalConfig = useGeneralConfig();
@@ -99,12 +103,17 @@ export default function ReportTable({
   const [txnInfo, setTxnInfo] = useState(null);
   const [columnFilters, setColumnFilters] = useState({});
   const [frozenColumns, setFrozenColumns] = useState(0);
+  const [internalRowSelection, setInternalRowSelection] = useState({});
   const tableContainerRef = useRef(null);
+  const headerCheckboxRef = useRef(null);
+  const selectionColumnWidth = ch(6);
 
   const columns = useMemo(
     () => (rows && rows.length ? Object.keys(rows[0]) : []),
     [rows],
   );
+  const resolvedRowSelection =
+    externalRowSelection !== undefined ? externalRowSelection : internalRowSelection;
   const lineageMap = useMemo(
     () => (fieldLineage && typeof fieldLineage === 'object' ? fieldLineage : {}),
     [fieldLineage],
@@ -150,6 +159,12 @@ export default function ReportTable({
   }, [rows]);
 
   useEffect(() => {
+    if (externalRowSelection === undefined) {
+      setInternalRowSelection({});
+    }
+  }, [rows, externalRowSelection]);
+
+  useEffect(() => {
     setColumnFilters((prev) => {
       const next = {};
       let changed = false;
@@ -169,6 +184,30 @@ export default function ReportTable({
     });
     setPage(1);
   }
+
+  const resolveRowId = useCallback(
+    (row, index) => {
+      if (typeof getRowIdProp === 'function') {
+        const resolved = getRowIdProp(row, index);
+        return resolved == null ? String(index) : String(resolved);
+      }
+      return String(index);
+    },
+    [getRowIdProp],
+  );
+
+  const handleRowSelectionChange = useCallback(
+    (updater) => {
+      if (typeof onRowSelectionChange === 'function') {
+        onRowSelectionChange(updater);
+        return;
+      }
+      setInternalRowSelection((prev) =>
+        typeof updater === 'function' ? updater(prev) : updater || {},
+      );
+    },
+    [onRowSelectionChange],
+  );
 
 
   const procLabels = generalConfig.general?.procLabels || {};
@@ -287,14 +326,14 @@ export default function ReportTable({
 
   const stickyOffsets = useMemo(() => {
     const offsets = {};
-    let left = 0;
+    let left = selectionColumnWidth;
     columns.forEach((col, idx) => {
       if (idx >= frozenColumns) return;
       offsets[col] = left;
       left += columnWidths[col] || ch(12);
     });
     return offsets;
-  }, [columns, frozenColumns, columnWidths]);
+  }, [columns, frozenColumns, columnWidths, selectionColumnWidth]);
 
   const numericColumns = useMemo(
     () =>
@@ -396,6 +435,30 @@ export default function ReportTable({
     () => sorted.slice((page - 1) * perPage, page * perPage),
     [sorted, page, perPage],
   );
+
+  const columnDefs = useMemo(
+    () =>
+      columns.map((col) => ({
+        accessorKey: col,
+        id: col,
+      })),
+    [columns],
+  );
+
+  const table = useReactTable({
+    data: sorted,
+    columns: columnDefs,
+    state: { rowSelection: resolvedRowSelection },
+    onRowSelectionChange: handleRowSelectionChange,
+    getRowId: resolveRowId,
+    enableRowSelection: true,
+    enableMultiRowSelection: true,
+  });
+
+  useEffect(() => {
+    if (!headerCheckboxRef.current) return;
+    headerCheckboxRef.current.indeterminate = table.getIsSomeRowsSelected();
+  }, [table, resolvedRowSelection]);
 
   function toggleSort(col) {
     setSort((prev) =>
@@ -745,6 +808,28 @@ export default function ReportTable({
         >
           <thead className="table-manager sticky-header">
             <tr style={{ backgroundColor: '#e5e7eb' }}>
+              <th
+                style={{
+                  padding: '0.5rem',
+                  border: '1px solid #d1d5db',
+                  textAlign: 'center',
+                  width: selectionColumnWidth,
+                  minWidth: selectionColumnWidth,
+                  maxWidth: selectionColumnWidth,
+                  position: 'sticky',
+                  left: 0,
+                  zIndex: 25,
+                  background: '#e5e7eb',
+                  boxShadow: '1px 0 0 #d1d5db',
+                }}
+              >
+                <input
+                  ref={headerCheckboxRef}
+                  type="checkbox"
+                  checked={table.getIsAllRowsSelected()}
+                  onChange={table.getToggleAllRowsSelectedHandler()}
+                />
+              </th>
               {columns.map((col) => (
                 <th
                   key={col}
@@ -767,7 +852,7 @@ export default function ReportTable({
                     ...(col in stickyOffsets
                       ? {
                           position: 'sticky',
-                          left: stickyOffsets[col],
+                          left: stickyOffsets[col] + selectionColumnWidth,
                           zIndex: 20,
                           background: '#e5e7eb',
                           boxShadow: '1px 0 0 #d1d5db',
@@ -789,6 +874,20 @@ export default function ReportTable({
               ))}
             </tr>
             <tr>
+              <th
+                style={{
+                  padding: '0.25rem',
+                  border: '1px solid #d1d5db',
+                  background: '#f9fafb',
+                  position: 'sticky',
+                  left: 0,
+                  zIndex: 18,
+                  width: selectionColumnWidth,
+                  minWidth: selectionColumnWidth,
+                  maxWidth: selectionColumnWidth,
+                  boxShadow: '1px 0 0 #d1d5db',
+                }}
+              />
               {columns.map((col) => (
                 <th
                   key={`${col}-filter`}
@@ -808,7 +907,7 @@ export default function ReportTable({
                     ...(col in stickyOffsets
                       ? {
                           position: 'sticky',
-                          left: stickyOffsets[col],
+                          left: stickyOffsets[col] + selectionColumnWidth,
                           zIndex: 15,
                           background: '#f9fafb',
                           boxShadow: '1px 0 0 #d1d5db',
@@ -827,51 +926,91 @@ export default function ReportTable({
             </tr>
           </thead>
           <tbody className="table-manager">
-            {pageRows.map((row, idx) => (
-              <tr key={idx}>
-                {columns.map((col) => {
-                  const w = columnWidths[col];
-                  const style = {
-                    padding: '0.5rem',
-                    border: '1px solid #d1d5db',
-                    textAlign: columnAlign[col],
-                  };
-                  if (w) {
-                    style.width = w;
-                    style.minWidth = w;
-                    style.maxWidth = MAX_WIDTH;
-                    style.whiteSpace = 'nowrap';
-                    style.overflow = 'hidden';
-                    style.textOverflow = 'ellipsis';
-                  }
-                  if (col in stickyOffsets) {
-                    style.position = 'sticky';
-                    style.left = stickyOffsets[col];
-                    style.background = '#fff';
-                    style.zIndex = 5;
-                    style.boxShadow = '1px 0 0 #d1d5db';
-                  }
-                  const { value, displayColumn } = resolveCell(row, col);
-                  const cellPlaceholder = resolvePlaceholder(col, displayColumn);
-                  const numericValue = isNumericValue(value);
-                  return (
-                    <td
-                      key={col}
-                      style={{ ...style, cursor: row[col] ? 'pointer' : 'default' }}
-                      onClick={() => handleCellClick(col, row[col], row)}
-                    >
-                      {numericColumns.includes(col) && numericValue
-                        ? formatNumber(value)
-                        : formatCellValue(value, cellPlaceholder)}
-                    </td>
-                  );
-                })}
-              </tr>
-            ))}
+            {pageRows.map((row, idx) => {
+              const rowId = resolveRowId(row, (page - 1) * perPage + idx);
+              const tableRow = table.getRowModel().rowsById[rowId];
+              return (
+                <tr key={rowId}>
+                  <td
+                    style={{
+                      padding: '0.5rem',
+                      border: '1px solid #d1d5db',
+                      textAlign: 'center',
+                      width: selectionColumnWidth,
+                      minWidth: selectionColumnWidth,
+                      maxWidth: selectionColumnWidth,
+                      position: 'sticky',
+                      left: 0,
+                      background: '#fff',
+                      zIndex: 10,
+                      boxShadow: '1px 0 0 #d1d5db',
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={tableRow?.getIsSelected() || false}
+                      onChange={tableRow?.getToggleSelectedHandler()}
+                    />
+                  </td>
+                  {columns.map((col) => {
+                    const w = columnWidths[col];
+                    const style = {
+                      padding: '0.5rem',
+                      border: '1px solid #d1d5db',
+                      textAlign: columnAlign[col],
+                    };
+                    if (w) {
+                      style.width = w;
+                      style.minWidth = w;
+                      style.maxWidth = MAX_WIDTH;
+                      style.whiteSpace = 'nowrap';
+                      style.overflow = 'hidden';
+                      style.textOverflow = 'ellipsis';
+                    }
+                    if (col in stickyOffsets) {
+                      style.position = 'sticky';
+                      style.left = stickyOffsets[col] + selectionColumnWidth;
+                      style.background = '#fff';
+                      style.zIndex = 5;
+                      style.boxShadow = '1px 0 0 #d1d5db';
+                    }
+                    const { value, displayColumn } = resolveCell(row, col);
+                    const cellPlaceholder = resolvePlaceholder(col, displayColumn);
+                    const numericValue = isNumericValue(value);
+                    return (
+                      <td
+                        key={col}
+                        style={{ ...style, cursor: row[col] ? 'pointer' : 'default' }}
+                        onClick={() => handleCellClick(col, row[col], row)}
+                      >
+                        {numericColumns.includes(col) && numericValue
+                          ? formatNumber(value)
+                          : formatCellValue(value, cellPlaceholder)}
+                      </td>
+                    );
+                  })}
+                </tr>
+              );
+            })}
           </tbody>
           {showTotalRowCount && numericColumns.length > 0 && (
             <tfoot>
               <tr>
+                <td
+                  style={{
+                    padding: '0.5rem',
+                    border: '1px solid #d1d5db',
+                    fontWeight: 'bold',
+                    position: 'sticky',
+                    left: 0,
+                    background: '#f3f4f6',
+                    zIndex: 8,
+                    boxShadow: '1px 0 0 #d1d5db',
+                    width: selectionColumnWidth,
+                    minWidth: selectionColumnWidth,
+                    maxWidth: selectionColumnWidth,
+                  }}
+                />
                 {columns.map((col, idx) => (
                   <td
                     key={col}
@@ -883,7 +1022,7 @@ export default function ReportTable({
                       ...(col in stickyOffsets
                         ? {
                             position: 'sticky',
-                            left: stickyOffsets[col],
+                            left: stickyOffsets[col] + selectionColumnWidth,
                             background: '#f3f4f6',
                             zIndex: 6,
                             boxShadow: '1px 0 0 #d1d5db',
