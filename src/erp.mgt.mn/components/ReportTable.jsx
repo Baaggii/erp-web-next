@@ -40,6 +40,12 @@ function formatNumber(val) {
   return Number.isNaN(num) ? '' : numberFmt.format(num);
 }
 
+function isNumericValue(value) {
+  if (value === null || value === undefined || value === '') return false;
+  const num = Number(String(value).replace(',', '.'));
+  return !Number.isNaN(num);
+}
+
 function formatCellValue(val, placeholder) {
   if (val === null || val === undefined) return '';
   let str;
@@ -250,19 +256,6 @@ export default function ReportTable({
     });
   }, [filtered, sort, resolveCell]);
 
-  const columnAlign = useMemo(() => {
-    const map = {};
-    columns.forEach((c) => {
-      const sample = sorted.find((r) => {
-        const val = resolveCell(r, c).value;
-        return val !== null && val !== undefined;
-      });
-      const sampleValue = sample ? resolveCell(sample, c).value : undefined;
-      map[c] = typeof sampleValue === 'number' ? 'right' : 'left';
-    });
-    return map;
-  }, [columns, sorted, resolveCell]);
-
   const columnWidths = useMemo(() => {
     const map = {};
     if (sorted.length === 0) return map;
@@ -305,20 +298,26 @@ export default function ReportTable({
 
   const numericColumns = useMemo(
     () =>
-      columns.filter((c) =>
-        sorted.some(
-          (r) => {
-            const value = resolveCell(r, c).value;
-            return (
-              value !== null &&
-              value !== '' &&
-              !isNaN(Number(String(value).replace(',', '.')))
-            );
-          },
-        ),
-      ),
+      columns.filter((c) => {
+        let hasValue = false;
+        for (const row of sorted) {
+          const value = resolveCell(row, c).value;
+          if (value === null || value === undefined || value === '') continue;
+          hasValue = true;
+          if (!isNumericValue(value)) return false;
+        }
+        return hasValue;
+      }),
     [columns, sorted, resolveCell],
   );
+
+  const columnAlign = useMemo(() => {
+    const map = {};
+    columns.forEach((c) => {
+      map[c] = numericColumns.includes(c) ? 'right' : 'left';
+    });
+    return map;
+  }, [columns, numericColumns]);
 
   const totals = useMemo(() => {
     const sums = {};
