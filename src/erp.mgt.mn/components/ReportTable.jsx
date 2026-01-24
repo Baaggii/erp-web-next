@@ -77,6 +77,7 @@ export default function ReportTable({
   const [txnInfo, setTxnInfo] = useState(null);
   const [columnFilters, setColumnFilters] = useState({});
   const [frozenColumns, setFrozenColumns] = useState(0);
+  const tableContainerRef = useRef(null);
 
   const columns = useMemo(
     () => (rows && rows.length ? Object.keys(rows[0]) : []),
@@ -621,6 +622,36 @@ export default function ReportTable({
     );
   }
 
+  const handlePrintTable = useCallback(() => {
+    if (!tableContainerRef.current) return;
+    const tableHtml = tableContainerRef.current.innerHTML;
+    const printWindow = window.open('', '_blank', 'width=1024,height=768');
+    if (!printWindow) return;
+    printWindow.document.open();
+    printWindow.document.write(`<!DOCTYPE html>
+      <html>
+        <head>
+          <title>${procLabel}</title>
+          <style>
+            body { font-family: Arial, sans-serif; padding: 16px; color: #111827; }
+            h1 { font-size: 18px; margin-bottom: 12px; }
+            table { border-collapse: collapse; width: 100%; }
+            th, td { border: 1px solid #d1d5db; padding: 6px; font-size: 12px; }
+            th { background: #e5e7eb; text-align: left; }
+            tfoot td { font-weight: bold; background: #f3f4f6; }
+          </style>
+        </head>
+        <body>
+          <h1>${procLabel}</h1>
+          ${tableHtml}
+        </body>
+      </html>`);
+    printWindow.document.close();
+    printWindow.focus();
+    printWindow.print();
+    printWindow.close();
+  }, [procLabel]);
+
   return (
     <div style={{ marginTop: '1rem' }}>
       <h4>
@@ -648,6 +679,9 @@ export default function ReportTable({
           placeholder="Search"
           style={{ marginRight: '0.5rem' }}
         />
+        <button type="button" onClick={handlePrintTable}>
+          Print
+        </button>
         {columns.length > 0 && (
           <label style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
             <span>Freeze first</span>
@@ -670,6 +704,7 @@ export default function ReportTable({
       </div>
       <div
         className="table-container overflow-auto"
+        ref={tableContainerRef}
         style={{
           position: 'relative',
           maxWidth: '100%',
