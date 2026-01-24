@@ -374,14 +374,15 @@ select[multiple] option:checked {
 
 /* Table cell behaviour */
 td {
-  white-space: nowrap;
-  text-overflow: ellipsis;
-  overflow: hidden;
+  white-space: normal;
+  word-break: normal;
+  overflow-wrap: normal;
 }
 
 th {
   white-space: normal;
-  word-break: break-word;
+  word-break: normal;
+  overflow-wrap: normal;
   padding: 0.5rem;
   font-weight: 600;
   text-align: left;
