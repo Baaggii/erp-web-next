@@ -55,6 +55,15 @@ function isCountColumn(name) {
   return f === 'count' || f === 'count()' || f.startsWith('count(');
 }
 
+function escapeHtml(value) {
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
 export default function ReportTable({
   procedure = '',
   params = {},
@@ -621,6 +630,99 @@ export default function ReportTable({
     );
   }
 
+  const handlePrintTable = useCallback(() => {
+    if (!columns.length || !rows.length) return;
+    const printRows = sort
+      ? [...rows].sort((a, b) => {
+          const { col, dir } = sort;
+          const av = resolveCell(a, col).value;
+          const bv = resolveCell(b, col).value;
+          if (av == null && bv == null) return 0;
+          if (av == null) return dir === 'asc' ? -1 : 1;
+          if (bv == null) return dir === 'asc' ? 1 : -1;
+          if (av < bv) return dir === 'asc' ? -1 : 1;
+          if (av > bv) return dir === 'asc' ? 1 : -1;
+          return 0;
+        })
+      : rows;
+    const headerHtml = columns
+      .map((col) => {
+        const label = fieldLabels[col] || columnHeaderMap[col] || col;
+        return `<th>${escapeHtml(label)}</th>`;
+      })
+      .join('');
+    const bodyHtml = printRows
+      .map((row) => {
+        const cells = columns
+          .map((col) => {
+            const { value, displayColumn } = resolveCell(row, col);
+            const cellPlaceholder = resolvePlaceholder(col, displayColumn);
+            const cellValue = numericColumns.includes(col)
+              ? formatNumber(value)
+              : formatCellValue(value, cellPlaceholder);
+            return `<td>${escapeHtml(cellValue)}</td>`;
+          })
+          .join('');
+        return `<tr>${cells}</tr>`;
+      })
+      .join('');
+    const totalRowHtml =
+      showTotalRowCount && numericColumns.length > 0
+        ? `<tfoot><tr>${columns
+            .map((col, idx) => {
+              if (idx === 0) return '<td>TOTAL</td>';
+              if (numericColumns.includes(col)) {
+                return `<td>${escapeHtml(formatNumber(totals[col]))}</td>`;
+              }
+              return '<td></td>';
+            })
+            .join('')}</tr></tfoot>`
+        : '';
+    const tableHtml = `<table><thead><tr>${headerHtml}</tr></thead><tbody>${bodyHtml}</tbody>${totalRowHtml}</table>`;
+    const printWindow = window.open('', '_blank', 'width=1024,height=768');
+    if (!printWindow) return;
+    printWindow.document.open();
+    printWindow.document.write(`<!DOCTYPE html>
+      <html>
+        <head>
+          <title>${procLabel}</title>
+          <style>
+            body { font-family: Arial, sans-serif; padding: 16px; color: #111827; }
+            h1 { font-size: 18px; margin-bottom: 12px; }
+            table { border-collapse: collapse; width: 100%; }
+            th, td { border: 1px solid #d1d5db; padding: 6px; font-size: 12px; }
+            th { background: #e5e7eb; text-align: left; }
+            tfoot td { font-weight: bold; background: #f3f4f6; }
+            thead { display: table-header-group; }
+            tfoot { display: table-footer-group; }
+            tr { page-break-inside: avoid; }
+          </style>
+        </head>
+        <body>
+          <h1>${procLabel}</h1>
+          ${tableHtml}
+        </body>
+      </html>`);
+    printWindow.document.close();
+    printWindow.focus();
+    printWindow.onafterprint = () => {
+      printWindow.close();
+    };
+    printWindow.print();
+  }, [
+    columns,
+    columnHeaderMap,
+    fieldLabels,
+    numericColumns,
+    procLabel,
+    resolveCell,
+    resolvePlaceholder,
+    rows,
+    showTotalRowCount,
+    sort,
+    totals,
+  ]);
+
   return (
     <div style={{ marginTop: '1rem' }}>
       <h4>
@@ -648,6 +750,9 @@ export default function ReportTable({
           placeholder="Search"
           style={{ marginRight: '0.5rem' }}
         />
+        <button type="button" onClick={handlePrintTable}>
+          Print
+        </button>
         {columns.length > 0 && (
           <label style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
             <span>Freeze first</span>
