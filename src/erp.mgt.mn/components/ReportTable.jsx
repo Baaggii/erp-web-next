@@ -311,16 +311,18 @@ export default function ReportTable({
 
   const numericColumns = useMemo(
     () =>
-      columns.filter((c) => {
-        let hasValue = false;
-        for (const row of sorted) {
-          const value = resolveCell(row, c).value;
-          if (value === null || value === '') continue;
-          hasValue = true;
-          if (!isNumericValue(value)) return false;
-        }
-        return hasValue;
-      }),
+      columns.filter((c) =>
+        sorted.some(
+          (r) => {
+            const value = resolveCell(r, c).value;
+            return (
+              value !== null &&
+              value !== '' &&
+              isNumericValue(value)
+            );
+          },
+        ),
+      ),
     [columns, sorted, resolveCell],
   );
 
@@ -856,13 +858,14 @@ export default function ReportTable({
                   }
                   const { value, displayColumn } = resolveCell(row, col);
                   const cellPlaceholder = resolvePlaceholder(col, displayColumn);
+                  const numericValue = isNumericValue(value);
                   return (
                     <td
                       key={col}
                       style={{ ...style, cursor: row[col] ? 'pointer' : 'default' }}
                       onClick={() => handleCellClick(col, row[col], row)}
                     >
-                      {numericColumns.includes(col)
+                      {numericColumns.includes(col) && numericValue
                         ? formatNumber(value)
                         : formatCellValue(value, cellPlaceholder)}
                     </td>
