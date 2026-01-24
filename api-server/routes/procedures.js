@@ -10,6 +10,7 @@ import {
   pool,
 } from '../../db/index.js';
 import { listPermittedProcedures } from '../utils/reportProcedures.js';
+import { buildReportFieldLineage } from '../utils/reportFieldLineage.js';
 
 const RATE_LIMIT_WINDOW_MS = 60 * 1000;
 const RATE_LIMIT_MAX_REQUESTS = 30;
@@ -182,23 +183,28 @@ router.post('/', requireAuth, async (req, res, next) => {
     const rawGid = req.body?.g_id ?? req.query?.g_id ?? aliasGid;
     const validCompany = await validateCompanyForGid(companyId, rawGid, res);
     if (!validCompany) return;
-    const { row, reportCapabilities, lockCandidates } = await callStoredProcedure(
-      name,
-      Array.isArray(params) ? params : [],
-      Array.isArray(aliases) ? aliases : [],
-      {
-        session: {
-          collectUsedRows: collectLocks,
-          requestId: lockRequestId,
-          empId: req.user?.empid ?? null,
+    const [procResult, fieldLineage] = await Promise.all([
+      callStoredProcedure(
+        name,
+        Array.isArray(params) ? params : [],
+        Array.isArray(aliases) ? aliases : [],
+        {
+          session: {
+            collectUsedRows: collectLocks,
+            requestId: lockRequestId,
+            empId: req.user?.empid ?? null,
+          },
         },
-      },
-    );
+      ),
+      buildReportFieldLineage(name, companyId),
+    ]);
+    const { row, reportCapabilities, lockCandidates } = procResult;
     res.json({
       row,
       lockRequestId: collectLocks ? lockRequestId : null,
       reportCapabilities,
       lockCandidates,
+      fieldLineage,
     });
   } catch (err) {
     next(err);

@@ -896,6 +896,7 @@ useEffect(() => {
           params: paramMap,
           rows,
           fieldTypeMap: data.fieldTypeMap || {},
+          fieldLineage: data.fieldLineage || {},
         });
       } else {
         addToast('Failed to run procedure', 'error');
@@ -1108,6 +1109,7 @@ useEffect(() => {
           rows={reportResult.rows}
            buttonPerms={buttonPerms}
            fieldTypeMap={reportResult.fieldTypeMap}
+           fieldLineage={reportResult.fieldLineage}
         />
       )}
       {transactionNames.length === 0 && (
