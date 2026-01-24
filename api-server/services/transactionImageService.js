@@ -1296,7 +1296,7 @@ export async function detectIncompleteImages(
     const dirPath = path.join(baseDir, entry.name);
     let files;
     try {
-      files = await fs.readdir(dirPath, { withFileTypes: true });
+      files = await fs.readdir(dirPath);
     } catch {
       return;
     }
@@ -1305,9 +1305,9 @@ export async function detectIncompleteImages(
     totalFiles += files.length;
     for (const f of files) {
       signal?.throwIfAborted();
-      const ext = path.extname(entry.name);
-      const base = path.basename(entry.name, ext);
-      const filePath = path.join(dirPath, entry.name);
+      const ext = path.extname(f);
+      const base = path.basename(f, ext);
+      const filePath = path.join(dirPath, f);
       let unique = '';
       let suffix = '';
       let found;
@@ -1512,11 +1512,11 @@ export async function detectIncompleteImages(
         results.push({
           folder: folderRaw,
           folderDisplay,
-          currentName: entry.name,
+          currentName: f,
           newName,
           recordId,
           configName: configNames.join(', '),
-          currentPath: filePath,
+          currentPath: path.join(dirPath, f),
         });
       } else if (results.length >= perPage) {
         hasMore = true;
