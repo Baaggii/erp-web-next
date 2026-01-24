@@ -153,6 +153,7 @@ export default function ReportTable({
   const fieldLabels = procFieldLabels[procedure] || {};
   const headerMap = useHeaderMappings([procedure]);
   const general = generalConfig.general || {};
+  const reportSettings = generalConfig.reports || {};
 
   function rowToast(message, type = 'info') {
     if (general.reportRowToastEnabled) {
@@ -901,6 +902,86 @@ export default function ReportTable({
           />
         </label>
       </div>
+      {reportSettings.showReportLineageInfo && (
+        <div
+          style={{
+            marginTop: '0.75rem',
+            border: '1px solid #d1d5db',
+            borderRadius: '0.5rem',
+            padding: '0.75rem',
+            background: '#f9fafb',
+          }}
+        >
+          <h5 style={{ marginTop: 0 }}>Report Field Lineage</h5>
+          <div className="table-container overflow-auto" style={{ maxWidth: '100%' }}>
+            <table
+              className="table-manager"
+              style={{ borderCollapse: 'collapse', minWidth: '600px' }}
+            >
+              <thead className="table-manager sticky-header">
+                <tr>
+                  {['Output Field', 'Source', 'Relation', 'Resolved Display', 'Expression'].map(
+                    (label) => (
+                      <th
+                        key={label}
+                        style={{
+                          padding: '0.5rem',
+                          border: '1px solid #d1d5db',
+                          textAlign: 'left',
+                          background: '#e5e7eb',
+                          fontSize: '0.75rem',
+                        }}
+                      >
+                        {label}
+                      </th>
+                    ),
+                  )}
+                </tr>
+              </thead>
+              <tbody>
+                {columns.map((col) => {
+                  const info = lineageMap[col] || {};
+                  const source =
+                    info.sourceTable && info.sourceColumn
+                      ? `${info.sourceTable}.${info.sourceColumn}`
+                      : 'Derived';
+                  const relation = info.relation
+                    ? `${info.relation.targetTable}.${info.relation.displayField}`
+                    : '—';
+                  const resolved = relationDisplayColumns[col]
+                    ? `${relationDisplayColumns[col]}`
+                    : '—';
+                  return (
+                    <tr key={`lineage-${col}`}>
+                      <td
+                        style={{
+                          padding: '0.5rem',
+                          border: '1px solid #d1d5db',
+                          fontWeight: 600,
+                        }}
+                      >
+                        {col}
+                      </td>
+                      <td style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>
+                        {source}
+                      </td>
+                      <td style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>
+                        {relation}
+                      </td>
+                      <td style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>
+                        {resolved}
+                      </td>
+                      <td style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>
+                        {info.expr || '—'}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
       {txnInfo && (
         <Modal
           visible
