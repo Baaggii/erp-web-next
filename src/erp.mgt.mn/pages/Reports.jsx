@@ -2044,6 +2044,9 @@ export default function Reports() {
       report,
       filters: {
         row_ids: filters?.__row_ids ?? filters?.row_ids,
+        tr_date: filters?.tr_date,
+        tr_type: filters?.tr_type,
+        manuf_id: filters?.manuf_id,
       },
     });
     setSelectedProc(report);
@@ -2053,13 +2056,17 @@ export default function Reports() {
   useEffect(() => {
     if (!pendingDrilldown || selectedProc !== pendingDrilldown.report) return;
     if (!Array.isArray(procParams)) return;
+    const allowedKeys = new Set(['row_ids', 'tr_date', 'tr_type', 'manuf_id']);
     const updates = {};
     procParams.forEach((param) => {
       if (typeof param !== 'string') return;
       const normalized = normalizeParamName(param);
-      if (normalized.includes('rowids')) {
-        updates[param] = pendingDrilldown.filters?.row_ids;
-      }
+      allowedKeys.forEach((key) => {
+        const normalizedKey = normalizeParamName(key);
+        if (normalized.includes(normalizedKey)) {
+          updates[param] = pendingDrilldown.filters?.[key];
+        }
+      });
     });
     setManualParams(updates);
   }, [pendingDrilldown, procParams, selectedProc]);
