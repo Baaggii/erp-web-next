@@ -1,6 +1,11 @@
-import { getProcedureDefinitionSql, listTableRelationships } from '../../db/index.js';
+import {
+  getProcedureDefinitionSql,
+  listTableColumnsDetailed,
+  listTableRelationships,
+} from '../../db/index.js';
 import { listCustomRelations } from '../services/tableRelationsConfig.js';
 import { getDisplayFields } from '../services/displayFieldConfig.js';
+import { getMappings } from '../services/headerMappings.js';
 
 function normalizeIdent(value) {
   if (value === undefined || value === null) return '';
@@ -185,18 +190,96 @@ function parseSelectAlias(item) {
   return { expr: item.trim(), alias: '' };
 }
 
+function findTopLevelWord(input, word) {
+  if (!input) return -1;
+  const upper = input.toUpperCase();
+  const target = word.toUpperCase();
+  let depth = 0;
+  let inSingle = false;
+  let inDouble = false;
+  let inBacktick = false;
+  for (let i = 0; i < upper.length; i++) {
+    const ch = upper[i];
+    if (inSingle) {
+      if (ch === "'" && upper[i - 1] !== '\\') inSingle = false;
+      continue;
+    }
+    if (inDouble) {
+      if (ch === '"' && upper[i - 1] !== '\\') inDouble = false;
+      continue;
+    }
+    if (inBacktick) {
+      if (ch === '`') inBacktick = false;
+      continue;
+    }
+    if (ch === "'") {
+      inSingle = true;
+      continue;
+    }
+    if (ch === '"') {
+      inDouble = true;
+      continue;
+    }
+    if (ch === '`') {
+      inBacktick = true;
+      continue;
+    }
+    if (ch === '(') depth++;
+    if (ch === ')') depth = Math.max(0, depth - 1);
+    if (depth !== 0) continue;
+    if (upper.startsWith(target, i)) {
+      const before = upper[i - 1];
+      const after = upper[i + target.length];
+      const beforeOk = !before || /[^A-Z0-9_]/.test(before);
+      const afterOk = !after || /[^A-Z0-9_]/.test(after);
+      if (beforeOk && afterOk) return i;
+    }
+  }
+  return -1;
+}
+
+function unwrapOnce(expr) {
+  if (!expr) return '';
+  const trimmed = expr.trim();
+  const match = trimmed.match(/^([a-zA-Z_][\w]*)\s*\(([\s\S]*)\)$/);
+  if (!match) return trimmed;
+  const fn = match[1].toUpperCase();
+  const inner = match[2].trim();
+  if (['MAX', 'MIN', 'SUM', 'AVG', 'DATE'].includes(fn)) {
+    return inner;
+  }
+  if (['IFNULL', 'COALESCE'].includes(fn)) {
+    const args = splitTopLevel(inner);
+    return args[0] ? args[0].trim() : inner;
+  }
+  if (fn === 'CAST') {
+    const asIndex = findTopLevelWord(inner, 'AS');
+    if (asIndex !== -1) {
+      return inner.slice(0, asIndex).trim();
+    }
+    return inner;
+  }
+  return trimmed;
+}
+
 function unwrapSimpleFunction(expr) {
   if (!expr) return '';
-  const match = expr.match(
-    /^(?:MAX|MIN|SUM|AVG|IFNULL|COALESCE|DATE|CAST)\s*\(\s*([^)]+)\s*\)$/i,
-  );
-  return match ? match[1].trim() : expr;
+  let current = expr.trim();
+  let next = unwrapOnce(current);
+  while (next && next !== current) {
+    current = next;
+    next = unwrapOnce(current);
+  }
+  return current;
 }
 
 function extractFirstColumn(expr) {
   if (!expr) return null;
-  const match = expr.match(/([a-zA-Z_][\w]*)\.([a-zA-Z_][\w]*)/);
-  return match ? `${match[1]}.${match[2]}` : null;
+  const match = expr.match(
+    /([`"]?[a-zA-Z_][\w]*[`"]?)\s*\.\s*([`"]?[a-zA-Z_][\w]*[`"]?)/,
+  );
+  if (!match) return null;
+  return `${match[1]}.${match[2]}`.replace(/\s+/g, '');
 }
 
 function parseColumnReference(expr) {
@@ -218,12 +301,36 @@ function parseColumnReference(expr) {
 function classifyExpressionKind(expr, columnRef) {
   if (!expr) return 'computed';
   const trimmed = expr.trim();
-  if (/^(?:MAX|MIN|SUM|AVG)\s*\(/i.test(trimmed)) return 'aggregated';
+  if (/(?:MAX|MIN|SUM|AVG)\s*\(/i.test(trimmed)) return 'aggregated';
   if (columnRef) {
     const ref = columnRef.alias ? `${columnRef.alias}.${columnRef.column}` : columnRef.column;
     if (normalizeIdent(ref) === normalizeIdent(trimmed)) return 'direct';
   }
   return 'computed';
+}
+
+async function resolveEnumInfo(table, column, companyId, columnCache, mappingCache) {
+  if (!table || !column) return null;
+  const cacheKey = table.toLowerCase();
+  if (!columnCache.has(cacheKey)) {
+    const columns = await listTableColumnsDetailed(table);
+    columnCache.set(cacheKey, Array.isArray(columns) ? columns : []);
+  }
+  const columns = columnCache.get(cacheKey);
+  const lowerColumn = column.toLowerCase();
+  const columnInfo = columns.find(
+    (entry) => entry?.name && String(entry.name).toLowerCase() === lowerColumn,
+  );
+  if (!columnInfo || !Array.isArray(columnInfo.enumValues) || !columnInfo.enumValues.length) {
+    return null;
+  }
+  const key = `${companyId}|${columnInfo.enumValues.join('|')}`;
+  let labels = mappingCache.get(key);
+  if (!labels) {
+    labels = await getMappings(columnInfo.enumValues, null, companyId);
+    mappingCache.set(key, labels);
+  }
+  return { values: columnInfo.enumValues, labels };
 }
 
 async function resolveRelationInfo(table, column, companyId, relationCache) {
@@ -294,6 +401,8 @@ export async function buildReportFieldLineage(procedureName, companyId = 0) {
     const aliasMap = parseAliasMap(selectSql);
     const primaryTable = Object.values(aliasMap)[0] || '';
     const relationCache = new Map();
+    const columnCache = new Map();
+    const enumLabelCache = new Map();
     const lineage = {};
 
     for (const item of selectItems) {
@@ -301,7 +410,7 @@ export async function buildReportFieldLineage(procedureName, companyId = 0) {
       const unwrapped = unwrapSimpleFunction(expr);
       let columnRef = parseColumnReference(unwrapped);
       if (!columnRef) {
-        const fallback = extractFirstColumn(unwrapped);
+        const fallback = extractFirstColumn(expr) || extractFirstColumn(unwrapped);
         if (fallback) {
           columnRef = parseColumnReference(fallback);
         }
@@ -325,6 +434,14 @@ export async function buildReportFieldLineage(procedureName, companyId = 0) {
             relationCache,
           );
           if (relation) entry.relation = relation;
+          const enumInfo = await resolveEnumInfo(
+            sourceTable,
+            columnRef.column,
+            companyId,
+            columnCache,
+            enumLabelCache,
+          );
+          if (enumInfo) entry.enum = enumInfo;
         }
       }
       lineage[outputField] = entry;

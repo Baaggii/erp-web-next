@@ -973,22 +973,27 @@ export default function ReportTable({
             >
               <thead className="table-manager sticky-header">
                 <tr>
-                  {['Output Field', 'Source', 'Relation', 'Resolved Display', 'Expression'].map(
-                    (label) => (
-                      <th
-                        key={label}
-                        style={{
-                          padding: '0.5rem',
-                          border: '1px solid #d1d5db',
-                          textAlign: 'left',
-                          background: '#e5e7eb',
-                          fontSize: '0.75rem',
-                        }}
-                      >
-                        {label}
-                      </th>
-                    ),
-                  )}
+                  {[
+                    'Output Field',
+                    'Source',
+                    'Kind',
+                    'Relation',
+                    'Resolved Display',
+                    'Expression',
+                  ].map((label) => (
+                    <th
+                      key={label}
+                      style={{
+                        padding: '0.5rem',
+                        border: '1px solid #d1d5db',
+                        textAlign: 'left',
+                        background: '#e5e7eb',
+                        fontSize: '0.75rem',
+                      }}
+                    >
+                      {label}
+                    </th>
+                  ))}
                 </tr>
               </thead>
               <tbody>
@@ -997,7 +1002,10 @@ export default function ReportTable({
                   const source =
                     info.sourceTable && info.sourceColumn
                       ? `${info.sourceTable}.${info.sourceColumn}`
-                      : 'Derived';
+                      : '—';
+                  const kind = info.kind
+                    ? `${info.kind.charAt(0).toUpperCase()}${info.kind.slice(1)}`
+                    : '—';
                   const relation = info.relation
                     ? `${info.relation.targetTable}.${info.relation.displayField}`
                     : '—';
@@ -1017,6 +1025,9 @@ export default function ReportTable({
                       </td>
                       <td style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>
                         {source}
+                      </td>
+                      <td style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>
+                        {kind}
                       </td>
                       <td style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>
                         {relation}
