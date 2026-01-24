@@ -1524,6 +1524,9 @@ export default function ImageManagement() {
             <button type="button" onClick={() => detectFromHost(1)} style={{ marginRight: '0.5rem' }}>
               Detect from host
             </button>
+            {activeOp === 'detect' && (
+              <span style={{ marginRight: '0.5rem' }}>Scanning folders…</span>
+            )}
             <label style={{ marginRight: '0.5rem' }}>
               Page Size:{' '}
               <input
