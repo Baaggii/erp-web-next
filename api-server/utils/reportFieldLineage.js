@@ -185,6 +185,20 @@ function parseSelectAlias(item) {
   return { expr: item.trim(), alias: '' };
 }
 
+function unwrapSimpleFunction(expr) {
+  if (!expr) return '';
+  const match = expr.match(
+    /^(?:MAX|MIN|SUM|AVG|IFNULL|COALESCE|DATE|CAST)\s*\(\s*([^)]+)\s*\)$/i,
+  );
+  return match ? match[1].trim() : expr;
+}
+
+function extractFirstColumn(expr) {
+  if (!expr) return null;
+  const match = expr.match(/([a-zA-Z_][\w]*)\.([a-zA-Z_][\w]*)/);
+  return match ? `${match[1]}.${match[2]}` : null;
+}
+
 function parseColumnReference(expr) {
   if (!expr) return null;
   const cleaned = expr.trim().replace(/\s+/g, ' ');
@@ -199,6 +213,17 @@ function parseColumnReference(expr) {
     return { alias: '', column: parts[0] };
   }
   return null;
+}
+
+function classifyExpressionKind(expr, columnRef) {
+  if (!expr) return 'computed';
+  const trimmed = expr.trim();
+  if (/^(?:MAX|MIN|SUM|AVG)\s*\(/i.test(trimmed)) return 'aggregated';
+  if (columnRef) {
+    const ref = columnRef.alias ? `${columnRef.alias}.${columnRef.column}` : columnRef.column;
+    if (normalizeIdent(ref) === normalizeIdent(trimmed)) return 'direct';
+  }
+  return 'computed';
 }
 
 async function resolveRelationInfo(table, column, companyId, relationCache) {
@@ -273,12 +298,19 @@ export async function buildReportFieldLineage(procedureName, companyId = 0) {
 
     for (const item of selectItems) {
       const { expr, alias } = parseSelectAlias(item);
-      const columnRef = parseColumnReference(expr);
+      const unwrapped = unwrapSimpleFunction(expr);
+      let columnRef = parseColumnReference(unwrapped);
+      if (!columnRef) {
+        const fallback = extractFirstColumn(unwrapped);
+        if (fallback) {
+          columnRef = parseColumnReference(fallback);
+        }
+      }
       const outputField =
         alias ||
         (columnRef && columnRef.column ? columnRef.column : expr);
       if (!outputField) continue;
-      const entry = { expr };
+      const entry = { expr, kind: classifyExpressionKind(expr, columnRef) };
       if (columnRef) {
         const sourceTable = columnRef.alias
           ? aliasMap[columnRef.alias] || columnRef.alias
