@@ -1,7 +1,6 @@
 import { getProcedureDefinitionSql, listTableRelationships } from '../../db/index.js';
 import { listCustomRelations } from '../services/tableRelationsConfig.js';
 import { getDisplayFields } from '../services/displayFieldConfig.js';
-import parseProcedureConfig from '../../utils/parseProcedureConfig.js';
 
 function normalizeIdent(value) {
   if (value === undefined || value === null) return '';
@@ -59,44 +58,6 @@ function findTopLevelIndex(sql, keyword) {
     if (depth === 0 && upper.startsWith(target, i)) {
       return i;
     }
-  }
-  return -1;
-}
-
-function findTopLevelChar(sql, char) {
-  let depth = 0;
-  let inSingle = false;
-  let inDouble = false;
-  let inBacktick = false;
-  for (let i = 0; i < sql.length; i++) {
-    const ch = sql[i];
-    if (inSingle) {
-      if (ch === "'" && sql[i - 1] !== '\\') inSingle = false;
-      continue;
-    }
-    if (inDouble) {
-      if (ch === '"' && sql[i - 1] !== '\\') inDouble = false;
-      continue;
-    }
-    if (inBacktick) {
-      if (ch === '`') inBacktick = false;
-      continue;
-    }
-    if (ch === "'") {
-      inSingle = true;
-      continue;
-    }
-    if (ch === '"') {
-      inDouble = true;
-      continue;
-    }
-    if (ch === '`') {
-      inBacktick = true;
-      continue;
-    }
-    if (ch === '(') depth++;
-    if (ch === ')') depth = Math.max(0, depth - 1);
-    if (depth === 0 && ch === char) return i;
   }
   return -1;
 }
@@ -170,7 +131,7 @@ function extractSelectSql(sql) {
   const selectIdx = findTopLevelIndex(body, 'SELECT');
   if (selectIdx === -1) return '';
   let selectSql = body.slice(selectIdx);
-  const semicolonIdx = findTopLevelChar(selectSql, ';');
+  const semicolonIdx = findTopLevelIndex(selectSql, ';');
   if (semicolonIdx !== -1) {
     selectSql = selectSql.slice(0, semicolonIdx);
   }
@@ -240,61 +201,6 @@ function parseColumnReference(expr) {
   return null;
 }
 
-function unwrapParens(expr) {
-  let value = expr.trim();
-  while (value.startsWith('(') && value.endsWith(')')) {
-    let depth = 0;
-    let isWrapped = true;
-    for (let i = 0; i < value.length; i++) {
-      const ch = value[i];
-      if (ch === '(') depth++;
-      if (ch === ')') depth--;
-      if (depth === 0 && i < value.length - 1) {
-        isWrapped = false;
-        break;
-      }
-    }
-    if (!isWrapped) break;
-    value = value.slice(1, -1).trim();
-  }
-  return value;
-}
-
-function extractColumnFromCast(expr) {
-  const upper = expr.toUpperCase();
-  const asIdx = upper.indexOf(' AS ');
-  const inner = asIdx === -1 ? expr : expr.slice(0, asIdx);
-  return inner.trim();
-}
-
-function extractFirstArg(expr) {
-  const parts = splitTopLevel(expr);
-  return parts.length ? parts[0] : expr;
-}
-
-function extractColumnReference(expr) {
-  if (!expr) return null;
-  const trimmed = unwrapParens(expr);
-  if (/\b(SUM|COUNT|AVG|MIN|MAX)\s*\(/i.test(trimmed)) return null;
-  const distinctMatch = trimmed.match(/^DISTINCT\s+(.+)$/i);
-  const distinctExpr = distinctMatch ? distinctMatch[1].trim() : trimmed;
-  const direct = parseColumnReference(distinctExpr);
-  if (direct) return direct;
-
-  const funcMatch = distinctExpr.match(/^([a-zA-Z0-9_]+)\s*\(([\s\S]*)\)$/);
-  if (!funcMatch) return null;
-  const funcName = funcMatch[1].toUpperCase();
-  let inner = funcMatch[2] || '';
-  inner = unwrapParens(inner);
-  if (!inner) return null;
-  if (funcName === 'CAST' || funcName === 'CONVERT') {
-    const castExpr = extractColumnFromCast(inner);
-    return extractColumnReference(castExpr);
-  }
-  const firstArg = extractFirstArg(inner);
-  return extractColumnReference(firstArg);
-}
-
 async function resolveRelationInfo(table, column, companyId, relationCache) {
   if (!table || !column) return null;
   const cacheKey = table.toLowerCase();
@@ -351,145 +257,47 @@ async function resolveRelationInfo(table, column, companyId, relationCache) {
   };
 }
 
-function buildAliasMapFromReport(report) {
-  const aliasMap = {};
-  if (!report) return aliasMap;
-  const fromTable = report.from?.table;
-  if (fromTable) {
-    const alias = report.from?.alias || fromTable;
-    aliasMap[alias] = stripSchema(fromTable);
-  }
-  (report.joins || []).forEach((join) => {
-    if (!join?.table) return;
-    const alias = join.alias || join.table;
-    aliasMap[alias] = stripSchema(join.table);
-  });
-  return aliasMap;
-}
-
-async function buildLineageFromConfig(config, companyId) {
-  if (!config || !Array.isArray(config.fields) || config.fields.length === 0) {
-    return {};
-  }
-  const relationCache = new Map();
-  const lineage = {};
-  const aliasLookup = new Map();
-
-  config.fields.forEach((field) => {
-    if (!field?.alias || field.source !== 'field' || !field.table || !field.field) return;
-    aliasLookup.set(field.alias, {
-      sourceTable: field.table,
-      sourceColumn: field.field,
-      expr: `${field.table}.${field.field}`,
-    });
-  });
-
-  for (const field of config.fields) {
-    if (!field) continue;
-    const outputField = field.alias || field.field;
-    if (!outputField) continue;
-    const entry = {};
-    if (field.source === 'field' && field.table && field.field) {
-      entry.sourceTable = field.table;
-      entry.sourceColumn = field.field;
-      entry.expr = `${field.table}.${field.field}`;
-    } else if (field.source === 'alias' && field.baseAlias) {
-      const resolved = aliasLookup.get(field.baseAlias);
-      if (resolved) {
-        entry.sourceTable = resolved.sourceTable;
-        entry.sourceColumn = resolved.sourceColumn;
-        entry.expr = resolved.expr;
-      }
-    }
-
-    if (entry.sourceTable && entry.sourceColumn) {
-      const relation = await resolveRelationInfo(
-        entry.sourceTable,
-        entry.sourceColumn,
-        companyId,
-        relationCache,
-      );
-      if (relation) entry.relation = relation;
-    }
-    if (Object.keys(entry).length > 0) {
-      lineage[outputField] = entry;
-    }
-  }
-
-  return lineage;
-}
-
-async function buildLineageFromSelect(selectItems, aliasMap, primaryTable, companyId) {
-  if (!Array.isArray(selectItems) || selectItems.length === 0) return {};
-  const relationCache = new Map();
-  const lineage = {};
-
-  for (const item of selectItems) {
-    const expr = item?.expr || '';
-    const alias = item?.alias || '';
-    const columnRef = extractColumnReference(expr);
-    const outputField =
-      alias ||
-      (columnRef && columnRef.column ? columnRef.column : expr);
-    if (!outputField) continue;
-    const entry = { expr };
-    if (columnRef) {
-      const sourceTable = columnRef.alias
-        ? aliasMap[columnRef.alias] || columnRef.alias
-        : primaryTable;
-      if (sourceTable) {
-        entry.sourceTable = sourceTable;
-        entry.sourceColumn = columnRef.column;
-        const relation = await resolveRelationInfo(
-          sourceTable,
-          columnRef.column,
-          companyId,
-          relationCache,
-        );
-        if (relation) entry.relation = relation;
-      }
-    }
-    lineage[outputField] = entry;
-  }
-
-  return lineage;
-}
-
 export async function buildReportFieldLineage(procedureName, companyId = 0) {
   if (!procedureName) return {};
   try {
     const rawSql = await getProcedureDefinitionSql(procedureName);
     if (!rawSql) return {};
-    try {
-      const parsed = parseProcedureConfig(rawSql);
-      if (parsed?.report?.fields?.length) {
-        const lineage = await buildLineageFromConfig(parsed.report, companyId);
-        if (Object.keys(lineage).length > 0) return lineage;
-      }
-      if (parsed?.report?.select?.length) {
-        const aliasMap = buildAliasMapFromReport(parsed.report);
-        const primaryTable =
-          aliasMap[parsed.report.from?.alias] || aliasMap[parsed.report.from?.table] || '';
-        const lineage = await buildLineageFromSelect(
-          parsed.report.select,
-          aliasMap,
-          primaryTable,
-          companyId,
-        );
-        if (Object.keys(lineage).length > 0) return lineage;
-      }
-    } catch {}
     const selectSql = extractSelectSql(rawSql);
     if (!selectSql) return {};
-    const rawSelectItems = parseSelectItems(selectSql);
-    if (!rawSelectItems.length) return {};
-    const selectItems = rawSelectItems.map((item) => {
-      const { expr, alias } = parseSelectAlias(item);
-      return { expr, alias };
-    });
+    const selectItems = parseSelectItems(selectSql);
+    if (!selectItems.length) return {};
     const aliasMap = parseAliasMap(selectSql);
     const primaryTable = Object.values(aliasMap)[0] || '';
-    return await buildLineageFromSelect(selectItems, aliasMap, primaryTable, companyId);
+    const relationCache = new Map();
+    const lineage = {};
+
+    for (const item of selectItems) {
+      const { expr, alias } = parseSelectAlias(item);
+      const columnRef = parseColumnReference(expr);
+      const outputField =
+        alias ||
+        (columnRef && columnRef.column ? columnRef.column : expr);
+      if (!outputField) continue;
+      const entry = { expr };
+      if (columnRef) {
+        const sourceTable = columnRef.alias
+          ? aliasMap[columnRef.alias] || columnRef.alias
+          : primaryTable;
+        if (sourceTable) {
+          entry.sourceTable = sourceTable;
+          entry.sourceColumn = columnRef.column;
+          const relation = await resolveRelationInfo(
+            sourceTable,
+            columnRef.column,
+            companyId,
+            relationCache,
+          );
+          if (relation) entry.relation = relation;
+        }
+      }
+      lineage[outputField] = entry;
+    }
+    return lineage;
   } catch {
     return {};
   }
