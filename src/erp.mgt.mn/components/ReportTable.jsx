@@ -40,6 +40,12 @@ function formatNumber(val) {
   return Number.isNaN(num) ? '' : numberFmt.format(num);
 }
 
+function isNumericValue(value) {
+  if (value === null || value === undefined || value === '') return false;
+  const num = Number(String(value).replace(',', '.'));
+  return !Number.isNaN(num);
+}
+
 function formatCellValue(val, placeholder) {
   if (val === null || val === undefined) return '';
   let str;
@@ -312,7 +318,7 @@ export default function ReportTable({
             return (
               value !== null &&
               value !== '' &&
-              !isNaN(Number(String(value).replace(',', '.')))
+              isNumericValue(value)
             );
           },
         ),
@@ -852,13 +858,14 @@ export default function ReportTable({
                   }
                   const { value, displayColumn } = resolveCell(row, col);
                   const cellPlaceholder = resolvePlaceholder(col, displayColumn);
+                  const numericValue = isNumericValue(value);
                   return (
                     <td
                       key={col}
                       style={{ ...style, cursor: row[col] ? 'pointer' : 'default' }}
                       onClick={() => handleCellClick(col, row[col], row)}
                     >
-                      {numericColumns.includes(col)
+                      {numericColumns.includes(col) && numericValue
                         ? formatNumber(value)
                         : formatCellValue(value, cellPlaceholder)}
                     </td>
