@@ -1283,11 +1283,17 @@ export async function detectIncompleteImages(
   let totalFiles = 0;
   let incompleteFound = 0;
   const folders = new Set();
-  const recordFolder = (folderName) => {
-    const label = folderName || '(root)';
-    if (label) folders.add(label);
-  };
-  const scanFiles = async (dirPath, folderName = '') => {
+  try {
+    dirs = await fs.readdir(baseDir, { withFileTypes: true });
+  } catch {
+    return { list: results, hasMore, summary: { totalFiles: 0, folders: [], incompleteFound: 0, processed: 0 } };
+  }
+
+  for (const entry of dirs) {
+    signal?.throwIfAborted();
+    if (!entry.isDirectory()) continue;
+    if (ignore.includes(entry.name.toLowerCase())) continue;
+    const dirPath = path.join(baseDir, entry.name);
     let files;
     try {
       files = await fs.readdir(dirPath);
