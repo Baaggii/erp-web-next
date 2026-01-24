@@ -159,6 +159,14 @@ export default function GeneralConfiguration() {
             General
           </button>
         </TooltipWrapper>
+        <TooltipWrapper title={t('tab_reports', { ns: 'tooltip', defaultValue: 'Report settings' })}>
+          <button
+            className={`tab-button ${tab === 'reports' ? 'active' : ''}`}
+            onClick={() => setTab('reports')}
+          >
+            Reports
+          </button>
+        </TooltipWrapper>
         <TooltipWrapper title={t('tab_print', { ns: 'tooltip', defaultValue: 'Receipt print settings' })}>
           <button
             className={`tab-button ${tab === 'print' ? 'active' : ''}`}
@@ -193,6 +201,9 @@ export default function GeneralConfiguration() {
         </button>
         <button onClick={() => setTab('general')} disabled={tab === 'general'} style={{ marginLeft: '0.5rem' }}>
           General
+        </button>
+        <button onClick={() => setTab('reports')} disabled={tab === 'reports'} style={{ marginLeft: '0.5rem' }}>
+          Reports
         </button>
         <button onClick={() => setTab('print')} disabled={tab === 'print'} style={{ marginLeft: '0.5rem' }}>
           Print
@@ -463,6 +474,27 @@ export default function GeneralConfiguration() {
             </TooltipWrapper>
           </div>
         </>
+      ) : tab === 'reports' ? (
+        <>
+          <div style={{ marginBottom: '0.5rem' }}>
+            <TooltipWrapper
+              title={t('show_report_lineage_info', {
+                ns: 'tooltip',
+                defaultValue: 'Display report field lineage details in report tables',
+              })}
+            >
+              <label>
+                Show Report Lineage Info{' '}
+                <input
+                  name="showReportLineageInfo"
+                  type="checkbox"
+                  checked={active.showReportLineageInfo ?? false}
+                  onChange={handleChange}
+                />
+              </label>
+            </TooltipWrapper>
+          </div>
+        </>
       ) : tab === 'system' ? (
         <div>
           <p>
@@ -496,7 +528,7 @@ export default function GeneralConfiguration() {
             to its parent directory.
           </p>
         </div>
-      ) : (
+      ) : tab === 'general' ? (
         <>
           <div style={{ marginBottom: '0.5rem' }}>
             <TooltipWrapper
@@ -869,7 +901,7 @@ export default function GeneralConfiguration() {
             </TooltipWrapper>
           </div>
         </>
-      )}
+      ) : null}
       <div>
         <button onClick={handleImport} style={{ marginRight: '0.5rem' }}>
           Import Defaults

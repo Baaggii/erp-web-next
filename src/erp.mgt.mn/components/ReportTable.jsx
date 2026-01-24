@@ -1,4 +1,11 @@
-import React, { useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import React, {
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { AuthContext } from '../context/AuthContext.jsx';
 import useGeneralConfig, { updateCache } from '../hooks/useGeneralConfig.js';
 import useHeaderMappings from '../hooks/useHeaderMappings.js';
@@ -86,6 +93,7 @@ export default function ReportTable({
   const [txnInfo, setTxnInfo] = useState(null);
   const [columnFilters, setColumnFilters] = useState({});
   const [frozenColumns, setFrozenColumns] = useState(0);
+  const tableContainerRef = useRef(null);
 
   const columns = useMemo(
     () => (rows && rows.length ? Object.keys(rows[0]) : []),
@@ -162,6 +170,7 @@ export default function ReportTable({
   const fieldLabels = procFieldLabels[procedure] || {};
   const headerMap = useHeaderMappings([procedure]);
   const general = generalConfig.general || {};
+  const reportSettings = generalConfig.reports || {};
 
   function rowToast(message, type = 'info') {
     if (general.reportRowToastEnabled) {
@@ -631,41 +640,8 @@ export default function ReportTable({
   }
 
   const handlePrintTable = useCallback(() => {
-    if (!columns.length) return;
-    const headerHtml = columns
-      .map((col) => {
-        const label = fieldLabels[col] || columnHeaderMap[col] || col;
-        return `<th>${escapeHtml(label)}</th>`;
-      })
-      .join('');
-    const bodyHtml = sorted
-      .map((row) => {
-        const cells = columns
-          .map((col) => {
-            const { value, displayColumn } = resolveCell(row, col);
-            const cellPlaceholder = resolvePlaceholder(col, displayColumn);
-            const cellValue = numericColumns.includes(col)
-              ? formatNumber(value)
-              : formatCellValue(value, cellPlaceholder);
-            return `<td>${escapeHtml(cellValue)}</td>`;
-          })
-          .join('');
-        return `<tr>${cells}</tr>`;
-      })
-      .join('');
-    const totalRowHtml =
-      showTotalRowCount && numericColumns.length > 0
-        ? `<tfoot><tr>${columns
-            .map((col, idx) => {
-              if (idx === 0) return '<td>TOTAL</td>';
-              if (numericColumns.includes(col)) {
-                return `<td>${escapeHtml(formatNumber(totals[col]))}</td>`;
-              }
-              return '<td></td>';
-            })
-            .join('')}</tr></tfoot>`
-        : '';
-    const tableHtml = `<table><thead><tr>${headerHtml}</tr></thead><tbody>${bodyHtml}</tbody>${totalRowHtml}</table>`;
+    if (!tableContainerRef.current) return;
+    const tableHtml = tableContainerRef.current.innerHTML;
     const printWindow = window.open('', '_blank', 'width=1024,height=768');
     if (!printWindow) return;
     printWindow.document.open();
@@ -680,9 +656,6 @@ export default function ReportTable({
             th, td { border: 1px solid #d1d5db; padding: 6px; font-size: 12px; }
             th { background: #e5e7eb; text-align: left; }
             tfoot td { font-weight: bold; background: #f3f4f6; }
-            thead { display: table-header-group; }
-            tfoot { display: table-footer-group; }
-            tr { page-break-inside: avoid; }
           </style>
         </head>
         <body>
@@ -692,22 +665,9 @@ export default function ReportTable({
       </html>`);
     printWindow.document.close();
     printWindow.focus();
-    printWindow.onafterprint = () => {
-      printWindow.close();
-    };
     printWindow.print();
-  }, [
-    columns,
-    columnHeaderMap,
-    fieldLabels,
-    numericColumns,
-    procLabel,
-    resolveCell,
-    resolvePlaceholder,
-    showTotalRowCount,
-    sorted,
-    totals,
-  ]);
+    printWindow.close();
+  }, [procLabel]);
 
   return (
     <div style={{ marginTop: '1rem' }}>
@@ -761,6 +721,7 @@ export default function ReportTable({
       </div>
       <div
         className="table-container overflow-auto"
+        ref={tableContainerRef}
         style={{
           position: 'relative',
           maxWidth: '100%',
@@ -992,6 +953,86 @@ export default function ReportTable({
           />
         </label>
       </div>
+      {reportSettings.showReportLineageInfo && (
+        <div
+          style={{
+            marginTop: '0.75rem',
+            border: '1px solid #d1d5db',
+            borderRadius: '0.5rem',
+            padding: '0.75rem',
+            background: '#f9fafb',
+          }}
+        >
+          <h5 style={{ marginTop: 0 }}>Report Field Lineage</h5>
+          <div className="table-container overflow-auto" style={{ maxWidth: '100%' }}>
+            <table
+              className="table-manager"
+              style={{ borderCollapse: 'collapse', minWidth: '600px' }}
+            >
+              <thead className="table-manager sticky-header">
+                <tr>
+                  {['Output Field', 'Source', 'Relation', 'Resolved Display', 'Expression'].map(
+                    (label) => (
+                      <th
+                        key={label}
+                        style={{
+                          padding: '0.5rem',
+                          border: '1px solid #d1d5db',
+                          textAlign: 'left',
+                          background: '#e5e7eb',
+                          fontSize: '0.75rem',
+                        }}
+                      >
+                        {label}
+                      </th>
+                    ),
+                  )}
+                </tr>
+              </thead>
+              <tbody>
+                {columns.map((col) => {
+                  const info = lineageMap[col] || {};
+                  const source =
+                    info.sourceTable && info.sourceColumn
+                      ? `${info.sourceTable}.${info.sourceColumn}`
+                      : 'Derived';
+                  const relation = info.relation
+                    ? `${info.relation.targetTable}.${info.relation.displayField}`
+                    : '—';
+                  const resolved = relationDisplayColumns[col]
+                    ? `${relationDisplayColumns[col]}`
+                    : '—';
+                  return (
+                    <tr key={`lineage-${col}`}>
+                      <td
+                        style={{
+                          padding: '0.5rem',
+                          border: '1px solid #d1d5db',
+                          fontWeight: 600,
+                        }}
+                      >
+                        {col}
+                      </td>
+                      <td style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>
+                        {source}
+                      </td>
+                      <td style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>
+                        {relation}
+                      </td>
+                      <td style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>
+                        {resolved}
+                      </td>
+                      <td style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>
+                        {info.expr || '—'}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
       {txnInfo && (
         <Modal
           visible
