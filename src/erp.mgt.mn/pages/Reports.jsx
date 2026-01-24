@@ -200,6 +200,11 @@ function normalizeReportCapabilities(value) {
   return normalized;
 }
 
+function isCountColumn(name) {
+  const normalized = String(name || '').toLowerCase();
+  return normalized === 'count' || normalized === 'count()' || normalized.startsWith('count(');
+}
+
 export default function Reports() {
   const { company, branch, department, position, workplace, user, session } =
     useContext(AuthContext);
@@ -216,6 +221,16 @@ export default function Reports() {
     ALL_WORKPLACE_OPTION,
   );
   const [result, setResult] = useState(null);
+  const [rowSelection, setRowSelection] = useState({});
+  const [rowIdFields, setRowIdFields] = useState([]);
+  const [rowIdTable, setRowIdTable] = useState('');
+  const [bulkUpdateOpen, setBulkUpdateOpen] = useState(false);
+  const [bulkUpdateField, setBulkUpdateField] = useState('');
+  const [bulkUpdateValue, setBulkUpdateValue] = useState('');
+  const [bulkUpdateReason, setBulkUpdateReason] = useState('');
+  const [bulkUpdateConfirmed, setBulkUpdateConfirmed] = useState(false);
+  const [bulkUpdateLoading, setBulkUpdateLoading] = useState(false);
+  const [bulkUpdateError, setBulkUpdateError] = useState('');
   const [manualParams, setManualParams] = useState({});
   const [snapshot, setSnapshot] = useState(null);
   const [lockCandidates, setLockCandidates] = useState([]);
@@ -246,6 +261,8 @@ export default function Reports() {
   const expandedTransactionDetailsRef = useRef(expandedTransactionDetails);
   const [requestLockDetailsState, setRequestLockDetailsState] = useState({});
   const requestLockDetailsRef = useRef(requestLockDetailsState);
+  const primaryKeyCacheRef = useRef(new Map());
+  const rowIdMapRef = useRef(new Map());
   const presetSelectRef = useRef(null);
   const startDateRef = useRef(null);
   const endDateRef = useRef(null);
@@ -258,6 +275,38 @@ export default function Reports() {
     [result?.reportCapabilities],
   );
   const showTotalRowCount = reportCapabilities.showTotalRowCount !== false;
+  const handleRowSelectionChange = useCallback((updater) => {
+    setRowSelection((prev) => (typeof updater === 'function' ? updater(prev) : updater || {}));
+  }, []);
+  const getReportRowId = useCallback(
+    (row, index) => {
+      if (!Array.isArray(rowIdFields) || rowIdFields.length === 0) {
+        const fallback = rowIdMapRef.current.get(row);
+        return fallback == null ? String(index) : String(fallback);
+      }
+      if (rowIdFields.length === 1) {
+        const value = row?.[rowIdFields[0]];
+        return value == null ? String(index) : String(value);
+      }
+      try {
+        return JSON.stringify(rowIdFields.map((key) => row?.[key]));
+      } catch (err) {
+        return rowIdFields.map((key) => row?.[key]).join('-');
+      }
+    },
+    [rowIdFields],
+  );
+  const reportColumns = useMemo(
+    () => (Array.isArray(result?.rows) && result.rows.length ? Object.keys(result.rows[0]) : []),
+    [result?.rows],
+  );
+  const reportHeaderMap = useHeaderMappings(reportColumns);
+  const selectedReportRows = useMemo(() => {
+    if (!Array.isArray(result?.rows) || result.rows.length === 0) return [];
+    return result.rows.filter((row, idx) =>
+      Boolean(rowSelection[getReportRowId(row, idx)]),
+    );
+  }, [result?.rows, rowSelection, getReportRowId]);
   const approvalSupported = reportCapabilities.supportsApproval !== false;
   const snapshotSupported = reportCapabilities.supportsSnapshot !== false;
   const baseWorkplaceAssignments = useMemo(
@@ -1662,6 +1711,113 @@ export default function Reports() {
     }
   }
 
+  const fetchPrimaryKeyColumns = useCallback(async (tableName) => {
+    if (!tableName) return [];
+    const cache = primaryKeyCacheRef.current;
+    if (cache.has(tableName)) return cache.get(tableName);
+    const res = await fetch(
+      `/api/tables/${encodeURIComponent(tableName)}/columns`,
+      { credentials: 'include' },
+    );
+    if (!res.ok) {
+      throw new Error('Failed to load table metadata');
+    }
+    const data = await res.json().catch(() => []);
+    const orderedPrimary = Array.isArray(data)
+      ? data
+          .filter((col) => Number.isFinite(Number(col.primaryKeyOrdinal)))
+          .sort((a, b) => Number(a.primaryKeyOrdinal) - Number(b.primaryKeyOrdinal))
+          .map((col) => col.name)
+      : [];
+    const orderedCandidate =
+      orderedPrimary.length === 0 && Array.isArray(data)
+        ? data
+            .filter((col) => Number.isFinite(Number(col.candidateKeyOrdinal)))
+            .sort((a, b) => Number(a.candidateKeyOrdinal) - Number(b.candidateKeyOrdinal))
+            .map((col) => col.name)
+        : [];
+    const resultColumns = orderedPrimary.length ? orderedPrimary : orderedCandidate;
+    cache.set(tableName, resultColumns);
+    return resultColumns;
+  }, []);
+
+  useEffect(() => {
+    let canceled = false;
+    const resolveRowIds = async () => {
+      if (!reportColumns.length || !result?.fieldLineage) {
+        setRowIdFields([]);
+        setRowIdTable('');
+        return;
+      }
+      const tableCounts = new Map();
+      reportColumns.forEach((col) => {
+        const info = result.fieldLineage?.[col];
+        if (!info?.sourceTable) return;
+        const tableName = String(info.sourceTable);
+        tableCounts.set(tableName, (tableCounts.get(tableName) || 0) + 1);
+      });
+      if (!tableCounts.size) {
+        setRowIdFields([]);
+        setRowIdTable('');
+        return;
+      }
+      const [preferredTable] = [...tableCounts.entries()].sort(
+        (a, b) => b[1] - a[1],
+      )[0];
+      try {
+        const pkColumns = await fetchPrimaryKeyColumns(preferredTable);
+        const columnLookup = new Map(
+          reportColumns.map((col) => [String(col).toLowerCase(), col]),
+        );
+        const resolvedFields = pkColumns
+          .map((col) => columnLookup.get(String(col).toLowerCase()))
+          .filter(Boolean);
+        if (resolvedFields.length !== pkColumns.length || resolvedFields.length === 0) {
+          if (!canceled) {
+            setRowIdFields([]);
+            setRowIdTable('');
+          }
+          return;
+        }
+        if (!canceled) {
+          setRowIdFields(resolvedFields);
+          setRowIdTable(preferredTable);
+        }
+      } catch {
+        if (!canceled) {
+          setRowIdFields([]);
+          setRowIdTable('');
+        }
+      }
+    };
+    resolveRowIds();
+    return () => {
+      canceled = true;
+    };
+  }, [reportColumns, result?.fieldLineage, fetchPrimaryKeyColumns]);
+
+  useEffect(() => {
+    const map = new Map();
+    if (Array.isArray(result?.rows)) {
+      result.rows.forEach((row, idx) => {
+        if (row && typeof row === 'object') {
+          map.set(row, `row-${idx}`);
+        }
+      });
+    }
+    rowIdMapRef.current = map;
+  }, [result?.rows]);
+
+  useEffect(() => {
+    setRowSelection({});
+    setBulkUpdateField('');
+    setBulkUpdateValue('');
+    setBulkUpdateReason('');
+    setBulkUpdateConfirmed(false);
+    setBulkUpdateError('');
+    setBulkUpdateOpen(false);
+  }, [result?.name, result?.rows]);
+
   const numberFormatter = useMemo(
     () =>
       new Intl.NumberFormat('en-US', {
@@ -1670,6 +1826,131 @@ export default function Reports() {
       }),
     [],
   );
+
+  const bulkUpdateOptions = useMemo(() => {
+    if (!reportColumns.length || !result?.fieldLineage) return [];
+    return reportColumns
+      .map((col) => {
+        const info = result.fieldLineage?.[col];
+        if (!info?.sourceTable || !info?.sourceColumn) return null;
+        if (info.kind && info.kind !== 'column') return null;
+        if (isCountColumn(col)) return null;
+        return {
+          column: col,
+          label: reportHeaderMap[col] || col,
+          sourceTable: info.sourceTable,
+          sourceColumn: info.sourceColumn,
+          fieldType: result?.fieldTypeMap?.[col],
+        };
+      })
+      .filter(Boolean);
+  }, [reportColumns, result?.fieldLineage, result?.fieldTypeMap, reportHeaderMap]);
+
+  const selectedBulkField = useMemo(
+    () => bulkUpdateOptions.find((option) => option.column === bulkUpdateField),
+    [bulkUpdateOptions, bulkUpdateField],
+  );
+
+  const canBulkUpdate =
+    bulkUpdateOptions.length > 0 &&
+    (buttonPerms['Bulk Update'] ||
+      buttonPerms['Edit transaction'] ||
+      buttonPerms['Edit'] ||
+      buttonPerms['Update']);
+
+  const handleBulkUpdateSubmit = useCallback(async () => {
+    if (!selectedReportRows.length) {
+      setBulkUpdateError('Select at least one row before updating.');
+      return;
+    }
+    if (!selectedBulkField) {
+      setBulkUpdateError('Select a field to update.');
+      return;
+    }
+    if (!bulkUpdateReason.trim()) {
+      setBulkUpdateError('Request reason is required.');
+      return;
+    }
+    if (!bulkUpdateConfirmed) {
+      setBulkUpdateError('Confirm the bulk update before submitting.');
+      return;
+    }
+    setBulkUpdateError('');
+    setBulkUpdateLoading(true);
+    try {
+      const pkColumns = await fetchPrimaryKeyColumns(selectedBulkField.sourceTable);
+      if (!pkColumns.length) {
+        throw new Error('No primary key columns found for this table.');
+      }
+      const columnLookup = new Map(
+        reportColumns.map((col) => [String(col).toLowerCase(), col]),
+      );
+      const pkReportColumns = pkColumns
+        .map((col) => columnLookup.get(String(col).toLowerCase()))
+        .filter(Boolean);
+      if (pkReportColumns.length !== pkColumns.length) {
+        throw new Error(
+          'The report does not include all primary key fields for bulk updates.',
+        );
+      }
+      const recordIds = selectedReportRows.map((row) => {
+        const values = pkReportColumns.map((col) => row?.[col]);
+        if (values.some((value) => value === undefined || value === null || value === '')) {
+          throw new Error('One or more selected rows are missing primary key values.');
+        }
+        if (values.length === 1) return values[0];
+        return JSON.stringify(values);
+      });
+      const fieldType = selectedBulkField.fieldType;
+      const placeholder =
+        fieldType === 'time'
+          ? 'HH:MM:SS'
+          : fieldType === 'date' || fieldType === 'datetime'
+          ? 'YYYY-MM-DD'
+          : null;
+      const normalizedValue = placeholder
+        ? normalizeDateInput(String(bulkUpdateValue ?? ''), placeholder)
+        : bulkUpdateValue;
+      const res = await fetch('/api/pending_request/bulk_edit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          table_name: selectedBulkField.sourceTable,
+          record_ids: recordIds,
+          field: selectedBulkField.sourceColumn,
+          value: normalizedValue,
+          request_reason: bulkUpdateReason,
+        }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data?.message || 'Bulk update request failed.');
+      }
+      addToast('Bulk update request submitted for approval.', 'success');
+      setBulkUpdateOpen(false);
+      setBulkUpdateField('');
+      setBulkUpdateValue('');
+      setBulkUpdateReason('');
+      setBulkUpdateConfirmed(false);
+      setRowSelection({});
+      await runReport();
+    } catch (err) {
+      setBulkUpdateError(err?.message || 'Bulk update request failed.');
+    } finally {
+      setBulkUpdateLoading(false);
+    }
+  }, [
+    selectedReportRows,
+    selectedBulkField,
+    bulkUpdateReason,
+    bulkUpdateConfirmed,
+    bulkUpdateValue,
+    fetchPrimaryKeyColumns,
+    reportColumns,
+    addToast,
+    runReport,
+  ]);
 
   const selectedLockCount = useMemo(() => {
     if (!Array.isArray(lockCandidates) || lockCandidates.length === 0)
@@ -3402,7 +3683,50 @@ export default function Reports() {
               fieldLineage={result.fieldLineage}
               showTotalRowCount={showTotalRowCount}
               onSnapshotReady={snapshotSupported ? handleSnapshotReady : undefined}
+              rowSelection={rowSelection}
+              onRowSelectionChange={handleRowSelectionChange}
+              getRowId={getReportRowId}
             />
+          </div>
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.75rem',
+              flexWrap: 'wrap',
+              border: '1px solid #d1d5db',
+              borderRadius: '0.5rem',
+              padding: '0.75rem',
+              background: '#f9fafb',
+              flexShrink: 0,
+            }}
+          >
+            <strong>
+              {selectedReportRows.length} row
+              {selectedReportRows.length === 1 ? '' : 's'} selected
+            </strong>
+            <button
+              type="button"
+              onClick={() => setRowSelection({})}
+              disabled={selectedReportRows.length === 0}
+            >
+              Deselect all
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setBulkUpdateOpen(true);
+                setBulkUpdateError('');
+              }}
+              disabled={!canBulkUpdate || selectedReportRows.length === 0}
+            >
+              Update Selected
+            </button>
+            {!rowIdFields.length && (
+              <span style={{ color: '#b45309' }}>
+                Selection uses row position because primary keys are unavailable.
+              </span>
+            )}
           </div>
           {canRequestApproval && (
             <div
@@ -3804,6 +4128,107 @@ export default function Reports() {
             </div>
           )}
         </div>
+      )}
+      {bulkUpdateOpen && (
+        <Modal
+          visible
+          title="Bulk update selected rows"
+          onClose={() => {
+            if (bulkUpdateLoading) return;
+            setBulkUpdateOpen(false);
+          }}
+          width="540px"
+        >
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+            <p style={{ margin: 0, color: '#b45309' }}>
+              Bulk updates can affect financial or critical data. Please review the
+              selected rows carefully before submitting for approval.
+            </p>
+            <div>
+              <strong>{selectedReportRows.length}</strong> row
+              {selectedReportRows.length === 1 ? '' : 's'} will be updated.
+            </div>
+            <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+              Field to update
+              <select
+                value={bulkUpdateField}
+                onChange={(event) => setBulkUpdateField(event.target.value)}
+              >
+                <option value="">Select a field</option>
+                {bulkUpdateOptions.map((option) => (
+                  <option key={option.column} value={option.column}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+              New value
+              <input
+                type="text"
+                value={bulkUpdateValue}
+                onChange={(event) => setBulkUpdateValue(event.target.value)}
+                placeholder={
+                  selectedBulkField?.fieldType === 'date' ||
+                  selectedBulkField?.fieldType === 'datetime'
+                    ? 'YYYY-MM-DD'
+                    : selectedBulkField?.fieldType === 'time'
+                    ? 'HH:MM:SS'
+                    : 'Enter new value'
+                }
+              />
+            </label>
+            <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+              Request reason
+              <textarea
+                rows={3}
+                value={bulkUpdateReason}
+                onChange={(event) => setBulkUpdateReason(event.target.value)}
+                placeholder="Explain why this bulk update is needed."
+              />
+            </label>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <input
+                type="checkbox"
+                checked={bulkUpdateConfirmed}
+                onChange={(event) => setBulkUpdateConfirmed(event.target.checked)}
+              />
+              <span>
+                I understand this will update {selectedReportRows.length} row
+                {selectedReportRows.length === 1 ? '' : 's'}.
+              </span>
+            </label>
+            {rowIdTable &&
+              selectedBulkField?.sourceTable &&
+              rowIdTable !== selectedBulkField.sourceTable && (
+                <p style={{ margin: 0, color: '#b45309' }}>
+                  Selected field belongs to {selectedBulkField.sourceTable}, but row
+                  selection is based on {rowIdTable}. Ensure the report includes
+                  primary key fields for {selectedBulkField.sourceTable} before
+                  submitting.
+                </p>
+              )}
+            {bulkUpdateError && (
+              <p style={{ margin: 0, color: 'red' }}>{bulkUpdateError}</p>
+            )}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem' }}>
+              <button
+                type="button"
+                onClick={() => setBulkUpdateOpen(false)}
+                disabled={bulkUpdateLoading}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleBulkUpdateSubmit}
+                disabled={bulkUpdateLoading || !selectedReportRows.length}
+              >
+                {bulkUpdateLoading ? 'Submitting…' : 'Submit for Approval'}
+              </button>
+            </div>
+          </div>
+        </Modal>
       )}
       <Modal
         open={Boolean(pendingExclusion)}
