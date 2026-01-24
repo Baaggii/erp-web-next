@@ -1272,7 +1272,7 @@ export async function detectIncompleteImages(
   companyId = 0,
   signal,
 ) {
-  const { baseDir } = await getDirs(companyId);
+  const { baseDir, ignore } = await getDirs(companyId);
   const codes = await fetchTxnCodes();
   let results = [];
   const skipped = [];
@@ -1283,23 +1283,19 @@ export async function detectIncompleteImages(
   let totalFiles = 0;
   let incompleteFound = 0;
   const folders = new Set();
-  try {
-    dirs = await fs.readdir(baseDir, { withFileTypes: true });
-  } catch {
-    return { list: results, hasMore, summary: { totalFiles: 0, folders: [], incompleteFound: 0, processed: 0 } };
-  }
-
-  for (const entry of dirs) {
-    signal?.throwIfAborted();
-    if (!entry.isDirectory() || !entry.name.startsWith('transactions_')) continue;
-    const dirPath = path.join(baseDir, entry.name);
+  const recordFolder = (folderName) => {
+    const label = folderName || '(root)';
+    if (label) folders.add(label);
+  };
+  const scanFiles = async (dirPath, folderName = '') => {
     let files;
     try {
       files = await fs.readdir(dirPath);
     } catch {
-      continue;
+      return;
     }
-    folders.add(entry.name);
+    if (!files.length) return;
+    recordFolder(folderName);
     totalFiles += files.length;
     for (const f of files) {
       signal?.throwIfAborted();
@@ -1318,8 +1314,8 @@ export async function detectIncompleteImages(
           skipped.push({
             currentName: f,
             newName: f,
-            folder: entry.name,
-            folderDisplay: '/' + entry.name,
+            folder: folderName,
+            folderDisplay: '/' + folderName,
             currentPath: filePath,
             reason: 'Contains transaction codes',
           });
@@ -1346,8 +1342,8 @@ export async function detectIncompleteImages(
           skipped.push({
             currentName: f,
             newName: f,
-            folder: entry.name,
-            folderDisplay: '/' + entry.name,
+            folder: folderName,
+            folderDisplay: '/' + folderName,
             currentPath: filePath,
             reason: 'No unique identifier',
           });
@@ -1357,8 +1353,8 @@ export async function detectIncompleteImages(
           skipped.push({
             currentName: f,
             newName: f,
-            folder: entry.name,
-            folderDisplay: '/' + entry.name,
+            folder: folderName,
+            folderDisplay: '/' + folderName,
             currentPath: filePath,
             reason: 'Contains transaction codes',
           });
@@ -1369,7 +1365,7 @@ export async function detectIncompleteImages(
       if (!found) {
         const rowIdPrefix = extractRowIdPrefix(base);
         if (rowIdPrefix) {
-          found = await findTxnByRowId(entry.name, rowIdPrefix, companyId);
+          found = await findTxnByRowId(folderName || '', rowIdPrefix, companyId);
         }
       }
       if (!found) {
@@ -1388,8 +1384,8 @@ export async function detectIncompleteImages(
         skipped.push({
           currentName: f,
           newName: f,
-          folder: entry.name,
-          folderDisplay: '/' + entry.name,
+          folder: folderName,
+          folderDisplay: '/' + folderName,
           currentPath: filePath,
           reason: 'No matching transaction',
         });
@@ -1406,7 +1402,7 @@ export async function detectIncompleteImages(
         const resolved = resolveImageNamingForSearch(
           row,
           configs,
-          found.table || entry.name,
+          found.table || folderName || '',
         );
         if (resolved.name) {
           newBase = resolved.name;
@@ -1437,7 +1433,7 @@ export async function detectIncompleteImages(
               if (tType && cfg.transactionTypeValue) {
                 folderRaw = `${slugify(String(tType))}/${slugify(String(cfg.transactionTypeValue))}`;
               } else {
-                folderRaw = buildFolderName(row, cfg?.imageFolder || entry.name);
+                folderRaw = buildFolderName(row, cfg?.imageFolder || folderName || '');
               }
               break;
             }
@@ -1467,20 +1463,20 @@ export async function detectIncompleteImages(
           if (tType) partsArr.push(tType);
           if (partsArr.length) {
             newBase = sanitizeName(partsArr.join('_'));
-            folderRaw = folderRaw || buildFolderName(row, entry.name);
+            folderRaw = folderRaw || buildFolderName(row, folderName || '');
           }
         }
         if (!newBase && numField) {
           newBase = sanitizeName(String(row[numField]));
-          folderRaw = buildFolderName(row, entry.name);
+          folderRaw = buildFolderName(row, folderName || '');
         }
       }
       if (!newBase) {
         skipped.push({
           currentName: f,
           newName: f,
-          folder: entry.name,
-          folderDisplay: '/' + entry.name,
+          folder: folderName,
+          folderDisplay: '/' + folderName,
           currentPath: filePath,
           reason: 'No rename mapping',
         });
@@ -1521,6 +1517,35 @@ export async function detectIncompleteImages(
         break;
       }
     }
+  };
+  try {
+    dirs = await fs.readdir(baseDir, { withFileTypes: true });
+  } catch {
+    return { list: results, hasMore, summary: { totalFiles: 0, folders: [], incompleteFound: 0, processed: 0 } };
+  }
+
+  await scanFiles(baseDir);
+  if (hasMore) {
+    return {
+      list: results,
+      skipped,
+      hasMore,
+      summary: {
+        totalFiles,
+        folders: Array.from(folders),
+        incompleteFound,
+        processed: results.length,
+        skipped: skipped.length,
+      },
+    };
+  }
+
+  for (const entry of dirs) {
+    signal?.throwIfAborted();
+    if (!entry.isDirectory()) continue;
+    if (ignore.includes(entry.name.toLowerCase())) continue;
+    const dirPath = path.join(baseDir, entry.name);
+    await scanFiles(dirPath, entry.name);
     if (hasMore) break;
   }
   return {
