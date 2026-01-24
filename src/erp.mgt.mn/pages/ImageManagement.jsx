@@ -1530,10 +1530,7 @@ export default function ImageManagement() {
               Detect from host
             </button>
             {activeOp === 'detect' && (
-              <span style={{ marginRight: '0.5rem' }}>
-                Scanning folders
-                {scanFolders.length ? `: ${scanFolders.join(', ')}` : '…'}
-              </span>
+              <span style={{ marginRight: '0.5rem' }}>Scanning folders…</span>
             )}
             <label style={{ marginRight: '0.5rem' }}>
               Page Size:{' '}
