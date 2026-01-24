@@ -8132,15 +8132,8 @@ export async function getProcedureParams(name) {
   return rows.map((r) => r.name).filter(Boolean);
 }
 
-export async function getProcedureRawRows(
-  name,
-  params = {},
-  column,
-  groupField,
-  groupValue,
-  extraConditions = [],
-  sessionVars = {},
-) {
+export async function getProcedureDefinitionSql(name) {
+  if (!name) return '';
   let createSql = '';
   const dbName = process.env.DB_NAME;
   try {
@@ -8161,6 +8154,19 @@ export async function getProcedureRawRows(
       createSql = rows && rows[0] && rows[0].def;
     } catch {}
   }
+  return createSql || '';
+}
+
+export async function getProcedureRawRows(
+  name,
+  params = {},
+  column,
+  groupField,
+  groupValue,
+  extraConditions = [],
+  sessionVars = {},
+) {
+  const createSql = await getProcedureDefinitionSql(name);
   if (!createSql) {
     const file = `${name.replace(/[^a-z0-9_]/gi, '_')}_rows.sql`;
     await fs.writeFile(

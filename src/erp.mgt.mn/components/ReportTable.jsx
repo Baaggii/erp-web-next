@@ -1,4 +1,11 @@
-import React, { useContext, useEffect, useMemo, useState } from 'react';
+import React, {
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { AuthContext } from '../context/AuthContext.jsx';
 import useGeneralConfig, { updateCache } from '../hooks/useGeneralConfig.js';
 import useHeaderMappings from '../hooks/useHeaderMappings.js';
@@ -55,12 +62,22 @@ function isCountColumn(name) {
   return f === 'count' || f === 'count()' || f.startsWith('count(');
 }
 
+function escapeHtml(value) {
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
 export default function ReportTable({
   procedure = '',
   params = {},
   rows = [],
   buttonPerms = {},
   fieldTypeMap = {},
+  fieldLineage = {},
   showTotalRowCount = true,
   maxHeight = 'min(70vh, calc(100vh - 20rem))',
   onSnapshotReady,
@@ -76,11 +93,51 @@ export default function ReportTable({
   const [txnInfo, setTxnInfo] = useState(null);
   const [columnFilters, setColumnFilters] = useState({});
   const [frozenColumns, setFrozenColumns] = useState(0);
+  const tableContainerRef = useRef(null);
 
   const columns = useMemo(
     () => (rows && rows.length ? Object.keys(rows[0]) : []),
     [rows],
   );
+  const lineageMap = useMemo(
+    () => (fieldLineage && typeof fieldLineage === 'object' ? fieldLineage : {}),
+    [fieldLineage],
+  );
+  const relationDisplayColumns = useMemo(() => {
+    const sourceIndex = {};
+    Object.entries(lineageMap).forEach(([col, info]) => {
+      if (!info?.sourceTable || !info?.sourceColumn) return;
+      const key = `${info.sourceTable}`.toLowerCase();
+      const columnKey = `${info.sourceColumn}`.toLowerCase();
+      const lookup = `${key}|${columnKey}`;
+      if (!sourceIndex[lookup]) {
+        sourceIndex[lookup] = col;
+      }
+    });
+    const map = {};
+    Object.entries(lineageMap).forEach(([col, info]) => {
+      const rel = info?.relation;
+      if (!rel?.targetTable || !rel?.displayField) return;
+      const lookup = `${String(rel.targetTable).toLowerCase()}|${String(
+        rel.displayField,
+      ).toLowerCase()}`;
+      const displayColumn = sourceIndex[lookup];
+      if (displayColumn) map[col] = displayColumn;
+    });
+    return map;
+  }, [lineageMap]);
+
+  const resolveCell = useCallback((row, column) => {
+    const displayColumn = relationDisplayColumns[column] || column;
+    const displayValue = row?.[displayColumn];
+    if (
+      displayColumn !== column &&
+      (displayValue === undefined || displayValue === null || displayValue === '')
+    ) {
+      return { value: row?.[column], displayColumn: column };
+    }
+    return { value: displayValue, displayColumn };
+  }, [relationDisplayColumns]);
 
   useEffect(() => {
     setPage(1);
@@ -113,6 +170,7 @@ export default function ReportTable({
   const fieldLabels = procFieldLabels[procedure] || {};
   const headerMap = useHeaderMappings([procedure]);
   const general = generalConfig.general || {};
+  const reportSettings = generalConfig.reports || {};
 
   function rowToast(message, type = 'info') {
     if (general.reportRowToastEnabled) {
@@ -151,13 +209,17 @@ export default function ReportTable({
     });
     return map;
   }, [columns, fieldTypeMap]);
+  const resolvePlaceholder = useCallback(
+    (column, displayColumn) => placeholders[displayColumn] || placeholders[column],
+    [placeholders],
+  );
 
   const filtered = useMemo(() => {
     const activeFilters = Object.entries(columnFilters).filter(([, val]) => val);
     const filteredRows = activeFilters.length
       ? rows.filter((r) =>
           activeFilters.every(([col, val]) =>
-            String(r[col] ?? '')
+            String(resolveCell(r, col).value ?? '')
               .toLowerCase()
               .includes(String(val).toLowerCase()),
           ),
@@ -167,16 +229,18 @@ export default function ReportTable({
     if (!search) return filteredRows;
     const s = search.toLowerCase();
     return filteredRows.filter((r) =>
-      columns.some((c) => String(r[c] ?? '').toLowerCase().includes(s)),
+      columns.some((c) =>
+        String(resolveCell(r, c).value ?? '').toLowerCase().includes(s),
+      ),
     );
-  }, [rows, search, columns, columnFilters]);
+  }, [rows, search, columns, columnFilters, resolveCell]);
 
   const sorted = useMemo(() => {
     if (!sort) return filtered;
     const { col, dir } = sort;
     return [...filtered].sort((a, b) => {
-      const av = a[col];
-      const bv = b[col];
+      const av = resolveCell(a, col).value;
+      const bv = resolveCell(b, col).value;
       if (av == null && bv == null) return 0;
       if (av == null) return dir === 'asc' ? -1 : 1;
       if (bv == null) return dir === 'asc' ? 1 : -1;
@@ -184,32 +248,41 @@ export default function ReportTable({
       if (av > bv) return dir === 'asc' ? 1 : -1;
       return 0;
     });
-  }, [filtered, sort]);
+  }, [filtered, sort, resolveCell]);
 
   const columnAlign = useMemo(() => {
     const map = {};
     columns.forEach((c) => {
-      const sample = sorted.find((r) => r[c] !== null && r[c] !== undefined);
-      map[c] = typeof sample?.[c] === 'number' ? 'right' : 'left';
+      const sample = sorted.find((r) => {
+        const val = resolveCell(r, c).value;
+        return val !== null && val !== undefined;
+      });
+      const sampleValue = sample ? resolveCell(sample, c).value : undefined;
+      map[c] = typeof sampleValue === 'number' ? 'right' : 'left';
     });
     return map;
-  }, [columns, sorted]);
+  }, [columns, sorted, resolveCell]);
 
   const columnWidths = useMemo(() => {
     const map = {};
     if (sorted.length === 0) return map;
     columns.forEach((c) => {
-      const avg = getAverageLength(c, sorted);
+      const values = sorted
+        .slice(0, 20)
+        .map((r) => (resolveCell(r, c).value ?? '').toString());
+      const avg = values.length
+        ? Math.round(values.reduce((sum, val) => sum + val.length, 0) / values.length)
+        : 0;
       let w;
       if (avg <= 4) w = ch(Math.max(avg + 1, 5));
-      else if (placeholders[c] && placeholders[c].includes('YYYY-MM-DD'))
+      else if (resolvePlaceholder(c, relationDisplayColumns[c])?.includes('YYYY-MM-DD'))
         w = ch(12);
       else if (avg <= 10) w = ch(12);
       else w = ch(20);
       map[c] = Math.min(w, MAX_WIDTH);
     });
     return map;
-  }, [columns, sorted, placeholders]);
+  }, [columns, sorted, resolveCell, resolvePlaceholder, relationDisplayColumns]);
 
   useEffect(() => {
     setFrozenColumns((prev) => {
@@ -234,22 +307,30 @@ export default function ReportTable({
     () =>
       columns.filter((c) =>
         sorted.some(
-          (r) => r[c] !== null && r[c] !== '' && !isNaN(Number(String(r[c]).replace(',', '.'))),
+          (r) => {
+            const value = resolveCell(r, c).value;
+            return (
+              value !== null &&
+              value !== '' &&
+              !isNaN(Number(String(value).replace(',', '.')))
+            );
+          },
         ),
       ),
-    [columns, sorted],
+    [columns, sorted, resolveCell],
   );
 
   const totals = useMemo(() => {
     const sums = {};
     numericColumns.forEach((c) => {
       sums[c] = sorted.reduce((sum, r) => {
-        const val = Number(String(r[c] ?? 0).replace(',', '.'));
+        const { value } = resolveCell(r, c);
+        const val = Number(String(value ?? 0).replace(',', '.'));
         return sum + (isNaN(val) ? 0 : val);
       }, 0);
     });
     return sums;
-  }, [numericColumns, sorted]);
+  }, [numericColumns, sorted, resolveCell]);
 
   const modalColumns = useMemo(() => {
     if (!txnInfo || !txnInfo.data || txnInfo.data.length === 0) return [];
@@ -558,6 +639,36 @@ export default function ReportTable({
     );
   }
 
+  const handlePrintTable = useCallback(() => {
+    if (!tableContainerRef.current) return;
+    const tableHtml = tableContainerRef.current.innerHTML;
+    const printWindow = window.open('', '_blank', 'width=1024,height=768');
+    if (!printWindow) return;
+    printWindow.document.open();
+    printWindow.document.write(`<!DOCTYPE html>
+      <html>
+        <head>
+          <title>${procLabel}</title>
+          <style>
+            body { font-family: Arial, sans-serif; padding: 16px; color: #111827; }
+            h1 { font-size: 18px; margin-bottom: 12px; }
+            table { border-collapse: collapse; width: 100%; }
+            th, td { border: 1px solid #d1d5db; padding: 6px; font-size: 12px; }
+            th { background: #e5e7eb; text-align: left; }
+            tfoot td { font-weight: bold; background: #f3f4f6; }
+          </style>
+        </head>
+        <body>
+          <h1>${procLabel}</h1>
+          ${tableHtml}
+        </body>
+      </html>`);
+    printWindow.document.close();
+    printWindow.focus();
+    printWindow.print();
+    printWindow.close();
+  }, [procLabel]);
+
   return (
     <div style={{ marginTop: '1rem' }}>
       <h4>
@@ -585,6 +696,9 @@ export default function ReportTable({
           placeholder="Search"
           style={{ marginRight: '0.5rem' }}
         />
+        <button type="button" onClick={handlePrintTable}>
+          Print
+        </button>
         {columns.length > 0 && (
           <label style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
             <span>Freeze first</span>
@@ -607,6 +721,7 @@ export default function ReportTable({
       </div>
       <div
         className="table-container overflow-auto"
+        ref={tableContainerRef}
         style={{
           position: 'relative',
           maxWidth: '100%',
@@ -735,6 +850,8 @@ export default function ReportTable({
                     style.zIndex = 5;
                     style.boxShadow = '1px 0 0 #d1d5db';
                   }
+                  const { value, displayColumn } = resolveCell(row, col);
+                  const cellPlaceholder = resolvePlaceholder(col, displayColumn);
                   return (
                     <td
                       key={col}
@@ -742,8 +859,8 @@ export default function ReportTable({
                       onClick={() => handleCellClick(col, row[col], row)}
                     >
                       {numericColumns.includes(col)
-                        ? formatNumber(row[col])
-                        : formatCellValue(row[col], placeholders[col])}
+                        ? formatNumber(value)
+                        : formatCellValue(value, cellPlaceholder)}
                     </td>
                   );
                 })}
@@ -836,6 +953,86 @@ export default function ReportTable({
           />
         </label>
       </div>
+      {reportSettings.showReportLineageInfo && (
+        <div
+          style={{
+            marginTop: '0.75rem',
+            border: '1px solid #d1d5db',
+            borderRadius: '0.5rem',
+            padding: '0.75rem',
+            background: '#f9fafb',
+          }}
+        >
+          <h5 style={{ marginTop: 0 }}>Report Field Lineage</h5>
+          <div className="table-container overflow-auto" style={{ maxWidth: '100%' }}>
+            <table
+              className="table-manager"
+              style={{ borderCollapse: 'collapse', minWidth: '600px' }}
+            >
+              <thead className="table-manager sticky-header">
+                <tr>
+                  {['Output Field', 'Source', 'Relation', 'Resolved Display', 'Expression'].map(
+                    (label) => (
+                      <th
+                        key={label}
+                        style={{
+                          padding: '0.5rem',
+                          border: '1px solid #d1d5db',
+                          textAlign: 'left',
+                          background: '#e5e7eb',
+                          fontSize: '0.75rem',
+                        }}
+                      >
+                        {label}
+                      </th>
+                    ),
+                  )}
+                </tr>
+              </thead>
+              <tbody>
+                {columns.map((col) => {
+                  const info = lineageMap[col] || {};
+                  const source =
+                    info.sourceTable && info.sourceColumn
+                      ? `${info.sourceTable}.${info.sourceColumn}`
+                      : 'Derived';
+                  const relation = info.relation
+                    ? `${info.relation.targetTable}.${info.relation.displayField}`
+                    : '—';
+                  const resolved = relationDisplayColumns[col]
+                    ? `${relationDisplayColumns[col]}`
+                    : '—';
+                  return (
+                    <tr key={`lineage-${col}`}>
+                      <td
+                        style={{
+                          padding: '0.5rem',
+                          border: '1px solid #d1d5db',
+                          fontWeight: 600,
+                        }}
+                      >
+                        {col}
+                      </td>
+                      <td style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>
+                        {source}
+                      </td>
+                      <td style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>
+                        {relation}
+                      </td>
+                      <td style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>
+                        {resolved}
+                      </td>
+                      <td style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>
+                        {info.expr || '—'}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
       {txnInfo && (
         <Modal
           visible

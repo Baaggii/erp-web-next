@@ -697,10 +697,10 @@ export default function ImageManagement() {
         setHasMore(!!data.hasMore);
         setSelected([]);
         setHostIgnoredSel([]);
-        const folderCount = Array.isArray(summary.folders) ? summary.folders.length : summary.totalFolders || 0;
-        setDetectReport(`Scanned ${summary.totalFiles || 0} file(s) in ${folderCount} folder(s).`);
+        const sum = data.summary || {};
+        const folderCount = Array.isArray(sum.folders) ? sum.folders.length : sum.totalFolders || 0;
         setReport(
-          `Scanned ${summary.totalFiles || 0} file(s) in ${folderCount} folder(s), found ${summary.incompleteFound || 0} incomplete name(s), ${summary.skipped || 0} not incomplete.`,
+          `Scanned ${sum.totalFiles || 0} file(s) in ${folderCount} folder(s), found ${sum.incompleteFound || 0} incomplete name(s), ${sum.skipped || 0} not incomplete.`,
         );
         persistAll({
           uploads: uploadsRef.current,
