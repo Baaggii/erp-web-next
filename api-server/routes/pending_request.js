@@ -1,4 +1,5 @@
 import express from 'express';
+import rateLimit from 'express-rate-limit';
 import { requireAuth } from '../middlewares/auth.js';
 import {
   createRequest,
@@ -12,7 +13,15 @@ import {
 
 const router = express.Router();
 
-router.post('/bulk_edit', requireAuth, async (req, res, next) => {
+const pendingRequestLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => req.user?.id ?? req.user?.empid ?? req.ip,
+});
+
+router.post('/bulk_edit', requireAuth, pendingRequestLimiter, async (req, res, next) => {
   try {
     const {
       table_name,
@@ -62,7 +71,7 @@ router.post('/bulk_edit', requireAuth, async (req, res, next) => {
   }
 });
 
-router.post('/', requireAuth, async (req, res, next) => {
+router.post('/', requireAuth, pendingRequestLimiter, async (req, res, next) => {
   try {
     const { table_name, record_id, request_type, proposed_data, request_reason } = req.body;
     if (!table_name || !record_id || !request_type) {
