@@ -1530,20 +1530,7 @@ export default function ImageManagement() {
               Detect from host
             </button>
             {activeOp === 'detect' && (
-              <span style={{ marginRight: '0.5rem' }}>
-                Scanning folders
-                {scanFolders.length ? `: ${scanFolders.join(', ')}` : '…'}
-              </span>
-            )}
-            {activeOp !== 'detect' && scanFolders.length > 0 && (
-              <span style={{ marginRight: '0.5rem' }}>
-                Scanned folders: {scanFolders.join(', ')}
-              </span>
-            )}
-            {activeOp !== 'detect' && pendingSummary && scanFolders.length === 0 && (
-              <span style={{ marginRight: '0.5rem' }}>
-                Scanned folders: none found.
-              </span>
+              <span style={{ marginRight: '0.5rem' }}>Scanning folders…</span>
             )}
             <label style={{ marginRight: '0.5rem' }}>
               Page Size:{' '}
