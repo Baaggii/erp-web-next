@@ -109,6 +109,7 @@ export default function ImageManagement() {
   const dirHandleRef = useRef();
   const [activeOp, setActiveOp] = useState(null);
   const [report, setReport] = useState('');
+  const [detectReport, setDetectReport] = useState('');
   const uploadsRef = useRef(uploads);
   const ignoredRef = useRef(ignored);
   const pendingRef = useRef(pending);
@@ -647,6 +648,7 @@ export default function ImageManagement() {
     detectAbortRef.current = controller;
     setActiveOp('detect');
     setScanFolders([]);
+    setDetectReport('');
     try {
       const res = await fetch(
         `/api/transaction_images/detect_incomplete?page=${p}&pageSize=${pageSize}${company != null ? `&companyId=${encodeURIComponent(company)}` : ''}`,
@@ -683,8 +685,15 @@ export default function ImageManagement() {
         setHostIgnored(miss);
         hostIgnoredRef.current = miss;
         setHostIgnoredPage(1);
-        setPendingSummary(data.summary || null);
-        setScanFolders(Array.isArray(data.summary?.folders) ? data.summary.folders : []);
+        const summary = data.summary || {
+          totalFiles: data.totalFiles || 0,
+          folders: data.folders || [],
+          incompleteFound: data.incompleteFound || 0,
+          processed: list.length,
+          skipped: miss.length,
+        };
+        setPendingSummary(summary);
+        setScanFolders(Array.isArray(summary.folders) ? summary.folders : []);
         setHasMore(!!data.hasMore);
         setSelected([]);
         setHostIgnoredSel([]);
@@ -1586,6 +1595,9 @@ export default function ImageManagement() {
               Last
             </button>
           </div>
+          {detectReport && (
+            <p style={{ marginBottom: '0.5rem' }}>{detectReport}</p>
+          )}
           {pendingSummary && (
             <p style={{ marginBottom: '0.5rem' }}>
               {`Scanned ${pendingSummary.totalFiles || 0} file(s) in ${pendingSummary.folders?.length || 0} folder(s)`}
