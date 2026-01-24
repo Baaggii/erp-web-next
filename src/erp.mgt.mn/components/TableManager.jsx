@@ -577,7 +577,8 @@ const TableManager = forwardRef(function TableManager({
   const [printModalOpen, setPrintModalOpen] = useState(false);
   const [printEmpSelected, setPrintEmpSelected] = useState(true);
   const [printCustSelected, setPrintCustSelected] = useState(true);
-  const [printCopies, setPrintCopies] = useState('2');
+  const [printCopies, setPrintCopies] = useState('1');
+  const skipPrintCopiesAutoRef = useRef(true);
   const [printPayload, setPrintPayload] = useState(null);
   const [localRefresh, setLocalRefresh] = useState(0);
   const [procTriggers, setProcTriggers] = useState({});
@@ -623,6 +624,15 @@ const TableManager = forwardRef(function TableManager({
   const temporaryRowRefs = useRef(new Map());
   const autoTemporaryLoadScopesRef = useRef(new Set());
   const promotionHydrationNeededRef = useRef(false);
+  useEffect(() => {
+    if (skipPrintCopiesAutoRef.current) {
+      skipPrintCopiesAutoRef.current = false;
+      return;
+    }
+    if (printEmpSelected || printCustSelected) {
+      setPrintCopies('2');
+    }
+  }, [printEmpSelected, printCustSelected]);
   const handleRowsChange = useCallback((rs) => {
     setGridRows(rs);
     if (!Array.isArray(rs) || rs.length === 0) return;
@@ -6798,7 +6808,8 @@ const TableManager = forwardRef(function TableManager({
       setPrintPayload(normalizedPayload);
       setPrintEmpSelected(true);
       setPrintCustSelected(true);
-      setPrintCopies('2');
+      skipPrintCopiesAutoRef.current = true;
+      setPrintCopies('1');
       setPrintModalOpen(true);
     },
     [buildPrintPayloadFromRows, formConfig?.posApiEnabled],
@@ -6816,7 +6827,8 @@ const TableManager = forwardRef(function TableManager({
       setPrintPayload(normalizedPayload);
       setPrintEmpSelected(true);
       setPrintCustSelected(true);
-      setPrintCopies('2');
+      skipPrintCopiesAutoRef.current = true;
+      setPrintCopies('1');
       setPrintModalOpen(true);
     },
     [buildPrintPayloadFromRow, editing, formConfig?.posApiEnabled, gridRows],
