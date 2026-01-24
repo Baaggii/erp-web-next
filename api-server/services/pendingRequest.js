@@ -3,11 +3,14 @@ import {
   updateTableRow,
   deleteTableRow,
   listTableColumns,
+  getTableRowById,
   getPrimaryKeyColumns,
   reassignReportTransactionLocks,
+  isTransactionLocked,
 } from '../../db/index.js';
 import { logUserAction } from './userActivityLog.js';
 import { isDeepStrictEqual } from 'util';
+import crypto from 'crypto';
 import { formatDateForDb } from '../utils/formatDate.js';
 import {
   createReportApprovalLocks,
@@ -30,6 +33,7 @@ export const ALLOWED_REQUEST_TYPES = new Set([
   'edit',
   'delete',
   'report_approval',
+  'bulk_edit',
 ]);
 
 async function ensureValidTableName(tableName) {
@@ -48,6 +52,27 @@ function parseProposedData(value) {
   } catch {
     return null;
   }
+}
+
+function normalizeBulkEditPayload(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const recordIdsRaw =
+    value.recordIds || value.record_ids || value.recordIdList || value.record_id_list;
+  const updatesRaw = value.updates || value.update || null;
+  if (!Array.isArray(recordIdsRaw) || recordIdsRaw.length === 0) return null;
+  if (!updatesRaw || typeof updatesRaw !== 'object' || Array.isArray(updatesRaw))
+    return null;
+  const recordIds = recordIdsRaw.map((id) => {
+    if (typeof id === 'string') return id;
+    if (id === undefined || id === null) return '';
+    try {
+      return JSON.stringify(id);
+    } catch {
+      return String(id);
+    }
+  }).filter((id) => String(id).trim().length > 0);
+  if (recordIds.length === 0) return null;
+  return { recordIds, updates: updatesRaw };
 }
 
 function normalizeSnapshotRow(row, columns = []) {
@@ -722,6 +747,8 @@ export async function createRequest({
         ? 'request_edit'
         : requestType === 'delete'
         ? 'request_delete'
+        : requestType === 'bulk_edit'
+        ? 'request_bulk_edit'
         : 'request_report_approval';
     await logUserAction(
       {
@@ -776,6 +803,182 @@ export async function createRequest({
     await conn.query('COMMIT');
     return {
       request_id: requestId,
+      senior_empid: senior,
+      senior_plan_empid: seniorPlan,
+    };
+  } catch (err) {
+    await conn.query('ROLLBACK');
+    throw err;
+  } finally {
+    conn.release();
+  }
+}
+
+export async function createBulkEditRequest({
+  tableName,
+  recordIds = [],
+  empId,
+  field,
+  value,
+  requestReason,
+  companyId = 0,
+}) {
+  await ensureValidTableName(tableName);
+  if (!requestReason || !String(requestReason).trim()) {
+    const err = new Error('request_reason required');
+    err.status = 400;
+    throw err;
+  }
+  if (!Array.isArray(recordIds) || recordIds.length === 0) {
+    const err = new Error('record_ids required');
+    err.status = 400;
+    throw err;
+  }
+  const columns = await listTableColumns(tableName);
+  const columnLookup = new Map(
+    columns.map((col) => [String(col).toLowerCase(), col]),
+  );
+  const resolvedField = columnLookup.get(String(field).toLowerCase());
+  if (!resolvedField) {
+    const err = new Error('invalid field');
+    err.status = 400;
+    throw err;
+  }
+  const normalizedRecordIds = Array.from(
+    new Set(
+      recordIds
+        .map((id) => {
+          if (typeof id === 'string') return id.trim();
+          if (id === undefined || id === null) return '';
+          try {
+            return JSON.stringify(id);
+          } catch {
+            return String(id);
+          }
+        })
+        .filter((id) => id),
+    ),
+  );
+  if (normalizedRecordIds.length === 0) {
+    const err = new Error('record_ids required');
+    err.status = 400;
+    throw err;
+  }
+  const conn = await pool.getConnection();
+  try {
+    await conn.query('BEGIN');
+    if (tableName && tableName.startsWith('transactions_')) {
+      for (const recordId of normalizedRecordIds) {
+        const locked = await isTransactionLocked(
+          { tableName, recordId, companyId },
+          conn,
+        );
+        if (locked) {
+          const err = new Error('Transaction locked for report approval');
+          err.status = 423;
+          throw err;
+        }
+      }
+    }
+    const [rows] = await conn.query(
+      `SELECT employment_senior_empid, employment_senior_plan_empid
+         FROM tbl_employment
+        WHERE employment_emp_id = ?
+        LIMIT 1`,
+      [empId],
+    );
+    const seniorPlan = normalizeSupervisorEmpId(
+      rows[0]?.employment_senior_plan_empid,
+    );
+    const senior = normalizeSupervisorEmpId(rows[0]?.employment_senior_empid);
+    const normalizedEmp = String(empId).trim().toUpperCase();
+    const payload = {
+      recordIds: normalizedRecordIds,
+      updates: { [resolvedField]: value },
+    };
+    const recordIdSignature = JSON.stringify({
+      ids: normalizedRecordIds,
+      field: resolvedField,
+      value,
+    });
+    const recordId = `bulk:${crypto
+      .createHash('sha256')
+      .update(recordIdSignature)
+      .digest('hex')
+      .slice(0, 32)}`;
+    const [existing] = await conn.query(
+      `SELECT request_id, proposed_data FROM pending_request
+       WHERE company_id = ? AND table_name = ? AND record_id = ? AND emp_id = ?
+         AND request_type = 'bulk_edit' AND status = 'pending'
+       LIMIT 1`,
+      [companyId, tableName, recordId, normalizedEmp],
+    );
+    if (existing.length) {
+      const existingData = parseProposedData(existing[0].proposed_data);
+      if (isDeepStrictEqual(existingData, payload)) {
+        const err = new Error('Duplicate pending request');
+        err.status = 409;
+        throw err;
+      }
+    }
+    const originalData = [];
+    for (const recordId of normalizedRecordIds) {
+      try {
+        const row = await getTableRowById(tableName, recordId, {
+          defaultCompanyId: companyId,
+        });
+        if (row) {
+          originalData.push({ recordId, row });
+        }
+      } catch {
+        // ignore missing rows; handled by approver on submit
+      }
+    }
+    const [result] = await conn.query(
+      `INSERT INTO pending_request (company_id, table_name, record_id, emp_id, senior_empid, request_type, request_reason, proposed_data, original_data, created_by)
+       VALUES (?, ?, ?, ?, ?, 'bulk_edit', ?, ?, ?, ?)`,
+      [
+        companyId,
+        tableName,
+        recordId,
+        normalizedEmp,
+        senior,
+        requestReason,
+        JSON.stringify(payload),
+        originalData.length ? JSON.stringify(originalData) : null,
+        normalizedEmp,
+      ],
+    );
+    const requestId = result.insertId;
+    await logUserAction(
+      {
+        emp_id: empId,
+        table_name: tableName,
+        record_id: recordId,
+        action: 'request_bulk_edit',
+        details: payload,
+        request_id: requestId,
+        company_id: companyId,
+      },
+      conn,
+    );
+    if (senior) {
+      await conn.query(
+        `INSERT INTO notifications (company_id, recipient_empid, type, related_id, message, created_by)
+         VALUES (?, ?, 'request', ?, ?, ?)`,
+        [
+          companyId,
+          senior,
+          requestId,
+          `Pending bulk edit request for ${tableName}`,
+          normalizedEmp,
+        ],
+      );
+    }
+    await conn.query('COMMIT');
+    return {
+      request_id: requestId,
+      record_id: recordId,
       senior_empid: senior,
       senior_plan_empid: seniorPlan,
     };
@@ -1133,6 +1336,62 @@ export async function respondRequest(
           },
           conn,
         );
+      } else if (requestType === 'bulk_edit') {
+        const normalizedBulk = normalizeBulkEditPayload(proposedData);
+        if (!normalizedBulk) {
+          const err = new Error('invalid_bulk_payload');
+          err.status = 400;
+          throw err;
+        }
+        const columns = await listTableColumns(req.table_name);
+        const updates = { ...normalizedBulk.updates };
+        if (columns.includes('updated_by')) updates.updated_by = responseEmpid;
+        if (columns.includes('updated_at'))
+          updates.updated_at = formatDateForDb(new Date());
+        for (const recordId of normalizedBulk.recordIds) {
+          const before = await getTableRowById(req.table_name, recordId, {
+            defaultCompanyId: req.company_id,
+          });
+          if (!before) {
+            const err = new Error('Record not found for bulk update');
+            err.status = 404;
+            throw err;
+          }
+          await updateTableRow(
+            req.table_name,
+            recordId,
+            updates,
+            req.company_id,
+            conn,
+            {
+              ignoreTransactionLock: true,
+              mutationContext: {
+                changedBy: responder,
+                companyId: req.company_id,
+              },
+              onLockInvalidation: trackLockImpacts,
+            },
+          );
+          await logUserAction(
+            {
+              emp_id: responseEmpid,
+              table_name: req.table_name,
+              record_id: recordId,
+              action: 'update',
+              details: {
+                before,
+                after: { ...before, ...updates },
+                bulk_request_id: id,
+              },
+              request_id: id,
+              company_id: req.company_id,
+            },
+            conn,
+          );
+        }
+        approvalLogAction = 'approve_bulk_edit';
+        approvalLogDetails = { proposed_data: normalizedBulk, notes };
+        notificationMessage = 'Bulk update approved';
       } else if (requestType === 'delete') {
         await deleteTableRow(
           req.table_name,
@@ -1231,6 +1490,13 @@ export async function respondRequest(
         }
         declineLogAction = 'decline_report';
         notificationMessage = 'Report approval declined';
+      } else if (requestType === 'bulk_edit') {
+        const normalizedBulk = normalizeBulkEditPayload(proposedData);
+        if (normalizedBulk) {
+          declineDetails = { proposed_data: normalizedBulk, notes };
+        }
+        declineLogAction = 'decline_bulk_edit';
+        notificationMessage = 'Bulk update declined';
       } else {
         notificationMessage = 'Request declined';
       }

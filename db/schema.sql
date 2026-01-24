@@ -1180,7 +1180,7 @@ CREATE TABLE `pending_request` (
   `record_id` varchar(191) NOT NULL,
   `emp_id` varchar(10) NOT NULL,
   `senior_empid` varchar(10) NOT NULL,
-  `request_type` enum('edit','delete','report_approval') NOT NULL,
+  `request_type` enum('edit','delete','report_approval','bulk_edit') NOT NULL,
   `request_reason` text NOT NULL,
   `proposed_data` json DEFAULT NULL,
   `original_data` json DEFAULT NULL,
