@@ -579,7 +579,6 @@ const TableManager = forwardRef(function TableManager({
   const [printCustSelected, setPrintCustSelected] = useState(true);
   const [printCopies, setPrintCopies] = useState('2');
   const [printPayload, setPrintPayload] = useState(null);
-  const printDefaultRef = useRef('2');
   const [localRefresh, setLocalRefresh] = useState(0);
   const [procTriggers, setProcTriggers] = useState({});
   const [lockMetadataById, setLockMetadataById] = useState({});
@@ -6800,7 +6799,6 @@ const TableManager = forwardRef(function TableManager({
       setPrintEmpSelected(true);
       setPrintCustSelected(true);
       setPrintCopies('2');
-      printDefaultRef.current = '2';
       setPrintModalOpen(true);
     },
     [buildPrintPayloadFromRows, formConfig?.posApiEnabled],
@@ -6819,18 +6817,10 @@ const TableManager = forwardRef(function TableManager({
       setPrintEmpSelected(true);
       setPrintCustSelected(true);
       setPrintCopies('2');
-      printDefaultRef.current = '2';
       setPrintModalOpen(true);
     },
     [buildPrintPayloadFromRow, editing, formConfig?.posApiEnabled, gridRows],
   );
-
-  useEffect(() => {
-    if (!printModalOpen) return;
-    const nextDefault = printEmpSelected && printCustSelected ? '1' : '2';
-    setPrintCopies((prev) => (prev === printDefaultRef.current ? nextDefault : prev));
-    printDefaultRef.current = nextDefault;
-  }, [printModalOpen, printEmpSelected, printCustSelected]);
 
   const closePrintModal = useCallback(() => {
     setPrintModalOpen(false);

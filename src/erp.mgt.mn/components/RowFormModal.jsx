@@ -1227,14 +1227,6 @@ const RowFormModal = function RowFormModal({
   const [printCustSelected, setPrintCustSelected] = useState(true);
   const [printCopies, setPrintCopies] = useState('2');
   const [printPayload, setPrintPayload] = useState(null);
-  const printDefaultRef = useRef('2');
-
-  useEffect(() => {
-    if (!printModalOpen) return;
-    const nextDefault = printEmpSelected && printCustSelected ? '1' : '2';
-    setPrintCopies((prev) => (prev === printDefaultRef.current ? nextDefault : prev));
-    printDefaultRef.current = nextDefault;
-  }, [printModalOpen, printEmpSelected, printCustSelected]);
   const [infoPayload, setInfoPayload] = useState({});
   const [infoResponse, setInfoResponse] = useState(null);
   const [infoError, setInfoError] = useState(null);
@@ -4317,7 +4309,6 @@ const RowFormModal = function RowFormModal({
     setPrintEmpSelected(true);
     setPrintCustSelected(true);
     setPrintCopies('2');
-    printDefaultRef.current = '2';
     setPrintModalOpen(true);
   }
   function closePrintModal() {
