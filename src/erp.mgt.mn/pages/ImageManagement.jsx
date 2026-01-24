@@ -1585,7 +1585,7 @@ export default function ImageManagement() {
               Last
             </button>
           </div>
-          {pendingSummary && activeOp !== 'detect' && (
+          {pendingSummary && (
             <p style={{ marginBottom: '0.5rem' }}>
               {`Scanned ${pendingSummary.totalFiles || 0} file(s) in ${pendingSummary.folders?.length || 0} folder(s)`}
               {pendingSummary.folders?.length ? ` (${pendingSummary.folders.join(', ')})` : ''}
