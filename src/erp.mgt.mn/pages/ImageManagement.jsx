@@ -685,8 +685,15 @@ export default function ImageManagement() {
         setHostIgnored(miss);
         hostIgnoredRef.current = miss;
         setHostIgnoredPage(1);
-        setPendingSummary(data.summary || null);
-        setScanFolders(Array.isArray(data.summary?.folders) ? data.summary.folders : []);
+        const summary = data.summary || {
+          totalFiles: data.totalFiles || 0,
+          folders: data.folders || [],
+          incompleteFound: data.incompleteFound || 0,
+          processed: list.length,
+          skipped: miss.length,
+        };
+        setPendingSummary(summary);
+        setScanFolders(Array.isArray(summary.folders) ? summary.folders : []);
         setHasMore(!!data.hasMore);
         setSelected([]);
         setHostIgnoredSel([]);
