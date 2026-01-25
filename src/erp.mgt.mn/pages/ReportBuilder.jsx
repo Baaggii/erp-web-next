@@ -80,6 +80,10 @@ function ReportBuilderInner() {
   const [activeTab, setActiveTab] = useState('builder');
 
   const [procName, setProcName] = usePerTabState('', activeTab);
+  const [bulkUpdateConfig, setBulkUpdateConfig] = usePerTabState(
+    () => ({ fieldName: '', defaultValue: '' }),
+    activeTab,
+  );
   const [fromTable, setFromTable] = usePerTabState('', activeTab);
   const [joins, setJoins] = usePerTabState(() => [], activeTab);
   const [fields, setFields] = usePerTabState(() => [], activeTab);
@@ -1306,6 +1310,14 @@ function ReportBuilderInner() {
       conditions: first.conditions,
       fromFilters: first.fromFilters,
       unionQueries: legacyUnions,
+      bulkUpdateConfig: {
+        fieldName: bulkUpdateConfig?.fieldName || '',
+        defaultValue:
+          bulkUpdateConfig?.defaultValue === undefined ||
+          bulkUpdateConfig?.defaultValue === null
+            ? ''
+            : bulkUpdateConfig.defaultValue,
+      },
     };
   }
 
@@ -1685,6 +1697,14 @@ function ReportBuilderInner() {
 
   function applyConfig(data) {
     setProcName(data.procName || '');
+    setBulkUpdateConfig({
+      fieldName: data.bulkUpdateConfig?.fieldName || '',
+      defaultValue:
+        data.bulkUpdateConfig?.defaultValue === undefined ||
+        data.bulkUpdateConfig?.defaultValue === null
+          ? ''
+          : data.bulkUpdateConfig.defaultValue,
+    });
     const unionsRaw = data.unionQueries || [];
     const normalize = (q) => ({
       unionType: q.unionType || 'UNION',
@@ -3226,6 +3246,48 @@ function ReportBuilderInner() {
               {!isCodeTab && generalConfig?.general?.reportProcSuffix}
             </div>
           </label>
+        </section>
+
+        <section style={{ marginTop: '1rem' }}>
+          <h3>{t('reportBuilder.bulkUpdateDefaults', 'Bulk update defaults')}</h3>
+          <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
+            <label style={{ display: 'flex', flexDirection: 'column' }}>
+              {t('reportBuilder.bulkUpdateField', 'Field to update')}
+              <input
+                type="text"
+                value={bulkUpdateConfig?.fieldName || ''}
+                onChange={(e) =>
+                  setBulkUpdateConfig((prev) => ({
+                    ...prev,
+                    fieldName: e.target.value,
+                  }))
+                }
+                placeholder={t(
+                  'reportBuilder.bulkUpdateFieldPlaceholder',
+                  'e.g. status',
+                )}
+                style={{ minWidth: '16rem' }}
+              />
+            </label>
+            <label style={{ display: 'flex', flexDirection: 'column' }}>
+              {t('reportBuilder.bulkUpdateValue', 'Default value')}
+              <input
+                type="text"
+                value={bulkUpdateConfig?.defaultValue ?? ''}
+                onChange={(e) =>
+                  setBulkUpdateConfig((prev) => ({
+                    ...prev,
+                    defaultValue: e.target.value,
+                  }))
+                }
+                placeholder={t(
+                  'reportBuilder.bulkUpdateValuePlaceholder',
+                  'e.g. Completed',
+                )}
+                style={{ minWidth: '16rem' }}
+              />
+            </label>
+          </div>
         </section>
 
         <section style={{ marginTop: '1rem' }}>
