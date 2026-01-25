@@ -1802,7 +1802,7 @@ export default function Reports() {
           lockCandidates: data.lockCandidates,
         });
         const configMeta = await fetchReportConfig(selectedProc);
-        if (configMeta && !reportMeta.bulkUpdateConfig) {
+        if (configMeta) {
           setResult((prev) =>
             prev
               ? {
@@ -1933,8 +1933,10 @@ export default function Reports() {
 
   useEffect(() => {
     setRowSelection({});
-    setBulkUpdateField('');
-    setBulkUpdateValue('');
+    if (!bulkUpdateConfig) {
+      setBulkUpdateField('');
+      setBulkUpdateValue('');
+    }
     setBulkUpdateReason('');
     setBulkUpdateConfirmed(false);
     setBulkUpdateError('');
@@ -1943,10 +1945,10 @@ export default function Reports() {
     setDrilldownDetails({});
     setDrilldownRowSelection({});
     setActiveAggregatedRow(null);
-  }, [result?.name, result?.rows]);
+  }, [result?.name, bulkUpdateConfig]);
 
   useEffect(() => {
-    if (!result?.name) return;
+    if (!result?.name || !bulkUpdateConfig) return;
     const configField = bulkUpdateConfig?.fieldName || '';
     const configValue = bulkUpdateConfig?.defaultValue ?? '';
     setBulkUpdateField(configField);
