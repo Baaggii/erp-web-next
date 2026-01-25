@@ -1975,7 +1975,6 @@ export default function Reports() {
 
   const canBulkUpdate =
     (hasDetailSelection || hasReportSelection) &&
-    !!bulkUpdateConfig?.fieldName &&
     !!bulkUpdateConfig?.targetTable &&
     hasBulkUpdatePermission;
 
