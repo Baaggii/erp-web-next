@@ -1802,19 +1802,17 @@ export default function Reports() {
           lockCandidates: data.lockCandidates,
         });
         const configMeta = await fetchReportConfig(selectedProc);
-        if (configMeta) {
-          setResult((prev) =>
-            prev
-              ? {
-                  ...prev,
-                  reportMeta: {
-                    ...(prev.reportMeta || {}),
-                    bulkUpdateConfig: configMeta,
-                  },
-                }
-              : prev,
-          );
-        }
+        setResult((prev) =>
+          prev
+            ? {
+                ...prev,
+                reportMeta: {
+                  ...(prev.reportMeta || {}),
+                  bulkUpdateConfig: configMeta,
+                },
+              }
+            : prev,
+        );
       } else {
         const detailedMessage =
           (await extractErrorMessage(res)) || 'Failed to run procedure';
@@ -1945,7 +1943,7 @@ export default function Reports() {
     setDrilldownDetails({});
     setDrilldownRowSelection({});
     setActiveAggregatedRow(null);
-  }, [result?.name, bulkUpdateConfig]);
+  }, [result?.name]);
 
   useEffect(() => {
     if (!result?.name || !bulkUpdateConfig) return;
