@@ -1802,17 +1802,19 @@ export default function Reports() {
           lockCandidates: data.lockCandidates,
         });
         const configMeta = await fetchReportConfig(selectedProc);
-        setResult((prev) =>
-          prev
-            ? {
-                ...prev,
-                reportMeta: {
-                  ...(prev.reportMeta || {}),
-                  bulkUpdateConfig: configMeta,
-                },
-              }
-            : prev,
-        );
+        if (configMeta) {
+          setResult((prev) =>
+            prev && prev.name === selectedProc
+              ? {
+                  ...prev,
+                  reportMeta: {
+                    ...(prev.reportMeta || {}),
+                    bulkUpdateConfig: configMeta,
+                  },
+                }
+              : prev,
+          );
+        }
       } else {
         const detailedMessage =
           (await extractErrorMessage(res)) || 'Failed to run procedure';
