@@ -256,8 +256,9 @@ export default function Reports() {
   const [approvalError, setApprovalError] = useState('');
   const [approvalData, setApprovalData] = useState({ incoming: [], outgoing: [] });
   const [respondingRequestId, setRespondingRequestId] = useState(null);
-  const [pendingDrilldown, setPendingDrilldown] = useState(null);
   const [expandedTransactionDetails, setExpandedTransactionDetails] = useState({});
+  const [drilldownDetails, setDrilldownDetails] = useState({});
+  const [drilldownRowSelection, setDrilldownRowSelection] = useState({});
   const [workplaceAssignmentsForPeriod, setWorkplaceAssignmentsForPeriod] =
     useState(null);
   const workplaceFetchDiagnosticsEnabled = normalizeBoolean(
@@ -266,10 +267,12 @@ export default function Reports() {
   );
   const usingBaseAssignments = !Array.isArray(workplaceAssignmentsForPeriod);
   const expandedTransactionDetailsRef = useRef(expandedTransactionDetails);
+  const drilldownDetailsRef = useRef(drilldownDetails);
   const [requestLockDetailsState, setRequestLockDetailsState] = useState({});
   const requestLockDetailsRef = useRef(requestLockDetailsState);
   const primaryKeyCacheRef = useRef(new Map());
   const rowIdMapRef = useRef(new Map());
+  const drilldownParamCacheRef = useRef(new Map());
   const presetSelectRef = useRef(null);
   const startDateRef = useRef(null);
   const endDateRef = useRef(null);
@@ -314,12 +317,53 @@ export default function Reports() {
   const rowGranularity = result?.reportMeta?.rowGranularity ?? 'transaction';
   const drilldownReport = result?.reportMeta?.drilldownReport ?? null;
   const isAggregated = rowGranularity === 'aggregated';
+  const getDetailRowKey = useCallback(
+    (parentRowId, index) => `${parentRowId}::${index}`,
+    [],
+  );
   const selectedReportRows = useMemo(() => {
     if (!Array.isArray(result?.rows) || result.rows.length === 0) return [];
     return result.rows.filter((row, idx) =>
       Boolean(rowSelection[getReportRowId(row, idx)]),
     );
   }, [result?.rows, rowSelection, getReportRowId]);
+  const selectedDetailRows = useMemo(() => {
+    const selected = [];
+    Object.entries(drilldownDetails).forEach(([rowId, detail]) => {
+      if (detail?.status !== 'loaded' || !Array.isArray(detail.rows)) return;
+      detail.rows.forEach((row, index) => {
+        const key = getDetailRowKey(rowId, index);
+        if (drilldownRowSelection[key]) {
+          selected.push({ row, detailKey: rowId });
+        }
+      });
+    });
+    return selected;
+  }, [drilldownDetails, drilldownRowSelection, getDetailRowKey]);
+  const selectedDetailContext = useMemo(() => {
+    if (!selectedDetailRows.length) return null;
+    const contextKey = selectedDetailRows[0]?.detailKey;
+    return drilldownDetails[contextKey] || null;
+  }, [selectedDetailRows, drilldownDetails]);
+  const hasDetailSelection = selectedDetailRows.length > 0;
+  const activeReportColumns = useMemo(() => {
+    if (!hasDetailSelection) return reportColumns;
+    return selectedDetailContext?.columns || [];
+  }, [hasDetailSelection, reportColumns, selectedDetailContext]);
+  const activeFieldLineage = useMemo(() => {
+    if (!hasDetailSelection) return result?.fieldLineage || {};
+    return selectedDetailContext?.fieldLineage || {};
+  }, [hasDetailSelection, result?.fieldLineage, selectedDetailContext]);
+  const activeFieldTypeMap = useMemo(() => {
+    if (!hasDetailSelection) return result?.fieldTypeMap || {};
+    return selectedDetailContext?.fieldTypeMap || {};
+  }, [hasDetailSelection, result?.fieldTypeMap, selectedDetailContext]);
+  const detailHeaderMap = useHeaderMappings(
+    hasDetailSelection ? activeReportColumns : [],
+  );
+  const activeReportHeaderMap = hasDetailSelection
+    ? detailHeaderMap
+    : reportHeaderMap;
   const approvalSupported = reportCapabilities.supportsApproval !== false;
   const snapshotSupported = reportCapabilities.supportsSnapshot !== false;
   const baseWorkplaceAssignments = useMemo(
@@ -966,6 +1010,10 @@ export default function Reports() {
   useEffect(() => {
     expandedTransactionDetailsRef.current = expandedTransactionDetails;
   }, [expandedTransactionDetails]);
+
+  useEffect(() => {
+    drilldownDetailsRef.current = drilldownDetails;
+  }, [drilldownDetails]);
   useEffect(() => {
     requestLockDetailsRef.current = requestLockDetailsState;
   }, [requestLockDetailsState]);
@@ -1226,6 +1274,8 @@ export default function Reports() {
     setLockFetchPending(false);
     setLockAcknowledged(false);
     setLockRequestSubmitted(false);
+    setDrilldownDetails({});
+    setDrilldownRowSelection({});
   }, [selectedProc]);
 
   useEffect(() => {
@@ -1833,6 +1883,8 @@ export default function Reports() {
     setBulkUpdateConfirmed(false);
     setBulkUpdateError('');
     setBulkUpdateOpen(false);
+    setDrilldownDetails({});
+    setDrilldownRowSelection({});
   }, [result?.name, result?.rows]);
 
   const numberFormatter = useMemo(
@@ -1845,23 +1897,28 @@ export default function Reports() {
   );
 
   const bulkUpdateOptions = useMemo(() => {
-    if (!reportColumns.length || !result?.fieldLineage) return [];
-    return reportColumns
+    if (!activeReportColumns.length) return [];
+    return activeReportColumns
       .map((col) => {
-        const info = result.fieldLineage?.[col];
+        const info = activeFieldLineage?.[col];
         if (!info?.sourceTable || !info?.sourceColumn) return null;
         if (info.kind && info.kind !== 'column') return null;
         if (isCountColumn(col)) return null;
         return {
           column: col,
-          label: reportHeaderMap[col] || col,
+          label: activeReportHeaderMap[col] || col,
           sourceTable: info.sourceTable,
           sourceColumn: info.sourceColumn,
-          fieldType: result?.fieldTypeMap?.[col],
+          fieldType: activeFieldTypeMap?.[col],
         };
       })
       .filter(Boolean);
-  }, [reportColumns, result?.fieldLineage, result?.fieldTypeMap, reportHeaderMap]);
+  }, [
+    activeReportColumns,
+    activeFieldLineage,
+    activeFieldTypeMap,
+    activeReportHeaderMap,
+  ]);
 
   const selectedBulkField = useMemo(
     () => bulkUpdateOptions.find((option) => option.column === bulkUpdateField),
@@ -1875,11 +1932,12 @@ export default function Reports() {
     buttonPerms['Update'];
 
   const canBulkUpdate =
-    !isAggregated &&
+    (hasDetailSelection || !isAggregated) &&
     bulkUpdateOptions.length > 0 &&
     hasBulkUpdatePermission;
 
   const bulkUpdateRecordCount = useMemo(() => {
+    if (hasDetailSelection) return selectedDetailRows.length;
     if (!isAggregated) return selectedReportRows.length;
     return selectedReportRows.reduce((sum, row) => {
       const explicitCount = Number(row?.__row_count);
@@ -1892,10 +1950,14 @@ export default function Reports() {
         .filter(Boolean);
       return sum + ids.length;
     }, 0);
-  }, [isAggregated, selectedReportRows]);
+  }, [hasDetailSelection, isAggregated, selectedDetailRows, selectedReportRows]);
 
   const handleBulkUpdateSubmit = useCallback(async () => {
-    if (!selectedReportRows.length) {
+    const effectiveRows = hasDetailSelection
+      ? selectedDetailRows.map(({ row }) => row)
+      : selectedReportRows;
+    const effectiveIsAggregated = isAggregated && !hasDetailSelection;
+    if (!effectiveRows.length) {
       setBulkUpdateError('Select at least one row before updating.');
       return;
     }
@@ -1919,7 +1981,7 @@ export default function Reports() {
         throw new Error('No primary key columns found for this table.');
       }
       const columnLookup = new Map(
-        reportColumns.map((col) => [String(col).toLowerCase(), col]),
+        activeReportColumns.map((col) => [String(col).toLowerCase(), col]),
       );
       const pkReportColumns = pkColumns
         .map((col) => columnLookup.get(String(col).toLowerCase()))
@@ -1929,10 +1991,10 @@ export default function Reports() {
           'The report does not include all primary key fields for bulk updates.',
         );
       }
-      const recordIds = isAggregated
+      const recordIds = effectiveIsAggregated
         ? Array.from(
             new Set(
-              selectedReportRows.flatMap((row) =>
+              effectiveRows.flatMap((row) =>
                 String(row?.__row_ids ?? '')
                   .split(',')
                   .map((id) => id.trim())
@@ -1940,7 +2002,7 @@ export default function Reports() {
               ),
             ),
           )
-        : selectedReportRows.map((row) => {
+        : effectiveRows.map((row) => {
             const values = pkReportColumns.map((col) => row?.[col]);
             if (
               values.some(
@@ -1967,8 +2029,8 @@ export default function Reports() {
       const normalizedValue = placeholder
         ? normalizeDateInput(String(bulkUpdateValue ?? ''), placeholder)
         : bulkUpdateValue;
-      const drilldownExpansions = isAggregated
-        ? selectedReportRows.map((row) => {
+      const drilldownExpansions = effectiveIsAggregated
+        ? effectiveRows.map((row) => {
             const rowIds = String(row?.__row_ids ?? '')
               .split(',')
               .map((id) => id.trim())
@@ -1984,7 +2046,7 @@ export default function Reports() {
             };
           })
         : [];
-      const reportPayload = isAggregated
+      const reportPayload = effectiveIsAggregated
         ? drilldownExpansions.length === 1
           ? { source: 'aggregated_report', ...drilldownExpansions[0] }
           : {
@@ -2018,6 +2080,7 @@ export default function Reports() {
       setBulkUpdateReason('');
       setBulkUpdateConfirmed(false);
       setRowSelection({});
+      setDrilldownRowSelection({});
       await runReport();
     } catch (err) {
       setBulkUpdateError(err?.message || 'Bulk update request failed.');
@@ -2026,59 +2089,162 @@ export default function Reports() {
     }
   }, [
     selectedReportRows,
+    selectedDetailRows,
+    hasDetailSelection,
     selectedBulkField,
     bulkUpdateReason,
     bulkUpdateConfirmed,
     bulkUpdateValue,
     fetchPrimaryKeyColumns,
-    reportColumns,
+    activeReportColumns,
     addToast,
     runReport,
     isAggregated,
     bulkUpdateRecordCount,
   ]);
 
-  const handleDrilldown = useCallback(({ report, filters }) => {
-    if (!report) return;
-    setPendingDrilldown({ report, filters: filters || {} });
-    setSelectedProc(report);
-  }, []);
+  const fetchDrilldownParams = useCallback(
+    async (reportName) => {
+      if (!reportName) return [];
+      const cached = drilldownParamCacheRef.current.get(reportName);
+      if (cached) return cached;
+      const params = new URLSearchParams();
+      if (branch) params.set('branchId', branch);
+      if (department) params.set('departmentId', department);
+      try {
+        const res = await fetch(
+          `/api/procedures/${encodeURIComponent(reportName)}/params${
+            params.toString() ? `?${params.toString()}` : ''
+          }`,
+          { credentials: 'include' },
+        );
+        const data = res.ok ? await res.json().catch(() => ({})) : {};
+        const list = Array.isArray(data.parameters) ? data.parameters : [];
+        drilldownParamCacheRef.current.set(reportName, list);
+        return list;
+      } catch {
+        return [];
+      }
+    },
+    [branch, department],
+  );
 
-  useEffect(() => {
-    if (!pendingDrilldown || selectedProc !== pendingDrilldown.report) return;
-    if (!Array.isArray(procParams) || procParams.length === 0) return;
-    const filterEntries = Object.entries(pendingDrilldown.filters || {});
-    if (!filterEntries.length) return;
-    const updates = {};
-    procParams.forEach((param) => {
-      if (typeof param !== 'string') return;
-      const normalizedParam = normalizeParamName(param);
-      if (!normalizedParam) return;
-      filterEntries.forEach(([key, value]) => {
-        const normalizedKey = normalizeParamName(key);
-        if (normalizedKey && normalizedParam.includes(normalizedKey)) {
-          updates[param] = value;
-        }
+  const buildDrilldownParams = useCallback(
+    async (reportName, rowIds) => {
+      const rowIdsValue = String(rowIds ?? '').trim();
+      if (!rowIdsValue) return [];
+      const paramNames = await fetchDrilldownParams(reportName);
+      if (!paramNames.length) return [rowIdsValue];
+      return paramNames.map((param) => {
+        const normalized = normalizeParamName(param);
+        if (!normalized) return null;
+        if (normalized.includes('rowid')) return rowIdsValue;
+        if (normalized.includes('company')) return sessionDefaults.companyId;
+        return null;
       });
-    });
-    if (Object.keys(updates).length) {
-      setManualParams((prev) => ({ ...prev, ...updates }));
-    }
-  }, [pendingDrilldown, procParams, selectedProc]);
+    },
+    [fetchDrilldownParams, sessionDefaults.companyId],
+  );
 
-  useEffect(() => {
-    if (!pendingDrilldown || selectedProc !== pendingDrilldown.report) return;
-    if (!allParamsProvided) return;
-    runReport();
-    setPendingDrilldown(null);
-  }, [pendingDrilldown, selectedProc, allParamsProvided, runReport]);
+  const runDetailReport = useCallback(
+    async ({ report, rowIds, rowKey }) => {
+      if (!report) return;
+      const rowIdsValue = String(rowIds ?? '').trim();
+      if (!rowIdsValue) return;
+      setDrilldownDetails((prev) => ({
+        ...prev,
+        [rowKey]: {
+          ...(prev[rowKey] || {}),
+          status: 'loading',
+          error: '',
+          expanded: true,
+          rowIds: rowIdsValue,
+        },
+      }));
+      try {
+        const params = await buildDrilldownParams(report, rowIdsValue);
+        const q = new URLSearchParams();
+        if (branch) q.set('branchId', branch);
+        if (department) q.set('departmentId', department);
+        const res = await fetch(
+          `/api/procedures${q.toString() ? `?${q.toString()}` : ''}`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({
+              name: report,
+              params,
+            }),
+          },
+        );
+        if (!res.ok) {
+          const message =
+            (await extractErrorMessage(res)) || 'Failed to load drilldown rows';
+          throw new Error(message);
+        }
+        const data = await res.json().catch(() => ({}));
+        const rows = Array.isArray(data.row) ? data.row : [];
+        const columns = rows.length
+          ? Object.keys(rows[0]).filter((col) => !INTERNAL_COLS.has(col))
+          : [];
+        setDrilldownDetails((prev) => ({
+          ...prev,
+          [rowKey]: {
+            status: 'loaded',
+            error: '',
+            expanded: true,
+            rowIds: rowIdsValue,
+            rows,
+            columns,
+            fieldLineage: data.fieldLineage || {},
+            fieldTypeMap: data.fieldTypeMap || {},
+          },
+        }));
+      } catch (err) {
+        setDrilldownDetails((prev) => ({
+          ...prev,
+          [rowKey]: {
+            ...(prev[rowKey] || {}),
+            status: 'error',
+            error: err?.message || 'Failed to load drilldown rows',
+            expanded: true,
+            rowIds: rowIdsValue,
+            rows: [],
+          },
+        }));
+      }
+    },
+    [branch, department, buildDrilldownParams, extractErrorMessage],
+  );
 
-  useEffect(() => {
-    if (!pendingDrilldown) return;
-    if (!selectedProc || selectedProc !== pendingDrilldown.report) {
-      setPendingDrilldown(null);
-    }
-  }, [pendingDrilldown, selectedProc]);
+  const handleDrilldown = useCallback(
+    ({ report, row, rowId }) => {
+      if (!report) return;
+      const rowIds = row?.__row_ids;
+      if (!rowIds) return;
+      const existing = drilldownDetailsRef.current[rowId];
+      const nextExpanded = !existing?.expanded;
+      setDrilldownDetails((prev) => ({
+        ...prev,
+        [rowId]: {
+          ...(prev[rowId] || {}),
+          expanded: nextExpanded,
+          rowIds,
+        },
+      }));
+      if (!nextExpanded) return;
+      if (existing?.status === 'loaded' && existing?.rowIds === rowIds) return;
+      runDetailReport({ report, rowIds, rowKey: rowId });
+    },
+    [runDetailReport],
+  );
+
+  const handleDrilldownRowSelectionChange = useCallback((updater) => {
+    setDrilldownRowSelection((prev) =>
+      typeof updater === 'function' ? updater(prev) : updater || {},
+    );
+  }, []);
 
   const selectedLockCount = useMemo(() => {
     if (!Array.isArray(lockCandidates) || lockCandidates.length === 0)
@@ -3649,9 +3815,6 @@ export default function Reports() {
           value={selectedProc}
           onChange={(e) => {
             const nextProc = e.target.value;
-            if (pendingDrilldown && nextProc !== pendingDrilldown.report) {
-              setPendingDrilldown(null);
-            }
             setSelectedProc(nextProc);
             setDatePreset('custom');
             setStartDate('');
@@ -3823,6 +3986,10 @@ export default function Reports() {
               drilldownReport={drilldownReport}
               onDrilldown={handleDrilldown}
               excludeColumns={INTERNAL_COLS}
+              drilldownState={drilldownDetails}
+              drilldownRowSelection={drilldownRowSelection}
+              onDrilldownRowSelectionChange={handleDrilldownRowSelectionChange}
+              getDrilldownRowKey={getDetailRowKey}
             />
           </div>
           <div
@@ -3839,13 +4006,28 @@ export default function Reports() {
             }}
           >
             <strong>
-              {selectedReportRows.length} row
-              {selectedReportRows.length === 1 ? '' : 's'} selected
+              {(hasDetailSelection
+                ? selectedDetailRows.length
+                : selectedReportRows.length)}{' '}
+              row
+              {(hasDetailSelection
+                ? selectedDetailRows.length
+                : selectedReportRows.length) === 1
+                ? ''
+                : 's'}{' '}
+              selected
             </strong>
             <button
               type="button"
-              onClick={() => setRowSelection({})}
-              disabled={selectedReportRows.length === 0}
+              onClick={() => {
+                setRowSelection({});
+                setDrilldownRowSelection({});
+              }}
+              disabled={
+                (hasDetailSelection
+                  ? selectedDetailRows.length
+                  : selectedReportRows.length) === 0
+              }
             >
               Deselect all
             </button>
@@ -3855,7 +4037,12 @@ export default function Reports() {
                 setBulkUpdateOpen(true);
                 setBulkUpdateError('');
               }}
-              disabled={!canBulkUpdate || selectedReportRows.length === 0}
+              disabled={
+                !canBulkUpdate ||
+                (hasDetailSelection
+                  ? selectedDetailRows.length
+                  : selectedReportRows.length) === 0
+              }
             >
               Update Selected
             </button>
