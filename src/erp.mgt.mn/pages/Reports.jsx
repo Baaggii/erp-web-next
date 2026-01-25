@@ -336,7 +336,7 @@ export default function Reports() {
   );
   const isAggregated = rowGranularity === 'aggregated';
   const getDetailRowKey = useCallback(
-    (parentRowId, index) => `${parentRowId}::${index}`,
+    (parentRowId, index) => `${String(parentRowId)}::${String(index)}`,
     [],
   );
   const selectedReportRows = useMemo(() => {
@@ -598,17 +598,17 @@ export default function Reports() {
   const showWorkplaceSelector = hasWorkplaceParam;
 
   const fetchReportConfig = useCallback(async (reportName) => {
-    if (!reportName) return null;
+    if (!reportName) return undefined;
     try {
       const res = await fetch(
         `/api/report_config/${encodeURIComponent(reportName)}`,
         { credentials: 'include' },
       );
-      if (!res.ok) return null;
+      if (!res.ok) return undefined;
       const data = await res.json().catch(() => null);
-      return data?.bulkUpdateConfig ?? null;
+      return normalizeBulkUpdateConfig(data?.bulkUpdateConfig);
     } catch {
-      return null;
+      return undefined;
     }
   }, []);
 
@@ -1802,7 +1802,7 @@ export default function Reports() {
           lockCandidates: data.lockCandidates,
         });
         const configMeta = await fetchReportConfig(selectedProc);
-        if (configMeta) {
+        if (configMeta !== undefined) {
           setResult((prev) =>
             prev && prev.name === selectedProc
               ? {
@@ -1937,6 +1937,7 @@ export default function Reports() {
       setBulkUpdateField('');
       setBulkUpdateValue('');
     }
+    bulkUpdateConfigSignatureRef.current = null;
     setBulkUpdateReason('');
     setBulkUpdateConfirmed(false);
     setBulkUpdateError('');
@@ -1948,16 +1949,18 @@ export default function Reports() {
   }, [result?.name]);
 
   useEffect(() => {
-    if (!result?.name || !bulkUpdateConfig) return;
+    if (!bulkUpdateConfig) return;
     const configField = bulkUpdateConfig?.fieldName || '';
     const configValue = bulkUpdateConfig?.defaultValue ?? '';
-    setBulkUpdateField(configField);
-    setBulkUpdateValue(configValue);
-    bulkUpdateConfigSignatureRef.current = JSON.stringify({
+    const signature = JSON.stringify({
       fieldName: configField,
       defaultValue: configValue,
     });
-  }, [result?.name, bulkUpdateConfig]);
+    if (signature === bulkUpdateConfigSignatureRef.current) return;
+    setBulkUpdateField(configField);
+    setBulkUpdateValue(configValue);
+    bulkUpdateConfigSignatureRef.current = signature;
+  }, [bulkUpdateConfig]);
 
   const numberFormatter = useMemo(
     () =>
@@ -1969,27 +1972,42 @@ export default function Reports() {
   );
 
   const bulkUpdateOptions = useMemo(() => {
-    if (!activeReportColumns.length) return [];
-    return activeReportColumns
-      .map((col) => {
-        const info = activeFieldLineage?.[col];
-        if (!info?.sourceTable || !info?.sourceColumn) return null;
-        if (info.kind && info.kind !== 'column') return null;
-        if (isCountColumn(col)) return null;
-        return {
-          column: col,
-          label: activeReportHeaderMap[col] || col,
-          sourceTable: info.sourceTable,
-          sourceColumn: info.sourceColumn,
-          fieldType: activeFieldTypeMap?.[col],
-        };
-      })
-      .filter(Boolean);
+    const options = [];
+    const addOption = (col) => {
+      if (!col) return;
+      const info = activeFieldLineage?.[col];
+      if (!info?.sourceTable || !info?.sourceColumn) return;
+      if (info.kind && info.kind !== 'column') return;
+      if (isCountColumn(col)) return;
+      options.push({
+        column: col,
+        label:
+          activeReportHeaderMap?.[col] ||
+          reportHeaderMap?.[col] ||
+          col,
+        sourceTable: info.sourceTable,
+        sourceColumn: info.sourceColumn,
+        fieldType: activeFieldTypeMap?.[col],
+      });
+    };
+    if (Array.isArray(activeReportColumns) && activeReportColumns.length) {
+      activeReportColumns.forEach((col) => addOption(col));
+    }
+    const configField = bulkUpdateConfig?.fieldName?.trim();
+    if (
+      configField &&
+      !options.some((option) => option.column === configField)
+    ) {
+      addOption(configField);
+    }
+    return options;
   }, [
     activeReportColumns,
     activeFieldLineage,
     activeFieldTypeMap,
     activeReportHeaderMap,
+    reportHeaderMap,
+    bulkUpdateConfig,
   ]);
 
   const selectedBulkField = useMemo(
