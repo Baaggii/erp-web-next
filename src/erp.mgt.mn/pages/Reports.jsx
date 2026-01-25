@@ -1802,19 +1802,17 @@ export default function Reports() {
           lockCandidates: data.lockCandidates,
         });
         const configMeta = await fetchReportConfig(selectedProc);
-        if (configMeta !== undefined) {
-          setResult((prev) =>
-            prev && prev.name === selectedProc
-              ? {
-                  ...prev,
-                  reportMeta: {
-                    ...(prev.reportMeta || {}),
-                    bulkUpdateConfig: configMeta,
-                  },
-                }
-              : prev,
-          );
-        }
+        setResult((prev) =>
+          prev && prev.name === selectedProc
+            ? {
+                ...prev,
+                reportMeta: {
+                  ...(prev.reportMeta || {}),
+                  bulkUpdateConfig: configMeta,
+                },
+              }
+            : prev,
+        );
       } else {
         const detailedMessage =
           (await extractErrorMessage(res)) || 'Failed to run procedure';
@@ -1933,10 +1931,8 @@ export default function Reports() {
 
   useEffect(() => {
     setRowSelection({});
-    if (!bulkUpdateConfig) {
-      setBulkUpdateField('');
-      setBulkUpdateValue('');
-    }
+    setBulkUpdateField('');
+    setBulkUpdateValue('');
     bulkUpdateConfigSignatureRef.current = null;
     setBulkUpdateReason('');
     setBulkUpdateConfirmed(false);
