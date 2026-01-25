@@ -1803,7 +1803,7 @@ export default function Reports() {
         });
         const configMeta = await fetchReportConfig(selectedProc);
         setResult((prev) =>
-          prev
+          prev && prev.name === selectedProc
             ? {
                 ...prev,
                 reportMeta: {
