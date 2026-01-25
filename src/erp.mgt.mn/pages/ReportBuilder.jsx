@@ -118,6 +118,14 @@ function ReportBuilderInner() {
   const [selectedView, setSelectedView] = usePerTabState('', activeTab);
   const [tenantTableFlags, setTenantTableFlags] = useState({});
   const [applyTenantIsolation, setApplyTenantIsolation] = useState(true);
+  const [bulkUpdateFieldName, setBulkUpdateFieldName] = usePerTabState(
+    '',
+    activeTab,
+  );
+  const [bulkUpdateDefaultValue, setBulkUpdateDefaultValue] = usePerTabState(
+    '',
+    activeTab,
+  );
   const { addToast } = useToast();
   const { company, permissions, session } = useContext(AuthContext);
   const { t: i18nextT } = useTranslation(['translation', 'tooltip']);
@@ -1286,6 +1294,16 @@ function ReportBuilderInner() {
     };
   }
 
+  function normalizeBulkUpdateConfig() {
+    const fieldName = String(bulkUpdateFieldName || '').trim();
+    const defaultValue =
+      bulkUpdateDefaultValue === undefined || bulkUpdateDefaultValue === null
+        ? ''
+        : String(bulkUpdateDefaultValue);
+    if (!fieldName && !defaultValue) return null;
+    return { fieldName, defaultValue };
+  }
+
   function buildConfig() {
     const first = unionQueries[0] || {};
     const legacyUnions = unionQueries.slice(1).map((q, i) => ({
@@ -1306,6 +1324,7 @@ function ReportBuilderInner() {
       conditions: first.conditions,
       fromFilters: first.fromFilters,
       unionQueries: legacyUnions,
+      bulkUpdateConfig: normalizeBulkUpdateConfig(),
     };
   }
 
@@ -1685,6 +1704,14 @@ function ReportBuilderInner() {
 
   function applyConfig(data) {
     setProcName(data.procName || '');
+    const bulkUpdateConfig = data?.bulkUpdateConfig || null;
+    setBulkUpdateFieldName(bulkUpdateConfig?.fieldName || '');
+    setBulkUpdateDefaultValue(
+      bulkUpdateConfig?.defaultValue === undefined ||
+        bulkUpdateConfig?.defaultValue === null
+        ? ''
+        : String(bulkUpdateConfig.defaultValue),
+    );
     const unionsRaw = data.unionQueries || [];
     const normalize = (q) => ({
       unionType: q.unionType || 'UNION',
@@ -3443,6 +3470,33 @@ function ReportBuilderInner() {
           <button onClick={() => handleLoadConfig()} style={{ marginLeft: '0.5rem' }}>
             {t('reportBuilder.loadConfig', 'Load Config')}
           </button>
+          <div
+            style={{
+              marginTop: '0.75rem',
+              display: 'grid',
+              gap: '0.5rem',
+              maxWidth: '32rem',
+            }}
+          >
+            <label style={{ display: 'grid', gap: '0.25rem' }}>
+              <span>{t('reportBuilder.bulkUpdateField', 'Field to update')}</span>
+              <input
+                type="text"
+                value={bulkUpdateFieldName}
+                onChange={(event) => setBulkUpdateFieldName(event.target.value)}
+                placeholder="status"
+              />
+            </label>
+            <label style={{ display: 'grid', gap: '0.25rem' }}>
+              <span>{t('reportBuilder.bulkUpdateDefault', 'Default value')}</span>
+              <input
+                type="text"
+                value={bulkUpdateDefaultValue}
+                onChange={(event) => setBulkUpdateDefaultValue(event.target.value)}
+                placeholder="Completed"
+              />
+            </label>
+          </div>
         </section>
 
         {error && <p style={{ color: 'red' }}>{error}</p>}
