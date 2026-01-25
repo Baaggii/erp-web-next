@@ -1,6 +1,4 @@
 import express from 'express';
-import fs from 'fs/promises';
-import path from 'path';
 import { requireAuth } from '../middlewares/auth.js';
 import {
   callStoredProcedure,
@@ -13,7 +11,6 @@ import {
 } from '../../db/index.js';
 import { listPermittedProcedures } from '../utils/reportProcedures.js';
 import { buildReportFieldLineage } from '../utils/reportFieldLineage.js';
-import { getConfigPath } from '../utils/configPaths.js';
 
 const RATE_LIMIT_WINDOW_MS = 60 * 1000;
 const RATE_LIMIT_MAX_REQUESTS = 30;
@@ -49,34 +46,6 @@ function generateLockRequestId() {
   const now = Date.now();
   const random = Math.floor(Math.random() * 1000);
   return -1 * (now * 1000 + random);
-}
-
-function normalizeBulkUpdateConfig(raw) {
-  if (!raw || typeof raw !== 'object') return null;
-  const fieldName = String(raw.fieldName || '').trim();
-  const hasDefaultValue = Object.prototype.hasOwnProperty.call(raw, 'defaultValue');
-  const defaultValue = hasDefaultValue
-    ? raw.defaultValue === undefined || raw.defaultValue === null
-      ? ''
-      : String(raw.defaultValue)
-    : '';
-  if (!fieldName && !defaultValue) return null;
-  return { fieldName, defaultValue };
-}
-
-async function loadBulkUpdateConfig(name, companyId) {
-  if (!name || !companyId) return null;
-  try {
-    const { path: configPath } = await getConfigPath(
-      path.join('report_builder', `${name}.json`),
-      companyId,
-    );
-    const text = await fs.readFile(configPath, 'utf-8');
-    const data = JSON.parse(text);
-    return normalizeBulkUpdateConfig(data?.bulkUpdateConfig);
-  } catch {
-    return null;
-  }
 }
 
 async function validateCompanyForGid(companyId, gId, res) {
@@ -214,7 +183,7 @@ router.post('/', requireAuth, async (req, res, next) => {
     const rawGid = req.body?.g_id ?? req.query?.g_id ?? aliasGid;
     const validCompany = await validateCompanyForGid(companyId, rawGid, res);
     if (!validCompany) return;
-    const [procResult, fieldLineage, bulkUpdateConfig] = await Promise.all([
+    const [procResult, fieldLineage] = await Promise.all([
       callStoredProcedure(
         name,
         Array.isArray(params) ? params : [],
@@ -228,7 +197,6 @@ router.post('/', requireAuth, async (req, res, next) => {
         },
       ),
       buildReportFieldLineage(name, companyId),
-      loadBulkUpdateConfig(name, companyId),
     ]);
     const { row, reportCapabilities, lockCandidates } = procResult;
     res.json({
@@ -237,9 +205,6 @@ router.post('/', requireAuth, async (req, res, next) => {
       reportCapabilities,
       lockCandidates,
       fieldLineage,
-      reportMeta: {
-        bulkUpdateConfig,
-      },
     });
   } catch (err) {
     next(err);
