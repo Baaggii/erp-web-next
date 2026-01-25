@@ -92,6 +92,10 @@ export default function ReportTable({
   rowGranularity = 'transaction',
   drilldownReport = null,
   onDrilldown,
+  drilldownState = {},
+  drilldownRowSelection = {},
+  onDrilldownRowSelectionChange,
+  getDrilldownRowKey,
   excludeColumns,
   rowSelection: externalRowSelection,
   onRowSelectionChange,
@@ -487,7 +491,7 @@ export default function ReportTable({
   }
 
   const handleRowClick = useCallback(
-    (row) => {
+    (row, rowId) => {
       if (!isAggregated || !drilldownReport || typeof onDrilldown !== 'function') {
         return;
       }
@@ -495,12 +499,8 @@ export default function ReportTable({
       if (!rowIds) return;
       onDrilldown({
         report: drilldownReport,
-        filters: {
-          row_ids: rowIds,
-          tr_date: row?.tr_date,
-          tr_type: row?.tr_type,
-          manuf_id: row?.manuf_id,
-        },
+        row,
+        rowId,
       });
     },
     [isAggregated, drilldownReport, onDrilldown],
@@ -973,80 +973,207 @@ export default function ReportTable({
             {pageRows.map((row, idx) => {
               const rowId = resolveRowId(row, (page - 1) * perPage + idx);
               const tableRow = table.getRowModel().rowsById[rowId];
+              const drilldownEntry = drilldownState?.[rowId];
+              const isExpanded =
+                isAggregated && drilldownReport && drilldownEntry?.expanded;
+              const detailColumns = drilldownEntry?.columns || [];
+              const detailRows = Array.isArray(drilldownEntry?.rows)
+                ? drilldownEntry.rows
+                : [];
               return (
-                <tr
-                  key={rowId}
-                  onClick={() => handleRowClick(row)}
-                  style={
-                    isAggregated && drilldownReport
-                      ? { cursor: 'pointer' }
-                      : undefined
-                  }
-                >
-                  <td
-                    style={{
-                      padding: '0.5rem',
-                      border: '1px solid #d1d5db',
-                      textAlign: 'center',
-                      width: selectionColumnWidth,
-                      minWidth: selectionColumnWidth,
-                      maxWidth: selectionColumnWidth,
-                      position: 'sticky',
-                      left: 0,
-                      background: '#fff',
-                      zIndex: 10,
-                      boxShadow: '1px 0 0 #d1d5db',
-                    }}
+                <React.Fragment key={rowId}>
+                  <tr
+                    onClick={() => handleRowClick(row, rowId)}
+                    style={
+                      isAggregated && drilldownReport
+                        ? { cursor: 'pointer' }
+                        : undefined
+                    }
                   >
-                    <input
-                      type="checkbox"
-                      checked={rowSelectionEnabled && tableRow?.getIsSelected()}
-                      onChange={
-                        rowSelectionEnabled
-                          ? tableRow?.getToggleSelectedHandler()
-                          : undefined
+                    <td
+                      style={{
+                        padding: '0.5rem',
+                        border: '1px solid #d1d5db',
+                        textAlign: 'center',
+                        width: selectionColumnWidth,
+                        minWidth: selectionColumnWidth,
+                        maxWidth: selectionColumnWidth,
+                        position: 'sticky',
+                        left: 0,
+                        background: '#fff',
+                        zIndex: 10,
+                        boxShadow: '1px 0 0 #d1d5db',
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={rowSelectionEnabled && tableRow?.getIsSelected()}
+                        onChange={
+                          rowSelectionEnabled
+                            ? tableRow?.getToggleSelectedHandler()
+                            : undefined
+                        }
+                        disabled={!rowSelectionEnabled}
+                      />
+                    </td>
+                    {columns.map((col) => {
+                      const w = columnWidths[col];
+                      const style = {
+                        padding: '0.5rem',
+                        border: '1px solid #d1d5db',
+                        textAlign: columnAlign[col],
+                      };
+                      if (w) {
+                        style.width = w;
+                        style.minWidth = w;
+                        style.maxWidth = MAX_WIDTH;
+                        style.whiteSpace = 'nowrap';
+                        style.overflow = 'hidden';
+                        style.textOverflow = 'ellipsis';
                       }
-                      disabled={!rowSelectionEnabled}
-                    />
-                  </td>
-                  {columns.map((col) => {
-                    const w = columnWidths[col];
-                    const style = {
-                      padding: '0.5rem',
-                      border: '1px solid #d1d5db',
-                      textAlign: columnAlign[col],
-                    };
-                    if (w) {
-                      style.width = w;
-                      style.minWidth = w;
-                      style.maxWidth = MAX_WIDTH;
-                      style.whiteSpace = 'nowrap';
-                      style.overflow = 'hidden';
-                      style.textOverflow = 'ellipsis';
-                    }
-                    if (col in stickyOffsets) {
-                      style.position = 'sticky';
-                      style.left = stickyOffsets[col] + selectionColumnWidth;
-                      style.background = '#fff';
-                      style.zIndex = 5;
-                      style.boxShadow = '1px 0 0 #d1d5db';
-                    }
-                    const { value, displayColumn } = resolveCell(row, col);
-                    const cellPlaceholder = resolvePlaceholder(col, displayColumn);
-                    const numericValue = isNumericValue(value);
-                    return (
+                      if (col in stickyOffsets) {
+                        style.position = 'sticky';
+                        style.left = stickyOffsets[col] + selectionColumnWidth;
+                        style.background = '#fff';
+                        style.zIndex = 5;
+                        style.boxShadow = '1px 0 0 #d1d5db';
+                      }
+                      const { value, displayColumn } = resolveCell(row, col);
+                      const cellPlaceholder = resolvePlaceholder(col, displayColumn);
+                      const numericValue = isNumericValue(value);
+                      return (
+                        <td
+                          key={col}
+                          style={{
+                            ...style,
+                            cursor: row[col] ? 'pointer' : 'default',
+                          }}
+                          onClick={() => handleCellClick(col, row[col], row)}
+                        >
+                          {numericColumns.includes(col) && numericValue
+                            ? formatNumber(value)
+                            : formatCellValue(value, cellPlaceholder)}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                  {isExpanded && (
+                    <tr>
                       <td
-                        key={col}
-                        style={{ ...style, cursor: row[col] ? 'pointer' : 'default' }}
-                        onClick={() => handleCellClick(col, row[col], row)}
+                        colSpan={columns.length + 1}
+                        style={{
+                          padding: '0.75rem',
+                          border: '1px solid #d1d5db',
+                          background: '#f9fafb',
+                        }}
+                        onClick={(event) => event.stopPropagation()}
                       >
-                        {numericColumns.includes(col) && numericValue
-                          ? formatNumber(value)
-                          : formatCellValue(value, cellPlaceholder)}
+                        {drilldownEntry?.status === 'loading' && (
+                          <div>Loading transaction details…</div>
+                        )}
+                        {drilldownEntry?.status === 'error' && (
+                          <div style={{ color: 'red' }}>
+                            {drilldownEntry.error ||
+                              'Failed to load drilldown transactions.'}
+                          </div>
+                        )}
+                        {drilldownEntry?.status === 'loaded' &&
+                          (detailRows.length ? (
+                            <div style={{ overflowX: 'auto' }}>
+                              <table
+                                style={{
+                                  borderCollapse: 'collapse',
+                                  width: '100%',
+                                  minWidth: '32rem',
+                                }}
+                              >
+                                <thead>
+                                  <tr style={{ background: '#e5e7eb' }}>
+                                    <th
+                                      style={{
+                                        padding: '0.25rem',
+                                        border: '1px solid #d1d5db',
+                                        textAlign: 'center',
+                                        width: '3rem',
+                                      }}
+                                    >
+                                      Select
+                                    </th>
+                                    {detailColumns.map((col) => (
+                                      <th
+                                        key={`detail-${rowId}-${col}`}
+                                        style={{
+                                          padding: '0.25rem',
+                                          border: '1px solid #d1d5db',
+                                          textAlign: columnAlign[col] || 'left',
+                                          whiteSpace: 'nowrap',
+                                        }}
+                                      >
+                                        {fieldLabels[col] ||
+                                          columnHeaderMap[col] ||
+                                          col}
+                                      </th>
+                                    ))}
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {detailRows.map((detailRow, detailIndex) => {
+                                    const key =
+                                      typeof getDrilldownRowKey === 'function'
+                                        ? getDrilldownRowKey(rowId, detailIndex)
+                                        : `${rowId}::${detailIndex}`;
+                                    const checked = Boolean(
+                                      drilldownRowSelection?.[key],
+                                    );
+                                    return (
+                                      <tr key={key}>
+                                        <td
+                                          style={{
+                                            padding: '0.25rem',
+                                            border: '1px solid #d1d5db',
+                                            textAlign: 'center',
+                                          }}
+                                        >
+                                          <input
+                                            type="checkbox"
+                                            checked={checked}
+                                            onChange={() =>
+                                              onDrilldownRowSelectionChange?.(
+                                                (prev) => ({
+                                                  ...prev,
+                                                  [key]: !checked,
+                                                }),
+                                              )
+                                            }
+                                          />
+                                        </td>
+                                        {detailColumns.map((col) => (
+                                          <td
+                                            key={`${key}-${col}`}
+                                            style={{
+                                              padding: '0.25rem',
+                                              border: '1px solid #d1d5db',
+                                              textAlign:
+                                                columnAlign[col] || 'left',
+                                              whiteSpace: 'nowrap',
+                                            }}
+                                          >
+                                            {formatCellValue(detailRow?.[col])}
+                                          </td>
+                                        ))}
+                                      </tr>
+                                    );
+                                  })}
+                                </tbody>
+                              </table>
+                            </div>
+                          ) : (
+                            <div>No transactions found for this row.</div>
+                          ))}
                       </td>
-                    );
-                  })}
-                </tr>
+                    </tr>
+                  )}
+                </React.Fragment>
               );
             })}
           </tbody>
