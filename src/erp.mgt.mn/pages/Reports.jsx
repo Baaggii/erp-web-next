@@ -185,14 +185,14 @@ function stringifyDiagnosticValue(value) {
   return String(value);
 }
 
-function normalizeSqlDiagnosticValue(value) {
+  function normalizeSqlDiagnosticValue(value) {
   const normalized = stringifyDiagnosticValue(value);
   if (typeof normalized !== 'string') return null;
   const trimmed = normalized.trim();
   return trimmed.length ? trimmed : null;
 }
 
-const REPORT_REQUEST_TABLE = 'report_transaction_locks';
+  const REPORT_REQUEST_TABLE = 'report_transaction_locks';
 const ALL_WORKPLACE_OPTION = '__ALL_WORKPLACE_SESSIONS__';
 const DEFAULT_REPORT_CAPABILITIES = {
   showTotalRowCount: true,
@@ -596,6 +596,21 @@ export default function Reports() {
   ]);
 
   const showWorkplaceSelector = hasWorkplaceParam;
+
+  const fetchReportConfig = useCallback(async (reportName) => {
+    if (!reportName) return null;
+    try {
+      const res = await fetch(
+        `/api/report_config/${encodeURIComponent(reportName)}`,
+        { credentials: 'include' },
+      );
+      if (!res.ok) return null;
+      const data = await res.json().catch(() => null);
+      return data?.bulkUpdateConfig ?? null;
+    } catch {
+      return null;
+    }
+  }, []);
 
   const workplaceDateQuery = useMemo(() => {
     if (!hasWorkplaceParam) {
@@ -1786,6 +1801,20 @@ export default function Reports() {
           lockRequestId: data.lockRequestId || null,
           lockCandidates: data.lockCandidates,
         });
+        const configMeta = await fetchReportConfig(selectedProc);
+        if (configMeta && !reportMeta.bulkUpdateConfig) {
+          setResult((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  reportMeta: {
+                    ...(prev.reportMeta || {}),
+                    bulkUpdateConfig: configMeta,
+                  },
+                }
+              : prev,
+          );
+        }
       } else {
         const detailedMessage =
           (await extractErrorMessage(res)) || 'Failed to run procedure';
