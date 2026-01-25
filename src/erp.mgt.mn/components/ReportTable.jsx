@@ -1121,7 +1121,7 @@ export default function ReportTable({
                                     const key =
                                       typeof getDrilldownRowKey === 'function'
                                         ? getDrilldownRowKey(rowId, detailIndex)
-                                        : `${rowId}::${detailIndex}`;
+                                        : `${String(rowId)}::${String(detailIndex)}`;
                                     const checked = Boolean(
                                       drilldownRowSelection?.[key],
                                     );
