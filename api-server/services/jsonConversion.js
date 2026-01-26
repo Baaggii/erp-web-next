@@ -845,6 +845,16 @@ export async function recordConversionLog(
   return result.insertId;
 }
 
+export async function updateConversionLogStatus(id, resultStatus, resultError = null) {
+  await ensureLogTable();
+  await pool.query(
+    `UPDATE json_conversion_log
+     SET result_status = ?, result_error = ?
+     WHERE id = ?`,
+    [resultStatus, resultError ? JSON.stringify(resultError) : null, id],
+  );
+}
+
 export async function listSavedScripts() {
   await ensureLogTable();
   const [rows] = await pool.query(
@@ -881,6 +891,16 @@ export async function touchScriptRun(id, runBy) {
      SET run_at = NOW(), run_by = ?, result_status = 'success', result_error = NULL
      WHERE id = ?`,
     [runBy || null, id],
+  );
+}
+
+export async function touchScriptRunError(id, resultError) {
+  await ensureLogTable();
+  await pool.query(
+    `UPDATE json_conversion_log
+     SET run_at = NOW(), result_status = 'error', result_error = ?
+     WHERE id = ?`,
+    [resultError ? JSON.stringify(resultError) : null, id],
   );
 }
 
