@@ -13,8 +13,6 @@ import {
   runPlanStatements,
   splitStatements,
   touchScriptRun,
-  touchScriptRunError,
-  updateConversionLogStatus,
 } from '../services/jsonConversion.js';
 import { logConversionEvent } from '../utils/jsonConversionLogger.js';
 
@@ -130,14 +128,6 @@ router.post('/convert', requireAuth, requireAdmin, async (req, res, next) => {
     const runBy = req.user?.empid || req.user?.id || 'unknown';
     const logColumns = normalizedColumns.map((c) => c.name);
     const blocked = plan.previews.filter((p) => p.blocked);
-    const logId = await recordConversionLog(
-      table,
-      logColumns,
-      plan.scriptText,
-      runBy,
-      runNow ? 'planned' : 'planned',
-      null,
-    );
     logConversionEvent({
       event: 'json-conversion.plan-ready',
       runId,
@@ -151,6 +141,9 @@ router.post('/convert', requireAuth, requireAdmin, async (req, res, next) => {
       runBy,
       statementsSample: plan.statements.slice(0, 3),
     });
+    let executed = false;
+    let runError = null;
+    let executionDurationMs = 0;
     if (runNow && plan.statements.length > 0) {
       initRunStatus(runId, plan.statements);
       updateRunStatus(runId, { status: 'executing' });
@@ -229,10 +222,6 @@ router.post('/convert', requireAuth, requireAdmin, async (req, res, next) => {
         blockedColumns: blocked.map((p) => p.column),
         runId,
       });
-    } else if (runNow && plan.statements.length === 0) {
-      initRunStatus(runId, []);
-      setRunStatusDone(runId);
-      await updateConversionLogStatus(logId, 'success', null);
     }
     logConversionEvent({
       event: 'json-conversion.respond-success',
@@ -243,13 +232,13 @@ router.post('/convert', requireAuth, requireAdmin, async (req, res, next) => {
       durationMs: Date.now() - requestStartedAt,
       logId,
       runBy,
-      executed: false,
+      executed,
       blockedColumns: blocked.map((p) => p.column),
     });
     res.json({
       scriptText: plan.scriptText,
       previews: plan.previews,
-      executed: false,
+      executed: Boolean(executed),
       logId,
       blockedColumns: blocked.map((p) => p.column),
       runId,
