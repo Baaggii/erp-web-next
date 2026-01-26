@@ -245,6 +245,7 @@ export default function Reports() {
   const [bulkUpdateOpen, setBulkUpdateOpen] = useState(false);
   const [bulkUpdateConfirmOpen, setBulkUpdateConfirmOpen] = useState(false);
   const [bulkUpdateField, setBulkUpdateField] = useState('');
+  const [bulkUpdateTargetTableInput, setBulkUpdateTargetTableInput] = useState('');
   const [bulkUpdateValue, setBulkUpdateValue] = useState('');
   const [bulkUpdateReason, setBulkUpdateReason] = useState('');
   const [bulkUpdateConfirmed, setBulkUpdateConfirmed] = useState(false);
@@ -1928,6 +1929,7 @@ export default function Reports() {
   useEffect(() => {
     setRowSelection({});
     setBulkUpdateField('');
+    setBulkUpdateTargetTableInput('');
     setBulkUpdateValue('');
     bulkUpdateConfigSignatureRef.current = null;
     setBulkUpdateReason('');
@@ -1953,6 +1955,7 @@ export default function Reports() {
     if (signature === bulkUpdateConfigSignatureRef.current) return;
     setBulkUpdateField(configField);
     setBulkUpdateValue(configValue);
+    setBulkUpdateTargetTableInput(configTable);
     bulkUpdateConfigSignatureRef.current = signature;
   }, [bulkUpdateConfig]);
 
@@ -1965,7 +1968,11 @@ export default function Reports() {
     [],
   );
 
-  const bulkUpdateTargetTable = bulkUpdateConfig?.targetTable?.trim() || '';
+  const bulkUpdateTargetTable = (
+    bulkUpdateConfig?.targetTable ||
+    bulkUpdateTargetTableInput
+  ).trim();
+  const hasBulkUpdateConfig = Boolean(bulkUpdateConfig?.targetTable?.trim());
 
   const hasBulkUpdatePermission =
     buttonPerms['Bulk Update'] ||
@@ -1974,9 +1981,7 @@ export default function Reports() {
     buttonPerms['Update'];
 
   const canBulkUpdate =
-    (hasDetailSelection || hasReportSelection) &&
-    !!bulkUpdateConfig?.targetTable &&
-    hasBulkUpdatePermission;
+    (hasDetailSelection || hasReportSelection) && hasBulkUpdatePermission;
 
   const bulkUpdateRecordCount = useMemo(() => {
     if (hasDetailSelection) return selectedDetailRows.length;
@@ -2056,6 +2061,10 @@ export default function Reports() {
       setBulkUpdateError('Bulk update configuration is incomplete.');
       return { ok: false, effectiveRows };
     }
+    if (!hasBulkUpdateConfig && String(bulkUpdateValue ?? '').trim() === '') {
+      setBulkUpdateError('Provide a new value for the bulk update.');
+      return { ok: false, effectiveRows };
+    }
     if (!bulkUpdateReason.trim()) {
       setBulkUpdateError('Request reason is required.');
       return { ok: false, effectiveRows };
@@ -2070,7 +2079,9 @@ export default function Reports() {
     bulkUpdateConfirmed,
     bulkUpdateReason,
     hasDetailSelection,
+    hasBulkUpdateConfig,
     bulkUpdateField,
+    bulkUpdateValue,
     bulkUpdateTargetTable,
     selectedDetailRows,
     selectedReportRows,
@@ -2089,7 +2100,23 @@ export default function Reports() {
     const effectiveIsAggregated = isAggregated && !hasDetailSelection;
     setBulkUpdateLoading(true);
     try {
-      const resolveRowId = (row) => row?.__pk ?? row?.id;
+      const resolveRowId = (row) => {
+        if (row?.__pk != null && row?.__pk !== '') return row.__pk;
+        if (row?.id != null && row?.id !== '') return row.id;
+        if (Array.isArray(rowIdFields) && rowIdFields.length > 0) {
+          const values = rowIdFields.map((field) => row?.[field]);
+          if (values.some((value) => value === undefined || value === null || value === '')) {
+            return undefined;
+          }
+          if (values.length === 1) return values[0];
+          try {
+            return JSON.stringify(values);
+          } catch {
+            return values.join('-');
+          }
+        }
+        return undefined;
+      };
       const recordIds = effectiveIsAggregated
         ? Array.from(
             new Set(
@@ -2189,31 +2216,51 @@ export default function Reports() {
     runReport,
     isAggregated,
     bulkUpdateRecordCount,
+    rowIdFields,
   ]);
 
   const handleBulkUpdateFieldChange = useCallback(
     (value) => {
       setBulkUpdateField(value);
-      saveBulkUpdateConfig({
-        fieldName: value,
-        targetTable: bulkUpdateTargetTable,
-        defaultValue: bulkUpdateValue,
-      });
+      if (hasBulkUpdateConfig) {
+        saveBulkUpdateConfig({
+          fieldName: value,
+          targetTable: bulkUpdateTargetTable,
+          defaultValue: bulkUpdateValue,
+        });
+      }
     },
-    [bulkUpdateTargetTable, bulkUpdateValue, saveBulkUpdateConfig],
+    [
+      bulkUpdateTargetTable,
+      bulkUpdateValue,
+      hasBulkUpdateConfig,
+      saveBulkUpdateConfig,
+    ],
   );
+
+  const handleBulkUpdateTargetTableChange = useCallback((value) => {
+    setBulkUpdateTargetTableInput(value);
+  }, []);
 
   const handleBulkUpdateValueChange = useCallback((value) => {
     setBulkUpdateValue(value);
   }, []);
 
   const handleBulkUpdateValueBlur = useCallback(() => {
-    saveBulkUpdateConfig({
-      fieldName: bulkUpdateField,
-      targetTable: bulkUpdateTargetTable,
-      defaultValue: bulkUpdateValue,
-    });
-  }, [bulkUpdateField, bulkUpdateTargetTable, bulkUpdateValue, saveBulkUpdateConfig]);
+    if (hasBulkUpdateConfig) {
+      saveBulkUpdateConfig({
+        fieldName: bulkUpdateField,
+        targetTable: bulkUpdateTargetTable,
+        defaultValue: bulkUpdateValue,
+      });
+    }
+  }, [
+    bulkUpdateField,
+    bulkUpdateTargetTable,
+    bulkUpdateValue,
+    hasBulkUpdateConfig,
+    saveBulkUpdateConfig,
+  ]);
 
   const activeAggregatedCount = useMemo(() => {
     if (!activeAggregatedRow) return null;
@@ -4610,10 +4657,24 @@ export default function Reports() {
                 placeholder="Field name"
               />
             </label>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-              <span>Target table</span>
-              <strong>{bulkUpdateTargetTable || 'Not configured'}</strong>
-            </div>
+            {hasBulkUpdateConfig ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                <span>Target table</span>
+                <strong>{bulkUpdateTargetTable || 'Not configured'}</strong>
+              </div>
+            ) : (
+              <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                Target table
+                <input
+                  type="text"
+                  value={bulkUpdateTargetTableInput}
+                  onChange={(event) =>
+                    handleBulkUpdateTargetTableChange(event.target.value)
+                  }
+                  placeholder="Enter target table"
+                />
+              </label>
+            )}
             <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
               New value
               <input
