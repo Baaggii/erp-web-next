@@ -2100,52 +2100,9 @@ export default function Reports() {
     const effectiveIsAggregated = isAggregated && !hasDetailSelection;
     setBulkUpdateLoading(true);
     try {
-      const targetTableName = bulkUpdateTargetTable.trim();
-      const targetPkColumns = targetTableName
-        ? await fetchPrimaryKeyColumns(targetTableName)
-        : [];
-      const resolveRowId = (row, detailKey) => {
+      const resolveRowId = (row) => {
         if (row?.__pk != null && row?.__pk !== '') return row.__pk;
         if (row?.id != null && row?.id !== '') return row.id;
-        const rowColumns = Object.keys(row || {});
-        const columnLookup = new Map(
-          rowColumns.map((col) => [String(col).toLowerCase(), col]),
-        );
-        const lineage = detailKey
-          ? drilldownDetailsRef.current?.[detailKey]?.fieldLineage
-          : result?.fieldLineage;
-        const lineageMatches = (pkColumn) => {
-          if (!lineage) return null;
-          const pkLower = String(pkColumn).toLowerCase();
-          const targetLower = String(targetTableName).toLowerCase();
-          for (const columnName of rowColumns) {
-            const info = lineage?.[columnName];
-            if (!info?.sourceTable || !info?.sourceColumn) continue;
-            if (String(info.sourceTable).toLowerCase() !== targetLower) continue;
-            if (String(info.sourceColumn).toLowerCase() === pkLower) {
-              return columnName;
-            }
-          }
-          return null;
-        };
-        if (targetPkColumns.length) {
-          const resolvedFields = targetPkColumns
-            .map((pkColumn) => columnLookup.get(String(pkColumn).toLowerCase()))
-            .map((resolved, index) => resolved || lineageMatches(targetPkColumns[index]))
-            .filter(Boolean);
-          if (resolvedFields.length === targetPkColumns.length) {
-            const values = resolvedFields.map((field) => row?.[field]);
-            if (values.some((value) => value === undefined || value === null || value === '')) {
-              return undefined;
-            }
-            if (values.length === 1) return values[0];
-            try {
-              return JSON.stringify(values);
-            } catch {
-              return values.join('-');
-            }
-          }
-        }
         if (Array.isArray(rowIdFields) && rowIdFields.length > 0) {
           const values = rowIdFields.map((field) => row?.[field]);
           if (values.some((value) => value === undefined || value === null || value === '')) {
@@ -2260,8 +2217,6 @@ export default function Reports() {
     isAggregated,
     bulkUpdateRecordCount,
     rowIdFields,
-    fetchPrimaryKeyColumns,
-    result?.fieldLineage,
   ]);
 
   const handleBulkUpdateFieldChange = useCallback(
