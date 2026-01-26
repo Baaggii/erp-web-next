@@ -183,8 +183,20 @@ function parseSelectAlias(item) {
     const token = trailingMatch[2].trim();
     const exprHasSpace = /\s/.test(expr);
     const exprHasParen = expr.includes('(') || /CASE\s+/i.test(expr);
-    if (exprHasSpace || exprHasParen) {
-      return { expr, alias: normalizeIdent(token) };
+    const exprIsSimpleIdent =
+      /^[`"]?[a-zA-Z_][\w]*[`"]?(?:\s*\.\s*[`"]?[a-zA-Z_][\w]*[`"]?)*$/.test(expr);
+    const exprEndsWithOperator = /[+\-*/%]$/.test(expr);
+    const exprEndsWithLogical = /\b(AND|OR|NOT|IN|LIKE|IS|BETWEEN)$/i.test(expr);
+    const aliasToken = normalizeIdent(token);
+    const aliasIsCaseEnd =
+      /CASE\s+/i.test(expr) && aliasToken.toUpperCase() === 'END';
+    if (
+      (exprHasSpace || exprHasParen || exprIsSimpleIdent) &&
+      !exprEndsWithOperator &&
+      !exprEndsWithLogical &&
+      !aliasIsCaseEnd
+    ) {
+      return { expr, alias: aliasToken };
     }
   }
   return { expr: item.trim(), alias: '' };
