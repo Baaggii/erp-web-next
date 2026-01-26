@@ -221,8 +221,16 @@ export default function JsonConversionPanel() {
       'Conversion uses admin DB credentials in the order ERP_ADMIN_USER → DB_ADMIN_USER → DB_USER. Ensure they have CREATE privileges for json_conversion_log.',
       'info',
     );
+    setRunStatus({
+      status: 'starting',
+      executedStatements: [],
+      executingStatement: null,
+      pendingStatements: [],
+    });
+    setRunId('');
     if (!selectedTable || selectedColumns.length === 0) {
       addToast('Pick a table and at least one column', 'warning');
+      setRunStatus(null);
       return;
     }
 
@@ -251,6 +259,7 @@ export default function JsonConversionPanel() {
         `Do not convert critical keys directly: ${criticalConflicts.join(', ')}. Use the companion JSON option instead.`,
         'warning',
       );
+      setRunStatus(null);
       return;
     }
     if (missingManualSql.length > 0) {
@@ -258,6 +267,7 @@ export default function JsonConversionPanel() {
         `Provide SQL steps for manual constraint handling: ${missingManualSql.join(', ')}`,
         'warning',
       );
+      setRunStatus(null);
       return;
     }
 
@@ -351,7 +361,7 @@ export default function JsonConversionPanel() {
       status: 'starting',
       executedStatements: [],
       executingStatement: null,
-      pendingStatements,
+      pendingStatements: [],
     });
     setRunId('');
     try {
