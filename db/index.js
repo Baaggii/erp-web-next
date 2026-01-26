@@ -7445,6 +7445,8 @@ export async function callStoredProcedure(
           @row_granularity AS row_granularity,
           @drilldown_proc_name AS drilldown_proc_name,
           @drilldown_proc AS drilldown_proc,
+          @drilldown_mode AS drilldown_mode,
+          @detail_pk_column AS detail_pk_column,
           @drilldown_report AS drilldown_report`,
       );
       const metaRow = Array.isArray(metaRows) ? metaRows[0] || {} : {};
@@ -7487,6 +7489,22 @@ export async function callStoredProcedure(
         firstRow?.__drilldown_proc;
       if (drilldownProcName) {
         mergedMeta.drilldownProcName = drilldownProcName;
+      }
+      const drilldownMode =
+        mergedMeta.drilldownMode ??
+        mergedMeta.drilldown_mode ??
+        metaRow.drilldown_mode ??
+        firstRow?.__drilldown_mode;
+      if (drilldownMode) {
+        mergedMeta.drilldownMode = drilldownMode;
+      }
+      const detailPkColumn =
+        mergedMeta.detailPkColumn ??
+        mergedMeta.detail_pk_column ??
+        metaRow.detail_pk_column ??
+        firstRow?.__detail_pk_column;
+      if (detailPkColumn) {
+        mergedMeta.detailPkColumn = detailPkColumn;
       }
       const drilldownReport =
         mergedMeta.drilldownReport ??
