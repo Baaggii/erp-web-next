@@ -245,6 +245,7 @@ export default function Reports() {
   const [bulkUpdateOpen, setBulkUpdateOpen] = useState(false);
   const [bulkUpdateConfirmOpen, setBulkUpdateConfirmOpen] = useState(false);
   const [bulkUpdateField, setBulkUpdateField] = useState('');
+  const [bulkUpdateTargetTableInput, setBulkUpdateTargetTableInput] = useState('');
   const [bulkUpdateValue, setBulkUpdateValue] = useState('');
   const [bulkUpdateReason, setBulkUpdateReason] = useState('');
   const [bulkUpdateConfirmed, setBulkUpdateConfirmed] = useState(false);
@@ -1928,6 +1929,7 @@ export default function Reports() {
   useEffect(() => {
     setRowSelection({});
     setBulkUpdateField('');
+    setBulkUpdateTargetTableInput('');
     setBulkUpdateValue('');
     bulkUpdateConfigSignatureRef.current = null;
     setBulkUpdateReason('');
@@ -1953,6 +1955,7 @@ export default function Reports() {
     if (signature === bulkUpdateConfigSignatureRef.current) return;
     setBulkUpdateField(configField);
     setBulkUpdateValue(configValue);
+    setBulkUpdateTargetTableInput(configTable);
     bulkUpdateConfigSignatureRef.current = signature;
   }, [bulkUpdateConfig]);
 
@@ -1965,7 +1968,11 @@ export default function Reports() {
     [],
   );
 
-  const bulkUpdateTargetTable = bulkUpdateConfig?.targetTable?.trim() || '';
+  const bulkUpdateTargetTable = (
+    bulkUpdateConfig?.targetTable ||
+    bulkUpdateTargetTableInput
+  ).trim();
+  const hasBulkUpdateConfig = Boolean(bulkUpdateConfig?.targetTable?.trim());
 
   const hasBulkUpdatePermission =
     buttonPerms['Bulk Update'] ||
@@ -1974,9 +1981,7 @@ export default function Reports() {
     buttonPerms['Update'];
 
   const canBulkUpdate =
-    (hasDetailSelection || hasReportSelection) &&
-    !!bulkUpdateConfig?.targetTable &&
-    hasBulkUpdatePermission;
+    (hasDetailSelection || hasReportSelection) && hasBulkUpdatePermission;
 
   const bulkUpdateRecordCount = useMemo(() => {
     if (hasDetailSelection) return selectedDetailRows.length;
@@ -2046,14 +2051,18 @@ export default function Reports() {
 
   const validateBulkUpdate = useCallback(() => {
     const effectiveRows = hasDetailSelection
-      ? selectedDetailRows.map(({ row }) => row)
-      : selectedReportRows;
+      ? selectedDetailRows
+      : selectedReportRows.map((row) => ({ row }));
     if (!effectiveRows.length) {
       setBulkUpdateError('Select at least one row before updating.');
       return { ok: false, effectiveRows };
     }
     if (!bulkUpdateField.trim() || !bulkUpdateTargetTable) {
       setBulkUpdateError('Bulk update configuration is incomplete.');
+      return { ok: false, effectiveRows };
+    }
+    if (!hasBulkUpdateConfig && String(bulkUpdateValue ?? '').trim() === '') {
+      setBulkUpdateError('Provide a new value for the bulk update.');
       return { ok: false, effectiveRows };
     }
     if (!bulkUpdateReason.trim()) {
@@ -2070,7 +2079,9 @@ export default function Reports() {
     bulkUpdateConfirmed,
     bulkUpdateReason,
     hasDetailSelection,
+    hasBulkUpdateConfig,
     bulkUpdateField,
+    bulkUpdateValue,
     bulkUpdateTargetTable,
     selectedDetailRows,
     selectedReportRows,
@@ -2089,11 +2100,70 @@ export default function Reports() {
     const effectiveIsAggregated = isAggregated && !hasDetailSelection;
     setBulkUpdateLoading(true);
     try {
-      const resolveRowId = (row) => row?.__pk ?? row?.id;
+      const targetTableName = bulkUpdateTargetTable.trim();
+      const targetPkColumns = targetTableName
+        ? await fetchPrimaryKeyColumns(targetTableName)
+        : [];
+      const resolveRowId = (row, detailKey) => {
+        if (row?.__pk != null && row?.__pk !== '') return row.__pk;
+        if (row?.id != null && row?.id !== '') return row.id;
+        const rowColumns = Object.keys(row || {});
+        const columnLookup = new Map(
+          rowColumns.map((col) => [String(col).toLowerCase(), col]),
+        );
+        const lineage = detailKey
+          ? drilldownDetailsRef.current?.[detailKey]?.fieldLineage
+          : result?.fieldLineage;
+        const lineageMatches = (pkColumn) => {
+          if (!lineage) return null;
+          const pkLower = String(pkColumn).toLowerCase();
+          const targetLower = String(targetTableName).toLowerCase();
+          for (const columnName of rowColumns) {
+            const info = lineage?.[columnName];
+            if (!info?.sourceTable || !info?.sourceColumn) continue;
+            if (String(info.sourceTable).toLowerCase() !== targetLower) continue;
+            if (String(info.sourceColumn).toLowerCase() === pkLower) {
+              return columnName;
+            }
+          }
+          return null;
+        };
+        if (targetPkColumns.length) {
+          const resolvedFields = targetPkColumns
+            .map((pkColumn) => columnLookup.get(String(pkColumn).toLowerCase()))
+            .map((resolved, index) => resolved || lineageMatches(targetPkColumns[index]))
+            .filter(Boolean);
+          if (resolvedFields.length === targetPkColumns.length) {
+            const values = resolvedFields.map((field) => row?.[field]);
+            if (values.some((value) => value === undefined || value === null || value === '')) {
+              return undefined;
+            }
+            if (values.length === 1) return values[0];
+            try {
+              return JSON.stringify(values);
+            } catch {
+              return values.join('-');
+            }
+          }
+        }
+        if (Array.isArray(rowIdFields) && rowIdFields.length > 0) {
+          const values = rowIdFields.map((field) => row?.[field]);
+          if (values.some((value) => value === undefined || value === null || value === '')) {
+            return undefined;
+          }
+          if (values.length === 1) return values[0];
+          try {
+            return JSON.stringify(values);
+          } catch {
+            return values.join('-');
+          }
+        }
+        return undefined;
+      };
       const recordIds = effectiveIsAggregated
         ? Array.from(
             new Set(
-              effectiveRows.flatMap((row) =>
+              effectiveRows.flatMap(({ row }) =>
                 String(row?.__row_ids ?? '')
                   .split(',')
                   .map((id) => id.trim())
@@ -2101,8 +2171,8 @@ export default function Reports() {
               ),
             ),
           )
-        : effectiveRows.map((row) => {
-            const value = resolveRowId(row);
+        : effectiveRows.map(({ row, detailKey }) => {
+            const value = resolveRowId(row, detailKey);
             if (value === undefined || value === null || value === '') {
               throw new Error(
                 'One or more selected rows are missing primary key values.',
@@ -2115,7 +2185,7 @@ export default function Reports() {
       }
       const normalizedValue = bulkUpdateValue;
       const drilldownExpansions = effectiveIsAggregated
-        ? effectiveRows.map((row) => {
+        ? effectiveRows.map(({ row }) => {
             const rowIds = String(row?.__row_ids ?? '')
               .split(',')
               .map((id) => id.trim())
@@ -2189,31 +2259,53 @@ export default function Reports() {
     runReport,
     isAggregated,
     bulkUpdateRecordCount,
+    rowIdFields,
+    fetchPrimaryKeyColumns,
+    result?.fieldLineage,
   ]);
 
   const handleBulkUpdateFieldChange = useCallback(
     (value) => {
       setBulkUpdateField(value);
-      saveBulkUpdateConfig({
-        fieldName: value,
-        targetTable: bulkUpdateTargetTable,
-        defaultValue: bulkUpdateValue,
-      });
+      if (hasBulkUpdateConfig) {
+        saveBulkUpdateConfig({
+          fieldName: value,
+          targetTable: bulkUpdateTargetTable,
+          defaultValue: bulkUpdateValue,
+        });
+      }
     },
-    [bulkUpdateTargetTable, bulkUpdateValue, saveBulkUpdateConfig],
+    [
+      bulkUpdateTargetTable,
+      bulkUpdateValue,
+      hasBulkUpdateConfig,
+      saveBulkUpdateConfig,
+    ],
   );
+
+  const handleBulkUpdateTargetTableChange = useCallback((value) => {
+    setBulkUpdateTargetTableInput(value);
+  }, []);
 
   const handleBulkUpdateValueChange = useCallback((value) => {
     setBulkUpdateValue(value);
   }, []);
 
   const handleBulkUpdateValueBlur = useCallback(() => {
-    saveBulkUpdateConfig({
-      fieldName: bulkUpdateField,
-      targetTable: bulkUpdateTargetTable,
-      defaultValue: bulkUpdateValue,
-    });
-  }, [bulkUpdateField, bulkUpdateTargetTable, bulkUpdateValue, saveBulkUpdateConfig]);
+    if (hasBulkUpdateConfig) {
+      saveBulkUpdateConfig({
+        fieldName: bulkUpdateField,
+        targetTable: bulkUpdateTargetTable,
+        defaultValue: bulkUpdateValue,
+      });
+    }
+  }, [
+    bulkUpdateField,
+    bulkUpdateTargetTable,
+    bulkUpdateValue,
+    hasBulkUpdateConfig,
+    saveBulkUpdateConfig,
+  ]);
 
   const activeAggregatedCount = useMemo(() => {
     if (!activeAggregatedRow) return null;
@@ -4610,10 +4702,24 @@ export default function Reports() {
                 placeholder="Field name"
               />
             </label>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-              <span>Target table</span>
-              <strong>{bulkUpdateTargetTable || 'Not configured'}</strong>
-            </div>
+            {hasBulkUpdateConfig ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                <span>Target table</span>
+                <strong>{bulkUpdateTargetTable || 'Not configured'}</strong>
+              </div>
+            ) : (
+              <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                Target table
+                <input
+                  type="text"
+                  value={bulkUpdateTargetTableInput}
+                  onChange={(event) =>
+                    handleBulkUpdateTargetTableChange(event.target.value)
+                  }
+                  placeholder="Enter target table"
+                />
+              </label>
+            )}
             <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
               New value
               <input
