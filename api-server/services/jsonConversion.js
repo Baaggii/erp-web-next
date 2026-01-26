@@ -884,6 +884,16 @@ export async function touchScriptRun(id, runBy) {
   );
 }
 
+export async function updateConversionLogStatus(id, status, error = null, runBy = null) {
+  await ensureLogTable();
+  await pool.query(
+    `UPDATE json_conversion_log
+     SET run_at = NOW(), run_by = ?, result_status = ?, result_error = ?
+     WHERE id = ?`,
+    [runBy || null, status, error ? JSON.stringify(error) : null, id],
+  );
+}
+
 export function splitStatements(scriptText) {
   return String(scriptText || '')
     .split(';')

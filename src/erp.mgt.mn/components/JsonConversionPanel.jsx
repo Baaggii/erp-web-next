@@ -5,6 +5,14 @@ function toCsv(items) {
   return items.join(', ');
 }
 
+function splitStatements(scriptText) {
+  return String(scriptText || '')
+    .split(';')
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .map((stmt) => `${stmt};`);
+}
+
 export default function JsonConversionPanel() {
   const { addToast } = useToast();
   const hasShownDbUserToast = useRef(false);
@@ -23,6 +31,7 @@ export default function JsonConversionPanel() {
   const [expandedConstraints, setExpandedConstraints] = useState({});
   const [runId, setRunId] = useState('');
   const [runStatus, setRunStatus] = useState(null);
+  const lastRunStatus = useRef(null);
 
   const selectedColumns = useMemo(
     () =>
@@ -59,6 +68,15 @@ export default function JsonConversionPanel() {
   useEffect(() => {
     refreshSavedScripts();
   }, [refreshSavedScripts]);
+
+  useEffect(() => {
+    if (!runStatus?.status) return;
+    if (runStatus.status === lastRunStatus.current) return;
+    lastRunStatus.current = runStatus.status;
+    if (runStatus.status === 'completed' || runStatus.status === 'error') {
+      refreshSavedScripts();
+    }
+  }, [runStatus, refreshSavedScripts]);
 
   useEffect(() => {
     if (!runId) return undefined;
@@ -203,7 +221,6 @@ export default function JsonConversionPanel() {
       'Conversion uses admin DB credentials in the order ERP_ADMIN_USER → DB_ADMIN_USER → DB_USER. Ensure they have CREATE privileges for json_conversion_log.',
       'info',
     );
-    setRunStatus(null);
     if (!selectedTable || selectedColumns.length === 0) {
       addToast('Pick a table and at least one column', 'warning');
       return;
@@ -244,6 +261,13 @@ export default function JsonConversionPanel() {
       return;
     }
 
+    setRunStatus({
+      status: 'starting',
+      executedStatements: [],
+      executingStatement: null,
+      pendingStatements: [],
+    });
+    setRunId('');
     setLoading(true);
     try {
       const res = await fetch('/api/json_conversion/convert', {
@@ -264,6 +288,16 @@ export default function JsonConversionPanel() {
         setBlockedColumns(data.blockedColumns || []);
         setErrorDetails(data.error || null);
         if (data.runId) setRunId(data.runId);
+        const pendingStatements = splitStatements(data.scriptText);
+        if (pendingStatements.length > 0) {
+          setRunStatus((prev) => ({
+            status: prev?.status || 'starting',
+            executedStatements: prev?.executedStatements || [],
+            executingStatement: prev?.executingStatement || null,
+            pendingStatements,
+            error: prev?.error || null,
+          }));
+        }
         const reason = data?.message || 'Conversion failed while dropping/reapplying constraints';
         addToast(reason, 'error');
         return;
@@ -273,6 +307,16 @@ export default function JsonConversionPanel() {
       setBlockedColumns(data.blockedColumns || []);
       setErrorDetails(null);
       if (data.runId) setRunId(data.runId);
+      const pendingStatements = splitStatements(data.scriptText);
+      if (pendingStatements.length > 0) {
+        setRunStatus((prev) => ({
+          status: prev?.status || 'starting',
+          executedStatements: prev?.executedStatements || [],
+          executingStatement: prev?.executingStatement || null,
+          pendingStatements,
+          error: prev?.error || null,
+        }));
+      }
       if (data.executed) {
         addToast('Constraints dropped/reapplied and conversion executed successfully.', 'success');
       } else {
@@ -281,6 +325,13 @@ export default function JsonConversionPanel() {
     } catch (err) {
       console.error(err);
       addToast('Failed to convert columns', 'error');
+      setRunStatus({
+        status: 'error',
+        executedStatements: [],
+        executingStatement: null,
+        pendingStatements: [],
+        error: { message: 'Failed to convert columns.' },
+      });
     } finally {
       refreshSavedScripts();
       setLoading(false);
@@ -293,8 +344,16 @@ export default function JsonConversionPanel() {
   }
 
   async function handleRunScript(id) {
+    const targetScript = savedScripts.find((script) => script.id === id);
+    const pendingStatements = splitStatements(targetScript?.script_text);
     setLoading(true);
-    setRunStatus(null);
+    setRunStatus({
+      status: 'starting',
+      executedStatements: [],
+      executingStatement: null,
+      pendingStatements,
+    });
+    setRunId('');
     try {
       const res = await fetch(`/api/json_conversion/scripts/${id}/run`, {
         method: 'POST',
@@ -307,6 +366,13 @@ export default function JsonConversionPanel() {
     } catch (err) {
       console.error(err);
       addToast('Failed to execute script', 'error');
+      setRunStatus({
+        status: 'error',
+        executedStatements: [],
+        executingStatement: null,
+        pendingStatements: [],
+        error: { message: 'Failed to execute script.' },
+      });
     } finally {
       refreshSavedScripts();
       setLoading(false);
