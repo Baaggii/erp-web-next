@@ -447,15 +447,20 @@ export default function Reports() {
     reportContext.drilldownProcName ||
     result?.reportMeta?.drilldownProcName ||
     '';
-  const legacyDrilldownReport = result?.reportMeta?.drilldownReport || '';
-  const effectiveDrilldownProc = drilldownProcName || legacyDrilldownReport;
   const bulkUpdateConfig = useMemo(
     () => normalizeBulkUpdateConfig(result?.reportMeta?.bulkUpdateConfig),
     [result?.reportMeta?.bulkUpdateConfig],
   );
   const isAggregated = rowGranularity === 'aggregated';
   const canDrilldown = isAggregated
-    ? Boolean(String(detailTableName || effectiveDrilldownProc || '').trim())
+    ? Boolean(
+        String(
+          detailTableName ||
+            drilldownProcName ||
+            result?.reportMeta?.drilldownReport ||
+            '',
+        ).trim(),
+      )
     : false;
   const getDetailRowKey = useCallback(
     (parentRowId, index) => `${String(parentRowId)}::${String(index)}`,
@@ -2462,51 +2467,40 @@ export default function Reports() {
         },
       }));
       try {
-        const effectiveProcName = effectiveDrilldownProc;
-        const shouldFetchDetailTable =
-          Boolean(detailTableName || DEFAULT_DETAIL_TABLE) &&
-          (!legacyDrilldownReport || detailTableName || drilldownProcName);
-
-        let detailRows = [];
-        let detailFieldLineage = {};
-        let detailFieldTypeMap = {};
-
-        if (shouldFetchDetailTable) {
-          const detailParams = new URLSearchParams();
-          detailParams.set(
-            'table',
-            detailTableName ? detailTableName : DEFAULT_DETAIL_TABLE,
-          );
-          detailParams.set('ids', rowIdList.join(','));
-          const detailRes = await fetch(
-            `/api/tmp_table_rows?${detailParams.toString()}`,
-            { credentials: 'include' },
-          );
-          if (!detailRes.ok) {
-            const message =
-              (await extractErrorMessage(detailRes)) ||
-              'Failed to load drilldown rows';
-            throw new Error(message);
-          }
-          const detailData = await detailRes.json().catch(() => ({}));
-          detailRows = Array.isArray(detailData)
-            ? detailData
-            : Array.isArray(detailData.rows)
-              ? detailData.rows
-              : Array.isArray(detailData.row)
-                ? detailData.row
-                : [];
-          detailFieldLineage = detailData.fieldLineage || {};
-          detailFieldTypeMap = detailData.fieldTypeMap || {};
+        const detailParams = new URLSearchParams();
+        detailParams.set(
+          'table',
+          detailTableName ? detailTableName : DEFAULT_DETAIL_TABLE,
+        );
+        detailParams.set('ids', rowIdList.join(','));
+        const detailRes = await fetch(
+          `/api/tmp_table_rows?${detailParams.toString()}`,
+          { credentials: 'include' },
+        );
+        if (!detailRes.ok) {
+          const message =
+            (await extractErrorMessage(detailRes)) ||
+            'Failed to load drilldown rows';
+          throw new Error(message);
         }
+        const detailData = await detailRes.json().catch(() => ({}));
+        const detailRows = Array.isArray(detailData)
+          ? detailData
+          : Array.isArray(detailData.rows)
+            ? detailData.rows
+            : Array.isArray(detailData.row)
+              ? detailData.row
+              : [];
+        const detailFieldLineage = detailData.fieldLineage || {};
+        const detailFieldTypeMap = detailData.fieldTypeMap || {};
 
         let procRows = [];
         let procFieldLineage = {};
         let procFieldTypeMap = {};
-        if (effectiveProcName) {
+        if (drilldownProcName) {
           try {
             const params = await buildDrilldownParams(
-              effectiveProcName,
+              drilldownProcName,
               rowIdsValue,
             );
             const q = new URLSearchParams();
@@ -2519,7 +2513,7 @@ export default function Reports() {
                 headers: { 'Content-Type': 'application/json' },
                 credentials: 'include',
                 body: JSON.stringify({
-                  name: effectiveProcName,
+                  name: drilldownProcName,
                   params,
                 }),
               },
@@ -2543,10 +2537,7 @@ export default function Reports() {
           }
         }
 
-        const mergedRows =
-          shouldFetchDetailTable && detailRows.length
-            ? mergeDrilldownRows(detailRows, procRows)
-            : procRows;
+        const mergedRows = mergeDrilldownRows(detailRows, procRows);
         const columns = collectColumnNames(mergedRows);
         setDrilldownDetails((prev) => ({
           ...prev,
@@ -2587,8 +2578,6 @@ export default function Reports() {
       buildDrilldownParams,
       detailTableName,
       drilldownProcName,
-      effectiveDrilldownProc,
-      legacyDrilldownReport,
       extractErrorMessage,
       addToast,
     ],
