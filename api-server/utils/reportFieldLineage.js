@@ -183,11 +183,97 @@ function parseSelectAlias(item) {
     const token = trailingMatch[2].trim();
     const exprHasSpace = /\s/.test(expr);
     const exprHasParen = expr.includes('(') || /CASE\s+/i.test(expr);
-    if (exprHasSpace || exprHasParen) {
-      return { expr, alias: normalizeIdent(token) };
+    const exprIsSimpleIdent =
+      /^[`"]?[a-zA-Z_][\w]*[`"]?(?:\s*\.\s*[`"]?[a-zA-Z_][\w]*[`"]?)*$/.test(expr);
+    const exprEndsWithOperator = /[+\-*/%]$/.test(expr);
+    const exprEndsWithLogical = /\b(AND|OR|NOT|IN|LIKE|IS|BETWEEN)$/i.test(expr);
+    const aliasToken = normalizeIdent(token);
+    const aliasIsCaseEnd =
+      /CASE\s+/i.test(expr) && aliasToken.toUpperCase() === 'END';
+    if (
+      (exprHasSpace || exprHasParen || exprIsSimpleIdent) &&
+      !exprEndsWithOperator &&
+      !exprEndsWithLogical &&
+      !aliasIsCaseEnd
+    ) {
+      return { expr, alias: aliasToken };
     }
   }
   return { expr: item.trim(), alias: '' };
+}
+
+function parseWithClause(selectSql) {
+  const trimmed = selectSql.trim();
+  if (!/^WITH\b/i.test(trimmed)) return [];
+  const mainSelectIdx = findTopLevelIndex(trimmed, 'SELECT');
+  if (mainSelectIdx === -1) return [];
+  const withClause = trimmed.slice(0, mainSelectIdx).trim();
+  const clauseBody = withClause
+    .replace(/^WITH\s+RECURSIVE\s+/i, '')
+    .replace(/^WITH\s+/i, '')
+    .trim();
+  if (!clauseBody) return [];
+  return splitTopLevel(clauseBody);
+}
+
+function parseCteDefinition(item) {
+  const match = item.match(
+    /^\s*([`"a-zA-Z0-9_]+)(?:\s*\(([^)]*)\))?\s+AS\s*\(([\s\S]*)\)\s*$/i,
+  );
+  if (!match) return null;
+  const name = normalizeIdent(match[1]);
+  const columnListRaw = match[2];
+  const innerSql = match[3]?.trim() || '';
+  const columns = columnListRaw
+    ? splitTopLevel(columnListRaw).map((col) => normalizeIdent(col))
+    : [];
+  return { name, columns, innerSql };
+}
+
+function resolveColumnRef(expr) {
+  const unwrapped = unwrapSimpleFunction(expr);
+  let columnRef = parseColumnReference(unwrapped);
+  if (!columnRef) {
+    const fallback = extractFirstColumn(expr) || extractFirstColumn(unwrapped);
+    if (fallback) {
+      columnRef = parseColumnReference(fallback);
+    }
+  }
+  return { columnRef, unwrapped };
+}
+
+function buildCteLineage(selectSql) {
+  const cteItems = parseWithClause(selectSql);
+  if (!cteItems.length) return new Map();
+  const cteLineage = new Map();
+  cteItems.forEach((item) => {
+    const def = parseCteDefinition(item);
+    if (!def?.name || !def.innerSql) return;
+    const selectItems = parseSelectItems(def.innerSql);
+    if (!selectItems.length) return;
+    const aliasMap = parseAliasMap(def.innerSql);
+    const primaryTable = Object.values(aliasMap)[0] || '';
+    const columnMap = new Map();
+    selectItems.forEach((selectItem, index) => {
+      const { expr, alias } = parseSelectAlias(selectItem);
+      const outputField = def.columns[index] || alias;
+      if (!outputField) return;
+      const { columnRef } = resolveColumnRef(expr);
+      if (!columnRef) return;
+      const sourceTable = columnRef.alias
+        ? aliasMap[columnRef.alias] || columnRef.alias
+        : primaryTable;
+      if (!sourceTable) return;
+      columnMap.set(String(outputField).toLowerCase(), {
+        sourceTable,
+        sourceColumn: columnRef.column,
+      });
+    });
+    if (columnMap.size) {
+      cteLineage.set(String(def.name).toLowerCase(), columnMap);
+    }
+  });
+  return cteLineage;
 }
 
 function findTopLevelWord(input, word) {
@@ -399,6 +485,7 @@ export async function buildReportFieldLineage(procedureName, companyId = 0) {
     const selectItems = parseSelectItems(selectSql);
     if (!selectItems.length) return {};
     const aliasMap = parseAliasMap(selectSql);
+    const cteLineage = buildCteLineage(selectSql);
     const primaryTable = Object.values(aliasMap)[0] || '';
     const relationCache = new Map();
     const columnCache = new Map();
@@ -407,36 +494,40 @@ export async function buildReportFieldLineage(procedureName, companyId = 0) {
 
     for (const item of selectItems) {
       const { expr, alias } = parseSelectAlias(item);
-      const unwrapped = unwrapSimpleFunction(expr);
-      let columnRef = parseColumnReference(unwrapped);
-      if (!columnRef) {
-        const fallback = extractFirstColumn(expr) || extractFirstColumn(unwrapped);
-        if (fallback) {
-          columnRef = parseColumnReference(fallback);
-        }
-      }
+      const { columnRef } = resolveColumnRef(expr);
       const outputField =
         alias ||
         (columnRef && columnRef.column ? columnRef.column : expr);
       if (!outputField) continue;
       const entry = { expr, kind: classifyExpressionKind(expr, columnRef) };
       if (columnRef) {
-        const sourceTable = columnRef.alias
+        let sourceTable = columnRef.alias
           ? aliasMap[columnRef.alias] || columnRef.alias
           : primaryTable;
+        let sourceColumn = columnRef.column;
+        const cteColumns = sourceTable
+          ? cteLineage.get(String(sourceTable).toLowerCase())
+          : null;
+        if (cteColumns) {
+          const mapped = cteColumns.get(String(sourceColumn).toLowerCase());
+          if (mapped?.sourceTable && mapped?.sourceColumn) {
+            sourceTable = mapped.sourceTable;
+            sourceColumn = mapped.sourceColumn;
+          }
+        }
         if (sourceTable) {
           entry.sourceTable = sourceTable;
-          entry.sourceColumn = columnRef.column;
+          entry.sourceColumn = sourceColumn;
           const relation = await resolveRelationInfo(
             sourceTable,
-            columnRef.column,
+            sourceColumn,
             companyId,
             relationCache,
           );
           if (relation) entry.relation = relation;
           const enumInfo = await resolveEnumInfo(
             sourceTable,
-            columnRef.column,
+            sourceColumn,
             companyId,
             columnCache,
             enumLabelCache,
