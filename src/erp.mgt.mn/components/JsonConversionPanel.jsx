@@ -203,6 +203,7 @@ export default function JsonConversionPanel() {
       'Conversion uses admin DB credentials in the order ERP_ADMIN_USER → DB_ADMIN_USER → DB_USER. Ensure they have CREATE privileges for json_conversion_log.',
       'info',
     );
+    setRunId('');
     setRunStatus(null);
     if (!selectedTable || selectedColumns.length === 0) {
       addToast('Pick a table and at least one column', 'warning');
