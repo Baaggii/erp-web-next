@@ -4254,17 +4254,24 @@ const TableManager = forwardRef(function TableManager({
       const savedRow = res.ok ? await res.json().catch(() => ({})) : {};
       const savedRowHasData =
         savedRow && typeof savedRow === 'object' && Object.keys(savedRow).length > 0;
+      const normalizedSavedRow = savedRowHasData
+        ? normalizeToCanonical(savedRow)
+        : null;
       if (res.ok) {
         const msg = isAdding
           ? t('transaction_posted', 'Transaction posted')
           : t('transaction_updated', 'Transaction updated');
-        const targetRecordId = isAdding ? savedRow?.id ?? null : getRowId(editing);
+        const targetRecordId = isAdding
+          ? savedRow?.id ?? normalizedSavedRow?.id ?? null
+          : getRowId(editing);
         const shouldIssueEbarimt =
           submitIntent === 'ebarimt' && issueEbarimt && posApiEnabled;
         if (!isAdding && editingRowId !== null && editingRowId !== undefined) {
-          const mergedRow = savedRowHasData
-            ? savedRow
-            : { ...editing, ...cleaned };
+          const mergedRow = {
+            ...editing,
+            ...cleaned,
+            ...(savedRowHasData ? normalizedSavedRow : {}),
+          };
           if (!Object.prototype.hasOwnProperty.call(mergedRow, 'id')) {
             mergedRow.id = editingRowId;
           }
@@ -4344,7 +4351,7 @@ const TableManager = forwardRef(function TableManager({
         }
         const resolvedPrintFormVals = {
           ...merged,
-          ...(savedRowHasData ? savedRow : {}),
+          ...(savedRowHasData ? normalizedSavedRow : {}),
         };
         if (
           targetRecordId !== null &&
