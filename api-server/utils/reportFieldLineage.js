@@ -188,8 +188,9 @@ function parseSelectAlias(item) {
     const exprEndsWithOperator = /[+\-*/%]$/.test(expr);
     const exprEndsWithLogical = /\b(AND|OR|NOT|IN|LIKE|IS|BETWEEN)$/i.test(expr);
     const aliasToken = normalizeIdent(token);
+    const exprEndsWithEnd = /\bEND\s*$/i.test(expr);
     const aliasIsCaseEnd =
-      /CASE\s+/i.test(expr) && aliasToken.toUpperCase() === 'END';
+      /CASE\s+/i.test(expr) && aliasToken.toUpperCase() === 'END' && !exprEndsWithEnd;
     if (
       (exprHasSpace || exprHasParen || exprIsSimpleIdent) &&
       !exprEndsWithOperator &&
