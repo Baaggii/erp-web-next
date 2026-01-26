@@ -376,6 +376,8 @@ export default function Reports() {
   const [reportContext, setReportContext] = useState({
     detailTableName: '',
     drilldownProcName: '',
+    drilldownMode: '',
+    detailPkColumn: '',
   });
   const [workplaceAssignmentsForPeriod, setWorkplaceAssignmentsForPeriod] =
     useState(null);
@@ -414,14 +416,24 @@ export default function Reports() {
     const nextDrilldownProcName = normalizeMetaValue(
       result?.reportMeta?.drilldownProcName,
     );
+    const nextDrilldownMode = normalizeMetaValue(
+      result?.reportMeta?.drilldownMode,
+    );
+    const nextDetailPkColumn = normalizeMetaValue(
+      result?.reportMeta?.detailPkColumn,
+    );
     setReportContext((prev) => ({
       detailTableName: nextDetailTableName || prev.detailTableName,
       drilldownProcName: nextDrilldownProcName || prev.drilldownProcName,
+      drilldownMode: nextDrilldownMode || prev.drilldownMode,
+      detailPkColumn: nextDetailPkColumn || prev.detailPkColumn,
     }));
   }, [
     result,
     result?.reportMeta?.detailTableName,
     result?.reportMeta?.drilldownProcName,
+    result?.reportMeta?.drilldownMode,
+    result?.reportMeta?.detailPkColumn,
   ]);
   const handleRowSelectionChange = useCallback((updater) => {
     setRowSelection((prev) => (typeof updater === 'function' ? updater(prev) : updater || {}));
@@ -466,6 +478,16 @@ export default function Reports() {
   const drilldownProcName = normalizeMetaValue(
     reportContext.drilldownProcName ||
       result?.reportMeta?.drilldownProcName ||
+      '',
+  );
+  const drilldownMode = normalizeMetaValue(
+    reportContext.drilldownMode ||
+      result?.reportMeta?.drilldownMode ||
+      '',
+  ).toLowerCase();
+  const detailPkColumn = normalizeMetaValue(
+    reportContext.detailPkColumn ||
+      result?.reportMeta?.detailPkColumn ||
       '',
   );
   const bulkUpdateConfig = useMemo(
@@ -1945,6 +1967,8 @@ export default function Reports() {
             null,
           detailTableName: normalizeMetaValue(apiReportMeta.detailTableName),
           drilldownProcName: normalizeMetaValue(apiReportMeta.drilldownProcName),
+          drilldownMode: normalizeMetaValue(apiReportMeta.drilldownMode),
+          detailPkColumn: normalizeMetaValue(apiReportMeta.detailPkColumn),
         };
         setResult({
           name: selectedProc,
@@ -1964,9 +1988,15 @@ export default function Reports() {
         const nextDrilldownProcName = normalizeMetaValue(
           reportMeta.drilldownProcName,
         );
+        const nextDrilldownMode = normalizeMetaValue(reportMeta.drilldownMode);
+        const nextDetailPkColumn = normalizeMetaValue(
+          reportMeta.detailPkColumn,
+        );
         setReportContext((prev) => ({
           detailTableName: nextDetailTableName || prev.detailTableName,
           drilldownProcName: nextDrilldownProcName || prev.drilldownProcName,
+          drilldownMode: nextDrilldownMode || prev.drilldownMode,
+          detailPkColumn: nextDetailPkColumn || prev.detailPkColumn,
         }));
         const configMeta = await fetchReportConfig(selectedProc);
         setResult((prev) =>
@@ -2501,37 +2531,42 @@ export default function Reports() {
         },
       }));
       try {
-        const detailParams = new URLSearchParams();
-        detailParams.set(
-          'table',
-          detailTableName ? detailTableName : DEFAULT_DETAIL_TABLE,
-        );
-        detailParams.set('ids', rowIdList.join(','));
-        const detailRes = await fetch(
-          `/api/tmp_table_rows?${detailParams.toString()}`,
-          { credentials: 'include' },
-        );
-        if (!detailRes.ok) {
-          const message =
-            (await extractErrorMessage(detailRes)) ||
-            'Failed to load drilldown rows';
-          throw new Error(message);
+        let detailRows = [];
+        let detailFieldLineage = {};
+        let detailFieldTypeMap = {};
+        if (drilldownMode === 'materialized') {
+          const detailRes = await fetch('/api/tmp_table_rows', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({
+              table: detailTableName ? detailTableName : DEFAULT_DETAIL_TABLE,
+              ids: rowIdList,
+              pk: detailPkColumn || 'id',
+            }),
+          });
+          if (!detailRes.ok) {
+            const message =
+              (await extractErrorMessage(detailRes)) ||
+              'Failed to load drilldown rows';
+            throw new Error(message);
+          }
+          const detailData = await detailRes.json().catch(() => ({}));
+          detailRows = Array.isArray(detailData)
+            ? detailData
+            : Array.isArray(detailData.rows)
+              ? detailData.rows
+              : Array.isArray(detailData.row)
+                ? detailData.row
+                : [];
+          detailFieldLineage = detailData.fieldLineage || {};
+          detailFieldTypeMap = detailData.fieldTypeMap || {};
         }
-        const detailData = await detailRes.json().catch(() => ({}));
-        const detailRows = Array.isArray(detailData)
-          ? detailData
-          : Array.isArray(detailData.rows)
-            ? detailData.rows
-            : Array.isArray(detailData.row)
-              ? detailData.row
-              : [];
-        const detailFieldLineage = detailData.fieldLineage || {};
-        const detailFieldTypeMap = detailData.fieldTypeMap || {};
 
         let procRows = [];
         let procFieldLineage = {};
         let procFieldTypeMap = {};
-        if (drilldownProcName) {
+        if (drilldownMode !== 'materialized' && drilldownProcName) {
           try {
             const params = await buildDrilldownParams(
               drilldownProcName,
@@ -2612,6 +2647,8 @@ export default function Reports() {
       buildDrilldownParams,
       detailTableName,
       drilldownProcName,
+      drilldownMode,
+      detailPkColumn,
       extractErrorMessage,
       addToast,
     ],
