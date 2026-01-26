@@ -17,6 +17,49 @@ import {
 import { logConversionEvent } from '../utils/jsonConversionLogger.js';
 
 const router = express.Router();
+const runStatusMap = new Map();
+
+function initRunStatus(runId, statements = []) {
+  runStatusMap.set(runId, {
+    runId,
+    status: 'pending',
+    statements,
+    executedCount: 0,
+    executingIndex: null,
+    error: null,
+    updatedAt: Date.now(),
+  });
+}
+
+function updateRunStatus(runId, updates = {}) {
+  const current = runStatusMap.get(runId);
+  if (!current) return;
+  runStatusMap.set(runId, {
+    ...current,
+    ...updates,
+    updatedAt: Date.now(),
+  });
+}
+
+function setRunStatusError(runId, error) {
+  updateRunStatus(runId, {
+    status: 'error',
+    error: error
+      ? {
+          message: error.message || String(error),
+          code: error.code,
+          sqlState: error.sqlState || error.sqlstate,
+          statementIndex: error.statementIndex,
+          statement: error.statement,
+        }
+      : null,
+    executingIndex: null,
+  });
+}
+
+function setRunStatusDone(runId) {
+  updateRunStatus(runId, { status: 'completed', executingIndex: null });
+}
 
 router.get('/tables', requireAuth, requireAdmin, async (req, res, next) => {
   try {
@@ -43,6 +86,28 @@ router.get('/scripts', requireAuth, requireAdmin, async (req, res, next) => {
   } catch (err) {
     next(err);
   }
+});
+
+router.get('/runs/:runId', requireAuth, requireAdmin, async (req, res) => {
+  const status = runStatusMap.get(req.params.runId);
+  if (!status) {
+    return res.status(404).json({ message: 'Run not found' });
+  }
+  const { statements, executedCount, executingIndex, status: state, error } = status;
+  const executedStatements = statements.slice(0, executedCount);
+  const executingStatement =
+    executingIndex !== null && executingIndex >= 0 ? statements[executingIndex] : null;
+  const pendingStatements = statements.slice(
+    executingIndex !== null && executingIndex >= 0 ? executingIndex + 1 : executedCount,
+  );
+  res.json({
+    runId: status.runId,
+    status: state,
+    executedStatements,
+    executingStatement,
+    pendingStatements,
+    error,
+  });
 });
 
 router.post('/convert', requireAuth, requireAdmin, async (req, res, next) => {
@@ -80,12 +145,29 @@ router.post('/convert', requireAuth, requireAdmin, async (req, res, next) => {
     let runError = null;
     let executionDurationMs = 0;
     if (runNow && plan.statements.length > 0) {
+      initRunStatus(runId, plan.statements);
+      updateRunStatus(runId, { status: 'executing' });
       let startedAt = Date.now();
       try {
         const startedAt = Date.now();
-        await runPlanStatements(plan.statements);
+        await runPlanStatements(plan.statements, {
+          onProgress: ({ state, statementIndex }) => {
+            if (state === 'executing') {
+              updateRunStatus(runId, { executingIndex: statementIndex });
+            }
+            if (state === 'executed') {
+              updateRunStatus(runId, {
+                executedCount: Math.max(
+                  runStatusMap.get(runId)?.executedCount ?? 0,
+                  statementIndex + 1,
+                ),
+              });
+            }
+          },
+        });
         executionDurationMs = Date.now() - startedAt;
         executed = true;
+        setRunStatusDone(runId);
       } catch (err) {
         executionDurationMs = Date.now() - startedAt;
         runError = {
@@ -93,6 +175,7 @@ router.post('/convert', requireAuth, requireAdmin, async (req, res, next) => {
           code: err?.code,
           sqlState: err?.sqlState || err?.sqlstate,
         };
+        setRunStatusError(runId, err);
         logConversionEvent({
           event: 'json-conversion.apply-error',
           runId,
@@ -137,6 +220,7 @@ router.post('/convert', requireAuth, requireAdmin, async (req, res, next) => {
         executed: false,
         logId,
         blockedColumns: blocked.map((p) => p.column),
+        runId,
       });
     }
     logConversionEvent({
@@ -157,6 +241,7 @@ router.post('/convert', requireAuth, requireAdmin, async (req, res, next) => {
       executed: Boolean(executed),
       logId,
       blockedColumns: blocked.map((p) => p.column),
+      runId,
     });
   } catch (err) {
     logConversionEvent({
@@ -169,8 +254,8 @@ router.post('/convert', requireAuth, requireAdmin, async (req, res, next) => {
 });
 
 router.post('/scripts/:id/run', requireAuth, requireAdmin, async (req, res, next) => {
+  const runId = crypto.randomUUID();
   try {
-    const runId = crypto.randomUUID();
     const startedAt = Date.now();
     const script = await getSavedScript(req.params.id);
     if (!script) {
@@ -191,7 +276,24 @@ router.post('/scripts/:id/run', requireAuth, requireAdmin, async (req, res, next
       runBy,
       statementsSample: statements.slice(0, 3),
     });
-    await runPlanStatements(statements);
+    initRunStatus(runId, statements);
+    updateRunStatus(runId, { status: 'executing' });
+    await runPlanStatements(statements, {
+      onProgress: ({ state, statementIndex }) => {
+        if (state === 'executing') {
+          updateRunStatus(runId, { executingIndex: statementIndex });
+        }
+        if (state === 'executed') {
+          updateRunStatus(runId, {
+            executedCount: Math.max(
+              runStatusMap.get(runId)?.executedCount ?? 0,
+              statementIndex + 1,
+            ),
+          });
+        }
+      },
+    });
+    setRunStatusDone(runId);
     await touchScriptRun(script.id, runBy);
     logConversionEvent({
       event: 'json-conversion.script-run-success',
@@ -203,8 +305,9 @@ router.post('/scripts/:id/run', requireAuth, requireAdmin, async (req, res, next
       durationMs: Date.now() - startedAt,
       runBy,
     });
-    res.json({ ok: true });
+    res.json({ ok: true, runId });
   } catch (err) {
+    setRunStatusError(runId, err);
     logConversionEvent({
       event: 'json-conversion.script-run-error',
       scriptId: req.params.id,

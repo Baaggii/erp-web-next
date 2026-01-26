@@ -21,6 +21,8 @@ export default function JsonConversionPanel() {
   const [blockedColumns, setBlockedColumns] = useState([]);
   const [errorDetails, setErrorDetails] = useState(null);
   const [expandedConstraints, setExpandedConstraints] = useState({});
+  const [runId, setRunId] = useState('');
+  const [runStatus, setRunStatus] = useState(null);
 
   const selectedColumns = useMemo(
     () =>
@@ -57,6 +59,35 @@ export default function JsonConversionPanel() {
   useEffect(() => {
     refreshSavedScripts();
   }, [refreshSavedScripts]);
+
+  useEffect(() => {
+    if (!runId) return undefined;
+    let isActive = true;
+    const pollStatus = async () => {
+      try {
+        const res = await fetch(`/api/json_conversion/runs/${encodeURIComponent(runId)}`, {
+          credentials: 'include',
+        });
+        if (!res.ok) {
+          if (isActive) setRunStatus(null);
+          return;
+        }
+        const data = await res.json();
+        if (isActive) setRunStatus(data);
+        if (data.status === 'completed' || data.status === 'error') {
+          isActive = false;
+        }
+      } catch {
+        if (isActive) setRunStatus(null);
+      }
+    };
+    pollStatus();
+    const timer = setInterval(pollStatus, 2000);
+    return () => {
+      isActive = false;
+      clearInterval(timer);
+    };
+  }, [runId]);
 
   useEffect(() => {
     if (!selectedTable) {
@@ -172,6 +203,7 @@ export default function JsonConversionPanel() {
       'Conversion uses admin DB credentials in the order ERP_ADMIN_USER → DB_ADMIN_USER → DB_USER. Ensure they have CREATE privileges for json_conversion_log.',
       'info',
     );
+    setRunStatus(null);
     if (!selectedTable || selectedColumns.length === 0) {
       addToast('Pick a table and at least one column', 'warning');
       return;
@@ -231,6 +263,7 @@ export default function JsonConversionPanel() {
         setScriptText(data.scriptText || '');
         setBlockedColumns(data.blockedColumns || []);
         setErrorDetails(data.error || null);
+        if (data.runId) setRunId(data.runId);
         const reason = data?.message || 'Conversion failed while dropping/reapplying constraints';
         addToast(reason, 'error');
         return;
@@ -239,6 +272,7 @@ export default function JsonConversionPanel() {
       setScriptText(data.scriptText || '');
       setBlockedColumns(data.blockedColumns || []);
       setErrorDetails(null);
+      if (data.runId) setRunId(data.runId);
       if (data.executed) {
         addToast('Constraints dropped/reapplied and conversion executed successfully.', 'success');
       } else {
@@ -260,12 +294,15 @@ export default function JsonConversionPanel() {
 
   async function handleRunScript(id) {
     setLoading(true);
+    setRunStatus(null);
     try {
       const res = await fetch(`/api/json_conversion/scripts/${id}/run`, {
         method: 'POST',
         credentials: 'include',
       });
       if (!res.ok) throw new Error('Run failed');
+      const data = await res.json().catch(() => ({}));
+      if (data?.runId) setRunId(data.runId);
       addToast('Script executed', 'success');
     } catch (err) {
       console.error(err);
@@ -566,6 +603,67 @@ export default function JsonConversionPanel() {
               </li>
             ))}
           </ul>
+        </div>
+      )}
+
+      {runStatus && (
+        <div
+          style={{
+            marginTop: '1rem',
+            padding: '0.75rem',
+            border: '1px solid #e2e8f0',
+            background: '#f8fafc',
+            borderRadius: '4px',
+          }}
+        >
+          <strong style={{ display: 'block', marginBottom: '0.5rem' }}>
+            Execution progress ({runStatus.status})
+          </strong>
+          <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
+            <div style={{ flex: '1 1 200px' }}>
+              <div style={{ fontWeight: 600, marginBottom: '0.25rem' }}>Executed</div>
+              {runStatus.executedStatements?.length ? (
+                <ol style={{ paddingLeft: '1.25rem', margin: 0 }}>
+                  {runStatus.executedStatements.map((stmt, idx) => (
+                    <li key={`${stmt}-${idx}`} style={{ fontSize: '0.85rem', wordBreak: 'break-all' }}>
+                      <code>{stmt}</code>
+                    </li>
+                  ))}
+                </ol>
+              ) : (
+                <div style={{ fontSize: '0.85rem', color: '#64748b' }}>None yet</div>
+              )}
+            </div>
+            <div style={{ flex: '1 1 200px' }}>
+              <div style={{ fontWeight: 600, marginBottom: '0.25rem' }}>Executing</div>
+              {runStatus.executingStatement ? (
+                <div style={{ fontSize: '0.85rem', wordBreak: 'break-all' }}>
+                  <code>{runStatus.executingStatement}</code>
+                </div>
+              ) : (
+                <div style={{ fontSize: '0.85rem', color: '#64748b' }}>—</div>
+              )}
+            </div>
+            <div style={{ flex: '1 1 200px' }}>
+              <div style={{ fontWeight: 600, marginBottom: '0.25rem' }}>Pending</div>
+              {runStatus.pendingStatements?.length ? (
+                <ol style={{ paddingLeft: '1.25rem', margin: 0 }}>
+                  {runStatus.pendingStatements.map((stmt, idx) => (
+                    <li key={`${stmt}-${idx}`} style={{ fontSize: '0.85rem', wordBreak: 'break-all' }}>
+                      <code>{stmt}</code>
+                    </li>
+                  ))}
+                </ol>
+              ) : (
+                <div style={{ fontSize: '0.85rem', color: '#64748b' }}>None</div>
+              )}
+            </div>
+          </div>
+          {runStatus.error && (
+            <div style={{ marginTop: '0.5rem', color: '#b91c1c', fontSize: '0.9rem' }}>
+              {runStatus.error.message || 'Execution failed.'}
+            </div>
+          )}
         </div>
       )}
 
