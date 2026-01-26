@@ -7313,7 +7313,10 @@ export async function callStoredProcedure(
   aliases = [],
   options = {},
 ) {
-  const conn = await pool.getConnection();
+  const providedConn =
+    options && typeof options === 'object' ? options.connection : null;
+  const conn = providedConn || (await pool.getConnection());
+  const shouldRelease = !providedConn;
   try {
     const session =
       options && typeof options === 'object' && options.session
@@ -7430,9 +7433,81 @@ export async function callStoredProcedure(
       }
     }
 
-    return { row: first, reportCapabilities, lockCandidates };
+    const firstRow = Array.isArray(first) ? first[0] : first;
+    let reportMeta = null;
+    try {
+      const [metaRows] = await conn.query(
+        `SELECT
+          @report_meta AS report_meta,
+          @report_meta_json AS report_meta_json,
+          @detail_table_name AS detail_table_name,
+          @detail_table AS detail_table,
+          @row_granularity AS row_granularity,
+          @drilldown_proc_name AS drilldown_proc_name,
+          @drilldown_proc AS drilldown_proc,
+          @drilldown_report AS drilldown_report`,
+      );
+      const metaRow = Array.isArray(metaRows) ? metaRows[0] || {} : {};
+      const mergedMeta = {};
+      const rawMeta = metaRow.report_meta ?? metaRow.report_meta_json ?? null;
+      if (typeof rawMeta === 'string') {
+        try {
+          const parsed = JSON.parse(rawMeta);
+          if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+            Object.assign(mergedMeta, parsed);
+          }
+        } catch {
+          // ignore malformed report meta
+        }
+      }
+      const rowGranularity =
+        mergedMeta.rowGranularity ??
+        mergedMeta.row_granularity ??
+        metaRow.row_granularity ??
+        firstRow?.__row_granularity;
+      if (rowGranularity) {
+        mergedMeta.rowGranularity = rowGranularity;
+      }
+      const detailTableName =
+        mergedMeta.detailTableName ??
+        mergedMeta.detail_table_name ??
+        metaRow.detail_table_name ??
+        metaRow.detail_table ??
+        firstRow?.__detail_table_name ??
+        firstRow?.__detail_table;
+      if (detailTableName) {
+        mergedMeta.detailTableName = detailTableName;
+      }
+      const drilldownProcName =
+        mergedMeta.drilldownProcName ??
+        mergedMeta.drilldown_proc_name ??
+        metaRow.drilldown_proc_name ??
+        metaRow.drilldown_proc ??
+        firstRow?.__drilldown_proc_name ??
+        firstRow?.__drilldown_proc;
+      if (drilldownProcName) {
+        mergedMeta.drilldownProcName = drilldownProcName;
+      }
+      const drilldownReport =
+        mergedMeta.drilldownReport ??
+        mergedMeta.drilldown_report ??
+        metaRow.drilldown_report ??
+        firstRow?.__drilldown_report;
+      if (drilldownReport !== undefined && drilldownReport !== null && drilldownReport !== '') {
+        mergedMeta.drilldownReport = drilldownReport;
+      }
+      if (Object.keys(mergedMeta).length) {
+        reportMeta = mergedMeta;
+      }
+    } catch {
+      reportMeta = null;
+    }
+
+    return { row: first, reportCapabilities, lockCandidates, reportMeta };
   } finally {
-    conn.release();
+    if (shouldRelease) {
+      conn.release();
+    }
   }
 }
 
