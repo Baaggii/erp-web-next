@@ -2051,8 +2051,8 @@ export default function Reports() {
 
   const validateBulkUpdate = useCallback(() => {
     const effectiveRows = hasDetailSelection
-      ? selectedDetailRows.map(({ row }) => row)
-      : selectedReportRows;
+      ? selectedDetailRows
+      : selectedReportRows.map((row) => ({ row }));
     if (!effectiveRows.length) {
       setBulkUpdateError('Select at least one row before updating.');
       return { ok: false, effectiveRows };
@@ -2120,7 +2120,7 @@ export default function Reports() {
       const recordIds = effectiveIsAggregated
         ? Array.from(
             new Set(
-              effectiveRows.flatMap((row) =>
+              effectiveRows.flatMap(({ row }) =>
                 String(row?.__row_ids ?? '')
                   .split(',')
                   .map((id) => id.trim())
@@ -2128,8 +2128,8 @@ export default function Reports() {
               ),
             ),
           )
-        : effectiveRows.map((row) => {
-            const value = resolveRowId(row);
+        : effectiveRows.map(({ row, detailKey }) => {
+            const value = resolveRowId(row, detailKey);
             if (value === undefined || value === null || value === '') {
               throw new Error(
                 'One or more selected rows are missing primary key values.',
@@ -2142,7 +2142,7 @@ export default function Reports() {
       }
       const normalizedValue = bulkUpdateValue;
       const drilldownExpansions = effectiveIsAggregated
-        ? effectiveRows.map((row) => {
+        ? effectiveRows.map(({ row }) => {
             const rowIds = String(row?.__row_ids ?? '')
               .split(',')
               .map((id) => id.trim())
