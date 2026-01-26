@@ -24,6 +24,8 @@ const pendingRequestLimiter = rateLimit({
 router.post('/bulk_edit', requireAuth, pendingRequestLimiter, async (req, res, next) => {
   try {
     const {
+      table,
+      ids,
       table_name,
       record_ids,
       field,
@@ -31,17 +33,19 @@ router.post('/bulk_edit', requireAuth, pendingRequestLimiter, async (req, res, n
       request_reason,
       report_payload,
     } = req.body || {};
-    if (!table_name || !Array.isArray(record_ids) || record_ids.length === 0 || !field) {
+    const tableName = table || table_name;
+    const recordIds = Array.isArray(ids) ? ids : record_ids;
+    if (!tableName || !Array.isArray(recordIds) || recordIds.length === 0 || !field) {
       return res.status(400).json({
-        message: 'table_name, record_ids, and field are required',
+        message: 'table, ids, and field are required',
       });
     }
     if (!request_reason || !String(request_reason).trim()) {
       return res.status(400).json({ message: 'request_reason is required' });
     }
     const result = await createBulkEditRequest({
-      tableName: table_name,
-      recordIds: record_ids,
+      tableName,
+      recordIds,
       empId: req.user.empid,
       field,
       value,
@@ -53,7 +57,7 @@ router.post('/bulk_edit', requireAuth, pendingRequestLimiter, async (req, res, n
     if (io && result?.senior_empid) {
       io.to(`user:${result.senior_empid}`).emit('newRequest', {
         requestId: result.request_id,
-        tableName: table_name,
+        tableName,
         recordId: result.record_id,
         requestType: 'bulk_edit',
       });

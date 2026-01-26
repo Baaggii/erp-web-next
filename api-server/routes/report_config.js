@@ -14,15 +14,17 @@ function tenantDir(companyId = 0) {
 
 function normalizeBulkUpdateConfig(config) {
   if (!config || typeof config !== 'object') {
-    return { fieldName: '', defaultValue: '' };
+    return { fieldName: '', defaultValue: '', targetTable: '' };
   }
   const fieldName =
     typeof config.fieldName === 'string' ? config.fieldName.trim() : '';
+  const targetTable =
+    typeof config.targetTable === 'string' ? config.targetTable.trim() : '';
   const defaultValue =
     config.defaultValue === undefined || config.defaultValue === null
       ? ''
       : config.defaultValue;
-  return { fieldName, defaultValue };
+  return { fieldName, defaultValue, targetTable };
 }
 
 const router = express.Router();

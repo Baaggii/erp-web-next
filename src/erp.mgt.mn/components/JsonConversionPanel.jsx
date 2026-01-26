@@ -273,9 +273,7 @@ export default function JsonConversionPanel() {
       setBlockedColumns(data.blockedColumns || []);
       setErrorDetails(null);
       if (data.runId) setRunId(data.runId);
-      if (data.runId) {
-        addToast('Conversion started; live status will update below.', 'info');
-      } else if (data.executed) {
+      if (data.executed) {
         addToast('Constraints dropped/reapplied and conversion executed successfully.', 'success');
       } else {
         addToast('Conversion script generated; run to drop constraints and apply changes.', 'info');
@@ -305,7 +303,7 @@ export default function JsonConversionPanel() {
       if (!res.ok) throw new Error('Run failed');
       const data = await res.json().catch(() => ({}));
       if (data?.runId) setRunId(data.runId);
-      addToast('Script started; live status will update below.', 'info');
+      addToast('Script executed', 'success');
     } catch (err) {
       console.error(err);
       addToast('Failed to execute script', 'error');

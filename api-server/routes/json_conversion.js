@@ -154,61 +154,80 @@ router.post('/convert', requireAuth, requireAdmin, async (req, res, next) => {
     if (runNow && plan.statements.length > 0) {
       initRunStatus(runId, plan.statements);
       updateRunStatus(runId, { status: 'executing' });
-      setImmediate(async () => {
-        let executionDurationMs = 0;
-        let runError = null;
-        try {
-          const startedAt = Date.now();
-          await runPlanStatements(plan.statements, {
-            onProgress: ({ state, statementIndex }) => {
-              if (state === 'executing') {
-                updateRunStatus(runId, { executingIndex: statementIndex });
-              }
-              if (state === 'executed') {
-                updateRunStatus(runId, {
-                  executedCount: Math.max(
-                    runStatusMap.get(runId)?.executedCount ?? 0,
-                    statementIndex + 1,
-                  ),
-                });
-              }
-            },
-          });
-          executionDurationMs = Date.now() - startedAt;
-          setRunStatusDone(runId);
-          await updateConversionLogStatus(logId, 'success', null);
-          logConversionEvent({
-            event: 'json-conversion.apply-success',
-            runId,
-            table,
-            columns: logColumns,
-            statementCount: plan.statements.length,
-            durationMs: executionDurationMs,
-            logId,
-            runBy,
-          });
-        } catch (err) {
-          executionDurationMs = Date.now() - requestStartedAt;
-          runError = {
-            message: err?.message,
-            code: err?.code,
-            sqlState: err?.sqlState || err?.sqlstate,
-          };
-          setRunStatusError(runId, err);
-          await updateConversionLogStatus(logId, 'error', runError);
-          logConversionEvent({
-            event: 'json-conversion.apply-error',
-            runId,
-            table,
-            columns: logColumns,
-            statementCount: plan.statements.length,
-            failedStatementIndex: err?.statementIndex,
-            failedStatement: err?.statement,
-            durationMs: executionDurationMs,
-            error: err,
-            runBy,
-          });
-        }
+      let startedAt = Date.now();
+      try {
+        const startedAt = Date.now();
+        await runPlanStatements(plan.statements, {
+          onProgress: ({ state, statementIndex }) => {
+            if (state === 'executing') {
+              updateRunStatus(runId, { executingIndex: statementIndex });
+            }
+            if (state === 'executed') {
+              updateRunStatus(runId, {
+                executedCount: Math.max(
+                  runStatusMap.get(runId)?.executedCount ?? 0,
+                  statementIndex + 1,
+                ),
+              });
+            }
+          },
+        });
+        executionDurationMs = Date.now() - startedAt;
+        executed = true;
+        setRunStatusDone(runId);
+      } catch (err) {
+        executionDurationMs = Date.now() - startedAt;
+        runError = {
+          message: err?.message,
+          code: err?.code,
+          sqlState: err?.sqlState || err?.sqlstate,
+        };
+        setRunStatusError(runId, err);
+        logConversionEvent({
+          event: 'json-conversion.apply-error',
+          runId,
+          table,
+          columns: logColumns,
+          statementCount: plan.statements.length,
+          failedStatementIndex: err?.statementIndex,
+          failedStatement: err?.statement,
+          durationMs: executionDurationMs,
+          error: err,
+          runBy,
+        });
+      }
+    }
+    const logId = await recordConversionLog(
+      table,
+      logColumns,
+      plan.scriptText,
+      runBy,
+      runError ? 'error' : executed ? 'success' : 'planned',
+      runError || null,
+    );
+    if (runError) {
+      logConversionEvent({
+        event: 'json-conversion.respond-error',
+        runId,
+        table,
+        columns: logColumns,
+        statementCount: plan.statements.length,
+        durationMs: Date.now() - requestStartedAt,
+        error: runError,
+        logId,
+        runBy,
+      });
+      return res.status(409).json({
+        message:
+          runError.message ||
+          'Conversion failed while applying statements. Please inspect constraints and rerun.',
+        error: runError,
+        scriptText: plan.scriptText,
+        previews: plan.previews,
+        executed: false,
+        logId,
+        blockedColumns: blocked.map((p) => p.column),
+        runId,
       });
     } else if (runNow && plan.statements.length === 0) {
       initRunStatus(runId, []);
@@ -270,50 +289,32 @@ router.post('/scripts/:id/run', requireAuth, requireAdmin, async (req, res, next
     });
     initRunStatus(runId, statements);
     updateRunStatus(runId, { status: 'executing' });
-    setImmediate(async () => {
-      let runError = null;
-      try {
-        await runPlanStatements(statements, {
-          onProgress: ({ state, statementIndex }) => {
-            if (state === 'executing') {
-              updateRunStatus(runId, { executingIndex: statementIndex });
-            }
-            if (state === 'executed') {
-              updateRunStatus(runId, {
-                executedCount: Math.max(
-                  runStatusMap.get(runId)?.executedCount ?? 0,
-                  statementIndex + 1,
-                ),
-              });
-            }
-          },
-        });
-        setRunStatusDone(runId);
-        await touchScriptRun(script.id, runBy);
-        logConversionEvent({
-          event: 'json-conversion.script-run-success',
-          runId,
-          scriptId: script.id,
-          table: script.table_name,
-          columns: (script.column_name || '').split(','),
-          statementCount: statements.length,
-          durationMs: Date.now() - startedAt,
-          runBy,
-        });
-      } catch (err) {
-        runError = {
-          message: err?.message,
-          code: err?.code,
-          sqlState: err?.sqlState || err?.sqlstate,
-        };
-        setRunStatusError(runId, err);
-        await touchScriptRunError(script.id, runError);
-        logConversionEvent({
-          event: 'json-conversion.script-run-error',
-          scriptId: req.params.id,
-          error: err,
-        });
-      }
+    await runPlanStatements(statements, {
+      onProgress: ({ state, statementIndex }) => {
+        if (state === 'executing') {
+          updateRunStatus(runId, { executingIndex: statementIndex });
+        }
+        if (state === 'executed') {
+          updateRunStatus(runId, {
+            executedCount: Math.max(
+              runStatusMap.get(runId)?.executedCount ?? 0,
+              statementIndex + 1,
+            ),
+          });
+        }
+      },
+    });
+    setRunStatusDone(runId);
+    await touchScriptRun(script.id, runBy);
+    logConversionEvent({
+      event: 'json-conversion.script-run-success',
+      runId,
+      scriptId: script.id,
+      table: script.table_name,
+      columns: (script.column_name || '').split(','),
+      statementCount: statements.length,
+      durationMs: Date.now() - startedAt,
+      runBy,
     });
     res.json({ ok: true, runId });
   } catch (err) {

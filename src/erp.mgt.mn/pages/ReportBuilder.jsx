@@ -81,7 +81,7 @@ function ReportBuilderInner() {
 
   const [procName, setProcName] = usePerTabState('', activeTab);
   const [bulkUpdateConfig, setBulkUpdateConfig] = usePerTabState(
-    () => ({ fieldName: '', defaultValue: '' }),
+    () => ({ fieldName: '', defaultValue: '', targetTable: '' }),
     activeTab,
   );
   const [fromTable, setFromTable] = usePerTabState('', activeTab);
@@ -1312,6 +1312,7 @@ function ReportBuilderInner() {
       unionQueries: legacyUnions,
       bulkUpdateConfig: {
         fieldName: bulkUpdateConfig?.fieldName || '',
+        targetTable: bulkUpdateConfig?.targetTable || '',
         defaultValue:
           bulkUpdateConfig?.defaultValue === undefined ||
           bulkUpdateConfig?.defaultValue === null
@@ -1699,6 +1700,7 @@ function ReportBuilderInner() {
     setProcName(data.procName || '');
     setBulkUpdateConfig({
       fieldName: data.bulkUpdateConfig?.fieldName || '',
+      targetTable: data.bulkUpdateConfig?.targetTable || '',
       defaultValue:
         data.bulkUpdateConfig?.defaultValue === undefined ||
         data.bulkUpdateConfig?.defaultValue === null
@@ -3265,6 +3267,24 @@ function ReportBuilderInner() {
                 placeholder={t(
                   'reportBuilder.bulkUpdateFieldPlaceholder',
                   'e.g. status',
+                )}
+                style={{ minWidth: '16rem' }}
+              />
+            </label>
+            <label style={{ display: 'flex', flexDirection: 'column' }}>
+              {t('reportBuilder.bulkUpdateTable', 'Target table')}
+              <input
+                type="text"
+                value={bulkUpdateConfig?.targetTable || ''}
+                onChange={(e) =>
+                  setBulkUpdateConfig((prev) => ({
+                    ...prev,
+                    targetTable: e.target.value,
+                  }))
+                }
+                placeholder={t(
+                  'reportBuilder.bulkUpdateTablePlaceholder',
+                  'e.g. InventoryStockPerBranch',
                 )}
                 style={{ minWidth: '16rem' }}
               />
