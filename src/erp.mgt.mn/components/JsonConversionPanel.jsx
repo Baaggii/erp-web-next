@@ -203,9 +203,16 @@ export default function JsonConversionPanel() {
       'Conversion uses admin DB credentials in the order ERP_ADMIN_USER → DB_ADMIN_USER → DB_USER. Ensure they have CREATE privileges for json_conversion_log.',
       'info',
     );
-    setRunStatus(null);
+    setRunStatus({
+      status: 'starting',
+      executedStatements: [],
+      executingStatement: null,
+      pendingStatements: [],
+    });
+    setRunId('');
     if (!selectedTable || selectedColumns.length === 0) {
       addToast('Pick a table and at least one column', 'warning');
+      setRunStatus(null);
       return;
     }
 
@@ -234,6 +241,7 @@ export default function JsonConversionPanel() {
         `Do not convert critical keys directly: ${criticalConflicts.join(', ')}. Use the companion JSON option instead.`,
         'warning',
       );
+      setRunStatus(null);
       return;
     }
     if (missingManualSql.length > 0) {
@@ -241,6 +249,7 @@ export default function JsonConversionPanel() {
         `Provide SQL steps for manual constraint handling: ${missingManualSql.join(', ')}`,
         'warning',
       );
+      setRunStatus(null);
       return;
     }
 
@@ -281,6 +290,13 @@ export default function JsonConversionPanel() {
     } catch (err) {
       console.error(err);
       addToast('Failed to convert columns', 'error');
+      setRunStatus({
+        status: 'error',
+        executedStatements: [],
+        executingStatement: null,
+        pendingStatements: [],
+        error: { message: 'Failed to convert columns.' },
+      });
     } finally {
       refreshSavedScripts();
       setLoading(false);
@@ -294,7 +310,13 @@ export default function JsonConversionPanel() {
 
   async function handleRunScript(id) {
     setLoading(true);
-    setRunStatus(null);
+    setRunStatus({
+      status: 'starting',
+      executedStatements: [],
+      executingStatement: null,
+      pendingStatements: [],
+    });
+    setRunId('');
     try {
       const res = await fetch(`/api/json_conversion/scripts/${id}/run`, {
         method: 'POST',
@@ -307,6 +329,13 @@ export default function JsonConversionPanel() {
     } catch (err) {
       console.error(err);
       addToast('Failed to execute script', 'error');
+      setRunStatus({
+        status: 'error',
+        executedStatements: [],
+        executingStatement: null,
+        pendingStatements: [],
+        error: { message: 'Failed to execute script.' },
+      });
     } finally {
       refreshSavedScripts();
       setLoading(false);
