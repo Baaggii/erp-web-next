@@ -455,10 +455,7 @@ export default function Reports() {
   const canDrilldown = isAggregated
     ? Boolean(
         String(
-          detailTableName ||
-            drilldownProcName ||
-            result?.reportMeta?.drilldownReport ||
-            '',
+          detailTableName || drilldownProcName || '',
         ).trim(),
       )
     : false;
