@@ -773,18 +773,48 @@ export async function buildConversionPlan(table, columns, metadata, options = {}
   return plan;
 }
 
-export async function runPlanStatements(statements) {
+const LOCK_WAIT_ERROR_CODES = new Set(['ER_LOCK_WAIT_TIMEOUT', 'ER_LOCK_DEADLOCK']);
+
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+export async function runPlanStatements(statements, options = {}) {
+  const lockWaitTimeoutSeconds = Number(options.lockWaitTimeoutSeconds) || 120;
+  const maxRetries = Number(options.maxRetries) || 2;
+  const retryDelayMs = Number(options.retryDelayMs) || 500;
+  const onProgress = typeof options.onProgress === 'function' ? options.onProgress : null;
   const conn = await pool.getConnection();
   try {
+    try {
+      await conn.query('SET SESSION innodb_lock_wait_timeout = ?', [lockWaitTimeoutSeconds]);
+    } catch {
+      // ignore if session variable isn't available
+    }
     await conn.beginTransaction();
     for (let i = 0; i < statements.length; i += 1) {
       const stmt = statements[i];
-      try {
-        await conn.query(stmt);
-      } catch (err) {
-        err.statement = stmt;
-        err.statementIndex = i;
-        throw err;
+      let attempt = 0;
+      while (true) {
+        try {
+          if (onProgress) {
+            onProgress({ state: 'executing', statementIndex: i, statement: stmt });
+          }
+          await conn.query(stmt);
+          if (onProgress) {
+            onProgress({ state: 'executed', statementIndex: i, statement: stmt });
+          }
+          break;
+        } catch (err) {
+          if (LOCK_WAIT_ERROR_CODES.has(err?.code) && attempt < maxRetries) {
+            attempt += 1;
+            await delay(retryDelayMs * attempt);
+            continue;
+          }
+          err.statement = stmt;
+          err.statementIndex = i;
+          throw err;
+        }
       }
     }
     await conn.commit();
