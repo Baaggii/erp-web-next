@@ -289,6 +289,7 @@ export default function Reports() {
   const rowIdMapRef = useRef(new Map());
   const drilldownParamCacheRef = useRef(new Map());
   const bulkUpdateConfigSignatureRef = useRef(null);
+  const drilldownPrefetchSignatureRef = useRef(null);
   const presetSelectRef = useRef(null);
   const startDateRef = useRef(null);
   const endDateRef = useRef(null);
@@ -1042,6 +1043,17 @@ export default function Reports() {
   const { workplaceId: selectedWorkplaceId } = selectedWorkplaceIds;
 
   const procNames = useMemo(() => procedures.map((p) => p.name), [procedures]);
+  const resolveDrilldownReportName = useCallback(
+    (reportName, metaDrilldown) => {
+      if (metaDrilldown) return metaDrilldown;
+      if (!reportName) return null;
+      if (String(reportName).endsWith('_detail')) return null;
+      const candidate = `${reportName}_detail`;
+      if (procNames.includes(candidate)) return candidate;
+      return null;
+    },
+    [procNames],
+  );
   const procMap = useHeaderMappings(procNames);
   useEffect(() => {
     expandedTransactionDetailsRef.current = expandedTransactionDetails;
@@ -1786,10 +1798,10 @@ export default function Reports() {
             data.reportMeta?.rowGranularity ??
             rows[0]?.__row_granularity ??
             'transaction',
-          drilldownReport:
-            data.reportMeta?.drilldownReport ??
-            rows[0]?.__drilldown_report ??
-            null,
+          drilldownReport: resolveDrilldownReportName(
+            selectedProc,
+            data.reportMeta?.drilldownReport ?? rows[0]?.__drilldown_report ?? null,
+          ),
         };
         setResult({
           name: selectedProc,
@@ -1958,6 +1970,60 @@ export default function Reports() {
     setBulkUpdateTargetTableInput(configTable);
     bulkUpdateConfigSignatureRef.current = signature;
   }, [bulkUpdateConfig]);
+
+  useEffect(() => {
+    if (!result?.reportMeta?.drilldownReport) {
+      drilldownPrefetchSignatureRef.current = null;
+      return;
+    }
+    if (result?.reportMeta?.rowGranularity !== 'aggregated') {
+      drilldownPrefetchSignatureRef.current = null;
+      return;
+    }
+    if (!Array.isArray(result?.rows) || result.rows.length === 0) {
+      drilldownPrefetchSignatureRef.current = null;
+      return;
+    }
+    const rowIdsList = result.rows
+      .map((row) => String(row?.__row_ids ?? '').trim())
+      .filter(Boolean);
+    if (rowIdsList.length === 0) {
+      drilldownPrefetchSignatureRef.current = null;
+      return;
+    }
+    const signature = JSON.stringify({
+      report: result.name,
+      detailReport: result.reportMeta.drilldownReport,
+      rowIds: rowIdsList,
+    });
+    if (signature === drilldownPrefetchSignatureRef.current) return;
+    drilldownPrefetchSignatureRef.current = signature;
+    result.rows.forEach((row, idx) => {
+      const rowIdsValue = String(row?.__row_ids ?? '').trim();
+      if (!rowIdsValue) return;
+      const rowKey = getReportRowId(row, idx);
+      const existing = drilldownDetailsRef.current[rowKey];
+      if (
+        (existing?.status === 'loaded' || existing?.status === 'loading') &&
+        existing?.rowIds === rowIdsValue
+      ) {
+        return;
+      }
+      runDetailReport({
+        report: result.reportMeta.drilldownReport,
+        rowIds: rowIdsValue,
+        rowKey,
+        expand: false,
+      });
+    });
+  }, [
+    getReportRowId,
+    result?.name,
+    result?.reportMeta?.drilldownReport,
+    result?.reportMeta?.rowGranularity,
+    result?.rows,
+    runDetailReport,
+  ]);
 
   const numberFormatter = useMemo(
     () =>
@@ -2317,7 +2383,7 @@ export default function Reports() {
   );
 
   const runDetailReport = useCallback(
-    async ({ report, rowIds, rowKey }) => {
+    async ({ report, rowIds, rowKey, expand = true }) => {
       if (!report) return;
       const rowIdsValue = String(rowIds ?? '').trim();
       if (!rowIdsValue) return;
@@ -2327,7 +2393,7 @@ export default function Reports() {
           ...(prev[rowKey] || {}),
           status: 'loading',
           error: '',
-          expanded: true,
+          expanded: expand ? true : prev[rowKey]?.expanded ?? false,
           rowIds: rowIdsValue,
         },
       }));
@@ -2363,7 +2429,7 @@ export default function Reports() {
           [rowKey]: {
             status: 'loaded',
             error: '',
-            expanded: true,
+            expanded: expand ? true : prev[rowKey]?.expanded ?? false,
             rowIds: rowIdsValue,
             rows,
             columns,
@@ -2378,7 +2444,7 @@ export default function Reports() {
             ...(prev[rowKey] || {}),
             status: 'error',
             error: err?.message || 'Failed to load drilldown rows',
-            expanded: true,
+            expanded: expand ? true : prev[rowKey]?.expanded ?? false,
             rowIds: rowIdsValue,
             rows: [],
           },
@@ -2391,8 +2457,8 @@ export default function Reports() {
   const handleDrilldown = useCallback(
     ({ report, row, rowId }) => {
       if (!report) return;
-      const rowIds = row?.__row_ids;
-      if (!rowIds) return;
+      const rowIdsValue = String(row?.__row_ids ?? '').trim();
+      if (!rowIdsValue) return;
       setActiveAggregatedRow(row);
       const existing = drilldownDetailsRef.current[rowId];
       const nextExpanded = !existing?.expanded;
@@ -2401,12 +2467,17 @@ export default function Reports() {
         [rowId]: {
           ...(prev[rowId] || {}),
           expanded: nextExpanded,
-          rowIds,
+          rowIds: rowIdsValue,
         },
       }));
       if (!nextExpanded) return;
-      if (existing?.status === 'loaded' && existing?.rowIds === rowIds) return;
-      runDetailReport({ report, rowIds, rowKey: rowId });
+      if (
+        (existing?.status === 'loaded' || existing?.status === 'loading') &&
+        existing?.rowIds === rowIdsValue
+      ) {
+        return;
+      }
+      runDetailReport({ report, rowIds: rowIdsValue, rowKey: rowId, expand: true });
     },
     [runDetailReport],
   );
