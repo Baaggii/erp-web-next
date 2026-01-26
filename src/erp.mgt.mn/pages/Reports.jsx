@@ -41,6 +41,100 @@ const INTERNAL_COLS = new Set([
   '__row_granularity',
   '__drilldown_report',
 ]);
+const DEFAULT_DETAIL_TABLE = 'tmp_report_detail';
+const DRILLDOWN_ID_KEY_CANDIDATES = [
+  'id',
+  'row_id',
+  'record_id',
+  'rowid',
+  'recordid',
+];
+
+function normalizeKeyName(value) {
+  return String(value || '').toLowerCase();
+}
+
+function resolveMergeKey(detailRows, procRows) {
+  const detailSample = detailRows.find((row) => row && typeof row === 'object');
+  const procSample = procRows.find((row) => row && typeof row === 'object');
+  if (!detailSample || !procSample) return null;
+  const detailKeyMap = new Map(
+    Object.keys(detailSample).map((key) => [normalizeKeyName(key), key]),
+  );
+  const procKeyMap = new Map(
+    Object.keys(procSample).map((key) => [normalizeKeyName(key), key]),
+  );
+  const sharedKeys = [];
+  procKeyMap.forEach((_value, key) => {
+    if (detailKeyMap.has(key)) {
+      sharedKeys.push(key);
+    }
+  });
+  if (!sharedKeys.length) return null;
+  for (const candidate of DRILLDOWN_ID_KEY_CANDIDATES) {
+    if (sharedKeys.includes(candidate)) {
+      return {
+        detailKey: detailKeyMap.get(candidate),
+        procKey: procKeyMap.get(candidate),
+      };
+    }
+  }
+  const fallback = sharedKeys[0];
+  return {
+    detailKey: detailKeyMap.get(fallback),
+    procKey: procKeyMap.get(fallback),
+  };
+}
+
+function indexRowsByKey(rows, key) {
+  const map = new Map();
+  rows.forEach((row) => {
+    if (!row || typeof row !== 'object') return;
+    const value = row[key];
+    if (value === undefined || value === null || value === '') return;
+    map.set(String(value), row);
+  });
+  return map;
+}
+
+function mergeDrilldownRows(detailRows, procRows) {
+  if (!Array.isArray(procRows) || procRows.length === 0) {
+    return Array.isArray(detailRows) ? detailRows : [];
+  }
+  if (!Array.isArray(detailRows) || detailRows.length === 0) {
+    return procRows;
+  }
+  const mergeKey = resolveMergeKey(detailRows, procRows);
+  if (mergeKey) {
+    const procMap = indexRowsByKey(procRows, mergeKey.procKey);
+    return detailRows.map((row) => {
+      if (!row || typeof row !== 'object') return row;
+      const value = row[mergeKey.detailKey];
+      const match = value == null ? null : procMap.get(String(value));
+      return match ? { ...row, ...match } : row;
+    });
+  }
+  if (procRows.length === detailRows.length) {
+    return detailRows.map((row, idx) => ({
+      ...(row || {}),
+      ...(procRows[idx] || {}),
+    }));
+  }
+  return detailRows;
+}
+
+function collectColumnNames(rows) {
+  const columnSet = new Set();
+  rows.forEach((row) => {
+    if (!row || typeof row !== 'object') return;
+    Object.keys(row).forEach((col) => {
+      if (!INTERNAL_COLS.has(col)) {
+        columnSet.add(col);
+      }
+    });
+  });
+  return Array.from(columnSet);
+}
 
 function normalizeParamName(name) {
   return String(name || '')
@@ -274,6 +368,10 @@ export default function Reports() {
   const [activeAggregatedRow, setActiveAggregatedRow] = useState(null);
   const [drilldownDetails, setDrilldownDetails] = useState({});
   const [drilldownRowSelection, setDrilldownRowSelection] = useState({});
+  const [reportContext, setReportContext] = useState({
+    detailTableName: '',
+    drilldownProcName: '',
+  });
   const [workplaceAssignmentsForPeriod, setWorkplaceAssignmentsForPeriod] =
     useState(null);
   const workplaceFetchDiagnosticsEnabled = normalizeBoolean(
@@ -301,6 +399,16 @@ export default function Reports() {
     [result?.reportCapabilities],
   );
   const showTotalRowCount = reportCapabilities.showTotalRowCount !== false;
+  useEffect(() => {
+    if (!result) {
+      setReportContext({ detailTableName: '', drilldownProcName: '' });
+      return;
+    }
+    setReportContext({
+      detailTableName: result?.reportMeta?.detailTableName || '',
+      drilldownProcName: result?.reportMeta?.drilldownProcName || '',
+    });
+  }, [result, result?.reportMeta?.detailTableName, result?.reportMeta?.drilldownProcName]);
   const handleRowSelectionChange = useCallback((updater) => {
     setRowSelection((prev) => (typeof updater === 'function' ? updater(prev) : updater || {}));
   }, []);
@@ -331,12 +439,29 @@ export default function Reports() {
   );
   const reportHeaderMap = useHeaderMappings(reportColumns);
   const rowGranularity = result?.reportMeta?.rowGranularity ?? 'transaction';
-  const drilldownReport = result?.reportMeta?.drilldownReport ?? null;
+  const detailTableName =
+    reportContext.detailTableName ||
+    result?.reportMeta?.detailTableName ||
+    '';
+  const drilldownProcName =
+    reportContext.drilldownProcName ||
+    result?.reportMeta?.drilldownProcName ||
+    '';
   const bulkUpdateConfig = useMemo(
     () => normalizeBulkUpdateConfig(result?.reportMeta?.bulkUpdateConfig),
     [result?.reportMeta?.bulkUpdateConfig],
   );
   const isAggregated = rowGranularity === 'aggregated';
+  const canDrilldown = isAggregated
+    ? Boolean(
+        String(
+          detailTableName ||
+            drilldownProcName ||
+            result?.reportMeta?.drilldownReport ||
+            '',
+        ).trim(),
+      )
+    : false;
   const getDetailRowKey = useCallback(
     (parentRowId, index) => `${String(parentRowId)}::${String(index)}`,
     [],
@@ -1790,6 +1915,8 @@ export default function Reports() {
             data.reportMeta?.drilldownReport ??
             rows[0]?.__drilldown_report ??
             null,
+          detailTableName: data.reportMeta?.detailTableName || '',
+          drilldownProcName: data.reportMeta?.drilldownProcName || '',
         };
         setResult({
           name: selectedProc,
@@ -1802,6 +1929,10 @@ export default function Reports() {
           orderedParams: finalParams,
           lockRequestId: data.lockRequestId || null,
           lockCandidates: data.lockCandidates,
+        });
+        setReportContext({
+          detailTableName: reportMeta.detailTableName || '',
+          drilldownProcName: reportMeta.drilldownProcName || '',
         });
         const configMeta = await fetchReportConfig(selectedProc);
         setResult((prev) =>
@@ -2317,10 +2448,14 @@ export default function Reports() {
   );
 
   const runDetailReport = useCallback(
-    async ({ report, rowIds, rowKey }) => {
-      if (!report) return;
+    async ({ rowIds, rowKey }) => {
       const rowIdsValue = String(rowIds ?? '').trim();
       if (!rowIdsValue) return;
+      const rowIdList = rowIdsValue
+        .split(',')
+        .map((id) => id.trim())
+        .filter(Boolean);
+      if (!rowIdList.length) return;
       setDrilldownDetails((prev) => ({
         ...prev,
         [rowKey]: {
@@ -2332,32 +2467,78 @@ export default function Reports() {
         },
       }));
       try {
-        const params = await buildDrilldownParams(report, rowIdsValue);
-        const q = new URLSearchParams();
-        if (branch) q.set('branchId', branch);
-        if (department) q.set('departmentId', department);
-        const res = await fetch(
-          `/api/procedures${q.toString() ? `?${q.toString()}` : ''}`,
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'include',
-            body: JSON.stringify({
-              name: report,
-              params,
-            }),
-          },
+        const detailParams = new URLSearchParams();
+        detailParams.set(
+          'table',
+          detailTableName ? detailTableName : DEFAULT_DETAIL_TABLE,
         );
-        if (!res.ok) {
+        detailParams.set('ids', rowIdList.join(','));
+        const detailRes = await fetch(
+          `/api/tmp_table_rows?${detailParams.toString()}`,
+          { credentials: 'include' },
+        );
+        if (!detailRes.ok) {
           const message =
-            (await extractErrorMessage(res)) || 'Failed to load drilldown rows';
+            (await extractErrorMessage(detailRes)) ||
+            'Failed to load drilldown rows';
           throw new Error(message);
         }
-        const data = await res.json().catch(() => ({}));
-        const rows = Array.isArray(data.row) ? data.row : [];
-        const columns = rows.length
-          ? Object.keys(rows[0]).filter((col) => !INTERNAL_COLS.has(col))
-          : [];
+        const detailData = await detailRes.json().catch(() => ({}));
+        const detailRows = Array.isArray(detailData)
+          ? detailData
+          : Array.isArray(detailData.rows)
+            ? detailData.rows
+            : Array.isArray(detailData.row)
+              ? detailData.row
+              : [];
+        const detailFieldLineage = detailData.fieldLineage || {};
+        const detailFieldTypeMap = detailData.fieldTypeMap || {};
+
+        let procRows = [];
+        let procFieldLineage = {};
+        let procFieldTypeMap = {};
+        if (drilldownProcName) {
+          try {
+            const params = await buildDrilldownParams(
+              drilldownProcName,
+              rowIdsValue,
+            );
+            const q = new URLSearchParams();
+            if (branch) q.set('branchId', branch);
+            if (department) q.set('departmentId', department);
+            const procRes = await fetch(
+              `/api/procedures${q.toString() ? `?${q.toString()}` : ''}`,
+              {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
+                body: JSON.stringify({
+                  name: drilldownProcName,
+                  params,
+                }),
+              },
+            );
+            if (!procRes.ok) {
+              const message =
+                (await extractErrorMessage(procRes)) ||
+                'Failed to load drilldown procedure data';
+              throw new Error(message);
+            }
+            const procData = await procRes.json().catch(() => ({}));
+            procRows = Array.isArray(procData.row) ? procData.row : [];
+            procFieldLineage = procData.fieldLineage || {};
+            procFieldTypeMap = procData.fieldTypeMap || {};
+          } catch (procError) {
+            addToast(
+              procError?.message ||
+                'Failed to load drilldown procedure details.',
+              'error',
+            );
+          }
+        }
+
+        const mergedRows = mergeDrilldownRows(detailRows, procRows);
+        const columns = collectColumnNames(mergedRows);
         setDrilldownDetails((prev) => ({
           ...prev,
           [rowKey]: {
@@ -2365,10 +2546,16 @@ export default function Reports() {
             error: '',
             expanded: true,
             rowIds: rowIdsValue,
-            rows,
+            rows: mergedRows,
             columns,
-            fieldLineage: data.fieldLineage || {},
-            fieldTypeMap: data.fieldTypeMap || {},
+            fieldLineage: {
+              ...detailFieldLineage,
+              ...procFieldLineage,
+            },
+            fieldTypeMap: {
+              ...detailFieldTypeMap,
+              ...procFieldTypeMap,
+            },
           },
         }));
       } catch (err) {
@@ -2385,12 +2572,19 @@ export default function Reports() {
         }));
       }
     },
-    [branch, department, buildDrilldownParams, extractErrorMessage],
+    [
+      branch,
+      department,
+      buildDrilldownParams,
+      detailTableName,
+      drilldownProcName,
+      extractErrorMessage,
+      addToast,
+    ],
   );
 
   const handleDrilldown = useCallback(
-    ({ report, row, rowId }) => {
-      if (!report) return;
+    ({ row, rowId }) => {
       const rowIds = row?.__row_ids;
       if (!rowIds) return;
       setActiveAggregatedRow(row);
@@ -2406,7 +2600,7 @@ export default function Reports() {
       }));
       if (!nextExpanded) return;
       if (existing?.status === 'loaded' && existing?.rowIds === rowIds) return;
-      runDetailReport({ report, rowIds, rowKey: rowId });
+      runDetailReport({ rowIds, rowKey: rowId });
     },
     [runDetailReport],
   );
@@ -4154,7 +4348,7 @@ export default function Reports() {
               getRowId={getReportRowId}
               enableRowSelection={!isAggregated}
               rowGranularity={rowGranularity}
-              drilldownReport={drilldownReport}
+              drilldownEnabled={canDrilldown}
               onDrilldown={handleDrilldown}
               excludeColumns={INTERNAL_COLS}
               drilldownState={drilldownDetails}
