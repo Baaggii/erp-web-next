@@ -2100,7 +2100,23 @@ export default function Reports() {
     const effectiveIsAggregated = isAggregated && !hasDetailSelection;
     setBulkUpdateLoading(true);
     try {
-      const resolveRowId = (row) => row?.__pk ?? row?.id;
+      const resolveRowId = (row) => {
+        if (row?.__pk != null && row?.__pk !== '') return row.__pk;
+        if (row?.id != null && row?.id !== '') return row.id;
+        if (Array.isArray(rowIdFields) && rowIdFields.length > 0) {
+          const values = rowIdFields.map((field) => row?.[field]);
+          if (values.some((value) => value === undefined || value === null || value === '')) {
+            return undefined;
+          }
+          if (values.length === 1) return values[0];
+          try {
+            return JSON.stringify(values);
+          } catch {
+            return values.join('-');
+          }
+        }
+        return undefined;
+      };
       const recordIds = effectiveIsAggregated
         ? Array.from(
             new Set(
@@ -2200,6 +2216,7 @@ export default function Reports() {
     runReport,
     isAggregated,
     bulkUpdateRecordCount,
+    rowIdFields,
   ]);
 
   const handleBulkUpdateFieldChange = useCallback(
