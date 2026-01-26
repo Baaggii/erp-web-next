@@ -90,7 +90,7 @@ export default function ReportTable({
   onSnapshotReady,
   enableRowSelection,
   rowGranularity = 'transaction',
-  drilldownReport = null,
+  drilldownEnabled = false,
   onDrilldown,
   drilldownState = {},
   drilldownRowSelection = {},
@@ -492,22 +492,21 @@ export default function ReportTable({
 
   const handleRowClick = useCallback(
     (row, rowId) => {
-      if (!isAggregated || !drilldownReport || typeof onDrilldown !== 'function') {
+      if (!isAggregated || !drilldownEnabled || typeof onDrilldown !== 'function') {
         return;
       }
       const rowIds = row?.__row_ids;
       if (!rowIds) return;
       onDrilldown({
-        report: drilldownReport,
         row,
         rowId,
       });
     },
-    [isAggregated, drilldownReport, onDrilldown],
+    [isAggregated, drilldownEnabled, onDrilldown],
   );
 
   function handleCellClick(col, value, row) {
-    if (isAggregated && drilldownReport) return;
+    if (isAggregated && drilldownEnabled) return;
     const num = Number(String(value).replace(',', '.'));
     if (!procedure || Number.isNaN(num) || num <= 0) return;
     rowToast(`Procedure: ${procedure}`, 'info');
@@ -975,7 +974,7 @@ export default function ReportTable({
               const tableRow = table.getRowModel().rowsById[rowId];
               const drilldownEntry = drilldownState?.[rowId];
               const isExpanded =
-                isAggregated && drilldownReport && drilldownEntry?.expanded;
+                isAggregated && drilldownEnabled && drilldownEntry?.expanded;
               const detailColumns = drilldownEntry?.columns || [];
               const detailRows = Array.isArray(drilldownEntry?.rows)
                 ? drilldownEntry.rows
@@ -985,7 +984,7 @@ export default function ReportTable({
                   <tr
                     onClick={() => handleRowClick(row, rowId)}
                     style={
-                      isAggregated && drilldownReport
+                      isAggregated && drilldownEnabled
                         ? { cursor: 'pointer' }
                         : undefined
                     }
