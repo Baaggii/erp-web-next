@@ -38,6 +38,13 @@ const tmpDetailLimiter = rateLimit({
   legacyHeaders: false,
 });
 
+const rebuildLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 100,
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
 router.post('/tmp-detail', tmpDetailLimiter, requireAuth, async (req, res, next) => {
   try {
     const table = typeof req.body?.table === 'string' ? req.body.table.trim() : '';
@@ -79,7 +86,7 @@ router.post('/tmp-detail', tmpDetailLimiter, requireAuth, async (req, res, next)
   }
 });
 
-router.post('/rebuild', requireAuth, async (req, res, next) => {
+router.post('/rebuild', rebuildLimiter, requireAuth, async (req, res, next) => {
   try {
     const reportName = typeof req.body?.reportName === 'string' ? req.body.reportName.trim() : '';
     const reportParams = req.body?.reportParams ?? null;
