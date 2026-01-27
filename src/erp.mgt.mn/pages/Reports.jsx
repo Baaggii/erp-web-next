@@ -1939,10 +1939,7 @@ export default function Reports() {
   const bulkUpdateEnabled = reportCapabilities.supportsBulkUpdate === true;
 
   const bulkUpdateEligibleRows = useMemo(
-    () =>
-      selectedDetailRows.filter(
-        ({ row }) => Number(row?.__bulk_allowed) === 1,
-      ),
+    () => selectedDetailRows.filter(({ row }) => row?.__bulk_allowed === 1),
     [selectedDetailRows],
   );
 
@@ -1960,12 +1957,12 @@ export default function Reports() {
   const bulkUpdateTargetSummary = useMemo(() => {
     const summaryMap = new Map();
     bulkUpdateEligibleRows.forEach(({ row }) => {
-      const tableName = String(row?.__bulk_table ?? '').trim();
-      const pkField = String(row?.__bulk_pk ?? '').trim();
-      const fieldName = String(row?.__bulk_field ?? '').trim();
+      const tableName = row?.__bulk_table;
+      const pkField = row?.__bulk_pk;
+      const fieldName = row?.__bulk_field;
       if (!tableName || !pkField || !fieldName) return;
       const value = row?.__bulk_value ?? null;
-      const key = JSON.stringify([tableName, pkField, fieldName, value]);
+      const key = `${tableName}|${pkField}|${fieldName}|${value}`;
       const entry = summaryMap.get(key) || {
         table: tableName,
         pkField,
@@ -2056,6 +2053,16 @@ export default function Reports() {
     if (!hasDetailSelection) {
       throw new Error('Select detail rows before updating.');
     }
+    for (const { row } of selectedDetailRows) {
+      if (
+        !row?.__bulk_table ||
+        !row?.__bulk_pk ||
+        !row?.__bulk_field ||
+        row?.__bulk_allowed !== 1
+      ) {
+        throw new Error('Bulk update metadata missing for selected row');
+      }
+    }
     if (!bulkUpdateEligibleRows.length) {
       throw new Error('No selected rows are eligible for bulk update.');
     }
@@ -2063,13 +2070,10 @@ export default function Reports() {
     const groups = new Map();
     const companyIds = new Set();
     for (const { row } of bulkUpdateEligibleRows) {
-      const tableName = String(row?.__bulk_table ?? '').trim();
-      const pkField = String(row?.__bulk_pk ?? '').trim();
-      const fieldName = String(row?.__bulk_field ?? '').trim();
+      const tableName = row?.__bulk_table;
+      const pkField = row?.__bulk_pk;
+      const fieldName = row?.__bulk_field;
       const value = row?.__bulk_value ?? null;
-      if (!tableName || !pkField || !fieldName) {
-        throw new Error('Bulk update metadata is missing for one or more rows.');
-      }
       if (!allowList.has(tableName.toLowerCase())) {
         throw new Error(`Table "${tableName}" is not allowed for bulk update.`);
       }
@@ -2088,12 +2092,7 @@ export default function Reports() {
       }
       const companyId = resolveBulkUpdateCompanyId(row);
       if (companyId) companyIds.add(companyId);
-      const key = JSON.stringify([
-        tableName.toLowerCase(),
-        pkField.toLowerCase(),
-        fieldName.toLowerCase(),
-        value,
-      ]);
+      const key = `${row.__bulk_table}|${row.__bulk_pk}|${row.__bulk_field}|${row.__bulk_value}`;
       if (!groups.has(key)) {
         groups.set(key, {
           table: tableName,
@@ -2119,6 +2118,7 @@ export default function Reports() {
     hasDetailSelection,
     normalizeBulkUpdateRecordId,
     resolveBulkUpdateCompanyId,
+    selectedDetailRows,
   ]);
 
   const validateBulkUpdate = useCallback(async () => {
