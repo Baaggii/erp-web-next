@@ -7335,6 +7335,7 @@ export async function callStoredProcedure(
       showTotalRowCount: true,
       supportsApproval: true,
       supportsSnapshot: true,
+      supportsBulkUpdate: false,
     };
 
     const normalizeReportCapabilities = (value) => {
@@ -7359,6 +7360,9 @@ export async function callStoredProcedure(
       }
       if ('supportsSnapshot' in parsed) {
         normalized.supportsSnapshot = parsed.supportsSnapshot === false ? false : true;
+      }
+      if ('supportsBulkUpdate' in parsed) {
+        normalized.supportsBulkUpdate = parsed.supportsBulkUpdate === true;
       }
       return normalized;
     };
