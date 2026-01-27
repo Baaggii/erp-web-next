@@ -37,6 +37,7 @@ import reportApprovalRoutes from "./routes/report_approvals.js";
 import posApiEndpointRoutes from "./routes/posapi_endpoints.js";
 import posApiProxyRoutes from "./routes/posapi_proxy.js";
 import cncProcessingRoutes from "./routes/cnc_processing.js";
+import reportRoutes from "./routes/report.js";
 
 // Polyfill for __dirname in ES modules
 const __filename = fileURLToPath(import.meta.url);
@@ -118,6 +119,7 @@ app.use("/api/permissions", permissionsRoutes);
 app.use("/api/tenant_tables", tenantTablesRoutes);
 app.use("/api/translations/generate", translationGeneratorRoutes);
 app.use("/api/report_access", reportAccessRoutes);
+app.use("/api/report", reportRoutes);
 app.use("/api/tours", tourRoutes);
 app.use("/api/report_approvals", reportApprovalRoutes);
 app.use("/api/report_snapshot_artifacts", snapshotArtifactRoutes);

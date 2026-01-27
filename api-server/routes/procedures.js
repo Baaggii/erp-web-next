@@ -11,6 +11,11 @@ import {
 } from '../../db/index.js';
 import { listPermittedProcedures } from '../utils/reportProcedures.js';
 import { buildReportFieldLineage } from '../utils/reportFieldLineage.js';
+import {
+  clearReportTempSession,
+  getReportTempSessionKey,
+  storeReportTempSession,
+} from '../services/reportTempTableSession.js';
 
 const RATE_LIMIT_WINDOW_MS = 60 * 1000;
 const RATE_LIMIT_MAX_REQUESTS = 30;
@@ -194,15 +199,32 @@ router.post('/', requireAuth, async (req, res, next) => {
             requestId: lockRequestId,
             empId: req.user?.empid ?? null,
           },
+          retainConnection: true,
         },
       ),
       buildReportFieldLineage(name, companyId),
     ]);
-    const { row, reportCapabilities, lockCandidates } = procResult;
+    const { row, reportCapabilities, reportMeta, lockCandidates, connection } =
+      procResult;
+    const sessionKey = getReportTempSessionKey(req);
+    const useTempSession =
+      reportMeta?.drilldown?.mode === 'materialized' &&
+      Boolean(reportMeta?.drilldown?.detailTempTable);
+    if (connection) {
+      if (useTempSession) {
+        storeReportTempSession(sessionKey, connection);
+      } else {
+        clearReportTempSession(sessionKey);
+        connection.release();
+      }
+    } else if (!useTempSession) {
+      clearReportTempSession(sessionKey);
+    }
     res.json({
       row,
       lockRequestId: collectLocks ? lockRequestId : null,
       reportCapabilities,
+      reportMeta,
       lockCandidates,
       fieldLineage,
     });
