@@ -54,11 +54,6 @@ function normalizeKeyName(value) {
   return String(value || '').toLowerCase();
 }
 
-function normalizeMetaValue(value) {
-  if (value === undefined || value === null) return '';
-  return String(value).trim();
-}
-
 function resolveMergeKey(detailRows, procRows) {
   const detailSample = detailRows.find((row) => row && typeof row === 'object');
   const procSample = procRows.find((row) => row && typeof row === 'object');
@@ -405,24 +400,15 @@ export default function Reports() {
   );
   const showTotalRowCount = reportCapabilities.showTotalRowCount !== false;
   useEffect(() => {
-    if (!result?.reportMeta) {
+    if (!result) {
+      setReportContext({ detailTableName: '', drilldownProcName: '' });
       return;
     }
-    const nextDetailTableName = normalizeMetaValue(
-      result?.reportMeta?.detailTableName,
-    );
-    const nextDrilldownProcName = normalizeMetaValue(
-      result?.reportMeta?.drilldownProcName,
-    );
-    setReportContext((prev) => ({
-      detailTableName: nextDetailTableName || prev.detailTableName,
-      drilldownProcName: nextDrilldownProcName || prev.drilldownProcName,
-    }));
-  }, [
-    result,
-    result?.reportMeta?.detailTableName,
-    result?.reportMeta?.drilldownProcName,
-  ]);
+    setReportContext({
+      detailTableName: result?.reportMeta?.detailTableName || '',
+      drilldownProcName: result?.reportMeta?.drilldownProcName || '',
+    });
+  }, [result, result?.reportMeta?.detailTableName, result?.reportMeta?.drilldownProcName]);
   const handleRowSelectionChange = useCallback((updater) => {
     setRowSelection((prev) => (typeof updater === 'function' ? updater(prev) : updater || {}));
   }, []);
@@ -452,22 +438,15 @@ export default function Reports() {
     [result?.rows],
   );
   const reportHeaderMap = useHeaderMappings(reportColumns);
-  const rowGranularityValue = normalizeMetaValue(
-    result?.reportMeta?.rowGranularity,
-  );
-  const rowGranularity = rowGranularityValue
-    ? rowGranularityValue.toLowerCase()
-    : 'transaction';
-  const detailTableName = normalizeMetaValue(
+  const rowGranularity = result?.reportMeta?.rowGranularity ?? 'transaction';
+  const detailTableName =
     reportContext.detailTableName ||
-      result?.reportMeta?.detailTableName ||
-      '',
-  );
-  const drilldownProcName = normalizeMetaValue(
+    result?.reportMeta?.detailTableName ||
+    '';
+  const drilldownProcName =
     reportContext.drilldownProcName ||
-      result?.reportMeta?.drilldownProcName ||
-      '',
-  );
+    result?.reportMeta?.drilldownProcName ||
+    '';
   const bulkUpdateConfig = useMemo(
     () => normalizeBulkUpdateConfig(result?.reportMeta?.bulkUpdateConfig),
     [result?.reportMeta?.bulkUpdateConfig],
@@ -480,10 +459,6 @@ export default function Reports() {
         ).trim(),
       )
     : false;
-  const drilldownDisabledReason =
-    result && !isAggregated
-      ? 'Drill-down is unavailable because this report is not aggregated.'
-      : '';
   const getDetailRowKey = useCallback(
     (parentRowId, index) => `${String(parentRowId)}::${String(index)}`,
     [],
@@ -1927,24 +1902,18 @@ export default function Reports() {
         setLockFetchPending(false);
         setLockAcknowledged(false);
         setLockRequestSubmitted(false);
-        const apiReportMeta =
-          data.reportMeta &&
-          typeof data.reportMeta === 'object' &&
-          !Array.isArray(data.reportMeta)
-            ? data.reportMeta
-            : {};
         const reportMeta = {
-          ...apiReportMeta,
+          ...(data.reportMeta || {}),
           rowGranularity:
-            apiReportMeta.rowGranularity ??
+            data.reportMeta?.rowGranularity ??
             rows[0]?.__row_granularity ??
             'transaction',
           drilldownReport:
-            apiReportMeta.drilldownReport ??
+            data.reportMeta?.drilldownReport ??
             rows[0]?.__drilldown_report ??
             null,
-          detailTableName: normalizeMetaValue(apiReportMeta.detailTableName),
-          drilldownProcName: normalizeMetaValue(apiReportMeta.drilldownProcName),
+          detailTableName: data.reportMeta?.detailTableName || '',
+          drilldownProcName: data.reportMeta?.drilldownProcName || '',
         };
         setResult({
           name: selectedProc,
@@ -1958,16 +1927,10 @@ export default function Reports() {
           lockRequestId: data.lockRequestId || null,
           lockCandidates: data.lockCandidates,
         });
-        const nextDetailTableName = normalizeMetaValue(
-          reportMeta.detailTableName,
-        );
-        const nextDrilldownProcName = normalizeMetaValue(
-          reportMeta.drilldownProcName,
-        );
-        setReportContext((prev) => ({
-          detailTableName: nextDetailTableName || prev.detailTableName,
-          drilldownProcName: nextDrilldownProcName || prev.drilldownProcName,
-        }));
+        setReportContext({
+          detailTableName: reportMeta.detailTableName || '',
+          drilldownProcName: reportMeta.drilldownProcName || '',
+        });
         const configMeta = await fetchReportConfig(selectedProc);
         setResult((prev) =>
           prev && prev.name === selectedProc
@@ -4368,21 +4331,6 @@ export default function Reports() {
           }}
         >
           <div style={{ flex: '0 0 auto', minHeight: 'auto' }}>
-            {drilldownDisabledReason && (
-              <div
-                style={{
-                  marginBottom: '0.75rem',
-                  padding: '0.75rem 1rem',
-                  border: '1px solid #fcd34d',
-                  borderRadius: '0.5rem',
-                  background: '#fffbeb',
-                  color: '#92400e',
-                  fontWeight: 600,
-                }}
-              >
-                {drilldownDisabledReason}
-              </div>
-            )}
             <ReportTable
               procedure={result.name}
               params={result.params}
