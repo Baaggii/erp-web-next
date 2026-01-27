@@ -513,6 +513,25 @@ export default function GeneralConfiguration() {
               </label>
             </TooltipWrapper>
           </div>
+          <div style={{ marginBottom: '0.5rem' }}>
+            <TooltipWrapper
+              title={t('bulk_update_requires_request', {
+                ns: 'tooltip',
+                defaultValue:
+                  'Require approval requests for report bulk updates instead of applying them immediately',
+              })}
+            >
+              <label>
+                Require Bulk Update Requests{' '}
+                <input
+                  name="bulkUpdateRequiresRequest"
+                  type="checkbox"
+                  checked={active.bulkUpdateRequiresRequest ?? true}
+                  onChange={handleChange}
+                />
+              </label>
+            </TooltipWrapper>
+          </div>
         </>
       ) : tab === 'system' ? (
         <div>

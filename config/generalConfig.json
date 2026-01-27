@@ -32,6 +32,11 @@
     "reportViewPrefix": "dynview_",
     "imageDir": "txn_images"
   },
+  "reports": {
+    "showReportLineageInfo": false,
+    "showBulkEditRequestInfo": false,
+    "bulkUpdateRequiresRequest": true
+  },
   "images": {
     "basePath": "uploads",
     "cleanupDays": 30,

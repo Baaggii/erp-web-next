@@ -239,6 +239,8 @@ export default function Reports() {
   const generalConfig = useGeneralConfig();
   const showBulkEditRequestInfo =
     generalConfig?.reports?.showBulkEditRequestInfo === true;
+  const bulkUpdateRequiresRequest =
+    generalConfig?.reports?.bulkUpdateRequiresRequest !== false;
   const [procedures, setProcedures] = useState([]);
   const [selectedProc, setSelectedProc] = useState('');
   const [procParams, setProcParams] = useState([]);
@@ -2152,7 +2154,7 @@ export default function Reports() {
   ]);
 
   const validateBulkUpdate = useCallback(async () => {
-    if (!bulkUpdateReason.trim()) {
+    if (bulkUpdateRequiresRequest && !bulkUpdateReason.trim()) {
       setBulkUpdateError('Request reason is required.');
       return null;
     }
@@ -2168,7 +2170,12 @@ export default function Reports() {
       setBulkUpdateError(err?.message || 'Bulk update request failed.');
       return null;
     }
-  }, [bulkUpdateConfirmed, bulkUpdateReason, buildBulkUpdateGroups]);
+  }, [
+    bulkUpdateConfirmed,
+    bulkUpdateReason,
+    bulkUpdateRequiresRequest,
+    buildBulkUpdateGroups,
+  ]);
 
   const handleBulkUpdateReview = useCallback(async () => {
     const groups = await validateBulkUpdate();
@@ -2182,30 +2189,58 @@ export default function Reports() {
     if (!groups) return;
     setBulkUpdateLoading(true);
     try {
-      for (const group of groups) {
-        const res = await fetch('/api/pending_request/bulk_edit', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({
-            table: group.table,
-            ids: group.recordIds,
-            field: group.field,
-            value: group.value,
-            request_reason: bulkUpdateReason,
-          }),
-        });
-        if (!res.ok) {
-          const data = await res.json().catch(() => ({}));
-          throw new Error(data?.message || 'Bulk update request failed.');
+      if (bulkUpdateRequiresRequest) {
+        for (const group of groups) {
+          const res = await fetch('/api/pending_request/bulk_edit', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({
+              table: group.table,
+              ids: group.recordIds,
+              field: group.field,
+              value: group.value,
+              request_reason: bulkUpdateReason,
+            }),
+          });
+          if (!res.ok) {
+            const data = await res.json().catch(() => ({}));
+            throw new Error(data?.message || 'Bulk update request failed.');
+          }
         }
+        addToast(
+          `Bulk update request submitted for approval on ${bulkUpdateRecordCount} record${
+            bulkUpdateRecordCount === 1 ? '' : 's'
+          }.`,
+          'success',
+        );
+      } else {
+        for (const group of groups) {
+          for (const recordId of group.recordIds) {
+            const res = await fetch(
+              `/api/tables/${encodeURIComponent(
+                group.table,
+              )}/${encodeURIComponent(recordId)}`,
+              {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
+                body: JSON.stringify({ [group.field]: group.value }),
+              },
+            );
+            if (!res.ok) {
+              const data = await res.json().catch(() => ({}));
+              throw new Error(data?.message || 'Bulk update failed.');
+            }
+          }
+        }
+        addToast(
+          `Bulk update applied to ${bulkUpdateRecordCount} record${
+            bulkUpdateRecordCount === 1 ? '' : 's'
+          }.`,
+          'success',
+        );
       }
-      addToast(
-        `Bulk update request submitted for approval on ${bulkUpdateRecordCount} record${
-          bulkUpdateRecordCount === 1 ? '' : 's'
-        }.`,
-        'success',
-      );
       setBulkUpdateOpen(false);
       setBulkUpdateConfirmOpen(false);
       setBulkUpdateGroups([]);
@@ -2224,6 +2259,7 @@ export default function Reports() {
     addToast,
     bulkUpdateRecordCount,
     bulkUpdateReason,
+    bulkUpdateRequiresRequest,
     runReport,
     validateBulkUpdate,
   ]);
