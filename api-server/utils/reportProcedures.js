@@ -2,6 +2,7 @@ import { listTransactionNames } from '../services/transactionFormConfig.js';
 import { listAllowedReports } from '../services/reportAccessConfig.js';
 import { getProcTriggers } from '../services/procTriggers.js';
 import { getEmploymentSession, listReportProcedures } from '../../db/index.js';
+import { isKnownDetailProcedure } from '../services/reportDetailProcedures.js';
 
 async function getUserContext(user, companyId) {
   const session = await getEmploymentSession(user.empid, companyId);
@@ -82,6 +83,7 @@ export async function listPermittedProcedures(
   for (const proc of allProcs) {
     if (!liveProcedures.has(proc)) continue;
     if (prefix && !proc.toLowerCase().includes(prefix.toLowerCase())) continue;
+    if (isKnownDetailProcedure(proc)) continue;
     const access = allowedCfg[proc];
     if (access) {
       const hasBranches = Array.isArray(access.branches)
