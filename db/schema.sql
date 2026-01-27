@@ -4139,7 +4139,7 @@ CREATE TABLE `user_activity_log` (
   `emp_id` varchar(10) NOT NULL,
   `table_name` varchar(100) NOT NULL,
   `record_id` varchar(191) NOT NULL,
-  `action` enum('create','update','delete','request_edit','request_delete','approve','decline','request_report_approval','approve_report','decline_report') NOT NULL,
+  `action` enum('create','update','delete','request_edit','request_delete','approve','decline','request_report_approval','approve_report','decline_report','request_bulk_edit','approve_bulk_edit','decline_bulk_edit') NOT NULL,
   `details` json DEFAULT NULL,
   `request_id` bigint DEFAULT NULL,
   `timestamp` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
