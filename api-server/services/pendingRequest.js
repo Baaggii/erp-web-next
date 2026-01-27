@@ -890,12 +890,16 @@ export async function createBulkEditRequest({
         LIMIT 1`,
       [normalizedEmp, normalizedEmp],
     );
-    if (!supervisorRows.length) {
+    const seniorPlan = normalizeSupervisorEmpId(
+      rows[0]?.employment_senior_plan_empid,
+    );
+    const senior = normalizeSupervisorEmpId(rows[0]?.employment_senior_empid);
+    if (!senior) {
       const err = new Error('senior_empid required');
       err.status = 400;
       throw err;
     }
-    const senior = normalizedEmp;
+    const normalizedEmp = String(empId).trim().toUpperCase();
     const payload = {
       recordIds: normalizedRecordIds,
       updates: { [resolvedField]: value },
