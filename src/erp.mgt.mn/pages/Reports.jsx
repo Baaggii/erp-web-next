@@ -237,6 +237,8 @@ export default function Reports() {
   const buttonPerms = useButtonPerms();
   const { addToast } = useToast();
   const generalConfig = useGeneralConfig();
+  const showBulkEditRequestInfo =
+    generalConfig?.reports?.showBulkEditRequestInfo === true;
   const [procedures, setProcedures] = useState([]);
   const [selectedProc, setSelectedProc] = useState('');
   const [procParams, setProcParams] = useState([]);
@@ -1975,6 +1977,34 @@ export default function Reports() {
     });
     return Array.from(summaryMap.values());
   }, [bulkUpdateEligibleRows]);
+
+  const bulkEditRequestInfo = useMemo(() => {
+    if (!showBulkEditRequestInfo || !bulkUpdateGroups.length) return [];
+    return bulkUpdateGroups.map((group) => {
+      const rows = bulkUpdateEligibleRows
+        .filter(
+          ({ row }) =>
+            row?.__bulk_table === group.table &&
+            row?.__bulk_pk === group.pkField &&
+            row?.__bulk_field === group.field &&
+            row?.__bulk_value === group.value,
+        )
+        .map(({ row }) => row);
+      return {
+        table: group.table,
+        ids: group.recordIds,
+        field: group.field,
+        value: group.value,
+        request_reason: bulkUpdateReason,
+        rows,
+      };
+    });
+  }, [
+    bulkUpdateEligibleRows,
+    bulkUpdateGroups,
+    bulkUpdateReason,
+    showBulkEditRequestInfo,
+  ]);
 
   const resolveBulkUpdateCompanyId = useCallback((row) => {
     if (!row || typeof row !== 'object') return null;
@@ -4811,6 +4841,24 @@ export default function Reports() {
                 </p>
               )}
             </div>
+            {showBulkEditRequestInfo && bulkEditRequestInfo.length > 0 && (
+              <details>
+                <summary>Bulk edit request payload</summary>
+                <pre
+                  style={{
+                    marginTop: '0.5rem',
+                    padding: '0.5rem',
+                    background: '#f6f8fa',
+                    borderRadius: '4px',
+                    maxHeight: '240px',
+                    overflow: 'auto',
+                    fontSize: '0.8rem',
+                  }}
+                >
+                  {JSON.stringify(bulkEditRequestInfo, null, 2)}
+                </pre>
+              </details>
+            )}
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem' }}>
               <button
                 type="button"

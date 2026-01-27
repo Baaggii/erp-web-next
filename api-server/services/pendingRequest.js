@@ -892,6 +892,11 @@ export async function createBulkEditRequest({
       rows[0]?.employment_senior_plan_empid,
     );
     const senior = normalizeSupervisorEmpId(rows[0]?.employment_senior_empid);
+    if (!senior) {
+      const err = new Error('senior_empid required');
+      err.status = 400;
+      throw err;
+    }
     const normalizedEmp = String(empId).trim().toUpperCase();
     const payload = {
       recordIds: normalizedRecordIds,

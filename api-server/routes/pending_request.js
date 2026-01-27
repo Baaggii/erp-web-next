@@ -67,6 +67,9 @@ router.post('/bulk_edit', requireAuth, pendingRequestLimiter, async (req, res, n
     if (err.status === 400 && err.message === 'invalid table_name') {
       return res.status(400).json({ message: 'invalid table_name' });
     }
+    if (err.status === 400) {
+      return res.status(400).json({ message: err.message });
+    }
     if (err.status === 409) {
       return res.status(409).json({ message: err.message });
     }
