@@ -17,7 +17,6 @@ import {
   deleteView,
 } from '../../db/index.js';
 import { generateProcedureConfig } from '../utils/generateProcedureConfig.js';
-import { isKnownDetailProcedure } from '../services/reportDetailProcedures.js';
 
 const PROTECTED_PROCEDURE_PREFIXES = ['dynrep_'];
 
@@ -124,9 +123,7 @@ router.get('/procedures', async (req, res, next) => {
         if (!map.has(name)) map.set(name, true);
       });
 
-    const list = names
-      .filter((name) => !isKnownDetailProcedure(name))
-      .map((name) => ({ name, isDefault: map.get(name) ?? false }));
+    const list = names.map((name) => ({ name, isDefault: map.get(name) ?? false }));
 
     res.json({ names: list });
   } catch (err) {
