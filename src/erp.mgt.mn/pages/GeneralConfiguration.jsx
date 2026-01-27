@@ -494,6 +494,25 @@ export default function GeneralConfiguration() {
               </label>
             </TooltipWrapper>
           </div>
+          <div style={{ marginBottom: '0.5rem' }}>
+            <TooltipWrapper
+              title={t('show_bulk_edit_request_info', {
+                ns: 'tooltip',
+                defaultValue:
+                  'Show bulk edit request payload details before confirmation',
+              })}
+            >
+              <label>
+                Show Bulk Edit Request Info{' '}
+                <input
+                  name="showBulkEditRequestInfo"
+                  type="checkbox"
+                  checked={active.showBulkEditRequestInfo ?? false}
+                  onChange={handleChange}
+                />
+              </label>
+            </TooltipWrapper>
+          </div>
         </>
       ) : tab === 'system' ? (
         <div>
