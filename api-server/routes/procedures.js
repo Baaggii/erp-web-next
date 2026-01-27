@@ -198,9 +198,10 @@ router.post('/', requireAuth, async (req, res, next) => {
       ),
       buildReportFieldLineage(name, companyId),
     ]);
-    const { row, reportCapabilities, lockCandidates } = procResult;
+    const { row, reportCapabilities, reportMeta, lockCandidates } = procResult;
     res.json({
       row,
+      reportMeta,
       lockRequestId: collectLocks ? lockRequestId : null,
       reportCapabilities,
       lockCandidates,
