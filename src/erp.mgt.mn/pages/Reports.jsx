@@ -2356,6 +2356,37 @@ export default function Reports() {
     [runDetailReport],
   );
 
+  const fetchTempDetail = useCallback(
+    async (ids) => {
+      try {
+        const res = await fetch('/api/report/tmp-detail', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({
+            table: drilldownCapabilities?.detailTempTable,
+            pk: drilldownCapabilities?.detailPkColumn || 'id',
+            ids,
+          }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (res.ok) {
+          return {
+            ok: true,
+            rows: Array.isArray(data) ? data : [],
+          };
+        }
+        return {
+          ok: false,
+          error: data?.error,
+        };
+      } catch {
+        return { ok: false };
+      }
+    },
+    [drilldownCapabilities?.detailPkColumn, drilldownCapabilities?.detailTempTable],
+  );
+
   const resolveDrilldown = useCallback(
     async (row, rowKey) => {
       const caps = drilldownCapabilities;
@@ -2378,27 +2409,36 @@ export default function Reports() {
         .filter(Boolean);
 
       if (caps.mode === 'materialized' && caps.detailTempTable) {
-        try {
-          const res = await fetch('/api/report/tmp-detail', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'include',
-            body: JSON.stringify({
-              table: caps.detailTempTable,
-              pk: caps.detailPkColumn || 'id',
-              ids,
-            }),
-          });
-
-          if (res.ok) {
-            const rows = await res.json();
-            if (rows?.length) {
-              expandRow(rowKey, rows, rowIdsValue);
-              return;
+        const res = await fetchTempDetail(ids);
+        if (res.ok) {
+          if (res.rows?.length) {
+            expandRow(rowKey, res.rows, rowIdsValue);
+            return;
+          }
+        } else if (res.error === 'REPORT_SESSION_EXPIRED') {
+          const reportName = result?.name;
+          const reportParams = result?.params;
+          if (reportName && reportParams) {
+            const rebuild = await fetch('/api/report/rebuild', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              credentials: 'include',
+              body: JSON.stringify({
+                reportName,
+                reportParams,
+              }),
+            });
+            if (rebuild.ok) {
+              addToast('Report data refreshed', 'success');
+            }
+            const retry = await fetchTempDetail(ids);
+            if (retry.ok) {
+              if (retry.rows?.length) {
+                expandRow(rowKey, retry.rows, rowIdsValue);
+                return;
+              }
             }
           }
-        } catch (err) {
-          console.warn('Materialized drilldown failed, falling back', err);
         }
       }
 
@@ -2412,7 +2452,7 @@ export default function Reports() {
         expandRow(rowKey, [], rowIdsValue);
       }
     },
-    [drilldownCapabilities, expandRow, runDetailProcedure],
+    [addToast, drilldownCapabilities, expandRow, fetchTempDetail, result, runDetailProcedure],
   );
 
   const handleDrilldown = useCallback(
