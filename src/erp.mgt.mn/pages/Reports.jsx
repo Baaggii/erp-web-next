@@ -331,7 +331,8 @@ export default function Reports() {
   );
   const reportHeaderMap = useHeaderMappings(reportColumns);
   const rowGranularity = result?.reportMeta?.rowGranularity ?? 'transaction';
-  const drilldownReport = result?.reportMeta?.drilldownReport ?? null;
+  const drilldownConfig = result?.reportMeta?.drilldown ?? null;
+  const legacyDrilldownReport = result?.reportMeta?.drilldownReport ?? null;
   const bulkUpdateConfig = useMemo(
     () => normalizeBulkUpdateConfig(result?.reportMeta?.bulkUpdateConfig),
     [result?.reportMeta?.bulkUpdateConfig],
@@ -1782,15 +1783,10 @@ export default function Reports() {
         setLockRequestSubmitted(false);
         const reportMeta = {
           ...(data.reportMeta || {}),
-          rowGranularity:
-            data.reportMeta?.rowGranularity ??
-            rows[0]?.__row_granularity ??
-            'transaction',
-          drilldownReport:
-            data.reportMeta?.drilldownReport ??
-            rows[0]?.__drilldown_report ??
-            null,
         };
+        if (!reportMeta.rowGranularity) {
+          reportMeta.rowGranularity = 'transaction';
+        }
         setResult({
           name: selectedProc,
           params: paramMap,
@@ -2316,9 +2312,29 @@ export default function Reports() {
     [fetchDrilldownParams, sessionDefaults.companyId],
   );
 
-  const runDetailReport = useCallback(
-    async ({ report, rowIds, rowKey }) => {
-      if (!report) return;
+  const expandDrilldownRow = useCallback((rowKey, rows, options = {}) => {
+    const rowList = Array.isArray(rows) ? rows : [];
+    const columns = rowList.length
+      ? Object.keys(rowList[0]).filter((col) => !INTERNAL_COLS.has(col))
+      : [];
+    setDrilldownDetails((prev) => ({
+      ...prev,
+      [rowKey]: {
+        status: 'loaded',
+        error: '',
+        expanded: true,
+        rowIds: options.rowIds ?? prev[rowKey]?.rowIds ?? '',
+        rows: rowList,
+        columns,
+        fieldLineage: options.fieldLineage || {},
+        fieldTypeMap: options.fieldTypeMap || {},
+      },
+    }));
+  }, []);
+
+  const runDetailProcedure = useCallback(
+    async (procedureName, { rowIds, rowKey }) => {
+      if (!procedureName) return;
       const rowIdsValue = String(rowIds ?? '').trim();
       if (!rowIdsValue) return;
       setDrilldownDetails((prev) => ({
@@ -2332,7 +2348,7 @@ export default function Reports() {
         },
       }));
       try {
-        const params = await buildDrilldownParams(report, rowIdsValue);
+        const params = await buildDrilldownParams(procedureName, rowIdsValue);
         const q = new URLSearchParams();
         if (branch) q.set('branchId', branch);
         if (department) q.set('departmentId', department);
@@ -2343,7 +2359,7 @@ export default function Reports() {
             headers: { 'Content-Type': 'application/json' },
             credentials: 'include',
             body: JSON.stringify({
-              name: report,
+              name: procedureName,
               params,
             }),
           },
@@ -2355,22 +2371,11 @@ export default function Reports() {
         }
         const data = await res.json().catch(() => ({}));
         const rows = Array.isArray(data.row) ? data.row : [];
-        const columns = rows.length
-          ? Object.keys(rows[0]).filter((col) => !INTERNAL_COLS.has(col))
-          : [];
-        setDrilldownDetails((prev) => ({
-          ...prev,
-          [rowKey]: {
-            status: 'loaded',
-            error: '',
-            expanded: true,
-            rowIds: rowIdsValue,
-            rows,
-            columns,
-            fieldLineage: data.fieldLineage || {},
-            fieldTypeMap: data.fieldTypeMap || {},
-          },
-        }));
+        expandDrilldownRow(rowKey, rows, {
+          rowIds: rowIdsValue,
+          fieldLineage: data.fieldLineage || {},
+          fieldTypeMap: data.fieldTypeMap || {},
+        });
       } catch (err) {
         setDrilldownDetails((prev) => ({
           ...prev,
@@ -2385,14 +2390,72 @@ export default function Reports() {
         }));
       }
     },
-    [branch, department, buildDrilldownParams, extractErrorMessage],
+    [branch, department, buildDrilldownParams, expandDrilldownRow, extractErrorMessage],
+  );
+
+  const resolveDrilldown = useCallback(
+    async (row, rowKey) => {
+      const caps = drilldownConfig;
+      if (!caps || !row?.__row_ids) return;
+      const rowIdsValue = String(row.__row_ids).trim();
+      if (!rowIdsValue) return;
+      const ids = rowIdsValue
+        .split(',')
+        .map((id) => id.trim())
+        .filter(Boolean);
+      if (ids.length === 0) return;
+      setDrilldownDetails((prev) => ({
+        ...prev,
+        [rowKey]: {
+          ...(prev[rowKey] || {}),
+          status: 'loading',
+          error: '',
+          expanded: true,
+          rowIds: rowIdsValue,
+        },
+      }));
+      if (caps.mode === 'materialized' && caps.detailTempTable) {
+        try {
+          const res = await fetch('/api/report/tmp-detail', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({
+              table: caps.detailTempTable,
+              pk: caps.detailPkColumn || 'id',
+              ids,
+            }),
+          });
+
+          if (res.ok) {
+            const rows = await res.json();
+            if (rows?.length) {
+              expandDrilldownRow(rowKey, rows, { rowIds: rowIdsValue });
+              return;
+            }
+          }
+        } catch (err) {
+          console.warn('Materialized drilldown failed, falling back', err);
+        }
+      }
+
+      if (caps.fallbackProcedure) {
+        await runDetailProcedure(caps.fallbackProcedure, {
+          rowIds: rowIdsValue,
+          rowKey,
+        });
+        return;
+      }
+      expandDrilldownRow(rowKey, [], { rowIds: rowIdsValue });
+    },
+    [drilldownConfig, expandDrilldownRow, runDetailProcedure],
   );
 
   const handleDrilldown = useCallback(
-    ({ report, row, rowId }) => {
-      if (!report) return;
+    (row, rowId) => {
       const rowIds = row?.__row_ids;
       if (!rowIds) return;
+      if (!drilldownConfig && !legacyDrilldownReport) return;
       setActiveAggregatedRow(row);
       const existing = drilldownDetailsRef.current[rowId];
       const nextExpanded = !existing?.expanded;
@@ -2406,9 +2469,13 @@ export default function Reports() {
       }));
       if (!nextExpanded) return;
       if (existing?.status === 'loaded' && existing?.rowIds === rowIds) return;
-      runDetailReport({ report, rowIds, rowKey: rowId });
+      if (drilldownConfig) {
+        resolveDrilldown(row, rowId);
+        return;
+      }
+      runDetailProcedure(legacyDrilldownReport, { rowIds, rowKey: rowId });
     },
-    [runDetailReport],
+    [drilldownConfig, legacyDrilldownReport, resolveDrilldown, runDetailProcedure],
   );
 
   const handleDrilldownRowSelectionChange = useCallback((updater) => {
@@ -4154,7 +4221,8 @@ export default function Reports() {
               getRowId={getReportRowId}
               enableRowSelection={!isAggregated}
               rowGranularity={rowGranularity}
-              drilldownReport={drilldownReport}
+              drilldownConfig={drilldownConfig}
+              legacyDrilldownReport={legacyDrilldownReport}
               onDrilldown={handleDrilldown}
               excludeColumns={INTERNAL_COLS}
               drilldownState={drilldownDetails}

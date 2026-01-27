@@ -7394,6 +7394,18 @@ export async function callStoredProcedure(
     );
     const rawCaps = Array.isArray(capRows) ? capRows[0]?.report_capabilities : null;
     const reportCapabilities = normalizeReportCapabilities(rawCaps);
+    let reportMeta = {};
+    if (rawCaps) {
+      try {
+        const parsed =
+          typeof rawCaps === 'string' ? JSON.parse(rawCaps) : rawCaps;
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+          reportMeta = { ...reportMeta, ...parsed };
+        }
+      } catch {
+        reportMeta = { ...reportMeta };
+      }
+    }
 
     let lockCandidates = [];
     if (session.collectUsedRows) {
@@ -7430,7 +7442,34 @@ export async function callStoredProcedure(
       }
     }
 
-    return { row: first, reportCapabilities, lockCandidates };
+    return { row: first, reportCapabilities, reportMeta, lockCandidates };
+  } finally {
+    conn.release();
+  }
+}
+
+export async function fetchTempReportDetail({ table, pk, ids }) {
+  const tableName = typeof table === 'string' ? table.trim() : '';
+  if (!/^tmp_[a-zA-Z0-9_]+$/.test(tableName)) {
+    throw new Error('Invalid temp table name.');
+  }
+  const pkColumn = typeof pk === 'string' && pk.trim() ? pk.trim() : 'id';
+  if (!/^[a-zA-Z0-9_]+$/.test(pkColumn)) {
+    throw new Error('Invalid temp table primary key.');
+  }
+  const idList = Array.isArray(ids) ? ids : [];
+  const normalizedIds = idList
+    .map((id) => (id == null ? null : String(id).trim()))
+    .filter(Boolean);
+  if (normalizedIds.length === 0) {
+    return [];
+  }
+  const placeholders = normalizedIds.map(() => '?').join(', ');
+  const sql = `SELECT * FROM \`${tableName}\` WHERE \`${pkColumn}\` IN (${placeholders})`;
+  const conn = await pool.getConnection();
+  try {
+    const [rows] = await conn.query(sql, normalizedIds);
+    return Array.isArray(rows) ? rows : [];
   } finally {
     conn.release();
   }
