@@ -40,6 +40,11 @@ const INTERNAL_COLS = new Set([
   '__row_count',
   '__row_granularity',
   '__drilldown_report',
+  '__bulk_table',
+  '__bulk_pk',
+  '__bulk_field',
+  '__bulk_value',
+  '__bulk_allowed',
 ]);
 
 function normalizeParamName(name) {
@@ -92,19 +97,6 @@ function normalizeIdParamValue(value) {
     return Number.isFinite(value) ? String(value) : null;
   }
   return null;
-}
-
-function normalizeBulkUpdateConfig(config) {
-  if (!config || typeof config !== 'object') return null;
-  const fieldName =
-    typeof config.fieldName === 'string' ? config.fieldName.trim() : '';
-  const targetTable =
-    typeof config.targetTable === 'string' ? config.targetTable.trim() : '';
-  const defaultValue =
-    config.defaultValue === undefined || config.defaultValue === null
-      ? ''
-      : config.defaultValue;
-  return { fieldName, defaultValue, targetTable };
 }
 
 function resolveIdParam(...candidates) {
@@ -187,6 +179,17 @@ function stringifyDiagnosticValue(value) {
   return String(value);
 }
 
+function formatBulkUpdateValue(value) {
+  if (value === undefined) return '';
+  if (value === null) return 'NULL';
+  if (typeof value === 'string') return value;
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
+}
+
   function normalizeSqlDiagnosticValue(value) {
   const normalized = stringifyDiagnosticValue(value);
   if (typeof normalized !== 'string') return null;
@@ -200,6 +203,7 @@ const DEFAULT_REPORT_CAPABILITIES = {
   showTotalRowCount: true,
   supportsApproval: true,
   supportsSnapshot: true,
+  supportsBulkUpdate: false,
 };
 
 function normalizeReportCapabilities(value) {
@@ -215,6 +219,9 @@ function normalizeReportCapabilities(value) {
   }
   if ('supportsSnapshot' in value) {
     normalized.supportsSnapshot = value.supportsSnapshot === false ? false : true;
+  }
+  if ('supportsBulkUpdate' in value) {
+    normalized.supportsBulkUpdate = value.supportsBulkUpdate === true;
   }
   return normalized;
 }
@@ -244,9 +251,7 @@ export default function Reports() {
   const [rowIdFields, setRowIdFields] = useState([]);
   const [bulkUpdateOpen, setBulkUpdateOpen] = useState(false);
   const [bulkUpdateConfirmOpen, setBulkUpdateConfirmOpen] = useState(false);
-  const [bulkUpdateField, setBulkUpdateField] = useState('');
-  const [bulkUpdateTargetTableInput, setBulkUpdateTargetTableInput] = useState('');
-  const [bulkUpdateValue, setBulkUpdateValue] = useState('');
+  const [bulkUpdateGroups, setBulkUpdateGroups] = useState([]);
   const [bulkUpdateReason, setBulkUpdateReason] = useState('');
   const [bulkUpdateConfirmed, setBulkUpdateConfirmed] = useState(false);
   const [bulkUpdateLoading, setBulkUpdateLoading] = useState(false);
@@ -286,9 +291,10 @@ export default function Reports() {
   const [requestLockDetailsState, setRequestLockDetailsState] = useState({});
   const requestLockDetailsRef = useRef(requestLockDetailsState);
   const primaryKeyCacheRef = useRef(new Map());
+  const bulkUpdateTableAllowListRef = useRef(null);
+  const bulkUpdateColumnCacheRef = useRef(new Map());
   const rowIdMapRef = useRef(new Map());
   const drilldownParamCacheRef = useRef(new Map());
-  const bulkUpdateConfigSignatureRef = useRef(null);
   const presetSelectRef = useRef(null);
   const startDateRef = useRef(null);
   const endDateRef = useRef(null);
@@ -345,10 +351,6 @@ export default function Reports() {
   const rowGranularity = effectiveReportMeta?.rowGranularity ?? 'transaction';
   const drilldownCapabilities = effectiveReportMeta?.drilldown ?? null;
   const drilldownEnabled = Boolean(drilldownCapabilities);
-  const bulkUpdateConfig = useMemo(
-    () => normalizeBulkUpdateConfig(result?.reportMeta?.bulkUpdateConfig),
-    [result?.reportMeta?.bulkUpdateConfig],
-  );
   const isAggregated = rowGranularity === 'aggregated';
   const getDetailRowKey = useCallback(
     (parentRowId, index) => `${String(parentRowId)}::${String(index)}`,
@@ -382,7 +384,9 @@ export default function Reports() {
   const hasReportSelection = selectedReportRows.length > 0;
   const activeReportColumns = useMemo(() => {
     if (!hasDetailSelection) return reportColumns;
-    return selectedDetailContext?.columns || [];
+    return Array.isArray(selectedDetailContext?.columns)
+      ? selectedDetailContext.columns.filter((col) => !INTERNAL_COLS.has(col))
+      : [];
   }, [hasDetailSelection, reportColumns, selectedDetailContext]);
   const activeFieldLineage = useMemo(() => {
     if (!hasDetailSelection) return result?.fieldLineage || {};
@@ -611,21 +615,6 @@ export default function Reports() {
   ]);
 
   const showWorkplaceSelector = hasWorkplaceParam;
-
-  const fetchReportConfig = useCallback(async (reportName) => {
-    if (!reportName) return undefined;
-    try {
-      const res = await fetch(
-        `/api/report_config/${encodeURIComponent(reportName)}`,
-        { credentials: 'include' },
-      );
-      if (!res.ok) return undefined;
-      const data = await res.json().catch(() => null);
-      return normalizeBulkUpdateConfig(data?.bulkUpdateConfig);
-    } catch {
-      return undefined;
-    }
-  }, []);
 
   const workplaceDateQuery = useMemo(() => {
     if (!hasWorkplaceParam) {
@@ -1808,18 +1797,6 @@ export default function Reports() {
           lockRequestId: data.lockRequestId || null,
           lockCandidates: data.lockCandidates,
         });
-        const configMeta = await fetchReportConfig(selectedProc);
-        setResult((prev) =>
-          prev && prev.name === selectedProc
-            ? {
-                ...prev,
-                reportMeta: {
-                  ...(prev.reportMeta || {}),
-                  bulkUpdateConfig: configMeta,
-                },
-              }
-            : prev,
-        );
       } else {
         const detailedMessage =
           (await extractErrorMessage(res)) || 'Failed to run procedure';
@@ -1933,10 +1910,7 @@ export default function Reports() {
 
   useEffect(() => {
     setRowSelection({});
-    setBulkUpdateField('');
-    setBulkUpdateTargetTableInput('');
-    setBulkUpdateValue('');
-    bulkUpdateConfigSignatureRef.current = null;
+    setBulkUpdateGroups([]);
     setBulkUpdateReason('');
     setBulkUpdateConfirmed(false);
     setBulkUpdateError('');
@@ -1947,23 +1921,6 @@ export default function Reports() {
     setActiveAggregatedRow(null);
   }, [result?.name]);
 
-  useEffect(() => {
-    if (!bulkUpdateConfig) return;
-    const configField = bulkUpdateConfig?.fieldName || '';
-    const configValue = bulkUpdateConfig?.defaultValue ?? '';
-    const configTable = bulkUpdateConfig?.targetTable || '';
-    const signature = JSON.stringify({
-      fieldName: configField,
-      defaultValue: configValue,
-      targetTable: configTable,
-    });
-    if (signature === bulkUpdateConfigSignatureRef.current) return;
-    setBulkUpdateField(configField);
-    setBulkUpdateValue(configValue);
-    setBulkUpdateTargetTableInput(configTable);
-    bulkUpdateConfigSignatureRef.current = signature;
-  }, [bulkUpdateConfig]);
-
   const numberFormatter = useMemo(
     () =>
       new Intl.NumberFormat('en-US', {
@@ -1973,222 +1930,245 @@ export default function Reports() {
     [],
   );
 
-  const bulkUpdateTargetTable = (
-    bulkUpdateConfig?.targetTable ||
-    bulkUpdateTargetTableInput
-  ).trim();
-  const hasBulkUpdateConfig = Boolean(bulkUpdateConfig?.targetTable?.trim());
-
   const hasBulkUpdatePermission =
     buttonPerms['Bulk Update'] ||
     buttonPerms['Edit transaction'] ||
     buttonPerms['Edit'] ||
     buttonPerms['Update'];
 
-  const canBulkUpdate =
-    (hasDetailSelection || hasReportSelection) && hasBulkUpdatePermission;
+  const bulkUpdateEnabled = reportCapabilities.supportsBulkUpdate === true;
 
-  const bulkUpdateRecordCount = useMemo(() => {
-    if (hasDetailSelection) return selectedDetailRows.length;
-    if (!isAggregated) return selectedReportRows.length;
-    return selectedReportRows.reduce((sum, row) => {
-      const explicitCount = Number(row?.__row_count);
-      if (Number.isFinite(explicitCount)) {
-        return sum + explicitCount;
-      }
-      const ids = String(row?.__row_ids ?? '')
-        .split(',')
-        .map((id) => id.trim())
-        .filter(Boolean);
-      return sum + ids.length;
-    }, 0);
-  }, [hasDetailSelection, isAggregated, selectedDetailRows, selectedReportRows]);
-
-  const saveBulkUpdateConfig = useCallback(
-    async (nextConfig) => {
-      const reportName = result?.name;
-      if (!reportName) return;
-      const payload = {
-        fieldName: nextConfig?.fieldName || '',
-        targetTable: nextConfig?.targetTable || bulkUpdateConfig?.targetTable || '',
-        defaultValue:
-          nextConfig?.defaultValue === undefined || nextConfig?.defaultValue === null
-            ? ''
-            : nextConfig.defaultValue,
-      };
-      const signature = JSON.stringify(payload);
-      if (signature === bulkUpdateConfigSignatureRef.current) return;
-      try {
-        const res = await fetch(
-          `/api/report_config/${encodeURIComponent(reportName)}`,
-          {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'include',
-            body: JSON.stringify({ bulkUpdateConfig: payload }),
-          },
-        );
-        if (!res.ok) {
-          const data = await res.json().catch(() => ({}));
-          throw new Error(data?.message || 'Failed to save bulk update defaults.');
-        }
-        bulkUpdateConfigSignatureRef.current = signature;
-        setResult((prev) =>
-          prev
-            ? {
-                ...prev,
-                reportMeta: {
-                  ...(prev.reportMeta || {}),
-                  bulkUpdateConfig: payload,
-                },
-              }
-            : prev,
-        );
-      } catch (err) {
-        addToast(
-          err?.message || 'Failed to save bulk update defaults.',
-          'error',
-        );
-      }
-    },
-    [addToast, bulkUpdateConfig?.targetTable, result?.name],
+  const bulkUpdateEligibleRows = useMemo(
+    () =>
+      selectedDetailRows.filter(
+        ({ row }) => Number(row?.__bulk_allowed) === 1,
+      ),
+    [selectedDetailRows],
   );
 
-  const validateBulkUpdate = useCallback(() => {
-    const effectiveRows = hasDetailSelection
-      ? selectedDetailRows
-      : selectedReportRows.map((row) => ({ row }));
-    if (!effectiveRows.length) {
-      setBulkUpdateError('Select at least one row before updating.');
-      return { ok: false, effectiveRows };
+  const bulkUpdateRecordCount = useMemo(
+    () => bulkUpdateEligibleRows.length,
+    [bulkUpdateEligibleRows],
+  );
+
+  const canBulkUpdate =
+    hasDetailSelection &&
+    bulkUpdateEnabled &&
+    hasBulkUpdatePermission &&
+    bulkUpdateRecordCount > 0;
+
+  const bulkUpdateTargetSummary = useMemo(() => {
+    const summaryMap = new Map();
+    bulkUpdateEligibleRows.forEach(({ row }) => {
+      const tableName = String(row?.__bulk_table ?? '').trim();
+      const pkField = String(row?.__bulk_pk ?? '').trim();
+      const fieldName = String(row?.__bulk_field ?? '').trim();
+      if (!tableName || !pkField || !fieldName) return;
+      const value = row?.__bulk_value ?? null;
+      const key = JSON.stringify([tableName, pkField, fieldName, value]);
+      const entry = summaryMap.get(key) || {
+        table: tableName,
+        pkField,
+        field: fieldName,
+        value,
+        count: 0,
+      };
+      entry.count += 1;
+      summaryMap.set(key, entry);
+    });
+    return Array.from(summaryMap.values());
+  }, [bulkUpdateEligibleRows]);
+
+  const resolveBulkUpdateCompanyId = useCallback((row) => {
+    if (!row || typeof row !== 'object') return null;
+    const value =
+      row.company_id ??
+      row.companyId ??
+      row.__company_id ??
+      row.company ??
+      null;
+    if (value === undefined || value === null || value === '') return null;
+    return String(value);
+  }, []);
+
+  const fetchBulkUpdateTableAllowList = useCallback(async () => {
+    if (bulkUpdateTableAllowListRef.current) {
+      return bulkUpdateTableAllowListRef.current;
     }
-    if (!bulkUpdateField.trim() || !bulkUpdateTargetTable) {
-      setBulkUpdateError('Bulk update configuration is incomplete.');
-      return { ok: false, effectiveRows };
+    const res = await fetch('/api/tables', { credentials: 'include' });
+    if (!res.ok) {
+      throw new Error('Failed to load table allow list.');
     }
-    if (!hasBulkUpdateConfig && String(bulkUpdateValue ?? '').trim() === '') {
-      setBulkUpdateError('Provide a new value for the bulk update.');
-      return { ok: false, effectiveRows };
+    const data = await res.json().catch(() => []);
+    const list = Array.isArray(data)
+      ? data
+      : Array.isArray(data?.tables)
+        ? data.tables
+        : [];
+    const allowList = new Set(
+      list
+        .map((name) => String(name).trim().toLowerCase())
+        .filter((name) => name),
+    );
+    bulkUpdateTableAllowListRef.current = allowList;
+    return allowList;
+  }, []);
+
+  const fetchBulkUpdateColumns = useCallback(async (tableName) => {
+    if (!tableName) return new Set();
+    const normalizedTable = String(tableName).trim().toLowerCase();
+    const cache = bulkUpdateColumnCacheRef.current;
+    if (cache.has(normalizedTable)) return cache.get(normalizedTable);
+    const res = await fetch(
+      `/api/tables/${encodeURIComponent(tableName)}/columns`,
+      { credentials: 'include' },
+    );
+    if (!res.ok) {
+      throw new Error('Failed to load table metadata.');
     }
+    const data = await res.json().catch(() => []);
+    const columnSet = new Set(
+      (Array.isArray(data) ? data : [])
+        .map((col) => String(col?.name ?? '').trim().toLowerCase())
+        .filter((name) => name),
+    );
+    cache.set(normalizedTable, columnSet);
+    return columnSet;
+  }, []);
+
+  const normalizeBulkUpdateRecordId = useCallback((value) => {
+    if (value === undefined || value === null || value === '') return null;
+    if (typeof value === 'string') {
+      const trimmed = value.trim();
+      return trimmed.length ? trimmed : null;
+    }
+    if (typeof value === 'number') {
+      return Number.isFinite(value) ? String(value) : null;
+    }
+    try {
+      return JSON.stringify(value);
+    } catch {
+      return String(value);
+    }
+  }, []);
+
+  const buildBulkUpdateGroups = useCallback(async () => {
+    if (!hasDetailSelection) {
+      throw new Error('Select detail rows before updating.');
+    }
+    if (!bulkUpdateEligibleRows.length) {
+      throw new Error('No selected rows are eligible for bulk update.');
+    }
+    const allowList = await fetchBulkUpdateTableAllowList();
+    const groups = new Map();
+    const companyIds = new Set();
+    for (const { row } of bulkUpdateEligibleRows) {
+      const tableName = String(row?.__bulk_table ?? '').trim();
+      const pkField = String(row?.__bulk_pk ?? '').trim();
+      const fieldName = String(row?.__bulk_field ?? '').trim();
+      const value = row?.__bulk_value ?? null;
+      if (!tableName || !pkField || !fieldName) {
+        throw new Error('Bulk update metadata is missing for one or more rows.');
+      }
+      if (!allowList.has(tableName.toLowerCase())) {
+        throw new Error(`Table "${tableName}" is not allowed for bulk update.`);
+      }
+      const columnSet = await fetchBulkUpdateColumns(tableName);
+      if (!columnSet.has(pkField.toLowerCase())) {
+        throw new Error(`Primary key "${pkField}" was not found on ${tableName}.`);
+      }
+      if (!columnSet.has(fieldName.toLowerCase())) {
+        throw new Error(`Field "${fieldName}" does not exist on ${tableName}.`);
+      }
+      const recordId = normalizeBulkUpdateRecordId(row?.[pkField]);
+      if (!recordId) {
+        throw new Error(
+          'One or more selected rows are missing primary key values.',
+        );
+      }
+      const companyId = resolveBulkUpdateCompanyId(row);
+      if (companyId) companyIds.add(companyId);
+      const key = JSON.stringify([
+        tableName.toLowerCase(),
+        pkField.toLowerCase(),
+        fieldName.toLowerCase(),
+        value,
+      ]);
+      if (!groups.has(key)) {
+        groups.set(key, {
+          table: tableName,
+          pkField,
+          field: fieldName,
+          value,
+          recordIds: new Set(),
+        });
+      }
+      groups.get(key).recordIds.add(recordId);
+    }
+    if (companyIds.size > 1) {
+      throw new Error('Bulk updates cannot span multiple companies.');
+    }
+    return Array.from(groups.values()).map((group) => ({
+      ...group,
+      recordIds: Array.from(group.recordIds),
+    }));
+  }, [
+    bulkUpdateEligibleRows,
+    fetchBulkUpdateColumns,
+    fetchBulkUpdateTableAllowList,
+    hasDetailSelection,
+    normalizeBulkUpdateRecordId,
+    resolveBulkUpdateCompanyId,
+  ]);
+
+  const validateBulkUpdate = useCallback(async () => {
     if (!bulkUpdateReason.trim()) {
       setBulkUpdateError('Request reason is required.');
-      return { ok: false, effectiveRows };
+      return null;
     }
     if (!bulkUpdateConfirmed) {
       setBulkUpdateError('Confirm the bulk update before submitting.');
-      return { ok: false, effectiveRows };
+      return null;
     }
-    setBulkUpdateError('');
-    return { ok: true, effectiveRows };
-  }, [
-    bulkUpdateConfirmed,
-    bulkUpdateReason,
-    hasDetailSelection,
-    hasBulkUpdateConfig,
-    bulkUpdateField,
-    bulkUpdateValue,
-    bulkUpdateTargetTable,
-    selectedDetailRows,
-    selectedReportRows,
-  ]);
+    try {
+      const groups = await buildBulkUpdateGroups();
+      setBulkUpdateError('');
+      return groups;
+    } catch (err) {
+      setBulkUpdateError(err?.message || 'Bulk update request failed.');
+      return null;
+    }
+  }, [bulkUpdateConfirmed, bulkUpdateReason, buildBulkUpdateGroups]);
 
-  const handleBulkUpdateReview = useCallback(() => {
-    const validation = validateBulkUpdate();
-    if (!validation.ok) return;
+  const handleBulkUpdateReview = useCallback(async () => {
+    const groups = await validateBulkUpdate();
+    if (!groups) return;
+    setBulkUpdateGroups(groups);
     setBulkUpdateConfirmOpen(true);
   }, [validateBulkUpdate]);
 
   const handleBulkUpdateSubmit = useCallback(async () => {
-    const validation = validateBulkUpdate();
-    if (!validation.ok) return;
-    const effectiveRows = validation.effectiveRows;
-    const effectiveIsAggregated = isAggregated && !hasDetailSelection;
+    const groups = await validateBulkUpdate();
+    if (!groups) return;
     setBulkUpdateLoading(true);
     try {
-      const resolveRowId = (row) => {
-        if (row?.__pk != null && row?.__pk !== '') return row.__pk;
-        if (row?.id != null && row?.id !== '') return row.id;
-        if (Array.isArray(rowIdFields) && rowIdFields.length > 0) {
-          const values = rowIdFields.map((field) => row?.[field]);
-          if (values.some((value) => value === undefined || value === null || value === '')) {
-            return undefined;
-          }
-          if (values.length === 1) return values[0];
-          try {
-            return JSON.stringify(values);
-          } catch {
-            return values.join('-');
-          }
+      for (const group of groups) {
+        const res = await fetch('/api/pending_request/bulk_edit', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({
+            table: group.table,
+            ids: group.recordIds,
+            field: group.field,
+            value: group.value,
+            request_reason: bulkUpdateReason,
+          }),
+        });
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          throw new Error(data?.message || 'Bulk update request failed.');
         }
-        return undefined;
-      };
-      const recordIds = effectiveIsAggregated
-        ? Array.from(
-            new Set(
-              effectiveRows.flatMap(({ row }) =>
-                String(row?.__row_ids ?? '')
-                  .split(',')
-                  .map((id) => id.trim())
-                  .filter(Boolean),
-              ),
-            ),
-          )
-        : effectiveRows.map(({ row, detailKey }) => {
-            const value = resolveRowId(row, detailKey);
-            if (value === undefined || value === null || value === '') {
-              throw new Error(
-                'One or more selected rows are missing primary key values.',
-              );
-            }
-            return value;
-          });
-      if (recordIds.length === 0) {
-        throw new Error('No record identifiers were resolved for the selected rows.');
-      }
-      const normalizedValue = bulkUpdateValue;
-      const drilldownExpansions = effectiveIsAggregated
-        ? effectiveRows.map(({ row }) => {
-            const rowIds = String(row?.__row_ids ?? '')
-              .split(',')
-              .map((id) => id.trim())
-              .filter(Boolean);
-            return {
-              group_keys: {
-                tr_date: row?.tr_date,
-                tr_type: row?.tr_type,
-                manuf_id: row?.manuf_id,
-              },
-              record_ids: rowIds,
-              row_count: Number(row?.__row_count) || rowIds.length,
-            };
-          })
-        : [];
-      const reportPayload = effectiveIsAggregated
-        ? drilldownExpansions.length === 1
-          ? { source: 'aggregated_report', ...drilldownExpansions[0] }
-          : {
-              source: 'aggregated_report',
-              expansions: drilldownExpansions,
-              record_ids: recordIds,
-              row_count: bulkUpdateRecordCount,
-            }
-        : null;
-      const res = await fetch('/api/pending_request/bulk_edit', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({
-          table: bulkUpdateTargetTable,
-          ids: recordIds,
-          field: bulkUpdateField,
-          value: normalizedValue,
-          request_reason: bulkUpdateReason,
-          report_payload: reportPayload,
-        }),
-      });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data?.message || 'Bulk update request failed.');
       }
       addToast(
         `Bulk update request submitted for approval on ${bulkUpdateRecordCount} record${
@@ -2198,8 +2178,7 @@ export default function Reports() {
       );
       setBulkUpdateOpen(false);
       setBulkUpdateConfirmOpen(false);
-      setBulkUpdateField('');
-      setBulkUpdateValue('');
+      setBulkUpdateGroups([]);
       setBulkUpdateReason('');
       setBulkUpdateConfirmed(false);
       setRowSelection({});
@@ -2212,59 +2191,11 @@ export default function Reports() {
       setBulkUpdateLoading(false);
     }
   }, [
-    validateBulkUpdate,
-    hasDetailSelection,
-    bulkUpdateField,
-    bulkUpdateValue,
-    bulkUpdateTargetTable,
     addToast,
-    runReport,
-    isAggregated,
     bulkUpdateRecordCount,
-    rowIdFields,
-  ]);
-
-  const handleBulkUpdateFieldChange = useCallback(
-    (value) => {
-      setBulkUpdateField(value);
-      if (hasBulkUpdateConfig) {
-        saveBulkUpdateConfig({
-          fieldName: value,
-          targetTable: bulkUpdateTargetTable,
-          defaultValue: bulkUpdateValue,
-        });
-      }
-    },
-    [
-      bulkUpdateTargetTable,
-      bulkUpdateValue,
-      hasBulkUpdateConfig,
-      saveBulkUpdateConfig,
-    ],
-  );
-
-  const handleBulkUpdateTargetTableChange = useCallback((value) => {
-    setBulkUpdateTargetTableInput(value);
-  }, []);
-
-  const handleBulkUpdateValueChange = useCallback((value) => {
-    setBulkUpdateValue(value);
-  }, []);
-
-  const handleBulkUpdateValueBlur = useCallback(() => {
-    if (hasBulkUpdateConfig) {
-      saveBulkUpdateConfig({
-        fieldName: bulkUpdateField,
-        targetTable: bulkUpdateTargetTable,
-        defaultValue: bulkUpdateValue,
-      });
-    }
-  }, [
-    bulkUpdateField,
-    bulkUpdateTargetTable,
-    bulkUpdateValue,
-    hasBulkUpdateConfig,
-    saveBulkUpdateConfig,
+    bulkUpdateReason,
+    runReport,
+    validateBulkUpdate,
   ]);
 
   const activeAggregatedCount = useMemo(() => {
@@ -4303,6 +4234,7 @@ export default function Reports() {
               type="button"
               onClick={() => {
                 setBulkUpdateOpen(true);
+                setBulkUpdateGroups([]);
                 setBulkUpdateError('');
               }}
               disabled={!canBulkUpdate}
@@ -4732,6 +4664,7 @@ export default function Reports() {
             if (bulkUpdateLoading) return;
             setBulkUpdateOpen(false);
             setBulkUpdateConfirmOpen(false);
+            setBulkUpdateGroups([]);
           }}
           width="540px"
         >
@@ -4745,43 +4678,23 @@ export default function Reports() {
               transaction{bulkUpdateRecordCount === 1 ? '' : 's'}. This action
               requires approval.
             </div>
-            <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-              Field to update
-              <input
-                type="text"
-                value={bulkUpdateField}
-                onChange={(event) => handleBulkUpdateFieldChange(event.target.value)}
-                placeholder="Field name"
-              />
-            </label>
-            {hasBulkUpdateConfig ? (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                <span>Target table</span>
-                <strong>{bulkUpdateTargetTable || 'Not configured'}</strong>
-              </div>
-            ) : (
-              <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                Target table
-                <input
-                  type="text"
-                  value={bulkUpdateTargetTableInput}
-                  onChange={(event) =>
-                    handleBulkUpdateTargetTableChange(event.target.value)
-                  }
-                  placeholder="Enter target table"
-                />
-              </label>
-            )}
-            <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-              New value
-              <input
-                type="text"
-                value={bulkUpdateValue}
-                onChange={(event) => handleBulkUpdateValueChange(event.target.value)}
-                onBlur={handleBulkUpdateValueBlur}
-                placeholder="Enter new value"
-              />
-            </label>
+            <div>
+              <strong>Update targets</strong>
+              {bulkUpdateTargetSummary.length ? (
+                <ul style={{ margin: '0.5rem 0 0', paddingLeft: '1.25rem' }}>
+                  {bulkUpdateTargetSummary.map((target, idx) => (
+                    <li key={`${target.table}-${target.field}-${idx}`}>
+                      {target.table}.{target.field} →{' '}
+                      {formatBulkUpdateValue(target.value)} ({target.count})
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p style={{ marginTop: '0.5rem' }}>
+                  No eligible rows are selected for bulk update.
+                </p>
+              )}
+            </div>
             <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
               Request reason
               <textarea
@@ -4839,13 +4752,24 @@ export default function Reports() {
               You are about to update <strong>{bulkUpdateRecordCount}</strong>{' '}
               transaction{bulkUpdateRecordCount === 1 ? '' : 's'}.
             </p>
-            <p style={{ margin: 0 }}>
-              Table: <strong>{bulkUpdateTargetTable}</strong>
-            </p>
-            <p style={{ margin: 0 }}>
-              Field: <strong>{bulkUpdateField}</strong> →{' '}
-              <strong>{String(bulkUpdateValue || '')}</strong>
-            </p>
+            <div>
+              <strong>Updates</strong>
+              {bulkUpdateGroups.length ? (
+                <ul style={{ margin: '0.5rem 0 0', paddingLeft: '1.25rem' }}>
+                  {bulkUpdateGroups.map((group, idx) => (
+                    <li key={`${group.table}-${group.field}-${idx}`}>
+                      {group.table}.{group.field} →{' '}
+                      {formatBulkUpdateValue(group.value)} (
+                      {group.recordIds.length})
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p style={{ marginTop: '0.5rem' }}>
+                  No eligible rows are selected for bulk update.
+                </p>
+              )}
+            </div>
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem' }}>
               <button
                 type="button"
