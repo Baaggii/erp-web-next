@@ -881,21 +881,23 @@ export async function createBulkEditRequest({
         }
       }
     }
-    const normalizedEmp = String(empId).trim().toUpperCase();
-    const [supervisorRows] = await conn.query(
-      `SELECT 1
+    const [rows] = await conn.query(
+      `SELECT employment_senior_empid, employment_senior_plan_empid
          FROM tbl_employment
-        WHERE UPPER(TRIM(employment_senior_empid)) = ?
-           OR UPPER(TRIM(employment_senior_plan_empid)) = ?
+        WHERE employment_emp_id = ?
         LIMIT 1`,
-      [normalizedEmp, normalizedEmp],
+      [empId],
     );
-    if (!supervisorRows.length) {
-      const err = new Error('supervisor required');
+    const seniorPlan = normalizeSupervisorEmpId(
+      rows[0]?.employment_senior_plan_empid,
+    );
+    const senior = normalizeSupervisorEmpId(rows[0]?.employment_senior_empid);
+    if (!senior) {
+      const err = new Error('senior_empid required');
       err.status = 400;
       throw err;
     }
-    const senior = normalizedEmp;
+    const normalizedEmp = String(empId).trim().toUpperCase();
     const payload = {
       recordIds: normalizedRecordIds,
       updates: { [resolvedField]: value },
@@ -985,6 +987,7 @@ export async function createBulkEditRequest({
       request_id: requestId,
       record_id: recordId,
       senior_empid: senior,
+      senior_plan_empid: seniorPlan,
     };
   } catch (err) {
     await conn.query('ROLLBACK');
