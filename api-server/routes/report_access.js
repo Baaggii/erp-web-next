@@ -7,7 +7,6 @@ import {
   removeAllowedReport,
 } from '../services/reportAccessConfig.js';
 import { listReportProcedures } from '../../db/index.js';
-import { isKnownDetailProcedure } from '../services/reportDetailProcedures.js';
 
 const router = express.Router();
 
@@ -17,7 +16,7 @@ router.get('/', requireAuth, async (req, res, next) => {
     const proc = req.query.proc;
     const liveProcedures = new Set(await listReportProcedures());
     if (proc) {
-      if (!liveProcedures.has(proc) || isKnownDetailProcedure(proc)) {
+      if (!liveProcedures.has(proc)) {
         return res.status(404).json({ message: 'Procedure not found' });
       }
       const { config, isDefault } = await getAllowedReport(proc, companyId);
@@ -25,9 +24,7 @@ router.get('/', requireAuth, async (req, res, next) => {
     } else {
       const { config, isDefault } = await listAllowedReports(companyId);
       const filtered = Object.fromEntries(
-        Object.entries(config).filter(
-          ([name]) => liveProcedures.has(name) && !isKnownDetailProcedure(name),
-        ),
+        Object.entries(config).filter(([name]) => liveProcedures.has(name)),
       );
       res.json({ allowedReports: filtered, isDefault });
     }

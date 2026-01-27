@@ -16,10 +16,6 @@ import {
   getReportTempSessionKey,
   storeReportTempSession,
 } from '../services/reportTempTableSession.js';
-import {
-  isDetailProcedureAllowed,
-  registerDetailProcedure,
-} from '../services/reportDetailProcedures.js';
 
 const RATE_LIMIT_WINDOW_MS = 60 * 1000;
 const RATE_LIMIT_MAX_REQUESTS = 30;
@@ -55,24 +51,6 @@ function generateLockRequestId() {
   const now = Date.now();
   const random = Math.floor(Math.random() * 1000);
   return -1 * (now * 1000 + random);
-}
-
-function extractDetailProcedure(reportMeta) {
-  if (!reportMeta || typeof reportMeta !== 'object') return '';
-  const drilldown = reportMeta.drilldown;
-  if (drilldown && typeof drilldown === 'object') {
-    const candidates = [
-      drilldown.fallbackProcedure,
-      drilldown.detailProcedure,
-      drilldown.procedure,
-    ];
-    const match = candidates.find((name) => typeof name === 'string' && name.trim());
-    if (match) return match.trim();
-  }
-  if (typeof reportMeta.drilldownReport === 'string') {
-    return reportMeta.drilldownReport.trim();
-  }
-  return '';
 }
 
 async function validateCompanyForGid(companyId, gId, res) {
@@ -125,8 +103,7 @@ router.get('/:name/params', requireAuth, async (req, res, next) => {
       req.user,
     );
     const allowed = new Set(procedures.map((p) => p.name));
-    const userKey = getReportTempSessionKey(req);
-    if (!allowed.has(req.params.name) && !isDetailProcedureAllowed(userKey, req.params.name))
+    if (!allowed.has(req.params.name))
       return res.status(403).json({ message: 'Procedure not allowed' });
     const parameters = await getProcedureParams(req.params.name);
     res.json({ parameters });
@@ -157,8 +134,7 @@ router.post('/locks', requireAuth, async (req, res, next) => {
       req.user,
     );
     const allowed = new Set(procedures.map((p) => p.name));
-    const userKey = getReportTempSessionKey(req);
-    if (!allowed.has(name) && !isDetailProcedureAllowed(userKey, name))
+    if (!allowed.has(name))
       return res.status(403).json({ message: 'Procedure not allowed' });
     const lockCandidates = await getProcedureLockCandidates(
       name,
@@ -200,8 +176,7 @@ router.post('/', requireAuth, async (req, res, next) => {
       req.user,
     );
     const allowed = new Set(procedures.map((p) => p.name));
-    const userKey = getReportTempSessionKey(req);
-    if (!allowed.has(name) && !isDetailProcedureAllowed(userKey, name))
+    if (!allowed.has(name))
       return res.status(403).json({ message: 'Procedure not allowed' });
     const rateKey = req.user?.id ?? req.user?.empid ?? req.ip;
     if (isRateLimited(rateKey))
@@ -231,10 +206,6 @@ router.post('/', requireAuth, async (req, res, next) => {
     ]);
     const { row, reportCapabilities, reportMeta, lockCandidates, connection } =
       procResult;
-    const detailProcedure = extractDetailProcedure(reportMeta);
-    if (detailProcedure) {
-      registerDetailProcedure(userKey, detailProcedure);
-    }
     const sessionKey = getReportTempSessionKey(req);
     const useTempSession =
       reportMeta?.drilldown?.mode === 'materialized' &&
