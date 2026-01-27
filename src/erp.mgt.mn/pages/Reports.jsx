@@ -299,10 +299,6 @@ const DEFAULT_REPORT_CAPABILITIES = {
   showTotalRowCount: true,
   supportsApproval: true,
   supportsSnapshot: true,
-  drilldownMode: '',
-  detailTableName: '',
-  detailPkColumn: '',
-  drilldownProcName: '',
 };
 
 function normalizeReportCapabilities(value) {
@@ -318,18 +314,6 @@ function normalizeReportCapabilities(value) {
   }
   if ('supportsSnapshot' in value) {
     normalized.supportsSnapshot = value.supportsSnapshot === false ? false : true;
-  }
-  if ('drilldownMode' in value) {
-    normalized.drilldownMode = normalizeMetaValue(value.drilldownMode);
-  }
-  if ('detailTableName' in value) {
-    normalized.detailTableName = normalizeMetaValue(value.detailTableName);
-  }
-  if ('detailPkColumn' in value) {
-    normalized.detailPkColumn = normalizeMetaValue(value.detailPkColumn);
-  }
-  if ('drilldownProcName' in value) {
-    normalized.drilldownProcName = normalizeMetaValue(value.drilldownProcName);
   }
   return normalized;
 }
@@ -487,26 +471,22 @@ export default function Reports() {
     ? rowGranularityValue.toLowerCase()
     : 'transaction';
   const detailTableName = normalizeMetaValue(
-    reportCapabilities.detailTableName ||
-      reportContext.detailTableName ||
+    reportContext.detailTableName ||
       result?.reportMeta?.detailTableName ||
       '',
   );
   const drilldownProcName = normalizeMetaValue(
-    reportCapabilities.drilldownProcName ||
-      reportContext.drilldownProcName ||
+    reportContext.drilldownProcName ||
       result?.reportMeta?.drilldownProcName ||
       '',
   );
   const drilldownMode = normalizeMetaValue(
-    reportCapabilities.drilldownMode ||
-      reportContext.drilldownMode ||
+    reportContext.drilldownMode ||
       result?.reportMeta?.drilldownMode ||
       '',
   ).toLowerCase();
   const detailPkColumn = normalizeMetaValue(
-    reportCapabilities.detailPkColumn ||
-      reportContext.detailPkColumn ||
+    reportContext.detailPkColumn ||
       result?.reportMeta?.detailPkColumn ||
       '',
   );
@@ -516,9 +496,11 @@ export default function Reports() {
   );
   const isAggregated = rowGranularity === 'aggregated';
   const canDrilldown = isAggregated
-    ? drilldownMode === 'materialized'
-      ? true
-      : Boolean(String(drilldownProcName || '').trim())
+    ? Boolean(
+        String(
+          detailTableName || drilldownProcName || '',
+        ).trim(),
+      )
     : false;
   const drilldownDisabledReason =
     result && !isAggregated
@@ -2552,9 +2534,6 @@ export default function Reports() {
         let detailRows = [];
         let detailFieldLineage = {};
         let detailFieldTypeMap = {};
-        let procRows = [];
-        let procFieldLineage = {};
-        let procFieldTypeMap = {};
         if (drilldownMode === 'materialized') {
           const detailRes = await fetch('/api/tmp_table_rows', {
             method: 'POST',
@@ -2582,7 +2561,12 @@ export default function Reports() {
                 : [];
           detailFieldLineage = detailData.fieldLineage || {};
           detailFieldTypeMap = detailData.fieldTypeMap || {};
-        } else if (drilldownProcName) {
+        }
+
+        let procRows = [];
+        let procFieldLineage = {};
+        let procFieldTypeMap = {};
+        if (drilldownMode !== 'materialized' && drilldownProcName) {
           try {
             const params = await buildDrilldownParams(
               drilldownProcName,
