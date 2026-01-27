@@ -881,12 +881,14 @@ export async function createBulkEditRequest({
         }
       }
     }
-    const [rows] = await conn.query(
-      `SELECT employment_senior_empid, employment_senior_plan_empid
+    const normalizedEmp = String(empId).trim().toUpperCase();
+    const [supervisorRows] = await conn.query(
+      `SELECT 1
          FROM tbl_employment
-        WHERE employment_emp_id = ?
+        WHERE employment_senior_empid = ?
+           OR employment_senior_plan_empid = ?
         LIMIT 1`,
-      [empId],
+      [normalizedEmp, normalizedEmp],
     );
     const seniorPlan = normalizeSupervisorEmpId(
       rows[0]?.employment_senior_plan_empid,
