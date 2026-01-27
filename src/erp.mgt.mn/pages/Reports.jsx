@@ -2363,6 +2363,7 @@ export default function Reports() {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
+          skipErrorToast: true,
           body: JSON.stringify({
             table: drilldownCapabilities?.detailTempTable,
             pk: drilldownCapabilities?.detailPkColumn || 'id',
@@ -2378,7 +2379,7 @@ export default function Reports() {
         }
         return {
           ok: false,
-          error: data?.error,
+          error: data?.error || (res.status === 410 ? 'REPORT_SESSION_EXPIRED' : undefined),
         };
       } catch {
         return { ok: false };
