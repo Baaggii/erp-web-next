@@ -90,7 +90,7 @@ export default function ReportTable({
   onSnapshotReady,
   enableRowSelection,
   rowGranularity = 'transaction',
-  drilldownReport = null,
+  drilldownEnabled = false,
   onDrilldown,
   drilldownState = {},
   drilldownRowSelection = {},
@@ -131,6 +131,7 @@ export default function ReportTable({
   }, [rows, normalizedExcludedColumns]);
   const rowSelectionEnabled = enableRowSelection === true;
   const isAggregated = rowGranularity === 'aggregated';
+  const canDrilldown = isAggregated && drilldownEnabled;
   const resolvedRowSelection =
     externalRowSelection !== undefined ? externalRowSelection : internalRowSelection;
   const lineageMap = useMemo(
@@ -492,22 +493,21 @@ export default function ReportTable({
 
   const handleRowClick = useCallback(
     (row, rowId) => {
-      if (!isAggregated || !drilldownReport || typeof onDrilldown !== 'function') {
+      if (!canDrilldown || typeof onDrilldown !== 'function') {
         return;
       }
       const rowIds = row?.__row_ids;
       if (!rowIds) return;
       onDrilldown({
-        report: drilldownReport,
         row,
         rowId,
       });
     },
-    [isAggregated, drilldownReport, onDrilldown],
+    [canDrilldown, onDrilldown],
   );
 
   function handleCellClick(col, value, row) {
-    if (isAggregated && drilldownReport) return;
+    if (canDrilldown) return;
     const num = Number(String(value).replace(',', '.'));
     if (!procedure || Number.isNaN(num) || num <= 0) return;
     rowToast(`Procedure: ${procedure}`, 'info');
@@ -974,8 +974,7 @@ export default function ReportTable({
               const rowId = resolveRowId(row, (page - 1) * perPage + idx);
               const tableRow = table.getRowModel().rowsById[rowId];
               const drilldownEntry = drilldownState?.[rowId];
-              const isExpanded =
-                isAggregated && drilldownReport && drilldownEntry?.expanded;
+              const isExpanded = canDrilldown && drilldownEntry?.expanded;
               const detailColumns = drilldownEntry?.columns || [];
               const detailRows = Array.isArray(drilldownEntry?.rows)
                 ? drilldownEntry.rows
@@ -984,11 +983,7 @@ export default function ReportTable({
                 <React.Fragment key={rowId}>
                   <tr
                     onClick={() => handleRowClick(row, rowId)}
-                    style={
-                      isAggregated && drilldownReport
-                        ? { cursor: 'pointer' }
-                        : undefined
-                    }
+                    style={canDrilldown ? { cursor: 'pointer' } : undefined}
                   >
                     <td
                       style={{

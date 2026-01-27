@@ -7314,11 +7314,17 @@ export async function callStoredProcedure(
   options = {},
 ) {
   const conn = await pool.getConnection();
+  let shouldRelease = true;
   try {
     const session =
       options && typeof options === 'object' && options.session
         ? options.session
         : {};
+    const retainConnection =
+      options && typeof options === 'object' && options.retainConnection === true;
+    if (retainConnection) {
+      shouldRelease = false;
+    }
     await applyReportLockSessionVars(conn, session);
     await conn.query('SET @report_capabilities = NULL');
     const callParts = [];
@@ -7394,6 +7400,20 @@ export async function callStoredProcedure(
     );
     const rawCaps = Array.isArray(capRows) ? capRows[0]?.report_capabilities : null;
     const reportCapabilities = normalizeReportCapabilities(rawCaps);
+    let reportMeta = {};
+    if (rawCaps) {
+      try {
+        const parsed = typeof rawCaps === 'string' ? JSON.parse(rawCaps) : rawCaps;
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+          reportMeta = {
+            ...reportMeta,
+            ...parsed,
+          };
+        }
+      } catch {
+        // ignore invalid report capabilities JSON
+      }
+    }
 
     let lockCandidates = [];
     if (session.collectUsedRows) {
@@ -7430,9 +7450,20 @@ export async function callStoredProcedure(
       }
     }
 
-    return { row: first, reportCapabilities, lockCandidates };
+    return {
+      row: first,
+      reportCapabilities,
+      reportMeta,
+      lockCandidates,
+      connection: shouldRelease ? null : conn,
+    };
+  } catch (err) {
+    shouldRelease = true;
+    throw err;
   } finally {
-    conn.release();
+    if (shouldRelease) {
+      conn.release();
+    }
   }
 }
 

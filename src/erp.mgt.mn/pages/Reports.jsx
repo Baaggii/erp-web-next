@@ -330,8 +330,21 @@ export default function Reports() {
     [result?.rows],
   );
   const reportHeaderMap = useHeaderMappings(reportColumns);
-  const rowGranularity = result?.reportMeta?.rowGranularity ?? 'transaction';
-  const drilldownReport = result?.reportMeta?.drilldownReport ?? null;
+  const reportMeta = result?.reportMeta || {};
+  const effectiveReportMeta = useMemo(() => {
+    if (!reportMeta?.drilldown && reportMeta?.drilldownReport) {
+      return {
+        ...reportMeta,
+        drilldown: {
+          fallbackProcedure: reportMeta.drilldownReport,
+        },
+      };
+    }
+    return reportMeta;
+  }, [reportMeta]);
+  const rowGranularity = effectiveReportMeta?.rowGranularity ?? 'transaction';
+  const drilldownCapabilities = effectiveReportMeta?.drilldown ?? null;
+  const drilldownEnabled = Boolean(drilldownCapabilities);
   const bulkUpdateConfig = useMemo(
     () => normalizeBulkUpdateConfig(result?.reportMeta?.bulkUpdateConfig),
     [result?.reportMeta?.bulkUpdateConfig],
@@ -1782,14 +1795,6 @@ export default function Reports() {
         setLockRequestSubmitted(false);
         const reportMeta = {
           ...(data.reportMeta || {}),
-          rowGranularity:
-            data.reportMeta?.rowGranularity ??
-            rows[0]?.__row_granularity ??
-            'transaction',
-          drilldownReport:
-            data.reportMeta?.drilldownReport ??
-            rows[0]?.__drilldown_report ??
-            null,
         };
         setResult({
           name: selectedProc,
@@ -2316,6 +2321,28 @@ export default function Reports() {
     [fetchDrilldownParams, sessionDefaults.companyId],
   );
 
+  const expandRow = useCallback(
+    (rowKey, rows, rowIdsValue) => {
+      const columns = rows.length
+        ? Object.keys(rows[0]).filter((col) => !INTERNAL_COLS.has(col))
+        : [];
+      setDrilldownDetails((prev) => ({
+        ...prev,
+        [rowKey]: {
+          status: 'loaded',
+          error: '',
+          expanded: true,
+          rowIds: rowIdsValue,
+          rows,
+          columns,
+          fieldLineage: {},
+          fieldTypeMap: {},
+        },
+      }));
+    },
+    [setDrilldownDetails],
+  );
+
   const runDetailReport = useCallback(
     async ({ report, rowIds, rowKey }) => {
       if (!report) return;
@@ -2388,9 +2415,77 @@ export default function Reports() {
     [branch, department, buildDrilldownParams, extractErrorMessage],
   );
 
+  const runDetailProcedure = useCallback(
+    async (procedureName, params, rowKey) => {
+      if (!procedureName) return;
+      const rowIdsValue = String(params?.row_ids ?? params?.rowIds ?? '').trim();
+      if (!rowIdsValue) return;
+      await runDetailReport({ report: procedureName, rowIds: rowIdsValue, rowKey });
+    },
+    [runDetailReport],
+  );
+
+  const resolveDrilldown = useCallback(
+    async (row, rowKey) => {
+      const caps = drilldownCapabilities;
+      const rowIdsValue = String(row?.__row_ids ?? '').trim();
+      if (!caps || !rowIdsValue) return;
+      setDrilldownDetails((prev) => ({
+        ...prev,
+        [rowKey]: {
+          ...(prev[rowKey] || {}),
+          status: 'loading',
+          error: '',
+          expanded: true,
+          rowIds: rowIdsValue,
+        },
+      }));
+
+      const ids = rowIdsValue
+        .split(',')
+        .map((id) => id.trim())
+        .filter(Boolean);
+
+      if (caps.mode === 'materialized' && caps.detailTempTable) {
+        try {
+          const res = await fetch('/api/report/tmp-detail', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({
+              table: caps.detailTempTable,
+              pk: caps.detailPkColumn || 'id',
+              ids,
+            }),
+          });
+
+          if (res.ok) {
+            const rows = await res.json();
+            if (rows?.length) {
+              expandRow(rowKey, rows, rowIdsValue);
+              return;
+            }
+          }
+        } catch (err) {
+          console.warn('Materialized drilldown failed, falling back', err);
+        }
+      }
+
+      if (caps.fallbackProcedure) {
+        await runDetailProcedure(
+          caps.fallbackProcedure,
+          { row_ids: rowIdsValue },
+          rowKey,
+        );
+      } else {
+        expandRow(rowKey, [], rowIdsValue);
+      }
+    },
+    [drilldownCapabilities, expandRow, runDetailProcedure],
+  );
+
   const handleDrilldown = useCallback(
-    ({ report, row, rowId }) => {
-      if (!report) return;
+    ({ row, rowId }) => {
       const rowIds = row?.__row_ids;
       if (!rowIds) return;
       setActiveAggregatedRow(row);
@@ -2406,9 +2501,11 @@ export default function Reports() {
       }));
       if (!nextExpanded) return;
       if (existing?.status === 'loaded' && existing?.rowIds === rowIds) return;
-      runDetailReport({ report, rowIds, rowKey: rowId });
+      if (drilldownCapabilities) {
+        resolveDrilldown(row, rowId);
+      }
     },
-    [runDetailReport],
+    [drilldownCapabilities, resolveDrilldown],
   );
 
   const handleDrilldownRowSelectionChange = useCallback((updater) => {
@@ -4154,7 +4251,7 @@ export default function Reports() {
               getRowId={getReportRowId}
               enableRowSelection={!isAggregated}
               rowGranularity={rowGranularity}
-              drilldownReport={drilldownReport}
+              drilldownEnabled={drilldownEnabled}
               onDrilldown={handleDrilldown}
               excludeColumns={INTERNAL_COLS}
               drilldownState={drilldownDetails}
