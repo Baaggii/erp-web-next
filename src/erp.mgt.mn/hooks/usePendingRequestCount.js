@@ -126,7 +126,7 @@ export default function usePendingRequestCount(
     let cancelled = false;
     let socket;
 
-    setEnablePolling(false);
+    setEnablePolling(pollingEnabled);
 
     const applyFromFetch = async () => {
       const value = await fetchCount();
