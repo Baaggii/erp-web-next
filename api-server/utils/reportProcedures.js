@@ -3,6 +3,75 @@ import { listAllowedReports } from '../services/reportAccessConfig.js';
 import { getProcTriggers } from '../services/procTriggers.js';
 import { getEmploymentSession, listReportProcedures } from '../../db/index.js';
 
+const DRILLDOWN_ACCESS_TTL_MS = 15 * 60 * 1000;
+const drilldownAccess = new Map();
+
+function getAccessKey(user, companyId) {
+  const userKey = user?.id ?? user?.empid ?? 'unknown';
+  return `${companyId}:${userKey}`;
+}
+
+function normalizeProcedureNames(value) {
+  if (!value) return [];
+  if (Array.isArray(value)) {
+    return value.flatMap((entry) => normalizeProcedureNames(entry));
+  }
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    return trimmed ? [trimmed] : [];
+  }
+  return [];
+}
+
+export function registerDrilldownProcedures(user, companyId, reportMeta) {
+  if (!user || !companyId || !reportMeta) return;
+  const drilldown = reportMeta?.drilldown;
+  const candidates = [
+    drilldown,
+    drilldown?.fallbackProcedure,
+    drilldown?.procedure,
+    drilldown?.detailProcedure,
+    drilldown?.report,
+    reportMeta?.drilldownReport,
+  ];
+  const names = new Set();
+  candidates.forEach((candidate) => {
+    normalizeProcedureNames(candidate).forEach((name) => names.add(name));
+  });
+  if (!names.size) return;
+  const now = Date.now();
+  const key = getAccessKey(user, companyId);
+  const existing = drilldownAccess.get(key) || new Map();
+  names.forEach((name) => {
+    existing.set(name, now + DRILLDOWN_ACCESS_TTL_MS);
+  });
+  drilldownAccess.set(key, existing);
+}
+
+export function isDrilldownAllowed(user, companyId, procedureName) {
+  if (!user || !companyId || !procedureName) return false;
+  const key = getAccessKey(user, companyId);
+  const existing = drilldownAccess.get(key);
+  if (!existing) return false;
+  const now = Date.now();
+  let allowed = false;
+  for (const [name, expiresAt] of existing.entries()) {
+    if (expiresAt <= now) {
+      existing.delete(name);
+      continue;
+    }
+    if (name === procedureName) {
+      allowed = true;
+    }
+  }
+  if (!existing.size) {
+    drilldownAccess.delete(key);
+  } else {
+    drilldownAccess.set(key, existing);
+  }
+  return allowed;
+}
+
 async function getUserContext(user, companyId) {
   const session = await getEmploymentSession(user.empid, companyId);
   return {
