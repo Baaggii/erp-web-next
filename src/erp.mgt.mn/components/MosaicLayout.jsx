@@ -28,6 +28,7 @@ export default function MosaicLayout({ initialLayout }) {
 
   return (
     <Mosaic
+      className="mosaic-blueprint-theme"
       value={layout}
       onChange={setLayout}
       renderTile={(id, path) => {
