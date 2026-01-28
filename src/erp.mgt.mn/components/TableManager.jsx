@@ -8640,6 +8640,9 @@ const TableManager = forwardRef(function TableManager({
           setActiveTemporaryDraftId(null);
           setForceResolvePendingDrafts(false);
           resetWorkflowState();
+          if (supportsTemporary && showReviewActions) {
+            setShowTemporaryModal(true);
+          }
         }}
         onSubmit={handleSubmit}
         onSaveTemporary={temporarySaveEnabled ? handleSaveTemporary : null}
