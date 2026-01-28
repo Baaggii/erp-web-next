@@ -1322,100 +1322,122 @@ export async function detectIncompleteImages(
   companyId = 0,
   signal,
 ) {
-  const { baseDir } = await getDirs(companyId);
+  const { baseDir, baseRoot } = await getDirs(companyId);
   const codes = await fetchTxnCodes();
   let results = [];
   const skipped = [];
-  let dirs;
   const offset = (page - 1) * perPage;
   let count = 0;
   let hasMore = false;
   let totalFiles = 0;
   let incompleteFound = 0;
   const folders = new Set();
-  try {
-    dirs = await fs.readdir(baseDir, { withFileTypes: true });
-  } catch {
-    return { list: results, hasMore, summary: { totalFiles: 0, folders: [], incompleteFound: 0, processed: 0 } };
+  const scanRoots = [];
+  const rootCandidates = [baseDir, baseRoot];
+  for (const root of rootCandidates) {
+    if (!root) continue;
+    try {
+      const stat = await fs.stat(root);
+      if (stat.isDirectory()) {
+        scanRoots.push(root);
+      }
+    } catch {
+      // ignore missing roots
+    }
+  }
+  const uniqueRoots = Array.from(new Set(scanRoots));
+  if (uniqueRoots.length === 0) {
+    return {
+      list: results,
+      hasMore,
+      summary: { totalFiles: 0, folders: [], incompleteFound: 0, processed: 0 },
+    };
   }
 
-  for (const entry of dirs) {
-    signal?.throwIfAborted();
-    if (!entry.isDirectory() || !entry.name.startsWith('transactions_')) continue;
-    const dirPath = path.join(baseDir, entry.name);
-    let files;
+  for (const scanRoot of uniqueRoots) {
+    let dirs;
     try {
-      files = await fs.readdir(dirPath);
+      dirs = await fs.readdir(scanRoot, { withFileTypes: true });
     } catch {
       continue;
     }
-    folders.add(entry.name);
-    totalFiles += files.length;
-    for (const f of files) {
+    for (const entry of dirs) {
       signal?.throwIfAborted();
-      const ext = path.extname(f);
-      const base = path.basename(f, ext);
-      const filePath = path.join(dirPath, f);
-      let unique = '';
-      let suffix = '';
-      let found;
-      const save = parseSaveName(base);
-      let suffixMatch = null;
-      if (save) {
-        ({ unique } = save);
-        suffix = `_${save.ts}_${save.rand}`;
-        if (!isTemporaryGeneratedName(base) && hasTxnCode(base, unique, codes)) {
-          skipped.push({
-            currentName: f,
-            newName: f,
-            folder: entry.name,
-            folderDisplay: '/' + entry.name,
-            currentPath: filePath,
-            reason: 'Contains transaction codes',
-          });
-          continue;
-        }
-        found = await findTxnByParts(
-          save.inv,
-          save.sp,
-          save.transType,
-          Number(save.ts),
-          companyId,
-        );
-      } else {
-        suffixMatch = parseSaveSuffix(base);
-        if (suffixMatch) {
-          suffix = suffixMatch.suffix;
-        }
-        const parsed = parseFileUnique(base);
-        unique = parsed.unique;
-        if (!suffix && parsed.suffix) {
-          suffix = parsed.suffix;
-        }
-        if (!unique) {
-          skipped.push({
-            currentName: f,
-            newName: f,
-            folder: entry.name,
-            folderDisplay: '/' + entry.name,
-            currentPath: filePath,
-            reason: 'No unique identifier',
-          });
-          continue;
-        }
-        if (!isTemporaryGeneratedName(base) && hasTxnCode(base, unique, codes)) {
-          skipped.push({
-            currentName: f,
-            newName: f,
-            folder: entry.name,
-            folderDisplay: '/' + entry.name,
-            currentPath: filePath,
-            reason: 'Contains transaction codes',
-          });
-          continue;
-        }
-        found = await findTxnByUniqueId(unique, companyId);
+      if (!entry.isDirectory() || !entry.name.startsWith('transactions_')) continue;
+      const dirPath = path.join(scanRoot, entry.name);
+      let files;
+      try {
+        files = await fs.readdir(dirPath);
+      } catch {
+        continue;
       }
+      folders.add(entry.name);
+      totalFiles += files.length;
+      for (const f of files) {
+        signal?.throwIfAborted();
+        const ext = path.extname(f);
+        const base = path.basename(f, ext);
+        const filePath = path.join(dirPath, f);
+        let unique = '';
+        let suffix = '';
+        let found;
+        const save = parseSaveName(base);
+        let suffixMatch = null;
+        if (save) {
+          ({ unique } = save);
+          suffix = `_${save.ts}_${save.rand}`;
+          if (!isTemporaryGeneratedName(base) && hasTxnCode(base, unique, codes)) {
+            skipped.push({
+              currentName: f,
+              newName: f,
+              folder: entry.name,
+              folderDisplay: '/' + entry.name,
+              currentPath: filePath,
+              reason: 'Contains transaction codes',
+            });
+            continue;
+          }
+          found = await findTxnByParts(
+            save.inv,
+            save.sp,
+            save.transType,
+            Number(save.ts),
+            companyId,
+          );
+        } else {
+          suffixMatch = parseSaveSuffix(base);
+          if (suffixMatch) {
+            suffix = suffixMatch.suffix;
+          }
+          const parsed = parseFileUnique(base);
+          unique = parsed.unique;
+          if (!suffix && parsed.suffix) {
+            suffix = parsed.suffix;
+          }
+          if (!unique) {
+            skipped.push({
+              currentName: f,
+              newName: f,
+              folder: entry.name,
+              folderDisplay: '/' + entry.name,
+              currentPath: filePath,
+              reason: 'No unique identifier',
+            });
+            continue;
+          }
+          if (!isTemporaryGeneratedName(base) && hasTxnCode(base, unique, codes)) {
+            skipped.push({
+              currentName: f,
+              newName: f,
+              folder: entry.name,
+              folderDisplay: '/' + entry.name,
+              currentPath: filePath,
+              reason: 'Contains transaction codes',
+            });
+            continue;
+          }
+          found = await findTxnByUniqueId(unique, companyId);
+        }
       if (!found) {
         const rowIdPrefix = extractRowIdPrefix(base);
         if (rowIdPrefix) {
@@ -1567,6 +1589,8 @@ export async function detectIncompleteImages(
         hasMore = true;
         break;
       }
+    }
+      if (hasMore) break;
     }
     if (hasMore) break;
   }
