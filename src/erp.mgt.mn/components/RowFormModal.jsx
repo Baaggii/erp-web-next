@@ -234,7 +234,7 @@ const RowFormModal = function RowFormModal({
   }, []);
 
   renderCount.current++;
-  if (renderCount.current > 10 && !warned.current) {
+  if (window.erpDebug && renderCount.current > 10 && !warned.current) {
     console.warn(`⚠️ Excessive renders: RowFormModal ${renderCount.current}`);
     warned.current = true;
   }
