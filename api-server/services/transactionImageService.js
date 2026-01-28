@@ -1398,8 +1398,9 @@ export async function detectIncompleteImages(
       const { row, configs, numField, tempPromoted } = found;
       const promotedRecordId = found?.promotedRecordId ?? null;
 
-      const matchingConfigs = pickMatchingConfigs(configs, row);
-      let configNames = matchingConfigs.map((match) => match.name).filter(Boolean);
+      const cfgEntry = pickConfigEntry(configs, row);
+      const cfg = cfgEntry.config;
+      let configNames = cfgEntry.name ? [cfgEntry.name] : [];
       let newBase = '';
       let folderRaw = '';
       if (tempPromoted) {
@@ -1427,20 +1428,16 @@ export async function detectIncompleteImages(
           getCase(row, 'UITransType') ||
           getCase(row, 'UITransTypeName') ||
           getCase(row, 'transtype');
-        if (matchingConfigs.length > 0) {
-          for (const match of matchingConfigs) {
-            const cfg = match.config;
-            if (!cfg?.imagenameField?.length) continue;
-            newBase = buildNameFromRow(row, cfg.imagenameField);
-            if (newBase) {
-              configNames = [match.name].filter(Boolean);
-              if (tType && cfg.transactionTypeValue) {
-                folderRaw = `${slugify(String(tType))}/${slugify(String(cfg.transactionTypeValue))}`;
-              } else {
-                folderRaw = buildFolderName(row, cfg?.imageFolder || entry.name);
-              }
-              break;
-            }
+        if (
+          cfg?.imagenameField?.length &&
+          tType &&
+          cfg.transactionTypeValue &&
+          cfg.transactionTypeField &&
+          String(getCase(row, cfg.transactionTypeField)) === String(cfg.transactionTypeValue)
+        ) {
+          newBase = buildNameFromRow(row, cfg.imagenameField);
+          if (newBase) {
+            folderRaw = `${slugify(String(tType))}/${slugify(String(cfg.transactionTypeValue))}`;
           }
         }
         if (!newBase) {
@@ -1467,12 +1464,12 @@ export async function detectIncompleteImages(
           if (tType) partsArr.push(tType);
           if (partsArr.length) {
             newBase = sanitizeName(partsArr.join('_'));
-            folderRaw = folderRaw || buildFolderName(row, entry.name);
+            folderRaw = folderRaw || buildFolderName(row, cfg?.imageFolder || entry.name);
           }
         }
         if (!newBase && numField) {
           newBase = sanitizeName(String(row[numField]));
-          folderRaw = buildFolderName(row, entry.name);
+          folderRaw = buildFolderName(row, cfg?.imageFolder || entry.name);
         }
       }
       if (!newBase) {
