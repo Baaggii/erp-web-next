@@ -99,7 +99,6 @@ export default function ImageManagement() {
   const [folderFiles, setFolderFiles] = useState([]);
   const [uploadSummary, setUploadSummary] = useState(null);
   const [pendingSummary, setPendingSummary] = useState(null);
-  const [scanFolders, setScanFolders] = useState([]);
   const [pageSize, setPageSize] = useState(200);
   const detectAbortRef = useRef();
   const scanCancelRef = useRef(false);
@@ -646,7 +645,6 @@ export default function ImageManagement() {
     const controller = new AbortController();
     detectAbortRef.current = controller;
     setActiveOp('detect');
-    setScanFolders([]);
     try {
       const res = await fetch(
         `/api/transaction_images/detect_incomplete?page=${p}&pageSize=${pageSize}${company != null ? `&companyId=${encodeURIComponent(company)}` : ''}`,
@@ -684,7 +682,6 @@ export default function ImageManagement() {
         hostIgnoredRef.current = miss;
         setHostIgnoredPage(1);
         setPendingSummary(data.summary || null);
-        setScanFolders(Array.isArray(data.summary?.folders) ? data.summary.folders : []);
         setHasMore(!!data.hasMore);
         setSelected([]);
         setHostIgnoredSel([]);
@@ -707,7 +704,6 @@ export default function ImageManagement() {
         hostIgnoredRef.current = [];
         setHostIgnoredPage(1);
         setPendingSummary(null);
-        setScanFolders([]);
         setHasMore(false);
         persistAll({ uploads: uploadsRef.current, ignored: ignoredRef.current, folderName, pending: [], hostIgnored: [] });
       }
@@ -720,7 +716,6 @@ export default function ImageManagement() {
         hostIgnoredRef.current = [];
         setHostIgnoredPage(1);
         setPendingSummary(null);
-        setScanFolders([]);
         setHasMore(false);
         persistAll({ uploads: uploadsRef.current, ignored: ignoredRef.current, folderName, pending: [], hostIgnored: [] });
       }
