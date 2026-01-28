@@ -440,12 +440,21 @@ function stripUploaderTag(value = '') {
   return String(value).replace(/__u[^_]+__$/i, '');
 }
 
+function extractPostedTemporaryPrefix(base = '') {
+  const match = String(base).match(
+    /^(tmp[_-]\d{13}(?:__[a-z0-9]+)?)(?:__u[a-z0-9]+__)?_+\d{13}_[a-z0-9]{6}$/i,
+  );
+  return match ? match[1] : '';
+}
+
 function isTemporaryGeneratedName(base = '') {
   const value = String(base);
   return /^tmp[_-]/i.test(value) || /__u[a-z0-9]+__/i.test(value);
 }
 
 function extractImagePrefix(base) {
+  const postedTemp = extractPostedTemporaryPrefix(base);
+  if (postedTemp) return postedTemp;
   const save = parseSaveName(base);
   if (!save) return '';
   return stripUploaderTag(save.pre || '');
