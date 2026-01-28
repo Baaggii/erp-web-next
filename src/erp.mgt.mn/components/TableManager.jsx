@@ -617,6 +617,34 @@ const TableManager = forwardRef(function TableManager({
   const [temporaryValuePreview, setTemporaryValuePreview] = useState(null);
   const [temporaryImagesEntry, setTemporaryImagesEntry] = useState(null);
   const [temporaryUploadEntry, setTemporaryUploadEntry] = useState(null);
+  const [rowFormKey, setRowFormKey] = useState(0);
+  const rateLimitFallbackMessage = t(
+    'rateLimitExceeded',
+    'Too many requests, please try again later',
+  );
+  const getRateLimitMessage = useCallback(
+    async (res, fallbackMessage = rateLimitFallbackMessage) => {
+      if (res.status !== 429) return null;
+      let message = fallbackMessage;
+      try {
+        const data = await res.clone().json();
+        if (data?.message) {
+          message = data.message;
+        }
+      } catch {
+        try {
+          const text = await res.clone().text();
+          if (text) {
+            message = text;
+          }
+        } catch {
+          // ignore
+        }
+      }
+      return message;
+    },
+    [rateLimitFallbackMessage],
+  );
   const pendingRequests = usePendingRequests();
   const markTemporaryScopeSeen = pendingRequests?.temporary?.markScopeSeen;
   const temporaryHasNew = Boolean(pendingRequests?.temporary?.hasNew);
@@ -1066,6 +1094,11 @@ const TableManager = forwardRef(function TableManager({
           credentials: 'include',
         },
       );
+      const rateLimitMessage = await getRateLimitMessage(res);
+      if (rateLimitMessage) {
+        addToast(rateLimitMessage, 'warning');
+        return;
+      }
       if (!res.ok) throw new Error('failed');
       const data = await res.json();
       setTemporarySummary(data);
@@ -1107,6 +1140,8 @@ const TableManager = forwardRef(function TableManager({
     formConfig?.configName,
     formConfig?.transactionTypeField,
     typeFilter,
+    addToast,
+    getRateLimitMessage,
   ]);
 
   const validCols = useMemo(() => new Set(columnMeta.map((c) => c.name)), [columnMeta]);
@@ -4454,6 +4489,11 @@ const TableManager = forwardRef(function TableManager({
           `${API_BASE}/transaction_temporaries/${encodeURIComponent(id)}`,
           { credentials: 'include' },
         );
+        const rateLimitMessage = await getRateLimitMessage(res);
+        if (rateLimitMessage) {
+          addToast(rateLimitMessage, 'warning');
+          return null;
+        }
         if (!res.ok) return null;
         const data = await res.json().catch(() => ({}));
         return data?.row || data || null;
@@ -4755,6 +4795,12 @@ const TableManager = forwardRef(function TableManager({
           credentials: 'include',
           body: JSON.stringify(body),
         });
+        const rateLimitMessage = await getRateLimitMessage(res);
+        if (rateLimitMessage) {
+          addToast(rateLimitMessage, 'warning');
+          failureCount += 1;
+          break;
+        }
         if (!res.ok) {
           let errorMessage = t('temporary_save_failed', 'Failed to save temporary draft');
           try {
@@ -5159,6 +5205,12 @@ const TableManager = forwardRef(function TableManager({
           `${API_BASE}/transaction_temporaries?${searchParams.toString()}`,
           { credentials: 'include' },
         );
+        const rateLimitMessage = await getRateLimitMessage(res);
+        if (rateLimitMessage) {
+          const err = new Error(rateLimitMessage);
+          err.rateLimited = true;
+          throw err;
+        }
         if (!res.ok) throw new Error('Failed to load temporaries');
         const data = await res.json().catch(() => ({}));
         const rows = Array.isArray(data.rows) ? data.rows : [];
@@ -5206,6 +5258,10 @@ const TableManager = forwardRef(function TableManager({
         }
       } catch (err) {
         console.error('Failed to load temporaries', err);
+        if (err?.rateLimited) {
+          addToast(err.message || rateLimitFallbackMessage, 'warning');
+          return;
+        }
         setTemporaryFocusId(null);
         setTemporaryList([]);
       } finally {
@@ -5224,6 +5280,9 @@ const TableManager = forwardRef(function TableManager({
       formConfig?.configName,
       formConfig?.transactionTypeField,
       typeFilter,
+      addToast,
+      getRateLimitMessage,
+      rateLimitFallbackMessage,
     ],
   );
 
@@ -5276,6 +5335,12 @@ const TableManager = forwardRef(function TableManager({
           `${API_BASE}/transaction_temporaries/${encodeURIComponent(id)}/chain`,
           { credentials: 'include' },
         );
+        const rateLimitMessage = await getRateLimitMessage(res);
+        if (rateLimitMessage) {
+          addToast(rateLimitMessage, 'warning');
+          setTemporaryChainModalError(rateLimitMessage);
+          return;
+        }
         if (!res.ok) {
           let message = t(
             'temporary_chain_load_failed',
@@ -5313,7 +5378,7 @@ const TableManager = forwardRef(function TableManager({
         setTemporaryChainModalLoading(false);
       }
     },
-    [addToast, t],
+    [addToast, getRateLimitMessage, t],
   );
 
   async function cleanupActiveTemporaryDraft({ refreshList = true } = {}) {
@@ -5325,6 +5390,11 @@ const TableManager = forwardRef(function TableManager({
         `${API_BASE}/transaction_temporaries/${encodeURIComponent(targetId)}`,
         { method: 'DELETE', credentials: 'include' },
       );
+      const rateLimitMessage = await getRateLimitMessage(res);
+      if (rateLimitMessage) {
+        addToast(rateLimitMessage, 'warning');
+        shouldUpdateList = false;
+      }
       if (!res.ok && res.status !== 404) {
         if (res.status === 409) {
           console.warn('Temporary submission was not rejected, skipping cleanup');
@@ -5491,6 +5561,11 @@ const TableManager = forwardRef(function TableManager({
           body: requestBody ? JSON.stringify(requestBody) : undefined,
         },
       );
+      const rateLimitMessage = await getRateLimitMessage(res);
+      if (rateLimitMessage) {
+        addToast(rateLimitMessage, 'warning');
+        return false;
+      }
       let data = null;
       try {
         data = await res.json();
@@ -5796,6 +5871,11 @@ const TableManager = forwardRef(function TableManager({
           body: JSON.stringify({ notes }),
         },
       );
+      const rateLimitMessage = await getRateLimitMessage(res);
+      if (rateLimitMessage) {
+        addToast(rateLimitMessage, 'warning');
+        return;
+      }
       if (!res.ok) throw new Error('Failed to reject');
       addToast(t('temporary_rejected', 'Temporary rejected'), 'success');
       setTemporaryList((prev) => {
@@ -8545,10 +8625,11 @@ const TableManager = forwardRef(function TableManager({
         </>
       )}
       <RowFormModal
-        key={`rowform-${table}`}
+        key={`rowform-${table}-${rowFormKey}`}
         visible={showForm}
         useGrid
         onCancel={() => {
+          setRowFormKey((key) => key + 1);
           setShowForm(false);
           setEditing(null);
           setIsAdding(false);
@@ -8760,7 +8841,7 @@ const TableManager = forwardRef(function TableManager({
         currentConfig={formConfig}
         currentConfigName={formName}
         forceTemporary
-        onUploaded={(name) => {
+        onUploaded={async (name) => {
           if (!temporaryUploadEntry) return;
           const targetId = temporaryUploadEntry.id;
           if (targetId) {
@@ -8776,15 +8857,25 @@ const TableManager = forwardRef(function TableManager({
                   : entry,
               ),
             );
-            fetch(
-              `${API_BASE}/transaction_temporaries/${encodeURIComponent(targetId)}/image`,
-              {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
-                credentials: 'include',
-                body: JSON.stringify({ imageName: name }),
-              },
-            ).catch((err) => {
+            try {
+              const res = await fetch(
+                `${API_BASE}/transaction_temporaries/${encodeURIComponent(targetId)}/image`,
+                {
+                  method: 'PATCH',
+                  headers: { 'Content-Type': 'application/json' },
+                  credentials: 'include',
+                  body: JSON.stringify({ imageName: name }),
+                },
+              );
+              const rateLimitMessage = await getRateLimitMessage(res);
+              if (rateLimitMessage) {
+                addToast(rateLimitMessage, 'warning');
+                return;
+              }
+              if (!res.ok) {
+                throw new Error('Failed to persist temporary image name');
+              }
+            } catch (err) {
               console.error('Failed to persist temporary image name', err);
               addToast(
                 t(
@@ -8793,7 +8884,7 @@ const TableManager = forwardRef(function TableManager({
                 ),
                 'error',
               );
-            });
+            }
           }
           setTemporaryUploadEntry((prev) =>
             prev

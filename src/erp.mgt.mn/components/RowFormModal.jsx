@@ -4658,8 +4658,14 @@ const RowFormModal = function RowFormModal({
   const processingText = temporaryLocked
     ? t('saving_temporary_progress', 'Saving temporary submission...')
     : t('posting_transaction_progress', 'Posting transaction...');
+  const resetProcessing = () => {
+    setSubmitLocked(false);
+    setTemporaryLocked(false);
+  };
   const handleClose = () => {
-    if (formProcessing) return;
+    if (formProcessing) {
+      resetProcessing();
+    }
     onCancel();
   };
   const markSubmitIntent = (intent) => {
@@ -4864,7 +4870,7 @@ const RowFormModal = function RowFormModal({
             )}
             <button
               type="button"
-              onClick={onCancel}
+              onClick={handleClose}
               className="px-3 py-1 bg-gray-200 rounded"
             >
               {t('cancel', 'Cancel')}
