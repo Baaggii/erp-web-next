@@ -31,20 +31,9 @@ const authenticatedRouteLimiter = rateLimit({
   keyGenerator: (req) => req.user?.companyId?.toString() || req.ip,
 });
 
-function resolveCompanyId(req) {
-  const raw = req.query?.companyId;
-  if (raw !== undefined && raw !== null && String(raw).trim() !== '') {
-    const parsed = Number(raw);
-    if (Number.isFinite(parsed)) {
-      return parsed;
-    }
-  }
-  return req.user?.companyId || 0;
-}
-
 const storage = multer.diskStorage({
   destination(req, file, cb) {
-    const companyId = resolveCompanyId(req);
+    const companyId = req.user?.companyId || 0;
     const dest = path.join('uploads', String(companyId), 'tmp');
     fs.mkdirSync(dest, { recursive: true });
     cb(null, dest);
@@ -67,13 +56,12 @@ function toAbsolute(req, list) {
 // Cleanup old images before the dynamic routes so /cleanup isn't captured
 router.delete('/cleanup/:days?', requireAuth, authenticatedRouteLimiter, async (req, res, next) => {
   try {
-    const companyId = resolveCompanyId(req);
     let days = parseInt(req.params.days || req.query.days, 10);
     if (!days || Number.isNaN(days)) {
-      const { config: cfg } = await getGeneralConfig(companyId);
+      const { config: cfg } = await getGeneralConfig(req.user.companyId);
       days = cfg.images?.cleanupDays || 30;
     }
-    const removed = await cleanupOldImages(days, companyId);
+    const removed = await cleanupOldImages(days, req.user.companyId);
     res.json({ removed });
   } catch (err) {
     next(err);
@@ -84,13 +72,12 @@ router.get('/detect_incomplete', requireAuth, authenticatedRouteLimiter, async (
   const controller = new AbortController();
   req.on('close', () => controller.abort());
   try {
-    const companyId = resolveCompanyId(req);
     const page = parseInt(req.query.page, 10) || 1;
     const perPage = parseInt(req.query.pageSize, 10) || 100;
     const data = await detectIncompleteImages(
       page,
       perPage,
-      companyId,
+      req.user.companyId,
       controller.signal,
     );
     res.json(data);
@@ -101,9 +88,8 @@ router.get('/detect_incomplete', requireAuth, authenticatedRouteLimiter, async (
 
 router.post('/fix_incomplete', requireAuth, authenticatedRouteLimiter, async (req, res, next) => {
   try {
-    const companyId = resolveCompanyId(req);
     const arr = Array.isArray(req.body?.list) ? req.body.list : [];
-    const fixed = await fixIncompleteImages(arr, companyId);
+    const fixed = await fixIncompleteImages(arr, req.user.companyId);
     res.json({ fixed });
   } catch (err) {
     next(err);
@@ -125,7 +111,6 @@ router.post(
     const controller = new AbortController();
     req.on('close', () => controller.abort());
     try {
-      const companyId = resolveCompanyId(req);
       let metaRaw = req.body?.meta || [];
       if (!Array.isArray(metaRaw)) metaRaw = [metaRaw];
       const files = Array.isArray(req.files) ? req.files : [];
@@ -151,7 +136,7 @@ router.post(
       const { list, summary } = await checkUploadedImages(
         withMeta,
         names,
-        companyId,
+        req.user.companyId,
         controller.signal,
       );
       res.json({ list, summary });
@@ -165,11 +150,10 @@ router.post('/upload_scan', requireAuth, authenticatedRouteLimiter, async (req, 
   const controller = new AbortController();
   req.on('close', () => controller.abort());
   try {
-    const companyId = resolveCompanyId(req);
     const names = Array.isArray(req.body?.names) ? req.body.names : [];
     const { list, skipped, summary } = await detectIncompleteFromNames(
       names,
-      companyId,
+      req.user.companyId,
       controller.signal,
     );
     res.json({ list, skipped, summary });
@@ -182,11 +166,10 @@ router.post('/upload_commit', requireAuth, authenticatedRouteLimiter, async (req
   const controller = new AbortController();
   req.on('close', () => controller.abort());
   try {
-    const companyId = resolveCompanyId(req);
     const arr = Array.isArray(req.body?.list) ? req.body.list : [];
     const uploaded = await commitUploadedImages(
       arr,
-      companyId,
+      req.user.companyId,
       controller.signal,
     );
     res.json({ uploaded });
@@ -197,10 +180,9 @@ router.post('/upload_commit', requireAuth, authenticatedRouteLimiter, async (req
 
 router.get('/search/:value', requireAuth, authenticatedRouteLimiter, async (req, res, next) => {
   try {
-    const companyId = resolveCompanyId(req);
     const page = parseInt(req.query.page, 10) || 1;
     const perPage = parseInt(req.query.pageSize, 10) || 20;
-    const { files, total } = await searchImages(req.params.value, page, perPage, companyId);
+    const { files, total } = await searchImages(req.params.value, page, perPage, req.user.companyId);
     res.json({ files: toAbsolute(req, files), total, page, perPage });
   } catch (err) {
     next(err);
@@ -209,12 +191,11 @@ router.get('/search/:value', requireAuth, authenticatedRouteLimiter, async (req,
 
 router.get('/thumbnail', requireAuth, authenticatedRouteLimiter, async (req, res, next) => {
   try {
-    const companyId = resolveCompanyId(req);
     const savePath = req.query.path || req.query.savePath || '';
     if (!savePath) {
       return res.status(400).json({ message: 'path required' });
     }
-    const thumbPath = await getThumbnailPath(savePath, companyId);
+    const thumbPath = await getThumbnailPath(savePath, req.user.companyId);
     if (!thumbPath) {
       return res.status(404).json({ message: 'not found' });
     }
@@ -232,7 +213,6 @@ router.post(
   upload.array('images'),
   async (req, res, next) => {
   try {
-    const companyId = resolveCompanyId(req);
     if (!req.files || req.files.length === 0) {
       return res.status(400).json({ message: 'no files' });
     }
@@ -241,7 +221,7 @@ router.post(
       req.params.name,
       req.files,
       req.query.folder,
-      companyId,
+      req.user.companyId,
       req.user.empid ?? req.user.id ?? null,
     );
     const absolute = toAbsolute(req, files);
@@ -258,12 +238,11 @@ router.post(
 
 router.get('/:table/:name', requireAuth, authenticatedRouteLimiter, async (req, res, next) => {
   try {
-    const companyId = resolveCompanyId(req);
     const { files, conversionIssues } = await listImages(
       req.params.table,
       req.params.name,
       req.query.folder,
-      companyId,
+      req.user.companyId,
     );
     const absolute = toAbsolute(req, files);
     if (conversionIssues?.length) {
@@ -282,13 +261,12 @@ router.post(
   authenticatedRouteLimiter,
   async (req, res, next) => {
   try {
-    const companyId = resolveCompanyId(req);
     const files = await renameImages(
       req.params.table,
       req.params.oldName,
       req.params.newName,
       req.query.folder,
-      companyId,
+      req.user.companyId,
       req.query.sourceFolder || null,
     );
     res.json(toAbsolute(req, files));
@@ -304,12 +282,11 @@ router.delete(
   authenticatedRouteLimiter,
   async (req, res, next) => {
   try {
-    const companyId = resolveCompanyId(req);
     const ok = await deleteImage(
       req.params.table,
       req.params.file,
       req.query.folder,
-      companyId,
+      req.user.companyId,
       req.user.empid ?? req.user.id ?? null,
     );
     res.json({ ok });
@@ -329,7 +306,7 @@ router.delete(
       req.params.table,
       req.params.name,
       req.query.folder,
-      resolveCompanyId(req),
+      req.user.companyId,
     );
     res.json({ deleted: count });
   } catch (err) {
