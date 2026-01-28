@@ -7,6 +7,7 @@ let wired = false;
 const listeners = new Set();
 const socketPath = import.meta.env.VITE_SOCKET_PATH || '/api/socket.io';
 const SOCKET_AVAILABILITY_TTL_MS = 60_000;
+const SOCKET_AVAILABILITY_TIMEOUT_MS = 4_000;
 let socketAvailability = null;
 let socketAvailabilityCheckedAt = 0;
 let socketAvailabilityPromise = null;
@@ -46,14 +47,23 @@ async function checkSocketAvailability() {
   if (socketAvailabilityPromise) return socketAvailabilityPromise;
   const probeUrl = getSocketProbeUrl();
   if (!probeUrl) return false;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), SOCKET_AVAILABILITY_TIMEOUT_MS);
   socketAvailabilityPromise = fetch(probeUrl, {
     method: 'GET',
     cache: 'no-store',
     credentials: 'include',
+    signal: controller.signal,
+    skipLoader: true,
   })
-    .then((response) => response?.ok === true)
+    .then(async (response) => {
+      if (!response?.ok) return false;
+      const text = await response.text().catch(() => '');
+      return /^0\{"sid":/i.test(text.trim());
+    })
     .catch(() => false)
     .then((available) => {
+      clearTimeout(timeout);
       socketAvailability = available;
       socketAvailabilityCheckedAt = Date.now();
       socketAvailabilityPromise = null;
