@@ -46,10 +46,15 @@ async function checkSocketAvailability() {
   if (socketAvailabilityPromise) return socketAvailabilityPromise;
   const probeUrl = getSocketProbeUrl();
   if (!probeUrl) return false;
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => controller.abort(), 4000);
   socketAvailabilityPromise = fetch(probeUrl, {
     method: 'GET',
     cache: 'no-store',
     credentials: 'include',
+    signal: controller.signal,
+    skipLoader: true,
+    skipErrorToast: true,
   })
     .then((response) => response?.ok === true)
     .catch(() => false)
@@ -58,6 +63,9 @@ async function checkSocketAvailability() {
       socketAvailabilityCheckedAt = Date.now();
       socketAvailabilityPromise = null;
       return available;
+    })
+    .finally(() => {
+      window.clearTimeout(timeoutId);
     });
   return socketAvailabilityPromise;
 }
