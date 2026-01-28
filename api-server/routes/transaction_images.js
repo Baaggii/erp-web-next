@@ -31,14 +31,6 @@ const authenticatedRouteLimiter = rateLimit({
   keyGenerator: (req) => req.user?.companyId?.toString() || req.ip,
 });
 
-const getCompanyId = (req) => {
-  const raw = req.query.companyId ?? req.user?.companyId ?? 0;
-  const parsed = Number(raw);
-  if (Number.isFinite(parsed)) return parsed;
-  const fallback = Number(req.user?.companyId ?? 0);
-  return Number.isFinite(fallback) ? fallback : 0;
-};
-
 const storage = multer.diskStorage({
   destination(req, file, cb) {
     const companyId = req.user?.companyId || 0;
@@ -65,12 +57,11 @@ function toAbsolute(req, list) {
 router.delete('/cleanup/:days?', requireAuth, authenticatedRouteLimiter, async (req, res, next) => {
   try {
     let days = parseInt(req.params.days || req.query.days, 10);
-    const companyId = getCompanyId(req);
     if (!days || Number.isNaN(days)) {
-      const { config: cfg } = await getGeneralConfig(companyId);
+      const { config: cfg } = await getGeneralConfig(req.user.companyId);
       days = cfg.images?.cleanupDays || 30;
     }
-    const removed = await cleanupOldImages(days, companyId);
+    const removed = await cleanupOldImages(days, req.user.companyId);
     res.json({ removed });
   } catch (err) {
     next(err);
@@ -83,11 +74,10 @@ router.get('/detect_incomplete', requireAuth, authenticatedRouteLimiter, async (
   try {
     const page = parseInt(req.query.page, 10) || 1;
     const perPage = parseInt(req.query.pageSize, 10) || 100;
-    const companyId = getCompanyId(req);
     const data = await detectIncompleteImages(
       page,
       perPage,
-      companyId,
+      req.user.companyId,
       controller.signal,
     );
     res.json(data);
@@ -98,9 +88,8 @@ router.get('/detect_incomplete', requireAuth, authenticatedRouteLimiter, async (
 
 router.post('/fix_incomplete', requireAuth, authenticatedRouteLimiter, async (req, res, next) => {
   try {
-    const companyId = getCompanyId(req);
     const arr = Array.isArray(req.body?.list) ? req.body.list : [];
-    const fixed = await fixIncompleteImages(arr, companyId);
+    const fixed = await fixIncompleteImages(arr, req.user.companyId);
     res.json({ fixed });
   } catch (err) {
     next(err);
@@ -122,7 +111,6 @@ router.post(
     const controller = new AbortController();
     req.on('close', () => controller.abort());
     try {
-      const companyId = getCompanyId(req);
       let metaRaw = req.body?.meta || [];
       if (!Array.isArray(metaRaw)) metaRaw = [metaRaw];
       const files = Array.isArray(req.files) ? req.files : [];
@@ -148,7 +136,7 @@ router.post(
       const { list, summary } = await checkUploadedImages(
         withMeta,
         names,
-        companyId,
+        req.user.companyId,
         controller.signal,
       );
       res.json({ list, summary });
@@ -162,11 +150,10 @@ router.post('/upload_scan', requireAuth, authenticatedRouteLimiter, async (req, 
   const controller = new AbortController();
   req.on('close', () => controller.abort());
   try {
-    const companyId = getCompanyId(req);
     const names = Array.isArray(req.body?.names) ? req.body.names : [];
     const { list, skipped, summary } = await detectIncompleteFromNames(
       names,
-      companyId,
+      req.user.companyId,
       controller.signal,
     );
     res.json({ list, skipped, summary });
@@ -179,11 +166,10 @@ router.post('/upload_commit', requireAuth, authenticatedRouteLimiter, async (req
   const controller = new AbortController();
   req.on('close', () => controller.abort());
   try {
-    const companyId = getCompanyId(req);
     const arr = Array.isArray(req.body?.list) ? req.body.list : [];
     const uploaded = await commitUploadedImages(
       arr,
-      companyId,
+      req.user.companyId,
       controller.signal,
     );
     res.json({ uploaded });
@@ -194,10 +180,9 @@ router.post('/upload_commit', requireAuth, authenticatedRouteLimiter, async (req
 
 router.get('/search/:value', requireAuth, authenticatedRouteLimiter, async (req, res, next) => {
   try {
-    const companyId = getCompanyId(req);
     const page = parseInt(req.query.page, 10) || 1;
     const perPage = parseInt(req.query.pageSize, 10) || 20;
-    const { files, total } = await searchImages(req.params.value, page, perPage, companyId);
+    const { files, total } = await searchImages(req.params.value, page, perPage, req.user.companyId);
     res.json({ files: toAbsolute(req, files), total, page, perPage });
   } catch (err) {
     next(err);
@@ -206,12 +191,11 @@ router.get('/search/:value', requireAuth, authenticatedRouteLimiter, async (req,
 
 router.get('/thumbnail', requireAuth, authenticatedRouteLimiter, async (req, res, next) => {
   try {
-    const companyId = getCompanyId(req);
     const savePath = req.query.path || req.query.savePath || '';
     if (!savePath) {
       return res.status(400).json({ message: 'path required' });
     }
-    const thumbPath = await getThumbnailPath(savePath, companyId);
+    const thumbPath = await getThumbnailPath(savePath, req.user.companyId);
     if (!thumbPath) {
       return res.status(404).json({ message: 'not found' });
     }
