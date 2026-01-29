@@ -41,11 +41,30 @@ function normalizeConfigEntry(entry = {}) {
     rawFilterValue === null || rawFilterValue === undefined
       ? ''
       : String(rawFilterValue).trim();
+  const notificationRole =
+    typeof entry.notificationRole === 'string' && entry.notificationRole.trim()
+      ? entry.notificationRole.trim()
+      : typeof entry.notification_role === 'string' && entry.notification_role.trim()
+      ? entry.notification_role.trim()
+      : '';
+  const notificationDashboardFields = normalizeDisplayFieldList(
+    entry.notificationDashboardFields ?? entry.notification_dashboard_fields,
+  );
+  const notificationEmailFields = normalizeDisplayFieldList(
+    entry.notificationEmailFields ?? entry.notification_email_fields,
+  );
+  const notificationPhoneFields = normalizeDisplayFieldList(
+    entry.notificationPhoneFields ?? entry.notification_phone_fields,
+  );
 
   const normalized = {
     table,
     idField: idField || undefined,
     displayFields,
+    notificationRole,
+    notificationDashboardFields,
+    notificationEmailFields,
+    notificationPhoneFields,
   };
   if (filterColumn) normalized.filterColumn = filterColumn;
   if (filterValue) normalized.filterValue = filterValue;
