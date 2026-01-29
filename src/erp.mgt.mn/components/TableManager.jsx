@@ -1275,7 +1275,7 @@ const TableManager = forwardRef(function TableManager({
         `/api/display_fields?table=${encodeURIComponent(tableName)}${
           idField ? `&idField=${encodeURIComponent(idField)}` : ''
         }`,
-        { credentials: 'include' },
+        { credentials: 'include', skipLoader: true, skipErrorToast: true },
       )
         .then((res) => (res.ok ? res.json() : null))
         .catch(() => null);
@@ -6329,12 +6329,24 @@ const TableManager = forwardRef(function TableManager({
                     : displayCfg?.displayFields || [];
                 const params = new URLSearchParams({ page: 1, perPage: 1 });
                 params.set(idField, key);
-                const res = await fetch(
-                  `/api/tables/${encodeURIComponent(relationConfig.table)}?${params.toString()}`,
-                  { credentials: 'include' },
-                );
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 10000);
+                let res;
+                try {
+                  res = await fetch(
+                    `/api/tables/${encodeURIComponent(relationConfig.table)}?${params.toString()}`,
+                    {
+                      credentials: 'include',
+                      signal: controller.signal,
+                      skipLoader: true,
+                      skipErrorToast: true,
+                    },
+                  );
+                } finally {
+                  clearTimeout(timeoutId);
+                }
                 let fetchedRow = null;
-                if (res.ok) {
+                if (res?.ok) {
                   const json = await res.json().catch(() => ({}));
                   fetchedRow = Array.isArray(json.rows) ? json.rows[0] : null;
                 }
