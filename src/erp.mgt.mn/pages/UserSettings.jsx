@@ -53,6 +53,11 @@ function GeneralSettingsTab() {
   const { userSettings, updateUserSettings } = useAuth();
   const tooltipsEnabled = userSettings.tooltipsEnabled ?? true;
   const notificationSound = userSettings.notificationSound || 'chime';
+  const dashboardNotificationSound =
+    userSettings.dashboardNotificationSound || notificationSound;
+  const notificationVolume = Number.isFinite(Number(userSettings.notificationVolume))
+    ? Math.max(0, Math.min(1, Number(userSettings.notificationVolume)))
+    : 1;
   const soundOptions = getNotificationSoundOptions();
   return (
     <div>
@@ -87,10 +92,58 @@ function GeneralSettingsTab() {
             </select>
           </label>
         </TooltipWrapper>
+        <div style={{ marginTop: '0.5rem' }}>
+          <TooltipWrapper
+            title={t('dashboard_notification_sound', {
+              ns: 'tooltip',
+              defaultValue: 'Choose the sound played for dashboard notifications',
+            })}
+          >
+            <label>
+              {t('dashboard_notification_sound', 'Dashboard sound')}: {' '}
+              <select
+                value={dashboardNotificationSound}
+                onChange={(e) =>
+                  updateUserSettings({ dashboardNotificationSound: e.target.value })
+                }
+              >
+                {soundOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {t(`notification_sound_${option.value}`, option.label)}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </TooltipWrapper>
+        </div>
+        <div style={{ marginTop: '0.5rem' }}>
+          <TooltipWrapper
+            title={t('notification_volume', {
+              ns: 'tooltip',
+              defaultValue: 'Adjust the volume for notification sounds',
+            })}
+          >
+            <label>
+              {t('notification_volume', 'Notification volume')}: {' '}
+              <input
+                type="range"
+                min="0"
+                max="1"
+                step="0.05"
+                value={notificationVolume}
+                onChange={(e) =>
+                  updateUserSettings({ notificationVolume: Number(e.target.value) })
+                }
+                style={{ verticalAlign: 'middle' }}
+              />{' '}
+              <span>{Math.round(notificationVolume * 100)}%</span>
+            </label>
+          </TooltipWrapper>
+        </div>
         {notificationSound !== 'off' && (
           <button
             type="button"
-            onClick={() => playNotificationSound(notificationSound)}
+            onClick={() => playNotificationSound(notificationSound, notificationVolume)}
             style={{
               marginTop: '0.5rem',
               padding: '0.35rem 0.75rem',
