@@ -165,6 +165,18 @@ const RowFormModal = function RowFormModal({
   const procCache = useRef({});
   const submitIntentRef = useRef(null);
   const [tableDisplayFields, setTableDisplayFields] = useState([]);
+  const scrollFocusedFieldIntoView = useCallback(
+    (col) => {
+      if (!visible || inline) return;
+      if (!col && col !== 0) return;
+      const el = inputRefs.current[col] || readonlyRefs.current[col];
+      if (!el || typeof el.scrollIntoView !== 'function') return;
+      requestAnimationFrame(() => {
+        el.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'smooth' });
+      });
+    },
+    [inline, visible],
+  );
   useEffect(() => {
     fetch('/api/display_fields', { credentials: 'include' })
       .then((res) => (res.ok ? res.json() : {}))
@@ -3207,6 +3219,7 @@ const RowFormModal = function RowFormModal({
   }
 
   async function handleFocusField(col) {
+    scrollFocusedFieldIntoView(col);
     showTriggerInfo(col);
     if (guardToastEnabled && col) {
       const lower = String(col).toLowerCase();
