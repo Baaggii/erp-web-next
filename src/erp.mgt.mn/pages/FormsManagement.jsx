@@ -64,6 +64,13 @@ function normalizeFormConfig(info = {}) {
     companyIdFields: toArray(info.companyIdFields),
     dateField: toArray(info.dateField),
     emailField: toArray(info.emailField),
+    notificationCompanyFields: toArray(info.notificationCompanyFields),
+    notificationDepartmentFields: toArray(info.notificationDepartmentFields),
+    notificationBranchFields: toArray(info.notificationBranchFields),
+    notificationEmployeeFields: toArray(info.notificationEmployeeFields),
+    notificationCustomerFields: toArray(info.notificationCustomerFields),
+    notificationEmailFields: toArray(info.notificationEmailFields),
+    notificationPhoneFields: toArray(info.notificationPhoneFields),
     imagenameField: toArray(info.imagenameField),
     imageIdField: toString(info.imageIdField),
     imageFolder: toString(info.imageFolder),
@@ -172,6 +179,7 @@ export default function FormsManagement() {
   const [workplaces, setWorkplaces] = useState([]);
   const [txnTypes, setTxnTypes] = useState([]);
   const [columns, setColumns] = useState([]);
+  const [activeTab, setActiveTab] = useState('general');
   const [tableColumns, setTableColumns] = useState({});
   const [views, setViews] = useState([]);
   const [procedureOptions, setProcedureOptions] = useState([]);
@@ -523,6 +531,7 @@ export default function FormsManagement() {
     }),
     [],
   );
+  const notificationSelectSize = Math.min(6, Math.max(3, columns.length || 3));
 
   function handleSelectExisting(e) {
     const key = e.target.value;
@@ -736,6 +745,11 @@ export default function FormsManagement() {
       set.has(field) ? set.delete(field) : set.add(field);
       return { ...c, [key]: Array.from(set) };
     });
+  }
+
+  function updateFieldList(key, values) {
+    const list = Array.isArray(values) ? values : [];
+    setConfig((c) => ({ ...c, [key]: list }));
   }
 
   async function handleSave() {
@@ -1106,6 +1120,32 @@ export default function FormsManagement() {
   return (
     <div style={{ paddingBottom: '2rem' }}>
       <h2>{t('settings_forms_management', 'Forms Management')}</h2>
+      <div style={{ display: 'flex', borderBottom: '1px solid #ddd', marginBottom: '1rem' }}>
+        {[
+          { key: 'general', label: t('general', 'General') },
+          {
+            key: 'notifications',
+            label: t('notification_configuration', 'Notification configuration'),
+          },
+        ].map((tab) => (
+          <button
+            key={tab.key}
+            onClick={() => setActiveTab(tab.key)}
+            style={{
+              padding: '0.5rem 1rem',
+              border: 'none',
+              borderBottom:
+                activeTab === tab.key ? '2px solid #2563eb' : '2px solid transparent',
+              background: 'none',
+              cursor: 'pointer',
+              fontWeight: activeTab === tab.key ? 600 : 500,
+            }}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+      {activeTab === 'general' && (
       <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
         <section style={sectionStyle}>
           <h3 style={sectionTitleStyle}>Configuration Selection</h3>
@@ -2112,6 +2152,237 @@ export default function FormsManagement() {
           </>
         )}
       </div>
+      )}
+      {activeTab === 'notifications' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+          <section style={sectionStyle}>
+            <h3 style={sectionTitleStyle}>Configuration Selection</h3>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+              <label style={fieldColumnStyle}>
+                <span style={{ fontWeight: 600 }}>Existing configuration</span>
+                <select value={selectedConfig} onChange={handleSelectExisting}>
+                  <option value="">-- select configuration --</option>
+                  {savedConfigs.map((c) => (
+                    <option key={c.key} value={c.key}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label style={fieldColumnStyle}>
+                <span style={{ fontWeight: 600 }}>Module</span>
+                <select
+                  value={moduleKey}
+                  onChange={(e) => {
+                    setSelectedConfig('');
+                    setModuleKey(e.target.value);
+                  }}
+                >
+                  <option value="">-- select module --</option>
+                  {modules.map((m) => (
+                    <option key={m.module_key} value={m.module_key}>
+                      {m.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label style={fieldColumnStyle}>
+                <span style={{ fontWeight: 600 }}>Table</span>
+                <select
+                  value={table}
+                  onChange={(e) => {
+                    setSelectedConfig('');
+                    setTable(e.target.value);
+                  }}
+                >
+                  <option value="">-- select table --</option>
+                  {tables.map((t) => (
+                    <option key={t} value={t}>
+                      {t}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+          </section>
+          <section style={sectionStyle}>
+            <h3 style={sectionTitleStyle}>Notification configuration</h3>
+            <p style={{ margin: '0.35rem 0 0.75rem', color: '#4b5563' }}>
+              Map transaction fields to the people or entities that should be notified.
+              Multiple selections are allowed.
+            </p>
+            {columns.length === 0 ? (
+              <p style={{ margin: 0, color: '#6b7280' }}>
+                Select a table to configure notification mappings.
+              </p>
+            ) : (
+              <div style={controlGroupStyle}>
+                <label style={fieldColumnStyle}>
+                  <span style={{ fontWeight: 600 }}>Employee reference fields</span>
+                  <select
+                    multiple
+                    size={notificationSelectSize}
+                    value={config.notificationEmployeeFields}
+                    onChange={(e) =>
+                      updateFieldList(
+                        'notificationEmployeeFields',
+                        Array.from(e.target.selectedOptions).map((opt) => opt.value),
+                      )
+                    }
+                  >
+                    {columns.map((col) => (
+                      <option key={col} value={col}>
+                        {col}
+                      </option>
+                    ))}
+                  </select>
+                  <span style={{ fontSize: '0.85rem', color: '#6b7280' }}>
+                    Users linked to these fields receive dashboard notifications.
+                  </span>
+                </label>
+                <label style={fieldColumnStyle}>
+                  <span style={{ fontWeight: 600 }}>Company reference fields</span>
+                  <select
+                    multiple
+                    size={notificationSelectSize}
+                    value={config.notificationCompanyFields}
+                    onChange={(e) =>
+                      updateFieldList(
+                        'notificationCompanyFields',
+                        Array.from(e.target.selectedOptions).map((opt) => opt.value),
+                      )
+                    }
+                  >
+                    {columns.map((col) => (
+                      <option key={col} value={col}>
+                        {col}
+                      </option>
+                    ))}
+                  </select>
+                  <span style={{ fontSize: '0.85rem', color: '#6b7280' }}>
+                    All users in the selected companies will be notified.
+                  </span>
+                </label>
+                <label style={fieldColumnStyle}>
+                  <span style={{ fontWeight: 600 }}>Department reference fields</span>
+                  <select
+                    multiple
+                    size={notificationSelectSize}
+                    value={config.notificationDepartmentFields}
+                    onChange={(e) =>
+                      updateFieldList(
+                        'notificationDepartmentFields',
+                        Array.from(e.target.selectedOptions).map((opt) => opt.value),
+                      )
+                    }
+                  >
+                    {columns.map((col) => (
+                      <option key={col} value={col}>
+                        {col}
+                      </option>
+                    ))}
+                  </select>
+                  <span style={{ fontSize: '0.85rem', color: '#6b7280' }}>
+                    Notify all users in the referenced departments.
+                  </span>
+                </label>
+                <label style={fieldColumnStyle}>
+                  <span style={{ fontWeight: 600 }}>Branch reference fields</span>
+                  <select
+                    multiple
+                    size={notificationSelectSize}
+                    value={config.notificationBranchFields}
+                    onChange={(e) =>
+                      updateFieldList(
+                        'notificationBranchFields',
+                        Array.from(e.target.selectedOptions).map((opt) => opt.value),
+                      )
+                    }
+                  >
+                    {columns.map((col) => (
+                      <option key={col} value={col}>
+                        {col}
+                      </option>
+                    ))}
+                  </select>
+                  <span style={{ fontSize: '0.85rem', color: '#6b7280' }}>
+                    Notify all users in the referenced branches.
+                  </span>
+                </label>
+                <label style={fieldColumnStyle}>
+                  <span style={{ fontWeight: 600 }}>Customer reference fields</span>
+                  <select
+                    multiple
+                    size={notificationSelectSize}
+                    value={config.notificationCustomerFields}
+                    onChange={(e) =>
+                      updateFieldList(
+                        'notificationCustomerFields',
+                        Array.from(e.target.selectedOptions).map((opt) => opt.value),
+                      )
+                    }
+                  >
+                    {columns.map((col) => (
+                      <option key={col} value={col}>
+                        {col}
+                      </option>
+                    ))}
+                  </select>
+                  <span style={{ fontSize: '0.85rem', color: '#6b7280' }}>
+                    Customers matching these fields can receive email notifications.
+                  </span>
+                </label>
+                <label style={fieldColumnStyle}>
+                  <span style={{ fontWeight: 600 }}>Notification email fields</span>
+                  <select
+                    multiple
+                    size={notificationSelectSize}
+                    value={config.notificationEmailFields}
+                    onChange={(e) =>
+                      updateFieldList(
+                        'notificationEmailFields',
+                        Array.from(e.target.selectedOptions).map((opt) => opt.value),
+                      )
+                    }
+                  >
+                    {columns.map((col) => (
+                      <option key={col} value={col}>
+                        {col}
+                      </option>
+                    ))}
+                  </select>
+                  <span style={{ fontSize: '0.85rem', color: '#6b7280' }}>
+                    Email addresses collected from the transaction for outbound alerts.
+                  </span>
+                </label>
+                <label style={fieldColumnStyle}>
+                  <span style={{ fontWeight: 600 }}>Notification phone fields</span>
+                  <select
+                    multiple
+                    size={notificationSelectSize}
+                    value={config.notificationPhoneFields}
+                    onChange={(e) =>
+                      updateFieldList(
+                        'notificationPhoneFields',
+                        Array.from(e.target.selectedOptions).map((opt) => opt.value),
+                      )
+                    }
+                  >
+                    {columns.map((col) => (
+                      <option key={col} value={col}>
+                        {col}
+                      </option>
+                    ))}
+                  </select>
+                  <span style={{ fontSize: '0.85rem', color: '#6b7280' }}>
+                    Phone numbers collected from the transaction for outbound alerts.
+                  </span>
+                </label>
+              </div>
+            )}
+          </section>
+        </div>
+      )}
     </div>
   );
 }
