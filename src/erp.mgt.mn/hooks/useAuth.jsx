@@ -66,6 +66,18 @@ export async function login({ empid, password, companyId }, t = (key, fallback) 
       /* ignore storage errors */
     }
   }
+  try {
+    localStorage.setItem(
+      'erp_auth_event',
+      JSON.stringify({
+        type: 'login',
+        empid: nextData?.empid ?? nextData?.session?.empid ?? null,
+        ts: Date.now(),
+      }),
+    );
+  } catch {
+    /* ignore storage errors */
+  }
   return nextData;
 }
 
@@ -79,6 +91,18 @@ export async function logout(empid) {
     method: 'POST',
     credentials: 'include',
   });
+  try {
+    localStorage.setItem(
+      'erp_auth_event',
+      JSON.stringify({
+        type: 'logout',
+        empid: empid ?? null,
+        ts: Date.now(),
+      }),
+    );
+  } catch {
+    /* ignore storage errors */
+  }
   // Notify the AuthContext that a logout occurred so that it can reset state.
   if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
     const evt = typeof CustomEvent === 'function'

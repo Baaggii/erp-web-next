@@ -9,21 +9,75 @@ import React, {
 import { trackSetState } from '../utils/debug.js';
 
 const TabContext = createContext();
+const TAB_STORAGE_KEY = 'erp.tabs.v1';
+
+const readStoredTabs = () => {
+  if (typeof window === 'undefined') {
+    return { tabs: [], activeKey: null };
+  }
+  try {
+    const raw = window.sessionStorage?.getItem(TAB_STORAGE_KEY);
+    if (!raw) return { tabs: [], activeKey: null };
+    const parsed = JSON.parse(raw);
+    const storedTabs = Array.isArray(parsed?.tabs) ? parsed.tabs : [];
+    const tabs = storedTabs
+      .map((tab) => ({
+        key: typeof tab?.key === 'string' ? tab.key : '',
+        label: typeof tab?.label === 'string' ? tab.label : '',
+      }))
+      .filter((tab) => tab.key);
+    const activeKey =
+      typeof parsed?.activeKey === 'string' && parsed.activeKey ? parsed.activeKey : null;
+    return { tabs, activeKey };
+  } catch (err) {
+    return { tabs: [], activeKey: null };
+  }
+};
+
+const persistTabs = (tabs, activeKey) => {
+  if (typeof window === 'undefined') return;
+  try {
+    window.sessionStorage?.setItem(
+      TAB_STORAGE_KEY,
+      JSON.stringify({ tabs, activeKey }),
+    );
+  } catch (err) {
+    // ignore storage failures
+  }
+};
+
+const clearStoredTabs = () => {
+  if (typeof window === 'undefined') return;
+  try {
+    window.sessionStorage?.removeItem(TAB_STORAGE_KEY);
+  } catch (err) {
+    // ignore storage failures
+  }
+};
 
 export function TabProvider({ children }) {
-  const [tabs, setTabs] = useState([]);
-  const [activeKey, setActiveKey] = useState(null);
+  const storedState = useMemo(() => readStoredTabs(), []);
+  const [tabs, setTabs] = useState(storedState.tabs);
+  const [activeKey, setActiveKey] = useState(storedState.activeKey);
   const [cache, setCache] = useState({});
 
   useEffect(() => {
     window.__activeTabKey = activeKey || 'global';
   }, [activeKey]);
 
+  useEffect(() => {
+    persistTabs(tabs, activeKey);
+  }, [activeKey, tabs]);
+
   const openTab = useCallback(({ key, label, content }) => {
     trackSetState('TabProvider.setTabs');
     setTabs((t) => {
-      if (t.some((tab) => tab.key === key)) return t;
-      return [...t, { key, label }];
+      const existing = t.find((tab) => tab.key === key);
+      if (!existing) return [...t, { key, label }];
+      if (label && existing.label !== label) {
+        return t.map((tab) => (tab.key === key ? { ...tab, label } : tab));
+      }
+      return t;
     });
     if (content) {
       setCache((c) => {
@@ -97,12 +151,18 @@ export function TabProvider({ children }) {
     trackSetState('TabProvider.setCache');
     setCache({});
     window.__activeTabKey = 'global';
+    clearStoredTabs();
   }, []);
 
   useEffect(() => {
     const handleLogout = () => resetTabs();
     window.addEventListener('auth:logout', handleLogout);
-    return () => window.removeEventListener('auth:logout', handleLogout);
+    const handleUserChange = () => resetTabs();
+    window.addEventListener('auth:user-changed', handleUserChange);
+    return () => {
+      window.removeEventListener('auth:logout', handleLogout);
+      window.removeEventListener('auth:user-changed', handleUserChange);
+    };
   }, [resetTabs]);
 
   const value = useMemo(

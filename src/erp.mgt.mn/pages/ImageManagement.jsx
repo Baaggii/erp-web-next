@@ -198,7 +198,6 @@ export default function ImageManagement() {
     const dataPending = partial.pending ?? pending;
     const dataHostIgnored = partial.hostIgnored ?? hostIgnored;
     const dataHostNotFound = partial.hostNotFound ?? hostNotFound;
-    const dataSearchedFolders = partial.searchedFolders ?? searchedFolders;
 
     const mapUploads = (list = []) =>
       list
@@ -246,9 +245,6 @@ export default function ImageManagement() {
           reason,
           processed: !!processed,
         })),
-      searchedFolders: Array.isArray(dataSearchedFolders)
-        ? dataSearchedFolders.filter(Boolean)
-        : [],
       uploadPage: partial.uploadPage ?? uploadPage,
       ignoredPage: partial.ignoredPage ?? ignoredPage,
       pendingPage: partial.pendingPage ?? pendingPage,
@@ -336,7 +332,6 @@ export default function ImageManagement() {
       pending: pendingRef.current,
       hostIgnored: hostIgnoredRef.current,
       hostNotFound: hostNotFoundRef.current,
-      searchedFolders,
       uploadPage,
       ignoredPage,
       pendingPage,
@@ -749,10 +744,8 @@ export default function ImageManagement() {
                 description: extractDateFromName(p.currentName),
               }))
           : [];
-        const isNotFoundReason = (reason) =>
-          String(reason || '').toLowerCase().includes('no matching transaction');
-        const notFound = miss.filter((p) => isNotFoundReason(p.reason));
-        const ignored = miss.filter((p) => !isNotFoundReason(p.reason));
+        const notFound = miss.filter((p) => p.reason === 'No matching transaction');
+        const ignored = miss.filter((p) => p.reason !== 'No matching transaction');
         setPending(list);
         pendingRef.current = list;
         setHostIgnored(ignored);
@@ -779,7 +772,6 @@ export default function ImageManagement() {
           pending: list,
           hostIgnored: ignored,
           hostNotFound: notFound,
-          searchedFolders: Array.isArray(data.summary?.folders) ? data.summary.folders : [],
         });
       } else {
         setPending([]);
@@ -800,7 +792,6 @@ export default function ImageManagement() {
           pending: [],
           hostIgnored: [],
           hostNotFound: [],
-          searchedFolders: [],
         });
       }
       setPendingPage(p);
@@ -824,7 +815,6 @@ export default function ImageManagement() {
           pending: [],
           hostIgnored: [],
           hostNotFound: [],
-          searchedFolders: [],
         });
       }
     } finally {

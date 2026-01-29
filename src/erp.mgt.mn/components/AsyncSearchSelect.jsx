@@ -29,6 +29,7 @@ export default function AsyncSearchSelect({
   labelFields = [],
   idField,
   value,
+  resolveValueLabel,
   onChange,
   onSelect,
   disabled,
@@ -47,32 +48,41 @@ export default function AsyncSearchSelect({
   const effectiveCompanyId = companyId ?? company;
   const normalizeMultiValues = useCallback((raw) => {
     if (!Array.isArray(raw)) return [];
+    const resolveLabel = (itemValue) => {
+      if (typeof resolveValueLabel !== 'function') return undefined;
+      const resolved = resolveValueLabel(itemValue);
+      if (resolved === undefined || resolved === null || resolved === '') return undefined;
+      return String(resolved);
+    };
     return raw
       .filter((item) => item !== undefined && item !== null && item !== '')
       .map((item) => {
         if (typeof item === 'object' && item !== null) {
           if (Object.prototype.hasOwnProperty.call(item, 'value')) {
+            const resolvedLabel = item.label ?? resolveLabel(item.value);
             return {
               value: item.value,
               label:
-                item.label ??
+                resolvedLabel ??
                 (item.value !== undefined && item.value !== null
                   ? String(item.value)
                   : ''),
             };
           }
           if (Object.prototype.hasOwnProperty.call(item, 'id')) {
+            const resolvedLabel = item.label ?? resolveLabel(item.id);
             return {
               value: item.id,
               label:
-                item.label ??
+                resolvedLabel ??
                 (item.id !== undefined && item.id !== null ? String(item.id) : ''),
             };
           }
         }
-        return { value: item, label: String(item) };
+        const resolvedLabel = resolveLabel(item);
+        return { value: item, label: resolvedLabel ?? String(item) };
       });
-  }, []);
+  }, [resolveValueLabel]);
   const initialVal = isMulti ? '' : toInputString(extractPrimitiveValue(value));
   const initialLabel =
     !isMulti && typeof value === 'object' && value !== null ? value.label ?? '' : '';

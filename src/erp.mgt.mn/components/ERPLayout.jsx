@@ -17,6 +17,7 @@ import Spinner from "./Spinner.jsx";
 import useHeaderMappings from "../hooks/useHeaderMappings.js";
 import useRequestNotificationCounts from "../hooks/useRequestNotificationCounts.js";
 import useTemporaryNotificationCounts from "../hooks/useTemporaryNotificationCounts.js";
+import useDynamicTransactionNotifications from "../hooks/useDynamicTransactionNotifications.js";
 import useBuildUpdateNotice from "../hooks/useBuildUpdateNotice.js";
 import { PendingRequestContext } from "../context/PendingRequestContext.jsx";
 import { PollingProvider } from "../context/PollingContext.jsx";
@@ -30,6 +31,7 @@ import derivePageKey from "../utils/derivePageKey.js";
 import { findVisibleFallbackSelector } from "../utils/findVisibleTourStep.js";
 import { playNotificationSound } from "../utils/playNotificationSound.js";
 import { buildOptionsForRows } from "../utils/buildAsyncSelectOptions.js";
+import formatTimestamp from "../utils/formatTimestamp.js";
 import NotificationDots from "./NotificationDots.jsx";
 
 export const TourContext = React.createContext({
@@ -3487,6 +3489,11 @@ export default function ERPLayout() {
     () => (userSettings?.notificationSound || 'chime').trim(),
     [userSettings?.notificationSound],
   );
+  const selectedNotificationVolume = useMemo(() => {
+    const raw = Number(userSettings?.notificationVolume);
+    if (!Number.isFinite(raw)) return 1;
+    return Math.min(Math.max(raw, 0), 1);
+  }, [userSettings?.notificationVolume]);
 
   const notificationTotalsRef = useRef(notificationStatusTotals);
 
@@ -3498,9 +3505,9 @@ export default function ERPLayout() {
       (status) => notificationStatusTotals[status] > (prev[status] || 0),
     );
     if (hasIncrease) {
-      playNotificationSound(selectedNotificationSound);
+      playNotificationSound(selectedNotificationSound, selectedNotificationVolume);
     }
-  }, [notificationStatusTotals, selectedNotificationSound]);
+  }, [notificationStatusTotals, selectedNotificationSound, selectedNotificationVolume]);
 
   const temporaryValue = useMemo(
     () => ({
@@ -3709,7 +3716,15 @@ export function Header({
 }) {
   const { session } = useContext(AuthContext);
   const { lang, setLang, t } = useContext(LangContext);
+  const navigate = useNavigate();
   const { anyHasNew, notificationColors } = useContext(PendingRequestContext);
+  const {
+    notifications: transactionNotifications,
+    unreadCount: transactionUnreadCount,
+    markRead: markTransactionRead,
+  } = useDynamicTransactionNotifications({ limit: 8 });
+  const [notificationOpen, setNotificationOpen] = useState(false);
+  const notificationRef = useRef(null);
   const handleRefresh = () => {
     if (typeof window === 'undefined' || !window?.location) return;
     try {
@@ -4050,6 +4065,28 @@ export function Header({
     session?.company_id,
   ]);
 
+  useEffect(() => {
+    if (!notificationOpen) return undefined;
+    const handleClick = (event) => {
+      if (!notificationRef.current?.contains(event.target)) {
+        setNotificationOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClick);
+    return () => {
+      document.removeEventListener('mousedown', handleClick);
+    };
+  }, [notificationOpen]);
+
+  const handleNotificationClick = async (notification) => {
+    if (!notification) return;
+    try {
+      await markTransactionRead(notification.id);
+    } catch {}
+    setNotificationOpen(false);
+    navigate(`/?highlightNotification=${notification.id}`);
+  };
+
   return (
     <header className="sticky-header" style={styles.header(isMobile)}>
       {isMobile && (
@@ -4074,17 +4111,82 @@ export function Header({
           🗔 {t("home")}
         </button>
         <button style={styles.iconBtn}>🗗 {t("windows")}</button>
-        <button
-          style={styles.iconBtn}
-          onClick={() =>
-            onOpen('/notifications', t('notifications', 'Notifications'), 'notifications')
-          }
-        >
-          <span style={styles.inlineButtonContent}>
-            <NotificationDots colors={headerNotificationColors} marginRight={0} />
-            <span aria-hidden="true">🔔</span> {t('notifications', 'Notifications')}
-          </span>
-        </button>
+        <div style={styles.notificationWrapper} ref={notificationRef}>
+          <button
+            style={styles.iconBtn}
+            onClick={() => setNotificationOpen((prev) => !prev)}
+            aria-haspopup="true"
+            aria-expanded={notificationOpen}
+          >
+            <span style={styles.inlineButtonContent}>
+              <NotificationDots colors={headerNotificationColors} marginRight={0} />
+              <span aria-hidden="true">🔔</span> {t('notifications', 'Notifications')}
+              {transactionUnreadCount > 0 && (
+                <span style={styles.notificationBadge}>
+                  {transactionUnreadCount}
+                </span>
+              )}
+            </span>
+          </button>
+          {notificationOpen && (
+            <div style={styles.notificationDropdown}>
+              <div style={styles.notificationDropdownHeader}>
+                <strong>{t('notifications', 'Notifications')}</strong>
+                <span style={styles.notificationDropdownSub}>
+                  {transactionUnreadCount > 0
+                    ? t('notifications_new_count', '{{count}} new', {
+                        count: transactionUnreadCount,
+                      })
+                    : t('notifications_all_caught_up', 'All caught up')}
+                </span>
+              </div>
+              <div style={styles.notificationDropdownList}>
+                {transactionNotifications.length === 0 ? (
+                  <p style={styles.notificationEmpty}>
+                    {t('notifications_none', 'No notifications')}
+                  </p>
+                ) : (
+                  transactionNotifications.map((notification) => (
+                    <button
+                      key={notification.id}
+                      type="button"
+                      style={{
+                        ...styles.notificationItem,
+                        ...(notification.isRead ? {} : styles.notificationItemUnread),
+                      }}
+                      onClick={() => handleNotificationClick(notification)}
+                    >
+                      <div style={styles.notificationItemTitle}>
+                        {notification.transactionName ||
+                          t('notifications_unknown_type', 'Other transaction')}
+                      </div>
+                      <div style={styles.notificationItemSummary}>
+                        {notification.summary}
+                      </div>
+                      <div style={styles.notificationItemMeta}>
+                        {formatTimestamp(notification.createdAt)}
+                      </div>
+                    </button>
+                  ))
+                )}
+              </div>
+              <button
+                type="button"
+                style={styles.notificationFooterButton}
+                onClick={() => {
+                  setNotificationOpen(false);
+                  onOpen(
+                    '/notifications',
+                    t('notifications', 'Notifications'),
+                    'notifications',
+                  );
+                }}
+              >
+                {t('notifications_view_all', 'View all notifications')}
+              </button>
+            </div>
+          )}
+        </div>
         <button style={styles.iconBtn}>❔ {t("help")}</button>
       </nav>
       {hasUpdateAvailable && (
@@ -4820,6 +4922,87 @@ const styles = {
     display: "inline-flex",
     alignItems: "center",
     gap: "0.35rem",
+  },
+  notificationWrapper: {
+    position: "relative",
+    display: "inline-flex",
+    alignItems: "center",
+  },
+  notificationBadge: {
+    backgroundColor: "#ef4444",
+    color: "#fff",
+    borderRadius: "999px",
+    padding: "0 0.35rem",
+    fontSize: "0.7rem",
+    lineHeight: 1.6,
+    marginLeft: "0.2rem",
+  },
+  notificationDropdown: {
+    position: "absolute",
+    right: 0,
+    top: "calc(100% + 0.35rem)",
+    width: "320px",
+    backgroundColor: "#fff",
+    color: "#111827",
+    borderRadius: "8px",
+    boxShadow: "0 12px 32px rgba(15, 23, 42, 0.2)",
+    overflow: "hidden",
+    zIndex: 16000,
+  },
+  notificationDropdownHeader: {
+    padding: "0.75rem 1rem",
+    borderBottom: "1px solid #e5e7eb",
+    display: "flex",
+    flexDirection: "column",
+    gap: "0.25rem",
+  },
+  notificationDropdownSub: {
+    fontSize: "0.75rem",
+    color: "#6b7280",
+  },
+  notificationDropdownList: {
+    maxHeight: "320px",
+    overflowY: "auto",
+  },
+  notificationItem: {
+    width: "100%",
+    textAlign: "left",
+    padding: "0.75rem 1rem",
+    border: "none",
+    background: "transparent",
+    cursor: "pointer",
+    borderBottom: "1px solid #f3f4f6",
+  },
+  notificationItemUnread: {
+    backgroundColor: "#eff6ff",
+  },
+  notificationItemTitle: {
+    fontSize: "0.85rem",
+    fontWeight: 600,
+    color: "#111827",
+  },
+  notificationItemSummary: {
+    fontSize: "0.8rem",
+    color: "#4b5563",
+    marginTop: "0.15rem",
+  },
+  notificationItemMeta: {
+    fontSize: "0.7rem",
+    color: "#9ca3af",
+    marginTop: "0.2rem",
+  },
+  notificationFooterButton: {
+    width: "100%",
+    padding: "0.65rem 1rem",
+    border: "none",
+    backgroundColor: "#f9fafb",
+    cursor: "pointer",
+    fontWeight: 600,
+  },
+  notificationEmpty: {
+    padding: "1rem",
+    fontSize: "0.85rem",
+    color: "#6b7280",
   },
   userSection: {
     display: "flex",

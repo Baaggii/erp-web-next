@@ -44,12 +44,9 @@ router.get('/', requireAuth, async (req, res, next) => {
 router.post('/', requireAuth, async (req, res, next) => {
   try {
     const companyId = Number(req.query.companyId ?? req.user.companyId);
-    const { table, idField, displayFields, filterColumn, filterValue } = req.body;
+    const { table } = req.body;
     if (!table) return res.status(400).json({ message: 'table is required' });
-    await setDisplayFields(
-      { table, idField, displayFields, filterColumn, filterValue },
-      companyId,
-    );
+    await setDisplayFields(req.body, companyId);
     res.sendStatus(204);
   } catch (err) {
     if (err?.message) {
