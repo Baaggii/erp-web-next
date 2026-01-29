@@ -4060,6 +4060,7 @@ const RowFormModal = function RowFormModal({
         className={inputClass}
         style={inputStyle}
         onInput={(e) => {
+          scrollFocusedFieldIntoView(c);
           e.target.style.width = 'auto';
           const w = Math.min(e.target.scrollWidth + 2, boxMaxWidth);
           e.target.style.width = `${Math.max(boxWidth, w)}px`;
