@@ -27,6 +27,7 @@ import {
   removeCustomRelationAtIndex,
   removeCustomRelationMatching,
 } from '../services/tableRelationsConfig.js';
+import { createDynamicTransactionNotifications } from '../services/transactionNotificationService.js';
 let bcrypt;
 try {
   const mod = await import('bcryptjs');
@@ -474,6 +475,20 @@ export async function addRow(req, res, next) {
         },
       },
     );
+    const insertedId = result?.id ?? row?.id ?? null;
+    if (insertedId) {
+      try {
+        await createDynamicTransactionNotifications({
+          tableName: req.params.table,
+          row: { ...row, id: insertedId },
+          recordId: insertedId,
+          companyId: req.user?.companyId ?? null,
+          createdBy: req.user?.empid ?? null,
+        });
+      } catch (notifyErr) {
+        console.error('Failed to create transaction notifications', notifyErr);
+      }
+    }
     res.locals.insertId = result?.id;
     res.status(201).json(result);
   } catch (err) {
