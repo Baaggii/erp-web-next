@@ -95,6 +95,9 @@ export default function ImageManagement() {
   const [hostIgnored, setHostIgnored] = useState([]);
   const [hostIgnoredSel, setHostIgnoredSel] = useState([]);
   const [hostIgnoredPage, setHostIgnoredPage] = useState(1);
+  const [hostNotFound, setHostNotFound] = useState([]);
+  const [hostNotFoundSel, setHostNotFoundSel] = useState([]);
+  const [hostNotFoundPage, setHostNotFoundPage] = useState(1);
   const [uploads, setUploads] = useState([]);
   const [uploadSel, setUploadSel] = useState([]);
   const [uploadPage, setUploadPage] = useState(1);
@@ -118,12 +121,14 @@ export default function ImageManagement() {
   const ignoredRef = useRef(ignored);
   const pendingRef = useRef(pending);
   const hostIgnoredRef = useRef(hostIgnored);
+  const hostNotFoundRef = useRef(hostNotFound);
   const batchRef = useRef(false);
 
   useEffect(() => { uploadsRef.current = uploads; }, [uploads]);
   useEffect(() => { ignoredRef.current = ignored; }, [ignored]);
   useEffect(() => { pendingRef.current = pending; }, [pending]);
   useEffect(() => { hostIgnoredRef.current = hostIgnored; }, [hostIgnored]);
+  useEffect(() => { hostNotFoundRef.current = hostNotFound; }, [hostNotFound]);
 
   async function loadTables({ silent = false } = {}) {
     try {
@@ -159,7 +164,8 @@ export default function ImageManagement() {
       uploadsRef.current.length === 0 &&
       ignoredRef.current.length === 0 &&
       pendingRef.current.length === 0 &&
-      hostIgnoredRef.current.length === 0
+      hostIgnoredRef.current.length === 0 &&
+      hostNotFoundRef.current.length === 0
     ) {
       loadTables({ silent: true });
     }
@@ -190,6 +196,7 @@ export default function ImageManagement() {
     const dataIgnored = partial.ignored ?? ignored;
     const dataPending = partial.pending ?? pending;
     const dataHostIgnored = partial.hostIgnored ?? hostIgnored;
+    const dataHostNotFound = partial.hostNotFound ?? hostNotFound;
 
     const mapUploads = (list = []) =>
       list
@@ -230,10 +237,18 @@ export default function ImageManagement() {
           reason,
           processed: !!processed,
         })),
+      hostNotFound: dataHostNotFound
+        .filter(Boolean)
+        .map(({ currentName = '', reason = '', processed }) => ({
+          currentName,
+          reason,
+          processed: !!processed,
+        })),
       uploadPage: partial.uploadPage ?? uploadPage,
       ignoredPage: partial.ignoredPage ?? ignoredPage,
       pendingPage: partial.pendingPage ?? pendingPage,
       hostIgnoredPage: partial.hostIgnoredPage ?? hostIgnoredPage,
+      hostNotFoundPage: partial.hostNotFoundPage ?? hostNotFoundPage,
       uploadPageSize: partial.uploadPageSize ?? uploadPageSize,
       pageSize: partial.pageSize ?? pageSize,
     };
@@ -276,6 +291,11 @@ export default function ImageManagement() {
       : [];
     setHostIgnored(hostArr);
     hostIgnoredRef.current = hostArr;
+    const notFoundArr = Array.isArray(data.hostNotFound)
+      ? data.hostNotFound.map((u) => ({ ...u, processed: !!u.processed }))
+      : [];
+    setHostNotFound(notFoundArr);
+    hostNotFoundRef.current = notFoundArr;
     const upSize = Number(data.uploadPageSize) || uploadPageSize;
     const pendSize = Number(data.pageSize) || pageSize;
     setUploadPageSize(upSize);
@@ -284,10 +304,12 @@ export default function ImageManagement() {
     const igLast = Math.max(1, Math.ceil(igArr.length / upSize));
     const pendLast = Math.max(1, Math.ceil(pendingArr.length / pendSize));
     const hostLast = Math.max(1, Math.ceil(hostArr.length / pendSize));
+    const notFoundLast = Math.max(1, Math.ceil(notFoundArr.length / pendSize));
     setUploadPage(Math.min(data.uploadPage || 1, upLast));
     setIgnoredPage(Math.min(data.ignoredPage || 1, igLast));
     setPendingPage(Math.min(data.pendingPage || 1, pendLast));
     setHostIgnoredPage(Math.min(data.hostIgnoredPage || 1, hostLast));
+    setHostNotFoundPage(Math.min(data.hostNotFoundPage || 1, notFoundLast));
     setHasMore(pendingArr.length > (data.pendingPage || 1) * pendSize);
   }
 
@@ -307,10 +329,12 @@ export default function ImageManagement() {
       ignored: ignoredRef.current,
       pending: pendingRef.current,
       hostIgnored: hostIgnoredRef.current,
+      hostNotFound: hostNotFoundRef.current,
       uploadPage,
       ignoredPage,
       pendingPage,
       hostIgnoredPage,
+      hostNotFoundPage,
       uploadPageSize,
       pageSize,
     };
@@ -362,6 +386,10 @@ export default function ImageManagement() {
   const pageHostIgnored = hostIgnored.slice(hostIgnoredStart, hostIgnoredStart + pageSize);
   const hostIgnoredHasMore = hostIgnoredStart + pageSize < hostIgnored.length;
   const hostIgnoredLastPage = Math.max(1, Math.ceil(hostIgnored.length / pageSize));
+  const hostNotFoundStart = (hostNotFoundPage - 1) * pageSize;
+  const pageHostNotFound = hostNotFound.slice(hostNotFoundStart, hostNotFoundStart + pageSize);
+  const hostNotFoundHasMore = hostNotFoundStart + pageSize < hostNotFound.length;
+  const hostNotFoundLastPage = Math.max(1, Math.ceil(hostNotFound.length / pageSize));
   const lastPage = pendingSummary
     ? Math.max(1, Math.ceil((pendingSummary.incompleteFound || 0) / pageSize))
     : Math.max(1, Math.ceil(pending.length / pageSize));
@@ -432,6 +460,37 @@ export default function ImageManagement() {
     else if (setEq(allIds)) setHostIgnoredSel(removePage);
     else
       setHostIgnoredSel((prev) => [...removePage(prev), ...newIds.filter((id) => !prev.includes(id))]);
+  }
+
+  function toggleHostNotFound(id) {
+    setHostNotFoundSel((prev) =>
+      prev.includes(id) ? prev.filter((p) => p !== id) : [...prev, id],
+    );
+  }
+
+  function toggleHostNotFoundAll(list) {
+    const allIds = list.map((p) => p.currentName);
+    const unprocessedIds = list.filter((p) => !p.processed).map((p) => p.currentName);
+    const newIds = list
+      .filter((p) => p.newName && !p.processed)
+      .map((p) => p.currentName);
+    const current = hostNotFoundSel.filter((id) => allIds.includes(id));
+    const setEq = (arr) => arr.length === current.length && arr.every((id) => current.includes(id));
+    const removePage = (prev) => prev.filter((id) => !allIds.includes(id));
+    if (newIds.length === 0) {
+      if (setEq(allIds)) setHostNotFoundSel(removePage);
+      else if (setEq(unprocessedIds))
+        setHostNotFoundSel((prev) => [...removePage(prev), ...allIds.filter((id) => !prev.includes(id))]);
+      else setHostNotFoundSel((prev) => [...removePage(prev), ...unprocessedIds.filter((id) => !prev.includes(id))]);
+      return;
+    }
+    if (setEq(newIds))
+      setHostNotFoundSel((prev) => [...removePage(prev), ...unprocessedIds.filter((id) => !prev.includes(id))]);
+    else if (setEq(unprocessedIds))
+      setHostNotFoundSel((prev) => [...removePage(prev), ...allIds.filter((id) => !prev.includes(id))]);
+    else if (setEq(allIds)) setHostNotFoundSel(removePage);
+    else
+      setHostNotFoundSel((prev) => [...removePage(prev), ...newIds.filter((id) => !prev.includes(id))]);
   }
 
   function toggleUpload(id) {
@@ -620,6 +679,7 @@ export default function ImageManagement() {
         folderName: handlePath,
         pending: [],
         hostIgnored: [],
+        hostNotFound: [],
       });
     } catch {
       // ignore
@@ -682,15 +742,21 @@ export default function ImageManagement() {
                 description: extractDateFromName(p.currentName),
               }))
           : [];
+        const notFound = miss.filter((p) => p.reason === 'No matching transaction');
+        const ignored = miss.filter((p) => p.reason !== 'No matching transaction');
         setPending(list);
         pendingRef.current = list;
-        setHostIgnored(miss);
-        hostIgnoredRef.current = miss;
+        setHostIgnored(ignored);
+        hostIgnoredRef.current = ignored;
+        setHostNotFound(notFound);
+        hostNotFoundRef.current = notFound;
         setHostIgnoredPage(1);
+        setHostNotFoundPage(1);
         setPendingSummary(data.summary || null);
         setHasMore(!!data.hasMore);
         setSelected([]);
         setHostIgnoredSel([]);
+        setHostNotFoundSel([]);
         const sum = data.summary || {};
         const folderCount = Array.isArray(sum.folders) ? sum.folders.length : sum.totalFolders || 0;
         const detectSummary = `Scanned ${sum.totalFiles || 0} file(s) in ${folderCount} folder(s), found ${sum.incompleteFound || 0} incomplete name(s), ${sum.skipped || 0} not incomplete.`;
@@ -701,7 +767,8 @@ export default function ImageManagement() {
           ignored: ignoredRef.current,
           folderName,
           pending: list,
-          hostIgnored: miss,
+          hostIgnored: ignored,
+          hostNotFound: notFound,
         });
       } else {
         setPending([]);
@@ -709,9 +776,19 @@ export default function ImageManagement() {
         setHostIgnored([]);
         hostIgnoredRef.current = [];
         setHostIgnoredPage(1);
+        setHostNotFound([]);
+        hostNotFoundRef.current = [];
+        setHostNotFoundPage(1);
         setPendingSummary(null);
         setHasMore(false);
-        persistAll({ uploads: uploadsRef.current, ignored: ignoredRef.current, folderName, pending: [], hostIgnored: [] });
+        persistAll({
+          uploads: uploadsRef.current,
+          ignored: ignoredRef.current,
+          folderName,
+          pending: [],
+          hostIgnored: [],
+          hostNotFound: [],
+        });
       }
       setPendingPage(p);
     } catch (e) {
@@ -721,9 +798,19 @@ export default function ImageManagement() {
         setHostIgnored([]);
         hostIgnoredRef.current = [];
         setHostIgnoredPage(1);
+        setHostNotFound([]);
+        hostNotFoundRef.current = [];
+        setHostNotFoundPage(1);
         setPendingSummary(null);
         setHasMore(false);
-        persistAll({ uploads: uploadsRef.current, ignored: ignoredRef.current, folderName, pending: [], hostIgnored: [] });
+        persistAll({
+          uploads: uploadsRef.current,
+          ignored: ignoredRef.current,
+          folderName,
+          pending: [],
+          hostIgnored: [],
+          hostNotFound: [],
+        });
       }
     } finally {
       detectAbortRef.current = null;
@@ -757,6 +844,10 @@ export default function ImageManagement() {
 
   async function applyFixesHostIgnored() {
     await applyFixesSelection(hostIgnored, hostIgnoredSel);
+  }
+
+  async function applyFixesHostNotFound() {
+    await applyFixesSelection(hostNotFound, hostNotFoundSel);
   }
 
   async function renameSelectedNames() {
@@ -1154,6 +1245,8 @@ export default function ImageManagement() {
         pendingRef.current = updated.pending;
         setHostIgnored(updated.hostIgnored);
         hostIgnoredRef.current = updated.hostIgnored;
+        setHostNotFound(updated.hostNotFound);
+        hostNotFoundRef.current = updated.hostNotFound;
         setUploadSel((prev) => prev.filter((id) => !selectedIds.includes(id)));
         persistAll(updated);
         if (!silent) setReport(`Uploaded ${data.uploaded || 0} file(s)`);
@@ -1618,6 +1711,7 @@ export default function ImageManagement() {
                     folderName,
                     pending: remaining,
                     hostIgnored: hostIgnoredRef.current,
+                    hostNotFound: hostNotFoundRef.current,
                   });
                 }}
                 style={{ marginBottom: '0.5rem', marginLeft: '0.5rem' }}
@@ -1669,6 +1763,7 @@ export default function ImageManagement() {
                               ignored: ignoredRef.current,
                               pending: remaining,
                               hostIgnored: hostIgnoredRef.current,
+                              hostNotFound: hostNotFoundRef.current,
                               folderName,
                             });
                           }}
@@ -1708,6 +1803,7 @@ export default function ImageManagement() {
                     folderName,
                     pending: pendingRef.current,
                     hostIgnored: remaining,
+                    hostNotFound: hostNotFoundRef.current,
                   });
                 }}
                 style={{ marginBottom: '0.5rem', marginLeft: '0.5rem' }}
@@ -1821,6 +1917,161 @@ export default function ImageManagement() {
                               ignored: ignoredRef.current,
                               pending: pendingRef.current,
                               hostIgnored: remaining,
+                              hostNotFound: hostNotFoundRef.current,
+                              folderName,
+                            });
+                          }}
+                        >
+                          Delete
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+          {hostNotFound.length > 0 && (
+            <div style={{ marginTop: '1rem' }}>
+              <h4>Transaction Not Found</h4>
+              <button
+                type="button"
+                onClick={applyFixesHostNotFound}
+                style={{ marginBottom: '0.5rem' }}
+                disabled={hostNotFoundSel.length === 0}
+              >
+                Rename &amp; Move Selected
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const remaining = hostNotFoundRef.current.filter(
+                    (p) => !hostNotFoundSel.includes(p.currentName),
+                  );
+                  setHostNotFound(remaining);
+                  hostNotFoundRef.current = remaining;
+                  setHostNotFoundSel([]);
+                  persistAll({
+                    uploads: uploadsRef.current,
+                    ignored: ignoredRef.current,
+                    folderName,
+                    pending: pendingRef.current,
+                    hostIgnored: hostIgnoredRef.current,
+                    hostNotFound: remaining,
+                  });
+                }}
+                style={{ marginBottom: '0.5rem', marginLeft: '0.5rem' }}
+                disabled={hostNotFoundSel.length === 0}
+              >
+                Delete Selected
+              </button>
+              <div style={{ marginBottom: '0.5rem' }}>
+                <button
+                  type="button"
+                  disabled={hostNotFoundPage === 1}
+                  onClick={() => setHostNotFoundPage(1)}
+                  style={{ marginRight: '0.5rem' }}
+                >
+                  First
+                </button>
+                <button
+                  type="button"
+                  disabled={hostNotFoundPage === 1}
+                  onClick={() => setHostNotFoundPage(hostNotFoundPage - 1)}
+                  style={{ marginRight: '0.5rem' }}
+                >
+                  Prev
+                </button>
+                <span style={{ marginRight: '0.5rem' }}>
+                  Page{' '}
+                  <input
+                    type="number"
+                    value={hostNotFoundPage}
+                    onChange={(e) =>
+                      setHostNotFoundPage(
+                        clampPage(e.target.value, hostNotFoundLastPage),
+                      )
+                    }
+                    style={{ width: '3rem' }}
+                  />{' '}
+                  / {hostNotFoundLastPage}
+                </span>
+                <button
+                  type="button"
+                  disabled={!hostNotFoundHasMore}
+                  onClick={() => setHostNotFoundPage(hostNotFoundPage + 1)}
+                  style={{ marginRight: '0.5rem' }}
+                >
+                  Next
+                </button>
+                <button
+                  type="button"
+                  disabled={hostNotFoundPage === hostNotFoundLastPage}
+                  onClick={() => setHostNotFoundPage(hostNotFoundLastPage)}
+                >
+                  Last
+                </button>
+              </div>
+              <table className="min-w-full border border-gray-300 text-sm" style={{ tableLayout: 'fixed' }}>
+                <thead>
+                  <tr>
+                    <th className="border px-2 py-1">
+                      <input
+                        type="checkbox"
+                        checked={
+                          pageHostNotFound.length > 0 &&
+                          pageHostNotFound.every((p) => hostNotFoundSel.includes(p.currentName))
+                        }
+                        onChange={() => toggleHostNotFoundAll(pageHostNotFound)}
+                      />
+                    </th>
+                    <th className="border px-2 py-1">Original</th>
+                    <th className="border px-2 py-1">New Name</th>
+                    <th className="border px-2 py-1">Folder</th>
+                    <th className="border px-2 py-1">Posted ID</th>
+                    <th className="border px-2 py-1">Config</th>
+                    <th className="border px-2 py-1">Description</th>
+                    <th className="border px-2 py-1">State</th>
+                    <th className="border px-2 py-1">Delete</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {pageHostNotFound.map((p) => (
+                    <tr key={p.currentName} className={hostNotFoundSel.includes(p.currentName) ? 'bg-blue-50' : ''}>
+                      <td className="border px-2 py-1 text-center">
+                        <input
+                          type="checkbox"
+                          checked={hostNotFoundSel.includes(p.currentName)}
+                          onChange={() => toggleHostNotFound(p.currentName)}
+                        />
+                      </td>
+                      <td className="border px-2 py-1">{p.currentName}</td>
+                      <td className="border px-2 py-1">{p.newName}</td>
+                      <td className="border px-2 py-1">{p.folderDisplay}</td>
+                      <td className="border px-2 py-1">{p.recordId || '-'}</td>
+                      <td className="border px-2 py-1">{p.configName || '-'}</td>
+                      <td className="border px-2 py-1">
+                        {p.description}
+                        {p.description && p.reason ? ' - ' : ''}
+                        {p.reason}
+                      </td>
+                      <td className="border px-2 py-1">{stateLabel(p)}</td>
+                      <td className="border px-2 py-1 text-center">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const remaining = hostNotFoundRef.current.filter(
+                              (x) => x.currentName !== p.currentName,
+                            );
+                            setHostNotFound(remaining);
+                            hostNotFoundRef.current = remaining;
+                            setHostNotFoundSel((s) => s.filter((id) => id !== p.currentName));
+                            persistAll({
+                              uploads: uploadsRef.current,
+                              ignored: ignoredRef.current,
+                              pending: pendingRef.current,
+                              hostIgnored: hostIgnoredRef.current,
+                              hostNotFound: remaining,
                               folderName,
                             });
                           }}
