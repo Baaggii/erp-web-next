@@ -67,12 +67,13 @@ async function ensureContextReady(ctx) {
   return ctx.state === 'running';
 }
 
-function scheduleTone(ctx, startTime, { type, frequency, duration, gain }) {
+function scheduleTone(ctx, startTime, { type, frequency, duration, gain }, volume) {
   const oscillator = ctx.createOscillator();
   const gainNode = ctx.createGain();
   oscillator.type = type || 'sine';
   oscillator.frequency.value = frequency || 660;
-  gainNode.gain.setValueAtTime(gain ?? 0.2, startTime);
+  const adjustedGain = Math.max(0, Math.min(1, (gain ?? 0.2) * volume));
+  gainNode.gain.setValueAtTime(adjustedGain, startTime);
   gainNode.gain.exponentialRampToValueAtTime(0.001, startTime + duration);
   oscillator.connect(gainNode);
   gainNode.connect(ctx.destination);
@@ -81,7 +82,7 @@ function scheduleTone(ctx, startTime, { type, frequency, duration, gain }) {
   return startTime + duration + 0.04;
 }
 
-export async function playNotificationSound(preset = 'chime') {
+export async function playNotificationSound(preset = 'chime', volume = 1) {
   if (preset === 'off') return;
   const ctx = getAudioContext();
   if (!ctx) return;
@@ -91,8 +92,11 @@ export async function playNotificationSound(preset = 'chime') {
   const steps = SOUND_PRESETS[preset] || SOUND_PRESETS.chime;
   if (!Array.isArray(steps) || steps.length === 0) return;
 
+  const clampedVolume = Number.isFinite(Number(volume))
+    ? Math.max(0, Math.min(1, Number(volume)))
+    : 1;
   const startAt = ctx.currentTime + 0.02;
-  steps.reduce((time, step) => scheduleTone(ctx, time, step), startAt);
+  steps.reduce((time, step) => scheduleTone(ctx, time, step, clampedVolume), startAt);
 }
 
 export function getNotificationSoundOptions() {
@@ -103,4 +107,3 @@ export function getNotificationSoundOptions() {
     { value: 'off', label: 'Off' },
   ];
 }
-

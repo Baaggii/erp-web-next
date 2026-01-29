@@ -629,6 +629,35 @@ function sanitizePosApiMapping(source) {
   return normalized;
 }
 
+const NOTIFICATION_TYPES = [
+  'company',
+  'department',
+  'branch',
+  'employee',
+  'customer',
+];
+
+function sanitizeNotificationConfig(source) {
+  if (!source || typeof source !== 'object' || Array.isArray(source)) return {};
+  const normalized = {};
+  NOTIFICATION_TYPES.forEach((type) => {
+    const entry = source[type];
+    if (!entry || typeof entry !== 'object') return;
+    const field = typeof entry.field === 'string' ? entry.field.trim() : '';
+    const emailField =
+      typeof entry.emailField === 'string' ? entry.emailField.trim() : '';
+    const phoneField =
+      typeof entry.phoneField === 'string' ? entry.phoneField.trim() : '';
+    if (!field && !emailField && !phoneField) return;
+    normalized[type] = {
+      field,
+      emailField,
+      phoneField,
+    };
+  });
+  return normalized;
+}
+
 function parseEntry(raw = {}) {
   const temporaryFlag = Boolean(
     raw.supportsTemporarySubmission ??
@@ -771,6 +800,7 @@ function parseEntry(raw = {}) {
     posApiMapping: mapping,
     infoEndpoints,
     infoEndpointConfig,
+    notificationConfig: sanitizeNotificationConfig(raw.notificationConfig),
   };
 }
 
@@ -1123,6 +1153,7 @@ export async function setFormConfig(
     infoEndpoints = [],
     posApiMapping = {},
     infoEndpointConfig = {},
+    notificationConfig = {},
   } = config || {};
   const uid = arrify(userIdFields.length ? userIdFields : userIdField ? [userIdField] : []);
   const bid = arrify(
@@ -1264,6 +1295,7 @@ export async function setFormConfig(
       : [],
     posApiMapping: sanitizePosApiMapping(posApiMapping),
     infoEndpointConfig: sanitizeInfoEndpointConfigMap(infoEndpointConfig),
+    notificationConfig: sanitizeNotificationConfig(notificationConfig),
   };
   if (editableFields !== undefined) {
     cfg[table][name].editableFields = arrify(editableFields);
