@@ -24,6 +24,7 @@ import slugify from '../utils/slugify.js';
 import {
   formatJsonItem,
   formatJsonList,
+  formatJsonListLines,
   normalizeInputValue,
 } from '../utils/jsonValueFormatting.js';
 import normalizeRelationKey from '../utils/normalizeRelationKey.js';
@@ -2477,6 +2478,7 @@ const RowFormModal = function RowFormModal({
 
   async function handleKeyDown(e, col) {
     if (e.key !== 'Enter') return;
+    if (fieldTypeMap[col] === 'json') return;
     e.preventDefault();
     const isLookupField =
       !!relationConfigMap[col] ||
@@ -3645,6 +3647,7 @@ const RowFormModal = function RowFormModal({
       const raw = isColumn ? formVals[c] : extraVals[c];
       const val = typeof raw === 'object' && raw !== null ? raw.value : raw;
       let display = typeof raw === 'object' && raw !== null ? raw.label || val : val;
+      let displayLines = null;
       const normalizedValueKey = normalizeRelationOptionKey(val);
       let resolvedOptionLabel = false;
       const labelMap =
@@ -3659,6 +3662,8 @@ const RowFormModal = function RowFormModal({
       if (fieldTypeMap[c] === 'json') {
         const values = normalizeJsonArrayForState(val);
         const relationRows = relationData[c] || {};
+        const labelMapForJson =
+          relationOptionLabelLookup[c] || relationOptionLabelLookup[String(c).toLowerCase()];
         const parts = [];
         const pushFormattedPart = (input) => {
           const formatted = formatJsonItem(input);
@@ -3666,27 +3671,43 @@ const RowFormModal = function RowFormModal({
             parts.push(typeof formatted === 'string' ? formatted : String(formatted));
           }
         };
-        values.forEach((item) => {
-          const row = getRelationRowFromMap(relationRows, item);
-          if (row && resolvedRelationConfig) {
-            const identifier =
-              getRowValueCaseInsensitive(row, resolvedRelationConfig.idField || resolvedRelationConfig.column) ??
-              item;
-            const extras = (resolvedRelationConfig.displayFields || [])
-              .map((df) => row[df])
-              .filter((v) => v !== undefined && v !== null && v !== '');
-            const formattedParts = [identifier, ...extras]
-              .map((entry) => formatJsonItem(entry))
-              .filter((entry) => entry || entry === 0 || entry === false)
-              .map((entry) => (typeof entry === 'string' ? entry : String(entry)));
-            if (formattedParts.length > 0) {
-              parts.push(formattedParts.join(' - '));
+        if (resolvedRelationConfig) {
+          values.forEach((item) => {
+            const rawItem =
+              item && typeof item === 'object' && 'value' in item ? item.value : item;
+            if (labelMapForJson && rawItem !== undefined && rawItem !== null) {
+              const key = normalizeRelationOptionKey(rawItem);
+              if (key && labelMapForJson[key] !== undefined) {
+                parts.push(labelMapForJson[key]);
+                return;
+              }
             }
-          } else {
-            pushFormattedPart(item);
-          }
-        });
-        display = parts.join(', ');
+            const row = getRelationRowFromMap(relationRows, rawItem);
+            if (row) {
+              const identifier =
+                getRowValueCaseInsensitive(
+                  row,
+                  resolvedRelationConfig.idField || resolvedRelationConfig.column,
+                ) ?? rawItem;
+              const extras = (resolvedRelationConfig.displayFields || [])
+                .map((df) => row[df])
+                .filter((v) => v !== undefined && v !== null && v !== '');
+              const formattedParts = [identifier, ...extras]
+                .map((entry) => formatJsonItem(entry))
+                .filter((entry) => entry || entry === 0 || entry === false)
+                .map((entry) => (typeof entry === 'string' ? entry : String(entry)));
+              if (formattedParts.length > 0) {
+                parts.push(formattedParts.join(' - '));
+                return;
+              }
+            }
+            pushFormattedPart(rawItem);
+          });
+          displayLines = parts;
+        } else {
+          displayLines = formatJsonListLines(values);
+        }
+        display = displayLines.join(', ');
       } else if (
         !resolvedOptionLabel &&
         resolvedRelationConfig &&
@@ -3762,7 +3783,15 @@ const RowFormModal = function RowFormModal({
           aria-readonly="true"
           onFocus={() => handleFocusField(c)}
         >
-          {display}
+          {displayLines ? (
+            <div className="flex flex-col">
+              {displayLines.map((line, lineIdx) => (
+                <div key={`${c}-json-${lineIdx}`}>{line}</div>
+              ))}
+            </div>
+          ) : (
+            display
+          )}
         </div>
       );
       if (!withLabel) return <TooltipWrapper title={tip}>{content}</TooltipWrapper>;
@@ -3818,13 +3847,6 @@ const RowFormModal = function RowFormModal({
                     return { ...prev, [c]: normalizedVals };
                   });
                   setErrors((er) => ({ ...er, [c]: undefined }));
-                }}
-                onSelect={(opt) => {
-                  const el = inputRefs.current[c];
-                  if (el) {
-                    const fake = { key: 'Enter', preventDefault: () => {}, target: el, selectedOption: opt };
-                    handleKeyDown(fake, c);
-                  }
                 }}
                 disabled={disabled}
                 onKeyDown={(e) => handleKeyDown(e, c)}
