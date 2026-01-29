@@ -63,15 +63,8 @@ export default function useBuildUpdateNotice({ intervalMs = 30000 } = {}) {
     let intervalId = null;
 
     async function pollForUpdates() {
-      const controller = new AbortController();
-      const timeoutId = window.setTimeout(() => controller.abort(), 10000);
       try {
-        const response = await fetch('/index.html', {
-          cache: 'no-store',
-          signal: controller.signal,
-          skipLoader: true,
-          skipErrorToast: true,
-        });
+        const response = await fetch('/index.html', { cache: 'no-store' });
         if (!response?.ok) return;
         const html = await response.text();
         const moduleUrl = extractModuleUrlFromHtml(html);
@@ -105,8 +98,6 @@ export default function useBuildUpdateNotice({ intervalMs = 30000 } = {}) {
         if (typeof window !== 'undefined' && window.erpDebug) {
           console.warn('useBuildUpdateNotice: polling failed', err);
         }
-      } finally {
-        window.clearTimeout(timeoutId);
       }
     }
 
