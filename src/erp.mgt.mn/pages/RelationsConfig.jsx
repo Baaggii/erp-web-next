@@ -580,6 +580,74 @@ export default function RelationsConfig() {
                 </div>
               </div>
               <div style={{ marginTop: '1rem' }}>
+                <h4 style={{ margin: 0 }}>Notification configuration</h4>
+                <p style={{ margin: '0.25rem 0' }}>
+                  Choose how this reference table participates in notifications.
+                </p>
+                <label style={{ display: 'block', marginBottom: '0.5rem' }}>
+                  Notification role:
+                  <select
+                    value={notificationRole}
+                    onChange={(e) => setNotificationRole(e.target.value)}
+                  >
+                    <option value="">-- none --</option>
+                    <option value="company">Company</option>
+                    <option value="department">Department</option>
+                    <option value="branch">Branch</option>
+                    <option value="employee">Employee</option>
+                    <option value="customer">Customer</option>
+                  </select>
+                </label>
+                <div style={{ marginTop: '0.5rem' }}>
+                  Dashboard notification fields (optional):
+                  <p style={{ margin: '0.25rem 0', color: '#6b7280' }}>
+                    If none are selected, the ID field will be used.
+                  </p>
+                  {columnNames.map((c) => (
+                    <label key={`notif-dashboard-${c}`} style={{ display: 'block' }}>
+                      <input
+                        type="checkbox"
+                        checked={notificationDashboardFields.includes(c)}
+                        onChange={() =>
+                          toggleNotificationField(setNotificationDashboardFields, c)
+                        }
+                      />
+                      {c}
+                    </label>
+                  ))}
+                </div>
+                <div style={{ marginTop: '0.5rem' }}>
+                  Email notification fields:
+                  {columnNames.map((c) => (
+                    <label key={`notif-email-${c}`} style={{ display: 'block' }}>
+                      <input
+                        type="checkbox"
+                        checked={notificationEmailFields.includes(c)}
+                        onChange={() =>
+                          toggleNotificationField(setNotificationEmailFields, c)
+                        }
+                      />
+                      {c}
+                    </label>
+                  ))}
+                </div>
+                <div style={{ marginTop: '0.5rem' }}>
+                  Phone notification fields:
+                  {columnNames.map((c) => (
+                    <label key={`notif-phone-${c}`} style={{ display: 'block' }}>
+                      <input
+                        type="checkbox"
+                        checked={notificationPhoneFields.includes(c)}
+                        onChange={() =>
+                          toggleNotificationField(setNotificationPhoneFields, c)
+                        }
+                      />
+                      {c}
+                    </label>
+                  ))}
+                </div>
+              </div>
+              <div style={{ marginTop: '1rem' }}>
                 <h4 style={{ margin: 0 }}>Filtered configurations</h4>
                 <p style={{ margin: '0.25rem 0' }}>
                   Each filtered entry must include a filter column, filter value, ID field, and at
@@ -831,6 +899,95 @@ export default function RelationsConfig() {
                               ))}
                             </tbody>
                           </table>
+                        </div>
+                      </div>
+                      <div style={{ marginTop: '0.75rem' }}>
+                        <strong>Notification configuration</strong>
+                        <div style={{ marginTop: '0.35rem' }}>
+                          <label style={{ display: 'block' }}>
+                            Notification role:
+                            <select
+                              value={cfg.notificationRole || ''}
+                              onChange={(e) =>
+                                updateFilteredConfigEntry(cfg.key, {
+                                  notificationRole: e.target.value,
+                                })
+                              }
+                            >
+                              <option value="">-- none --</option>
+                              <option value="company">Company</option>
+                              <option value="department">Department</option>
+                              <option value="branch">Branch</option>
+                              <option value="employee">Employee</option>
+                              <option value="customer">Customer</option>
+                            </select>
+                          </label>
+                        </div>
+                        <div style={{ marginTop: '0.5rem' }}>
+                          Dashboard notification fields:
+                          {columnNames.map((c) => (
+                            <label
+                              key={`notif-dashboard-${cfg.key}-${c}`}
+                              style={{ display: 'block' }}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={(cfg.notificationDashboardFields || []).includes(c)}
+                                onChange={() =>
+                                  toggleFilteredNotificationField(
+                                    cfg.key,
+                                    'notificationDashboardFields',
+                                    c,
+                                  )
+                                }
+                              />
+                              {c}
+                            </label>
+                          ))}
+                        </div>
+                        <div style={{ marginTop: '0.5rem' }}>
+                          Email notification fields:
+                          {columnNames.map((c) => (
+                            <label
+                              key={`notif-email-${cfg.key}-${c}`}
+                              style={{ display: 'block' }}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={(cfg.notificationEmailFields || []).includes(c)}
+                                onChange={() =>
+                                  toggleFilteredNotificationField(
+                                    cfg.key,
+                                    'notificationEmailFields',
+                                    c,
+                                  )
+                                }
+                              />
+                              {c}
+                            </label>
+                          ))}
+                        </div>
+                        <div style={{ marginTop: '0.5rem' }}>
+                          Phone notification fields:
+                          {columnNames.map((c) => (
+                            <label
+                              key={`notif-phone-${cfg.key}-${c}`}
+                              style={{ display: 'block' }}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={(cfg.notificationPhoneFields || []).includes(c)}
+                                onChange={() =>
+                                  toggleFilteredNotificationField(
+                                    cfg.key,
+                                    'notificationPhoneFields',
+                                    c,
+                                  )
+                                }
+                              />
+                              {c}
+                            </label>
+                          ))}
                         </div>
                       </div>
                       <div style={{ marginTop: '0.5rem' }}>
