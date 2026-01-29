@@ -24,6 +24,7 @@ import slugify from '../utils/slugify.js';
 import {
   formatJsonItem,
   formatJsonList,
+  formatJsonListLines,
   normalizeInputValue,
 } from '../utils/jsonValueFormatting.js';
 import normalizeRelationKey from '../utils/normalizeRelationKey.js';
@@ -3645,6 +3646,7 @@ const RowFormModal = function RowFormModal({
       const raw = isColumn ? formVals[c] : extraVals[c];
       const val = typeof raw === 'object' && raw !== null ? raw.value : raw;
       let display = typeof raw === 'object' && raw !== null ? raw.label || val : val;
+      let displayLines = null;
       const normalizedValueKey = normalizeRelationOptionKey(val);
       let resolvedOptionLabel = false;
       const labelMap =
@@ -3666,27 +3668,34 @@ const RowFormModal = function RowFormModal({
             parts.push(typeof formatted === 'string' ? formatted : String(formatted));
           }
         };
-        values.forEach((item) => {
-          const row = getRelationRowFromMap(relationRows, item);
-          if (row && resolvedRelationConfig) {
-            const identifier =
-              getRowValueCaseInsensitive(row, resolvedRelationConfig.idField || resolvedRelationConfig.column) ??
-              item;
-            const extras = (resolvedRelationConfig.displayFields || [])
-              .map((df) => row[df])
-              .filter((v) => v !== undefined && v !== null && v !== '');
-            const formattedParts = [identifier, ...extras]
-              .map((entry) => formatJsonItem(entry))
-              .filter((entry) => entry || entry === 0 || entry === false)
-              .map((entry) => (typeof entry === 'string' ? entry : String(entry)));
-            if (formattedParts.length > 0) {
-              parts.push(formattedParts.join(' - '));
+        if (resolvedRelationConfig) {
+          values.forEach((item) => {
+            const row = getRelationRowFromMap(relationRows, item);
+            if (row) {
+              const identifier =
+                getRowValueCaseInsensitive(
+                  row,
+                  resolvedRelationConfig.idField || resolvedRelationConfig.column,
+                ) ?? item;
+              const extras = (resolvedRelationConfig.displayFields || [])
+                .map((df) => row[df])
+                .filter((v) => v !== undefined && v !== null && v !== '');
+              const formattedParts = [identifier, ...extras]
+                .map((entry) => formatJsonItem(entry))
+                .filter((entry) => entry || entry === 0 || entry === false)
+                .map((entry) => (typeof entry === 'string' ? entry : String(entry)));
+              if (formattedParts.length > 0) {
+                parts.push(formattedParts.join(' - '));
+                return;
+              }
             }
-          } else {
             pushFormattedPart(item);
-          }
-        });
-        display = parts.join(', ');
+          });
+          displayLines = parts;
+        } else {
+          displayLines = formatJsonListLines(values);
+        }
+        display = displayLines.join(', ');
       } else if (
         !resolvedOptionLabel &&
         resolvedRelationConfig &&
@@ -3762,7 +3771,15 @@ const RowFormModal = function RowFormModal({
           aria-readonly="true"
           onFocus={() => handleFocusField(c)}
         >
-          {display}
+          {displayLines ? (
+            <div className="flex flex-col">
+              {displayLines.map((line, lineIdx) => (
+                <div key={`${c}-json-${lineIdx}`}>{line}</div>
+              ))}
+            </div>
+          ) : (
+            display
+          )}
         </div>
       );
       if (!withLabel) return <TooltipWrapper title={tip}>{content}</TooltipWrapper>;

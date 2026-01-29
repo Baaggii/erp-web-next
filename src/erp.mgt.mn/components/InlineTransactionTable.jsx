@@ -25,7 +25,12 @@ import {
 } from '../utils/transactionValues.js';
 import extractCombinationFilterValue from '../utils/extractCombinationFilterValue.js';
 import selectDisplayFieldsForRelation from '../utils/selectDisplayFieldsForRelation.js';
-import { formatJsonList, normalizeInputValue } from '../utils/jsonValueFormatting.js';
+import {
+  formatJsonItem,
+  formatJsonList,
+  formatJsonListLines,
+  normalizeInputValue,
+} from '../utils/jsonValueFormatting.js';
 
 const currencyFmt = new Intl.NumberFormat('en-US', {
   minimumFractionDigits: 2,
@@ -2331,6 +2336,7 @@ function InlineTransactionTable(
       fieldTypeMap[f] === 'json' || fieldInputTypes[f] === 'json';
     if (fieldDisabled) {
       let display = typeof val === 'object' ? val.label || val.value : val;
+      let displayLines = null;
       const rawVal = typeof val === 'object' ? val.value : val;
       const relationRow = rawVal !== undefined ? getRelationRow(f, rawVal) : null;
       if (isJsonField) {
@@ -2339,7 +2345,50 @@ function InlineTransactionTable(
           : val === undefined || val === null || val === ''
           ? []
           : [val];
-        display = formatJsonList(arr);
+        if (resolvedConfig?.table) {
+          const lines = [];
+          arr.forEach((item) => {
+            const rawItem =
+              item && typeof item === 'object' && 'value' in item ? item.value : item;
+            const row = rawItem !== undefined ? getRelationRow(f, rawItem) : null;
+            if (row) {
+              const parts = [];
+              const identifier = getRowValueCaseInsensitive(
+                row,
+                resolvedConfig.idField || resolvedConfig.column || f,
+              );
+              const pushPart = (input) => {
+                const formatted = formatJsonItem(input);
+                if (formatted || formatted === 0 || formatted === false) {
+                  parts.push(typeof formatted === 'string' ? formatted : String(formatted));
+                }
+              };
+              if (identifier !== undefined && identifier !== null && identifier !== '') {
+                pushPart(identifier);
+              } else if (rawItem !== undefined && rawItem !== null && rawItem !== '') {
+                pushPart(rawItem);
+              }
+              (resolvedConfig.displayFields || []).forEach((df) => {
+                const extra = getRowValueCaseInsensitive(row, df);
+                if (extra !== undefined && extra !== null && extra !== '') {
+                  pushPart(extra);
+                }
+              });
+              if (parts.length > 0) {
+                lines.push(parts.join(' - '));
+                return;
+              }
+            }
+            const formatted = formatJsonItem(item);
+            if (formatted || formatted === 0 || formatted === false) {
+              lines.push(typeof formatted === 'string' ? formatted : String(formatted));
+            }
+          });
+          displayLines = lines;
+        } else {
+          displayLines = formatJsonListLines(arr);
+        }
+        display = displayLines.join(', ');
       } else if (resolvedConfig && relationRow) {
         const parts = [rawVal];
         (resolvedConfig.displayFields || []).forEach((df) => {
@@ -2361,7 +2410,7 @@ function InlineTransactionTable(
         maxWidth: `${boxMaxWidth}px`,
       };
       return (
-        <div className="flex items-center" title={display}>
+        <div className="flex items-center" title={displayLines ? displayLines.join('\n') : display}>
           <div
             className="px-1 border rounded bg-gray-100"
             style={readonlyStyle}
@@ -2371,7 +2420,15 @@ function InlineTransactionTable(
             aria-readonly="true"
             onFocus={() => handleFocusField(f)}
           >
-            {display}
+            {displayLines ? (
+              <div className="flex flex-col">
+                {displayLines.map((line, lineIdx) => (
+                  <div key={`${f}-json-${lineIdx}`}>{line}</div>
+                ))}
+              </div>
+            ) : (
+              display
+            )}
           </div>
         </div>
       );

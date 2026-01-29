@@ -42,7 +42,11 @@ import { extractRowIndex, sortRowsByIndex } from '../utils/sortRowsByIndex.js';
 import { resolveDisabledFieldState } from './tableManagerDisabledFields.js';
 import { computeTemporaryPromotionOptions } from '../utils/temporaryPromotionOptions.js';
 import NotificationDots from './NotificationDots.jsx';
-import { formatJsonItem, formatJsonList } from '../utils/jsonValueFormatting.js';
+import {
+  formatJsonItem,
+  formatJsonList,
+  formatJsonListLines,
+} from '../utils/jsonValueFormatting.js';
 import normalizeRelationKey from '../utils/normalizeRelationKey.js';
 import getRelationRowFromMap from '../utils/getRelationRowFromMap.js';
 
@@ -8255,6 +8259,7 @@ const TableManager = forwardRef(function TableManager({
                   ? ''
                   : String(rawValue);
                 let display = raw;
+                let displayLines = null;
                 if (fieldTypeMap[c] === 'json') {
                   const arr = normalizeJsonArray(rawValue);
                   const relationConfig = relationConfigs[c];
@@ -8289,10 +8294,11 @@ const TableManager = forwardRef(function TableManager({
                         }
                       }
                     });
-                    display = parts.join(', ');
+                    displayLines = parts;
                   } else {
-                    display = formatJsonList(arr);
+                    displayLines = formatJsonListLines(arr);
                   }
+                  display = displayLines.join(', ');
                 } else if (c === 'TotalCur' || totalCurrencySet.has(c)) {
                   display = currencyFmt.format(Number(r[c] || 0));
                 } else if (
@@ -8307,7 +8313,6 @@ const TableManager = forwardRef(function TableManager({
                 ) {
                   display = normalizeDateInput(raw, 'YYYY-MM-DD');
                 }
-                const showFull = display.length > 20;
                 let searchTerm = sanitizeName(raw);
                 if (relationConfig?.table) {
                   const idField =
@@ -8324,10 +8329,18 @@ const TableManager = forwardRef(function TableManager({
                   <td
                     key={c}
                     style={style}
-                    title={raw}
+                    title={displayLines ? displayLines.join('\n') : raw}
                     onContextMenu={(e) => searchTerm && openContextMenu(e, searchTerm)}
                   >
-                    {display}
+                    {displayLines ? (
+                      <div className="flex flex-col">
+                        {displayLines.map((line, lineIdx) => (
+                          <div key={`${c}-json-${lineIdx}`}>{line}</div>
+                        ))}
+                      </div>
+                    ) : (
+                      display
+                    )}
                   </td>
                 );
               })}
