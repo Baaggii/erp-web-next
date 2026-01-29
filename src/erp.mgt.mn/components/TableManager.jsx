@@ -42,7 +42,11 @@ import { extractRowIndex, sortRowsByIndex } from '../utils/sortRowsByIndex.js';
 import { resolveDisabledFieldState } from './tableManagerDisabledFields.js';
 import { computeTemporaryPromotionOptions } from '../utils/temporaryPromotionOptions.js';
 import NotificationDots from './NotificationDots.jsx';
-import { formatJsonItem, formatJsonList } from '../utils/jsonValueFormatting.js';
+import {
+  formatJsonItem,
+  formatJsonList,
+  formatJsonListLines,
+} from '../utils/jsonValueFormatting.js';
 import normalizeRelationKey from '../utils/normalizeRelationKey.js';
 import getRelationRowFromMap from '../utils/getRelationRowFromMap.js';
 
@@ -561,6 +565,9 @@ const TableManager = forwardRef(function TableManager({
   const [relationConfigs, setRelationConfigs] = useState({});
   const [jsonRelationLabels, setJsonRelationLabels] = useState({});
   const jsonRelationFetchCache = useRef({});
+  const failedRelationFetches = useRef(new Set());
+  const relationValueSnapshotRef = useRef({});
+  const hiddenRelationFetchCacheRef = useRef({ table: null, fields: new Set() });
   const displayFieldConfigCache = useRef(new Map());
   const [columnMeta, setColumnMeta] = useState([]);
   const [autoInc, setAutoInc] = useState(new Set());
@@ -1275,7 +1282,7 @@ const TableManager = forwardRef(function TableManager({
         `/api/display_fields?table=${encodeURIComponent(tableName)}${
           idField ? `&idField=${encodeURIComponent(idField)}` : ''
         }`,
-        { credentials: 'include' },
+        { credentials: 'include', skipLoader: true },
       )
         .then((res) => (res.ok ? res.json() : null))
         .catch(() => null);
@@ -1684,6 +1691,14 @@ const TableManager = forwardRef(function TableManager({
   }, [formConfig?.transactionTypeField, typeFilter]);
 
   useEffect(() => {
+    if (!showForm) return;
+    relationValueSnapshotRef.current = {
+      ...rowDefaults,
+      ...(editing || {}),
+    };
+  }, [editing, rowDefaults, showForm]);
+
+  useEffect(() => {
     async function loadRequests() {
       if (!requestStatus) {
         setRequestIdSet(new Set());
@@ -1730,7 +1745,69 @@ const TableManager = forwardRef(function TableManager({
 
   useEffect(() => {
     if (!table || Object.keys(columnCaseMap).length === 0) return;
+    if (!Array.isArray(rows) || rows.length === 0) {
+      setRelations({});
+      setRefData({});
+      setRefRows({});
+      setRelationConfigs({});
+      return;
+    }
     let canceled = false;
+    if (hiddenRelationFetchCacheRef.current.table !== table) {
+      hiddenRelationFetchCacheRef.current.table = table;
+      hiddenRelationFetchCacheRef.current.fields = new Set();
+    }
+
+    const snapshotValues = relationValueSnapshotRef.current || {};
+    const visibleFieldSet = new Set();
+    const requiredFieldSet = new Set();
+    const addField = (set) => (field) => {
+      const resolved = resolveCanonicalKey(field);
+      if (resolved) set.add(resolved);
+    };
+    walkEditableFieldValues(formConfig?.visibleFields || [], addField(visibleFieldSet));
+    walkEditableFieldValues(formConfig?.headerFields || [], addField(visibleFieldSet));
+    walkEditableFieldValues(formConfig?.mainFields || [], addField(visibleFieldSet));
+    walkEditableFieldValues(formConfig?.footerFields || [], addField(visibleFieldSet));
+    walkEditableFieldValues(formConfig?.requiredFields || [], addField(requiredFieldSet));
+
+    const hasMeaningfulValue = (val) => {
+      if (val === undefined || val === null || val === '') return false;
+      if (Array.isArray(val)) return val.some(hasMeaningfulValue);
+      if (typeof val === 'object') {
+        if (Object.prototype.hasOwnProperty.call(val, 'value')) {
+          return hasMeaningfulValue(val.value);
+        }
+        return Object.values(val).some(hasMeaningfulValue);
+      }
+      return true;
+    };
+
+    const resolveFieldValue = (field) => {
+      const resolved = resolveCanonicalKey(field);
+      if (resolved && snapshotValues[resolved] !== undefined) {
+        return snapshotValues[resolved];
+      }
+      if (snapshotValues[field] !== undefined) return snapshotValues[field];
+      return undefined;
+    };
+
+    const shouldLoadRelationColumn = (field) => {
+      const resolved = resolveCanonicalKey(field) || field;
+      const isVisible =
+        visibleFieldSet.size === 0 || visibleFieldSet.has(resolved);
+      const hasValue = hasMeaningfulValue(resolveFieldValue(field));
+      const isRequired = requiredFieldSet.has(resolved);
+      if (!isVisible && !hasValue) return false;
+      const isActive = isVisible || isRequired || hasValue;
+      if (!isActive) return false;
+      if (!isVisible) {
+        const cache = hiddenRelationFetchCacheRef.current.fields;
+        if (cache.has(resolved)) return false;
+        cache.add(resolved);
+      }
+      return true;
+    };
 
     function buildCustomRelationsList(customPayload) {
       if (!customPayload || typeof customPayload !== 'object') return [];
@@ -1870,6 +1947,7 @@ const TableManager = forwardRef(function TableManager({
           }
           const res = await fetch(`/api/display_fields?${params.toString()}`, {
             credentials: 'include',
+            skipLoader: true,
           });
           if (!res.ok) {
             if (!canceled) {
@@ -2004,7 +2082,7 @@ const TableManager = forwardRef(function TableManager({
           try {
             res = await fetch(
               `/api/tables/${encodeURIComponent(tableName)}?${params.toString()}`,
-              { credentials: 'include' },
+              { credentials: 'include', skipLoader: true },
             );
           } catch (err) {
             if (!canceled && !referenceLoadErrorTables.has(cacheKey)) {
@@ -2131,6 +2209,7 @@ const TableManager = forwardRef(function TableManager({
 
     const loadRelationColumn = async ([col, rel]) => {
       if (!rel?.table || !rel?.column) return null;
+      if (!shouldLoadRelationColumn(col)) return null;
       const [cfg, tenantInfo] = await Promise.all([
         fetchDisplayConfig(rel.table, {
           column: rel.filterColumn,
@@ -2429,7 +2508,17 @@ const TableManager = forwardRef(function TableManager({
     return () => {
       canceled = true;
     };
-  }, [table, company, branch, department, resolveCanonicalKey, validCols]);
+  }, [
+    table,
+    company,
+    branch,
+    department,
+    formConfig,
+    resolveCanonicalKey,
+    showForm,
+    validCols,
+    rows.length,
+  ]);
 
   useEffect(() => {
     if (!table || columnMeta.length === 0) return;
@@ -6264,9 +6353,13 @@ const TableManager = forwardRef(function TableManager({
         values.forEach((item) => {
           const relationId = resolveScopeId(item);
           const key = relationId ?? item;
-          const cacheKey = key === undefined || key === null ? '' : String(key);
+          if (key === null || key === undefined || key === 0) return;
+          const cacheKey = String(key).trim();
           if (!cacheKey) return;
           if (jsonRelationLabels[column]?.[cacheKey]) return;
+          const idField = relationConfig.idField || relationConfig.column || column;
+          const failedKey = `${relationConfig.table}:${idField}=${cacheKey}`;
+          if (failedRelationFetches.current.has(failedKey)) return;
           const cachedRow = getRelationRowFromMap(relationRows, key);
           if (cachedRow && typeof cachedRow === 'object') {
             if (!immediateUpdates[column]) immediateUpdates[column] = {};
@@ -6283,7 +6376,6 @@ const TableManager = forwardRef(function TableManager({
           pending.push(
             (async () => {
               try {
-                const idField = relationConfig.idField || relationConfig.column || column;
                 const displayCfg =
                   relationConfig.displayFields && relationConfig.displayFields.length > 0
                     ? null
@@ -6299,12 +6391,17 @@ const TableManager = forwardRef(function TableManager({
                 params.set(idField, key);
                 const res = await fetch(
                   `/api/tables/${encodeURIComponent(relationConfig.table)}?${params.toString()}`,
-                  { credentials: 'include' },
+                  { credentials: 'include', skipLoader: true },
                 );
                 let fetchedRow = null;
-                if (res.ok) {
+                if (!res.ok) {
+                  failedRelationFetches.current.add(failedKey);
+                } else {
                   const json = await res.json().catch(() => ({}));
                   fetchedRow = Array.isArray(json.rows) ? json.rows[0] : null;
+                  if (!fetchedRow) {
+                    failedRelationFetches.current.add(failedKey);
+                  }
                 }
                 if (canceled) return;
                 if (fetchedRow && typeof fetchedRow === 'object') {
@@ -6322,6 +6419,7 @@ const TableManager = forwardRef(function TableManager({
                   }
                 }
               } catch {
+                failedRelationFetches.current.add(failedKey);
                 /* ignore */
               } finally {
                 delete jsonRelationFetchCache.current[requestKey];
@@ -8180,6 +8278,7 @@ const TableManager = forwardRef(function TableManager({
                   ? ''
                   : String(rawValue);
                 let display = raw;
+                let displayLines = null;
                 if (fieldTypeMap[c] === 'json') {
                   const arr = normalizeJsonArray(rawValue);
                   const relationConfig = relationConfigs[c];
@@ -8214,10 +8313,11 @@ const TableManager = forwardRef(function TableManager({
                         }
                       }
                     });
-                    display = parts.join(', ');
+                    displayLines = parts;
                   } else {
-                    display = formatJsonList(arr);
+                    displayLines = formatJsonListLines(arr);
                   }
+                  display = displayLines.join(', ');
                 } else if (c === 'TotalCur' || totalCurrencySet.has(c)) {
                   display = currencyFmt.format(Number(r[c] || 0));
                 } else if (
@@ -8232,7 +8332,6 @@ const TableManager = forwardRef(function TableManager({
                 ) {
                   display = normalizeDateInput(raw, 'YYYY-MM-DD');
                 }
-                const showFull = display.length > 20;
                 let searchTerm = sanitizeName(raw);
                 if (relationConfig?.table) {
                   const idField =
@@ -8249,10 +8348,18 @@ const TableManager = forwardRef(function TableManager({
                   <td
                     key={c}
                     style={style}
-                    title={raw}
+                    title={displayLines ? displayLines.join('\n') : raw}
                     onContextMenu={(e) => searchTerm && openContextMenu(e, searchTerm)}
                   >
-                    {display}
+                    {displayLines ? (
+                      <div className="flex flex-col">
+                        {displayLines.map((line, lineIdx) => (
+                          <div key={`${c}-json-${lineIdx}`}>{line}</div>
+                        ))}
+                      </div>
+                    ) : (
+                      display
+                    )}
                   </td>
                 );
               })}

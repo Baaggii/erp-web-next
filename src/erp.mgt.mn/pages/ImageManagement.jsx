@@ -742,10 +742,8 @@ export default function ImageManagement() {
                 description: extractDateFromName(p.currentName),
               }))
           : [];
-        const isNotFoundReason = (reason) =>
-          String(reason || '').toLowerCase().includes('no matching transaction');
-        const notFound = miss.filter((p) => isNotFoundReason(p.reason));
-        const ignored = miss.filter((p) => !isNotFoundReason(p.reason));
+        const notFound = miss.filter((p) => p.reason === 'No matching transaction');
+        const ignored = miss.filter((p) => p.reason !== 'No matching transaction');
         setPending(list);
         pendingRef.current = list;
         setHostIgnored(ignored);

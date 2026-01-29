@@ -53,6 +53,10 @@ function GeneralSettingsTab() {
   const { userSettings, updateUserSettings } = useAuth();
   const tooltipsEnabled = userSettings.tooltipsEnabled ?? true;
   const notificationSound = userSettings.notificationSound || 'chime';
+  const rawNotificationVolume = Number(userSettings.notificationVolume);
+  const notificationVolume = Number.isFinite(rawNotificationVolume)
+    ? Math.min(Math.max(rawNotificationVolume, 0), 1)
+    : 1;
   const soundOptions = getNotificationSoundOptions();
   return (
     <div>
@@ -90,7 +94,7 @@ function GeneralSettingsTab() {
         {notificationSound !== 'off' && (
           <button
             type="button"
-            onClick={() => playNotificationSound(notificationSound)}
+            onClick={() => playNotificationSound(notificationSound, notificationVolume)}
             style={{
               marginTop: '0.5rem',
               padding: '0.35rem 0.75rem',
@@ -103,6 +107,34 @@ function GeneralSettingsTab() {
             {t('preview_notification_sound', 'Preview sound')}
           </button>
         )}
+        <div style={{ marginTop: '0.75rem' }}>
+          <TooltipWrapper
+            title={t('notification_volume', {
+              ns: 'tooltip',
+              defaultValue: 'Control the volume of notification sounds',
+            })}
+          >
+            <label style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+              <span>
+                {t('notification_volume', 'Notification volume')}: {' '}
+                {Math.round(notificationVolume * 100)}%
+              </span>
+              <input
+                type="range"
+                min="0"
+                max="100"
+                step="5"
+                value={Math.round(notificationVolume * 100)}
+                onChange={(e) => {
+                  const value = Number(e.target.value);
+                  updateUserSettings({
+                    notificationVolume: Number.isFinite(value) ? value / 100 : 1,
+                  });
+                }}
+              />
+            </label>
+          </TooltipWrapper>
+        </div>
       </div>
     </div>
   );
