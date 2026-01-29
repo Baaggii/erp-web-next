@@ -475,7 +475,7 @@ export async function addRow(req, res, next) {
         },
       },
     );
-    const insertedId = result?.id ?? row?.id ?? null;
+    const insertedId = result?.insertId ?? result?.id ?? row?.id ?? null;
     if (insertedId) {
       try {
         await createDynamicTransactionNotifications({
@@ -489,7 +489,7 @@ export async function addRow(req, res, next) {
         console.error('Failed to create transaction notifications', notifyErr);
       }
     }
-    res.locals.insertId = result?.id;
+    res.locals.insertId = result?.insertId ?? result?.id;
     res.status(201).json(result);
   } catch (err) {
     if (/Can't update table .* in stored function\/trigger/i.test(err.message)) {
