@@ -2434,6 +2434,10 @@ const TableManager = forwardRef(function TableManager({
   useEffect(() => {
     if (!table || columnMeta.length === 0) return;
     let canceled = false;
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => {
+      controller.abort();
+    }, 20000);
     const params = new URLSearchParams({ page, perPage });
     if (company != null && validCols.has('company_id'))
       params.set('company_id', company);
@@ -2458,6 +2462,7 @@ const TableManager = forwardRef(function TableManager({
     if (hasInvalidDateFilter) return;
     fetch(`/api/tables/${encodeURIComponent(table)}?${params.toString()}`, {
       credentials: 'include',
+      signal: controller.signal,
     })
       .then((res) => {
         if (canceled) return { rows: [], count: 0 };
@@ -2492,6 +2497,14 @@ const TableManager = forwardRef(function TableManager({
         logRowsMemory(rows);
       })
       .catch(() => {
+        if (canceled) return;
+        if (controller.signal.aborted) {
+          addToast(
+            t('request_timeout', 'Request timed out'),
+            'error',
+          );
+          return;
+        }
         if (!canceled)
           addToast(
             t('failed_load_table_data', 'Failed to load table data'),
@@ -2500,6 +2513,8 @@ const TableManager = forwardRef(function TableManager({
       });
     return () => {
       canceled = true;
+      clearTimeout(timeoutId);
+      controller.abort();
     };
   }, [
     table,
@@ -5203,7 +5218,7 @@ const TableManager = forwardRef(function TableManager({
       const runFetch = async (searchParams) => {
         const res = await fetch(
           `${API_BASE}/transaction_temporaries?${searchParams.toString()}`,
-          { credentials: 'include' },
+          { credentials: 'include', skipLoader: true },
         );
         const rateLimitMessage = await getRateLimitMessage(res);
         if (rateLimitMessage) {
