@@ -164,6 +164,8 @@ import path from "path";
 import { tenantConfigPath, getConfigPath } from "../api-server/utils/configPaths.js";
 import { getDisplayFields as getDisplayCfg } from "../api-server/services/displayFieldConfig.js";
 import { listCustomRelations } from "../api-server/services/tableRelationsConfig.js";
+import { getConfigsByTable } from "../api-server/services/transactionFormConfig.js";
+import { sendEmail } from "../api-server/services/emailService.js";
 import { GLOBAL_COMPANY_ID } from "../config/0/constants.js";
 import { formatDateForDb } from "../api-server/utils/formatDate.js";
 
@@ -5599,6 +5601,497 @@ export async function updateTableRow(
   return result;
 }
 
+function getRowValueCaseInsensitive(row, field) {
+  if (!row || !field) return undefined;
+  if (Object.prototype.hasOwnProperty.call(row, field)) {
+    return row[field];
+  }
+  const lower = String(field).toLowerCase();
+  const key = Object.keys(row).find((k) => String(k).toLowerCase() === lower);
+  return key ? row[key] : undefined;
+}
+
+function normalizeNotificationEntryValue(entry, relation = {}) {
+  if (entry === undefined || entry === null || entry === '') return null;
+  if (typeof entry !== 'object') return entry;
+  if (Array.isArray(entry)) return entry;
+  const idField = relation?.idField;
+  if (idField && entry[idField] !== undefined && entry[idField] !== null) {
+    return entry[idField];
+  }
+  if (entry.id !== undefined && entry.id !== null) return entry.id;
+  if (entry.value !== undefined && entry.value !== null) return entry.value;
+  if (entry.key !== undefined && entry.key !== null) return entry.key;
+  return null;
+}
+
+function parseJsonValue(value) {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  if (!['[', '{'].includes(trimmed[0])) return null;
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    return null;
+  }
+}
+
+function normalizeNotificationValues(value, relation = {}) {
+  if (value === undefined || value === null || value === '') return [];
+  const isArray = relation?.isArray === true || relation?.is_array === true;
+  const normalized = [];
+  const pushValue = (entry) => {
+    const resolved = normalizeNotificationEntryValue(entry, relation);
+    if (resolved === undefined || resolved === null || resolved === '') return;
+    if (Array.isArray(resolved)) {
+      resolved.forEach((item) => pushValue(item));
+      return;
+    }
+    normalized.push(resolved);
+  };
+
+  if (Array.isArray(value)) {
+    value.forEach((entry) => pushValue(entry));
+    return normalized;
+  }
+
+  if (typeof value === 'object') {
+    if (isArray) {
+      Object.values(value).forEach((entry) => pushValue(entry));
+      return normalized;
+    }
+    pushValue(value);
+    return normalized;
+  }
+
+  if (typeof value === 'string') {
+    const parsed = parseJsonValue(value);
+    if (parsed !== null) {
+      if (Array.isArray(parsed)) {
+        parsed.forEach((entry) => pushValue(entry));
+      } else if (parsed && typeof parsed === 'object') {
+        Object.values(parsed).forEach((entry) => pushValue(entry));
+      } else {
+        pushValue(parsed);
+      }
+      return normalized;
+    }
+    if (isArray && value.includes(',')) {
+      value
+        .split(',')
+        .map((entry) => entry.trim())
+        .filter(Boolean)
+        .forEach((entry) => pushValue(entry));
+      return normalized;
+    }
+  }
+
+  pushValue(value);
+  return normalized;
+}
+
+function getRelationForField(relations, field) {
+  if (!relations || !field) return null;
+  const direct = relations[field];
+  if (Array.isArray(direct) && direct.length > 0) return direct[0];
+  if (direct && typeof direct === 'object') return direct;
+  const lower = String(field).toLowerCase();
+  const matchKey = Object.keys(relations).find(
+    (key) => String(key).toLowerCase() === lower,
+  );
+  const match = matchKey ? relations[matchKey] : null;
+  if (Array.isArray(match) && match.length > 0) return match[0];
+  if (match && typeof match === 'object') return match;
+  return null;
+}
+
+async function resolveTransactionNotificationConfig(tableName, row, companyId) {
+  const { config: configs } = await getConfigsByTable(tableName, companyId);
+  const entries = Object.entries(configs || {});
+  if (entries.length === 0) return null;
+  const typeFields = Array.from(
+    new Set(
+      entries
+        .map(([, cfg]) => cfg?.transactionTypeField)
+        .filter((field) => field && String(field).trim()),
+    ),
+  );
+  let matchedValue = '';
+  let matchedField = '';
+  for (const field of typeFields) {
+    const raw = getRowValueCaseInsensitive(row, field);
+    if (raw === undefined || raw === null || raw === '') continue;
+    matchedValue = String(raw);
+    matchedField = field;
+    break;
+  }
+  let matchedConfigs = entries
+    .filter(([, cfg]) => cfg?.transactionTypeValue !== undefined && cfg?.transactionTypeValue !== '')
+    .filter(([, cfg]) => {
+      if (!matchedValue) return false;
+      if (String(cfg.transactionTypeValue) !== matchedValue) return false;
+      if (cfg.transactionTypeField && matchedField) {
+        return cfg.transactionTypeField === matchedField;
+      }
+      return true;
+    })
+    .map(([name, cfg]) => ({ name, config: cfg }));
+
+  if (matchedConfigs.length === 0) {
+    matchedConfigs = entries
+      .filter(([, cfg]) => !cfg?.transactionTypeValue)
+      .map(([name, cfg]) => ({ name, config: cfg }));
+  }
+
+  if (matchedConfigs.length === 0) {
+    matchedConfigs = [{ name: entries[0][0], config: entries[0][1] }];
+  }
+
+  const merged = {
+    notificationEmployeeFields: [],
+    notificationCompanyFields: [],
+    notificationDepartmentFields: [],
+    notificationBranchFields: [],
+    notificationCustomerFields: [],
+    notificationEmailFields: [],
+    notificationPhoneFields: [],
+  };
+  const addFields = (key, list) => {
+    if (!Array.isArray(list)) return;
+    list.forEach((field) => {
+      if (field === undefined || field === null) return;
+      const trimmed = String(field).trim();
+      if (!trimmed) return;
+      if (!merged[key].includes(trimmed)) merged[key].push(trimmed);
+    });
+  };
+
+  matchedConfigs.forEach(({ config }) => {
+    addFields('notificationEmployeeFields', config.notificationEmployeeFields);
+    addFields('notificationCompanyFields', config.notificationCompanyFields);
+    addFields('notificationDepartmentFields', config.notificationDepartmentFields);
+    addFields('notificationBranchFields', config.notificationBranchFields);
+    addFields('notificationCustomerFields', config.notificationCustomerFields);
+    addFields('notificationEmailFields', config.notificationEmailFields);
+    addFields('notificationPhoneFields', config.notificationPhoneFields);
+  });
+
+  const label =
+    matchedConfigs.find(({ config }) => config?.moduleLabel)?.config?.moduleLabel ||
+    matchedConfigs[0]?.config?.moduleLabel ||
+    matchedConfigs[0]?.name ||
+    tableName;
+
+  return { fields: merged, label };
+}
+
+async function fetchRelatedRecords(conn, relation, values) {
+  if (!relation || !relation.table || !relation.column) return [];
+  const filteredValues = Array.from(
+    new Set(values.map((entry) => (entry === null || entry === undefined ? '' : String(entry))).filter((entry) => entry)),
+  );
+  if (filteredValues.length === 0) return [];
+  const placeholders = filteredValues.map(() => '?').join(', ');
+  const whereParts = [`${escapeIdentifier(relation.column)} IN (${placeholders})`];
+  const params = [...filteredValues];
+  if (relation.filterColumn && relation.filterValue !== undefined && relation.filterValue !== null) {
+    whereParts.push(`${escapeIdentifier(relation.filterColumn)} = ?`);
+    params.push(relation.filterValue);
+  }
+  const [rows] = await conn.query(
+    `SELECT * FROM ${escapeIdentifier(relation.table)} WHERE ${whereParts.join(' AND ')}`,
+    params,
+  );
+  return Array.isArray(rows) ? rows : [];
+}
+
+async function insertDashboardNotifications(conn, companyId, createdBy, relatedId, recipients, message) {
+  const recipientList = Array.from(
+    new Set(
+      recipients
+        .map((entry) => normalizeLockEmpId(entry))
+        .filter((entry) => entry),
+    ),
+  );
+  if (recipientList.length === 0) return;
+  const values = recipientList.map(() => '(?, ?, ?, ?, ?, ?)').join(', ');
+  const params = [];
+  recipientList.forEach((recipient) => {
+    params.push(
+      companyId ?? null,
+      recipient,
+      'request',
+      relatedId ?? 0,
+      message,
+      createdBy ?? null,
+    );
+  });
+  await conn.query(
+    `INSERT INTO notifications (company_id, recipient_empid, type, related_id, message, created_by)
+     VALUES ${values}`,
+    params,
+  );
+}
+
+async function sendNotificationEmails(emails, subject, body) {
+  const emailList = Array.from(
+    new Set(
+      emails
+        .map((entry) => (entry === undefined || entry === null ? '' : String(entry).trim()))
+        .filter((entry) => entry),
+    ),
+  );
+  for (const email of emailList) {
+    try {
+      // eslint-disable-next-line no-await-in-loop
+      await sendEmail(email, subject, body);
+    } catch (err) {
+      console.error('Failed to send notification email', { email, error: err });
+    }
+  }
+}
+
+async function notifyDynamicTransaction({
+  tableName,
+  row,
+  insertId,
+  companyId,
+  createdBy,
+  conn,
+}) {
+  if (!tableName || !tableName.startsWith('transactions_')) return;
+  const config = await resolveTransactionNotificationConfig(tableName, row, companyId);
+  if (!config) return;
+  const { fields, label } = config;
+  const { config: relationConfig } = await listCustomRelations(tableName, companyId);
+  const relations = relationConfig || {};
+  const displayConfigCache = new Map();
+  const resolveDisplayConfig = async (relation) => {
+    if (!relation?.table) return null;
+    const key = [
+      relation.table,
+      relation.filterColumn || '',
+      relation.filterValue || '',
+      relation.idField || '',
+    ].join('|');
+    if (displayConfigCache.has(key)) return displayConfigCache.get(key);
+    const { config: displayConfig } = await getDisplayCfg(
+      relation.table,
+      companyId,
+      relation.filterColumn,
+      relation.filterValue,
+      relation.idField,
+    );
+    displayConfigCache.set(key, displayConfig);
+    return displayConfig;
+  };
+
+  const employeeRecipients = new Set();
+  const companyRecipients = new Set();
+  const departmentRecipients = new Set();
+  const branchRecipients = new Set();
+  const emailRecipients = new Set();
+
+  const processFieldValues = async (fieldList, handler) => {
+    for (const field of fieldList) {
+      const relation = getRelationForField(relations, field);
+      const rawValue = getRowValueCaseInsensitive(row, field);
+      const values = normalizeNotificationValues(rawValue, relation || {});
+      if (values.length === 0) continue;
+      if (!relation) {
+        // eslint-disable-next-line no-await-in-loop
+        await handler(values, null);
+        continue;
+      }
+      // eslint-disable-next-line no-await-in-loop
+      const related = await fetchRelatedRecords(conn, relation, values);
+      // eslint-disable-next-line no-await-in-loop
+      const displayConfig = await resolveDisplayConfig(relation);
+      // eslint-disable-next-line no-await-in-loop
+      await handler(values, { relation, related, displayConfig });
+    }
+  };
+
+  const extractRecordValues = (record, fieldsList) => {
+    const values = [];
+    fieldsList.forEach((field) => {
+      const raw = getRowValueCaseInsensitive(record, field);
+      if (raw === undefined || raw === null || raw === '') return;
+      if (Array.isArray(raw)) {
+        raw.forEach((entry) => {
+          if (entry !== undefined && entry !== null && entry !== '') values.push(entry);
+        });
+        return;
+      }
+      values.push(raw);
+    });
+    return values;
+  };
+
+  const pickDashboardFields = (displayConfig, relation) => {
+    if (displayConfig?.notificationDashboardFields?.length) {
+      return displayConfig.notificationDashboardFields;
+    }
+    if (displayConfig?.idField) {
+      return [displayConfig.idField];
+    }
+    if (relation?.idField) {
+      return [relation.idField];
+    }
+    if (relation?.column) {
+      return [relation.column];
+    }
+    return [];
+  };
+
+  const pickEmailFields = (displayConfig) =>
+    Array.isArray(displayConfig?.notificationEmailFields)
+      ? displayConfig.notificationEmailFields
+      : [];
+
+  await processFieldValues(fields.notificationEmployeeFields, async (values, meta) => {
+    if (!meta) {
+      values.forEach((value) => employeeRecipients.add(value));
+      return;
+    }
+    const dashboardFields = pickDashboardFields(meta.displayConfig, meta.relation);
+    const emailFields = pickEmailFields(meta.displayConfig);
+    meta.related.forEach((record) => {
+      extractRecordValues(record, dashboardFields).forEach((value) =>
+        employeeRecipients.add(value),
+      );
+      extractRecordValues(record, emailFields).forEach((value) =>
+        emailRecipients.add(value),
+      );
+    });
+  });
+
+  await processFieldValues(fields.notificationCompanyFields, async (values, meta) => {
+    if (!meta) {
+      values.forEach((value) => companyRecipients.add(value));
+      return;
+    }
+    const dashboardFields = pickDashboardFields(meta.displayConfig, meta.relation);
+    meta.related.forEach((record) => {
+      extractRecordValues(record, dashboardFields).forEach((value) =>
+        companyRecipients.add(value),
+      );
+    });
+  });
+
+  await processFieldValues(fields.notificationDepartmentFields, async (values, meta) => {
+    if (!meta) {
+      values.forEach((value) => departmentRecipients.add(value));
+      return;
+    }
+    const dashboardFields = pickDashboardFields(meta.displayConfig, meta.relation);
+    meta.related.forEach((record) => {
+      extractRecordValues(record, dashboardFields).forEach((value) =>
+        departmentRecipients.add(value),
+      );
+    });
+  });
+
+  await processFieldValues(fields.notificationBranchFields, async (values, meta) => {
+    if (!meta) {
+      values.forEach((value) => branchRecipients.add(value));
+      return;
+    }
+    const dashboardFields = pickDashboardFields(meta.displayConfig, meta.relation);
+    meta.related.forEach((record) => {
+      extractRecordValues(record, dashboardFields).forEach((value) =>
+        branchRecipients.add(value),
+      );
+    });
+  });
+
+  await processFieldValues(fields.notificationCustomerFields, async (values, meta) => {
+    if (!meta) {
+      values.forEach((value) => emailRecipients.add(value));
+      return;
+    }
+    const emailFields = pickEmailFields(meta.displayConfig);
+    meta.related.forEach((record) => {
+      extractRecordValues(record, emailFields).forEach((value) =>
+        emailRecipients.add(value),
+      );
+    });
+  });
+
+  for (const field of fields.notificationEmailFields) {
+    const rawValue = getRowValueCaseInsensitive(row, field);
+    normalizeNotificationValues(rawValue, {}).forEach((value) =>
+      emailRecipients.add(value),
+    );
+  }
+
+  const companyIds = Array.from(companyRecipients).filter((value) => value !== '');
+  const departmentIds = Array.from(departmentRecipients).filter((value) => value !== '');
+  const branchIds = Array.from(branchRecipients).filter((value) => value !== '');
+
+  if (companyIds.length > 0) {
+    const placeholders = companyIds.map(() => '?').join(', ');
+    const [rows] = await conn.query(
+      `SELECT empid FROM users WHERE company_id IN (${placeholders})`,
+      companyIds,
+    );
+    rows.forEach((row) => {
+      if (row?.empid) employeeRecipients.add(row.empid);
+    });
+  }
+
+  if (departmentIds.length > 0) {
+    const placeholders = departmentIds.map(() => '?').join(', ');
+    const params = [...departmentIds];
+    let companyClause = '';
+    if (companyId !== undefined && companyId !== null && companyId !== '') {
+      companyClause = ' AND company_id = ?';
+      params.push(companyId);
+    }
+    const [rows] = await conn.query(
+      `SELECT employment_emp_id AS empid FROM tbl_employment WHERE employment_department_id IN (${placeholders})${companyClause}`,
+      params,
+    );
+    rows.forEach((row) => {
+      if (row?.empid) employeeRecipients.add(row.empid);
+    });
+  }
+
+  if (branchIds.length > 0) {
+    const placeholders = branchIds.map(() => '?').join(', ');
+    const params = [...branchIds];
+    let companyClause = '';
+    if (companyId !== undefined && companyId !== null && companyId !== '') {
+      companyClause = ' AND company_id = ?';
+      params.push(companyId);
+    }
+    const [rows] = await conn.query(
+      `SELECT employment_emp_id AS empid FROM tbl_employment WHERE employment_branch_id IN (${placeholders})${companyClause}`,
+      params,
+    );
+    rows.forEach((row) => {
+      if (row?.empid) employeeRecipients.add(row.empid);
+    });
+  }
+
+  const message = `New ${label || tableName} transaction #${insertId ?? ''}`.trim();
+  await insertDashboardNotifications(
+    conn,
+    companyId,
+    createdBy,
+    insertId ?? 0,
+    Array.from(employeeRecipients),
+    message,
+  );
+
+  if (emailRecipients.size > 0) {
+    const subject = `New ${label || tableName} transaction`;
+    const body = `${message}.`;
+    await sendNotificationEmails(Array.from(emailRecipients), subject, body);
+  }
+}
+
 export async function insertTableRow(
   tableName,
   row,
@@ -5719,6 +6212,22 @@ export async function insertTableRow(
     });
     if (lockImpacts?.length && typeof onLockInvalidation === 'function') {
       await onLockInvalidation(lockImpacts);
+    }
+    try {
+      await notifyDynamicTransaction({
+        tableName,
+        row,
+        insertId: normalizedInsertId,
+        companyId: companyIdValue,
+        createdBy: changedBy,
+        conn,
+      });
+    } catch (err) {
+      console.error('Failed to send dynamic transaction notifications', {
+        tableName,
+        insertId: normalizedInsertId,
+        error: err,
+      });
     }
   }
   return { id: insertId };
