@@ -5198,15 +5198,12 @@ const TableManager = forwardRef(function TableManager({
         params.set('status', statusValue);
       }
 
-      const shouldFilterByTable = (() => {
-        if (options?.table !== undefined) {
-          return Boolean(options.table);
-        }
-        return Boolean(table);
-      })();
+      const resolvedTable =
+        options?.table !== undefined ? options.table : table;
+      const shouldFilterByTable = Boolean(resolvedTable);
 
-      if (shouldFilterByTable && table) {
-        params.set('table', table);
+      if (shouldFilterByTable) {
+        params.set('table', String(resolvedTable));
       }
       const focusIdRaw = options?.focusId;
       const focusId =
@@ -5490,7 +5487,15 @@ const TableManager = forwardRef(function TableManager({
       queuedTemporaryTrigger.id != null && queuedTemporaryTrigger.id !== ''
         ? queuedTemporaryTrigger.id
         : null;
-    fetchTemporaryList(scopeToOpen, focusId ? { focusId } : undefined);
+    const triggerTable = queuedTemporaryTrigger.table;
+    const fetchOptions = {
+      ...(focusId ? { focusId } : null),
+      ...(triggerTable ? { table: triggerTable } : null),
+    };
+    fetchTemporaryList(
+      scopeToOpen,
+      Object.keys(fetchOptions).length > 0 ? fetchOptions : undefined,
+    );
     if (typeof markTemporaryScopeSeen === 'function' && scopeToOpen) {
       markTemporaryScopeSeen(scopeToOpen);
     }
