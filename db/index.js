@@ -5721,7 +5721,7 @@ export async function insertTableRow(
       await onLockInvalidation(lockImpacts);
     }
   }
-  return { id: insertId };
+  return { id: insertId, insertId };
 }
 
 export async function deleteTableRow(
