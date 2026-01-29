@@ -561,6 +561,8 @@ const TableManager = forwardRef(function TableManager({
   const [relationConfigs, setRelationConfigs] = useState({});
   const [jsonRelationLabels, setJsonRelationLabels] = useState({});
   const jsonRelationFetchCache = useRef({});
+  const relationValueSnapshotRef = useRef({});
+  const hiddenRelationFetchCacheRef = useRef({ table: null, fields: new Set() });
   const displayFieldConfigCache = useRef(new Map());
   const [columnMeta, setColumnMeta] = useState([]);
   const [autoInc, setAutoInc] = useState(new Set());
@@ -1684,6 +1686,14 @@ const TableManager = forwardRef(function TableManager({
   }, [formConfig?.transactionTypeField, typeFilter]);
 
   useEffect(() => {
+    if (!showForm) return;
+    relationValueSnapshotRef.current = {
+      ...rowDefaults,
+      ...(editing || {}),
+    };
+  }, [editing, rowDefaults, showForm]);
+
+  useEffect(() => {
     async function loadRequests() {
       if (!requestStatus) {
         setRequestIdSet(new Set());
@@ -1731,6 +1741,61 @@ const TableManager = forwardRef(function TableManager({
   useEffect(() => {
     if (!table || Object.keys(columnCaseMap).length === 0) return;
     let canceled = false;
+    if (hiddenRelationFetchCacheRef.current.table !== table) {
+      hiddenRelationFetchCacheRef.current.table = table;
+      hiddenRelationFetchCacheRef.current.fields = new Set();
+    }
+
+    const snapshotValues = relationValueSnapshotRef.current || {};
+    const visibleFieldSet = new Set();
+    const requiredFieldSet = new Set();
+    const addField = (set) => (field) => {
+      const resolved = resolveCanonicalKey(field);
+      if (resolved) set.add(resolved);
+    };
+    walkEditableFieldValues(formConfig?.visibleFields || [], addField(visibleFieldSet));
+    walkEditableFieldValues(formConfig?.headerFields || [], addField(visibleFieldSet));
+    walkEditableFieldValues(formConfig?.mainFields || [], addField(visibleFieldSet));
+    walkEditableFieldValues(formConfig?.footerFields || [], addField(visibleFieldSet));
+    walkEditableFieldValues(formConfig?.requiredFields || [], addField(requiredFieldSet));
+
+    const hasMeaningfulValue = (val) => {
+      if (val === undefined || val === null || val === '') return false;
+      if (Array.isArray(val)) return val.some(hasMeaningfulValue);
+      if (typeof val === 'object') {
+        if (Object.prototype.hasOwnProperty.call(val, 'value')) {
+          return hasMeaningfulValue(val.value);
+        }
+        return Object.values(val).some(hasMeaningfulValue);
+      }
+      return true;
+    };
+
+    const resolveFieldValue = (field) => {
+      const resolved = resolveCanonicalKey(field);
+      if (resolved && snapshotValues[resolved] !== undefined) {
+        return snapshotValues[resolved];
+      }
+      if (snapshotValues[field] !== undefined) return snapshotValues[field];
+      return undefined;
+    };
+
+    const shouldLoadRelationColumn = (field) => {
+      const resolved = resolveCanonicalKey(field) || field;
+      const isVisible =
+        visibleFieldSet.size === 0 || visibleFieldSet.has(resolved);
+      const hasValue = hasMeaningfulValue(resolveFieldValue(field));
+      const isRequired = requiredFieldSet.has(resolved);
+      if (!isVisible && !hasValue) return false;
+      const isActive = isVisible || isRequired || hasValue;
+      if (!isActive) return false;
+      if (!isVisible) {
+        const cache = hiddenRelationFetchCacheRef.current.fields;
+        if (cache.has(resolved)) return false;
+        cache.add(resolved);
+      }
+      return true;
+    };
 
     function buildCustomRelationsList(customPayload) {
       if (!customPayload || typeof customPayload !== 'object') return [];
@@ -2131,6 +2196,7 @@ const TableManager = forwardRef(function TableManager({
 
     const loadRelationColumn = async ([col, rel]) => {
       if (!rel?.table || !rel?.column) return null;
+      if (!shouldLoadRelationColumn(col)) return null;
       const [cfg, tenantInfo] = await Promise.all([
         fetchDisplayConfig(rel.table, {
           column: rel.filterColumn,
@@ -2429,7 +2495,16 @@ const TableManager = forwardRef(function TableManager({
     return () => {
       canceled = true;
     };
-  }, [table, company, branch, department, resolveCanonicalKey, validCols]);
+  }, [
+    table,
+    company,
+    branch,
+    department,
+    formConfig,
+    resolveCanonicalKey,
+    showForm,
+    validCols,
+  ]);
 
   useEffect(() => {
     if (!table || columnMeta.length === 0) return;
