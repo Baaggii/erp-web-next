@@ -16,7 +16,6 @@ import {
 } from '../../db/index.js';
 import { moveImagesToDeleted } from '../services/transactionImageService.js';
 import { addMappings } from '../services/headerMappings.js';
-import { notifyTransactionCreation } from '../services/transactionNotifications.js';
 import { hasAction } from '../utils/hasAction.js';
 import { createCompanyHandler } from './companyController.js';
 import {
@@ -475,20 +474,6 @@ export async function addRow(req, res, next) {
         },
       },
     );
-    try {
-      await notifyTransactionCreation({
-        table: req.params.table,
-        row,
-        companyId: req.user.companyId,
-        createdBy: req.user?.empid ?? null,
-        relatedId: result?.id ?? null,
-      });
-    } catch (err) {
-      if (process.env.NODE_ENV !== 'production') {
-        // eslint-disable-next-line no-console
-        console.warn('Failed to send transaction notifications', err);
-      }
-    }
     res.locals.insertId = result?.id;
     res.status(201).json(result);
   } catch (err) {
