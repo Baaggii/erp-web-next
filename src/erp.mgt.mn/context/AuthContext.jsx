@@ -1,5 +1,13 @@
 // src/erp.mgt.mn/context/AuthContext.jsx
-import React, { createContext, useState, useEffect, useContext, useMemo } from 'react';
+import React, {
+  createContext,
+  useState,
+  useEffect,
+  useContext,
+  useMemo,
+  useCallback,
+  useRef,
+} from 'react';
 import { debugLog, trackSetState } from '../utils/debug.js';
 import { API_BASE } from '../utils/apiBase.js';
 import normalizeEmploymentSession from '../utils/normalizeEmploymentSession.js';
@@ -52,6 +60,114 @@ export default function AuthContextProvider({ children }) {
       return {};
     }
   });
+  const previousEmpidRef = useRef(null);
+
+  const applyUnauthenticated = useCallback((options = {}) => {
+    const { preserveLang = false } = options;
+    let lang;
+    if (preserveLang) {
+      try {
+        const stored = localStorage.getItem('erp_user_settings');
+        lang = stored ? JSON.parse(stored).lang : undefined;
+      } catch {}
+    }
+    trackSetState('AuthContext.setUser');
+    setUser(null);
+    trackSetState('AuthContext.setSession');
+    setSession(null);
+    trackSetState('AuthContext.setCompany');
+    setCompany(null);
+    trackSetState('AuthContext.setBranch');
+    setBranch(null);
+    trackSetState('AuthContext.setDepartment');
+    setDepartment(null);
+    trackSetState('AuthContext.setPosition');
+    setPosition(null);
+    trackSetState('AuthContext.setWorkplace');
+    setWorkplace(null);
+    trackSetState('AuthContext.setPermissions');
+    setPermissions(null);
+    trackSetState('AuthContext.setWorkplacePositionMap');
+    setWorkplacePositionMap({});
+    trackSetState('AuthContext.setUserSettings');
+    setUserSettings(lang ? { lang } : {});
+    try {
+      if (lang) {
+        localStorage.setItem('erp_user_settings', JSON.stringify({ lang }));
+      } else if (preserveLang) {
+        localStorage.removeItem('erp_user_settings');
+      }
+    } catch {}
+  }, []);
+
+  const applyProfile = useCallback((data) => {
+    const normalizedSession = normalizeEmploymentSession(data.session);
+    const nextUser = normalizedSession ? { ...data, session: normalizedSession } : data;
+    trackSetState('AuthContext.setUser');
+    setUser(nextUser);
+    trackSetState('AuthContext.setSession');
+    setSession(normalizedSession);
+    trackSetState('AuthContext.setCompany');
+    setCompany(data.company ?? normalizedSession?.company_id ?? null);
+    trackSetState('AuthContext.setBranch');
+    setBranch(data.branch ?? normalizedSession?.branch_id ?? null);
+    trackSetState('AuthContext.setDepartment');
+    setDepartment(data.department ?? normalizedSession?.department_id ?? null);
+    trackSetState('AuthContext.setPosition');
+    setPosition(
+      data.position ??
+        normalizedSession?.position_id ??
+        normalizedSession?.employment_position_id ??
+        null,
+    );
+    trackSetState('AuthContext.setWorkplace');
+    setWorkplace(data.workplace ?? normalizedSession?.workplace_id ?? null);
+    trackSetState('AuthContext.setPermissions');
+    setPermissions(data.permissions || null);
+    const derivedWorkplaceMap = deriveWorkplacePositionsFromAssignments(normalizedSession);
+    trackSetState('AuthContext.setWorkplacePositionMap');
+    setWorkplacePositionMap(derivedWorkplaceMap);
+  }, []);
+
+  const loadProfile = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_BASE}/auth/me`, {
+        credentials: 'include',
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        applyProfile(data);
+        try {
+          const resSettings = await fetch(`${API_BASE}/user/settings`, {
+            credentials: 'include',
+            skipErrorToast: true,
+          });
+          if (resSettings.ok) {
+            const s = await resSettings.json();
+            trackSetState('AuthContext.setUserSettings');
+            setUserSettings(s);
+            try {
+              localStorage.setItem('erp_user_settings', JSON.stringify(s));
+            } catch {}
+          } else {
+            const stored = localStorage.getItem('erp_user_settings');
+            trackSetState('AuthContext.setUserSettings');
+            setUserSettings(stored ? JSON.parse(stored) : {});
+          }
+        } catch {
+          const stored = localStorage.getItem('erp_user_settings');
+          trackSetState('AuthContext.setUserSettings');
+          setUserSettings(stored ? JSON.parse(stored) : {});
+        }
+      } else {
+        applyUnauthenticated();
+      }
+    } catch (err) {
+      console.error('Unable to fetch profile:', err);
+      applyUnauthenticated();
+    }
+  }, [applyProfile, applyUnauthenticated]);
 
   // Persist employment IDs across reloads
   useEffect(() => {
@@ -129,153 +245,53 @@ export default function AuthContextProvider({ children }) {
   // On mount, attempt to load the current profile (if a cookie is present)
   useEffect(() => {
     debugLog('AuthContext: load profile');
-    async function loadProfile() {
-      try {
-        const res = await fetch(`${API_BASE}/auth/me`, {
-          credentials: 'include',
-        });
-
-        if (res.ok) {
-          const data = await res.json();
-          const normalizedSession = normalizeEmploymentSession(data.session);
-          const nextUser = normalizedSession
-            ? { ...data, session: normalizedSession }
-            : data;
-          trackSetState('AuthContext.setUser');
-          setUser(nextUser);
-          trackSetState('AuthContext.setSession');
-          setSession(normalizedSession);
-          trackSetState('AuthContext.setCompany');
-          setCompany(data.company ?? normalizedSession?.company_id ?? null);
-          trackSetState('AuthContext.setBranch');
-          setBranch(data.branch ?? normalizedSession?.branch_id ?? null);
-          trackSetState('AuthContext.setDepartment');
-          setDepartment(
-            data.department ?? normalizedSession?.department_id ?? null,
-          );
-          trackSetState('AuthContext.setPosition');
-          setPosition(
-            data.position ??
-              normalizedSession?.position_id ??
-              normalizedSession?.employment_position_id ??
-              null,
-          );
-          trackSetState('AuthContext.setWorkplace');
-          setWorkplace(data.workplace ?? normalizedSession?.workplace_id ?? null);
-          trackSetState('AuthContext.setPermissions');
-          setPermissions(data.permissions || null);
-          const derivedWorkplaceMap = deriveWorkplacePositionsFromAssignments(normalizedSession);
-          trackSetState('AuthContext.setWorkplacePositionMap');
-          setWorkplacePositionMap(derivedWorkplaceMap);
-          try {
-            const resSettings = await fetch(`${API_BASE}/user/settings`, {
-              credentials: 'include',
-              skipErrorToast: true,
-            });
-            if (resSettings.ok) {
-              const s = await resSettings.json();
-              trackSetState('AuthContext.setUserSettings');
-              setUserSettings(s);
-              try {
-                localStorage.setItem('erp_user_settings', JSON.stringify(s));
-              } catch {}
-            } else {
-              const stored = localStorage.getItem('erp_user_settings');
-              trackSetState('AuthContext.setUserSettings');
-              setUserSettings(stored ? JSON.parse(stored) : {});
-            }
-          } catch {
-            const stored = localStorage.getItem('erp_user_settings');
-            trackSetState('AuthContext.setUserSettings');
-            setUserSettings(stored ? JSON.parse(stored) : {});
-          }
-        } else {
-          // Not logged in or token expired
-          trackSetState('AuthContext.setUser');
-          setUser(null);
-          trackSetState('AuthContext.setSession');
-          setSession(null);
-          trackSetState('AuthContext.setCompany');
-          setCompany(null);
-          trackSetState('AuthContext.setBranch');
-          setBranch(null);
-          trackSetState('AuthContext.setDepartment');
-          setDepartment(null);
-          trackSetState('AuthContext.setPosition');
-          setPosition(null);
-          trackSetState('AuthContext.setWorkplace');
-          setWorkplace(null);
-          trackSetState('AuthContext.setPermissions');
-          setPermissions(null);
-          trackSetState('AuthContext.setWorkplacePositionMap');
-          setWorkplacePositionMap({});
-          trackSetState('AuthContext.setUserSettings');
-          setUserSettings({});
-        }
-      } catch (err) {
-        console.error('Unable to fetch profile:', err);
-        trackSetState('AuthContext.setUser');
-        setUser(null);
-        trackSetState('AuthContext.setSession');
-        setSession(null);
-        trackSetState('AuthContext.setCompany');
-        setCompany(null);
-        trackSetState('AuthContext.setBranch');
-        setBranch(null);
-        trackSetState('AuthContext.setDepartment');
-        setDepartment(null);
-        trackSetState('AuthContext.setPosition');
-        setPosition(null);
-        trackSetState('AuthContext.setWorkplace');
-        setWorkplace(null);
-        trackSetState('AuthContext.setPermissions');
-        setPermissions(null);
-        trackSetState('AuthContext.setUserSettings');
-        setUserSettings({});
-      }
-    }
-
     loadProfile();
-  }, []);
+  }, [loadProfile]);
 
   useEffect(() => {
     function handleLogout() {
-      let lang;
-      try {
-        const stored = localStorage.getItem('erp_user_settings');
-        lang = stored ? JSON.parse(stored).lang : undefined;
-      } catch {}
-      trackSetState('AuthContext.setUser');
-      setUser(null);
-      trackSetState('AuthContext.setSession');
-      setSession(null);
-      trackSetState('AuthContext.setCompany');
-      setCompany(null);
-      trackSetState('AuthContext.setBranch');
-      setBranch(null);
-      trackSetState('AuthContext.setDepartment');
-      setDepartment(null);
-      trackSetState('AuthContext.setPosition');
-        setPosition(null);
-        trackSetState('AuthContext.setWorkplace');
-        setWorkplace(null);
-        trackSetState('AuthContext.setPermissions');
-        setPermissions(null);
-        trackSetState('AuthContext.setWorkplacePositionMap');
-        setWorkplacePositionMap({});
-        trackSetState('AuthContext.setUserSettings');
-        setUserSettings(lang ? { lang } : {});
-      try {
-        if (lang) {
-          localStorage.setItem('erp_user_settings', JSON.stringify({ lang }));
-        } else {
-          localStorage.removeItem('erp_user_settings');
-        }
-      } catch {}
+      applyUnauthenticated({ preserveLang: true });
     }
     window.addEventListener('auth:logout', handleLogout);
     return () => window.removeEventListener('auth:logout', handleLogout);
-  }, []);
+  }, [applyUnauthenticated]);
+
+  useEffect(() => {
+    function handleStorage(event) {
+      if (event.key !== 'erp_auth_event' || !event.newValue) return;
+      let payload;
+      try {
+        payload = JSON.parse(event.newValue);
+      } catch {
+        return;
+      }
+      if (payload?.type === 'logout') {
+        const evt = typeof CustomEvent === 'function'
+          ? new CustomEvent('auth:logout')
+          : { type: 'auth:logout' };
+        window.dispatchEvent(evt);
+      } else if (payload?.type === 'login') {
+        loadProfile();
+      }
+    }
+
+    window.addEventListener('storage', handleStorage);
+    return () => window.removeEventListener('storage', handleStorage);
+  }, [loadProfile]);
+
+  useEffect(() => {
+    const empid = user?.empid ?? user?.session?.empid ?? null;
+    const previousEmpid = previousEmpidRef.current;
+    if (empid && previousEmpid && empid !== previousEmpid) {
+      const evt = typeof CustomEvent === 'function'
+        ? new CustomEvent('auth:user-changed', { detail: { empid, previousEmpid } })
+        : { type: 'auth:user-changed' };
+      if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
+        window.dispatchEvent(evt);
+      }
+    }
+    previousEmpidRef.current = empid;
+  }, [user?.empid, user?.session?.empid]);
 
   const saveUserSettings = async (next) => {
     try {
