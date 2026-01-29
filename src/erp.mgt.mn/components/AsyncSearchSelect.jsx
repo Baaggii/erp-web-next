@@ -12,14 +12,11 @@ import { AuthContext } from '../context/AuthContext.jsx';
 import { getTenantKeyList } from '../utils/tenantKeys.js';
 import { buildOptionsForRows } from '../utils/buildAsyncSelectOptions.js';
 import { extractRowIndex, sortRowsByIndex } from '../utils/sortRowsByIndex.js';
-import safeRequest from '../utils/safeRequest.js';
 
 const useIsomorphicLayoutEffect =
   typeof window !== 'undefined' ? useLayoutEffect : useEffect;
 
 const PAGE_SIZE = 50;
-const MAX_FETCH_PAGES = 3;
-const MAX_FETCH_ERRORS = 2;
 const toInputString = (val) => (val === null || val === undefined ? '' : String(val));
 const isEmptyInputValue = (val) => val === '' || val === null || val === undefined;
 const extractPrimitiveValue = (propValue) =>
@@ -104,7 +101,6 @@ export default function AsyncSearchSelect({
   const pendingLookupRef = useRef(null);
   const forcedLocalSearchRef = useRef('');
   const fetchRequestIdRef = useRef(0);
-  const fetchErrorCountRef = useRef(0);
   const filtersKey = useMemo(() => JSON.stringify(filters || {}), [filters]);
   const beginFetchRequest = useCallback(() => {
     fetchRequestIdRef.current += 1;
@@ -306,13 +302,6 @@ export default function AsyncSearchSelect({
       requestId === fetchRequestIdRef.current && !(signal?.aborted);
     const cols = effectiveSearchColumns;
     if (!table || cols.length === 0) return;
-    if (p > MAX_FETCH_PAGES) {
-      if (canUpdateState()) {
-        setHasMore(false);
-        setLoading(false);
-      }
-      return;
-    }
     if (canUpdateState()) setLoading(true);
     try {
       const params = new URLSearchParams({ page: p, perPage: PAGE_SIZE });
@@ -342,15 +331,11 @@ export default function AsyncSearchSelect({
         if (rawValue === undefined || rawValue === null || rawValue === '') return;
         params.set(field, rawValue);
       });
-      const res = await safeRequest(
+      const res = await fetch(
         `/api/tables/${encodeURIComponent(table)}?${params.toString()}`,
         { credentials: 'include', signal },
       );
-      if (!res.ok) {
-        throw new Error(`Failed to load ${table} options`);
-      }
       const json = await res.json();
-      fetchErrorCountRef.current = 0;
       if (!canUpdateState()) return;
       const rows = Array.isArray(json.rows) ? json.rows : [];
       let opts;
@@ -454,13 +439,7 @@ export default function AsyncSearchSelect({
         return normalizeOptions(nextList);
       });
     } catch (err) {
-      if (err.name !== 'AbortError' && canUpdateState()) {
-        fetchErrorCountRef.current += 1;
-        setOptions([]);
-        if (fetchErrorCountRef.current >= MAX_FETCH_ERRORS) {
-          setHasMore(false);
-        }
-      }
+      if (err.name !== 'AbortError' && canUpdateState()) setOptions([]);
     } finally {
       if (canUpdateState()) setLoading(false);
     }
@@ -539,7 +518,7 @@ export default function AsyncSearchSelect({
     setRemoteDisplayFields([]);
     if (!table) return undefined;
     const controller = new AbortController();
-    safeRequest(`/api/display_fields?table=${encodeURIComponent(table)}`, {
+    fetch(`/api/display_fields?table=${encodeURIComponent(table)}`, {
       credentials: 'include',
       signal: controller.signal,
     })
@@ -569,7 +548,7 @@ export default function AsyncSearchSelect({
     let canceled = false;
     setTenantMeta(null);
     if (!table) return;
-    safeRequest(`/api/tenant_tables/${encodeURIComponent(table)}`, {
+    fetch(`/api/tenant_tables/${encodeURIComponent(table)}`, {
       credentials: 'include',
       skipErrorToast: true,
       skipLoader: true,
