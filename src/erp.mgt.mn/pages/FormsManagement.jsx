@@ -21,17 +21,6 @@ function normalizeFormConfig(info = {}) {
   const toObject = (value) =>
     value && typeof value === 'object' && !Array.isArray(value) ? { ...value } : {};
   const toString = (value) => (typeof value === 'string' ? value : '');
-  const defaultNotificationConfig = {
-    company: { field: '', emailField: '', phoneField: '' },
-    department: { field: '', emailField: '', phoneField: '' },
-    branch: { field: '', emailField: '', phoneField: '' },
-    employee: { field: '', emailField: '', phoneField: '' },
-    customer: { field: '', emailField: '', phoneField: '' },
-  };
-  const notificationConfig =
-    info.notificationConfig && typeof info.notificationConfig === 'object'
-      ? { ...defaultNotificationConfig, ...info.notificationConfig }
-      : defaultNotificationConfig;
   const temporaryFlag = Boolean(
     info.supportsTemporarySubmission ??
       info.allowTemporarySubmission ??
@@ -164,7 +153,6 @@ function normalizeFormConfig(info = {}) {
       typeof v === 'string' ? v : String(v),
     ),
     posApiMapping: toObject(info.posApiMapping),
-    notificationConfig,
   };
 }
 
@@ -197,7 +185,6 @@ export default function FormsManagement() {
   const [selectedConfig, setSelectedConfig] = useState('');
   const [editLabels, setEditLabels] = useState(false);
   const [labelEdits, setLabelEdits] = useState({});
-  const [activeTab, setActiveTab] = useState('details');
   const loadingTablesRef = useRef(new Set());
   const generalConfig = useGeneralConfig();
   const modules = useModules();
@@ -546,7 +533,6 @@ export default function FormsManagement() {
     setTable(cfg.table);
     setName(cfg.name);
     setModuleKey(cfg.moduleKey || '');
-    setActiveTab('details');
     const info = cfg.config || {};
     setConfig(normalizeFormConfig(info));
     setNames([cfg.name]);
@@ -749,23 +735,6 @@ export default function FormsManagement() {
       const set = new Set(c[key]);
       set.has(field) ? set.delete(field) : set.add(field);
       return { ...c, [key]: Array.from(set) };
-    });
-  }
-
-  function updateNotificationConfig(type, key, value) {
-    setConfig((c) => {
-      const current = c.notificationConfig || {};
-      const entry = current[type] || { field: '', emailField: '', phoneField: '' };
-      return {
-        ...c,
-        notificationConfig: {
-          ...current,
-          [type]: {
-            ...entry,
-            [key]: value,
-          },
-        },
-      };
     });
   }
 
@@ -1134,13 +1103,6 @@ export default function FormsManagement() {
     }
   }
 
-  const formTabs = [
-    { key: 'details', label: 'Details' },
-    { key: 'fields', label: 'Fields' },
-    { key: 'access', label: 'Access' },
-    { key: 'notifications', label: 'Notifications' },
-  ];
-
   return (
     <div style={{ paddingBottom: '2rem' }}>
       <h2>{t('settings_forms_management', 'Forms Management')}</h2>
@@ -1182,7 +1144,6 @@ export default function FormsManagement() {
                 value={table}
                 onChange={(e) => {
                   setSelectedConfig('');
-                  setActiveTab('details');
                   setTable(e.target.value);
                 }}
               >
@@ -1199,36 +1160,6 @@ export default function FormsManagement() {
 
         {table && (
           <>
-            <div
-              style={{
-                display: 'flex',
-                borderBottom: '1px solid #ddd',
-                marginBottom: '1rem',
-                gap: '0.5rem',
-                flexWrap: 'wrap',
-              }}
-            >
-              {formTabs.map((tab) => (
-                <button
-                  key={tab.key}
-                  type="button"
-                  onClick={() => setActiveTab(tab.key)}
-                  style={{
-                    padding: '0.5rem 1rem',
-                    border: 'none',
-                    borderBottom:
-                      activeTab === tab.key
-                        ? '2px solid #2563eb'
-                        : '2px solid transparent',
-                    background: 'none',
-                    cursor: 'pointer',
-                  }}
-                >
-                  {tab.label}
-                </button>
-              ))}
-            </div>
-            {activeTab === 'details' && (
             <section style={sectionStyle}>
               <h3 style={sectionTitleStyle}>Transaction Details</h3>
               <div style={controlGroupStyle}>
@@ -1361,9 +1292,7 @@ export default function FormsManagement() {
               onEnsureColumnsLoaded={ensureColumnsLoaded}
               onPosApiOptionsChange={setPosApiOptionSnapshot}
             />
-            )}
 
-            {activeTab === 'fields' && (
             <section style={sectionStyle}>
               <div
                 style={{
@@ -1597,9 +1526,7 @@ export default function FormsManagement() {
           </table>
               </div>
             </section>
-            )}
 
-            {activeTab === 'access' && (
             <section style={sectionStyle}>
               <h3 style={sectionTitleStyle}>Access Control</h3>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
@@ -2124,100 +2051,6 @@ export default function FormsManagement() {
                 )}
               </div>
             </section>
-            )}
-
-            {activeTab === 'notifications' && (
-              <section style={sectionStyle}>
-                <h3 style={sectionTitleStyle}>Notification Configuration</h3>
-                <p style={{ marginTop: 0, color: '#555' }}>
-                  Choose which fields should trigger notifications for each audience. If a field
-                  contains a JSON array, every entry will be notified.
-                </p>
-                <div className="table-container overflow-x-auto">
-                  <table style={{ borderCollapse: 'collapse', width: '100%' }}>
-                    <thead>
-                      <tr>
-                        <th style={{ border: '1px solid #ccc', padding: '6px' }}>Type</th>
-                        <th style={{ border: '1px solid #ccc', padding: '6px' }}>Relation field</th>
-                        <th style={{ border: '1px solid #ccc', padding: '6px' }}>Email field</th>
-                        <th style={{ border: '1px solid #ccc', padding: '6px' }}>Phone field</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {[
-                        { key: 'employee', label: 'Employee' },
-                        { key: 'company', label: 'Company' },
-                        { key: 'department', label: 'Department' },
-                        { key: 'branch', label: 'Branch' },
-                        { key: 'customer', label: 'Customer' },
-                      ].map((entry) => {
-                        const current = config.notificationConfig?.[entry.key] || {};
-                        return (
-                          <tr key={entry.key}>
-                            <td style={{ border: '1px solid #ccc', padding: '6px' }}>
-                              {entry.label}
-                            </td>
-                            <td style={{ border: '1px solid #ccc', padding: '6px' }}>
-                              <select
-                                value={current.field || ''}
-                                onChange={(e) =>
-                                  updateNotificationConfig(entry.key, 'field', e.target.value)
-                                }
-                              >
-                                <option value="">-- select field --</option>
-                                {columns.map((col) => (
-                                  <option key={col} value={col}>
-                                    {col}
-                                  </option>
-                                ))}
-                              </select>
-                            </td>
-                            <td style={{ border: '1px solid #ccc', padding: '6px' }}>
-                              <select
-                                value={current.emailField || ''}
-                                onChange={(e) =>
-                                  updateNotificationConfig(
-                                    entry.key,
-                                    'emailField',
-                                    e.target.value,
-                                  )
-                                }
-                              >
-                                <option value="">-- select email field --</option>
-                                {columns.map((col) => (
-                                  <option key={col} value={col}>
-                                    {col}
-                                  </option>
-                                ))}
-                              </select>
-                            </td>
-                            <td style={{ border: '1px solid #ccc', padding: '6px' }}>
-                              <select
-                                value={current.phoneField || ''}
-                                onChange={(e) =>
-                                  updateNotificationConfig(
-                                    entry.key,
-                                    'phoneField',
-                                    e.target.value,
-                                  )
-                                }
-                              >
-                                <option value="">-- select phone field --</option>
-                                {columns.map((col) => (
-                                  <option key={col} value={col}>
-                                    {col}
-                                  </option>
-                                ))}
-                              </select>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              </section>
-            )}
 
             <section style={sectionStyle}>
               <h3 style={sectionTitleStyle}>Actions</h3>

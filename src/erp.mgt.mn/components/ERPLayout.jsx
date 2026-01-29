@@ -3487,13 +3487,6 @@ export default function ERPLayout() {
     () => (userSettings?.notificationSound || 'chime').trim(),
     [userSettings?.notificationSound],
   );
-  const selectedNotificationVolume = useMemo(() => {
-    const volume = Number(userSettings?.notificationVolume);
-    if (Number.isFinite(volume)) {
-      return Math.max(0, Math.min(1, volume));
-    }
-    return 1;
-  }, [userSettings?.notificationVolume]);
 
   const notificationTotalsRef = useRef(notificationStatusTotals);
 
@@ -3505,9 +3498,9 @@ export default function ERPLayout() {
       (status) => notificationStatusTotals[status] > (prev[status] || 0),
     );
     if (hasIncrease) {
-      playNotificationSound(selectedNotificationSound, selectedNotificationVolume);
+      playNotificationSound(selectedNotificationSound);
     }
-  }, [notificationStatusTotals, selectedNotificationSound, selectedNotificationVolume]);
+  }, [notificationStatusTotals, selectedNotificationSound]);
 
   const temporaryValue = useMemo(
     () => ({
