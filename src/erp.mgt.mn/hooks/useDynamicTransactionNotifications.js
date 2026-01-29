@@ -9,11 +9,7 @@ async function fetchNotifications(limit) {
   const res = await fetch(`/api/notifications?${params.toString()}`, {
     credentials: 'include',
     skipLoader: true,
-    skipErrorToast: true,
   });
-  if (res.status === 401 || res.status === 403 || res.status === 503) {
-    return { rows: [] };
-  }
   if (!res.ok) {
     const err = new Error('Failed to load notifications');
     err.status = res.status;
