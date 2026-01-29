@@ -45,6 +45,7 @@ import NotificationDots from './NotificationDots.jsx';
 import { formatJsonItem, formatJsonList } from '../utils/jsonValueFormatting.js';
 import normalizeRelationKey from '../utils/normalizeRelationKey.js';
 import getRelationRowFromMap from '../utils/getRelationRowFromMap.js';
+import safeRequest from '../utils/safeRequest.js';
 
 const TEMPORARY_FILTER_CACHE_KEY = 'temporary-transaction-filter';
 
@@ -1740,6 +1741,7 @@ const TableManager = forwardRef(function TableManager({
 
   useEffect(() => {
     if (!table || Object.keys(columnCaseMap).length === 0) return;
+    if (!showForm) return;
     let canceled = false;
     if (hiddenRelationFetchCacheRef.current.table !== table) {
       hiddenRelationFetchCacheRef.current.table = table;
@@ -1782,8 +1784,7 @@ const TableManager = forwardRef(function TableManager({
 
     const shouldLoadRelationColumn = (field) => {
       const resolved = resolveCanonicalKey(field) || field;
-      const isVisible =
-        visibleFieldSet.size === 0 || visibleFieldSet.has(resolved);
+      const isVisible = visibleFieldSet.has(resolved);
       const hasValue = hasMeaningfulValue(resolveFieldValue(field));
       const isRequired = requiredFieldSet.has(resolved);
       if (!isVisible && !hasValue) return false;
@@ -1933,8 +1934,9 @@ const TableManager = forwardRef(function TableManager({
           if (filterColumn && hasFilterValue) {
             params.set('filterValue', String(filterValue).trim());
           }
-          const res = await fetch(`/api/display_fields?${params.toString()}`, {
+          const res = await safeRequest(`/api/display_fields?${params.toString()}`, {
             credentials: 'include',
+            skipLoader: true,
           });
           if (!res.ok) {
             if (!canceled) {
@@ -1982,7 +1984,7 @@ const TableManager = forwardRef(function TableManager({
       if (tenantInfoCache.has(cacheKey)) return tenantInfoCache.get(cacheKey);
       const promise = (async () => {
         try {
-          const res = await fetch(
+          const res = await safeRequest(
             `/api/tenant_tables/${encodeURIComponent(tableName)}`,
             { credentials: 'include', skipErrorToast: true, skipLoader: true },
           );
@@ -2002,7 +2004,7 @@ const TableManager = forwardRef(function TableManager({
       const cacheKey = tableName.toLowerCase();
       if (relationCache[cacheKey]) return relationCache[cacheKey];
       try {
-        const relRes = await fetch(
+        const relRes = await safeRequest(
           `/api/tables/${encodeURIComponent(tableName)}/relations`,
           { credentials: 'include', skipErrorToast: true, skipLoader: true },
         );
@@ -2067,9 +2069,9 @@ const TableManager = forwardRef(function TableManager({
           }
           let res;
           try {
-            res = await fetch(
+            res = await safeRequest(
               `/api/tables/${encodeURIComponent(tableName)}?${params.toString()}`,
-              { credentials: 'include' },
+              { credentials: 'include', skipLoader: true },
             );
           } catch (err) {
             if (!canceled && !referenceLoadErrorTables.has(cacheKey)) {
@@ -2322,7 +2324,7 @@ const TableManager = forwardRef(function TableManager({
         let relRes;
         let unauthorized = false;
         try {
-          relRes = await fetch(
+          relRes = await safeRequest(
             `/api/tables/${encodeURIComponent(table)}/relations`,
             { credentials: 'include', skipErrorToast: true, skipLoader: true },
           );
@@ -2343,7 +2345,7 @@ const TableManager = forwardRef(function TableManager({
         } else {
           let customList = [];
           try {
-            const customRes = await fetch(
+            const customRes = await safeRequest(
               `/api/tables/${encodeURIComponent(table)}/relations/custom`,
               { credentials: 'include', skipErrorToast: true, skipLoader: true },
             );
