@@ -11,6 +11,10 @@ export default function RelationsConfig() {
   const [columns, setColumns] = useState([]);
   const [idField, setIdField] = useState('');
   const [displayFields, setDisplayFields] = useState([]);
+  const [notificationRole, setNotificationRole] = useState('');
+  const [notificationDashboardFields, setNotificationDashboardFields] = useState([]);
+  const [notificationEmailFields, setNotificationEmailFields] = useState([]);
+  const [notificationPhoneFields, setNotificationPhoneFields] = useState([]);
   const [filteredConfigs, setFilteredConfigs] = useState([]);
   const [isDefault, setIsDefault] = useState(false);
   const [activeTab, setActiveTab] = useState('display');
@@ -23,6 +27,10 @@ export default function RelationsConfig() {
     filterValue: '',
     idField: '',
     displayFields: [],
+    notificationRole: '',
+    notificationDashboardFields: [],
+    notificationEmailFields: [],
+    notificationPhoneFields: [],
   });
 
   function normalizeFilteredConfig(entry, idx) {
@@ -39,6 +47,22 @@ export default function RelationsConfig() {
       idField: entry.idField || entry.id_field || '',
       displayFields: Array.isArray(entry.displayFields ?? entry.display_fields)
         ? entry.displayFields
+        : [],
+      notificationRole: entry.notificationRole || entry.notification_role || '',
+      notificationDashboardFields: Array.isArray(
+        entry.notificationDashboardFields ?? entry.notification_dashboard_fields,
+      )
+        ? entry.notificationDashboardFields
+        : [],
+      notificationEmailFields: Array.isArray(
+        entry.notificationEmailFields ?? entry.notification_email_fields,
+      )
+        ? entry.notificationEmailFields
+        : [],
+      notificationPhoneFields: Array.isArray(
+        entry.notificationPhoneFields ?? entry.notification_phone_fields,
+      )
+        ? entry.notificationPhoneFields
         : [],
     };
   }
@@ -89,6 +113,18 @@ export default function RelationsConfig() {
           entries.find((entry) => !entry.filterColumn && !entry.filterValue) || cfg || {};
         setIdField(base.idField || '');
         setDisplayFields(Array.isArray(base.displayFields) ? base.displayFields : []);
+        setNotificationRole(base.notificationRole || '');
+        setNotificationDashboardFields(
+          Array.isArray(base.notificationDashboardFields)
+            ? base.notificationDashboardFields
+            : [],
+        );
+        setNotificationEmailFields(
+          Array.isArray(base.notificationEmailFields) ? base.notificationEmailFields : [],
+        );
+        setNotificationPhoneFields(
+          Array.isArray(base.notificationPhoneFields) ? base.notificationPhoneFields : [],
+        );
         setFilteredConfigs(
           entries
             .filter((entry) => entry.filterColumn || entry.filterValue)
@@ -99,6 +135,10 @@ export default function RelationsConfig() {
       .catch(() => {
         setIdField('');
         setDisplayFields([]);
+        setNotificationRole('');
+        setNotificationDashboardFields([]);
+        setNotificationEmailFields([]);
+        setNotificationPhoneFields([]);
         setFilteredConfigs([]);
         setIsDefault(true);
       });
@@ -113,6 +153,12 @@ export default function RelationsConfig() {
   function toggleDisplayField(f) {
     setDisplayFields((list) =>
       list.includes(f) ? list.filter((x) => x !== f) : [...list, f],
+    );
+  }
+
+  function toggleNotificationField(setter, field) {
+    setter((list) =>
+      list.includes(field) ? list.filter((x) => x !== field) : [...list, field],
     );
   }
 
@@ -132,6 +178,20 @@ export default function RelationsConfig() {
           displayFields: exists
             ? cfg.displayFields.filter((f) => f !== field)
             : [...cfg.displayFields, field],
+        };
+      }),
+    );
+  }
+
+  function toggleFilteredNotificationField(key, fieldKey, field) {
+    setFilteredConfigs((list) =>
+      list.map((cfg) => {
+        if (cfg.key !== key) return cfg;
+        const current = Array.isArray(cfg[fieldKey]) ? cfg[fieldKey] : [];
+        const exists = current.includes(field);
+        return {
+          ...cfg,
+          [fieldKey]: exists ? current.filter((f) => f !== field) : [...current, field],
         };
       }),
     );
@@ -157,6 +217,16 @@ export default function RelationsConfig() {
           table,
           idField: baseId,
           displayFields: baseDisplay,
+          notificationRole: (notificationRole || '').trim(),
+          notificationDashboardFields: Array.isArray(notificationDashboardFields)
+            ? notificationDashboardFields.map((f) => String(f).trim()).filter(Boolean)
+            : [],
+          notificationEmailFields: Array.isArray(notificationEmailFields)
+            ? notificationEmailFields.map((f) => String(f).trim()).filter(Boolean)
+            : [],
+          notificationPhoneFields: Array.isArray(notificationPhoneFields)
+            ? notificationPhoneFields.map((f) => String(f).trim()).filter(Boolean)
+            : [],
         },
       ];
 
@@ -168,7 +238,25 @@ export default function RelationsConfig() {
         const fields = Array.isArray(cfg.displayFields)
           ? cfg.displayFields.map((f) => String(f).trim()).filter(Boolean)
           : [];
-        const hasContent = filterColumn || filterValue || cfgIdField || fields.length > 0;
+        const cfgNotificationRole = (cfg.notificationRole || '').trim();
+        const cfgDashboardFields = Array.isArray(cfg.notificationDashboardFields)
+          ? cfg.notificationDashboardFields.map((f) => String(f).trim()).filter(Boolean)
+          : [];
+        const cfgEmailFields = Array.isArray(cfg.notificationEmailFields)
+          ? cfg.notificationEmailFields.map((f) => String(f).trim()).filter(Boolean)
+          : [];
+        const cfgPhoneFields = Array.isArray(cfg.notificationPhoneFields)
+          ? cfg.notificationPhoneFields.map((f) => String(f).trim()).filter(Boolean)
+          : [];
+        const hasContent =
+          filterColumn ||
+          filterValue ||
+          cfgIdField ||
+          fields.length > 0 ||
+          cfgNotificationRole ||
+          cfgDashboardFields.length > 0 ||
+          cfgEmailFields.length > 0 ||
+          cfgPhoneFields.length > 0;
         if (!hasContent) return;
         if (!filterColumn || !filterValue) {
           throw new Error('Filtered entries require both a filter column and value');
@@ -185,6 +273,10 @@ export default function RelationsConfig() {
           filterColumn,
           filterValue,
           displayFields: fields,
+          notificationRole: cfgNotificationRole,
+          notificationDashboardFields: cfgDashboardFields,
+          notificationEmailFields: cfgEmailFields,
+          notificationPhoneFields: cfgPhoneFields,
         });
       });
 
@@ -258,6 +350,10 @@ export default function RelationsConfig() {
       if (!res.ok) throw new Error('failed');
       setIdField('');
       setDisplayFields([]);
+      setNotificationRole('');
+      setNotificationDashboardFields([]);
+      setNotificationEmailFields([]);
+      setNotificationPhoneFields([]);
       setFilteredConfigs([]);
       addToast('Deleted', 'success');
     } catch {
@@ -295,6 +391,18 @@ export default function RelationsConfig() {
             entries.find((entry) => !entry.filterColumn && !entry.filterValue) || cfg || {};
           setIdField(base.idField || '');
           setDisplayFields(Array.isArray(base.displayFields) ? base.displayFields : []);
+          setNotificationRole(base.notificationRole || '');
+          setNotificationDashboardFields(
+            Array.isArray(base.notificationDashboardFields)
+              ? base.notificationDashboardFields
+              : [],
+          );
+          setNotificationEmailFields(
+            Array.isArray(base.notificationEmailFields) ? base.notificationEmailFields : [],
+          );
+          setNotificationPhoneFields(
+            Array.isArray(base.notificationPhoneFields) ? base.notificationPhoneFields : [],
+          );
           setFilteredConfigs(
             entries
               .filter((entry) => entry.filterColumn || entry.filterValue)
@@ -386,19 +494,90 @@ export default function RelationsConfig() {
                     ))}
                   </select>
                 </label>
+                <label style={{ marginLeft: '0.75rem' }}>
+                  Notification role:
+                  <select
+                    value={notificationRole}
+                    onChange={(e) => setNotificationRole(e.target.value)}
+                  >
+                    <option value="">-- none --</option>
+                    <option value="company">Company</option>
+                    <option value="department">Department</option>
+                    <option value="branch">Branch</option>
+                    <option value="employee">Employee</option>
+                    <option value="customer">Customer</option>
+                  </select>
+                </label>
               </div>
               <div style={{ marginTop: '0.5rem' }}>
-                Display Fields:
-                {columnNames.map((c) => (
-                  <label key={c} style={{ display: 'block' }}>
-                    <input
-                      type="checkbox"
-                      checked={displayFields.includes(c)}
-                      onChange={() => toggleDisplayField(c)}
-                    />
-                    {c}
-                  </label>
-                ))}
+                <p style={{ margin: '0 0 0.5rem', color: '#6b7280' }}>
+                  Choose display fields and optional notification columns. If no dashboard
+                  fields are selected, the ID field will be used.
+                </p>
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={{ borderCollapse: 'collapse', width: '100%' }}>
+                    <thead>
+                      <tr>
+                        <th style={{ textAlign: 'left', padding: '4px', borderBottom: '1px solid #e5e7eb' }}>
+                          Field
+                        </th>
+                        <th style={{ padding: '4px', borderBottom: '1px solid #e5e7eb' }}>
+                          Display
+                        </th>
+                        <th style={{ padding: '4px', borderBottom: '1px solid #e5e7eb' }}>
+                          Dashboard
+                        </th>
+                        <th style={{ padding: '4px', borderBottom: '1px solid #e5e7eb' }}>
+                          Email
+                        </th>
+                        <th style={{ padding: '4px', borderBottom: '1px solid #e5e7eb' }}>
+                          Phone
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {columnNames.map((c) => (
+                        <tr key={c}>
+                          <td style={{ padding: '4px', borderBottom: '1px solid #f3f4f6' }}>{c}</td>
+                          <td style={{ textAlign: 'center', borderBottom: '1px solid #f3f4f6' }}>
+                            <input
+                              type="checkbox"
+                              checked={displayFields.includes(c)}
+                              onChange={() => toggleDisplayField(c)}
+                            />
+                          </td>
+                          <td style={{ textAlign: 'center', borderBottom: '1px solid #f3f4f6' }}>
+                            <input
+                              type="checkbox"
+                              checked={notificationDashboardFields.includes(c)}
+                              onChange={() =>
+                                toggleNotificationField(setNotificationDashboardFields, c)
+                              }
+                            />
+                          </td>
+                          <td style={{ textAlign: 'center', borderBottom: '1px solid #f3f4f6' }}>
+                            <input
+                              type="checkbox"
+                              checked={notificationEmailFields.includes(c)}
+                              onChange={() =>
+                                toggleNotificationField(setNotificationEmailFields, c)
+                              }
+                            />
+                          </td>
+                          <td style={{ textAlign: 'center', borderBottom: '1px solid #f3f4f6' }}>
+                            <input
+                              type="checkbox"
+                              checked={notificationPhoneFields.includes(c)}
+                              onChange={() =>
+                                toggleNotificationField(setNotificationPhoneFields, c)
+                              }
+                            />
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
               <div style={{ marginTop: '1rem' }}>
                 <h4 style={{ margin: 0 }}>Filtered configurations</h4>
@@ -501,22 +680,158 @@ export default function RelationsConfig() {
                             ))}
                           </select>
                         </label>
+                        <label style={{ marginLeft: '0.75rem' }}>
+                          Notification role:
+                          <select
+                            value={cfg.notificationRole || ''}
+                            onChange={(e) =>
+                              updateFilteredConfigEntry(cfg.key, {
+                                notificationRole: e.target.value,
+                              })
+                            }
+                          >
+                            <option value="">-- none --</option>
+                            <option value="company">Company</option>
+                            <option value="department">Department</option>
+                            <option value="branch">Branch</option>
+                            <option value="employee">Employee</option>
+                            <option value="customer">Customer</option>
+                          </select>
+                        </label>
                       </div>
                       <div style={{ marginTop: '0.5rem' }}>
-                        Display Fields:
-                        {columnNames.map((c) => (
-                          <label
-                            key={`display-${cfg.key}-${c}`}
-                            style={{ display: 'block' }}
-                          >
-                            <input
-                              type="checkbox"
-                              checked={cfg.displayFields.includes(c)}
-                              onChange={() => toggleFilteredDisplayField(cfg.key, c)}
-                            />
-                            {c}
-                          </label>
-                        ))}
+                        <p style={{ margin: '0 0 0.5rem', color: '#6b7280' }}>
+                          Configure display and notification columns for this filter.
+                        </p>
+                        <div style={{ overflowX: 'auto' }}>
+                          <table style={{ borderCollapse: 'collapse', width: '100%' }}>
+                            <thead>
+                              <tr>
+                                <th
+                                  style={{
+                                    textAlign: 'left',
+                                    padding: '4px',
+                                    borderBottom: '1px solid #e5e7eb',
+                                  }}
+                                >
+                                  Field
+                                </th>
+                                <th
+                                  style={{
+                                    padding: '4px',
+                                    borderBottom: '1px solid #e5e7eb',
+                                  }}
+                                >
+                                  Display
+                                </th>
+                                <th
+                                  style={{
+                                    padding: '4px',
+                                    borderBottom: '1px solid #e5e7eb',
+                                  }}
+                                >
+                                  Dashboard
+                                </th>
+                                <th
+                                  style={{
+                                    padding: '4px',
+                                    borderBottom: '1px solid #e5e7eb',
+                                  }}
+                                >
+                                  Email
+                                </th>
+                                <th
+                                  style={{
+                                    padding: '4px',
+                                    borderBottom: '1px solid #e5e7eb',
+                                  }}
+                                >
+                                  Phone
+                                </th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {columnNames.map((c) => (
+                                <tr key={`filtered-${cfg.key}-${c}`}>
+                                  <td
+                                    style={{
+                                      padding: '4px',
+                                      borderBottom: '1px solid #f3f4f6',
+                                    }}
+                                  >
+                                    {c}
+                                  </td>
+                                  <td
+                                    style={{
+                                      textAlign: 'center',
+                                      borderBottom: '1px solid #f3f4f6',
+                                    }}
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      checked={cfg.displayFields.includes(c)}
+                                      onChange={() => toggleFilteredDisplayField(cfg.key, c)}
+                                    />
+                                  </td>
+                                  <td
+                                    style={{
+                                      textAlign: 'center',
+                                      borderBottom: '1px solid #f3f4f6',
+                                    }}
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      checked={(cfg.notificationDashboardFields || []).includes(c)}
+                                      onChange={() =>
+                                        toggleFilteredNotificationField(
+                                          cfg.key,
+                                          'notificationDashboardFields',
+                                          c,
+                                        )
+                                      }
+                                    />
+                                  </td>
+                                  <td
+                                    style={{
+                                      textAlign: 'center',
+                                      borderBottom: '1px solid #f3f4f6',
+                                    }}
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      checked={(cfg.notificationEmailFields || []).includes(c)}
+                                      onChange={() =>
+                                        toggleFilteredNotificationField(
+                                          cfg.key,
+                                          'notificationEmailFields',
+                                          c,
+                                        )
+                                      }
+                                    />
+                                  </td>
+                                  <td
+                                    style={{
+                                      textAlign: 'center',
+                                      borderBottom: '1px solid #f3f4f6',
+                                    }}
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      checked={(cfg.notificationPhoneFields || []).includes(c)}
+                                      onChange={() =>
+                                        toggleFilteredNotificationField(
+                                          cfg.key,
+                                          'notificationPhoneFields',
+                                          c,
+                                        )
+                                      }
+                                    />
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
                       </div>
                       <div style={{ marginTop: '0.5rem' }}>
                         <button type="button" onClick={() => removeFilteredConfig(cfg.key)}>

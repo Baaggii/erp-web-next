@@ -738,6 +738,7 @@ export default function FormsManagement() {
     });
   }
 
+
   async function handleSave() {
     const trimmedName = (name || '').trim();
     const normalizedTable = (table || '').trim();
