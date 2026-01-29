@@ -17,7 +17,6 @@ import Spinner from "./Spinner.jsx";
 import useHeaderMappings from "../hooks/useHeaderMappings.js";
 import useRequestNotificationCounts from "../hooks/useRequestNotificationCounts.js";
 import useTemporaryNotificationCounts from "../hooks/useTemporaryNotificationCounts.js";
-import useTransactionNotificationCounts from "../hooks/useTransactionNotificationCounts.js";
 import useBuildUpdateNotice from "../hooks/useBuildUpdateNotice.js";
 import { PendingRequestContext } from "../context/PendingRequestContext.jsx";
 import { PollingProvider } from "../context/PollingContext.jsx";
@@ -3256,7 +3255,6 @@ export default function ERPLayout() {
     { storageNamespace: 'request_delete' },
   );
   const temporaryNotifications = useTemporaryNotificationCounts(user?.empid);
-  const transactionNotifications = useTransactionNotificationCounts(user?.empid);
 
   const reportWorkflow = useWorkflowEntry(reportNotifications);
   const editWorkflow = useWorkflowEntry(editNotifications);
@@ -3455,8 +3453,6 @@ export default function ERPLayout() {
   const temporaryCreatedNewCount = Number(temporaryCounts?.created?.newCount) || 0;
   const temporaryReviewCount = Number(temporaryCounts?.review?.count) || 0;
   const temporaryReviewNewCount = Number(temporaryCounts?.review?.newCount) || 0;
-  const transactionUnreadCount = Number(transactionNotifications?.unreadCount) || 0;
-  const transactionHasNew = transactionUnreadCount > 0;
 
   const notificationStatusTotals = useMemo(
     () => {
@@ -3467,7 +3463,6 @@ export default function ERPLayout() {
         totals[status] = incomingNew + outgoingNew;
       });
       totals.pending += temporaryCreatedNewCount + temporaryReviewNewCount;
-      totals.pending += transactionUnreadCount;
       return totals;
     },
     [
@@ -3475,7 +3470,6 @@ export default function ERPLayout() {
       aggregatedOutgoing,
       temporaryCreatedNewCount,
       temporaryReviewNewCount,
-      transactionUnreadCount,
     ],
   );
 
@@ -3532,11 +3526,9 @@ export default function ERPLayout() {
     () => ({
       ...pendingRequestSummary.contextValue,
       temporary: temporaryValue,
-      transactionNotifications,
       notificationColors,
       notificationStatusTotals,
-      anyHasNew:
-        pendingRequestSummary.requestHasNew || temporaryHasNew || transactionHasNew,
+      anyHasNew: pendingRequestSummary.requestHasNew || temporaryHasNew,
     }),
     [
       notificationColors,
@@ -3544,8 +3536,6 @@ export default function ERPLayout() {
       pendingRequestSummary,
       temporaryHasNew,
       temporaryValue,
-      transactionNotifications,
-      transactionHasNew,
     ],
   );
 

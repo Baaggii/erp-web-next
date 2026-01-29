@@ -21,21 +21,6 @@ function normalizeFormConfig(info = {}) {
   const toObject = (value) =>
     value && typeof value === 'object' && !Array.isArray(value) ? { ...value } : {};
   const toString = (value) => (typeof value === 'string' ? value : '');
-  const normalizeNotificationGroup = (group = {}) => ({
-    relationFields: toArray(group.relationFields),
-    emailFields: toArray(group.emailFields),
-    phoneFields: toArray(group.phoneFields),
-  });
-  const normalizeNotificationConfig = (value = {}) => {
-    const base = value && typeof value === 'object' ? value : {};
-    return {
-      company: normalizeNotificationGroup(base.company),
-      department: normalizeNotificationGroup(base.department),
-      branch: normalizeNotificationGroup(base.branch),
-      employee: normalizeNotificationGroup(base.employee),
-      customer: normalizeNotificationGroup(base.customer),
-    };
-  };
   const temporaryFlag = Boolean(
     info.supportsTemporarySubmission ??
       info.allowTemporarySubmission ??
@@ -90,7 +75,6 @@ function normalizeFormConfig(info = {}) {
     headerFields: toArray(info.headerFields),
     mainFields: toArray(info.mainFields),
     footerFields: toArray(info.footerFields),
-    notificationConfig: normalizeNotificationConfig(info.notificationConfig),
     viewSource: toObject(info.viewSource),
     isAllowedField: toString(info.isAllowedField),
     transactionTypeField: toString(info.transactionTypeField),
@@ -214,14 +198,6 @@ export default function FormsManagement() {
   if (!permissions) {
     return <p>{t('loading', 'Ачааллаж байна...')}</p>;
   }
-
-  const notificationTypeOptions = [
-    { key: 'employee', label: 'Employee' },
-    { key: 'department', label: 'Department' },
-    { key: 'branch', label: 'Branch' },
-    { key: 'company', label: 'Company' },
-    { key: 'customer', label: 'Customer' },
-  ];
   if (!hasAdmin && !modulePermitted) {
     return <Navigate to="/" replace />;
   }
@@ -761,27 +737,6 @@ export default function FormsManagement() {
       return { ...c, [key]: Array.from(set) };
     });
   }
-
-  const updateNotificationConfig = (type, key, values) => {
-    setConfig((c) => ({
-      ...c,
-      notificationConfig: {
-        ...c.notificationConfig,
-        [type]: {
-          relationFields: [],
-          emailFields: [],
-          phoneFields: [],
-          ...(c.notificationConfig?.[type] || {}),
-          [key]: values,
-        },
-      },
-    }));
-  };
-
-  const handleNotificationMultiSelect = (type, key, event) => {
-    const values = Array.from(event.target.selectedOptions).map((option) => option.value);
-    updateNotificationConfig(type, key, values);
-  };
 
   async function handleSave() {
     const trimmedName = (name || '').trim();
@@ -1570,93 +1525,6 @@ export default function FormsManagement() {
             </tbody>
           </table>
               </div>
-            </section>
-
-            <section style={sectionStyle}>
-              <h3 style={sectionTitleStyle}>Notification Configuration</h3>
-              <p style={{ marginTop: 0, color: '#4b5563' }}>
-                Configure which relation fields should trigger notifications for each scope. If a
-                selected field contains JSON data, all recipients in that scope will be notified.
-              </p>
-              {columns.length === 0 ? (
-                <p style={{ color: '#6b7280' }}>Select a table to configure notification fields.</p>
-              ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                  {notificationTypeOptions.map((type) => (
-                    <div
-                      key={type.key}
-                      style={{
-                        border: '1px solid #e5e7eb',
-                        borderRadius: '6px',
-                        padding: '0.75rem',
-                      }}
-                    >
-                      <strong style={{ display: 'block', marginBottom: '0.5rem' }}>
-                        {type.label}
-                      </strong>
-                      <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
-                        <label style={fieldColumnStyle}>
-                          <span style={{ fontWeight: 600 }}>Relation fields</span>
-                          <select
-                            multiple
-                            size={4}
-                            value={
-                              config.notificationConfig?.[type.key]?.relationFields || []
-                            }
-                            onChange={(e) =>
-                              handleNotificationMultiSelect(type.key, 'relationFields', e)
-                            }
-                          >
-                            {columns.map((col) => (
-                              <option key={col} value={col}>
-                                {col}
-                              </option>
-                            ))}
-                          </select>
-                        </label>
-                        <label style={fieldColumnStyle}>
-                          <span style={{ fontWeight: 600 }}>Email fields</span>
-                          <select
-                            multiple
-                            size={4}
-                            value={
-                              config.notificationConfig?.[type.key]?.emailFields || []
-                            }
-                            onChange={(e) =>
-                              handleNotificationMultiSelect(type.key, 'emailFields', e)
-                            }
-                          >
-                            {columns.map((col) => (
-                              <option key={col} value={col}>
-                                {col}
-                              </option>
-                            ))}
-                          </select>
-                        </label>
-                        <label style={fieldColumnStyle}>
-                          <span style={{ fontWeight: 600 }}>Phone fields</span>
-                          <select
-                            multiple
-                            size={4}
-                            value={
-                              config.notificationConfig?.[type.key]?.phoneFields || []
-                            }
-                            onChange={(e) =>
-                              handleNotificationMultiSelect(type.key, 'phoneFields', e)
-                            }
-                          >
-                            {columns.map((col) => (
-                              <option key={col} value={col}>
-                                {col}
-                              </option>
-                            ))}
-                          </select>
-                        </label>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
             </section>
 
             <section style={sectionStyle}>
