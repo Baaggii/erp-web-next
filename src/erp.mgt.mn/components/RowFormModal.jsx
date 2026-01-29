@@ -3673,22 +3673,13 @@ const RowFormModal = function RowFormModal({
         };
         if (resolvedRelationConfig) {
           values.forEach((item) => {
-            const rawItem =
-              item && typeof item === 'object' && 'value' in item ? item.value : item;
-            if (labelMapForJson && rawItem !== undefined && rawItem !== null) {
-              const key = normalizeRelationOptionKey(rawItem);
-              if (key && labelMapForJson[key] !== undefined) {
-                parts.push(labelMapForJson[key]);
-                return;
-              }
-            }
-            const row = getRelationRowFromMap(relationRows, rawItem);
+            const row = getRelationRowFromMap(relationRows, item);
             if (row) {
               const identifier =
                 getRowValueCaseInsensitive(
                   row,
                   resolvedRelationConfig.idField || resolvedRelationConfig.column,
-                ) ?? rawItem;
+                ) ?? item;
               const extras = (resolvedRelationConfig.displayFields || [])
                 .map((df) => row[df])
                 .filter((v) => v !== undefined && v !== null && v !== '');
@@ -3701,7 +3692,7 @@ const RowFormModal = function RowFormModal({
                 return;
               }
             }
-            pushFormattedPart(rawItem);
+            pushFormattedPart(item);
           });
           displayLines = parts;
         } else {
