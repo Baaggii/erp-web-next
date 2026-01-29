@@ -165,6 +165,25 @@ const RowFormModal = function RowFormModal({
   const procCache = useRef({});
   const submitIntentRef = useRef(null);
   const [tableDisplayFields, setTableDisplayFields] = useState([]);
+  const lastScrollRef = useRef(0);
+  const scrollFocusedFieldIntoView = useCallback(
+    (col) => {
+      if (!visible || inline) return;
+      const now = Date.now();
+      if (now - lastScrollRef.current < 50) return;
+      lastScrollRef.current = now;
+      const resolvedCol = col ?? null;
+      const el =
+        (resolvedCol || resolvedCol === 0
+          ? inputRefs.current[resolvedCol] || readonlyRefs.current[resolvedCol]
+          : null) || document.activeElement;
+      if (!el || typeof el.scrollIntoView !== 'function') return;
+      requestAnimationFrame(() => {
+        el.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'smooth' });
+      });
+    },
+    [inline, visible],
+  );
   useEffect(() => {
     fetch('/api/display_fields', { credentials: 'include' })
       .then((res) => (res.ok ? res.json() : {}))
@@ -3207,6 +3226,7 @@ const RowFormModal = function RowFormModal({
   }
 
   async function handleFocusField(col) {
+    scrollFocusedFieldIntoView(col);
     showTriggerInfo(col);
     if (guardToastEnabled && col) {
       const lower = String(col).toLowerCase();
@@ -4047,6 +4067,7 @@ const RowFormModal = function RowFormModal({
         className={inputClass}
         style={inputStyle}
         onInput={(e) => {
+          scrollFocusedFieldIntoView(c);
           e.target.style.width = 'auto';
           const w = Math.min(e.target.scrollWidth + 2, boxMaxWidth);
           e.target.style.width = `${Math.max(boxWidth, w)}px`;
