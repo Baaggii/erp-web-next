@@ -78,7 +78,13 @@ function extractDateFromName(name) {
 
 export default function ImageManagement() {
   const { addToast } = useToast();
-  const { company } = useContext(AuthContext);
+  const { company, session } = useContext(AuthContext);
+  const companyId = company ?? session?.company_id ?? session?.companyId ?? null;
+  const withCompanyId = (url) => {
+    if (companyId == null) return url;
+    const joiner = url.includes('?') ? '&' : '?';
+    return `${url}${joiner}companyId=${encodeURIComponent(companyId)}`;
+  };
   const [days, setDays] = useState('');
   const [result, setResult] = useState(null);
   const [tab, setTab] = useState('cleanup');
@@ -547,7 +553,7 @@ export default function ImageManagement() {
         if (scanCancelRef.current) return;
         let res;
         try {
-          res = await fetch(`/api/transaction_images/upload_scan${company != null ? `?companyId=${encodeURIComponent(company)}` : ''}`, {
+          res = await fetch(withCompanyId('/api/transaction_images/upload_scan'), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             credentials: 'include',
@@ -625,7 +631,7 @@ export default function ImageManagement() {
 
   async function handleCleanup() {
     const base = days ? `/api/transaction_images/cleanup/${days}` : '/api/transaction_images/cleanup';
-    const url = `${base}${company != null ? `?companyId=${encodeURIComponent(company)}` : ''}`;
+    const url = withCompanyId(base);
     try {
       const res = await fetch(url, { method: 'DELETE', credentials: 'include' });
       if (res.ok) {
@@ -647,7 +653,7 @@ export default function ImageManagement() {
     setActiveOp('detect');
     try {
       const res = await fetch(
-        `/api/transaction_images/detect_incomplete?page=${p}&pageSize=${pageSize}${company != null ? `&companyId=${encodeURIComponent(company)}` : ''}`,
+        withCompanyId(`/api/transaction_images/detect_incomplete?page=${p}&pageSize=${pageSize}`),
         {
           credentials: 'include',
           signal: controller.signal,
@@ -729,7 +735,7 @@ export default function ImageManagement() {
   async function applyFixesSelection(list, sel) {
     const items = list.filter((p) => sel.includes(p.currentName) && !p.processed);
     if (items.length === 0) return;
-    const res = await fetch(`/api/transaction_images/fix_incomplete${company != null ? `?companyId=${encodeURIComponent(company)}` : ''}`, {
+    const res = await fetch(withCompanyId('/api/transaction_images/fix_incomplete'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
@@ -772,7 +778,7 @@ export default function ImageManagement() {
         idxMap.set(u.id, idx);
         return { name: u.originalName, index: idx };
       });
-      const res = await fetch(`/api/transaction_images/upload_check${company != null ? `?companyId=${encodeURIComponent(company)}` : ''}`, {
+      const res = await fetch(withCompanyId('/api/transaction_images/upload_check'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -989,7 +995,7 @@ export default function ImageManagement() {
           );
         }
           try {
-            const res = await fetch(`/api/transaction_images/upload_check${company != null ? `?companyId=${encodeURIComponent(company)}` : ''}`, {
+            const res = await fetch(withCompanyId('/api/transaction_images/upload_check'), {
               method: 'POST',
               body: formData,
               credentials: 'include',
@@ -1124,7 +1130,7 @@ export default function ImageManagement() {
     setActiveOp('commit');
 
     try {
-      const res = await fetch(`/api/transaction_images/upload_commit${company != null ? `?companyId=${encodeURIComponent(company)}` : ''}`, {
+      const res = await fetch(withCompanyId('/api/transaction_images/upload_commit'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
