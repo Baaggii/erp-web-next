@@ -70,10 +70,15 @@ async function ensureContextReady(ctx) {
 function scheduleTone(ctx, startTime, { type, frequency, duration, gain }) {
   const oscillator = ctx.createOscillator();
   const gainNode = ctx.createGain();
+  const baseGain = gain ?? 0.2;
   oscillator.type = type || 'sine';
   oscillator.frequency.value = frequency || 660;
-  gainNode.gain.setValueAtTime(gain ?? 0.2, startTime);
-  gainNode.gain.exponentialRampToValueAtTime(0.001, startTime + duration);
+  if (baseGain > 0) {
+    gainNode.gain.setValueAtTime(baseGain, startTime);
+    gainNode.gain.exponentialRampToValueAtTime(0.001, startTime + duration);
+  } else {
+    gainNode.gain.setValueAtTime(0, startTime);
+  }
   oscillator.connect(gainNode);
   gainNode.connect(ctx.destination);
   oscillator.start(startTime);
@@ -103,4 +108,3 @@ export function getNotificationSoundOptions() {
     { value: 'off', label: 'Off' },
   ];
 }
-
