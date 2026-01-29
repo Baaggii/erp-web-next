@@ -45,6 +45,7 @@ import NotificationDots from './NotificationDots.jsx';
 import { formatJsonItem, formatJsonList } from '../utils/jsonValueFormatting.js';
 import normalizeRelationKey from '../utils/normalizeRelationKey.js';
 import getRelationRowFromMap from '../utils/getRelationRowFromMap.js';
+import safeRequest from '../utils/safeRequest.js';
 
 const TEMPORARY_FILTER_CACHE_KEY = 'temporary-transaction-filter';
 
@@ -530,6 +531,7 @@ const TableManager = forwardRef(function TableManager({
   buttonPerms = {},
   autoFillSession = true,
   externalTemporaryTrigger = null,
+  skipRelationPreload = false,
 }, ref) {
   const { t } = useTranslation(['translation', 'tooltip']);
   const mounted = useRef(false);
@@ -563,6 +565,7 @@ const TableManager = forwardRef(function TableManager({
   const jsonRelationFetchCache = useRef({});
   const relationValueSnapshotRef = useRef({});
   const hiddenRelationFetchCacheRef = useRef({ table: null, fields: new Set() });
+  const failedReferenceTablesRef = useRef(new Set());
   const displayFieldConfigCache = useRef(new Map());
   const [columnMeta, setColumnMeta] = useState([]);
   const [autoInc, setAutoInc] = useState(new Set());
@@ -1088,7 +1091,7 @@ const TableManager = forwardRef(function TableManager({
         params.set('transactionTypeValue', normalizedTypeFilter);
       }
 
-      const res = await fetch(
+      const res = await safeRequest(
         `${API_BASE}/transaction_temporaries/summary${
           params.size > 0 ? `?${params.toString()}` : ''
         }`,
@@ -1273,7 +1276,7 @@ const TableManager = forwardRef(function TableManager({
       if (displayFieldConfigCache.current.has(cacheKey)) {
         return displayFieldConfigCache.current.get(cacheKey);
       }
-      const promise = fetch(
+      const promise = safeRequest(
         `/api/display_fields?table=${encodeURIComponent(tableName)}${
           idField ? `&idField=${encodeURIComponent(idField)}` : ''
         }`,
@@ -1415,7 +1418,7 @@ const TableManager = forwardRef(function TableManager({
     setJsonRelationLabels({});
     jsonRelationFetchCache.current = {};
     setColumnMeta([]);
-    fetch(`/api/tables/${encodeURIComponent(table)}/columns`, {
+    safeRequest(`/api/tables/${encodeURIComponent(table)}/columns`, {
       credentials: 'include',
     })
       .then((res) => {
@@ -1465,7 +1468,7 @@ const TableManager = forwardRef(function TableManager({
     }
     let canceled = false;
     views.forEach((v) => {
-      fetch(`/api/display_fields?table=${encodeURIComponent(v)}`, {
+      safeRequest(`/api/display_fields?table=${encodeURIComponent(v)}`, {
         credentials: 'include',
       })
         .then((res) => (res.ok ? res.json() : null))
@@ -1474,7 +1477,7 @@ const TableManager = forwardRef(function TableManager({
           setViewDisplayMap((m) => ({ ...m, [v]: cfg || {} }));
         })
         .catch(() => {});
-      fetch(`/api/tables/${encodeURIComponent(v)}/columns`, {
+      safeRequest(`/api/tables/${encodeURIComponent(v)}/columns`, {
         credentials: 'include',
       })
         .then((res) => (res.ok ? res.json() : []))
@@ -1499,7 +1502,7 @@ const TableManager = forwardRef(function TableManager({
   useEffect(() => {
     if (!table) return;
     let canceled = false;
-    fetch(`/api/proc_triggers?table=${encodeURIComponent(table)}`, {
+    safeRequest(`/api/proc_triggers?table=${encodeURIComponent(table)}`, {
       credentials: 'include',
     })
       .then((res) => (res.ok ? res.json() : {}))
@@ -1600,7 +1603,7 @@ const TableManager = forwardRef(function TableManager({
       return;
     }
     let canceled = false;
-    fetch('/api/tables/code_transaction?perPage=500', { credentials: 'include' })
+    safeRequest('/api/tables/code_transaction?perPage=500', { credentials: 'include' })
       .then((res) => {
         if (!res.ok) {
           addToast(
@@ -1708,7 +1711,7 @@ const TableManager = forwardRef(function TableManager({
         // Parse date filter into date_from/date_to if provided
         applyDateParams(params, dateFilter);
         params.set('per_page', '1000');
-        const res = await fetch(
+        const res = await safeRequest(
           `/api/pending_request?${params.toString()}`,
           { credentials: 'include' },
         );
@@ -1933,7 +1936,7 @@ const TableManager = forwardRef(function TableManager({
           if (filterColumn && hasFilterValue) {
             params.set('filterValue', String(filterValue).trim());
           }
-          const res = await fetch(`/api/display_fields?${params.toString()}`, {
+          const res = await safeRequest(`/api/display_fields?${params.toString()}`, {
             credentials: 'include',
           });
           if (!res.ok) {
@@ -1982,7 +1985,7 @@ const TableManager = forwardRef(function TableManager({
       if (tenantInfoCache.has(cacheKey)) return tenantInfoCache.get(cacheKey);
       const promise = (async () => {
         try {
-          const res = await fetch(
+          const res = await safeRequest(
             `/api/tenant_tables/${encodeURIComponent(tableName)}`,
             { credentials: 'include', skipErrorToast: true, skipLoader: true },
           );
@@ -2002,7 +2005,7 @@ const TableManager = forwardRef(function TableManager({
       const cacheKey = tableName.toLowerCase();
       if (relationCache[cacheKey]) return relationCache[cacheKey];
       try {
-        const relRes = await fetch(
+        const relRes = await safeRequest(
           `/api/tables/${encodeURIComponent(tableName)}/relations`,
           { credentials: 'include', skipErrorToast: true, skipLoader: true },
         );
@@ -2045,6 +2048,9 @@ const TableManager = forwardRef(function TableManager({
 
     const fetchTableRows = (tableName, tenantInfo, filter) => {
       if (!tableName) return Promise.resolve([]);
+      if (failedReferenceTablesRef.current.has(tableName)) {
+        return Promise.resolve([]);
+      }
       const cacheKeyParts = [tableName.toLowerCase(), company ?? ''];
       if (filter?.column && filter?.value !== undefined && filter.value !== null) {
         cacheKeyParts.push(`${filter.column}:${filter.value}`);
@@ -2067,11 +2073,12 @@ const TableManager = forwardRef(function TableManager({
           }
           let res;
           try {
-            res = await fetch(
+            res = await safeRequest(
               `/api/tables/${encodeURIComponent(tableName)}?${params.toString()}`,
               { credentials: 'include' },
             );
           } catch (err) {
+            failedReferenceTablesRef.current.add(tableName);
             if (!canceled && !referenceLoadErrorTables.has(cacheKey)) {
               referenceLoadErrorTables.add(cacheKey);
               addToast(
@@ -2082,6 +2089,7 @@ const TableManager = forwardRef(function TableManager({
             break;
           }
           if (!res.ok) {
+            failedReferenceTablesRef.current.add(tableName);
             if (!canceled && !referenceLoadErrorTables.has(cacheKey)) {
               referenceLoadErrorTables.add(cacheKey);
               addToast(
@@ -2322,7 +2330,7 @@ const TableManager = forwardRef(function TableManager({
         let relRes;
         let unauthorized = false;
         try {
-          relRes = await fetch(
+          relRes = await safeRequest(
             `/api/tables/${encodeURIComponent(table)}/relations`,
             { credentials: 'include', skipErrorToast: true, skipLoader: true },
           );
@@ -2343,7 +2351,7 @@ const TableManager = forwardRef(function TableManager({
         } else {
           let customList = [];
           try {
-            const customRes = await fetch(
+            const customRes = await safeRequest(
               `/api/tables/${encodeURIComponent(table)}/relations/custom`,
               { credentials: 'include', skipErrorToast: true, skipLoader: true },
             );
@@ -2402,6 +2410,12 @@ const TableManager = forwardRef(function TableManager({
           setRefData({});
           setRefRows({});
           setRelationConfigs({});
+          return;
+        }
+        if (skipRelationPreload) {
+          setRefData({});
+          setRefRows({});
+          setRelationConfigs(relationMap);
           return;
         }
 
@@ -2503,6 +2517,7 @@ const TableManager = forwardRef(function TableManager({
     formConfig,
     resolveCanonicalKey,
     showForm,
+    skipRelationPreload,
     validCols,
   ]);
 
@@ -2531,7 +2546,7 @@ const TableManager = forwardRef(function TableManager({
       }
     });
     if (hasInvalidDateFilter) return;
-    fetch(`/api/tables/${encodeURIComponent(table)}?${params.toString()}`, {
+    safeRequest(`/api/tables/${encodeURIComponent(table)}?${params.toString()}`, {
       credentials: 'include',
     })
       .then((res) => {
@@ -2646,7 +2661,7 @@ const TableManager = forwardRef(function TableManager({
         if (company !== undefined && company !== null && company !== '') {
           params.set('company_id', company);
         }
-        const res = await fetch(
+        const res = await safeRequest(
           `${API_BASE}/report_transaction_locks/metadata?${params.toString()}`,
           { credentials: 'include' },
         );
@@ -2943,7 +2958,7 @@ const TableManager = forwardRef(function TableManager({
     if (!table) return [];
     if (columnMeta.length > 0) return columnMeta;
     try {
-      const res = await fetch(`/api/tables/${encodeURIComponent(table)}/columns`, {
+      const res = await safeRequest(`/api/tables/${encodeURIComponent(table)}/columns`, {
         credentials: 'include',
       });
       if (!res.ok) {
@@ -3071,7 +3086,7 @@ const TableManager = forwardRef(function TableManager({
 
     let tenantInfo = null;
     try {
-      const ttRes = await fetch(
+      const ttRes = await safeRequest(
         `/api/tenant_tables/${encodeURIComponent(table)}`,
         { credentials: 'include', skipErrorToast: true, skipLoader: true },
       );
@@ -3117,7 +3132,7 @@ const TableManager = forwardRef(function TableManager({
     let payload = null;
     let lastResponseInfo = null;
     try {
-      const res = await fetch(url, { credentials: 'include' });
+      const res = await safeRequest(url, { credentials: 'include' });
       lastResponseInfo = {
         status: res?.status,
         statusText: res?.statusText,
@@ -3298,7 +3313,7 @@ const TableManager = forwardRef(function TableManager({
     if (id !== undefined) {
       let tenantInfo = null;
       try {
-        const ttRes = await fetch(
+        const ttRes = await safeRequest(
           `/api/tenant_tables/${encodeURIComponent(table)}`,
           { credentials: 'include', skipErrorToast: true, skipLoader: true },
         );
@@ -3329,7 +3344,7 @@ const TableManager = forwardRef(function TableManager({
         const url = `/api/tables/${encodeURIComponent(table)}/${encodeURIComponent(id)}/references${
           params.toString() ? `?${params.toString()}` : ''
         }`;
-        const res = await fetch(url, { credentials: 'include' });
+        const res = await safeRequest(url, { credentials: 'include' });
         if (res.ok) {
           try {
             const refs = await res.json();
@@ -3819,7 +3834,7 @@ const TableManager = forwardRef(function TableManager({
   async function loadSearch(term, pg = 1) {
     const params = new URLSearchParams({ page: pg, pageSize: 20 });
     try {
-      const res = await fetch(
+      const res = await safeRequest(
         `/api/transaction_images/search/${encodeURIComponent(term)}?${params.toString()}`,
         { credentials: 'include' },
       );
@@ -3925,7 +3940,7 @@ const TableManager = forwardRef(function TableManager({
         }),
         'info',
       );
-      fetch(url, { credentials: 'include' })
+      safeRequest(url, { credentials: 'include' })
         .then((res) => (res.ok ? res.json() : null))
         .then((data) => {
           if (!data || !Array.isArray(data.rows) || data.rows.length === 0) {
@@ -4008,7 +4023,7 @@ const TableManager = forwardRef(function TableManager({
       return null;
     }
     try {
-      const res = await fetch('/api/transaction_ebarimt', {
+      const res = await safeRequest('/api/transaction_ebarimt', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -4066,7 +4081,7 @@ const TableManager = forwardRef(function TableManager({
         `/${encodeURIComponent(oldName)}/rename/${encodeURIComponent(newName)}` +
         `?${params.toString()}`;
       try {
-        await fetch(renameUrl, { method: 'POST', credentials: 'include' });
+        await safeRequest(renameUrl, { method: 'POST', credentials: 'include' });
       } catch (err) {
         console.error('Failed to rename transaction images', err);
       }
@@ -4188,7 +4203,7 @@ const TableManager = forwardRef(function TableManager({
         return;
       }
       try {
-        const res = await fetch(`${API_BASE}/pending_request`, {
+        const res = await safeRequest(`${API_BASE}/pending_request`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
@@ -4355,7 +4370,7 @@ const TableManager = forwardRef(function TableManager({
 
     const editingRowId = isAdding ? null : getRowId(editing);
     try {
-      const res = await fetch(url, {
+      const res = await safeRequest(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -4560,7 +4575,7 @@ const TableManager = forwardRef(function TableManager({
     const fetchTemporaryRecord = async (id) => {
       if (!id) return null;
       try {
-        const res = await fetch(
+        const res = await safeRequest(
           `${API_BASE}/transaction_temporaries/${encodeURIComponent(id)}`,
           { credentials: 'include' },
         );
@@ -4864,7 +4879,7 @@ const TableManager = forwardRef(function TableManager({
       };
 
       try {
-        const res = await fetch(`${API_BASE}/transaction_temporaries`, {
+        const res = await safeRequest(`${API_BASE}/transaction_temporaries`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
@@ -4956,7 +4971,7 @@ const TableManager = forwardRef(function TableManager({
   }
 
   async function executeDeleteRow(id, cascade) {
-    const res = await fetch(
+    const res = await safeRequest(
       `/api/tables/${encodeURIComponent(table)}/${encodeURIComponent(id)}${
         cascade ? '?cascade=true' : ''
       }`,
@@ -4973,7 +4988,7 @@ const TableManager = forwardRef(function TableManager({
       Object.entries(filters).forEach(([k, v]) => {
         if (v) params.set(k, v);
       });
-      const data = await fetch(
+      const data = await safeRequest(
         `/api/tables/${encodeURIComponent(table)}?${params.toString()}`,
         { credentials: 'include' },
       ).then((r) => r.json());
@@ -5005,7 +5020,7 @@ const TableManager = forwardRef(function TableManager({
       return;
     }
     try {
-      const refRes = await fetch(
+      const refRes = await safeRequest(
         `/api/tables/${encodeURIComponent(table)}/${encodeURIComponent(id)}/references`,
         { credentials: 'include' }
       );
@@ -5066,7 +5081,7 @@ const TableManager = forwardRef(function TableManager({
         if (auditFieldSet.has(lower) && !(editSet?.has(lower))) return;
         if (v !== '') cleaned[k] = v;
       });
-      const res = await fetch(`${API_BASE}/pending_request`, {
+      const res = await safeRequest(`${API_BASE}/pending_request`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -5115,7 +5130,7 @@ const TableManager = forwardRef(function TableManager({
         return;
       }
       try {
-        const refRes = await fetch(
+        const refRes = await safeRequest(
           `/api/tables/${encodeURIComponent(table)}/${encodeURIComponent(id)}/references`,
           { credentials: 'include' }
         );
@@ -5156,7 +5171,7 @@ const TableManager = forwardRef(function TableManager({
 
     for (const id of selectedRows) {
       const cascade = cascadeMap.get(id);
-      const res = await fetch(
+      const res = await safeRequest(
         `/api/tables/${encodeURIComponent(table)}/${encodeURIComponent(id)}${
           cascade ? '?cascade=true' : ''
         }`,
@@ -5184,7 +5199,7 @@ const TableManager = forwardRef(function TableManager({
     Object.entries(filters).forEach(([k, v]) => {
       if (v) params.set(k, v);
     });
-    const dataRes = await fetch(
+    const dataRes = await safeRequest(
       `/api/tables/${encodeURIComponent(table)}?${params.toString()}`,
       {
         credentials: 'include',
@@ -5276,7 +5291,7 @@ const TableManager = forwardRef(function TableManager({
           ? String(focusIdRaw)
           : null;
       const runFetch = async (searchParams) => {
-        const res = await fetch(
+        const res = await safeRequest(
           `${API_BASE}/transaction_temporaries?${searchParams.toString()}`,
           { credentials: 'include' },
         );
@@ -5406,7 +5421,7 @@ const TableManager = forwardRef(function TableManager({
       setTemporaryChainModalError('');
       setTemporaryChainModalData(null);
       try {
-        const res = await fetch(
+        const res = await safeRequest(
           `${API_BASE}/transaction_temporaries/${encodeURIComponent(id)}/chain`,
           { credentials: 'include' },
         );
@@ -5461,7 +5476,7 @@ const TableManager = forwardRef(function TableManager({
     const targetId = activeTemporaryDraftId;
     let shouldUpdateList = true;
     try {
-      const res = await fetch(
+      const res = await safeRequest(
         `${API_BASE}/transaction_temporaries/${encodeURIComponent(targetId)}`,
         { method: 'DELETE', credentials: 'include' },
       );
@@ -5627,7 +5642,7 @@ const TableManager = forwardRef(function TableManager({
               ...(forcePromote ? { forcePromote: true } : {}),
             }
           : null;
-      const res = await fetch(
+      const res = await safeRequest(
         `${API_BASE}/transaction_temporaries/${encodeURIComponent(id)}/promote`,
         {
           method: 'POST',
@@ -5937,7 +5952,7 @@ const TableManager = forwardRef(function TableManager({
     const notes = window.prompt(t('temporary_reject_reason', 'Enter rejection notes'));
     if (!notes || !notes.trim()) return;
     try {
-      const res = await fetch(
+      const res = await safeRequest(
         `${API_BASE}/transaction_temporaries/${encodeURIComponent(id)}/reject`,
         {
           method: 'POST',
@@ -6372,7 +6387,7 @@ const TableManager = forwardRef(function TableManager({
                     : displayCfg?.displayFields || [];
                 const params = new URLSearchParams({ page: 1, perPage: 1 });
                 params.set(idField, key);
-                const res = await fetch(
+                const res = await safeRequest(
                   `/api/tables/${encodeURIComponent(relationConfig.table)}?${params.toString()}`,
                   { credentials: 'include' },
                 );
@@ -7307,7 +7322,7 @@ const TableManager = forwardRef(function TableManager({
       html += `</head><body><div class="print-sheet">${sections}</div></body></html>`;
 
       if (userSettings?.printerId) {
-        fetch(`${API_BASE}/print`, {
+        safeRequest(`${API_BASE}/print`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
@@ -8936,7 +8951,7 @@ const TableManager = forwardRef(function TableManager({
               ),
             );
             try {
-              const res = await fetch(
+              const res = await safeRequest(
                 `${API_BASE}/transaction_temporaries/${encodeURIComponent(targetId)}/image`,
                 {
                   method: 'PATCH',
@@ -10010,13 +10025,13 @@ const TableManager = forwardRef(function TableManager({
             <div style={{ textAlign: 'right' }}>
               <button onClick={() => setEditLabels(false)} style={{ marginRight: '0.5rem' }}>Cancel</button>
               <button onClick={async () => {
-                await fetch('/api/header_mappings', {
+                await safeRequest('/api/header_mappings', {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
                   credentials: 'include',
                   body: JSON.stringify(labelEdits),
                 });
-                const res = await fetch(`/api/tables/${encodeURIComponent(table)}/columns`, { credentials: 'include' });
+                const res = await safeRequest(`/api/tables/${encodeURIComponent(table)}/columns`, { credentials: 'include' });
                 if (res.ok) {
                   const cols = await res.json();
                   setColumnMeta(cols);
