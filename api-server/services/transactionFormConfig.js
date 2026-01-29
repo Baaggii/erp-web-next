@@ -714,27 +714,6 @@ function parseEntry(raw = {}) {
         ? raw.transactionTypeValue
         : '',
     detectFields: arrify(raw.detectFields || raw.detectField),
-    notificationEmployeeFields: arrify(
-      raw.notificationEmployeeFields ?? raw.notification_employee_fields,
-    ),
-    notificationCompanyFields: arrify(
-      raw.notificationCompanyFields ?? raw.notification_company_fields,
-    ),
-    notificationDepartmentFields: arrify(
-      raw.notificationDepartmentFields ?? raw.notification_department_fields,
-    ),
-    notificationBranchFields: arrify(
-      raw.notificationBranchFields ?? raw.notification_branch_fields,
-    ),
-    notificationCustomerFields: arrify(
-      raw.notificationCustomerFields ?? raw.notification_customer_fields,
-    ),
-    notificationEmailFields: arrify(
-      raw.notificationEmailFields ?? raw.notification_email_fields,
-    ),
-    notificationPhoneFields: arrify(
-      raw.notificationPhoneFields ?? raw.notification_phone_fields,
-    ),
     moduleKey: typeof raw.moduleKey === 'string' ? raw.moduleKey : '',
     allowedBranches: Array.isArray(raw.allowedBranches)
       ? raw.allowedBranches.map((v) => Number(v)).filter((v) => !Number.isNaN(v))
@@ -1128,13 +1107,6 @@ export async function setFormConfig(
     transactionTypeValue = '',
     detectFields = [],
     detectField = '',
-    notificationEmployeeFields = [],
-    notificationCompanyFields = [],
-    notificationDepartmentFields = [],
-    notificationBranchFields = [],
-    notificationCustomerFields = [],
-    notificationEmailFields = [],
-    notificationPhoneFields = [],
     procedures = [],
     temporaryProcedures = [],
     allowDirectPost,
@@ -1217,13 +1189,6 @@ export async function setFormConfig(
     detectFields: arrify(
       detectFields.length ? detectFields : detectField ? [detectField] : [],
     ),
-    notificationEmployeeFields: arrify(notificationEmployeeFields),
-    notificationCompanyFields: arrify(notificationCompanyFields),
-    notificationDepartmentFields: arrify(notificationDepartmentFields),
-    notificationBranchFields: arrify(notificationBranchFields),
-    notificationCustomerFields: arrify(notificationCustomerFields),
-    notificationEmailFields: arrify(notificationEmailFields),
-    notificationPhoneFields: arrify(notificationPhoneFields),
     moduleKey: parentModuleKey,
     moduleLabel: moduleLabel || undefined,
     allowedBranches: ab,
