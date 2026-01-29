@@ -1229,8 +1229,7 @@ export default function FormsManagement() {
               ))}
             </div>
             {activeTab === 'details' && (
-              <>
-                <section style={sectionStyle}>
+            <section style={sectionStyle}>
               <h3 style={sectionTitleStyle}>Transaction Details</h3>
               <div style={controlGroupStyle}>
                 <label style={fieldColumnStyle}>
@@ -1340,29 +1339,28 @@ export default function FormsManagement() {
                   </small>
                 </div>
               </div>
-                </section>
+            </section>
 
-                <PosApiIntegrationSection
-                  config={config}
-                  setConfig={setConfig}
-                  sectionStyle={sectionStyle}
-                  sectionTitleStyle={sectionTitleStyle}
-                  fieldColumnStyle={fieldColumnStyle}
-                  primaryTableName={table}
-                  primaryTableColumns={columns}
-                  columnOptions={columns}
-                  tableColumns={tableColumns}
-                  itemTableOptions={itemTableOptions}
-                  posApiEndpoints={posApiEndpoints}
-                  itemFieldMapping={itemFieldMapping}
-                  paymentFieldMapping={paymentFieldMapping}
-                  receiptFieldMapping={receiptFieldMapping}
-                  receiptGroupMapping={receiptGroupMapping}
-                  paymentMethodMapping={paymentMethodMapping}
-                  onEnsureColumnsLoaded={ensureColumnsLoaded}
-                  onPosApiOptionsChange={setPosApiOptionSnapshot}
-                />
-              </>
+            <PosApiIntegrationSection
+              config={config}
+              setConfig={setConfig}
+              sectionStyle={sectionStyle}
+              sectionTitleStyle={sectionTitleStyle}
+              fieldColumnStyle={fieldColumnStyle}
+              primaryTableName={table}
+              primaryTableColumns={columns}
+              columnOptions={columns}
+              tableColumns={tableColumns}
+              itemTableOptions={itemTableOptions}
+              posApiEndpoints={posApiEndpoints}
+              itemFieldMapping={itemFieldMapping}
+              paymentFieldMapping={paymentFieldMapping}
+              receiptFieldMapping={receiptFieldMapping}
+              receiptGroupMapping={receiptGroupMapping}
+              paymentMethodMapping={paymentMethodMapping}
+              onEnsureColumnsLoaded={ensureColumnsLoaded}
+              onPosApiOptionsChange={setPosApiOptionSnapshot}
+            />
             )}
 
             {activeTab === 'fields' && (
