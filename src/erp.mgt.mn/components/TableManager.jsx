@@ -530,7 +530,6 @@ const TableManager = forwardRef(function TableManager({
   buttonPerms = {},
   autoFillSession = true,
   externalTemporaryTrigger = null,
-  skipRelationPreload = false,
 }, ref) {
   const { t } = useTranslation(['translation', 'tooltip']);
   const mounted = useRef(false);
@@ -560,7 +559,6 @@ const TableManager = forwardRef(function TableManager({
   const [refData, setRefData] = useState({});
   const [refRows, setRefRows] = useState({});
   const [relationConfigs, setRelationConfigs] = useState({});
-  const [relationsLoaded, setRelationsLoaded] = useState(false);
   const [jsonRelationLabels, setJsonRelationLabels] = useState({});
   const jsonRelationFetchCache = useRef({});
   const displayFieldConfigCache = useRef(new Map());
@@ -1733,13 +1731,6 @@ const TableManager = forwardRef(function TableManager({
   useEffect(() => {
     if (!table || Object.keys(columnCaseMap).length === 0) return;
     let canceled = false;
-    setRelationsLoaded(false);
-    if (skipRelationPreload) {
-      setRelationsLoaded(true);
-      return () => {
-        canceled = true;
-      };
-    }
 
     function buildCustomRelationsList(customPayload) {
       if (!customPayload || typeof customPayload !== 'object') return [];
@@ -2443,10 +2434,6 @@ const TableManager = forwardRef(function TableManager({
             'error',
           );
         }
-      } finally {
-        if (!canceled) {
-          setRelationsLoaded(true);
-        }
       }
     }
 
@@ -2454,15 +2441,7 @@ const TableManager = forwardRef(function TableManager({
     return () => {
       canceled = true;
     };
-  }, [
-    table,
-    company,
-    branch,
-    department,
-    resolveCanonicalKey,
-    validCols,
-    skipRelationPreload,
-  ]);
+  }, [table, company, branch, department, resolveCanonicalKey, validCols]);
 
   useEffect(() => {
     if (!table || columnMeta.length === 0) return;
