@@ -200,6 +200,14 @@ export default function FinanceTransactions({ moduleKey = 'finance_transactions'
     mounted.current = true;
   }, []);
 
+  useEffect(() => {
+    if (!externalTemporaryTrigger?.open) return;
+    const t = setTimeout(() => {
+      setExternalTemporaryTrigger(null);
+    }, 0);
+    return () => clearTimeout(t);
+  }, [externalTemporaryTrigger]);
+
   
   useEffect(() => {
     console.log('FinanceTransactions moduleKey effect');
@@ -1131,6 +1139,7 @@ useEffect(() => {
             showTable={showTable}
             buttonPerms={buttonPerms}
             externalTemporaryTrigger={externalTemporaryTrigger}
+            skipRelationPreload={Boolean(externalTemporaryTrigger?.open)}
           />
         </>
       )}
