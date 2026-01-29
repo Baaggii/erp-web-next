@@ -2225,6 +2225,8 @@ function InlineTransactionTable(
     if (!isEnter && !isForwardTab) return;
     e.preventDefault();
     const field = fields[colIdx];
+    const isJsonField =
+      fieldTypeMap[field] === 'json' || fieldInputTypes[field] === 'json';
     if (isFieldDisabled(field) && !String(field || '').startsWith('_')) {
       notifyGuardToastOnEdit(field);
       return;
@@ -2240,6 +2242,24 @@ function InlineTransactionTable(
       setInvalidCell({ row: rowIdx, field });
       e.target.focus();
       if (e.target.select) e.target.select();
+      return;
+    }
+    if (isJsonField && isEnter) {
+      const currentValues = Array.isArray(rows[rowIdx]?.[field])
+        ? rows[rowIdx]?.[field]
+        : rows[rowIdx]?.[field] === undefined || rows[rowIdx]?.[field] === null || rows[rowIdx]?.[field] === ''
+        ? []
+        : [rows[rowIdx]?.[field]];
+      if (requiredFields.includes(field) && currentValues.length === 0) {
+        setErrorMsg(`${labels[field] || field} талбарыг бөглөнө үү.`);
+        setInvalidCell({ row: rowIdx, field });
+      } else {
+        setInvalidCell(null);
+      }
+      if (hasTrigger(field)) {
+        const override = { ...rows[rowIdx], [field]: currentValues };
+        await runProcTrigger(rowIdx, field, override);
+      }
       return;
     }
     let label = undefined;
@@ -2460,6 +2480,24 @@ function InlineTransactionTable(
         const combinationReady =
           resolvedAutoConfig?.combinationReady ??
           isCombinationFilterReady(hasCombination, resolvedConfig?.combinationTargetColumn, comboFilters);
+        const resolveJsonLabel = (item) => {
+          const row = getRelationRow(f, item);
+          if (!row) return null;
+          const identifier =
+            getRowValueCaseInsensitive(
+              row,
+              resolvedConfig.idField || resolvedConfig.column || f,
+            ) ?? item;
+          const extras = (resolvedConfig.displayFields || [])
+            .map((df) => getRowValueCaseInsensitive(row, df))
+            .filter((entry) => entry !== undefined && entry !== null && entry !== '');
+          const formattedParts = [identifier, ...extras]
+            .map((entry) => formatJsonItem(entry))
+            .filter((entry) => entry || entry === 0 || entry === false)
+            .map((entry) => (typeof entry === 'string' ? entry : String(entry)));
+          if (formattedParts.length === 0) return null;
+          return formattedParts.join(' - ');
+        };
         return (
           <AsyncSearchSelect
             table={resolvedConfig.table}
@@ -2467,6 +2505,7 @@ function InlineTransactionTable(
             searchColumns={[resolvedConfig.idField || resolvedConfig.column, ...(resolvedConfig.displayFields || [])]}
             labelFields={resolvedConfig.displayFields || []}
             value={currentValues}
+            resolveValueLabel={resolveJsonLabel}
             onChange={(v) => handleChange(idx, f, Array.isArray(v) ? v : [])}
             onSelect={(opt) => handleOptionSelect(idx, colIdx, opt)}
             inputRef={(el) => (inputRefs.current[`${idx}-${colIdx}`] = el)}
