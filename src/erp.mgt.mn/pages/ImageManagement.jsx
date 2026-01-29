@@ -108,6 +108,7 @@ export default function ImageManagement() {
   const [folderFiles, setFolderFiles] = useState([]);
   const [uploadSummary, setUploadSummary] = useState(null);
   const [pendingSummary, setPendingSummary] = useState(null);
+  const [searchedFolders, setSearchedFolders] = useState([]);
   const [pageSize, setPageSize] = useState(200);
   const detectAbortRef = useRef();
   const scanCancelRef = useRef(false);
@@ -311,6 +312,7 @@ export default function ImageManagement() {
     setHostIgnoredPage(Math.min(data.hostIgnoredPage || 1, hostLast));
     setHostNotFoundPage(Math.min(data.hostNotFoundPage || 1, notFoundLast));
     setHasMore(pendingArr.length > (data.pendingPage || 1) * pendSize);
+    setSearchedFolders(Array.isArray(data.searchedFolders) ? data.searchedFolders : []);
   }
 
   function persistSnapshot(partial = {}) {
@@ -753,6 +755,7 @@ export default function ImageManagement() {
         setHostIgnoredPage(1);
         setHostNotFoundPage(1);
         setPendingSummary(data.summary || null);
+        setSearchedFolders(Array.isArray(data.summary?.folders) ? data.summary.folders : []);
         setHasMore(!!data.hasMore);
         setSelected([]);
         setHostIgnoredSel([]);
@@ -780,6 +783,7 @@ export default function ImageManagement() {
         hostNotFoundRef.current = [];
         setHostNotFoundPage(1);
         setPendingSummary(null);
+        setSearchedFolders([]);
         setHasMore(false);
         persistAll({
           uploads: uploadsRef.current,
@@ -802,6 +806,7 @@ export default function ImageManagement() {
         hostNotFoundRef.current = [];
         setHostNotFoundPage(1);
         setPendingSummary(null);
+        setSearchedFolders([]);
         setHasMore(false);
         persistAll({
           uploads: uploadsRef.current,
@@ -1624,6 +1629,11 @@ export default function ImageManagement() {
             <button type="button" onClick={() => detectFromHost(1)} style={{ marginRight: '0.5rem' }}>
               Detect from host
             </button>
+            {searchedFolders.length > 0 && (
+              <span style={{ marginRight: '0.5rem', display: 'inline-block' }}>
+                {`Last searched folders: ${searchedFolders.map((folder) => `/${folder}`).join(', ')}`}
+              </span>
+            )}
             <label style={{ marginRight: '0.5rem' }}>
               Page Size:{' '}
               <input
