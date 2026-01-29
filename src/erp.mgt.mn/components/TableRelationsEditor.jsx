@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useToast } from '../context/ToastContext.jsx';
 import { useTranslation } from 'react-i18next';
 
@@ -158,6 +158,7 @@ export default function TableRelationsEditor({ table }) {
   const [combinationTarget, setCombinationTarget] = useState('');
   const [targetFilterColumn, setTargetFilterColumn] = useState('');
   const [targetFilterValue, setTargetFilterValue] = useState('');
+  const loadStateRef = useRef({ table: null, loading: false });
 
   const sortedColumns = useMemo(() => [...columns].sort((a, b) => a.localeCompare(b)), [columns]);
   const sortedTables = useMemo(() => [...tables].sort((a, b) => a.localeCompare(b)), [tables]);
@@ -188,6 +189,7 @@ export default function TableRelationsEditor({ table }) {
 
   const loadData = useCallback(async () => {
     if (!table) {
+      loadStateRef.current = { table: null, loading: false };
       setColumns([]);
       setTables([]);
       setRelations([]);
@@ -203,6 +205,14 @@ export default function TableRelationsEditor({ table }) {
       setTargetFilterValue('');
       return;
     }
+    const normalizedTable = String(table);
+    if (
+      loadStateRef.current.loading &&
+      loadStateRef.current.table === normalizedTable
+    ) {
+      return;
+    }
+    loadStateRef.current = { table: normalizedTable, loading: true };
     setLoading(true);
     try {
       const encoded = encodeURIComponent(table);
@@ -253,6 +263,7 @@ export default function TableRelationsEditor({ table }) {
         'error',
       );
     } finally {
+      loadStateRef.current = { table: normalizedTable, loading: false };
       setLoading(false);
     }
   }, [addToast, table, t]);
