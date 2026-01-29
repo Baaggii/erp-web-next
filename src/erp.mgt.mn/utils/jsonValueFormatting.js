@@ -33,6 +33,10 @@ export function formatJsonItem(value) {
 }
 
 export function formatJsonList(value) {
+  return formatJsonListLines(value).join(', ');
+}
+
+export function formatJsonListLines(value) {
   const list = Array.isArray(value)
     ? value
     : value === undefined || value === null || value === ''
@@ -42,8 +46,7 @@ export function formatJsonList(value) {
   return list
     .map((item) => formatJsonItem(item))
     .filter((item) => item !== '' && item !== undefined && item !== null)
-    .map((item) => (typeof item === 'string' ? item : String(item)))
-    .join(', ');
+    .map((item) => (typeof item === 'string' ? item : String(item)));
 }
 
 export function normalizeInputValue(value) {
