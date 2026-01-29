@@ -49,6 +49,7 @@ import {
 } from '../utils/jsonValueFormatting.js';
 import normalizeRelationKey from '../utils/normalizeRelationKey.js';
 import getRelationRowFromMap from '../utils/getRelationRowFromMap.js';
+import safeRequest from '../utils/safeRequest.js';
 
 const TEMPORARY_FILTER_CACHE_KEY = 'temporary-transaction-filter';
 
@@ -1760,11 +1761,54 @@ const TableManager = forwardRef(function TableManager({
 
     const snapshotValues = relationValueSnapshotRef.current || {};
     const visibleFieldSet = new Set();
+    const tableVisibleFieldSet = new Set();
     const requiredFieldSet = new Set();
     const addField = (set) => (field) => {
       const resolved = resolveCanonicalKey(field);
       if (resolved) set.add(resolved);
     };
+    const allColumns =
+      columnMeta.length > 0
+        ? columnMeta.map((c) => c.name)
+        : rows[0]
+        ? Object.keys(rows[0])
+        : [];
+    const orderedColumns = formConfig?.visibleFields?.length
+      ? allColumns.filter((c) => formConfig.visibleFields.includes(c))
+      : allColumns;
+    const auditFieldSet = new Set(
+      [
+        'created_by',
+        'created_at',
+        'updated_by',
+        'updated_at',
+        'deleted_by',
+        'deleted_at',
+        'is_deleted',
+      ].map((name) => name.toLowerCase()),
+    );
+    columnMeta.forEach((c) => {
+      const name = (c.name || '').toLowerCase();
+      if (!name) return;
+      const rawType = (
+        c.type ||
+        c.columnType ||
+        c.dataType ||
+        c.DATA_TYPE ||
+        ''
+      ).toLowerCase();
+      if (
+        /tinyint\(1\)|boolean|bool|bit\(1\)/.test(rawType) &&
+        name.includes('deleted')
+      ) {
+        auditFieldSet.add(name);
+      }
+    });
+    const hiddenColumnSet = new Set(auditFieldSet);
+    hiddenColumnSet.add('password');
+    orderedColumns
+      .filter((c) => !hiddenColumnSet.has(c.toLowerCase()))
+      .forEach(addField(tableVisibleFieldSet));
     walkEditableFieldValues(formConfig?.visibleFields || [], addField(visibleFieldSet));
     walkEditableFieldValues(formConfig?.headerFields || [], addField(visibleFieldSet));
     walkEditableFieldValues(formConfig?.mainFields || [], addField(visibleFieldSet));
@@ -1792,16 +1836,34 @@ const TableManager = forwardRef(function TableManager({
       return undefined;
     };
 
-    const shouldLoadRelationColumn = (field) => {
+    const hasRowRelationValue = (field, relation) => {
+      if (!Array.isArray(rows) || rows.length === 0) return false;
+      const relationInfo = relation
+        ? {
+            config: {
+              column: relation.column,
+              idField: relation.idField,
+            },
+            sourceColumn: field,
+          }
+        : null;
+      return rows.some((row) =>
+        hasMeaningfulValue(getRelationSearchValue(row, field, relationInfo)),
+      );
+    };
+
+    const shouldLoadRelationColumn = (field, relation) => {
       const resolved = resolveCanonicalKey(field) || field;
-      const isVisible =
-        visibleFieldSet.size === 0 || visibleFieldSet.has(resolved);
-      const hasValue = hasMeaningfulValue(resolveFieldValue(field));
+      const isVisibleInTable = tableVisibleFieldSet.has(resolved);
+      const isVisibleInForm = visibleFieldSet.has(resolved);
+      const hasRowValue = hasRowRelationValue(resolved, relation);
+      const hasFormValue = hasMeaningfulValue(resolveFieldValue(field));
       const isRequired = requiredFieldSet.has(resolved);
-      if (!isVisible && !hasValue) return false;
-      const isActive = isVisible || isRequired || hasValue;
-      if (!isActive) return false;
-      if (!isVisible) {
+      const shouldLoadForTable = isVisibleInTable && hasRowValue;
+      const shouldLoadForForm =
+        showForm && (isVisibleInForm || isRequired || hasFormValue);
+      if (!shouldLoadForTable && !shouldLoadForForm) return false;
+      if (!isVisibleInTable && !isVisibleInForm) {
         const cache = hiddenRelationFetchCacheRef.current.fields;
         if (cache.has(resolved)) return false;
         cache.add(resolved);
@@ -1945,10 +2007,13 @@ const TableManager = forwardRef(function TableManager({
           if (filterColumn && hasFilterValue) {
             params.set('filterValue', String(filterValue).trim());
           }
-          const res = await fetch(`/api/display_fields?${params.toString()}`, {
-            credentials: 'include',
-            skipLoader: true,
-          });
+          const res = await safeRequest(
+            `/api/display_fields?${params.toString()}`,
+            {
+              credentials: 'include',
+              skipLoader: true,
+            },
+          );
           if (!res.ok) {
             if (!canceled) {
               addToast(
@@ -1995,7 +2060,7 @@ const TableManager = forwardRef(function TableManager({
       if (tenantInfoCache.has(cacheKey)) return tenantInfoCache.get(cacheKey);
       const promise = (async () => {
         try {
-          const res = await fetch(
+          const res = await safeRequest(
             `/api/tenant_tables/${encodeURIComponent(tableName)}`,
             { credentials: 'include', skipErrorToast: true, skipLoader: true },
           );
@@ -2015,7 +2080,7 @@ const TableManager = forwardRef(function TableManager({
       const cacheKey = tableName.toLowerCase();
       if (relationCache[cacheKey]) return relationCache[cacheKey];
       try {
-        const relRes = await fetch(
+        const relRes = await safeRequest(
           `/api/tables/${encodeURIComponent(tableName)}/relations`,
           { credentials: 'include', skipErrorToast: true, skipLoader: true },
         );
@@ -2080,7 +2145,7 @@ const TableManager = forwardRef(function TableManager({
           }
           let res;
           try {
-            res = await fetch(
+            res = await safeRequest(
               `/api/tables/${encodeURIComponent(tableName)}?${params.toString()}`,
               { credentials: 'include', skipLoader: true },
             );
@@ -2209,7 +2274,7 @@ const TableManager = forwardRef(function TableManager({
 
     const loadRelationColumn = async ([col, rel]) => {
       if (!rel?.table || !rel?.column) return null;
-      if (!shouldLoadRelationColumn(col)) return null;
+      if (!shouldLoadRelationColumn(col, rel)) return null;
       const [cfg, tenantInfo] = await Promise.all([
         fetchDisplayConfig(rel.table, {
           column: rel.filterColumn,
@@ -2513,11 +2578,12 @@ const TableManager = forwardRef(function TableManager({
     company,
     branch,
     department,
+    columnMeta,
     formConfig,
+    rows,
     resolveCanonicalKey,
     showForm,
     validCols,
-    rows.length,
   ]);
 
   useEffect(() => {
@@ -6389,7 +6455,7 @@ const TableManager = forwardRef(function TableManager({
                     : displayCfg?.displayFields || [];
                 const params = new URLSearchParams({ page: 1, perPage: 1 });
                 params.set(idField, key);
-                const res = await fetch(
+                const res = await safeRequest(
                   `/api/tables/${encodeURIComponent(relationConfig.table)}?${params.toString()}`,
                   { credentials: 'include', skipLoader: true },
                 );
