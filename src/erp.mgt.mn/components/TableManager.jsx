@@ -2001,23 +2001,12 @@ const TableManager = forwardRef(function TableManager({
             params.set(filter.column, filter.value);
           }
           let res;
-          const controller = new AbortController();
-          const timeoutId = setTimeout(() => controller.abort(), 20000);
           try {
             res = await fetch(
               `/api/tables/${encodeURIComponent(tableName)}?${params.toString()}`,
-              {
-                credentials: 'include',
-                signal: controller.signal,
-                skipErrorToast: true,
-                skipLoader: true,
-              },
+              { credentials: 'include' },
             );
           } catch (err) {
-            clearTimeout(timeoutId);
-            if (err?.name === 'AbortError') {
-              break;
-            }
             if (!canceled && !referenceLoadErrorTables.has(cacheKey)) {
               referenceLoadErrorTables.add(cacheKey);
               addToast(
@@ -2027,7 +2016,6 @@ const TableManager = forwardRef(function TableManager({
             }
             break;
           }
-          clearTimeout(timeoutId);
           if (!res.ok) {
             if (!canceled && !referenceLoadErrorTables.has(cacheKey)) {
               referenceLoadErrorTables.add(cacheKey);
