@@ -2478,7 +2478,6 @@ const RowFormModal = function RowFormModal({
 
   async function handleKeyDown(e, col) {
     if (e.key !== 'Enter') return;
-    if (fieldTypeMap[col] === 'json') return;
     e.preventDefault();
     const isLookupField =
       !!relationConfigMap[col] ||
@@ -3662,8 +3661,6 @@ const RowFormModal = function RowFormModal({
       if (fieldTypeMap[c] === 'json') {
         const values = normalizeJsonArrayForState(val);
         const relationRows = relationData[c] || {};
-        const labelMapForJson =
-          relationOptionLabelLookup[c] || relationOptionLabelLookup[String(c).toLowerCase()];
         const parts = [];
         const pushFormattedPart = (input) => {
           const formatted = formatJsonItem(input);
@@ -3838,6 +3835,13 @@ const RowFormModal = function RowFormModal({
                     return { ...prev, [c]: normalizedVals };
                   });
                   setErrors((er) => ({ ...er, [c]: undefined }));
+                }}
+                onSelect={(opt) => {
+                  const el = inputRefs.current[c];
+                  if (el) {
+                    const fake = { key: 'Enter', preventDefault: () => {}, target: el, selectedOption: opt };
+                    handleKeyDown(fake, c);
+                  }
                 }}
                 disabled={disabled}
                 onKeyDown={(e) => handleKeyDown(e, c)}
