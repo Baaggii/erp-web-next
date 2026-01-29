@@ -711,6 +711,38 @@ useEffect(() => {
   ]);
 
   useEffect(() => {
+    if (!pendingTemporary?.open) return;
+    if (pendingTemporary.module && pendingTemporary.module !== moduleKey) return;
+    if (Object.keys(configs).length === 0) return;
+    const currentSignature = `${pendingTemporary.key}::${moduleKey}`;
+    if (temporaryProcessedRef.current.has(currentSignature)) return;
+    if (configsLoaded) return;
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.delete('temporaryOpen');
+        next.delete('temporary_open');
+        next.delete('temporaryScope');
+        next.delete('temporary_scope');
+        next.delete('temporaryModule');
+        next.delete('temporary_module');
+        next.delete('temporaryForm');
+        next.delete('temporary_form');
+        next.delete('temporaryConfig');
+        next.delete('temporary_config');
+        next.delete('temporaryTable');
+        next.delete('temporary_table');
+        next.delete('temporaryId');
+        next.delete('temporary_id');
+        next.delete('temporaryKey');
+        next.delete('temporary_key');
+        return next;
+      },
+      { replace: true },
+    );
+  }, [configs, configsLoaded, moduleKey, pendingTemporary, setSearchParams]);
+
+  useEffect(() => {
     if (!selectedProc) {
       setProcParams([]);
       setManualParams({});
