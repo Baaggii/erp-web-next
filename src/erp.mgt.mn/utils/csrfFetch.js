@@ -1,4 +1,5 @@
 import { API_BASE } from './apiBase.js';
+import { currentLoaderKey, dispatchEnd, dispatchStart } from './loadingEvents.js';
 
 let tokenPromise;
 const controllers = new Set();
@@ -18,17 +19,6 @@ window.addEventListener('beforeunload', event => {
 window.addEventListener('unload', abortAll);
 window.addEventListener('pagehide', abortAll);
 
-function dispatchStart(key) {
-  window.dispatchEvent(new CustomEvent('loading:start', { detail: { key } }));
-}
-
-function dispatchEnd(key) {
-  window.dispatchEvent(new CustomEvent('loading:end', { detail: { key } }));
-}
-
-function currentKey() {
-  return window.__activeTabKey || 'global';
-}
 
 async function getToken() {
   if (!tokenPromise) {
@@ -86,7 +76,7 @@ window.fetch = async (url, options = {}, _retry) => {
     }
     opts.signal = controller.signal;
 
-    key = skipLoader ? null : currentKey();
+    key = skipLoader ? null : currentLoaderKey();
     if (key) dispatchStart(key);
 
     const method = (opts.method || 'GET').toUpperCase();

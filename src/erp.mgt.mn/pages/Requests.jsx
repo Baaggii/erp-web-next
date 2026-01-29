@@ -7,6 +7,7 @@ import { debugLog } from '../utils/debug.js';
 import useHeaderMappings from '../hooks/useHeaderMappings.js';
 import { translateToMn } from '../utils/translateToMn.js';
 import { usePendingRequests } from '../context/PendingRequestContext.jsx';
+import safeRequest from '../utils/safeRequest.js';
 import { useSearchParams } from 'react-router-dom';
 import DateRangePicker from '../components/DateRangePicker.jsx';
 import ReportSnapshotViewer from '../components/ReportSnapshotViewer.jsx';
@@ -998,7 +999,7 @@ export default function RequestsPage() {
         .filter((t) => !configCache.current[t])
         .map(async (t) => {
           try {
-            const res = await fetch(`${API_BASE}/display_fields?table=${t}`, {
+            const res = await safeRequest(`${API_BASE}/display_fields?table=${t}`, {
               credentials: 'include',
             });
             configCache.current[t] = res.ok
@@ -1092,7 +1093,7 @@ export default function RequestsPage() {
         if (dateFrom) params.append('date_from', dateFrom);
         if (dateTo) params.append('date_to', dateTo);
         if (dateField) params.append('date_field', dateField);
-        const res = await fetch(
+        const res = await safeRequest(
           `${API_BASE}/pending_request?${params.toString()}`,
           { credentials: 'include' },
         );
@@ -1141,7 +1142,7 @@ export default function RequestsPage() {
         if (dateFrom) params.append('date_from', dateFrom);
         if (dateTo) params.append('date_to', dateTo);
         if (dateField) params.append('date_field', dateField);
-        const res = await fetch(
+        const res = await safeRequest(
           `${API_BASE}/pending_request/outgoing?${params.toString()}`,
           { credentials: 'include' },
         );
@@ -1189,7 +1190,7 @@ export default function RequestsPage() {
       return;
     }
     try {
-      const res = await fetch(`${API_BASE}/pending_request/${id}/respond`, {
+      const res = await safeRequest(`${API_BASE}/pending_request/${id}/respond`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -1756,4 +1757,3 @@ export default function RequestsPage() {
     </div>
   );
 }
-
