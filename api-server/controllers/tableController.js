@@ -18,6 +18,8 @@ import { moveImagesToDeleted } from '../services/transactionImageService.js';
 import { addMappings } from '../services/headerMappings.js';
 import { hasAction } from '../utils/hasAction.js';
 import { createCompanyHandler } from './companyController.js';
+import { getConfigsByTable } from '../services/transactionFormConfig.js';
+import { createTransactionNotifications } from '../services/transactionNotifications.js';
 import {
   listCustomRelations,
   saveCustomRelation,
@@ -35,6 +37,25 @@ try {
   bcrypt = { hash: async (s) => s };
 }
 import { formatDateForDb } from '../utils/formatDate.js';
+
+function resolveTransactionConfig(configs = {}, row = {}) {
+  const entries = Object.entries(configs || {});
+  let fallback = null;
+  for (const [name, config] of entries) {
+    if (!config) continue;
+    const typeField = config.transactionTypeField || '';
+    const typeValue = config.transactionTypeValue || '';
+    if (typeField && typeValue !== '') {
+      const rowValue = row?.[typeField];
+      if (rowValue != null && String(rowValue) === String(typeValue)) {
+        return { name, config };
+      }
+      continue;
+    }
+    if (!fallback) fallback = { name, config };
+  }
+  return fallback;
+}
 
 export async function getTables(req, res, next) {
   try {
@@ -475,6 +496,28 @@ export async function addRow(req, res, next) {
       },
     );
     res.locals.insertId = result?.id;
+    if (req.params.table && req.params.table.startsWith('transactions_')) {
+      try {
+        const { config: configs } = await getConfigsByTable(
+          req.params.table,
+          req.user.companyId,
+        );
+        const resolved = resolveTransactionConfig(configs, row);
+        if (resolved?.config) {
+          await createTransactionNotifications({
+            tableName: req.params.table,
+            row,
+            formName: resolved.name,
+            formConfig: resolved.config,
+            recordId: result?.id ?? row?.id ?? null,
+            companyId: req.user.companyId,
+            createdBy: req.user?.empid ?? null,
+          });
+        }
+      } catch (err) {
+        console.error('Failed to create transaction notifications', err);
+      }
+    }
     res.status(201).json(result);
   } catch (err) {
     if (/Can't update table .* in stored function\/trigger/i.test(err.message)) {
