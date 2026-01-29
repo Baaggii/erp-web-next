@@ -494,19 +494,90 @@ export default function RelationsConfig() {
                     ))}
                   </select>
                 </label>
+                <label style={{ marginLeft: '0.75rem' }}>
+                  Notification role:
+                  <select
+                    value={notificationRole}
+                    onChange={(e) => setNotificationRole(e.target.value)}
+                  >
+                    <option value="">-- none --</option>
+                    <option value="company">Company</option>
+                    <option value="department">Department</option>
+                    <option value="branch">Branch</option>
+                    <option value="employee">Employee</option>
+                    <option value="customer">Customer</option>
+                  </select>
+                </label>
               </div>
               <div style={{ marginTop: '0.5rem' }}>
-                Display Fields:
-                {columnNames.map((c) => (
-                  <label key={c} style={{ display: 'block' }}>
-                    <input
-                      type="checkbox"
-                      checked={displayFields.includes(c)}
-                      onChange={() => toggleDisplayField(c)}
-                    />
-                    {c}
-                  </label>
-                ))}
+                <p style={{ margin: '0 0 0.5rem', color: '#6b7280' }}>
+                  Choose display fields and optional notification columns. If no dashboard
+                  fields are selected, the ID field will be used.
+                </p>
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={{ borderCollapse: 'collapse', width: '100%' }}>
+                    <thead>
+                      <tr>
+                        <th style={{ textAlign: 'left', padding: '4px', borderBottom: '1px solid #e5e7eb' }}>
+                          Field
+                        </th>
+                        <th style={{ padding: '4px', borderBottom: '1px solid #e5e7eb' }}>
+                          Display
+                        </th>
+                        <th style={{ padding: '4px', borderBottom: '1px solid #e5e7eb' }}>
+                          Dashboard
+                        </th>
+                        <th style={{ padding: '4px', borderBottom: '1px solid #e5e7eb' }}>
+                          Email
+                        </th>
+                        <th style={{ padding: '4px', borderBottom: '1px solid #e5e7eb' }}>
+                          Phone
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {columnNames.map((c) => (
+                        <tr key={c}>
+                          <td style={{ padding: '4px', borderBottom: '1px solid #f3f4f6' }}>{c}</td>
+                          <td style={{ textAlign: 'center', borderBottom: '1px solid #f3f4f6' }}>
+                            <input
+                              type="checkbox"
+                              checked={displayFields.includes(c)}
+                              onChange={() => toggleDisplayField(c)}
+                            />
+                          </td>
+                          <td style={{ textAlign: 'center', borderBottom: '1px solid #f3f4f6' }}>
+                            <input
+                              type="checkbox"
+                              checked={notificationDashboardFields.includes(c)}
+                              onChange={() =>
+                                toggleNotificationField(setNotificationDashboardFields, c)
+                              }
+                            />
+                          </td>
+                          <td style={{ textAlign: 'center', borderBottom: '1px solid #f3f4f6' }}>
+                            <input
+                              type="checkbox"
+                              checked={notificationEmailFields.includes(c)}
+                              onChange={() =>
+                                toggleNotificationField(setNotificationEmailFields, c)
+                              }
+                            />
+                          </td>
+                          <td style={{ textAlign: 'center', borderBottom: '1px solid #f3f4f6' }}>
+                            <input
+                              type="checkbox"
+                              checked={notificationPhoneFields.includes(c)}
+                              onChange={() =>
+                                toggleNotificationField(setNotificationPhoneFields, c)
+                              }
+                            />
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
               <div style={{ marginTop: '1rem' }}>
                 <h4 style={{ margin: 0 }}>Notification configuration</h4>
@@ -677,22 +748,158 @@ export default function RelationsConfig() {
                             ))}
                           </select>
                         </label>
+                        <label style={{ marginLeft: '0.75rem' }}>
+                          Notification role:
+                          <select
+                            value={cfg.notificationRole || ''}
+                            onChange={(e) =>
+                              updateFilteredConfigEntry(cfg.key, {
+                                notificationRole: e.target.value,
+                              })
+                            }
+                          >
+                            <option value="">-- none --</option>
+                            <option value="company">Company</option>
+                            <option value="department">Department</option>
+                            <option value="branch">Branch</option>
+                            <option value="employee">Employee</option>
+                            <option value="customer">Customer</option>
+                          </select>
+                        </label>
                       </div>
                       <div style={{ marginTop: '0.5rem' }}>
-                        Display Fields:
-                        {columnNames.map((c) => (
-                          <label
-                            key={`display-${cfg.key}-${c}`}
-                            style={{ display: 'block' }}
-                          >
-                            <input
-                              type="checkbox"
-                              checked={cfg.displayFields.includes(c)}
-                              onChange={() => toggleFilteredDisplayField(cfg.key, c)}
-                            />
-                            {c}
-                          </label>
-                        ))}
+                        <p style={{ margin: '0 0 0.5rem', color: '#6b7280' }}>
+                          Configure display and notification columns for this filter.
+                        </p>
+                        <div style={{ overflowX: 'auto' }}>
+                          <table style={{ borderCollapse: 'collapse', width: '100%' }}>
+                            <thead>
+                              <tr>
+                                <th
+                                  style={{
+                                    textAlign: 'left',
+                                    padding: '4px',
+                                    borderBottom: '1px solid #e5e7eb',
+                                  }}
+                                >
+                                  Field
+                                </th>
+                                <th
+                                  style={{
+                                    padding: '4px',
+                                    borderBottom: '1px solid #e5e7eb',
+                                  }}
+                                >
+                                  Display
+                                </th>
+                                <th
+                                  style={{
+                                    padding: '4px',
+                                    borderBottom: '1px solid #e5e7eb',
+                                  }}
+                                >
+                                  Dashboard
+                                </th>
+                                <th
+                                  style={{
+                                    padding: '4px',
+                                    borderBottom: '1px solid #e5e7eb',
+                                  }}
+                                >
+                                  Email
+                                </th>
+                                <th
+                                  style={{
+                                    padding: '4px',
+                                    borderBottom: '1px solid #e5e7eb',
+                                  }}
+                                >
+                                  Phone
+                                </th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {columnNames.map((c) => (
+                                <tr key={`filtered-${cfg.key}-${c}`}>
+                                  <td
+                                    style={{
+                                      padding: '4px',
+                                      borderBottom: '1px solid #f3f4f6',
+                                    }}
+                                  >
+                                    {c}
+                                  </td>
+                                  <td
+                                    style={{
+                                      textAlign: 'center',
+                                      borderBottom: '1px solid #f3f4f6',
+                                    }}
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      checked={cfg.displayFields.includes(c)}
+                                      onChange={() => toggleFilteredDisplayField(cfg.key, c)}
+                                    />
+                                  </td>
+                                  <td
+                                    style={{
+                                      textAlign: 'center',
+                                      borderBottom: '1px solid #f3f4f6',
+                                    }}
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      checked={(cfg.notificationDashboardFields || []).includes(c)}
+                                      onChange={() =>
+                                        toggleFilteredNotificationField(
+                                          cfg.key,
+                                          'notificationDashboardFields',
+                                          c,
+                                        )
+                                      }
+                                    />
+                                  </td>
+                                  <td
+                                    style={{
+                                      textAlign: 'center',
+                                      borderBottom: '1px solid #f3f4f6',
+                                    }}
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      checked={(cfg.notificationEmailFields || []).includes(c)}
+                                      onChange={() =>
+                                        toggleFilteredNotificationField(
+                                          cfg.key,
+                                          'notificationEmailFields',
+                                          c,
+                                        )
+                                      }
+                                    />
+                                  </td>
+                                  <td
+                                    style={{
+                                      textAlign: 'center',
+                                      borderBottom: '1px solid #f3f4f6',
+                                    }}
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      checked={(cfg.notificationPhoneFields || []).includes(c)}
+                                      onChange={() =>
+                                        toggleFilteredNotificationField(
+                                          cfg.key,
+                                          'notificationPhoneFields',
+                                          c,
+                                        )
+                                      }
+                                    />
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
                       </div>
                       <div style={{ marginTop: '0.75rem' }}>
                         <strong>Notification configuration</strong>
