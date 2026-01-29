@@ -102,7 +102,12 @@ export function TabProvider({ children }) {
   useEffect(() => {
     const handleLogout = () => resetTabs();
     window.addEventListener('auth:logout', handleLogout);
-    return () => window.removeEventListener('auth:logout', handleLogout);
+    const handleUserChange = () => resetTabs();
+    window.addEventListener('auth:user-changed', handleUserChange);
+    return () => {
+      window.removeEventListener('auth:logout', handleLogout);
+      window.removeEventListener('auth:user-changed', handleUserChange);
+    };
   }, [resetTabs]);
 
   const value = useMemo(
