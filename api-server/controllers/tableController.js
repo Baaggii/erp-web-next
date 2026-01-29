@@ -18,6 +18,7 @@ import { moveImagesToDeleted } from '../services/transactionImageService.js';
 import { addMappings } from '../services/headerMappings.js';
 import { hasAction } from '../utils/hasAction.js';
 import { createCompanyHandler } from './companyController.js';
+import { createTransactionNotifications } from '../services/transactionNotificationService.js';
 import {
   listCustomRelations,
   saveCustomRelation,
@@ -474,6 +475,26 @@ export async function addRow(req, res, next) {
         },
       },
     );
+    if (req.params.table && req.params.table.startsWith('transactions_')) {
+      try {
+        const insertedId = result?.id ?? null;
+        const insertedRow = insertedId
+          ? await getTableRowById(req.params.table, insertedId, {
+              tenantFilters: { company_id: req.user.companyId },
+              defaultCompanyId: req.user.companyId,
+            })
+          : row;
+        await createTransactionNotifications({
+          tableName: req.params.table,
+          row: insertedRow || row,
+          recordId: insertedId,
+          companyId: req.user.companyId,
+          createdBy: req.user.empid ?? null,
+        });
+      } catch (notificationError) {
+        console.error('Failed to create transaction notifications', notificationError);
+      }
+    }
     res.locals.insertId = result?.id;
     res.status(201).json(result);
   } catch (err) {
