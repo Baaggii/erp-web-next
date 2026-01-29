@@ -65,7 +65,6 @@ import posApiProxyRoutes from "./routes/posapi_proxy.js";
 import posApiReferenceCodeRoutes from "./routes/posapi_reference_codes.js";
 import cncProcessingRoutes from "./routes/cnc_processing.js";
 import reportRoutes from "./routes/report.js";
-import notificationRoutes from "./routes/notifications.js";
 
 // Polyfill for __dirname in ES modules
 const __filename = fileURLToPath(import.meta.url);
@@ -204,7 +203,6 @@ app.use("/api/report_approvals", reportApprovalRoutes);
 app.use("/api/report_snapshot_artifacts", snapshotArtifactRoutes);
 app.use("/api/user/settings", userSettingsRoutes);
 app.use("/api/user_activity_log", activityLogRoutes);
-app.use("/api/notifications", notificationRoutes);
 app.use("/api/translations", translationRoutes);
 app.use("/api/posapi/endpoints", posApiEndpointRoutes);
 app.use("/api/posapi/proxy", posApiProxyRoutes);
