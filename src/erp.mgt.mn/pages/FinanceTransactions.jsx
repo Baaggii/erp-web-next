@@ -1099,7 +1099,6 @@ useEffect(() => {
             showTable={showTable}
             buttonPerms={buttonPerms}
             externalTemporaryTrigger={externalTemporaryTrigger}
-            skipRelationPreload={Boolean(externalTemporaryTrigger)}
           />
         </>
       )}
