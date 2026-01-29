@@ -31,6 +31,7 @@ import { findVisibleFallbackSelector } from "../utils/findVisibleTourStep.js";
 import { playNotificationSound } from "../utils/playNotificationSound.js";
 import { buildOptionsForRows } from "../utils/buildAsyncSelectOptions.js";
 import NotificationDots from "./NotificationDots.jsx";
+import NotificationDropdown from "./NotificationDropdown.jsx";
 
 export const TourContext = React.createContext({
   startTour: () => false,
@@ -4079,17 +4080,11 @@ export function Header({
           🗔 {t("home")}
         </button>
         <button style={styles.iconBtn}>🗗 {t("windows")}</button>
-        <button
-          style={styles.iconBtn}
-          onClick={() =>
-            onOpen('/notifications', t('notifications', 'Notifications'), 'notifications')
-          }
-        >
-          <span style={styles.inlineButtonContent}>
-            <NotificationDots colors={headerNotificationColors} marginRight={0} />
-            <span aria-hidden="true">🔔</span> {t('notifications', 'Notifications')}
-          </span>
-        </button>
+        <NotificationDropdown
+          onOpen={onOpen}
+          dashboardLabel={t('dashboard', 'Dashboard')}
+          baseColors={headerNotificationColors}
+        />
         <button style={styles.iconBtn}>❔ {t("help")}</button>
       </nav>
       {hasUpdateAvailable && (

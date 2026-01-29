@@ -5,6 +5,7 @@ import {
   listTableColumnsDetailed,
 } from '../../db/index.js';
 import { getFormConfig } from './transactionFormConfig.js';
+import { createTransactionNotifications } from './transactionNotificationService.js';
 import {
   buildReceiptFromDynamicTransaction,
   sendReceipt,
@@ -1924,6 +1925,27 @@ export async function promoteTemporarySubmission(
       }
     }
     const promotedId = insertedId ? String(insertedId) : null;
+    if (!shouldForwardTemporary && insertedId) {
+      try {
+        const notificationRow = {
+          ...sanitizedValues,
+          company_id: row.company_id ?? null,
+          id: insertedId,
+        };
+        await createTransactionNotifications({
+          tableName: row.table_name,
+          row: notificationRow,
+          recordId: insertedId,
+          companyId: row.company_id ?? null,
+          createdBy: normalizedReviewer,
+          config: formCfg || null,
+          configName: formName || null,
+          connection: conn,
+        });
+      } catch (notificationError) {
+        console.error('Failed to create transaction notifications after promotion', notificationError);
+      }
+    }
     if (shouldForwardTemporary) {
       await conn.query(
         `UPDATE \`${TEMP_TABLE}\`
