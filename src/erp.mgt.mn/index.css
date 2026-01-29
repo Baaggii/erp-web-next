@@ -389,18 +389,14 @@ th {
 }
 
 .loading-overlay {
-  position: fixed;
+  position: absolute;
   inset: 0;
   display: flex;
-  flex-direction: column;
   justify-content: center;
   align-items: center;
-  gap: 0.5rem;
-  background: rgba(255, 255, 255, 0.75);
-  backdrop-filter: blur(1px);
-  z-index: 15000;
-  pointer-events: auto;
-  cursor: progress;
+  background: rgba(255, 255, 255, 0.6);
+  z-index: 1000;
+  pointer-events: none;
 }
 
 .loading-spinner {
@@ -410,12 +406,6 @@ th {
   width: 24px;
   height: 24px;
   animation: spin 1s linear infinite;
-}
-
-.loading-message {
-  font-size: 0.875rem;
-  color: #1f2937;
-  letter-spacing: 0.02em;
 }
 
 @keyframes spin {
