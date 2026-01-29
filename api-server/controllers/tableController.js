@@ -16,7 +16,6 @@ import {
 } from '../../db/index.js';
 import { moveImagesToDeleted } from '../services/transactionImageService.js';
 import { addMappings } from '../services/headerMappings.js';
-import { dispatchTransactionNotifications } from '../services/notifications.js';
 import { hasAction } from '../utils/hasAction.js';
 import { createCompanyHandler } from './companyController.js';
 import {
@@ -476,17 +475,6 @@ export async function addRow(req, res, next) {
       },
     );
     res.locals.insertId = result?.id;
-    try {
-      await dispatchTransactionNotifications({
-        tableName: req.params.table,
-        row,
-        insertId: result?.id,
-        companyId: req.user?.companyId,
-        createdBy: req.user?.empid ?? null,
-      });
-    } catch (notifyErr) {
-      console.warn('Failed to dispatch transaction notifications', notifyErr);
-    }
     res.status(201).json(result);
   } catch (err) {
     if (/Can't update table .* in stored function\/trigger/i.test(err.message)) {
