@@ -29,38 +29,6 @@ function arrify(val) {
   return [String(val)];
 }
 
-const NOTIFICATION_TYPES = [
-  'company',
-  'department',
-  'branch',
-  'employee',
-  'customer',
-];
-
-function normalizeNotificationGroup(group = {}) {
-  if (!group || typeof group !== 'object') {
-    return {
-      relationFields: [],
-      emailFields: [],
-      phoneFields: [],
-    };
-  }
-  return {
-    relationFields: arrify(group.relationFields),
-    emailFields: arrify(group.emailFields),
-    phoneFields: arrify(group.phoneFields),
-  };
-}
-
-function normalizeNotificationConfig(raw = {}) {
-  const base = raw && typeof raw === 'object' ? raw : {};
-  const result = {};
-  NOTIFICATION_TYPES.forEach((type) => {
-    result[type] = normalizeNotificationGroup(base[type]);
-  });
-  return result;
-}
-
 function normalizeMixedAccessList(list) {
   if (!Array.isArray(list) || list.length === 0) return [];
   const normalized = [];
@@ -717,9 +685,6 @@ function parseEntry(raw = {}) {
     branchIdFields: arrify(
       raw.branchIdFields || (raw.branchIdField ? [raw.branchIdField] : []),
     ),
-    departmentIdFields: arrify(
-      raw.departmentIdFields || (raw.departmentIdField ? [raw.departmentIdField] : []),
-    ),
     companyIdFields: arrify(
       raw.companyIdFields || (raw.companyIdField ? [raw.companyIdField] : []),
     ),
@@ -736,7 +701,6 @@ function parseEntry(raw = {}) {
     headerFields: arrify(raw.headerFields),
     mainFields: arrify(raw.mainFields),
     footerFields: arrify(raw.footerFields),
-    notificationConfig: normalizeNotificationConfig(raw.notificationConfig),
     viewSource:
       raw && typeof raw.viewSource === 'object' && raw.viewSource !== null
         ? raw.viewSource
@@ -1109,7 +1073,6 @@ export async function setFormConfig(
     editableFields,
     userIdFields = [],
     branchIdFields = [],
-    departmentIdFields = [],
     companyIdFields = [],
     allowedBranches = [],
     allowedDepartments = [],
@@ -1125,7 +1088,6 @@ export async function setFormConfig(
     moduleLabel,
     userIdField,
     branchIdField,
-    departmentIdField,
     companyIdField,
     dateField = [],
     emailField = [],
@@ -1140,7 +1102,6 @@ export async function setFormConfig(
     headerFields = [],
     mainFields = [],
     footerFields = [],
-    notificationConfig = {},
     viewSource = {},
     transactionTypeField = '',
     transactionTypeValue = '',
@@ -1166,13 +1127,6 @@ export async function setFormConfig(
   const uid = arrify(userIdFields.length ? userIdFields : userIdField ? [userIdField] : []);
   const bid = arrify(
     branchIdFields.length ? branchIdFields : branchIdField ? [branchIdField] : [],
-  );
-  const did = arrify(
-    departmentIdFields.length
-      ? departmentIdFields
-      : departmentIdField
-      ? [departmentIdField]
-      : [],
   );
   const cid = arrify(
     companyIdFields.length ? companyIdFields : companyIdField ? [companyIdField] : [],
@@ -1215,7 +1169,6 @@ export async function setFormConfig(
     editableFields: arrify(editableFields),
     userIdFields: uid,
     branchIdFields: bid,
-    departmentIdFields: did,
     companyIdFields: cid,
     dateField: arrify(dateField),
     emailField: arrify(emailField),
@@ -1230,7 +1183,6 @@ export async function setFormConfig(
     headerFields: arrify(headerFields),
     mainFields: arrify(mainFields),
     footerFields: arrify(footerFields),
-    notificationConfig: normalizeNotificationConfig(notificationConfig),
     viewSource: viewSource && typeof viewSource === 'object' ? viewSource : {},
     transactionTypeField: transactionTypeField || '',
     transactionTypeValue: transactionTypeValue || '',
