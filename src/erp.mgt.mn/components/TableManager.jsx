@@ -5225,26 +5225,10 @@ const TableManager = forwardRef(function TableManager({
           ? String(focusIdRaw)
           : null;
       const runFetch = async (searchParams) => {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 20000);
-        let res;
-        try {
-          res = await fetch(
-            `${API_BASE}/transaction_temporaries?${searchParams.toString()}`,
-            {
-              credentials: 'include',
-              skipLoader: true,
-              signal: controller.signal,
-            },
-          );
-        } catch (err) {
-          if (err?.name === 'AbortError') {
-            throw new Error('Temporary submissions request timed out');
-          }
-          throw err;
-        } finally {
-          clearTimeout(timeoutId);
-        }
+        const res = await fetch(
+          `${API_BASE}/transaction_temporaries?${searchParams.toString()}`,
+          { credentials: 'include', skipLoader: true },
+        );
         const rateLimitMessage = await getRateLimitMessage(res);
         if (rateLimitMessage) {
           const err = new Error(rateLimitMessage);
