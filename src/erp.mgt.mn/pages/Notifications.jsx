@@ -1,8 +1,7 @@
-import React, { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import React, { useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { usePendingRequests } from '../context/PendingRequestContext.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
-import { useTransactionNotifications } from '../context/TransactionNotificationsContext.jsx';
 import LangContext from '../context/I18nContext.jsx';
 import formatTimestamp from '../utils/formatTimestamp.js';
 import NotificationDots, { DEFAULT_NOTIFICATION_COLOR } from '../components/NotificationDots.jsx';
@@ -91,17 +90,6 @@ export default function NotificationsPage() {
   const { user, session } = useAuth();
   const { t } = useContext(LangContext);
   const navigate = useNavigate();
-  const location = useLocation();
-  const {
-    groups: transactionGroups,
-    hasMore: transactionHasMore,
-    loadMore: loadMoreTransactions,
-    markRead: markTransactionRead,
-    loading: transactionsLoading,
-    error: transactionsError,
-  } = useTransactionNotifications();
-  const [highlightGroup, setHighlightGroup] = useState(null);
-  const transactionGroupRefs = useRef({});
   const [reportState, setReportState] = useState({
     incoming: [],
     outgoing: [],
@@ -122,21 +110,6 @@ export default function NotificationsPage() {
     review: createEmptyTemporaryScope(),
     created: createEmptyTemporaryScope(),
   });
-
-  useEffect(() => {
-    if (location?.state?.highlightGroup) {
-      setHighlightGroup(location.state.highlightGroup);
-      const timer = setTimeout(() => {
-        const ref = transactionGroupRefs.current?.[location.state.highlightGroup];
-        if (ref?.scrollIntoView) {
-          ref.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        }
-      }, 100);
-      return () => clearTimeout(timer);
-    }
-    setHighlightGroup(null);
-    return undefined;
-  }, [location]);
 
   const hasSupervisor =
     Number(session?.senior_empid) > 0 || Number(session?.senior_plan_empid) > 0;
@@ -1163,55 +1136,6 @@ export default function NotificationsPage() {
     </li>
   );
 
-  const renderTransactionGroup = (group) => {
-    const entries = [...group.entries].sort((a, b) => {
-      const aTime = new Date(a.createdAt || 0).getTime();
-      const bTime = new Date(b.createdAt || 0).getTime();
-      if (aTime === bTime) return (b.id || 0) - (a.id || 0);
-      return bTime - aTime;
-    });
-    const isHighlighted = highlightGroup === group.name;
-    return (
-      <li
-        key={group.name}
-        ref={(node) => {
-          if (node) transactionGroupRefs.current[group.name] = node;
-        }}
-        style={styles.transactionGroup(isHighlighted)}
-      >
-        <header style={styles.transactionHeader}>
-          <div>
-            <h3 style={styles.transactionTitle}>{group.name}</h3>
-            <p style={styles.transactionMeta}>
-              {t('notifications_group_count', 'Count')}: {entries.length}
-            </p>
-          </div>
-          {group.unreadCount > 0 && (
-            <span style={styles.unreadBadge}>{group.unreadCount} new</span>
-          )}
-        </header>
-        <ul style={styles.transactionEntries}>
-          {entries.map((entry) => (
-            <li key={entry.id} style={styles.transactionEntry}>
-              <button
-                type="button"
-                style={styles.transactionButton(entry.isRead)}
-                onClick={() => markTransactionRead(entry.id)}
-              >
-                <div style={styles.transactionSummary}>
-                  {entry.summary || entry.message || ''}
-                </div>
-                <div style={styles.transactionTime}>
-                  {entry.createdAt ? formatTimestamp(entry.createdAt) : ''}
-                </div>
-              </button>
-            </li>
-          ))}
-        </ul>
-      </li>
-    );
-  };
-
   return (
     <div style={styles.page}>
       <h1 style={styles.pageTitle}>
@@ -1223,42 +1147,6 @@ export default function NotificationsPage() {
           marginRight={0}
         />
       </h1>
-
-      <section style={styles.section}>
-        <header style={styles.sectionHeader}>
-          <div>
-            <h2 style={styles.sectionTitle}>
-              {t('notifications_transactions_heading', 'Transaction notifications')}
-            </h2>
-            <p style={styles.sectionSubtitle}>
-              {t(
-                'notifications_transactions_summary',
-                'Grouped by transaction name',
-              )}
-            </p>
-          </div>
-        </header>
-        {transactionsLoading ? (
-          <p>{t('loading', 'Loading')}...</p>
-        ) : transactionsError ? (
-          <p style={styles.errorText}>{transactionsError}</p>
-        ) : transactionGroups.length === 0 ? (
-          <p style={styles.emptyText}>{t('notifications_none', 'No notifications')}</p>
-        ) : (
-          <ul style={styles.transactionGroupList}>
-            {transactionGroups.map((group) => renderTransactionGroup(group))}
-          </ul>
-        )}
-        {transactionHasMore && (
-          <button
-            type="button"
-            style={styles.loadMoreButton}
-            onClick={loadMoreTransactions}
-          >
-            {t('notifications_load_more', 'Load more')}
-          </button>
-        )}
-      </section>
 
       <section style={styles.section}>
         <header style={styles.sectionHeader}>
@@ -1667,84 +1555,6 @@ const styles = {
     cursor: 'pointer',
     flexShrink: 0,
     fontSize: '0.85rem',
-  },
-  transactionGroupList: {
-    listStyle: 'none',
-    margin: 0,
-    padding: 0,
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '1rem',
-  },
-  transactionGroup: (highlighted) => ({
-    border: highlighted ? '2px solid #2563eb' : '1px solid #e5e7eb',
-    borderRadius: '0.75rem',
-    padding: '0.75rem',
-    backgroundColor: highlighted ? '#eff6ff' : '#fff',
-  }),
-  transactionHeader: {
-    display: 'flex',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
-    gap: '0.75rem',
-    marginBottom: '0.75rem',
-  },
-  transactionTitle: {
-    margin: 0,
-    fontSize: '1rem',
-    fontWeight: 600,
-  },
-  transactionMeta: {
-    margin: 0,
-    color: '#6b7280',
-    fontSize: '0.85rem',
-  },
-  unreadBadge: {
-    backgroundColor: '#fee2e2',
-    color: '#991b1b',
-    borderRadius: '9999px',
-    padding: '0.2rem 0.6rem',
-    fontSize: '0.75rem',
-    fontWeight: 600,
-  },
-  transactionEntries: {
-    listStyle: 'none',
-    margin: 0,
-    padding: 0,
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '0.5rem',
-  },
-  transactionEntry: {
-    margin: 0,
-  },
-  transactionButton: (isRead) => ({
-    width: '100%',
-    border: '1px solid #e5e7eb',
-    borderRadius: '0.5rem',
-    padding: '0.6rem 0.75rem',
-    backgroundColor: isRead ? '#f9fafb' : '#fff7ed',
-    textAlign: 'left',
-    cursor: 'pointer',
-  }),
-  transactionSummary: {
-    fontSize: '0.9rem',
-    color: '#111827',
-    marginBottom: '0.35rem',
-  },
-  transactionTime: {
-    fontSize: '0.75rem',
-    color: '#6b7280',
-  },
-  loadMoreButton: {
-    marginTop: '0.75rem',
-    backgroundColor: '#f3f4f6',
-    border: 'none',
-    padding: '0.5rem 0.75rem',
-    borderRadius: '0.5rem',
-    cursor: 'pointer',
-    fontWeight: 600,
-    color: '#1f2937',
   },
   emptyText: {
     color: '#6b7280',

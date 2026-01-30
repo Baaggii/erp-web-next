@@ -1134,14 +1134,9 @@ DELIMITER ;
 CREATE TABLE `notifications` (
   `notification_id` bigint NOT NULL,
   `recipient_empid` varchar(10) NOT NULL,
-  `type` enum('request','response','transaction') NOT NULL,
+  `type` enum('request','response') NOT NULL,
   `related_id` bigint NOT NULL,
   `message` text NOT NULL,
-  `transaction_name` varchar(255) DEFAULT NULL,
-  `transaction_table` varchar(100) DEFAULT NULL,
-  `transaction_record_id` varchar(191) DEFAULT NULL,
-  `action` enum('create','update') DEFAULT NULL,
-  `summary` text,
   `is_read` tinyint(1) NOT NULL DEFAULT '0',
   `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `company_id` int NOT NULL DEFAULT '2',
@@ -1149,25 +1144,6 @@ CREATE TABLE `notifications` (
   `updated_by` varchar(50) DEFAULT NULL,
   `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   `deleted_at` timestamp NULL DEFAULT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
-
--- --------------------------------------------------------
---
--- Table structure for table `notification_jobs`
---
-
-CREATE TABLE `notification_jobs` (
-  `id` bigint NOT NULL,
-  `table_name` varchar(100) NOT NULL,
-  `record_id` varchar(191) NOT NULL,
-  `company_id` int NOT NULL,
-  `action` enum('create','update') NOT NULL,
-  `created_by_empid` varchar(50) DEFAULT NULL,
-  `status` enum('queued','processing','done','failed') NOT NULL DEFAULT 'queued',
-  `attempts` int NOT NULL DEFAULT '0',
-  `last_error` text,
-  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 -- --------------------------------------------------------
@@ -4632,14 +4608,6 @@ ALTER TABLE `notifications`
   ADD PRIMARY KEY (`notification_id`);
 
 --
--- Indexes for table `notification_jobs`
---
-ALTER TABLE `notification_jobs`
-  ADD PRIMARY KEY (`id`),
-  ADD KEY `idx_notification_jobs_status` (`status`,`created_at`),
-  ADD KEY `idx_notification_jobs_company` (`company_id`);
-
---
 -- Indexes for table `payments`
 --
 ALTER TABLE `payments`
@@ -5258,12 +5226,6 @@ ALTER TABLE `modules`
 --
 ALTER TABLE `notifications`
   MODIFY `notification_id` bigint NOT NULL AUTO_INCREMENT;
-
---
--- AUTO_INCREMENT for table `notification_jobs`
---
-ALTER TABLE `notification_jobs`
-  MODIFY `id` bigint NOT NULL AUTO_INCREMENT;
 
 --
 -- AUTO_INCREMENT for table `payments`
