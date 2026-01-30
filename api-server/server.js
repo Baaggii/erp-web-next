@@ -65,7 +65,7 @@ import posApiProxyRoutes from "./routes/posapi_proxy.js";
 import posApiReferenceCodeRoutes from "./routes/posapi_reference_codes.js";
 import cncProcessingRoutes from "./routes/cnc_processing.js";
 import reportRoutes from "./routes/report.js";
-import { setNotificationEmitter } from "./services/transactionNotificationQueue.js";
+import { setNotificationEmitter } from "./services/notificationEmitter.js";
 
 // Polyfill for __dirname in ES modules
 const __filename = fileURLToPath(import.meta.url);

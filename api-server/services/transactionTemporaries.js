@@ -16,6 +16,7 @@ import {
   collectEndpointResponseMappings,
 } from './posApiPersistence.js';
 import { logUserAction } from './userActivityLog.js';
+import { emitNotificationToEmpIds } from './notificationEmitter.js';
 import {
   saveEbarimtInvoiceSnapshot,
   persistEbarimtInvoiceResponse,
@@ -2044,6 +2045,17 @@ export async function promoteTemporarySubmission(
           forwardedFrom: id,
         });
       }
+      const forwardRecipients = new Set(
+        Array.isArray(forwardReviewerEmpIds) ? forwardReviewerEmpIds : [],
+      );
+      const forwardCreator = normalizeEmpId(row.created_by);
+      if (forwardCreator) {
+        forwardRecipients.add(forwardCreator);
+      }
+      emitNotificationToEmpIds(Array.from(forwardRecipients), {
+        kind: 'temporary',
+        temporaryId: id,
+      });
       return {
         id,
         forwardedTo: forwardReviewerEmpId,
@@ -2409,6 +2421,21 @@ export async function promoteTemporarySubmission(
         });
       }
     }
+    const notificationRecipients = new Set(participantRecipients);
+    planReviewerRecipients.forEach((recipient) => notificationRecipients.add(recipient));
+    notificationRecipients.add(normalizedReviewer);
+    if (resolvedPendingRows.length > 0) {
+      resolvedPendingRows.forEach((resolvedRow) => {
+        const resolvedCreator = normalizeEmpId(resolvedRow.created_by);
+        if (resolvedCreator) {
+          notificationRecipients.add(resolvedCreator);
+        }
+      });
+    }
+    emitNotificationToEmpIds(Array.from(notificationRecipients), {
+      kind: 'temporary',
+      temporaryId: id,
+    });
     return { id, promotedRecordId: promotedId, warnings: sanitationWarnings };
   } catch (err) {
     try {
@@ -2586,6 +2613,12 @@ export async function rejectTemporarySubmission(
         });
       });
     }
+    const notificationRecipients = new Set(rejectionRecipients);
+    notificationRecipients.add(normalizedReviewer);
+    emitNotificationToEmpIds(Array.from(notificationRecipients), {
+      kind: 'temporary',
+      temporaryId: id,
+    });
     return { id, status: 'rejected' };
   } catch (err) {
     try {

@@ -2,6 +2,7 @@ import { pool, listTableRelationships, listTableColumns, getTableRowById } from 
 import { getAllDisplayFields } from './displayFieldConfig.js';
 import { listCustomRelations } from './tableRelationsConfig.js';
 import { getConfigsByTable } from './transactionFormConfig.js';
+import { emitNotificationEvent } from './notificationEmitter.js';
 
 const NOTIFICATION_ROLE_SET = new Set([
   'employee',
@@ -24,11 +25,6 @@ const UPDATE_ACTIONS = new Set([
 
 const queue = [];
 let processing = false;
-let ioEmitter = null;
-
-export function setNotificationEmitter(io) {
-  ioEmitter = io || null;
-}
 
 export function enqueueTransactionNotification(job = {}) {
   const tableName = typeof job.tableName === 'string' ? job.tableName : '';
@@ -408,13 +404,6 @@ async function updateExistingTransactionNotifications({
     if (row.recipient_empid) recipients.add(String(row.recipient_empid));
   }
   return { updated, recipients: Array.from(recipients) };
-}
-
-function emitNotificationEvent(rooms, payload) {
-  if (!ioEmitter || !rooms.length) return;
-  rooms.forEach((room) => {
-    ioEmitter.to(room).emit('notification:new', payload);
-  });
 }
 
 async function handleTransactionNotification(job) {
