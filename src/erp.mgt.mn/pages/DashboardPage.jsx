@@ -1,22 +1,16 @@
-import React, { useContext, useState, useEffect, useRef, useMemo } from 'react';
-import { useLocation } from 'react-router-dom';
+import React, { useContext, useState, useEffect, useRef } from 'react';
 import { AuthContext } from '../context/AuthContext.jsx';
 import PendingRequestWidget from '../components/PendingRequestWidget.jsx';
 import OutgoingRequestWidget from '../components/OutgoingRequestWidget.jsx';
 import { usePendingRequests } from '../context/PendingRequestContext.jsx';
 import LangContext from '../context/I18nContext.jsx';
 import { useTour } from '../components/ERPLayout.jsx';
-import useTransactionNotifications from '../hooks/useTransactionNotifications.js';
-import formatTimestamp from '../utils/formatTimestamp.js';
 
 export default function DashboardPage() {
   const { user, session } = useContext(AuthContext);
   const { hasNew, markSeen, outgoing } = usePendingRequests();
   const { t } = useContext(LangContext);
   const [active, setActive] = useState('general');
-  const location = useLocation();
-  const { entries: transactionNotifications, unreadCount: transactionUnreadCount } =
-    useTransactionNotifications({ limit: 50 });
   useTour('dashboard');
 
   const prevTab = useRef('general');
@@ -30,48 +24,6 @@ export default function DashboardPage() {
   useEffect(() => () => {
     if (prevTab.current === 'audition') markSeen();
   }, [markSeen]);
-
-  const searchParams = useMemo(
-    () => new URLSearchParams(location.search),
-    [location.search],
-  );
-  const requestedTab = searchParams.get('tab');
-  const focusGroup = searchParams.get('focus');
-
-  useEffect(() => {
-    if (requestedTab) {
-      setActive(requestedTab);
-    }
-  }, [requestedTab]);
-
-  const groupedNotifications = useMemo(() => {
-    const groups = new Map();
-    transactionNotifications.forEach((entry) => {
-      const groupKey =
-        entry.transactionName || t('notifications_unknown_type', 'Other transaction');
-      if (!groups.has(groupKey)) {
-        groups.set(groupKey, {
-          key: groupKey,
-          entries: [],
-          latest: 0,
-        });
-      }
-      const ts = new Date(entry.createdAt || entry.created_at || 0).getTime();
-      const group = groups.get(groupKey);
-      group.entries.push(entry);
-      group.latest = Math.max(group.latest, Number.isFinite(ts) ? ts : 0);
-    });
-    return Array.from(groups.values()).sort((a, b) => b.latest - a.latest);
-  }, [transactionNotifications, t]);
-
-  const groupRefs = useRef({});
-  useEffect(() => {
-    if (!focusGroup) return;
-    const target = groupRefs.current[focusGroup.toLowerCase()];
-    if (target) {
-      target.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }
-  }, [focusGroup, groupedNotifications]);
 
   const dotBadgeStyle = {
     background: 'red',
@@ -121,13 +73,6 @@ export default function DashboardPage() {
     boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
     minWidth: '140px',
   };
-  const formatNotificationTime = (value) => {
-    const date = value instanceof Date ? value : new Date(value);
-    if (Number.isNaN(date.getTime())) {
-      return t('notifications_unknown_date', 'Unknown date');
-    }
-    return formatTimestamp(date);
-  };
 
   return (
     <div style={{ padding: '1rem' }}>
@@ -139,12 +84,6 @@ export default function DashboardPage() {
           t('audition', 'Audition'),
           outgoing.accepted.newCount + outgoing.declined.newCount,
           hasNew,
-        )}
-        {tabButton(
-          'notifications',
-          t('notifications', 'Notifications'),
-          transactionUnreadCount,
-          transactionUnreadCount > 0,
         )}
         {tabButton('plans', t('plans', 'Plans'))}
       </div>
@@ -200,49 +139,7 @@ export default function DashboardPage() {
           <p>{t('plans_coming_soon', 'Plans content coming soon.')}</p>
         </div>
       )}
-
-      {active === 'notifications' && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-          {groupedNotifications.length === 0 ? (
-            <p>{t('notifications_none', 'No notifications')}</p>
-          ) : (
-            groupedNotifications.map((group) => {
-              const isHighlighted =
-                focusGroup && group.key.toLowerCase() === focusGroup.toLowerCase();
-              return (
-                <div
-                  key={group.key}
-                  ref={(node) => {
-                    if (node) {
-                      groupRefs.current[group.key.toLowerCase()] = node;
-                    }
-                  }}
-                  style={{
-                    ...cardStyle,
-                    border: isHighlighted ? '2px solid #2563eb' : '1px solid #e5e7eb',
-                    background: isHighlighted ? '#eff6ff' : '#fff',
-                  }}
-                >
-                  <h3 style={{ marginTop: 0 }}>{group.key}</h3>
-                  <ul style={{ margin: 0, paddingLeft: '1.2rem' }}>
-                    {group.entries.map((entry) => (
-                      <li key={entry.notification_id} style={{ marginBottom: '0.5rem' }}>
-                        <div style={{ fontWeight: 600 }}>
-                          {entry.summary ||
-                            t('notifications_unknown_type', 'Other transaction')}
-                        </div>
-                        <div style={{ fontSize: '0.8rem', color: '#6b7280' }}>
-                          {formatNotificationTime(entry.createdAt || entry.created_at)}
-                        </div>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              );
-            })
-          )}
-        </div>
-      )}
     </div>
   );
 }
+
