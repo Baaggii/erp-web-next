@@ -286,7 +286,7 @@ export default function useRequestNotificationCounts(
     let cancelled = false;
     let socket;
 
-    setEnablePolling(pollingEnabled);
+    setEnablePolling(false);
 
     const applyFromFetch = async () => {
       const data = await fetchCounts();

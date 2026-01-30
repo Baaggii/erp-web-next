@@ -151,6 +151,16 @@ io.use(async (socket, next) => {
   }
 });
 
+io.on("connection", (socket) => {
+  const user = socket.user;
+  if (!user) return;
+  socket.join(`user:${user.empid}`);
+  socket.join(`emp:${user.empid}`);
+  if (user.companyId) {
+    socket.join(`company:${user.companyId}`);
+  }
+});
+
 app.set("io", io);
 setNotificationEmitter(io);
 setUnifiedNotificationEmitter(io);
