@@ -540,10 +540,12 @@ async function handleTransactionNotification(job) {
       const role = config?.notificationRole?.trim();
       if (!role || !NOTIFICATION_ROLE_SET.has(role)) continue;
 
-      const { summaryFields, summaryText } = buildSummary(
-        referenceRow,
-        config?.notificationDashboardFields ?? [],
-      );
+      const { summaryFields: referenceSummaryFields, summaryText: referenceSummaryText } =
+        buildSummary(referenceRow, config?.notificationDashboardFields ?? []);
+      const summaryFields = dashboardSummaryBase.summaryFields.length
+        ? dashboardSummaryBase.summaryFields
+        : referenceSummaryFields;
+      const summaryText = dashboardSummaryBase.summaryText || referenceSummaryText;
 
       const messagePayload = {
         kind: 'transaction',
