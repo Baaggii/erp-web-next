@@ -29,6 +29,7 @@ export function enqueueTransactionNotification(job = {}) {
     companyId: job.companyId,
     changedBy: job.changedBy ?? null,
     action: job.action ?? 'update',
+    snapshot: job.snapshot ?? null,
   });
   if (!processing) {
     setImmediate(() => {
@@ -320,9 +321,11 @@ function emitNotificationEvent(rooms, payload) {
 
 async function handleTransactionNotification(job) {
   if (!job?.tableName || !job?.recordId || !job?.companyId) return;
-  const transactionRow = await getTableRowById(job.tableName, job.recordId, {
-    defaultCompanyId: job.companyId,
-  });
+  const transactionRow =
+    job.snapshot ||
+    (await getTableRowById(job.tableName, job.recordId, {
+      defaultCompanyId: job.companyId,
+    }));
   if (!transactionRow) return;
 
   const [dbRelations, customRelations, displayConfig, transactionConfig] =
@@ -429,6 +432,7 @@ async function handleTransactionNotification(job) {
         transactionName,
         transactionTable: job.tableName,
         transactionId: job.recordId,
+        action: job.action ?? 'update',
         referenceTable: relation.table,
         referenceId,
         role,
