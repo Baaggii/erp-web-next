@@ -771,19 +771,6 @@ function parseEntry(raw = {}) {
     posApiMapping: mapping,
     infoEndpoints,
     infoEndpointConfig,
-    notificationCompanyFields: arrify(raw.notificationCompanyFields || raw.notification_company_fields),
-    notificationDepartmentFields: arrify(
-      raw.notificationDepartmentFields || raw.notification_department_fields,
-    ),
-    notificationBranchFields: arrify(raw.notificationBranchFields || raw.notification_branch_fields),
-    notificationEmployeeFields: arrify(
-      raw.notificationEmployeeFields || raw.notification_employee_fields,
-    ),
-    notificationCustomerFields: arrify(
-      raw.notificationCustomerFields || raw.notification_customer_fields,
-    ),
-    notificationEmailFields: arrify(raw.notificationEmailFields || raw.notification_email_fields),
-    notificationPhoneFields: arrify(raw.notificationPhoneFields || raw.notification_phone_fields),
   };
 }
 
@@ -1136,13 +1123,6 @@ export async function setFormConfig(
     infoEndpoints = [],
     posApiMapping = {},
     infoEndpointConfig = {},
-    notificationCompanyFields = [],
-    notificationDepartmentFields = [],
-    notificationBranchFields = [],
-    notificationEmployeeFields = [],
-    notificationCustomerFields = [],
-    notificationEmailFields = [],
-    notificationPhoneFields = [],
   } = config || {};
   const uid = arrify(userIdFields.length ? userIdFields : userIdField ? [userIdField] : []);
   const bid = arrify(
@@ -1284,13 +1264,6 @@ export async function setFormConfig(
       : [],
     posApiMapping: sanitizePosApiMapping(posApiMapping),
     infoEndpointConfig: sanitizeInfoEndpointConfigMap(infoEndpointConfig),
-    notificationCompanyFields: arrify(notificationCompanyFields),
-    notificationDepartmentFields: arrify(notificationDepartmentFields),
-    notificationBranchFields: arrify(notificationBranchFields),
-    notificationEmployeeFields: arrify(notificationEmployeeFields),
-    notificationCustomerFields: arrify(notificationCustomerFields),
-    notificationEmailFields: arrify(notificationEmailFields),
-    notificationPhoneFields: arrify(notificationPhoneFields),
   };
   if (editableFields !== undefined) {
     cfg[table][name].editableFields = arrify(editableFields);
