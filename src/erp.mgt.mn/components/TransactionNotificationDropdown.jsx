@@ -9,7 +9,6 @@ export default function TransactionNotificationDropdown() {
   const navigate = useNavigate();
 
   const sortedGroups = useMemo(() => groups.slice(0, 8), [groups]);
-  const hasUnread = unreadCount > 0;
 
   useEffect(() => {
     const handleClick = (event) => {
@@ -36,8 +35,7 @@ export default function TransactionNotificationDropdown() {
         onClick={() => setOpen((prev) => !prev)}
       >
         <span aria-hidden="true">🔔</span>
-        {hasUnread && <span style={styles.dot} />}
-        {hasUnread && <span style={styles.badge}>{unreadCount}</span>}
+        {unreadCount > 0 && <span style={styles.badge}>{unreadCount}</span>}
       </button>
       {open && (
         <div style={styles.dropdown}>
@@ -58,10 +56,7 @@ export default function TransactionNotificationDropdown() {
                 style={styles.item(group.unreadCount > 0)}
                 onClick={() => handleGroupClick(group)}
               >
-                <div style={styles.itemTitle}>
-                  {group.unreadCount > 0 && <span style={styles.dotInline} />}
-                  {group.name}
-                </div>
+                <div style={styles.itemTitle}>{group.name}</div>
                 <div style={styles.itemMeta}>
                   {group.unreadCount > 0
                     ? `${group.unreadCount} unread`
@@ -70,16 +65,6 @@ export default function TransactionNotificationDropdown() {
                 <div style={styles.itemPreview}>
                   {group.items[0]?.summaryText || 'New transaction activity'}
                 </div>
-                {group.items[0]?.summaryFields?.length > 0 && (
-                  <div style={styles.fieldList}>
-                    {group.items[0].summaryFields.map((field) => (
-                      <div key={field.field} style={styles.fieldRow}>
-                        <span style={styles.fieldName}>{field.field}:</span>{' '}
-                        <span style={styles.fieldValue}>{field.value}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
               </button>
             ))}
           </div>
@@ -125,24 +110,6 @@ const styles = {
     padding: '0 0.4rem',
     lineHeight: '1.3rem',
   },
-  dot: {
-    position: 'absolute',
-    top: '2px',
-    right: '2px',
-    width: '8px',
-    height: '8px',
-    borderRadius: '999px',
-    background: '#22c55e',
-    border: '2px solid #1f2937',
-  },
-  dotInline: {
-    display: 'inline-block',
-    width: '8px',
-    height: '8px',
-    borderRadius: '999px',
-    background: '#22c55e',
-    marginRight: '0.4rem',
-  },
   dropdown: {
     position: 'absolute',
     right: 0,
@@ -185,20 +152,6 @@ const styles = {
   itemTitle: { fontWeight: 600, color: '#0f172a', marginBottom: '0.25rem' },
   itemMeta: { fontSize: '0.75rem', color: '#64748b', marginBottom: '0.25rem' },
   itemPreview: { fontSize: '0.85rem', color: '#334155' },
-  fieldList: {
-    marginTop: '0.4rem',
-    fontSize: '0.75rem',
-    color: '#475569',
-    display: 'grid',
-    gap: '0.2rem',
-  },
-  fieldRow: {
-    display: 'flex',
-    gap: '0.25rem',
-    flexWrap: 'wrap',
-  },
-  fieldName: { fontWeight: 600 },
-  fieldValue: { color: '#1f2937' },
   footer: {
     width: '100%',
     border: 'none',

@@ -72,10 +72,7 @@ export default function TransactionNotificationWidget() {
                   style={styles.groupToggle}
                   onClick={() => toggleExpanded(group.key)}
                 >
-                  <span style={styles.groupName}>
-                    {group.unreadCount > 0 && <span style={styles.dotInline} />}
-                    {group.name}
-                  </span>
+                  <span style={styles.groupName}>{group.name}</span>
                   <span style={styles.groupCount}>
                     {group.unreadCount > 0
                       ? `${group.unreadCount} unread`
@@ -99,16 +96,6 @@ export default function TransactionNotificationWidget() {
                       <div style={styles.itemSummary}>
                         {item.summaryText || 'New transaction update'}
                       </div>
-                      {item.summaryFields?.length > 0 && (
-                        <div style={styles.fieldList}>
-                          {item.summaryFields.map((field) => (
-                            <div key={field.field} style={styles.fieldRow}>
-                              <span style={styles.fieldName}>{field.field}:</span>{' '}
-                              <span style={styles.fieldValue}>{field.value}</span>
-                            </div>
-                          ))}
-                        </div>
-                      )}
                       <div style={styles.itemMeta}>
                         {formatTimestamp(item.createdAt)}
                       </div>
@@ -162,14 +149,6 @@ const styles = {
   },
   groupName: { display: 'block', fontWeight: 600, color: '#0f172a' },
   groupCount: { display: 'block', fontSize: '0.75rem', color: '#64748b' },
-  dotInline: {
-    display: 'inline-block',
-    width: '8px',
-    height: '8px',
-    borderRadius: '999px',
-    background: '#22c55e',
-    marginRight: '0.4rem',
-  },
   markRead: {
     background: '#e2e8f0',
     border: 'none',
@@ -185,19 +164,5 @@ const styles = {
     padding: '0.5rem 0.75rem',
   }),
   itemSummary: { fontSize: '0.85rem', color: '#1e293b' },
-  fieldList: {
-    marginTop: '0.35rem',
-    fontSize: '0.75rem',
-    color: '#475569',
-    display: 'grid',
-    gap: '0.2rem',
-  },
-  fieldRow: {
-    display: 'flex',
-    gap: '0.25rem',
-    flexWrap: 'wrap',
-  },
-  fieldName: { fontWeight: 600 },
-  fieldValue: { color: '#1f2937' },
   itemMeta: { fontSize: '0.7rem', color: '#64748b', marginTop: '0.25rem' },
 };

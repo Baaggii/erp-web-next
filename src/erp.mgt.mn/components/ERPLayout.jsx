@@ -31,6 +31,7 @@ import derivePageKey from "../utils/derivePageKey.js";
 import { findVisibleFallbackSelector } from "../utils/findVisibleTourStep.js";
 import { playNotificationSound } from "../utils/playNotificationSound.js";
 import { buildOptionsForRows } from "../utils/buildAsyncSelectOptions.js";
+import NotificationDots from "./NotificationDots.jsx";
 import TransactionNotificationDropdown from "./TransactionNotificationDropdown.jsx";
 import useTransactionNotifications from "../hooks/useTransactionNotifications.js";
 
@@ -4078,6 +4079,7 @@ export function Header({
         </button>
         <button style={styles.iconBtn}>🗗 {t("windows")}</button>
         <button style={styles.iconBtn}>❔ {t("help")}</button>
+        <TransactionNotificationDropdown />
       </nav>
       <div style={styles.notificationSlot}>
         <TransactionNotificationDropdown />
