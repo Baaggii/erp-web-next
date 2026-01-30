@@ -7,6 +7,7 @@ export default function TagMultiInput({
   inputStyle = {},
   disabled = false,
   onFocus,
+  onKeyDown,
 }) {
   const [input, setInput] = useState('');
   const tags = useMemo(() => {
@@ -82,6 +83,7 @@ export default function TagMultiInput({
                 e.preventDefault();
                 commitToken(input);
               }
+              if (onKeyDown) onKeyDown(e);
             }}
             onBlur={() => commitToken(input)}
             placeholder={tags.length === 0 ? placeholder : ''}
