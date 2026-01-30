@@ -1,14 +1,17 @@
 import React, { useContext, useState, useEffect, useRef } from 'react';
 import { AuthContext } from '../context/AuthContext.jsx';
 import PendingRequestWidget from '../components/PendingRequestWidget.jsx';
+import TransactionNotificationWidget from '../components/TransactionNotificationWidget.jsx';
 import OutgoingRequestWidget from '../components/OutgoingRequestWidget.jsx';
 import { usePendingRequests } from '../context/PendingRequestContext.jsx';
+import { useTransactionNotifications } from '../context/TransactionNotificationContext.jsx';
 import LangContext from '../context/I18nContext.jsx';
 import { useTour } from '../components/ERPLayout.jsx';
 
 export default function DashboardPage() {
   const { user, session } = useContext(AuthContext);
   const { hasNew, markSeen, outgoing } = usePendingRequests();
+  const { unreadCount } = useTransactionNotifications();
   const { t } = useContext(LangContext);
   const [active, setActive] = useState('general');
   useTour('dashboard');
@@ -78,7 +81,7 @@ export default function DashboardPage() {
     <div style={{ padding: '1rem' }}>
       <div style={{ display: 'flex', borderBottom: '1px solid #ddd', marginBottom: '1rem' }}>
         {tabButton('general', t('general', 'General'))}
-        {tabButton('activity', t('activity', 'Activity'))}
+        {tabButton('activity', t('activity', 'Activity'), unreadCount, unreadCount > 0)}
         {tabButton(
           'audition',
           t('audition', 'Audition'),
@@ -119,7 +122,7 @@ export default function DashboardPage() {
 
       {active === 'activity' && (
         <div>
-          <p>{t('no_activity', 'No activity to display.')}</p>
+          <TransactionNotificationWidget />
         </div>
       )}
 
@@ -142,4 +145,3 @@ export default function DashboardPage() {
     </div>
   );
 }
-
