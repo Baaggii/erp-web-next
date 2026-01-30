@@ -811,7 +811,6 @@ async function insertNotification(
     await notifyUser({
       companyId,
       recipientEmpId: recipient,
-      kind: 'temporary',
       type,
       relatedId,
       message,

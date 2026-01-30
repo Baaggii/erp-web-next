@@ -387,7 +387,6 @@ async function updateExistingTransactionNotifications({
         room: `user:${row.recipient_empid}`,
         payload: {
           id: row.notification_id,
-          kind: 'transaction',
           type: row.type,
           message,
           related_id: row.related_id,
@@ -604,7 +603,6 @@ async function handleTransactionNotification(job) {
             await notifyUser({
               companyId: job.companyId,
               recipientEmpId: recipient,
-              kind: 'transaction',
               type: 'request',
               relatedId: job.recordId,
               message,

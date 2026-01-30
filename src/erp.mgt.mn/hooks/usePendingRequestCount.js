@@ -134,7 +134,15 @@ export default function usePendingRequestCount(
     };
 
     const handleNotification = (payload) => {
-      if (!payload || payload.kind !== 'request') return;
+      if (!payload || payload.type !== 'request') return;
+      if (typeof payload.message === 'string') {
+        try {
+          const parsed = JSON.parse(payload.message);
+          if (parsed?.kind === 'transaction') return;
+        } catch {
+          // ignore parse errors
+        }
+      }
       applyFromFetch();
     };
 

@@ -295,7 +295,19 @@ export default function useRequestNotificationCounts(
 
     const handleNotification = (payload) => {
       if (!payload) return;
-      if (payload.kind === 'request') {
+      if (
+        payload.type === 'request' ||
+        payload.type === 'response' ||
+        payload.type === 'reapproval'
+      ) {
+        if (typeof payload.message === 'string') {
+          try {
+            const parsed = JSON.parse(payload.message);
+            if (parsed?.kind === 'transaction') return;
+          } catch {
+            // ignore parse errors
+          }
+        }
         applyFromFetch();
       }
     };

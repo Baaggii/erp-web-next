@@ -32,7 +32,6 @@ export async function notifyUser({
   companyId,
   recipientEmpId,
   type,
-  kind,
   message,
   relatedId,
   createdBy,
@@ -41,10 +40,6 @@ export async function notifyUser({
 }) {
   const recipient = normalizeRecipient(recipientEmpId);
   const normalizedType = normalizeType(type);
-  const normalizedKind = kind ? String(kind).trim() : normalizedType;
-  if (!normalizedKind) {
-    throw new Error('kind required');
-  }
   const normalizedMessage = message ?? '';
   const createdAt = new Date();
   const db = connection ?? dbPool;
@@ -67,7 +62,6 @@ export async function notifyUser({
   );
   const payload = {
     id: result?.insertId ?? null,
-    kind: normalizedKind,
     type: normalizedType,
     message: normalizedMessage,
     related_id: relatedId ?? null,

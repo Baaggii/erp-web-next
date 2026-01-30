@@ -35,7 +35,6 @@ function parseNotificationRow(row) {
 
 function parseNotificationPayload(payload) {
   if (!payload?.message) return null;
-  if (payload.kind && payload.kind !== NOTIFICATION_KIND) return null;
   let parsed = payload.message;
   if (typeof parsed === 'string') {
     try {

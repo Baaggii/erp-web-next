@@ -792,7 +792,6 @@ export async function createRequest({
       await notifyUser({
         companyId,
         recipientEmpId: senior,
-        kind: 'request',
         type: 'request',
         relatedId: requestId,
         message: `Pending ${requestType} request for ${tableName}#${recordId}`,
@@ -971,7 +970,6 @@ export async function createBulkEditRequest({
       await notifyUser({
         companyId,
         recipientEmpId: senior,
-        kind: 'request',
         type: 'request',
         relatedId: requestId,
         message: `Pending bulk edit request for ${tableName}`,
@@ -1474,7 +1472,6 @@ export async function respondRequest(
       await notifyUser({
         companyId: req.company_id,
         recipientEmpId: req.emp_id,
-        kind: 'request',
         type: 'response',
         relatedId: id,
         message: notificationMessage,
@@ -1521,7 +1518,6 @@ export async function respondRequest(
       await notifyUser({
         companyId: req.company_id,
         recipientEmpId: req.emp_id,
-        kind: 'request',
         type: 'response',
         relatedId: id,
         message: notificationMessage,

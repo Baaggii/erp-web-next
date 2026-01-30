@@ -261,7 +261,9 @@ export default function useTemporaryNotificationCounts(empid) {
       refreshSummary();
     };
     const handleNotification = (payload) => {
-      if (payload?.kind !== 'temporary') return;
+      const message = payload?.message;
+      if (typeof message !== 'string') return;
+      if (!message.toLowerCase().includes('temporary')) return;
       refreshSummary();
     };
 
