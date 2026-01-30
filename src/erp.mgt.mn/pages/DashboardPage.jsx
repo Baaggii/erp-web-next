@@ -123,7 +123,7 @@ export default function DashboardPage() {
 
       {active === 'activity' && (
         <div>
-          <TransactionNotificationWidget />
+          <p>{t('no_activity', 'No activity to display.')}</p>
         </div>
       )}
 
