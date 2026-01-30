@@ -1,6 +1,7 @@
 import React, { useCallback, useContext, useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { usePendingRequests } from '../context/PendingRequestContext.jsx';
+import { useTransactionNotifications } from '../context/TransactionNotificationsContext.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
 import LangContext from '../context/I18nContext.jsx';
 import formatTimestamp from '../utils/formatTimestamp.js';
@@ -90,6 +91,15 @@ export default function NotificationsPage() {
   const { user, session } = useAuth();
   const { t } = useContext(LangContext);
   const navigate = useNavigate();
+  const location = useLocation();
+  const {
+    notifications: transactionNotifications,
+    hasMore: transactionHasMore,
+    loading: transactionLoading,
+    loadMore: loadMoreTransactions,
+    markRead: markTransactionRead,
+    unreadCount: transactionUnreadCount,
+  } = useTransactionNotifications();
   const [reportState, setReportState] = useState({
     incoming: [],
     outgoing: [],
@@ -110,6 +120,10 @@ export default function NotificationsPage() {
     review: createEmptyTemporaryScope(),
     created: createEmptyTemporaryScope(),
   });
+  const highlightTransactionName = useMemo(() => {
+    const params = new URLSearchParams(location.search || '');
+    return params.get('highlight') || '';
+  }, [location.search]);
 
   const hasSupervisor =
     Number(session?.senior_empid) > 0 || Number(session?.senior_plan_empid) > 0;
@@ -123,6 +137,41 @@ export default function NotificationsPage() {
     if (seniorPlanEmpId) ids.push(String(seniorPlanEmpId).trim());
     return Array.from(new Set(ids.filter(Boolean)));
   }, [seniorEmpId, seniorPlanEmpId]);
+
+  const transactionGroups = useMemo(() => {
+    const groups = new Map();
+    transactionNotifications.forEach((note) => {
+      const name = note.transaction_name || note.transactionName || t('notifications_unknown_type', 'Other transaction');
+      const key = String(name).trim() || t('notifications_unknown_type', 'Other transaction');
+      if (!groups.has(key)) {
+        groups.set(key, { name: key, entries: [] });
+      }
+      groups.get(key).entries.push(note);
+    });
+    return Array.from(groups.values()).map((group) => ({
+      ...group,
+      entries: group.entries.sort((a, b) => {
+        const aTime = new Date(a.created_at || a.createdAt || 0).getTime();
+        const bTime = new Date(b.created_at || b.createdAt || 0).getTime();
+        return bTime - aTime;
+      }),
+    }));
+  }, [t, transactionNotifications]);
+
+  const makeGroupId = useCallback((name) => {
+    return `transaction-group-${String(name || '')
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/gi, '-')}`;
+  }, []);
+
+  useEffect(() => {
+    if (!highlightTransactionName) return;
+    const targetId = makeGroupId(highlightTransactionName);
+    const el = document.getElementById(targetId);
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  }, [highlightTransactionName, makeGroupId]);
 
   const fetchRequests = useCallback(
     async (types, statuses = ['pending']) => {
@@ -1151,6 +1200,89 @@ export default function NotificationsPage() {
       <section style={styles.section}>
         <header style={styles.sectionHeader}>
           <div>
+            <h2 style={styles.sectionTitle}>
+              {t('notifications_transactions_heading', 'Transaction notifications')}
+            </h2>
+            <p style={styles.sectionSubtitle}>
+              {t('notifications_transactions_summary', '{{count}} total · {{new}} new', {
+                count: transactionNotifications.length,
+                new: transactionUnreadCount,
+              })}
+            </p>
+          </div>
+        </header>
+        {transactionNotifications.length === 0 ? (
+          <p style={styles.emptyText}>{t('notifications_none', 'No notifications')}</p>
+        ) : (
+          <div style={styles.transactionGroups}>
+            {transactionGroups.map((group) => {
+              const latest = group.entries[0];
+              const groupId = makeGroupId(group.name);
+              const isHighlighted =
+                highlightTransactionName &&
+                group.name.toLowerCase() === highlightTransactionName.toLowerCase();
+              return (
+                <div
+                  key={group.name}
+                  id={groupId}
+                  style={{
+                    ...styles.transactionGroup,
+                    ...(isHighlighted ? styles.transactionGroupHighlight : {}),
+                  }}
+                >
+                  <div style={styles.transactionGroupHeader}>
+                    <div>
+                      <h3 style={styles.transactionGroupTitle}>{group.name}</h3>
+                      <p style={styles.transactionGroupMeta}>
+                        {t('notifications_group_count', 'Count')}: {group.entries.length}
+                        {latest?.created_at && (
+                          <span style={styles.transactionGroupTime}>
+                            {formatTimestamp(latest.created_at)}
+                          </span>
+                        )}
+                      </p>
+                    </div>
+                  </div>
+                  <ul style={styles.transactionList}>
+                    {group.entries.map((entry) => (
+                      <li key={entry.notification_id} style={styles.transactionItem}>
+                        <button
+                          type="button"
+                          style={styles.transactionEntry(entry.is_read)}
+                          onClick={() => markTransactionRead(entry.notification_id)}
+                        >
+                          <div style={styles.transactionEntryHeader}>
+                            <span>{entry.message}</span>
+                            <span style={styles.transactionEntryTime}>
+                              {formatTimestamp(entry.created_at)}
+                            </span>
+                          </div>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              );
+            })}
+          </div>
+        )}
+        {transactionHasMore && (
+          <button
+            type="button"
+            style={styles.loadMoreButton}
+            onClick={loadMoreTransactions}
+            disabled={transactionLoading}
+          >
+            {transactionLoading
+              ? t('loading', 'Loading')
+              : t('notifications_load_more', 'Load more')}
+          </button>
+        )}
+      </section>
+
+      <section style={styles.section}>
+        <header style={styles.sectionHeader}>
+          <div>
             <h2 style={styles.sectionTitle}>{t('notifications_report_heading', 'Report approvals')}</h2>
             <p style={styles.sectionSubtitle}>
               {t('notifications_report_summary', '{{pending}} pending · {{new}} new', {
@@ -1572,5 +1704,86 @@ const styles = {
     margin: 0,
     fontSize: '0.9rem',
     fontWeight: 600,
+  },
+  transactionGroups: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '1rem',
+  },
+  transactionGroup: {
+    border: '1px solid #e5e7eb',
+    borderRadius: '0.75rem',
+    padding: '0.75rem',
+    backgroundColor: '#f9fafb',
+  },
+  transactionGroupHighlight: {
+    borderColor: '#2563eb',
+    boxShadow: '0 0 0 2px rgba(37, 99, 235, 0.2)',
+  },
+  transactionGroupHeader: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: '0.5rem',
+  },
+  transactionGroupTitle: {
+    margin: 0,
+    fontSize: '1rem',
+    fontWeight: 600,
+  },
+  transactionGroupMeta: {
+    margin: 0,
+    color: '#4b5563',
+    fontSize: '0.85rem',
+    display: 'flex',
+    gap: '0.5rem',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+  },
+  transactionGroupTime: {
+    fontSize: '0.75rem',
+    color: '#6b7280',
+  },
+  transactionList: {
+    listStyle: 'none',
+    margin: 0,
+    padding: 0,
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.5rem',
+  },
+  transactionItem: {
+    borderRadius: '0.5rem',
+    overflow: 'hidden',
+  },
+  transactionEntry: (isRead) => ({
+    width: '100%',
+    textAlign: 'left',
+    padding: '0.65rem 0.75rem',
+    border: '1px solid #e5e7eb',
+    borderRadius: '0.5rem',
+    backgroundColor: isRead ? '#fff' : '#eff6ff',
+    cursor: 'pointer',
+  }),
+  transactionEntryHeader: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    gap: '0.75rem',
+    fontSize: '0.9rem',
+  },
+  transactionEntryTime: {
+    fontSize: '0.75rem',
+    color: '#6b7280',
+    whiteSpace: 'nowrap',
+  },
+  loadMoreButton: {
+    marginTop: '0.75rem',
+    backgroundColor: '#f3f4f6',
+    border: 'none',
+    borderRadius: '0.5rem',
+    padding: '0.6rem 1rem',
+    cursor: 'pointer',
+    fontWeight: 600,
+    color: '#1f2937',
   },
 };

@@ -50,6 +50,21 @@ function normalizeConfigEntry(entry = {}) {
   const notificationDashboardFields = normalizeDisplayFieldList(
     entry.notificationDashboardFields ?? entry.notification_dashboard_fields,
   );
+  const notificationEmployeeFields = normalizeDisplayFieldList(
+    entry.notificationEmployeeFields ?? entry.notification_employee_fields,
+  );
+  const notificationCompanyFields = normalizeDisplayFieldList(
+    entry.notificationCompanyFields ?? entry.notification_company_fields,
+  );
+  const notificationDepartmentFields = normalizeDisplayFieldList(
+    entry.notificationDepartmentFields ?? entry.notification_department_fields,
+  );
+  const notificationBranchFields = normalizeDisplayFieldList(
+    entry.notificationBranchFields ?? entry.notification_branch_fields,
+  );
+  const notificationCustomerFields = normalizeDisplayFieldList(
+    entry.notificationCustomerFields ?? entry.notification_customer_fields,
+  );
   const notificationEmailFields = normalizeDisplayFieldList(
     entry.notificationEmailFields ?? entry.notification_email_fields,
   );
@@ -63,6 +78,11 @@ function normalizeConfigEntry(entry = {}) {
     displayFields,
     notificationRole,
     notificationDashboardFields,
+    notificationEmployeeFields,
+    notificationCompanyFields,
+    notificationDepartmentFields,
+    notificationBranchFields,
+    notificationCustomerFields,
     notificationEmailFields,
     notificationPhoneFields,
   };
