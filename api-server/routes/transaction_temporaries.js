@@ -11,6 +11,7 @@ import {
   deleteTemporarySubmission,
   updateTemporarySubmissionImageName,
 } from '../services/transactionTemporaries.js';
+import { emitNotificationToEmpIds } from '../services/notificationEmitter.js';
 
 const router = express.Router();
 
@@ -156,6 +157,12 @@ router.post('/', requireAuth, async (req, res, next) => {
       createdBy: req.user.empid,
       tenant,
     });
+    if (Array.isArray(result?.reviewerEmpIds) && result.reviewerEmpIds.length > 0) {
+      emitNotificationToEmpIds(result.reviewerEmpIds, {
+        kind: 'request',
+        temporaryId: result.id,
+      });
+    }
     res.status(201).json(result);
   } catch (err) {
     next(err);
