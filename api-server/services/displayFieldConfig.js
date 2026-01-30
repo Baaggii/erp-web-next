@@ -47,9 +47,6 @@ function normalizeConfigEntry(entry = {}) {
       : typeof entry.notification_role === 'string' && entry.notification_role.trim()
       ? entry.notification_role.trim()
       : '';
-  const notificationFields = normalizeDisplayFieldList(
-    entry.notificationFields ?? entry.notification_fields,
-  );
   const notificationDashboardFields = normalizeDisplayFieldList(
     entry.notificationDashboardFields ?? entry.notification_dashboard_fields,
   );
@@ -64,7 +61,6 @@ function normalizeConfigEntry(entry = {}) {
     table,
     idField: idField || undefined,
     displayFields,
-    notificationFields,
     notificationRole,
     notificationDashboardFields,
     notificationEmailFields,
