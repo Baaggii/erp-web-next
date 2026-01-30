@@ -86,7 +86,7 @@ export default function useTransactionNotifications() {
     refreshTimerRef.current = setTimeout(() => {
       refreshTimerRef.current = null;
       refresh();
-    }, 0);
+    }, 500);
   }, [refresh]);
 
   const markRead = useCallback(
