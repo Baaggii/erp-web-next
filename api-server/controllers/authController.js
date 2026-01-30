@@ -212,8 +212,6 @@ export async function login(req, res, next) {
       empid: user.empid,
       position: resolvedPosition,
       companyId: company,
-      branchId: branch,
-      departmentId: department,
       userLevel: sessionPayload?.user_level ?? null,
       seniorPlanEmpid: senior_plan_empid || null,
       posNo: pos_no ?? posNo ?? null,
