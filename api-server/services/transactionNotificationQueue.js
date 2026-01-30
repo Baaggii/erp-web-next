@@ -214,7 +214,7 @@ async function resolveTransactionConfig(tableName, transactionRow, companyId) {
         : '';
     return !field && !value;
   });
-  return fallback ?? entries[0] ?? null;
+  return fallback ?? null;
 }
 
 function normalizeContactValues(raw) {
