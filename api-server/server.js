@@ -65,6 +65,8 @@ import posApiProxyRoutes from "./routes/posapi_proxy.js";
 import posApiReferenceCodeRoutes from "./routes/posapi_reference_codes.js";
 import cncProcessingRoutes from "./routes/cnc_processing.js";
 import reportRoutes from "./routes/report.js";
+import notificationRoutes from "./routes/notifications.js";
+import { setTransactionNotificationSocket } from "./services/transactionNotificationJobs.js";
 
 // Polyfill for __dirname in ES modules
 const __filename = fileURLToPath(import.meta.url);
@@ -125,6 +127,10 @@ io.use((socket, next) => {
     const user = jwtService.verify(token);
     socket.user = user;
     socket.join(`user:${user.empid}`);
+    if (user?.empid) socket.join(`emp:${user.empid}`);
+    if (user?.companyId) socket.join(`company:${user.companyId}`);
+    if (user?.departmentId) socket.join(`department:${user.departmentId}`);
+    if (user?.branchId) socket.join(`branch:${user.branchId}`);
     return next();
   } catch {
     return next(new Error("Authentication error"));
@@ -132,6 +138,7 @@ io.use((socket, next) => {
 });
 
 app.set("io", io);
+setTransactionNotificationSocket(io);
 
 // Serve uploaded images statically
 const { config: imgCfg } = await getGeneralConfig();
@@ -208,6 +215,7 @@ app.use("/api/posapi/endpoints", posApiEndpointRoutes);
 app.use("/api/posapi/proxy", posApiProxyRoutes);
 app.use("/api/posapi/reference-codes", posApiReferenceCodeRoutes);
 app.use("/api/cnc_processing", cncProcessingRoutes);
+app.use("/api/notifications", notificationRoutes);
 
 // Serve static React build and fallback to index.html
 const buildDir = path.resolve(__dirname, "../../../erp.mgt.mn");

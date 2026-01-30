@@ -31,6 +31,7 @@ import { findVisibleFallbackSelector } from "../utils/findVisibleTourStep.js";
 import { playNotificationSound } from "../utils/playNotificationSound.js";
 import { buildOptionsForRows } from "../utils/buildAsyncSelectOptions.js";
 import NotificationDots from "./NotificationDots.jsx";
+import { TransactionNotificationDropdown } from "./TransactionNotifications.jsx";
 
 export const TourContext = React.createContext({
   startTour: () => false,
@@ -4090,6 +4091,7 @@ export function Header({
             <span aria-hidden="true">🔔</span> {t('notifications', 'Notifications')}
           </span>
         </button>
+        <TransactionNotificationDropdown />
         <button style={styles.iconBtn}>❔ {t("help")}</button>
       </nav>
       {hasUpdateAvailable && (
