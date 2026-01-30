@@ -19,7 +19,9 @@ import useRequestNotificationCounts from "../hooks/useRequestNotificationCounts.
 import useTemporaryNotificationCounts from "../hooks/useTemporaryNotificationCounts.js";
 import useBuildUpdateNotice from "../hooks/useBuildUpdateNotice.js";
 import { PendingRequestContext } from "../context/PendingRequestContext.jsx";
+import { TransactionNotificationsProvider } from "../context/TransactionNotificationsContext.jsx";
 import { PollingProvider } from "../context/PollingContext.jsx";
+import TransactionNotificationMenu from "./TransactionNotificationMenu.jsx";
 import Joyride, { STATUS, ACTIONS, EVENTS } from "react-joyride";
 import ErrorBoundary from "../components/ErrorBoundary.jsx";
 import { useToast } from "../context/ToastContext.jsx";
@@ -3630,8 +3632,9 @@ export default function ERPLayout() {
             onToggleGuideMode={toggleTourGuideMode}
           />
         )}
-        <PendingRequestContext.Provider value={pendingRequestValue}>
-          <div style={styles.container}>
+        <TransactionNotificationsProvider>
+          <PendingRequestContext.Provider value={pendingRequestValue}>
+            <div style={styles.container}>
             <Joyride
               steps={tourSteps}
               run={runTour}
@@ -3693,9 +3696,10 @@ export default function ERPLayout() {
               />
               <MainWindow title={windowTitle} />
             </div>
-            {generalConfig.general?.aiApiEnabled && <AskAIFloat />}
-          </div>
-        </PendingRequestContext.Provider>
+              {generalConfig.general?.aiApiEnabled && <AskAIFloat />}
+            </div>
+          </PendingRequestContext.Provider>
+        </TransactionNotificationsProvider>
       </TourContext.Provider>
     </PollingProvider>
   );
@@ -3714,7 +3718,6 @@ export function Header({
 }) {
   const { session } = useContext(AuthContext);
   const { lang, setLang, t } = useContext(LangContext);
-  const { anyHasNew, notificationColors } = useContext(PendingRequestContext);
   const handleRefresh = () => {
     if (typeof window === 'undefined' || !window?.location) return;
     try {
@@ -3725,12 +3728,6 @@ export function Header({
       }
     }
   };
-
-  const headerNotificationColors = useMemo(() => {
-    if (notificationColors?.length) return notificationColors;
-    if (anyHasNew) return [NOTIFICATION_STATUS_COLORS.pending];
-    return [];
-  }, [anyHasNew, notificationColors]);
 
   const [positionLabel, setPositionLabel] = useState(null);
   const normalizeText = useCallback((value) => {
@@ -4079,17 +4076,7 @@ export function Header({
           🗔 {t("home")}
         </button>
         <button style={styles.iconBtn}>🗗 {t("windows")}</button>
-        <button
-          style={styles.iconBtn}
-          onClick={() =>
-            onOpen('/notifications', t('notifications', 'Notifications'), 'notifications')
-          }
-        >
-          <span style={styles.inlineButtonContent}>
-            <NotificationDots colors={headerNotificationColors} marginRight={0} />
-            <span aria-hidden="true">🔔</span> {t('notifications', 'Notifications')}
-          </span>
-        </button>
+        <TransactionNotificationMenu />
         <button style={styles.iconBtn}>❔ {t("help")}</button>
       </nav>
       {hasUpdateAvailable && (
