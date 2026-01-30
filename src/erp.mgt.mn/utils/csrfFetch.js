@@ -22,23 +22,33 @@ window.addEventListener('pagehide', abortAll);
 
 async function getToken() {
   if (!tokenPromise) {
-    tokenPromise = fetch(`${API_BASE}/csrf-token`, { credentials: 'include' })
-      .then(async res => {
-        if (!res.ok) {
-          throw new Error(res.statusText || 'Failed to fetch token');
-        }
-        const data = await res.json();
-        const token = data?.csrfToken;
-        if (!token) {
-          throw new Error('Missing CSRF token in response');
-        }
-        window.dispatchEvent(
-          new CustomEvent('toast', {
-            detail: { message: 'CSRF token retrieved successfully.', type: 'success' },
-          })
-        );
-        return token;
-      })
+    const candidateUrls = [
+      `${API_BASE}/csrf-token`,
+      `${API_BASE}/auth/csrf-token`,
+    ];
+    tokenPromise = candidateUrls
+      .reduce(
+        (chain, url) =>
+          chain.catch(() =>
+            fetch(url, { credentials: 'include' }).then(async (res) => {
+              if (!res.ok) {
+                throw new Error(res.statusText || 'Failed to fetch token');
+              }
+              const data = await res.json();
+              const token = data?.csrfToken;
+              if (!token) {
+                throw new Error('Missing CSRF token in response');
+              }
+              window.dispatchEvent(
+                new CustomEvent('toast', {
+                  detail: { message: 'CSRF token retrieved successfully.', type: 'success' },
+                })
+              );
+              return token;
+            })
+          ),
+        Promise.reject(new Error('csrf-token init')),
+      )
       .catch(err => {
         tokenPromise = undefined;
         window.dispatchEvent(

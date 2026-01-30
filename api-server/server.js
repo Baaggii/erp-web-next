@@ -56,6 +56,7 @@ import pendingRequestRoutes from "./routes/pending_request.js";
 import reportApprovalRoutes from "./routes/report_approvals.js";
 import activityLogRoutes from "./routes/user_activity_log.js";
 import userSettingsRoutes from "./routes/user_settings.js";
+import notificationsRoutes from "./routes/notifications.js";
 import translationRoutes from "./routes/translations.js";
 import snapshotArtifactRoutes from "./routes/report_snapshot_artifacts.js";
 import tourRoutes from "./routes/tours.js";
@@ -82,6 +83,9 @@ app.use(activityLogger);
 
 // CSRF token endpoint
 app.get("/api/csrf-token", (req, res) => {
+  res.json({ csrfToken: req.csrfToken() });
+});
+app.get("/api/auth/csrf-token", (req, res) => {
   res.json({ csrfToken: req.csrfToken() });
 });
 
@@ -125,6 +129,10 @@ io.use((socket, next) => {
     const user = jwtService.verify(token);
     socket.user = user;
     socket.join(`user:${user.empid}`);
+    socket.join(`emp:${user.empid}`);
+    if (user.companyId) {
+      socket.join(`company:${user.companyId}`);
+    }
     return next();
   } catch {
     return next(new Error("Authentication error"));
@@ -190,6 +198,7 @@ app.use("/api/report_access", reportAccessRoutes);
 app.use("/api/tours", tourRoutes);
 app.use("/api/report_builder", reportBuilderRoutes);
 app.use("/api/report_config", reportConfigRoutes);
+app.use("/api/notifications", notificationsRoutes);
 app.use("/api/transactions", requireAuth, transactionRoutes);
 app.use("/api/transaction_images", transactionImageRoutes);
 app.use("/api/transaction_temporaries", transactionTemporaryRoutes);
