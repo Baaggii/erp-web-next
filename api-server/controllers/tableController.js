@@ -35,6 +35,7 @@ try {
   bcrypt = { hash: async (s) => s };
 }
 import { formatDateForDb } from '../utils/formatDate.js';
+import { enqueueTransactionNotification } from '../services/transactionNotificationQueue.js';
 
 export async function getTables(req, res, next) {
   try {
@@ -431,6 +432,13 @@ export async function updateRow(req, res, next) {
         },
       },
     );
+    enqueueTransactionNotification({
+      tableName: req.params.table,
+      recordId: req.params.id,
+      companyId: req.user.companyId,
+      changedBy: req.user?.empid ?? null,
+      action: 'update',
+    });
     res.sendStatus(204);
   } catch (err) {
     if (/Can't update table .* in stored function\/trigger/i.test(err.message)) {
@@ -475,6 +483,13 @@ export async function addRow(req, res, next) {
       },
     );
     res.locals.insertId = result?.id;
+    enqueueTransactionNotification({
+      tableName: req.params.table,
+      recordId: result?.id ?? req.body?.id ?? null,
+      companyId: req.user.companyId,
+      changedBy: req.user?.empid ?? null,
+      action: 'create',
+    });
     res.status(201).json(result);
   } catch (err) {
     if (/Can't update table .* in stored function\/trigger/i.test(err.message)) {
