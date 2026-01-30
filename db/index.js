@@ -7158,6 +7158,7 @@ export async function handleReportLockReapproval({
         companyId: notification.companyId ?? normalizedCompanyId ?? null,
         recipientEmpId: notification.recipient,
         type: 'reapproval',
+        kind: 'request',
         relatedId: notification.requestId,
         message: notification.message,
         createdBy: normalizedChangedBy ?? null,

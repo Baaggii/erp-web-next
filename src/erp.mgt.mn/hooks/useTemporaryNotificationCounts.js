@@ -257,10 +257,13 @@ export default function useTemporaryNotificationCounts(empid) {
 
   useEffect(() => {
     let socket;
-    const handleTemporaryUpdate = () => {
-      refreshSummary();
-    };
     const handleNotification = (payload) => {
+      const kind = payload?.kind;
+      if (kind) {
+        if (kind !== 'temporary') return;
+        refreshSummary();
+        return;
+      }
       const message = payload?.message;
       if (typeof message !== 'string') return;
       if (!message.toLowerCase().includes('temporary')) return;
@@ -269,7 +272,6 @@ export default function useTemporaryNotificationCounts(empid) {
 
     try {
       socket = connectSocket();
-      socket.on('temporaryReviewed', handleTemporaryUpdate);
       socket.on('notification:new', handleNotification);
     } catch {
       // ignore socket errors; polling will continue
@@ -277,7 +279,6 @@ export default function useTemporaryNotificationCounts(empid) {
 
     return () => {
       if (socket) {
-        socket.off('temporaryReviewed', handleTemporaryUpdate);
         socket.off('notification:new', handleNotification);
         disconnectSocket();
       }

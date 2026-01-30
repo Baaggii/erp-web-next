@@ -395,6 +395,7 @@ async function updateExistingTransactionNotifications({
         payload: {
           id: row.notification_id,
           type: row.type,
+          kind: nextPayload.kind ?? row.type,
           message,
           related_id: row.related_id,
           created_at: row.created_at
@@ -611,6 +612,7 @@ async function handleTransactionNotification(job) {
               companyId: job.companyId,
               recipientEmpId: recipient,
               type: 'request',
+              kind: 'transaction',
               relatedId: job.recordId,
               message,
               createdBy: job.changedBy,

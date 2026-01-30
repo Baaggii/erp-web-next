@@ -801,7 +801,16 @@ async function ensureTemporaryTable(conn = pool) {
 
 async function insertNotification(
   conn,
-  { companyId, recipientEmpId, recipientEmpIds, message, createdBy, relatedId, type = 'request' },
+  {
+    companyId,
+    recipientEmpId,
+    recipientEmpIds,
+    message,
+    createdBy,
+    relatedId,
+    type = 'request',
+    kind = 'temporary',
+  },
 ) {
   const recipients = recipientEmpIds ?? recipientEmpId;
   const normalizedRecipients = parseEmpIdList(recipients);
@@ -812,6 +821,7 @@ async function insertNotification(
       companyId,
       recipientEmpId: recipient,
       type,
+      kind,
       relatedId,
       message,
       createdBy,
@@ -2025,24 +2035,6 @@ export async function promoteTemporarySubmission(
         type: 'response',
       });
       await conn.query('COMMIT');
-      if (io) {
-        const reviewPayload = {
-          id,
-          status: 'forwarded',
-          warnings: sanitationWarnings,
-          forwardedTo: forwardReviewerEmpId,
-          forwardedTemporaryId: forwardTemporaryId,
-        };
-        // Deprecated: legacy event; notification:new is authoritative.
-        io.to(`user:${row.created_by}`).emit('temporaryReviewed', reviewPayload);
-        io.to(`user:${normalizedReviewer}`).emit('temporaryReviewed', reviewPayload);
-        io.to(`user:${forwardReviewerEmpId}`).emit('temporaryReviewed', {
-          id: forwardTemporaryId ?? id,
-          status: 'pending',
-          warnings: sanitationWarnings,
-          forwardedFrom: id,
-        });
-      }
       return {
         id,
         forwardedTo: forwardReviewerEmpId,
@@ -2385,30 +2377,6 @@ export async function promoteTemporarySubmission(
       type: 'response',
     });
     await conn.query('COMMIT');
-    if (io) {
-      const reviewRecipients = new Set(participantRecipients);
-      reviewRecipients.add(normalizedReviewer);
-      // Deprecated: legacy event; notification:new is authoritative.
-      reviewRecipients.forEach((recipient) => {
-        io.to(`user:${recipient}`).emit('temporaryReviewed', {
-          id,
-          status: 'promoted',
-          promotedRecordId: promotedId,
-          warnings: sanitationWarnings,
-        });
-      });
-      if (resolvedPendingRows.length > 0) {
-        resolvedPendingRows.forEach((resolvedRow) => {
-          const resolvedCreator = normalizeEmpId(resolvedRow.created_by);
-          if (resolvedCreator) {
-            io.to(`user:${resolvedCreator}`).emit('temporaryReviewed', {
-              id: resolvedRow.id,
-              status: 'rejected',
-            });
-          }
-        });
-      }
-    }
     return { id, promotedRecordId: promotedId, warnings: sanitationWarnings };
   } catch (err) {
     try {
@@ -2576,17 +2544,6 @@ export async function rejectTemporarySubmission(
       type: 'response',
     });
     await conn.query('COMMIT');
-    if (io) {
-      const reviewRecipients = new Set(rejectionRecipients);
-      reviewRecipients.add(normalizedReviewer);
-      // Deprecated: legacy event; notification:new is authoritative.
-      reviewRecipients.forEach((recipient) => {
-        io.to(`user:${recipient}`).emit('temporaryReviewed', {
-          id,
-          status: 'rejected',
-        });
-      });
-    }
     return { id, status: 'rejected' };
   } catch (err) {
     try {

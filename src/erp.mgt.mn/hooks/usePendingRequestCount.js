@@ -134,14 +134,12 @@ export default function usePendingRequestCount(
     };
 
     const handleNotification = (payload) => {
-      if (!payload || payload.type !== 'request') return;
-      if (typeof payload.message === 'string') {
-        try {
-          const parsed = JSON.parse(payload.message);
-          if (parsed?.kind === 'transaction') return;
-        } catch {
-          // ignore parse errors
-        }
+      if (!payload) return;
+      const kind = payload?.kind;
+      if (kind) {
+        if (kind !== 'request') return;
+      } else if (payload.type !== 'request') {
+        return;
       }
       applyFromFetch();
     };
@@ -167,7 +165,6 @@ export default function usePendingRequestCount(
 
     try {
       socket = connectSocket();
-      socket.on('newRequest', applyFromFetch);
       socket.on('notification:new', handleNotification);
       socket.on('connect', () => {
         stopFallback();
@@ -202,7 +199,6 @@ export default function usePendingRequestCount(
         disconnectTimeoutRef.current = null;
       }
       if (socket) {
-        socket.off('newRequest', applyFromFetch);
         socket.off('notification:new', handleNotification);
         socket.off('connect', stopFallback);
         if (pollingEnabled) {
