@@ -539,6 +539,16 @@ export async function deleteRow(req, res, next) {
         await moveImagesToDeleted(table, row);
       } catch {}
     }
+    if (row) {
+      enqueueTransactionNotification({
+        tableName: table,
+        recordId: id,
+        companyId: req.user.companyId,
+        changedBy: req.user?.empid ?? null,
+        action: 'delete',
+        snapshot: row,
+      });
+    }
     res.sendStatus(204);
   } catch (err) {
     next(err);
