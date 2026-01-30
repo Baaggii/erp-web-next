@@ -80,6 +80,11 @@ function normalizeFormConfig(info = {}) {
     transactionTypeField: toString(info.transactionTypeField),
     transactionTypeValue: toString(info.transactionTypeValue),
     detectFields: toArray(info.detectFields),
+    notifyFields: toArray(info.notifyFields),
+    notificationFields: toArray(info.notificationFields),
+    notificationDashboardFields: toArray(info.notificationDashboardFields),
+    notificationPhoneFields: toArray(info.notificationPhoneFields),
+    notificationEmailFields: toArray(info.notificationEmailFields),
     allowedBranches,
     allowedDepartments,
     allowedPositions,
@@ -1338,6 +1343,19 @@ export default function FormsManagement() {
                 <th style={{ border: '1px solid #ccc', padding: '4px' }}>Header</th>
                 <th style={{ border: '1px solid #ccc', padding: '4px' }}>Main</th>
                 <th style={{ border: '1px solid #ccc', padding: '4px' }}>Footer</th>
+                <th style={{ border: '1px solid #ccc', padding: '4px' }}>Notify</th>
+                <th style={{ border: '1px solid #ccc', padding: '4px' }}>
+                  Show in notification
+                </th>
+                <th style={{ border: '1px solid #ccc', padding: '4px' }}>
+                  Show in dashboard
+                </th>
+                <th style={{ border: '1px solid #ccc', padding: '4px' }}>
+                  Show in phone
+                </th>
+                <th style={{ border: '1px solid #ccc', padding: '4px' }}>
+                  Show in email
+                </th>
                 <th style={{ border: '1px solid #ccc', padding: '4px' }}>View</th>
               </tr>
             </thead>
@@ -1504,6 +1522,43 @@ export default function FormsManagement() {
                       type="checkbox"
                       checked={config.footerFields.includes(col)}
                       onChange={() => toggleFieldList(col, 'footerFields')}
+                    />
+                  </td>
+                  <td style={{ border: '1px solid #ccc', padding: '4px', textAlign: 'center' }}>
+                    <input
+                      type="checkbox"
+                      checked={config.notifyFields.includes(col)}
+                      onChange={() => toggleFieldList(col, 'notifyFields')}
+                    />
+                  </td>
+                  <td style={{ border: '1px solid #ccc', padding: '4px', textAlign: 'center' }}>
+                    <input
+                      type="checkbox"
+                      checked={config.notificationFields.includes(col)}
+                      onChange={() => toggleFieldList(col, 'notificationFields')}
+                    />
+                  </td>
+                  <td style={{ border: '1px solid #ccc', padding: '4px', textAlign: 'center' }}>
+                    <input
+                      type="checkbox"
+                      checked={config.notificationDashboardFields.includes(col)}
+                      onChange={() =>
+                        toggleFieldList(col, 'notificationDashboardFields')
+                      }
+                    />
+                  </td>
+                  <td style={{ border: '1px solid #ccc', padding: '4px', textAlign: 'center' }}>
+                    <input
+                      type="checkbox"
+                      checked={config.notificationPhoneFields.includes(col)}
+                      onChange={() => toggleFieldList(col, 'notificationPhoneFields')}
+                    />
+                  </td>
+                  <td style={{ border: '1px solid #ccc', padding: '4px', textAlign: 'center' }}>
+                    <input
+                      type="checkbox"
+                      checked={config.notificationEmailFields.includes(col)}
+                      onChange={() => toggleFieldList(col, 'notificationEmailFields')}
                     />
                   </td>
                   <td style={{ border: '1px solid #ccc', padding: '4px' }}>

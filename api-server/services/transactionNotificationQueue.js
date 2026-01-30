@@ -1,6 +1,7 @@
 import { pool, listTableRelationships, listTableColumns, getTableRowById } from '../../db/index.js';
 import { getAllDisplayFields } from './displayFieldConfig.js';
 import { listCustomRelations } from './tableRelationsConfig.js';
+import { getConfigsByTable } from './transactionFormConfig.js';
 
 const NOTIFICATION_ROLE_SET = new Set([
   'employee',
@@ -163,6 +164,48 @@ function buildSummary(referenceRow, fields = []) {
   };
 }
 
+function normalizeFieldList(list) {
+  if (!Array.isArray(list)) return [];
+  return list
+    .map((field) => (typeof field === 'string' ? field.trim() : ''))
+    .filter((field) => field);
+}
+
+async function resolveTransactionConfig(tableName, transactionRow, companyId) {
+  if (!tableName) return null;
+  const { config } = await getConfigsByTable(tableName, companyId);
+  if (!config || typeof config !== 'object') return null;
+  const entries = Object.values(config);
+  if (!entries.length) return null;
+  const matched = entries.find((entry) => {
+    const field =
+      typeof entry?.transactionTypeField === 'string'
+        ? entry.transactionTypeField.trim()
+        : '';
+    const value =
+      entry?.transactionTypeValue !== undefined && entry?.transactionTypeValue !== null
+        ? String(entry.transactionTypeValue).trim()
+        : '';
+    if (!field || !value) return false;
+    const rowValue = getCaseInsensitive(transactionRow, field);
+    if (rowValue === undefined || rowValue === null) return false;
+    return String(rowValue).trim() === value;
+  });
+  if (matched) return matched;
+  const fallback = entries.find((entry) => {
+    const field =
+      typeof entry?.transactionTypeField === 'string'
+        ? entry.transactionTypeField.trim()
+        : '';
+    const value =
+      entry?.transactionTypeValue !== undefined && entry?.transactionTypeValue !== null
+        ? String(entry.transactionTypeValue).trim()
+        : '';
+    return !field && !value;
+  });
+  return fallback ?? entries[0] ?? null;
+}
+
 function normalizeContactValues(raw) {
   const values = new Set();
   if (raw === undefined || raw === null || raw === '') return values;
@@ -282,11 +325,13 @@ async function handleTransactionNotification(job) {
   });
   if (!transactionRow) return;
 
-  const [dbRelations, customRelations, displayConfig] = await Promise.all([
-    listTableRelationships(job.tableName),
-    listCustomRelations(job.tableName, job.companyId),
-    getAllDisplayFields(job.companyId),
-  ]);
+  const [dbRelations, customRelations, displayConfig, transactionConfig] =
+    await Promise.all([
+      listTableRelationships(job.tableName),
+      listCustomRelations(job.tableName, job.companyId),
+      getAllDisplayFields(job.companyId),
+      resolveTransactionConfig(job.tableName, transactionRow, job.companyId),
+    ]);
 
   const relations = [];
   if (Array.isArray(dbRelations)) {
@@ -318,11 +363,30 @@ async function handleTransactionNotification(job) {
   }
 
   if (!relations.length) return;
+  const notifyFields = normalizeFieldList(transactionConfig?.notifyFields);
+  if (!notifyFields.length) return;
+  const notifyFieldSet = new Set(notifyFields.map((field) => field.toLowerCase()));
   const displayEntries = Array.isArray(displayConfig?.config) ? displayConfig.config : [];
   const transactionName = deriveTransactionName(transactionRow, job.tableName);
+  const notificationFieldList = normalizeFieldList(transactionConfig?.notificationFields);
+  const dashboardFieldList = normalizeFieldList(
+    transactionConfig?.notificationDashboardFields,
+  );
+  const phoneFieldList = normalizeFieldList(transactionConfig?.notificationPhoneFields);
+  const emailFieldList = normalizeFieldList(transactionConfig?.notificationEmailFields);
+  const notificationSummaryBase = buildSummary(transactionRow, notificationFieldList);
+  const dashboardSummaryBase = buildSummary(transactionRow, dashboardFieldList);
+  const phoneSummaryBase = buildSummary(transactionRow, phoneFieldList);
+  const emailSummaryBase = buildSummary(transactionRow, emailFieldList);
 
   const handled = new Set();
   for (const relation of relations) {
+    if (
+      notifyFieldSet.size > 0 &&
+      !notifyFieldSet.has(String(relation.column).toLowerCase())
+    ) {
+      continue;
+    }
     const rawValue = getCaseInsensitive(transactionRow, relation.column);
     let ids = normalizeReferenceIds(rawValue, relation.idField);
     if (relation.isArray && ids.length === 0) {
@@ -355,22 +419,18 @@ async function handleTransactionNotification(job) {
       const role = config?.notificationRole?.trim();
       if (!role || !NOTIFICATION_ROLE_SET.has(role)) continue;
 
-      const notificationSummary = buildSummary(
-        referenceRow,
-        config?.notificationFields ?? [],
-      );
-      const dashboardSummary = buildSummary(
-        referenceRow,
-        config?.notificationDashboardFields ?? [],
-      );
-      const phoneSummary = buildSummary(
-        referenceRow,
-        config?.notificationPhoneFields ?? [],
-      );
-      const emailSummary = buildSummary(
-        referenceRow,
-        config?.notificationEmailFields ?? [],
-      );
+      const notificationSummary = notificationFieldList.length
+        ? notificationSummaryBase
+        : buildSummary(referenceRow, config?.notificationFields ?? []);
+      const dashboardSummary = dashboardFieldList.length
+        ? dashboardSummaryBase
+        : buildSummary(referenceRow, config?.notificationDashboardFields ?? []);
+      const phoneSummary = phoneFieldList.length
+        ? phoneSummaryBase
+        : buildSummary(referenceRow, config?.notificationPhoneFields ?? []);
+      const emailSummary = emailFieldList.length
+        ? emailSummaryBase
+        : buildSummary(referenceRow, config?.notificationEmailFields ?? []);
 
       const messagePayload = {
         kind: 'transaction',
@@ -380,6 +440,8 @@ async function handleTransactionNotification(job) {
         referenceTable: relation.table,
         referenceId,
         role,
+        summaryFields: notificationSummary.summaryFields,
+        summaryText: notificationSummary.summaryText,
         notificationFields: notificationSummary.summaryFields,
         notificationText: notificationSummary.summaryText,
         dashboardFields: dashboardSummary.summaryFields,
