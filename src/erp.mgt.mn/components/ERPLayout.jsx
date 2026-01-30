@@ -31,7 +31,7 @@ import derivePageKey from "../utils/derivePageKey.js";
 import { findVisibleFallbackSelector } from "../utils/findVisibleTourStep.js";
 import { playNotificationSound } from "../utils/playNotificationSound.js";
 import { buildOptionsForRows } from "../utils/buildAsyncSelectOptions.js";
-import NotificationDots from "./NotificationDots.jsx";
+import NotificationDots, { DEFAULT_NOTIFICATION_COLOR } from "./NotificationDots.jsx";
 import TransactionNotificationDropdown from "./TransactionNotificationDropdown.jsx";
 import useTransactionNotifications from "../hooks/useTransactionNotifications.js";
 
@@ -3457,6 +3457,9 @@ export default function ERPLayout() {
   const temporaryReviewCount = Number(temporaryCounts?.review?.count) || 0;
   const temporaryReviewNewCount = Number(temporaryCounts?.review?.newCount) || 0;
 
+  const transactionNotificationValue = useTransactionNotifications();
+  const transactionUnreadCount = Number(transactionNotificationValue?.unreadCount) || 0;
+
   const notificationStatusTotals = useMemo(
     () => {
       const totals = { pending: 0, accepted: 0, declined: 0 };
@@ -3483,8 +3486,11 @@ export default function ERPLayout() {
         colors.push(NOTIFICATION_STATUS_COLORS[status]);
       }
     });
+    if (transactionUnreadCount > 0 && !colors.includes(DEFAULT_NOTIFICATION_COLOR)) {
+      colors.push(DEFAULT_NOTIFICATION_COLOR);
+    }
     return colors;
-  }, [notificationStatusTotals]);
+  }, [notificationStatusTotals, transactionUnreadCount]);
 
   const selectedNotificationSound = useMemo(
     () => (userSettings?.notificationSound || 'chime').trim(),
@@ -3497,18 +3503,27 @@ export default function ERPLayout() {
   }, [userSettings?.notificationVolume]);
 
   const notificationTotalsRef = useRef(notificationStatusTotals);
+  const transactionUnreadRef = useRef(transactionUnreadCount);
 
   useEffect(() => {
     const prev = notificationTotalsRef.current;
+    const prevTransactionUnread = transactionUnreadRef.current;
     notificationTotalsRef.current = notificationStatusTotals;
+    transactionUnreadRef.current = transactionUnreadCount;
     if (!prev) return;
     const hasIncrease = NOTIFICATION_STATUS_ORDER.some(
       (status) => notificationStatusTotals[status] > (prev[status] || 0),
     );
-    if (hasIncrease) {
+    const hasTransactionIncrease = transactionUnreadCount > (prevTransactionUnread || 0);
+    if (hasIncrease || hasTransactionIncrease) {
       playNotificationSound(selectedNotificationSound, selectedNotificationVolume);
     }
-  }, [notificationStatusTotals, selectedNotificationSound, selectedNotificationVolume]);
+  }, [
+    notificationStatusTotals,
+    selectedNotificationSound,
+    selectedNotificationVolume,
+    transactionUnreadCount,
+  ]);
 
   const temporaryValue = useMemo(
     () => ({
@@ -3546,8 +3561,6 @@ export default function ERPLayout() {
       temporaryValue,
     ],
   );
-  const transactionNotificationValue = useTransactionNotifications();
-
   useEffect(() => {
     const title = titleForPath(location.pathname);
     openTab({ key: location.pathname, label: title });

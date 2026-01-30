@@ -7,12 +7,15 @@ const NOTIFICATION_KIND = 'transaction';
 
 function parseNotificationRow(row) {
   if (!row?.message) return null;
-  let payload;
-  try {
-    payload = JSON.parse(row.message);
-  } catch {
-    return null;
+  let payload = row.message;
+  if (typeof payload === 'string') {
+    try {
+      payload = JSON.parse(payload);
+    } catch {
+      return null;
+    }
   }
+  if (typeof payload !== 'object' || payload === null) return null;
   if (!payload || payload.kind !== NOTIFICATION_KIND) return null;
   return {
     id: row.notification_id,
