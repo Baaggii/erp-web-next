@@ -16,7 +16,6 @@ import {
 } from '../../db/index.js';
 import { moveImagesToDeleted } from '../services/transactionImageService.js';
 import { addMappings } from '../services/headerMappings.js';
-import { enqueueDynamicTransactionNotificationJob } from '../services/dynamicTransactionNotifications.js';
 import { hasAction } from '../utils/hasAction.js';
 import { createCompanyHandler } from './companyController.js';
 import {
@@ -432,15 +431,6 @@ export async function updateRow(req, res, next) {
         },
       },
     );
-    if (req.params.table?.startsWith('transactions_')) {
-      enqueueDynamicTransactionNotificationJob({
-        tableName: req.params.table,
-        recordId: req.params.id,
-        action: 'update',
-        companyId: req.user.companyId,
-        changedBy: req.user?.empid ?? null,
-      });
-    }
     res.sendStatus(204);
   } catch (err) {
     if (/Can't update table .* in stored function\/trigger/i.test(err.message)) {
@@ -485,15 +475,6 @@ export async function addRow(req, res, next) {
       },
     );
     res.locals.insertId = result?.id;
-    if (req.params.table?.startsWith('transactions_') && res.locals.insertId) {
-      enqueueDynamicTransactionNotificationJob({
-        tableName: req.params.table,
-        recordId: res.locals.insertId,
-        action: 'create',
-        companyId: req.user.companyId,
-        changedBy: req.user?.empid ?? null,
-      });
-    }
     res.status(201).json(result);
   } catch (err) {
     if (/Can't update table .* in stored function\/trigger/i.test(err.message)) {
