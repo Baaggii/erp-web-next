@@ -588,7 +588,11 @@ async function handleTransactionNotification(job) {
             createdBy: job.changedBy,
             relatedId: job.recordId,
           });
-          emitNotificationEvent(rooms, {
+          const notificationRooms = new Set(rooms);
+          uniqueRecipients.forEach((recipient) => {
+            notificationRooms.add(`emp:${recipient}`);
+          });
+          emitNotificationEvent(Array.from(notificationRooms), {
             kind: 'transaction',
             transactionName,
             notificationKey: dedupeKey,
