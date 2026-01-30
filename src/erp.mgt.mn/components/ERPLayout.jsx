@@ -3720,7 +3720,6 @@ export function Header({
 }) {
   const { session } = useContext(AuthContext);
   const { lang, setLang, t } = useContext(LangContext);
-  const { anyHasNew, notificationColors } = useContext(PendingRequestContext);
   const handleRefresh = () => {
     if (typeof window === 'undefined' || !window?.location) return;
     try {
@@ -3731,12 +3730,6 @@ export function Header({
       }
     }
   };
-
-  const headerNotificationColors = useMemo(() => {
-    if (notificationColors?.length) return notificationColors;
-    if (anyHasNew) return [NOTIFICATION_STATUS_COLORS.pending];
-    return [];
-  }, [anyHasNew, notificationColors]);
 
   const [positionLabel, setPositionLabel] = useState(null);
   const normalizeText = useCallback((value) => {
@@ -4085,17 +4078,6 @@ export function Header({
           🗔 {t("home")}
         </button>
         <button style={styles.iconBtn}>🗗 {t("windows")}</button>
-        <button
-          style={styles.iconBtn}
-          onClick={() =>
-            onOpen('/notifications', t('notifications', 'Notifications'), 'notifications')
-          }
-        >
-          <span style={styles.inlineButtonContent}>
-            <NotificationDots colors={headerNotificationColors} marginRight={0} />
-            <span aria-hidden="true">🔔</span> {t('notifications', 'Notifications')}
-          </span>
-        </button>
         <button style={styles.iconBtn}>❔ {t("help")}</button>
         <TransactionNotificationDropdown />
       </nav>
@@ -4836,11 +4818,6 @@ const styles = {
     cursor: "pointer",
     fontSize: "0.9rem",
     padding: "0.25rem 0.5rem",
-  },
-  inlineButtonContent: {
-    display: "inline-flex",
-    alignItems: "center",
-    gap: "0.35rem",
   },
   userSection: {
     display: "flex",
