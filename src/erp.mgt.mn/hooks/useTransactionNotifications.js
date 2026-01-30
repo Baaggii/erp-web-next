@@ -22,6 +22,7 @@ function parseNotificationRow(row) {
     transactionName: payload.transactionName || 'Transaction',
     transactionTable: payload.transactionTable,
     transactionId: payload.transactionId,
+    action: payload.action,
     referenceTable: payload.referenceTable,
     referenceId: payload.referenceId,
     role: payload.role,

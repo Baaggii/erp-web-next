@@ -9,6 +9,20 @@ function formatTimestamp(value) {
   return date.toLocaleString();
 }
 
+function formatActionLabel(action) {
+  const normalized = typeof action === 'string' ? action.trim().toLowerCase() : '';
+  if (normalized === 'edited' || normalized === 'edit' || normalized === 'update') {
+    return 'Edited';
+  }
+  if (normalized === 'changed' || normalized === 'change') {
+    return 'Changed';
+  }
+  if (normalized === 'deleted' || normalized === 'delete') {
+    return 'Deleted';
+  }
+  return 'New';
+}
+
 export default function TransactionNotificationWidget() {
   const { groups, markGroupRead } = useTransactionNotifications();
   const location = useLocation();
@@ -94,8 +108,19 @@ export default function TransactionNotificationWidget() {
                   {group.items.map((item) => (
                     <div key={item.id} style={styles.item(item.isRead)}>
                       <div style={styles.itemSummary}>
-                        {item.summaryText || 'New transaction update'}
+                        <span style={styles.itemAction}>{formatActionLabel(item.action)}</span>
+                        <span>{item.summaryText || 'Transaction update'}</span>
                       </div>
+                      {Array.isArray(item.summaryFields) && item.summaryFields.length > 0 && (
+                        <div style={styles.summaryFields}>
+                          {item.summaryFields.map((field) => (
+                            <div key={`${item.id}-${field.field}`} style={styles.summaryFieldRow}>
+                              <span style={styles.summaryFieldLabel}>{field.field}</span>
+                              <span style={styles.summaryFieldValue}>{field.value}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                       <div style={styles.itemMeta}>
                         {formatTimestamp(item.createdAt)}
                       </div>
@@ -163,6 +188,36 @@ const styles = {
     borderRadius: '8px',
     padding: '0.5rem 0.75rem',
   }),
-  itemSummary: { fontSize: '0.85rem', color: '#1e293b' },
+  itemSummary: {
+    fontSize: '0.85rem',
+    color: '#1e293b',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '0.5rem',
+    flexWrap: 'wrap',
+  },
+  itemAction: {
+    background: '#1d4ed8',
+    color: '#fff',
+    borderRadius: '999px',
+    padding: '0.15rem 0.5rem',
+    fontSize: '0.7rem',
+    textTransform: 'uppercase',
+    letterSpacing: '0.03em',
+  },
+  summaryFields: {
+    marginTop: '0.35rem',
+    display: 'grid',
+    gap: '0.25rem',
+  },
+  summaryFieldRow: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    gap: '0.5rem',
+    fontSize: '0.75rem',
+    color: '#475569',
+  },
+  summaryFieldLabel: { fontWeight: 600 },
+  summaryFieldValue: { color: '#0f172a' },
   itemMeta: { fontSize: '0.7rem', color: '#64748b', marginTop: '0.25rem' },
 };

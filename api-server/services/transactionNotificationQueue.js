@@ -561,7 +561,7 @@ async function handleTransactionNotification(job) {
         transactionName,
         transactionTable: job.tableName,
         transactionId: job.recordId,
-        action: job.action ?? 'update',
+        action: actionLabel,
         referenceTable: relation.table,
         referenceId,
         role,
