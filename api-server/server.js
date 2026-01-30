@@ -65,6 +65,8 @@ import posApiProxyRoutes from "./routes/posapi_proxy.js";
 import posApiReferenceCodeRoutes from "./routes/posapi_reference_codes.js";
 import cncProcessingRoutes from "./routes/cnc_processing.js";
 import reportRoutes from "./routes/report.js";
+import notificationRoutes from "./routes/notifications.js";
+import { setNotificationIo } from "./services/dynamicTransactionNotifications.js";
 
 // Polyfill for __dirname in ES modules
 const __filename = fileURLToPath(import.meta.url);
@@ -109,6 +111,7 @@ const io = new SocketIOServer(server, {
   cors: { origin: true, credentials: true },
   path: socketPath,
 });
+setNotificationIo(io);
 
 // Authenticate sockets via JWT cookie and join per-user room
 io.use((socket, next) => {
@@ -125,6 +128,15 @@ io.use((socket, next) => {
     const user = jwtService.verify(token);
     socket.user = user;
     socket.join(`user:${user.empid}`);
+    if (user.companyId !== null && user.companyId !== undefined) {
+      socket.join(`company:${user.companyId}`);
+    }
+    if (user.branchId !== null && user.branchId !== undefined) {
+      socket.join(`branch:${user.branchId}`);
+    }
+    if (user.departmentId !== null && user.departmentId !== undefined) {
+      socket.join(`department:${user.departmentId}`);
+    }
     return next();
   } catch {
     return next(new Error("Authentication error"));
@@ -193,6 +205,7 @@ app.use("/api/report_config", reportConfigRoutes);
 app.use("/api/transactions", requireAuth, transactionRoutes);
 app.use("/api/transaction_images", transactionImageRoutes);
 app.use("/api/transaction_temporaries", transactionTemporaryRoutes);
+app.use("/api/notifications", notificationRoutes);
 app.use("/api/tables", requireAuth, tableRoutes);
 app.use("/api/general_config", requireAuth, generalConfigRoutes);
 app.use("/api/tenant_tables", tenantTablesRoutes);
