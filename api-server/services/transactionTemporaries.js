@@ -16,6 +16,7 @@ import {
   collectEndpointResponseMappings,
 } from './posApiPersistence.js';
 import { logUserAction } from './userActivityLog.js';
+import { notifyUser } from './notificationService.js';
 import {
   saveEbarimtInvoiceSnapshot,
   persistEbarimtInvoiceResponse,
@@ -807,18 +808,16 @@ async function insertNotification(
   if (normalizedRecipients.length === 0) return;
   for (const recipient of normalizedRecipients) {
     // eslint-disable-next-line no-await-in-loop
-    await conn.query(
-      `INSERT INTO notifications (company_id, recipient_empid, type, related_id, message, created_by)
-       VALUES (?, ?, ?, ?, ?, ?)`,
-      [
-        companyId ?? null,
-        recipient,
-        type ?? 'request',
-        relatedId ?? null,
-        message ?? '',
-        createdBy ?? null,
-      ],
-    );
+    await notifyUser({
+      companyId,
+      recipientEmpId: recipient,
+      kind: 'temporary',
+      type,
+      relatedId,
+      message,
+      createdBy,
+      connection: conn,
+    });
   }
 }
 
@@ -2035,6 +2034,7 @@ export async function promoteTemporarySubmission(
           forwardedTo: forwardReviewerEmpId,
           forwardedTemporaryId: forwardTemporaryId,
         };
+        // Deprecated: legacy event; notification:new is authoritative.
         io.to(`user:${row.created_by}`).emit('temporaryReviewed', reviewPayload);
         io.to(`user:${normalizedReviewer}`).emit('temporaryReviewed', reviewPayload);
         io.to(`user:${forwardReviewerEmpId}`).emit('temporaryReviewed', {
@@ -2389,6 +2389,7 @@ export async function promoteTemporarySubmission(
     if (io) {
       const reviewRecipients = new Set(participantRecipients);
       reviewRecipients.add(normalizedReviewer);
+      // Deprecated: legacy event; notification:new is authoritative.
       reviewRecipients.forEach((recipient) => {
         io.to(`user:${recipient}`).emit('temporaryReviewed', {
           id,
@@ -2579,6 +2580,7 @@ export async function rejectTemporarySubmission(
     if (io) {
       const reviewRecipients = new Set(rejectionRecipients);
       reviewRecipients.add(normalizedReviewer);
+      // Deprecated: legacy event; notification:new is authoritative.
       reviewRecipients.forEach((recipient) => {
         io.to(`user:${recipient}`).emit('temporaryReviewed', {
           id,

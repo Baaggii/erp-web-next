@@ -33,6 +33,35 @@ function parseNotificationRow(row) {
   };
 }
 
+function parseNotificationPayload(payload) {
+  if (!payload?.message) return null;
+  if (payload.kind && payload.kind !== NOTIFICATION_KIND) return null;
+  let parsed = payload.message;
+  if (typeof parsed === 'string') {
+    try {
+      parsed = JSON.parse(parsed);
+    } catch {
+      return null;
+    }
+  }
+  if (typeof parsed !== 'object' || parsed === null) return null;
+  if (parsed.kind !== NOTIFICATION_KIND) return null;
+  return {
+    id: payload.id,
+    transactionName: parsed.transactionName || 'Transaction',
+    transactionTable: parsed.transactionTable,
+    transactionId: parsed.transactionId,
+    action: parsed.action,
+    referenceTable: parsed.referenceTable,
+    referenceId: parsed.referenceId,
+    role: parsed.role,
+    summaryFields: parsed.summaryFields || [],
+    summaryText: parsed.summaryText || '',
+    createdAt: payload.created_at,
+    isRead: false,
+  };
+}
+
 function buildGroups(notifications) {
   const groups = new Map();
   notifications.forEach((notification) => {
@@ -137,7 +166,19 @@ export default function useTransactionNotifications() {
     let socket;
     try {
       socket = connectSocket();
-      const handleNew = () => scheduleRefresh();
+      const handleNew = (payload) => {
+        const parsed = parseNotificationPayload(payload);
+        if (!parsed) {
+          scheduleRefresh();
+          return;
+        }
+        setNotifications((prev) => {
+          if (prev.some((item) => Number(item.id) === Number(parsed.id))) {
+            return prev;
+          }
+          return [parsed, ...prev];
+        });
+      };
       const handleConnect = () => setConnected(true);
       const handleDisconnect = () => setConnected(false);
       socket.on('notification:new', handleNew);

@@ -1,5 +1,6 @@
 let mysql;
 import crypto from "crypto";
+import { notifyUser } from "../api-server/services/notificationService.js";
 
 function basicEscape(value) {
   if (value === undefined || value === null) {
@@ -7151,24 +7152,19 @@ export async function handleReportLockReapproval({
     pushNotification(meta.planSenior);
   });
   if (notifications.length) {
-    const values = notifications
-      .map(() => '(?, ?, \'reapproval\', ?, ?, ?)')
-      .join(', ');
-    const params = [];
-    notifications.forEach((notification) => {
-      params.push(
-        notification.companyId ?? normalizedCompanyId ?? null,
-        notification.recipient,
-        notification.requestId,
-        notification.message,
-        normalizedChangedBy ?? null,
-      );
-    });
-    await conn.query(
-      `INSERT INTO notifications (company_id, recipient_empid, type, related_id, message, created_by)
-       VALUES ${values}`,
-      params,
-    );
+    for (const notification of notifications) {
+      // eslint-disable-next-line no-await-in-loop
+      await notifyUser({
+        companyId: notification.companyId ?? normalizedCompanyId ?? null,
+        recipientEmpId: notification.recipient,
+        kind: 'request',
+        type: 'reapproval',
+        relatedId: notification.requestId,
+        message: notification.message,
+        createdBy: normalizedChangedBy ?? null,
+        connection: conn,
+      });
+    }
   }
   return Array.from(grouped.values()).map((entry) => ({
     requestId: entry.requestId,

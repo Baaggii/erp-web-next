@@ -260,10 +260,15 @@ export default function useTemporaryNotificationCounts(empid) {
     const handleTemporaryUpdate = () => {
       refreshSummary();
     };
+    const handleNotification = (payload) => {
+      if (payload?.kind !== 'temporary') return;
+      refreshSummary();
+    };
 
     try {
       socket = connectSocket();
       socket.on('temporaryReviewed', handleTemporaryUpdate);
+      socket.on('notification:new', handleNotification);
     } catch {
       // ignore socket errors; polling will continue
     }
@@ -271,6 +276,7 @@ export default function useTemporaryNotificationCounts(empid) {
     return () => {
       if (socket) {
         socket.off('temporaryReviewed', handleTemporaryUpdate);
+        socket.off('notification:new', handleNotification);
         disconnectSocket();
       }
     };

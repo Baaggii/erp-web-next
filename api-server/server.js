@@ -9,7 +9,7 @@ import csrf from "csurf";
 import { Server as SocketIOServer } from "socket.io";
 import * as jwtService from "./services/jwtService.js";
 import { getCookieName } from "./utils/cookieNames.js";
-import { getEmploymentSession, testConnection } from "../db/index.js";
+import { getEmploymentSession, testConnection, pool } from "../db/index.js";
 import { errorHandler } from "./middlewares/errorHandler.js";
 import { logger } from "./middlewares/logging.js";
 import { activityLogger } from "./middlewares/activityLogger.js";
@@ -66,6 +66,10 @@ import posApiReferenceCodeRoutes from "./routes/posapi_reference_codes.js";
 import cncProcessingRoutes from "./routes/cnc_processing.js";
 import reportRoutes from "./routes/report.js";
 import { setNotificationEmitter } from "./services/transactionNotificationQueue.js";
+import {
+  setNotificationEmitter as setUnifiedNotificationEmitter,
+  setNotificationStore as setUnifiedNotificationStore,
+} from "./services/notificationService.js";
 
 // Polyfill for __dirname in ES modules
 const __filename = fileURLToPath(import.meta.url);
@@ -147,8 +151,20 @@ io.use(async (socket, next) => {
   }
 });
 
+io.on("connection", (socket) => {
+  const user = socket.user;
+  if (!user) return;
+  socket.join(`user:${user.empid}`);
+  socket.join(`emp:${user.empid}`);
+  if (user.companyId) {
+    socket.join(`company:${user.companyId}`);
+  }
+});
+
 app.set("io", io);
 setNotificationEmitter(io);
+setUnifiedNotificationEmitter(io);
+setUnifiedNotificationStore(pool);
 
 // Serve uploaded images statically
 const { config: imgCfg } = await getGeneralConfig();

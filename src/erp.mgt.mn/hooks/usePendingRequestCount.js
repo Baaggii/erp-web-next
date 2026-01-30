@@ -126,11 +126,16 @@ export default function usePendingRequestCount(
     let cancelled = false;
     let socket;
 
-    setEnablePolling(pollingEnabled);
+    setEnablePolling(false);
 
     const applyFromFetch = async () => {
       const value = await fetchCount();
       if (!cancelled) applyCount(value);
+    };
+
+    const handleNotification = (payload) => {
+      if (!payload || payload.kind !== 'request') return;
+      applyFromFetch();
     };
 
     const startFallback = () => {
@@ -155,6 +160,7 @@ export default function usePendingRequestCount(
     try {
       socket = connectSocket();
       socket.on('newRequest', applyFromFetch);
+      socket.on('notification:new', handleNotification);
       socket.on('connect', () => {
         stopFallback();
         applyFromFetch();
@@ -189,6 +195,7 @@ export default function usePendingRequestCount(
       }
       if (socket) {
         socket.off('newRequest', applyFromFetch);
+        socket.off('notification:new', handleNotification);
         socket.off('connect', stopFallback);
         if (pollingEnabled) {
           socket.off('disconnect', startFallback);
