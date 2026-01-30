@@ -438,6 +438,7 @@ export async function updateRow(req, res, next) {
       companyId: req.user.companyId,
       changedBy: req.user?.empid ?? null,
       action: 'update',
+      previousSnapshot: original ?? null,
     });
     res.sendStatus(204);
   } catch (err) {

@@ -30,6 +30,7 @@ export function enqueueTransactionNotification(job = {}) {
     changedBy: job.changedBy ?? null,
     action: job.action ?? 'update',
     snapshot: job.snapshot ?? null,
+    previousSnapshot: job.previousSnapshot ?? null,
   });
   if (!processing) {
     setImmediate(() => {
@@ -172,6 +173,15 @@ function normalizeFieldList(list) {
     .filter((field) => field);
 }
 
+function hasNotifyFieldChanges(previousRow, currentRow, notifyFields) {
+  if (!previousRow || !currentRow || !notifyFields.length) return true;
+  return notifyFields.some((field) => {
+    const prevValue = normalizeFieldValue(getCaseInsensitive(previousRow, field));
+    const nextValue = normalizeFieldValue(getCaseInsensitive(currentRow, field));
+    return prevValue !== nextValue;
+  });
+}
+
 async function resolveTransactionConfig(tableName, transactionRow, companyId) {
   if (!tableName) return null;
   const { config } = await getConfigsByTable(tableName, companyId);
@@ -312,6 +322,66 @@ async function insertNotifications({
   }
 }
 
+async function updateNotifications({ notificationIds = [], message, updatedBy }) {
+  if (!notificationIds.length) return 0;
+  const normalizedIds = notificationIds
+    .map((id) => Number(id))
+    .filter((id) => Number.isFinite(id));
+  if (!normalizedIds.length) return 0;
+  const [result] = await pool.query(
+    `UPDATE notifications
+        SET message = ?, updated_by = ?, updated_at = NOW()
+      WHERE notification_id IN (?)`,
+    [message, updatedBy ?? null, normalizedIds],
+  );
+  return result?.affectedRows ?? 0;
+}
+
+async function updateExistingTransactionNotifications({
+  companyId,
+  relatedId,
+  action,
+  updatedBy,
+  transactionName,
+}) {
+  const [rows] = await pool.query(
+    `SELECT notification_id, message, recipient_empid
+       FROM notifications
+      WHERE company_id = ?
+        AND related_id = ?
+        AND deleted_at IS NULL
+        AND message LIKE '%"kind":"transaction"%'
+      ORDER BY notification_id ASC`,
+    [companyId ?? null, relatedId],
+  );
+  let updated = 0;
+  const recipients = new Set();
+  for (const row of rows || []) {
+    if (!row?.message) continue;
+    let payload;
+    try {
+      payload = JSON.parse(row.message);
+    } catch {
+      continue;
+    }
+    if (!payload || payload.kind !== 'transaction') continue;
+    const nextPayload = {
+      ...payload,
+      action,
+      transactionName: transactionName || payload.transactionName,
+    };
+    const message = JSON.stringify(nextPayload);
+    // eslint-disable-next-line no-await-in-loop
+    updated += await updateNotifications({
+      notificationIds: [row.notification_id],
+      message,
+      updatedBy,
+    });
+    if (row.recipient_empid) recipients.add(String(row.recipient_empid));
+  }
+  return { updated, recipients: Array.from(recipients) };
+}
+
 function emitNotificationEvent(rooms, payload) {
   if (!ioEmitter || !rooms.length) return;
   rooms.forEach((room) => {
@@ -322,10 +392,11 @@ function emitNotificationEvent(rooms, payload) {
 async function handleTransactionNotification(job) {
   if (!job?.tableName || !job?.recordId || !job?.companyId) return;
   const transactionRow =
-    job.snapshot ||
-    (await getTableRowById(job.tableName, job.recordId, {
-      defaultCompanyId: job.companyId,
-    }));
+    job.action === 'delete'
+      ? job.snapshot
+      : await getTableRowById(job.tableName, job.recordId, {
+          defaultCompanyId: job.companyId,
+        });
   if (!transactionRow) return;
 
   const [dbRelations, customRelations, displayConfig, transactionConfig] =
@@ -368,6 +439,30 @@ async function handleTransactionNotification(job) {
   if (!relations.length) return;
   const notifyFields = normalizeFieldList(transactionConfig?.notifyFields);
   if (!notifyFields.length) return;
+  if (
+    job.action === 'update' &&
+    !hasNotifyFieldChanges(job.previousSnapshot, transactionRow, notifyFields)
+  ) {
+    return;
+  }
+  if (job.action === 'update' || job.action === 'delete') {
+    const transactionName = deriveTransactionName(transactionRow, job.tableName);
+    const { recipients } = await updateExistingTransactionNotifications({
+      companyId: job.companyId,
+      relatedId: job.recordId,
+      action: job.action ?? 'update',
+      updatedBy: job.changedBy,
+      transactionName,
+    });
+    const rooms = recipients.map((recipient) => `emp:${recipient}`);
+    if (rooms.length) {
+      emitNotificationEvent(rooms, {
+        kind: 'transaction',
+        transactionName,
+      });
+    }
+    return;
+  }
   const notifyFieldSet = new Set(notifyFields.map((field) => field.toLowerCase()));
   const displayEntries = Array.isArray(displayConfig?.config) ? displayConfig.config : [];
   const transactionName = deriveTransactionName(transactionRow, job.tableName);
