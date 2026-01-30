@@ -11,7 +11,6 @@ export default function RelationsConfig() {
   const [columns, setColumns] = useState([]);
   const [idField, setIdField] = useState('');
   const [displayFields, setDisplayFields] = useState([]);
-  const [notificationFields, setNotificationFields] = useState([]);
   const [notificationRole, setNotificationRole] = useState('');
   const [notificationDashboardFields, setNotificationDashboardFields] = useState([]);
   const [notificationEmailFields, setNotificationEmailFields] = useState([]);
@@ -28,7 +27,6 @@ export default function RelationsConfig() {
     filterValue: '',
     idField: '',
     displayFields: [],
-    notificationFields: [],
     notificationRole: '',
     notificationDashboardFields: [],
     notificationEmailFields: [],
@@ -49,9 +47,6 @@ export default function RelationsConfig() {
       idField: entry.idField || entry.id_field || '',
       displayFields: Array.isArray(entry.displayFields ?? entry.display_fields)
         ? entry.displayFields
-        : [],
-      notificationFields: Array.isArray(entry.notificationFields ?? entry.notification_fields)
-        ? entry.notificationFields
         : [],
       notificationRole: entry.notificationRole || entry.notification_role || '',
       notificationDashboardFields: Array.isArray(
@@ -118,9 +113,6 @@ export default function RelationsConfig() {
           entries.find((entry) => !entry.filterColumn && !entry.filterValue) || cfg || {};
         setIdField(base.idField || '');
         setDisplayFields(Array.isArray(base.displayFields) ? base.displayFields : []);
-        setNotificationFields(
-          Array.isArray(base.notificationFields) ? base.notificationFields : [],
-        );
         setNotificationRole(base.notificationRole || '');
         setNotificationDashboardFields(
           Array.isArray(base.notificationDashboardFields)
@@ -143,7 +135,6 @@ export default function RelationsConfig() {
       .catch(() => {
         setIdField('');
         setDisplayFields([]);
-        setNotificationFields([]);
         setNotificationRole('');
         setNotificationDashboardFields([]);
         setNotificationEmailFields([]);
@@ -216,9 +207,6 @@ export default function RelationsConfig() {
       const baseDisplay = Array.isArray(displayFields)
         ? displayFields.map((f) => String(f).trim()).filter(Boolean)
         : [];
-      const baseNotificationFields = Array.isArray(notificationFields)
-        ? notificationFields.map((f) => String(f).trim()).filter(Boolean)
-        : [];
 
       if (!table) throw new Error('table is required');
       if (!baseId) throw new Error('ID Field is required');
@@ -229,7 +217,6 @@ export default function RelationsConfig() {
           table,
           idField: baseId,
           displayFields: baseDisplay,
-          notificationFields: baseNotificationFields,
           notificationRole: (notificationRole || '').trim(),
           notificationDashboardFields: Array.isArray(notificationDashboardFields)
             ? notificationDashboardFields.map((f) => String(f).trim()).filter(Boolean)
@@ -251,9 +238,6 @@ export default function RelationsConfig() {
         const fields = Array.isArray(cfg.displayFields)
           ? cfg.displayFields.map((f) => String(f).trim()).filter(Boolean)
           : [];
-        const cfgNotificationFields = Array.isArray(cfg.notificationFields)
-          ? cfg.notificationFields.map((f) => String(f).trim()).filter(Boolean)
-          : [];
         const cfgNotificationRole = (cfg.notificationRole || '').trim();
         const cfgDashboardFields = Array.isArray(cfg.notificationDashboardFields)
           ? cfg.notificationDashboardFields.map((f) => String(f).trim()).filter(Boolean)
@@ -269,7 +253,6 @@ export default function RelationsConfig() {
           filterValue ||
           cfgIdField ||
           fields.length > 0 ||
-          cfgNotificationFields.length > 0 ||
           cfgNotificationRole ||
           cfgDashboardFields.length > 0 ||
           cfgEmailFields.length > 0 ||
@@ -290,7 +273,6 @@ export default function RelationsConfig() {
           filterColumn,
           filterValue,
           displayFields: fields,
-          notificationFields: cfgNotificationFields,
           notificationRole: cfgNotificationRole,
           notificationDashboardFields: cfgDashboardFields,
           notificationEmailFields: cfgEmailFields,
@@ -368,7 +350,6 @@ export default function RelationsConfig() {
       if (!res.ok) throw new Error('failed');
       setIdField('');
       setDisplayFields([]);
-      setNotificationFields([]);
       setNotificationRole('');
       setNotificationDashboardFields([]);
       setNotificationEmailFields([]);
@@ -410,9 +391,6 @@ export default function RelationsConfig() {
             entries.find((entry) => !entry.filterColumn && !entry.filterValue) || cfg || {};
           setIdField(base.idField || '');
           setDisplayFields(Array.isArray(base.displayFields) ? base.displayFields : []);
-          setNotificationFields(
-            Array.isArray(base.notificationFields) ? base.notificationFields : [],
-          );
           setNotificationRole(base.notificationRole || '');
           setNotificationDashboardFields(
             Array.isArray(base.notificationDashboardFields)
@@ -547,16 +525,13 @@ export default function RelationsConfig() {
                           Display
                         </th>
                         <th style={{ padding: '4px', borderBottom: '1px solid #e5e7eb' }}>
-                          Notification
-                        </th>
-                        <th style={{ padding: '4px', borderBottom: '1px solid #e5e7eb' }}>
                           Dashboard
                         </th>
                         <th style={{ padding: '4px', borderBottom: '1px solid #e5e7eb' }}>
-                          Phone
+                          Email
                         </th>
                         <th style={{ padding: '4px', borderBottom: '1px solid #e5e7eb' }}>
-                          Email
+                          Phone
                         </th>
                       </tr>
                     </thead>
@@ -574,13 +549,6 @@ export default function RelationsConfig() {
                           <td style={{ textAlign: 'center', borderBottom: '1px solid #f3f4f6' }}>
                             <input
                               type="checkbox"
-                              checked={notificationFields.includes(c)}
-                              onChange={() => toggleNotificationField(setNotificationFields, c)}
-                            />
-                          </td>
-                          <td style={{ textAlign: 'center', borderBottom: '1px solid #f3f4f6' }}>
-                            <input
-                              type="checkbox"
                               checked={notificationDashboardFields.includes(c)}
                               onChange={() =>
                                 toggleNotificationField(setNotificationDashboardFields, c)
@@ -590,18 +558,18 @@ export default function RelationsConfig() {
                           <td style={{ textAlign: 'center', borderBottom: '1px solid #f3f4f6' }}>
                             <input
                               type="checkbox"
-                              checked={notificationPhoneFields.includes(c)}
+                              checked={notificationEmailFields.includes(c)}
                               onChange={() =>
-                                toggleNotificationField(setNotificationPhoneFields, c)
+                                toggleNotificationField(setNotificationEmailFields, c)
                               }
                             />
                           </td>
                           <td style={{ textAlign: 'center', borderBottom: '1px solid #f3f4f6' }}>
                             <input
                               type="checkbox"
-                              checked={notificationEmailFields.includes(c)}
+                              checked={notificationPhoneFields.includes(c)}
                               onChange={() =>
-                                toggleNotificationField(setNotificationEmailFields, c)
+                                toggleNotificationField(setNotificationPhoneFields, c)
                               }
                             />
                           </td>
@@ -631,19 +599,6 @@ export default function RelationsConfig() {
                   </select>
                 </label>
                 <div style={{ marginTop: '0.5rem' }}>
-                  Notification dropdown fields:
-                  {columnNames.map((c) => (
-                    <label key={`notif-dropdown-${c}`} style={{ display: 'block' }}>
-                      <input
-                        type="checkbox"
-                        checked={notificationFields.includes(c)}
-                        onChange={() => toggleNotificationField(setNotificationFields, c)}
-                      />
-                      {c}
-                    </label>
-                  ))}
-                </div>
-                <div style={{ marginTop: '0.5rem' }}>
                   Dashboard notification fields (optional):
                   <p style={{ margin: '0.25rem 0', color: '#6b7280' }}>
                     If none are selected, the ID field will be used.
@@ -662,21 +617,6 @@ export default function RelationsConfig() {
                   ))}
                 </div>
                 <div style={{ marginTop: '0.5rem' }}>
-                  Phone notification fields:
-                  {columnNames.map((c) => (
-                    <label key={`notif-phone-${c}`} style={{ display: 'block' }}>
-                      <input
-                        type="checkbox"
-                        checked={notificationPhoneFields.includes(c)}
-                        onChange={() =>
-                          toggleNotificationField(setNotificationPhoneFields, c)
-                        }
-                      />
-                      {c}
-                    </label>
-                  ))}
-                </div>
-                <div style={{ marginTop: '0.5rem' }}>
                   Email notification fields:
                   {columnNames.map((c) => (
                     <label key={`notif-email-${c}`} style={{ display: 'block' }}>
@@ -685,6 +625,21 @@ export default function RelationsConfig() {
                         checked={notificationEmailFields.includes(c)}
                         onChange={() =>
                           toggleNotificationField(setNotificationEmailFields, c)
+                        }
+                      />
+                      {c}
+                    </label>
+                  ))}
+                </div>
+                <div style={{ marginTop: '0.5rem' }}>
+                  Phone notification fields:
+                  {columnNames.map((c) => (
+                    <label key={`notif-phone-${c}`} style={{ display: 'block' }}>
+                      <input
+                        type="checkbox"
+                        checked={notificationPhoneFields.includes(c)}
+                        onChange={() =>
+                          toggleNotificationField(setNotificationPhoneFields, c)
                         }
                       />
                       {c}
@@ -843,14 +798,6 @@ export default function RelationsConfig() {
                                     borderBottom: '1px solid #e5e7eb',
                                   }}
                                 >
-                                  Notification
-                                </th>
-                                <th
-                                  style={{
-                                    padding: '4px',
-                                    borderBottom: '1px solid #e5e7eb',
-                                  }}
-                                >
                                   Dashboard
                                 </th>
                                 <th
@@ -859,7 +806,7 @@ export default function RelationsConfig() {
                                     borderBottom: '1px solid #e5e7eb',
                                   }}
                                 >
-                                  Phone
+                                  Email
                                 </th>
                                 <th
                                   style={{
@@ -867,7 +814,7 @@ export default function RelationsConfig() {
                                     borderBottom: '1px solid #e5e7eb',
                                   }}
                                 >
-                                  Email
+                                  Phone
                                 </th>
                               </tr>
                             </thead>
@@ -902,24 +849,6 @@ export default function RelationsConfig() {
                                   >
                                     <input
                                       type="checkbox"
-                                      checked={(cfg.notificationFields || []).includes(c)}
-                                      onChange={() =>
-                                        toggleFilteredNotificationField(
-                                          cfg.key,
-                                          'notificationFields',
-                                          c,
-                                        )
-                                      }
-                                    />
-                                  </td>
-                                  <td
-                                    style={{
-                                      textAlign: 'center',
-                                      borderBottom: '1px solid #f3f4f6',
-                                    }}
-                                  >
-                                    <input
-                                      type="checkbox"
                                       checked={(cfg.notificationDashboardFields || []).includes(c)}
                                       onChange={() =>
                                         toggleFilteredNotificationField(
@@ -938,11 +867,11 @@ export default function RelationsConfig() {
                                   >
                                     <input
                                       type="checkbox"
-                                      checked={(cfg.notificationPhoneFields || []).includes(c)}
+                                      checked={(cfg.notificationEmailFields || []).includes(c)}
                                       onChange={() =>
                                         toggleFilteredNotificationField(
                                           cfg.key,
-                                          'notificationPhoneFields',
+                                          'notificationEmailFields',
                                           c,
                                         )
                                       }
@@ -956,11 +885,11 @@ export default function RelationsConfig() {
                                   >
                                     <input
                                       type="checkbox"
-                                      checked={(cfg.notificationEmailFields || []).includes(c)}
+                                      checked={(cfg.notificationPhoneFields || []).includes(c)}
                                       onChange={() =>
                                         toggleFilteredNotificationField(
                                           cfg.key,
-                                          'notificationEmailFields',
+                                          'notificationPhoneFields',
                                           c,
                                         )
                                       }
@@ -995,28 +924,6 @@ export default function RelationsConfig() {
                           </label>
                         </div>
                         <div style={{ marginTop: '0.5rem' }}>
-                          Notification dropdown fields:
-                          {columnNames.map((c) => (
-                            <label
-                              key={`notif-dropdown-${cfg.key}-${c}`}
-                              style={{ display: 'block' }}
-                            >
-                              <input
-                                type="checkbox"
-                                checked={(cfg.notificationFields || []).includes(c)}
-                                onChange={() =>
-                                  toggleFilteredNotificationField(
-                                    cfg.key,
-                                    'notificationFields',
-                                    c,
-                                  )
-                                }
-                              />
-                              {c}
-                            </label>
-                          ))}
-                        </div>
-                        <div style={{ marginTop: '0.5rem' }}>
                           Dashboard notification fields:
                           {columnNames.map((c) => (
                             <label
@@ -1039,28 +946,6 @@ export default function RelationsConfig() {
                           ))}
                         </div>
                         <div style={{ marginTop: '0.5rem' }}>
-                          Phone notification fields:
-                          {columnNames.map((c) => (
-                            <label
-                              key={`notif-phone-${cfg.key}-${c}`}
-                              style={{ display: 'block' }}
-                            >
-                              <input
-                                type="checkbox"
-                                checked={(cfg.notificationPhoneFields || []).includes(c)}
-                                onChange={() =>
-                                  toggleFilteredNotificationField(
-                                    cfg.key,
-                                    'notificationPhoneFields',
-                                    c,
-                                  )
-                                }
-                              />
-                              {c}
-                            </label>
-                          ))}
-                        </div>
-                        <div style={{ marginTop: '0.5rem' }}>
                           Email notification fields:
                           {columnNames.map((c) => (
                             <label
@@ -1074,6 +959,28 @@ export default function RelationsConfig() {
                                   toggleFilteredNotificationField(
                                     cfg.key,
                                     'notificationEmailFields',
+                                    c,
+                                  )
+                                }
+                              />
+                              {c}
+                            </label>
+                          ))}
+                        </div>
+                        <div style={{ marginTop: '0.5rem' }}>
+                          Phone notification fields:
+                          {columnNames.map((c) => (
+                            <label
+                              key={`notif-phone-${cfg.key}-${c}`}
+                              style={{ display: 'block' }}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={(cfg.notificationPhoneFields || []).includes(c)}
+                                onChange={() =>
+                                  toggleFilteredNotificationField(
+                                    cfg.key,
+                                    'notificationPhoneFields',
                                     c,
                                   )
                                 }
