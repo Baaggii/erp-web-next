@@ -69,6 +69,13 @@ async function processQueue() {
     }
   }
   processing = false;
+  if (queue.length > 0) {
+    setImmediate(() => {
+      processQueue().catch((err) => {
+        console.error('Transaction notification queue failed', err);
+      });
+    });
+  }
 }
 
 function getCaseInsensitive(row, field) {
