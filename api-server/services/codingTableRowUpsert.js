@@ -77,14 +77,7 @@ export async function upsertCodingTableRow(table, row) {
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();
-    try {
-      await dropSelfReferentialTriggers(conn, cleanTable);
-    } catch (err) {
-      console.error('Failed to drop self-referential triggers', {
-        table: cleanTable,
-        error: err,
-      });
-    }
+    await dropSelfReferentialTriggers(conn, cleanTable);
     const payload = { ...row };
     await applyDynamicFields(conn, cleanTable, payload);
     const entries = Object.entries(payload).filter(([, value]) => value !== undefined);
