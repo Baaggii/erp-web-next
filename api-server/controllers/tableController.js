@@ -18,6 +18,7 @@ import { moveImagesToDeleted } from '../services/transactionImageService.js';
 import { addMappings } from '../services/headerMappings.js';
 import { hasAction } from '../utils/hasAction.js';
 import { createCompanyHandler } from './companyController.js';
+import { notifyTransactionChange } from '../services/transactionNotifications.js';
 import {
   listCustomRelations,
   saveCustomRelation,
@@ -431,6 +432,29 @@ export async function updateRow(req, res, next) {
         },
       },
     );
+    let updatedRow = null;
+    try {
+      updatedRow = await getTableRowById(req.params.table, req.params.id, {
+        tenantFilters: { company_id: req.user.companyId },
+        defaultCompanyId: req.user.companyId,
+      });
+    } catch (rowErr) {
+      console.warn('Failed to load updated row for notifications', rowErr);
+    }
+    const mergedRow =
+      updatedRow && typeof updatedRow === 'object'
+        ? { ...updatedRow, ...updates }
+        : { ...updates };
+    notifyTransactionChange({
+      tableName: req.params.table,
+      recordId: req.params.id,
+      row: mergedRow,
+      companyId: req.user.companyId,
+      createdBy: req.user?.empid ?? null,
+      action: 'updated',
+    }).catch((notifyErr) => {
+      console.warn('Failed to emit transaction update notifications', notifyErr);
+    });
     res.sendStatus(204);
   } catch (err) {
     if (/Can't update table .* in stored function\/trigger/i.test(err.message)) {
@@ -475,6 +499,17 @@ export async function addRow(req, res, next) {
       },
     );
     res.locals.insertId = result?.id;
+    const recordId = result?.id ?? row?.id ?? null;
+    notifyTransactionChange({
+      tableName: req.params.table,
+      recordId,
+      row,
+      companyId: req.user.companyId,
+      createdBy: req.user?.empid ?? null,
+      action: 'created',
+    }).catch((notifyErr) => {
+      console.warn('Failed to emit transaction create notifications', notifyErr);
+    });
     res.status(201).json(result);
   } catch (err) {
     if (/Can't update table .* in stored function\/trigger/i.test(err.message)) {
