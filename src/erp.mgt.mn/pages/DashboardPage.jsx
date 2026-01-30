@@ -1,4 +1,5 @@
 import React, { useContext, useState, useEffect, useRef } from 'react';
+import { useLocation } from 'react-router-dom';
 import { AuthContext } from '../context/AuthContext.jsx';
 import PendingRequestWidget from '../components/PendingRequestWidget.jsx';
 import TransactionNotificationWidget from '../components/TransactionNotificationWidget.jsx';
@@ -14,9 +15,21 @@ export default function DashboardPage() {
   const { unreadCount } = useTransactionNotifications();
   const { t } = useContext(LangContext);
   const [active, setActive] = useState('general');
+  const location = useLocation();
   useTour('dashboard');
 
   const prevTab = useRef('general');
+  const allowedTabs = useRef(new Set(['general', 'activity', 'audition', 'plans']));
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search || '');
+    const tabParam = params.get('tab');
+    const notifyParam = params.get('notifyGroup');
+    const requested = notifyParam ? 'activity' : tabParam;
+    if (requested && allowedTabs.current.has(requested) && requested !== active) {
+      setActive(requested);
+    }
+  }, [active, location.search]);
   useEffect(() => {
     if (prevTab.current === 'audition' && active !== 'audition') {
       markSeen();

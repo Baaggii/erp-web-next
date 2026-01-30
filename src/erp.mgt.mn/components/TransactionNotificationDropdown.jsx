@@ -24,7 +24,7 @@ export default function TransactionNotificationDropdown() {
     if (!group) return;
     setOpen(false);
     await markGroupRead(group.key);
-    navigate(`/?notifyGroup=${group.key}`);
+    navigate(`/?tab=activity&notifyGroup=${group.key}`);
   };
 
   return (
@@ -73,7 +73,7 @@ export default function TransactionNotificationDropdown() {
             style={styles.footer}
             onClick={() => {
               setOpen(false);
-              navigate('/');
+              navigate('/?tab=activity');
             }}
           >
             Open dashboard
