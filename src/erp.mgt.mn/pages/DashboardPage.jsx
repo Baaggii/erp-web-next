@@ -1,16 +1,20 @@
 import React, { useContext, useState, useEffect, useRef } from 'react';
+import { useLocation } from 'react-router-dom';
 import { AuthContext } from '../context/AuthContext.jsx';
 import PendingRequestWidget from '../components/PendingRequestWidget.jsx';
 import OutgoingRequestWidget from '../components/OutgoingRequestWidget.jsx';
 import { usePendingRequests } from '../context/PendingRequestContext.jsx';
 import LangContext from '../context/I18nContext.jsx';
 import { useTour } from '../components/ERPLayout.jsx';
+import { TransactionNotificationPanel } from '../components/TransactionNotifications.jsx';
 
 export default function DashboardPage() {
   const { user, session } = useContext(AuthContext);
   const { hasNew, markSeen, outgoing } = usePendingRequests();
   const { t } = useContext(LangContext);
   const [active, setActive] = useState('general');
+  const location = useLocation();
+  const highlightGroup = location?.state?.highlightNotificationGroup || null;
   useTour('dashboard');
 
   const prevTab = useRef('general');
@@ -114,6 +118,12 @@ export default function DashboardPage() {
               <div style={{ fontSize: '1.5rem', fontWeight: 'bold' }}>0</div>
             </div>
           </div>
+          <div style={{ marginTop: '1.5rem' }}>
+            <h3 style={{ marginBottom: '0.5rem' }}>
+              {t('notifications', 'Notifications')}
+            </h3>
+            <TransactionNotificationPanel highlightGroup={highlightGroup} />
+          </div>
         </div>
       )}
 
@@ -142,4 +152,3 @@ export default function DashboardPage() {
     </div>
   );
 }
-

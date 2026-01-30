@@ -23,6 +23,8 @@ export function requireAuth(req, res, next) {
       empid: payload.empid,
       position: payload.position,
       companyId: payload.companyId,
+      branchId: payload.branchId ?? null,
+      departmentId: payload.departmentId ?? null,
       userLevel: payload.userLevel,
       seniorPlanEmpid: payload.seniorPlanEmpid ?? null,
     };
