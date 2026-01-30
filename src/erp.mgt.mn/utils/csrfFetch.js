@@ -3,7 +3,6 @@ import { currentLoaderKey, dispatchEnd, dispatchStart } from './loadingEvents.js
 
 let tokenPromise;
 const controllers = new Set();
-const originalFetch = window.fetch.bind(window);
 
 function abortAll() {
   controllers.forEach(controller => controller.abort());
@@ -54,6 +53,7 @@ async function getToken() {
   return tokenPromise;
 }
 
+const originalFetch = window.fetch.bind(window);
 window.fetch = async (url, options = {}, _retry) => {
   const controller = new AbortController();
   controllers.add(controller);
