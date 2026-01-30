@@ -117,6 +117,9 @@ export default function DashboardPage() {
               <div style={{ fontSize: '1.5rem', fontWeight: 'bold' }}>0</div>
             </div>
           </div>
+          <div style={{ marginTop: '1rem' }}>
+            <TransactionNotificationWidget />
+          </div>
         </div>
       )}
 
