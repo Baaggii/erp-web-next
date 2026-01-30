@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 
 export default function TagMultiInput({
   value = [],
@@ -9,7 +9,6 @@ export default function TagMultiInput({
   onFocus,
 }) {
   const [input, setInput] = useState('');
-  const skipBlurCommitRef = useRef(false);
   const tags = useMemo(() => {
     if (!Array.isArray(value)) return [];
     return value.filter((v) => v !== undefined && v !== null);
@@ -79,22 +78,12 @@ export default function TagMultiInput({
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === 'Tab') {
-                skipBlurCommitRef.current = true;
-                return;
-              }
-              if (e.key === 'Enter' || e.key === ',') {
+              if (e.key === 'Enter' || e.key === ',' || e.key === 'Tab') {
                 e.preventDefault();
                 commitToken(input);
               }
             }}
-            onBlur={() => {
-              if (skipBlurCommitRef.current) {
-                skipBlurCommitRef.current = false;
-                return;
-              }
-              commitToken(input);
-            }}
+            onBlur={() => commitToken(input)}
             placeholder={tags.length === 0 ? placeholder : ''}
             style={{
               border: 'none',
