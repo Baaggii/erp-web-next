@@ -11,6 +11,17 @@ const NOTIFICATION_ROLE_SET = new Set([
   'customer',
 ]);
 
+const UPDATE_ACTIONS = new Set([
+  'update',
+  'updated',
+  'edit',
+  'edited',
+  'change',
+  'changed',
+  'delete',
+  'deleted',
+]);
+
 const queue = [];
 let processing = false;
 let ioEmitter = null;
@@ -238,6 +249,23 @@ function normalizeContactValues(raw) {
   return values;
 }
 
+function normalizeTransactionAction(action) {
+  const normalized = typeof action === 'string' ? action.trim().toLowerCase() : '';
+  if (normalized === 'update' || normalized === 'edit' || normalized === 'edited') {
+    return 'edited';
+  }
+  if (normalized === 'change' || normalized === 'changed') {
+    return 'changed';
+  }
+  if (normalized === 'delete' || normalized === 'deleted') {
+    return 'deleted';
+  }
+  if (normalized === 'create' || normalized === 'created') {
+    return 'created';
+  }
+  return action || 'update';
+}
+
 async function fetchReferenceRow(table, idField, idValue, companyId) {
   if (!table || !idField) return null;
   const columns = await listTableColumns(table);
@@ -398,6 +426,8 @@ async function handleTransactionNotification(job) {
           defaultCompanyId: job.companyId,
         });
   if (!transactionRow) return;
+  const actionKey = typeof job.action === 'string' ? job.action.trim().toLowerCase() : '';
+  const actionLabel = normalizeTransactionAction(job.action);
 
   const [dbRelations, customRelations, displayConfig, transactionConfig] =
     await Promise.all([
@@ -439,18 +469,22 @@ async function handleTransactionNotification(job) {
   if (!relations.length) return;
   const notifyFields = normalizeFieldList(transactionConfig?.notifyFields);
   if (!notifyFields.length) return;
-  if (
-    job.action === 'update' &&
-    !hasNotifyFieldChanges(job.previousSnapshot, transactionRow, notifyFields)
-  ) {
+  const isContentUpdate =
+    actionKey === 'update' ||
+    actionKey === 'updated' ||
+    actionKey === 'edit' ||
+    actionKey === 'edited' ||
+    actionKey === 'change' ||
+    actionKey === 'changed';
+  if (isContentUpdate && !hasNotifyFieldChanges(job.previousSnapshot, transactionRow, notifyFields)) {
     return;
   }
-  if (job.action === 'update' || job.action === 'delete') {
+  if (UPDATE_ACTIONS.has(actionKey)) {
     const transactionName = deriveTransactionName(transactionRow, job.tableName);
     const { recipients } = await updateExistingTransactionNotifications({
       companyId: job.companyId,
       relatedId: job.recordId,
-      action: job.action ?? 'update',
+      action: actionLabel,
       updatedBy: job.changedBy,
       transactionName,
     });
@@ -527,7 +561,7 @@ async function handleTransactionNotification(job) {
         transactionName,
         transactionTable: job.tableName,
         transactionId: job.recordId,
-        action: job.action ?? 'update',
+        action: actionLabel,
         referenceTable: relation.table,
         referenceId,
         role,
