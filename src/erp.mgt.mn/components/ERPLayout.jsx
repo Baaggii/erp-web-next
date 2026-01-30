@@ -19,10 +19,6 @@ import useRequestNotificationCounts from "../hooks/useRequestNotificationCounts.
 import useTemporaryNotificationCounts from "../hooks/useTemporaryNotificationCounts.js";
 import useBuildUpdateNotice from "../hooks/useBuildUpdateNotice.js";
 import { PendingRequestContext } from "../context/PendingRequestContext.jsx";
-import {
-  TransactionNotificationsProvider,
-  useTransactionNotifications,
-} from "../context/TransactionNotificationsContext.jsx";
 import { PollingProvider } from "../context/PollingContext.jsx";
 import Joyride, { STATUS, ACTIONS, EVENTS } from "react-joyride";
 import ErrorBoundary from "../components/ErrorBoundary.jsx";
@@ -35,7 +31,6 @@ import { findVisibleFallbackSelector } from "../utils/findVisibleTourStep.js";
 import { playNotificationSound } from "../utils/playNotificationSound.js";
 import { buildOptionsForRows } from "../utils/buildAsyncSelectOptions.js";
 import NotificationDots from "./NotificationDots.jsx";
-import formatTimestamp from "../utils/formatTimestamp.js";
 
 export const TourContext = React.createContext({
   startTour: () => false,
@@ -3635,9 +3630,8 @@ export default function ERPLayout() {
             onToggleGuideMode={toggleTourGuideMode}
           />
         )}
-        <TransactionNotificationsProvider>
-          <PendingRequestContext.Provider value={pendingRequestValue}>
-            <div style={styles.container}>
+        <PendingRequestContext.Provider value={pendingRequestValue}>
+          <div style={styles.container}>
             <Joyride
               steps={tourSteps}
               run={runTour}
@@ -3700,9 +3694,8 @@ export default function ERPLayout() {
               <MainWindow title={windowTitle} />
             </div>
             {generalConfig.general?.aiApiEnabled && <AskAIFloat />}
-            </div>
-          </PendingRequestContext.Provider>
-        </TransactionNotificationsProvider>
+          </div>
+        </PendingRequestContext.Provider>
       </TourContext.Provider>
     </PollingProvider>
   );
@@ -3722,13 +3715,6 @@ export function Header({
   const { session } = useContext(AuthContext);
   const { lang, setLang, t } = useContext(LangContext);
   const { anyHasNew, notificationColors } = useContext(PendingRequestContext);
-  const {
-    notifications: transactionNotifications,
-    unreadCount: transactionUnreadCount,
-    markRead: markTransactionRead,
-  } = useTransactionNotifications();
-  const [showNotifications, setShowNotifications] = useState(false);
-  const notificationRef = useRef(null);
   const handleRefresh = () => {
     if (typeof window === 'undefined' || !window?.location) return;
     try {
@@ -3745,23 +3731,6 @@ export function Header({
     if (anyHasNew) return [NOTIFICATION_STATUS_COLORS.pending];
     return [];
   }, [anyHasNew, notificationColors]);
-
-  const latestTransactionNotifications = useMemo(
-    () => transactionNotifications.slice(0, 6),
-    [transactionNotifications],
-  );
-
-  useEffect(() => {
-    if (!showNotifications) return undefined;
-    const handleClick = (event) => {
-      if (!notificationRef.current) return;
-      if (!notificationRef.current.contains(event.target)) {
-        setShowNotifications(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClick);
-    return () => document.removeEventListener('mousedown', handleClick);
-  }, [showNotifications]);
 
   const [positionLabel, setPositionLabel] = useState(null);
   const normalizeText = useCallback((value) => {
@@ -4110,79 +4079,17 @@ export function Header({
           🗔 {t("home")}
         </button>
         <button style={styles.iconBtn}>🗗 {t("windows")}</button>
-        <div style={styles.notificationWrapper} ref={notificationRef}>
-          <button
-            type="button"
-            style={styles.iconBtn}
-            onClick={() => setShowNotifications((prev) => !prev)}
-          >
-            <span style={styles.inlineButtonContent}>
-              <NotificationDots colors={headerNotificationColors} marginRight={0} />
-              <span aria-hidden="true">🔔</span>
-              {t('notifications', 'Notifications')}
-            </span>
-            {transactionUnreadCount > 0 && (
-              <span style={styles.notificationBadge}>
-                {transactionUnreadCount > 99 ? '99+' : transactionUnreadCount}
-              </span>
-            )}
-          </button>
-          {showNotifications && (
-            <div style={styles.notificationDropdown}>
-              <div style={styles.notificationHeader}>
-                <span>{t('notifications', 'Notifications')}</span>
-                <button
-                  type="button"
-                  style={styles.notificationLink}
-                  onClick={() => {
-                    setShowNotifications(false);
-                    onOpen('/notifications', t('notifications', 'Notifications'), 'notifications');
-                  }}
-                >
-                  {t('notifications_view_all', 'View all')}
-                </button>
-              </div>
-              {latestTransactionNotifications.length === 0 ? (
-                <div style={styles.notificationEmpty}>
-                  {t('notifications_none', 'No notifications')}
-                </div>
-              ) : (
-                <ul style={styles.notificationList}>
-                  {latestTransactionNotifications.map((note) => {
-                    const name = note.transaction_name || note.transactionName || '';
-                    const highlight = name ? encodeURIComponent(name) : '';
-                    return (
-                      <li key={note.notification_id} style={styles.notificationItem}>
-                        <button
-                          type="button"
-                          style={styles.notificationButton(note.is_read)}
-                          onClick={async () => {
-                            await markTransactionRead(note.notification_id);
-                            setShowNotifications(false);
-                            const path = highlight
-                              ? `/notifications?highlight=${highlight}`
-                              : '/notifications';
-                            onOpen(path, t('notifications', 'Notifications'), 'notifications');
-                          }}
-                        >
-                          <div style={styles.notificationTitle}>
-                            <span>{name || t('notifications', 'Notifications')}</span>
-                            <span style={styles.notificationTime}>
-                              {formatTimestamp(note.created_at || note.createdAt)}
-                            </span>
-                          </div>
-                          <div style={styles.notificationMessage}>
-                            {note.message || ''}
-                          </div>
-                        </button>
-                      </li>
-                    );
-                  })}
-                </ul>
-              )}
-            </div>
-          )}
-        </div>
+        <button
+          style={styles.iconBtn}
+          onClick={() =>
+            onOpen('/notifications', t('notifications', 'Notifications'), 'notifications')
+          }
+        >
+          <span style={styles.inlineButtonContent}>
+            <NotificationDots colors={headerNotificationColors} marginRight={0} />
+            <span aria-hidden="true">🔔</span> {t('notifications', 'Notifications')}
+          </span>
+        </button>
         <button style={styles.iconBtn}>❔ {t("help")}</button>
       </nav>
       {hasUpdateAvailable && (
@@ -4913,90 +4820,6 @@ const styles = {
     cursor: "pointer",
     fontSize: "0.9rem",
     padding: "0.25rem 0.5rem",
-  },
-  notificationWrapper: {
-    position: "relative",
-    display: "flex",
-    alignItems: "center",
-  },
-  notificationBadge: {
-    position: "absolute",
-    top: "-4px",
-    right: "-4px",
-    backgroundColor: "#ef4444",
-    color: "#fff",
-    fontSize: "0.65rem",
-    fontWeight: 700,
-    padding: "0 0.35rem",
-    borderRadius: "999px",
-    lineHeight: 1.6,
-  },
-  notificationDropdown: {
-    position: "absolute",
-    top: "calc(100% + 0.5rem)",
-    right: 0,
-    width: "320px",
-    backgroundColor: "#fff",
-    color: "#111827",
-    borderRadius: "12px",
-    boxShadow: "0 12px 30px rgba(15, 23, 42, 0.2)",
-    zIndex: 16000,
-    overflow: "hidden",
-  },
-  notificationHeader: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    padding: "0.75rem 1rem",
-    borderBottom: "1px solid #e5e7eb",
-    fontWeight: 600,
-  },
-  notificationLink: {
-    border: "none",
-    background: "transparent",
-    color: "#2563eb",
-    cursor: "pointer",
-    fontSize: "0.8rem",
-    fontWeight: 600,
-  },
-  notificationEmpty: {
-    padding: "1rem",
-    textAlign: "center",
-    color: "#6b7280",
-  },
-  notificationList: {
-    listStyle: "none",
-    margin: 0,
-    padding: 0,
-    maxHeight: "360px",
-    overflowY: "auto",
-  },
-  notificationItem: {
-    borderBottom: "1px solid #f3f4f6",
-  },
-  notificationButton: (isRead) => ({
-    width: "100%",
-    textAlign: "left",
-    padding: "0.75rem 1rem",
-    border: "none",
-    background: isRead ? "#fff" : "#eff6ff",
-    cursor: "pointer",
-  }),
-  notificationTitle: {
-    display: "flex",
-    justifyContent: "space-between",
-    fontWeight: 600,
-    marginBottom: "0.25rem",
-  },
-  notificationTime: {
-    fontSize: "0.75rem",
-    color: "#6b7280",
-    marginLeft: "0.5rem",
-    whiteSpace: "nowrap",
-  },
-  notificationMessage: {
-    fontSize: "0.85rem",
-    color: "#374151",
   },
   inlineButtonContent: {
     display: "inline-flex",

@@ -27,7 +27,6 @@ import {
   removeCustomRelationAtIndex,
   removeCustomRelationMatching,
 } from '../services/tableRelationsConfig.js';
-import { enqueueTransactionNotificationJob } from '../services/transactionNotificationJobs.js';
 let bcrypt;
 try {
   const mod = await import('bcryptjs');
@@ -432,14 +431,6 @@ export async function updateRow(req, res, next) {
         },
       },
     );
-    enqueueTransactionNotificationJob({
-      tableName: req.params.table,
-      recordId: req.params.id,
-      companyId: req.user.companyId,
-      action: 'update',
-      createdBy: req.user?.empid ?? null,
-      io: req.app.get('io'),
-    });
     res.sendStatus(204);
   } catch (err) {
     if (/Can't update table .* in stored function\/trigger/i.test(err.message)) {
@@ -484,16 +475,6 @@ export async function addRow(req, res, next) {
       },
     );
     res.locals.insertId = result?.id;
-    if (result?.id !== undefined && result?.id !== null) {
-      enqueueTransactionNotificationJob({
-        tableName: req.params.table,
-        recordId: result.id,
-        companyId: req.user.companyId,
-        action: 'create',
-        createdBy: req.user?.empid ?? null,
-        io: req.app.get('io'),
-      });
-    }
     res.status(201).json(result);
   } catch (err) {
     if (/Can't update table .* in stored function\/trigger/i.test(err.message)) {
