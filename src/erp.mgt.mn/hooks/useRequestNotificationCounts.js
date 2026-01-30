@@ -295,6 +295,12 @@ export default function useRequestNotificationCounts(
 
     const handleNotification = (payload) => {
       if (!payload) return;
+      const kind = payload?.kind;
+      if (kind) {
+        if (kind !== 'request') return;
+        applyFromFetch();
+        return;
+      }
       if (
         payload.type === 'request' ||
         payload.type === 'response' ||
@@ -334,8 +340,6 @@ export default function useRequestNotificationCounts(
 
     try {
       socket = connectSocket();
-      socket.on('newRequest', applyFromFetch);
-      socket.on('requestResolved', applyFromFetch);
       socket.on('notification:new', handleNotification);
       socket.on('connect', () => {
         stopFallback();
@@ -355,8 +359,6 @@ export default function useRequestNotificationCounts(
         disconnectTimeoutRef.current = null;
       }
       if (socket) {
-        socket.off('newRequest', applyFromFetch);
-        socket.off('requestResolved', applyFromFetch);
         socket.off('notification:new', handleNotification);
         socket.off('connect', stopFallback);
         socket.off('disconnect', startFallback);

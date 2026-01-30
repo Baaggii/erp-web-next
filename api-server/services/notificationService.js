@@ -28,10 +28,19 @@ function normalizeType(type) {
   return normalized;
 }
 
+function normalizeKind(kind, fallback) {
+  const normalized = kind ? String(kind).trim() : fallback;
+  if (!normalized) {
+    throw new Error('kind required');
+  }
+  return normalized;
+}
+
 export async function notifyUser({
   companyId,
   recipientEmpId,
   type,
+  kind,
   message,
   relatedId,
   createdBy,
@@ -40,6 +49,7 @@ export async function notifyUser({
 }) {
   const recipient = normalizeRecipient(recipientEmpId);
   const normalizedType = normalizeType(type);
+  const normalizedKind = normalizeKind(kind, normalizedType);
   const normalizedMessage = message ?? '';
   const createdAt = new Date();
   const db = connection ?? dbPool;
@@ -63,6 +73,7 @@ export async function notifyUser({
   const payload = {
     id: result?.insertId ?? null,
     type: normalizedType,
+    kind: normalizedKind,
     message: normalizedMessage,
     related_id: relatedId ?? null,
     created_at: createdAt.toISOString(),

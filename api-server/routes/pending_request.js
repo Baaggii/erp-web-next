@@ -53,16 +53,6 @@ router.post('/bulk_edit', requireAuth, pendingRequestLimiter, async (req, res, n
       companyId: req.user.companyId,
       reportPayload: report_payload,
     });
-    const io = req.app.get('io');
-    if (io && result?.senior_empid) {
-      // Deprecated: legacy event; notification:new is authoritative.
-      io.to(`user:${result.senior_empid}`).emit('newRequest', {
-        requestId: result.request_id,
-        tableName,
-        recordId: result.record_id,
-        requestType: 'bulk_edit',
-      });
-    }
     res.status(201).json(result);
   } catch (err) {
     if (err.status === 400 && err.message === 'invalid table_name') {
@@ -108,16 +98,6 @@ router.post('/', requireAuth, pendingRequestLimiter, async (req, res, next) => {
       requestReason: request_reason,
       companyId: req.user.companyId,
     });
-    const io = req.app.get('io');
-    if (io && result.senior_empid) {
-      // Deprecated: legacy event; notification:new is authoritative.
-      io.to(`user:${result.senior_empid}`).emit('newRequest', {
-        requestId: result.request_id,
-        tableName: table_name,
-        recordId: record_id,
-        requestType: request_type,
-      });
-    }
     res.status(201).json(result);
   } catch (err) {
     if (err.status === 400 && err.message === 'invalid table_name') {
@@ -226,16 +206,6 @@ router.put('/:id/respond', requireAuth, async (req, res, next) => {
       status,
       response_notes,
     );
-    const io = req.app.get('io');
-    if (io && result?.requester) {
-      // Deprecated: legacy event; notification:new is authoritative.
-      io.to(`user:${result.requester}`).emit('requestResolved', {
-        requestId: req.params.id,
-        status,
-        requestType: result?.requestType,
-        lockedTransactions: result?.lockedTransactions || [],
-      });
-    }
     res.sendStatus(204);
   } catch (err) {
     if (err.message === 'Forbidden') return res.sendStatus(403);
