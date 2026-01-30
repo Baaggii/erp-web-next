@@ -31,6 +31,8 @@ import { findVisibleFallbackSelector } from "../utils/findVisibleTourStep.js";
 import { playNotificationSound } from "../utils/playNotificationSound.js";
 import { buildOptionsForRows } from "../utils/buildAsyncSelectOptions.js";
 import NotificationDots from "./NotificationDots.jsx";
+import formatTimestamp from "../utils/formatTimestamp.js";
+import useDynamicNotifications from "../hooks/useDynamicNotifications.js";
 
 export const TourContext = React.createContext({
   startTour: () => false,
@@ -3715,6 +3717,13 @@ export function Header({
   const { session } = useContext(AuthContext);
   const { lang, setLang, t } = useContext(LangContext);
   const { anyHasNew, notificationColors } = useContext(PendingRequestContext);
+  const {
+    notifications: dynamicNotifications,
+    unreadCount: dynamicUnreadCount,
+    markRead: markDynamicRead,
+  } = useDynamicNotifications();
+  const [showNotificationDropdown, setShowNotificationDropdown] = useState(false);
+  const dropdownRef = useRef(null);
   const handleRefresh = () => {
     if (typeof window === 'undefined' || !window?.location) return;
     try {
@@ -3731,6 +3740,58 @@ export function Header({
     if (anyHasNew) return [NOTIFICATION_STATUS_COLORS.pending];
     return [];
   }, [anyHasNew, notificationColors]);
+
+  const groupedDynamicNotifications = useMemo(() => {
+    const groups = new Map();
+    dynamicNotifications.forEach((item) => {
+      const message = item.message || {};
+      const key = message.transactionName || message.transactionTable || 'Transactions';
+      if (!groups.has(key)) {
+        groups.set(key, { key, latest: 0, entries: [] });
+      }
+      const created = new Date(item.createdAt || 0).getTime();
+      const group = groups.get(key);
+      group.entries.push(item);
+      if (created > group.latest) group.latest = created;
+    });
+    return Array.from(groups.values())
+      .sort((a, b) => b.latest - a.latest)
+      .map((group) => ({
+        ...group,
+        entries: group.entries.sort(
+          (a, b) =>
+            new Date(b.createdAt || 0).getTime() -
+            new Date(a.createdAt || 0).getTime(),
+        ),
+      }));
+  }, [dynamicNotifications]);
+
+  useEffect(() => {
+    if (!showNotificationDropdown) return undefined;
+    const handleClick = (event) => {
+      if (!dropdownRef.current) return;
+      if (!dropdownRef.current.contains(event.target)) {
+        setShowNotificationDropdown(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [showNotificationDropdown]);
+
+  const handleNotificationGroupClick = useCallback(
+    (group) => {
+      const ids = group.entries.map((entry) => entry.id);
+      markDynamicRead(ids);
+      setShowNotificationDropdown(false);
+      const groupKey = encodeURIComponent(group.key);
+      onOpen(
+        `/?highlight=notifications&group=${groupKey}`,
+        t('dashboard', 'Dashboard'),
+        'dashboard',
+      );
+    },
+    [markDynamicRead, onOpen, t],
+  );
 
   const [positionLabel, setPositionLabel] = useState(null);
   const normalizeText = useCallback((value) => {
@@ -4079,17 +4140,63 @@ export function Header({
           🗔 {t("home")}
         </button>
         <button style={styles.iconBtn}>🗗 {t("windows")}</button>
-        <button
-          style={styles.iconBtn}
-          onClick={() =>
-            onOpen('/notifications', t('notifications', 'Notifications'), 'notifications')
-          }
-        >
-          <span style={styles.inlineButtonContent}>
-            <NotificationDots colors={headerNotificationColors} marginRight={0} />
-            <span aria-hidden="true">🔔</span> {t('notifications', 'Notifications')}
-          </span>
-        </button>
+        <div style={styles.notificationWrapper} ref={dropdownRef}>
+          <button
+            style={styles.iconBtn}
+            type="button"
+            onClick={() => setShowNotificationDropdown((prev) => !prev)}
+          >
+            <span style={styles.inlineButtonContent}>
+              <NotificationDots colors={headerNotificationColors} marginRight={0} />
+              <span aria-hidden="true">🔔</span> {t('notifications', 'Notifications')}
+              {dynamicUnreadCount > 0 && (
+                <span style={styles.notificationBadge}>{dynamicUnreadCount}</span>
+              )}
+            </span>
+          </button>
+          {showNotificationDropdown && (
+            <div style={styles.notificationDropdown}>
+              <div style={styles.notificationHeader}>
+                <span>{t('notifications', 'Notifications')}</span>
+                {dynamicUnreadCount > 0 && (
+                  <span style={styles.notificationHeaderBadge}>{dynamicUnreadCount}</span>
+                )}
+              </div>
+              {groupedDynamicNotifications.length === 0 ? (
+                <div style={styles.notificationEmpty}>
+                  {t('notifications_none', 'No notifications')}
+                </div>
+              ) : (
+                <div style={styles.notificationList}>
+                  {groupedDynamicNotifications.map((group) => {
+                    const latestEntry = group.entries[0];
+                    const latestLabel = latestEntry?.message?.summary || latestEntry?.message?.text || '';
+                    const latestTime = latestEntry?.createdAt
+                      ? formatTimestamp(latestEntry.createdAt)
+                      : '';
+                    return (
+                      <button
+                        key={group.key}
+                        type="button"
+                        style={styles.notificationItem}
+                        onClick={() => handleNotificationGroupClick(group)}
+                      >
+                        <div style={styles.notificationItemTitle}>{group.key}</div>
+                        {latestLabel && (
+                          <div style={styles.notificationItemSummary}>{latestLabel}</div>
+                        )}
+                        <div style={styles.notificationItemMeta}>
+                          <span>{latestTime}</span>
+                          <span>{group.entries.length}</span>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
         <button style={styles.iconBtn}>❔ {t("help")}</button>
       </nav>
       {hasUpdateAvailable && (
@@ -4825,6 +4932,80 @@ const styles = {
     display: "inline-flex",
     alignItems: "center",
     gap: "0.35rem",
+  },
+  notificationWrapper: {
+    position: "relative",
+    display: "inline-flex",
+    alignItems: "center",
+  },
+  notificationBadge: {
+    marginLeft: "0.4rem",
+    background: "#ef4444",
+    color: "#fff",
+    borderRadius: "999px",
+    padding: "0 0.4rem",
+    fontSize: "0.7rem",
+    fontWeight: 700,
+  },
+  notificationDropdown: {
+    position: "absolute",
+    top: "2.2rem",
+    right: 0,
+    width: "320px",
+    background: "#fff",
+    color: "#111827",
+    borderRadius: "0.5rem",
+    boxShadow: "0 10px 25px rgba(0,0,0,0.15)",
+    border: "1px solid #e5e7eb",
+    zIndex: 50,
+  },
+  notificationHeader: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    padding: "0.75rem 1rem",
+    borderBottom: "1px solid #e5e7eb",
+    fontWeight: 600,
+  },
+  notificationHeaderBadge: {
+    background: "#2563eb",
+    color: "#fff",
+    borderRadius: "999px",
+    padding: "0 0.4rem",
+    fontSize: "0.7rem",
+  },
+  notificationEmpty: {
+    padding: "1rem",
+    color: "#6b7280",
+    textAlign: "center",
+  },
+  notificationList: {
+    maxHeight: "320px",
+    overflowY: "auto",
+  },
+  notificationItem: {
+    width: "100%",
+    textAlign: "left",
+    background: "transparent",
+    border: "none",
+    padding: "0.75rem 1rem",
+    cursor: "pointer",
+    borderBottom: "1px solid #f3f4f6",
+  },
+  notificationItemTitle: {
+    fontWeight: 600,
+    marginBottom: "0.25rem",
+  },
+  notificationItemSummary: {
+    fontSize: "0.85rem",
+    color: "#4b5563",
+  },
+  notificationItemMeta: {
+    display: "flex",
+    justifyContent: "space-between",
+    fontSize: "0.75rem",
+    color: "#9ca3af",
+    marginTop: "0.35rem",
   },
   userSection: {
     display: "flex",
