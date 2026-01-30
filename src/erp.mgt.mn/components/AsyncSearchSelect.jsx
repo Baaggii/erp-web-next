@@ -660,16 +660,11 @@ export default function AsyncSearchSelect({
       setHighlight((h) => Math.max(h - 1, 0));
       return;
     }
-    const isTabCommit = isMulti && e.key === 'Tab';
-    if (e.key !== 'Enter' && !isTabCommit) return;
+    if (e.key !== 'Enter') return;
 
     const query = String(input || '').trim();
     if (loading || show === false) {
-      actionRef.current = {
-        type: isTabCommit ? 'tab' : 'enter',
-        matched: 'pending',
-        query,
-      };
+      actionRef.current = { type: 'enter', matched: 'pending', query };
       pendingLookupRef.current = {
         query,
       };
@@ -687,11 +682,7 @@ export default function AsyncSearchSelect({
     }
 
     if (opt == null) {
-      actionRef.current = {
-        type: isTabCommit ? 'tab' : 'enter',
-        matched: false,
-        query,
-      };
+      actionRef.current = { type: 'enter', matched: false, query };
       return;
     }
 
@@ -703,13 +694,6 @@ export default function AsyncSearchSelect({
       if (!existingSet.has(String(opt.value))) {
         const next = [...selectedList.map((item) => item.value), opt.value];
         onChange(next, opt.label);
-        actionRef.current = {
-          type: isTabCommit ? 'tab' : 'enter',
-          matched: true,
-          option: opt,
-          nextValues: next,
-          query,
-        };
       }
       setInput('');
       setLabel('');
@@ -719,12 +703,7 @@ export default function AsyncSearchSelect({
       setLabel(opt.label || '');
       if (internalRef.current) internalRef.current.value = String(opt.value);
       chosenRef.current = opt;
-      actionRef.current = {
-        type: isTabCommit ? 'tab' : 'enter',
-        matched: true,
-        option: opt,
-        query,
-      };
+      actionRef.current = { type: 'enter', matched: true, option: opt, query };
       setShow(false);
       if (onSelect) {
         setTimeout(() => onSelect(opt), 0);
@@ -883,7 +862,7 @@ export default function AsyncSearchSelect({
         onBlur={handleBlur}
         onKeyDown={(e) => {
           handleSelectKeyDown(e);
-          if (actionRef.current?.type === 'enter' || actionRef.current?.type === 'tab') {
+          if (actionRef.current?.type === 'enter') {
             if (actionRef.current.matched && actionRef.current.option) {
               e.selectedOption = actionRef.current.option;
               e.lookupMatched = true;
@@ -893,9 +872,6 @@ export default function AsyncSearchSelect({
             } else if (actionRef.current.matched === 'pending') {
               e.lookupPending = true;
               e.lookupQuery = actionRef.current.query;
-            }
-            if (Array.isArray(actionRef.current.nextValues)) {
-              e.jsonValuesNext = actionRef.current.nextValues;
             }
           } else if (chosenRef.current) {
             e.selectedOption = chosenRef.current;
