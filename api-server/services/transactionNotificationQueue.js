@@ -1,0 +1,454 @@
+import { pool, listTableRelationships, listTableColumns, getTableRowById } from '../../db/index.js';
+import { getAllDisplayFields } from './displayFieldConfig.js';
+import { listCustomRelations } from './tableRelationsConfig.js';
+
+const NOTIFICATION_ROLE_SET = new Set([
+  'employee',
+  'company',
+  'department',
+  'branch',
+  'customer',
+]);
+
+const queue = [];
+let processing = false;
+let ioEmitter = null;
+
+export function setNotificationEmitter(io) {
+  ioEmitter = io || null;
+}
+
+export function enqueueTransactionNotification(job = {}) {
+  const tableName = typeof job.tableName === 'string' ? job.tableName : '';
+  if (!tableName || !tableName.startsWith('transactions_')) return;
+  if (!job.recordId || !job.companyId) return;
+  queue.push({
+    tableName,
+    recordId: job.recordId,
+    companyId: job.companyId,
+    changedBy: job.changedBy ?? null,
+    action: job.action ?? 'update',
+  });
+  if (!processing) {
+    setImmediate(() => {
+      processQueue().catch((err) => {
+        console.error('Transaction notification queue failed', err);
+      });
+    });
+  }
+}
+
+async function processQueue() {
+  if (processing) return;
+  processing = true;
+  while (queue.length > 0) {
+    const job = queue.shift();
+    try {
+      // eslint-disable-next-line no-await-in-loop
+      await handleTransactionNotification(job);
+    } catch (err) {
+      console.error('Transaction notification job failed', {
+        error: err,
+        job,
+      });
+    }
+  }
+  processing = false;
+}
+
+function getCaseInsensitive(row, field) {
+  if (!row || !field) return undefined;
+  if (row[field] !== undefined) return row[field];
+  const lower = String(field).toLowerCase();
+  const key = Object.keys(row).find((k) => k.toLowerCase() === lower);
+  return key ? row[key] : undefined;
+}
+
+function deriveTransactionName(row, tableName) {
+  const candidates = [
+    'TRTYPENAME',
+    'trtypename',
+    'UITransTypeName',
+    'uitranstypename',
+    'TransTypeName',
+    'transaction_name',
+    'transtype',
+    'TransType',
+    'UITransType',
+  ];
+  for (const candidate of candidates) {
+    const val = getCaseInsensitive(row, candidate);
+    if (val !== undefined && val !== null && String(val).trim()) {
+      return String(val).trim();
+    }
+  }
+  const fallback = tableName.replace(/^transactions_/i, '').replace(/_/g, ' ');
+  return fallback ? fallback.replace(/\b\w/g, (m) => m.toUpperCase()) : 'Transaction';
+}
+
+function parseJsonValue(raw) {
+  if (typeof raw !== 'string') return null;
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+  if (!(trimmed.startsWith('{') || trimmed.startsWith('['))) return null;
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    return null;
+  }
+}
+
+function normalizeReferenceIds(value, idField) {
+  const ids = [];
+  if (value === undefined || value === null || value === '') return ids;
+  const pushId = (val) => {
+    if (val === undefined || val === null || val === '') return;
+    ids.push(val);
+  };
+  if (Array.isArray(value)) {
+    value.forEach((entry) => {
+      if (entry && typeof entry === 'object') {
+        if (idField && entry[idField] !== undefined) {
+          pushId(entry[idField]);
+        } else if (entry.id !== undefined) {
+          pushId(entry.id);
+        }
+      } else {
+        pushId(entry);
+      }
+    });
+    return ids;
+  }
+  if (value && typeof value === 'object') {
+    if (idField && value[idField] !== undefined) {
+      pushId(value[idField]);
+    } else if (value.id !== undefined) {
+      pushId(value.id);
+    }
+    return ids;
+  }
+  const parsed = parseJsonValue(value);
+  if (parsed) {
+    return normalizeReferenceIds(parsed, idField);
+  }
+  pushId(value);
+  return ids;
+}
+
+function normalizeFieldValue(value) {
+  if (value === undefined || value === null) return '';
+  if (typeof value === 'string') return value.trim();
+  if (typeof value === 'number') return String(value);
+  if (typeof value === 'boolean') return value ? 'Yes' : 'No';
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
+}
+
+function buildSummary(referenceRow, fields = []) {
+  const summaryFields = [];
+  const parts = [];
+  fields.forEach((field) => {
+    const rawValue = getCaseInsensitive(referenceRow, field);
+    const value = normalizeFieldValue(rawValue);
+    if (!value) return;
+    summaryFields.push({ field, value });
+    parts.push(value);
+  });
+  return {
+    summaryFields,
+    summaryText: parts.join(' '),
+  };
+}
+
+function normalizeContactValues(raw) {
+  const values = new Set();
+  if (raw === undefined || raw === null || raw === '') return values;
+  const add = (val) => {
+    if (val === undefined || val === null) return;
+    const text = String(val).trim();
+    if (text) values.add(text);
+  };
+  if (Array.isArray(raw)) {
+    raw.forEach((entry) => add(entry));
+    return values;
+  }
+  const parsed = parseJsonValue(raw);
+  if (parsed) {
+    normalizeContactValues(parsed).forEach((entry) => values.add(entry));
+    return values;
+  }
+  add(raw);
+  return values;
+}
+
+async function fetchReferenceRow(table, idField, idValue, companyId) {
+  if (!table || !idField) return null;
+  const columns = await listTableColumns(table);
+  if (!Array.isArray(columns) || !columns.includes(idField)) return null;
+  const params = [idValue];
+  const conditions = [`\`${idField}\` = ?`];
+  if (columns.includes('company_id') && companyId != null) {
+    conditions.push('`company_id` = ?');
+    params.push(companyId);
+  }
+  const [rows] = await pool.query(
+    `SELECT * FROM \`${table}\` WHERE ${conditions.join(' AND ')} LIMIT 1`,
+    params,
+  );
+  return rows?.[0] ?? null;
+}
+
+function pickDisplayConfig(entries, table, idField, referenceRow) {
+  const candidates = entries.filter((entry) => entry.table === table);
+  if (!candidates.length) return null;
+  const idScoped = idField ? candidates.filter((entry) => entry.idField === idField) : [];
+  const scoped = idScoped.length ? idScoped : candidates;
+  if (!scoped.length) return null;
+  if (referenceRow) {
+    const exact = scoped.find((entry) => {
+      if (!entry.filterColumn) return false;
+      const value = getCaseInsensitive(referenceRow, entry.filterColumn);
+      if (value === undefined || value === null) return false;
+      return String(value).trim() === String(entry.filterValue ?? '').trim();
+    });
+    if (exact) return exact;
+  }
+  const fallback = scoped.find((entry) => !entry.filterColumn && !entry.filterValue);
+  return fallback ?? scoped[0];
+}
+
+async function listEmpIdsByScope({ companyId, branchId, departmentId }) {
+  if (!companyId) return [];
+  const params = [companyId];
+  const conditions = ['employment_company_id = ?', 'deleted_at IS NULL'];
+  if (branchId) {
+    conditions.push('employment_branch_id = ?');
+    params.push(branchId);
+  }
+  if (departmentId) {
+    conditions.push('employment_department_id = ?');
+    params.push(departmentId);
+  }
+  const [rows] = await pool.query(
+    `SELECT employment_emp_id AS empId
+       FROM tbl_employment
+      WHERE ${conditions.join(' AND ')}
+      GROUP BY employment_emp_id`,
+    params,
+  );
+  return Array.isArray(rows)
+    ? rows.map((row) => row.empId).filter((val) => val !== null && val !== undefined)
+    : [];
+}
+
+async function insertNotifications({
+  companyId,
+  recipients = [],
+  message,
+  createdBy,
+  relatedId,
+}) {
+  if (!recipients.length) return;
+  for (const recipient of recipients) {
+    // eslint-disable-next-line no-await-in-loop
+    await pool.query(
+      `INSERT INTO notifications (company_id, recipient_empid, type, related_id, message, created_by)
+       VALUES (?, ?, 'request', ?, ?, ?)`,
+      [
+        companyId ?? null,
+        String(recipient),
+        Number.isFinite(Number(relatedId)) ? Number(relatedId) : 0,
+        message,
+        createdBy ?? null,
+      ],
+    );
+  }
+}
+
+function emitNotificationEvent(rooms, payload) {
+  if (!ioEmitter || !rooms.length) return;
+  rooms.forEach((room) => {
+    ioEmitter.to(room).emit('notification:new', payload);
+  });
+}
+
+async function handleTransactionNotification(job) {
+  if (!job?.tableName || !job?.recordId || !job?.companyId) return;
+  const transactionRow = await getTableRowById(job.tableName, job.recordId, {
+    defaultCompanyId: job.companyId,
+  });
+  if (!transactionRow) return;
+
+  const [dbRelations, customRelations, displayConfig] = await Promise.all([
+    listTableRelationships(job.tableName),
+    listCustomRelations(job.tableName, job.companyId),
+    getAllDisplayFields(job.companyId),
+  ]);
+
+  const relations = [];
+  if (Array.isArray(dbRelations)) {
+    dbRelations.forEach((rel) => {
+      if (!rel?.COLUMN_NAME || !rel?.REFERENCED_TABLE_NAME) return;
+      relations.push({
+        column: rel.COLUMN_NAME,
+        table: rel.REFERENCED_TABLE_NAME,
+        idField: rel.REFERENCED_COLUMN_NAME,
+        isArray: false,
+      });
+    });
+  }
+  if (customRelations?.config && typeof customRelations.config === 'object') {
+    Object.entries(customRelations.config).forEach(([column, entries]) => {
+      if (!Array.isArray(entries)) return;
+      entries.forEach((entry) => {
+        if (!entry?.table || !entry?.column) return;
+        relations.push({
+          column,
+          table: entry.table,
+          idField: entry.idField ?? entry.column,
+          isArray: Boolean(entry.isArray),
+          filterColumn: entry.filterColumn ?? null,
+          filterValue: entry.filterValue ?? null,
+        });
+      });
+    });
+  }
+
+  if (!relations.length) return;
+  const displayEntries = Array.isArray(displayConfig?.config) ? displayConfig.config : [];
+  const transactionName = deriveTransactionName(transactionRow, job.tableName);
+
+  const handled = new Set();
+  for (const relation of relations) {
+    const rawValue = getCaseInsensitive(transactionRow, relation.column);
+    let ids = normalizeReferenceIds(rawValue, relation.idField);
+    if (relation.isArray && ids.length === 0) {
+      const parsed = parseJsonValue(rawValue);
+      ids = normalizeReferenceIds(parsed, relation.idField);
+    }
+    const uniqueIds = Array.from(
+      new Set(ids.map((id) => String(id)).filter((id) => id !== '')),
+    );
+    for (const referenceId of uniqueIds) {
+      const dedupeKey = `${relation.table}|${relation.idField}|${referenceId}`;
+      if (handled.has(dedupeKey)) continue;
+      handled.add(dedupeKey);
+
+      // eslint-disable-next-line no-await-in-loop
+      const referenceRow = await fetchReferenceRow(
+        relation.table,
+        relation.idField,
+        referenceId,
+        job.companyId,
+      );
+      if (!referenceRow) continue;
+
+      const config = pickDisplayConfig(
+        displayEntries,
+        relation.table,
+        relation.idField,
+        referenceRow,
+      );
+      const role = config?.notificationRole?.trim();
+      if (!role || !NOTIFICATION_ROLE_SET.has(role)) continue;
+
+      const { summaryFields, summaryText } = buildSummary(
+        referenceRow,
+        config?.notificationDashboardFields ?? [],
+      );
+
+      const messagePayload = {
+        kind: 'transaction',
+        transactionName,
+        transactionTable: job.tableName,
+        transactionId: job.recordId,
+        referenceTable: relation.table,
+        referenceId,
+        role,
+        summaryFields,
+        summaryText,
+      };
+      const message = JSON.stringify(messagePayload);
+
+      const emails = new Set();
+      const phones = new Set();
+      (config?.notificationEmailFields ?? []).forEach((field) => {
+        const value = getCaseInsensitive(referenceRow, field);
+        normalizeContactValues(value).forEach((entry) => emails.add(entry));
+      });
+      (config?.notificationPhoneFields ?? []).forEach((field) => {
+        const value = getCaseInsensitive(referenceRow, field);
+        normalizeContactValues(value).forEach((entry) => phones.add(entry));
+      });
+
+      if (role !== 'customer') {
+        let recipients = [];
+        let rooms = [];
+        if (role === 'employee') {
+          const empId = getCaseInsensitive(referenceRow, relation.idField) ?? referenceId;
+          recipients = empId ? [empId] : [];
+          if (empId) rooms.push(`emp:${empId}`);
+        } else if (role === 'company') {
+          recipients = await listEmpIdsByScope({ companyId: job.companyId });
+          if (job.companyId) rooms.push(`company:${job.companyId}`);
+        } else if (role === 'branch') {
+          recipients = await listEmpIdsByScope({
+            companyId: job.companyId,
+            branchId: referenceId,
+          });
+          rooms.push(`branch:${referenceId}`);
+        } else if (role === 'department') {
+          recipients = await listEmpIdsByScope({
+            companyId: job.companyId,
+            departmentId: referenceId,
+          });
+          rooms.push(`department:${referenceId}`);
+        }
+
+        const uniqueRecipients = Array.from(
+          new Set(
+            recipients
+              .map((entry) => String(entry).trim())
+              .filter((entry) => entry),
+          ),
+        );
+
+        if (uniqueRecipients.length) {
+          // eslint-disable-next-line no-await-in-loop
+          await insertNotifications({
+            companyId: job.companyId,
+            recipients: uniqueRecipients,
+            message,
+            createdBy: job.changedBy,
+            relatedId: job.recordId,
+          });
+          emitNotificationEvent(rooms, {
+            kind: 'transaction',
+            transactionName,
+            notificationKey: dedupeKey,
+          });
+        }
+      }
+
+      if (emails.size) {
+        console.info('Transaction notification email', {
+          to: Array.from(emails),
+          transactionName,
+          referenceTable: relation.table,
+          referenceId,
+        });
+      }
+      if (phones.size) {
+        console.info('Transaction notification phone', {
+          to: Array.from(phones),
+          transactionName,
+          referenceTable: relation.table,
+          referenceId,
+        });
+      }
+    }
+  }
+}

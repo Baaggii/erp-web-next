@@ -19,6 +19,7 @@ import useRequestNotificationCounts from "../hooks/useRequestNotificationCounts.
 import useTemporaryNotificationCounts from "../hooks/useTemporaryNotificationCounts.js";
 import useBuildUpdateNotice from "../hooks/useBuildUpdateNotice.js";
 import { PendingRequestContext } from "../context/PendingRequestContext.jsx";
+import { TransactionNotificationContext } from "../context/TransactionNotificationContext.jsx";
 import { PollingProvider } from "../context/PollingContext.jsx";
 import Joyride, { STATUS, ACTIONS, EVENTS } from "react-joyride";
 import ErrorBoundary from "../components/ErrorBoundary.jsx";
@@ -30,7 +31,8 @@ import derivePageKey from "../utils/derivePageKey.js";
 import { findVisibleFallbackSelector } from "../utils/findVisibleTourStep.js";
 import { playNotificationSound } from "../utils/playNotificationSound.js";
 import { buildOptionsForRows } from "../utils/buildAsyncSelectOptions.js";
-import NotificationDots from "./NotificationDots.jsx";
+import TransactionNotificationDropdown from "./TransactionNotificationDropdown.jsx";
+import useTransactionNotifications from "../hooks/useTransactionNotifications.js";
 
 export const TourContext = React.createContext({
   startTour: () => false,
@@ -3543,6 +3545,7 @@ export default function ERPLayout() {
       temporaryValue,
     ],
   );
+  const transactionNotificationValue = useTransactionNotifications();
 
   useEffect(() => {
     const title = titleForPath(location.pathname);
@@ -3630,72 +3633,74 @@ export default function ERPLayout() {
             onToggleGuideMode={toggleTourGuideMode}
           />
         )}
-        <PendingRequestContext.Provider value={pendingRequestValue}>
-          <div style={styles.container}>
-            <Joyride
-              steps={tourSteps}
-              run={runTour}
-              stepIndex={tourStepIndex}
-              continuous
-              spotlightClicks
-              scrollOffset={joyrideScrollOffset}
-              scrollToFirstStep
-              scrollToSteps
-              showBackButton
-              showProgress
-              disableOverlayClose
-              disableBeacon
-              disableKeyboardNavigation={false}
-              floaterProps={{ offset: joyrideScrollOffset }}
-              styles={{
-                options: {
-                  zIndex: 12000,
-                },
-                overlay: {
-                  backgroundColor: joyrideOverlayColor,
-                  pointerEvents: isTourGuideMode ? 'none' : 'auto',
-                },
-                spotlight: {
-                  borderRadius: 12,
-                  boxShadow: joyrideSpotlightShadow,
-                },
-              }}
-              callback={handleTourCallback}
-              tooltipComponent={JoyrideTooltip}
-              locale={{
-                back: 'Back',
-                close: 'End tour',
-                last: 'End tour',
-                next: 'Next',
-              }}
-            />
-            <Header
-              user={user}
-              onLogout={handleLogout}
-              onHome={handleHome}
-              isMobile={isMobile}
-              onToggleSidebar={() => setSidebarOpen((o) => !o)}
-              onOpen={handleOpen}
-              onResetGuide={resetGuide}
-              hasUpdateAvailable={hasUpdateAvailable}
-            />
-            <div style={styles.body(isMobile)}>
-              {isMobile && sidebarOpen && (
-                <div
-                  className="sidebar-overlay"
-                  onClick={() => setSidebarOpen(false)}
-                />
-              )}
-              <Sidebar
-                open={isMobile ? sidebarOpen : true}
-                onOpen={handleOpen}
-                isMobile={isMobile}
+        <TransactionNotificationContext.Provider value={transactionNotificationValue}>
+          <PendingRequestContext.Provider value={pendingRequestValue}>
+            <div style={styles.container}>
+              <Joyride
+                steps={tourSteps}
+                run={runTour}
+                stepIndex={tourStepIndex}
+                continuous
+                spotlightClicks
+                scrollOffset={joyrideScrollOffset}
+                scrollToFirstStep
+                scrollToSteps
+                showBackButton
+                showProgress
+                disableOverlayClose
+                disableBeacon
+                disableKeyboardNavigation={false}
+                floaterProps={{ offset: joyrideScrollOffset }}
+                styles={{
+                  options: {
+                    zIndex: 12000,
+                  },
+                  overlay: {
+                    backgroundColor: joyrideOverlayColor,
+                    pointerEvents: isTourGuideMode ? 'none' : 'auto',
+                  },
+                  spotlight: {
+                    borderRadius: 12,
+                    boxShadow: joyrideSpotlightShadow,
+                  },
+                }}
+                callback={handleTourCallback}
+                tooltipComponent={JoyrideTooltip}
+                locale={{
+                  back: 'Back',
+                  close: 'End tour',
+                  last: 'End tour',
+                  next: 'Next',
+                }}
               />
-              <MainWindow title={windowTitle} />
+              <Header
+                user={user}
+                onLogout={handleLogout}
+                onHome={handleHome}
+                isMobile={isMobile}
+                onToggleSidebar={() => setSidebarOpen((o) => !o)}
+                onOpen={handleOpen}
+                onResetGuide={resetGuide}
+                hasUpdateAvailable={hasUpdateAvailable}
+              />
+              <div style={styles.body(isMobile)}>
+                {isMobile && sidebarOpen && (
+                  <div
+                    className="sidebar-overlay"
+                    onClick={() => setSidebarOpen(false)}
+                  />
+                )}
+                <Sidebar
+                  open={isMobile ? sidebarOpen : true}
+                  onOpen={handleOpen}
+                  isMobile={isMobile}
+                />
+                <MainWindow title={windowTitle} />
+              </div>
+              {generalConfig.general?.aiApiEnabled && <AskAIFloat />}
             </div>
-            {generalConfig.general?.aiApiEnabled && <AskAIFloat />}
-          </div>
-        </PendingRequestContext.Provider>
+          </PendingRequestContext.Provider>
+        </TransactionNotificationContext.Provider>
       </TourContext.Provider>
     </PollingProvider>
   );
@@ -3714,7 +3719,6 @@ export function Header({
 }) {
   const { session } = useContext(AuthContext);
   const { lang, setLang, t } = useContext(LangContext);
-  const { anyHasNew, notificationColors } = useContext(PendingRequestContext);
   const handleRefresh = () => {
     if (typeof window === 'undefined' || !window?.location) return;
     try {
@@ -3725,12 +3729,6 @@ export function Header({
       }
     }
   };
-
-  const headerNotificationColors = useMemo(() => {
-    if (notificationColors?.length) return notificationColors;
-    if (anyHasNew) return [NOTIFICATION_STATUS_COLORS.pending];
-    return [];
-  }, [anyHasNew, notificationColors]);
 
   const [positionLabel, setPositionLabel] = useState(null);
   const normalizeText = useCallback((value) => {
@@ -4079,19 +4077,11 @@ export function Header({
           🗔 {t("home")}
         </button>
         <button style={styles.iconBtn}>🗗 {t("windows")}</button>
-        <button
-          style={styles.iconBtn}
-          onClick={() =>
-            onOpen('/notifications', t('notifications', 'Notifications'), 'notifications')
-          }
-        >
-          <span style={styles.inlineButtonContent}>
-            <NotificationDots colors={headerNotificationColors} marginRight={0} />
-            <span aria-hidden="true">🔔</span> {t('notifications', 'Notifications')}
-          </span>
-        </button>
         <button style={styles.iconBtn}>❔ {t("help")}</button>
       </nav>
+      <div style={styles.notificationSlot}>
+        <TransactionNotificationDropdown />
+      </div>
       {hasUpdateAvailable && (
         <button type="button" style={styles.updateButton} onClick={handleRefresh}>
           🔄 {t('refresh_to_update', 'Refresh to update')}
@@ -4801,6 +4791,12 @@ const styles = {
     flexGrow: 1,
     minWidth: 0,
   },
+  notificationSlot: {
+    flexShrink: 0,
+    display: "flex",
+    alignItems: "center",
+    marginLeft: "0.5rem",
+  },
   updateButton: {
     backgroundColor: "#f97316",
     color: "#111827",
@@ -4820,11 +4816,6 @@ const styles = {
     cursor: "pointer",
     fontSize: "0.9rem",
     padding: "0.25rem 0.5rem",
-  },
-  inlineButtonContent: {
-    display: "inline-flex",
-    alignItems: "center",
-    gap: "0.35rem",
   },
   userSection: {
     display: "flex",
