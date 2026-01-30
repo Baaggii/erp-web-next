@@ -695,27 +695,6 @@ function parseEntry(raw = {}) {
     imageFolder: typeof raw.imageFolder === 'string' ? raw.imageFolder : '',
     printEmpField: arrify(raw.printEmpField),
     printCustField: arrify(raw.printCustField),
-    notificationEmployeeFields: arrify(
-      raw.notificationEmployeeFields || raw.notification_employee_fields,
-    ),
-    notificationCompanyFields: arrify(
-      raw.notificationCompanyFields || raw.notification_company_fields,
-    ),
-    notificationDepartmentFields: arrify(
-      raw.notificationDepartmentFields || raw.notification_department_fields,
-    ),
-    notificationBranchFields: arrify(
-      raw.notificationBranchFields || raw.notification_branch_fields,
-    ),
-    notificationCustomerFields: arrify(
-      raw.notificationCustomerFields || raw.notification_customer_fields,
-    ),
-    notificationEmailFields: arrify(
-      raw.notificationEmailFields || raw.notification_email_fields,
-    ),
-    notificationDashboardFields: arrify(
-      raw.notificationDashboardFields || raw.notification_dashboard_fields,
-    ),
     totalCurrencyFields: arrify(raw.totalCurrencyFields),
     totalAmountFields: arrify(raw.totalAmountFields),
     signatureFields: arrify(raw.signatureFields),
