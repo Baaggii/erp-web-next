@@ -2,21 +2,6 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTransactionNotifications } from '../context/TransactionNotificationContext.jsx';
 
-function formatNotificationFields(fields = []) {
-  if (!Array.isArray(fields) || fields.length === 0) return '';
-  return fields
-    .map((entry) => {
-      const field = entry?.field ? String(entry.field).trim() : '';
-      const rawValue = entry?.value;
-      const value =
-        rawValue === undefined || rawValue === null ? '' : String(rawValue).trim();
-      if (!field || !value) return '';
-      return `${field}: ${value}`;
-    })
-    .filter(Boolean)
-    .join(' • ');
-}
-
 export default function TransactionNotificationDropdown() {
   const { groups, unreadCount, markGroupRead } = useTransactionNotifications();
   const [open, setOpen] = useState(false);
@@ -78,10 +63,7 @@ export default function TransactionNotificationDropdown() {
                     : `${group.items.length} total`}
                 </div>
                 <div style={styles.itemPreview}>
-                  {formatNotificationFields(group.items[0]?.notificationFields) ||
-                    group.items[0]?.notificationText ||
-                    group.items[0]?.summaryText ||
-                    'New transaction activity'}
+                  {group.items[0]?.summaryText || 'New transaction activity'}
                 </div>
               </button>
             ))}

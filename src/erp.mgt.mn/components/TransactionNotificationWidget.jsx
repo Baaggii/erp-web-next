@@ -9,20 +9,6 @@ function formatTimestamp(value) {
   return date.toLocaleString();
 }
 
-function formatFieldPairs(fields = []) {
-  if (!Array.isArray(fields) || fields.length === 0) return [];
-  return fields
-    .map((entry) => {
-      const field = entry?.field ? String(entry.field).trim() : '';
-      const rawValue = entry?.value;
-      const value =
-        rawValue === undefined || rawValue === null ? '' : String(rawValue).trim();
-      if (!field || !value) return null;
-      return { field, value };
-    })
-    .filter(Boolean);
-}
-
 export default function TransactionNotificationWidget() {
   const { groups, markGroupRead } = useTransactionNotifications();
   const location = useLocation();
@@ -105,35 +91,16 @@ export default function TransactionNotificationWidget() {
               </div>
               {isExpanded && (
                 <div style={styles.items}>
-                  {group.items.map((item) => {
-                    const fieldPairs = formatFieldPairs(item.dashboardFields);
-                    return (
-                      <div key={item.id} style={styles.item(item.isRead)}>
-                        <div style={styles.itemSummary}>
-                          {fieldPairs.length ? (
-                            <ul style={styles.fieldList}>
-                              {fieldPairs.map((entry) => (
-                                <li
-                                  key={`${item.id}-${entry.field}`}
-                                  style={styles.fieldItem}
-                                >
-                                  <span style={styles.fieldLabel}>{entry.field}:</span>{' '}
-                                  <span style={styles.fieldValue}>{entry.value}</span>
-                                </li>
-                              ))}
-                            </ul>
-                          ) : (
-                            item.dashboardText ||
-                            item.summaryText ||
-                            'New transaction update'
-                          )}
-                        </div>
-                        <div style={styles.itemMeta}>
-                          {formatTimestamp(item.createdAt)}
-                        </div>
+                  {group.items.map((item) => (
+                    <div key={item.id} style={styles.item(item.isRead)}>
+                      <div style={styles.itemSummary}>
+                        {item.summaryText || 'New transaction update'}
                       </div>
-                    );
-                  })}
+                      <div style={styles.itemMeta}>
+                        {formatTimestamp(item.createdAt)}
+                      </div>
+                    </div>
+                  ))}
                 </div>
               )}
             </div>
@@ -197,14 +164,5 @@ const styles = {
     padding: '0.5rem 0.75rem',
   }),
   itemSummary: { fontSize: '0.85rem', color: '#1e293b' },
-  fieldList: {
-    margin: 0,
-    paddingLeft: '1rem',
-    display: 'grid',
-    gap: '0.2rem',
-  },
-  fieldItem: { fontSize: '0.85rem', color: '#1e293b' },
-  fieldLabel: { fontWeight: 600 },
-  fieldValue: { color: '#1e293b' },
   itemMeta: { fontSize: '0.7rem', color: '#64748b', marginTop: '0.25rem' },
 };
