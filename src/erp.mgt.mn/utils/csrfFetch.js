@@ -22,33 +22,35 @@ window.addEventListener('pagehide', abortAll);
 
 async function getToken() {
   if (!tokenPromise) {
-    tokenPromise = (async () => {
-      const endpoints = [`${API_BASE}/csrf-token`, `${API_BASE}/auth/csrf-token`];
-
-      for (const url of endpoints) {
-        try {
-          const res = await fetch(url, { credentials: 'include' });
-          if (!res.ok) continue;
-          const data = await res.json();
-          if (data?.csrfToken) return data.csrfToken;
-        } catch {
-          // try next
+    tokenPromise = fetch(`${API_BASE}/csrf-token`, { credentials: 'include' })
+      .then(async res => {
+        if (!res.ok) {
+          throw new Error(res.statusText || 'Failed to fetch token');
         }
-      }
-
-      throw new Error('Unable to retrieve CSRF token');
-    })().catch(err => {
-      tokenPromise = undefined;
-      window.dispatchEvent(
-        new CustomEvent('toast', {
-          detail: {
-            message: `CSRF token request failed: ${err?.message || 'Unknown error'}`,
-            type: 'error',
-          },
-        })
-      );
-      throw err;
-    });
+        const data = await res.json();
+        const token = data?.csrfToken;
+        if (!token) {
+          throw new Error('Missing CSRF token in response');
+        }
+        window.dispatchEvent(
+          new CustomEvent('toast', {
+            detail: { message: 'CSRF token retrieved successfully.', type: 'success' },
+          })
+        );
+        return token;
+      })
+      .catch(err => {
+        tokenPromise = undefined;
+        window.dispatchEvent(
+          new CustomEvent('toast', {
+            detail: {
+              message: `CSRF token request failed: ${err?.message || 'Unknown error'}`,
+              type: 'error',
+            },
+          })
+        );
+        return undefined;
+      });
   }
   return tokenPromise;
 }

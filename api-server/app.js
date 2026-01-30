@@ -96,9 +96,6 @@ app.get("/api/auth/health", async (req, res, next) => {
 app.get("/api/csrf-token", (req, res) => {
   res.json({ csrfToken: req.csrfToken() });
 });
-app.get("/api/auth/csrf-token", (req, res) => {
-  res.json({ csrfToken: req.csrfToken() });
-});
 
 // API routes
 app.use("/api/auth", authRoutes);
