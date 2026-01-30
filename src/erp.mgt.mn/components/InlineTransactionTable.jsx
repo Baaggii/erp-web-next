@@ -2227,33 +2227,6 @@ function InlineTransactionTable(
     const field = fields[colIdx];
     const isJsonField =
       fieldTypeMap[field] === 'json' || fieldInputTypes[field] === 'json';
-    const moveToNext = () => {
-      const enabledIdx = enabledFields.indexOf(field);
-      const nextField = enabledFields[enabledIdx + 1];
-      if (nextField) {
-        const el = inputRefs.current[`${rowIdx}-${fields.indexOf(nextField)}`];
-        if (el) {
-          el.focus();
-          if (el.select) el.select();
-        }
-        return;
-      }
-      if (rowIdx < rows.length - 1) {
-        const first = enabledFields[0] || fields[0];
-        const el = inputRefs.current[`${rowIdx + 1}-${fields.indexOf(first)}`];
-        if (el) {
-          el.focus();
-          if (el.select) el.select();
-        }
-        return;
-      }
-      if (collectRows) {
-        addRow();
-      } else {
-        addBtnRef.current?.focus();
-        if (onNextForm) onNextForm();
-      }
-    };
     if (isFieldDisabled(field) && !String(field || '').startsWith('_')) {
       notifyGuardToastOnEdit(field);
       return;
@@ -2271,7 +2244,7 @@ function InlineTransactionTable(
       if (e.target.select) e.target.select();
       return;
     }
-    if (isJsonField && (isEnter || isForwardTab)) {
+    if (isJsonField && isEnter) {
       const currentValues = Array.isArray(rows[rowIdx]?.[field])
         ? rows[rowIdx]?.[field]
         : rows[rowIdx]?.[field] === undefined || rows[rowIdx]?.[field] === null || rows[rowIdx]?.[field] === ''
@@ -2286,9 +2259,6 @@ function InlineTransactionTable(
       if (hasTrigger(field)) {
         const override = { ...rows[rowIdx], [field]: currentValues };
         await runProcTrigger(rowIdx, field, override);
-      }
-      if (isForwardTab) {
-        moveToNext();
       }
       return;
     }
@@ -2349,7 +2319,31 @@ function InlineTransactionTable(
       const override = { ...rows[rowIdx], [field]: newValue };
       await runProcTrigger(rowIdx, field, override);
     }
-    moveToNext();
+    const enabledIdx = enabledFields.indexOf(field);
+    const nextField = enabledFields[enabledIdx + 1];
+    if (nextField) {
+      const el = inputRefs.current[`${rowIdx}-${fields.indexOf(nextField)}`];
+      if (el) {
+        el.focus();
+        if (el.select) el.select();
+      }
+      return;
+    }
+    if (rowIdx < rows.length - 1) {
+      const first = enabledFields[0] || fields[0];
+      const el = inputRefs.current[`${rowIdx + 1}-${fields.indexOf(first)}`];
+      if (el) {
+        el.focus();
+        if (el.select) el.select();
+      }
+      return;
+    }
+    if (collectRows) {
+      addRow();
+    } else {
+      addBtnRef.current?.focus();
+      if (onNextForm) onNextForm();
+    }
   }
 
   function renderCell(idx, f, colIdx) {
