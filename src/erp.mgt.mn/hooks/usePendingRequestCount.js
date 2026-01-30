@@ -133,6 +133,19 @@ export default function usePendingRequestCount(
       if (!cancelled) applyCount(value);
     };
 
+    const handleNotification = (payload) => {
+      if (!payload || payload.type !== 'request') return;
+      if (typeof payload.message === 'string') {
+        try {
+          const parsed = JSON.parse(payload.message);
+          if (parsed?.kind === 'transaction') return;
+        } catch {
+          // ignore parse errors
+        }
+      }
+      applyFromFetch();
+    };
+
     const startFallback = () => {
       if (!pollingEnabled) return;
       if (disconnectTimeoutRef.current) return;
@@ -155,6 +168,7 @@ export default function usePendingRequestCount(
     try {
       socket = connectSocket();
       socket.on('newRequest', applyFromFetch);
+      socket.on('notification:new', handleNotification);
       socket.on('connect', () => {
         stopFallback();
         applyFromFetch();
@@ -189,6 +203,7 @@ export default function usePendingRequestCount(
       }
       if (socket) {
         socket.off('newRequest', applyFromFetch);
+        socket.off('notification:new', handleNotification);
         socket.off('connect', stopFallback);
         if (pollingEnabled) {
           socket.off('disconnect', startFallback);

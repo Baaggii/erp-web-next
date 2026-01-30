@@ -2,6 +2,7 @@ import { pool, listTableRelationships, listTableColumns, getTableRowById } from 
 import { getAllDisplayFields } from './displayFieldConfig.js';
 import { listCustomRelations } from './tableRelationsConfig.js';
 import { getConfigsByTable } from './transactionFormConfig.js';
+import { notifyUser } from './notificationService.js';
 
 const NOTIFICATION_ROLE_SET = new Set([
   'employee',
@@ -326,30 +327,6 @@ async function listEmpIdsByScope({ companyId, branchId, departmentId }) {
     : [];
 }
 
-async function insertNotifications({
-  companyId,
-  recipients = [],
-  message,
-  createdBy,
-  relatedId,
-}) {
-  if (!recipients.length) return;
-  for (const recipient of recipients) {
-    // eslint-disable-next-line no-await-in-loop
-    await pool.query(
-      `INSERT INTO notifications (company_id, recipient_empid, type, related_id, message, created_by)
-       VALUES (?, ?, 'request', ?, ?, ?)`,
-      [
-        companyId ?? null,
-        String(recipient),
-        Number.isFinite(Number(relatedId)) ? Number(relatedId) : 0,
-        message,
-        createdBy ?? null,
-      ],
-    );
-  }
-}
-
 async function updateNotifications({ notificationIds = [], message, updatedBy }) {
   if (!notificationIds.length) return 0;
   const normalizedIds = notificationIds
@@ -373,7 +350,7 @@ async function updateExistingTransactionNotifications({
   transactionName,
 }) {
   const [rows] = await pool.query(
-    `SELECT notification_id, message, recipient_empid
+    `SELECT notification_id, message, recipient_empid, created_at, created_by, type, related_id
        FROM notifications
       WHERE company_id = ?
         AND related_id = ?
@@ -383,7 +360,7 @@ async function updateExistingTransactionNotifications({
     [companyId ?? null, relatedId],
   );
   let updated = 0;
-  const recipients = new Set();
+  const payloads = [];
   for (const row of rows || []) {
     if (!row?.message) continue;
     let payload;
@@ -405,9 +382,23 @@ async function updateExistingTransactionNotifications({
       message,
       updatedBy,
     });
-    if (row.recipient_empid) recipients.add(String(row.recipient_empid));
+    if (row.recipient_empid) {
+      payloads.push({
+        room: `user:${row.recipient_empid}`,
+        payload: {
+          id: row.notification_id,
+          type: row.type,
+          message,
+          related_id: row.related_id,
+          created_at: row.created_at
+            ? new Date(row.created_at).toISOString()
+            : new Date().toISOString(),
+          sender: row.created_by ?? null,
+        },
+      });
+    }
   }
-  return { updated, recipients: Array.from(recipients) };
+  return { updated, payloads };
 }
 
 function emitNotificationEvent(rooms, payload) {
@@ -481,19 +472,15 @@ async function handleTransactionNotification(job) {
   }
   if (UPDATE_ACTIONS.has(actionKey)) {
     const transactionName = deriveTransactionName(transactionRow, job.tableName);
-    const { recipients } = await updateExistingTransactionNotifications({
+    const { payloads } = await updateExistingTransactionNotifications({
       companyId: job.companyId,
       relatedId: job.recordId,
       action: actionLabel,
       updatedBy: job.changedBy,
       transactionName,
     });
-    const rooms = recipients.map((recipient) => `emp:${recipient}`);
-    if (rooms.length) {
-      emitNotificationEvent(rooms, {
-        kind: 'transaction',
-        transactionName,
-      });
+    if (payloads.length) {
+      payloads.forEach(({ room, payload }) => emitNotificationEvent([room], payload));
     }
     return;
   }
@@ -585,26 +572,21 @@ async function handleTransactionNotification(job) {
 
       if (role !== 'customer') {
         let recipients = [];
-        let rooms = [];
         if (role === 'employee') {
           const empId = getCaseInsensitive(referenceRow, relation.idField) ?? referenceId;
           recipients = empId ? [empId] : [];
-          if (empId) rooms.push(`emp:${empId}`);
         } else if (role === 'company') {
           recipients = await listEmpIdsByScope({ companyId: job.companyId });
-          if (job.companyId) rooms.push(`company:${job.companyId}`);
         } else if (role === 'branch') {
           recipients = await listEmpIdsByScope({
             companyId: job.companyId,
             branchId: referenceId,
           });
-          rooms.push(`branch:${referenceId}`);
         } else if (role === 'department') {
           recipients = await listEmpIdsByScope({
             companyId: job.companyId,
             departmentId: referenceId,
           });
-          rooms.push(`department:${referenceId}`);
         }
 
         const uniqueRecipients = Array.from(
@@ -616,23 +598,17 @@ async function handleTransactionNotification(job) {
         );
 
         if (uniqueRecipients.length) {
-          // eslint-disable-next-line no-await-in-loop
-          await insertNotifications({
-            companyId: job.companyId,
-            recipients: uniqueRecipients,
-            message,
-            createdBy: job.changedBy,
-            relatedId: job.recordId,
-          });
-          const notificationRooms = new Set(rooms);
-          uniqueRecipients.forEach((recipient) => {
-            notificationRooms.add(`emp:${recipient}`);
-          });
-          emitNotificationEvent(Array.from(notificationRooms), {
-            kind: 'transaction',
-            transactionName,
-            notificationKey: dedupeKey,
-          });
+          for (const recipient of uniqueRecipients) {
+            // eslint-disable-next-line no-await-in-loop
+            await notifyUser({
+              companyId: job.companyId,
+              recipientEmpId: recipient,
+              type: 'request',
+              relatedId: job.recordId,
+              message,
+              createdBy: job.changedBy,
+            });
+          }
         }
       }
 

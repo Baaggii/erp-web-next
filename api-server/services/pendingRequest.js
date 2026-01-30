@@ -18,6 +18,7 @@ import {
   releaseReportApprovalLocks,
 } from './reportApprovals.js';
 import { storeSnapshotArtifact } from './reportSnapshotArtifacts.js';
+import { notifyUser } from './notificationService.js';
 
 const SNAPSHOT_MAX_INLINE_ROWS = Number(
   process.env.REPORT_APPROVAL_MAX_INLINE_ROWS || 1000,
@@ -788,17 +789,15 @@ export async function createRequest({
       }
     }
     if (senior) {
-      await conn.query(
-        `INSERT INTO notifications (company_id, recipient_empid, type, related_id, message, created_by)
-         VALUES (?, ?, 'request', ?, ?, ?)`,
-        [
-          companyId,
-          senior,
-          requestId,
-          `Pending ${requestType} request for ${tableName}#${recordId}`,
-          normalizedEmp,
-        ],
-      );
+      await notifyUser({
+        companyId,
+        recipientEmpId: senior,
+        type: 'request',
+        relatedId: requestId,
+        message: `Pending ${requestType} request for ${tableName}#${recordId}`,
+        createdBy: normalizedEmp,
+        connection: conn,
+      });
     }
     await conn.query('COMMIT');
     return {
@@ -968,17 +967,15 @@ export async function createBulkEditRequest({
       conn,
     );
     if (senior) {
-      await conn.query(
-        `INSERT INTO notifications (company_id, recipient_empid, type, related_id, message, created_by)
-         VALUES (?, ?, 'request', ?, ?, ?)`,
-        [
-          companyId,
-          senior,
-          requestId,
-          `Pending bulk edit request for ${tableName}`,
-          normalizedEmp,
-        ],
-      );
+      await notifyUser({
+        companyId,
+        recipientEmpId: senior,
+        type: 'request',
+        relatedId: requestId,
+        message: `Pending bulk edit request for ${tableName}`,
+        createdBy: normalizedEmp,
+        connection: conn,
+      });
     }
     await conn.query('COMMIT');
     return {
@@ -1472,17 +1469,15 @@ export async function respondRequest(
         },
         conn,
       );
-      await conn.query(
-        `INSERT INTO notifications (company_id, recipient_empid, type, related_id, message, created_by)
-         VALUES (?, ?, 'response', ?, ?, ?)`,
-        [
-          req.company_id,
-          req.emp_id,
-          id,
-          notificationMessage,
-          responseEmpid,
-        ],
-      );
+      await notifyUser({
+        companyId: req.company_id,
+        recipientEmpId: req.emp_id,
+        type: 'response',
+        relatedId: id,
+        message: notificationMessage,
+        createdBy: responseEmpid,
+        connection: conn,
+      });
     } else {
       let declineLogAction = 'decline';
       let declineDetails = { proposed_data: proposedData, notes };
@@ -1520,17 +1515,15 @@ export async function respondRequest(
         },
         conn,
       );
-      await conn.query(
-        `INSERT INTO notifications (company_id, recipient_empid, type, related_id, message, created_by)
-         VALUES (?, ?, 'response', ?, ?, ?)`,
-        [
-          req.company_id,
-          req.emp_id,
-          id,
-          notificationMessage,
-          responseEmpid,
-        ],
-      );
+      await notifyUser({
+        companyId: req.company_id,
+        recipientEmpId: req.emp_id,
+        type: 'response',
+        relatedId: id,
+        message: notificationMessage,
+        createdBy: responseEmpid,
+        connection: conn,
+      });
     }
     await conn.query('COMMIT');
     return {

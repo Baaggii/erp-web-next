@@ -55,6 +55,7 @@ router.post('/bulk_edit', requireAuth, pendingRequestLimiter, async (req, res, n
     });
     const io = req.app.get('io');
     if (io && result?.senior_empid) {
+      // Deprecated: legacy event; notification:new is authoritative.
       io.to(`user:${result.senior_empid}`).emit('newRequest', {
         requestId: result.request_id,
         tableName,
@@ -109,6 +110,7 @@ router.post('/', requireAuth, pendingRequestLimiter, async (req, res, next) => {
     });
     const io = req.app.get('io');
     if (io && result.senior_empid) {
+      // Deprecated: legacy event; notification:new is authoritative.
       io.to(`user:${result.senior_empid}`).emit('newRequest', {
         requestId: result.request_id,
         tableName: table_name,
@@ -226,6 +228,7 @@ router.put('/:id/respond', requireAuth, async (req, res, next) => {
     );
     const io = req.app.get('io');
     if (io && result?.requester) {
+      // Deprecated: legacy event; notification:new is authoritative.
       io.to(`user:${result.requester}`).emit('requestResolved', {
         requestId: req.params.id,
         status,

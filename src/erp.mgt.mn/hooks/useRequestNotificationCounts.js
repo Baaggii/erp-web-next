@@ -293,6 +293,25 @@ export default function useRequestNotificationCounts(
       if (!cancelled) applyCounts(data);
     };
 
+    const handleNotification = (payload) => {
+      if (!payload) return;
+      if (
+        payload.type === 'request' ||
+        payload.type === 'response' ||
+        payload.type === 'reapproval'
+      ) {
+        if (typeof payload.message === 'string') {
+          try {
+            const parsed = JSON.parse(payload.message);
+            if (parsed?.kind === 'transaction') return;
+          } catch {
+            // ignore parse errors
+          }
+        }
+        applyFromFetch();
+      }
+    };
+
     fetchCountsRef.current = () => applyFromFetch();
     applyFromFetch();
 
@@ -317,6 +336,7 @@ export default function useRequestNotificationCounts(
       socket = connectSocket();
       socket.on('newRequest', applyFromFetch);
       socket.on('requestResolved', applyFromFetch);
+      socket.on('notification:new', handleNotification);
       socket.on('connect', () => {
         stopFallback();
         applyFromFetch();
@@ -337,6 +357,7 @@ export default function useRequestNotificationCounts(
       if (socket) {
         socket.off('newRequest', applyFromFetch);
         socket.off('requestResolved', applyFromFetch);
+        socket.off('notification:new', handleNotification);
         socket.off('connect', stopFallback);
         socket.off('disconnect', startFallback);
         socket.off('connect_error', startFallback);
