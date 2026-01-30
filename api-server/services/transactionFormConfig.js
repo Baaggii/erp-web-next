@@ -714,6 +714,11 @@ function parseEntry(raw = {}) {
         ? raw.transactionTypeValue
         : '',
     detectFields: arrify(raw.detectFields || raw.detectField),
+    notifyFields: arrify(raw.notifyFields),
+    notificationFields: arrify(raw.notificationFields),
+    notificationDashboardFields: arrify(raw.notificationDashboardFields),
+    notificationPhoneFields: arrify(raw.notificationPhoneFields),
+    notificationEmailFields: arrify(raw.notificationEmailFields),
     moduleKey: typeof raw.moduleKey === 'string' ? raw.moduleKey : '',
     allowedBranches: Array.isArray(raw.allowedBranches)
       ? raw.allowedBranches.map((v) => Number(v)).filter((v) => !Number.isNaN(v))
@@ -1107,6 +1112,11 @@ export async function setFormConfig(
     transactionTypeValue = '',
     detectFields = [],
     detectField = '',
+    notifyFields = [],
+    notificationFields = [],
+    notificationDashboardFields = [],
+    notificationPhoneFields = [],
+    notificationEmailFields = [],
     procedures = [],
     temporaryProcedures = [],
     allowDirectPost,
@@ -1189,6 +1199,11 @@ export async function setFormConfig(
     detectFields: arrify(
       detectFields.length ? detectFields : detectField ? [detectField] : [],
     ),
+    notifyFields: arrify(notifyFields),
+    notificationFields: arrify(notificationFields),
+    notificationDashboardFields: arrify(notificationDashboardFields),
+    notificationPhoneFields: arrify(notificationPhoneFields),
+    notificationEmailFields: arrify(notificationEmailFields),
     moduleKey: parentModuleKey,
     moduleLabel: moduleLabel || undefined,
     allowedBranches: ab,
