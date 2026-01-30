@@ -30,7 +30,9 @@ import derivePageKey from "../utils/derivePageKey.js";
 import { findVisibleFallbackSelector } from "../utils/findVisibleTourStep.js";
 import { playNotificationSound } from "../utils/playNotificationSound.js";
 import { buildOptionsForRows } from "../utils/buildAsyncSelectOptions.js";
-import NotificationDots from "./NotificationDots.jsx";
+import NotificationDots, { DEFAULT_NOTIFICATION_COLOR } from "./NotificationDots.jsx";
+import useTransactionNotifications from "../hooks/useTransactionNotifications.js";
+import formatTimestamp from "../utils/formatTimestamp.js";
 
 export const TourContext = React.createContext({
   startTour: () => false,
@@ -3715,6 +3717,13 @@ export function Header({
   const { session } = useContext(AuthContext);
   const { lang, setLang, t } = useContext(LangContext);
   const { anyHasNew, notificationColors } = useContext(PendingRequestContext);
+  const {
+    entries: transactionNotifications,
+    unreadCount: transactionUnreadCount,
+    markRead: markTransactionRead,
+  } = useTransactionNotifications({ limit: 6 });
+  const [isNotificationOpen, setIsNotificationOpen] = useState(false);
+  const notificationMenuRef = useRef(null);
   const handleRefresh = () => {
     if (typeof window === 'undefined' || !window?.location) return;
     try {
@@ -3727,12 +3736,54 @@ export function Header({
   };
 
   const headerNotificationColors = useMemo(() => {
-    if (notificationColors?.length) return notificationColors;
-    if (anyHasNew) return [NOTIFICATION_STATUS_COLORS.pending];
-    return [];
-  }, [anyHasNew, notificationColors]);
+    const colors = notificationColors?.length
+      ? [...notificationColors]
+      : anyHasNew
+      ? [NOTIFICATION_STATUS_COLORS.pending]
+      : [];
+    if (transactionUnreadCount > 0) {
+      colors.push(DEFAULT_NOTIFICATION_COLOR);
+    }
+    return colors;
+  }, [anyHasNew, notificationColors, transactionUnreadCount]);
+
+  const orderedTransactionNotifications = useMemo(() => {
+    return [...(transactionNotifications || [])].sort((a, b) => {
+      const aTime = new Date(a.createdAt || 0).getTime();
+      const bTime = new Date(b.createdAt || 0).getTime();
+      return bTime - aTime;
+    });
+  }, [transactionNotifications]);
+
+  useEffect(() => {
+    if (!isNotificationOpen) return undefined;
+    const handleClick = (event) => {
+      if (!notificationMenuRef.current?.contains(event.target)) {
+        setIsNotificationOpen(false);
+      }
+    };
+    const handleEscape = (event) => {
+      if (event.key === 'Escape') setIsNotificationOpen(false);
+    };
+    document.addEventListener('mousedown', handleClick);
+    document.addEventListener('keydown', handleEscape);
+    return () => {
+      document.removeEventListener('mousedown', handleClick);
+      document.removeEventListener('keydown', handleEscape);
+    };
+  }, [isNotificationOpen]);
 
   const [positionLabel, setPositionLabel] = useState(null);
+  const formatNotificationTime = useCallback(
+    (value) => {
+      const date = value instanceof Date ? value : new Date(value);
+      if (Number.isNaN(date.getTime())) {
+        return t('notifications_unknown_date', 'Unknown date');
+      }
+      return formatTimestamp(date);
+    },
+    [t],
+  );
   const normalizeText = useCallback((value) => {
     if (value === null || value === undefined) return null;
     const text = String(value).trim();
@@ -4079,17 +4130,87 @@ export function Header({
           🗔 {t("home")}
         </button>
         <button style={styles.iconBtn}>🗗 {t("windows")}</button>
-        <button
-          style={styles.iconBtn}
-          onClick={() =>
-            onOpen('/notifications', t('notifications', 'Notifications'), 'notifications')
-          }
-        >
-          <span style={styles.inlineButtonContent}>
-            <NotificationDots colors={headerNotificationColors} marginRight={0} />
-            <span aria-hidden="true">🔔</span> {t('notifications', 'Notifications')}
-          </span>
-        </button>
+        <div style={styles.notificationMenu} ref={notificationMenuRef}>
+          <button
+            type="button"
+            style={styles.iconBtn}
+            aria-haspopup="true"
+            aria-expanded={isNotificationOpen}
+            onClick={() => setIsNotificationOpen((open) => !open)}
+          >
+            <span style={styles.inlineButtonContent}>
+              <NotificationDots colors={headerNotificationColors} marginRight={0} />
+              <span aria-hidden="true">🔔</span> {t('notifications', 'Notifications')}
+            </span>
+          </button>
+          {isNotificationOpen && (
+            <div style={styles.notificationDropdown}>
+              <div style={styles.notificationHeader}>
+                <span style={{ fontWeight: 600 }}>
+                  {t('notifications', 'Notifications')}
+                </span>
+                {transactionUnreadCount > 0 && (
+                  <span style={styles.notificationBadge}>{transactionUnreadCount}</span>
+                )}
+              </div>
+              <div style={styles.notificationList}>
+                {orderedTransactionNotifications.length === 0 ? (
+                  <div style={styles.notificationEmpty}>
+                    {t('notifications_none', 'No notifications')}
+                  </div>
+                ) : (
+                  orderedTransactionNotifications.map((entry) => (
+                    <button
+                      key={entry.notification_id}
+                      type="button"
+                      style={{
+                        ...styles.notificationItem,
+                        ...(entry.is_read ? {} : styles.notificationItemUnread),
+                      }}
+                      onClick={() => {
+                        if (!entry.is_read) {
+                          markTransactionRead([entry.notification_id]);
+                        }
+                        setIsNotificationOpen(false);
+                        const focusKey = entry.transactionName || '';
+                        const target = focusKey
+                          ? `/?tab=notifications&focus=${encodeURIComponent(focusKey)}`
+                          : '/?tab=notifications';
+                        onOpen(
+                          target,
+                          t('dashboard', 'Dashboard'),
+                          'dashboard',
+                        );
+                      }}
+                    >
+                      <div style={styles.notificationItemTitle}>
+                        {entry.summary || t('notifications_unknown_type', 'Other transaction')}
+                      </div>
+                      {entry.transactionName && (
+                        <div style={styles.notificationItemMeta}>
+                          {entry.transactionName}
+                        </div>
+                      )}
+                      <div style={styles.notificationItemTime}>
+                        {formatNotificationTime(entry.createdAt || entry.created_at)}
+                      </div>
+                    </button>
+                  ))
+                )}
+              </div>
+              <button
+                type="button"
+                style={styles.notificationFooter}
+                onClick={() => {
+                  setIsNotificationOpen(false);
+                  onOpen('/?tab=notifications', t('dashboard', 'Dashboard'), 'dashboard');
+                }}
+              >
+                {t('notifications_view_all', 'View all notifications')}
+              </button>
+            </div>
+          )}
+        </div>
         <button style={styles.iconBtn}>❔ {t("help")}</button>
       </nav>
       {hasUpdateAvailable && (
@@ -4825,6 +4946,86 @@ const styles = {
     display: "inline-flex",
     alignItems: "center",
     gap: "0.35rem",
+  },
+  notificationMenu: {
+    position: "relative",
+    display: "inline-flex",
+    alignItems: "center",
+  },
+  notificationDropdown: {
+    position: "absolute",
+    top: "2.2rem",
+    right: 0,
+    width: "320px",
+    maxHeight: "360px",
+    backgroundColor: "#fff",
+    color: "#111827",
+    borderRadius: "8px",
+    boxShadow: "0 12px 32px rgba(15, 23, 42, 0.2)",
+    border: "1px solid rgba(148, 163, 184, 0.4)",
+    display: "flex",
+    flexDirection: "column",
+    zIndex: 16000,
+  },
+  notificationHeader: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    padding: "0.75rem 1rem",
+    borderBottom: "1px solid #e2e8f0",
+  },
+  notificationBadge: {
+    backgroundColor: "#ef4444",
+    color: "#fff",
+    borderRadius: "999px",
+    padding: "0.1rem 0.5rem",
+    fontSize: "0.75rem",
+  },
+  notificationList: {
+    overflowY: "auto",
+    padding: "0.35rem 0",
+  },
+  notificationEmpty: {
+    padding: "1rem",
+    textAlign: "center",
+    color: "#64748b",
+    fontSize: "0.85rem",
+  },
+  notificationItem: {
+    background: "transparent",
+    border: "none",
+    textAlign: "left",
+    width: "100%",
+    padding: "0.6rem 1rem",
+    cursor: "pointer",
+    display: "flex",
+    flexDirection: "column",
+    gap: "0.25rem",
+  },
+  notificationItemUnread: {
+    backgroundColor: "rgba(59, 130, 246, 0.08)",
+  },
+  notificationItemTitle: {
+    fontSize: "0.9rem",
+    fontWeight: 600,
+    color: "#0f172a",
+  },
+  notificationItemMeta: {
+    fontSize: "0.8rem",
+    color: "#475569",
+  },
+  notificationItemTime: {
+    fontSize: "0.75rem",
+    color: "#94a3b8",
+  },
+  notificationFooter: {
+    borderTop: "1px solid #e2e8f0",
+    background: "transparent",
+    padding: "0.65rem 1rem",
+    fontSize: "0.85rem",
+    cursor: "pointer",
+    color: "#2563eb",
+    textAlign: "center",
   },
   userSection: {
     display: "flex",
