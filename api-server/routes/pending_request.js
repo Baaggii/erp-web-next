@@ -9,7 +9,6 @@ import {
   respondRequest,
   ALLOWED_REQUEST_TYPES,
 } from '../services/pendingRequest.js';
-import { emitNotificationToEmpIds } from '../services/notificationEmitter.js';
 
 
 const router = express.Router();
@@ -60,13 +59,6 @@ router.post('/bulk_edit', requireAuth, pendingRequestLimiter, async (req, res, n
         requestId: result.request_id,
         tableName,
         recordId: result.record_id,
-        requestType: 'bulk_edit',
-      });
-    }
-    if (result?.senior_empid) {
-      emitNotificationToEmpIds([result.senior_empid], {
-        kind: 'request',
-        requestId: result.request_id,
         requestType: 'bulk_edit',
       });
     }
@@ -121,13 +113,6 @@ router.post('/', requireAuth, pendingRequestLimiter, async (req, res, next) => {
         requestId: result.request_id,
         tableName: table_name,
         recordId: record_id,
-        requestType: request_type,
-      });
-    }
-    if (result?.senior_empid) {
-      emitNotificationToEmpIds([result.senior_empid], {
-        kind: 'request',
-        requestId: result.request_id,
         requestType: request_type,
       });
     }
@@ -246,14 +231,6 @@ router.put('/:id/respond', requireAuth, async (req, res, next) => {
         status,
         requestType: result?.requestType,
         lockedTransactions: result?.lockedTransactions || [],
-      });
-    }
-    if (result?.requester) {
-      emitNotificationToEmpIds([result.requester], {
-        kind: 'response',
-        requestId: req.params.id,
-        requestType: result?.requestType,
-        status,
       });
     }
     res.sendStatus(204);
