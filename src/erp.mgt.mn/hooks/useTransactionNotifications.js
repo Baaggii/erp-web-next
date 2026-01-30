@@ -24,6 +24,18 @@ function parseNotificationRow(row) {
     role: payload.role,
     summaryFields: payload.summaryFields || [],
     summaryText: payload.summaryText || '',
+    notificationFields:
+      payload.notificationFields || payload.summaryFields || [],
+    notificationText:
+      payload.notificationText || payload.summaryText || '',
+    dashboardFields:
+      payload.dashboardFields || payload.summaryFields || [],
+    dashboardText:
+      payload.dashboardText || payload.summaryText || '',
+    phoneFields: payload.phoneFields || [],
+    phoneText: payload.phoneText || '',
+    emailFields: payload.emailFields || [],
+    emailText: payload.emailText || '',
     createdAt: row.created_at,
     isRead: Boolean(row.is_read),
   };
