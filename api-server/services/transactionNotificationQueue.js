@@ -419,18 +419,10 @@ async function handleTransactionNotification(job) {
       const role = config?.notificationRole?.trim();
       if (!role || !NOTIFICATION_ROLE_SET.has(role)) continue;
 
-      const notificationSummary = notificationFieldList.length
-        ? notificationSummaryBase
-        : buildSummary(referenceRow, config?.notificationFields ?? []);
-      const dashboardSummary = dashboardFieldList.length
-        ? dashboardSummaryBase
-        : buildSummary(referenceRow, config?.notificationDashboardFields ?? []);
-      const phoneSummary = phoneFieldList.length
-        ? phoneSummaryBase
-        : buildSummary(referenceRow, config?.notificationPhoneFields ?? []);
-      const emailSummary = emailFieldList.length
-        ? emailSummaryBase
-        : buildSummary(referenceRow, config?.notificationEmailFields ?? []);
+      const { summaryFields, summaryText } = buildSummary(
+        referenceRow,
+        config?.notificationDashboardFields ?? [],
+      );
 
       const messagePayload = {
         kind: 'transaction',
@@ -440,16 +432,8 @@ async function handleTransactionNotification(job) {
         referenceTable: relation.table,
         referenceId,
         role,
-        summaryFields: notificationSummary.summaryFields,
-        summaryText: notificationSummary.summaryText,
-        notificationFields: notificationSummary.summaryFields,
-        notificationText: notificationSummary.summaryText,
-        dashboardFields: dashboardSummary.summaryFields,
-        dashboardText: dashboardSummary.summaryText,
-        phoneFields: phoneSummary.summaryFields,
-        phoneText: phoneSummary.summaryText,
-        emailFields: emailSummary.summaryFields,
-        emailText: emailSummary.summaryText,
+        summaryFields,
+        summaryText,
       };
       const message = JSON.stringify(messagePayload);
 
@@ -519,8 +503,6 @@ async function handleTransactionNotification(job) {
           transactionName,
           referenceTable: relation.table,
           referenceId,
-          body: emailSummary.summaryText,
-          fields: emailSummary.summaryFields,
         });
       }
       if (phones.size) {
@@ -529,8 +511,6 @@ async function handleTransactionNotification(job) {
           transactionName,
           referenceTable: relation.table,
           referenceId,
-          body: phoneSummary.summaryText,
-          fields: phoneSummary.summaryFields,
         });
       }
     }
