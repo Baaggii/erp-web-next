@@ -1134,13 +1134,9 @@ DELIMITER ;
 CREATE TABLE `notifications` (
   `notification_id` bigint NOT NULL,
   `recipient_empid` varchar(10) NOT NULL,
-  `type` enum('request','response','transaction') NOT NULL,
+  `type` enum('request','response') NOT NULL,
   `related_id` bigint NOT NULL,
   `message` text NOT NULL,
-  `transaction_name` varchar(191) DEFAULT NULL,
-  `transaction_table` varchar(191) DEFAULT NULL,
-  `record_id` varchar(191) DEFAULT NULL,
-  `action` varchar(20) DEFAULT NULL,
   `is_read` tinyint(1) NOT NULL DEFAULT '0',
   `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `company_id` int NOT NULL DEFAULT '2',
@@ -4609,11 +4605,7 @@ ALTER TABLE `modules`
 -- Indexes for table `notifications`
 --
 ALTER TABLE `notifications`
-  ADD PRIMARY KEY (`notification_id`),
-  ADD KEY `idx_notifications_recipient` (`recipient_empid`),
-  ADD KEY `idx_notifications_is_read` (`is_read`),
-  ADD KEY `idx_notifications_created_at` (`created_at`),
-  ADD KEY `idx_notifications_transaction_name` (`transaction_name`);
+  ADD PRIMARY KEY (`notification_id`);
 
 --
 -- Indexes for table `payments`
