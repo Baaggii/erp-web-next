@@ -24,18 +24,11 @@ window.addEventListener('pagehide', abortAll);
 async function getToken() {
   if (!tokenPromise) {
     tokenPromise = (async () => {
-      const normalizedBase = API_BASE.replace(/\/$/, '');
-      const rootBase = normalizedBase.endsWith('/auth')
-        ? normalizedBase.replace(/\/auth$/, '')
-        : normalizedBase;
-      const authBase = normalizedBase.endsWith('/auth')
-        ? normalizedBase
-        : `${normalizedBase}/auth`;
-      const endpoints = [`${rootBase}/csrf-token`, `${authBase}/csrf-token`];
+      const endpoints = [`${API_BASE}/csrf-token`, `${API_BASE}/auth/csrf-token`];
 
       for (const url of endpoints) {
         try {
-          const res = await originalFetch(url, { credentials: 'include' });
+          const res = await fetch(url, { credentials: 'include' });
           if (!res.ok) continue;
           const data = await res.json();
           if (data?.csrfToken) return data.csrfToken;
