@@ -4099,6 +4099,9 @@ export function Header({
         <button style={styles.iconBtn}>❔ {t("help")}</button>
         <TransactionNotificationDropdown />
       </nav>
+      <div style={styles.notificationSlot}>
+        <TransactionNotificationDropdown />
+      </div>
       {hasUpdateAvailable && (
         <button type="button" style={styles.updateButton} onClick={handleRefresh}>
           🔄 {t('refresh_to_update', 'Refresh to update')}
@@ -4807,6 +4810,12 @@ const styles = {
     whiteSpace: "nowrap",
     flexGrow: 1,
     minWidth: 0,
+  },
+  notificationSlot: {
+    flexShrink: 0,
+    display: "flex",
+    alignItems: "center",
+    marginLeft: "0.5rem",
   },
   updateButton: {
     backgroundColor: "#f97316",
