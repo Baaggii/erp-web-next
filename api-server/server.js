@@ -86,6 +86,9 @@ app.use(activityLogger);
 app.get("/api/csrf-token", (req, res) => {
   res.json({ csrfToken: req.csrfToken() });
 });
+app.get("/api/auth/csrf-token", (req, res) => {
+  res.json({ csrfToken: req.csrfToken() });
+});
 
 // Create HTTP server and attach Socket.IO
 const server = http.createServer(app);
