@@ -4079,7 +4079,6 @@ export function Header({
         </button>
         <button style={styles.iconBtn}>🗗 {t("windows")}</button>
         <button style={styles.iconBtn}>❔ {t("help")}</button>
-        <TransactionNotificationDropdown />
       </nav>
       <div style={styles.notificationSlot}>
         <TransactionNotificationDropdown />
