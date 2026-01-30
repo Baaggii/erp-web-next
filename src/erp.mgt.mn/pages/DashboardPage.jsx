@@ -1,6 +1,7 @@
 import React, { useContext, useState, useEffect, useRef } from 'react';
 import { AuthContext } from '../context/AuthContext.jsx';
 import PendingRequestWidget from '../components/PendingRequestWidget.jsx';
+import TransactionNotificationWidget from '../components/TransactionNotificationWidget.jsx';
 import OutgoingRequestWidget from '../components/OutgoingRequestWidget.jsx';
 import { usePendingRequests } from '../context/PendingRequestContext.jsx';
 import LangContext from '../context/I18nContext.jsx';
@@ -114,6 +115,9 @@ export default function DashboardPage() {
               <div style={{ fontSize: '1.5rem', fontWeight: 'bold' }}>0</div>
             </div>
           </div>
+          <div style={{ marginTop: '1rem' }}>
+            <TransactionNotificationWidget />
+          </div>
         </div>
       )}
 
@@ -142,4 +146,3 @@ export default function DashboardPage() {
     </div>
   );
 }
-

@@ -9,7 +9,7 @@ import csrf from "csurf";
 import { Server as SocketIOServer } from "socket.io";
 import * as jwtService from "./services/jwtService.js";
 import { getCookieName } from "./utils/cookieNames.js";
-import { testConnection } from "../db/index.js";
+import { getEmploymentSession, testConnection } from "../db/index.js";
 import { errorHandler } from "./middlewares/errorHandler.js";
 import { logger } from "./middlewares/logging.js";
 import { activityLogger } from "./middlewares/activityLogger.js";
@@ -65,6 +65,7 @@ import posApiProxyRoutes from "./routes/posapi_proxy.js";
 import posApiReferenceCodeRoutes from "./routes/posapi_reference_codes.js";
 import cncProcessingRoutes from "./routes/cnc_processing.js";
 import reportRoutes from "./routes/report.js";
+import { setNotificationEmitter } from "./services/transactionNotificationQueue.js";
 
 // Polyfill for __dirname in ES modules
 const __filename = fileURLToPath(import.meta.url);
@@ -111,7 +112,7 @@ const io = new SocketIOServer(server, {
 });
 
 // Authenticate sockets via JWT cookie and join per-user room
-io.use((socket, next) => {
+io.use(async (socket, next) => {
   try {
     const raw = socket.request.headers.cookie || "";
     const cookies = Object.fromEntries(
@@ -125,6 +126,21 @@ io.use((socket, next) => {
     const user = jwtService.verify(token);
     socket.user = user;
     socket.join(`user:${user.empid}`);
+    socket.join(`emp:${user.empid}`);
+    if (user.companyId) {
+      socket.join(`company:${user.companyId}`);
+    }
+    try {
+      const session = await getEmploymentSession(user.empid, user.companyId);
+      if (session?.branch_id) {
+        socket.join(`branch:${session.branch_id}`);
+      }
+      if (session?.department_id) {
+        socket.join(`department:${session.department_id}`);
+      }
+    } catch (err) {
+      console.error("Failed to resolve socket scope", err);
+    }
     return next();
   } catch {
     return next(new Error("Authentication error"));
@@ -132,6 +148,7 @@ io.use((socket, next) => {
 });
 
 app.set("io", io);
+setNotificationEmitter(io);
 
 // Serve uploaded images statically
 const { config: imgCfg } = await getGeneralConfig();
