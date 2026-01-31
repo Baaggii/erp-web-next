@@ -108,6 +108,7 @@ export default function TransactionNotificationWidget() {
   const [collapsedSections, setCollapsedSections] = useState(() => new Set());
   const groupRefs = useRef({});
   const itemRefs = useRef({});
+  const initializedGroups = useRef(new Set());
 
   const highlightKey = useMemo(() => {
     const params = new URLSearchParams(location.search || '');
@@ -136,7 +137,46 @@ export default function TransactionNotificationWidget() {
     if (target && typeof target.scrollIntoView === 'function') {
       target.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
-  }, [highlightItemId]);
+    if (target && typeof target.focus === 'function') {
+      target.focus({ preventScroll: true });
+    }
+  }, [collapsedSections, expanded, highlightItemId]);
+  useEffect(() => {
+    if (groups.length === 0) return;
+    setCollapsedSections((prev) => {
+      const next = new Set(prev);
+      groups.forEach((group) => {
+        if (initializedGroups.current.has(group.key)) return;
+        ['active', 'excluded', 'deleted'].forEach((sectionKey) => {
+          next.add(buildSectionId(group.key, sectionKey));
+        });
+        initializedGroups.current.add(group.key);
+      });
+      return next;
+    });
+  }, [groups]);
+  useEffect(() => {
+    if (!highlightItemId) return;
+    const groupMatch = highlightKey
+      ? groups.find((group) => group.key === highlightKey)
+      : groups.find((group) =>
+          group.items.some((item) => String(item.id) === highlightItemId),
+        );
+    if (!groupMatch) return;
+    const targetItem = groupMatch.items.find((item) => String(item.id) === highlightItemId);
+    if (!targetItem) return;
+    const sectionKey = getItemSection(targetItem);
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      next.add(groupMatch.key);
+      return next;
+    });
+    setCollapsedSections((prev) => {
+      const next = new Set(prev);
+      next.delete(buildSectionId(groupMatch.key, sectionKey));
+      return next;
+    });
+  }, [groups, highlightItemId, highlightKey]);
 
   const groupItems = useCallback((items = []) => {
     const excludedItems = items.filter((item) => isExcludedAction(item));
@@ -229,6 +269,7 @@ export default function TransactionNotificationWidget() {
                   return (
                     <div
                       key={item.id}
+                      tabIndex={-1}
                       ref={(node) => {
                         itemRefs.current[String(item.id)] = node;
                       }}
