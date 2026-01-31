@@ -615,9 +615,22 @@ async function handleTransactionNotification(job) {
     job.action === 'update' && !rawEditSummary.summaryText
       ? { ...rawEditSummary, summaryText: 'Transaction edited' }
       : rawEditSummary;
-  const notifyFieldSet = notifyFields.length
+  const relationColumnSet = new Set(
+    relations
+      .map((relation) => (relation?.column ? String(relation.column).toLowerCase() : ''))
+      .filter((column) => column),
+  );
+  let notifyFieldSet = notifyFields.length
     ? new Set(notifyFields.map((field) => field.toLowerCase()))
     : null;
+  if (notifyFieldSet && notifyFieldSet.size > 0) {
+    const hasRelationFilter = Array.from(notifyFieldSet).some((field) =>
+      relationColumnSet.has(field),
+    );
+    if (!hasRelationFilter) {
+      notifyFieldSet = null;
+    }
+  }
   const activeReferenceKeys = buildActiveReferenceKeys({
     transactionRow,
     relations,
