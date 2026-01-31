@@ -13,9 +13,6 @@ function getActionMeta(action) {
   if (normalized === 'changed' || normalized === 'change') {
     return { label: 'Changed', accent: '#d97706' };
   }
-  if (normalized === 'excluded' || normalized === 'exclude') {
-    return { label: 'Excluded', accent: '#64748b' };
-  }
   if (normalized) {
     return { label: normalized.charAt(0).toUpperCase() + normalized.slice(1), accent: '#059669' };
   }
@@ -24,18 +21,12 @@ function getActionMeta(action) {
 
 function buildPreviewText(item) {
   if (!item) return 'Transaction update';
-  if (item.summaryText) {
-    return item.createdBy
-      ? `${item.summaryText} · Created by ${item.createdBy}`
-      : item.summaryText;
-  }
+  if (item.summaryText) return item.summaryText;
   const meta = getActionMeta(item.action);
   if (meta.label === 'Deleted') return 'Transaction deleted';
   if (meta.label === 'Edited') return 'Transaction edited';
   if (meta.label === 'Changed') return 'Transaction changed';
-  if (meta.label === 'Excluded') return 'Excluded from transaction';
-  const fallback = 'Transaction update';
-  return item.createdBy ? `${fallback} · Created by ${item.createdBy}` : fallback;
+  return 'Transaction update';
 }
 
 export default function TransactionNotificationDropdown() {
@@ -64,10 +55,17 @@ export default function TransactionNotificationDropdown() {
     navigate(`/?tab=activity&notifyGroup=${group.key}`);
   };
 
-  useEffect(() => {
-    if (!open) return;
-    setExpandedGroups(new Set(sortedGroups.map((group) => group.key)));
-  }, [open, sortedGroups]);
+  const toggleGroup = (groupKey) => {
+    setExpandedGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(groupKey)) {
+        next.delete(groupKey);
+      } else {
+        next.add(groupKey);
+      }
+      return next;
+    });
+  };
 
   return (
     <div style={styles.wrapper} ref={containerRef}>
@@ -98,7 +96,11 @@ export default function TransactionNotificationDropdown() {
               return (
                 <div key={group.key} style={styles.group}>
                   <div style={styles.groupHeader(group.unreadCount > 0)}>
-                    <div style={styles.groupInfo}>
+                    <button
+                      type="button"
+                      style={styles.groupInfo}
+                      onClick={() => toggleGroup(group.key)}
+                    >
                       <div style={styles.itemTitle}>
                         <span>{group.name}</span>
                         {latestItem && (
@@ -112,11 +114,22 @@ export default function TransactionNotificationDropdown() {
                           ? `${group.unreadCount} unread`
                           : `${group.items.length} total`}
                       </div>
-                      <div style={styles.itemPreview}>
-                        {buildPreviewText(latestItem)}
-                      </div>
-                    </div>
+                      {!isExpanded && (
+                        <div style={styles.itemPreview}>
+                          {buildPreviewText(latestItem)}
+                        </div>
+                      )}
+                    </button>
                     <div style={styles.groupActions}>
+                      {group.items.length > 1 && (
+                        <button
+                          type="button"
+                          style={styles.groupToggle}
+                          onClick={() => toggleGroup(group.key)}
+                        >
+                          {isExpanded ? 'Hide' : 'Show'} {group.items.length}
+                        </button>
+                      )}
                       <button
                         type="button"
                         style={styles.groupOpen}
@@ -139,16 +152,11 @@ export default function TransactionNotificationDropdown() {
                           >
                             <div style={styles.groupItemTitle}>
                               <span>{item.transactionName || group.name}</span>
-                              <div style={styles.groupItemBadges}>
-                                {item?.isRead === false && (
-                                  <span style={styles.newBadge}>New</span>
-                                )}
-                                {item && (
-                                  <span style={styles.actionBadge(itemMeta.accent)}>
-                                    {itemMeta.label}
-                                  </span>
-                                )}
-                              </div>
+                              {item && (
+                                <span style={styles.actionBadge(itemMeta.accent)}>
+                                  {itemMeta.label}
+                                </span>
+                              )}
                             </div>
                             <div style={styles.groupItemPreview}>
                               {buildPreviewText(item)}
@@ -256,6 +264,27 @@ const styles = {
   },
   groupOpen: {
     border: 'none',
+    background: 'transparent',
+    padding: 0,
+    cursor: 'pointer',
+  },
+  groupActions: {
+    marginTop: '0.5rem',
+    display: 'flex',
+    justifyContent: 'space-between',
+    gap: '0.5rem',
+  },
+  groupToggle: {
+    border: '1px solid #e2e8f0',
+    background: '#fff',
+    color: '#0f172a',
+    borderRadius: '999px',
+    fontSize: '0.7rem',
+    padding: '0.15rem 0.65rem',
+    cursor: 'pointer',
+  },
+  groupOpen: {
+    border: 'none',
     background: '#0f172a',
     color: '#fff',
     borderRadius: '999px',
@@ -293,12 +322,11 @@ const styles = {
   groupItem: (isUnread) => ({
     width: '100%',
     textAlign: 'left',
-    border: `1px solid ${isUnread ? '#2563eb' : '#e2e8f0'}`,
+    border: '1px solid #e2e8f0',
     borderRadius: '10px',
     background: isUnread ? '#eff6ff' : '#fff',
     padding: '0.6rem 0.75rem',
     cursor: 'pointer',
-    boxShadow: isUnread ? '0 0 0 1px rgba(37,99,235,0.2)' : 'none',
   }),
   groupItemTitle: {
     fontWeight: 600,
@@ -309,24 +337,9 @@ const styles = {
     justifyContent: 'space-between',
     gap: '0.5rem',
   },
-  groupItemBadges: {
-    display: 'inline-flex',
-    alignItems: 'center',
-    gap: '0.4rem',
-    flexShrink: 0,
-  },
   groupItemPreview: {
     fontSize: '0.8rem',
     color: '#334155',
-  },
-  newBadge: {
-    background: '#10b981',
-    color: '#fff',
-    borderRadius: '999px',
-    padding: '0.1rem 0.45rem',
-    fontSize: '0.6rem',
-    textTransform: 'uppercase',
-    letterSpacing: '0.05em',
   },
   footer: {
     width: '100%',
