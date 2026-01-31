@@ -91,8 +91,6 @@ function getCompletionReference(planRow) {
   return null;
 }
 
-const ARROW_SEPARATOR = '→';
-
 function formatTimestamp(value) {
   if (!value) return 'Unknown time';
   const date = new Date(value);
