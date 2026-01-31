@@ -54,11 +54,15 @@ export default function TransactionNotificationDropdown() {
     return () => document.removeEventListener('mousedown', handleClick);
   }, []);
 
-  const handleGroupClick = async (group) => {
+  const handleGroupClick = async (group, itemId = null) => {
     if (!group) return;
     setOpen(false);
     await markGroupRead(group.key);
-    navigate(`/?tab=activity&notifyGroup=${group.key}`);
+    const params = new URLSearchParams({ tab: 'activity', notifyGroup: group.key });
+    if (itemId) {
+      params.set('notifyItem', itemId);
+    }
+    navigate(`/?${params.toString()}`);
   };
 
   const toggleGroup = (groupKey) => {
@@ -127,15 +131,6 @@ export default function TransactionNotificationDropdown() {
                       )}
                     </button>
                     <div style={styles.groupActions}>
-                      {group.items.length > 1 && (
-                        <button
-                          type="button"
-                          style={styles.groupToggle}
-                          onClick={() => toggleGroup(group.key)}
-                        >
-                          {isExpanded ? 'Hide' : 'Show'} {group.items.length}
-                        </button>
-                      )}
                       <button
                         type="button"
                         style={styles.groupOpen}
@@ -154,7 +149,7 @@ export default function TransactionNotificationDropdown() {
                             key={item.id}
                             type="button"
                             style={styles.groupItem(item.isRead === false)}
-                            onClick={() => handleGroupClick(group)}
+                            onClick={() => handleGroupClick(group, item.id)}
                           >
                             <div style={styles.groupItemTitle}>
                               <span>{item.transactionName || group.name}</span>
@@ -267,27 +262,6 @@ const styles = {
     display: 'flex',
     justifyContent: 'space-between',
     gap: '0.5rem',
-  },
-  groupOpen: {
-    border: 'none',
-    background: 'transparent',
-    padding: 0,
-    cursor: 'pointer',
-  },
-  groupActions: {
-    marginTop: '0.5rem',
-    display: 'flex',
-    justifyContent: 'space-between',
-    gap: '0.5rem',
-  },
-  groupToggle: {
-    border: '1px solid #e2e8f0',
-    background: '#fff',
-    color: '#0f172a',
-    borderRadius: '999px',
-    fontSize: '0.7rem',
-    padding: '0.15rem 0.65rem',
-    cursor: 'pointer',
   },
   groupOpen: {
     border: 'none',
