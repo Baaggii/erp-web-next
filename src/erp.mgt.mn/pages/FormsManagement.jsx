@@ -528,6 +528,42 @@ export default function FormsManagement() {
     }),
     [],
   );
+
+  const fieldConfigStickyColumns = useMemo(() => {
+    const fieldWidth = 180;
+    const labelWidth = 220;
+    const visibleWidth = 110;
+    return {
+      widths: {
+        field: fieldWidth,
+        label: labelWidth,
+        visible: visibleWidth,
+      },
+      leftOffsets: {
+        field: 0,
+        label: fieldWidth,
+        visible: fieldWidth + labelWidth,
+      },
+    };
+  }, []);
+
+  const getStickyHeaderCellStyle = (left, width) => ({
+    position: 'sticky',
+    left,
+    zIndex: 5,
+    background: '#f8f9fb',
+    minWidth: `${width}px`,
+    maxWidth: `${width}px`,
+  });
+
+  const getStickyBodyCellStyle = (left, width) => ({
+    position: 'sticky',
+    left,
+    zIndex: 3,
+    background: '#fff',
+    minWidth: `${width}px`,
+    maxWidth: `${width}px`,
+  });
   function handleSelectExisting(e) {
     const key = e.target.value;
     setSelectedConfig(key);
@@ -1320,9 +1356,42 @@ export default function FormsManagement() {
                 <table style={{ borderCollapse: 'collapse', width: '100%' }}>
                   <thead className="sticky-header">
               <tr>
-                <th style={{ border: '1px solid #ccc', padding: '4px' }}>Field</th>
-                <th style={{ border: '1px solid #ccc', padding: '4px' }}>Label</th>
-                <th style={{ border: '1px solid #ccc', padding: '4px' }}>Visible</th>
+                <th
+                  style={{
+                    border: '1px solid #ccc',
+                    padding: '4px',
+                    ...getStickyHeaderCellStyle(
+                      fieldConfigStickyColumns.leftOffsets.field,
+                      fieldConfigStickyColumns.widths.field,
+                    ),
+                  }}
+                >
+                  Field
+                </th>
+                <th
+                  style={{
+                    border: '1px solid #ccc',
+                    padding: '4px',
+                    ...getStickyHeaderCellStyle(
+                      fieldConfigStickyColumns.leftOffsets.label,
+                      fieldConfigStickyColumns.widths.label,
+                    ),
+                  }}
+                >
+                  Label
+                </th>
+                <th
+                  style={{
+                    border: '1px solid #ccc',
+                    padding: '4px',
+                    ...getStickyHeaderCellStyle(
+                      fieldConfigStickyColumns.leftOffsets.visible,
+                      fieldConfigStickyColumns.widths.visible,
+                    ),
+                  }}
+                >
+                  Visible
+                </th>
                 <th style={{ border: '1px solid #ccc', padding: '4px' }}>Required</th>
                 <th style={{ border: '1px solid #ccc', padding: '4px' }}>Default</th>
                 <th style={{ border: '1px solid #ccc', padding: '4px' }}>Editable</th>
@@ -1362,13 +1431,41 @@ export default function FormsManagement() {
             <tbody>
               {columns.map((col) => (
                 <tr key={col}>
-                  <td style={{ border: '1px solid #ccc', padding: '4px' }}>
+                  <td
+                    style={{
+                      border: '1px solid #ccc',
+                      padding: '4px',
+                      ...getStickyBodyCellStyle(
+                        fieldConfigStickyColumns.leftOffsets.field,
+                        fieldConfigStickyColumns.widths.field,
+                      ),
+                    }}
+                  >
                     {col != null ? col : ''}
                   </td>
-                  <td style={{ border: '1px solid #ccc', padding: '4px' }}>
+                  <td
+                    style={{
+                      border: '1px solid #ccc',
+                      padding: '4px',
+                      ...getStickyBodyCellStyle(
+                        fieldConfigStickyColumns.leftOffsets.label,
+                        fieldConfigStickyColumns.widths.label,
+                      ),
+                    }}
+                  >
                     {columnHeaderMap[col] || ''}
                   </td>
-                  <td style={{ border: '1px solid #ccc', padding: '4px', textAlign: 'center' }}>
+                  <td
+                    style={{
+                      border: '1px solid #ccc',
+                      padding: '4px',
+                      textAlign: 'center',
+                      ...getStickyBodyCellStyle(
+                        fieldConfigStickyColumns.leftOffsets.visible,
+                        fieldConfigStickyColumns.widths.visible,
+                      ),
+                    }}
+                  >
                     <input
                       type="checkbox"
                       checked={config.visibleFields.includes(col)}
