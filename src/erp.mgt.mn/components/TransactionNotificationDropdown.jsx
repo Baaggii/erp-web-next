@@ -90,8 +90,6 @@ export default function TransactionNotificationDropdown() {
               <div style={styles.empty}>No notifications yet</div>
             )}
             {sortedGroups.map((group) => {
-              const latestItem = group.items[0];
-              const actionMeta = getActionMeta(latestItem?.action);
               const isExpanded = expandedGroups.has(group.key);
               return (
                 <div key={group.key} style={styles.group}>
@@ -219,7 +217,7 @@ const styles = {
   },
   groupHeader: (isUnread) => ({
     background: isUnread ? '#eff6ff' : '#fff',
-    padding: '0.75rem 1rem',
+    padding: '0.4rem 1rem 0',
   }),
   groupInfo: {
     width: '100%',
@@ -246,8 +244,6 @@ const styles = {
     textTransform: 'uppercase',
     letterSpacing: '0.04em',
   }),
-  itemMeta: { fontSize: '0.75rem', color: '#64748b', marginBottom: '0.25rem' },
-  itemPreview: { fontSize: '0.85rem', color: '#334155' },
   groupItems: {
     display: 'flex',
     flexDirection: 'column',
