@@ -202,6 +202,27 @@ function buildEditSummary(previousRow, currentRow, notifyFields) {
   };
 }
 
+function buildEditSummary(previousRow, currentRow, notifyFields) {
+  const summaryFields = [];
+  const fieldNames = [];
+  if (!previousRow || !currentRow || !notifyFields.length) {
+    return { summaryFields, summaryText: '' };
+  }
+  notifyFields.forEach((field) => {
+    const prevValue = normalizeFieldValue(getCaseInsensitive(previousRow, field));
+    const nextValue = normalizeFieldValue(getCaseInsensitive(currentRow, field));
+    if (prevValue === nextValue) return;
+    const fromValue = prevValue || '—';
+    const toValue = nextValue || '—';
+    summaryFields.push({ field, value: `${fromValue} → ${toValue}` });
+    fieldNames.push(field);
+  });
+  return {
+    summaryFields,
+    summaryText: fieldNames.length ? `Edited fields: ${fieldNames.join(', ')}` : '',
+  };
+}
+
 async function resolveTransactionConfig(tableName, transactionRow, companyId) {
   if (!tableName) return null;
   const { config } = await getConfigsByTable(tableName, companyId);
@@ -465,33 +486,22 @@ async function handleTransactionNotification(job) {
   const notifyFields = normalizeFieldList(transactionConfig?.notifyFields);
   if (!notifyFields.length) return;
   const actionLabel = job.action ?? 'update';
-  const transactionName = deriveTransactionName(transactionRow, job.tableName);
-  const notificationFieldList = normalizeFieldList(transactionConfig?.notificationFields);
-  const dashboardFieldList = normalizeFieldList(
-    transactionConfig?.notificationDashboardFields,
-  );
-  const notificationSummaryBase = buildSummary(transactionRow, notificationFieldList);
-  const dashboardSummaryBase = buildSummary(transactionRow, dashboardFieldList);
-  const editFields = notificationFieldList.length ? notificationFieldList : notifyFields;
   const rawEditSummary =
     job.action === 'update'
-      ? buildEditSummary(job.previousSnapshot, transactionRow, editFields)
+      ? buildEditSummary(job.previousSnapshot, transactionRow, notifyFields)
       : job.action === 'delete'
-        ? {
-            summaryFields:
-              notificationSummaryBase.summaryFields.length > 0
-                ? notificationSummaryBase.summaryFields
-                : dashboardSummaryBase.summaryFields,
-            summaryText:
-              notificationSummaryBase.summaryText ||
-              dashboardSummaryBase.summaryText ||
-              'Transaction deleted',
-          }
+        ? { summaryFields: [], summaryText: 'Transaction deleted' }
         : { summaryFields: [], summaryText: '' };
   const editSummary =
     job.action === 'update' && !rawEditSummary.summaryText
       ? { ...rawEditSummary, summaryText: 'Transaction edited' }
       : rawEditSummary;
+  if (
+    job.action === 'update' &&
+    !hasNotifyFieldChanges(job.previousSnapshot, transactionRow, notifyFields)
+  ) {
+    return;
+  }
   if (job.action === 'update' || job.action === 'delete') {
     const { updated, payloads } = await updateExistingTransactionNotifications({
       companyId: job.companyId,
@@ -499,12 +509,7 @@ async function handleTransactionNotification(job) {
       action: job.action ?? 'update',
       updatedBy: job.changedBy,
       transactionName,
-      summaryFields:
-        editSummary.summaryFields.length > 0
-          ? editSummary.summaryFields
-          : notificationSummaryBase.summaryFields.length > 0
-            ? notificationSummaryBase.summaryFields
-            : dashboardSummaryBase.summaryFields,
+      summaryFields: editSummary.summaryFields,
       summaryText: editSummary.summaryText,
     });
     if (payloads.length) {
@@ -564,16 +569,19 @@ async function handleTransactionNotification(job) {
       const { summaryFields: referenceSummaryFields, summaryText: referenceSummaryText } =
         buildSummary(referenceRow, config?.notificationDashboardFields ?? []);
       const summaryFields =
-        (job.action === 'update' || job.action === 'delete') &&
-        editSummary.summaryFields.length
+        job.action === 'update' && editSummary.summaryFields.length
           ? editSummary.summaryFields
-          : dashboardSummaryBase.summaryFields.length
-            ? dashboardSummaryBase.summaryFields
-            : referenceSummaryFields;
+          : job.action === 'delete'
+            ? []
+            : dashboardSummaryBase.summaryFields.length
+              ? dashboardSummaryBase.summaryFields
+              : referenceSummaryFields;
       const summaryText =
-        (job.action === 'update' || job.action === 'delete') && editSummary.summaryText
+        job.action === 'update' && editSummary.summaryText
           ? editSummary.summaryText
-          : dashboardSummaryBase.summaryText || referenceSummaryText;
+          : job.action === 'delete'
+            ? 'Transaction deleted'
+            : dashboardSummaryBase.summaryText || referenceSummaryText;
 
       const messagePayload = {
         kind: 'transaction',
