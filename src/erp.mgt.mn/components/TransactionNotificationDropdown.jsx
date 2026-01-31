@@ -65,17 +65,13 @@ export default function TransactionNotificationDropdown() {
     navigate(`/?${params.toString()}`);
   };
 
-  const toggleGroup = (groupKey) => {
-    setExpandedGroups((prev) => {
-      const next = new Set(prev);
-      if (next.has(groupKey)) {
-        next.delete(groupKey);
-      } else {
-        next.add(groupKey);
-      }
-      return next;
-    });
-  };
+  useEffect(() => {
+    if (!open) {
+      setExpandedGroups(new Set());
+      return;
+    }
+    setExpandedGroups(new Set(sortedGroups.map((group) => group.key)));
+  }, [open, sortedGroups]);
 
   return (
     <div style={styles.wrapper} ref={containerRef}>
@@ -109,7 +105,7 @@ export default function TransactionNotificationDropdown() {
                     <button
                       type="button"
                       style={styles.groupInfo}
-                      onClick={() => toggleGroup(group.key)}
+                      onClick={() => handleGroupClick(group)}
                     >
                       <div style={styles.itemTitle}>
                         <span>{group.name}</span>
@@ -130,15 +126,6 @@ export default function TransactionNotificationDropdown() {
                         </div>
                       )}
                     </button>
-                    <div style={styles.groupActions}>
-                      <button
-                        type="button"
-                        style={styles.groupOpen}
-                        onClick={() => handleGroupClick(group)}
-                      >
-                        Open
-                      </button>
-                    </div>
                   </div>
                   {isExpanded && (
                     <div style={styles.groupItems}>
@@ -256,21 +243,6 @@ const styles = {
     display: 'flex',
     flexDirection: 'column',
     gap: '0.15rem',
-  },
-  groupActions: {
-    marginTop: '0.5rem',
-    display: 'flex',
-    justifyContent: 'space-between',
-    gap: '0.5rem',
-  },
-  groupOpen: {
-    border: 'none',
-    background: '#0f172a',
-    color: '#fff',
-    borderRadius: '999px',
-    fontSize: '0.7rem',
-    padding: '0.15rem 0.65rem',
-    cursor: 'pointer',
   },
   itemTitle: {
     fontWeight: 600,
