@@ -480,7 +480,7 @@ async function handleTransactionNotification(job) {
   }
   if (UPDATE_ACTIONS.has(actionKey)) {
     const transactionName = deriveTransactionName(transactionRow, job.tableName);
-    const { payloads } = await updateExistingTransactionNotifications({
+    const { updated, payloads } = await updateExistingTransactionNotifications({
       companyId: job.companyId,
       relatedId: job.recordId,
       action: actionLabel,
@@ -490,7 +490,9 @@ async function handleTransactionNotification(job) {
     if (payloads.length) {
       payloads.forEach(({ room, payload }) => emitNotificationEvent([room], payload));
     }
-    return;
+    if (updated > 0) {
+      return;
+    }
   }
   const notifyFieldSet = new Set(notifyFields.map((field) => field.toLowerCase()));
   const displayEntries = Array.isArray(displayConfig?.config) ? displayConfig.config : [];
