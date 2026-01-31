@@ -36,6 +36,13 @@ function parseNotificationRow(row) {
     role: payload.role,
     summaryFields: payload.summaryFields || [],
     summaryText: payload.summaryText || '',
+    actor:
+      payload.actor ||
+      payload.createdBy ||
+      payload.updatedBy ||
+      row.updated_by ||
+      row.created_by ||
+      null,
     createdAt: row.created_at,
     updatedAt,
     isRead: Boolean(row.is_read),
@@ -71,6 +78,12 @@ function parseNotificationPayload(payload) {
     role: parsed.role,
     summaryFields: parsed.summaryFields || [],
     summaryText: parsed.summaryText || '',
+    actor:
+      parsed.actor ||
+      parsed.createdBy ||
+      parsed.updatedBy ||
+      payload.sender ||
+      null,
     createdAt: payload.created_at,
     updatedAt,
     isRead: Boolean(payload.is_read) || false,

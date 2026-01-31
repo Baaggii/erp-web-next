@@ -15,6 +15,7 @@ const NOTIFICATION_ROLE_SET = new Set([
 const queue = [];
 let processing = false;
 let ioEmitter = null;
+const EXCLUDED_SUMMARY_TEXT = 'Excluded from transaction';
 
 export function setNotificationEmitter(io) {
   ioEmitter = io || null;
@@ -95,6 +96,13 @@ function deriveTransactionName(row, tableName) {
   }
   const fallback = tableName.replace(/^transactions_/i, '').replace(/_/g, ' ');
   return fallback ? fallback.replace(/\b\w/g, (m) => m.toUpperCase()) : 'Transaction';
+}
+
+function buildReferenceKey(referenceTable, referenceId) {
+  if (!referenceTable || referenceId === undefined || referenceId === null || referenceId === '') {
+    return '';
+  }
+  return `${String(referenceTable).toLowerCase()}|${String(referenceId)}`;
 }
 
 function parseJsonValue(raw) {
@@ -209,6 +217,32 @@ function buildEditSummary(previousRow, currentRow, notifyFields) {
     summaryFields,
     summaryText: fieldNames.length ? `Edited fields: ${fieldNames.join(', ')}` : '',
   };
+}
+
+function buildActiveReferenceKeys({ transactionRow, relations = [], notifyFieldSet }) {
+  if (!transactionRow || !Array.isArray(relations) || relations.length === 0) return new Set();
+  const keys = new Set();
+  relations.forEach((relation) => {
+    if (!relation?.column || !relation?.table) return;
+    if (
+      notifyFieldSet &&
+      notifyFieldSet.size > 0 &&
+      !notifyFieldSet.has(String(relation.column).toLowerCase())
+    ) {
+      return;
+    }
+    const rawValue = getCaseInsensitive(transactionRow, relation.column);
+    let ids = normalizeReferenceIds(rawValue, relation.idField);
+    if (relation.isArray && ids.length === 0) {
+      const parsed = parseJsonValue(rawValue);
+      ids = normalizeReferenceIds(parsed, relation.idField);
+    }
+    ids
+      .map((id) => buildReferenceKey(relation.table, id))
+      .filter((key) => key)
+      .forEach((key) => keys.add(key));
+  });
+  return keys;
 }
 
 async function resolveTransactionConfig(tableName, transactionRow, companyId) {
@@ -352,6 +386,7 @@ async function updateExistingTransactionNotifications({
   transactionName,
   summaryFields,
   summaryText,
+  activeReferenceKeys,
 }) {
   const [rows] = await pool.query(
     `SELECT notification_id, message, recipient_empid, created_at, created_by, type, related_id
@@ -375,6 +410,50 @@ async function updateExistingTransactionNotifications({
       continue;
     }
     if (!payload || payload.kind !== 'transaction') continue;
+    if (payload.excluded) continue;
+    const referenceKey = buildReferenceKey(payload.referenceTable, payload.referenceId);
+    const isActive =
+      !activeReferenceKeys || activeReferenceKeys.size === 0
+        ? true
+        : activeReferenceKeys.has(referenceKey);
+    if (action === 'update' && !isActive) {
+      const nextPayload = {
+        ...payload,
+        action,
+        summaryFields: payload.summaryFields || [],
+        summaryText: EXCLUDED_SUMMARY_TEXT,
+        excluded: true,
+        actor: updatedBy ?? payload.actor ?? payload.createdBy ?? null,
+        updatedAt,
+      };
+      const message = JSON.stringify(nextPayload);
+      // eslint-disable-next-line no-await-in-loop
+      updated += await updateNotifications({
+        notificationIds: [row.notification_id],
+        message,
+        updatedBy,
+        markUnread: true,
+      });
+      if (row.recipient_empid) {
+        payloads.push({
+          room: `user:${row.recipient_empid}`,
+          payload: {
+            id: row.notification_id,
+            type: row.type,
+            kind: nextPayload.kind ?? row.type,
+            message,
+            related_id: row.related_id,
+            created_at: row.created_at
+              ? new Date(row.created_at).toISOString()
+              : new Date().toISOString(),
+            updated_at: updatedAt,
+            sender: row.created_by ?? null,
+          },
+        });
+      }
+      continue;
+    }
+    if (!isActive && action === 'update') continue;
     const nextSummaryFields =
       summaryFields !== undefined ? summaryFields : payload.summaryFields || [];
     const nextSummaryText =
@@ -385,6 +464,7 @@ async function updateExistingTransactionNotifications({
       transactionName: transactionName || payload.transactionName,
       summaryFields: nextSummaryFields,
       summaryText: nextSummaryText,
+      actor: updatedBy ?? payload.actor ?? payload.createdBy ?? null,
       updatedAt,
     };
     const message = JSON.stringify(nextPayload);
@@ -481,16 +561,23 @@ async function handleTransactionNotification(job) {
         : notifyFields,
   );
   const actionLabel = job.action ?? 'update';
+  const deleteSummary = buildSummary(transactionRow, editFieldList);
   const rawEditSummary =
     job.action === 'update'
       ? buildEditSummary(job.previousSnapshot, transactionRow, editFieldList)
       : job.action === 'delete'
-        ? { summaryFields: [], summaryText: 'Transaction deleted' }
+        ? { summaryFields: deleteSummary.summaryFields, summaryText: 'Transaction deleted' }
         : { summaryFields: [], summaryText: '' };
   const editSummary =
     job.action === 'update' && !rawEditSummary.summaryText
       ? { ...rawEditSummary, summaryText: 'Transaction edited' }
       : rawEditSummary;
+  const notifyFieldSet = new Set(notifyFields.map((field) => field.toLowerCase()));
+  const activeReferenceKeys = buildActiveReferenceKeys({
+    transactionRow,
+    relations,
+    notifyFieldSet,
+  });
   if (job.action === 'update' || job.action === 'delete') {
     const transactionName = deriveTransactionName(transactionRow, job.tableName);
     const { updated, payloads } = await updateExistingTransactionNotifications({
@@ -501,6 +588,7 @@ async function handleTransactionNotification(job) {
       transactionName,
       summaryFields: editSummary.summaryFields,
       summaryText: editSummary.summaryText,
+      activeReferenceKeys,
     });
     if (payloads.length) {
       payloads.forEach(({ room, payload }) => emitNotificationEvent([room], payload));
@@ -516,7 +604,6 @@ async function handleTransactionNotification(job) {
   ) {
     return;
   }
-  const notifyFieldSet = new Set(notifyFields.map((field) => field.toLowerCase()));
   const displayEntries = Array.isArray(displayConfig?.config) ? displayConfig.config : [];
   const transactionName = deriveTransactionName(transactionRow, job.tableName);
   const notificationFieldList = normalizeFieldList(transactionConfig?.notificationFields);
@@ -572,11 +659,14 @@ async function handleTransactionNotification(job) {
 
       const { summaryFields: referenceSummaryFields, summaryText: referenceSummaryText } =
         buildSummary(referenceRow, config?.notificationDashboardFields ?? []);
+      const deleteSummaryFields = dashboardSummaryBase.summaryFields.length
+        ? dashboardSummaryBase.summaryFields
+        : notificationSummaryBase.summaryFields;
       const summaryFields =
         job.action === 'update' && editSummary.summaryFields.length
           ? editSummary.summaryFields
           : job.action === 'delete'
-            ? []
+            ? deleteSummaryFields
             : dashboardSummaryBase.summaryFields.length
               ? dashboardSummaryBase.summaryFields
               : referenceSummaryFields;
@@ -598,6 +688,7 @@ async function handleTransactionNotification(job) {
         role,
         summaryFields,
         summaryText,
+        actor: job.changedBy ?? null,
         updatedAt: new Date().toISOString(),
       };
       const message = JSON.stringify(messagePayload);
