@@ -4,6 +4,7 @@ import { AuthContext } from '../context/AuthContext.jsx';
 import { useToast } from '../context/ToastContext.jsx';
 import { useCompanyModules } from '../hooks/useCompanyModules.js';
 import { useTransactionNotifications } from '../context/TransactionNotificationContext.jsx';
+import { useTabs } from '../context/TabContext.jsx';
 import { hasTransactionFormAccess } from '../utils/transactionFormAccess.js';
 import {
   isModuleLicensed,
@@ -260,6 +261,7 @@ export default function TransactionNotificationWidget() {
   const location = useLocation();
   const navigate = useNavigate();
   const { addToast } = useToast();
+  const { openTab } = useTabs();
   const {
     company,
     branch,
@@ -845,6 +847,7 @@ export default function TransactionNotificationWidget() {
       findTransactionRow,
       loadAllowedForms,
       navigate,
+      openTab,
       resolveCompletionForm,
     ],
   );
