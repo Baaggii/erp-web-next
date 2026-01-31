@@ -249,9 +249,7 @@ export default function TransactionNotificationWidget() {
     const tables = Array.from(
       new Set(
         groups
-          .flatMap((group) =>
-            group.items.flatMap((item) => [item.transactionTable, item.referenceTable]),
-          )
+          .flatMap((group) => group.items.map((item) => item.transactionTable))
           .filter(Boolean),
       ),
     );
@@ -388,10 +386,9 @@ export default function TransactionNotificationWidget() {
     const loadMissing = async () => {
       for (const group of groups) {
         for (const item of group.items) {
-          if (!Array.isArray(item.summaryFields)) continue;
-          const baseTable = item.referenceTable || item.transactionTable;
-          if (!baseTable) continue;
-          const relMap = relationMapCache.current.get(baseTable.toLowerCase()) || {};
+          if (!item.transactionTable || !Array.isArray(item.summaryFields)) continue;
+          const relMap =
+            relationMapCache.current.get(item.transactionTable.toLowerCase()) || {};
           for (const field of item.summaryFields) {
             const relation = relMap[field?.field?.toLowerCase?.() || ''];
             if (!relation?.table || !relation?.column) continue;
@@ -426,10 +423,9 @@ export default function TransactionNotificationWidget() {
 
   const resolveSummaryValue = useCallback(
     (item, field) => {
-      if (!field?.field) return field?.value ?? '';
-      const baseTable = item?.referenceTable || item?.transactionTable;
-      if (!baseTable) return field?.value ?? '';
-      const relMap = relationMapCache.current.get(baseTable.toLowerCase()) || {};
+      if (!item?.transactionTable || !field?.field) return field?.value ?? '';
+      const relMap =
+        relationMapCache.current.get(item.transactionTable.toLowerCase()) || {};
       const relation = relMap[field.field.toLowerCase()];
       if (!relation?.table || !relation?.column) return field?.value ?? '';
       const { parts, separator } = parseRelationValueParts(field.value);
