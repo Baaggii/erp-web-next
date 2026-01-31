@@ -801,10 +801,6 @@ export default function TransactionNotificationWidget() {
           addToast('Completion is not available for this transaction.', 'error');
           return;
         }
-        if (completionTransactions.length === 0) {
-          addToast('Completion transaction is not configured.', 'error');
-          return;
-        }
         const forms = await loadAllowedForms();
         const completionRow = findCompletionRow(planRow);
         const candidateRows = completionRow
@@ -836,7 +832,6 @@ export default function TransactionNotificationWidget() {
         if (item?.referenceTable) {
           params.set('planReferenceTable', String(item.referenceTable));
         }
-        openTab({ key: path, label: completionForm.name || 'Completion' });
         navigate(`${path}?${params.toString()}`);
       } finally {
         setCompletionLoading((prev) => {
