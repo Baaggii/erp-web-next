@@ -126,15 +126,6 @@ export default function TransactionNotificationDropdown() {
                         </div>
                       )}
                     </button>
-                    <div style={styles.groupActions}>
-                      <button
-                        type="button"
-                        style={styles.groupOpen}
-                        onClick={() => handleGroupClick(group)}
-                      >
-                        Open
-                      </button>
-                    </div>
                   </div>
                   {isExpanded && (
                     <div style={styles.groupItems}>
@@ -252,21 +243,6 @@ const styles = {
     display: 'flex',
     flexDirection: 'column',
     gap: '0.15rem',
-  },
-  groupActions: {
-    marginTop: '0.5rem',
-    display: 'flex',
-    justifyContent: 'space-between',
-    gap: '0.5rem',
-  },
-  groupOpen: {
-    border: 'none',
-    background: '#0f172a',
-    color: '#fff',
-    borderRadius: '999px',
-    fontSize: '0.7rem',
-    padding: '0.15rem 0.65rem',
-    cursor: 'pointer',
   },
   itemTitle: {
     fontWeight: 600,
