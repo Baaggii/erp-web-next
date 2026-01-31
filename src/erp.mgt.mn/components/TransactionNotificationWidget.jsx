@@ -91,6 +91,8 @@ function getCompletionReference(planRow) {
   return null;
 }
 
+const ARROW_SEPARATOR = '→';
+
 function formatTimestamp(value) {
   if (!value) return 'Unknown time';
   const date = new Date(value);
@@ -149,14 +151,20 @@ function isExcludedAction(item) {
   return Boolean(item?.excluded) || normalized === 'excluded' || normalized === 'exclude';
 }
 
-function buildSummaryText(item) {
+function buildSummaryText(item, resolveFieldLabel) {
   if (!item) return 'Transaction update';
   const actionMeta = getActionMeta(item.action);
   const normalized = typeof item.action === 'string' ? item.action.trim().toLowerCase() : '';
   if (item.summaryText) return item.summaryText;
   if (Array.isArray(item.summaryFields) && item.summaryFields.length > 0) {
     const fields = item.summaryFields
-      .map((field) => field?.field)
+      .map((field) => {
+        const rawField = field?.field;
+        if (!rawField) return rawField;
+        return typeof resolveFieldLabel === 'function'
+          ? resolveFieldLabel(item, rawField)
+          : rawField;
+      })
       .filter(Boolean)
       .join(', ');
     if (fields) {
