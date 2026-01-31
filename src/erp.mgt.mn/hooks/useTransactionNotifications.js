@@ -5,6 +5,13 @@ import { connectSocket, disconnectSocket } from '../utils/socket.js';
 
 const NOTIFICATION_KIND = 'transaction';
 
+function getNotificationTimestamp(notification) {
+  if (!notification) return 0;
+  const raw = notification.updatedAt || notification.createdAt || 0;
+  const ts = new Date(raw).getTime();
+  return Number.isFinite(ts) ? ts : 0;
+}
+
 function parseNotificationRow(row) {
   if (!row?.message) return null;
   let payload = row.message;
@@ -17,6 +24,7 @@ function parseNotificationRow(row) {
   }
   if (typeof payload !== 'object' || payload === null) return null;
   if (!payload || payload.kind !== NOTIFICATION_KIND) return null;
+  const updatedAt = payload.updatedAt || payload.updated_at || row.updated_at || row.created_at;
   return {
     id: row.notification_id,
     transactionName: payload.transactionName || 'Transaction',
@@ -29,6 +37,7 @@ function parseNotificationRow(row) {
     summaryFields: payload.summaryFields || [],
     summaryText: payload.summaryText || '',
     createdAt: row.created_at,
+    updatedAt,
     isRead: Boolean(row.is_read),
   };
 }
@@ -45,6 +54,12 @@ function parseNotificationPayload(payload) {
   }
   if (typeof parsed !== 'object' || parsed === null) return null;
   if (parsed.kind !== NOTIFICATION_KIND) return null;
+  const updatedAt =
+    parsed.updatedAt ||
+    parsed.updated_at ||
+    payload.updatedAt ||
+    payload.updated_at ||
+    payload.created_at;
   return {
     id: payload.id,
     transactionName: parsed.transactionName || 'Transaction',
@@ -57,7 +72,8 @@ function parseNotificationPayload(payload) {
     summaryFields: parsed.summaryFields || [],
     summaryText: parsed.summaryText || '',
     createdAt: payload.created_at,
-    isRead: false,
+    updatedAt,
+    isRead: Boolean(payload.is_read) || false,
   };
 }
 
@@ -79,10 +95,17 @@ function buildGroups(notifications) {
     const group = groups.get(key);
     group.items.push(notification);
     if (!notification.isRead) group.unreadCount += 1;
-    const createdTime = notification.createdAt ? new Date(notification.createdAt).getTime() : 0;
-    if (createdTime > group.latestAt) group.latestAt = createdTime;
+    const updatedTime = getNotificationTimestamp(notification);
+    if (updatedTime > group.latestAt) group.latestAt = updatedTime;
   });
-  return Array.from(groups.values()).sort((a, b) => b.latestAt - a.latestAt);
+  return Array.from(groups.values())
+    .map((group) => ({
+      ...group,
+      items: group.items.sort(
+        (a, b) => getNotificationTimestamp(b) - getNotificationTimestamp(a),
+      ),
+    }))
+    .sort((a, b) => b.latestAt - a.latestAt);
 }
 
 export default function useTransactionNotifications() {
@@ -172,10 +195,20 @@ export default function useTransactionNotifications() {
           return;
         }
         setNotifications((prev) => {
-          if (prev.some((item) => Number(item.id) === Number(parsed.id))) {
-            return prev;
+          const existingIndex = prev.findIndex(
+            (item) => Number(item.id) === Number(parsed.id),
+          );
+          if (existingIndex >= 0) {
+            const next = [...prev];
+            const existing = prev[existingIndex];
+            next[existingIndex] = {
+              ...existing,
+              ...parsed,
+              isRead: false,
+            };
+            return next;
           }
-          return [parsed, ...prev];
+          return [{ ...parsed, isRead: false }, ...prev];
         });
       };
       const handleConnect = () => setConnected(true);
