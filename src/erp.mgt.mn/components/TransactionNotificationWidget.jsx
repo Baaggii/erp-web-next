@@ -799,10 +799,6 @@ export default function TransactionNotificationWidget() {
           addToast('Completion is not available for this transaction.', 'error');
           return;
         }
-        if (completionTransactions.length === 0) {
-          addToast('Completion transaction is not configured.', 'error');
-          return;
-        }
         const forms = await loadAllowedForms();
         const completionRow = findCompletionRow(planRow);
         const candidateRows = completionRow
