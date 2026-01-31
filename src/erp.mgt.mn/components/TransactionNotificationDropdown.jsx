@@ -65,17 +65,13 @@ export default function TransactionNotificationDropdown() {
     navigate(`/?${params.toString()}`);
   };
 
-  const toggleGroup = (groupKey) => {
-    setExpandedGroups((prev) => {
-      const next = new Set(prev);
-      if (next.has(groupKey)) {
-        next.delete(groupKey);
-      } else {
-        next.add(groupKey);
-      }
-      return next;
-    });
-  };
+  useEffect(() => {
+    if (!open) {
+      setExpandedGroups(new Set());
+      return;
+    }
+    setExpandedGroups(new Set(sortedGroups.map((group) => group.key)));
+  }, [open, sortedGroups]);
 
   return (
     <div style={styles.wrapper} ref={containerRef}>
@@ -89,57 +85,14 @@ export default function TransactionNotificationDropdown() {
       </button>
       {open && (
         <div style={styles.dropdown}>
-          <div style={styles.header}>
-            <span style={styles.headerTitle}>Notifications</span>
-            <span style={styles.headerCount}>
-              {unreadCount} unread
-            </span>
-          </div>
           <div style={styles.list}>
             {sortedGroups.length === 0 && (
               <div style={styles.empty}>No notifications yet</div>
             )}
             {sortedGroups.map((group) => {
-              const latestItem = group.items[0];
-              const actionMeta = getActionMeta(latestItem?.action);
               const isExpanded = expandedGroups.has(group.key);
               return (
                 <div key={group.key} style={styles.group}>
-                  <div style={styles.groupHeader(group.unreadCount > 0)}>
-                    <button
-                      type="button"
-                      style={styles.groupInfo}
-                      onClick={() => toggleGroup(group.key)}
-                    >
-                      <div style={styles.itemTitle}>
-                        <span>{group.name}</span>
-                        {latestItem && (
-                          <span style={styles.actionBadge(actionMeta.accent)}>
-                            {actionMeta.label}
-                          </span>
-                        )}
-                      </div>
-                      <div style={styles.itemMeta}>
-                        {group.unreadCount > 0
-                          ? `${group.unreadCount} unread`
-                          : `${group.items.length} total`}
-                      </div>
-                      {!isExpanded && (
-                        <div style={styles.itemPreview}>
-                          {buildPreviewText(latestItem)}
-                        </div>
-                      )}
-                    </button>
-                    <div style={styles.groupActions}>
-                      <button
-                        type="button"
-                        style={styles.groupOpen}
-                        onClick={() => handleGroupClick(group)}
-                      >
-                        Open
-                      </button>
-                    </div>
-                  </div>
                   {isExpanded && (
                     <div style={styles.groupItems}>
                       {group.items.map((item) => {
@@ -224,16 +177,6 @@ const styles = {
     overflow: 'hidden',
     zIndex: 60,
   },
-  header: {
-    padding: '0.75rem 1rem',
-    borderBottom: '1px solid #e5e7eb',
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    background: '#f8fafc',
-  },
-  headerTitle: { fontWeight: 600, color: '#0f172a' },
-  headerCount: { fontSize: '0.75rem', color: '#64748b' },
   list: {
     maxHeight: '360px',
     overflowY: 'auto',
@@ -246,41 +189,6 @@ const styles = {
   group: {
     borderBottom: '1px solid #e5e7eb',
   },
-  groupHeader: (isUnread) => ({
-    background: isUnread ? '#eff6ff' : '#fff',
-    padding: '0.75rem 1rem',
-  }),
-  groupInfo: {
-    width: '100%',
-    textAlign: 'left',
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '0.15rem',
-  },
-  groupActions: {
-    marginTop: '0.5rem',
-    display: 'flex',
-    justifyContent: 'space-between',
-    gap: '0.5rem',
-  },
-  groupOpen: {
-    border: 'none',
-    background: '#0f172a',
-    color: '#fff',
-    borderRadius: '999px',
-    fontSize: '0.7rem',
-    padding: '0.15rem 0.65rem',
-    cursor: 'pointer',
-  },
-  itemTitle: {
-    fontWeight: 600,
-    color: '#0f172a',
-    marginBottom: '0.25rem',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: '0.5rem',
-  },
   actionBadge: (accent) => ({
     background: accent || '#2563eb',
     color: '#fff',
@@ -290,8 +198,6 @@ const styles = {
     textTransform: 'uppercase',
     letterSpacing: '0.04em',
   }),
-  itemMeta: { fontSize: '0.75rem', color: '#64748b', marginBottom: '0.25rem' },
-  itemPreview: { fontSize: '0.85rem', color: '#334155' },
   groupItems: {
     display: 'flex',
     flexDirection: 'column',
