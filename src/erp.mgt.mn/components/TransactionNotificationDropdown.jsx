@@ -41,6 +41,7 @@ function buildPreviewText(item) {
 export default function TransactionNotificationDropdown() {
   const { groups, unreadCount, markGroupRead } = useTransactionNotifications();
   const [open, setOpen] = useState(false);
+  const [expandedGroups, setExpandedGroups] = useState(() => new Set());
   const containerRef = useRef(null);
   const navigate = useNavigate();
 
@@ -62,6 +63,11 @@ export default function TransactionNotificationDropdown() {
     await markGroupRead(group.key);
     navigate(`/?tab=activity&notifyGroup=${group.key}`);
   };
+
+  useEffect(() => {
+    if (!open) return;
+    setExpandedGroups(new Set(sortedGroups.map((group) => group.key)));
+  }, [open, sortedGroups]);
 
   return (
     <div style={styles.wrapper} ref={containerRef}>
@@ -88,30 +94,71 @@ export default function TransactionNotificationDropdown() {
             {sortedGroups.map((group) => {
               const latestItem = group.items[0];
               const actionMeta = getActionMeta(latestItem?.action);
+              const isExpanded = expandedGroups.has(group.key);
               return (
-                <button
-                  key={group.key}
-                  type="button"
-                  style={styles.item(group.unreadCount > 0)}
-                  onClick={() => handleGroupClick(group)}
-                >
-                  <div style={styles.itemTitle}>
-                    <span>{group.name}</span>
-                    {latestItem && (
-                      <span style={styles.actionBadge(actionMeta.accent)}>
-                        {actionMeta.label}
-                      </span>
-                    )}
+                <div key={group.key} style={styles.group}>
+                  <div style={styles.groupHeader(group.unreadCount > 0)}>
+                    <div style={styles.groupInfo}>
+                      <div style={styles.itemTitle}>
+                        <span>{group.name}</span>
+                        {latestItem && (
+                          <span style={styles.actionBadge(actionMeta.accent)}>
+                            {actionMeta.label}
+                          </span>
+                        )}
+                      </div>
+                      <div style={styles.itemMeta}>
+                        {group.unreadCount > 0
+                          ? `${group.unreadCount} unread`
+                          : `${group.items.length} total`}
+                      </div>
+                      <div style={styles.itemPreview}>
+                        {buildPreviewText(latestItem)}
+                      </div>
+                    </div>
+                    <div style={styles.groupActions}>
+                      <button
+                        type="button"
+                        style={styles.groupOpen}
+                        onClick={() => handleGroupClick(group)}
+                      >
+                        Open
+                      </button>
+                    </div>
                   </div>
-                  <div style={styles.itemMeta}>
-                    {group.unreadCount > 0
-                      ? `${group.unreadCount} unread`
-                      : `${group.items.length} total`}
-                  </div>
-                  <div style={styles.itemPreview}>
-                    {buildPreviewText(latestItem)}
-                  </div>
-                </button>
+                  {isExpanded && (
+                    <div style={styles.groupItems}>
+                      {group.items.map((item) => {
+                        const itemMeta = getActionMeta(item?.action);
+                        return (
+                          <button
+                            key={item.id}
+                            type="button"
+                            style={styles.groupItem(item.isRead === false)}
+                            onClick={() => handleGroupClick(group)}
+                          >
+                            <div style={styles.groupItemTitle}>
+                              <span>{item.transactionName || group.name}</span>
+                              <div style={styles.groupItemBadges}>
+                                {item?.isRead === false && (
+                                  <span style={styles.newBadge}>New</span>
+                                )}
+                                {item && (
+                                  <span style={styles.actionBadge(itemMeta.accent)}>
+                                    {itemMeta.label}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                            <div style={styles.groupItemPreview}>
+                              {buildPreviewText(item)}
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
               );
             })}
           </div>
@@ -187,15 +234,35 @@ const styles = {
     color: '#64748b',
     textAlign: 'center',
   },
-  item: (isUnread) => ({
-    width: '100%',
-    textAlign: 'left',
-    border: 'none',
+  group: {
+    borderBottom: '1px solid #e5e7eb',
+  },
+  groupHeader: (isUnread) => ({
     background: isUnread ? '#eff6ff' : '#fff',
     padding: '0.75rem 1rem',
-    borderBottom: '1px solid #e5e7eb',
-    cursor: 'pointer',
   }),
+  groupInfo: {
+    width: '100%',
+    textAlign: 'left',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.15rem',
+  },
+  groupActions: {
+    marginTop: '0.5rem',
+    display: 'flex',
+    justifyContent: 'space-between',
+    gap: '0.5rem',
+  },
+  groupOpen: {
+    border: 'none',
+    background: '#0f172a',
+    color: '#fff',
+    borderRadius: '999px',
+    fontSize: '0.7rem',
+    padding: '0.15rem 0.65rem',
+    cursor: 'pointer',
+  },
   itemTitle: {
     fontWeight: 600,
     color: '#0f172a',
@@ -216,6 +283,51 @@ const styles = {
   }),
   itemMeta: { fontSize: '0.75rem', color: '#64748b', marginBottom: '0.25rem' },
   itemPreview: { fontSize: '0.85rem', color: '#334155' },
+  groupItems: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.4rem',
+    padding: '0 1rem 0.9rem',
+    background: '#f8fafc',
+  },
+  groupItem: (isUnread) => ({
+    width: '100%',
+    textAlign: 'left',
+    border: `1px solid ${isUnread ? '#2563eb' : '#e2e8f0'}`,
+    borderRadius: '10px',
+    background: isUnread ? '#eff6ff' : '#fff',
+    padding: '0.6rem 0.75rem',
+    cursor: 'pointer',
+    boxShadow: isUnread ? '0 0 0 1px rgba(37,99,235,0.2)' : 'none',
+  }),
+  groupItemTitle: {
+    fontWeight: 600,
+    color: '#0f172a',
+    marginBottom: '0.25rem',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: '0.5rem',
+  },
+  groupItemBadges: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: '0.4rem',
+    flexShrink: 0,
+  },
+  groupItemPreview: {
+    fontSize: '0.8rem',
+    color: '#334155',
+  },
+  newBadge: {
+    background: '#10b981',
+    color: '#fff',
+    borderRadius: '999px',
+    padding: '0.1rem 0.45rem',
+    fontSize: '0.6rem',
+    textTransform: 'uppercase',
+    letterSpacing: '0.05em',
+  },
   footer: {
     width: '100%',
     border: 'none',
