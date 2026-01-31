@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import useGeneralConfig from './useGeneralConfig.js';
 import { API_BASE } from '../utils/apiBase.js';
-import { usePollingContext, useSharedPoller } from '../context/PollingContext.jsx';
+import { useSharedPoller } from '../context/PollingContext.jsx';
 import { connectSocket, disconnectSocket } from '../utils/socket.js';
 
 const DEFAULT_POLL_INTERVAL_SECONDS = 30;
 const MIN_POLL_INTERVAL_MS = 45_000;
 const GROUP_DEBOUNCE_MS = 400;
+const DISCONNECT_FALLBACK_MS = 30 * 1000;
 const SCOPES = ['created', 'review'];
 const TEMPORARY_FILTER_CACHE_KEY = 'temporary-transaction-filter';
 
@@ -51,7 +52,8 @@ function createInitialCounts() {
 export default function useTemporaryNotificationCounts(empid) {
   const [counts, setCounts] = useState(() => createInitialCounts());
   const cfg = useGeneralConfig();
-  const { socketConnected } = usePollingContext();
+  const [enablePolling, setEnablePolling] = useState(false);
+  const disconnectTimeoutRef = useRef();
   const intervalSeconds =
     Number(
       cfg?.general?.temporaryPollingIntervalSeconds ||
@@ -88,11 +90,11 @@ export default function useTemporaryNotificationCounts(empid) {
   const pollerOptions = useMemo(
     () => ({
       intervalMs: effectivePollIntervalMs,
-      enabled: !socketConnected,
+      enabled: enablePolling,
       pauseWhenHidden: true,
       pauseWhenSocketActive: true,
     }),
-    [effectivePollIntervalMs, socketConnected],
+    [effectivePollIntervalMs, enablePolling],
   );
 
   const getSeenValue = useCallback(
@@ -257,6 +259,24 @@ export default function useTemporaryNotificationCounts(empid) {
 
   useEffect(() => {
     let socket;
+    setEnablePolling(false);
+
+    const startFallback = () => {
+      if (disconnectTimeoutRef.current) return;
+      disconnectTimeoutRef.current = setTimeout(() => {
+        setEnablePolling(true);
+        disconnectTimeoutRef.current = null;
+      }, DISCONNECT_FALLBACK_MS);
+    };
+
+    const stopFallback = () => {
+      if (disconnectTimeoutRef.current) {
+        clearTimeout(disconnectTimeoutRef.current);
+        disconnectTimeoutRef.current = null;
+      }
+      setEnablePolling(false);
+    };
+
     const handleNotification = (payload) => {
       const kind = payload?.kind;
       if (kind) {
@@ -273,13 +293,24 @@ export default function useTemporaryNotificationCounts(empid) {
     try {
       socket = connectSocket();
       socket.on('notification:new', handleNotification);
-    } catch {
-      // ignore socket errors; polling will continue
+      socket.on('connect', stopFallback);
+      socket.on('disconnect', startFallback);
+      socket.on('connect_error', startFallback);
+    } catch (err) {
+      console.warn('Failed to connect temporary notification socket', err);
+      setEnablePolling(true);
     }
 
     return () => {
+      if (disconnectTimeoutRef.current) {
+        clearTimeout(disconnectTimeoutRef.current);
+        disconnectTimeoutRef.current = null;
+      }
       if (socket) {
         socket.off('notification:new', handleNotification);
+        socket.off('connect', stopFallback);
+        socket.off('disconnect', startFallback);
+        socket.off('connect_error', startFallback);
         disconnectSocket();
       }
     };

@@ -17,17 +17,19 @@ react without inspecting message strings.
 
 React hooks connect to the Socket.IO server on mount and listen for
 `notification:new` events. Counts and badges update immediately when events
-arrive.
-If the WebSocket connection cannot be established the hooks fall back to polling
-the API at the configured interval (`requestPollingIntervalSeconds`, default
-30&nbsp;seconds).
+arrive. The Socket.IO client attempts to reconnect automatically when the
+connection drops, and socket connection errors are logged to the console by
+default to make failures visible during development and debugging.
+If the WebSocket connection cannot be established for an extended period, the
+hooks fall back to polling the API at the configured interval
+(`requestPollingIntervalSeconds`, default 30&nbsp;seconds).
 
 Set the WebSocket endpoint with the `VITE_SOCKET_URL` environment variable. If
 undefined the client connects to the same host as the REST API (`VITE_API_BASE`,
-with the `/api` suffix removed). Socket handshakes are served from
-`/api/socket.io` by default; override this path with `VITE_SOCKET_PATH` on the
-client and `SOCKET_IO_PATH` on the server when your reverse proxy expects a
-different prefix.
+with the `/api` suffix removed) or the current browser origin. Socket handshakes
+are served from `/api/socket.io` by default; override this path with
+`VITE_SOCKET_PATH` on the client and `SOCKET_IO_PATH` on the server when your
+reverse proxy expects a different prefix.
 
 ## Local storage keys
 
