@@ -252,6 +252,17 @@ const styles = {
   groupInfo: {
     width: '100%',
     textAlign: 'left',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.15rem',
+  },
+  groupActions: {
+    marginTop: '0.5rem',
+    display: 'flex',
+    justifyContent: 'space-between',
+    gap: '0.5rem',
+  },
+  groupOpen: {
     border: 'none',
     background: 'transparent',
     padding: 0,
