@@ -3,7 +3,6 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { AuthContext } from '../context/AuthContext.jsx';
 import { useToast } from '../context/ToastContext.jsx';
 import { useCompanyModules } from '../hooks/useCompanyModules.js';
-import { useModules } from '../hooks/useModules.js';
 import { useTransactionNotifications } from '../context/TransactionNotificationContext.jsx';
 import { hasTransactionFormAccess } from '../utils/transactionFormAccess.js';
 import {
@@ -150,14 +149,20 @@ function isExcludedAction(item) {
   return Boolean(item?.excluded) || normalized === 'excluded' || normalized === 'exclude';
 }
 
-function buildSummaryText(item) {
+function buildSummaryText(item, resolveFieldLabel) {
   if (!item) return 'Transaction update';
   const actionMeta = getActionMeta(item.action);
   const normalized = typeof item.action === 'string' ? item.action.trim().toLowerCase() : '';
   if (item.summaryText) return item.summaryText;
   if (Array.isArray(item.summaryFields) && item.summaryFields.length > 0) {
     const fields = item.summaryFields
-      .map((field) => field?.field)
+      .map((field) => {
+        const rawField = field?.field;
+        if (!rawField) return rawField;
+        return typeof resolveFieldLabel === 'function'
+          ? resolveFieldLabel(item, rawField)
+          : rawField;
+      })
       .filter(Boolean)
       .join(', ');
     if (fields) {
@@ -266,14 +271,12 @@ export default function TransactionNotificationWidget() {
     workplacePositionMap,
   } = useContext(AuthContext);
   const licensed = useCompanyModules(company);
-  const modules = useModules();
   const [expanded, setExpanded] = useState(() => new Set());
   const [collapsedSections, setCollapsedSections] = useState(() => new Set());
   const [relationLabelMap, setRelationLabelMap] = useState({});
   const [relationMapVersion, setRelationMapVersion] = useState(0);
   const [codeTransactions, setCodeTransactions] = useState([]);
   const [completionLoading, setCompletionLoading] = useState(() => new Set());
-  const moduleKeySet = useMemo(() => new Set(modules.map((mod) => mod.module_key)), [modules]);
   const groupRefs = useRef({});
   const itemRefs = useRef({});
   const initializedGroups = useRef(new Set());
@@ -379,7 +382,6 @@ export default function TransactionNotificationWidget() {
     company,
     department,
     licensed,
-    moduleKeySet,
     perms,
     session,
     user,
@@ -737,7 +739,6 @@ export default function TransactionNotificationWidget() {
             })
           )
             return;
-          if (info.moduleKey && !moduleKeySet.has(info.moduleKey)) return;
           if (!isModulePermissionGranted(perms, info.moduleKey)) return;
           if (!isModuleLicensed(licensed, info.moduleKey)) return;
           filtered[name] = info;
@@ -756,7 +757,6 @@ export default function TransactionNotificationWidget() {
     branch,
     department,
     licensed,
-    moduleKeySet,
     perms,
     session,
     user,
@@ -812,10 +812,6 @@ export default function TransactionNotificationWidget() {
         }
 
         const moduleKey = completionForm.info.moduleKey || 'forms';
-        if (moduleKey && !moduleKeySet.has(moduleKey)) {
-          addToast('Completion form module is not available.', 'error');
-          return;
-        }
         const slug = moduleKey.replace(/_/g, '-');
         const params = new URLSearchParams();
         params.set(`name_${moduleKey}`, completionForm.name);
