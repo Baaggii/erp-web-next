@@ -1354,10 +1354,10 @@ export default function FormsManagement() {
               </div>
               <div
                 className="table-container overflow-x-auto"
-                style={{ maxHeight: '70vh', width: '100%', maxWidth: '100%' }}
+                style={{ maxHeight: '70vh', width: '100%' }}
               >
                 <table
-                  style={{ borderCollapse: 'collapse', width: '100%', minWidth: '100%' }}
+                  style={{ borderCollapse: 'collapse', width: 'max-content', minWidth: '100%' }}
                 >
                   <thead className="sticky-header">
               <tr>
