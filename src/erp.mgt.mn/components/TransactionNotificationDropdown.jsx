@@ -65,17 +65,13 @@ export default function TransactionNotificationDropdown() {
     navigate(`/?${params.toString()}`);
   };
 
-  const toggleGroup = (groupKey) => {
-    setExpandedGroups((prev) => {
-      const next = new Set(prev);
-      if (next.has(groupKey)) {
-        next.delete(groupKey);
-      } else {
-        next.add(groupKey);
-      }
-      return next;
-    });
-  };
+  useEffect(() => {
+    if (!open) {
+      setExpandedGroups(new Set());
+      return;
+    }
+    setExpandedGroups(new Set(sortedGroups.map((group) => group.key)));
+  }, [open, sortedGroups]);
 
   return (
     <div style={styles.wrapper} ref={containerRef}>
@@ -89,12 +85,6 @@ export default function TransactionNotificationDropdown() {
       </button>
       {open && (
         <div style={styles.dropdown}>
-          <div style={styles.header}>
-            <span style={styles.headerTitle}>Notifications</span>
-            <span style={styles.headerCount}>
-              {unreadCount} unread
-            </span>
-          </div>
           <div style={styles.list}>
             {sortedGroups.length === 0 && (
               <div style={styles.empty}>No notifications yet</div>
@@ -109,7 +99,7 @@ export default function TransactionNotificationDropdown() {
                     <button
                       type="button"
                       style={styles.groupInfo}
-                      onClick={() => toggleGroup(group.key)}
+                      onClick={() => handleGroupClick(group)}
                     >
                       <div style={styles.itemTitle}>
                         <span>{group.name}</span>
@@ -130,15 +120,6 @@ export default function TransactionNotificationDropdown() {
                         </div>
                       )}
                     </button>
-                    <div style={styles.groupActions}>
-                      <button
-                        type="button"
-                        style={styles.groupOpen}
-                        onClick={() => handleGroupClick(group)}
-                      >
-                        Open
-                      </button>
-                    </div>
                   </div>
                   {isExpanded && (
                     <div style={styles.groupItems}>
@@ -224,16 +205,6 @@ const styles = {
     overflow: 'hidden',
     zIndex: 60,
   },
-  header: {
-    padding: '0.75rem 1rem',
-    borderBottom: '1px solid #e5e7eb',
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    background: '#f8fafc',
-  },
-  headerTitle: { fontWeight: 600, color: '#0f172a' },
-  headerCount: { fontSize: '0.75rem', color: '#64748b' },
   list: {
     maxHeight: '360px',
     overflowY: 'auto',
@@ -256,21 +227,6 @@ const styles = {
     display: 'flex',
     flexDirection: 'column',
     gap: '0.15rem',
-  },
-  groupActions: {
-    marginTop: '0.5rem',
-    display: 'flex',
-    justifyContent: 'space-between',
-    gap: '0.5rem',
-  },
-  groupOpen: {
-    border: 'none',
-    background: '#0f172a',
-    color: '#fff',
-    borderRadius: '999px',
-    fontSize: '0.7rem',
-    padding: '0.15rem 0.65rem',
-    cursor: 'pointer',
   },
   itemTitle: {
     fontWeight: 600,
