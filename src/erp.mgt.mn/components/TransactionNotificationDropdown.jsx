@@ -91,6 +91,8 @@ export default function TransactionNotificationDropdown() {
             )}
             {sortedGroups.map((group) => {
               const isExpanded = expandedGroups.has(group.key);
+              const latestItem = group.items?.[0];
+              const actionMeta = getActionMeta(latestItem?.action);
               return (
                 <div key={group.key} style={styles.group}>
                   <div style={styles.groupHeader(group.unreadCount > 0)}>
