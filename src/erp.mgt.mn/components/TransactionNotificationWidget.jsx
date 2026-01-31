@@ -3,8 +3,8 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { AuthContext } from '../context/AuthContext.jsx';
 import { useToast } from '../context/ToastContext.jsx';
 import { useCompanyModules } from '../hooks/useCompanyModules.js';
+import useGeneralConfig from '../hooks/useGeneralConfig.js';
 import { useTransactionNotifications } from '../context/TransactionNotificationContext.jsx';
-import { useTabs } from '../context/TabContext.jsx';
 import { hasTransactionFormAccess } from '../utils/transactionFormAccess.js';
 import {
   isModuleLicensed,
@@ -42,6 +42,13 @@ function normalizeText(value) {
   return String(value).trim().toLowerCase();
 }
 
+function normalizeFieldName(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, '');
+}
+
 function getRowValue(row, keys) {
   if (!row || typeof row !== 'object') return null;
   for (const key of keys) {
@@ -74,6 +81,26 @@ function hasFlag(row, keys) {
     }
   }
   return false;
+}
+
+function getSummaryFieldValue(item, fieldName) {
+  const normalizedTarget = normalizeFieldName(fieldName);
+  if (!normalizedTarget) return null;
+  const fields = Array.isArray(item?.summaryFields) ? item.summaryFields : [];
+  const match = fields.find(
+    (field) => normalizeFieldName(field?.field) === normalizedTarget,
+  );
+  if (!match) return null;
+  if (Object.prototype.hasOwnProperty.call(match, 'value')) {
+    return match.value;
+  }
+  if (Object.prototype.hasOwnProperty.call(match, 'val')) {
+    return match.val;
+  }
+  if (Object.prototype.hasOwnProperty.call(match, 'fieldValue')) {
+    return match.fieldValue;
+  }
+  return null;
 }
 
 function getCompletionReference(planRow) {
@@ -261,7 +288,7 @@ export default function TransactionNotificationWidget() {
   const location = useLocation();
   const navigate = useNavigate();
   const { addToast } = useToast();
-  const { openTab } = useTabs();
+  const generalConfig = useGeneralConfig();
   const {
     company,
     branch,
@@ -832,6 +859,19 @@ export default function TransactionNotificationWidget() {
         if (item?.referenceTable) {
           params.set('planReferenceTable', String(item.referenceTable));
         }
+        const planIdFieldName = generalConfig?.plan?.planIdFieldName?.trim();
+        if (planIdFieldName) {
+          const planIdValue = getSummaryFieldValue(item, planIdFieldName);
+          params.set('planFieldName', planIdFieldName);
+          if (
+            planIdValue !== null &&
+            planIdValue !== undefined &&
+            planIdValue !== ''
+          ) {
+            params.set('planFieldValue', String(planIdValue));
+          }
+        }
+        params.set('planOpen', '1');
         navigate(`${path}?${params.toString()}`);
       } finally {
         setCompletionLoading((prev) => {
@@ -847,7 +887,7 @@ export default function TransactionNotificationWidget() {
       findTransactionRow,
       loadAllowedForms,
       navigate,
-      openTab,
+      generalConfig,
       resolveCompletionForm,
     ],
   );

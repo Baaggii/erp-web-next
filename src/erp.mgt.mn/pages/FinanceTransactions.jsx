@@ -157,8 +157,55 @@ export default function FinanceTransactions({ moduleKey = 'finance_transactions'
   const controlRefs = useRef([]);
   const prevNameRef = useRef();
   const temporaryProcessedRef = useRef(new Set());
+  const planCompletionProcessedRef = useRef(new Set());
+
+  const planCompletionParams = useMemo(() => {
+    const openValue = searchParams.get('planOpen') ?? searchParams.get('plan_open');
+    if (!openValue) return null;
+    const normalizedOpen = String(openValue).toLowerCase();
+    const openFlag = !['0', 'false', 'no'].includes(normalizedOpen);
+    if (!openFlag) return null;
+    const fieldName =
+      searchParams.get('planFieldName') ?? searchParams.get('plan_field_name');
+    const fieldValue =
+      searchParams.get('planFieldValue') ?? searchParams.get('plan_field_value');
+    return {
+      open: openFlag,
+      fieldName: fieldName || '',
+      fieldValue: fieldValue ?? '',
+      key: `${fieldName || ''}:${fieldValue ?? ''}:${normalizedOpen}`,
+    };
+  }, [searchParams]);
 
   const reportProcPrefix = generalConfig?.general?.reportProcPrefix || '';
+  const planDefaultValues = useMemo(() => {
+    if (!planCompletionParams?.fieldName) return null;
+    if (
+      planCompletionParams.fieldValue === null ||
+      planCompletionParams.fieldValue === undefined ||
+      planCompletionParams.fieldValue === ''
+    ) {
+      return null;
+    }
+    return {
+      [planCompletionParams.fieldName]: planCompletionParams.fieldValue,
+    };
+  }, [planCompletionParams]);
+
+  const effectiveConfig = useMemo(() => {
+    if (!config || !planDefaultValues) return config;
+    const nextDefaults = {
+      ...(config.defaultValues || {}),
+      ...planDefaultValues,
+    };
+    if (isEqual(nextDefaults, config.defaultValues || {})) {
+      return config;
+    }
+    return {
+      ...config,
+      defaultValues: nextDefaults,
+    };
+  }, [config, planDefaultValues]);
 
   const availableProcedures = useMemo(() => {
     const formConfig = configs[name];
@@ -711,6 +758,39 @@ useEffect(() => {
   ]);
 
   useEffect(() => {
+    if (!planCompletionParams?.open) return;
+    if (!table || !effectiveConfig || !showTable) return;
+    if (!tableRef.current?.openAdd) return;
+    const processed = planCompletionProcessedRef.current;
+    const signature = `${planCompletionParams.key}::${moduleKey}::${table}`;
+    if (processed.has(signature)) return;
+    processed.add(signature);
+    setTimeout(() => {
+      tableRef.current?.openAdd();
+    }, 0);
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.delete('planOpen');
+        next.delete('plan_open');
+        next.delete('planFieldName');
+        next.delete('plan_field_name');
+        next.delete('planFieldValue');
+        next.delete('plan_field_value');
+        return next;
+      },
+      { replace: true },
+    );
+  }, [
+    planCompletionParams,
+    table,
+    effectiveConfig,
+    showTable,
+    moduleKey,
+    setSearchParams,
+  ]);
+
+  useEffect(() => {
     if (!selectedProc) {
       setProcParams([]);
       setManualParams({});
@@ -1071,7 +1151,7 @@ useEffect(() => {
             )}
           </div>
         )}
-      {table && config && (
+      {table && effectiveConfig && (
         <>
           <div style={{ marginBottom: '0.5rem' }}>
             {buttonPerms['New transaction'] && (
@@ -1091,7 +1171,7 @@ useEffect(() => {
             ref={tableRef}
             table={table}
             refreshId={refreshId}
-            formConfig={config}
+            formConfig={effectiveConfig}
             allConfigs={configs}
             formName={name}
             initialPerPage={10}
