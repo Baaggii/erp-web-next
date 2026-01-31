@@ -685,6 +685,9 @@ function parseEntry(raw = {}) {
     branchIdFields: arrify(
       raw.branchIdFields || (raw.branchIdField ? [raw.branchIdField] : []),
     ),
+    departmentIdFields: arrify(
+      raw.departmentIdFields || (raw.departmentIdField ? [raw.departmentIdField] : []),
+    ),
     companyIdFields: arrify(
       raw.companyIdFields || (raw.companyIdField ? [raw.companyIdField] : []),
     ),
@@ -1078,6 +1081,7 @@ export async function setFormConfig(
     editableFields,
     userIdFields = [],
     branchIdFields = [],
+    departmentIdFields = [],
     companyIdFields = [],
     allowedBranches = [],
     allowedDepartments = [],
@@ -1093,6 +1097,7 @@ export async function setFormConfig(
     moduleLabel,
     userIdField,
     branchIdField,
+    departmentIdField,
     companyIdField,
     dateField = [],
     emailField = [],
@@ -1141,6 +1146,13 @@ export async function setFormConfig(
   const cid = arrify(
     companyIdFields.length ? companyIdFields : companyIdField ? [companyIdField] : [],
   );
+  const did = arrify(
+    departmentIdFields.length
+      ? departmentIdFields
+      : departmentIdField
+        ? [departmentIdField]
+        : [],
+  );
   const ab = Array.isArray(allowedBranches)
     ? allowedBranches.map((v) => Number(v)).filter((v) => !Number.isNaN(v))
     : [];
@@ -1179,6 +1191,7 @@ export async function setFormConfig(
     editableFields: arrify(editableFields),
     userIdFields: uid,
     branchIdFields: bid,
+    departmentIdFields: did,
     companyIdFields: cid,
     dateField: arrify(dateField),
     emailField: arrify(emailField),

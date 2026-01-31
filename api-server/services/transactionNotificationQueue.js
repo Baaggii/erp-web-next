@@ -338,6 +338,41 @@ function pickDisplayConfig(entries, table, idField, referenceRow) {
   return fallback ?? scoped[0];
 }
 
+function addImplicitRelation(relations, { column, table, idField }) {
+  if (!column || !table || !idField) return;
+  const exists = relations.some(
+    (relation) =>
+      relation.column === column &&
+      relation.table === table &&
+      relation.idField === idField,
+  );
+  if (exists) return;
+  relations.push({ column, table, idField, isArray: false });
+}
+
+function resolveBranchIdField(column) {
+  const normalized = String(column || '').toLowerCase();
+  if (normalized.includes('branch_id') || normalized.includes('branchid')) {
+    return 'branch_id';
+  }
+  return 'id';
+}
+
+function resolveDepartmentIdField(column) {
+  const normalized = String(column || '').toLowerCase();
+  if (normalized.includes('department_id') || normalized.includes('departmentid')) {
+    return 'department_id';
+  }
+  return 'id';
+}
+
+function collectExistingFields(row, fields) {
+  return fields.filter((field) => {
+    const value = getCaseInsensitive(row, field);
+    return value !== undefined && value !== null && String(value).trim() !== '';
+  });
+}
+
 async function listEmpIdsByScope({ companyId, branchId, departmentId }) {
   if (!companyId) return [];
   const params = [companyId];
@@ -594,9 +629,43 @@ async function handleTransactionNotification(job) {
     });
   }
 
+  const companyFields = normalizeFieldList(transactionConfig?.companyIdFields);
+  const branchFields = normalizeFieldList(transactionConfig?.branchIdFields);
+  const departmentFields = normalizeFieldList(transactionConfig?.departmentIdFields);
+  const implicitCompanyFields = companyFields.length
+    ? companyFields
+    : collectExistingFields(transactionRow, ['company_id', 'companyId', 'companyid']);
+  const implicitBranchFields = branchFields.length
+    ? branchFields
+    : collectExistingFields(transactionRow, ['branch_id', 'branchId', 'branchid']);
+  const implicitDepartmentFields = departmentFields.length
+    ? departmentFields
+    : collectExistingFields(transactionRow, [
+        'department_id',
+        'departmentId',
+        'departmentid',
+      ]);
+
+  implicitCompanyFields.forEach((field) => {
+    addImplicitRelation(relations, { column: field, table: 'companies', idField: 'id' });
+  });
+  implicitBranchFields.forEach((field) => {
+    addImplicitRelation(relations, {
+      column: field,
+      table: 'code_branches',
+      idField: resolveBranchIdField(field),
+    });
+  });
+  implicitDepartmentFields.forEach((field) => {
+    addImplicitRelation(relations, {
+      column: field,
+      table: 'code_department',
+      idField: resolveDepartmentIdField(field),
+    });
+  });
+
   if (!relations.length) return;
   const notifyFields = normalizeFieldList(transactionConfig?.notifyFields);
-  if (!notifyFields.length) return;
   const editFieldList = normalizeFieldList(
     transactionConfig?.notificationDashboardFields?.length
       ? transactionConfig.notificationDashboardFields
@@ -616,7 +685,9 @@ async function handleTransactionNotification(job) {
     job.action === 'update' && !rawEditSummary.summaryText
       ? { ...rawEditSummary, summaryText: 'Transaction edited' }
       : rawEditSummary;
-  const notifyFieldSet = new Set(notifyFields.map((field) => field.toLowerCase()));
+  const notifyFieldSet = notifyFields.length
+    ? new Set(notifyFields.map((field) => field.toLowerCase()))
+    : null;
   const activeReferenceKeys = buildActiveReferenceKeys({
     transactionRow,
     relations,
@@ -677,10 +748,7 @@ async function handleTransactionNotification(job) {
 
   const handled = new Set();
   for (const relation of relations) {
-    if (
-      notifyFieldSet.size > 0 &&
-      !notifyFieldSet.has(String(relation.column).toLowerCase())
-    ) {
+    if (notifyFieldSet && !notifyFieldSet.has(String(relation.column).toLowerCase())) {
       continue;
     }
     const rawValue = getCaseInsensitive(transactionRow, relation.column);
