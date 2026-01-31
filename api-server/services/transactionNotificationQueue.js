@@ -581,56 +581,24 @@ async function handleTransactionNotification(job) {
   if (!relations.length) return;
   const notifyFields = normalizeFieldList(transactionConfig?.notifyFields);
   if (!notifyFields.length) return;
+  const editFieldList = normalizeFieldList(
+    transactionConfig?.notificationDashboardFields?.length
+      ? transactionConfig.notificationDashboardFields
+      : transactionConfig?.notificationFields?.length
+        ? transactionConfig.notificationFields
+        : notifyFields,
+  );
   const actionLabel = job.action ?? 'update';
   const rawEditSummary =
     job.action === 'update'
-      ? buildEditSummary(job.previousSnapshot, transactionRow, notifyFields)
-      : { summaryFields: [], summaryText: '' };
+      ? buildEditSummary(job.previousSnapshot, transactionRow, editFieldList)
+      : job.action === 'delete'
+        ? { summaryFields: [], summaryText: 'Transaction deleted' }
+        : { summaryFields: [], summaryText: '' };
   const editSummary =
     job.action === 'update' && !rawEditSummary.summaryText
       ? { ...rawEditSummary, summaryText: 'Transaction edited' }
       : rawEditSummary;
-  if (
-    job.action === 'update' &&
-    !hasNotifyFieldChanges(job.previousSnapshot, transactionRow, notifyFields)
-  ) {
-    return;
-  }
-  const notifyFieldSet = new Set(notifyFields.map((field) => field.toLowerCase()));
-  const displayEntries = Array.isArray(displayConfig?.config) ? displayConfig.config : [];
-  const notificationFieldList = normalizeFieldList(transactionConfig?.notificationFields);
-  const dashboardFieldList = normalizeFieldList(
-    transactionConfig?.notificationDashboardFields,
-  );
-  const phoneFieldList = normalizeFieldList(transactionConfig?.notificationPhoneFields);
-  const emailFieldList = normalizeFieldList(transactionConfig?.notificationEmailFields);
-  const notificationSummaryBase = buildSummary(transactionRow, notificationFieldList);
-  const dashboardSummaryBase = buildSummary(transactionRow, dashboardFieldList);
-  const phoneSummaryBase = buildSummary(transactionRow, phoneFieldList);
-  const emailSummaryBase = buildSummary(transactionRow, emailFieldList);
-  const recipients =
-    job.action === 'update' || job.action === 'delete'
-      ? await collectRecipients({
-          transactionRow,
-          relations,
-          displayEntries,
-          notifyFieldSet,
-          companyId: job.companyId,
-        })
-      : null;
-  let excludedRecipients = new Set();
-  if (job.action === 'update' && job.previousSnapshot) {
-    const previousRecipients = await collectRecipients({
-      transactionRow: job.previousSnapshot,
-      relations,
-      displayEntries,
-      notifyFieldSet,
-      companyId: job.companyId,
-    });
-    excludedRecipients = new Set(
-      Array.from(previousRecipients).filter((id) => !recipients.has(id)),
-    );
-  }
   if (job.action === 'update' || job.action === 'delete') {
     const transactionName = deriveTransactionName(transactionRow, job.tableName);
     const { updated, payloads } = await updateExistingTransactionNotifications({
@@ -657,6 +625,15 @@ async function handleTransactionNotification(job) {
       return;
     }
   }
+  if (
+    job.action === 'update' &&
+    editFieldList.length &&
+    !hasNotifyFieldChanges(job.previousSnapshot, transactionRow, editFieldList)
+  ) {
+    return;
+  }
+  const notifyFieldSet = new Set(notifyFields.map((field) => field.toLowerCase()));
+  const displayEntries = Array.isArray(displayConfig?.config) ? displayConfig.config : [];
   const transactionName = deriveTransactionName(transactionRow, job.tableName);
 
   const handled = new Set();

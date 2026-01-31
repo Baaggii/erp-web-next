@@ -182,12 +182,7 @@ export default function TransactionNotificationWidget() {
                         </div>
                       )}
                       <div style={styles.itemMeta}>
-                        {item.createdBy && (
-                          <span style={styles.itemCreator}>
-                            Created by {item.createdBy}
-                          </span>
-                        )}
-                        <span>{formatTimestamp(item.updatedAt || item.createdAt)}</span>
+                        {formatTimestamp(item.updatedAt || item.createdAt)}
                       </div>
                     </div>
                   );
