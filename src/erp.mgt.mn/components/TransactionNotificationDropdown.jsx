@@ -65,17 +65,13 @@ export default function TransactionNotificationDropdown() {
     navigate(`/?${params.toString()}`);
   };
 
-  const toggleGroup = (groupKey) => {
-    setExpandedGroups((prev) => {
-      const next = new Set(prev);
-      if (next.has(groupKey)) {
-        next.delete(groupKey);
-      } else {
-        next.add(groupKey);
-      }
-      return next;
-    });
-  };
+  useEffect(() => {
+    if (!open) {
+      setExpandedGroups(new Set());
+      return;
+    }
+    setExpandedGroups(new Set(sortedGroups.map((group) => group.key)));
+  }, [open, sortedGroups]);
 
   return (
     <div style={styles.wrapper} ref={containerRef}>
@@ -109,7 +105,7 @@ export default function TransactionNotificationDropdown() {
                     <button
                       type="button"
                       style={styles.groupInfo}
-                      onClick={() => toggleGroup(group.key)}
+                      onClick={() => handleGroupClick(group)}
                     >
                       <div style={styles.itemTitle}>
                         <span>{group.name}</span>
