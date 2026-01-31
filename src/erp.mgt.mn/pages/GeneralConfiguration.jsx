@@ -167,6 +167,14 @@ export default function GeneralConfiguration() {
             Reports
           </button>
         </TooltipWrapper>
+        <TooltipWrapper title={t('tab_plan', { ns: 'tooltip', defaultValue: 'Plan settings' })}>
+          <button
+            className={`tab-button ${tab === 'plan' ? 'active' : ''}`}
+            onClick={() => setTab('plan')}
+          >
+            Plan
+          </button>
+        </TooltipWrapper>
         <TooltipWrapper title={t('tab_print', { ns: 'tooltip', defaultValue: 'Receipt print settings' })}>
           <button
             className={`tab-button ${tab === 'print' ? 'active' : ''}`}
@@ -204,6 +212,9 @@ export default function GeneralConfiguration() {
         </button>
         <button onClick={() => setTab('reports')} disabled={tab === 'reports'} style={{ marginLeft: '0.5rem' }}>
           Reports
+        </button>
+        <button onClick={() => setTab('plan')} disabled={tab === 'plan'} style={{ marginLeft: '0.5rem' }}>
+          Plan
         </button>
         <button onClick={() => setTab('print')} disabled={tab === 'print'} style={{ marginLeft: '0.5rem' }}>
           Print
@@ -527,6 +538,27 @@ export default function GeneralConfiguration() {
                   name="bulkUpdateRequiresRequest"
                   type="checkbox"
                   checked={active.bulkUpdateRequiresRequest ?? true}
+                  onChange={handleChange}
+                />
+              </label>
+            </TooltipWrapper>
+          </div>
+        </>
+      ) : tab === 'plan' ? (
+        <>
+          <div style={{ marginBottom: '0.5rem' }}>
+            <TooltipWrapper
+              title={t('plan_id_field_name', {
+                ns: 'tooltip',
+                defaultValue: 'Field name used to link plan transactions',
+              })}
+            >
+              <label>
+                Plan ID Field Name{' '}
+                <input
+                  name="planIdFieldName"
+                  type="text"
+                  value={active.planIdFieldName ?? ''}
                   onChange={handleChange}
                 />
               </label>
