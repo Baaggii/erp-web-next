@@ -799,13 +799,15 @@ export default function TransactionNotificationWidget() {
           addToast('Completion is not available for this transaction.', 'error');
           return;
         }
-        const completionRow = findCompletionRow(planRow);
-        if (!completionRow) {
-          addToast('Completion transaction is not configured.', 'error');
-          return;
-        }
         const forms = await loadAllowedForms();
-        const completionForm = resolveCompletionForm(completionRow, forms);
+        const completionRow = findCompletionRow(planRow);
+        const candidateRows = completionRow
+          ? [completionRow, ...completionTransactions.filter((row) => row !== completionRow)]
+          : completionTransactions;
+        const completionForm = candidateRows.reduce((result, row) => {
+          if (result) return result;
+          return resolveCompletionForm(row, forms);
+        }, null);
         if (!completionForm) {
           addToast('Completion form is not available for your access.', 'error');
           return;
