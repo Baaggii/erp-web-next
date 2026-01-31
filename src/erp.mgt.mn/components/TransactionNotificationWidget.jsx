@@ -263,23 +263,23 @@ export default function TransactionNotificationWidget() {
                 const isExpanded = isSectionExpanded(group.key, sectionKey);
                 return (
                   <div style={styles.itemGroup}>
-                    <div style={styles.itemGroupHeader}>
-                      <span style={styles.itemGroupTitle}>Excluded</span>
-                      <span style={styles.itemGroupCount}>{excludedItems.length}</span>
-                    </div>
-                    {excludedItems.length === 0 && (
-                      <div style={styles.itemGroupEmpty}>No excluded transaction alerts.</div>
+                    <button
+                      type="button"
+                      style={styles.itemGroupHeader}
+                      onClick={() => toggleSection(group.key, sectionKey)}
+                    >
+                      <span style={styles.itemGroupTitleRow}>
+                        <span style={styles.itemGroupTitle}>{title}</span>
+                        <span style={styles.itemGroupChevron}>
+                          {isExpanded ? '▾' : '▸'}
+                        </span>
+                      </span>
+                      <span style={styles.itemGroupCount}>{items.length}</span>
+                    </button>
+                    {isExpanded && items.length === 0 && (
+                      <div style={styles.itemGroupEmpty}>{emptyText}</div>
                     )}
-                    {renderItems(excludedItems)}
-                  </div>
-                  <div style={styles.itemGroup}>
-                    <div style={styles.itemGroupHeader}>
-                      <span style={styles.itemGroupTitle}>Deleted</span>
-                      <span style={styles.itemGroupCount}>{deletedItems.length}</span>
-                    </div>
-                    {deletedItems.length === 0 && (
-                      <div style={styles.itemGroupEmpty}>No deleted transaction alerts.</div>
-                    )}
+                    {isExpanded && renderItems(items)}
                   </div>
                 );
               };
