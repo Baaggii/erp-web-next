@@ -20,6 +20,9 @@ function formatActionLabel(action) {
   if (normalized === 'deleted' || normalized === 'delete') {
     return 'Deleted';
   }
+  if (normalized === 'excluded' || normalized === 'exclude') {
+    return 'Excluded';
+  }
   return 'New';
 }
 
@@ -34,6 +37,9 @@ function getActionMeta(action) {
   }
   if (normalized === 'changed' || normalized === 'change') {
     return { label, accent: '#d97706', background: '#fef3c7', text: '#92400e' };
+  }
+  if (normalized === 'excluded' || normalized === 'exclude') {
+    return { label, accent: '#64748b', background: '#e2e8f0', text: '#1f2937' };
   }
   return { label, accent: '#059669', background: '#d1fae5', text: '#065f46' };
 }
@@ -67,6 +73,9 @@ function buildSummaryText(item) {
   }
   if (normalized === 'edited' || normalized === 'edit' || normalized === 'update') {
     return 'Transaction edited';
+  }
+  if (normalized === 'excluded' || normalized === 'exclude') {
+    return 'Excluded from transaction';
   }
   return `${actionMeta.label} transaction`;
 }
@@ -341,5 +350,13 @@ const styles = {
   },
   summaryFieldLabel: { fontWeight: 600 },
   summaryFieldValue: { color: '#0f172a' },
-  itemMeta: { fontSize: '0.7rem', color: '#64748b', marginTop: '0.25rem' },
+  itemMeta: {
+    fontSize: '0.7rem',
+    color: '#64748b',
+    marginTop: '0.25rem',
+    display: 'flex',
+    gap: '0.5rem',
+    flexWrap: 'wrap',
+  },
+  itemCreator: { fontWeight: 600, color: '#475569' },
 };
