@@ -13,6 +13,9 @@ function getActionMeta(action) {
   if (normalized === 'changed' || normalized === 'change') {
     return { label: 'Changed', accent: '#d97706' };
   }
+  if (normalized === 'excluded' || normalized === 'exclude') {
+    return { label: 'Excluded', accent: '#64748b' };
+  }
   if (normalized) {
     return { label: normalized.charAt(0).toUpperCase() + normalized.slice(1), accent: '#059669' };
   }
@@ -21,12 +24,18 @@ function getActionMeta(action) {
 
 function buildPreviewText(item) {
   if (!item) return 'Transaction update';
-  if (item.summaryText) return item.summaryText;
+  if (item.summaryText) {
+    return item.createdBy
+      ? `${item.summaryText} · Created by ${item.createdBy}`
+      : item.summaryText;
+  }
   const meta = getActionMeta(item.action);
   if (meta.label === 'Deleted') return 'Transaction deleted';
   if (meta.label === 'Edited') return 'Transaction edited';
   if (meta.label === 'Changed') return 'Transaction changed';
-  return 'Transaction update';
+  if (meta.label === 'Excluded') return 'Excluded from transaction';
+  const fallback = 'Transaction update';
+  return item.createdBy ? `${fallback} · Created by ${item.createdBy}` : fallback;
 }
 
 export default function TransactionNotificationDropdown() {

@@ -327,6 +327,92 @@ async function listEmpIdsByScope({ companyId, branchId, departmentId }) {
     : [];
 }
 
+async function collectRecipients({
+  transactionRow,
+  relations,
+  displayEntries,
+  notifyFieldSet,
+  companyId,
+}) {
+  if (!transactionRow) return new Set();
+  const recipients = new Set();
+  const scopeCache = new Map();
+  const resolveScopeRecipients = async (scopeKey, loader) => {
+    if (scopeCache.has(scopeKey)) return scopeCache.get(scopeKey);
+    const result = await loader();
+    scopeCache.set(scopeKey, result);
+    return result;
+  };
+
+  for (const relation of relations) {
+    if (
+      notifyFieldSet &&
+      notifyFieldSet.size > 0 &&
+      !notifyFieldSet.has(String(relation.column).toLowerCase())
+    ) {
+      continue;
+    }
+    const rawValue = getCaseInsensitive(transactionRow, relation.column);
+    let ids = normalizeReferenceIds(rawValue, relation.idField);
+    if (relation.isArray && ids.length === 0) {
+      const parsed = parseJsonValue(rawValue);
+      ids = normalizeReferenceIds(parsed, relation.idField);
+    }
+    const uniqueIds = Array.from(
+      new Set(ids.map((id) => String(id)).filter((id) => id !== '')),
+    );
+    for (const referenceId of uniqueIds) {
+      const referenceRow = await fetchReferenceRow(
+        relation.table,
+        relation.idField,
+        referenceId,
+        companyId,
+      );
+      if (!referenceRow) continue;
+      const config = pickDisplayConfig(
+        displayEntries,
+        relation.table,
+        relation.idField,
+        referenceRow,
+      );
+      const role = config?.notificationRole?.trim();
+      if (!role || !NOTIFICATION_ROLE_SET.has(role) || role === 'customer') continue;
+      if (role === 'employee') {
+        const empId = getCaseInsensitive(referenceRow, relation.idField) ?? referenceId;
+        if (empId !== undefined && empId !== null && String(empId).trim()) {
+          recipients.add(String(empId).trim());
+        }
+        continue;
+      }
+      if (role === 'company') {
+        const scopeKey = `company:${companyId}`;
+        const idsByScope = await resolveScopeRecipients(scopeKey, () =>
+          listEmpIdsByScope({ companyId }),
+        );
+        idsByScope.forEach((id) => recipients.add(String(id).trim()));
+        continue;
+      }
+      if (role === 'branch') {
+        const scopeKey = `branch:${companyId}:${referenceId}`;
+        const idsByScope = await resolveScopeRecipients(scopeKey, () =>
+          listEmpIdsByScope({ companyId, branchId: referenceId }),
+        );
+        idsByScope.forEach((id) => recipients.add(String(id).trim()));
+        continue;
+      }
+      if (role === 'department') {
+        const scopeKey = `department:${companyId}:${referenceId}`;
+        const idsByScope = await resolveScopeRecipients(scopeKey, () =>
+          listEmpIdsByScope({ companyId, departmentId: referenceId }),
+        );
+        idsByScope.forEach((id) => recipients.add(String(id).trim()));
+      }
+    }
+  }
+
+  return recipients;
+}
+
 async function updateNotifications({ notificationIds = [], message, updatedBy, markUnread }) {
   if (!notificationIds.length) return 0;
   const normalizedIds = notificationIds
@@ -352,6 +438,8 @@ async function updateExistingTransactionNotifications({
   transactionName,
   summaryFields,
   summaryText,
+  allowedRecipients,
+  excludedRecipients,
 }) {
   const [rows] = await pool.query(
     `SELECT notification_id, message, recipient_empid, created_at, created_by, type, related_id
@@ -367,6 +455,21 @@ async function updateExistingTransactionNotifications({
   const payloads = [];
   const updatedAt = new Date().toISOString();
   for (const row of rows || []) {
+    const recipient = row?.recipient_empid ? String(row.recipient_empid).trim() : '';
+    const isExcluded =
+      excludedRecipients &&
+      excludedRecipients.size > 0 &&
+      recipient &&
+      excludedRecipients.has(recipient);
+    if (
+      !isExcluded &&
+      allowedRecipients &&
+      allowedRecipients.size > 0 &&
+      recipient &&
+      !allowedRecipients.has(recipient)
+    ) {
+      continue;
+    }
     if (!row?.message) continue;
     let payload;
     try {
@@ -375,16 +478,21 @@ async function updateExistingTransactionNotifications({
       continue;
     }
     if (!payload || payload.kind !== 'transaction') continue;
-    const nextSummaryFields =
+    const baseSummaryFields =
       summaryFields !== undefined ? summaryFields : payload.summaryFields || [];
+    const nextSummaryFields = isExcluded ? payload.summaryFields || [] : baseSummaryFields;
     const nextSummaryText =
       summaryText !== undefined ? summaryText : payload.summaryText || '';
+    const nextAction = isExcluded ? 'excluded' : action;
+    const nextCreatedBy =
+      updatedBy ?? payload.createdBy ?? payload.created_by ?? row.created_by ?? null;
     const nextPayload = {
       ...payload,
-      action,
+      action: nextAction,
       transactionName: transactionName || payload.transactionName,
       summaryFields: nextSummaryFields,
-      summaryText: nextSummaryText,
+      summaryText: isExcluded ? 'Excluded from transaction' : nextSummaryText,
+      createdBy: nextCreatedBy,
       updatedAt,
     };
     const message = JSON.stringify(nextPayload);
@@ -477,9 +585,7 @@ async function handleTransactionNotification(job) {
   const rawEditSummary =
     job.action === 'update'
       ? buildEditSummary(job.previousSnapshot, transactionRow, notifyFields)
-      : job.action === 'delete'
-        ? { summaryFields: [], summaryText: 'Transaction deleted' }
-        : { summaryFields: [], summaryText: '' };
+      : { summaryFields: [], summaryText: '' };
   const editSummary =
     job.action === 'update' && !rawEditSummary.summaryText
       ? { ...rawEditSummary, summaryText: 'Transaction edited' }
@@ -490,27 +596,8 @@ async function handleTransactionNotification(job) {
   ) {
     return;
   }
-  if (job.action === 'update' || job.action === 'delete') {
-    const transactionName = deriveTransactionName(transactionRow, job.tableName);
-    const { updated, payloads } = await updateExistingTransactionNotifications({
-      companyId: job.companyId,
-      relatedId: job.recordId,
-      action: job.action ?? 'update',
-      updatedBy: job.changedBy,
-      transactionName,
-      summaryFields: editSummary.summaryFields,
-      summaryText: editSummary.summaryText,
-    });
-    if (payloads.length) {
-      payloads.forEach(({ room, payload }) => emitNotificationEvent([room], payload));
-    }
-    if (updated > 0) {
-      return;
-    }
-  }
   const notifyFieldSet = new Set(notifyFields.map((field) => field.toLowerCase()));
   const displayEntries = Array.isArray(displayConfig?.config) ? displayConfig.config : [];
-  const transactionName = deriveTransactionName(transactionRow, job.tableName);
   const notificationFieldList = normalizeFieldList(transactionConfig?.notificationFields);
   const dashboardFieldList = normalizeFieldList(
     transactionConfig?.notificationDashboardFields,
@@ -521,6 +608,56 @@ async function handleTransactionNotification(job) {
   const dashboardSummaryBase = buildSummary(transactionRow, dashboardFieldList);
   const phoneSummaryBase = buildSummary(transactionRow, phoneFieldList);
   const emailSummaryBase = buildSummary(transactionRow, emailFieldList);
+  const recipients =
+    job.action === 'update' || job.action === 'delete'
+      ? await collectRecipients({
+          transactionRow,
+          relations,
+          displayEntries,
+          notifyFieldSet,
+          companyId: job.companyId,
+        })
+      : null;
+  let excludedRecipients = new Set();
+  if (job.action === 'update' && job.previousSnapshot) {
+    const previousRecipients = await collectRecipients({
+      transactionRow: job.previousSnapshot,
+      relations,
+      displayEntries,
+      notifyFieldSet,
+      companyId: job.companyId,
+    });
+    excludedRecipients = new Set(
+      Array.from(previousRecipients).filter((id) => !recipients.has(id)),
+    );
+  }
+  if (job.action === 'update' || job.action === 'delete') {
+    const transactionName = deriveTransactionName(transactionRow, job.tableName);
+    const { updated, payloads } = await updateExistingTransactionNotifications({
+      companyId: job.companyId,
+      relatedId: job.recordId,
+      action: job.action ?? 'update',
+      updatedBy: job.changedBy,
+      transactionName,
+      summaryFields:
+        job.action === 'update'
+          ? editSummary.summaryFields
+          : dashboardSummaryBase.summaryFields.length
+            ? dashboardSummaryBase.summaryFields
+            : notificationSummaryBase.summaryFields,
+      summaryText:
+        job.action === 'update' ? editSummary.summaryText : 'Transaction deleted',
+      allowedRecipients: recipients,
+      excludedRecipients,
+    });
+    if (payloads.length) {
+      payloads.forEach(({ room, payload }) => emitNotificationEvent([room], payload));
+    }
+    if (updated > 0) {
+      return;
+    }
+  }
+  const transactionName = deriveTransactionName(transactionRow, job.tableName);
 
   const handled = new Set();
   for (const relation of relations) {
@@ -568,7 +705,11 @@ async function handleTransactionNotification(job) {
         job.action === 'update' && editSummary.summaryFields.length
           ? editSummary.summaryFields
           : job.action === 'delete'
-            ? []
+            ? dashboardSummaryBase.summaryFields.length
+              ? dashboardSummaryBase.summaryFields
+              : notificationSummaryBase.summaryFields.length
+                ? notificationSummaryBase.summaryFields
+                : referenceSummaryFields
             : dashboardSummaryBase.summaryFields.length
               ? dashboardSummaryBase.summaryFields
               : referenceSummaryFields;
@@ -590,6 +731,7 @@ async function handleTransactionNotification(job) {
         role,
         summaryFields,
         summaryText,
+        createdBy: job.changedBy,
         updatedAt: new Date().toISOString(),
       };
       const message = JSON.stringify(messagePayload);

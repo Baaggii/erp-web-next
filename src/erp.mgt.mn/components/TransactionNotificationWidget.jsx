@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useTransactionNotifications } from '../context/TransactionNotificationContext.jsx';
 
@@ -20,6 +20,9 @@ function formatActionLabel(action) {
   if (normalized === 'deleted' || normalized === 'delete') {
     return 'Deleted';
   }
+  if (normalized === 'excluded' || normalized === 'exclude') {
+    return 'Excluded';
+  }
   return 'New';
 }
 
@@ -34,6 +37,9 @@ function getActionMeta(action) {
   }
   if (normalized === 'changed' || normalized === 'change') {
     return { label, accent: '#d97706', background: '#fef3c7', text: '#92400e' };
+  }
+  if (normalized === 'excluded' || normalized === 'exclude') {
+    return { label, accent: '#64748b', background: '#e2e8f0', text: '#1f2937' };
   }
   return { label, accent: '#059669', background: '#d1fae5', text: '#065f46' };
 }
@@ -68,6 +74,9 @@ function buildSummaryText(item) {
   if (normalized === 'edited' || normalized === 'edit' || normalized === 'update') {
     return 'Transaction edited';
   }
+  if (normalized === 'excluded' || normalized === 'exclude') {
+    return 'Excluded from transaction';
+  }
   return `${actionMeta.label} transaction`;
 }
 
@@ -95,19 +104,11 @@ export default function TransactionNotificationWidget() {
     }
   }, [highlightKey]);
 
-  const groupedSections = useMemo(() => {
-    const active = [];
-    const deleted = [];
-    groups.forEach((group) => {
-      const latestItem = group.items[0];
-      if (isDeletedAction(latestItem?.action)) {
-        deleted.push(group);
-      } else {
-        active.push(group);
-      }
-    });
-    return { active, deleted };
-  }, [groups]);
+  const groupItems = useCallback((items = []) => {
+    const activeItems = items.filter((item) => !isDeletedAction(item?.action));
+    const deletedItems = items.filter((item) => isDeletedAction(item?.action));
+    return { activeItems, deletedItems };
+  }, []);
 
   const toggleExpanded = (key) => {
     setExpanded((prev) => {
@@ -157,32 +158,66 @@ export default function TransactionNotificationWidget() {
         </div>
         {isExpanded && (
           <div style={styles.items}>
-            {group.items.map((item) => {
-              const actionMeta = getActionMeta(item.action);
-              return (
-                <div key={item.id} style={styles.item(item.isRead, actionMeta.accent)}>
-                  <div style={styles.itemSummary}>
-                    <span style={styles.itemAction(actionMeta)}>
-                      {actionMeta.label}
-                    </span>
-                    <span>{buildSummaryText(item)}</span>
-                  </div>
-                  {Array.isArray(item.summaryFields) && item.summaryFields.length > 0 && (
-                    <div style={styles.summaryFields}>
-                      {item.summaryFields.map((field) => (
-                        <div key={`${item.id}-${field.field}`} style={styles.summaryFieldRow}>
-                          <span style={styles.summaryFieldLabel}>{field.field}</span>
-                          <span style={styles.summaryFieldValue}>{field.value}</span>
+            {(() => {
+              const { activeItems, deletedItems } = groupItems(group.items);
+              const renderItems = (items) =>
+                items.map((item) => {
+                  const actionMeta = getActionMeta(item.action);
+                  return (
+                    <div key={item.id} style={styles.item(item.isRead, actionMeta.accent)}>
+                      <div style={styles.itemSummary}>
+                        <span style={styles.itemAction(actionMeta)}>
+                          {actionMeta.label}
+                        </span>
+                        <span>{buildSummaryText(item)}</span>
+                      </div>
+                      {Array.isArray(item.summaryFields) && item.summaryFields.length > 0 && (
+                        <div style={styles.summaryFields}>
+                          {item.summaryFields.map((field) => (
+                            <div key={`${item.id}-${field.field}`} style={styles.summaryFieldRow}>
+                              <span style={styles.summaryFieldLabel}>{field.field}</span>
+                              <span style={styles.summaryFieldValue}>{field.value}</span>
+                            </div>
+                          ))}
                         </div>
-                      ))}
+                      )}
+                      <div style={styles.itemMeta}>
+                        {item.createdBy && (
+                          <span style={styles.itemCreator}>
+                            Created by {item.createdBy}
+                          </span>
+                        )}
+                        <span>{formatTimestamp(item.updatedAt || item.createdAt)}</span>
+                      </div>
                     </div>
-                  )}
-                  <div style={styles.itemMeta}>
-                    {formatTimestamp(item.updatedAt || item.createdAt)}
+                  );
+                });
+
+              return (
+                <>
+                  <div style={styles.itemGroup}>
+                    <div style={styles.itemGroupHeader}>
+                      <span style={styles.itemGroupTitle}>Active</span>
+                      <span style={styles.itemGroupCount}>{activeItems.length}</span>
+                    </div>
+                    {activeItems.length === 0 && (
+                      <div style={styles.itemGroupEmpty}>No active transaction alerts.</div>
+                    )}
+                    {renderItems(activeItems)}
                   </div>
-                </div>
+                  <div style={styles.itemGroup}>
+                    <div style={styles.itemGroupHeader}>
+                      <span style={styles.itemGroupTitle}>Deleted</span>
+                      <span style={styles.itemGroupCount}>{deletedItems.length}</span>
+                    </div>
+                    {deletedItems.length === 0 && (
+                      <div style={styles.itemGroupEmpty}>No deleted transaction alerts.</div>
+                    )}
+                    {renderItems(deletedItems)}
+                  </div>
+                </>
               );
-            })}
+            })()}
           </div>
         )}
       </div>
@@ -200,26 +235,7 @@ export default function TransactionNotificationWidget() {
       )}
       {groups.length > 0 && (
         <div style={styles.list}>
-          <div style={styles.sectionGroup}>
-            <div style={styles.sectionHeader}>
-              <span style={styles.sectionTitle}>Active transactions</span>
-              <span style={styles.sectionCount}>{groupedSections.active.length}</span>
-            </div>
-            {groupedSections.active.length === 0 && (
-              <div style={styles.sectionEmpty}>No active transaction alerts.</div>
-            )}
-            {groupedSections.active.map((group) => renderGroup(group))}
-          </div>
-          <div style={styles.sectionGroup}>
-            <div style={styles.sectionHeader}>
-              <span style={styles.sectionTitle}>Deleted transactions</span>
-              <span style={styles.sectionCount}>{groupedSections.deleted.length}</span>
-            </div>
-            {groupedSections.deleted.length === 0 && (
-              <div style={styles.sectionEmpty}>No deleted transaction alerts.</div>
-            )}
-            {groupedSections.deleted.map((group) => renderGroup(group))}
-          </div>
+          {groups.map((group) => renderGroup(group))}
         </div>
       )}
     </section>
@@ -243,36 +259,6 @@ const styles = {
   subtitle: { fontSize: '0.75rem', color: '#64748b' },
   empty: { color: '#64748b', padding: '0.75rem 0' },
   list: { display: 'flex', flexDirection: 'column', gap: '0.75rem' },
-  sectionGroup: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '0.5rem',
-    padding: '0.5rem',
-    borderRadius: '10px',
-    background: '#f8fafc',
-  },
-  sectionHeader: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    fontSize: '0.75rem',
-    textTransform: 'uppercase',
-    letterSpacing: '0.04em',
-    color: '#64748b',
-  },
-  sectionTitle: { fontWeight: 600 },
-  sectionCount: {
-    background: '#e2e8f0',
-    borderRadius: '999px',
-    padding: '0.1rem 0.5rem',
-    fontSize: '0.7rem',
-    color: '#1e293b',
-  },
-  sectionEmpty: {
-    fontSize: '0.8rem',
-    color: '#94a3b8',
-    padding: '0.25rem 0.5rem',
-  },
   group: (highlighted) => ({
     border: highlighted ? '2px solid #2563eb' : '1px solid #e5e7eb',
     borderRadius: '10px',
@@ -302,7 +288,36 @@ const styles = {
     cursor: 'pointer',
     fontSize: '0.75rem',
   },
-  items: { marginTop: '0.75rem', display: 'grid', gap: '0.5rem' },
+  items: { marginTop: '0.75rem', display: 'grid', gap: '0.75rem' },
+  itemGroup: {
+    display: 'grid',
+    gap: '0.5rem',
+    padding: '0.5rem',
+    borderRadius: '10px',
+    background: '#f8fafc',
+  },
+  itemGroupHeader: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    fontSize: '0.7rem',
+    textTransform: 'uppercase',
+    letterSpacing: '0.04em',
+    color: '#64748b',
+  },
+  itemGroupTitle: { fontWeight: 600 },
+  itemGroupCount: {
+    background: '#e2e8f0',
+    borderRadius: '999px',
+    padding: '0.1rem 0.45rem',
+    fontSize: '0.65rem',
+    color: '#1e293b',
+  },
+  itemGroupEmpty: {
+    fontSize: '0.8rem',
+    color: '#94a3b8',
+    padding: '0.1rem 0.25rem',
+  },
   item: (isRead, accent) => ({
     background: isRead ? '#f8fafc' : '#e0f2fe',
     borderRadius: '8px',
@@ -340,5 +355,13 @@ const styles = {
   },
   summaryFieldLabel: { fontWeight: 600 },
   summaryFieldValue: { color: '#0f172a' },
-  itemMeta: { fontSize: '0.7rem', color: '#64748b', marginTop: '0.25rem' },
+  itemMeta: {
+    fontSize: '0.7rem',
+    color: '#64748b',
+    marginTop: '0.25rem',
+    display: 'flex',
+    gap: '0.5rem',
+    flexWrap: 'wrap',
+  },
+  itemCreator: { fontWeight: 600, color: '#475569' },
 };
