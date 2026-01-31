@@ -43,6 +43,11 @@ function isDeletedAction(action) {
   return normalized === 'deleted' || normalized === 'delete';
 }
 
+function isExcludedAction(action) {
+  const normalized = typeof action === 'string' ? action.trim().toLowerCase() : '';
+  return normalized === 'excluded' || normalized === 'exclude';
+}
+
 function buildSummaryText(item) {
   if (!item) return 'Transaction update';
   const actionMeta = getActionMeta(item.action);
@@ -82,11 +87,17 @@ export default function TransactionNotificationWidget() {
   const { groups, markGroupRead } = useTransactionNotifications();
   const location = useLocation();
   const [expanded, setExpanded] = useState(() => new Set());
+  const [collapsedSections, setCollapsedSections] = useState(() => new Set());
   const groupRefs = useRef({});
+  const itemRefs = useRef({});
 
   const highlightKey = useMemo(() => {
     const params = new URLSearchParams(location.search || '');
     return params.get('notifyGroup');
+  }, [location.search]);
+  const highlightItemId = useMemo(() => {
+    const params = new URLSearchParams(location.search || '');
+    return params.get('notifyItem');
   }, [location.search]);
 
   useEffect(() => {
@@ -101,11 +112,34 @@ export default function TransactionNotificationWidget() {
       target.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
   }, [highlightKey]);
+  useEffect(() => {
+    if (!highlightItemId) return;
+    const targetEntry = groups
+      .flatMap((group) => group.items.map((item) => ({ item, groupKey: group.key })))
+      .find((entry) => String(entry.item?.id) === String(highlightItemId));
+    if (targetEntry) {
+      const sectionKey = getItemSection(targetEntry.item);
+      const sectionId = buildSectionId(targetEntry.groupKey, sectionKey);
+      setCollapsedSections((prev) => {
+        if (!prev.has(sectionId)) return prev;
+        const next = new Set(prev);
+        next.delete(sectionId);
+        return next;
+      });
+    }
+    const target = itemRefs.current[highlightItemId];
+    if (target && typeof target.scrollIntoView === 'function') {
+      target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  }, [groups, highlightItemId]);
 
   const groupItems = useCallback((items = []) => {
-    const activeItems = items.filter((item) => !isDeletedAction(item?.action));
     const deletedItems = items.filter((item) => isDeletedAction(item?.action));
-    return { activeItems, deletedItems };
+    const excludedItems = items.filter((item) => isExcludedAction(item?.action));
+    const activeItems = items.filter(
+      (item) => !isDeletedAction(item?.action) && !isExcludedAction(item?.action),
+    );
+    return { activeItems, excludedItems, deletedItems };
   }, []);
 
   const toggleExpanded = (key) => {
@@ -118,6 +152,30 @@ export default function TransactionNotificationWidget() {
       }
       return next;
     });
+  };
+
+  const buildSectionId = (groupKey, sectionKey) => `${groupKey}-${sectionKey}`;
+
+  const isSectionExpanded = (groupKey, sectionKey) =>
+    !collapsedSections.has(buildSectionId(groupKey, sectionKey));
+
+  const toggleSection = (groupKey, sectionKey) => {
+    const sectionId = buildSectionId(groupKey, sectionKey);
+    setCollapsedSections((prev) => {
+      const next = new Set(prev);
+      if (next.has(sectionId)) {
+        next.delete(sectionId);
+      } else {
+        next.add(sectionId);
+      }
+      return next;
+    });
+  };
+
+  const getItemSection = (item) => {
+    if (isDeletedAction(item?.action)) return 'deleted';
+    if (isExcludedAction(item?.action)) return 'excluded';
+    return 'active';
   };
 
   const renderGroup = (group) => {
@@ -157,13 +215,20 @@ export default function TransactionNotificationWidget() {
         {isExpanded && (
           <div style={styles.items}>
             {(() => {
-              const { activeItems, deletedItems } = groupItems(group.items);
+              const { activeItems, excludedItems, deletedItems } = groupItems(group.items);
               const renderItems = (items) =>
                 items.map((item) => {
                   const actionMeta = getActionMeta(item.action);
                   const actorLabel = getActorLabel(item);
+                  const isHighlighted = highlightItemId === String(item.id);
                   return (
-                    <div key={item.id} style={styles.item(item.isRead, actionMeta.accent)}>
+                    <div
+                      key={item.id}
+                      ref={(node) => {
+                        itemRefs.current[String(item.id)] = node;
+                      }}
+                      style={styles.item(item.isRead, actionMeta.accent, isHighlighted)}
+                    >
                       <div style={styles.itemSummary}>
                         <span style={styles.itemAction(actionMeta)}>
                           {actionMeta.label}
@@ -189,28 +254,55 @@ export default function TransactionNotificationWidget() {
                   );
                 });
 
+              const renderSection = (sectionKey, title, items, emptyText) => {
+                const isExpanded = isSectionExpanded(group.key, sectionKey);
+                return (
+                  <div style={styles.itemGroup}>
+                    <button
+                      type="button"
+                      style={styles.itemGroupHeader}
+                      onClick={() => toggleSection(group.key, sectionKey)}
+                    >
+                      <span style={styles.itemGroupTitleRow}>
+                        <span style={styles.itemGroupTitle}>{title}</span>
+                        <span style={styles.itemGroupCount}>{items.length}</span>
+                      </span>
+                      <span style={styles.itemGroupChevron}>
+                        {isExpanded ? '▾' : '▸'}
+                      </span>
+                    </button>
+                    {isExpanded && (
+                      <>
+                        {items.length === 0 && (
+                          <div style={styles.itemGroupEmpty}>{emptyText}</div>
+                        )}
+                        {renderItems(items)}
+                      </>
+                    )}
+                  </div>
+                );
+              };
+
               return (
                 <>
-                  <div style={styles.itemGroup}>
-                    <div style={styles.itemGroupHeader}>
-                      <span style={styles.itemGroupTitle}>Active</span>
-                      <span style={styles.itemGroupCount}>{activeItems.length}</span>
-                    </div>
-                    {activeItems.length === 0 && (
-                      <div style={styles.itemGroupEmpty}>No active transaction alerts.</div>
-                    )}
-                    {renderItems(activeItems)}
-                  </div>
-                  <div style={styles.itemGroup}>
-                    <div style={styles.itemGroupHeader}>
-                      <span style={styles.itemGroupTitle}>Deleted</span>
-                      <span style={styles.itemGroupCount}>{deletedItems.length}</span>
-                    </div>
-                    {deletedItems.length === 0 && (
-                      <div style={styles.itemGroupEmpty}>No deleted transaction alerts.</div>
-                    )}
-                    {renderItems(deletedItems)}
-                  </div>
+                  {renderSection(
+                    'active',
+                    'Active',
+                    activeItems,
+                    'No active transaction alerts.',
+                  )}
+                  {renderSection(
+                    'excluded',
+                    'Excluded',
+                    excludedItems,
+                    'No excluded transaction alerts.',
+                  )}
+                  {renderSection(
+                    'deleted',
+                    'Deleted',
+                    deletedItems,
+                    'No deleted transaction alerts.',
+                  )}
                 </>
               );
             })()}
@@ -293,6 +385,12 @@ const styles = {
     background: '#f8fafc',
   },
   itemGroupHeader: {
+    background: 'transparent',
+    border: 'none',
+    cursor: 'pointer',
+    textAlign: 'left',
+    width: '100%',
+    padding: 0,
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
@@ -301,7 +399,17 @@ const styles = {
     letterSpacing: '0.04em',
     color: '#64748b',
   },
+  itemGroupTitleRow: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: '0.4rem',
+  },
   itemGroupTitle: { fontWeight: 600 },
+  itemGroupChevron: {
+    fontSize: '0.9rem',
+    lineHeight: 1,
+    color: '#94a3b8',
+  },
   itemGroupCount: {
     background: '#e2e8f0',
     borderRadius: '999px',
@@ -314,11 +422,13 @@ const styles = {
     color: '#94a3b8',
     padding: '0.1rem 0.25rem',
   },
-  item: (isRead, accent) => ({
-    background: isRead ? '#f8fafc' : '#e0f2fe',
+  item: (isRead, accent, highlighted) => ({
+    background: highlighted ? '#dbeafe' : isRead ? '#f8fafc' : '#e0f2fe',
     borderRadius: '8px',
     padding: '0.5rem 0.75rem',
     borderLeft: `4px solid ${accent || '#2563eb'}`,
+    border: highlighted ? '1px solid #2563eb' : '1px solid transparent',
+    boxShadow: highlighted ? '0 0 0 2px rgba(37,99,235,0.15)' : 'none',
   }),
   itemSummary: {
     fontSize: '0.85rem',
