@@ -3,6 +3,33 @@ import path from 'path';
 import { tenantConfigPath, getConfigPath } from '../utils/configPaths.js';
 import { loadEndpoints, getRegistryPath } from './posApiRegistry.js';
 import { normalizeRequestMappingValue } from './posApiAggregations.js';
+import { pool } from '../../db/index.js';
+
+const tableNameCache = {
+  names: null,
+  loadedAt: 0,
+};
+const TABLE_CACHE_TTL_MS = 60 * 1000;
+
+async function getExistingTableNames() {
+  if (
+    tableNameCache.names &&
+    Date.now() - tableNameCache.loadedAt < TABLE_CACHE_TTL_MS
+  ) {
+    return tableNameCache.names;
+  }
+  try {
+    const [rows] = await pool.query(
+      'SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE()',
+    );
+    const names = new Set(rows.map((row) => row.TABLE_NAME));
+    tableNameCache.names = names;
+    tableNameCache.loadedAt = Date.now();
+    return names;
+  } catch {
+    return null;
+  }
+}
 
   async function readConfig(companyId = 0) {
     const { path: filePath, isDefault } = await getConfigPath(
@@ -781,6 +808,10 @@ function parseEntry(raw = {}) {
 
 export async function getFormConfig(table, name, companyId = 0) {
   const { cfg, isDefault } = await readConfig(companyId);
+  const existingTables = await getExistingTableNames();
+  if (existingTables && !existingTables.has(table)) {
+    return { config: {}, isDefault };
+  }
   const byTable = cfg[table] || {};
   const raw = byTable[name];
   const parsed = parseEntry(raw);
@@ -791,6 +822,10 @@ export async function getFormConfig(table, name, companyId = 0) {
 
 export async function getConfigsByTable(table, companyId = 0) {
   const { cfg, isDefault } = await readConfig(companyId);
+  const existingTables = await getExistingTableNames();
+  if (existingTables && !existingTables.has(table)) {
+    return { config: {}, isDefault };
+  }
   const resolveEndpoints = createEndpointResolver();
   const byTable = cfg[table] || {};
   const result = {};
@@ -805,7 +840,9 @@ export async function getConfigsByTransTypeValue(val, companyId = 0) {
   const { cfg, isDefault } = await readConfig(companyId);
   const result = [];
   const resolveEndpoints = createEndpointResolver();
+  const existingTables = await getExistingTableNames();
   for (const [tbl, names] of Object.entries(cfg)) {
+    if (existingTables && !existingTables.has(tbl)) continue;
     for (const [name, info] of Object.entries(names)) {
       const parsed = parseEntry(info);
       if (
@@ -852,6 +889,7 @@ export async function listTransactionNames(
   } = {},
   companyId = 0,
 ) {
+  const existingTables = await getExistingTableNames();
   const normalizeAccessValue = (value) => {
     if (value === undefined || value === null) return null;
     const str = String(value).trim();
@@ -957,6 +995,9 @@ export async function listTransactionNames(
         ? Number(positionId)
         : String(positionId).trim() || null;
   for (const [tbl, names] of Object.entries(cfg)) {
+    if (existingTables && !existingTables.has(tbl)) {
+      continue;
+    }
     for (const [name, info] of Object.entries(names)) {
       const parsed = parseEntry(info);
       const modKey = parsed.moduleKey;
