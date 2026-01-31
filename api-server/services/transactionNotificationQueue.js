@@ -777,7 +777,7 @@ async function handleTransactionNotification(job) {
           const empId = getCaseInsensitive(referenceRow, relation.idField) ?? referenceId;
           recipients = empId ? [empId] : [];
         } else if (role === 'company') {
-          recipients = await listEmpIdsByScope({ companyId: job.companyId });
+          recipients = await listEmpIdsByScope({ companyId: referenceId });
         } else if (role === 'branch') {
           recipients = await listEmpIdsByScope({
             companyId: job.companyId,
