@@ -596,7 +596,6 @@ async function handleTransactionNotification(job) {
 
   if (!relations.length) return;
   const notifyFields = normalizeFieldList(transactionConfig?.notifyFields);
-  if (!notifyFields.length) return;
   const editFieldList = normalizeFieldList(
     transactionConfig?.notificationDashboardFields?.length
       ? transactionConfig.notificationDashboardFields
@@ -616,7 +615,9 @@ async function handleTransactionNotification(job) {
     job.action === 'update' && !rawEditSummary.summaryText
       ? { ...rawEditSummary, summaryText: 'Transaction edited' }
       : rawEditSummary;
-  const notifyFieldSet = new Set(notifyFields.map((field) => field.toLowerCase()));
+  const notifyFieldSet = notifyFields.length
+    ? new Set(notifyFields.map((field) => field.toLowerCase()))
+    : null;
   const activeReferenceKeys = buildActiveReferenceKeys({
     transactionRow,
     relations,
@@ -677,10 +678,7 @@ async function handleTransactionNotification(job) {
 
   const handled = new Set();
   for (const relation of relations) {
-    if (
-      notifyFieldSet.size > 0 &&
-      !notifyFieldSet.has(String(relation.column).toLowerCase())
-    ) {
+    if (notifyFieldSet && !notifyFieldSet.has(String(relation.column).toLowerCase())) {
       continue;
     }
     const rawValue = getCaseInsensitive(transactionRow, relation.column);
