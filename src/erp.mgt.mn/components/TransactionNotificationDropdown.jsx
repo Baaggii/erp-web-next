@@ -41,6 +41,7 @@ function buildPreviewText(item) {
 export default function TransactionNotificationDropdown() {
   const { groups, unreadCount, markGroupRead } = useTransactionNotifications();
   const [open, setOpen] = useState(false);
+  const [expandedGroups, setExpandedGroups] = useState(() => new Set());
   const containerRef = useRef(null);
   const navigate = useNavigate();
 
@@ -61,6 +62,18 @@ export default function TransactionNotificationDropdown() {
     setOpen(false);
     await markGroupRead(group.key);
     navigate(`/?tab=activity&notifyGroup=${group.key}`);
+  };
+
+  const toggleGroup = (groupKey) => {
+    setExpandedGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(groupKey)) {
+        next.delete(groupKey);
+      } else {
+        next.add(groupKey);
+      }
+      return next;
+    });
   };
 
   return (
@@ -88,30 +101,81 @@ export default function TransactionNotificationDropdown() {
             {sortedGroups.map((group) => {
               const latestItem = group.items[0];
               const actionMeta = getActionMeta(latestItem?.action);
+              const isExpanded = expandedGroups.has(group.key);
               return (
-                <button
-                  key={group.key}
-                  type="button"
-                  style={styles.item(group.unreadCount > 0)}
-                  onClick={() => handleGroupClick(group)}
-                >
-                  <div style={styles.itemTitle}>
-                    <span>{group.name}</span>
-                    {latestItem && (
-                      <span style={styles.actionBadge(actionMeta.accent)}>
-                        {actionMeta.label}
-                      </span>
-                    )}
+                <div key={group.key} style={styles.group}>
+                  <div style={styles.groupHeader(group.unreadCount > 0)}>
+                    <button
+                      type="button"
+                      style={styles.groupInfo}
+                      onClick={() => toggleGroup(group.key)}
+                    >
+                      <div style={styles.itemTitle}>
+                        <span>{group.name}</span>
+                        {latestItem && (
+                          <span style={styles.actionBadge(actionMeta.accent)}>
+                            {actionMeta.label}
+                          </span>
+                        )}
+                      </div>
+                      <div style={styles.itemMeta}>
+                        {group.unreadCount > 0
+                          ? `${group.unreadCount} unread`
+                          : `${group.items.length} total`}
+                      </div>
+                      {!isExpanded && (
+                        <div style={styles.itemPreview}>
+                          {buildPreviewText(latestItem)}
+                        </div>
+                      )}
+                    </button>
+                    <div style={styles.groupActions}>
+                      {group.items.length > 1 && (
+                        <button
+                          type="button"
+                          style={styles.groupToggle}
+                          onClick={() => toggleGroup(group.key)}
+                        >
+                          {isExpanded ? 'Hide' : 'Show'} {group.items.length}
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        style={styles.groupOpen}
+                        onClick={() => handleGroupClick(group)}
+                      >
+                        Open
+                      </button>
+                    </div>
                   </div>
-                  <div style={styles.itemMeta}>
-                    {group.unreadCount > 0
-                      ? `${group.unreadCount} unread`
-                      : `${group.items.length} total`}
-                  </div>
-                  <div style={styles.itemPreview}>
-                    {buildPreviewText(latestItem)}
-                  </div>
-                </button>
+                  {isExpanded && (
+                    <div style={styles.groupItems}>
+                      {group.items.map((item) => {
+                        const itemMeta = getActionMeta(item?.action);
+                        return (
+                          <button
+                            key={item.id}
+                            type="button"
+                            style={styles.groupItem(item.isRead === false)}
+                            onClick={() => handleGroupClick(group)}
+                          >
+                            <div style={styles.groupItemTitle}>
+                              <span>{item.transactionName || group.name}</span>
+                              {item && (
+                                <span style={styles.actionBadge(itemMeta.accent)}>
+                                  {itemMeta.label}
+                                </span>
+                              )}
+                            </div>
+                            <div style={styles.groupItemPreview}>
+                              {buildPreviewText(item)}
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
               );
             })}
           </div>
@@ -187,15 +251,45 @@ const styles = {
     color: '#64748b',
     textAlign: 'center',
   },
-  item: (isUnread) => ({
+  group: {
+    borderBottom: '1px solid #e5e7eb',
+  },
+  groupHeader: (isUnread) => ({
+    background: isUnread ? '#eff6ff' : '#fff',
+    padding: '0.75rem 1rem',
+  }),
+  groupInfo: {
     width: '100%',
     textAlign: 'left',
     border: 'none',
-    background: isUnread ? '#eff6ff' : '#fff',
-    padding: '0.75rem 1rem',
-    borderBottom: '1px solid #e5e7eb',
+    background: 'transparent',
+    padding: 0,
     cursor: 'pointer',
-  }),
+  },
+  groupActions: {
+    marginTop: '0.5rem',
+    display: 'flex',
+    justifyContent: 'space-between',
+    gap: '0.5rem',
+  },
+  groupToggle: {
+    border: '1px solid #e2e8f0',
+    background: '#fff',
+    color: '#0f172a',
+    borderRadius: '999px',
+    fontSize: '0.7rem',
+    padding: '0.15rem 0.65rem',
+    cursor: 'pointer',
+  },
+  groupOpen: {
+    border: 'none',
+    background: '#0f172a',
+    color: '#fff',
+    borderRadius: '999px',
+    fontSize: '0.7rem',
+    padding: '0.15rem 0.65rem',
+    cursor: 'pointer',
+  },
   itemTitle: {
     fontWeight: 600,
     color: '#0f172a',
@@ -216,6 +310,35 @@ const styles = {
   }),
   itemMeta: { fontSize: '0.75rem', color: '#64748b', marginBottom: '0.25rem' },
   itemPreview: { fontSize: '0.85rem', color: '#334155' },
+  groupItems: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.4rem',
+    padding: '0 1rem 0.9rem',
+    background: '#f8fafc',
+  },
+  groupItem: (isUnread) => ({
+    width: '100%',
+    textAlign: 'left',
+    border: '1px solid #e2e8f0',
+    borderRadius: '10px',
+    background: isUnread ? '#eff6ff' : '#fff',
+    padding: '0.6rem 0.75rem',
+    cursor: 'pointer',
+  }),
+  groupItemTitle: {
+    fontWeight: 600,
+    color: '#0f172a',
+    marginBottom: '0.25rem',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: '0.5rem',
+  },
+  groupItemPreview: {
+    fontSize: '0.8rem',
+    color: '#334155',
+  },
   footer: {
     width: '100%',
     border: 'none',
