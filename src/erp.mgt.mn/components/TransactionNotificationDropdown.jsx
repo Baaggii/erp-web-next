@@ -2,6 +2,33 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTransactionNotifications } from '../context/TransactionNotificationContext.jsx';
 
+function getActionMeta(action) {
+  const normalized = typeof action === 'string' ? action.trim().toLowerCase() : '';
+  if (normalized === 'deleted' || normalized === 'delete') {
+    return { label: 'Deleted', accent: '#dc2626' };
+  }
+  if (normalized === 'edited' || normalized === 'edit' || normalized === 'update') {
+    return { label: 'Edited', accent: '#2563eb' };
+  }
+  if (normalized === 'changed' || normalized === 'change') {
+    return { label: 'Changed', accent: '#d97706' };
+  }
+  if (normalized) {
+    return { label: normalized.charAt(0).toUpperCase() + normalized.slice(1), accent: '#059669' };
+  }
+  return { label: 'New', accent: '#059669' };
+}
+
+function buildPreviewText(item) {
+  if (!item) return 'Transaction update';
+  if (item.summaryText) return item.summaryText;
+  const meta = getActionMeta(item.action);
+  if (meta.label === 'Deleted') return 'Transaction deleted';
+  if (meta.label === 'Edited') return 'Transaction edited';
+  if (meta.label === 'Changed') return 'Transaction changed';
+  return 'Transaction update';
+}
+
 export default function TransactionNotificationDropdown() {
   const { groups, unreadCount, markGroupRead } = useTransactionNotifications();
   const [open, setOpen] = useState(false);
@@ -49,24 +76,35 @@ export default function TransactionNotificationDropdown() {
             {sortedGroups.length === 0 && (
               <div style={styles.empty}>No notifications yet</div>
             )}
-            {sortedGroups.map((group) => (
-              <button
-                key={group.key}
-                type="button"
-                style={styles.item(group.unreadCount > 0)}
-                onClick={() => handleGroupClick(group)}
-              >
-                <div style={styles.itemTitle}>{group.name}</div>
-                <div style={styles.itemMeta}>
-                  {group.unreadCount > 0
-                    ? `${group.unreadCount} unread`
-                    : `${group.items.length} total`}
-                </div>
-                <div style={styles.itemPreview}>
-                  {group.items[0]?.summaryText || 'New transaction activity'}
-                </div>
-              </button>
-            ))}
+            {sortedGroups.map((group) => {
+              const latestItem = group.items[0];
+              const actionMeta = getActionMeta(latestItem?.action);
+              return (
+                <button
+                  key={group.key}
+                  type="button"
+                  style={styles.item(group.unreadCount > 0)}
+                  onClick={() => handleGroupClick(group)}
+                >
+                  <div style={styles.itemTitle}>
+                    <span>{group.name}</span>
+                    {latestItem && (
+                      <span style={styles.actionBadge(actionMeta.accent)}>
+                        {actionMeta.label}
+                      </span>
+                    )}
+                  </div>
+                  <div style={styles.itemMeta}>
+                    {group.unreadCount > 0
+                      ? `${group.unreadCount} unread`
+                      : `${group.items.length} total`}
+                  </div>
+                  <div style={styles.itemPreview}>
+                    {buildPreviewText(latestItem)}
+                  </div>
+                </button>
+              );
+            })}
           </div>
           <button
             type="button"
@@ -149,7 +187,24 @@ const styles = {
     borderBottom: '1px solid #e5e7eb',
     cursor: 'pointer',
   }),
-  itemTitle: { fontWeight: 600, color: '#0f172a', marginBottom: '0.25rem' },
+  itemTitle: {
+    fontWeight: 600,
+    color: '#0f172a',
+    marginBottom: '0.25rem',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: '0.5rem',
+  },
+  actionBadge: (accent) => ({
+    background: accent || '#2563eb',
+    color: '#fff',
+    borderRadius: '999px',
+    padding: '0.1rem 0.45rem',
+    fontSize: '0.65rem',
+    textTransform: 'uppercase',
+    letterSpacing: '0.04em',
+  }),
   itemMeta: { fontSize: '0.75rem', color: '#64748b', marginBottom: '0.25rem' },
   itemPreview: { fontSize: '0.85rem', color: '#334155' },
   footer: {

@@ -23,6 +23,49 @@ function formatActionLabel(action) {
   return 'New';
 }
 
+function getActionMeta(action) {
+  const label = formatActionLabel(action);
+  const normalized = typeof action === 'string' ? action.trim().toLowerCase() : '';
+  if (normalized === 'deleted' || normalized === 'delete') {
+    return { label, accent: '#dc2626', background: '#fee2e2', text: '#7f1d1d' };
+  }
+  if (normalized === 'edited' || normalized === 'edit' || normalized === 'update') {
+    return { label, accent: '#2563eb', background: '#dbeafe', text: '#1e3a8a' };
+  }
+  if (normalized === 'changed' || normalized === 'change') {
+    return { label, accent: '#d97706', background: '#fef3c7', text: '#92400e' };
+  }
+  return { label, accent: '#059669', background: '#d1fae5', text: '#065f46' };
+}
+
+function buildSummaryText(item) {
+  if (!item) return 'Transaction update';
+  const actionMeta = getActionMeta(item.action);
+  const normalized = typeof item.action === 'string' ? item.action.trim().toLowerCase() : '';
+  if (item.summaryText) return item.summaryText;
+  if (Array.isArray(item.summaryFields) && item.summaryFields.length > 0) {
+    const fields = item.summaryFields
+      .map((field) => field?.field)
+      .filter(Boolean)
+      .join(', ');
+    if (fields) {
+      if (normalized === 'edited' || normalized === 'edit' || normalized === 'update') {
+        return `Edited fields: ${fields}`;
+      }
+      if (normalized === 'changed' || normalized === 'change') {
+        return `Changed fields: ${fields}`;
+      }
+    }
+  }
+  if (normalized === 'deleted' || normalized === 'delete') {
+    return 'Transaction deleted';
+  }
+  if (normalized === 'edited' || normalized === 'edit' || normalized === 'update') {
+    return 'Transaction edited';
+  }
+  return `${actionMeta.label} transaction`;
+}
+
 export default function TransactionNotificationWidget() {
   const { groups, markGroupRead } = useTransactionNotifications();
   const location = useLocation();
@@ -105,27 +148,35 @@ export default function TransactionNotificationWidget() {
               </div>
               {isExpanded && (
                 <div style={styles.items}>
-                  {group.items.map((item) => (
-                    <div key={item.id} style={styles.item(item.isRead)}>
-                      <div style={styles.itemSummary}>
-                        <span style={styles.itemAction}>{formatActionLabel(item.action)}</span>
-                        <span>{item.summaryText || 'Transaction update'}</span>
-                      </div>
-                      {Array.isArray(item.summaryFields) && item.summaryFields.length > 0 && (
-                        <div style={styles.summaryFields}>
-                          {item.summaryFields.map((field) => (
-                            <div key={`${item.id}-${field.field}`} style={styles.summaryFieldRow}>
-                              <span style={styles.summaryFieldLabel}>{field.field}</span>
-                              <span style={styles.summaryFieldValue}>{field.value}</span>
-                            </div>
-                          ))}
+                  {group.items.map((item) => {
+                    const actionMeta = getActionMeta(item.action);
+                    return (
+                      <div
+                        key={item.id}
+                        style={styles.item(item.isRead, actionMeta.accent)}
+                      >
+                        <div style={styles.itemSummary}>
+                          <span style={styles.itemAction(actionMeta)}>
+                            {actionMeta.label}
+                          </span>
+                          <span>{buildSummaryText(item)}</span>
                         </div>
-                      )}
-                      <div style={styles.itemMeta}>
-                        {formatTimestamp(item.createdAt)}
+                        {Array.isArray(item.summaryFields) && item.summaryFields.length > 0 && (
+                          <div style={styles.summaryFields}>
+                            {item.summaryFields.map((field) => (
+                              <div key={`${item.id}-${field.field}`} style={styles.summaryFieldRow}>
+                                <span style={styles.summaryFieldLabel}>{field.field}</span>
+                                <span style={styles.summaryFieldValue}>{field.value}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        <div style={styles.itemMeta}>
+                          {formatTimestamp(item.createdAt)}
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -183,10 +234,11 @@ const styles = {
     fontSize: '0.75rem',
   },
   items: { marginTop: '0.75rem', display: 'grid', gap: '0.5rem' },
-  item: (isRead) => ({
+  item: (isRead, accent) => ({
     background: isRead ? '#f8fafc' : '#e0f2fe',
     borderRadius: '8px',
     padding: '0.5rem 0.75rem',
+    borderLeft: `4px solid ${accent || '#2563eb'}`,
   }),
   itemSummary: {
     fontSize: '0.85rem',
@@ -196,15 +248,15 @@ const styles = {
     gap: '0.5rem',
     flexWrap: 'wrap',
   },
-  itemAction: {
-    background: '#1d4ed8',
-    color: '#fff',
+  itemAction: (meta) => ({
+    background: meta?.background || '#1d4ed8',
+    color: meta?.text || '#fff',
     borderRadius: '999px',
     padding: '0.15rem 0.5rem',
     fontSize: '0.7rem',
     textTransform: 'uppercase',
     letterSpacing: '0.03em',
-  },
+  }),
   summaryFields: {
     marginTop: '0.35rem',
     display: 'grid',
