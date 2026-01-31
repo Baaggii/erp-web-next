@@ -190,6 +190,27 @@ function hasNotifyFieldChanges(previousRow, currentRow, notifyFields) {
   });
 }
 
+function buildEditSummary(previousRow, currentRow, notifyFields) {
+  const summaryFields = [];
+  const fieldNames = [];
+  if (!previousRow || !currentRow || !notifyFields.length) {
+    return { summaryFields, summaryText: '' };
+  }
+  notifyFields.forEach((field) => {
+    const prevValue = normalizeFieldValue(getCaseInsensitive(previousRow, field));
+    const nextValue = normalizeFieldValue(getCaseInsensitive(currentRow, field));
+    if (prevValue === nextValue) return;
+    const fromValue = prevValue || '—';
+    const toValue = nextValue || '—';
+    summaryFields.push({ field, value: `${fromValue} → ${toValue}` });
+    fieldNames.push(field);
+  });
+  return {
+    summaryFields,
+    summaryText: fieldNames.length ? `Edited fields: ${fieldNames.join(', ')}` : '',
+  };
+}
+
 async function resolveTransactionConfig(tableName, transactionRow, companyId) {
   if (!tableName) return null;
   const { config } = await getConfigsByTable(tableName, companyId);
@@ -306,18 +327,20 @@ async function listEmpIdsByScope({ companyId, branchId, departmentId }) {
     : [];
 }
 
-async function updateNotifications({ notificationIds = [], message, updatedBy }) {
+async function updateNotifications({ notificationIds = [], message, updatedBy, markUnread }) {
   if (!notificationIds.length) return 0;
   const normalizedIds = notificationIds
     .map((id) => Number(id))
     .filter((id) => Number.isFinite(id));
   if (!normalizedIds.length) return 0;
-  const [result] = await pool.query(
-    `UPDATE notifications
+  const updateSql = markUnread
+    ? `UPDATE notifications
+        SET message = ?, updated_by = ?, updated_at = NOW(), is_read = 0
+      WHERE notification_id IN (?)`
+    : `UPDATE notifications
         SET message = ?, updated_by = ?, updated_at = NOW()
-      WHERE notification_id IN (?)`,
-    [message, updatedBy ?? null, normalizedIds],
-  );
+      WHERE notification_id IN (?)`;
+  const [result] = await pool.query(updateSql, [message, updatedBy ?? null, normalizedIds]);
   return result?.affectedRows ?? 0;
 }
 
@@ -327,6 +350,8 @@ async function updateExistingTransactionNotifications({
   action,
   updatedBy,
   transactionName,
+  summaryFields,
+  summaryText,
 }) {
   const [rows] = await pool.query(
     `SELECT notification_id, message, recipient_empid, created_at, created_by, type, related_id
@@ -340,6 +365,7 @@ async function updateExistingTransactionNotifications({
   );
   let updated = 0;
   const payloads = [];
+  const updatedAt = new Date().toISOString();
   for (const row of rows || []) {
     if (!row?.message) continue;
     let payload;
@@ -349,10 +375,17 @@ async function updateExistingTransactionNotifications({
       continue;
     }
     if (!payload || payload.kind !== 'transaction') continue;
+    const nextSummaryFields =
+      summaryFields !== undefined ? summaryFields : payload.summaryFields || [];
+    const nextSummaryText =
+      summaryText !== undefined ? summaryText : payload.summaryText || '';
     const nextPayload = {
       ...payload,
       action,
       transactionName: transactionName || payload.transactionName,
+      summaryFields: nextSummaryFields,
+      summaryText: nextSummaryText,
+      updatedAt,
     };
     const message = JSON.stringify(nextPayload);
     // eslint-disable-next-line no-await-in-loop
@@ -360,6 +393,7 @@ async function updateExistingTransactionNotifications({
       notificationIds: [row.notification_id],
       message,
       updatedBy,
+      markUnread: true,
     });
     if (row.recipient_empid) {
       payloads.push({
@@ -373,6 +407,7 @@ async function updateExistingTransactionNotifications({
           created_at: row.created_at
             ? new Date(row.created_at).toISOString()
             : new Date().toISOString(),
+          updated_at: updatedAt,
           sender: row.created_by ?? null,
         },
       });
@@ -438,6 +473,17 @@ async function handleTransactionNotification(job) {
   if (!relations.length) return;
   const notifyFields = normalizeFieldList(transactionConfig?.notifyFields);
   if (!notifyFields.length) return;
+  const actionLabel = job.action ?? 'update';
+  const rawEditSummary =
+    job.action === 'update'
+      ? buildEditSummary(job.previousSnapshot, transactionRow, notifyFields)
+      : job.action === 'delete'
+        ? { summaryFields: [], summaryText: 'Transaction deleted' }
+        : { summaryFields: [], summaryText: '' };
+  const editSummary =
+    job.action === 'update' && !rawEditSummary.summaryText
+      ? { ...rawEditSummary, summaryText: 'Transaction edited' }
+      : rawEditSummary;
   if (
     job.action === 'update' &&
     !hasNotifyFieldChanges(job.previousSnapshot, transactionRow, notifyFields)
@@ -452,6 +498,8 @@ async function handleTransactionNotification(job) {
       action: job.action ?? 'update',
       updatedBy: job.changedBy,
       transactionName,
+      summaryFields: editSummary.summaryFields,
+      summaryText: editSummary.summaryText,
     });
     if (payloads.length) {
       payloads.forEach(({ room, payload }) => emitNotificationEvent([room], payload));
@@ -516,10 +564,20 @@ async function handleTransactionNotification(job) {
 
       const { summaryFields: referenceSummaryFields, summaryText: referenceSummaryText } =
         buildSummary(referenceRow, config?.notificationDashboardFields ?? []);
-      const summaryFields = dashboardSummaryBase.summaryFields.length
-        ? dashboardSummaryBase.summaryFields
-        : referenceSummaryFields;
-      const summaryText = dashboardSummaryBase.summaryText || referenceSummaryText;
+      const summaryFields =
+        job.action === 'update' && editSummary.summaryFields.length
+          ? editSummary.summaryFields
+          : job.action === 'delete'
+            ? []
+            : dashboardSummaryBase.summaryFields.length
+              ? dashboardSummaryBase.summaryFields
+              : referenceSummaryFields;
+      const summaryText =
+        job.action === 'update' && editSummary.summaryText
+          ? editSummary.summaryText
+          : job.action === 'delete'
+            ? 'Transaction deleted'
+            : dashboardSummaryBase.summaryText || referenceSummaryText;
 
       const messagePayload = {
         kind: 'transaction',
@@ -532,6 +590,7 @@ async function handleTransactionNotification(job) {
         role,
         summaryFields,
         summaryText,
+        updatedAt: new Date().toISOString(),
       };
       const message = JSON.stringify(messagePayload);
 

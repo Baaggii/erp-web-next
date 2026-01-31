@@ -5,7 +5,7 @@ export async function listTransactionNotifications(req, res, next) {
     const limit = Math.min(Number(req.query.limit) || 50, 200);
     const offset = Math.max(Number(req.query.offset) || 0, 0);
     const [rows] = await pool.query(
-      `SELECT notification_id, recipient_empid, type, related_id, message, is_read, created_at
+      `SELECT notification_id, recipient_empid, type, related_id, message, is_read, created_at, updated_at
          FROM notifications
         WHERE recipient_empid = ?
           AND company_id = ?

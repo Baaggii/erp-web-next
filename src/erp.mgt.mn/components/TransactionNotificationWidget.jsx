@@ -38,6 +38,11 @@ function getActionMeta(action) {
   return { label, accent: '#059669', background: '#d1fae5', text: '#065f46' };
 }
 
+function isDeletedAction(action) {
+  const normalized = typeof action === 'string' ? action.trim().toLowerCase() : '';
+  return normalized === 'deleted' || normalized === 'delete';
+}
+
 function buildSummaryText(item) {
   if (!item) return 'Transaction update';
   const actionMeta = getActionMeta(item.action);
@@ -90,6 +95,20 @@ export default function TransactionNotificationWidget() {
     }
   }, [highlightKey]);
 
+  const groupedSections = useMemo(() => {
+    const active = [];
+    const deleted = [];
+    groups.forEach((group) => {
+      const latestItem = group.items[0];
+      if (isDeletedAction(latestItem?.action)) {
+        deleted.push(group);
+      } else {
+        active.push(group);
+      }
+    });
+    return { active, deleted };
+  }, [groups]);
+
   const toggleExpanded = (key) => {
     setExpanded((prev) => {
       const next = new Set(prev);
@@ -102,6 +121,74 @@ export default function TransactionNotificationWidget() {
     });
   };
 
+  const renderGroup = (group) => {
+    const isExpanded = expanded.has(group.key);
+    const isHighlighted = group.key === highlightKey;
+    return (
+      <div
+        key={group.key}
+        style={styles.group(isHighlighted)}
+        ref={(node) => {
+          groupRefs.current[group.key] = node;
+        }}
+      >
+        <div style={styles.groupHeader}>
+          <button
+            type="button"
+            style={styles.groupToggle}
+            onClick={() => toggleExpanded(group.key)}
+          >
+            <span style={styles.groupName}>{group.name}</span>
+            <span style={styles.groupCount}>
+              {group.unreadCount > 0
+                ? `${group.unreadCount} unread`
+                : `${group.items.length} total`}
+            </span>
+          </button>
+          {group.unreadCount > 0 && (
+            <button
+              type="button"
+              style={styles.markRead}
+              onClick={() => markGroupRead(group.key)}
+            >
+              Mark read
+            </button>
+          )}
+        </div>
+        {isExpanded && (
+          <div style={styles.items}>
+            {group.items.map((item) => {
+              const actionMeta = getActionMeta(item.action);
+              return (
+                <div key={item.id} style={styles.item(item.isRead, actionMeta.accent)}>
+                  <div style={styles.itemSummary}>
+                    <span style={styles.itemAction(actionMeta)}>
+                      {actionMeta.label}
+                    </span>
+                    <span>{buildSummaryText(item)}</span>
+                  </div>
+                  {Array.isArray(item.summaryFields) && item.summaryFields.length > 0 && (
+                    <div style={styles.summaryFields}>
+                      {item.summaryFields.map((field) => (
+                        <div key={`${item.id}-${field.field}`} style={styles.summaryFieldRow}>
+                          <span style={styles.summaryFieldLabel}>{field.field}</span>
+                          <span style={styles.summaryFieldValue}>{field.value}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <div style={styles.itemMeta}>
+                    {formatTimestamp(item.updatedAt || item.createdAt)}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    );
+  };
+
   return (
     <section style={styles.section}>
       <div style={styles.header}>
@@ -111,78 +198,30 @@ export default function TransactionNotificationWidget() {
       {groups.length === 0 && (
         <div style={styles.empty}>No transaction notifications yet.</div>
       )}
-      <div style={styles.list}>
-        {groups.map((group) => {
-          const isExpanded = expanded.has(group.key);
-          const isHighlighted = group.key === highlightKey;
-          return (
-            <div
-              key={group.key}
-              style={styles.group(isHighlighted)}
-              ref={(node) => {
-                groupRefs.current[group.key] = node;
-              }}
-            >
-              <div style={styles.groupHeader}>
-                <button
-                  type="button"
-                  style={styles.groupToggle}
-                  onClick={() => toggleExpanded(group.key)}
-                >
-                  <span style={styles.groupName}>{group.name}</span>
-                  <span style={styles.groupCount}>
-                    {group.unreadCount > 0
-                      ? `${group.unreadCount} unread`
-                      : `${group.items.length} total`}
-                  </span>
-                </button>
-                {group.unreadCount > 0 && (
-                  <button
-                    type="button"
-                    style={styles.markRead}
-                    onClick={() => markGroupRead(group.key)}
-                  >
-                    Mark read
-                  </button>
-                )}
-              </div>
-              {isExpanded && (
-                <div style={styles.items}>
-                  {group.items.map((item) => {
-                    const actionMeta = getActionMeta(item.action);
-                    return (
-                      <div
-                        key={item.id}
-                        style={styles.item(item.isRead, actionMeta.accent)}
-                      >
-                        <div style={styles.itemSummary}>
-                          <span style={styles.itemAction(actionMeta)}>
-                            {actionMeta.label}
-                          </span>
-                          <span>{buildSummaryText(item)}</span>
-                        </div>
-                        {Array.isArray(item.summaryFields) && item.summaryFields.length > 0 && (
-                          <div style={styles.summaryFields}>
-                            {item.summaryFields.map((field) => (
-                              <div key={`${item.id}-${field.field}`} style={styles.summaryFieldRow}>
-                                <span style={styles.summaryFieldLabel}>{field.field}</span>
-                                <span style={styles.summaryFieldValue}>{field.value}</span>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                        <div style={styles.itemMeta}>
-                          {formatTimestamp(item.createdAt)}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
+      {groups.length > 0 && (
+        <div style={styles.list}>
+          <div style={styles.sectionGroup}>
+            <div style={styles.sectionHeader}>
+              <span style={styles.sectionTitle}>Active transactions</span>
+              <span style={styles.sectionCount}>{groupedSections.active.length}</span>
             </div>
-          );
-        })}
-      </div>
+            {groupedSections.active.length === 0 && (
+              <div style={styles.sectionEmpty}>No active transaction alerts.</div>
+            )}
+            {groupedSections.active.map((group) => renderGroup(group))}
+          </div>
+          <div style={styles.sectionGroup}>
+            <div style={styles.sectionHeader}>
+              <span style={styles.sectionTitle}>Deleted transactions</span>
+              <span style={styles.sectionCount}>{groupedSections.deleted.length}</span>
+            </div>
+            {groupedSections.deleted.length === 0 && (
+              <div style={styles.sectionEmpty}>No deleted transaction alerts.</div>
+            )}
+            {groupedSections.deleted.map((group) => renderGroup(group))}
+          </div>
+        </div>
+      )}
     </section>
   );
 }
@@ -204,6 +243,36 @@ const styles = {
   subtitle: { fontSize: '0.75rem', color: '#64748b' },
   empty: { color: '#64748b', padding: '0.75rem 0' },
   list: { display: 'flex', flexDirection: 'column', gap: '0.75rem' },
+  sectionGroup: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.5rem',
+    padding: '0.5rem',
+    borderRadius: '10px',
+    background: '#f8fafc',
+  },
+  sectionHeader: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    fontSize: '0.75rem',
+    textTransform: 'uppercase',
+    letterSpacing: '0.04em',
+    color: '#64748b',
+  },
+  sectionTitle: { fontWeight: 600 },
+  sectionCount: {
+    background: '#e2e8f0',
+    borderRadius: '999px',
+    padding: '0.1rem 0.5rem',
+    fontSize: '0.7rem',
+    color: '#1e293b',
+  },
+  sectionEmpty: {
+    fontSize: '0.8rem',
+    color: '#94a3b8',
+    padding: '0.25rem 0.5rem',
+  },
   group: (highlighted) => ({
     border: highlighted ? '2px solid #2563eb' : '1px solid #e5e7eb',
     borderRadius: '10px',
