@@ -11,6 +11,12 @@ function formatTimestamp(value) {
 
 function formatActionLabel(action) {
   const normalized = typeof action === 'string' ? action.trim().toLowerCase() : '';
+  if (normalized === 'excluded' || normalized === 'exclude') {
+    return 'Excluded';
+  }
+  if (normalized === 'included' || normalized === 'include') {
+    return 'Included';
+  }
   if (normalized === 'edited' || normalized === 'edit' || normalized === 'update') {
     return 'Edited';
   }
@@ -26,6 +32,12 @@ function formatActionLabel(action) {
 function getActionMeta(action) {
   const label = formatActionLabel(action);
   const normalized = typeof action === 'string' ? action.trim().toLowerCase() : '';
+  if (normalized === 'excluded' || normalized === 'exclude') {
+    return { label, accent: '#ea580c', background: '#ffedd5', text: '#9a3412' };
+  }
+  if (normalized === 'included' || normalized === 'include') {
+    return { label, accent: '#059669', background: '#d1fae5', text: '#065f46' };
+  }
   if (normalized === 'deleted' || normalized === 'delete') {
     return { label, accent: '#dc2626', background: '#fee2e2', text: '#7f1d1d' };
   }
@@ -41,6 +53,11 @@ function getActionMeta(action) {
 function isDeletedAction(action) {
   const normalized = typeof action === 'string' ? action.trim().toLowerCase() : '';
   return normalized === 'deleted' || normalized === 'delete';
+}
+
+function isExcludedAction(item) {
+  const normalized = typeof item?.action === 'string' ? item.action.trim().toLowerCase() : '';
+  return Boolean(item?.excluded) || normalized === 'excluded' || normalized === 'exclude';
 }
 
 function buildSummaryText(item) {
@@ -64,6 +81,12 @@ function buildSummaryText(item) {
   }
   if (normalized === 'deleted' || normalized === 'delete') {
     return 'Transaction deleted';
+  }
+  if (normalized === 'excluded' || normalized === 'exclude') {
+    return 'Transaction excluded';
+  }
+  if (normalized === 'included' || normalized === 'include') {
+    return 'Transaction included';
   }
   if (normalized === 'edited' || normalized === 'edit' || normalized === 'update') {
     return 'Transaction edited';
@@ -103,9 +126,12 @@ export default function TransactionNotificationWidget() {
   }, [highlightKey]);
 
   const groupItems = useCallback((items = []) => {
-    const activeItems = items.filter((item) => !isDeletedAction(item?.action));
+    const excludedItems = items.filter((item) => isExcludedAction(item));
     const deletedItems = items.filter((item) => isDeletedAction(item?.action));
-    return { activeItems, deletedItems };
+    const activeItems = items.filter(
+      (item) => !isDeletedAction(item?.action) && !isExcludedAction(item),
+    );
+    return { activeItems, deletedItems, excludedItems };
   }, []);
 
   const toggleExpanded = (key) => {
@@ -157,7 +183,7 @@ export default function TransactionNotificationWidget() {
         {isExpanded && (
           <div style={styles.items}>
             {(() => {
-              const { activeItems, deletedItems } = groupItems(group.items);
+              const { activeItems, deletedItems, excludedItems } = groupItems(group.items);
               const renderItems = (items) =>
                 items.map((item) => {
                   const actionMeta = getActionMeta(item.action);
@@ -200,6 +226,16 @@ export default function TransactionNotificationWidget() {
                       <div style={styles.itemGroupEmpty}>No active transaction alerts.</div>
                     )}
                     {renderItems(activeItems)}
+                  </div>
+                  <div style={styles.itemGroup}>
+                    <div style={styles.itemGroupHeader}>
+                      <span style={styles.itemGroupTitle}>Excluded</span>
+                      <span style={styles.itemGroupCount}>{excludedItems.length}</span>
+                    </div>
+                    {excludedItems.length === 0 && (
+                      <div style={styles.itemGroupEmpty}>No excluded transaction alerts.</div>
+                    )}
+                    {renderItems(excludedItems)}
                   </div>
                   <div style={styles.itemGroup}>
                     <div style={styles.itemGroupHeader}>

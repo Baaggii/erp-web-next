@@ -16,6 +16,7 @@ const queue = [];
 let processing = false;
 let ioEmitter = null;
 const EXCLUDED_SUMMARY_TEXT = 'Excluded from transaction';
+const INCLUDED_SUMMARY_TEXT = 'Included in transaction';
 
 export function setNotificationEmitter(io) {
   ioEmitter = io || null;
@@ -400,6 +401,7 @@ async function updateExistingTransactionNotifications({
   );
   let updated = 0;
   const payloads = [];
+  const existingReferenceKeys = new Set();
   const updatedAt = new Date().toISOString();
   for (const row of rows || []) {
     if (!row?.message) continue;
@@ -410,19 +412,61 @@ async function updateExistingTransactionNotifications({
       continue;
     }
     if (!payload || payload.kind !== 'transaction') continue;
-    if (payload.excluded) continue;
     const referenceKey = buildReferenceKey(payload.referenceTable, payload.referenceId);
+    if (referenceKey) {
+      existingReferenceKeys.add(referenceKey);
+    }
     const isActive =
       !activeReferenceKeys || activeReferenceKeys.size === 0
         ? true
         : activeReferenceKeys.has(referenceKey);
     if (action === 'update' && !isActive) {
+      if (payload.excluded) continue;
       const nextPayload = {
         ...payload,
-        action,
-        summaryFields: payload.summaryFields || [],
+        action: 'excluded',
+        summaryFields:
+          summaryFields !== undefined ? summaryFields : payload.summaryFields || [],
         summaryText: EXCLUDED_SUMMARY_TEXT,
         excluded: true,
+        actor: updatedBy ?? payload.actor ?? payload.createdBy ?? null,
+        updatedAt,
+      };
+      const message = JSON.stringify(nextPayload);
+      // eslint-disable-next-line no-await-in-loop
+      updated += await updateNotifications({
+        notificationIds: [row.notification_id],
+        message,
+        updatedBy,
+        markUnread: true,
+      });
+      if (row.recipient_empid) {
+        payloads.push({
+          room: `user:${row.recipient_empid}`,
+          payload: {
+            id: row.notification_id,
+            type: row.type,
+            kind: nextPayload.kind ?? row.type,
+            message,
+            related_id: row.related_id,
+            created_at: row.created_at
+              ? new Date(row.created_at).toISOString()
+              : new Date().toISOString(),
+            updated_at: updatedAt,
+            sender: row.created_by ?? null,
+          },
+        });
+      }
+      continue;
+    }
+    if (action === 'update' && payload.excluded && isActive) {
+      const nextPayload = {
+        ...payload,
+        action: 'included',
+        summaryFields:
+          summaryFields !== undefined ? summaryFields : payload.summaryFields || [],
+        summaryText: INCLUDED_SUMMARY_TEXT,
+        excluded: false,
         actor: updatedBy ?? payload.actor ?? payload.createdBy ?? null,
         updatedAt,
       };
@@ -493,7 +537,7 @@ async function updateExistingTransactionNotifications({
       });
     }
   }
-  return { updated, payloads };
+  return { updated, payloads, existingReferenceKeys };
 }
 
 function emitNotificationEvent(rooms, payload) {
@@ -578,34 +622,6 @@ async function handleTransactionNotification(job) {
     relations,
     notifyFieldSet,
   });
-  if (job.action === 'update' || job.action === 'delete') {
-    const transactionName = deriveTransactionName(transactionRow, job.tableName);
-    const { updated, payloads } = await updateExistingTransactionNotifications({
-      companyId: job.companyId,
-      relatedId: job.recordId,
-      action: job.action ?? 'update',
-      updatedBy: job.changedBy,
-      transactionName,
-      summaryFields: editSummary.summaryFields,
-      summaryText: editSummary.summaryText,
-      activeReferenceKeys,
-    });
-    if (payloads.length) {
-      payloads.forEach(({ room, payload }) => emitNotificationEvent([room], payload));
-    }
-    if (updated > 0) {
-      return;
-    }
-  }
-  if (
-    job.action === 'update' &&
-    editFieldList.length &&
-    !hasNotifyFieldChanges(job.previousSnapshot, transactionRow, editFieldList)
-  ) {
-    return;
-  }
-  const displayEntries = Array.isArray(displayConfig?.config) ? displayConfig.config : [];
-  const transactionName = deriveTransactionName(transactionRow, job.tableName);
   const notificationFieldList = normalizeFieldList(transactionConfig?.notificationFields);
   const dashboardFieldList = normalizeFieldList(
     transactionConfig?.notificationDashboardFields,
@@ -616,6 +632,48 @@ async function handleTransactionNotification(job) {
   const dashboardSummaryBase = buildSummary(transactionRow, dashboardFieldList);
   const phoneSummaryBase = buildSummary(transactionRow, phoneFieldList);
   const emailSummaryBase = buildSummary(transactionRow, emailFieldList);
+  const configuredSummaryFields =
+    dashboardSummaryBase.summaryFields.length > 0
+      ? dashboardSummaryBase.summaryFields
+      : notificationSummaryBase.summaryFields;
+  let existingReferenceKeys;
+  if (job.action === 'update' || job.action === 'delete') {
+    const transactionName = deriveTransactionName(transactionRow, job.tableName);
+    const updateResult = await updateExistingTransactionNotifications({
+      companyId: job.companyId,
+      relatedId: job.recordId,
+      action: job.action ?? 'update',
+      updatedBy: job.changedBy,
+      transactionName,
+      summaryFields: configuredSummaryFields,
+      summaryText: editSummary.summaryText,
+      activeReferenceKeys,
+    });
+    const { updated, payloads } = updateResult;
+    existingReferenceKeys = updateResult.existingReferenceKeys;
+    if (payloads.length) {
+      payloads.forEach(({ room, payload }) => emitNotificationEvent([room], payload));
+    }
+    if (updated > 0 && job.action !== 'update') {
+      return;
+    }
+  }
+  if (job.action === 'update' && editFieldList.length) {
+    const hasFieldChanges = hasNotifyFieldChanges(
+      job.previousSnapshot,
+      transactionRow,
+      editFieldList,
+    );
+    const hasNewRecipients =
+      activeReferenceKeys &&
+      existingReferenceKeys &&
+      Array.from(activeReferenceKeys).some((key) => !existingReferenceKeys.has(key));
+    if (!hasFieldChanges && !hasNewRecipients) {
+      return;
+    }
+  }
+  const displayEntries = Array.isArray(displayConfig?.config) ? displayConfig.config : [];
+  const transactionName = deriveTransactionName(transactionRow, job.tableName);
 
   const handled = new Set();
   for (const relation of relations) {
@@ -663,33 +721,44 @@ async function handleTransactionNotification(job) {
         ? dashboardSummaryBase.summaryFields
         : notificationSummaryBase.summaryFields;
       const summaryFields =
-        job.action === 'update' && editSummary.summaryFields.length
-          ? editSummary.summaryFields
-          : job.action === 'delete'
-            ? deleteSummaryFields
-            : dashboardSummaryBase.summaryFields.length
-              ? dashboardSummaryBase.summaryFields
-              : referenceSummaryFields;
+        job.action === 'update' || job.action === 'delete'
+          ? configuredSummaryFields
+          : dashboardSummaryBase.summaryFields.length
+            ? dashboardSummaryBase.summaryFields
+            : referenceSummaryFields;
       const summaryText =
         job.action === 'update' && editSummary.summaryText
           ? editSummary.summaryText
           : job.action === 'delete'
             ? 'Transaction deleted'
             : dashboardSummaryBase.summaryText || referenceSummaryText;
+      const referenceKey = buildReferenceKey(relation.table, referenceId);
+      const isExistingRecipient =
+        job.action === 'update' &&
+        existingReferenceKeys &&
+        existingReferenceKeys.has(referenceKey);
+      if (isExistingRecipient) {
+        continue;
+      }
+      const actionForRecipient =
+        job.action === 'update' && !isExistingRecipient ? 'included' : actionLabel;
+      const summaryTextForRecipient =
+        actionForRecipient === 'included' ? INCLUDED_SUMMARY_TEXT : summaryText;
 
       const messagePayload = {
         kind: 'transaction',
         transactionName,
         transactionTable: job.tableName,
         transactionId: job.recordId,
-        action: actionLabel,
+        action: actionForRecipient,
         referenceTable: relation.table,
         referenceId,
         role,
         summaryFields,
-        summaryText,
+        summaryText: summaryTextForRecipient,
         actor: job.changedBy ?? null,
         updatedAt: new Date().toISOString(),
+        excluded: false,
       };
       const message = JSON.stringify(messagePayload);
 
