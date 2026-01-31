@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useTransactionNotifications } from '../context/TransactionNotificationContext.jsx';
 
+const ARROW_SEPARATOR = '→';
+
 function formatTimestamp(value) {
   if (!value) return 'Unknown time';
   const date = new Date(value);
@@ -101,14 +103,78 @@ function getActorLabel(item) {
   return actor;
 }
 
+function normalizeRelationValue(raw) {
+  if (raw === undefined || raw === null) return '';
+  if (typeof raw === 'string') return raw.trim();
+  if (typeof raw === 'number') return String(raw);
+  if (typeof raw === 'boolean') return raw ? 'Yes' : 'No';
+  try {
+    return JSON.stringify(raw);
+  } catch {
+    return String(raw);
+  }
+}
+
+function parseRelationValueParts(raw) {
+  const normalized = normalizeRelationValue(raw);
+  if (!normalized) return { parts: [], separator: '' };
+  if (normalized.includes(ARROW_SEPARATOR)) {
+    return {
+      parts: normalized.split(ARROW_SEPARATOR).map((part) => part.trim()),
+      separator: ` ${ARROW_SEPARATOR} `,
+    };
+  }
+  if (normalized.startsWith('[') && normalized.endsWith(']')) {
+    try {
+      const parsed = JSON.parse(normalized);
+      if (Array.isArray(parsed)) {
+        return {
+          parts: parsed.map((value) => normalizeRelationValue(value)),
+          separator: ', ',
+        };
+      }
+    } catch {
+      // ignore invalid JSON
+    }
+  }
+  return { parts: [normalized], separator: '' };
+}
+
+function buildRelationDisplay(row, config, fallbackValue) {
+  if (!row || typeof row !== 'object') return fallbackValue ?? '';
+  const cfg = config || {};
+  const parts = [];
+  const idField = cfg.idField || cfg.column;
+  const idValue = idField && idField in row ? row[idField] : fallbackValue;
+  if (idValue !== undefined && idValue !== null && idValue !== '') {
+    parts.push(idValue);
+  }
+  (cfg.displayFields || []).forEach((field) => {
+    if (typeof field !== 'string') return;
+    const value = row[field];
+    if (value !== undefined && value !== null && value !== '') {
+      parts.push(value);
+    }
+  });
+  const formatted = parts
+    .filter((part) => part !== undefined && part !== null && part !== '')
+    .map((part) => (typeof part === 'string' ? part : String(part)));
+  return formatted.length > 0 ? formatted.join(' - ') : fallbackValue ?? '';
+}
+
 export default function TransactionNotificationWidget() {
   const { groups, markGroupRead } = useTransactionNotifications();
   const location = useLocation();
   const [expanded, setExpanded] = useState(() => new Set());
   const [collapsedSections, setCollapsedSections] = useState(() => new Set());
+  const [relationLabelMap, setRelationLabelMap] = useState({});
+  const [relationMapVersion, setRelationMapVersion] = useState(0);
   const groupRefs = useRef({});
   const itemRefs = useRef({});
   const initializedGroups = useRef(new Set());
+  const relationMapCache = useRef(new Map());
+  const relationConfigCache = useRef(new Map());
+  const labelRequestCache = useRef(new Set());
 
   const highlightKey = useMemo(() => {
     const params = new URLSearchParams(location.search || '');
@@ -177,6 +243,207 @@ export default function TransactionNotificationWidget() {
       return next;
     });
   }, [groups, highlightItemId, highlightKey]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const tables = Array.from(
+      new Set(
+        groups
+          .flatMap((group) =>
+            group.items.flatMap((item) => [item.transactionTable, item.referenceTable]),
+          )
+          .filter(Boolean),
+      ),
+    );
+    if (tables.length === 0) return undefined;
+    tables.forEach(async (table) => {
+      if (!table) return;
+      const cacheKey = table.toLowerCase();
+      if (relationMapCache.current.has(cacheKey)) return;
+      try {
+        const res = await fetch(`/api/tables/${encodeURIComponent(table)}/relations`, {
+          credentials: 'include',
+          skipErrorToast: true,
+          skipLoader: true,
+        });
+        if (!res.ok) {
+          relationMapCache.current.set(cacheKey, {});
+          setRelationMapVersion((prev) => prev + 1);
+          return;
+        }
+        const list = await res.json().catch(() => []);
+        const map = {};
+        if (Array.isArray(list)) {
+          list.forEach((entry) => {
+            const col = entry?.COLUMN_NAME;
+            const refTable = entry?.REFERENCED_TABLE_NAME;
+            const refColumn = entry?.REFERENCED_COLUMN_NAME;
+            if (!col || !refTable || !refColumn) return;
+            map[col.toLowerCase()] = {
+              table: refTable,
+              column: refColumn,
+              filterColumn: entry?.filterColumn,
+              filterValue: entry?.filterValue,
+            };
+          });
+        }
+        if (!cancelled) {
+          relationMapCache.current.set(cacheKey, map);
+          setRelationMapVersion((prev) => prev + 1);
+        }
+      } catch {
+        relationMapCache.current.set(cacheKey, {});
+        setRelationMapVersion((prev) => prev + 1);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [groups]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const pending = [];
+    const setLabel = (cacheKey, label) => {
+      setRelationLabelMap((prev) => {
+        if (prev[cacheKey] === label) return prev;
+        return { ...prev, [cacheKey]: label };
+      });
+    };
+
+    const ensureLabel = async ({
+      table,
+      relation,
+      rawValue,
+      valueKey,
+      displayConfig,
+    }) => {
+      const cacheKey = `${table}|${valueKey}`;
+      if (relationLabelMap[cacheKey]) return;
+      if (labelRequestCache.current.has(cacheKey)) return;
+      labelRequestCache.current.add(cacheKey);
+      try {
+        const params = new URLSearchParams({ page: 1, perPage: 1 });
+        params.set(displayConfig.idField || relation.column, valueKey);
+        if (relation.filterColumn && relation.filterValue !== undefined) {
+          params.set(relation.filterColumn, relation.filterValue);
+        }
+        const res = await fetch(
+          `/api/tables/${encodeURIComponent(relation.table)}?${params.toString()}`,
+          { credentials: 'include' },
+        );
+        let row = null;
+        if (res.ok) {
+          const json = await res.json().catch(() => ({}));
+          row = Array.isArray(json.rows) ? json.rows[0] : null;
+        }
+        if (cancelled) return;
+        if (row && typeof row === 'object') {
+          const label = buildRelationDisplay(row, displayConfig, rawValue);
+          if (label) setLabel(cacheKey, label);
+        }
+      } catch {
+        // ignore
+      }
+    };
+
+    const fetchDisplayConfig = async (relation) => {
+      const cacheKey = `${relation.table}|${relation.column}|${relation.filterColumn || ''}|${
+        relation.filterValue ?? ''
+      }`;
+      if (relationConfigCache.current.has(cacheKey)) {
+        return relationConfigCache.current.get(cacheKey);
+      }
+      try {
+        const params = new URLSearchParams({ table: relation.table });
+        if (relation.column) params.set('targetColumn', relation.column);
+        if (relation.filterColumn) params.set('filterColumn', relation.filterColumn);
+        if (
+          relation.filterColumn &&
+          relation.filterValue !== undefined &&
+          relation.filterValue !== null
+        ) {
+          params.set('filterValue', String(relation.filterValue));
+        }
+        const res = await fetch(`/api/display_fields?${params.toString()}`, {
+          credentials: 'include',
+        });
+        const cfg = res.ok ? await res.json().catch(() => ({})) : {};
+        const normalized = {
+          idField:
+            typeof cfg?.idField === 'string' && cfg.idField.trim()
+              ? cfg.idField
+              : relation.column,
+          displayFields: Array.isArray(cfg?.displayFields) ? cfg.displayFields : [],
+        };
+        relationConfigCache.current.set(cacheKey, normalized);
+        return normalized;
+      } catch {
+        const fallback = { idField: relation.column, displayFields: [] };
+        relationConfigCache.current.set(cacheKey, fallback);
+        return fallback;
+      }
+    };
+
+    const loadMissing = async () => {
+      for (const group of groups) {
+        for (const item of group.items) {
+          if (!Array.isArray(item.summaryFields)) continue;
+          const baseTable = item.referenceTable || item.transactionTable;
+          if (!baseTable) continue;
+          const relMap = relationMapCache.current.get(baseTable.toLowerCase()) || {};
+          for (const field of item.summaryFields) {
+            const relation = relMap[field?.field?.toLowerCase?.() || ''];
+            if (!relation?.table || !relation?.column) continue;
+            const { parts } = parseRelationValueParts(field?.value);
+            if (parts.length === 0) continue;
+            // eslint-disable-next-line no-await-in-loop
+            const displayConfig = await fetchDisplayConfig(relation);
+            parts.forEach((part) => {
+              const valueKey = normalizeRelationValue(part);
+              if (!valueKey || valueKey === '—') return;
+              pending.push(
+                ensureLabel({
+                  table: relation.table,
+                  relation,
+                  rawValue: part,
+                  valueKey,
+                  displayConfig,
+                }),
+              );
+            });
+          }
+        }
+      }
+    };
+
+    loadMissing();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [groups, relationLabelMap, relationMapVersion]);
+
+  const resolveSummaryValue = useCallback(
+    (item, field) => {
+      if (!field?.field) return field?.value ?? '';
+      const baseTable = item?.referenceTable || item?.transactionTable;
+      if (!baseTable) return field?.value ?? '';
+      const relMap = relationMapCache.current.get(baseTable.toLowerCase()) || {};
+      const relation = relMap[field.field.toLowerCase()];
+      if (!relation?.table || !relation?.column) return field?.value ?? '';
+      const { parts, separator } = parseRelationValueParts(field.value);
+      if (parts.length === 0) return field?.value ?? '';
+      const resolvedParts = parts.map((part) => {
+        const valueKey = normalizeRelationValue(part);
+        const lookupKey = `${relation.table}|${valueKey}`;
+        return relationLabelMap[lookupKey] || part;
+      });
+      if (!separator) return resolvedParts[0] ?? field?.value ?? '';
+      return resolvedParts.join(separator);
+    },
+    [relationLabelMap],
+  );
 
   const groupItems = useCallback((items = []) => {
     const excludedItems = items.filter((item) => isExcludedAction(item));
@@ -286,7 +553,9 @@ export default function TransactionNotificationWidget() {
                           {item.summaryFields.map((field) => (
                             <div key={`${item.id}-${field.field}`} style={styles.summaryFieldRow}>
                               <span style={styles.summaryFieldLabel}>{field.field}</span>
-                              <span style={styles.summaryFieldValue}>{field.value}</span>
+                              <span style={styles.summaryFieldValue}>
+                                {resolveSummaryValue(item, field)}
+                              </span>
                             </div>
                           ))}
                         </div>
