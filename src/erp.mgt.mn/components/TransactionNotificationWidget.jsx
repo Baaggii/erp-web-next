@@ -83,10 +83,15 @@ export default function TransactionNotificationWidget() {
   const location = useLocation();
   const [expanded, setExpanded] = useState(() => new Set());
   const groupRefs = useRef({});
+  const itemRefs = useRef({});
 
   const highlightKey = useMemo(() => {
     const params = new URLSearchParams(location.search || '');
     return params.get('notifyGroup');
+  }, [location.search]);
+  const highlightItemId = useMemo(() => {
+    const params = new URLSearchParams(location.search || '');
+    return params.get('notifyItem');
   }, [location.search]);
 
   useEffect(() => {
@@ -101,6 +106,13 @@ export default function TransactionNotificationWidget() {
       target.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
   }, [highlightKey]);
+  useEffect(() => {
+    if (!highlightItemId) return;
+    const target = itemRefs.current[highlightItemId];
+    if (target && typeof target.scrollIntoView === 'function') {
+      target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  }, [highlightItemId]);
 
   const groupItems = useCallback((items = []) => {
     const activeItems = items.filter((item) => !isDeletedAction(item?.action));
@@ -162,8 +174,15 @@ export default function TransactionNotificationWidget() {
                 items.map((item) => {
                   const actionMeta = getActionMeta(item.action);
                   const actorLabel = getActorLabel(item);
+                  const isHighlighted = highlightItemId === String(item.id);
                   return (
-                    <div key={item.id} style={styles.item(item.isRead, actionMeta.accent)}>
+                    <div
+                      key={item.id}
+                      ref={(node) => {
+                        itemRefs.current[String(item.id)] = node;
+                      }}
+                      style={styles.item(item.isRead, actionMeta.accent, isHighlighted)}
+                    >
                       <div style={styles.itemSummary}>
                         <span style={styles.itemAction(actionMeta)}>
                           {actionMeta.label}
@@ -314,11 +333,13 @@ const styles = {
     color: '#94a3b8',
     padding: '0.1rem 0.25rem',
   },
-  item: (isRead, accent) => ({
-    background: isRead ? '#f8fafc' : '#e0f2fe',
+  item: (isRead, accent, highlighted) => ({
+    background: highlighted ? '#dbeafe' : isRead ? '#f8fafc' : '#e0f2fe',
     borderRadius: '8px',
     padding: '0.5rem 0.75rem',
     borderLeft: `4px solid ${accent || '#2563eb'}`,
+    border: highlighted ? '1px solid #2563eb' : '1px solid transparent',
+    boxShadow: highlighted ? '0 0 0 2px rgba(37,99,235,0.15)' : 'none',
   }),
   itemSummary: {
     fontSize: '0.85rem',

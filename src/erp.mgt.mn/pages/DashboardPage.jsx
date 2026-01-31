@@ -1,5 +1,5 @@
 import React, { useContext, useState, useEffect, useRef } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { AuthContext } from '../context/AuthContext.jsx';
 import PendingRequestWidget from '../components/PendingRequestWidget.jsx';
 import TransactionNotificationWidget from '../components/TransactionNotificationWidget.jsx';
@@ -16,6 +16,7 @@ export default function DashboardPage() {
   const { t } = useContext(LangContext);
   const [active, setActive] = useState('general');
   const location = useLocation();
+  const navigate = useNavigate();
   useTour('dashboard');
 
   const prevTab = useRef('general');
@@ -59,10 +60,23 @@ export default function DashboardPage() {
     marginRight: '4px',
   };
 
+  const clearNotificationParams = () => {
+    const params = new URLSearchParams(location.search || '');
+    if (!params.has('notifyGroup') && !params.has('notifyItem')) return;
+    params.delete('notifyGroup');
+    params.delete('notifyItem');
+    navigate({ pathname: location.pathname, search: params.toString() }, { replace: true });
+  };
+
   const tabButton = (key, label, badgeCount = 0, showDot = false) => (
     <button
       key={key}
-      onClick={() => setActive(key)}
+      onClick={() => {
+        setActive(key);
+        if (key !== 'activity') {
+          clearNotificationParams();
+        }
+      }}
       style={{
         padding: '0.5rem 1rem',
         border: 'none',
