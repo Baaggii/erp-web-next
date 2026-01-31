@@ -815,6 +815,10 @@ export default function TransactionNotificationWidget() {
 
         const moduleKey = completionForm.info.moduleKey || 'forms';
         const slug = moduleKey.replace(/_/g, '-');
+        let path = '/forms';
+        if (moduleKey && moduleKey !== 'forms') {
+          path = `/forms/${slug}`;
+        }
         const params = new URLSearchParams();
         params.set(`name_${moduleKey}`, completionForm.name);
         if (item?.transactionId !== undefined && item?.transactionId !== null) {
@@ -826,7 +830,7 @@ export default function TransactionNotificationWidget() {
         if (item?.referenceTable) {
           params.set('planReferenceTable', String(item.referenceTable));
         }
-        navigate(`/${slug}?${params.toString()}`);
+        navigate(`${path}?${params.toString()}`);
       } finally {
         setCompletionLoading((prev) => {
           const next = new Set(prev);
