@@ -4,6 +4,12 @@ import { useTransactionNotifications } from '../context/TransactionNotificationC
 
 function getActionMeta(action) {
   const normalized = typeof action === 'string' ? action.trim().toLowerCase() : '';
+  if (normalized === 'excluded' || normalized === 'exclude') {
+    return { label: 'Excluded', accent: '#ea580c' };
+  }
+  if (normalized === 'included' || normalized === 'include') {
+    return { label: 'Included', accent: '#059669' };
+  }
   if (normalized === 'deleted' || normalized === 'delete') {
     return { label: 'Deleted', accent: '#dc2626' };
   }

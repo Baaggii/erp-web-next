@@ -25,6 +25,9 @@ function parseNotificationRow(row) {
   if (typeof payload !== 'object' || payload === null) return null;
   if (!payload || payload.kind !== NOTIFICATION_KIND) return null;
   const updatedAt = payload.updatedAt || payload.updated_at || row.updated_at || row.created_at;
+  const summaryFieldsRaw =
+    payload.summaryFields || payload.summary_fields || payload.summary_fields_list || [];
+  const summaryFields = Array.isArray(summaryFieldsRaw) ? summaryFieldsRaw : [];
   return {
     id: row.notification_id,
     transactionName: payload.transactionName || 'Transaction',
@@ -34,8 +37,9 @@ function parseNotificationRow(row) {
     referenceTable: payload.referenceTable,
     referenceId: payload.referenceId,
     role: payload.role,
-    summaryFields: payload.summaryFields || [],
-    summaryText: payload.summaryText || '',
+    summaryFields,
+    summaryText: payload.summaryText || payload.summary_text || '',
+    excluded: Boolean(payload.excluded),
     actor:
       payload.actor ||
       payload.createdBy ||
@@ -67,6 +71,9 @@ function parseNotificationPayload(payload) {
     payload.updatedAt ||
     payload.updated_at ||
     payload.created_at;
+  const summaryFieldsRaw =
+    parsed.summaryFields || parsed.summary_fields || parsed.summary_fields_list || [];
+  const summaryFields = Array.isArray(summaryFieldsRaw) ? summaryFieldsRaw : [];
   return {
     id: payload.id,
     transactionName: parsed.transactionName || 'Transaction',
@@ -76,8 +83,9 @@ function parseNotificationPayload(payload) {
     referenceTable: parsed.referenceTable,
     referenceId: parsed.referenceId,
     role: parsed.role,
-    summaryFields: parsed.summaryFields || [],
-    summaryText: parsed.summaryText || '',
+    summaryFields,
+    summaryText: parsed.summaryText || parsed.summary_text || '',
+    excluded: Boolean(parsed.excluded),
     actor:
       parsed.actor ||
       parsed.createdBy ||
