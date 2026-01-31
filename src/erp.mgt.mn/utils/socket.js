@@ -6,70 +6,29 @@ let refs = 0;
 let wired = false;
 const listeners = new Set();
 const socketPath = import.meta.env.VITE_SOCKET_PATH || '/api/socket.io';
-const SOCKET_AVAILABILITY_TTL_MS = 60_000;
-const SOCKET_AVAILABILITY_TIMEOUT_MS = 4_000;
-let socketAvailability = null;
-let socketAvailabilityCheckedAt = 0;
-let socketAvailabilityPromise = null;
+let warnedMissingSocketUrl = false;
 
 function resolveSocketUrl() {
   if (import.meta.env.VITE_SOCKET_URL) {
     return import.meta.env.VITE_SOCKET_URL;
   }
-  return API_ROOT;
-}
-
-function getSocketProbeUrl() {
-  if (typeof window === 'undefined') return null;
-  const base = resolveSocketUrl();
-  const origin = window.location?.origin || '';
-  const baseUrl = base && /^https?:\/\//i.test(base) ? base : new URL(base || '/', origin).href;
-  const path = socketPath.startsWith('/') ? socketPath : `/${socketPath}`;
-  const probeUrl = new URL(path, baseUrl);
-  probeUrl.searchParams.set('EIO', '4');
-  probeUrl.searchParams.set('transport', 'polling');
-  return probeUrl.toString();
-}
-
-async function checkSocketAvailability() {
-  if (typeof window === 'undefined' || typeof fetch !== 'function') {
-    socketAvailability = false;
-    socketAvailabilityCheckedAt = Date.now();
-    return socketAvailability;
+  if (API_ROOT) {
+    return API_ROOT;
   }
-  const now = Date.now();
-  if (
-    socketAvailability !== null &&
-    now - socketAvailabilityCheckedAt < SOCKET_AVAILABILITY_TTL_MS
-  ) {
-    return socketAvailability;
+  if (typeof window !== 'undefined' && window.location?.origin) {
+    if (!warnedMissingSocketUrl) {
+      console.error(
+        'VITE_SOCKET_URL is not set; falling back to the current origin for Socket.IO.',
+      );
+      warnedMissingSocketUrl = true;
+    }
+    return window.location.origin;
   }
-  if (socketAvailabilityPromise) return socketAvailabilityPromise;
-  const probeUrl = getSocketProbeUrl();
-  if (!probeUrl) return false;
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), SOCKET_AVAILABILITY_TIMEOUT_MS);
-  socketAvailabilityPromise = fetch(probeUrl, {
-    method: 'GET',
-    cache: 'no-store',
-    credentials: 'include',
-    signal: controller.signal,
-    skipLoader: true,
-  })
-    .then(async (response) => {
-      if (!response?.ok) return false;
-      const text = await response.text().catch(() => '');
-      return /^0\{"sid":/i.test(text.trim());
-    })
-    .catch(() => false)
-    .then((available) => {
-      clearTimeout(timeout);
-      socketAvailability = available;
-      socketAvailabilityCheckedAt = Date.now();
-      socketAvailabilityPromise = null;
-      return available;
-    });
-  return socketAvailabilityPromise;
+  if (!warnedMissingSocketUrl) {
+    console.error('VITE_SOCKET_URL is not set and no fallback origin is available.');
+    warnedMissingSocketUrl = true;
+  }
+  return undefined;
 }
 
 function notifyListeners(connected) {
@@ -86,36 +45,23 @@ function wireSocketEvents() {
   if (!socket || wired) return;
   socket.on('connect', () => notifyListeners(true));
   socket.on('disconnect', () => notifyListeners(false));
-  socket.on('connect_error', () => notifyListeners(false));
+  socket.on('connect_error', (err) => {
+    console.error('Socket connection error', err);
+    notifyListeners(false);
+  });
   wired = true;
   notifyListeners(socket.connected);
-}
-
-async function ensureSocketConnection() {
-  if (!socket) return;
-  const available = await checkSocketAvailability();
-  if (!available) {
-    notifyListeners(false);
-    return;
-  }
-  if (!socket.connected) {
-    socket.connect();
-  }
 }
 
 export function connectSocket() {
   if (!socket) {
     const url = resolveSocketUrl();
-    socket = io(url, {
-      withCredentials: true,
-      path: socketPath,
-      autoConnect: false,
-      transports: ['polling'],
-      upgrade: false,
-    });
+    socket = io(url, { withCredentials: true, path: socketPath, autoConnect: true });
   }
   wireSocketEvents();
-  ensureSocketConnection();
+  if (!socket.connected) {
+    socket.connect();
+  }
   refs += 1;
   return socket;
 }

@@ -347,7 +347,8 @@ export default function useRequestNotificationCounts(
       });
       socket.on('disconnect', startFallback);
       socket.on('connect_error', startFallback);
-    } catch {
+    } catch (err) {
+      console.warn('Failed to connect request notification socket', err);
       if (pollingEnabled) setEnablePolling(true);
     }
 

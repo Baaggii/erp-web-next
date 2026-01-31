@@ -28,9 +28,7 @@ function getCurrentModuleUrl() {
       }
     }
   } catch (err) {
-    if (typeof window !== 'undefined' && window.erpDebug) {
-      console.warn('useBuildUpdateNotice: failed to read current module URL', err);
-    }
+    console.warn('useBuildUpdateNotice: failed to read current module URL', err);
   }
   return null;
 }
@@ -95,9 +93,7 @@ export default function useBuildUpdateNotice({ intervalMs = 30000 } = {}) {
 
         bundleUrlRef.current = normalizedModuleUrl;
       } catch (err) {
-        if (typeof window !== 'undefined' && window.erpDebug) {
-          console.warn('useBuildUpdateNotice: polling failed', err);
-        }
+        console.warn('useBuildUpdateNotice: polling failed', err);
       }
     }
 

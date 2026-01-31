@@ -174,7 +174,8 @@ export default function usePendingRequestCount(
         socket.on('disconnect', startFallback);
         socket.on('connect_error', startFallback);
       }
-    } catch {
+    } catch (err) {
+      console.warn('Failed to connect pending request socket', err);
       if (pollingEnabled) setEnablePolling(true);
     }
 
