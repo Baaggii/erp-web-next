@@ -181,13 +181,25 @@ function normalizeFieldList(list) {
     .filter((field) => field);
 }
 
-function hasNotifyFieldChanges(previousRow, currentRow, notifyFields) {
-  if (!previousRow || !currentRow || !notifyFields.length) return true;
-  return notifyFields.some((field) => {
+function buildEditSummary(previousRow, currentRow, notifyFields) {
+  const summaryFields = [];
+  const fieldNames = [];
+  if (!previousRow || !currentRow || !notifyFields.length) {
+    return { summaryFields, summaryText: '' };
+  }
+  notifyFields.forEach((field) => {
     const prevValue = normalizeFieldValue(getCaseInsensitive(previousRow, field));
     const nextValue = normalizeFieldValue(getCaseInsensitive(currentRow, field));
-    return prevValue !== nextValue;
+    if (prevValue === nextValue) return;
+    const fromValue = prevValue || '—';
+    const toValue = nextValue || '—';
+    summaryFields.push({ field, value: `${fromValue} → ${toValue}` });
+    fieldNames.push(field);
   });
+  return {
+    summaryFields,
+    summaryText: fieldNames.length ? `Edited fields: ${fieldNames.join(', ')}` : '',
+  };
 }
 
 function buildEditSummary(previousRow, currentRow, notifyFields) {
@@ -491,7 +503,6 @@ async function handleTransactionNotification(job) {
     return;
   }
   if (job.action === 'update' || job.action === 'delete') {
-    const transactionName = deriveTransactionName(transactionRow, job.tableName);
     const { updated, payloads } = await updateExistingTransactionNotifications({
       companyId: job.companyId,
       relatedId: job.recordId,
@@ -510,15 +521,8 @@ async function handleTransactionNotification(job) {
   }
   const notifyFieldSet = new Set(notifyFields.map((field) => field.toLowerCase()));
   const displayEntries = Array.isArray(displayConfig?.config) ? displayConfig.config : [];
-  const transactionName = deriveTransactionName(transactionRow, job.tableName);
-  const notificationFieldList = normalizeFieldList(transactionConfig?.notificationFields);
-  const dashboardFieldList = normalizeFieldList(
-    transactionConfig?.notificationDashboardFields,
-  );
   const phoneFieldList = normalizeFieldList(transactionConfig?.notificationPhoneFields);
   const emailFieldList = normalizeFieldList(transactionConfig?.notificationEmailFields);
-  const notificationSummaryBase = buildSummary(transactionRow, notificationFieldList);
-  const dashboardSummaryBase = buildSummary(transactionRow, dashboardFieldList);
   const phoneSummaryBase = buildSummary(transactionRow, phoneFieldList);
   const emailSummaryBase = buildSummary(transactionRow, emailFieldList);
 
