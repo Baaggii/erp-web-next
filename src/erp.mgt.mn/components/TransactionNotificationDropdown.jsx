@@ -85,12 +85,6 @@ export default function TransactionNotificationDropdown() {
       </button>
       {open && (
         <div style={styles.dropdown}>
-          <div style={styles.header}>
-            <span style={styles.headerTitle}>Notifications</span>
-            <span style={styles.headerCount}>
-              {unreadCount} unread
-            </span>
-          </div>
           <div style={styles.list}>
             {sortedGroups.length === 0 && (
               <div style={styles.empty}>No notifications yet</div>
@@ -211,16 +205,6 @@ const styles = {
     overflow: 'hidden',
     zIndex: 60,
   },
-  header: {
-    padding: '0.75rem 1rem',
-    borderBottom: '1px solid #e5e7eb',
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    background: '#f8fafc',
-  },
-  headerTitle: { fontWeight: 600, color: '#0f172a' },
-  headerCount: { fontSize: '0.75rem', color: '#64748b' },
   list: {
     maxHeight: '360px',
     overflowY: 'auto',
