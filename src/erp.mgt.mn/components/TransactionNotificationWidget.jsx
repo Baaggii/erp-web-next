@@ -4,6 +4,7 @@ import { AuthContext } from '../context/AuthContext.jsx';
 import { useToast } from '../context/ToastContext.jsx';
 import { useCompanyModules } from '../hooks/useCompanyModules.js';
 import { useTransactionNotifications } from '../context/TransactionNotificationContext.jsx';
+import { useTabs } from '../context/TabContext.jsx';
 import { hasTransactionFormAccess } from '../utils/transactionFormAccess.js';
 import {
   isModuleLicensed,
@@ -260,6 +261,7 @@ export default function TransactionNotificationWidget() {
   const location = useLocation();
   const navigate = useNavigate();
   const { addToast } = useToast();
+  const { openTab } = useTabs();
   const {
     company,
     branch,
@@ -799,13 +801,19 @@ export default function TransactionNotificationWidget() {
           addToast('Completion is not available for this transaction.', 'error');
           return;
         }
-        const completionRow = findCompletionRow(planRow);
-        if (!completionRow) {
+        if (completionTransactions.length === 0) {
           addToast('Completion transaction is not configured.', 'error');
           return;
         }
         const forms = await loadAllowedForms();
-        const completionForm = resolveCompletionForm(completionRow, forms);
+        const completionRow = findCompletionRow(planRow);
+        const candidateRows = completionRow
+          ? [completionRow, ...completionTransactions.filter((row) => row !== completionRow)]
+          : completionTransactions;
+        const completionForm = candidateRows.reduce((result, row) => {
+          if (result) return result;
+          return resolveCompletionForm(row, forms);
+        }, null);
         if (!completionForm) {
           addToast('Completion form is not available for your access.', 'error');
           return;
@@ -813,6 +821,10 @@ export default function TransactionNotificationWidget() {
 
         const moduleKey = completionForm.info.moduleKey || 'forms';
         const slug = moduleKey.replace(/_/g, '-');
+        let path = '/forms';
+        if (moduleKey && moduleKey !== 'forms') {
+          path = `/forms/${slug}`;
+        }
         const params = new URLSearchParams();
         params.set(`name_${moduleKey}`, completionForm.name);
         if (item?.transactionId !== undefined && item?.transactionId !== null) {
@@ -824,7 +836,8 @@ export default function TransactionNotificationWidget() {
         if (item?.referenceTable) {
           params.set('planReferenceTable', String(item.referenceTable));
         }
-        navigate(`/${slug}?${params.toString()}`);
+        openTab({ key: path, label: completionForm.name || 'Completion' });
+        navigate(`${path}?${params.toString()}`);
       } finally {
         setCompletionLoading((prev) => {
           const next = new Set(prev);
@@ -839,6 +852,7 @@ export default function TransactionNotificationWidget() {
       findTransactionRow,
       loadAllowedForms,
       navigate,
+      openTab,
       resolveCompletionForm,
     ],
   );
