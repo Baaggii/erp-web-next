@@ -94,11 +94,30 @@ export default function TransactionNotificationDropdown() {
               return (
                 <div key={group.key} style={styles.group}>
                   <div style={styles.groupHeader(group.unreadCount > 0)}>
-                    <div style={styles.groupCount}>
-                      {group.unreadCount > 0
-                        ? `${group.unreadCount} unread`
-                        : `${group.items.length} total`}
-                    </div>
+                    <button
+                      type="button"
+                      style={styles.groupInfo}
+                      onClick={() => handleGroupClick(group)}
+                    >
+                      <div style={styles.itemTitle}>
+                        <span>{group.name}</span>
+                        {latestItem && (
+                          <span style={styles.actionBadge(actionMeta.accent)}>
+                            {actionMeta.label}
+                          </span>
+                        )}
+                      </div>
+                      <div style={styles.itemMeta}>
+                        {group.unreadCount > 0
+                          ? `${group.unreadCount} unread`
+                          : `${group.items.length} total`}
+                      </div>
+                      {!isExpanded && (
+                        <div style={styles.itemPreview}>
+                          {buildPreviewText(latestItem)}
+                        </div>
+                      )}
+                    </button>
                   </div>
                   {isExpanded && (
                     <div style={styles.groupItems}>
@@ -200,11 +219,21 @@ const styles = {
     background: isUnread ? '#eff6ff' : '#fff',
     padding: '0.4rem 1rem 0',
   }),
-  groupCount: {
-    fontSize: '0.75rem',
-    color: '#64748b',
-    textTransform: 'uppercase',
-    letterSpacing: '0.04em',
+  groupInfo: {
+    width: '100%',
+    textAlign: 'left',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.15rem',
+  },
+  itemTitle: {
+    fontWeight: 600,
+    color: '#0f172a',
+    marginBottom: '0.25rem',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: '0.5rem',
   },
   actionBadge: (accent) => ({
     background: accent || '#2563eb',
