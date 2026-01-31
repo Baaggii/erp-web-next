@@ -219,7 +219,7 @@ export default function TransactionNotificationWidget() {
 
   const getItemSection = (item) => {
     if (isDeletedAction(item?.action)) return 'deleted';
-    if (isExcludedAction(item?.action)) return 'excluded';
+    if (isExcludedAction(item)) return 'excluded';
     return 'active';
   };
 
