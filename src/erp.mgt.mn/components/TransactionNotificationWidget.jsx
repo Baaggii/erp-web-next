@@ -105,6 +105,7 @@ export default function TransactionNotificationWidget() {
   const { groups, markGroupRead } = useTransactionNotifications();
   const location = useLocation();
   const [expanded, setExpanded] = useState(() => new Set());
+  const [collapsedSections, setCollapsedSections] = useState(() => new Set());
   const groupRefs = useRef({});
   const itemRefs = useRef({});
 
@@ -156,6 +157,30 @@ export default function TransactionNotificationWidget() {
       }
       return next;
     });
+  };
+
+  const buildSectionId = (groupKey, sectionKey) => `${groupKey}-${sectionKey}`;
+
+  const isSectionExpanded = (groupKey, sectionKey) =>
+    !collapsedSections.has(buildSectionId(groupKey, sectionKey));
+
+  const toggleSection = (groupKey, sectionKey) => {
+    const sectionId = buildSectionId(groupKey, sectionKey);
+    setCollapsedSections((prev) => {
+      const next = new Set(prev);
+      if (next.has(sectionId)) {
+        next.delete(sectionId);
+      } else {
+        next.add(sectionId);
+      }
+      return next;
+    });
+  };
+
+  const getItemSection = (item) => {
+    if (isDeletedAction(item?.action)) return 'deleted';
+    if (isExcludedAction(item?.action)) return 'excluded';
+    return 'active';
   };
 
   const renderGroup = (group) => {
@@ -234,18 +259,9 @@ export default function TransactionNotificationWidget() {
                   );
                 });
 
-              return (
-                <>
-                  <div style={styles.itemGroup}>
-                    <div style={styles.itemGroupHeader}>
-                      <span style={styles.itemGroupTitle}>Active</span>
-                      <span style={styles.itemGroupCount}>{activeItems.length}</span>
-                    </div>
-                    {activeItems.length === 0 && (
-                      <div style={styles.itemGroupEmpty}>No active transaction alerts.</div>
-                    )}
-                    {renderItems(activeItems)}
-                  </div>
+              const renderSection = (sectionKey, title, items, emptyText) => {
+                const isExpanded = isSectionExpanded(group.key, sectionKey);
+                return (
                   <div style={styles.itemGroup}>
                     <div style={styles.itemGroupHeader}>
                       <span style={styles.itemGroupTitle}>Excluded</span>
@@ -264,8 +280,30 @@ export default function TransactionNotificationWidget() {
                     {deletedItems.length === 0 && (
                       <div style={styles.itemGroupEmpty}>No deleted transaction alerts.</div>
                     )}
-                    {renderItems(deletedItems)}
                   </div>
+                );
+              };
+
+              return (
+                <>
+                  {renderSection(
+                    'active',
+                    'Active',
+                    activeItems,
+                    'No active transaction alerts.',
+                  )}
+                  {renderSection(
+                    'excluded',
+                    'Excluded',
+                    excludedItems,
+                    'No excluded transaction alerts.',
+                  )}
+                  {renderSection(
+                    'deleted',
+                    'Deleted',
+                    deletedItems,
+                    'No deleted transaction alerts.',
+                  )}
                 </>
               );
             })()}
@@ -348,6 +386,12 @@ const styles = {
     background: '#f8fafc',
   },
   itemGroupHeader: {
+    background: 'transparent',
+    border: 'none',
+    cursor: 'pointer',
+    textAlign: 'left',
+    width: '100%',
+    padding: 0,
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
@@ -356,7 +400,17 @@ const styles = {
     letterSpacing: '0.04em',
     color: '#64748b',
   },
+  itemGroupTitleRow: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: '0.4rem',
+  },
   itemGroupTitle: { fontWeight: 600 },
+  itemGroupChevron: {
+    fontSize: '0.9rem',
+    lineHeight: 1,
+    color: '#94a3b8',
+  },
   itemGroupCount: {
     background: '#e2e8f0',
     borderRadius: '999px',
