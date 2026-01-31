@@ -71,6 +71,13 @@ function buildSummaryText(item) {
   return `${actionMeta.label} transaction`;
 }
 
+function getActorLabel(item) {
+  if (!item) return 'Unknown user';
+  const actor = item.actor || item.createdBy || item.updatedBy;
+  if (!actor) return 'Unknown user';
+  return actor;
+}
+
 export default function TransactionNotificationWidget() {
   const { groups, markGroupRead } = useTransactionNotifications();
   const location = useLocation();
@@ -154,6 +161,7 @@ export default function TransactionNotificationWidget() {
               const renderItems = (items) =>
                 items.map((item) => {
                   const actionMeta = getActionMeta(item.action);
+                  const actorLabel = getActorLabel(item);
                   return (
                     <div key={item.id} style={styles.item(item.isRead, actionMeta.accent)}>
                       <div style={styles.itemSummary}>
@@ -173,7 +181,9 @@ export default function TransactionNotificationWidget() {
                         </div>
                       )}
                       <div style={styles.itemMeta}>
-                        {formatTimestamp(item.updatedAt || item.createdAt)}
+                        <span>By {actorLabel}</span>
+                        <span style={styles.itemMetaSeparator}>•</span>
+                        <span>{formatTimestamp(item.updatedAt || item.createdAt)}</span>
                       </div>
                     </div>
                   );
@@ -341,5 +351,13 @@ const styles = {
   },
   summaryFieldLabel: { fontWeight: 600 },
   summaryFieldValue: { color: '#0f172a' },
-  itemMeta: { fontSize: '0.7rem', color: '#64748b', marginTop: '0.25rem' },
+  itemMeta: {
+    fontSize: '0.7rem',
+    color: '#64748b',
+    marginTop: '0.25rem',
+    display: 'flex',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+  },
+  itemMetaSeparator: { margin: '0 0.35rem' },
 };
