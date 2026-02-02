@@ -1352,13 +1352,8 @@ export default function FormsManagement() {
                   <button onClick={openLabelEditor}>Edit Field Labels</button>
                 )}
               </div>
-              <div
-                className="table-container overflow-x-auto"
-                style={{ maxHeight: '70vh', width: '100%' }}
-              >
-                <table
-                  style={{ borderCollapse: 'collapse', width: 'max-content', minWidth: '100%' }}
-                >
+              <div className="table-container overflow-x-auto" style={{ maxHeight: '70vh' }}>
+                <table style={{ borderCollapse: 'collapse', width: '100%' }}>
                   <thead className="sticky-header">
               <tr>
                 <th
