@@ -177,20 +177,14 @@ function isExcludedAction(item) {
   return Boolean(item?.excluded) || normalized === 'excluded' || normalized === 'exclude';
 }
 
-function buildSummaryText(item, resolveFieldLabel) {
+function buildSummaryText(item) {
   if (!item) return 'Transaction update';
   const actionMeta = getActionMeta(item.action);
   const normalized = typeof item.action === 'string' ? item.action.trim().toLowerCase() : '';
   if (item.summaryText) return item.summaryText;
   if (Array.isArray(item.summaryFields) && item.summaryFields.length > 0) {
     const fields = item.summaryFields
-      .map((field) => {
-        const rawField = field?.field;
-        if (!rawField) return rawField;
-        return typeof resolveFieldLabel === 'function'
-          ? resolveFieldLabel(item, rawField)
-          : rawField;
-      })
+      .map((field) => field?.field)
       .filter(Boolean)
       .join(', ');
     if (fields) {
