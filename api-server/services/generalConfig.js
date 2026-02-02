@@ -47,6 +47,11 @@ const defaults = {
   reports: {
     showReportLineageInfo: false,
   },
+  plan: {
+    planIdFieldName: '',
+    notificationFields: 'is_plan,is_plan_completion',
+    notificationValues: '1',
+  },
   images: {
     basePath: 'uploads',
     cleanupDays: 30,
@@ -134,6 +139,10 @@ async function readConfig(companyId = 0) {
           ...defaults.reports,
           ...(parsed.reports || {}),
         },
+        plan: {
+          ...defaults.plan,
+          ...(parsed.plan || {}),
+        },
         images: {
           ...defaults.images,
           ...images,
@@ -150,6 +159,7 @@ async function readConfig(companyId = 0) {
         pos: { ...defaults.pos },
         general: { ...defaults.general },
         reports: { ...defaults.reports },
+        plan: { ...defaults.plan },
         images: { ...defaults.images },
         print: { ...defaults.print },
       };
@@ -201,6 +211,13 @@ export async function updateGeneralConfig(updates = {}, companyId = 0) {
   }
   if (updates.reports) {
     Object.assign(cfg.reports, updates.reports);
+  }
+  if (updates.plan) {
+    cfg.plan = {
+      ...defaults.plan,
+      ...cfg.plan,
+      ...updates.plan,
+    };
   }
   if (updates.print) {
     Object.assign(cfg.print, updates.print);
