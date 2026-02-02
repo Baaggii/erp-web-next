@@ -322,14 +322,6 @@ useEffect(() => {
   }, [name, paramKey]);
 
   useEffect(() => {
-    const paramName = searchParams.get(paramKey);
-    if (!paramName) return;
-    if (paramName !== name) {
-      setName(paramName);
-    }
-  }, [name, paramKey, searchParams]);
-
-  useEffect(() => {
     if (typeof window === 'undefined') return undefined;
 
     const setParamPair = (params, camelKey, value) => {
