@@ -7,46 +7,6 @@ import { useTranslation } from 'react-i18next';
 import TooltipWrapper from '../components/TooltipWrapper.jsx';
 import normalizeBoolean from '../utils/normalizeBoolean.js';
 
-const DEFAULT_PLAN_NOTIFICATION_FILTERS = [
-  { field: 'is_plan', value: '1' },
-  { field: 'is_plan_completion', value: '1' },
-];
-
-const formatPlanNotificationFilters = (filters) => {
-  if (Array.isArray(filters) && filters.length === 0) return '';
-  const list =
-    Array.isArray(filters) && filters.length
-      ? filters
-      : DEFAULT_PLAN_NOTIFICATION_FILTERS;
-  return list
-    .map((entry) => {
-      if (!entry) return '';
-      if (typeof entry === 'string') return entry.trim();
-      if (typeof entry === 'object') {
-        const field = entry.field ?? entry.name ?? entry.key;
-        if (!field) return '';
-        const value = entry.value ?? entry.expected ?? '';
-        return value !== undefined && value !== null && value !== ''
-          ? `${field}=${value}`
-          : String(field);
-      }
-      return '';
-    })
-    .filter(Boolean)
-    .join('\n');
-};
-
-const parsePlanNotificationFilters = (value) =>
-  value
-    .split('\n')
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .map((line) => {
-      const [field, ...rest] = line.split('=');
-      const valuePart = rest.length ? rest.join('=').trim() : '';
-      return { field: field.trim(), value: valuePart };
-    });
-
 export default function GeneralConfiguration() {
   const initial = useGeneralConfig();
   const [cfg, setCfg] = useState(null);
@@ -603,36 +563,6 @@ export default function GeneralConfiguration() {
                 />
               </label>
             </TooltipWrapper>
-          </div>
-          <div style={{ marginBottom: '0.5rem' }}>
-            <TooltipWrapper
-              title={t('plan_notification_filters', {
-                ns: 'tooltip',
-                defaultValue:
-                  'Fields and values from code_transaction that should appear in the dashboard Plans tab',
-              })}
-            >
-              <label>
-                Plan Notification Filters
-                <textarea
-                  name="planNotificationFilters"
-                  value={formatPlanNotificationFilters(active.planNotificationFilters)}
-                  onChange={(e) => {
-                    const list = parsePlanNotificationFilters(e.target.value);
-                    setCfg((c) => ({
-                      ...c,
-                      plan: { ...(c.plan || {}), planNotificationFilters: list },
-                    }));
-                  }}
-                  rows={3}
-                  style={{ display: 'block', width: '100%', marginTop: '0.25rem' }}
-                />
-              </label>
-            </TooltipWrapper>
-            <div style={{ fontSize: '0.8rem' }}>
-              Use one filter per line, for example: <code>is_plan=1</code> or{' '}
-              <code>is_plan_completion=1</code>.
-            </div>
           </div>
         </>
       ) : tab === 'system' ? (
