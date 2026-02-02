@@ -26,8 +26,8 @@ export default function DashboardPage() {
     const params = new URLSearchParams(location.search || '');
     const tabParam = params.get('tab');
     const notifyParam = params.get('notifyGroup');
-    const requested = notifyParam ? 'activity' : tabParam;
-    if (requested && allowedTabs.current.has(requested) && requested !== active) {
+    const requested = allowedTabs.current.has(tabParam) ? tabParam : notifyParam ? 'activity' : null;
+    if (requested && requested !== active) {
       setActive(requested);
     }
   }, [active, location.search]);
@@ -60,11 +60,13 @@ export default function DashboardPage() {
     marginRight: '4px',
   };
 
-  const clearNotificationParams = () => {
+  const syncTabParam = (nextTab, keepNotify = false) => {
     const params = new URLSearchParams(location.search || '');
-    if (!params.has('notifyGroup') && !params.has('notifyItem')) return;
-    params.delete('notifyGroup');
-    params.delete('notifyItem');
+    params.set('tab', nextTab);
+    if (!keepNotify) {
+      params.delete('notifyGroup');
+      params.delete('notifyItem');
+    }
     navigate({ pathname: location.pathname, search: params.toString() }, { replace: true });
   };
 
@@ -73,9 +75,7 @@ export default function DashboardPage() {
       key={key}
       onClick={() => {
         setActive(key);
-        if (key !== 'activity') {
-          clearNotificationParams();
-        }
+        syncTabParam(key, key === 'activity');
       }}
       style={{
         padding: '0.5rem 1rem',
