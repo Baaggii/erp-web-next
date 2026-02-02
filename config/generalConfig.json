@@ -39,6 +39,7 @@
   },
   "plan": {
     "planIdFieldName": "",
+    "dutyFieldName": "",
     "notificationFields": "is_plan,is_plan_completion",
     "notificationValues": "1"
   },
