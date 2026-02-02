@@ -40,6 +40,11 @@
     "txnToastEnabled": false,
     "imageDir": "txn_images"
   },
+  "plan": {
+    "planIdFieldName": "",
+    "notificationFields": "is_plan,is_plan_completion",
+    "notificationValues": "1"
+  },
   "images": {
     "basePath": "uploads",
     "cleanupDays": 30,
