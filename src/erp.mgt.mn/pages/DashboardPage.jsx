@@ -149,7 +149,7 @@ export default function DashboardPage() {
 
       {active === 'activity' && (
         <div>
-          <TransactionNotificationWidget />
+          <TransactionNotificationWidget filterMode="activity" />
         </div>
       )}
 
@@ -166,7 +166,7 @@ export default function DashboardPage() {
 
       {active === 'plans' && (
         <div>
-          <p>{t('plans_coming_soon', 'Plans content coming soon.')}</p>
+          <TransactionNotificationWidget filterMode="plan" />
         </div>
       )}
     </div>
