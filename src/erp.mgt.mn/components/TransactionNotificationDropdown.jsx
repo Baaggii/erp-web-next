@@ -2,9 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import useGeneralConfig from '../hooks/useGeneralConfig.js';
 import { useTransactionNotifications } from '../context/TransactionNotificationContext.jsx';
-import { usePendingRequests } from '../context/PendingRequestContext.jsx';
-import { useAuth } from '../context/AuthContext.jsx';
-import formatTimestamp from '../utils/formatTimestamp.js';
 
 const TRANSACTION_NAME_KEYS = [
   'UITransTypeName',
@@ -25,19 +22,6 @@ const TRANSACTION_TABLE_KEYS = [
 ];
 const DEFAULT_PLAN_NOTIFICATION_FIELDS = ['is_plan', 'is_plan_completion'];
 const DEFAULT_PLAN_NOTIFICATION_VALUES = ['1'];
-const REQUEST_TYPES = [
-  { key: 'report_approval', label: 'Report approval' },
-  { key: 'change_requests', label: 'Change request' },
-];
-const REQUEST_STATUSES = ['pending', 'accepted', 'declined'];
-const MAX_DROPDOWN_ITEMS = 12;
-const REQUEST_FETCH_LIMIT = 6;
-const TEMPORARY_FETCH_LIMIT = 6;
-const REQUEST_STATUS_META = {
-  pending: { label: 'Pending', accent: '#f59e0b' },
-  accepted: { label: 'Approved', accent: '#10b981' },
-  declined: { label: 'Rejected', accent: '#ef4444' },
-};
 
 function normalizeText(value) {
   if (value === undefined || value === null) return '';
@@ -151,132 +135,21 @@ function getNotificationTimestamp(notification) {
   return Number.isFinite(ts) ? ts : 0;
 }
 
-function formatDateLabel(value) {
-  if (!value) return '';
-  const parsed = value instanceof Date ? value : new Date(value);
-  if (Number.isNaN(parsed.getTime())) return '';
-  return formatTimestamp(parsed).slice(0, 16);
-}
-
-function dedupeRequests(list) {
-  const map = new Map();
-  list.forEach((item) => {
-    if (!item || !item.request_id) return;
-    const key = `${item.__scope || 'incoming'}-${item.request_id}-${item.__status || 'pending'}`;
-    if (!map.has(key)) {
-      map.set(key, item);
-    }
-  });
-  return Array.from(map.values());
-}
-
-function normalizeRequestStatus(req, fallback = 'pending') {
-  const statusRaw = req?.status || req?.response_status || req?.__status || fallback;
-  return statusRaw ? String(statusRaw).trim().toLowerCase() : fallback;
-}
-
-function getRequestTimestamp(req) {
-  if (!req) return 0;
-  const status = normalizeRequestStatus(req, 'pending');
-  const raw =
-    status === 'pending'
-      ? req?.created_at || req?.createdAt || 0
-      : req?.responded_at ||
-        req?.respondedAt ||
-        req?.updated_at ||
-        req?.updatedAt ||
-        req?.created_at ||
-        req?.createdAt ||
-        0;
-  const ts = new Date(raw).getTime();
-  return Number.isFinite(ts) ? ts : 0;
-}
-
-function dedupeTemporaryEntries(list) {
-  const map = new Map();
-  list.forEach((entry) => {
-    if (!entry) return;
-    const key = String(
-      entry.id ??
-        entry.temporary_id ??
-        entry.temporaryId ??
-        entry.temporaryID ??
-        '',
-    ).trim();
-    if (!key) return;
-    if (!map.has(key)) {
-      map.set(key, entry);
-    }
-  });
-  return Array.from(map.values());
-}
-
-function getTemporaryEntryTimestamp(entry) {
-  const reviewedAt = entry?.reviewed_at || entry?.reviewedAt || entry?.updated_at || entry?.updatedAt;
-  const createdAt = entry?.created_at || entry?.createdAt || 0;
-  const raw = reviewedAt || createdAt || 0;
-  const ts = new Date(raw).getTime();
-  return Number.isFinite(ts) ? ts : 0;
-}
-
-function normalizeTemporaryStatus(entry) {
-  const statusRaw = entry?.status ? String(entry.status).trim().toLowerCase() : '';
-  const isPending = statusRaw === 'pending' || statusRaw === '';
-  const statusLabel = isPending
-    ? 'Pending'
-    : statusRaw === 'promoted'
-    ? 'Promoted'
-    : statusRaw === 'rejected'
-    ? 'Rejected'
-    : entry?.status || '-';
-  const statusColor = statusRaw === 'rejected'
-    ? '#b91c1c'
-    : statusRaw === 'promoted'
-    ? '#15803d'
-    : '#1f2937';
-  return { statusRaw, isPending, statusLabel, statusColor };
-}
-
 export default function TransactionNotificationDropdown() {
   const { notifications, unreadCount, markRead } = useTransactionNotifications();
-  const { temporary, markWorkflowSeen, notificationStatusTotals } = usePendingRequests();
-  const { user, session } = useAuth();
   const [open, setOpen] = useState(false);
   const [codeTransactions, setCodeTransactions] = useState([]);
-  const [requestItems, setRequestItems] = useState([]);
-  const [temporaryItems, setTemporaryItems] = useState([]);
-  const [transactionForms, setTransactionForms] = useState(null);
-  const formsLoadingRef = useRef(false);
   const containerRef = useRef(null);
   const navigate = useNavigate();
   const generalConfig = useGeneralConfig();
 
-  const sortedTransactionNotifications = useMemo(
+  const sortedNotifications = useMemo(
     () =>
       [...notifications]
-        .sort((a, b) => getNotificationTimestamp(b) - getNotificationTimestamp(a)),
+        .sort((a, b) => getNotificationTimestamp(b) - getNotificationTimestamp(a))
+        .slice(0, 8),
     [notifications],
   );
-
-  const supervisorIds = useMemo(() => {
-    const hasSupervisor =
-      Number(session?.senior_empid) > 0 || Number(session?.senior_plan_empid) > 0;
-    const seniorEmpId =
-      session && user?.empid && !hasSupervisor ? String(user.empid) : null;
-    const seniorPlanEmpId = hasSupervisor ? session?.senior_plan_empid : null;
-    const ids = [];
-    if (seniorEmpId) ids.push(String(seniorEmpId).trim());
-    if (seniorPlanEmpId) ids.push(String(seniorPlanEmpId).trim());
-    return Array.from(new Set(ids.filter(Boolean)));
-  }, [session, user]);
-
-  const totalOtherUnread = useMemo(() => {
-    if (!notificationStatusTotals) return 0;
-    return Object.values(notificationStatusTotals).reduce(
-      (sum, value) => sum + (Number(value) || 0),
-      0,
-    );
-  }, [notificationStatusTotals]);
 
   useEffect(() => {
     const handleClick = (event) => {
@@ -307,23 +180,6 @@ export default function TransactionNotificationDropdown() {
       canceled = true;
     };
   }, []);
-
-  const loadTransactionForms = useCallback(async () => {
-    if (transactionForms) return transactionForms;
-    if (formsLoadingRef.current) return transactionForms;
-    formsLoadingRef.current = true;
-    try {
-      const res = await fetch('/api/transaction_forms', { credentials: 'include' });
-      const data = res.ok ? await res.json() : {};
-      setTransactionForms(data || {});
-      return data || {};
-    } catch {
-      setTransactionForms({});
-      return {};
-    } finally {
-      formsLoadingRef.current = false;
-    }
-  }, [transactionForms]);
 
   const planNotificationConfig = useMemo(() => {
     const fields = parseListValue(generalConfig?.plan?.notificationFields);
@@ -384,41 +240,10 @@ export default function TransactionNotificationDropdown() {
     [findTransactionRow, isPlanNotificationRow],
   );
 
-  const resolveTransactionForm = useCallback((item, forms) => {
-    if (!item || !forms) return null;
-    const nameKey = normalizeText(item.transactionName);
-    if (nameKey) {
-      const entry = Object.entries(forms).find(
-        ([name]) => normalizeText(name) === nameKey,
-      );
-      if (entry) return { name: entry[0], info: entry[1] };
-    }
-    const tableKey = normalizeText(item.transactionTable);
-    if (tableKey) {
-      const entry = Object.entries(forms).find(([, info]) => {
-        const table = normalizeText(info?.table ?? info?.tableName ?? info?.table_name);
-        return table && table === tableKey;
-      });
-      if (entry) return { name: entry[0], info: entry[1] };
-    }
-    return null;
-  }, []);
-
   const handleNotificationClick = async (item) => {
     if (!item) return;
     setOpen(false);
     await markRead([item.id]);
-    const forms = await loadTransactionForms();
-    const resolvedForm = resolveTransactionForm(item, forms);
-    if (resolvedForm) {
-      const moduleKey = resolvedForm.info?.moduleKey || 'forms';
-      const slug = moduleKey.replace(/_/g, '-');
-      const path = moduleKey === 'forms' ? '/forms' : `/forms/${slug}`;
-      const params = new URLSearchParams();
-      params.set(`name_${moduleKey}`, resolvedForm.name);
-      navigate(`${path}?${params.toString()}`);
-      return;
-    }
     const groupKey = encodeURIComponent(item.transactionName || 'Transaction');
     const tab = isPlanNotificationItem(item) ? 'plans' : 'activity';
     const params = new URLSearchParams({
@@ -429,276 +254,6 @@ export default function TransactionNotificationDropdown() {
     navigate(`/?${params.toString()}`);
   };
 
-  const fetchRequestNotifications = useCallback(async () => {
-    const incomingLists = [];
-    const outgoingLists = [];
-    await Promise.all(
-      REQUEST_TYPES.map(async (type) => {
-        if (supervisorIds.length) {
-          await Promise.all(
-            supervisorIds.map(async (id) => {
-              try {
-                const params = new URLSearchParams({
-                  status: 'pending',
-                  request_type: type.key,
-                  per_page: String(REQUEST_FETCH_LIMIT),
-                  page: '1',
-                  senior_empid: id,
-                });
-                const res = await fetch(`/api/pending_request?${params.toString()}`, {
-                  credentials: 'include',
-                  skipLoader: true,
-                });
-                if (res.ok) {
-                  const data = await res.json().catch(() => ({}));
-                  const rows = Array.isArray(data?.rows) ? data.rows : [];
-                  incomingLists.push(
-                    rows.map((row) => ({
-                      ...row,
-                      request_type: row.request_type || type.key,
-                      __scope: 'incoming',
-                      __status: 'pending',
-                    })),
-                  );
-                }
-              } catch {
-                // ignore
-              }
-            }),
-          );
-        }
-        await Promise.all(
-          REQUEST_STATUSES.map(async (status) => {
-            try {
-              const params = new URLSearchParams({
-                status,
-                request_type: type.key,
-                per_page: String(REQUEST_FETCH_LIMIT),
-                page: '1',
-              });
-              const res = await fetch(
-                `/api/pending_request/outgoing?${params.toString()}`,
-                { credentials: 'include', skipLoader: true },
-              );
-              if (res.ok) {
-                const data = await res.json().catch(() => ({}));
-                const rows = Array.isArray(data?.rows) ? data.rows : [];
-                outgoingLists.push(
-                  rows.map((row) => ({
-                    ...row,
-                    request_type: row.request_type || type.key,
-                    __scope: 'outgoing',
-                    __status: status,
-                  })),
-                );
-              }
-            } catch {
-              // ignore
-            }
-          }),
-        );
-      }),
-    );
-
-    const deduped = dedupeRequests([...incomingLists.flat(), ...outgoingLists.flat()]);
-    deduped.sort((a, b) => getRequestTimestamp(b) - getRequestTimestamp(a));
-    setRequestItems(deduped);
-  }, [supervisorIds]);
-
-  const fetchTemporaryNotifications = useCallback(async () => {
-    if (typeof temporary?.fetchScopeEntries !== 'function') {
-      setTemporaryItems([]);
-      return;
-    }
-    const results = await Promise.all(
-      ['review', 'created'].map(async (scope) => {
-        const status = scope === 'review' ? 'pending' : 'any';
-        try {
-          const result = await temporary.fetchScopeEntries(scope, {
-            limit: TEMPORARY_FETCH_LIMIT,
-            status,
-            cursor: 0,
-            grouped: false,
-          });
-          const rows = Array.isArray(result?.rows)
-            ? result.rows
-            : Array.isArray(result)
-            ? result
-            : [];
-          return rows.map((row) => ({ ...row, __scope: scope }));
-        } catch {
-          return [];
-        }
-      }),
-    );
-    const combined = dedupeTemporaryEntries(results.flat());
-    combined.sort((a, b) => getTemporaryEntryTimestamp(b) - getTemporaryEntryTimestamp(a));
-    setTemporaryItems(combined);
-  }, [temporary]);
-
-  useEffect(() => {
-    if (!open) return;
-    fetchRequestNotifications();
-    fetchTemporaryNotifications();
-    loadTransactionForms();
-  }, [fetchRequestNotifications, fetchTemporaryNotifications, loadTransactionForms, open]);
-
-  const openRequest = useCallback(
-    (req, tab, statusOverride) => {
-      const params = new URLSearchParams();
-      params.set('tab', tab);
-      const normalizedStatus = statusOverride
-        ? String(statusOverride).trim().toLowerCase()
-        : 'pending';
-      if (normalizedStatus) params.set('status', normalizedStatus);
-      if (req?.request_type) params.set('requestType', req.request_type);
-      if (req?.table_name) params.set('table_name', req.table_name);
-      const createdAt = req?.created_at || req?.createdAt;
-      let createdDate = '';
-      if (createdAt) {
-        const parsed = new Date(createdAt);
-        if (!Number.isNaN(parsed.getTime())) {
-          createdDate = formatTimestamp(parsed).slice(0, 10);
-        } else if (typeof createdAt === 'string') {
-          const match = createdAt.match(/^(\d{4}-\d{2}-\d{2})/);
-          if (match) {
-            createdDate = match[1];
-          }
-        }
-      }
-      if (createdDate) {
-        params.set('date_from', createdDate);
-        params.set('date_to', createdDate);
-      }
-      params.set('requestId', req?.request_id);
-      if (typeof markWorkflowSeen === 'function') {
-        const workflowKey =
-          req?.request_type === 'report_approval' ? 'report_approval' : 'change_requests';
-        const scope = tab === 'incoming' ? 'incoming' : 'outgoing';
-        markWorkflowSeen(workflowKey, scope, [normalizedStatus]);
-      }
-      navigate(`/requests?${params.toString()}`);
-    },
-    [markWorkflowSeen, navigate],
-  );
-
-  const openTemporary = useCallback(
-    (scope, entry) => {
-      temporary?.markScopeSeen?.(scope);
-      if (!entry) {
-        navigate('/forms');
-        return;
-      }
-      const params = new URLSearchParams();
-      params.set('temporaryOpen', '1');
-      if (scope) params.set('temporaryScope', scope);
-      params.set('temporaryKey', String(Date.now()));
-      const moduleKey = entry?.moduleKey || entry?.module_key || '';
-      let path = '/forms';
-      if (moduleKey) {
-        params.set('temporaryModule', moduleKey);
-        path = `/forms/${moduleKey.replace(/_/g, '-')}`;
-      }
-      const configName = entry?.configName || entry?.config_name || '';
-      const formName = entry?.formName || entry?.form_name || configName;
-      if (formName) params.set('temporaryForm', formName);
-      if (configName && configName !== formName) {
-        params.set('temporaryConfig', configName);
-      }
-      const tableName = entry?.tableName || entry?.table_name || '';
-      if (tableName) params.set('temporaryTable', tableName);
-      const idValue =
-        entry?.id ?? entry?.temporary_id ?? entry?.temporaryId ?? null;
-      if (idValue != null) params.set('temporaryId', String(idValue));
-      navigate(`${path}?${params.toString()}`);
-    },
-    [navigate, temporary],
-  );
-
-  const dropdownItems = useMemo(() => {
-    const transactionItems = sortedTransactionNotifications.map((item) => ({
-      id: `transaction-${item.id}`,
-      type: 'transaction',
-      item,
-      timestamp: getNotificationTimestamp(item),
-      isUnread: item?.isRead === false,
-      title: item.transactionName || 'Transaction',
-      badge: getActionMeta(item?.action),
-      preview: buildPreviewText(item),
-      onClick: () => handleNotificationClick(item),
-    }));
-
-    const requestItemsMapped = requestItems.map((req) => {
-      const typeMeta = REQUEST_TYPES.find((entry) => entry.key === req?.request_type);
-      const status = normalizeRequestStatus(req, 'pending');
-      const statusMeta = REQUEST_STATUS_META[status] || REQUEST_STATUS_META.pending;
-      const scope = req?.__scope === 'incoming' ? 'incoming' : 'outgoing';
-      const scopeLabel = scope === 'incoming' ? 'Incoming' : 'Outgoing';
-      const createdAt =
-        status === 'pending'
-          ? req?.created_at || req?.createdAt
-          : req?.responded_at || req?.respondedAt || req?.updated_at || req?.updatedAt;
-      const dateLabel = formatDateLabel(createdAt);
-      return {
-        id: `request-${req.request_id}-${scope}-${status}`,
-        type: 'request',
-        item: req,
-        timestamp: getRequestTimestamp(req),
-        isUnread: false,
-        title: typeMeta?.label || 'Request',
-        badge: statusMeta,
-        preview: [scopeLabel, dateLabel].filter(Boolean).join(' · '),
-        onClick: () => openRequest(req, scope, status),
-      };
-    });
-
-    const temporaryItemsMapped = temporaryItems.map((entry) => {
-      const scope = entry?.__scope || 'review';
-      const scopeLabel = scope === 'review' ? 'Review queue' : 'My drafts';
-      const statusMeta = normalizeTemporaryStatus(entry);
-      const title =
-        entry?.transactionType ||
-        entry?.transaction_type ||
-        entry?.formLabel ||
-        entry?.formName ||
-        entry?.tableName ||
-        entry?.moduleKey ||
-        entry?.module_key ||
-        'Temporary transaction';
-      const dateLabel = formatDateLabel(
-        entry?.createdAt || entry?.created_at || entry?.updatedAt || entry?.updated_at || '',
-      );
-      return {
-        id: `temporary-${entry?.id ?? entry?.temporary_id ?? entry?.temporaryId ?? ''}-${scope}`,
-        type: 'temporary',
-        item: entry,
-        timestamp: getTemporaryEntryTimestamp(entry),
-        isUnread: false,
-        title,
-        badge: { label: statusMeta.statusLabel, accent: statusMeta.statusColor },
-        preview: [scopeLabel, dateLabel].filter(Boolean).join(' · '),
-        onClick: () => openTemporary(scope, entry),
-      };
-    });
-
-    return [...transactionItems, ...requestItemsMapped, ...temporaryItemsMapped]
-      .filter((entry) => Number.isFinite(entry.timestamp))
-      .sort((a, b) => b.timestamp - a.timestamp)
-      .slice(0, MAX_DROPDOWN_ITEMS);
-  }, [
-    handleNotificationClick,
-    openRequest,
-    openTemporary,
-    requestItems,
-    sortedTransactionNotifications,
-    temporaryItems,
-  ]);
-
-  const unreadBadgeCount = useMemo(
-    () => unreadCount + totalOtherUnread,
-    [totalOtherUnread, unreadCount],
-  );
-
   return (
     <div style={styles.wrapper} ref={containerRef}>
       <button
@@ -707,29 +262,28 @@ export default function TransactionNotificationDropdown() {
         onClick={() => setOpen((prev) => !prev)}
       >
         <span aria-hidden="true">🔔</span>
-        {unreadBadgeCount > 0 && <span style={styles.badge}>{unreadBadgeCount}</span>}
+        {unreadCount > 0 && <span style={styles.badge}>{unreadCount}</span>}
       </button>
       {open && (
         <div style={styles.dropdown}>
           <div style={styles.list}>
-            {dropdownItems.length === 0 && (
+            {sortedNotifications.length === 0 && (
               <div style={styles.empty}>No notifications yet</div>
             )}
-            {dropdownItems.map((entry) => {
+            {sortedNotifications.map((item) => {
+              const itemMeta = getActionMeta(item?.action);
               return (
                 <button
-                  key={entry.id}
+                  key={item.id}
                   type="button"
-                  style={styles.notificationItem(entry.isUnread)}
-                  onClick={entry.onClick}
+                  style={styles.notificationItem(item?.isRead === false)}
+                  onClick={() => handleNotificationClick(item)}
                 >
                   <div style={styles.notificationTitle}>
-                    <span>{entry.title}</span>
-                    <span style={styles.actionBadge(entry.badge?.accent)}>
-                      {entry.badge?.label}
-                    </span>
+                    <span>{item.transactionName || 'Transaction'}</span>
+                    <span style={styles.actionBadge(itemMeta.accent)}>{itemMeta.label}</span>
                   </div>
-                  <div style={styles.notificationPreview}>{entry.preview}</div>
+                  <div style={styles.notificationPreview}>{buildPreviewText(item)}</div>
                 </button>
               );
             })}
