@@ -119,69 +119,45 @@ export default function DutyTransactionWidget() {
     const currentWorkplaceId = normalizeWorkplaceId(
       workplace ?? session?.workplace_id ?? session?.workplaceId,
     );
-    const assignments = Array.isArray(session?.workplace_assignments)
-      ? session.workplace_assignments
-      : [];
-
-    const addPosition = (value) => {
-      const positionId = normalizePositionId(value);
-      if (positionId) ids.add(positionId);
-    };
-
-    const addWorkplaceEntryPositions = (entry) => {
-      if (!entry) return;
-      if (Array.isArray(entry)) {
-        entry.forEach((item) => addPosition(item?.positionId ?? item?.position_id ?? item));
-        return;
-      }
-      addPosition(entry?.positionId ?? entry?.position_id ?? entry);
-    };
-
     if (currentWorkplaceId) {
       const direct =
         workplacePositionMap?.[currentWorkplaceId] ||
         workplacePositionMap?.[String(currentWorkplaceId)];
-      addWorkplaceEntryPositions(direct);
+      const directPosition = normalizePositionId(direct?.positionId);
+      if (directPosition) ids.add(directPosition);
 
+      const assignments = Array.isArray(session?.workplace_assignments)
+        ? session.workplace_assignments
+        : [];
       assignments.forEach((entry) => {
         const entryWorkplaceId = normalizeWorkplaceId(
           entry?.workplace_id ?? entry?.workplaceId ?? entry?.id,
         );
         if (!entryWorkplaceId || entryWorkplaceId !== currentWorkplaceId) return;
-        addPosition(
+        const positionId = normalizePositionId(
           entry?.workplace_position_id ??
             entry?.workplacePositionId ??
             entry?.position_id ??
             entry?.positionId ??
             entry?.position,
         );
+        if (positionId) ids.add(positionId);
       });
 
-      addPosition(session?.workplace_position_id ?? session?.workplacePositionId);
-    } else {
-      if (workplacePositionMap && typeof workplacePositionMap === 'object') {
-        Object.values(workplacePositionMap).forEach((entry) => {
-          addWorkplaceEntryPositions(entry);
-        });
-      }
-      assignments.forEach((entry) => {
-        addPosition(
-          entry?.workplace_position_id ??
-            entry?.workplacePositionId ??
-            entry?.position_id ??
-            entry?.positionId ??
-            entry?.position,
-        );
-      });
+      const fallbackWorkplacePositionId = normalizePositionId(
+        session?.workplace_position_id ?? session?.workplacePositionId,
+      );
+      if (fallbackWorkplacePositionId) ids.add(fallbackWorkplacePositionId);
     }
 
     if (ids.size === 0) {
-      addPosition(
+      const fallbackPositionId = normalizePositionId(
         session?.employment_position_id ??
           session?.position_id ??
           session?.position ??
           user?.position,
       );
+      if (fallbackPositionId) ids.add(fallbackPositionId);
     }
 
     return Array.from(ids);
