@@ -140,31 +140,6 @@ function getSummaryFieldValue(item, fieldName) {
   return null;
 }
 
-function getSummaryFieldValueByNames(item, fieldNames = []) {
-  for (const fieldName of fieldNames) {
-    const value = getSummaryFieldValue(item, fieldName);
-    if (value !== null && value !== undefined && value !== '') return value;
-  }
-  return null;
-}
-
-function normalizePositionValues(value) {
-  if (value === null || value === undefined) return [];
-  if (Array.isArray(value)) {
-    return value
-      .map((entry) => (entry === null || entry === undefined ? '' : String(entry).trim()))
-      .filter(Boolean);
-  }
-  if (typeof value === 'number') return [String(value)];
-  if (typeof value === 'string') {
-    return value
-      .split(',')
-      .map((entry) => entry.trim())
-      .filter(Boolean);
-  }
-  return [String(value).trim()].filter(Boolean);
-}
-
 function getCompletionReference(planRow) {
   if (!planRow || typeof planRow !== 'object') return null;
   const keys = Object.keys(planRow);
@@ -388,66 +363,6 @@ export default function TransactionNotificationWidget({ filterMode = 'activity' 
       values: values.length > 0 ? values : DEFAULT_PLAN_NOTIFICATION_VALUES,
     };
   }, [generalConfig]);
-  const dutyFieldName = useMemo(
-    () => generalConfig?.plan?.dutyFieldName?.trim() || '',
-    [generalConfig],
-  );
-  const dutyPositionIds = useMemo(() => {
-    if (!dutyFieldName) return [];
-    const ids = new Set();
-    const addId = (value) => {
-      if (value === null || value === undefined) return;
-      const normalized = String(value).trim();
-      if (normalized) ids.add(normalized);
-    };
-    const workplaceAssignments = Array.isArray(session?.workplace_assignments)
-      ? session.workplace_assignments
-      : [];
-    workplaceAssignments.forEach((entry) => {
-      addId(
-        entry?.workplace_position_id ??
-          entry?.workplacePositionId ??
-          entry?.position_id ??
-          entry?.positionId ??
-          entry?.position ??
-          null,
-      );
-    });
-    if (
-      workplacePositionMap &&
-      typeof workplacePositionMap === 'object'
-    ) {
-      Object.values(workplacePositionMap).forEach((entry) => {
-        addId(entry?.positionId);
-      });
-    }
-
-    const hasMultipleWorkplacePositions = ids.size > 1;
-    if (!hasMultipleWorkplacePositions) {
-      const workplaceId = workplace ?? session?.workplace_id ?? session?.workplaceId ?? null;
-      const workplacePosition = resolveWorkplacePositionForContext({
-        workplaceId,
-        session,
-        workplacePositionMap,
-      });
-      if (workplacePosition?.positionId) {
-        ids.clear();
-        addId(workplacePosition.positionId);
-      }
-    }
-
-    if (ids.size === 0) {
-      addId(
-        session?.employment_position_id ??
-          session?.position_id ??
-          session?.position ??
-          user?.position ??
-          null,
-      );
-    }
-
-    return Array.from(ids);
-  }, [dutyFieldName, session, user, workplace, workplacePositionMap]);
 
   const isPlanNotificationRow = useCallback(
     (row) => {
@@ -490,28 +405,6 @@ export default function TransactionNotificationWidget({ filterMode = 'activity' 
     [planTransactionsByName],
   );
 
-  const isDutyPlanItem = useCallback(
-    (item) => {
-      if (!dutyFieldName) return true;
-      const row = findTransactionRow(item);
-      if (!row) return false;
-      const dutyValue = getRowFieldValue(row, dutyFieldName);
-      if (!normalizeFlagValue(dutyValue)) return false;
-      if (!dutyPositionIds.length) return false;
-      const itemPositionId = getSummaryFieldValueByNames(item, [
-        'position_id',
-        'positionId',
-        'transactions_plan.position_id',
-      ]);
-      const normalizedItemPositions = normalizePositionValues(itemPositionId);
-      if (!normalizedItemPositions.length) return false;
-      return normalizedItemPositions.some((value) =>
-        dutyPositionIds.includes(String(value).trim()),
-      );
-    },
-    [dutyFieldName, dutyPositionIds, findTransactionRow],
-  );
-
   const isPlanNotificationItem = useCallback(
     (item) => {
       if (!item) return false;
@@ -527,18 +420,15 @@ export default function TransactionNotificationWidget({ filterMode = 'activity' 
     }
     const isPlanMode = filterMode === 'plan';
     return allGroups.reduce((acc, group) => {
-      const items = group.items.filter((item) => {
-        if (isPlanMode) {
-          return isPlanNotificationItem(item) && isDutyPlanItem(item);
-        }
-        return !isPlanNotificationItem(item);
-      });
+      const items = group.items.filter((item) =>
+        isPlanMode ? isPlanNotificationItem(item) : !isPlanNotificationItem(item),
+      );
       if (items.length === 0) return acc;
       const unreadCount = items.filter((item) => !item.isRead).length;
       acc.push({ ...group, items, unreadCount });
       return acc;
     }, []);
-  }, [allGroups, filterMode, isDutyPlanItem, isPlanNotificationItem]);
+  }, [allGroups, filterMode, isPlanNotificationItem]);
 
   useEffect(() => {
     if (!highlightKey) return;
