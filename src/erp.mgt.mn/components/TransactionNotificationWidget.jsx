@@ -368,7 +368,7 @@ export default function TransactionNotificationWidget({ filterMode = 'activity' 
     (row) => {
       if (!row) return false;
       const normalizedValues = planNotificationConfig.values.map(normalizeMatch);
-      return planNotificationConfig.fields.some((field) => {
+      return planNotificationConfig.fields.every((field) => {
         const value = getRowFieldValue(row, field);
         if (value === undefined || value === null || value === '') return false;
         return normalizedValues.includes(normalizeMatch(value));
