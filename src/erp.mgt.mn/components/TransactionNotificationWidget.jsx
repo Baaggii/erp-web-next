@@ -36,6 +36,8 @@ const PLAN_COMPLETION_KEYS = [
   'isPlanCompletion',
   'isPlanCompletionTransaction',
 ];
+const DEFAULT_PLAN_NOTIFICATION_FIELDS = ['is_plan', 'is_plan_completion'];
+const DEFAULT_PLAN_NOTIFICATION_VALUES = ['1'];
 
 function normalizeText(value) {
   if (value === undefined || value === null) return '';
@@ -47,6 +49,28 @@ function normalizeFieldName(value) {
     .trim()
     .toLowerCase()
     .replace(/[^a-z0-9]/g, '');
+}
+
+function normalizeMatch(value) {
+  if (value === undefined || value === null) return '';
+  return String(value).trim().toLowerCase();
+}
+
+function parseListValue(value) {
+  if (Array.isArray(value)) {
+    return value.map((entry) => String(entry).trim()).filter(Boolean);
+  }
+  if (value === undefined || value === null) return [];
+  if (typeof value === 'number' || typeof value === 'boolean') {
+    return [String(value)];
+  }
+  if (typeof value === 'string') {
+    return value
+      .split(',')
+      .map((entry) => entry.trim())
+      .filter(Boolean);
+  }
+  return [];
 }
 
 function getRowValue(row, keys) {
@@ -81,6 +105,19 @@ function hasFlag(row, keys) {
     }
   }
   return false;
+}
+
+function getRowFieldValue(row, fieldName) {
+  if (!row || !fieldName) return undefined;
+  if (Object.prototype.hasOwnProperty.call(row, fieldName)) {
+    return row[fieldName];
+  }
+  const normalizedTarget = normalizeFieldName(fieldName);
+  if (!normalizedTarget) return undefined;
+  const matchKey = Object.keys(row).find(
+    (key) => normalizeFieldName(key) === normalizedTarget,
+  );
+  return matchKey ? row[matchKey] : undefined;
 }
 
 function getSummaryFieldValue(item, fieldName) {
@@ -277,8 +314,8 @@ function buildRelationDisplay(row, config, fallbackValue) {
   return formatted.length > 0 ? formatted.join(' - ') : fallbackValue ?? '';
 }
 
-export default function TransactionNotificationWidget() {
-  const { groups, markGroupRead } = useTransactionNotifications();
+export default function TransactionNotificationWidget({ filterMode = 'activity' }) {
+  const { groups: allGroups, markGroupRead } = useTransactionNotifications();
   const location = useLocation();
   const navigate = useNavigate();
   const { addToast } = useToast();
@@ -317,6 +354,80 @@ export default function TransactionNotificationWidget() {
     const params = new URLSearchParams(location.search || '');
     return params.get('notifyItem');
   }, [location.search]);
+
+  const planNotificationConfig = useMemo(() => {
+    const fields = parseListValue(generalConfig?.plan?.notificationFields);
+    const values = parseListValue(generalConfig?.plan?.notificationValues);
+    return {
+      fields: fields.length > 0 ? fields : DEFAULT_PLAN_NOTIFICATION_FIELDS,
+      values: values.length > 0 ? values : DEFAULT_PLAN_NOTIFICATION_VALUES,
+    };
+  }, [generalConfig]);
+
+  const isPlanNotificationRow = useCallback(
+    (row) => {
+      if (!row) return false;
+      const normalizedValues = planNotificationConfig.values.map(normalizeMatch);
+      return planNotificationConfig.fields.every((field) => {
+        const value = getRowFieldValue(row, field);
+        if (value === undefined || value === null || value === '') return false;
+        return normalizedValues.includes(normalizeMatch(value));
+      });
+    },
+    [planNotificationConfig],
+  );
+
+  const planTransactionsByName = useMemo(() => {
+    const map = new Map();
+    codeTransactions.forEach((row) => {
+      const name = normalizeText(getRowValue(row, TRANSACTION_NAME_KEYS));
+      if (name) map.set(name, row);
+      const table = normalizeText(getRowValue(row, TRANSACTION_TABLE_KEYS));
+      if (table) map.set(`table:${table}`, row);
+    });
+    return map;
+  }, [codeTransactions]);
+
+  const findTransactionRow = useCallback(
+    (item) => {
+      if (!item) return null;
+      const nameKey = normalizeText(item.transactionName);
+      if (nameKey && planTransactionsByName.has(nameKey)) {
+        return planTransactionsByName.get(nameKey);
+      }
+      const tableKey = normalizeText(item.transactionTable);
+      if (tableKey && planTransactionsByName.has(`table:${tableKey}`)) {
+        return planTransactionsByName.get(`table:${tableKey}`);
+      }
+      return null;
+    },
+    [planTransactionsByName],
+  );
+
+  const isPlanNotificationItem = useCallback(
+    (item) => {
+      if (!item) return false;
+      const row = findTransactionRow(item);
+      return isPlanNotificationRow(row);
+    },
+    [findTransactionRow, isPlanNotificationRow],
+  );
+
+  const groups = useMemo(() => {
+    if (filterMode !== 'plan' && filterMode !== 'activity') {
+      return allGroups;
+    }
+    const isPlanMode = filterMode === 'plan';
+    return allGroups.reduce((acc, group) => {
+      const items = group.items.filter((item) =>
+        isPlanMode ? isPlanNotificationItem(item) : !isPlanNotificationItem(item),
+      );
+      if (items.length === 0) return acc;
+      const unreadCount = items.filter((item) => !item.isRead).length;
+      acc.push({ ...group, items, unreadCount });
+      return acc;
+    }, []);
+  }, [allGroups, filterMode, isPlanNotificationItem]);
 
   useEffect(() => {
     if (!highlightKey) return;
@@ -378,6 +489,21 @@ export default function TransactionNotificationWidget() {
   }, [groups, highlightItemId, highlightKey]);
 
   useEffect(() => {
+    allowedFormsCache.current = null;
+    allowedFormsPromise.current = null;
+  }, [
+    branch,
+    company,
+    department,
+    licensed,
+    perms,
+    session,
+    user,
+    workplace,
+    workplacePositionMap,
+  ]);
+
+  useEffect(() => {
     let canceled = false;
     fetch('/api/tables/code_transaction?perPage=500', {
       credentials: 'include',
@@ -396,21 +522,6 @@ export default function TransactionNotificationWidget() {
       canceled = true;
     };
   }, []);
-
-  useEffect(() => {
-    allowedFormsCache.current = null;
-    allowedFormsPromise.current = null;
-  }, [
-    branch,
-    company,
-    department,
-    licensed,
-    perms,
-    session,
-    user,
-    workplace,
-    workplacePositionMap,
-  ]);
 
   useEffect(() => {
     let cancelled = false;
@@ -618,36 +729,9 @@ export default function TransactionNotificationWidget() {
     return { activeItems, deletedItems, excludedItems };
   }, []);
 
-  const planTransactionsByName = useMemo(() => {
-    const map = new Map();
-    codeTransactions.forEach((row) => {
-      const name = normalizeText(getRowValue(row, TRANSACTION_NAME_KEYS));
-      if (name) map.set(name, row);
-      const table = normalizeText(getRowValue(row, TRANSACTION_TABLE_KEYS));
-      if (table) map.set(`table:${table}`, row);
-    });
-    return map;
-  }, [codeTransactions]);
-
   const completionTransactions = useMemo(
     () => codeTransactions.filter((row) => hasFlag(row, PLAN_COMPLETION_KEYS)),
     [codeTransactions],
-  );
-
-  const findTransactionRow = useCallback(
-    (item) => {
-      if (!item) return null;
-      const nameKey = normalizeText(item.transactionName);
-      if (nameKey && planTransactionsByName.has(nameKey)) {
-        return planTransactionsByName.get(nameKey);
-      }
-      const tableKey = normalizeText(item.transactionTable);
-      if (tableKey && planTransactionsByName.has(`table:${tableKey}`)) {
-        return planTransactionsByName.get(`table:${tableKey}`);
-      }
-      return null;
-    },
-    [planTransactionsByName],
   );
 
   const findCompletionRow = useCallback(
@@ -1071,11 +1155,21 @@ export default function TransactionNotificationWidget() {
   return (
     <section style={styles.section}>
       <div style={styles.header}>
-        <h3 style={styles.title}>Transaction Notifications</h3>
-        <span style={styles.subtitle}>Grouped by transaction name</span>
+        <h3 style={styles.title}>
+          {filterMode === 'plan' ? 'Plan Notifications' : 'Transaction Notifications'}
+        </h3>
+        <span style={styles.subtitle}>
+          {filterMode === 'plan'
+            ? 'Grouped plan transaction alerts'
+            : 'Grouped by transaction name'}
+        </span>
       </div>
       {groups.length === 0 && (
-        <div style={styles.empty}>No transaction notifications yet.</div>
+        <div style={styles.empty}>
+          {filterMode === 'plan'
+            ? 'No plan notifications yet.'
+            : 'No transaction notifications yet.'}
+        </div>
       )}
       {groups.length > 0 && (
         <div style={styles.list}>

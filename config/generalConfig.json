@@ -37,6 +37,11 @@
     "showBulkEditRequestInfo": false,
     "bulkUpdateRequiresRequest": true
   },
+  "plan": {
+    "planIdFieldName": "",
+    "notificationFields": "is_plan,is_plan_completion",
+    "notificationValues": "1"
+  },
   "images": {
     "basePath": "uploads",
     "cleanupDays": 30,
