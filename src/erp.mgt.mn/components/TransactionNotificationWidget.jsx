@@ -384,6 +384,66 @@ export default function TransactionNotificationWidget({ mode = 'activity' }) {
     return params.get('notifyItem');
   }, [location.search]);
 
+  const planTransactionsByName = useMemo(() => {
+    const map = new Map();
+    codeTransactions.forEach((row) => {
+      const name = normalizeText(getRowValue(row, TRANSACTION_NAME_KEYS));
+      if (name) map.set(name, row);
+      const table = normalizeText(getRowValue(row, TRANSACTION_TABLE_KEYS));
+      if (table) map.set(`table:${table}`, row);
+    });
+    return map;
+  }, [codeTransactions]);
+
+  const completionTransactions = useMemo(
+    () => codeTransactions.filter((row) => hasFlag(row, PLAN_COMPLETION_KEYS)),
+    [codeTransactions],
+  );
+
+  const planNotificationFilters = useMemo(
+    () => normalizePlanNotificationFilters(generalConfig?.plan?.planNotificationFilters),
+    [generalConfig],
+  );
+
+  const findTransactionRow = useCallback(
+    (item) => {
+      if (!item) return null;
+      const nameKey = normalizeText(item.transactionName);
+      if (nameKey && planTransactionsByName.has(nameKey)) {
+        return planTransactionsByName.get(nameKey);
+      }
+      const tableKey = normalizeText(item.transactionTable);
+      if (tableKey && planTransactionsByName.has(`table:${tableKey}`)) {
+        return planTransactionsByName.get(`table:${tableKey}`);
+      }
+      return null;
+    },
+    [planTransactionsByName],
+  );
+
+  const isPlanNotification = useCallback(
+    (item) => {
+      const row = findTransactionRow(item);
+      if (!row) return false;
+      return matchesPlanNotificationFilters(row, planNotificationFilters);
+    },
+    [findTransactionRow, planNotificationFilters],
+  );
+
+  const visibleGroups = useMemo(() => {
+    if (!Array.isArray(groups) || groups.length === 0) return [];
+    const wantsPlan = mode === 'plan';
+    return groups
+      .map((group) => {
+        const items = group.items.filter((item) =>
+          wantsPlan ? isPlanNotification(item) : !isPlanNotification(item),
+        );
+        if (items.length === 0) return null;
+        return { ...group, items };
+      })
+      .filter(Boolean);
+  }, [groups, isPlanNotification, mode]);
+
   useEffect(() => {
     if (!highlightKey) return;
     setExpanded((prev) => {
