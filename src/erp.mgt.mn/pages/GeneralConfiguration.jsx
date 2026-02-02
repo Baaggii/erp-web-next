@@ -564,6 +564,50 @@ export default function GeneralConfiguration() {
               </label>
             </TooltipWrapper>
           </div>
+          <div style={{ marginBottom: '0.5rem' }}>
+            <TooltipWrapper
+              title={t('plan_notification_fields', {
+                ns: 'tooltip',
+                defaultValue:
+                  'Comma-separated code_transaction fields used to route notifications to the Plans tab',
+              })}
+            >
+              <label>
+                Plan Notification Fields{' '}
+                <input
+                  name="notificationFields"
+                  type="text"
+                  value={active.notificationFields ?? ''}
+                  onChange={handleChange}
+                />
+              </label>
+            </TooltipWrapper>
+            <div style={{ fontSize: '0.8rem' }}>
+              Example: is_plan, is_plan_completion
+            </div>
+          </div>
+          <div style={{ marginBottom: '0.5rem' }}>
+            <TooltipWrapper
+              title={t('plan_notification_values', {
+                ns: 'tooltip',
+                defaultValue:
+                  'Comma-separated values to match against plan notification fields',
+              })}
+            >
+              <label>
+                Plan Notification Values{' '}
+                <input
+                  name="notificationValues"
+                  type="text"
+                  value={active.notificationValues ?? ''}
+                  onChange={handleChange}
+                />
+              </label>
+            </TooltipWrapper>
+            <div style={{ fontSize: '0.8rem' }}>
+              Leave blank to use the default value of 1.
+            </div>
+          </div>
         </>
       ) : tab === 'system' ? (
         <div>
