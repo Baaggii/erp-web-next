@@ -119,45 +119,69 @@ export default function DutyTransactionWidget() {
     const currentWorkplaceId = normalizeWorkplaceId(
       workplace ?? session?.workplace_id ?? session?.workplaceId,
     );
+    const assignments = Array.isArray(session?.workplace_assignments)
+      ? session.workplace_assignments
+      : [];
+
+    const addPosition = (value) => {
+      const positionId = normalizePositionId(value);
+      if (positionId) ids.add(positionId);
+    };
+
+    const addWorkplaceEntryPositions = (entry) => {
+      if (!entry) return;
+      if (Array.isArray(entry)) {
+        entry.forEach((item) => addPosition(item?.positionId ?? item?.position_id ?? item));
+        return;
+      }
+      addPosition(entry?.positionId ?? entry?.position_id ?? entry);
+    };
+
     if (currentWorkplaceId) {
       const direct =
         workplacePositionMap?.[currentWorkplaceId] ||
         workplacePositionMap?.[String(currentWorkplaceId)];
-      const directPosition = normalizePositionId(direct?.positionId);
-      if (directPosition) ids.add(directPosition);
+      addWorkplaceEntryPositions(direct);
 
-      const assignments = Array.isArray(session?.workplace_assignments)
-        ? session.workplace_assignments
-        : [];
       assignments.forEach((entry) => {
         const entryWorkplaceId = normalizeWorkplaceId(
           entry?.workplace_id ?? entry?.workplaceId ?? entry?.id,
         );
         if (!entryWorkplaceId || entryWorkplaceId !== currentWorkplaceId) return;
-        const positionId = normalizePositionId(
+        addPosition(
           entry?.workplace_position_id ??
             entry?.workplacePositionId ??
             entry?.position_id ??
             entry?.positionId ??
             entry?.position,
         );
-        if (positionId) ids.add(positionId);
       });
 
-      const fallbackWorkplacePositionId = normalizePositionId(
-        session?.workplace_position_id ?? session?.workplacePositionId,
-      );
-      if (fallbackWorkplacePositionId) ids.add(fallbackWorkplacePositionId);
+      addPosition(session?.workplace_position_id ?? session?.workplacePositionId);
+    } else {
+      if (workplacePositionMap && typeof workplacePositionMap === 'object') {
+        Object.values(workplacePositionMap).forEach((entry) => {
+          addWorkplaceEntryPositions(entry);
+        });
+      }
+      assignments.forEach((entry) => {
+        addPosition(
+          entry?.workplace_position_id ??
+            entry?.workplacePositionId ??
+            entry?.position_id ??
+            entry?.positionId ??
+            entry?.position,
+        );
+      });
     }
 
     if (ids.size === 0) {
-      const fallbackPositionId = normalizePositionId(
+      addPosition(
         session?.employment_position_id ??
           session?.position_id ??
           session?.position ??
           user?.position,
       );
-      if (fallbackPositionId) ids.add(fallbackPositionId);
     }
 
     return Array.from(ids);
