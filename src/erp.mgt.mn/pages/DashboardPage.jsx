@@ -4,7 +4,6 @@ import { AuthContext } from '../context/AuthContext.jsx';
 import PendingRequestWidget from '../components/PendingRequestWidget.jsx';
 import TransactionNotificationWidget from '../components/TransactionNotificationWidget.jsx';
 import OutgoingRequestWidget from '../components/OutgoingRequestWidget.jsx';
-import DutyTransactionWidget from '../components/DutyTransactionWidget.jsx';
 import { usePendingRequests } from '../context/PendingRequestContext.jsx';
 import { useTransactionNotifications } from '../context/TransactionNotificationContext.jsx';
 import LangContext from '../context/I18nContext.jsx';
@@ -167,7 +166,7 @@ export default function DashboardPage() {
 
       {active === 'plans' && (
         <div>
-          <DutyTransactionWidget />
+          <TransactionNotificationWidget filterMode="plan" />
         </div>
       )}
     </div>
