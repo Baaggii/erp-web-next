@@ -407,43 +407,6 @@ export default function TransactionNotificationWidget({ mode = 'activity' }) {
     }
   }, [collapsedSections, expanded, highlightItemId]);
   useEffect(() => {
-    if (visibleGroups.length === 0) return;
-    setCollapsedSections((prev) => {
-      const next = new Set(prev);
-      visibleGroups.forEach((group) => {
-        if (initializedGroups.current.has(group.key)) return;
-        ['active', 'excluded', 'deleted'].forEach((sectionKey) => {
-          next.add(buildSectionId(group.key, sectionKey));
-        });
-        initializedGroups.current.add(group.key);
-      });
-      return next;
-    });
-  }, [visibleGroups]);
-  useEffect(() => {
-    if (!highlightItemId) return;
-    const groupMatch = highlightKey
-      ? visibleGroups.find((group) => group.key === highlightKey)
-      : visibleGroups.find((group) =>
-          group.items.some((item) => String(item.id) === highlightItemId),
-        );
-    if (!groupMatch) return;
-    const targetItem = groupMatch.items.find((item) => String(item.id) === highlightItemId);
-    if (!targetItem) return;
-    const sectionKey = getItemSection(targetItem);
-    setExpanded((prev) => {
-      const next = new Set(prev);
-      next.add(groupMatch.key);
-      return next;
-    });
-    setCollapsedSections((prev) => {
-      const next = new Set(prev);
-      next.delete(buildSectionId(groupMatch.key, sectionKey));
-      return next;
-    });
-  }, [visibleGroups, highlightItemId, highlightKey]);
-
-  useEffect(() => {
     let canceled = false;
     fetch('/api/tables/code_transaction?perPage=500', {
       credentials: 'include',
@@ -743,6 +706,44 @@ export default function TransactionNotificationWidget({ mode = 'activity' }) {
       })
       .filter(Boolean);
   }, [groups, isPlanNotification, mode]);
+
+  useEffect(() => {
+    if (visibleGroups.length === 0) return;
+    setCollapsedSections((prev) => {
+      const next = new Set(prev);
+      visibleGroups.forEach((group) => {
+        if (initializedGroups.current.has(group.key)) return;
+        ['active', 'excluded', 'deleted'].forEach((sectionKey) => {
+          next.add(buildSectionId(group.key, sectionKey));
+        });
+        initializedGroups.current.add(group.key);
+      });
+      return next;
+    });
+  }, [visibleGroups]);
+
+  useEffect(() => {
+    if (!highlightItemId) return;
+    const groupMatch = highlightKey
+      ? visibleGroups.find((group) => group.key === highlightKey)
+      : visibleGroups.find((group) =>
+          group.items.some((item) => String(item.id) === highlightItemId),
+        );
+    if (!groupMatch) return;
+    const targetItem = groupMatch.items.find((item) => String(item.id) === highlightItemId);
+    if (!targetItem) return;
+    const sectionKey = getItemSection(targetItem);
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      next.add(groupMatch.key);
+      return next;
+    });
+    setCollapsedSections((prev) => {
+      const next = new Set(prev);
+      next.delete(buildSectionId(groupMatch.key, sectionKey));
+      return next;
+    });
+  }, [visibleGroups, highlightItemId, highlightKey]);
 
   const findCompletionRow = useCallback(
     (planRow) => {
