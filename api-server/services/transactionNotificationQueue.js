@@ -596,6 +596,7 @@ async function handleTransactionNotification(job) {
 
   if (!relations.length) return;
   const notifyFields = normalizeFieldList(transactionConfig?.notifyFields);
+  if (!notifyFields.length) return;
   const editFieldList = normalizeFieldList(
     transactionConfig?.notificationDashboardFields?.length
       ? transactionConfig.notificationDashboardFields
