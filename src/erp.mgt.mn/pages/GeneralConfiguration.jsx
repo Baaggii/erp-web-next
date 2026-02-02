@@ -608,6 +608,28 @@ export default function GeneralConfiguration() {
               Leave blank to use the default value of 1.
             </div>
           </div>
+          <div style={{ marginBottom: '0.5rem' }}>
+            <TooltipWrapper
+              title={t('plan_duty_field_name', {
+                ns: 'tooltip',
+                defaultValue:
+                  'Field name in code_transaction that marks duty records for the Plans tab',
+              })}
+            >
+              <label>
+                Duty Field Name{' '}
+                <input
+                  name="dutyFieldName"
+                  type="text"
+                  value={active.dutyFieldName ?? ''}
+                  onChange={handleChange}
+                />
+              </label>
+            </TooltipWrapper>
+            <div style={{ fontSize: '0.8rem' }}>
+              Example: is_duty
+            </div>
+          </div>
         </>
       ) : tab === 'system' ? (
         <div>
