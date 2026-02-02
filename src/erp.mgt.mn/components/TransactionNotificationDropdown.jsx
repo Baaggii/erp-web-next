@@ -35,14 +35,26 @@ function buildPreviewText(item) {
   return 'Transaction update';
 }
 
+function getNotificationTimestamp(notification) {
+  if (!notification) return 0;
+  const raw = notification.updatedAt || notification.createdAt || 0;
+  const ts = new Date(raw).getTime();
+  return Number.isFinite(ts) ? ts : 0;
+}
+
 export default function TransactionNotificationDropdown() {
-  const { groups, unreadCount, markGroupRead } = useTransactionNotifications();
+  const { notifications, unreadCount, markRead } = useTransactionNotifications();
   const [open, setOpen] = useState(false);
-  const [expandedGroups, setExpandedGroups] = useState(() => new Set());
   const containerRef = useRef(null);
   const navigate = useNavigate();
 
-  const sortedGroups = useMemo(() => groups.slice(0, 8), [groups]);
+  const sortedNotifications = useMemo(
+    () =>
+      [...notifications]
+        .sort((a, b) => getNotificationTimestamp(b) - getNotificationTimestamp(a))
+        .slice(0, 8),
+    [notifications],
+  );
 
   useEffect(() => {
     const handleClick = (event) => {
@@ -54,24 +66,18 @@ export default function TransactionNotificationDropdown() {
     return () => document.removeEventListener('mousedown', handleClick);
   }, []);
 
-  const handleGroupClick = async (group, itemId = null) => {
-    if (!group) return;
+  const handleNotificationClick = async (item) => {
+    if (!item) return;
     setOpen(false);
-    await markGroupRead(group.key);
-    const params = new URLSearchParams({ tab: 'activity', notifyGroup: group.key });
-    if (itemId) {
-      params.set('notifyItem', itemId);
-    }
+    await markRead([item.id]);
+    const groupKey = encodeURIComponent(item.transactionName || 'Transaction');
+    const params = new URLSearchParams({
+      tab: 'activity',
+      notifyGroup: groupKey,
+      notifyItem: item.id,
+    });
     navigate(`/?${params.toString()}`);
   };
-
-  useEffect(() => {
-    if (!open) {
-      setExpandedGroups(new Set());
-      return;
-    }
-    setExpandedGroups(new Set(sortedGroups.map((group) => group.key)));
-  }, [open, sortedGroups]);
 
   return (
     <div style={styles.wrapper} ref={containerRef}>
@@ -86,69 +92,24 @@ export default function TransactionNotificationDropdown() {
       {open && (
         <div style={styles.dropdown}>
           <div style={styles.list}>
-            {sortedGroups.length === 0 && (
+            {sortedNotifications.length === 0 && (
               <div style={styles.empty}>No notifications yet</div>
             )}
-            {sortedGroups.map((group) => {
-              const isExpanded = expandedGroups.has(group.key);
-              const latestItem = group.items?.[0];
-              const actionMeta = getActionMeta(latestItem?.action);
+            {sortedNotifications.map((item) => {
+              const itemMeta = getActionMeta(item?.action);
               return (
-                <div key={group.key} style={styles.group}>
-                  <div style={styles.groupHeader(group.unreadCount > 0)}>
-                    <button
-                      type="button"
-                      style={styles.groupInfo}
-                      onClick={() => handleGroupClick(group)}
-                    >
-                      <div style={styles.itemTitle}>
-                        <span>{group.name}</span>
-                        {latestItem && (
-                          <span style={styles.actionBadge(actionMeta.accent)}>
-                            {actionMeta.label}
-                          </span>
-                        )}
-                      </div>
-                      <div style={styles.itemMeta}>
-                        {group.unreadCount > 0
-                          ? `${group.unreadCount} unread`
-                          : `${group.items.length} total`}
-                      </div>
-                      {!isExpanded && (
-                        <div style={styles.itemPreview}>
-                          {buildPreviewText(latestItem)}
-                        </div>
-                      )}
-                    </button>
+                <button
+                  key={item.id}
+                  type="button"
+                  style={styles.notificationItem(item?.isRead === false)}
+                  onClick={() => handleNotificationClick(item)}
+                >
+                  <div style={styles.notificationTitle}>
+                    <span>{item.transactionName || 'Transaction'}</span>
+                    <span style={styles.actionBadge(itemMeta.accent)}>{itemMeta.label}</span>
                   </div>
-                  {isExpanded && (
-                    <div style={styles.groupItems}>
-                      {group.items.map((item) => {
-                        const itemMeta = getActionMeta(item?.action);
-                        return (
-                          <button
-                            key={item.id}
-                            type="button"
-                            style={styles.groupItem(item.isRead === false)}
-                            onClick={() => handleGroupClick(group, item.id)}
-                          >
-                            <div style={styles.groupItemTitle}>
-                              <span>{item.transactionName || group.name}</span>
-                              {item && (
-                                <span style={styles.actionBadge(itemMeta.accent)}>
-                                  {itemMeta.label}
-                                </span>
-                              )}
-                            </div>
-                            <div style={styles.groupItemPreview}>
-                              {buildPreviewText(item)}
-                            </div>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
+                  <div style={styles.notificationPreview}>{buildPreviewText(item)}</div>
+                </button>
               );
             })}
           </div>
@@ -208,30 +169,31 @@ const styles = {
   list: {
     maxHeight: '360px',
     overflowY: 'auto',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.6rem',
+    padding: '0.75rem 1rem 1rem',
   },
   empty: {
     padding: '1rem',
     color: '#64748b',
     textAlign: 'center',
   },
-  group: {
-    borderBottom: '1px solid #e5e7eb',
-  },
-  groupHeader: (isUnread) => ({
-    background: isUnread ? '#eff6ff' : '#fff',
-    padding: '0.4rem 1rem 0',
-  }),
-  groupInfo: {
+  notificationItem: (isUnread) => ({
     width: '100%',
     textAlign: 'left',
+    border: '1px solid #e2e8f0',
+    borderRadius: '10px',
+    background: isUnread ? '#eff6ff' : '#fff',
+    padding: '0.6rem 0.75rem',
+    cursor: 'pointer',
     display: 'flex',
     flexDirection: 'column',
-    gap: '0.15rem',
-  },
-  itemTitle: {
+    gap: '0.35rem',
+  }),
+  notificationTitle: {
     fontWeight: 600,
     color: '#0f172a',
-    marginBottom: '0.25rem',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -246,32 +208,7 @@ const styles = {
     textTransform: 'uppercase',
     letterSpacing: '0.04em',
   }),
-  groupItems: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '0.4rem',
-    padding: '0 1rem 0.9rem',
-    background: '#f8fafc',
-  },
-  groupItem: (isUnread) => ({
-    width: '100%',
-    textAlign: 'left',
-    border: '1px solid #e2e8f0',
-    borderRadius: '10px',
-    background: isUnread ? '#eff6ff' : '#fff',
-    padding: '0.6rem 0.75rem',
-    cursor: 'pointer',
-  }),
-  groupItemTitle: {
-    fontWeight: 600,
-    color: '#0f172a',
-    marginBottom: '0.25rem',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: '0.5rem',
-  },
-  groupItemPreview: {
+  notificationPreview: {
     fontSize: '0.8rem',
     color: '#334155',
   },
