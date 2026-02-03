@@ -633,9 +633,10 @@ function InlineTransactionTable(
     (column, rowObj = null) => {
       const entries = autoSelectConfigs[column];
       if (!Array.isArray(entries) || entries.length === 0) return null;
-      const fallback = entries[0];
-      for (const entry of entries) {
-        if (!entry || typeof entry !== 'object') continue;
+      let best = null;
+      let bestScore = -Infinity;
+      entries.forEach((entry) => {
+        if (!entry || typeof entry !== 'object') return;
         const filters = resolveCombinationFilters(rowObj, column, entry);
         const hasCombination = Boolean(
           entry?.combinationSourceColumn && entry?.combinationTargetColumn,
@@ -645,13 +646,18 @@ function InlineTransactionTable(
           entry?.combinationTargetColumn,
           filters,
         );
-        if (hasCombination && combinationReady) {
-          return { config: entry, filters, combinationReady };
+        const score =
+          (hasCombination ? (combinationReady ? 3 : -1) : 0) +
+          (entry.filterColumn ? 1 : 0) +
+          (entry.filterValue ? 1 : 0) +
+          (combinationReady ? 1 : 0);
+        if (best === null || score > bestScore) {
+          best = { config: entry, filters, combinationReady };
+          bestScore = score;
         }
-        if (!hasCombination) {
-          return { config: entry, filters, combinationReady: true };
-        }
-      }
+      });
+      if (best) return best;
+      const fallback = entries[0];
       return {
         config: fallback,
         filters: resolveCombinationFilters(rowObj, column, fallback),
@@ -677,10 +683,13 @@ function InlineTransactionTable(
         config?.combinationSourceColumn && config?.combinationTargetColumn,
       );
       const filters = resolved?.filters || resolveCombinationFilters(rowObj, column, config);
+      if (!filters) return hasCombination ? [] : options;
       const targetColumn = config?.combinationTargetColumn;
-      if (!filters || !targetColumn) return options;
+      if (!targetColumn) return hasCombination ? [] : options;
       const filterValue = filters[targetColumn];
-      if (filterValue === undefined || filterValue === null || filterValue === '') return options;
+      if (filterValue === undefined || filterValue === null || filterValue === '') {
+        return hasCombination ? [] : options;
+      }
       const columnRows = getRelationRowMap(column);
       if (!columnRows || typeof columnRows !== 'object') return options;
       const normalizedFilter = String(filterValue);
