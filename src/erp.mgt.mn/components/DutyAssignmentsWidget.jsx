@@ -1,4 +1,11 @@
-import { useContext, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { AuthContext } from '../context/AuthContext.jsx';
 import { useToast } from '../context/ToastContext.jsx';
 import { useCompanyModules } from '../hooks/useCompanyModules.js';
@@ -296,6 +303,32 @@ function normalizeLabel(value) {
   return trimmed ? trimmed : null;
 }
 
+function buildColumnLabelMap(columns) {
+  const map = new Map();
+  if (!Array.isArray(columns)) return map;
+  columns.forEach((column) => {
+    if (!column || typeof column !== 'object') return;
+    const name =
+      column.name ||
+      column.columnName ||
+      column.column_name ||
+      column.COLUMN_NAME ||
+      null;
+    if (!name) return;
+    const label =
+      normalizeLabel(column.label) ||
+      normalizeLabel(column.column_label) ||
+      normalizeLabel(column.COLUMN_COMMENT) ||
+      normalizeLabel(column.column_comment) ||
+      normalizeLabel(column.description) ||
+      null;
+    const normalized = normalizeFieldName(name);
+    if (!normalized) return;
+    map.set(normalized, label || String(name));
+  });
+  return map;
+}
+
 function buildPositionLabelMap({ workplacePositionMap, assignments } = {}) {
   const map = new Map();
   const setLabel = (id, label) => {
@@ -417,6 +450,8 @@ export default function DutyAssignmentsWidget() {
   const relationMapCache = useRef(new Map());
   const relationConfigCache = useRef(new Map());
   const relationLabelRequestCache = useRef(new Set());
+  const columnLabelCache = useRef(new Map());
+  const [columnLabelVersion, setColumnLabelVersion] = useState(0);
 
   const dutyNotificationConfig = useMemo(() => {
     const fields = parseListValue(generalConfig?.plan?.dutyNotificationFields);
@@ -732,6 +767,57 @@ export default function DutyAssignmentsWidget() {
       canceled = true;
     };
   }, [dutyTables]);
+
+  useEffect(() => {
+    let canceled = false;
+    if (dutyTables.length === 0) return undefined;
+    dutyTables.forEach(async (table) => {
+      if (!table) return;
+      const cacheKey = table.toLowerCase();
+      if (columnLabelCache.current.has(cacheKey)) return;
+      try {
+        const res = await fetch(`/api/tables/${encodeURIComponent(table)}/columns`, {
+          credentials: 'include',
+          skipErrorToast: true,
+          skipLoader: true,
+        });
+        if (!res.ok) {
+          columnLabelCache.current.set(cacheKey, new Map());
+          if (!canceled) setColumnLabelVersion((prev) => prev + 1);
+          return;
+        }
+        const list = await res.json().catch(() => []);
+        if (!canceled) {
+          columnLabelCache.current.set(cacheKey, buildColumnLabelMap(list));
+          setColumnLabelVersion((prev) => prev + 1);
+        }
+      } catch {
+        columnLabelCache.current.set(cacheKey, new Map());
+        if (!canceled) setColumnLabelVersion((prev) => prev + 1);
+      }
+    });
+    return () => {
+      canceled = true;
+    };
+  }, [dutyTables]);
+
+  const resolveColumnLabel = useCallback(
+    (column, entries) => {
+      if (!column || !entries || entries.length === 0) return column;
+      const normalizedField = normalizeFieldName(column);
+      for (const entry of entries) {
+        const normalizedTable =
+          normalizeText(getRowValue(entry.row, TRANSACTION_TABLE_KEYS)) ||
+          normalizeText(entry.table);
+        if (!normalizedTable) continue;
+        const labelMap = columnLabelCache.current.get(normalizedTable);
+        const label = labelMap?.get(normalizedField);
+        if (label) return label;
+      }
+      return column;
+    },
+    [columnLabelVersion],
+  );
 
   useEffect(() => {
     let canceled = false;
@@ -1091,7 +1177,7 @@ export default function DutyAssignmentsWidget() {
       groups.get(normalizedPosition).push(entry);
     });
     return Array.from(groups.entries()).map(([positionId, entries]) => {
-      const columnSet = new Set(['table']);
+      const columnSet = new Set();
       entries.forEach(({ row, table }) => {
         const normalizedTable =
           normalizeText(getRowValue(row, TRANSACTION_TABLE_KEYS)) ||
@@ -1148,7 +1234,7 @@ export default function DutyAssignmentsWidget() {
                     <tr>
                       {group.columns.map((column) => (
                         <th key={column} style={styles.tableHeaderCell}>
-                          {column === 'table' ? 'Duty Assignment' : column}
+                          {resolveColumnLabel(column, group.entries)}
                         </th>
                       ))}
                     </tr>
@@ -1160,10 +1246,7 @@ export default function DutyAssignmentsWidget() {
                           const normalizedTable = normalizeText(
                             getRowValue(entry.row, TRANSACTION_TABLE_KEYS),
                           );
-                          const rawValue =
-                            column === 'table'
-                              ? dutyLabelsByTable.get(normalizedTable) || entry.table
-                              : getRowFieldValue(entry.row, column);
+                          const rawValue = getRowFieldValue(entry.row, column);
                           let value = rawValue;
                           if (column !== 'table' && normalizedTable) {
                             const relMap =
