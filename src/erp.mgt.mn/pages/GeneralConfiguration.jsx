@@ -650,6 +650,43 @@ export default function GeneralConfiguration() {
               Leave blank to use the default value of 1.
             </div>
           </div>
+          <div style={{ marginBottom: '0.5rem' }}>
+            <TooltipWrapper
+              title={t('duty_transaction_table', {
+                ns: 'tooltip',
+                defaultValue: 'Table name used to pull duty assignments',
+              })}
+            >
+              <label>
+                Duty Transaction Table{' '}
+                <input
+                  name="dutyTableName"
+                  type="text"
+                  value={active.dutyTableName ?? ''}
+                  onChange={handleChange}
+                />
+              </label>
+            </TooltipWrapper>
+          </div>
+          <div style={{ marginBottom: '0.5rem' }}>
+            <TooltipWrapper
+              title={t('duty_position_field_name', {
+                ns: 'tooltip',
+                defaultValue:
+                  'Position field name used to match duty assignments to the current user',
+              })}
+            >
+              <label>
+                Duty Position Field Name{' '}
+                <input
+                  name="dutyPositionFieldName"
+                  type="text"
+                  value={active.dutyPositionFieldName ?? ''}
+                  onChange={handleChange}
+                />
+              </label>
+            </TooltipWrapper>
+          </div>
         </>
       ) : tab === 'system' ? (
         <div>
