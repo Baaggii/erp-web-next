@@ -165,8 +165,9 @@ export default function DashboardPage() {
       )}
 
       {active === 'plans' && (
-        <div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
           <TransactionNotificationWidget filterMode="plan" />
+          <TransactionNotificationWidget filterMode="duty" />
         </div>
       )}
     </div>

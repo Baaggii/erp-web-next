@@ -38,6 +38,8 @@ const PLAN_COMPLETION_KEYS = [
 ];
 const DEFAULT_PLAN_NOTIFICATION_FIELDS = ['is_plan', 'is_plan_completion'];
 const DEFAULT_PLAN_NOTIFICATION_VALUES = ['1'];
+const DEFAULT_DUTY_NOTIFICATION_FIELDS = [];
+const DEFAULT_DUTY_NOTIFICATION_VALUES = ['1'];
 
 function resolveModuleKey(info) {
   return info?.moduleKey || info?.module_key || info?.module || info?.modulekey || '';
@@ -368,6 +370,15 @@ export default function TransactionNotificationWidget({ filterMode = 'activity' 
     };
   }, [generalConfig]);
 
+  const dutyNotificationConfig = useMemo(() => {
+    const fields = parseListValue(generalConfig?.plan?.dutyNotificationFields);
+    const values = parseListValue(generalConfig?.plan?.dutyNotificationValues);
+    return {
+      fields: fields.length > 0 ? fields : DEFAULT_DUTY_NOTIFICATION_FIELDS,
+      values: values.length > 0 ? values : DEFAULT_DUTY_NOTIFICATION_VALUES,
+    };
+  }, [generalConfig]);
+
   const isPlanNotificationRow = useCallback(
     (row) => {
       if (!row) return false;
@@ -380,6 +391,20 @@ export default function TransactionNotificationWidget({ filterMode = 'activity' 
       });
     },
     [planNotificationConfig],
+  );
+
+  const isDutyNotificationRow = useCallback(
+    (row) => {
+      if (!row) return false;
+      const normalizedValues = dutyNotificationConfig.values.map(normalizeMatch);
+      return dutyNotificationConfig.fields.some((field) => {
+        const value = getRowFieldValue(row, field);
+        if (value === undefined || value === null || value === '') return false;
+        if (normalizedValues.length === 0) return normalizeFlagValue(value);
+        return normalizedValues.includes(normalizeMatch(value));
+      });
+    },
+    [dutyNotificationConfig],
   );
 
   const planTransactionsByName = useMemo(() => {
@@ -418,21 +443,35 @@ export default function TransactionNotificationWidget({ filterMode = 'activity' 
     [findTransactionRow, isPlanNotificationRow],
   );
 
+  const isDutyNotificationItem = useCallback(
+    (item) => {
+      if (!item) return false;
+      const row = findTransactionRow(item);
+      return isDutyNotificationRow(row);
+    },
+    [findTransactionRow, isDutyNotificationRow],
+  );
+
   const groups = useMemo(() => {
-    if (filterMode !== 'plan' && filterMode !== 'activity') {
+    if (filterMode !== 'plan' && filterMode !== 'activity' && filterMode !== 'duty') {
       return allGroups;
     }
     const isPlanMode = filterMode === 'plan';
+    const isDutyMode = filterMode === 'duty';
     return allGroups.reduce((acc, group) => {
       const items = group.items.filter((item) =>
-        isPlanMode ? isPlanNotificationItem(item) : !isPlanNotificationItem(item),
+        isPlanMode
+          ? isPlanNotificationItem(item)
+          : isDutyMode
+            ? isDutyNotificationItem(item)
+            : !isPlanNotificationItem(item) && !isDutyNotificationItem(item),
       );
       if (items.length === 0) return acc;
       const unreadCount = items.filter((item) => !item.isRead).length;
       acc.push({ ...group, items, unreadCount });
       return acc;
     }, []);
-  }, [allGroups, filterMode, isPlanNotificationItem]);
+  }, [allGroups, filterMode, isDutyNotificationItem, isPlanNotificationItem]);
 
   useEffect(() => {
     if (!highlightKey) return;
@@ -1162,19 +1201,27 @@ export default function TransactionNotificationWidget({ filterMode = 'activity' 
     <section style={styles.section}>
       <div style={styles.header}>
         <h3 style={styles.title}>
-          {filterMode === 'plan' ? 'Plan Notifications' : 'Transaction Notifications'}
+          {filterMode === 'plan'
+            ? 'Plan Notifications'
+            : filterMode === 'duty'
+              ? 'Duty Notifications'
+              : 'Transaction Notifications'}
         </h3>
         <span style={styles.subtitle}>
           {filterMode === 'plan'
             ? 'Grouped plan transaction alerts'
-            : 'Grouped by transaction name'}
+            : filterMode === 'duty'
+              ? 'Grouped duty transaction alerts'
+              : 'Grouped by transaction name'}
         </span>
       </div>
       {groups.length === 0 && (
         <div style={styles.empty}>
           {filterMode === 'plan'
             ? 'No plan notifications yet.'
-            : 'No transaction notifications yet.'}
+            : filterMode === 'duty'
+              ? 'No duty notifications yet.'
+              : 'No transaction notifications yet.'}
         </div>
       )}
       {groups.length > 0 && (

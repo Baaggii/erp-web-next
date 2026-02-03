@@ -608,6 +608,48 @@ export default function GeneralConfiguration() {
               Leave blank to use the default value of 1.
             </div>
           </div>
+          <div style={{ marginBottom: '0.5rem' }}>
+            <TooltipWrapper
+              title={t('duty_notification_fields', {
+                ns: 'tooltip',
+                defaultValue:
+                  'Comma-separated code_transaction fields used to route duty notifications to the Plans tab',
+              })}
+            >
+              <label>
+                Duty Notification Fields{' '}
+                <input
+                  name="dutyNotificationFields"
+                  type="text"
+                  value={active.dutyNotificationFields ?? ''}
+                  onChange={handleChange}
+                />
+              </label>
+            </TooltipWrapper>
+            <div style={{ fontSize: '0.8rem' }}>Example: is_duty</div>
+          </div>
+          <div style={{ marginBottom: '0.5rem' }}>
+            <TooltipWrapper
+              title={t('duty_notification_values', {
+                ns: 'tooltip',
+                defaultValue:
+                  'Comma-separated values to match against duty notification fields',
+              })}
+            >
+              <label>
+                Duty Notification Values{' '}
+                <input
+                  name="dutyNotificationValues"
+                  type="text"
+                  value={active.dutyNotificationValues ?? ''}
+                  onChange={handleChange}
+                />
+              </label>
+            </TooltipWrapper>
+            <div style={{ fontSize: '0.8rem' }}>
+              Leave blank to use the default value of 1.
+            </div>
+          </div>
         </>
       ) : tab === 'system' ? (
         <div>
