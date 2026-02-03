@@ -29,6 +29,10 @@ export default function GeneralConfiguration() {
       .then((res) => (res.ok ? res.json() : { isDefault: true }))
       .then((data) => {
         const { isDefault: def, ...rest } = data || {};
+        if (rest?.plan && typeof rest.plan === 'object') {
+          const { dutyTableName, dutyTransactionTable, ...planRest } = rest.plan;
+          rest.plan = planRest;
+        }
         setCfg(rest);
         setIsDefault(!!def);
       })
@@ -72,7 +76,11 @@ export default function GeneralConfiguration() {
         if (!resImport.ok) throw new Error('import failed');
         setIsDefault(false);
       }
-      const payload = { [tab]: cfg[tab] };
+      let payload = { [tab]: cfg[tab] };
+      if (tab === 'plan' && payload.plan && typeof payload.plan === 'object') {
+        const { dutyTableName, dutyTransactionTable, ...planRest } = payload.plan;
+        payload = { plan: planRest };
+      }
       const res = await fetch('/api/general_config', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
