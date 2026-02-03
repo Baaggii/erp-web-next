@@ -156,6 +156,7 @@ export default function FinanceTransactions({ moduleKey = 'finance_transactions'
   const prevConfigRef = useRef(null);
   const controlRefs = useRef([]);
   const prevNameRef = useRef();
+  const prevParamNameRef = useRef(searchParams.get(paramKey) || '');
   const temporaryProcessedRef = useRef(new Set());
   const planCompletionProcessedRef = useRef(new Set());
 
@@ -320,6 +321,15 @@ useEffect(() => {
       return sp;
     });
   }, [name, paramKey]);
+
+  useEffect(() => {
+    const paramName = searchParams.get(paramKey) || '';
+    if (paramName === prevParamNameRef.current) return;
+    prevParamNameRef.current = paramName;
+    if (paramName !== name) {
+      setName(paramName);
+    }
+  }, [name, paramKey, searchParams]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return undefined;
