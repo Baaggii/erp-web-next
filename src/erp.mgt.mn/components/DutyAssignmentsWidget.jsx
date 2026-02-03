@@ -561,6 +561,26 @@ export default function DutyAssignmentsWidget() {
     generalConfig?.plan?.dutyPositionFieldName?.trim() || 'position_id';
   const dutyDashboardToastEnabled = generalConfig?.plan?.dutyDashboardToastEnabled ?? false;
 
+  const visibleFieldsByTable = useMemo(() => {
+    const map = new Map();
+    assignments.forEach(({ row, table }) => {
+      const normalizedTable =
+        normalizeText(getRowValue(row, TRANSACTION_TABLE_KEYS)) ||
+        normalizeText(table);
+      if (!normalizedTable) return;
+      const dashboardFields = dashboardFieldsByTable.get(normalizedTable);
+      const fieldList = dashboardFields ? dashboardFields : Object.keys(row || {});
+      fieldList.forEach((key) => {
+        if (key === positionFieldName) return;
+        const value = getRowFieldValue(row, key);
+        if (isEmptyDisplayValue(value)) return;
+        if (!map.has(normalizedTable)) map.set(normalizedTable, new Set());
+        map.get(normalizedTable).add(key);
+      });
+    });
+    return map;
+  }, [assignments, dashboardFieldsByTable, positionFieldName]);
+
   useEffect(() => {
     let canceled = false;
     const userRightId =
