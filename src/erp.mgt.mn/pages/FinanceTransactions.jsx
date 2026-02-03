@@ -101,6 +101,10 @@ function isEqual(a, b) {
   }
 }
 
+function resolveModuleKey(info) {
+  return info?.moduleKey || info?.module_key || info?.module || info?.modulekey || '';
+}
+
 export default function FinanceTransactions({ moduleKey = 'finance_transactions', moduleLabel = '' }) {
   const renderCount = useRef(0);
   renderCount.current++;
@@ -322,6 +326,13 @@ useEffect(() => {
   }, [name, paramKey]);
 
   useEffect(() => {
+    const paramValue = searchParams.get(paramKey) || '';
+    if (!planCompletionParams?.open) return;
+    if (!paramValue || paramValue === name) return;
+    setName(paramValue);
+  }, [name, paramKey, planCompletionParams, searchParams]);
+
+  useEffect(() => {
     if (typeof window === 'undefined') return undefined;
 
     const setParamPair = (params, camelKey, value) => {
@@ -531,7 +542,7 @@ useEffect(() => {
         Object.entries(data).forEach(([n, info]) => {
           if (n === 'isDefault') return;
           if (!info || typeof info !== 'object') return;
-          const mKey = info.moduleKey;
+          const mKey = resolveModuleKey(info);
           if (mKey !== moduleKey) return;
           if (
             !hasTransactionFormAccess(info, branchId, departmentId, {
