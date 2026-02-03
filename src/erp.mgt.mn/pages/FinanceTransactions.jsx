@@ -160,6 +160,7 @@ export default function FinanceTransactions({ moduleKey = 'finance_transactions'
   const prevConfigRef = useRef(null);
   const controlRefs = useRef([]);
   const prevNameRef = useRef();
+  const prevParamNameRef = useRef(searchParams.get(paramKey) || '');
   const temporaryProcessedRef = useRef(new Set());
   const planCompletionProcessedRef = useRef(new Set());
 
