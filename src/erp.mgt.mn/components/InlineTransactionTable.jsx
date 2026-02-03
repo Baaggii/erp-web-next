@@ -679,9 +679,6 @@ function InlineTransactionTable(
       if (!Array.isArray(options) || options.length === 0) return options;
       const resolved = getAutoSelectConfig(column, rowObj);
       const config = resolved?.config;
-      const hasCombination = Boolean(
-        config?.combinationSourceColumn && config?.combinationTargetColumn,
-      );
       const filters = resolved?.filters || resolveCombinationFilters(rowObj, column, config);
       if (!filters) return options;
       const targetColumn = config?.combinationTargetColumn;
