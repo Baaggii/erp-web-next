@@ -33,6 +33,7 @@ export default function AsyncSearchSelect({
   onChange,
   onSelect,
   useLabelAsValue = false,
+  useRemoteSearch = true,
   disabled,
   onKeyDown,
   inputRef,
@@ -354,7 +355,11 @@ export default function AsyncSearchSelect({
         forcedLocalSearchRef.current &&
         forcedLocalSearchRef.current === normalizedSearch;
       const shouldUseRemoteSearch =
-        normalizedQuery && !skipRemoteSearch && !forceLocalSearch && cols.length > 0;
+        useRemoteSearch &&
+        normalizedQuery &&
+        !skipRemoteSearch &&
+        !forceLocalSearch &&
+        cols.length > 0;
       if (shouldUseRemoteSearch) {
         params.set('search', normalizedQuery);
         params.set('searchColumns', cols.join(','));
@@ -504,7 +509,13 @@ export default function AsyncSearchSelect({
     setPage(1);
     setHasMore(false);
     forcedLocalSearchRef.current = '';
-  }, [table, filtersKey, effectiveCompanyId]);
+  }, [table, effectiveCompanyId]);
+
+  useEffect(() => {
+    setPage(1);
+    setHasMore(false);
+    forcedLocalSearchRef.current = '';
+  }, [filtersKey]);
 
   useEffect(() => {
     if (!show) {
