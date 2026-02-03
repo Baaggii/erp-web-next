@@ -693,6 +693,7 @@ async function handleTransactionNotification(job) {
   const transactionName = deriveTransactionName(transactionRow, job.tableName);
 
   const handled = new Set();
+  const notifiedRecipients = new Set();
   for (const relation of relations) {
     if (notifyFieldSet && !notifyFieldSet.has(String(relation.column).toLowerCase())) {
       continue;
@@ -824,6 +825,8 @@ async function handleTransactionNotification(job) {
 
         if (uniqueRecipients.length) {
           for (const recipient of uniqueRecipients) {
+            if (notifiedRecipients.has(recipient)) continue;
+            notifiedRecipients.add(recipient);
             // eslint-disable-next-line no-await-in-loop
             await notifyUser({
               companyId: job.companyId,
