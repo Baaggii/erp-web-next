@@ -615,9 +615,30 @@ async function handleTransactionNotification(job) {
     });
   }
 
-  if (!relations.length) return;
   const notifyFields = normalizeFieldList(transactionConfig?.notifyFields);
   if (!notifyFields.length) return;
+  const columns = await listTableColumns(job.tableName);
+  const relationColumns = new Set(
+    relations
+      .map((relation) => (relation?.column ? String(relation.column).toLowerCase() : ''))
+      .filter((column) => column),
+  );
+  notifyFields.forEach((field) => {
+    const fieldLower = String(field).toLowerCase();
+    if (relationColumns.has(fieldLower)) return;
+    const hasColumn =
+      Array.isArray(columns) &&
+      columns.some((column) => String(column).toLowerCase() === fieldLower);
+    if (!hasColumn) return;
+    if (!fieldLower.includes('position')) return;
+    relations.push({
+      column: field,
+      table: 'code_position',
+      idField: 'position_id',
+      isArray: false,
+    });
+  });
+  if (!relations.length) return;
   const editFieldList = normalizeFieldList(
     transactionConfig?.notificationDashboardFields?.length
       ? transactionConfig.notificationDashboardFields
@@ -733,10 +754,13 @@ async function handleTransactionNotification(job) {
         relation.idField,
         referenceRow,
       );
-      const role =
+      let role =
         typeof config?.notificationRole === 'string'
           ? config.notificationRole.trim().toLowerCase()
           : '';
+      if (!role && relation.table === 'code_position') {
+        role = 'position';
+      }
       if (!role || !NOTIFICATION_ROLE_SET.has(role)) continue;
 
       const { summaryFields: referenceSummaryFields, summaryText: referenceSummaryText } =
