@@ -964,7 +964,6 @@ useEffect(() => {
   const hasDateParams = hasStartDateParam || hasEndDateParam;
 
   useEffect(() => {
-    if (!planCompletionParams?.open) return;
     if (!name) return;
     const config = configs[name];
     if (!config) return;
@@ -975,14 +974,7 @@ useEffect(() => {
       setRefreshId((r) => r + 1);
       setShowTable(true);
     }
-  }, [
-    configs,
-    findCompletionConfigName,
-    name,
-    planCompletionParams,
-    setRefreshId,
-    setShowTable,
-  ]);
+  }, [configs, findCompletionConfigName, name, setRefreshId, setShowTable]);
 
   useEffect(() => {
     if (!selectedProc) return;
@@ -1166,12 +1158,7 @@ useEffect(() => {
                   const newName = e.target.value;
                   if (newName === name) return;
                   let nextName = newName;
-                  if (
-                    planCompletionParams?.open &&
-                    newName &&
-                    configs[newName] &&
-                    hasFlag(configs[newName], PLAN_FLAG_KEYS)
-                  ) {
+                  if (newName && configs[newName] && hasFlag(configs[newName], PLAN_FLAG_KEYS)) {
                     const completionName = findCompletionConfigName(configs[newName]);
                     if (completionName) nextName = completionName;
                   }
