@@ -2681,8 +2681,70 @@ const TableManager = forwardRef(function TableManager({
         if (requestStatus) {
           rows = rows.filter((r) => requestIdSet.has(String(getRowId(r))));
         }
-        setServerRows(rows);
-        setRows(applyRelationFilters(rows));
+        const relationLikeFilters = Object.entries(filters)
+          .map(([key, value]) => {
+            if (!relationConfigs[key]?.table) return null;
+            if (value === undefined || value === null || String(value).trim() === '') return null;
+            return { key, query: String(value).trim().toLowerCase() };
+          })
+          .filter(Boolean);
+        if (relationLikeFilters.length > 0) {
+          rows = rows.filter((row) => {
+            return relationLikeFilters.every(({ key, query }) => {
+              const relationConfig = relationConfigs[key];
+              const rawValue = row?.[key];
+              const candidates = new Set();
+              const addCandidate = (value) => {
+                if (value === undefined || value === null) return;
+                const text = String(value).trim().toLowerCase();
+                if (!text) return;
+                candidates.add(text);
+              };
+              const addObjectCandidates = (value) => {
+                if (!value || typeof value !== 'object') return;
+                addCandidate(value.label);
+                addCandidate(value.name);
+                addCandidate(value.title);
+                addCandidate(value.code);
+              };
+              addObjectCandidates(rawValue);
+              const cacheKey =
+                rawValue === undefined || rawValue === null ? '' : String(rawValue);
+              const cachedLabel = jsonRelationLabels?.[key]?.[cacheKey];
+              addCandidate(cachedLabel);
+              const relationRows = refRows?.[key] || {};
+              const relationRow = getRelationRowFromMap(relationRows, rawValue);
+              if (relationRow && typeof relationRow === 'object') {
+                const displayFields = relationConfig?.displayFields || [];
+                if (displayFields.length > 0) {
+                  displayFields.forEach((field) => {
+                    const fieldValue = getRowValueCaseInsensitive(relationRow, field);
+                    addCandidate(fieldValue);
+                  });
+                } else {
+                  const idFieldName =
+                    relationConfig?.idField || relationConfig?.column || key;
+                  const idFieldLower =
+                    idFieldName === undefined || idFieldName === null
+                      ? null
+                      : String(idFieldName).toLowerCase();
+                  Object.entries(relationRow).forEach(([field, fieldValue]) => {
+                    if (idFieldLower && field.toLowerCase() === idFieldLower) return;
+                    addCandidate(fieldValue);
+                  });
+                }
+                addCandidate(
+                  formatRelationDisplay(relationRow, relationConfig, rawValue),
+                );
+              }
+              if (candidates.size === 0) return true;
+              return Array.from(candidates).some((candidate) =>
+                candidate.includes(query),
+              );
+            });
+          });
+        }
+        setRows(rows);
         if (!requestStatus) {
           setCount(data.total ?? data.count ?? 0);
         }
