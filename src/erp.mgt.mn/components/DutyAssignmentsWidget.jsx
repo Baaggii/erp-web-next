@@ -131,7 +131,6 @@ function buildRowKey(table, row) {
 
 function normalizeDisplayValue(value) {
   if (value === null || value === undefined) return '';
-  if (typeof value === 'string') return value.trim();
   if (typeof value === 'object') {
     try {
       return JSON.stringify(value);
@@ -140,14 +139,6 @@ function normalizeDisplayValue(value) {
     }
   }
   return String(value);
-}
-
-function isEmptyDisplayValue(value) {
-  if (value === null || value === undefined) return true;
-  if (typeof value === 'string') return value.trim() === '';
-  if (Array.isArray(value)) return value.length === 0;
-  if (typeof value === 'object') return Object.keys(value).length === 0;
-  return false;
 }
 
 export default function DutyAssignmentsWidget() {
@@ -275,21 +266,7 @@ export default function DutyAssignmentsWidget() {
     };
   }, [dutyTables, positionFieldName, positionIds]);
 
-  const groupedAssignments = useMemo(() => {
-    const groups = new Map();
-    assignments.forEach((entry) => {
-      const rawPosition = entry.row?.[positionFieldName];
-      const positionKey = normalizeDisplayValue(rawPosition) || 'Unassigned';
-      if (!groups.has(positionKey)) groups.set(positionKey, []);
-      groups.get(positionKey).push(entry);
-    });
-    return Array.from(groups.entries()).map(([positionId, items]) => ({
-      positionId,
-      items,
-    }));
-  }, [assignments, positionFieldName]);
-
-  const shouldShowEmpty = !loading && !error && groupedAssignments.length === 0;
+  const shouldShowEmpty = !loading && !error && assignments.length === 0;
 
   return (
     <section style={styles.section}>
@@ -306,58 +283,26 @@ export default function DutyAssignmentsWidget() {
       {shouldShowEmpty && (
         <div style={styles.empty}>No duty assignments found for your positions.</div>
       )}
-      {groupedAssignments.length > 0 && (
+      {assignments.length > 0 && (
         <div style={styles.list}>
-          {groupedAssignments.map((group) => (
-            <div key={group.positionId} style={styles.group}>
-              <div style={styles.groupHeader}>
-                <strong>Position: {group.positionId}</strong>
-                <span style={styles.groupCount}>{group.items.length} rows</span>
+          {assignments.map((entry) => (
+            <div key={buildRowKey(entry.table, entry.row)} style={styles.card}>
+              <div style={styles.cardHeader}>
+                <strong>{entry.table}</strong>
+                <span style={styles.cardMeta}>
+                  {positionFieldName}: {normalizeDisplayValue(entry.row?.[positionFieldName])}
+                </span>
               </div>
-              {group.items.length > 0 && (
-                <div style={styles.tableWrapper}>
-                  <table style={styles.table}>
-                    <thead>
-                      <tr>
-                        <th style={styles.tableHeader}>Table</th>
-                        <th style={styles.tableHeader}>Field</th>
-                        <th style={styles.tableHeader}>Value</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {group.items.map((entry) => {
-                        const rows = Object.entries(entry.row || {})
-                          .filter(([key]) => key !== positionFieldName)
-                          .map(([key, value]) => ({
-                            key,
-                            value,
-                            display: normalizeDisplayValue(value),
-                          }))
-                          .filter((row) => !isEmptyDisplayValue(row.display));
-                        if (rows.length === 0) {
-                          return (
-                            <tr key={buildRowKey(entry.table, entry.row)}>
-                              <td style={styles.tableCell}>{entry.table}</td>
-                              <td style={styles.tableCell} colSpan={2}>
-                                No non-empty fields.
-                              </td>
-                            </tr>
-                          );
-                        }
-                        return rows.map((row, index) => (
-                          <tr key={`${buildRowKey(entry.table, entry.row)}-${row.key}`}>
-                            <td style={styles.tableCell}>
-                              {index === 0 ? entry.table : ''}
-                            </td>
-                            <td style={styles.tableCell}>{row.key}</td>
-                            <td style={styles.tableCell}>{row.display}</td>
-                          </tr>
-                        ));
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              )}
+              <div style={styles.cardBody}>
+                {Object.entries(entry.row || {})
+                  .filter(([key]) => key !== positionFieldName)
+                  .map(([key, value]) => (
+                    <div key={`${entry.table}-${key}`} style={styles.fieldRow}>
+                      <span style={styles.fieldLabel}>{key}</span>
+                      <span style={styles.fieldValue}>{normalizeDisplayValue(value)}</span>
+                    </div>
+                  ))}
+              </div>
             </div>
           ))}
         </div>
@@ -385,37 +330,28 @@ const styles = {
   error: { color: '#b91c1c', padding: '0.5rem 0' },
   empty: { color: '#64748b', padding: '0.5rem 0' },
   list: { display: 'flex', flexDirection: 'column', gap: '0.75rem' },
-  group: {
+  card: {
     border: '1px solid #e5e7eb',
     borderRadius: '10px',
     padding: '0.75rem',
     background: '#fff',
   },
-  groupHeader: {
+  cardHeader: {
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: '0.5rem',
     gap: '0.5rem',
   },
-  groupCount: { fontSize: '0.75rem', color: '#64748b' },
-  tableWrapper: { overflowX: 'auto' },
-  table: {
-    width: '100%',
-    borderCollapse: 'collapse',
+  cardMeta: { fontSize: '0.75rem', color: '#64748b' },
+  cardBody: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
+    gap: '0.35rem 0.75rem',
     fontSize: '0.8rem',
     color: '#1f2937',
   },
-  tableHeader: {
-    textAlign: 'left',
-    padding: '0.4rem 0.5rem',
-    borderBottom: '1px solid #e5e7eb',
-    color: '#475569',
-  },
-  tableCell: {
-    padding: '0.35rem 0.5rem',
-    borderBottom: '1px solid #f1f5f9',
-    verticalAlign: 'top',
-    wordBreak: 'break-word',
-  },
+  fieldRow: { display: 'flex', flexDirection: 'column', gap: '0.1rem' },
+  fieldLabel: { fontSize: '0.7rem', color: '#64748b' },
+  fieldValue: { wordBreak: 'break-word' },
 };
