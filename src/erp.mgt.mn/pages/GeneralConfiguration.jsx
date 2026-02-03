@@ -588,28 +588,6 @@ export default function GeneralConfiguration() {
           </div>
           <div style={{ marginBottom: '0.5rem' }}>
             <TooltipWrapper
-              title={t('plan_duty_field_name', {
-                ns: 'tooltip',
-                defaultValue:
-                  'Field name in code_transaction that marks duty transactions (ex: is_duty)',
-              })}
-            >
-              <label>
-                Duty Field Name{' '}
-                <input
-                  name="dutyFieldName"
-                  type="text"
-                  value={active.dutyFieldName ?? ''}
-                  onChange={handleChange}
-                />
-              </label>
-            </TooltipWrapper>
-            <div style={{ fontSize: '0.8rem' }}>
-              Example: is_duty
-            </div>
-          </div>
-          <div style={{ marginBottom: '0.5rem' }}>
-            <TooltipWrapper
               title={t('plan_notification_values', {
                 ns: 'tooltip',
                 defaultValue:
