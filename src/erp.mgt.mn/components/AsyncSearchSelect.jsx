@@ -84,7 +84,13 @@ export default function AsyncSearchSelect({
         return { value: item, label: resolvedLabel ?? String(item) };
       });
   }, [resolveValueLabel]);
-  const initialVal = isMulti ? '' : toInputString(extractPrimitiveValue(value));
+  const initialVal = isMulti
+    ? ''
+    : toInputString(
+        useLabelAsValue && typeof value === 'object' && value !== null && value.label != null
+          ? value.label
+          : extractPrimitiveValue(value),
+      );
   const initialLabel =
     !isMulti && typeof value === 'object' && value !== null ? value.label ?? '' : '';
   const [input, setInput] = useState(initialVal);
@@ -415,12 +421,8 @@ export default function AsyncSearchSelect({
         !signal?.aborted
       ) {
         // When a search query is active and no matches were found in the
-        // current page, we fetch the next page locally. Because the previous
-        // options still contain the unfiltered first page, users would see the
-        // original items sitting above the upcoming matches. Clearing the
-        // options before continuing ensures that the results list only contains
-        // the matching items once they are loaded, regardless of which page
-        // they came from.
+        // current page, fetch the next page locally while keeping the current
+        // options so similar rows can still be shown.
         const nextPage = p + 1;
         setPage(nextPage);
         return fetchPage(nextPage, q, true, signal, {
@@ -445,7 +447,12 @@ export default function AsyncSearchSelect({
       }
       const nextList = opts;
       if (!canUpdateState()) return;
+      const preserveExisting =
+        !append && normalizedFilter && Array.isArray(nextList) && nextList.length === 0;
       setOptions((prev) => {
+        if (preserveExisting) {
+          return Array.isArray(prev) ? prev : [];
+        }
         if (append) {
           const base = Array.isArray(prev) ? prev : [];
           return normalizeOptions([...base, ...nextList]);
@@ -468,7 +475,9 @@ export default function AsyncSearchSelect({
     }
     const primitiveValue = extractPrimitiveValue(value);
     if (typeof value === 'object' && value !== null) {
-      setInput(toInputString(primitiveValue));
+      const nextInput =
+        useLabelAsValue && value.label != null ? value.label : primitiveValue;
+      setInput(toInputString(nextInput));
       setLabel(value.label ?? '');
     } else {
       setInput(toInputString(primitiveValue));
@@ -477,7 +486,7 @@ export default function AsyncSearchSelect({
     if (isEmptyInputValue(primitiveValue)) {
       forcedLocalSearchRef.current = '';
     }
-  }, [isMulti, value]);
+  }, [isMulti, useLabelAsValue, value]);
 
   useEffect(() => {
     setOptions([]);
