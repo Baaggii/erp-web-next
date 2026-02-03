@@ -504,6 +504,7 @@ export default function RelationsConfig() {
                     <option value="company">Company</option>
                     <option value="department">Department</option>
                     <option value="branch">Branch</option>
+                    <option value="position">Position</option>
                     <option value="employee">Employee</option>
                     <option value="customer">Customer</option>
                   </select>
@@ -594,6 +595,7 @@ export default function RelationsConfig() {
                     <option value="company">Company</option>
                     <option value="department">Department</option>
                     <option value="branch">Branch</option>
+                    <option value="position">Position</option>
                     <option value="employee">Employee</option>
                     <option value="customer">Customer</option>
                   </select>
@@ -762,6 +764,7 @@ export default function RelationsConfig() {
                             <option value="company">Company</option>
                             <option value="department">Department</option>
                             <option value="branch">Branch</option>
+                            <option value="position">Position</option>
                             <option value="employee">Employee</option>
                             <option value="customer">Customer</option>
                           </select>
@@ -918,6 +921,7 @@ export default function RelationsConfig() {
                               <option value="company">Company</option>
                               <option value="department">Department</option>
                               <option value="branch">Branch</option>
+                              <option value="position">Position</option>
                               <option value="employee">Employee</option>
                               <option value="customer">Customer</option>
                             </select>
