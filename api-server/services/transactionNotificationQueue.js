@@ -716,7 +716,10 @@ async function handleTransactionNotification(job) {
         relation.idField,
         referenceRow,
       );
-      const role = config?.notificationRole?.trim();
+      const role =
+        typeof config?.notificationRole === 'string'
+          ? config.notificationRole.trim().toLowerCase()
+          : '';
       if (!role || !NOTIFICATION_ROLE_SET.has(role)) continue;
 
       const { summaryFields: referenceSummaryFields, summaryText: referenceSummaryText } =
