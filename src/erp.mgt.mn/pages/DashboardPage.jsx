@@ -22,8 +22,6 @@ export default function DashboardPage() {
 
   const prevTab = useRef('general');
   const allowedTabs = useRef(new Set(['general', 'activity', 'audition', 'plans']));
-  const acceptedNewCount = outgoing?.accepted?.newCount ?? 0;
-  const declinedNewCount = outgoing?.declined?.newCount ?? 0;
 
   useEffect(() => {
     const params = new URLSearchParams(location.search || '');
@@ -115,7 +113,7 @@ export default function DashboardPage() {
         {tabButton(
           'audition',
           t('audition', 'Audition'),
-          acceptedNewCount + declinedNewCount,
+          outgoing.accepted.newCount + outgoing.declined.newCount,
           hasNew,
         )}
         {tabButton('plans', t('plans', 'Plans'))}
