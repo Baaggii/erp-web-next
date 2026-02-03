@@ -1035,7 +1035,9 @@ export default function DutyAssignmentsWidget() {
           normalizeText(entry.table);
         if (!normalizedTable) continue;
         const relMap = relationMapCache.current.get(normalizedTable) || new Map();
-        const fields = Array.from(visibleFieldsByTable.get(normalizedTable) || []);
+        const fields =
+          dashboardFieldsByTable.get(normalizedTable) ||
+          Object.keys(entry.row || {});
         for (const field of fields) {
           if (field === positionFieldName) continue;
           const relation = relMap.get(normalizeFieldName(field));
@@ -1060,11 +1062,11 @@ export default function DutyAssignmentsWidget() {
     };
   }, [
     assignments,
+    dashboardFieldsByTable,
     dutyTables,
     positionFieldName,
     relationLabelMap,
     relationMapVersion,
-    visibleFieldsByTable,
   ]);
 
   const shouldShowEmpty = !loading && !error && assignments.length === 0;
