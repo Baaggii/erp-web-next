@@ -11,6 +11,8 @@ import {
 } from '../utils/moduleAccess.js';
 import { resolveWorkplacePositionForContext } from '../utils/workplaceResolver.js';
 
+const ARROW_SEPARATOR = '→';
+
 const TRANSACTION_NAME_KEYS = [
   'UITransTypeName',
   'UITransTypeNameEng',
@@ -71,6 +73,65 @@ function parseListValue(value) {
 function normalizeText(value) {
   if (value === undefined || value === null) return '';
   return String(value).trim().toLowerCase();
+}
+
+function normalizeRelationValue(raw) {
+  if (raw === undefined || raw === null) return '';
+  if (typeof raw === 'string') return raw.trim();
+  if (typeof raw === 'number') return String(raw);
+  if (typeof raw === 'boolean') return raw ? 'Yes' : 'No';
+  try {
+    return JSON.stringify(raw);
+  } catch {
+    return String(raw);
+  }
+}
+
+function parseRelationValueParts(raw) {
+  const normalized = normalizeRelationValue(raw);
+  if (!normalized) return { parts: [], separator: '' };
+  if (normalized.includes(ARROW_SEPARATOR)) {
+    return {
+      parts: normalized.split(ARROW_SEPARATOR).map((part) => part.trim()),
+      separator: ` ${ARROW_SEPARATOR} `,
+    };
+  }
+  if (normalized.startsWith('[') && normalized.endsWith(']')) {
+    try {
+      const parsed = JSON.parse(normalized);
+      if (Array.isArray(parsed)) {
+        return {
+          parts: parsed.map((value) => normalizeRelationValue(value)),
+          separator: ', ',
+        };
+      }
+    } catch {
+      // ignore invalid JSON
+    }
+  }
+  return { parts: [normalized], separator: '' };
+}
+
+function buildRelationDisplay(row, config, fallbackValue) {
+  if (!row || typeof row !== 'object') return fallbackValue ?? '';
+  const cfg = config || {};
+  const parts = [];
+  const idField = cfg.idField || cfg.column;
+  const idValue = idField && idField in row ? row[idField] : fallbackValue;
+  if (idValue !== undefined && idValue !== null && idValue !== '') {
+    parts.push(idValue);
+  }
+  (cfg.displayFields || []).forEach((field) => {
+    if (typeof field !== 'string') return;
+    const value = row[field];
+    if (value !== undefined && value !== null && value !== '') {
+      parts.push(value);
+    }
+  });
+  const formatted = parts
+    .filter((part) => part !== undefined && part !== null && part !== '')
+    .map((part) => (typeof part === 'string' ? part : String(part)));
+  return formatted.length > 0 ? formatted.join(' - ') : fallbackValue ?? '';
 }
 
 function normalizeFieldName(value) {
@@ -349,8 +410,13 @@ export default function DutyAssignmentsWidget() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [resolvedPositionLabels, setResolvedPositionLabels] = useState(new Map());
+  const [relationLabelMap, setRelationLabelMap] = useState(new Map());
+  const [relationMapVersion, setRelationMapVersion] = useState(0);
   const { addToast } = useToast();
   const dutyDashboardToastRef = useRef('');
+  const relationMapCache = useRef(new Map());
+  const relationConfigCache = useRef(new Map());
+  const relationLabelRequestCache = useRef(new Set());
 
   const dutyNotificationConfig = useMemo(() => {
     const fields = parseListValue(generalConfig?.plan?.dutyNotificationFields);
@@ -495,6 +561,26 @@ export default function DutyAssignmentsWidget() {
     generalConfig?.plan?.dutyPositionFieldName?.trim() || 'position_id';
   const dutyDashboardToastEnabled = generalConfig?.plan?.dutyDashboardToastEnabled ?? false;
 
+  const visibleFieldsByTable = useMemo(() => {
+    const map = new Map();
+    assignments.forEach(({ row, table }) => {
+      const normalizedTable =
+        normalizeText(getRowValue(row, TRANSACTION_TABLE_KEYS)) ||
+        normalizeText(table);
+      if (!normalizedTable) return;
+      const dashboardFields = dashboardFieldsByTable.get(normalizedTable);
+      const fieldList = dashboardFields ? dashboardFields : Object.keys(row || {});
+      fieldList.forEach((key) => {
+        if (key === positionFieldName) return;
+        const value = getRowFieldValue(row, key);
+        if (isEmptyDisplayValue(value)) return;
+        if (!map.has(normalizedTable)) map.set(normalizedTable, new Set());
+        map.get(normalizedTable).add(key);
+      });
+    });
+    return map;
+  }, [assignments, dashboardFieldsByTable, positionFieldName]);
+
   useEffect(() => {
     let canceled = false;
     const userRightId =
@@ -604,6 +690,48 @@ export default function DutyAssignmentsWidget() {
       canceled = true;
     };
   }, []);
+
+  useEffect(() => {
+    let canceled = false;
+    if (dutyTables.length === 0) return undefined;
+    dutyTables.forEach(async (table) => {
+      if (!table) return;
+      const cacheKey = table.toLowerCase();
+      if (relationMapCache.current.has(cacheKey)) return;
+      try {
+        const res = await fetch(`/api/tables/${encodeURIComponent(table)}/relations`, {
+          credentials: 'include',
+          skipErrorToast: true,
+          skipLoader: true,
+        });
+        if (!res.ok) {
+          relationMapCache.current.set(cacheKey, new Map());
+          setRelationMapVersion((prev) => prev + 1);
+          return;
+        }
+        const list = await res.json().catch(() => []);
+        const map = new Map();
+        if (Array.isArray(list)) {
+          list
+            .map((entry) => normalizeRelationEntry(entry))
+            .filter(Boolean)
+            .forEach((rel) => {
+              map.set(normalizeFieldName(rel.column), rel);
+            });
+        }
+        if (!canceled) {
+          relationMapCache.current.set(cacheKey, map);
+          setRelationMapVersion((prev) => prev + 1);
+        }
+      } catch {
+        relationMapCache.current.set(cacheKey, new Map());
+        setRelationMapVersion((prev) => prev + 1);
+      }
+    });
+    return () => {
+      canceled = true;
+    };
+  }, [dutyTables]);
 
   useEffect(() => {
     let canceled = false;
@@ -836,6 +964,109 @@ export default function DutyAssignmentsWidget() {
     };
   }, [assignments, company, dutyTables, positionFieldName]);
 
+  useEffect(() => {
+    let canceled = false;
+    if (!assignments.length || !dutyTables.length) return undefined;
+
+    const setLabel = (cacheKey, label) => {
+      setRelationLabelMap((prev) => {
+        if (prev.get(cacheKey) === label) return prev;
+        const next = new Map(prev);
+        next.set(cacheKey, label);
+        return next;
+      });
+    };
+
+    const getDisplayConfig = async (relation) => {
+      const cacheKey = `${relation.table}|${relation.targetColumn || relation.column}|${
+        relation.filterColumn || ''
+      }|${relation.filterValue ?? ''}`;
+      if (relationConfigCache.current.has(cacheKey)) {
+        return relationConfigCache.current.get(cacheKey);
+      }
+      const config = await fetchDisplayConfig(relation.table, relation);
+      relationConfigCache.current.set(cacheKey, config);
+      return config;
+    };
+
+    const ensureLabel = async ({ relation, rawValue, valueKey }) => {
+      const cacheKey = `${relation.table}|${relation.targetColumn || relation.column}|${
+        relation.filterColumn || ''
+      }|${relation.filterValue ?? ''}|${valueKey}`;
+      if (relationLabelMap.get(cacheKey)) return;
+      if (relationLabelRequestCache.current.has(cacheKey)) return;
+      relationLabelRequestCache.current.add(cacheKey);
+      try {
+        const displayConfig = await getDisplayConfig(relation);
+        const params = new URLSearchParams({ page: '1', perPage: '1' });
+        const idField =
+          displayConfig.idField || relation.targetColumn || relation.column;
+        if (idField) params.set(idField, valueKey);
+        if (
+          relation.filterColumn &&
+          relation.filterValue !== undefined &&
+          relation.filterValue !== null
+        ) {
+          params.set(relation.filterColumn, String(relation.filterValue));
+        }
+        const res = await fetch(
+          `/api/tables/${encodeURIComponent(relation.table)}?${params.toString()}`,
+          { credentials: 'include', skipErrorToast: true, skipLoader: true },
+        );
+        let row = null;
+        if (res.ok) {
+          const json = await res.json().catch(() => ({}));
+          row = Array.isArray(json.rows) ? json.rows[0] : null;
+        }
+        if (canceled) return;
+        if (row && typeof row === 'object') {
+          const label = buildRelationDisplay(row, displayConfig, rawValue);
+          if (label) setLabel(cacheKey, label);
+        }
+      } catch {
+        // ignore
+      }
+    };
+
+    const loadMissing = async () => {
+      for (const entry of assignments) {
+        const normalizedTable =
+          normalizeText(getRowValue(entry.row, TRANSACTION_TABLE_KEYS)) ||
+          normalizeText(entry.table);
+        if (!normalizedTable) continue;
+        const relMap = relationMapCache.current.get(normalizedTable) || new Map();
+        const fields = Array.from(visibleFieldsByTable.get(normalizedTable) || []);
+        for (const field of fields) {
+          if (field === positionFieldName) continue;
+          const relation = relMap.get(normalizeFieldName(field));
+          if (!relation?.table || !relation?.column) continue;
+          const rawValue = getRowFieldValue(entry.row, field);
+          const { parts } = parseRelationValueParts(rawValue);
+          if (parts.length === 0) continue;
+          for (const part of parts) {
+            const valueKey = normalizeRelationValue(part);
+            if (!valueKey) continue;
+            // eslint-disable-next-line no-await-in-loop
+            await ensureLabel({ relation, rawValue, valueKey });
+          }
+        }
+      }
+    };
+
+    loadMissing();
+
+    return () => {
+      canceled = true;
+    };
+  }, [
+    assignments,
+    dutyTables,
+    positionFieldName,
+    relationLabelMap,
+    relationMapVersion,
+    visibleFieldsByTable,
+  ]);
+
   const shouldShowEmpty = !loading && !error && assignments.length === 0;
 
   const dutyTitle = useMemo(() => {
@@ -927,10 +1158,31 @@ export default function DutyAssignmentsWidget() {
                           const normalizedTable = normalizeText(
                             getRowValue(entry.row, TRANSACTION_TABLE_KEYS),
                           );
-                          const value =
+                          const rawValue =
                             column === 'table'
                               ? dutyLabelsByTable.get(normalizedTable) || entry.table
                               : getRowFieldValue(entry.row, column);
+                          let value = rawValue;
+                          if (column !== 'table' && normalizedTable) {
+                            const relMap =
+                              relationMapCache.current.get(normalizedTable) || new Map();
+                            const relation = relMap.get(normalizeFieldName(column));
+                            if (relation?.table) {
+                              const { parts, separator } = parseRelationValueParts(rawValue);
+                              if (parts.length > 0) {
+                                const resolvedParts = parts.map((part) => {
+                                  const valueKey = normalizeRelationValue(part);
+                                  const cacheKey = `${relation.table}|${
+                                    relation.targetColumn || relation.column
+                                  }|${relation.filterColumn || ''}|${
+                                    relation.filterValue ?? ''
+                                  }|${valueKey}`;
+                                  return relationLabelMap.get(cacheKey) || part;
+                                });
+                                value = resolvedParts.join(separator);
+                              }
+                            }
+                          }
                           return (
                             <td key={`${buildRowKey(entry.table, entry.row)}-${column}`} style={styles.tableCell}>
                               {normalizeDisplayValue(value)}
