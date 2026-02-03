@@ -328,7 +328,7 @@ useEffect(() => {
   useEffect(() => {
     const paramValue = searchParams.get(paramKey) || '';
     if (!planCompletionParams?.open) return;
-    if (!paramValue || paramValue === name) return;
+    if (!paramValue || paramValue === name || name === '') return;
     setName(paramValue);
   }, [name, paramKey, planCompletionParams, searchParams]);
 
