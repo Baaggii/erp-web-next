@@ -4,7 +4,6 @@ import React, {
   useContext,
   useRef,
   useMemo,
-  useCallback,
 } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import TableManager from '../components/TableManager.jsx';
@@ -92,79 +91,6 @@ function isEndDateParam(param) {
   if (!isLikelyDateField(param)) return false;
   const normalized = normalizeParamName(getParamName(param));
   return normalized.includes('end') || normalized.includes('to');
-}
-
-const PLAN_FLAG_KEYS = ['is_plan', 'isPlan', 'isPlanTransaction', 'is_plan_transaction'];
-const PLAN_COMPLETION_KEYS = [
-  'is_plan_completion',
-  'isPlanCompletion',
-  'isPlanCompletionTransaction',
-];
-
-function normalizeText(value) {
-  if (value === undefined || value === null) return '';
-  return String(value).trim().toLowerCase();
-}
-
-function normalizeFieldName(value) {
-  return String(value || '')
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]/g, '');
-}
-
-function normalizeFlagValue(value) {
-  if (typeof value === 'boolean') return value;
-  if (typeof value === 'number') return value !== 0;
-  if (typeof value === 'string') {
-    const normalized = value.trim().toLowerCase();
-    if (normalized === '') return false;
-    if (['1', 'true', 'yes', 'y', 'on', 'enabled'].includes(normalized)) return true;
-    if (['0', 'false', 'no', 'n', 'off', 'disabled'].includes(normalized)) return false;
-    const num = Number(normalized);
-    if (!Number.isNaN(num)) return num !== 0;
-    return true;
-  }
-  return Boolean(value);
-}
-
-function getConfigFieldValue(config, fieldName) {
-  if (!config || !fieldName) return undefined;
-  if (Object.prototype.hasOwnProperty.call(config, fieldName)) {
-    return config[fieldName];
-  }
-  const normalizedTarget = normalizeFieldName(fieldName);
-  if (!normalizedTarget) return undefined;
-  const matchKey = Object.keys(config).find(
-    (key) => normalizeFieldName(key) === normalizedTarget,
-  );
-  return matchKey ? config[matchKey] : undefined;
-}
-
-function hasFlag(config, keys) {
-  for (const key of keys) {
-    const value = getConfigFieldValue(config, key);
-    if (value !== undefined) {
-      return normalizeFlagValue(value);
-    }
-  }
-  return false;
-}
-
-function getCompletionReference(config) {
-  if (!config || typeof config !== 'object') return null;
-  const keys = Object.keys(config);
-  for (const key of keys) {
-    const normalized = key.toLowerCase();
-    if (!normalized.includes('completion')) continue;
-    if (normalized.includes('is_plan_completion') || normalized.includes('isplancompletion'))
-      continue;
-    const value = config[key];
-    if (value === undefined || value === null || value === '') continue;
-    if (typeof value === 'object') continue;
-    return value;
-  }
-  return null;
 }
 
 function isEqual(a, b) {
@@ -394,14 +320,6 @@ useEffect(() => {
       return sp;
     });
   }, [name, paramKey]);
-
-  useEffect(() => {
-    const paramName = searchParams.get(paramKey);
-    if (!paramName) return;
-    if (paramName !== name) {
-      setName(paramName);
-    }
-  }, [name, paramKey, searchParams]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return undefined;
@@ -907,34 +825,6 @@ useEffect(() => {
 
 
   const transactionNames = useMemo(() => Object.keys(configs), [configs]);
-  const findCompletionConfigName = useCallback(
-    (planConfig) => {
-      if (!planConfig) return null;
-      const completionReference = getCompletionReference(planConfig);
-      const configEntries = Object.entries(configs);
-      if (completionReference !== null && completionReference !== undefined) {
-        const referenceKey = normalizeText(completionReference);
-        const match = configEntries.find(([entryName, info]) => {
-          const name = normalizeText(entryName);
-          const table = normalizeText(info?.table ?? info?.tableName ?? info?.table_name);
-          const typeId = normalizeText(info?.UITransType ?? info?.transType ?? info?.id);
-          return (
-            (name && name === referenceKey) ||
-            (table && table === referenceKey) ||
-            (typeId && typeId === referenceKey)
-          );
-        });
-        if (match) return match[0];
-      }
-
-      const completionEntry = configEntries.find(([, info]) =>
-        hasFlag(info, PLAN_COMPLETION_KEYS),
-      );
-      if (completionEntry) return completionEntry[0];
-      return null;
-    },
-    [configs],
-  );
   const dateParamInfo = useMemo(() => {
     const info = {
       hasStartDateParam: false,
@@ -962,19 +852,6 @@ useEffect(() => {
   const { hasStartDateParam, hasEndDateParam, managedIndices, startIndices, endIndices } =
     dateParamInfo;
   const hasDateParams = hasStartDateParam || hasEndDateParam;
-
-  useEffect(() => {
-    if (!name) return;
-    const config = configs[name];
-    if (!config) return;
-    if (!hasFlag(config, PLAN_FLAG_KEYS)) return;
-    const completionName = findCompletionConfigName(config);
-    if (completionName && completionName !== name) {
-      setName(completionName);
-      setRefreshId((r) => r + 1);
-      setShowTable(true);
-    }
-  }, [configs, findCompletionConfigName, name, setRefreshId, setShowTable]);
 
   useEffect(() => {
     if (!selectedProc) return;
@@ -1157,20 +1034,14 @@ useEffect(() => {
                 onChange={(e) => {
                   const newName = e.target.value;
                   if (newName === name) return;
-                  let nextName = newName;
-                  if (newName && configs[newName] && hasFlag(configs[newName], PLAN_FLAG_KEYS)) {
-                    const completionName = findCompletionConfigName(configs[newName]);
-                    if (completionName) nextName = completionName;
-                  }
-                  if (nextName === name) return;
-                  setName(nextName);
+                  setName(newName);
                   setRefreshId((r) => r + 1);
                   setShowTable(true);
-                  if (!nextName) {
+                  if (!newName) {
                     if (table !== '') setTable('');
                     if (config !== null) setConfig(null);
-                  } else if (configs[nextName]) {
-                    const tbl = configs[nextName].table ?? configs[nextName];
+                  } else if (configs[newName]) {
+                    const tbl = configs[newName].table ?? configs[newName];
                     if (tbl !== table) {
                       setTable(tbl);
                       if (config !== null) setConfig(null);
