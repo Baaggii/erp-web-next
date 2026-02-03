@@ -45,10 +45,6 @@ function resolveModuleKey(info) {
   return info?.moduleKey || info?.module_key || info?.module || info?.modulekey || '';
 }
 
-function resolveModuleKey(info) {
-  return info?.moduleKey || info?.module_key || info?.module || info?.modulekey || '';
-}
-
 function normalizeText(value) {
   if (value === undefined || value === null) return '';
   return String(value).trim().toLowerCase();
