@@ -759,6 +759,29 @@ export default function TransactionNotificationWidget({ filterMode = 'activity' 
     };
   }, [groups, relationLabelMap, relationMapVersion]);
 
+  const resolveTransactionFormInfo = useCallback(
+    (item) => {
+      if (!item || !allowedForms) return null;
+      const normalizedName = normalizeText(item.transactionName);
+      if (normalizedName) {
+        const entry = Object.entries(allowedForms).find(
+          ([name]) => normalizeText(name) === normalizedName,
+        );
+        if (entry) return entry[1];
+      }
+      const normalizedTable = normalizeText(item.transactionTable);
+      if (normalizedTable) {
+        const entry = Object.entries(allowedForms).find(([, info]) => {
+          const table = normalizeText(info?.table ?? info?.tableName ?? info?.table_name);
+          return table && table === normalizedTable;
+        });
+        if (entry) return entry[1];
+      }
+      return null;
+    },
+    [allowedForms],
+  );
+
   const resolveSummaryValue = useCallback(
     (item, field) => {
       if (!item?.transactionTable || !field?.field) return field?.value ?? '';
@@ -974,29 +997,6 @@ export default function TransactionNotificationWidget({ filterMode = 'activity' 
       cancelled = true;
     };
   }, [loadAllowedForms]);
-
-  const resolveTransactionFormInfo = useCallback(
-    (item) => {
-      if (!item || !allowedForms) return null;
-      const normalizedName = normalizeText(item.transactionName);
-      if (normalizedName) {
-        const entry = Object.entries(allowedForms).find(
-          ([name]) => normalizeText(name) === normalizedName,
-        );
-        if (entry) return entry[1];
-      }
-      const normalizedTable = normalizeText(item.transactionTable);
-      if (normalizedTable) {
-        const entry = Object.entries(allowedForms).find(([, info]) => {
-          const table = normalizeText(info?.table ?? info?.tableName ?? info?.table_name);
-          return table && table === normalizedTable;
-        });
-        if (entry) return entry[1];
-      }
-      return null;
-    },
-    [allowedForms],
-  );
 
   const resolveCompletionForm = useCallback((completionRow, forms) => {
     if (!completionRow || !forms) return null;
