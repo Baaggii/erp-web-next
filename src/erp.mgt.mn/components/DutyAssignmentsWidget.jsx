@@ -414,11 +414,25 @@ export default function DutyAssignmentsWidget() {
         configs.forEach((cfg) => {
           resolveDashboardFields(cfg).forEach((field) => fieldSet.add(field));
         });
+      } else {
+        const name = normalizeText(getRowValue(row, TRANSACTION_NAME_KEYS));
+        const fallbackInfo =
+          (name && allowedFormMaps.nameMap.get(name)) ||
+          allowedFormMaps.tableMap.get(table) ||
+          null;
+        if (fallbackInfo) {
+          resolveDashboardFields(fallbackInfo).forEach((field) => fieldSet.add(field));
+        }
       }
       map.set(table, Array.from(fieldSet));
     });
     return map;
-  }, [codeTransactions, dutyNotificationConfig, transactionConfigsByType]);
+  }, [
+    allowedFormMaps,
+    codeTransactions,
+    dutyNotificationConfig,
+    transactionConfigsByType,
+  ]);
 
   const dutyLabelsByTable = useMemo(() => {
     const map = new Map();
@@ -818,9 +832,14 @@ export default function DutyAssignmentsWidget() {
       entries.forEach(({ row }) => {
         const normalizedTable = normalizeText(getRowValue(row, TRANSACTION_TABLE_KEYS));
         const dashboardFields = normalizedTable
-          ? dashboardFieldsByTable.get(normalizedTable) ?? []
-          : [];
-        const fieldList = dashboardFields;
+          ? dashboardFieldsByTable.get(normalizedTable)
+          : null;
+        const fieldList =
+          dashboardFields && dashboardFields.length > 0
+            ? dashboardFields
+            : dashboardFields
+              ? []
+              : Object.keys(row || {});
         fieldList.forEach((key) => {
           if (key === positionFieldName) return;
           const value = getRowFieldValue(row, key);

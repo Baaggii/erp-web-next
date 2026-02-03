@@ -362,8 +362,8 @@ async function listEmpIdsByScope({ companyId, branchId, departmentId, positionId
     params.push(departmentId);
   }
   if (positionId) {
-    conditions.push('employment_position_id = ?');
-    params.push(positionId);
+    conditions.push('(employment_position_id = ? OR workplace_position_id = ?)');
+    params.push(positionId, positionId);
   }
   const [rows] = await pool.query(
     `SELECT employment_emp_id AS empId
