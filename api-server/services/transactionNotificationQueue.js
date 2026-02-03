@@ -78,6 +78,12 @@ function getCaseInsensitive(row, field) {
   return key ? row[key] : undefined;
 }
 
+function normalizeRecipientEmpId(empid) {
+  if (!empid) return null;
+  const trimmed = String(empid).trim();
+  return trimmed ? trimmed.toUpperCase() : null;
+}
+
 function deriveTransactionName(row, tableName) {
   const candidates = [
     'TRTYPENAME',
@@ -809,18 +815,22 @@ async function handleTransactionNotification(job) {
             departmentId: referenceId,
           });
         } else if (role === 'position') {
+          const workplacePositionId = getCaseInsensitive(
+            referenceRow,
+            'workplace_position_id',
+          );
+          const positionLookupId =
+            workplacePositionId ??
+            getCaseInsensitive(referenceRow, 'position_id') ??
+            referenceId;
           recipients = await listEmpIdsByScope({
             companyId: job.companyId,
-            positionId: referenceId,
+            positionId: positionLookupId,
           });
         }
 
         const uniqueRecipients = Array.from(
-          new Set(
-            recipients
-              .map((entry) => String(entry).trim())
-              .filter((entry) => entry),
-          ),
+          new Set(recipients.map((entry) => normalizeRecipientEmpId(entry)).filter(Boolean)),
         );
 
         if (uniqueRecipients.length) {
