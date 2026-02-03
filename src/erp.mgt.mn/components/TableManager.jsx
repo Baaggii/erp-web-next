@@ -2602,24 +2602,56 @@ const TableManager = forwardRef(function TableManager({
         if (relationLikeFilters.length > 0) {
           rows = rows.filter((row) => {
             return relationLikeFilters.every(({ key, query }) => {
+              const relationConfig = relationConfigs[key];
               const rawValue = row?.[key];
-              const valueText = rawValue != null ? String(rawValue).toLowerCase() : '';
-              if (valueText.includes(query)) return true;
-              if (!refRows || !refRows[key]) return true;
-              const relationRow = refRows?.[key]?.[rawValue];
-              if (!relationRow || typeof relationRow !== 'object') return false;
-              const displayFields = relationConfigs[key]?.displayFields || [];
-              if (displayFields.length > 0) {
-                return displayFields.some((field) => {
-                  const fieldValue = relationRow[field];
-                  if (fieldValue === undefined || fieldValue === null) return false;
-                  return String(fieldValue).toLowerCase().includes(query);
-                });
+              const candidates = new Set();
+              const addCandidate = (value) => {
+                if (value === undefined || value === null) return;
+                const text = String(value).trim().toLowerCase();
+                if (!text) return;
+                candidates.add(text);
+              };
+              const addObjectCandidates = (value) => {
+                if (!value || typeof value !== 'object') return;
+                addCandidate(value.label);
+                addCandidate(value.name);
+                addCandidate(value.title);
+                addCandidate(value.code);
+              };
+              addObjectCandidates(rawValue);
+              const cacheKey =
+                rawValue === undefined || rawValue === null ? '' : String(rawValue);
+              const cachedLabel = jsonRelationLabels?.[key]?.[cacheKey];
+              addCandidate(cachedLabel);
+              const relationRows = refRows?.[key] || {};
+              const relationRow = getRelationRowFromMap(relationRows, rawValue);
+              if (relationRow && typeof relationRow === 'object') {
+                const displayFields = relationConfig?.displayFields || [];
+                if (displayFields.length > 0) {
+                  displayFields.forEach((field) => {
+                    const fieldValue = getRowValueCaseInsensitive(relationRow, field);
+                    addCandidate(fieldValue);
+                  });
+                } else {
+                  const idFieldName =
+                    relationConfig?.idField || relationConfig?.column || key;
+                  const idFieldLower =
+                    idFieldName === undefined || idFieldName === null
+                      ? null
+                      : String(idFieldName).toLowerCase();
+                  Object.entries(relationRow).forEach(([field, fieldValue]) => {
+                    if (idFieldLower && field.toLowerCase() === idFieldLower) return;
+                    addCandidate(fieldValue);
+                  });
+                }
+                addCandidate(
+                  formatRelationDisplay(relationRow, relationConfig, rawValue),
+                );
               }
-              return Object.values(relationRow).some((fieldValue) => {
-                if (fieldValue === undefined || fieldValue === null) return false;
-                return String(fieldValue).toLowerCase().includes(query);
-              });
+              if (candidates.size === 0) return true;
+              return Array.from(candidates).some((candidate) =>
+                candidate.includes(query),
+              );
             });
           });
         }
@@ -2652,6 +2684,10 @@ const TableManager = forwardRef(function TableManager({
     columnMeta,
     validCols,
     filterModes,
+    relationConfigs,
+    refRows,
+    jsonRelationLabels,
+    formatRelationDisplay,
     requestStatus,
     requestIdsKey,
   ]);
