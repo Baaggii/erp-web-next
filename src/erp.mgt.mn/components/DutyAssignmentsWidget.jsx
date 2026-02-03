@@ -341,6 +341,7 @@ export default function DutyAssignmentsWidget() {
   } = useContext(AuthContext);
   const licensed = useCompanyModules(company);
   const [codeTransactions, setCodeTransactions] = useState([]);
+  const [transactionForms, setTransactionForms] = useState({});
   const [allowedForms, setAllowedForms] = useState({});
   const [assignments, setAssignments] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -383,7 +384,7 @@ export default function DutyAssignmentsWidget() {
 
   const transactionConfigsByType = useMemo(() => {
     const map = new Map();
-    Object.values(allowedForms).forEach((info) => {
+    Object.values(transactionForms).forEach((info) => {
       if (!info || typeof info !== 'object') return;
       const rawType =
         info.transactionTypeValue ??
@@ -398,7 +399,7 @@ export default function DutyAssignmentsWidget() {
       map.set(normalized, existing);
     });
     return map;
-  }, [allowedForms]);
+  }, [transactionForms]);
 
   const dashboardFieldsByTable = useMemo(() => {
     const map = new Map();
@@ -491,9 +492,6 @@ export default function DutyAssignmentsWidget() {
 
   useEffect(() => {
     let canceled = false;
-    const params = new URLSearchParams();
-    if (branch != null) params.set('branchId', branch);
-    if (department != null) params.set('departmentId', department);
     const userRightId =
       user?.userLevel ??
       user?.userlevel_id ??
@@ -525,20 +523,7 @@ export default function DutyAssignmentsWidget() {
       session?.position ??
       user?.position ??
       null;
-    if (userRightId != null && `${userRightId}`.trim() !== '') {
-      params.set('userRightId', userRightId);
-    }
-    if (workplaceId != null && `${workplaceId}`.trim() !== '') {
-      params.set('workplaceId', workplaceId);
-    }
-    if (positionId != null && `${positionId}`.trim() !== '') {
-      params.set('positionId', positionId);
-    }
-    if (workplacePositionId != null && `${workplacePositionId}`.trim() !== '') {
-      params.set('workplacePositionId', workplacePositionId);
-    }
-    const query = params.toString();
-    fetch(`/api/transaction_forms${query ? `?${query}` : ''}`, {
+    fetch('/api/transaction_forms', {
       credentials: 'include',
       skipErrorToast: true,
       skipLoader: true,
@@ -546,10 +531,12 @@ export default function DutyAssignmentsWidget() {
       .then((res) => (res.ok ? res.json() : {}))
       .then((data) => {
         if (canceled) return;
+        const formsData = data && typeof data === 'object' ? data : {};
+        setTransactionForms(formsData);
         const filtered = {};
         const branchId = branch != null ? String(branch) : null;
         const departmentId = department != null ? String(department) : null;
-        Object.entries(data).forEach(([name, info]) => {
+        Object.entries(formsData).forEach(([name, info]) => {
           if (name === 'isDefault') return;
           if (!info || typeof info !== 'object') return;
           if (
