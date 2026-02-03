@@ -190,27 +190,6 @@ function resolveWithMap(alias, map = {}) {
   return strAlias;
 }
 
-function extractSimilarRows(data) {
-  if (!data || typeof data !== 'object') return [];
-  const candidates = [
-    data.similarRows,
-    data.similar_rows,
-    data.duplicateRows,
-    data.duplicate_rows,
-    data.duplicates,
-    data.similar,
-  ];
-  for (const candidate of candidates) {
-    if (Array.isArray(candidate)) return candidate;
-  }
-  if (Array.isArray(data.rows) && typeof data.message === 'string') {
-    if (/similar|duplicate/i.test(data.message)) {
-      return data.rows;
-    }
-  }
-  return [];
-}
-
 function resolveScopeId(value) {
   if (value === undefined || value === null) return null;
   if (typeof value === 'object') {
@@ -4511,29 +4490,11 @@ const TableManager = forwardRef(function TableManager({
         return { printPayload };
       } else {
         let message = 'Хадгалахад алдаа гарлаа';
-        let data = null;
         try {
-          data = await res.json();
+          const data = await res.json();
           if (data && data.message) message += `: ${data.message}`;
         } catch {
           // ignore
-        }
-        const similarRows = extractSimilarRows(data);
-        if (res.status === 409 && similarRows.length > 0) {
-          const normalizedRows = similarRows.map((row) =>
-            normalizeToCanonical(row),
-          );
-          setRows(normalizedRows);
-          setCount(similarRows.length);
-          setPage(1);
-          setSelectedRows(new Set());
-          logRowsMemory(normalizedRows);
-          addToast(
-            t('similar_rows_found', 'Found {{count}} similar rows', {
-              count: similarRows.length,
-            }),
-            'warning',
-          );
         }
         addToast(message, 'error');
         return false;
