@@ -809,9 +809,17 @@ async function handleTransactionNotification(job) {
             departmentId: referenceId,
           });
         } else if (role === 'position') {
+          const workplacePositionId = getCaseInsensitive(
+            referenceRow,
+            'workplace_position_id',
+          );
+          const positionLookupId =
+            workplacePositionId ??
+            getCaseInsensitive(referenceRow, 'position_id') ??
+            referenceId;
           recipients = await listEmpIdsByScope({
             companyId: job.companyId,
-            positionId: referenceId,
+            positionId: positionLookupId,
           });
         }
 
