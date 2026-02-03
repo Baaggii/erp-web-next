@@ -320,6 +320,20 @@ function buildRelationDisplay(row, config, fallbackValue) {
   return formatted.length > 0 ? formatted.join(' - ') : fallbackValue ?? '';
 }
 
+function isNonEmptyDisplayValue(value) {
+  if (value === undefined || value === null) return false;
+  if (Array.isArray(value)) {
+    return value.some((entry) => isNonEmptyDisplayValue(entry));
+  }
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    return trimmed !== '' && trimmed !== '—';
+  }
+  if (typeof value === 'number') return !Number.isNaN(value);
+  if (typeof value === 'object') return Object.keys(value).length > 0;
+  return true;
+}
+
 export default function TransactionNotificationWidget({ filterMode = 'activity' }) {
   const { groups: allGroups, markGroupRead } = useTransactionNotifications();
   const location = useLocation();
@@ -342,6 +356,7 @@ export default function TransactionNotificationWidget({ filterMode = 'activity' 
   const [relationLabelMap, setRelationLabelMap] = useState({});
   const [relationMapVersion, setRelationMapVersion] = useState(0);
   const [codeTransactions, setCodeTransactions] = useState([]);
+  const [allowedForms, setAllowedForms] = useState(null);
   const [completionLoading, setCompletionLoading] = useState(() => new Set());
   const groupRefs = useRef({});
   const itemRefs = useRef({});
@@ -764,6 +779,36 @@ export default function TransactionNotificationWidget({ filterMode = 'activity' 
     [relationLabelMap],
   );
 
+  const buildSummaryTableFields = useCallback(
+    (item) => {
+      const summaryFields = Array.isArray(item?.summaryFields) ? item.summaryFields : [];
+      if (summaryFields.length === 0) return [];
+      const formInfo = resolveTransactionFormInfo(item);
+      const dashboardFieldsRaw =
+        formInfo?.notificationDashboardFields ?? formInfo?.notification_dashboard_fields ?? [];
+      const dashboardFields = Array.isArray(dashboardFieldsRaw)
+        ? dashboardFieldsRaw.map((field) => String(field).trim()).filter(Boolean)
+        : [];
+      let orderedFields = summaryFields;
+      if (dashboardFields.length > 0) {
+        const summaryMap = new Map(
+          summaryFields.map((field) => [normalizeFieldName(field?.field), field]),
+        );
+        orderedFields = dashboardFields
+          .map((fieldName) => summaryMap.get(normalizeFieldName(fieldName)))
+          .filter(Boolean);
+      }
+      return orderedFields
+        .map((field) => {
+          const label = field?.field ?? field?.label ?? field?.name ?? '';
+          const value = resolveSummaryValue(item, field);
+          return { label, value };
+        })
+        .filter((entry) => entry.label && isNonEmptyDisplayValue(entry.value));
+    },
+    [resolveSummaryValue, resolveTransactionFormInfo],
+  );
+
   const groupItems = useCallback((items = []) => {
     const excludedItems = items.filter((item) => isExcludedAction(item));
     const deletedItems = items.filter((item) => isDeletedAction(item?.action));
@@ -915,6 +960,43 @@ export default function TransactionNotificationWidget({ filterMode = 'activity' 
     workplace,
     workplacePositionMap,
   ]);
+
+  useEffect(() => {
+    let cancelled = false;
+    loadAllowedForms()
+      .then((forms) => {
+        if (!cancelled) setAllowedForms(forms);
+      })
+      .catch(() => {
+        if (!cancelled) setAllowedForms({});
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [loadAllowedForms]);
+
+  const resolveTransactionFormInfo = useCallback(
+    (item) => {
+      if (!item || !allowedForms) return null;
+      const normalizedName = normalizeText(item.transactionName);
+      if (normalizedName) {
+        const entry = Object.entries(allowedForms).find(
+          ([name]) => normalizeText(name) === normalizedName,
+        );
+        if (entry) return entry[1];
+      }
+      const normalizedTable = normalizeText(item.transactionTable);
+      if (normalizedTable) {
+        const entry = Object.entries(allowedForms).find(([, info]) => {
+          const table = normalizeText(info?.table ?? info?.tableName ?? info?.table_name);
+          return table && table === normalizedTable;
+        });
+        if (entry) return entry[1];
+      }
+      return null;
+    },
+    [allowedForms],
+  );
 
   const resolveCompletionForm = useCallback((completionRow, forms) => {
     if (!completionRow || !forms) return null;
@@ -1097,6 +1179,7 @@ export default function TransactionNotificationWidget({ filterMode = 'activity' 
                   const planRow = findTransactionRow(item);
                   const canAddCompletion = planRow && hasFlag(planRow, PLAN_FLAG_KEYS);
                   const isCompletionLoading = completionLoading.has(String(item.id));
+                  const summaryTableFields = buildSummaryTableFields(item);
                   return (
                     <div
                       key={item.id}
@@ -1122,16 +1205,34 @@ export default function TransactionNotificationWidget({ filterMode = 'activity' 
                           </button>
                         )}
                       </div>
-                      {Array.isArray(item.summaryFields) && item.summaryFields.length > 0 && (
-                        <div style={styles.summaryFields}>
-                          {item.summaryFields.map((field) => (
-                            <div key={`${item.id}-${field.field}`} style={styles.summaryFieldRow}>
-                              <span style={styles.summaryFieldLabel}>{field.field}</span>
-                              <span style={styles.summaryFieldValue}>
-                                {resolveSummaryValue(item, field)}
-                              </span>
-                            </div>
-                          ))}
+                      {summaryTableFields.length > 0 && (
+                        <div style={styles.summaryTableWrapper}>
+                          <table style={styles.summaryTable}>
+                            <thead>
+                              <tr>
+                                {summaryTableFields.map((field) => (
+                                  <th
+                                    key={`${item.id}-${field.label}-header`}
+                                    style={styles.summaryTableHeader}
+                                  >
+                                    {field.label}
+                                  </th>
+                                ))}
+                              </tr>
+                            </thead>
+                            <tbody>
+                              <tr>
+                                {summaryTableFields.map((field) => (
+                                  <td
+                                    key={`${item.id}-${field.label}-value`}
+                                    style={styles.summaryTableCell}
+                                  >
+                                    {field.value}
+                                  </td>
+                                ))}
+                              </tr>
+                            </tbody>
+                          </table>
                         </div>
                       )}
                       <div style={styles.itemMeta}>
@@ -1374,6 +1475,35 @@ const styles = {
   },
   summaryFieldLabel: { fontWeight: 600 },
   summaryFieldValue: { color: '#0f172a' },
+  summaryTableWrapper: {
+    marginTop: '0.35rem',
+    width: '100%',
+  },
+  summaryTable: {
+    width: '100%',
+    borderCollapse: 'collapse',
+    tableLayout: 'fixed',
+  },
+  summaryTableHeader: {
+    textAlign: 'left',
+    fontSize: '0.65rem',
+    textTransform: 'uppercase',
+    letterSpacing: '0.03em',
+    color: '#64748b',
+    padding: '0.2rem 0.3rem',
+    borderBottom: '1px solid #e2e8f0',
+    verticalAlign: 'bottom',
+    wordBreak: 'break-word',
+    whiteSpace: 'normal',
+  },
+  summaryTableCell: {
+    fontSize: '0.75rem',
+    color: '#0f172a',
+    padding: '0.25rem 0.3rem',
+    verticalAlign: 'top',
+    wordBreak: 'break-word',
+    whiteSpace: 'normal',
+  },
   itemMeta: {
     fontSize: '0.7rem',
     color: '#64748b',
