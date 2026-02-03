@@ -9,6 +9,7 @@ const NOTIFICATION_ROLE_SET = new Set([
   'company',
   'department',
   'branch',
+  'position',
   'customer',
 ]);
 
@@ -338,7 +339,7 @@ function pickDisplayConfig(entries, table, idField, referenceRow) {
   return fallback ?? scoped[0];
 }
 
-async function listEmpIdsByScope({ companyId, branchId, departmentId }) {
+async function listEmpIdsByScope({ companyId, branchId, departmentId, positionId }) {
   if (!companyId) return [];
   const params = [companyId];
   const conditions = ['employment_company_id = ?', 'deleted_at IS NULL'];
@@ -349,6 +350,10 @@ async function listEmpIdsByScope({ companyId, branchId, departmentId }) {
   if (departmentId) {
     conditions.push('employment_department_id = ?');
     params.push(departmentId);
+  }
+  if (positionId) {
+    conditions.push('employment_position_id = ?');
+    params.push(positionId);
   }
   const [rows] = await pool.query(
     `SELECT employment_emp_id AS empId
@@ -788,6 +793,11 @@ async function handleTransactionNotification(job) {
           recipients = await listEmpIdsByScope({
             companyId: job.companyId,
             departmentId: referenceId,
+          });
+        } else if (role === 'position') {
+          recipients = await listEmpIdsByScope({
+            companyId: job.companyId,
+            positionId: referenceId,
           });
         }
 
