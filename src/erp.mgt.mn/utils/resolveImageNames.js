@@ -21,7 +21,7 @@ function getCase(obj, field, columnCaseMap) {
   return key ? unwrapValue(obj[key]) : undefined;
 }
 
-export function pickConfigEntry(cfgs = {}, row = {}, columnCaseMap = {}) {
+function pickConfigEntry(cfgs = {}, row = {}, columnCaseMap = {}) {
   const tVal =
     getCase(row, 'transtype', columnCaseMap) ||
     getCase(row, 'Transtype', columnCaseMap) ||
