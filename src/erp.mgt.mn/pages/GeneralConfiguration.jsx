@@ -29,6 +29,10 @@ export default function GeneralConfiguration() {
       .then((res) => (res.ok ? res.json() : { isDefault: true }))
       .then((data) => {
         const { isDefault: def, ...rest } = data || {};
+        if (rest?.plan && typeof rest.plan === 'object') {
+          const { dutyTableName, dutyTransactionTable, ...planRest } = rest.plan;
+          rest.plan = planRest;
+        }
         setCfg(rest);
         setIsDefault(!!def);
       })
@@ -72,7 +76,11 @@ export default function GeneralConfiguration() {
         if (!resImport.ok) throw new Error('import failed');
         setIsDefault(false);
       }
-      const payload = { [tab]: cfg[tab] };
+      let payload = { [tab]: cfg[tab] };
+      if (tab === 'plan' && payload.plan && typeof payload.plan === 'object') {
+        const { dutyTableName, dutyTransactionTable, ...planRest } = payload.plan;
+        payload = { plan: planRest };
+      }
       const res = await fetch('/api/general_config', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -649,6 +657,25 @@ export default function GeneralConfiguration() {
             <div style={{ fontSize: '0.8rem' }}>
               Leave blank to use the default value of 1.
             </div>
+          </div>
+          <div style={{ marginBottom: '0.5rem' }}>
+            <TooltipWrapper
+              title={t('duty_position_field_name', {
+                ns: 'tooltip',
+                defaultValue:
+                  'Position field name used to match duty assignments to the current user',
+              })}
+            >
+              <label>
+                Duty Position Field Name{' '}
+                <input
+                  name="dutyPositionFieldName"
+                  type="text"
+                  value={active.dutyPositionFieldName ?? ''}
+                  onChange={handleChange}
+                />
+              </label>
+            </TooltipWrapper>
           </div>
         </>
       ) : tab === 'system' ? (
