@@ -2524,7 +2524,7 @@ const TableManager = forwardRef(function TableManager({
     }
     Object.entries(filters).forEach(([k, v]) => {
       if (v !== '' && v !== null && v !== undefined && validCols.has(k)) {
-        if (relationConfigs[k]?.table) {
+        if (relationConfigs[k]?.table && filterModes[k] === 'like') {
           return;
         }
         const mode = filterModes[k];
