@@ -260,6 +260,15 @@ export default function DutyAssignmentsWidget() {
     [position, workplacePositionMap],
   );
 
+  const positionLabelMap = useMemo(
+    () =>
+      buildPositionLabelMap({
+        workplacePositionMap,
+        assignments: session?.workplace_assignments,
+      }),
+    [session?.workplace_assignments, workplacePositionMap],
+  );
+
   const positionFieldName =
     generalConfig?.plan?.dutyPositionFieldName?.trim() || 'position_id';
 
@@ -481,8 +490,11 @@ export default function DutyAssignmentsWidget() {
           columnSet.add(key);
         });
       });
+      const positionLabel =
+        positionId !== 'Unknown' ? positionLabelMap.get(positionId) : null;
       return {
         positionId,
+        positionLabel: positionLabel || positionId,
         entries,
         columns: Array.from(columnSet),
       };
@@ -509,7 +521,7 @@ export default function DutyAssignmentsWidget() {
           {groupedAssignments.map((group) => (
             <div key={group.positionId} style={styles.groupCard}>
               <div style={styles.cardHeader}>
-                <strong>Position {group.positionId}</strong>
+                <strong>{group.positionLabel}</strong>
                 <span style={styles.cardMeta}>{group.entries.length} assignment(s)</span>
               </div>
               <div style={styles.tableWrapper}>
@@ -518,7 +530,7 @@ export default function DutyAssignmentsWidget() {
                     <tr>
                       {group.columns.map((column) => (
                         <th key={column} style={styles.tableHeaderCell}>
-                          {column === 'table' ? 'Source Table' : column}
+                          {column === 'table' ? 'Duty Assignment' : column}
                         </th>
                       ))}
                     </tr>
@@ -527,9 +539,12 @@ export default function DutyAssignmentsWidget() {
                     {group.entries.map((entry) => (
                       <tr key={buildRowKey(entry.table, entry.row)}>
                         {group.columns.map((column) => {
+                          const normalizedTable = normalizeText(
+                            getRowValue(entry.row, TRANSACTION_TABLE_KEYS),
+                          );
                           const value =
                             column === 'table'
-                              ? entry.table
+                              ? dutyLabelsByTable.get(normalizedTable) || entry.table
                               : getRowFieldValue(entry.row, column);
                           return (
                             <td key={`${buildRowKey(entry.table, entry.row)}-${column}`} style={styles.tableCell}>
