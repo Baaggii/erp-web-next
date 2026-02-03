@@ -1,6 +1,19 @@
 import { useContext, useEffect, useMemo, useState } from 'react';
 import { AuthContext } from '../context/AuthContext.jsx';
 import useGeneralConfig from '../hooks/useGeneralConfig.js';
+import { hasTransactionFormAccess } from '../utils/transactionFormAccess.js';
+import { resolveWorkplacePositionForContext } from '../utils/workplaceResolver.js';
+
+const TRANSACTION_NAME_KEYS = [
+  'UITransTypeName',
+  'UITransTypeNameEng',
+  'UITransTypeNameEN',
+  'UITransTypeNameEn',
+  'transactionName',
+  'transaction_name',
+  'name',
+  'Name',
+];
 
 const TRANSACTION_TABLE_KEYS = [
   'transactionTable',
@@ -16,6 +29,11 @@ const DEFAULT_DUTY_NOTIFICATION_VALUES = ['1'];
 function normalizeMatch(value) {
   if (value === undefined || value === null) return '';
   return String(value).trim().toLowerCase();
+}
+
+function normalizeLabel(value) {
+  if (value === undefined || value === null) return '';
+  return String(value).trim();
 }
 
 function parseListValue(value) {
@@ -103,6 +121,48 @@ function normalizePositionId(value) {
   return null;
 }
 
+function buildPositionLabelMap({ workplacePositionMap, assignments }) {
+  const map = new Map();
+  if (workplacePositionMap && typeof workplacePositionMap === 'object') {
+    Object.values(workplacePositionMap).forEach((entry) => {
+      const id = normalizePositionId(entry?.positionId);
+      const name = normalizeLabel(entry?.positionName);
+      if (id && name) map.set(id, name);
+    });
+  }
+  if (Array.isArray(assignments)) {
+    assignments.forEach((entry) => {
+      const id = normalizePositionId(
+        entry?.workplace_position_id ??
+          entry?.workplacePositionId ??
+          entry?.position_id ??
+          entry?.positionId ??
+          entry?.position ??
+          null,
+      );
+      const name = normalizeLabel(
+        entry?.workplace_position_name ??
+          entry?.workplacePositionName ??
+          entry?.position_name ??
+          entry?.positionName ??
+          null,
+      );
+      if (id && name && !map.has(id)) map.set(id, name);
+    });
+  }
+  return map;
+}
+
+function resolveDashboardFields(info) {
+  return parseListValue(
+    info?.notificationDashboardFields ??
+      info?.notification_dashboard_fields ??
+      info?.notificationDashboardField ??
+      info?.notification_dashboard_field ??
+      [],
+  );
+}
+
 function collectPositionIds({ position, workplacePositionMap }) {
   const ids = new Set();
   const direct = normalizePositionId(position);
@@ -150,8 +210,17 @@ function isEmptyDisplayValue(value) {
 
 export default function DutyAssignmentsWidget() {
   const generalConfig = useGeneralConfig();
-  const { position, workplacePositionMap } = useContext(AuthContext);
+  const {
+    position,
+    workplacePositionMap,
+    branch,
+    department,
+    session,
+    user,
+    workplace,
+  } = useContext(AuthContext);
   const [codeTransactions, setCodeTransactions] = useState([]);
+  const [allowedForms, setAllowedForms] = useState({});
   const [assignments, setAssignments] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -175,13 +244,167 @@ export default function DutyAssignmentsWidget() {
     return Array.from(tableSet);
   }, [codeTransactions, dutyNotificationConfig]);
 
+  const dutyLabelsByTable = useMemo(() => {
+    const map = new Map();
+    codeTransactions.forEach((row) => {
+      if (!isDutyNotificationRow(row, dutyNotificationConfig)) return;
+      const table = normalizeText(getRowValue(row, TRANSACTION_TABLE_KEYS));
+      if (!table) return;
+      const label = normalizeLabel(getRowValue(row, TRANSACTION_NAME_KEYS));
+      if (label && !map.has(table)) {
+        map.set(table, label);
+      }
+    });
+    return map;
+  }, [codeTransactions, dutyNotificationConfig]);
+
+  const allowedFormMaps = useMemo(() => {
+    const nameMap = new Map();
+    const tableMap = new Map();
+    Object.entries(allowedForms).forEach(([name, info]) => {
+      if (!info || typeof info !== 'object') return;
+      const normalizedName = normalizeText(name);
+      if (normalizedName) nameMap.set(normalizedName, info);
+      const normalizedTable = normalizeText(
+        info?.table ?? info?.tableName ?? info?.table_name,
+      );
+      if (normalizedTable) tableMap.set(normalizedTable, info);
+    });
+    return { nameMap, tableMap };
+  }, [allowedForms]);
+
+  const dashboardFieldsByTable = useMemo(() => {
+    const map = new Map();
+    codeTransactions.forEach((row) => {
+      if (!isDutyNotificationRow(row, dutyNotificationConfig)) return;
+      const table = normalizeText(getRowValue(row, TRANSACTION_TABLE_KEYS));
+      if (!table) return;
+      const name = normalizeText(getRowValue(row, TRANSACTION_NAME_KEYS));
+      const info =
+        (name && allowedFormMaps.nameMap.get(name)) ||
+        allowedFormMaps.tableMap.get(table) ||
+        null;
+      if (!info) return;
+      const fields = resolveDashboardFields(info);
+      const existing = map.get(table);
+      if (!existing || (existing.length === 0 && fields.length > 0)) {
+        map.set(table, fields);
+      }
+    });
+    return map;
+  }, [allowedFormMaps, codeTransactions, dutyNotificationConfig]);
+
   const positionIds = useMemo(
     () => collectPositionIds({ position, workplacePositionMap }),
     [position, workplacePositionMap],
   );
 
+  const positionLabelMap = useMemo(
+    () =>
+      buildPositionLabelMap({
+        workplacePositionMap,
+        assignments: session?.workplace_assignments,
+      }),
+    [session?.workplace_assignments, workplacePositionMap],
+  );
+
   const positionFieldName =
     generalConfig?.plan?.dutyPositionFieldName?.trim() || 'position_id';
+
+  useEffect(() => {
+    let canceled = false;
+    const params = new URLSearchParams();
+    if (branch != null) params.set('branchId', branch);
+    if (department != null) params.set('departmentId', department);
+    const userRightId =
+      user?.userLevel ??
+      user?.userlevel_id ??
+      user?.userlevelId ??
+      session?.user_level ??
+      session?.userlevel_id ??
+      session?.userlevelId ??
+      null;
+    const userRightName =
+      session?.user_level_name ??
+      session?.userLevelName ??
+      user?.userLevelName ??
+      user?.userlevel_name ??
+      user?.userlevelName ??
+      null;
+    const workplaceId = workplace ?? session?.workplace_id ?? session?.workplaceId ?? null;
+    const workplacePositionId =
+      resolveWorkplacePositionForContext({
+        workplaceId,
+        session,
+        workplacePositionMap,
+      })?.positionId ??
+      session?.workplace_position_id ??
+      session?.workplacePositionId ??
+      null;
+    const positionId =
+      session?.employment_position_id ??
+      session?.position_id ??
+      session?.position ??
+      user?.position ??
+      null;
+    if (userRightId != null && `${userRightId}`.trim() !== '') {
+      params.set('userRightId', userRightId);
+    }
+    if (workplaceId != null && `${workplaceId}`.trim() !== '') {
+      params.set('workplaceId', workplaceId);
+    }
+    if (positionId != null && `${positionId}`.trim() !== '') {
+      params.set('positionId', positionId);
+    }
+    if (workplacePositionId != null && `${workplacePositionId}`.trim() !== '') {
+      params.set('workplacePositionId', workplacePositionId);
+    }
+    const query = params.toString();
+    fetch(`/api/transaction_forms${query ? `?${query}` : ''}`, {
+      credentials: 'include',
+      skipErrorToast: true,
+      skipLoader: true,
+    })
+      .then((res) => (res.ok ? res.json() : {}))
+      .then((data) => {
+        if (canceled) return;
+        const filtered = {};
+        const branchId = branch != null ? String(branch) : null;
+        const departmentId = department != null ? String(department) : null;
+        Object.entries(data).forEach(([name, info]) => {
+          if (name === 'isDefault') return;
+          if (!info || typeof info !== 'object') return;
+          if (
+            !hasTransactionFormAccess(info, branchId, departmentId, {
+              allowTemporaryAnyScope: true,
+              userRightId,
+              userRightName,
+              workplaceId,
+              positionId,
+              workplacePositions: session?.workplace_assignments,
+              workplacePositionId,
+              workplacePositionMap,
+            })
+          )
+            return;
+          filtered[name] = info;
+        });
+        setAllowedForms(filtered);
+      })
+      .catch(() => {
+        if (!canceled) setAllowedForms({});
+      });
+    return () => {
+      canceled = true;
+    };
+  }, [
+    branch,
+    department,
+    session,
+    user,
+    workplace,
+    workplacePositionMap,
+  ]);
 
   useEffect(() => {
     let canceled = false;
@@ -286,19 +509,28 @@ export default function DutyAssignmentsWidget() {
     return Array.from(groups.entries()).map(([positionId, entries]) => {
       const columnSet = new Set(['table']);
       entries.forEach(({ row }) => {
-        Object.entries(row || {}).forEach(([key, value]) => {
+        const normalizedTable = normalizeText(getRowValue(row, TRANSACTION_TABLE_KEYS));
+        const dashboardFields = normalizedTable
+          ? dashboardFieldsByTable.get(normalizedTable)
+          : null;
+        const fieldList = dashboardFields && dashboardFields.length > 0 ? dashboardFields : [];
+        fieldList.forEach((key) => {
           if (key === positionFieldName) return;
+          const value = getRowFieldValue(row, key);
           if (isEmptyDisplayValue(value)) return;
           columnSet.add(key);
         });
       });
+      const positionLabel =
+        positionId !== 'Unknown' ? positionLabelMap.get(positionId) : null;
       return {
         positionId,
+        positionLabel: positionLabel || positionId,
         entries,
         columns: Array.from(columnSet),
       };
     });
-  }, [assignments, positionFieldName]);
+  }, [assignments, dashboardFieldsByTable, positionFieldName, positionLabelMap]);
 
   return (
     <section style={styles.section}>
@@ -320,7 +552,7 @@ export default function DutyAssignmentsWidget() {
           {groupedAssignments.map((group) => (
             <div key={group.positionId} style={styles.groupCard}>
               <div style={styles.cardHeader}>
-                <strong>Position {group.positionId}</strong>
+                <strong>{group.positionLabel}</strong>
                 <span style={styles.cardMeta}>{group.entries.length} assignment(s)</span>
               </div>
               <div style={styles.tableWrapper}>
@@ -329,7 +561,7 @@ export default function DutyAssignmentsWidget() {
                     <tr>
                       {group.columns.map((column) => (
                         <th key={column} style={styles.tableHeaderCell}>
-                          {column === 'table' ? 'Source Table' : column}
+                          {column === 'table' ? 'Duty Assignment' : column}
                         </th>
                       ))}
                     </tr>
@@ -338,9 +570,12 @@ export default function DutyAssignmentsWidget() {
                     {group.entries.map((entry) => (
                       <tr key={buildRowKey(entry.table, entry.row)}>
                         {group.columns.map((column) => {
+                          const normalizedTable = normalizeText(
+                            getRowValue(entry.row, TRANSACTION_TABLE_KEYS),
+                          );
                           const value =
                             column === 'table'
-                              ? entry.table
+                              ? dutyLabelsByTable.get(normalizedTable) || entry.table
                               : getRowFieldValue(entry.row, column);
                           return (
                             <td key={`${buildRowKey(entry.table, entry.row)}-${column}`} style={styles.tableCell}>
