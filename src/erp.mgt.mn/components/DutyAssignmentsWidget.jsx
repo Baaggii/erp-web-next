@@ -344,6 +344,7 @@ export default function DutyAssignmentsWidget() {
   const [codeTransactions, setCodeTransactions] = useState([]);
   const [transactionForms, setTransactionForms] = useState({});
   const [allowedForms, setAllowedForms] = useState({});
+  const [formsLoaded, setFormsLoaded] = useState(false);
   const [assignments, setAssignments] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -413,7 +414,7 @@ export default function DutyAssignmentsWidget() {
       const transactionType = getRowValue(row, TRANSACTION_TYPE_KEYS);
       const normalizedType = normalizeMatch(transactionType);
       const configs = normalizedType ? transactionConfigsByType.get(normalizedType) : null;
-      const fieldSet = new Set();
+      const fieldSet = new Set(map.get(table) || []);
       if (Array.isArray(configs) && configs.length > 0) {
         configs.forEach((cfg) => {
           resolveDashboardFields(cfg).forEach((field) => fieldSet.add(field));
@@ -562,9 +563,13 @@ export default function DutyAssignmentsWidget() {
           filtered[name] = info;
         });
         setAllowedForms(filtered);
+        setFormsLoaded(true);
       })
       .catch(() => {
-        if (!canceled) setAllowedForms({});
+        if (!canceled) {
+          setAllowedForms({});
+          setFormsLoaded(true);
+        }
       });
     return () => {
       canceled = true;
@@ -671,7 +676,13 @@ export default function DutyAssignmentsWidget() {
   }, [dutyTables, positionFieldName, positionIds]);
 
   useEffect(() => {
-    if (!dutyDashboardToastEnabled || !loading || dutyTables.length === 0) return;
+    if (
+      !dutyDashboardToastEnabled ||
+      !loading ||
+      dutyTables.length === 0 ||
+      !formsLoaded
+    )
+      return;
     const signature = JSON.stringify(
       dutyTables.map((table) => {
         const fields = dashboardFieldsByTable.get(table) || [];
@@ -683,6 +694,7 @@ export default function DutyAssignmentsWidget() {
     dutyTables.forEach((table) => {
       const label = dutyLabelsByTable.get(table) || table;
       const fields = dashboardFieldsByTable.get(table) || [];
+      if (fields.length === 0) return;
       const fieldList =
         fields.length > 0 ? fields.join(', ') : 'No dashboard fields configured';
       addToast(`Duty dashboard fields for ${label}: ${fieldList}`, 'info');
@@ -693,6 +705,7 @@ export default function DutyAssignmentsWidget() {
     dutyDashboardToastEnabled,
     dutyLabelsByTable,
     dutyTables,
+    formsLoaded,
     loading,
   ]);
 
@@ -847,16 +860,14 @@ export default function DutyAssignmentsWidget() {
     return Array.from(groups.entries()).map(([positionId, entries]) => {
       const columnSet = new Set(['table']);
       entries.forEach(({ row }) => {
-        const normalizedTable = normalizeText(getRowValue(row, TRANSACTION_TABLE_KEYS));
+        const normalizedTable =
+          normalizeText(getRowValue(row, TRANSACTION_TABLE_KEYS)) ||
+          normalizeText(entry.table);
         const dashboardFields = normalizedTable
           ? dashboardFieldsByTable.get(normalizedTable)
           : null;
         const fieldList =
-          dashboardFields && dashboardFields.length > 0
-            ? dashboardFields
-            : dashboardFields
-              ? []
-              : Object.keys(row || {});
+          dashboardFields ? dashboardFields : Object.keys(row || {});
         fieldList.forEach((key) => {
           if (key === positionFieldName) return;
           const value = getRowFieldValue(row, key);
