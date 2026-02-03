@@ -152,6 +152,16 @@ function normalizeReferenceIds(value, idField) {
   if (parsed) {
     return normalizeReferenceIds(parsed, idField);
   }
+  if (typeof value === 'string') {
+    const parts = value
+      .split(',')
+      .map((entry) => entry.trim())
+      .filter((entry) => entry);
+    if (parts.length > 1) {
+      parts.forEach((entry) => pushId(entry));
+      return ids;
+    }
+  }
   pushId(value);
   return ids;
 }
