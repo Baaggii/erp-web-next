@@ -28,6 +28,15 @@ const TRANSACTION_TABLE_KEYS = [
   'table_name',
 ];
 
+const POSITION_NAME_KEYS = [
+  'workplace_position_name',
+  'workplacePositionName',
+  'position_name',
+  'positionName',
+  'position_label',
+  'positionLabel',
+];
+
 const DEFAULT_DUTY_NOTIFICATION_FIELDS = [];
 const DEFAULT_DUTY_NOTIFICATION_VALUES = ['1'];
 
@@ -231,6 +240,11 @@ function isEmptyDisplayValue(value) {
   if (typeof value === 'string') return value.trim() === '';
   if (Array.isArray(value)) return value.length === 0;
   return false;
+}
+
+function resolvePositionLabelFromRow(row) {
+  const value = getRowValue(row, POSITION_NAME_KEYS);
+  return normalizeLabel(value);
 }
 
 export default function DutyAssignmentsWidget() {
@@ -557,15 +571,16 @@ export default function DutyAssignmentsWidget() {
     });
     return Array.from(groups.entries()).map(([positionId, entries]) => {
       const columnSet = new Set(['table']);
+      let positionLabelFromRows = null;
       entries.forEach(({ row }) => {
         const normalizedTable = normalizeText(getRowValue(row, TRANSACTION_TABLE_KEYS));
         const dashboardFields = normalizedTable
           ? dashboardFieldsByTable.get(normalizedTable)
           : null;
-        const fieldList =
-          dashboardFields && dashboardFields.length > 0
-            ? dashboardFields
-            : Object.keys(row || {});
+        const fieldList = Array.isArray(dashboardFields) ? dashboardFields : [];
+        if (!positionLabelFromRows) {
+          positionLabelFromRows = resolvePositionLabelFromRow(row);
+        }
         fieldList.forEach((key) => {
           if (key === positionFieldName) return;
           const value = getRowFieldValue(row, key);
@@ -574,7 +589,9 @@ export default function DutyAssignmentsWidget() {
         });
       });
       const positionLabel =
-        positionId !== 'Unknown' ? positionLabelMap.get(positionId) : null;
+        positionId !== 'Unknown'
+          ? positionLabelMap.get(positionId) || positionLabelFromRows
+          : positionLabelFromRows;
       return {
         positionId,
         positionLabel: positionLabel || positionId,
@@ -613,7 +630,7 @@ export default function DutyAssignmentsWidget() {
                     <tr>
                       {group.columns.map((column) => (
                         <th key={column} style={styles.tableHeaderCell}>
-                          {column === 'table' ? 'Duty Assignment' : column}
+                          {column === 'table' ? 'Duty assignments' : column}
                         </th>
                       ))}
                     </tr>
@@ -625,10 +642,12 @@ export default function DutyAssignmentsWidget() {
                           const normalizedTable = normalizeText(
                             getRowValue(entry.row, TRANSACTION_TABLE_KEYS),
                           );
-                          const value =
-                            column === 'table'
-                              ? dutyLabelsByTable.get(normalizedTable) || entry.table
-                              : getRowFieldValue(entry.row, column);
+                          const value = column === 'table'
+                            ? (() => {
+                                const label = dutyLabelsByTable.get(normalizedTable) || entry.table;
+                                return label ? `Duty assignments: ${label}` : '';
+                              })()
+                            : getRowFieldValue(entry.row, column);
                           return (
                             <td key={`${buildRowKey(entry.table, entry.row)}-${column}`} style={styles.tableCell}>
                               {normalizeDisplayValue(value)}
