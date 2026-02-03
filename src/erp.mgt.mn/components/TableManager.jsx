@@ -2525,9 +2525,6 @@ const TableManager = forwardRef(function TableManager({
     Object.entries(filters).forEach(([k, v]) => {
       if (v !== '' && v !== null && v !== undefined && validCols.has(k)) {
         const mode = filterModes[k];
-        if (mode === 'like' && relationConfigs[k]?.table) {
-          return;
-        }
         if (dateFieldSet.has(k)) {
           if (
             mode === 'like' &&
@@ -8142,11 +8139,7 @@ const TableManager = forwardRef(function TableManager({
                           handleFilterChange(c, val ?? '', { mode: 'like' })
                         }
                         onSelect={(opt) =>
-                          handleFilterChange(
-                            c,
-                            opt?.label ?? opt?.value ?? '',
-                            { mode: 'like' },
-                          )
+                          handleFilterChange(c, opt?.value ?? '', { mode: 'exact' })
                         }
                         inputStyle={{ width: '100%' }}
                       />
