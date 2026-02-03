@@ -1,0 +1,415 @@
+import { useContext, useEffect, useMemo, useState } from 'react';
+import { AuthContext } from '../context/AuthContext.jsx';
+import useGeneralConfig from '../hooks/useGeneralConfig.js';
+
+const TRANSACTION_TABLE_KEYS = [
+  'transactionTable',
+  'transaction_table',
+  'table',
+  'tableName',
+  'table_name',
+];
+
+const DEFAULT_DUTY_NOTIFICATION_FIELDS = [];
+const DEFAULT_DUTY_NOTIFICATION_VALUES = ['1'];
+
+function normalizeMatch(value) {
+  if (value === undefined || value === null) return '';
+  return String(value).trim().toLowerCase();
+}
+
+function parseListValue(value) {
+  if (Array.isArray(value)) {
+    return value.map((entry) => String(entry).trim()).filter(Boolean);
+  }
+  if (value === undefined || value === null) return [];
+  if (typeof value === 'number' || typeof value === 'boolean') {
+    return [String(value)];
+  }
+  if (typeof value === 'string') {
+    return value
+      .split(',')
+      .map((entry) => entry.trim())
+      .filter(Boolean);
+  }
+  return [];
+}
+
+function normalizeText(value) {
+  if (value === undefined || value === null) return '';
+  return String(value).trim().toLowerCase();
+}
+
+function normalizeFieldName(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, '');
+}
+
+function getRowValue(row, keys) {
+  if (!row || typeof row !== 'object') return null;
+  for (const key of keys) {
+    if (row[key] !== undefined && row[key] !== null && row[key] !== '') {
+      return row[key];
+    }
+  }
+  return null;
+}
+
+function getRowFieldValue(row, fieldName) {
+  if (!row || !fieldName) return undefined;
+  if (Object.prototype.hasOwnProperty.call(row, fieldName)) {
+    return row[fieldName];
+  }
+  const normalizedTarget = normalizeFieldName(fieldName);
+  if (!normalizedTarget) return undefined;
+  const matchKey = Object.keys(row).find(
+    (key) => normalizeFieldName(key) === normalizedTarget,
+  );
+  return matchKey ? row[matchKey] : undefined;
+}
+
+function normalizeFlagValue(value) {
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'number') return value !== 0;
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    if (normalized === '') return false;
+    if (['1', 'true', 'yes', 'y', 'on', 'enabled'].includes(normalized)) return true;
+    if (['0', 'false', 'no', 'n', 'off', 'disabled'].includes(normalized)) return false;
+    const num = Number(normalized);
+    if (!Number.isNaN(num)) return num !== 0;
+    return true;
+  }
+  return Boolean(value);
+}
+
+function isDutyNotificationRow(row, dutyNotificationConfig) {
+  if (!row) return false;
+  const normalizedValues = dutyNotificationConfig.values.map(normalizeMatch);
+  return dutyNotificationConfig.fields.some((field) => {
+    const value = getRowFieldValue(row, field);
+    if (value === undefined || value === null || value === '') return false;
+    if (normalizedValues.length === 0) return normalizeFlagValue(value);
+    return normalizedValues.includes(normalizeMatch(value));
+  });
+}
+
+function normalizePositionId(value) {
+  if (value === null || value === undefined) return null;
+  if (typeof value === 'string' && value.trim()) return value.trim();
+  if (typeof value === 'number' && Number.isFinite(value)) return String(value);
+  return null;
+}
+
+function collectPositionIds({ position, workplacePositionMap }) {
+  const ids = new Set();
+  const direct = normalizePositionId(position);
+  if (direct) ids.add(direct);
+  if (workplacePositionMap && typeof workplacePositionMap === 'object') {
+    Object.values(workplacePositionMap).forEach((entry) => {
+      const normalized = normalizePositionId(entry?.positionId);
+      if (normalized) ids.add(normalized);
+    });
+  }
+  return Array.from(ids);
+}
+
+function buildRowKey(table, row) {
+  const id =
+    row?.id ??
+    row?.[`${table}_id`] ??
+    row?.[`${table}Id`] ??
+    row?.[`${table}ID`] ??
+    row?.[`${table}ID`] ??
+    row?.[`${table}Id`] ??
+    null;
+  if (id !== null && id !== undefined && id !== '') return `${table}::${id}`;
+  return `${table}::${JSON.stringify(row)}`;
+}
+
+function normalizeDisplayValue(value) {
+  if (value === null || value === undefined) return '';
+  if (typeof value === 'string') return value.trim();
+  if (typeof value === 'object') {
+    try {
+      return JSON.stringify(value);
+    } catch {
+      return String(value);
+    }
+  }
+  return String(value);
+}
+
+function isEmptyDisplayValue(value) {
+  if (value === null || value === undefined) return true;
+  if (typeof value === 'string') return value.trim() === '';
+  if (Array.isArray(value)) return value.length === 0;
+  if (typeof value === 'object') return Object.keys(value).length === 0;
+  return false;
+}
+
+export default function DutyAssignmentsWidget() {
+  const generalConfig = useGeneralConfig();
+  const { position, workplacePositionMap } = useContext(AuthContext);
+  const [codeTransactions, setCodeTransactions] = useState([]);
+  const [assignments, setAssignments] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  const dutyNotificationConfig = useMemo(() => {
+    const fields = parseListValue(generalConfig?.plan?.dutyNotificationFields);
+    const values = parseListValue(generalConfig?.plan?.dutyNotificationValues);
+    return {
+      fields: fields.length > 0 ? fields : DEFAULT_DUTY_NOTIFICATION_FIELDS,
+      values: values.length > 0 ? values : DEFAULT_DUTY_NOTIFICATION_VALUES,
+    };
+  }, [generalConfig]);
+
+  const dutyTables = useMemo(() => {
+    const tableSet = new Set();
+    codeTransactions.forEach((row) => {
+      if (!isDutyNotificationRow(row, dutyNotificationConfig)) return;
+      const table = normalizeText(getRowValue(row, TRANSACTION_TABLE_KEYS));
+      if (table) tableSet.add(table);
+    });
+    return Array.from(tableSet);
+  }, [codeTransactions, dutyNotificationConfig]);
+
+  const positionIds = useMemo(
+    () => collectPositionIds({ position, workplacePositionMap }),
+    [position, workplacePositionMap],
+  );
+
+  const positionFieldName =
+    generalConfig?.plan?.dutyPositionFieldName?.trim() || 'position_id';
+
+  useEffect(() => {
+    let canceled = false;
+    fetch('/api/tables/code_transaction?perPage=500', {
+      credentials: 'include',
+      skipErrorToast: true,
+      skipLoader: true,
+    })
+      .then((res) => (res.ok ? res.json() : { rows: [] }))
+      .then((data) => {
+        if (canceled) return;
+        setCodeTransactions(Array.isArray(data?.rows) ? data.rows : []);
+      })
+      .catch(() => {
+        if (!canceled) setCodeTransactions([]);
+      });
+    return () => {
+      canceled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let canceled = false;
+
+    const fetchAllRows = async (table, positionId) => {
+      const collected = [];
+      const perPage = 500;
+      let page = 1;
+      let total = 0;
+      do {
+        const params = new URLSearchParams();
+        params.set('perPage', String(perPage));
+        params.set('page', String(page));
+        params.set(positionFieldName, positionId);
+        const res = await fetch(`/api/tables/${encodeURIComponent(table)}?${params.toString()}`, {
+          credentials: 'include',
+          skipErrorToast: true,
+          skipLoader: true,
+        });
+        if (!res.ok) break;
+        const data = await res.json().catch(() => ({}));
+        const rows = Array.isArray(data?.rows) ? data.rows : [];
+        total = Number(data?.count) || rows.length;
+        collected.push(...rows);
+        page += 1;
+        if (rows.length < perPage) break;
+      } while (collected.length < total);
+      return collected;
+    };
+
+    const load = async () => {
+      if (!positionIds.length || !dutyTables.length) {
+        setAssignments([]);
+        return;
+      }
+      setLoading(true);
+      setError('');
+      try {
+        const results = await Promise.all(
+          dutyTables.map(async (table) => {
+            const rowsForTable = await Promise.all(
+              positionIds.map((positionId) => fetchAllRows(table, positionId)),
+            );
+            return rowsForTable.flat().map((row) => ({ table, row }));
+          }),
+        );
+        if (canceled) return;
+        const flattened = results.flat();
+        const unique = new Map();
+        flattened.forEach((entry) => {
+          const key = buildRowKey(entry.table, entry.row);
+          if (!unique.has(key)) unique.set(key, entry);
+        });
+        setAssignments(Array.from(unique.values()));
+      } catch (err) {
+        if (!canceled) {
+          setAssignments([]);
+          setError(err?.message || 'Failed to load duty assignments.');
+        }
+      } finally {
+        if (!canceled) setLoading(false);
+      }
+    };
+
+    load();
+
+    return () => {
+      canceled = true;
+    };
+  }, [dutyTables, positionFieldName, positionIds]);
+
+  const groupedAssignments = useMemo(() => {
+    const groups = new Map();
+    assignments.forEach((entry) => {
+      const rawPosition = entry.row?.[positionFieldName];
+      const positionKey = normalizeDisplayValue(rawPosition);
+      if (!positionKey) return;
+      if (!groups.has(positionKey)) groups.set(positionKey, []);
+      groups.get(positionKey).push(entry);
+    });
+    return Array.from(groups.entries()).map(([positionId, items]) => ({
+      positionId,
+      items,
+    }));
+  }, [assignments, positionFieldName]);
+
+  const shouldShowEmpty = !loading && !error && groupedAssignments.length === 0;
+
+  return (
+    <section style={styles.section}>
+      <div style={styles.header}>
+        <h3 style={styles.title}>Duty Assignments</h3>
+        <span style={styles.subtitle}>
+          {positionIds.length
+            ? `Filtered by ${positionIds.length} position${positionIds.length === 1 ? '' : 's'}`
+            : 'No positions detected'}
+        </span>
+      </div>
+      {error && <div style={styles.error}>{error}</div>}
+      {loading && <div style={styles.status}>Loading duty assignments…</div>}
+      {shouldShowEmpty && (
+        <div style={styles.empty}>No duty assignments found for your positions.</div>
+      )}
+      {groupedAssignments.length > 0 && (
+        <div style={styles.list}>
+          {groupedAssignments.map((group) => (
+            <div key={group.positionId} style={styles.group}>
+              <div style={styles.groupHeader}>
+                <strong>Position ID: {group.positionId}</strong>
+                <span style={styles.groupCount}>{group.items.length} rows</span>
+              </div>
+              {group.items.length > 0 && (
+                <div style={styles.tableWrapper}>
+                  <table style={styles.table}>
+                    <thead>
+                      <tr>
+                        <th style={styles.tableHeader}>Table</th>
+                        <th style={styles.tableHeader}>Field</th>
+                        <th style={styles.tableHeader}>Value</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {group.items.map((entry) => {
+                        const rows = Object.entries(entry.row || {})
+                          .filter(([key]) => key !== positionFieldName)
+                          .map(([key, value]) => ({
+                            key,
+                            value,
+                            display: normalizeDisplayValue(value),
+                          }))
+                          .filter((row) => !isEmptyDisplayValue(row.display));
+                        if (rows.length === 0) {
+                          return null;
+                        }
+                        return rows.map((row, index) => (
+                          <tr key={`${buildRowKey(entry.table, entry.row)}-${row.key}`}>
+                            <td style={styles.tableCell}>
+                              {index === 0 ? entry.table : ''}
+                            </td>
+                            <td style={styles.tableCell}>{row.key}</td>
+                            <td style={styles.tableCell}>{row.display}</td>
+                          </tr>
+                        ));
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+const styles = {
+  section: {
+    background: '#fff',
+    borderRadius: '12px',
+    padding: '1rem',
+    boxShadow: '0 6px 20px rgba(15,23,42,0.08)',
+  },
+  header: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: '0.75rem',
+  },
+  title: { margin: 0, fontSize: '1rem', color: '#0f172a' },
+  subtitle: { fontSize: '0.75rem', color: '#64748b' },
+  status: { color: '#64748b', padding: '0.5rem 0' },
+  error: { color: '#b91c1c', padding: '0.5rem 0' },
+  empty: { color: '#64748b', padding: '0.5rem 0' },
+  list: { display: 'flex', flexDirection: 'column', gap: '0.75rem' },
+  group: {
+    border: '1px solid #e5e7eb',
+    borderRadius: '10px',
+    padding: '0.75rem',
+    background: '#fff',
+  },
+  groupHeader: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: '0.5rem',
+    gap: '0.5rem',
+  },
+  groupCount: { fontSize: '0.75rem', color: '#64748b' },
+  tableWrapper: { overflowX: 'auto' },
+  table: {
+    width: '100%',
+    borderCollapse: 'collapse',
+    fontSize: '0.8rem',
+    color: '#1f2937',
+  },
+  tableHeader: {
+    textAlign: 'left',
+    padding: '0.4rem 0.5rem',
+    borderBottom: '1px solid #e5e7eb',
+    color: '#475569',
+  },
+  tableCell: {
+    padding: '0.35rem 0.5rem',
+    borderBottom: '1px solid #f1f5f9',
+    verticalAlign: 'top',
+    wordBreak: 'break-word',
+  },
+};

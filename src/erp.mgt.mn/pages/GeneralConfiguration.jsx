@@ -566,6 +566,26 @@ export default function GeneralConfiguration() {
           </div>
           <div style={{ marginBottom: '0.5rem' }}>
             <TooltipWrapper
+              title={t('plan_duty_position_field_name', {
+                ns: 'tooltip',
+                defaultValue:
+                  'Field name used to filter duty assignments by position',
+              })}
+            >
+              <label>
+                Duty Position Field Name{' '}
+                <input
+                  name="dutyPositionFieldName"
+                  type="text"
+                  value={active.dutyPositionFieldName ?? ''}
+                  onChange={handleChange}
+                />
+              </label>
+            </TooltipWrapper>
+            <div style={{ fontSize: '0.8rem' }}>Example: position_id</div>
+          </div>
+          <div style={{ marginBottom: '0.5rem' }}>
+            <TooltipWrapper
               title={t('plan_notification_fields', {
                 ns: 'tooltip',
                 defaultValue:
