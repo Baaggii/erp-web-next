@@ -242,6 +242,17 @@ export default function AsyncSearchSelect({
       sensitivity: 'base',
     });
   }, []);
+  const getSelectionValue = useCallback(
+    (opt, currentInput = '') => {
+      if (!opt) return useLabelAsValue ? String(currentInput || '') : '';
+      if (!useLabelAsValue) return opt.value;
+      const labelValue =
+        opt.label !== undefined && opt.label !== null ? String(opt.label) : '';
+      if (labelValue.trim() !== '') return labelValue;
+      return String(currentInput || '');
+    },
+    [useLabelAsValue],
+  );
 
   const normalizeOptions = useCallback(
     (list) => {
@@ -725,7 +736,7 @@ export default function AsyncSearchSelect({
     if (isMulti) {
       const existingSet = new Set(selectedList.map((item) => String(item.value)));
       if (!existingSet.has(String(opt.value))) {
-        const nextValue = useLabelAsValue ? opt.label ?? opt.value : opt.value;
+        const nextValue = getSelectionValue(opt, input);
         const next = [...selectedList.map((item) => item.value), nextValue];
         onChange(next, opt.label);
         actionRef.current = {
@@ -739,7 +750,7 @@ export default function AsyncSearchSelect({
       setInput('');
       setLabel('');
     } else {
-      const nextValue = useLabelAsValue ? opt.label ?? opt.value : opt.value;
+      const nextValue = getSelectionValue(opt, input);
       onChange(nextValue, opt.label);
       setInput(String(nextValue));
       setLabel(opt.label || '');
@@ -816,7 +827,7 @@ export default function AsyncSearchSelect({
                           selectedList.map((item) => String(item.value)),
                         );
                         if (!existingSet.has(String(opt.value))) {
-                          const nextValue = useLabelAsValue ? opt.label ?? opt.value : opt.value;
+                          const nextValue = getSelectionValue(opt, input);
                           const next = [
                             ...selectedList.map((item) => item.value),
                             nextValue,
@@ -826,7 +837,7 @@ export default function AsyncSearchSelect({
                         setInput('');
                         setLabel('');
                       } else {
-                        const nextValue = useLabelAsValue ? opt.label ?? opt.value : opt.value;
+                        const nextValue = getSelectionValue(opt, input);
                         onChange(nextValue, opt.label);
                         setInput(String(nextValue));
                         setLabel(opt.label || '');
