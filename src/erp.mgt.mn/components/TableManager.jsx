@@ -558,6 +558,7 @@ const TableManager = forwardRef(function TableManager({
   const [page, setPage] = useState(1);
   const [perPage, setPerPage] = useState(initialPerPage);
   const [filters, setFilters] = useState({});
+  const [filterModes, setFilterModes] = useState({});
   const [sort, setSort] = useState({ column: '', dir: 'asc' });
   const [relations, setRelations] = useState({});
   const [refData, setRefData] = useState({});
@@ -1413,6 +1414,7 @@ const TableManager = forwardRef(function TableManager({
     setCount(0);
     setPage(1);
     setFilters({});
+    setFilterModes({});
     setSort({ column: '', dir: 'asc' });
     setRelations({});
     setRefData({});
@@ -2520,21 +2522,48 @@ const TableManager = forwardRef(function TableManager({
       params.set('sort', sort.column);
       params.set('dir', sort.dir);
     }
-    let hasInvalidDateFilter = false;
     Object.entries(filters).forEach(([k, v]) => {
       if (v !== '' && v !== null && v !== undefined && validCols.has(k)) {
-        if (dateFieldSet.has(k)) {
-          if (isValidDateFilterValue(v)) {
-            params.set(k, v);
-          } else {
-            hasInvalidDateFilter = true;
-          }
-        } else {
-          params.set(k, v);
+        const mode = filterModes[k];
+        if (mode === 'like' && relationConfigs[k]?.table) {
+          return;
         }
+        if (dateFieldSet.has(k)) {
+          if (
+            mode === 'like' &&
+            typeof v === 'string' &&
+            v.trim() !== '' &&
+            !v.includes('%') &&
+            !v.includes('_')
+          ) {
+            params.set(k, `%${v}%`);
+          } else if (isValidDateFilterValue(v)) {
+            params.set(k, v);
+          } else if (
+            typeof v === 'string' &&
+            v.trim() !== '' &&
+            !v.includes('%') &&
+            !v.includes('_')
+          ) {
+            params.set(k, `%${v}%`);
+          } else {
+            params.set(k, v);
+          }
+          return;
+        }
+        let filterValue = v;
+        if (
+          mode === 'like' &&
+          typeof v === 'string' &&
+          v.trim() !== '' &&
+          !v.includes('%') &&
+          !v.includes('_')
+        ) {
+          filterValue = `%${v}%`;
+        }
+        params.set(k, filterValue);
       }
     });
-    if (hasInvalidDateFilter) return;
     fetch(`/api/tables/${encodeURIComponent(table)}?${params.toString()}`, {
       credentials: 'include',
     })
@@ -2561,6 +2590,37 @@ const TableManager = forwardRef(function TableManager({
         let rows = data.rows || [];
         if (requestStatus) {
           rows = rows.filter((r) => requestIdSet.has(String(getRowId(r))));
+        }
+        const relationLikeFilters = Object.entries(filters)
+          .map(([key, value]) => {
+            if (filterModes[key] !== 'like') return null;
+            if (!relationConfigs[key]?.table) return null;
+            if (typeof value !== 'string' || value.trim() === '') return null;
+            return { key, query: value.trim().toLowerCase() };
+          })
+          .filter(Boolean);
+        if (relationLikeFilters.length > 0) {
+          rows = rows.filter((row) => {
+            return relationLikeFilters.every(({ key, query }) => {
+              const rawValue = row?.[key];
+              const valueText = rawValue != null ? String(rawValue).toLowerCase() : '';
+              if (valueText.includes(query)) return true;
+              const relationRow = refRows?.[key]?.[rawValue];
+              if (!relationRow || typeof relationRow !== 'object') return false;
+              const displayFields = relationConfigs[key]?.displayFields || [];
+              if (displayFields.length > 0) {
+                return displayFields.some((field) => {
+                  const fieldValue = relationRow[field];
+                  if (fieldValue === undefined || fieldValue === null) return false;
+                  return String(fieldValue).toLowerCase().includes(query);
+                });
+              }
+              return Object.values(relationRow).some((fieldValue) => {
+                if (fieldValue === undefined || fieldValue === null) return false;
+                return String(fieldValue).toLowerCase().includes(query);
+              });
+            });
+          });
         }
         setRows(rows);
         if (!requestStatus) {
@@ -2590,13 +2650,24 @@ const TableManager = forwardRef(function TableManager({
     localRefresh,
     columnMeta,
     validCols,
+    filterModes,
     requestStatus,
     requestIdsKey,
   ]);
 
   useEffect(() => {
     setSelectedRows(new Set());
-  }, [table, page, perPage, filters, sort, refreshId, localRefresh, dateFieldSet]);
+  }, [
+    table,
+    page,
+    perPage,
+    filters,
+    filterModes,
+    sort,
+    refreshId,
+    localRefresh,
+    dateFieldSet,
+  ]);
 
   useEffect(() => {
     if (!table || !Array.isArray(rows) || rows.length === 0) {
@@ -3983,8 +4054,19 @@ const TableManager = forwardRef(function TableManager({
     setSelectedRows(new Set());
   }
 
-  function handleFilterChange(col, val) {
+  function handleFilterChange(col, val, { mode } = {}) {
     setFilters((f) => ({ ...f, [col]: val }));
+    setFilterModes((prev) => {
+      if (val === undefined || val === null || val === '') {
+        if (!prev[col]) return prev;
+        const next = { ...prev };
+        delete next[col];
+        return next;
+      }
+      const nextMode = mode || prev[col] || 'exact';
+      if (prev[col] === nextMode) return prev;
+      return { ...prev, [col]: nextMode };
+    });
     setPage(1);
     setSelectedRows(new Set());
   }
@@ -8056,7 +8138,16 @@ const TableManager = forwardRef(function TableManager({
                         labelFields={relationConfig.displayFields || []}
                         idField={searchColumn}
                         value={filters[c] || ''}
-                        onChange={(val) => handleFilterChange(c, val ?? '')}
+                        onChange={(val) =>
+                          handleFilterChange(c, val ?? '', { mode: 'like' })
+                        }
+                        onSelect={(opt) =>
+                          handleFilterChange(
+                            c,
+                            opt?.label ?? opt?.value ?? '',
+                            { mode: 'like' },
+                          )
+                        }
                         inputStyle={{ width: '100%' }}
                       />
                     );
@@ -8066,7 +8157,9 @@ const TableManager = forwardRef(function TableManager({
                     return (
                       <select
                         value={filters[c] || ''}
-                        onChange={(e) => handleFilterChange(c, e.target.value)}
+                        onChange={(e) =>
+                          handleFilterChange(c, e.target.value, { mode: 'exact' })
+                        }
                         style={{ width: '100%' }}
                       >
                         <option value=""></option>
@@ -8082,7 +8175,9 @@ const TableManager = forwardRef(function TableManager({
                   return (
                     <input
                       value={filters[c] || ''}
-                      onChange={(e) => handleFilterChange(c, e.target.value)}
+                      onChange={(e) =>
+                        handleFilterChange(c, e.target.value, { mode: 'like' })
+                      }
                       style={{ width: '100%' }}
                     />
                   );
