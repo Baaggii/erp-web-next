@@ -36,11 +36,6 @@ function normalizeMatch(value) {
   return String(value).trim().toLowerCase();
 }
 
-function normalizeLabel(value) {
-  if (value === undefined || value === null) return '';
-  return String(value).trim();
-}
-
 function resolveModuleKey(info) {
   return info?.moduleKey || info?.module_key || info?.module || info?.modulekey || '';
 }
@@ -128,38 +123,6 @@ function normalizePositionId(value) {
   if (typeof value === 'string' && value.trim()) return value.trim();
   if (typeof value === 'number' && Number.isFinite(value)) return String(value);
   return null;
-}
-
-function buildPositionLabelMap({ workplacePositionMap, assignments }) {
-  const map = new Map();
-  if (workplacePositionMap && typeof workplacePositionMap === 'object') {
-    Object.values(workplacePositionMap).forEach((entry) => {
-      const id = normalizePositionId(entry?.positionId);
-      const name = normalizeLabel(entry?.positionName);
-      if (id && name) map.set(id, name);
-    });
-  }
-  if (Array.isArray(assignments)) {
-    assignments.forEach((entry) => {
-      const id = normalizePositionId(
-        entry?.workplace_position_id ??
-          entry?.workplacePositionId ??
-          entry?.position_id ??
-          entry?.positionId ??
-          entry?.position ??
-          null,
-      );
-      const name = normalizeLabel(
-        entry?.workplace_position_name ??
-          entry?.workplacePositionName ??
-          entry?.position_name ??
-          entry?.positionName ??
-          null,
-      );
-      if (id && name && !map.has(id)) map.set(id, name);
-    });
-  }
-  return map;
 }
 
 function resolveDashboardFields(info) {
@@ -254,20 +217,6 @@ export default function DutyAssignmentsWidget() {
       if (table) tableSet.add(table);
     });
     return Array.from(tableSet);
-  }, [codeTransactions, dutyNotificationConfig]);
-
-  const dutyLabelsByTable = useMemo(() => {
-    const map = new Map();
-    codeTransactions.forEach((row) => {
-      if (!isDutyNotificationRow(row, dutyNotificationConfig)) return;
-      const table = normalizeText(getRowValue(row, TRANSACTION_TABLE_KEYS));
-      if (!table) return;
-      const label = normalizeLabel(getRowValue(row, TRANSACTION_NAME_KEYS));
-      if (label && !map.has(table)) {
-        map.set(table, label);
-      }
-    });
-    return map;
   }, [codeTransactions, dutyNotificationConfig]);
 
   const allowedFormMaps = useMemo(() => {
@@ -530,7 +479,10 @@ export default function DutyAssignmentsWidget() {
         const dashboardFields = normalizedTable
           ? dashboardFieldsByTable.get(normalizedTable)
           : null;
-        const fieldList = dashboardFields && dashboardFields.length > 0 ? dashboardFields : [];
+        const fieldList =
+          dashboardFields && dashboardFields.length > 0
+            ? dashboardFields
+            : Object.keys(row || {});
         fieldList.forEach((key) => {
           if (key === positionFieldName) return;
           const value = getRowFieldValue(row, key);
@@ -547,7 +499,7 @@ export default function DutyAssignmentsWidget() {
         columns: Array.from(columnSet),
       };
     });
-  }, [assignments, dashboardFieldsByTable, positionFieldName, positionLabelMap]);
+  }, [assignments, dashboardFieldsByTable, positionFieldName]);
 
   return (
     <section style={styles.section}>
