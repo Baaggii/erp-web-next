@@ -135,6 +135,59 @@ function resolveDashboardFields(info) {
   );
 }
 
+function normalizeLabel(value) {
+  if (value === null || value === undefined) return null;
+  const trimmed = String(value).trim();
+  return trimmed ? trimmed : null;
+}
+
+function buildPositionLabelMap({ workplacePositionMap, assignments } = {}) {
+  const map = new Map();
+  const setLabel = (id, label) => {
+    const normalizedId = normalizePositionId(id);
+    const normalizedLabel = normalizeLabel(label);
+    if (!normalizedId || !normalizedLabel) return;
+    if (!map.has(normalizedId) || map.get(normalizedId) === normalizedId) {
+      map.set(normalizedId, normalizedLabel);
+    }
+  };
+
+  if (workplacePositionMap && typeof workplacePositionMap === 'object') {
+    Object.values(workplacePositionMap).forEach((entry) => {
+      if (!entry || typeof entry !== 'object') return;
+      setLabel(
+        entry.positionId ?? entry.position_id ?? entry.position,
+        entry.positionName ??
+          entry.position_name ??
+          entry.positionLabel ??
+          entry.position_label ??
+          entry.name,
+      );
+    });
+  }
+
+  if (Array.isArray(assignments)) {
+    assignments.forEach((assignment) => {
+      if (!assignment || typeof assignment !== 'object') return;
+      setLabel(
+        assignment.workplace_position_id ??
+          assignment.workplacePositionId ??
+          assignment.position_id ??
+          assignment.positionId ??
+          assignment.position,
+        assignment.workplace_position_name ??
+          assignment.workplacePositionName ??
+          assignment.position_name ??
+          assignment.positionName ??
+          assignment.position_label ??
+          assignment.positionLabel,
+      );
+    });
+  }
+
+  return map;
+}
+
 function collectPositionIds({ position, workplacePositionMap }) {
   const ids = new Set();
   const direct = normalizePositionId(position);
@@ -499,7 +552,7 @@ export default function DutyAssignmentsWidget() {
         columns: Array.from(columnSet),
       };
     });
-  }, [assignments, dashboardFieldsByTable, positionFieldName]);
+  }, [assignments, dashboardFieldsByTable, positionFieldName, positionLabelMap]);
 
   return (
     <section style={styles.section}>
