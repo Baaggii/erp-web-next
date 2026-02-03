@@ -190,6 +190,27 @@ function resolveWithMap(alias, map = {}) {
   return strAlias;
 }
 
+function extractSimilarRows(data) {
+  if (!data || typeof data !== 'object') return [];
+  const candidates = [
+    data.similarRows,
+    data.similar_rows,
+    data.duplicateRows,
+    data.duplicate_rows,
+    data.duplicates,
+    data.similar,
+  ];
+  for (const candidate of candidates) {
+    if (Array.isArray(candidate)) return candidate;
+  }
+  if (Array.isArray(data.rows) && typeof data.message === 'string') {
+    if (/similar|duplicate/i.test(data.message)) {
+      return data.rows;
+    }
+  }
+  return [];
+}
+
 function resolveScopeId(value) {
   if (value === undefined || value === null) return null;
   if (typeof value === 'object') {
@@ -2530,7 +2551,10 @@ const TableManager = forwardRef(function TableManager({
             hasInvalidDateFilter = true;
           }
         } else {
-          params.set(k, v);
+          const normalizedValue = normalizeFilterValue(k, v);
+          if (normalizedValue !== null) {
+            params.set(k, normalizedValue);
+          }
         }
       }
     });
@@ -2590,6 +2614,7 @@ const TableManager = forwardRef(function TableManager({
     localRefresh,
     columnMeta,
     validCols,
+    normalizeFilterValue,
     requestStatus,
     requestIdsKey,
   ]);
@@ -3989,6 +4014,24 @@ const TableManager = forwardRef(function TableManager({
     setSelectedRows(new Set());
   }
 
+  const normalizeFilterValue = useCallback(
+    (col, value) => {
+      if (value === '' || value === null || value === undefined) return null;
+      if (dateFieldSet.has(col)) {
+        return value;
+      }
+      const typ = fieldTypeMap[col];
+      if (typ === 'string' && typeof value === 'string') {
+        const trimmed = value.trim();
+        if (trimmed === '') return null;
+        if (trimmed.includes('%') || trimmed.includes('_')) return trimmed;
+        return `%${trimmed}%`;
+      }
+      return value;
+    },
+    [dateFieldSet, fieldTypeMap],
+  );
+
   async function issueTransactionEbarimt(recordId) {
     if (!posApiEnabled) return null;
     if (recordId === undefined || recordId === null || `${recordId}`.trim() === '') {
@@ -4490,11 +4533,29 @@ const TableManager = forwardRef(function TableManager({
         return { printPayload };
       } else {
         let message = 'Хадгалахад алдаа гарлаа';
+        let data = null;
         try {
-          const data = await res.json();
+          data = await res.json();
           if (data && data.message) message += `: ${data.message}`;
         } catch {
           // ignore
+        }
+        const similarRows = extractSimilarRows(data);
+        if (res.status === 409 && similarRows.length > 0) {
+          const normalizedRows = similarRows.map((row) =>
+            normalizeToCanonical(row),
+          );
+          setRows(normalizedRows);
+          setCount(similarRows.length);
+          setPage(1);
+          setSelectedRows(new Set());
+          logRowsMemory(normalizedRows);
+          addToast(
+            t('similar_rows_found', 'Found {{count}} similar rows', {
+              count: similarRows.length,
+            }),
+            'warning',
+          );
         }
         addToast(message, 'error');
         return false;
@@ -4975,7 +5036,12 @@ const TableManager = forwardRef(function TableManager({
         params.set('dir', sort.dir);
       }
       Object.entries(filters).forEach(([k, v]) => {
-        if (v) params.set(k, v);
+        if (v !== '' && v !== null && v !== undefined) {
+          const normalizedValue = normalizeFilterValue(k, v);
+          if (normalizedValue !== null) {
+            params.set(k, normalizedValue);
+          }
+        }
       });
       const data = await fetch(
         `/api/tables/${encodeURIComponent(table)}?${params.toString()}`,
@@ -5186,7 +5252,12 @@ const TableManager = forwardRef(function TableManager({
       params.set('dir', sort.dir);
     }
     Object.entries(filters).forEach(([k, v]) => {
-      if (v) params.set(k, v);
+      if (v !== '' && v !== null && v !== undefined) {
+        const normalizedValue = normalizeFilterValue(k, v);
+        if (normalizedValue !== null) {
+          params.set(k, normalizedValue);
+        }
+      }
     });
     const dataRes = await fetch(
       `/api/tables/${encodeURIComponent(table)}?${params.toString()}`,
@@ -8063,19 +8134,26 @@ const TableManager = forwardRef(function TableManager({
                   }
 
                   if (Array.isArray(relationOpts[c])) {
+                    const optionListId = `filter-options-${table || 'table'}-${String(c).replace(
+                      /[^a-zA-Z0-9_-]/g,
+                      '',
+                    )}`;
                     return (
-                      <select
-                        value={filters[c] || ''}
-                        onChange={(e) => handleFilterChange(c, e.target.value)}
-                        style={{ width: '100%' }}
-                      >
-                        <option value=""></option>
-                        {relationOpts[c].map((o) => (
-                          <option key={o.value} value={o.value}>
-                            {o.label}
-                          </option>
-                        ))}
-                      </select>
+                      <>
+                        <input
+                          list={optionListId}
+                          value={filters[c] || ''}
+                          onChange={(e) => handleFilterChange(c, e.target.value)}
+                          style={{ width: '100%' }}
+                        />
+                        <datalist id={optionListId}>
+                          {relationOpts[c].map((o) => (
+                            <option key={o.value} value={o.value}>
+                              {o.label}
+                            </option>
+                          ))}
+                        </datalist>
+                      </>
                     );
                   }
 

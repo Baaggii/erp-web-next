@@ -1,7 +1,12 @@
 import { useContext, useEffect, useMemo, useState } from 'react';
 import { AuthContext } from '../context/AuthContext.jsx';
+import { useCompanyModules } from '../hooks/useCompanyModules.js';
 import useGeneralConfig from '../hooks/useGeneralConfig.js';
 import { hasTransactionFormAccess } from '../utils/transactionFormAccess.js';
+import {
+  isModuleLicensed,
+  isModulePermissionGranted,
+} from '../utils/moduleAccess.js';
 import { resolveWorkplacePositionForContext } from '../utils/workplaceResolver.js';
 
 const TRANSACTION_NAME_KEYS = [
@@ -31,9 +36,8 @@ function normalizeMatch(value) {
   return String(value).trim().toLowerCase();
 }
 
-function normalizeLabel(value) {
-  if (value === undefined || value === null) return '';
-  return String(value).trim();
+function resolveModuleKey(info) {
+  return info?.moduleKey || info?.module_key || info?.module || info?.modulekey || '';
 }
 
 function parseListValue(value) {
@@ -121,38 +125,6 @@ function normalizePositionId(value) {
   return null;
 }
 
-function buildPositionLabelMap({ workplacePositionMap, assignments }) {
-  const map = new Map();
-  if (workplacePositionMap && typeof workplacePositionMap === 'object') {
-    Object.values(workplacePositionMap).forEach((entry) => {
-      const id = normalizePositionId(entry?.positionId);
-      const name = normalizeLabel(entry?.positionName);
-      if (id && name) map.set(id, name);
-    });
-  }
-  if (Array.isArray(assignments)) {
-    assignments.forEach((entry) => {
-      const id = normalizePositionId(
-        entry?.workplace_position_id ??
-          entry?.workplacePositionId ??
-          entry?.position_id ??
-          entry?.positionId ??
-          entry?.position ??
-          null,
-      );
-      const name = normalizeLabel(
-        entry?.workplace_position_name ??
-          entry?.workplacePositionName ??
-          entry?.position_name ??
-          entry?.positionName ??
-          null,
-      );
-      if (id && name && !map.has(id)) map.set(id, name);
-    });
-  }
-  return map;
-}
-
 function resolveDashboardFields(info) {
   return parseListValue(
     info?.notificationDashboardFields ??
@@ -161,6 +133,59 @@ function resolveDashboardFields(info) {
       info?.notification_dashboard_field ??
       [],
   );
+}
+
+function normalizeLabel(value) {
+  if (value === null || value === undefined) return null;
+  const trimmed = String(value).trim();
+  return trimmed ? trimmed : null;
+}
+
+function buildPositionLabelMap({ workplacePositionMap, assignments } = {}) {
+  const map = new Map();
+  const setLabel = (id, label) => {
+    const normalizedId = normalizePositionId(id);
+    const normalizedLabel = normalizeLabel(label);
+    if (!normalizedId || !normalizedLabel) return;
+    if (!map.has(normalizedId) || map.get(normalizedId) === normalizedId) {
+      map.set(normalizedId, normalizedLabel);
+    }
+  };
+
+  if (workplacePositionMap && typeof workplacePositionMap === 'object') {
+    Object.values(workplacePositionMap).forEach((entry) => {
+      if (!entry || typeof entry !== 'object') return;
+      setLabel(
+        entry.positionId ?? entry.position_id ?? entry.position,
+        entry.positionName ??
+          entry.position_name ??
+          entry.positionLabel ??
+          entry.position_label ??
+          entry.name,
+      );
+    });
+  }
+
+  if (Array.isArray(assignments)) {
+    assignments.forEach((assignment) => {
+      if (!assignment || typeof assignment !== 'object') return;
+      setLabel(
+        assignment.workplace_position_id ??
+          assignment.workplacePositionId ??
+          assignment.position_id ??
+          assignment.positionId ??
+          assignment.position,
+        assignment.workplace_position_name ??
+          assignment.workplacePositionName ??
+          assignment.position_name ??
+          assignment.positionName ??
+          assignment.position_label ??
+          assignment.positionLabel,
+      );
+    });
+  }
+
+  return map;
 }
 
 function collectPositionIds({ position, workplacePositionMap }) {
@@ -214,11 +239,14 @@ export default function DutyAssignmentsWidget() {
     position,
     workplacePositionMap,
     branch,
+    company,
     department,
+    permissions,
     session,
     user,
     workplace,
   } = useContext(AuthContext);
+  const licensed = useCompanyModules(company);
   const [codeTransactions, setCodeTransactions] = useState([]);
   const [allowedForms, setAllowedForms] = useState({});
   const [assignments, setAssignments] = useState([]);
@@ -242,20 +270,6 @@ export default function DutyAssignmentsWidget() {
       if (table) tableSet.add(table);
     });
     return Array.from(tableSet);
-  }, [codeTransactions, dutyNotificationConfig]);
-
-  const dutyLabelsByTable = useMemo(() => {
-    const map = new Map();
-    codeTransactions.forEach((row) => {
-      if (!isDutyNotificationRow(row, dutyNotificationConfig)) return;
-      const table = normalizeText(getRowValue(row, TRANSACTION_TABLE_KEYS));
-      if (!table) return;
-      const label = normalizeLabel(getRowValue(row, TRANSACTION_NAME_KEYS));
-      if (label && !map.has(table)) {
-        map.set(table, label);
-      }
-    });
-    return map;
   }, [codeTransactions, dutyNotificationConfig]);
 
   const allowedFormMaps = useMemo(() => {
@@ -290,6 +304,36 @@ export default function DutyAssignmentsWidget() {
       if (!existing || (existing.length === 0 && fields.length > 0)) {
         map.set(table, fields);
       }
+    });
+    return map;
+  }, [allowedFormMaps, codeTransactions, dutyNotificationConfig]);
+
+  const dutyLabelsByTable = useMemo(() => {
+    const map = new Map();
+    codeTransactions.forEach((row) => {
+      if (!isDutyNotificationRow(row, dutyNotificationConfig)) return;
+      const table = normalizeText(getRowValue(row, TRANSACTION_TABLE_KEYS));
+      if (!table) return;
+      const label = normalizeLabel(getRowValue(row, TRANSACTION_NAME_KEYS));
+      if (label) {
+        map.set(table, label);
+        return;
+      }
+      const name = normalizeText(getRowValue(row, TRANSACTION_NAME_KEYS));
+      const info =
+        (name && allowedFormMaps.nameMap.get(name)) ||
+        allowedFormMaps.tableMap.get(table) ||
+        null;
+      if (!info) return;
+      const fallbackLabel = normalizeLabel(
+        info?.label ??
+          info?.title ??
+          info?.displayName ??
+          info?.name ??
+          info?.transactionName ??
+          info?.transaction_name,
+      );
+      if (fallbackLabel) map.set(table, fallbackLabel);
     });
     return map;
   }, [allowedFormMaps, codeTransactions, dutyNotificationConfig]);
@@ -387,6 +431,9 @@ export default function DutyAssignmentsWidget() {
             })
           )
             return;
+          const moduleKey = resolveModuleKey(info) || 'forms';
+          if (!isModulePermissionGranted(permissions, moduleKey)) return;
+          if (!isModuleLicensed(licensed, moduleKey)) return;
           filtered[name] = info;
         });
         setAllowedForms(filtered);
@@ -400,6 +447,8 @@ export default function DutyAssignmentsWidget() {
   }, [
     branch,
     department,
+    licensed,
+    permissions,
     session,
     user,
     workplace,
@@ -513,7 +562,10 @@ export default function DutyAssignmentsWidget() {
         const dashboardFields = normalizedTable
           ? dashboardFieldsByTable.get(normalizedTable)
           : null;
-        const fieldList = dashboardFields && dashboardFields.length > 0 ? dashboardFields : [];
+        const fieldList =
+          dashboardFields && dashboardFields.length > 0
+            ? dashboardFields
+            : Object.keys(row || {});
         fieldList.forEach((key) => {
           if (key === positionFieldName) return;
           const value = getRowFieldValue(row, key);
