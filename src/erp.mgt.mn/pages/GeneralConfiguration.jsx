@@ -670,6 +670,25 @@ export default function GeneralConfiguration() {
               Leave blank to use the default value of 1.
             </div>
           </div>
+          <div style={{ marginBottom: '0.5rem' }}>
+            <TooltipWrapper
+              title={t('duty_dashboard_toasts', {
+                ns: 'tooltip',
+                defaultValue:
+                  'Show toast notifications that list the deduped dashboard fields for duty assignments',
+              })}
+            >
+              <label>
+                Show Duty Dashboard Toasts{' '}
+                <input
+                  name="dutyDashboardToastEnabled"
+                  type="checkbox"
+                  checked={active.dutyDashboardToastEnabled ?? false}
+                  onChange={handleChange}
+                />
+              </label>
+            </TooltipWrapper>
+          </div>
         </>
       ) : tab === 'system' ? (
         <div>

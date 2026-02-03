@@ -1,5 +1,6 @@
-import { useContext, useEffect, useMemo, useState } from 'react';
+import { useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { AuthContext } from '../context/AuthContext.jsx';
+import { useToast } from '../context/ToastContext.jsx';
 import { useCompanyModules } from '../hooks/useCompanyModules.js';
 import useGeneralConfig from '../hooks/useGeneralConfig.js';
 import { buildOptionsForRows } from '../utils/buildAsyncSelectOptions.js';
@@ -347,6 +348,8 @@ export default function DutyAssignmentsWidget() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [resolvedPositionLabels, setResolvedPositionLabels] = useState(new Map());
+  const { addToast } = useToast();
+  const dutyDashboardToastRef = useRef('');
 
   const dutyNotificationConfig = useMemo(() => {
     const fields = parseListValue(generalConfig?.plan?.dutyNotificationFields);
@@ -489,6 +492,7 @@ export default function DutyAssignmentsWidget() {
 
   const positionFieldName =
     generalConfig?.plan?.dutyPositionFieldName?.trim() || 'position_id';
+  const dutyDashboardToastEnabled = generalConfig?.plan?.dutyDashboardToastEnabled ?? false;
 
   useEffect(() => {
     let canceled = false;
@@ -665,6 +669,32 @@ export default function DutyAssignmentsWidget() {
       canceled = true;
     };
   }, [dutyTables, positionFieldName, positionIds]);
+
+  useEffect(() => {
+    if (!dutyDashboardToastEnabled || !loading || dutyTables.length === 0) return;
+    const signature = JSON.stringify(
+      dutyTables.map((table) => {
+        const fields = dashboardFieldsByTable.get(table) || [];
+        return { table, fields: [...fields].sort() };
+      }),
+    );
+    if (dutyDashboardToastRef.current === signature) return;
+    dutyDashboardToastRef.current = signature;
+    dutyTables.forEach((table) => {
+      const label = dutyLabelsByTable.get(table) || table;
+      const fields = dashboardFieldsByTable.get(table) || [];
+      const fieldList =
+        fields.length > 0 ? fields.join(', ') : 'No dashboard fields configured';
+      addToast(`Duty dashboard fields for ${label}: ${fieldList}`, 'info');
+    });
+  }, [
+    addToast,
+    dashboardFieldsByTable,
+    dutyDashboardToastEnabled,
+    dutyLabelsByTable,
+    dutyTables,
+    loading,
+  ]);
 
   useEffect(() => {
     let canceled = false;
