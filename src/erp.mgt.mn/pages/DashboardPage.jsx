@@ -8,15 +8,12 @@ import { usePendingRequests } from '../context/PendingRequestContext.jsx';
 import { useTransactionNotifications } from '../context/TransactionNotificationContext.jsx';
 import LangContext from '../context/I18nContext.jsx';
 import { useTour } from '../components/ERPLayout.jsx';
-import useGeneralConfig from '../hooks/useGeneralConfig.js';
-import PlanDutyWidget from '../components/PlanDutyWidget.jsx';
 
 export default function DashboardPage() {
   const { user, session } = useContext(AuthContext);
   const { hasNew, markSeen, outgoing } = usePendingRequests();
   const { unreadCount } = useTransactionNotifications();
   const { t } = useContext(LangContext);
-  const generalConfig = useGeneralConfig();
   const [active, setActive] = useState('general');
   const location = useLocation();
   const navigate = useNavigate();
@@ -106,7 +103,6 @@ export default function DashboardPage() {
     boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
     minWidth: '140px',
   };
-  const hasDutyConfig = Boolean(generalConfig?.plan?.dutyFieldName?.trim());
 
   return (
     <div style={{ padding: '1rem' }}>
@@ -170,11 +166,7 @@ export default function DashboardPage() {
 
       {active === 'plans' && (
         <div>
-          {hasDutyConfig ? (
-            <PlanDutyWidget />
-          ) : (
-            <TransactionNotificationWidget filterMode="plan" />
-          )}
+          <TransactionNotificationWidget filterMode="plan" />
         </div>
       )}
     </div>
