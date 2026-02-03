@@ -29,6 +29,7 @@ import useGeneralConfig from '../hooks/useGeneralConfig.js';
 import { API_BASE } from '../utils/apiBase.js';
 import { useTranslation } from 'react-i18next';
 import TooltipWrapper from './TooltipWrapper.jsx';
+import AsyncSearchSelect from './AsyncSearchSelect.jsx';
 import normalizeDateInput from '../utils/normalizeDateInput.js';
 import { evaluateTransactionFormAccess } from '../utils/transactionFormAccess.js';
 import {
@@ -567,6 +568,7 @@ const TableManager = forwardRef(function TableManager({
   const [jsonRelationLabels, setJsonRelationLabels] = useState({});
   const jsonRelationFetchCache = useRef({});
   const relationValueSnapshotRef = useRef({});
+  const hiddenRelationFetchCacheRef = useRef({ table: null, fields: new Set() });
   const displayFieldConfigCache = useRef(new Map());
   const [columnMeta, setColumnMeta] = useState([]);
   const [autoInc, setAutoInc] = useState(new Set());
@@ -1747,7 +1749,61 @@ const TableManager = forwardRef(function TableManager({
   useEffect(() => {
     if (!table || Object.keys(columnCaseMap).length === 0) return;
     let canceled = false;
-    const shouldLoadRelationColumn = () => true;
+    if (hiddenRelationFetchCacheRef.current.table !== table) {
+      hiddenRelationFetchCacheRef.current.table = table;
+      hiddenRelationFetchCacheRef.current.fields = new Set();
+    }
+
+    const snapshotValues = relationValueSnapshotRef.current || {};
+    const visibleFieldSet = new Set();
+    const requiredFieldSet = new Set();
+    const addField = (set) => (field) => {
+      const resolved = resolveCanonicalKey(field);
+      if (resolved) set.add(resolved);
+    };
+    walkEditableFieldValues(formConfig?.visibleFields || [], addField(visibleFieldSet));
+    walkEditableFieldValues(formConfig?.headerFields || [], addField(visibleFieldSet));
+    walkEditableFieldValues(formConfig?.mainFields || [], addField(visibleFieldSet));
+    walkEditableFieldValues(formConfig?.footerFields || [], addField(visibleFieldSet));
+    walkEditableFieldValues(formConfig?.requiredFields || [], addField(requiredFieldSet));
+
+    const hasMeaningfulValue = (val) => {
+      if (val === undefined || val === null || val === '') return false;
+      if (Array.isArray(val)) return val.some(hasMeaningfulValue);
+      if (typeof val === 'object') {
+        if (Object.prototype.hasOwnProperty.call(val, 'value')) {
+          return hasMeaningfulValue(val.value);
+        }
+        return Object.values(val).some(hasMeaningfulValue);
+      }
+      return true;
+    };
+
+    const resolveFieldValue = (field) => {
+      const resolved = resolveCanonicalKey(field);
+      if (resolved && snapshotValues[resolved] !== undefined) {
+        return snapshotValues[resolved];
+      }
+      if (snapshotValues[field] !== undefined) return snapshotValues[field];
+      return undefined;
+    };
+
+    const shouldLoadRelationColumn = (field) => {
+      const resolved = resolveCanonicalKey(field) || field;
+      const isVisible =
+        visibleFieldSet.size === 0 || visibleFieldSet.has(resolved);
+      const hasValue = hasMeaningfulValue(resolveFieldValue(field));
+      const isRequired = requiredFieldSet.has(resolved);
+      if (!isVisible && !hasValue) return false;
+      const isActive = isVisible || isRequired || hasValue;
+      if (!isActive) return false;
+      if (!isVisible) {
+        const cache = hiddenRelationFetchCacheRef.current.fields;
+        if (cache.has(resolved)) return false;
+        cache.add(resolved);
+      }
+      return true;
+    };
 
     function buildCustomRelationsList(customPayload) {
       if (!customPayload || typeof customPayload !== 'object') return [];
@@ -8196,13 +8252,25 @@ const TableManager = forwardRef(function TableManager({
                 {(() => {
                   const relationConfig = relationConfigs[c];
                   if (relationConfig?.table) {
+                    const searchColumn =
+                      relationConfig.idField || relationConfig.column || c;
+                    const searchColumns = [
+                      searchColumn,
+                      ...(relationConfig.displayFields || []),
+                    ];
                     return (
-                      <input
+                      <AsyncSearchSelect
+                        table={relationConfig.table}
+                        searchColumn={searchColumn}
+                        searchColumns={searchColumns}
+                        labelFields={relationConfig.displayFields || []}
+                        idField={searchColumn}
+                        useLabelAsValue
                         value={filters[c] || ''}
-                        onChange={(e) =>
-                          handleFilterChange(c, e.target.value, { mode: 'like' })
+                        onChange={(val, label) =>
+                          handleFilterChange(c, label ?? val ?? '', { mode: 'like' })
                         }
-                        style={{ width: '100%' }}
+                        inputStyle={{ width: '100%' }}
                       />
                     );
                   }
