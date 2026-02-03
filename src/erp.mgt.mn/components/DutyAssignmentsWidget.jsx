@@ -141,6 +141,13 @@ function normalizeDisplayValue(value) {
   return String(value);
 }
 
+function isEmptyDisplayValue(value) {
+  if (value === null || value === undefined) return true;
+  if (typeof value === 'string') return value.trim() === '';
+  if (Array.isArray(value)) return value.length === 0;
+  return false;
+}
+
 export default function DutyAssignmentsWidget() {
   const generalConfig = useGeneralConfig();
   const { position, workplacePositionMap } = useContext(AuthContext);
@@ -268,6 +275,31 @@ export default function DutyAssignmentsWidget() {
 
   const shouldShowEmpty = !loading && !error && assignments.length === 0;
 
+  const groupedAssignments = useMemo(() => {
+    const groups = new Map();
+    assignments.forEach((entry) => {
+      const positionValue = getRowFieldValue(entry.row, positionFieldName);
+      const normalizedPosition = normalizePositionId(positionValue) || 'Unknown';
+      if (!groups.has(normalizedPosition)) groups.set(normalizedPosition, []);
+      groups.get(normalizedPosition).push(entry);
+    });
+    return Array.from(groups.entries()).map(([positionId, entries]) => {
+      const columnSet = new Set(['table']);
+      entries.forEach(({ row }) => {
+        Object.entries(row || {}).forEach(([key, value]) => {
+          if (key === positionFieldName) return;
+          if (isEmptyDisplayValue(value)) return;
+          columnSet.add(key);
+        });
+      });
+      return {
+        positionId,
+        entries,
+        columns: Array.from(columnSet),
+      };
+    });
+  }, [assignments, positionFieldName]);
+
   return (
     <section style={styles.section}>
       <div style={styles.header}>
@@ -285,23 +317,41 @@ export default function DutyAssignmentsWidget() {
       )}
       {assignments.length > 0 && (
         <div style={styles.list}>
-          {assignments.map((entry) => (
-            <div key={buildRowKey(entry.table, entry.row)} style={styles.card}>
+          {groupedAssignments.map((group) => (
+            <div key={group.positionId} style={styles.groupCard}>
               <div style={styles.cardHeader}>
-                <strong>{entry.table}</strong>
-                <span style={styles.cardMeta}>
-                  {positionFieldName}: {normalizeDisplayValue(entry.row?.[positionFieldName])}
-                </span>
+                <strong>Position {group.positionId}</strong>
+                <span style={styles.cardMeta}>{group.entries.length} assignment(s)</span>
               </div>
-              <div style={styles.cardBody}>
-                {Object.entries(entry.row || {})
-                  .filter(([key]) => key !== positionFieldName)
-                  .map(([key, value]) => (
-                    <div key={`${entry.table}-${key}`} style={styles.fieldRow}>
-                      <span style={styles.fieldLabel}>{key}</span>
-                      <span style={styles.fieldValue}>{normalizeDisplayValue(value)}</span>
-                    </div>
-                  ))}
+              <div style={styles.tableWrapper}>
+                <table style={styles.table}>
+                  <thead>
+                    <tr>
+                      {group.columns.map((column) => (
+                        <th key={column} style={styles.tableHeaderCell}>
+                          {column === 'table' ? 'Source Table' : column}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {group.entries.map((entry) => (
+                      <tr key={buildRowKey(entry.table, entry.row)}>
+                        {group.columns.map((column) => {
+                          const value =
+                            column === 'table'
+                              ? entry.table
+                              : getRowFieldValue(entry.row, column);
+                          return (
+                            <td key={`${buildRowKey(entry.table, entry.row)}-${column}`} style={styles.tableCell}>
+                              {normalizeDisplayValue(value)}
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
             </div>
           ))}
@@ -330,7 +380,7 @@ const styles = {
   error: { color: '#b91c1c', padding: '0.5rem 0' },
   empty: { color: '#64748b', padding: '0.5rem 0' },
   list: { display: 'flex', flexDirection: 'column', gap: '0.75rem' },
-  card: {
+  groupCard: {
     border: '1px solid #e5e7eb',
     borderRadius: '10px',
     padding: '0.75rem',
@@ -344,14 +394,25 @@ const styles = {
     gap: '0.5rem',
   },
   cardMeta: { fontSize: '0.75rem', color: '#64748b' },
-  cardBody: {
-    display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
-    gap: '0.35rem 0.75rem',
+  tableWrapper: { overflowX: 'auto' },
+  table: {
+    width: '100%',
+    borderCollapse: 'collapse',
     fontSize: '0.8rem',
     color: '#1f2937',
   },
-  fieldRow: { display: 'flex', flexDirection: 'column', gap: '0.1rem' },
-  fieldLabel: { fontSize: '0.7rem', color: '#64748b' },
-  fieldValue: { wordBreak: 'break-word' },
+  tableHeaderCell: {
+    textAlign: 'left',
+    fontWeight: 600,
+    padding: '0.5rem 0.5rem',
+    borderBottom: '1px solid #e5e7eb',
+    background: '#f8fafc',
+    whiteSpace: 'nowrap',
+  },
+  tableCell: {
+    padding: '0.45rem 0.5rem',
+    borderBottom: '1px solid #f1f5f9',
+    verticalAlign: 'top',
+    wordBreak: 'break-word',
+  },
 };
