@@ -683,16 +683,16 @@ function InlineTransactionTable(
         config?.combinationSourceColumn && config?.combinationTargetColumn,
       );
       const filters = resolved?.filters || resolveCombinationFilters(rowObj, column, config);
-      if (!filters) return hasCombination ? [] : options;
+      if (!filters) return options;
       const targetColumn = config?.combinationTargetColumn;
-      if (!targetColumn) return hasCombination ? [] : options;
+      if (!targetColumn) return options;
       const filterValue = filters[targetColumn];
       if (filterValue === undefined || filterValue === null || filterValue === '') {
-        return hasCombination ? [] : options;
+        return options;
       }
       const columnRows = getRelationRowMap(column);
       if (!columnRows || typeof columnRows !== 'object') return options;
-      const normalizedFilter = String(filterValue);
+      const normalizedFilter = String(filterValue).toLowerCase();
       return options.filter((opt) => {
         if (!opt) return false;
         const rawValue =
@@ -703,7 +703,7 @@ function InlineTransactionTable(
         if (targetValue === undefined || targetValue === null || targetValue === '') {
           return false;
         }
-        return String(targetValue) === normalizedFilter;
+        return String(targetValue).toLowerCase().includes(normalizedFilter);
       });
     },
     [getAutoSelectConfig, getRelationRowMap, resolveCombinationFilters, getRowValueCaseInsensitive],
@@ -2524,8 +2524,9 @@ function InlineTransactionTable(
             className={invalid ? 'border-red-500 bg-red-100' : ''}
             inputStyle={inputStyle}
             companyId={company}
-            filters={comboFilters || undefined}
-            shouldFetch={combinationReady}
+            filters={combinationReady ? comboFilters || undefined : undefined}
+            shouldFetch
+            useLabelAsValue
             isMulti
           />
         );
@@ -2569,8 +2570,9 @@ function InlineTransactionTable(
           className={invalid ? 'border-red-500 bg-red-100' : ''}
           inputStyle={inputStyle}
           companyId={company}
-          filters={comboFilters || undefined}
-          shouldFetch={combinationReady}
+          filters={combinationReady ? comboFilters || undefined : undefined}
+          shouldFetch
+          useLabelAsValue
         />
       );
     }
@@ -2630,8 +2632,9 @@ function InlineTransactionTable(
           className={invalid ? 'border-red-500 bg-red-100' : ''}
           inputStyle={inputStyle}
           companyId={company}
-          filters={comboFilters || undefined}
-          shouldFetch={combinationReady}
+          filters={combinationReady ? comboFilters || undefined : undefined}
+          shouldFetch
+          useLabelAsValue
         />
       );
     }
