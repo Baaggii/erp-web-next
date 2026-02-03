@@ -308,6 +308,36 @@ export default function DutyAssignmentsWidget() {
     return map;
   }, [allowedFormMaps, codeTransactions, dutyNotificationConfig]);
 
+  const dutyLabelsByTable = useMemo(() => {
+    const map = new Map();
+    codeTransactions.forEach((row) => {
+      if (!isDutyNotificationRow(row, dutyNotificationConfig)) return;
+      const table = normalizeText(getRowValue(row, TRANSACTION_TABLE_KEYS));
+      if (!table) return;
+      const label = normalizeLabel(getRowValue(row, TRANSACTION_NAME_KEYS));
+      if (label) {
+        map.set(table, label);
+        return;
+      }
+      const name = normalizeText(getRowValue(row, TRANSACTION_NAME_KEYS));
+      const info =
+        (name && allowedFormMaps.nameMap.get(name)) ||
+        allowedFormMaps.tableMap.get(table) ||
+        null;
+      if (!info) return;
+      const fallbackLabel = normalizeLabel(
+        info?.label ??
+          info?.title ??
+          info?.displayName ??
+          info?.name ??
+          info?.transactionName ??
+          info?.transaction_name,
+      );
+      if (fallbackLabel) map.set(table, fallbackLabel);
+    });
+    return map;
+  }, [allowedFormMaps, codeTransactions, dutyNotificationConfig]);
+
   const positionIds = useMemo(
     () => collectPositionIds({ position, workplacePositionMap }),
     [position, workplacePositionMap],
