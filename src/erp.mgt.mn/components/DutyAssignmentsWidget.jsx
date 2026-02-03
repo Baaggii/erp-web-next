@@ -1,7 +1,14 @@
 import { useContext, useEffect, useMemo, useState } from 'react';
 import { AuthContext } from '../context/AuthContext.jsx';
+import { useCompanyModules } from '../hooks/useCompanyModules.js';
 import useGeneralConfig from '../hooks/useGeneralConfig.js';
 import { buildOptionsForRows } from '../utils/buildAsyncSelectOptions.js';
+import { hasTransactionFormAccess } from '../utils/transactionFormAccess.js';
+import {
+  isModuleLicensed,
+  isModulePermissionGranted,
+} from '../utils/moduleAccess.js';
+import { resolveWorkplacePositionForContext } from '../utils/workplaceResolver.js';
 
 const TRANSACTION_NAME_KEYS = [
   'UITransTypeName',
@@ -37,6 +44,10 @@ const DEFAULT_DUTY_NOTIFICATION_VALUES = ['1'];
 function normalizeMatch(value) {
   if (value === undefined || value === null) return '';
   return String(value).trim().toLowerCase();
+}
+
+function resolveModuleKey(info) {
+  return info?.moduleKey || info?.module_key || info?.module || info?.modulekey || '';
 }
 
 function parseListValue(value) {
@@ -308,16 +319,30 @@ function normalizeDisplayValue(value) {
   return String(value);
 }
 
+function isEmptyDisplayValue(value) {
+  if (value === null || value === undefined) return true;
+  if (typeof value === 'string') return value.trim() === '';
+  if (Array.isArray(value)) return value.length === 0;
+  return false;
+}
+
 export default function DutyAssignmentsWidget() {
   const generalConfig = useGeneralConfig();
   const {
     position,
     workplacePositionMap,
+    branch,
     company,
+    department,
+    permissions,
     session,
+    user,
+    workplace,
   } = useContext(AuthContext);
+  const licensed = useCompanyModules(company);
   const [codeTransactions, setCodeTransactions] = useState([]);
   const [transactionForms, setTransactionForms] = useState({});
+  const [allowedForms, setAllowedForms] = useState({});
   const [assignments, setAssignments] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -342,11 +367,10 @@ export default function DutyAssignmentsWidget() {
     return Array.from(tableSet);
   }, [codeTransactions, dutyNotificationConfig]);
 
-  const formMaps = useMemo(() => {
+  const allowedFormMaps = useMemo(() => {
     const nameMap = new Map();
     const tableMap = new Map();
-    Object.entries(transactionForms).forEach(([name, info]) => {
-      if (name === 'isDefault') return;
+    Object.entries(allowedForms).forEach(([name, info]) => {
       if (!info || typeof info !== 'object') return;
       const normalizedName = normalizeText(name);
       if (normalizedName) nameMap.set(normalizedName, info);
@@ -356,7 +380,7 @@ export default function DutyAssignmentsWidget() {
       if (normalizedTable) tableMap.set(normalizedTable, info);
     });
     return { nameMap, tableMap };
-  }, [transactionForms]);
+  }, [allowedForms]);
 
   const transactionConfigsByType = useMemo(() => {
     const map = new Map();
@@ -394,7 +418,9 @@ export default function DutyAssignmentsWidget() {
       } else {
         const name = normalizeText(getRowValue(row, TRANSACTION_NAME_KEYS));
         const fallbackInfo =
-          (name && formMaps.nameMap.get(name)) || formMaps.tableMap.get(table) || null;
+          (name && allowedFormMaps.nameMap.get(name)) ||
+          allowedFormMaps.tableMap.get(table) ||
+          null;
         if (fallbackInfo) {
           resolveDashboardFields(fallbackInfo).forEach((field) => fieldSet.add(field));
         }
@@ -403,7 +429,7 @@ export default function DutyAssignmentsWidget() {
     });
     return map;
   }, [
-    formMaps,
+    allowedFormMaps,
     codeTransactions,
     dutyNotificationConfig,
     transactionConfigsByType,
@@ -421,7 +447,10 @@ export default function DutyAssignmentsWidget() {
         return;
       }
       const name = normalizeText(getRowValue(row, TRANSACTION_NAME_KEYS));
-      const info = (name && formMaps.nameMap.get(name)) || formMaps.tableMap.get(table) || null;
+      const info =
+        (name && allowedFormMaps.nameMap.get(name)) ||
+        allowedFormMaps.tableMap.get(table) ||
+        null;
       if (!info) return;
       const fallbackLabel = normalizeLabel(
         info?.label ??
@@ -434,7 +463,7 @@ export default function DutyAssignmentsWidget() {
       if (fallbackLabel) map.set(table, fallbackLabel);
     });
     return map;
-  }, [codeTransactions, dutyNotificationConfig, formMaps]);
+  }, [allowedFormMaps, codeTransactions, dutyNotificationConfig]);
 
   const positionIds = useMemo(
     () => collectPositionIds({ position, workplacePositionMap }),
@@ -463,6 +492,37 @@ export default function DutyAssignmentsWidget() {
 
   useEffect(() => {
     let canceled = false;
+    const userRightId =
+      user?.userLevel ??
+      user?.userlevel_id ??
+      user?.userlevelId ??
+      session?.user_level ??
+      session?.userlevel_id ??
+      session?.userlevelId ??
+      null;
+    const userRightName =
+      session?.user_level_name ??
+      session?.userLevelName ??
+      user?.userLevelName ??
+      user?.userlevel_name ??
+      user?.userlevelName ??
+      null;
+    const workplaceId = workplace ?? session?.workplace_id ?? session?.workplaceId ?? null;
+    const workplacePositionId =
+      resolveWorkplacePositionForContext({
+        workplaceId,
+        session,
+        workplacePositionMap,
+      })?.positionId ??
+      session?.workplace_position_id ??
+      session?.workplacePositionId ??
+      null;
+    const positionId =
+      session?.employment_position_id ??
+      session?.position_id ??
+      session?.position ??
+      user?.position ??
+      null;
     fetch('/api/transaction_forms', {
       credentials: 'include',
       skipErrorToast: true,
@@ -473,14 +533,48 @@ export default function DutyAssignmentsWidget() {
         if (canceled) return;
         const formsData = data && typeof data === 'object' ? data : {};
         setTransactionForms(formsData);
+        const filtered = {};
+        const branchId = branch != null ? String(branch) : null;
+        const departmentId = department != null ? String(department) : null;
+        Object.entries(formsData).forEach(([name, info]) => {
+          if (name === 'isDefault') return;
+          if (!info || typeof info !== 'object') return;
+          if (
+            !hasTransactionFormAccess(info, branchId, departmentId, {
+              allowTemporaryAnyScope: true,
+              userRightId,
+              userRightName,
+              workplaceId,
+              positionId,
+              workplacePositions: session?.workplace_assignments,
+              workplacePositionId,
+              workplacePositionMap,
+            })
+          )
+            return;
+          const moduleKey = resolveModuleKey(info) || 'forms';
+          if (!isModulePermissionGranted(permissions, moduleKey)) return;
+          if (!isModuleLicensed(licensed, moduleKey)) return;
+          filtered[name] = info;
+        });
+        setAllowedForms(filtered);
       })
       .catch(() => {
-        if (!canceled) setTransactionForms({});
+        if (!canceled) setAllowedForms({});
       });
     return () => {
       canceled = true;
     };
-  }, []);
+  }, [
+    branch,
+    department,
+    licensed,
+    permissions,
+    session,
+    user,
+    workplace,
+    workplacePositionMap,
+  ]);
 
   useEffect(() => {
     let canceled = false;
@@ -735,6 +829,8 @@ export default function DutyAssignmentsWidget() {
               : Object.keys(row || {});
         fieldList.forEach((key) => {
           if (key === positionFieldName) return;
+          const value = getRowFieldValue(row, key);
+          if (isEmptyDisplayValue(value)) return;
           columnSet.add(key);
         });
       });
@@ -859,8 +955,7 @@ const styles = {
     padding: '0.5rem 0.5rem',
     borderBottom: '1px solid #e5e7eb',
     background: '#f8fafc',
-    whiteSpace: 'normal',
-    wordBreak: 'break-word',
+    whiteSpace: 'nowrap',
   },
   tableCell: {
     padding: '0.45rem 0.5rem',
