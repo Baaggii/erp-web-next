@@ -1,4 +1,4 @@
-import { useContext, useEffect, useMemo, useState } from 'react';
+import { useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { AuthContext } from '../context/AuthContext.jsx';
 import { useCompanyModules } from '../hooks/useCompanyModules.js';
 import useGeneralConfig from '../hooks/useGeneralConfig.js';
@@ -135,6 +135,29 @@ function resolveDashboardFields(info) {
   );
 }
 
+function resolveTransactionTypeValue(info) {
+  return (
+    info?.transactionTypeValue ??
+    info?.transaction_type_value ??
+    info?.transactionType ??
+    info?.transaction_type ??
+    null
+  );
+}
+
+function normalizeDashboardFields(fields) {
+  const normalized = new Map();
+  fields.forEach((field) => {
+    if (typeof field !== 'string') return;
+    const trimmed = field.trim();
+    if (!trimmed) return;
+    const key = normalizeFieldName(trimmed);
+    if (!key || normalized.has(key)) return;
+    normalized.set(key, trimmed);
+  });
+  return Array.from(normalized.values());
+}
+
 function normalizeLabel(value) {
   if (value === null || value === undefined) return null;
   const trimmed = String(value).trim();
@@ -233,6 +256,26 @@ function isEmptyDisplayValue(value) {
   return false;
 }
 
+function buildDisplayLabel(row, { idField, displayFields } = {}) {
+  if (!row || typeof row !== 'object') return '';
+  const fields =
+    Array.isArray(displayFields) && displayFields.length > 0
+      ? displayFields
+      : Object.keys(row);
+  const parts = [];
+  fields.forEach((field) => {
+    if (!field || field === idField) return;
+    const value = row[field];
+    if (isEmptyDisplayValue(value)) return;
+    parts.push(normalizeDisplayValue(value));
+  });
+  if (parts.length > 0) return parts.join(' - ');
+  if (idField && !isEmptyDisplayValue(row[idField])) {
+    return normalizeDisplayValue(row[idField]);
+  }
+  return '';
+}
+
 export default function DutyAssignmentsWidget() {
   const generalConfig = useGeneralConfig();
   const {
@@ -252,6 +295,7 @@ export default function DutyAssignmentsWidget() {
   const [assignments, setAssignments] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [relationPositionLabels, setRelationPositionLabels] = useState(new Map());
 
   const dutyNotificationConfig = useMemo(() => {
     const fields = parseListValue(generalConfig?.plan?.dutyNotificationFields);
@@ -272,71 +316,60 @@ export default function DutyAssignmentsWidget() {
     return Array.from(tableSet);
   }, [codeTransactions, dutyNotificationConfig]);
 
-  const allowedFormMaps = useMemo(() => {
-    const nameMap = new Map();
-    const tableMap = new Map();
-    Object.entries(allowedForms).forEach(([name, info]) => {
+  const allowedFormsByType = useMemo(() => {
+    const map = new Map();
+    Object.values(allowedForms).forEach((info) => {
       if (!info || typeof info !== 'object') return;
-      const normalizedName = normalizeText(name);
-      if (normalizedName) nameMap.set(normalizedName, info);
-      const normalizedTable = normalizeText(
-        info?.table ?? info?.tableName ?? info?.table_name,
-      );
-      if (normalizedTable) tableMap.set(normalizedTable, info);
+      const value = resolveTransactionTypeValue(info);
+      if (value === null || value === undefined || `${value}`.trim() === '') return;
+      const normalized = normalizeText(value);
+      if (!normalized) return;
+      if (!map.has(normalized)) map.set(normalized, []);
+      map.get(normalized).push(info);
     });
-    return { nameMap, tableMap };
+    return map;
   }, [allowedForms]);
 
-  const dashboardFieldsByTable = useMemo(() => {
-    const map = new Map();
-    codeTransactions.forEach((row) => {
-      if (!isDutyNotificationRow(row, dutyNotificationConfig)) return;
-      const table = normalizeText(getRowValue(row, TRANSACTION_TABLE_KEYS));
-      if (!table) return;
-      const name = normalizeText(getRowValue(row, TRANSACTION_NAME_KEYS));
-      const info =
-        (name && allowedFormMaps.nameMap.get(name)) ||
-        allowedFormMaps.tableMap.get(table) ||
-        null;
-      if (!info) return;
-      const fields = resolveDashboardFields(info);
-      const existing = map.get(table);
-      if (!existing || (existing.length === 0 && fields.length > 0)) {
-        map.set(table, fields);
-      }
-    });
-    return map;
-  }, [allowedFormMaps, codeTransactions, dutyNotificationConfig]);
+  const dutyTransactionMeta = useMemo(() => {
+    const metaByTable = new Map();
+    const typeLabelMap = new Map();
 
-  const dutyLabelsByTable = useMemo(() => {
-    const map = new Map();
     codeTransactions.forEach((row) => {
       if (!isDutyNotificationRow(row, dutyNotificationConfig)) return;
       const table = normalizeText(getRowValue(row, TRANSACTION_TABLE_KEYS));
       if (!table) return;
-      const label = normalizeLabel(getRowValue(row, TRANSACTION_NAME_KEYS));
-      if (label) {
-        map.set(table, label);
-        return;
-      }
-      const name = normalizeText(getRowValue(row, TRANSACTION_NAME_KEYS));
-      const info =
-        (name && allowedFormMaps.nameMap.get(name)) ||
-        allowedFormMaps.tableMap.get(table) ||
-        null;
-      if (!info) return;
-      const fallbackLabel = normalizeLabel(
-        info?.label ??
-          info?.title ??
-          info?.displayName ??
-          info?.name ??
-          info?.transactionName ??
-          info?.transaction_name,
+      const typeId = normalizeText(row?.UITransType ?? row?.transType ?? row?.id);
+      const typeLabel = normalizeLabel(row?.UITransTypeName) ||
+        normalizeLabel(getRowValue(row, TRANSACTION_NAME_KEYS));
+      if (typeId && typeLabel) typeLabelMap.set(typeId, typeLabel);
+      const configs = typeId ? allowedFormsByType.get(typeId) || [] : [];
+      const fields = normalizeDashboardFields(
+        configs.flatMap((config) => resolveDashboardFields(config)),
       );
-      if (fallbackLabel) map.set(table, fallbackLabel);
+      const entry = metaByTable.get(table) || {
+        fields: new Map(),
+        labels: new Map(),
+        typeIds: new Set(),
+      };
+      fields.forEach((field) => {
+        const key = normalizeFieldName(field);
+        if (key && !entry.fields.has(key)) entry.fields.set(key, field);
+      });
+      if (typeLabel) entry.labels.set(typeLabel, typeLabel);
+      if (typeId) entry.typeIds.add(typeId);
+      metaByTable.set(table, entry);
     });
-    return map;
-  }, [allowedFormMaps, codeTransactions, dutyNotificationConfig]);
+
+    metaByTable.forEach((entry, table) => {
+      metaByTable.set(table, {
+        fields: Array.from(entry.fields.values()),
+        labels: Array.from(entry.labels.values()),
+        typeIds: Array.from(entry.typeIds.values()),
+      });
+    });
+
+    return { metaByTable, typeLabelMap };
+  }, [allowedFormsByType, codeTransactions, dutyNotificationConfig]);
 
   const positionIds = useMemo(
     () => collectPositionIds({ position, workplacePositionMap }),
@@ -475,34 +508,40 @@ export default function DutyAssignmentsWidget() {
     };
   }, []);
 
-  useEffect(() => {
-    let canceled = false;
-
-    const fetchAllRows = async (table, positionId) => {
-      const collected = [];
-      const perPage = 500;
-      let page = 1;
-      let total = 0;
-      do {
-        const params = new URLSearchParams();
-        params.set('perPage', String(perPage));
-        params.set('page', String(page));
-        params.set(positionFieldName, positionId);
-        const res = await fetch(`/api/tables/${encodeURIComponent(table)}?${params.toString()}`, {
+  const fetchAllRows = useCallback(async (table, extraParams = {}) => {
+    const collected = [];
+    const perPage = 500;
+    let page = 1;
+    let total = 0;
+    do {
+      const params = new URLSearchParams();
+      params.set('perPage', String(perPage));
+      params.set('page', String(page));
+      Object.entries(extraParams).forEach(([key, value]) => {
+        if (value === undefined || value === null || `${value}`.trim() === '') return;
+        params.set(key, String(value));
+      });
+      const res = await fetch(
+        `/api/tables/${encodeURIComponent(table)}?${params.toString()}`,
+        {
           credentials: 'include',
           skipErrorToast: true,
           skipLoader: true,
-        });
-        if (!res.ok) break;
-        const data = await res.json().catch(() => ({}));
-        const rows = Array.isArray(data?.rows) ? data.rows : [];
-        total = Number(data?.count) || rows.length;
-        collected.push(...rows);
-        page += 1;
-        if (rows.length < perPage) break;
-      } while (collected.length < total);
-      return collected;
-    };
+        },
+      );
+      if (!res.ok) break;
+      const data = await res.json().catch(() => ({}));
+      const rows = Array.isArray(data?.rows) ? data.rows : [];
+      total = Number(data?.count) || rows.length;
+      collected.push(...rows);
+      page += 1;
+      if (rows.length < perPage) break;
+    } while (collected.length < total);
+    return collected;
+  }, []);
+
+  useEffect(() => {
+    let canceled = false;
 
     const load = async () => {
       if (!positionIds.length || !dutyTables.length) {
@@ -515,7 +554,9 @@ export default function DutyAssignmentsWidget() {
         const results = await Promise.all(
           dutyTables.map(async (table) => {
             const rowsForTable = await Promise.all(
-              positionIds.map((positionId) => fetchAllRows(table, positionId)),
+              positionIds.map((positionId) =>
+                fetchAllRows(table, { [positionFieldName]: positionId }),
+              ),
             );
             return rowsForTable.flat().map((row) => ({ table, row }));
           }),
@@ -543,9 +584,119 @@ export default function DutyAssignmentsWidget() {
     return () => {
       canceled = true;
     };
-  }, [dutyTables, positionFieldName, positionIds]);
+  }, [dutyTables, fetchAllRows, positionFieldName, positionIds]);
+
+  useEffect(() => {
+    let canceled = false;
+
+    const loadPositionLabels = async () => {
+      const positionValues = new Set();
+      assignments.forEach((entry) => {
+        const value = getRowFieldValue(entry.row, positionFieldName);
+        const normalized = normalizePositionId(value);
+        if (normalized) positionValues.add(normalized);
+      });
+
+      if (positionValues.size === 0) {
+        setRelationPositionLabels(new Map());
+        return;
+      }
+
+      const tables = Array.from(
+        new Set(
+          assignments
+            .map((entry) =>
+              normalizeText(
+                getRowValue(entry.row, TRANSACTION_TABLE_KEYS) || entry.table,
+              ),
+            )
+            .filter(Boolean),
+        ),
+      );
+
+      let relationInfo = null;
+      for (const table of tables) {
+        const res = await fetch(`/api/tables/${encodeURIComponent(table)}/relations`, {
+          credentials: 'include',
+          skipErrorToast: true,
+          skipLoader: true,
+        });
+        if (!res.ok) continue;
+        const list = await res.json().catch(() => []);
+        if (!Array.isArray(list)) continue;
+        const match = list.find(
+          (rel) =>
+            rel?.COLUMN_NAME &&
+            rel.COLUMN_NAME.toLowerCase() === positionFieldName.toLowerCase(),
+        );
+        if (match?.REFERENCED_TABLE_NAME && match?.REFERENCED_COLUMN_NAME) {
+          relationInfo = {
+            table: match.REFERENCED_TABLE_NAME,
+            column: match.REFERENCED_COLUMN_NAME,
+            filterColumn: match.filterColumn,
+            filterValue: match.filterValue,
+          };
+          break;
+        }
+      }
+
+      if (!relationInfo) {
+        setRelationPositionLabels(new Map());
+        return;
+      }
+
+      const params = new URLSearchParams({ table: relationInfo.table });
+      if (relationInfo.filterColumn) {
+        params.set('filterColumn', relationInfo.filterColumn);
+      }
+      if (relationInfo.filterValue !== undefined && relationInfo.filterValue !== null) {
+        params.set('filterValue', String(relationInfo.filterValue));
+      }
+      if (relationInfo.column) {
+        params.set('targetColumn', relationInfo.column);
+      }
+      const cfgRes = await fetch(`/api/display_fields?${params.toString()}`, {
+        credentials: 'include',
+        skipErrorToast: true,
+        skipLoader: true,
+      });
+      const cfg = cfgRes.ok ? await cfgRes.json().catch(() => ({})) : {};
+      const idField =
+        (typeof cfg?.idField === 'string' && cfg.idField.trim()) ||
+        relationInfo.column;
+      const displayFields = Array.isArray(cfg?.displayFields) ? cfg.displayFields : [];
+
+      const rows = await fetchAllRows(relationInfo.table);
+      if (canceled) return;
+      const labelMap = new Map();
+      rows.forEach((row) => {
+        if (!row || typeof row !== 'object') return;
+        const idValue = normalizePositionId(row[idField] ?? row[relationInfo.column]);
+        if (!idValue) return;
+        if (!positionValues.has(idValue)) return;
+        const label = buildDisplayLabel(row, { idField, displayFields });
+        if (label) labelMap.set(idValue, label);
+      });
+
+      if (!canceled) setRelationPositionLabels(labelMap);
+    };
+
+    loadPositionLabels();
+
+    return () => {
+      canceled = true;
+    };
+  }, [assignments, fetchAllRows, positionFieldName]);
 
   const shouldShowEmpty = !loading && !error && assignments.length === 0;
+
+  const resolvedPositionLabelMap = useMemo(() => {
+    const merged = new Map(positionLabelMap);
+    relationPositionLabels.forEach((label, id) => {
+      if (label) merged.set(id, label);
+    });
+    return merged;
+  }, [positionLabelMap, relationPositionLabels]);
 
   const groupedAssignments = useMemo(() => {
     const groups = new Map();
@@ -559,9 +710,10 @@ export default function DutyAssignmentsWidget() {
       const columnSet = new Set(['table']);
       entries.forEach(({ row }) => {
         const normalizedTable = normalizeText(getRowValue(row, TRANSACTION_TABLE_KEYS));
-        const dashboardFields = normalizedTable
-          ? dashboardFieldsByTable.get(normalizedTable)
+        const meta = normalizedTable
+          ? dutyTransactionMeta.metaByTable.get(normalizedTable)
           : null;
+        const dashboardFields = meta?.fields;
         const fieldList =
           dashboardFields && dashboardFields.length > 0
             ? dashboardFields
@@ -574,7 +726,7 @@ export default function DutyAssignmentsWidget() {
         });
       });
       const positionLabel =
-        positionId !== 'Unknown' ? positionLabelMap.get(positionId) : null;
+        positionId !== 'Unknown' ? resolvedPositionLabelMap.get(positionId) : null;
       return {
         positionId,
         positionLabel: positionLabel || positionId,
@@ -582,7 +734,12 @@ export default function DutyAssignmentsWidget() {
         columns: Array.from(columnSet),
       };
     });
-  }, [assignments, dashboardFieldsByTable, positionFieldName, positionLabelMap]);
+  }, [
+    assignments,
+    dutyTransactionMeta.metaByTable,
+    positionFieldName,
+    resolvedPositionLabelMap,
+  ]);
 
   return (
     <section style={styles.section}>
@@ -625,9 +782,19 @@ export default function DutyAssignmentsWidget() {
                           const normalizedTable = normalizeText(
                             getRowValue(entry.row, TRANSACTION_TABLE_KEYS),
                           );
+                          const entryTypeId = normalizeText(
+                            entry.row?.UITransType ?? entry.row?.transType ?? entry.row?.id,
+                          );
+                          const typeLabel = entryTypeId
+                            ? dutyTransactionMeta.typeLabelMap.get(entryTypeId)
+                            : null;
+                          const tableMeta = normalizedTable
+                            ? dutyTransactionMeta.metaByTable.get(normalizedTable)
+                            : null;
+                          const tableLabel = tableMeta?.labels?.[0] || null;
                           const value =
                             column === 'table'
-                              ? dutyLabelsByTable.get(normalizedTable) || entry.table
+                              ? typeLabel || tableLabel || entry.table
                               : getRowFieldValue(entry.row, column);
                           return (
                             <td key={`${buildRowKey(entry.table, entry.row)}-${column}`} style={styles.tableCell}>
