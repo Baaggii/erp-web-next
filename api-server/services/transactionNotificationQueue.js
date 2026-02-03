@@ -78,6 +78,12 @@ function getCaseInsensitive(row, field) {
   return key ? row[key] : undefined;
 }
 
+function normalizeRecipientEmpId(empid) {
+  if (!empid) return null;
+  const trimmed = String(empid).trim();
+  return trimmed ? trimmed.toUpperCase() : null;
+}
+
 function deriveTransactionName(row, tableName) {
   const candidates = [
     'TRTYPENAME',
@@ -816,11 +822,7 @@ async function handleTransactionNotification(job) {
         }
 
         const uniqueRecipients = Array.from(
-          new Set(
-            recipients
-              .map((entry) => String(entry).trim())
-              .filter((entry) => entry),
-          ),
+          new Set(recipients.map((entry) => normalizeRecipientEmpId(entry)).filter(Boolean)),
         );
 
         if (uniqueRecipients.length) {
