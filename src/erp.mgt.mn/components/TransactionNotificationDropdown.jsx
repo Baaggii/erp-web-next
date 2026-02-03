@@ -22,6 +22,8 @@ const TRANSACTION_TABLE_KEYS = [
 ];
 const DEFAULT_PLAN_NOTIFICATION_FIELDS = ['is_plan', 'is_plan_completion'];
 const DEFAULT_PLAN_NOTIFICATION_VALUES = ['1'];
+const DEFAULT_DUTY_NOTIFICATION_FIELDS = [];
+const DEFAULT_DUTY_NOTIFICATION_VALUES = ['1'];
 
 function normalizeText(value) {
   if (value === undefined || value === null) return '';
@@ -190,6 +192,15 @@ export default function TransactionNotificationDropdown() {
     };
   }, [generalConfig]);
 
+  const dutyNotificationConfig = useMemo(() => {
+    const fields = parseListValue(generalConfig?.plan?.dutyNotificationFields);
+    const values = parseListValue(generalConfig?.plan?.dutyNotificationValues);
+    return {
+      fields: fields.length > 0 ? fields : DEFAULT_DUTY_NOTIFICATION_FIELDS,
+      values: values.length > 0 ? values : DEFAULT_DUTY_NOTIFICATION_VALUES,
+    };
+  }, [generalConfig]);
+
   const isPlanNotificationRow = useCallback(
     (row) => {
       if (!row) return false;
@@ -202,6 +213,20 @@ export default function TransactionNotificationDropdown() {
       });
     },
     [planNotificationConfig],
+  );
+
+  const isDutyNotificationRow = useCallback(
+    (row) => {
+      if (!row) return false;
+      const normalizedValues = dutyNotificationConfig.values.map(normalizeMatch);
+      return dutyNotificationConfig.fields.some((field) => {
+        const value = getRowFieldValue(row, field);
+        if (value === undefined || value === null || value === '') return false;
+        if (normalizedValues.length === 0) return normalizeFlagValue(value);
+        return normalizedValues.includes(normalizeMatch(value));
+      });
+    },
+    [dutyNotificationConfig],
   );
 
   const planTransactionsByName = useMemo(() => {
@@ -240,12 +265,21 @@ export default function TransactionNotificationDropdown() {
     [findTransactionRow, isPlanNotificationRow],
   );
 
+  const isDutyNotificationItem = useCallback(
+    (item) => {
+      if (!item) return false;
+      const row = findTransactionRow(item);
+      return isDutyNotificationRow(row);
+    },
+    [findTransactionRow, isDutyNotificationRow],
+  );
+
   const handleNotificationClick = async (item) => {
     if (!item) return;
     setOpen(false);
     await markRead([item.id]);
     const groupKey = encodeURIComponent(item.transactionName || 'Transaction');
-    const tab = isPlanNotificationItem(item) ? 'plans' : 'activity';
+    const tab = isPlanNotificationItem(item) || isDutyNotificationItem(item) ? 'plans' : 'activity';
     const params = new URLSearchParams({
       tab,
       notifyGroup: groupKey,
