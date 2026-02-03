@@ -859,10 +859,10 @@ export default function DutyAssignmentsWidget() {
     });
     return Array.from(groups.entries()).map(([positionId, entries]) => {
       const columnSet = new Set(['table']);
-      entries.forEach(({ row }) => {
+      entries.forEach(({ row, table }) => {
         const normalizedTable =
           normalizeText(getRowValue(row, TRANSACTION_TABLE_KEYS)) ||
-          normalizeText(entry.table);
+          normalizeText(table);
         const dashboardFields = normalizedTable
           ? dashboardFieldsByTable.get(normalizedTable)
           : null;
