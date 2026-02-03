@@ -2524,6 +2524,9 @@ const TableManager = forwardRef(function TableManager({
     }
     Object.entries(filters).forEach(([k, v]) => {
       if (v !== '' && v !== null && v !== undefined && validCols.has(k)) {
+        if (relationConfigs[k]?.table) {
+          return;
+        }
         const mode = filterModes[k];
         if (dateFieldSet.has(k)) {
           if (
@@ -2592,8 +2595,8 @@ const TableManager = forwardRef(function TableManager({
           .map(([key, value]) => {
             if (filterModes[key] !== 'like') return null;
             if (!relationConfigs[key]?.table) return null;
-            if (typeof value !== 'string' || value.trim() === '') return null;
-            return { key, query: value.trim().toLowerCase() };
+            if (value === undefined || value === null || String(value).trim() === '') return null;
+            return { key, query: String(value).trim().toLowerCase() };
           })
           .filter(Boolean);
         if (relationLikeFilters.length > 0) {
@@ -2602,6 +2605,7 @@ const TableManager = forwardRef(function TableManager({
               const rawValue = row?.[key];
               const valueText = rawValue != null ? String(rawValue).toLowerCase() : '';
               if (valueText.includes(query)) return true;
+              if (!refRows || !refRows[key]) return true;
               const relationRow = refRows?.[key]?.[rawValue];
               if (!relationRow || typeof relationRow !== 'object') return false;
               const displayFields = relationConfigs[key]?.displayFields || [];
@@ -4060,7 +4064,8 @@ const TableManager = forwardRef(function TableManager({
         delete next[col];
         return next;
       }
-      const nextMode = mode || prev[col] || 'exact';
+      const isRelationField = Boolean(relationConfigs[col]?.table);
+      const nextMode = isRelationField ? 'like' : mode || prev[col] || 'exact';
       if (prev[col] === nextMode) return prev;
       return { ...prev, [col]: nextMode };
     });
@@ -8134,12 +8139,10 @@ const TableManager = forwardRef(function TableManager({
                         searchColumns={searchColumns}
                         labelFields={relationConfig.displayFields || []}
                         idField={searchColumn}
+                        useLabelAsValue
                         value={filters[c] || ''}
-                        onChange={(val) =>
-                          handleFilterChange(c, val ?? '', { mode: 'like' })
-                        }
-                        onSelect={(opt) =>
-                          handleFilterChange(c, opt?.value ?? '', { mode: 'exact' })
+                        onChange={(val, label) =>
+                          handleFilterChange(c, label ?? val ?? '', { mode: 'like' })
                         }
                         inputStyle={{ width: '100%' }}
                       />
