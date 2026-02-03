@@ -1272,6 +1272,24 @@ const TableManager = forwardRef(function TableManager({
     return map;
   }, [columnMeta]);
 
+  const normalizeFilterValue = useCallback(
+    (col, value) => {
+      if (value === '' || value === null || value === undefined) return null;
+      if (dateFieldSet.has(col)) {
+        return value;
+      }
+      const typ = fieldTypeMap[col];
+      if (typ === 'string' && typeof value === 'string') {
+        const trimmed = value.trim();
+        if (trimmed === '') return null;
+        if (trimmed.includes('%') || trimmed.includes('_')) return trimmed;
+        return `%${trimmed}%`;
+      }
+      return value;
+    },
+    [dateFieldSet, fieldTypeMap],
+  );
+
   const normalizeJsonArray = useCallback((value) => {
     if (Array.isArray(value)) return value;
     if (value && typeof value === 'object' && 'value' in value) {
@@ -4013,24 +4031,6 @@ const TableManager = forwardRef(function TableManager({
     setPage(1);
     setSelectedRows(new Set());
   }
-
-  const normalizeFilterValue = useCallback(
-    (col, value) => {
-      if (value === '' || value === null || value === undefined) return null;
-      if (dateFieldSet.has(col)) {
-        return value;
-      }
-      const typ = fieldTypeMap[col];
-      if (typ === 'string' && typeof value === 'string') {
-        const trimmed = value.trim();
-        if (trimmed === '') return null;
-        if (trimmed.includes('%') || trimmed.includes('_')) return trimmed;
-        return `%${trimmed}%`;
-      }
-      return value;
-    },
-    [dateFieldSet, fieldTypeMap],
-  );
 
   async function issueTransactionEbarimt(recordId) {
     if (!posApiEnabled) return null;
