@@ -366,7 +366,7 @@ export default function TransactionNotificationWidget({ filterMode = 'activity' 
   const [completionLoading, setCompletionLoading] = useState(() => new Set());
   const [dutyRows, setDutyRows] = useState([]);
   const [dutyLoading, setDutyLoading] = useState(false);
-  const [dutyDisplayFields, setDutyDisplayFields] = useState({});
+  const [dutyDisplayFields, setDutyDisplayFields] = useState([]);
   const groupRefs = useRef({});
   const itemRefs = useRef({});
   const initializedGroups = useRef(new Set());
@@ -403,6 +403,10 @@ export default function TransactionNotificationWidget({ filterMode = 'activity' 
     };
   }, [generalConfig]);
 
+  const dutyTableName = useMemo(
+    () => String(generalConfig?.plan?.dutyTableName || '').trim(),
+    [generalConfig],
+  );
   const dutyPositionFieldName = useMemo(
     () => String(generalConfig?.plan?.dutyPositionFieldName || '').trim(),
     [generalConfig],
@@ -653,6 +657,97 @@ export default function TransactionNotificationWidget({ filterMode = 'activity' 
     dutyPositionFieldName,
     dutyPositionIds,
     dutyTables,
+    filterMode,
+  ]);
+
+  useEffect(() => {
+    if (filterMode !== 'duty') return;
+    if (!dutyTableName) {
+      setDutyDisplayFields([]);
+      return;
+    }
+    let canceled = false;
+    const params = new URLSearchParams({ table: dutyTableName });
+    fetch(`/api/display_fields?${params.toString()}`, {
+      credentials: 'include',
+      skipErrorToast: true,
+      skipLoader: true,
+    })
+      .then((res) => (res.ok ? res.json() : {}))
+      .then((data) => {
+        if (canceled) return;
+        const fields = Array.isArray(data?.displayFields)
+          ? data.displayFields.filter((field) => typeof field === 'string' && field.trim())
+          : [];
+        setDutyDisplayFields(fields);
+      })
+      .catch(() => {
+        if (!canceled) setDutyDisplayFields([]);
+      });
+    return () => {
+      canceled = true;
+    };
+  }, [filterMode, dutyTableName]);
+
+  useEffect(() => {
+    if (filterMode !== 'duty') return;
+    if (!dutyTableName || !dutyPositionFieldName || dutyPositionIds.length === 0) {
+      setDutyRows([]);
+      return;
+    }
+    let cancelled = false;
+    const positionSet = new Set(dutyPositionIds);
+    const loadRows = async () => {
+      const perPage = 500;
+      let page = 1;
+      const rows = [];
+      while (!cancelled) {
+        const params = new URLSearchParams({ page: String(page), perPage: String(perPage) });
+        if (company != null && `${company}`.trim() !== '') {
+          params.set('company_id', String(company));
+        }
+        const res = await fetch(
+          `/api/tables/${encodeURIComponent(dutyTableName)}?${params.toString()}`,
+          { credentials: 'include', skipErrorToast: true, skipLoader: true },
+        );
+        if (!res.ok) break;
+        const json = await res.json().catch(() => ({}));
+        const pageRows = Array.isArray(json.rows) ? json.rows : [];
+        rows.push(...pageRows);
+        if (pageRows.length < perPage || rows.length >= (json.count || rows.length)) {
+          break;
+        }
+        page += 1;
+      }
+      return rows;
+    };
+
+    setDutyLoading(true);
+    loadRows()
+      .then((rows) => {
+        if (cancelled) return;
+        const filtered = rows.filter((row) => {
+          const fieldValue = getRowFieldValue(row, dutyPositionFieldName);
+          const values = normalizePositionListValue(fieldValue);
+          return values.some((value) => positionSet.has(value));
+        });
+        setDutyRows(filtered);
+      })
+      .catch(() => {
+        if (!cancelled) setDutyRows([]);
+      })
+      .finally(() => {
+        if (!cancelled) setDutyLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    company,
+    dutyPositionFieldName,
+    dutyPositionIds,
+    dutyTableName,
     filterMode,
   ]);
 
@@ -1382,7 +1477,7 @@ export default function TransactionNotificationWidget({ filterMode = 'activity' 
 
   const dutyReady =
     filterMode === 'duty' &&
-    dutyTables.length > 0 &&
+    dutyTableName &&
     dutyPositionFieldName &&
     dutyPositionIds.length > 0;
   const formatDutyValue = (value) => {
@@ -1424,8 +1519,7 @@ export default function TransactionNotificationWidget({ filterMode = 'activity' 
           </div>
           {!dutyReady && (
             <div style={styles.empty}>
-              Configure duty notification fields and duty position field name in General Configuration
-              &gt; Plan.
+              Configure duty table and position field name in General Configuration &gt; Plan.
             </div>
           )}
           {dutyReady && dutyLoading && (
@@ -1436,10 +1530,10 @@ export default function TransactionNotificationWidget({ filterMode = 'activity' 
           )}
           {dutyReady && !dutyLoading && dutyRows.length > 0 && (
             <div style={styles.dutyList}>
-              {dutyRows.map(({ table, row }, index) => {
+              {dutyRows.map((row, index) => {
                 const fields =
-                  dutyDisplayFields[table]?.length > 0
-                    ? dutyDisplayFields[table]
+                  dutyDisplayFields.length > 0
+                    ? dutyDisplayFields
                     : Object.keys(row || {})
                         .filter((field) => field !== dutyPositionFieldName)
                         .slice(0, 6);
@@ -1452,7 +1546,7 @@ export default function TransactionNotificationWidget({ filterMode = 'activity' 
                 return (
                   <div key={rowKey} style={styles.dutyItem}>
                     <div style={styles.dutyItemHeader}>
-                      <span style={styles.dutyItemTitle}>{table}</span>
+                      <span style={styles.dutyItemTitle}>{dutyTableName}</span>
                       <span style={styles.dutyItemMeta}>
                         {formatDutyValue(getRowFieldValue(row, dutyPositionFieldName))}
                       </span>

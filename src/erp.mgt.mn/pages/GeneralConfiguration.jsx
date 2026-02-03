@@ -652,6 +652,24 @@ export default function GeneralConfiguration() {
           </div>
           <div style={{ marginBottom: '0.5rem' }}>
             <TooltipWrapper
+              title={t('duty_transaction_table', {
+                ns: 'tooltip',
+                defaultValue: 'Table name used to pull duty assignments',
+              })}
+            >
+              <label>
+                Duty Transaction Table{' '}
+                <input
+                  name="dutyTableName"
+                  type="text"
+                  value={active.dutyTableName ?? ''}
+                  onChange={handleChange}
+                />
+              </label>
+            </TooltipWrapper>
+          </div>
+          <div style={{ marginBottom: '0.5rem' }}>
+            <TooltipWrapper
               title={t('duty_position_field_name', {
                 ns: 'tooltip',
                 defaultValue:
