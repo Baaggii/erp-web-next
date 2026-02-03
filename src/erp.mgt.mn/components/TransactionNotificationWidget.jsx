@@ -39,6 +39,10 @@ const PLAN_COMPLETION_KEYS = [
 const DEFAULT_PLAN_NOTIFICATION_FIELDS = ['is_plan', 'is_plan_completion'];
 const DEFAULT_PLAN_NOTIFICATION_VALUES = ['1'];
 
+function resolveModuleKey(info) {
+  return info?.moduleKey || info?.module_key || info?.module || info?.modulekey || '';
+}
+
 function normalizeText(value) {
   if (value === undefined || value === null) return '';
   return String(value).trim().toLowerCase();
@@ -847,8 +851,9 @@ export default function TransactionNotificationWidget({ filterMode = 'activity' 
             })
           )
             return;
-          if (!isModulePermissionGranted(perms, info.moduleKey)) return;
-          if (!isModuleLicensed(licensed, info.moduleKey)) return;
+          const moduleKey = resolveModuleKey(info) || 'forms';
+          if (!isModulePermissionGranted(perms, moduleKey)) return;
+          if (!isModuleLicensed(licensed, moduleKey)) return;
           filtered[name] = info;
         });
         allowedFormsCache.current = filtered;
@@ -921,7 +926,7 @@ export default function TransactionNotificationWidget({ filterMode = 'activity' 
           return;
         }
 
-        const moduleKey = completionForm.info.moduleKey || 'forms';
+        const moduleKey = resolveModuleKey(completionForm.info) || 'forms';
         const slug = moduleKey.replace(/_/g, '-');
         let path = '/forms';
         if (moduleKey && moduleKey !== 'forms') {
