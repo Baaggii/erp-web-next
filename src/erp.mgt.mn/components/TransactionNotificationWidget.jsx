@@ -104,6 +104,46 @@ function normalizeFlagValue(value) {
   return Boolean(value);
 }
 
+const FIELD_SHOW_KEYS = [
+  'show',
+  'showInNotification',
+  'showInNotifications',
+  'show_in_notification',
+  'show_in_notifications',
+  'visible',
+  'isVisible',
+  'is_visible',
+  'display',
+  'displayed',
+];
+
+function shouldShowField(field) {
+  if (!field || typeof field !== 'object') return true;
+  for (const key of FIELD_SHOW_KEYS) {
+    if (!Object.prototype.hasOwnProperty.call(field, key)) continue;
+    if (!normalizeFlagValue(field[key])) return false;
+  }
+  return true;
+}
+
+function hasDisplayValue(value) {
+  if (value === undefined || value === null) return false;
+  if (typeof value === 'string') return value.trim().length > 0;
+  if (Array.isArray(value)) return value.length > 0;
+  return true;
+}
+
+function getFieldLabel(field) {
+  return (
+    field?.label ||
+    field?.title ||
+    field?.name ||
+    field?.field ||
+    field?.column ||
+    ''
+  );
+}
+
 function hasFlag(row, keys) {
   for (const key of keys) {
     if (row && Object.prototype.hasOwnProperty.call(row, key)) {
@@ -764,6 +804,26 @@ export default function TransactionNotificationWidget({ filterMode = 'activity' 
     [relationLabelMap],
   );
 
+  const getDisplaySummaryFields = useCallback(
+    (item) => {
+      if (!Array.isArray(item?.summaryFields)) return [];
+      return item.summaryFields.reduce((acc, field) => {
+        if (!field || !shouldShowField(field)) return acc;
+        const label = getFieldLabel(field);
+        if (!label) return acc;
+        const value = resolveSummaryValue(item, field);
+        if (!hasDisplayValue(value)) return acc;
+        acc.push({
+          id: `${item.id}-${field.field || label}`,
+          label,
+          value,
+        });
+        return acc;
+      }, []);
+    },
+    [resolveSummaryValue],
+  );
+
   const groupItems = useCallback((items = []) => {
     const excludedItems = items.filter((item) => isExcludedAction(item));
     const deletedItems = items.filter((item) => isDeletedAction(item?.action));
@@ -1122,18 +1182,28 @@ export default function TransactionNotificationWidget({ filterMode = 'activity' 
                           </button>
                         )}
                       </div>
-                      {Array.isArray(item.summaryFields) && item.summaryFields.length > 0 && (
-                        <div style={styles.summaryFields}>
-                          {item.summaryFields.map((field) => (
-                            <div key={`${item.id}-${field.field}`} style={styles.summaryFieldRow}>
-                              <span style={styles.summaryFieldLabel}>{field.field}</span>
-                              <span style={styles.summaryFieldValue}>
-                                {resolveSummaryValue(item, field)}
-                              </span>
-                            </div>
-                          ))}
-                        </div>
-                      )}
+                      {(() => {
+                        const displayFields = getDisplaySummaryFields(item);
+                        if (displayFields.length === 0) return null;
+                        return (
+                          <table style={styles.summaryTable}>
+                            <thead>
+                              <tr>
+                                <th style={styles.summaryHeaderCell}>Field</th>
+                                <th style={styles.summaryHeaderCell}>Value</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {displayFields.map((field) => (
+                                <tr key={field.id} style={styles.summaryRow}>
+                                  <td style={styles.summaryFieldLabel}>{field.label}</td>
+                                  <td style={styles.summaryFieldValue}>{field.value}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        );
+                      })()}
                       <div style={styles.itemMeta}>
                         <span>By {actorLabel}</span>
                         <span style={styles.itemMetaSeparator}>•</span>
@@ -1360,20 +1430,36 @@ const styles = {
     textTransform: 'uppercase',
     letterSpacing: '0.03em',
   }),
-  summaryFields: {
+  summaryTable: {
     marginTop: '0.35rem',
-    display: 'grid',
-    gap: '0.25rem',
-  },
-  summaryFieldRow: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    gap: '0.5rem',
+    width: '100%',
+    borderCollapse: 'collapse',
+    tableLayout: 'fixed',
     fontSize: '0.75rem',
-    color: '#475569',
   },
-  summaryFieldLabel: { fontWeight: 600 },
-  summaryFieldValue: { color: '#0f172a' },
+  summaryHeaderCell: {
+    textAlign: 'left',
+    padding: '0.2rem 0.3rem',
+    color: '#64748b',
+    textTransform: 'uppercase',
+    letterSpacing: '0.04em',
+    fontWeight: 600,
+    borderBottom: '1px solid #e2e8f0',
+  },
+  summaryRow: { borderBottom: '1px solid #f1f5f9' },
+  summaryFieldLabel: {
+    padding: '0.25rem 0.3rem',
+    fontWeight: 600,
+    color: '#475569',
+    verticalAlign: 'top',
+    wordBreak: 'break-word',
+    width: '40%',
+  },
+  summaryFieldValue: {
+    padding: '0.25rem 0.3rem',
+    color: '#0f172a',
+    wordBreak: 'break-word',
+  },
   itemMeta: {
     fontSize: '0.7rem',
     color: '#64748b',
