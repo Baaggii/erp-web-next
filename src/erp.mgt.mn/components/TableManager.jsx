@@ -2551,10 +2551,7 @@ const TableManager = forwardRef(function TableManager({
             hasInvalidDateFilter = true;
           }
         } else {
-          const normalizedValue = normalizeFilterValue(k, v);
-          if (normalizedValue !== null) {
-            params.set(k, normalizedValue);
-          }
+          params.set(k, v);
         }
       }
     });
@@ -2614,7 +2611,6 @@ const TableManager = forwardRef(function TableManager({
     localRefresh,
     columnMeta,
     validCols,
-    normalizeFilterValue,
     requestStatus,
     requestIdsKey,
   ]);
@@ -4014,24 +4010,6 @@ const TableManager = forwardRef(function TableManager({
     setSelectedRows(new Set());
   }
 
-  const normalizeFilterValue = useCallback(
-    (col, value) => {
-      if (value === '' || value === null || value === undefined) return null;
-      if (dateFieldSet.has(col)) {
-        return value;
-      }
-      const typ = fieldTypeMap[col];
-      if (typ === 'string' && typeof value === 'string') {
-        const trimmed = value.trim();
-        if (trimmed === '') return null;
-        if (trimmed.includes('%') || trimmed.includes('_')) return trimmed;
-        return `%${trimmed}%`;
-      }
-      return value;
-    },
-    [dateFieldSet, fieldTypeMap],
-  );
-
   async function issueTransactionEbarimt(recordId) {
     if (!posApiEnabled) return null;
     if (recordId === undefined || recordId === null || `${recordId}`.trim() === '') {
@@ -5036,12 +5014,7 @@ const TableManager = forwardRef(function TableManager({
         params.set('dir', sort.dir);
       }
       Object.entries(filters).forEach(([k, v]) => {
-        if (v !== '' && v !== null && v !== undefined) {
-          const normalizedValue = normalizeFilterValue(k, v);
-          if (normalizedValue !== null) {
-            params.set(k, normalizedValue);
-          }
-        }
+        if (v) params.set(k, v);
       });
       const data = await fetch(
         `/api/tables/${encodeURIComponent(table)}?${params.toString()}`,
@@ -5252,12 +5225,7 @@ const TableManager = forwardRef(function TableManager({
       params.set('dir', sort.dir);
     }
     Object.entries(filters).forEach(([k, v]) => {
-      if (v !== '' && v !== null && v !== undefined) {
-        const normalizedValue = normalizeFilterValue(k, v);
-        if (normalizedValue !== null) {
-          params.set(k, normalizedValue);
-        }
-      }
+      if (v) params.set(k, v);
     });
     const dataRes = await fetch(
       `/api/tables/${encodeURIComponent(table)}?${params.toString()}`,
@@ -8134,26 +8102,19 @@ const TableManager = forwardRef(function TableManager({
                   }
 
                   if (Array.isArray(relationOpts[c])) {
-                    const optionListId = `filter-options-${table || 'table'}-${String(c).replace(
-                      /[^a-zA-Z0-9_-]/g,
-                      '',
-                    )}`;
                     return (
-                      <>
-                        <input
-                          list={optionListId}
-                          value={filters[c] || ''}
-                          onChange={(e) => handleFilterChange(c, e.target.value)}
-                          style={{ width: '100%' }}
-                        />
-                        <datalist id={optionListId}>
-                          {relationOpts[c].map((o) => (
-                            <option key={o.value} value={o.value}>
-                              {o.label}
-                            </option>
-                          ))}
-                        </datalist>
-                      </>
+                      <select
+                        value={filters[c] || ''}
+                        onChange={(e) => handleFilterChange(c, e.target.value)}
+                        style={{ width: '100%' }}
+                      >
+                        <option value=""></option>
+                        {relationOpts[c].map((o) => (
+                          <option key={o.value} value={o.value}>
+                            {o.label}
+                          </option>
+                        ))}
+                      </select>
                     );
                   }
 
