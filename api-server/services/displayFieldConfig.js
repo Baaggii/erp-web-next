@@ -104,13 +104,20 @@ function normalizeConfigList(data) {
   } else if (data && typeof data === 'object') {
     entries = flattenLegacyConfig(data);
   }
-  return entries.filter(
-    (entry) =>
-      entry.table &&
-      entry.idField &&
-      Array.isArray(entry.displayFields) &&
-      entry.displayFields.length > 0,
-  );
+  return entries.filter((entry) => {
+    if (!entry.table || !entry.idField) return false;
+    const hasDisplayFields =
+      Array.isArray(entry.displayFields) && entry.displayFields.length > 0;
+    const hasNotificationConfig =
+      (typeof entry.notificationRole === 'string' && entry.notificationRole.trim()) ||
+      (Array.isArray(entry.notificationDashboardFields) &&
+        entry.notificationDashboardFields.length > 0) ||
+      (Array.isArray(entry.notificationEmailFields) &&
+        entry.notificationEmailFields.length > 0) ||
+      (Array.isArray(entry.notificationPhoneFields) &&
+        entry.notificationPhoneFields.length > 0);
+    return hasDisplayFields || hasNotificationConfig;
+  });
 }
 
 async function readConfig(companyId = 0) {
