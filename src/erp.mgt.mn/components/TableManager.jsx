@@ -558,7 +558,6 @@ const TableManager = forwardRef(function TableManager({
   const [page, setPage] = useState(1);
   const [perPage, setPerPage] = useState(initialPerPage);
   const [filters, setFilters] = useState({});
-  const [filterModes, setFilterModes] = useState({});
   const [sort, setSort] = useState({ column: '', dir: 'asc' });
   const [relations, setRelations] = useState({});
   const [refData, setRefData] = useState({});
@@ -1414,7 +1413,6 @@ const TableManager = forwardRef(function TableManager({
     setCount(0);
     setPage(1);
     setFilters({});
-    setFilterModes({});
     setSort({ column: '', dir: 'asc' });
     setRelations({});
     setRefData({});
@@ -2531,20 +2529,9 @@ const TableManager = forwardRef(function TableManager({
           } else {
             hasInvalidDateFilter = true;
           }
-          return;
+        } else {
+          params.set(k, v);
         }
-        const mode = filterModes[k];
-        let filterValue = v;
-        if (
-          mode === 'like' &&
-          typeof v === 'string' &&
-          v.trim() !== '' &&
-          !v.includes('%') &&
-          !v.includes('_')
-        ) {
-          filterValue = `%${v}%`;
-        }
-        params.set(k, filterValue);
       }
     });
     if (hasInvalidDateFilter) return;
@@ -2603,24 +2590,13 @@ const TableManager = forwardRef(function TableManager({
     localRefresh,
     columnMeta,
     validCols,
-    filterModes,
     requestStatus,
     requestIdsKey,
   ]);
 
   useEffect(() => {
     setSelectedRows(new Set());
-  }, [
-    table,
-    page,
-    perPage,
-    filters,
-    filterModes,
-    sort,
-    refreshId,
-    localRefresh,
-    dateFieldSet,
-  ]);
+  }, [table, page, perPage, filters, sort, refreshId, localRefresh, dateFieldSet]);
 
   useEffect(() => {
     if (!table || !Array.isArray(rows) || rows.length === 0) {
@@ -4007,19 +3983,8 @@ const TableManager = forwardRef(function TableManager({
     setSelectedRows(new Set());
   }
 
-  function handleFilterChange(col, val, { mode } = {}) {
+  function handleFilterChange(col, val) {
     setFilters((f) => ({ ...f, [col]: val }));
-    setFilterModes((prev) => {
-      if (val === undefined || val === null || val === '') {
-        if (!prev[col]) return prev;
-        const next = { ...prev };
-        delete next[col];
-        return next;
-      }
-      const nextMode = mode || prev[col] || 'exact';
-      if (prev[col] === nextMode) return prev;
-      return { ...prev, [col]: nextMode };
-    });
     setPage(1);
     setSelectedRows(new Set());
   }
@@ -4393,6 +4358,7 @@ const TableManager = forwardRef(function TableManager({
     }
 
     const editingRowId = isAdding ? null : getRowId(editing);
+    let didOptimisticUpdate = false;
     try {
       const res = await fetch(url, {
         method,
@@ -4429,6 +4395,7 @@ const TableManager = forwardRef(function TableManager({
               getRowId(row) === editingRowId ? { ...row, ...mergedRow } : row,
             ),
           );
+          didOptimisticUpdate = true;
         }
         setShowForm(false);
         setEditing(null);
@@ -8091,12 +8058,7 @@ const TableManager = forwardRef(function TableManager({
                         labelFields={relationConfig.displayFields || []}
                         idField={searchColumn}
                         value={filters[c] || ''}
-                        onChange={(val) =>
-                          handleFilterChange(c, val ?? '', { mode: 'like' })
-                        }
-                        onSelect={(opt) =>
-                          handleFilterChange(c, opt?.value ?? '', { mode: 'exact' })
-                        }
+                        onChange={(val) => handleFilterChange(c, val ?? '')}
                         inputStyle={{ width: '100%' }}
                       />
                     );
@@ -8106,9 +8068,7 @@ const TableManager = forwardRef(function TableManager({
                     return (
                       <select
                         value={filters[c] || ''}
-                        onChange={(e) =>
-                          handleFilterChange(c, e.target.value, { mode: 'exact' })
-                        }
+                        onChange={(e) => handleFilterChange(c, e.target.value)}
                         style={{ width: '100%' }}
                       >
                         <option value=""></option>
@@ -8124,9 +8084,7 @@ const TableManager = forwardRef(function TableManager({
                   return (
                     <input
                       value={filters[c] || ''}
-                      onChange={(e) =>
-                        handleFilterChange(c, e.target.value, { mode: 'like' })
-                      }
+                      onChange={(e) => handleFilterChange(c, e.target.value)}
                       style={{ width: '100%' }}
                     />
                   );
