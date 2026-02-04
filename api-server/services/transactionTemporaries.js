@@ -484,7 +484,7 @@ export async function sanitizeCleanedValuesForInsert(tableName, values, columns)
     if (RESERVED_TEMPORARY_COLUMNS.has(lower)) continue;
     const columnInfo = lookup.get(lower);
     if (!columnInfo) continue;
-    let normalizedValue = rawValue;
+    let normalizedValue = stripLabelWrappers(rawValue);
     if (Array.isArray(normalizedValue)) {
       normalizedValue = JSON.stringify(normalizedValue);
     } else if (
