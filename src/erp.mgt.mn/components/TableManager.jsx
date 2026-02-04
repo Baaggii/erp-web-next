@@ -2605,7 +2605,6 @@ const TableManager = forwardRef(function TableManager({
               const rawValue = row?.[key];
               const valueText = rawValue != null ? String(rawValue).toLowerCase() : '';
               if (valueText.includes(query)) return true;
-              if (!refRows || !refRows[key]) return true;
               const relationRow = refRows?.[key]?.[rawValue];
               if (!relationRow || typeof relationRow !== 'object') return false;
               const displayFields = relationConfigs[key]?.displayFields || [];
@@ -4064,8 +4063,7 @@ const TableManager = forwardRef(function TableManager({
         delete next[col];
         return next;
       }
-      const isRelationField = Boolean(relationConfigs[col]?.table);
-      const nextMode = isRelationField ? 'like' : mode || prev[col] || 'exact';
+      const nextMode = mode || prev[col] || 'exact';
       if (prev[col] === nextMode) return prev;
       return { ...prev, [col]: nextMode };
     });
