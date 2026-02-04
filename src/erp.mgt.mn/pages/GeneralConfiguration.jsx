@@ -566,6 +566,26 @@ export default function GeneralConfiguration() {
           </div>
           <div style={{ marginBottom: '0.5rem' }}>
             <TooltipWrapper
+              title={t('plan_duty_position_field_name', {
+                ns: 'tooltip',
+                defaultValue:
+                  'Field name used to filter duty assignments by position',
+              })}
+            >
+              <label>
+                Duty Position Field Name{' '}
+                <input
+                  name="dutyPositionFieldName"
+                  type="text"
+                  value={active.dutyPositionFieldName ?? ''}
+                  onChange={handleChange}
+                />
+              </label>
+            </TooltipWrapper>
+            <div style={{ fontSize: '0.8rem' }}>Example: position_id</div>
+          </div>
+          <div style={{ marginBottom: '0.5rem' }}>
+            <TooltipWrapper
               title={t('plan_notification_fields', {
                 ns: 'tooltip',
                 defaultValue:
@@ -607,6 +627,67 @@ export default function GeneralConfiguration() {
             <div style={{ fontSize: '0.8rem' }}>
               Leave blank to use the default value of 1.
             </div>
+          </div>
+          <div style={{ marginBottom: '0.5rem' }}>
+            <TooltipWrapper
+              title={t('duty_notification_fields', {
+                ns: 'tooltip',
+                defaultValue:
+                  'Comma-separated code_transaction fields used to route duty notifications to the Plans tab',
+              })}
+            >
+              <label>
+                Duty Notification Fields{' '}
+                <input
+                  name="dutyNotificationFields"
+                  type="text"
+                  value={active.dutyNotificationFields ?? ''}
+                  onChange={handleChange}
+                />
+              </label>
+            </TooltipWrapper>
+            <div style={{ fontSize: '0.8rem' }}>Example: is_duty</div>
+          </div>
+          <div style={{ marginBottom: '0.5rem' }}>
+            <TooltipWrapper
+              title={t('duty_notification_values', {
+                ns: 'tooltip',
+                defaultValue:
+                  'Comma-separated values to match against duty notification fields',
+              })}
+            >
+              <label>
+                Duty Notification Values{' '}
+                <input
+                  name="dutyNotificationValues"
+                  type="text"
+                  value={active.dutyNotificationValues ?? ''}
+                  onChange={handleChange}
+                />
+              </label>
+            </TooltipWrapper>
+            <div style={{ fontSize: '0.8rem' }}>
+              Leave blank to use the default value of 1.
+            </div>
+          </div>
+          <div style={{ marginBottom: '0.5rem' }}>
+            <TooltipWrapper
+              title={t('duty_dashboard_toasts', {
+                ns: 'tooltip',
+                defaultValue:
+                  'Show toast notifications that list the deduped dashboard fields for duty assignments',
+              })}
+            >
+              <label>
+                Show Duty Dashboard Toasts{' '}
+                <input
+                  name="dutyDashboardToastEnabled"
+                  type="checkbox"
+                  checked={active.dutyDashboardToastEnabled ?? false}
+                  onChange={handleChange}
+                />
+              </label>
+            </TooltipWrapper>
           </div>
         </>
       ) : tab === 'system' ? (

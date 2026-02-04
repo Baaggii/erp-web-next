@@ -4358,6 +4358,7 @@ const TableManager = forwardRef(function TableManager({
     }
 
     const editingRowId = isAdding ? null : getRowId(editing);
+    let didOptimisticUpdate = false;
     try {
       const res = await fetch(url, {
         method,
@@ -4394,6 +4395,7 @@ const TableManager = forwardRef(function TableManager({
               getRowId(row) === editingRowId ? { ...row, ...mergedRow } : row,
             ),
           );
+          didOptimisticUpdate = true;
         }
         setShowForm(false);
         setEditing(null);
