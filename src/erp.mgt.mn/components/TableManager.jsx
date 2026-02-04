@@ -2588,37 +2588,6 @@ const TableManager = forwardRef(function TableManager({
         if (requestStatus) {
           rows = rows.filter((r) => requestIdSet.has(String(getRowId(r))));
         }
-        const relationLikeFilters = Object.entries(filters)
-          .map(([key, value]) => {
-            if (filterModes[key] !== 'like') return null;
-            if (!relationConfigs[key]?.table) return null;
-            if (typeof value !== 'string' || value.trim() === '') return null;
-            return { key, query: value.trim().toLowerCase() };
-          })
-          .filter(Boolean);
-        if (relationLikeFilters.length > 0) {
-          rows = rows.filter((row) => {
-            return relationLikeFilters.every(({ key, query }) => {
-              const rawValue = row?.[key];
-              const valueText = rawValue != null ? String(rawValue).toLowerCase() : '';
-              if (valueText.includes(query)) return true;
-              const relationRow = refRows?.[key]?.[rawValue];
-              if (!relationRow || typeof relationRow !== 'object') return false;
-              const displayFields = relationConfigs[key]?.displayFields || [];
-              if (displayFields.length > 0) {
-                return displayFields.some((field) => {
-                  const fieldValue = relationRow[field];
-                  if (fieldValue === undefined || fieldValue === null) return false;
-                  return String(fieldValue).toLowerCase().includes(query);
-                });
-              }
-              return Object.values(relationRow).some((fieldValue) => {
-                if (fieldValue === undefined || fieldValue === null) return false;
-                return String(fieldValue).toLowerCase().includes(query);
-              });
-            });
-          });
-        }
         setRows(rows);
         if (!requestStatus) {
           setCount(data.total ?? data.count ?? 0);
