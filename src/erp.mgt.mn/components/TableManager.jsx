@@ -2622,9 +2622,7 @@ const TableManager = forwardRef(function TableManager({
               const cacheKey =
                 rawValue === undefined || rawValue === null ? '' : String(rawValue);
               const cachedLabel = jsonRelationLabels?.[key]?.[cacheKey];
-              addRelationLabelCandidates(cachedLabel, rawValue, addCandidate);
-              const optionLabel = labelMap?.[key]?.[cacheKey];
-              addRelationLabelCandidates(optionLabel, rawValue, addCandidate);
+              addCandidate(cachedLabel);
               const relationRows = refRows?.[key] || {};
               const relationRow = getRelationRowFromMap(relationRows, rawValue);
               if (relationRow && typeof relationRow === 'object') {
@@ -2632,7 +2630,7 @@ const TableManager = forwardRef(function TableManager({
                 if (displayFields.length > 0) {
                   displayFields.forEach((field) => {
                     const fieldValue = getRowValueCaseInsensitive(relationRow, field);
-                    addRelationLabelCandidates(fieldValue, rawValue, addCandidate);
+                    addCandidate(fieldValue);
                   });
                 } else {
                   const idFieldName =
@@ -2643,13 +2641,11 @@ const TableManager = forwardRef(function TableManager({
                       : String(idFieldName).toLowerCase();
                   Object.entries(relationRow).forEach(([field, fieldValue]) => {
                     if (idFieldLower && field.toLowerCase() === idFieldLower) return;
-                    addRelationLabelCandidates(fieldValue, rawValue, addCandidate);
+                    addCandidate(fieldValue);
                   });
                 }
-                addRelationLabelCandidates(
+                addCandidate(
                   formatRelationDisplay(relationRow, relationConfig, rawValue),
-                  rawValue,
-                  addCandidate,
                 );
               }
               if (candidates.size === 0) return true;
@@ -2691,9 +2687,7 @@ const TableManager = forwardRef(function TableManager({
     relationConfigs,
     refRows,
     jsonRelationLabels,
-    labelMap,
     formatRelationDisplay,
-    addRelationLabelCandidates,
     requestStatus,
     requestIdsKey,
   ]);
@@ -4114,44 +4108,6 @@ const TableManager = forwardRef(function TableManager({
     setPage(1);
     setSelectedRows(new Set());
   }
-
-  const normalizeRelationFilterValue = useCallback((value, label) => {
-    const base =
-      label !== undefined && label !== null && label !== '' ? label : value ?? '';
-    const text = String(base).trim();
-    if (!text) return '';
-    const raw = value !== undefined && value !== null ? String(value).trim() : '';
-    if (!raw) return text;
-    const lowerText = text.toLowerCase();
-    const lowerRaw = raw.toLowerCase();
-    if (lowerText === lowerRaw) return text;
-    const prefix = `${lowerRaw} -`;
-    if (lowerText.startsWith(prefix)) {
-      const trimmed = text.slice(prefix.length).trim();
-      return trimmed || text;
-    }
-    return text;
-  }, []);
-
-  const addRelationLabelCandidates = useCallback((labelValue, rawValue, addCandidate) => {
-    if (labelValue === undefined || labelValue === null) return;
-    const text = String(labelValue).trim();
-    if (!text) return;
-    const raw =
-      rawValue !== undefined && rawValue !== null ? String(rawValue).trim() : '';
-    const rawLower = raw.toLowerCase();
-    const parts = text.split(/\s*-\s*/).map((part) => part.trim()).filter(Boolean);
-    parts.forEach((part) => {
-      if (rawLower && part.toLowerCase() === rawLower) return;
-      addCandidate(part);
-    });
-    const lowerText = text.toLowerCase();
-    if (rawLower && lowerText.startsWith(`${rawLower} -`)) {
-      const stripped = text.slice(raw.length + 2).trim();
-      if (stripped) addCandidate(stripped);
-    }
-    addCandidate(text);
-  }, []);
 
   async function issueTransactionEbarimt(recordId) {
     if (!posApiEnabled) return null;
@@ -6480,20 +6436,17 @@ const TableManager = forwardRef(function TableManager({
       relationOpts[c] = refData[c];
     }
   });
-  const labelMap = useMemo(() => {
-    const map = {};
-    Object.entries(relationOpts).forEach(([col, opts]) => {
-      map[col] = {};
-      opts.forEach((o) => {
-        map[col][o.value] = o.label;
-        const normalizedKey = normalizeRelationKey(o.value);
-        if (normalizedKey) {
-          map[col][normalizedKey] = o.label;
-        }
-      });
+  const labelMap = {};
+  Object.entries(relationOpts).forEach(([col, opts]) => {
+    labelMap[col] = {};
+    opts.forEach((o) => {
+      labelMap[col][o.value] = o.label;
+      const normalizedKey = normalizeRelationKey(o.value);
+      if (normalizedKey) {
+        labelMap[col][normalizedKey] = o.label;
+      }
     });
-    return map;
-  }, [relationOpts]);
+  });
 
   useEffect(() => {
     let canceled = false;
@@ -8225,11 +8178,7 @@ const TableManager = forwardRef(function TableManager({
                         useLabelAsValue
                         value={filters[c] || ''}
                         onChange={(val, label) =>
-                          handleFilterChange(
-                            c,
-                            normalizeRelationFilterValue(val, label),
-                            { mode: 'like' },
-                          )
+                          handleFilterChange(c, label ?? val ?? '', { mode: 'like' })
                         }
                         inputStyle={{ width: '100%' }}
                       />
