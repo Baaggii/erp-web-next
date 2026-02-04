@@ -2255,6 +2255,19 @@ function InlineTransactionTable(
       notifyGuardToastOnEdit(field);
       return;
     }
+    const isLookupField =
+      !!relationConfigMap[field] ||
+      !!viewSourceMap[field] ||
+      (Array.isArray(autoSelectConfigs[field]) && autoSelectConfigs[field].length > 0);
+    if (isLookupField && e.lookupMatched === false) {
+      const label = labels[field] || field;
+      const message = `${label} талбарт тохирох утга олдсонгүй.`;
+      setErrorMsg(message);
+      setInvalidCell({ row: rowIdx, field });
+      e.target.focus();
+      if (e.target.select) e.target.select();
+      return;
+    }
     if (isJsonField && (isEnter || isForwardTab)) {
       const currentValues = Array.isArray(e.jsonValuesNext)
         ? e.jsonValuesNext
@@ -2281,12 +2294,8 @@ function InlineTransactionTable(
       return;
     }
     let label = undefined;
-    let val = e.target.value;
-    if (e.selectedOption) {
-      label = e.selectedOption.label;
-      const prefersLabel = e.target.value === e.selectedOption.label;
-      val = prefersLabel ? e.selectedOption.label : e.selectedOption.value;
-    }
+    let val = e.selectedOption ? e.selectedOption.value : e.target.value;
+    if (e.selectedOption) label = e.selectedOption.label;
     const typ = fieldTypeMap[field];
     let format = placeholders[field];
     if (!format) {
@@ -2500,10 +2509,7 @@ function InlineTransactionTable(
           <AsyncSearchSelect
             table={resolvedConfig.table}
             searchColumn={resolvedConfig.idField || resolvedConfig.column}
-            searchColumns={[
-              resolvedConfig.idField || resolvedConfig.column,
-              ...(resolvedConfig.displayFields || []),
-            ]}
+            searchColumns={[resolvedConfig.idField || resolvedConfig.column, ...(resolvedConfig.displayFields || [])]}
             labelFields={resolvedConfig.displayFields || []}
             value={currentValues}
             resolveValueLabel={resolveJsonLabel}
@@ -2518,7 +2524,6 @@ function InlineTransactionTable(
             filters={combinationReady ? comboFilters || undefined : undefined}
             shouldFetch
             useLabelAsValue
-            useRemoteSearch={false}
             isMulti
           />
         );
@@ -2552,7 +2557,9 @@ function InlineTransactionTable(
           searchColumns={[conf.idField || conf.column, ...(conf.displayFields || [])]}
           labelFields={conf.displayFields || []}
           value={inputVal}
-          onChange={(v, label) => handleChange(idx, f, label ?? v)}
+          onChange={(v, label) =>
+            handleChange(idx, f, label ? { value: v, label } : v)
+          }
           onSelect={(opt) => handleOptionSelect(idx, colIdx, opt)}
           inputRef={(el) => (inputRefs.current[`${idx}-${colIdx}`] = el)}
           onKeyDown={(e) => handleKeyDown(e, idx, colIdx)}
@@ -2563,7 +2570,6 @@ function InlineTransactionTable(
           filters={combinationReady ? comboFilters || undefined : undefined}
           shouldFetch
           useLabelAsValue
-          useRemoteSearch={false}
         />
       );
     }
@@ -2613,7 +2619,9 @@ function InlineTransactionTable(
           labelFields={labelFields}
           idField={idField}
           value={inputVal}
-          onChange={(v, label) => handleChange(idx, f, label ?? v)}
+          onChange={(v, label) =>
+            handleChange(idx, f, label ? { value: v, label } : v)
+          }
           onSelect={(opt) => handleOptionSelect(idx, colIdx, opt)}
           inputRef={(el) => (inputRefs.current[`${idx}-${colIdx}`] = el)}
           onKeyDown={(e) => handleKeyDown(e, idx, colIdx)}
@@ -2624,7 +2632,6 @@ function InlineTransactionTable(
           filters={combinationReady ? comboFilters || undefined : undefined}
           shouldFetch
           useLabelAsValue
-          useRemoteSearch={false}
         />
       );
     }
