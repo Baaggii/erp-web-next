@@ -554,7 +554,6 @@ const TableManager = forwardRef(function TableManager({
   }, []);
   
   const [rows, setRows] = useState([]);
-  const [serverRows, setServerRows] = useState([]);
   const [count, setCount] = useState(0);
   const [page, setPage] = useState(1);
   const [perPage, setPerPage] = useState(initialPerPage);
@@ -1412,7 +1411,6 @@ const TableManager = forwardRef(function TableManager({
     if (!table) return;
     let canceled = false;
     setRows([]);
-    setServerRows([]);
     setCount(0);
     setPage(1);
     setFilters({});
@@ -2514,94 +2512,6 @@ const TableManager = forwardRef(function TableManager({
     validCols,
   ]);
 
-  const serverFilters = useMemo(() => {
-    const next = {};
-    Object.entries(filters).forEach(([key, value]) => {
-      if (relationConfigs[key]?.table) return;
-      next[key] = value;
-    });
-    return next;
-  }, [filters, relationConfigs]);
-
-  const applyRelationFilters = useCallback(
-    (inputRows) => {
-      const relationLikeFilters = Object.entries(filters)
-        .map(([key, value]) => {
-          if (!relationConfigs[key]?.table) return null;
-          if (value === undefined || value === null || String(value).trim() === '') return null;
-          return { key, query: String(value).trim().toLowerCase() };
-        })
-        .filter(Boolean);
-      if (relationLikeFilters.length === 0) return inputRows;
-      return inputRows.filter((row) => {
-        return relationLikeFilters.every(({ key, query }) => {
-          const relationConfig = relationConfigs[key];
-          const rawValue = row?.[key];
-          const candidates = new Set();
-          const addCandidate = (value) => {
-            if (value === undefined || value === null) return;
-            const text = String(value).trim().toLowerCase();
-            if (!text) return;
-            candidates.add(text);
-          };
-          const addObjectCandidates = (value) => {
-            if (!value || typeof value !== 'object') return;
-            addCandidate(value.label);
-            addCandidate(value.name);
-            addCandidate(value.title);
-            addCandidate(value.code);
-          };
-          addObjectCandidates(rawValue);
-          addCandidate(rawValue);
-          (relationConfig?.displayFields || []).forEach((field) => {
-            const fieldValue = getRowValueCaseInsensitive(row, field);
-            addCandidate(fieldValue);
-          });
-          const cacheKey =
-            rawValue === undefined || rawValue === null ? '' : String(rawValue);
-          const cachedLabel = jsonRelationLabels?.[key]?.[cacheKey];
-          addCandidate(cachedLabel);
-          const relationRows = refRows?.[key] || {};
-          const relationRow = getRelationRowFromMap(relationRows, rawValue);
-          if (relationRow && typeof relationRow === 'object') {
-            const displayFields = relationConfig?.displayFields || [];
-            if (displayFields.length > 0) {
-              displayFields.forEach((field) => {
-                const fieldValue = getRowValueCaseInsensitive(relationRow, field);
-                addCandidate(fieldValue);
-              });
-            } else {
-              const idFieldName =
-                relationConfig?.idField || relationConfig?.column || key;
-              const idFieldLower =
-                idFieldName === undefined || idFieldName === null
-                  ? null
-                  : String(idFieldName).toLowerCase();
-              Object.entries(relationRow).forEach(([field, fieldValue]) => {
-                if (idFieldLower && field.toLowerCase() === idFieldLower) return;
-                addCandidate(fieldValue);
-              });
-            }
-            addCandidate(
-              formatRelationDisplay(relationRow, relationConfig, rawValue),
-            );
-          }
-          if (candidates.size === 0) return true;
-          return Array.from(candidates).some((candidate) => candidate.includes(query));
-        });
-      });
-    },
-    [
-      filters,
-      relationConfigs,
-      jsonRelationLabels,
-      refRows,
-      formatRelationDisplay,
-      getRelationRowFromMap,
-      getRowValueCaseInsensitive,
-    ],
-  );
-
   useEffect(() => {
     if (!table || columnMeta.length === 0) return;
     let canceled = false;
@@ -2612,7 +2522,7 @@ const TableManager = forwardRef(function TableManager({
       params.set('sort', sort.column);
       params.set('dir', sort.dir);
     }
-    Object.entries(serverFilters).forEach(([k, v]) => {
+    Object.entries(filters).forEach(([k, v]) => {
       if (v !== '' && v !== null && v !== undefined && validCols.has(k)) {
         if (relationConfigs[k]?.table) {
           return;
@@ -2766,21 +2676,20 @@ const TableManager = forwardRef(function TableManager({
     table,
     page,
     perPage,
-    serverFilters,
+    filters,
     sort,
     refreshId,
     localRefresh,
     columnMeta,
     validCols,
     filterModes,
+    relationConfigs,
+    refRows,
+    jsonRelationLabels,
+    formatRelationDisplay,
     requestStatus,
     requestIdsKey,
-    applyRelationFilters,
   ]);
-
-  useEffect(() => {
-    setRows(applyRelationFilters(serverRows));
-  }, [applyRelationFilters, serverRows]);
 
   useEffect(() => {
     setSelectedRows(new Set());
