@@ -109,7 +109,7 @@ function normalizeConfigList(data) {
     const hasDisplayFields =
       Array.isArray(entry.displayFields) && entry.displayFields.length > 0;
     const hasNotificationConfig =
-      (typeof entry.notificationRole === 'string' && entry.notificationRole.trim()) ||
+      Boolean(entry.notificationRole) ||
       (Array.isArray(entry.notificationDashboardFields) &&
         entry.notificationDashboardFields.length > 0) ||
       (Array.isArray(entry.notificationEmailFields) &&

@@ -1305,7 +1305,17 @@ async function upsertRow(conn, table, row) {
     if (value === undefined) continue;
     const normalizedKey = typeof key === 'string' ? key.trim() : String(key || '');
     if (!normalizedKey) continue;
-    const columnName = columnMap.get(normalizedKey.toLowerCase());
+    const baseKey = normalizedKey.includes('.')
+      ? normalizedKey.split('.').pop().trim()
+      : normalizedKey;
+    if (!baseKey) continue;
+    let columnName = columnMap.get(baseKey.toLowerCase());
+    if (!columnName) {
+      const snakeKey = toSnakeCaseKey(baseKey);
+      if (snakeKey) {
+        columnName = columnMap.get(snakeKey.toLowerCase());
+      }
+    }
     if (!columnName) continue;
     filtered[columnName] = value;
   }
