@@ -107,6 +107,15 @@ function normalizeSearchValue(value) {
   return value;
 }
 
+function normalizeFilterValue(value) {
+  if (value && typeof value === 'object') {
+    if (value.label !== undefined && value.label !== null) return value.label;
+    if (value.value !== undefined && value.value !== null) return value.value;
+    if (value.id !== undefined && value.id !== null) return value.id;
+  }
+  return value;
+}
+
 function addRelationRowEntry(map, key, row) {
   if (!map || key === undefined || key === null) return;
   if (!Object.prototype.hasOwnProperty.call(map, key)) {
@@ -248,6 +257,20 @@ function stripTemporaryLabelValue(value) {
     result[key] = next;
   }
   return changed ? result : value;
+}
+
+function pruneValuesToColumns(values, validCols, resolveCanonicalKey) {
+  if (!values || typeof values !== 'object') return values;
+  if (!validCols || validCols.size === 0) return values;
+  const sanitized = {};
+  Object.entries(values).forEach(([key, val]) => {
+    if (!key) return;
+    const canonical = resolveCanonicalKey ? resolveCanonicalKey(key) : key;
+    const targetKey = canonical || key;
+    if (!validCols.has(targetKey)) return;
+    sanitized[targetKey] = val;
+  });
+  return sanitized;
 }
 
 const DEFAULT_EDITABLE_NESTED_KEYS = [
@@ -3984,7 +4007,7 @@ const TableManager = forwardRef(function TableManager({
   }
 
   function handleFilterChange(col, val) {
-    setFilters((f) => ({ ...f, [col]: val }));
+    setFilters((f) => ({ ...f, [col]: normalizeFilterValue(val) }));
     setPage(1);
     setSelectedRows(new Set());
   }
@@ -4109,7 +4132,11 @@ const TableManager = forwardRef(function TableManager({
     Object.entries(values).forEach(([k, v]) => {
       mergedSource[k] = v;
     });
-    const merged = stripTemporaryLabelValue(mergedSource);
+    const merged = pruneValuesToColumns(
+      stripTemporaryLabelValue(mergedSource),
+      validCols,
+      resolveCanonicalKey,
+    );
 
     Object.entries(formConfig?.defaultValues || {}).forEach(([k, v]) => {
       if (merged[k] === undefined || merged[k] === '') merged[k] = v;
@@ -4640,6 +4667,19 @@ const TableManager = forwardRef(function TableManager({
       rawRows = preservedPayload.rawRows ?? rawRows;
     }
 
+    normalizedValues = pruneValuesToColumns(
+      normalizedValues,
+      validCols,
+      resolveCanonicalKey,
+    );
+    if (rawOverride && typeof rawOverride === 'object') {
+      rawOverride = pruneValuesToColumns(
+        rawOverride,
+        validCols,
+        resolveCanonicalKey,
+      );
+    }
+
     Object.entries(normalizedValues).forEach(([k, v]) => {
       mergedSource[k] = v;
     });
@@ -4768,7 +4808,11 @@ const TableManager = forwardRef(function TableManager({
     for (let idx = 0; idx < rowsToProcess.length; idx += 1) {
       const row = rowsToProcess[idx];
       const rowRawSource = Array.isArray(rawRowList) ? rawRowList[idx] : null;
-      const rowValues = row ? { ...headerNormalizedValues, ...row } : { ...normalizedValues };
+      const rowValues = pruneValuesToColumns(
+        row ? { ...headerNormalizedValues, ...row } : { ...normalizedValues },
+        validCols,
+        resolveCanonicalKey,
+      );
       const rowCleaned =
         preservedPayload && isReviewForwarding && preservedPayload.cleanedValues
           ? cloneValue(preservedPayload.cleanedValues)
@@ -4836,7 +4880,7 @@ const TableManager = forwardRef(function TableManager({
         rowPayload.rawRows = rawRows;
       }
 
-      const rowRawValues =
+      let rowRawValues =
         preservedPayload && isReviewForwarding
           ? cloneValue(
               rawOverride ||
@@ -4855,9 +4899,20 @@ const TableManager = forwardRef(function TableManager({
               Object.entries(source || row || {}).forEach(([k, v]) => {
                 combined[k] = v;
               });
-              return combined;
+              return pruneValuesToColumns(
+                combined,
+                validCols,
+                resolveCanonicalKey,
+              );
             })()
           : rawOverride || merged;
+      if (rowRawValues && typeof rowRawValues === 'object') {
+        rowRawValues = pruneValuesToColumns(
+          rowRawValues,
+          validCols,
+          resolveCanonicalKey,
+        );
+      }
 
       const body = {
         ...baseRequest,
