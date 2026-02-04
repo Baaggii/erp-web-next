@@ -2548,6 +2548,7 @@ const TableManager = forwardRef(function TableManager({
           }
           return;
         }
+        const mode = filterModes[k];
         let filterValue = v;
         if (
           mode === 'like' &&
