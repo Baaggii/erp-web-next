@@ -5619,12 +5619,19 @@ export async function insertTableRow(
 ) {
   const { conn = pool, mutationContext = null, onLockInvalidation } =
     options ?? {};
+  const normalizedTableName = tableName ? String(tableName).trim().toLowerCase() : '';
+  let insertRow = row;
+  if (normalizedTableName === 'transactions_contract' && row && typeof row === 'object') {
+    insertRow = Object.fromEntries(
+      Object.entries(row).filter(([key]) => String(key).toLowerCase() !== 'type'),
+    );
+  }
   const columns = await getTableColumnsSafe(tableName);
-  const keys = Object.keys(row);
+  const keys = Object.keys(insertRow);
   logDb(`insertTableRow(${tableName}) columns=${keys.join(', ')}`);
   await ensureValidColumns(tableName, columns, keys);
   if (keys.length === 0) return null;
-  const values = Object.values(row);
+  const values = Object.values(insertRow);
   const cols = keys.map((k) => `\`${k}\``).join(', ');
   const placeholders = keys.map(() => '?').join(', ');
   const performInsert = async (targetConn) => {
@@ -5713,11 +5720,11 @@ export async function insertTableRow(
   if (tableName && tableName.startsWith('transactions_')) {
     const companyIdValue =
       mutationContext?.companyId ??
-      row?.company_id ??
-      row?.companyId ??
+      insertRow?.company_id ??
+      insertRow?.companyId ??
       null;
     const changedBy =
-      mutationContext?.changedBy ?? userId ?? row?.created_by ?? null;
+      mutationContext?.changedBy ?? userId ?? insertRow?.created_by ?? null;
     const lockImpacts = await handleReportLockReapproval({
       conn,
       tableName,
@@ -7165,7 +7172,7 @@ export async function handleReportLockReapproval({
       await notifyUser({
         companyId: notification.companyId ?? normalizedCompanyId ?? null,
         recipientEmpId: notification.recipient,
-        type: 'reapproval',
+        type: 'request',
         kind: 'request',
         relatedId: notification.requestId,
         message: notification.message,

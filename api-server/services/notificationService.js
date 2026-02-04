@@ -25,7 +25,11 @@ function normalizeType(type) {
   if (!normalized) {
     throw new Error('type required');
   }
-  return normalized;
+  const lowered = normalized.toLowerCase();
+  if (lowered === 'request' || lowered === 'response') {
+    return lowered;
+  }
+  return 'request';
 }
 
 function normalizeKind(kind, fallback) {

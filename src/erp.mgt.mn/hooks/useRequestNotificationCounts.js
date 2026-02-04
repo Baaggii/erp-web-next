@@ -303,8 +303,7 @@ export default function useRequestNotificationCounts(
       }
       if (
         payload.type === 'request' ||
-        payload.type === 'response' ||
-        payload.type === 'reapproval'
+        payload.type === 'response'
       ) {
         if (typeof payload.message === 'string') {
           try {
