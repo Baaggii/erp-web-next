@@ -24,6 +24,7 @@ import {
 import { getMerchantById } from './merchantService.js';
 import { renameImages, resolveImageNaming } from './transactionImageService.js';
 import formatTimestamp from '../../src/erp.mgt.mn/utils/formatTimestamp.js';
+import { sanitizeRowForTable } from '../utils/schemaSanitizer.js';
 
 const TEMP_TABLE = 'transaction_temporaries';
 const TEMP_REVIEW_HISTORY_TABLE = 'transaction_temporary_review_history';
@@ -544,6 +545,25 @@ export async function sanitizeCleanedValuesForInsert(tableName, values, columns)
   return { values: sanitized, warnings };
 }
 
+async function sanitizePayloadForTable(value, tableName, db) {
+  if (Array.isArray(value)) {
+    const sanitizedRows = [];
+    for (const row of value) {
+      if (isPlainObject(row)) {
+        // eslint-disable-next-line no-await-in-loop
+        sanitizedRows.push(await sanitizeRowForTable(row, tableName, db));
+      } else {
+        sanitizedRows.push(row);
+      }
+    }
+    return sanitizedRows;
+  }
+  if (isPlainObject(value)) {
+    return sanitizeRowForTable(value, tableName, db);
+  }
+  return value;
+}
+
 async function ensureTemporaryTable(conn = pool) {
   if (ensurePromise) return ensurePromise;
   ensurePromise = (async () => {
@@ -1000,6 +1020,11 @@ export async function createTemporarySubmission({
       ? normalizedDepartmentPref ?? null
       : fallbackDepartment ?? null;
     const cleanedWithCalculated = mergeCalculatedValues(cleanedValues, payload);
+    const cleanedValuesForStorage = await sanitizePayloadForTable(
+      cleanedWithCalculated,
+      tableName,
+      conn,
+    );
     const [result] = await conn.query(
       `INSERT INTO \`${TEMP_TABLE}\`
         (company_id, table_name, form_name, config_name, module_key, payload_json,
@@ -1014,7 +1039,7 @@ export async function createTemporarySubmission({
         moduleKey ?? null,
         safeJsonStringify(payload),
         safeJsonStringify(rawValues),
-        safeJsonStringify(cleanedWithCalculated),
+        safeJsonStringify(cleanedValuesForStorage),
         normalizedCreator,
         serializeEmpIdList(reviewerEmpIds),
         insertBranchId,
@@ -1887,6 +1912,16 @@ export async function promoteTemporarySubmission(
         reviewNotesValue = bulkResolutionNotes;
       }
     }
+    const sanitizedRowForInsert = await sanitizeRowForTable(
+      sanitizedValues,
+      row.table_name,
+      conn,
+    );
+    if (Object.keys(sanitizedRowForInsert).length === 0) {
+      const err = new Error('Temporary submission is missing promotable values');
+      err.status = 422;
+      throw err;
+    }
     let skipSessionEnabled = false;
     let insertedId = null;
     if (!shouldForwardTemporary) {
@@ -1898,7 +1933,7 @@ export async function promoteTemporarySubmission(
         try {
           const inserted = await tableInserter(
             row.table_name,
-            sanitizedValues,
+            sanitizedRowForInsert,
             undefined,
             undefined,
             false,
@@ -1915,7 +1950,7 @@ export async function promoteTemporarySubmission(
             id,
             error: err,
           });
-          let recordForInsert = sanitizedValues;
+          let recordForInsert = sanitizedRowForInsert;
           if (!skipSessionEnabled) {
             await conn.query('SET @skip_triggers = 1;');
             skipSessionEnabled = true;
@@ -1999,7 +2034,7 @@ export async function promoteTemporarySubmission(
       const sanitizedPayloadValues = isPlainObject(mergedPayload.cleanedValues)
         ? { ...mergedPayload.cleanedValues }
         : {};
-      Object.entries(sanitizedValues).forEach(([key, value]) => {
+      Object.entries(sanitizedRowForInsert).forEach(([key, value]) => {
         sanitizedPayloadValues[key] = value;
       });
       mergedPayload.cleanedValues = sanitizedPayloadValues;

@@ -23,6 +23,7 @@ import {
   persistEbarimtInvoiceResponse,
 } from './ebarimtInvoiceStore.js';
 import { getMerchantById } from './merchantService.js';
+import { sanitizeRowForTable } from '../utils/schemaSanitizer.js';
 
 const masterForeignKeyCache = new Map();
 const masterTableColumnsCache = new Map();
@@ -1319,14 +1320,15 @@ async function upsertRow(conn, table, row) {
     if (!columnName) continue;
     filtered[columnName] = value;
   }
-  const cols = Object.keys(filtered);
+  const sanitized = await sanitizeRowForTable(filtered, table, conn);
+  const cols = Object.keys(sanitized);
   if (!cols.length) return null;
   const placeholders = cols.map(() => '?').join(',');
   const updates = cols.map((c) => `${c}=VALUES(${c})`).join(',');
   const sql = `INSERT INTO ${table} (${cols.join(',')}) VALUES (${placeholders}) ON DUPLICATE KEY UPDATE ${updates}`;
-  const params = cols.map((c) => filtered[c]);
+  const params = cols.map((c) => sanitized[c]);
   const [res] = await conn.query(sql, params);
-  return res.insertId && res.insertId !== 0 ? res.insertId : filtered.id;
+  return res.insertId && res.insertId !== 0 ? res.insertId : sanitized.id;
 }
 
 async function loadInvoiceRecord(invoiceId) {
