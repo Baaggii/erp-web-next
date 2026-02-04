@@ -42,20 +42,6 @@ const STRING_COLUMN_TYPES = new Set([
   'enum',
   'set',
 ]);
-const NUMERIC_COLUMN_TYPES = new Set([
-  'tinyint',
-  'smallint',
-  'mediumint',
-  'int',
-  'integer',
-  'bigint',
-  'decimal',
-  'numeric',
-  'float',
-  'double',
-  'real',
-  'bit',
-]);
 
 const LABEL_WRAPPER_KEYS = new Set([
   'value',
@@ -98,20 +84,6 @@ function stripLabelWrappers(value) {
     result[key] = next;
   }
   return changed ? result : value;
-}
-
-function normalizeNumericValue(value) {
-  if (value === undefined || value === null) return value;
-  if (typeof value === 'number') return value;
-  if (typeof value === 'bigint') return Number(value);
-  if (typeof value === 'string') {
-    const trimmed = value.trim();
-    if (!trimmed) return null;
-    const numeric = Number(trimmed);
-    if (Number.isFinite(numeric)) return numeric;
-    return null;
-  }
-  return null;
 }
 
 function normalizeEmpId(empid) {
@@ -467,7 +439,6 @@ export async function sanitizeCleanedValuesForInsert(tableName, values, columns)
           name: col,
           type: null,
           maxLength: null,
-          enumValues: [],
         });
       }
       return;
@@ -479,7 +450,6 @@ export async function sanitizeCleanedValuesForInsert(tableName, values, columns)
         name: col.name,
         type: col.type ? String(col.type).toLowerCase() : null,
         maxLength: col.maxLength != null ? Number(col.maxLength) : null,
-        enumValues: Array.isArray(col.enumValues) ? col.enumValues : [],
       });
     }
   });
@@ -498,7 +468,7 @@ export async function sanitizeCleanedValuesForInsert(tableName, values, columns)
     if (RESERVED_TEMPORARY_COLUMNS.has(lower)) continue;
     const columnInfo = lookup.get(lower);
     if (!columnInfo) continue;
-    let normalizedValue = stripLabelWrappers(rawValue);
+    let normalizedValue = rawValue;
     if (Array.isArray(normalizedValue)) {
       normalizedValue = JSON.stringify(normalizedValue);
     } else if (
@@ -510,32 +480,6 @@ export async function sanitizeCleanedValuesForInsert(tableName, values, columns)
       normalizedValue = JSON.stringify(normalizedValue);
     } else if (typeof normalizedValue === 'bigint') {
       normalizedValue = normalizedValue.toString();
-    }
-    if (columnInfo.enumValues.length > 0) {
-      const enumValue = String(normalizedValue ?? '').trim();
-      if (!columnInfo.enumValues.includes(enumValue)) {
-        warnings.push({
-          column: columnInfo.name,
-          type: 'enum',
-          originalValue: normalizedValue,
-          allowedValues: columnInfo.enumValues,
-        });
-        continue;
-      }
-      normalizedValue = enumValue;
-    }
-    if (columnInfo.type && NUMERIC_COLUMN_TYPES.has(columnInfo.type)) {
-      const numeric = normalizeNumericValue(normalizedValue);
-      if (numeric === null) {
-        warnings.push({
-          column: columnInfo.name,
-          type: 'nonNumeric',
-          originalValue: normalizedValue,
-        });
-        normalizedValue = null;
-      } else {
-        normalizedValue = numeric;
-      }
     }
     if (typeof normalizedValue === 'string') {
       normalizedValue = normalizedValue.trim();
