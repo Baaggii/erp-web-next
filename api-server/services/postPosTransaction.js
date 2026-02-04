@@ -1297,14 +1297,26 @@ function applyMasterForeignKeys(table, row, fkMap, masterRow) {
 }
 
 async function upsertRow(conn, table, row) {
-  const cols = Object.keys(row);
+  if (!isPlainObject(row)) return null;
+  const columnMap = await getTableColumnNameMap(table);
+  if (!columnMap || columnMap.size === 0) return null;
+  const filtered = {};
+  for (const [key, value] of Object.entries(row)) {
+    if (value === undefined) continue;
+    const normalizedKey = typeof key === 'string' ? key.trim() : String(key || '');
+    if (!normalizedKey) continue;
+    const columnName = columnMap.get(normalizedKey.toLowerCase());
+    if (!columnName) continue;
+    filtered[columnName] = value;
+  }
+  const cols = Object.keys(filtered);
   if (!cols.length) return null;
   const placeholders = cols.map(() => '?').join(',');
   const updates = cols.map((c) => `${c}=VALUES(${c})`).join(',');
   const sql = `INSERT INTO ${table} (${cols.join(',')}) VALUES (${placeholders}) ON DUPLICATE KEY UPDATE ${updates}`;
-  const params = cols.map((c) => row[c]);
+  const params = cols.map((c) => filtered[c]);
   const [res] = await conn.query(sql, params);
-  return res.insertId && res.insertId !== 0 ? res.insertId : row.id;
+  return res.insertId && res.insertId !== 0 ? res.insertId : filtered.id;
 }
 
 async function loadInvoiceRecord(invoiceId) {
