@@ -42,7 +42,6 @@
   },
   "plan": {
     "planIdFieldName": "",
-    "dutyPositionFieldName": "position_id",
     "notificationFields": "is_plan,is_plan_completion",
     "notificationValues": "1"
   },

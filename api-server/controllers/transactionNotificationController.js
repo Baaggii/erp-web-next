@@ -15,24 +15,7 @@ export async function listTransactionNotifications(req, res, next) {
         LIMIT ? OFFSET ?`,
       [req.user.empid, req.user.companyId, limit, offset],
     );
-    const seenTransactionIds = new Set();
-    const filtered = [];
-    for (const row of rows || []) {
-      if (!row) continue;
-      let payload;
-      try {
-        payload = row.message ? JSON.parse(row.message) : null;
-      } catch {
-        payload = null;
-      }
-      if (payload?.kind === 'transaction' && row.related_id) {
-        const key = String(row.related_id);
-        if (seenTransactionIds.has(key)) continue;
-        seenTransactionIds.add(key);
-      }
-      filtered.push(row);
-    }
-    res.json({ rows: filtered });
+    res.json({ rows: rows || [] });
   } catch (err) {
     next(err);
   }

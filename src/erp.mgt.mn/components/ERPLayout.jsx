@@ -4706,7 +4706,7 @@ function MainWindow({ title }) {
                 />
               );
             })()}
-            <span>{t.label}</span>
+            <span style={styles.tabLabel}>{t.label}</span>
             {tabs.length > 1 && t.key !== '/' && (
               <button
                 onClick={(e) => {
@@ -4975,6 +4975,8 @@ const styles = {
     display: "flex",
     borderBottom: "1px solid #9ca3af",
     backgroundColor: "#e5e7eb",
+    maxWidth: "100%",
+    overflowX: "auto",
   },
   tab: {
     padding: "0.25rem 0.5rem",
@@ -4985,6 +4987,9 @@ const styles = {
     alignItems: "center",
     borderTopLeftRadius: "4px",
     borderTopRightRadius: "4px",
+    maxWidth: "100%",
+    minWidth: 0,
+    flexShrink: 0,
   },
   activeTab: {
     padding: "0.25rem 0.5rem",
@@ -4997,6 +5002,15 @@ const styles = {
     alignItems: "center",
     borderTopLeftRadius: "4px",
     borderTopRightRadius: "4px",
+    maxWidth: "100%",
+    minWidth: 0,
+    flexShrink: 0,
+  },
+  tabLabel: {
+    maxWidth: "100%",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
   },
   closeBtn: {
     marginLeft: "0.25rem",
