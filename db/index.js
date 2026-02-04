@@ -5202,9 +5202,14 @@ export async function listTableRows(
   signal,
 ) {
   signal?.throwIfAborted();
-  const columns = await getTableColumnsSafe(tableName);
+  let columns = await getTableColumnsSafe(tableName);
   if (!Array.isArray(columns) || columns.length === 0) {
-    return { rows: [], count: 0 };
+    const refreshed = await listTableColumns(tableName);
+    tableColumnsCache.set(tableName, refreshed);
+    columns = refreshed;
+    if (!Array.isArray(columns) || columns.length === 0) {
+      return { rows: [], count: 0 };
+    }
   }
   logDb(
     `listTableRows(${tableName}) page=${page} perPage=${perPage} ` +
