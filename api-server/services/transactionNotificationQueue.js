@@ -9,7 +9,6 @@ const NOTIFICATION_ROLE_SET = new Set([
   'company',
   'department',
   'branch',
-  'position',
   'customer',
 ]);
 
@@ -76,12 +75,6 @@ function getCaseInsensitive(row, field) {
   const lower = String(field).toLowerCase();
   const key = Object.keys(row).find((k) => k.toLowerCase() === lower);
   return key ? row[key] : undefined;
-}
-
-function normalizeRecipientEmpId(empid) {
-  if (!empid) return null;
-  const trimmed = String(empid).trim();
-  return trimmed ? trimmed.toUpperCase() : null;
 }
 
 function deriveTransactionName(row, tableName) {
@@ -157,16 +150,6 @@ function normalizeReferenceIds(value, idField) {
   const parsed = parseJsonValue(value);
   if (parsed) {
     return normalizeReferenceIds(parsed, idField);
-  }
-  if (typeof value === 'string') {
-    const parts = value
-      .split(',')
-      .map((entry) => entry.trim())
-      .filter((entry) => entry);
-    if (parts.length > 1) {
-      parts.forEach((entry) => pushId(entry));
-      return ids;
-    }
   }
   pushId(value);
   return ids;
@@ -355,7 +338,7 @@ function pickDisplayConfig(entries, table, idField, referenceRow) {
   return fallback ?? scoped[0];
 }
 
-async function listEmpIdsByScope({ companyId, branchId, departmentId, positionId }) {
+async function listEmpIdsByScope({ companyId, branchId, departmentId }) {
   if (!companyId) return [];
   const params = [companyId];
   const conditions = ['employment_company_id = ?', 'deleted_at IS NULL'];
@@ -366,10 +349,6 @@ async function listEmpIdsByScope({ companyId, branchId, departmentId, positionId
   if (departmentId) {
     conditions.push('employment_department_id = ?');
     params.push(departmentId);
-  }
-  if (positionId) {
-    conditions.push('(employment_position_id = ? OR workplace_position_id = ?)');
-    params.push(positionId, positionId);
   }
   const [rows] = await pool.query(
     `SELECT employment_emp_id AS empId
@@ -615,30 +594,9 @@ async function handleTransactionNotification(job) {
     });
   }
 
+  if (!relations.length) return;
   const notifyFields = normalizeFieldList(transactionConfig?.notifyFields);
   if (!notifyFields.length) return;
-  const columns = await listTableColumns(job.tableName);
-  const relationColumns = new Set(
-    relations
-      .map((relation) => (relation?.column ? String(relation.column).toLowerCase() : ''))
-      .filter((column) => column),
-  );
-  notifyFields.forEach((field) => {
-    const fieldLower = String(field).toLowerCase();
-    if (relationColumns.has(fieldLower)) return;
-    const hasColumn =
-      Array.isArray(columns) &&
-      columns.some((column) => String(column).toLowerCase() === fieldLower);
-    if (!hasColumn) return;
-    if (!fieldLower.includes('position')) return;
-    relations.push({
-      column: field,
-      table: 'code_position',
-      idField: 'position_id',
-      isArray: false,
-    });
-  });
-  if (!relations.length) return;
   const editFieldList = normalizeFieldList(
     transactionConfig?.notificationDashboardFields?.length
       ? transactionConfig.notificationDashboardFields
@@ -720,7 +678,6 @@ async function handleTransactionNotification(job) {
   const transactionName = deriveTransactionName(transactionRow, job.tableName);
 
   const handled = new Set();
-  const notifiedRecipients = new Set();
   for (const relation of relations) {
     if (notifyFieldSet && !notifyFieldSet.has(String(relation.column).toLowerCase())) {
       continue;
@@ -754,13 +711,7 @@ async function handleTransactionNotification(job) {
         relation.idField,
         referenceRow,
       );
-      let role =
-        typeof config?.notificationRole === 'string'
-          ? config.notificationRole.trim().toLowerCase()
-          : '';
-      if (!role && relation.table === 'code_position') {
-        role = 'position';
-      }
+      const role = config?.notificationRole?.trim();
       if (!role || !NOTIFICATION_ROLE_SET.has(role)) continue;
 
       const { summaryFields: referenceSummaryFields, summaryText: referenceSummaryText } =
@@ -838,29 +789,18 @@ async function handleTransactionNotification(job) {
             companyId: job.companyId,
             departmentId: referenceId,
           });
-        } else if (role === 'position') {
-          const workplacePositionId = getCaseInsensitive(
-            referenceRow,
-            'workplace_position_id',
-          );
-          const positionLookupId =
-            workplacePositionId ??
-            getCaseInsensitive(referenceRow, 'position_id') ??
-            referenceId;
-          recipients = await listEmpIdsByScope({
-            companyId: job.companyId,
-            positionId: positionLookupId,
-          });
         }
 
         const uniqueRecipients = Array.from(
-          new Set(recipients.map((entry) => normalizeRecipientEmpId(entry)).filter(Boolean)),
+          new Set(
+            recipients
+              .map((entry) => String(entry).trim())
+              .filter((entry) => entry),
+          ),
         );
 
         if (uniqueRecipients.length) {
           for (const recipient of uniqueRecipients) {
-            if (notifiedRecipients.has(recipient)) continue;
-            notifiedRecipients.add(recipient);
             // eslint-disable-next-line no-await-in-loop
             await notifyUser({
               companyId: job.companyId,
