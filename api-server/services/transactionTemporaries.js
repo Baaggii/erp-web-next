@@ -229,19 +229,6 @@ function parseEnumOptions(type) {
   return options;
 }
 
-function coerceEnumValue(value, options) {
-  if (!options.length) return value;
-  if (options.includes(value)) return value;
-  const text = typeof value === 'string' ? value.trim() : '';
-  if (!text) return value;
-  const dashIndex = text.indexOf('-');
-  if (dashIndex > 0) {
-    const leading = text.slice(0, dashIndex).trim();
-    if (leading && options.includes(leading)) return leading;
-  }
-  return value;
-}
-
 function isPlainObject(value) {
   return Boolean(
     value &&
@@ -518,8 +505,7 @@ export async function sanitizeCleanedValuesForInsert(tableName, values, columns)
           warnings.push({ column: columnInfo.name, type: 'emptyNumeric' });
           continue;
         }
-        const match = normalizedValue.match(/-?\d+(?:\.\d+)?/);
-        const numericValue = Number(match ? match[0] : normalizedValue);
+        const numericValue = Number(normalizedValue);
         if (!Number.isFinite(numericValue)) {
           warnings.push({ column: columnInfo.name, type: 'invalidNumeric' });
           continue;
@@ -528,7 +514,6 @@ export async function sanitizeCleanedValuesForInsert(tableName, values, columns)
       }
       const enumOptions = type ? parseEnumOptions(type) : [];
       if (enumOptions.length > 0) {
-        normalizedValue = coerceEnumValue(normalizedValue, enumOptions);
         if (!enumOptions.includes(normalizedValue)) {
           warnings.push({
             column: columnInfo.name,
