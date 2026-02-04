@@ -2524,7 +2524,7 @@ const TableManager = forwardRef(function TableManager({
     }
     Object.entries(filters).forEach(([k, v]) => {
       if (v !== '' && v !== null && v !== undefined && validCols.has(k)) {
-        if (relationConfigs[k]?.table) {
+        if (relationConfigs[k]?.table && filterModes[k] === 'like') {
           return;
         }
         const mode = filterModes[k];
@@ -2593,6 +2593,7 @@ const TableManager = forwardRef(function TableManager({
         }
         const relationLikeFilters = Object.entries(filters)
           .map(([key, value]) => {
+            if (filterModes[key] !== 'like') return null;
             if (!relationConfigs[key]?.table) return null;
             if (value === undefined || value === null || String(value).trim() === '') return null;
             return { key, query: String(value).trim().toLowerCase() };
