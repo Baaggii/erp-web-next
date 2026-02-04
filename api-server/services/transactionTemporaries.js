@@ -32,6 +32,7 @@ const DEFAULT_TEMPORARY_LIMIT = 50;
 const MAX_TEMPORARY_LIMIT = 100;
 
 const RESERVED_TEMPORARY_COLUMNS = new Set(['rows']);
+const DANGEROUS_UI_KEYS = new Set(['type', 'label', '__meta', '__display']);
 const STRING_COLUMN_TYPES = new Set([
   'char',
   'varchar',
@@ -236,6 +237,58 @@ function isPlainObject(value) {
       !Array.isArray(value) &&
       Object.getPrototypeOf(value) === Object.prototype,
   );
+}
+
+async function buildAllowedColumnSet(tableName, columns, conn) {
+  const allowed = new Set();
+  if (Array.isArray(columns)) {
+    columns.forEach((col) => {
+      if (!col) return;
+      const name = typeof col === 'string' ? col : col.name;
+      if (typeof name === 'string' && name.trim()) {
+        allowed.add(name.trim().toLowerCase());
+      }
+    });
+  }
+  if (!tableName || !conn) return allowed;
+  try {
+    const [rows] = await conn.query(
+      `SELECT COLUMN_NAME FROM information_schema.columns
+        WHERE table_schema = DATABASE() AND table_name = ?`,
+      [tableName],
+    );
+    if (Array.isArray(rows)) {
+      rows.forEach((row) => {
+        const name = row?.COLUMN_NAME || row?.column_name;
+        if (typeof name === 'string' && name.trim()) {
+          allowed.add(name.trim().toLowerCase());
+        }
+      });
+    }
+  } catch (err) {
+    console.error('Failed to load information_schema columns', {
+      tableName,
+      error: err,
+    });
+  }
+  return allowed;
+}
+
+function sanitizeRowForInsert(row, allowedColumns) {
+  if (!isPlainObject(row)) return {};
+  const allowed =
+    allowedColumns instanceof Set ? allowedColumns : new Set(allowedColumns || []);
+  const sanitized = {};
+  Object.entries(row).forEach(([rawKey, value]) => {
+    if (!rawKey) return;
+    const key = typeof rawKey === 'string' ? rawKey.trim() : String(rawKey);
+    if (!key) return;
+    const lower = key.toLowerCase();
+    if (DANGEROUS_UI_KEYS.has(lower)) return;
+    if (allowed.size > 0 && !allowed.has(lower)) return;
+    sanitized[key] = value;
+  });
+  return sanitized;
 }
 
 function mergePlainObjectSources(...sources) {
@@ -1000,6 +1053,28 @@ export async function createTemporarySubmission({
       ? normalizedDepartmentPref ?? null
       : fallbackDepartment ?? null;
     const cleanedWithCalculated = mergeCalculatedValues(cleanedValues, payload);
+    const columnMeta = await listTableColumnsDetailed(tableName);
+    const allowedColumns = await buildAllowedColumnSet(tableName, columnMeta, conn);
+    const sanitizedCleanedValues = sanitizeRowForInsert(
+      cleanedWithCalculated,
+      allowedColumns,
+    );
+    const sanitizedRawValues = isPlainObject(rawValues)
+      ? sanitizeRowForInsert(rawValues, allowedColumns)
+      : rawValues;
+    const sanitizedPayload = isPlainObject(payload) ? { ...payload } : payload;
+    if (isPlainObject(sanitizedPayload?.cleanedValues)) {
+      sanitizedPayload.cleanedValues = sanitizeRowForInsert(
+        sanitizedPayload.cleanedValues,
+        allowedColumns,
+      );
+    }
+    if (isPlainObject(sanitizedPayload?.values)) {
+      sanitizedPayload.values = sanitizeRowForInsert(
+        sanitizedPayload.values,
+        allowedColumns,
+      );
+    }
     const [result] = await conn.query(
       `INSERT INTO \`${TEMP_TABLE}\`
         (company_id, table_name, form_name, config_name, module_key, payload_json,
@@ -1012,9 +1087,9 @@ export async function createTemporarySubmission({
         formName ?? null,
         configName ?? null,
         moduleKey ?? null,
-        safeJsonStringify(payload),
-        safeJsonStringify(rawValues),
-        safeJsonStringify(cleanedWithCalculated),
+        safeJsonStringify(sanitizedPayload),
+        safeJsonStringify(sanitizedRawValues),
+        safeJsonStringify(sanitizedCleanedValues),
         normalizedCreator,
         serializeEmpIdList(reviewerEmpIds),
         insertBranchId,
@@ -1788,6 +1863,18 @@ export async function promoteTemporarySubmission(
           sanitizedValues.created_by = fallbackCreator;
         }
       }
+    }
+
+    const allowedColumns = await buildAllowedColumnSet(
+      row.table_name,
+      columns,
+      conn,
+    );
+    sanitizedValues = sanitizeRowForInsert(sanitizedValues, allowedColumns);
+    if (Object.keys(sanitizedValues).length === 0) {
+      const err = new Error('Temporary submission is missing promotable values');
+      err.status = 422;
+      throw err;
     }
 
     const resolvedBranchPref = normalizeScopePreference(row.branch_id);
