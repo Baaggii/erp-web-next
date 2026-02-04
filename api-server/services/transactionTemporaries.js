@@ -467,7 +467,6 @@ export async function sanitizeCleanedValuesForInsert(tableName, values, columns)
           name: col,
           type: null,
           maxLength: null,
-          enumValues: [],
         });
       }
       return;
@@ -479,7 +478,6 @@ export async function sanitizeCleanedValuesForInsert(tableName, values, columns)
         name: col.name,
         type: col.type ? String(col.type).toLowerCase() : null,
         maxLength: col.maxLength != null ? Number(col.maxLength) : null,
-        enumValues: Array.isArray(col.enumValues) ? col.enumValues : [],
       });
     }
   });
@@ -510,19 +508,6 @@ export async function sanitizeCleanedValuesForInsert(tableName, values, columns)
       normalizedValue = JSON.stringify(normalizedValue);
     } else if (typeof normalizedValue === 'bigint') {
       normalizedValue = normalizedValue.toString();
-    }
-    if (columnInfo.enumValues.length > 0) {
-      const enumValue = String(normalizedValue ?? '').trim();
-      if (!columnInfo.enumValues.includes(enumValue)) {
-        warnings.push({
-          column: columnInfo.name,
-          type: 'enum',
-          originalValue: normalizedValue,
-          allowedValues: columnInfo.enumValues,
-        });
-        continue;
-      }
-      normalizedValue = enumValue;
     }
     if (columnInfo.type && NUMERIC_COLUMN_TYPES.has(columnInfo.type)) {
       const numeric = normalizeNumericValue(normalizedValue);
