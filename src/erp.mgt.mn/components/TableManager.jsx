@@ -2524,17 +2524,8 @@ const TableManager = forwardRef(function TableManager({
     }
     Object.entries(filters).forEach(([k, v]) => {
       if (v !== '' && v !== null && v !== undefined && validCols.has(k)) {
-        const mode = filterModes[k];
         if (dateFieldSet.has(k)) {
-          if (
-            mode === 'like' &&
-            typeof v === 'string' &&
-            v.trim() !== '' &&
-            !v.includes('%') &&
-            !v.includes('_')
-          ) {
-            params.set(k, `%${v}%`);
-          } else if (isValidDateFilterValue(v)) {
+          if (isValidDateFilterValue(v)) {
             params.set(k, v);
           } else if (
             typeof v === 'string' &&
