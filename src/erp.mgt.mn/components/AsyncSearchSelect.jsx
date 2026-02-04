@@ -32,7 +32,6 @@ export default function AsyncSearchSelect({
   resolveValueLabel,
   onChange,
   onSelect,
-  useLabelAsValue = false,
   disabled,
   onKeyDown,
   inputRef,
@@ -716,8 +715,7 @@ export default function AsyncSearchSelect({
     if (isMulti) {
       const existingSet = new Set(selectedList.map((item) => String(item.value)));
       if (!existingSet.has(String(opt.value))) {
-        const nextValue = useLabelAsValue ? opt.label ?? opt.value : opt.value;
-        const next = [...selectedList.map((item) => item.value), nextValue];
+        const next = [...selectedList.map((item) => item.value), opt.value];
         onChange(next, opt.label);
         actionRef.current = {
           type: isTabCommit ? 'tab' : 'enter',
@@ -730,11 +728,10 @@ export default function AsyncSearchSelect({
       setInput('');
       setLabel('');
     } else {
-      const nextValue = useLabelAsValue ? opt.label ?? opt.value : opt.value;
-      onChange(nextValue, opt.label);
-      setInput(String(nextValue));
+      onChange(opt.value, opt.label);
+      setInput(String(opt.value));
       setLabel(opt.label || '');
-      if (internalRef.current) internalRef.current.value = String(nextValue);
+      if (internalRef.current) internalRef.current.value = String(opt.value);
       chosenRef.current = opt;
       actionRef.current = {
         type: isTabCommit ? 'tab' : 'enter',
@@ -807,22 +804,17 @@ export default function AsyncSearchSelect({
                           selectedList.map((item) => String(item.value)),
                         );
                         if (!existingSet.has(String(opt.value))) {
-                          const nextValue = useLabelAsValue ? opt.label ?? opt.value : opt.value;
-                          const next = [
-                            ...selectedList.map((item) => item.value),
-                            nextValue,
-                          ];
+                          const next = [...selectedList.map((item) => item.value), opt.value];
                           onChange(next, opt.label);
                         }
                         setInput('');
                         setLabel('');
                       } else {
-                        const nextValue = useLabelAsValue ? opt.label ?? opt.value : opt.value;
-                        onChange(nextValue, opt.label);
-                        setInput(String(nextValue));
+                        onChange(opt.value, opt.label);
+                        setInput(String(opt.value));
                         setLabel(opt.label || '');
                         if (internalRef.current)
-                          internalRef.current.value = String(nextValue);
+                          internalRef.current.value = String(opt.value);
                         chosenRef.current = opt;
                         setShow(false);
                         if (onSelect) {
