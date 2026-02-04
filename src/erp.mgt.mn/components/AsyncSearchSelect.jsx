@@ -152,36 +152,20 @@ export default function AsyncSearchSelect({
     return Array.from(columnSet);
   }, [searchColumns, searchColumn, idField, effectiveLabelFields]);
 
-  const filterOptionsByQuery = useCallback((list, query) => {
-    const normalized = String(query || '').trim().toLowerCase();
-    if (!normalized) return Array.isArray(list) ? list : [];
-    if (!Array.isArray(list)) return [];
-    return list.filter((opt) => {
-      if (!opt) return false;
-      const valueText = opt.value != null ? String(opt.value).toLowerCase() : '';
-      const labelText = opt.label != null ? String(opt.label).toLowerCase() : '';
-      return valueText.includes(normalized) || labelText.includes(normalized);
-    });
-  }, []);
-  const visibleOptions = useMemo(
-    () => filterOptionsByQuery(options, input),
-    [filterOptionsByQuery, input, options],
-  );
-
   const findBestOption = useCallback(
     (query, { allowPartial = true } = {}) => {
       const normalized = String(query || '').trim().toLowerCase();
       if (normalized.length === 0) return null;
-      let opt = visibleOptions.find(
+      let opt = options.find(
         (o) => String(o.value ?? '').toLowerCase() === normalized,
       );
       if (opt == null) {
-        opt = visibleOptions.find(
+        opt = options.find(
           (o) => String(o.label ?? '').toLowerCase() === normalized,
         );
       }
       if (opt == null && allowPartial) {
-        opt = visibleOptions.find((o) => {
+        opt = options.find((o) => {
           const valueText = String(o.value ?? '').toLowerCase();
           const labelText = String(o.label ?? '').toLowerCase();
           return (
@@ -191,7 +175,7 @@ export default function AsyncSearchSelect({
       }
       return opt || null;
     },
-    [visibleOptions],
+    [options],
   );
 
   const compareOptions = useCallback((a, b) => {
@@ -288,7 +272,7 @@ export default function AsyncSearchSelect({
       return;
     }
     updateMenuPosition();
-  }, [show, visibleOptions.length, input, updateMenuPosition]);
+  }, [show, options.length, input, updateMenuPosition]);
 
   useEffect(() => {
     if (!show) return;
@@ -300,6 +284,18 @@ export default function AsyncSearchSelect({
       window.removeEventListener('scroll', handler, true);
     };
   }, [show, updateMenuPosition]);
+
+  const filterOptionsByQuery = useCallback((list, query) => {
+    const normalized = String(query || '').trim().toLowerCase();
+    if (!normalized) return Array.isArray(list) ? list : [];
+    if (!Array.isArray(list)) return [];
+    return list.filter((opt) => {
+      if (!opt) return false;
+      const valueText = opt.value != null ? String(opt.value).toLowerCase() : '';
+      const labelText = opt.label != null ? String(opt.label).toLowerCase() : '';
+      return valueText.includes(normalized) || labelText.includes(normalized);
+    });
+  }, []);
 
   async function fetchPage(
     p = 1,
@@ -420,6 +416,7 @@ export default function AsyncSearchSelect({
         // options before continuing ensures that the results list only contains
         // the matching items once they are loaded, regardless of which page
         // they came from.
+        setOptions([]);
         const nextPage = p + 1;
         setPage(nextPage);
         return fetchPage(nextPage, q, true, signal, {
@@ -442,7 +439,7 @@ export default function AsyncSearchSelect({
           requestId,
         });
       }
-      const nextList = opts;
+      const nextList = normalizedFilter ? filteredOpts : opts;
       if (!canUpdateState()) return;
       setOptions((prev) => {
         if (append) {
@@ -479,29 +476,18 @@ export default function AsyncSearchSelect({
   }, [isMulti, value]);
 
   useEffect(() => {
-    setOptions([]);
-    setPage(1);
-    setHasMore(false);
-    forcedLocalSearchRef.current = '';
-  }, [table, filtersKey, effectiveCompanyId]);
-
-  useEffect(() => {
     if (!show) {
-      setHighlight((h) =>
-        visibleOptions.length === 0 ? -1 : Math.min(h, visibleOptions.length - 1),
-      );
+      setHighlight((h) => (options.length === 0 ? -1 : Math.min(h, options.length - 1)));
       return;
     }
-    if (visibleOptions.length === 0) {
+    if (options.length === 0) {
       setHighlight(-1);
       return;
     }
     const query = String(input ?? '').trim();
-    const fallbackIndex = visibleOptions.length > 0 ? 0 : -1;
+    const fallbackIndex = options.length > 0 ? 0 : -1;
     if (!query) {
-      setHighlight((h) =>
-        h >= 0 && h < visibleOptions.length ? h : fallbackIndex,
-      );
+      setHighlight((h) => (h >= 0 && h < options.length ? h : fallbackIndex));
       return;
     }
     const exact = findBestOption(query, { allowPartial: false });
@@ -510,13 +496,13 @@ export default function AsyncSearchSelect({
       setHighlight(-1);
       return;
     }
-    const idx = visibleOptions.indexOf(similar);
+    const idx = options.indexOf(similar);
     if (idx >= 0) {
       setHighlight(idx);
     } else {
       setHighlight(fallbackIndex);
     }
-  }, [visibleOptions, show, input, findBestOption]);
+  }, [options, show, input, findBestOption]);
 
   useEffect(() => {
     if (!show) return;
@@ -665,7 +651,7 @@ export default function AsyncSearchSelect({
     if (e.key === 'ArrowDown') {
       e.preventDefault();
       if (!show) setShow(true);
-      setHighlight((h) => Math.min(h + 1, visibleOptions.length - 1));
+      setHighlight((h) => Math.min(h + 1, options.length - 1));
       return;
     }
     if (e.key === 'ArrowUp') {
@@ -692,9 +678,9 @@ export default function AsyncSearchSelect({
 
     let idx = highlight;
     let opt = null;
-    if (idx >= 0 && idx < visibleOptions.length) {
-      opt = visibleOptions[idx];
-    } else if (visibleOptions.length > 0) {
+    if (idx >= 0 && idx < options.length) {
+      opt = options[idx];
+    } else if (options.length > 0) {
       opt =
         findBestOption(query, { allowPartial: false }) ||
         findBestOption(query, { allowPartial: true });
@@ -709,7 +695,7 @@ export default function AsyncSearchSelect({
       return;
     }
 
-    const optIndex = visibleOptions.indexOf(opt);
+    const optIndex = options.indexOf(opt);
     if (optIndex >= 0) setHighlight(optIndex);
     e.preventDefault();
     if (isMulti) {
@@ -762,7 +748,7 @@ export default function AsyncSearchSelect({
               zIndex: 2147483647,
             }}
           >
-            {visibleOptions.length > 0 && (
+            {options.length > 0 && (
               <ul
                 ref={listRef}
                 onScroll={(e) => {
@@ -794,7 +780,7 @@ export default function AsyncSearchSelect({
                   boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',
                 }}
               >
-                {visibleOptions.map((opt, idx) => (
+                {options.map((opt, idx) => (
                   <li
                     key={opt.value}
                     onMouseDown={(event) => {
@@ -837,7 +823,7 @@ export default function AsyncSearchSelect({
             {loading && (
               <div
                 style={{
-                  marginTop: visibleOptions.length > 0 ? '0.25rem' : 0,
+                  marginTop: options.length > 0 ? '0.25rem' : 0,
                   background: '#fff',
                   border: '1px solid #ccc',
                   padding: '0.25rem',
