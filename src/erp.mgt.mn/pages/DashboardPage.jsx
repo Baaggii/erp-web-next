@@ -4,6 +4,7 @@ import { AuthContext } from '../context/AuthContext.jsx';
 import PendingRequestWidget from '../components/PendingRequestWidget.jsx';
 import TransactionNotificationWidget from '../components/TransactionNotificationWidget.jsx';
 import OutgoingRequestWidget from '../components/OutgoingRequestWidget.jsx';
+import DutyAssignmentsWidget from '../components/DutyAssignmentsWidget.jsx';
 import { usePendingRequests } from '../context/PendingRequestContext.jsx';
 import { useTransactionNotifications } from '../context/TransactionNotificationContext.jsx';
 import LangContext from '../context/I18nContext.jsx';
@@ -21,6 +22,8 @@ export default function DashboardPage() {
 
   const prevTab = useRef('general');
   const allowedTabs = useRef(new Set(['general', 'activity', 'audition', 'plans']));
+  const acceptedNewCount = outgoing?.accepted?.newCount ?? 0;
+  const declinedNewCount = outgoing?.declined?.newCount ?? 0;
 
   useEffect(() => {
     const params = new URLSearchParams(location.search || '');
@@ -112,7 +115,7 @@ export default function DashboardPage() {
         {tabButton(
           'audition',
           t('audition', 'Audition'),
-          outgoing.accepted.newCount + outgoing.declined.newCount,
+          acceptedNewCount + declinedNewCount,
           hasNew,
         )}
         {tabButton('plans', t('plans', 'Plans'))}
@@ -165,8 +168,10 @@ export default function DashboardPage() {
       )}
 
       {active === 'plans' && (
-        <div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+          <DutyAssignmentsWidget />
           <TransactionNotificationWidget filterMode="plan" />
+          <TransactionNotificationWidget filterMode="duty" />
         </div>
       )}
     </div>

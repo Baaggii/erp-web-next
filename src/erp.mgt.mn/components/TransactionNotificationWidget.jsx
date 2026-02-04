@@ -38,6 +38,12 @@ const PLAN_COMPLETION_KEYS = [
 ];
 const DEFAULT_PLAN_NOTIFICATION_FIELDS = ['is_plan', 'is_plan_completion'];
 const DEFAULT_PLAN_NOTIFICATION_VALUES = ['1'];
+const DEFAULT_DUTY_NOTIFICATION_FIELDS = [];
+const DEFAULT_DUTY_NOTIFICATION_VALUES = ['1'];
+
+function resolveModuleKey(info) {
+  return info?.moduleKey || info?.module_key || info?.module || info?.modulekey || '';
+}
 
 function normalizeText(value) {
   if (value === undefined || value === null) return '';
@@ -314,6 +320,20 @@ function buildRelationDisplay(row, config, fallbackValue) {
   return formatted.length > 0 ? formatted.join(' - ') : fallbackValue ?? '';
 }
 
+function isNonEmptyDisplayValue(value) {
+  if (value === undefined || value === null) return false;
+  if (Array.isArray(value)) {
+    return value.some((entry) => isNonEmptyDisplayValue(entry));
+  }
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    return trimmed !== '' && trimmed !== '—';
+  }
+  if (typeof value === 'number') return !Number.isNaN(value);
+  if (typeof value === 'object') return Object.keys(value).length > 0;
+  return true;
+}
+
 export default function TransactionNotificationWidget({ filterMode = 'activity' }) {
   const { groups: allGroups, markGroupRead } = useTransactionNotifications();
   const location = useLocation();
@@ -336,6 +356,7 @@ export default function TransactionNotificationWidget({ filterMode = 'activity' 
   const [relationLabelMap, setRelationLabelMap] = useState({});
   const [relationMapVersion, setRelationMapVersion] = useState(0);
   const [codeTransactions, setCodeTransactions] = useState([]);
+  const [allowedForms, setAllowedForms] = useState(null);
   const [completionLoading, setCompletionLoading] = useState(() => new Set());
   const groupRefs = useRef({});
   const itemRefs = useRef({});
@@ -364,6 +385,15 @@ export default function TransactionNotificationWidget({ filterMode = 'activity' 
     };
   }, [generalConfig]);
 
+  const dutyNotificationConfig = useMemo(() => {
+    const fields = parseListValue(generalConfig?.plan?.dutyNotificationFields);
+    const values = parseListValue(generalConfig?.plan?.dutyNotificationValues);
+    return {
+      fields: fields.length > 0 ? fields : DEFAULT_DUTY_NOTIFICATION_FIELDS,
+      values: values.length > 0 ? values : DEFAULT_DUTY_NOTIFICATION_VALUES,
+    };
+  }, [generalConfig]);
+
   const isPlanNotificationRow = useCallback(
     (row) => {
       if (!row) return false;
@@ -376,6 +406,20 @@ export default function TransactionNotificationWidget({ filterMode = 'activity' 
       });
     },
     [planNotificationConfig],
+  );
+
+  const isDutyNotificationRow = useCallback(
+    (row) => {
+      if (!row) return false;
+      const normalizedValues = dutyNotificationConfig.values.map(normalizeMatch);
+      return dutyNotificationConfig.fields.some((field) => {
+        const value = getRowFieldValue(row, field);
+        if (value === undefined || value === null || value === '') return false;
+        if (normalizedValues.length === 0) return normalizeFlagValue(value);
+        return normalizedValues.includes(normalizeMatch(value));
+      });
+    },
+    [dutyNotificationConfig],
   );
 
   const planTransactionsByName = useMemo(() => {
@@ -414,21 +458,35 @@ export default function TransactionNotificationWidget({ filterMode = 'activity' 
     [findTransactionRow, isPlanNotificationRow],
   );
 
+  const isDutyNotificationItem = useCallback(
+    (item) => {
+      if (!item) return false;
+      const row = findTransactionRow(item);
+      return isDutyNotificationRow(row);
+    },
+    [findTransactionRow, isDutyNotificationRow],
+  );
+
   const groups = useMemo(() => {
-    if (filterMode !== 'plan' && filterMode !== 'activity') {
+    if (filterMode !== 'plan' && filterMode !== 'activity' && filterMode !== 'duty') {
       return allGroups;
     }
     const isPlanMode = filterMode === 'plan';
+    const isDutyMode = filterMode === 'duty';
     return allGroups.reduce((acc, group) => {
       const items = group.items.filter((item) =>
-        isPlanMode ? isPlanNotificationItem(item) : !isPlanNotificationItem(item),
+        isPlanMode
+          ? isPlanNotificationItem(item)
+          : isDutyMode
+            ? isDutyNotificationItem(item)
+            : !isPlanNotificationItem(item) && !isDutyNotificationItem(item),
       );
       if (items.length === 0) return acc;
       const unreadCount = items.filter((item) => !item.isRead).length;
       acc.push({ ...group, items, unreadCount });
       return acc;
     }, []);
-  }, [allGroups, filterMode, isPlanNotificationItem]);
+  }, [allGroups, filterMode, isDutyNotificationItem, isPlanNotificationItem]);
 
   useEffect(() => {
     if (!highlightKey) return;
@@ -701,6 +759,29 @@ export default function TransactionNotificationWidget({ filterMode = 'activity' 
     };
   }, [groups, relationLabelMap, relationMapVersion]);
 
+  const resolveTransactionFormInfo = useCallback(
+    (item) => {
+      if (!item || !allowedForms) return null;
+      const normalizedName = normalizeText(item.transactionName);
+      if (normalizedName) {
+        const entry = Object.entries(allowedForms).find(
+          ([name]) => normalizeText(name) === normalizedName,
+        );
+        if (entry) return entry[1];
+      }
+      const normalizedTable = normalizeText(item.transactionTable);
+      if (normalizedTable) {
+        const entry = Object.entries(allowedForms).find(([, info]) => {
+          const table = normalizeText(info?.table ?? info?.tableName ?? info?.table_name);
+          return table && table === normalizedTable;
+        });
+        if (entry) return entry[1];
+      }
+      return null;
+    },
+    [allowedForms],
+  );
+
   const resolveSummaryValue = useCallback(
     (item, field) => {
       if (!item?.transactionTable || !field?.field) return field?.value ?? '';
@@ -719,6 +800,36 @@ export default function TransactionNotificationWidget({ filterMode = 'activity' 
       return resolvedParts.join(separator);
     },
     [relationLabelMap],
+  );
+
+  const buildSummaryTableFields = useCallback(
+    (item) => {
+      const summaryFields = Array.isArray(item?.summaryFields) ? item.summaryFields : [];
+      if (summaryFields.length === 0) return [];
+      const formInfo = resolveTransactionFormInfo(item);
+      const dashboardFieldsRaw =
+        formInfo?.notificationDashboardFields ?? formInfo?.notification_dashboard_fields ?? [];
+      const dashboardFields = Array.isArray(dashboardFieldsRaw)
+        ? dashboardFieldsRaw.map((field) => String(field).trim()).filter(Boolean)
+        : [];
+      let orderedFields = summaryFields;
+      if (dashboardFields.length > 0) {
+        const summaryMap = new Map(
+          summaryFields.map((field) => [normalizeFieldName(field?.field), field]),
+        );
+        orderedFields = dashboardFields
+          .map((fieldName) => summaryMap.get(normalizeFieldName(fieldName)))
+          .filter(Boolean);
+      }
+      return orderedFields
+        .map((field) => {
+          const label = field?.field ?? field?.label ?? field?.name ?? '';
+          const value = resolveSummaryValue(item, field);
+          return { label, value };
+        })
+        .filter((entry) => entry.label && isNonEmptyDisplayValue(entry.value));
+    },
+    [resolveSummaryValue, resolveTransactionFormInfo],
   );
 
   const groupItems = useCallback((items = []) => {
@@ -847,8 +958,9 @@ export default function TransactionNotificationWidget({ filterMode = 'activity' 
             })
           )
             return;
-          if (!isModulePermissionGranted(perms, info.moduleKey)) return;
-          if (!isModuleLicensed(licensed, info.moduleKey)) return;
+          const moduleKey = resolveModuleKey(info) || 'forms';
+          if (!isModulePermissionGranted(perms, moduleKey)) return;
+          if (!isModuleLicensed(licensed, moduleKey)) return;
           filtered[name] = info;
         });
         allowedFormsCache.current = filtered;
@@ -871,6 +983,20 @@ export default function TransactionNotificationWidget({ filterMode = 'activity' 
     workplace,
     workplacePositionMap,
   ]);
+
+  useEffect(() => {
+    let cancelled = false;
+    loadAllowedForms()
+      .then((forms) => {
+        if (!cancelled) setAllowedForms(forms);
+      })
+      .catch(() => {
+        if (!cancelled) setAllowedForms({});
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [loadAllowedForms]);
 
   const resolveCompletionForm = useCallback((completionRow, forms) => {
     if (!completionRow || !forms) return null;
@@ -921,7 +1047,7 @@ export default function TransactionNotificationWidget({ filterMode = 'activity' 
           return;
         }
 
-        const moduleKey = completionForm.info.moduleKey || 'forms';
+        const moduleKey = resolveModuleKey(completionForm.info) || 'forms';
         const slug = moduleKey.replace(/_/g, '-');
         let path = '/forms';
         if (moduleKey && moduleKey !== 'forms') {
@@ -1053,6 +1179,7 @@ export default function TransactionNotificationWidget({ filterMode = 'activity' 
                   const planRow = findTransactionRow(item);
                   const canAddCompletion = planRow && hasFlag(planRow, PLAN_FLAG_KEYS);
                   const isCompletionLoading = completionLoading.has(String(item.id));
+                  const summaryTableFields = buildSummaryTableFields(item);
                   return (
                     <div
                       key={item.id}
@@ -1078,16 +1205,34 @@ export default function TransactionNotificationWidget({ filterMode = 'activity' 
                           </button>
                         )}
                       </div>
-                      {Array.isArray(item.summaryFields) && item.summaryFields.length > 0 && (
-                        <div style={styles.summaryFields}>
-                          {item.summaryFields.map((field) => (
-                            <div key={`${item.id}-${field.field}`} style={styles.summaryFieldRow}>
-                              <span style={styles.summaryFieldLabel}>{field.field}</span>
-                              <span style={styles.summaryFieldValue}>
-                                {resolveSummaryValue(item, field)}
-                              </span>
-                            </div>
-                          ))}
+                      {summaryTableFields.length > 0 && (
+                        <div style={styles.summaryTableWrapper}>
+                          <table style={styles.summaryTable}>
+                            <thead>
+                              <tr>
+                                {summaryTableFields.map((field) => (
+                                  <th
+                                    key={`${item.id}-${field.label}-header`}
+                                    style={styles.summaryTableHeader}
+                                  >
+                                    {field.label}
+                                  </th>
+                                ))}
+                              </tr>
+                            </thead>
+                            <tbody>
+                              <tr>
+                                {summaryTableFields.map((field) => (
+                                  <td
+                                    key={`${item.id}-${field.label}-value`}
+                                    style={styles.summaryTableCell}
+                                  >
+                                    {field.value}
+                                  </td>
+                                ))}
+                              </tr>
+                            </tbody>
+                          </table>
                         </div>
                       )}
                       <div style={styles.itemMeta}>
@@ -1157,19 +1302,27 @@ export default function TransactionNotificationWidget({ filterMode = 'activity' 
     <section style={styles.section}>
       <div style={styles.header}>
         <h3 style={styles.title}>
-          {filterMode === 'plan' ? 'Plan Notifications' : 'Transaction Notifications'}
+          {filterMode === 'plan'
+            ? 'Plan Notifications'
+            : filterMode === 'duty'
+              ? 'Duty Notifications'
+              : 'Transaction Notifications'}
         </h3>
         <span style={styles.subtitle}>
           {filterMode === 'plan'
             ? 'Grouped plan transaction alerts'
-            : 'Grouped by transaction name'}
+            : filterMode === 'duty'
+              ? 'Grouped duty transaction alerts'
+              : 'Grouped by transaction name'}
         </span>
       </div>
       {groups.length === 0 && (
         <div style={styles.empty}>
           {filterMode === 'plan'
             ? 'No plan notifications yet.'
-            : 'No transaction notifications yet.'}
+            : filterMode === 'duty'
+              ? 'No duty notifications yet.'
+              : 'No transaction notifications yet.'}
         </div>
       )}
       {groups.length > 0 && (
@@ -1322,6 +1475,35 @@ const styles = {
   },
   summaryFieldLabel: { fontWeight: 600 },
   summaryFieldValue: { color: '#0f172a' },
+  summaryTableWrapper: {
+    marginTop: '0.35rem',
+    width: '100%',
+  },
+  summaryTable: {
+    width: '100%',
+    borderCollapse: 'collapse',
+    tableLayout: 'fixed',
+  },
+  summaryTableHeader: {
+    textAlign: 'left',
+    fontSize: '0.65rem',
+    textTransform: 'uppercase',
+    letterSpacing: '0.03em',
+    color: '#64748b',
+    padding: '0.2rem 0.3rem',
+    borderBottom: '1px solid #e2e8f0',
+    verticalAlign: 'bottom',
+    wordBreak: 'break-word',
+    whiteSpace: 'normal',
+  },
+  summaryTableCell: {
+    fontSize: '0.75rem',
+    color: '#0f172a',
+    padding: '0.25rem 0.3rem',
+    verticalAlign: 'top',
+    wordBreak: 'break-word',
+    whiteSpace: 'normal',
+  },
   itemMeta: {
     fontSize: '0.7rem',
     color: '#64748b',

@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext.jsx';
+import { usePendingRequests } from '../context/PendingRequestContext.jsx';
 import useGeneralConfig from '../hooks/useGeneralConfig.js';
 import { useTransactionNotifications } from '../context/TransactionNotificationContext.jsx';
-import { usePendingRequests } from '../context/PendingRequestContext.jsx';
-import { useAuth } from '../context/AuthContext.jsx';
 import formatTimestamp from '../utils/formatTimestamp.js';
 
 const TRANSACTION_NAME_KEYS = [
@@ -25,19 +25,8 @@ const TRANSACTION_TABLE_KEYS = [
 ];
 const DEFAULT_PLAN_NOTIFICATION_FIELDS = ['is_plan', 'is_plan_completion'];
 const DEFAULT_PLAN_NOTIFICATION_VALUES = ['1'];
-const REQUEST_TYPES = [
-  { key: 'report_approval', label: 'Report approval' },
-  { key: 'change_requests', label: 'Change request' },
-];
-const REQUEST_STATUSES = ['pending', 'accepted', 'declined'];
-const MAX_DROPDOWN_ITEMS = 12;
-const REQUEST_FETCH_LIMIT = 6;
-const TEMPORARY_FETCH_LIMIT = 6;
-const REQUEST_STATUS_META = {
-  pending: { label: 'Pending', accent: '#f59e0b' },
-  accepted: { label: 'Approved', accent: '#10b981' },
-  declined: { label: 'Rejected', accent: '#ef4444' },
-};
+const DEFAULT_DUTY_NOTIFICATION_FIELDS = [];
+const DEFAULT_DUTY_NOTIFICATION_VALUES = ['1'];
 
 function normalizeText(value) {
   if (value === undefined || value === null) return '';
@@ -144,6 +133,67 @@ function buildPreviewText(item) {
   return 'Transaction update';
 }
 
+function getStatusMeta(status) {
+  const normalized = typeof status === 'string' ? status.trim().toLowerCase() : '';
+  if (normalized === 'accepted') return { label: 'Accepted', accent: '#16a34a' };
+  if (normalized === 'declined') return { label: 'Declined', accent: '#ef4444' };
+  if (normalized === 'pending') return { label: 'Pending', accent: '#f59e0b' };
+  if (normalized) {
+    return { label: normalized.charAt(0).toUpperCase() + normalized.slice(1), accent: '#2563eb' };
+  }
+  return { label: 'Pending', accent: '#f59e0b' };
+}
+
+function dedupeRequests(list) {
+  const map = new Map();
+  list.forEach((item) => {
+    if (!item || !item.request_id) return;
+    if (!map.has(item.request_id)) {
+      map.set(item.request_id, item);
+    }
+  });
+  return Array.from(map.values()).sort((a, b) => {
+    const aTime = new Date(a?.created_at || a?.createdAt || 0).getTime();
+    const bTime = new Date(b?.created_at || b?.createdAt || 0).getTime();
+    return bTime - aTime;
+  });
+}
+
+function createEmptyResponses() {
+  return { accepted: [], declined: [] };
+}
+
+function formatRequestType(value) {
+  if (!value) return 'Request';
+  return value
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function getRequester(req) {
+  return req?.emp_name || req?.empid || req?.emp_id || '';
+}
+
+function getResponder(req) {
+  return (
+    req?.response_empid ||
+    req?.responseEmpid ||
+    req?.response_emp_id ||
+    req?.responded_by ||
+    ''
+  );
+}
+
+function getTemporaryEntryKey(entry) {
+  return String(
+    entry?.id ??
+      entry?.temporary_id ??
+      entry?.temporaryId ??
+      entry?.temporaryID ??
+      '',
+  ).trim();
+}
+
 function getNotificationTimestamp(notification) {
   if (!notification) return 0;
   const raw = notification.updatedAt || notification.createdAt || 0;
@@ -151,132 +201,40 @@ function getNotificationTimestamp(notification) {
   return Number.isFinite(ts) ? ts : 0;
 }
 
-function formatDateLabel(value) {
-  if (!value) return '';
-  const parsed = value instanceof Date ? value : new Date(value);
-  if (Number.isNaN(parsed.getTime())) return '';
-  return formatTimestamp(parsed).slice(0, 16);
-}
-
-function dedupeRequests(list) {
-  const map = new Map();
-  list.forEach((item) => {
-    if (!item || !item.request_id) return;
-    const key = `${item.__scope || 'incoming'}-${item.request_id}-${item.__status || 'pending'}`;
-    if (!map.has(key)) {
-      map.set(key, item);
-    }
-  });
-  return Array.from(map.values());
-}
-
-function normalizeRequestStatus(req, fallback = 'pending') {
-  const statusRaw = req?.status || req?.response_status || req?.__status || fallback;
-  return statusRaw ? String(statusRaw).trim().toLowerCase() : fallback;
-}
-
-function getRequestTimestamp(req) {
-  if (!req) return 0;
-  const status = normalizeRequestStatus(req, 'pending');
-  const raw =
-    status === 'pending'
-      ? req?.created_at || req?.createdAt || 0
-      : req?.responded_at ||
-        req?.respondedAt ||
-        req?.updated_at ||
-        req?.updatedAt ||
-        req?.created_at ||
-        req?.createdAt ||
-        0;
-  const ts = new Date(raw).getTime();
-  return Number.isFinite(ts) ? ts : 0;
-}
-
-function dedupeTemporaryEntries(list) {
-  const map = new Map();
-  list.forEach((entry) => {
-    if (!entry) return;
-    const key = String(
-      entry.id ??
-        entry.temporary_id ??
-        entry.temporaryId ??
-        entry.temporaryID ??
-        '',
-    ).trim();
-    if (!key) return;
-    if (!map.has(key)) {
-      map.set(key, entry);
-    }
-  });
-  return Array.from(map.values());
-}
-
-function getTemporaryEntryTimestamp(entry) {
-  const reviewedAt = entry?.reviewed_at || entry?.reviewedAt || entry?.updated_at || entry?.updatedAt;
-  const createdAt = entry?.created_at || entry?.createdAt || 0;
-  const raw = reviewedAt || createdAt || 0;
-  const ts = new Date(raw).getTime();
-  return Number.isFinite(ts) ? ts : 0;
-}
-
-function normalizeTemporaryStatus(entry) {
-  const statusRaw = entry?.status ? String(entry.status).trim().toLowerCase() : '';
-  const isPending = statusRaw === 'pending' || statusRaw === '';
-  const statusLabel = isPending
-    ? 'Pending'
-    : statusRaw === 'promoted'
-    ? 'Promoted'
-    : statusRaw === 'rejected'
-    ? 'Rejected'
-    : entry?.status || '-';
-  const statusColor = statusRaw === 'rejected'
-    ? '#b91c1c'
-    : statusRaw === 'promoted'
-    ? '#15803d'
-    : '#1f2937';
-  return { statusRaw, isPending, statusLabel, statusColor };
-}
-
 export default function TransactionNotificationDropdown() {
   const { notifications, unreadCount, markRead } = useTransactionNotifications();
-  const { temporary, markWorkflowSeen, notificationStatusTotals } = usePendingRequests();
   const { user, session } = useAuth();
+  const { workflows, markWorkflowSeen, temporary } = usePendingRequests();
   const [open, setOpen] = useState(false);
   const [codeTransactions, setCodeTransactions] = useState([]);
-  const [requestItems, setRequestItems] = useState([]);
-  const [temporaryItems, setTemporaryItems] = useState([]);
-  const [transactionForms, setTransactionForms] = useState(null);
-  const formsLoadingRef = useRef(false);
+  const [reportState, setReportState] = useState({
+    incoming: [],
+    outgoing: [],
+    responses: createEmptyResponses(),
+    loading: false,
+    error: '',
+  });
+  const [changeState, setChangeState] = useState({
+    incoming: [],
+    outgoing: [],
+    responses: createEmptyResponses(),
+    loading: false,
+    error: '',
+  });
+  const [temporaryState, setTemporaryState] = useState({
+    review: [],
+    created: [],
+    loading: false,
+    error: '',
+  });
   const containerRef = useRef(null);
   const navigate = useNavigate();
   const generalConfig = useGeneralConfig();
 
-  const sortedTransactionNotifications = useMemo(
-    () =>
-      [...notifications]
-        .sort((a, b) => getNotificationTimestamp(b) - getNotificationTimestamp(a)),
+  const sortedNotifications = useMemo(
+    () => [...notifications].sort((a, b) => getNotificationTimestamp(b) - getNotificationTimestamp(a)),
     [notifications],
   );
-
-  const supervisorIds = useMemo(() => {
-    const hasSupervisor =
-      Number(session?.senior_empid) > 0 || Number(session?.senior_plan_empid) > 0;
-    const seniorEmpId =
-      session && user?.empid && !hasSupervisor ? String(user.empid) : null;
-    const seniorPlanEmpId = hasSupervisor ? session?.senior_plan_empid : null;
-    const ids = [];
-    if (seniorEmpId) ids.push(String(seniorEmpId).trim());
-    if (seniorPlanEmpId) ids.push(String(seniorPlanEmpId).trim());
-    return Array.from(new Set(ids.filter(Boolean)));
-  }, [session, user]);
-
-  const totalOtherUnread = useMemo(() => {
-    if (!notificationStatusTotals) return 0;
-    return Object.values(notificationStatusTotals).reduce(
-      (sum, value) => sum + (Number(value) || 0),
-      0,
-    );
-  }, [notificationStatusTotals]);
 
   useEffect(() => {
     const handleClick = (event) => {
@@ -308,29 +266,21 @@ export default function TransactionNotificationDropdown() {
     };
   }, []);
 
-  const loadTransactionForms = useCallback(async () => {
-    if (transactionForms) return transactionForms;
-    if (formsLoadingRef.current) return transactionForms;
-    formsLoadingRef.current = true;
-    try {
-      const res = await fetch('/api/transaction_forms', { credentials: 'include' });
-      const data = res.ok ? await res.json() : {};
-      setTransactionForms(data || {});
-      return data || {};
-    } catch {
-      setTransactionForms({});
-      return {};
-    } finally {
-      formsLoadingRef.current = false;
-    }
-  }, [transactionForms]);
-
   const planNotificationConfig = useMemo(() => {
     const fields = parseListValue(generalConfig?.plan?.notificationFields);
     const values = parseListValue(generalConfig?.plan?.notificationValues);
     return {
       fields: fields.length > 0 ? fields : DEFAULT_PLAN_NOTIFICATION_FIELDS,
       values: values.length > 0 ? values : DEFAULT_PLAN_NOTIFICATION_VALUES,
+    };
+  }, [generalConfig]);
+
+  const dutyNotificationConfig = useMemo(() => {
+    const fields = parseListValue(generalConfig?.plan?.dutyNotificationFields);
+    const values = parseListValue(generalConfig?.plan?.dutyNotificationValues);
+    return {
+      fields: fields.length > 0 ? fields : DEFAULT_DUTY_NOTIFICATION_FIELDS,
+      values: values.length > 0 ? values : DEFAULT_DUTY_NOTIFICATION_VALUES,
     };
   }, [generalConfig]);
 
@@ -346,6 +296,20 @@ export default function TransactionNotificationDropdown() {
       });
     },
     [planNotificationConfig],
+  );
+
+  const isDutyNotificationRow = useCallback(
+    (row) => {
+      if (!row) return false;
+      const normalizedValues = dutyNotificationConfig.values.map(normalizeMatch);
+      return dutyNotificationConfig.fields.some((field) => {
+        const value = getRowFieldValue(row, field);
+        if (value === undefined || value === null || value === '') return false;
+        if (normalizedValues.length === 0) return normalizeFlagValue(value);
+        return normalizedValues.includes(normalizeMatch(value));
+      });
+    },
+    [dutyNotificationConfig],
   );
 
   const planTransactionsByName = useMemo(() => {
@@ -384,167 +348,302 @@ export default function TransactionNotificationDropdown() {
     [findTransactionRow, isPlanNotificationRow],
   );
 
-  const resolveTransactionForm = useCallback((item, forms) => {
-    if (!item || !forms) return null;
-    const nameKey = normalizeText(item.transactionName);
-    if (nameKey) {
-      const entry = Object.entries(forms).find(
-        ([name]) => normalizeText(name) === nameKey,
-      );
-      if (entry) return { name: entry[0], info: entry[1] };
-    }
-    const tableKey = normalizeText(item.transactionTable);
-    if (tableKey) {
-      const entry = Object.entries(forms).find(([, info]) => {
-        const table = normalizeText(info?.table ?? info?.tableName ?? info?.table_name);
-        return table && table === tableKey;
-      });
-      if (entry) return { name: entry[0], info: entry[1] };
-    }
-    return null;
-  }, []);
+  const isDutyNotificationItem = useCallback(
+    (item) => {
+      if (!item) return false;
+      const row = findTransactionRow(item);
+      return isDutyNotificationRow(row);
+    },
+    [findTransactionRow, isDutyNotificationRow],
+  );
 
-  const handleNotificationClick = async (item) => {
-    if (!item) return;
-    setOpen(false);
-    await markRead([item.id]);
-    const forms = await loadTransactionForms();
-    const resolvedForm = resolveTransactionForm(item, forms);
-    if (resolvedForm) {
-      const moduleKey = resolvedForm.info?.moduleKey || 'forms';
-      const slug = moduleKey.replace(/_/g, '-');
-      const path = moduleKey === 'forms' ? '/forms' : `/forms/${slug}`;
-      const params = new URLSearchParams();
-      params.set(`name_${moduleKey}`, resolvedForm.name);
-      navigate(`${path}?${params.toString()}`);
-      return;
-    }
-    const groupKey = encodeURIComponent(item.transactionName || 'Transaction');
-    const tab = isPlanNotificationItem(item) ? 'plans' : 'activity';
-    const params = new URLSearchParams({
-      tab,
-      notifyGroup: groupKey,
-      notifyItem: item.id,
-    });
-    navigate(`/?${params.toString()}`);
-  };
+  const hasSupervisor =
+    Number(session?.senior_empid) > 0 || Number(session?.senior_plan_empid) > 0;
+  const seniorEmpId =
+    session && user?.empid && !hasSupervisor ? String(user.empid) : null;
+  const seniorPlanEmpId = hasSupervisor ? session?.senior_plan_empid : null;
 
-  const fetchRequestNotifications = useCallback(async () => {
-    const incomingLists = [];
-    const outgoingLists = [];
-    await Promise.all(
-      REQUEST_TYPES.map(async (type) => {
-        if (supervisorIds.length) {
-          await Promise.all(
-            supervisorIds.map(async (id) => {
-              try {
-                const params = new URLSearchParams({
-                  status: 'pending',
-                  request_type: type.key,
-                  per_page: String(REQUEST_FETCH_LIMIT),
-                  page: '1',
-                  senior_empid: id,
-                });
-                const res = await fetch(`/api/pending_request?${params.toString()}`, {
-                  credentials: 'include',
-                  skipLoader: true,
-                });
-                if (res.ok) {
-                  const data = await res.json().catch(() => ({}));
-                  const rows = Array.isArray(data?.rows) ? data.rows : [];
-                  incomingLists.push(
-                    rows.map((row) => ({
-                      ...row,
-                      request_type: row.request_type || type.key,
-                      __scope: 'incoming',
-                      __status: 'pending',
-                    })),
-                  );
+  const supervisorIds = useMemo(() => {
+    const ids = [];
+    if (seniorEmpId) ids.push(String(seniorEmpId).trim());
+    if (seniorPlanEmpId) ids.push(String(seniorPlanEmpId).trim());
+    return Array.from(new Set(ids.filter(Boolean)));
+  }, [seniorEmpId, seniorPlanEmpId]);
+
+  const fetchRequests = useCallback(
+    async (types, statuses = ['pending']) => {
+      const normalizedStatuses = Array.isArray(statuses)
+        ? Array.from(
+            new Set(
+              statuses
+                .map((status) => String(status || '').trim().toLowerCase())
+                .filter(Boolean),
+            ),
+          )
+        : [];
+      if (!normalizedStatuses.includes('pending')) {
+        normalizedStatuses.unshift('pending');
+      }
+
+      const incomingLists = [];
+      const outgoingStatusLists = new Map();
+      await Promise.all(
+        types.map(async (type) => {
+          if (supervisorIds.length) {
+            await Promise.all(
+              supervisorIds.map(async (id) => {
+                try {
+                  const params = new URLSearchParams({
+                    status: 'pending',
+                    request_type: type,
+                    per_page: '50',
+                    page: '1',
+                    senior_empid: id,
+                  });
+                  const res = await fetch(`/api/pending_request?${params.toString()}`, {
+                    credentials: 'include',
+                    skipLoader: true,
+                  });
+                  if (res.ok) {
+                    const data = await res.json().catch(() => ({}));
+                    const rows = Array.isArray(data?.rows) ? data.rows : [];
+                    incomingLists.push(
+                      rows.map((row) => ({ ...row, request_type: row.request_type || type })),
+                    );
+                  }
+                } catch {
+                  // ignore
                 }
-              } catch {
-                // ignore
-              }
-            }),
-          );
-        }
-        await Promise.all(
-          REQUEST_STATUSES.map(async (status) => {
-            try {
-              const params = new URLSearchParams({
-                status,
-                request_type: type.key,
-                per_page: String(REQUEST_FETCH_LIMIT),
-                page: '1',
-              });
-              const res = await fetch(
-                `/api/pending_request/outgoing?${params.toString()}`,
-                { credentials: 'include', skipLoader: true },
-              );
-              if (res.ok) {
-                const data = await res.json().catch(() => ({}));
-                const rows = Array.isArray(data?.rows) ? data.rows : [];
-                outgoingLists.push(
-                  rows.map((row) => ({
+              }),
+            );
+          }
+
+          try {
+            const params = new URLSearchParams({
+              status: normalizedStatuses.join(','),
+              request_type: type,
+              per_page: '50',
+              page: '1',
+            });
+            const res = await fetch(`/api/pending_request/outgoing?${params.toString()}`, {
+              credentials: 'include',
+              skipLoader: true,
+            });
+            if (res.ok) {
+              const data = await res.json().catch(() => ({}));
+              const rows = Array.isArray(data?.rows) ? data.rows : [];
+              rows.forEach((row) => {
+                const resolvedStatus = row.status || row.response_status || 'pending';
+                const normalizedStatus = resolvedStatus
+                  ? String(resolvedStatus).trim().toLowerCase()
+                  : 'pending';
+                const prev = outgoingStatusLists.get(normalizedStatus) || [];
+                outgoingStatusLists.set(
+                  normalizedStatus,
+                  prev.concat({
                     ...row,
-                    request_type: row.request_type || type.key,
-                    __scope: 'outgoing',
-                    __status: status,
-                  })),
+                    request_type: row.request_type || type,
+                    status: normalizedStatus,
+                  }),
                 );
-              }
-            } catch {
-              // ignore
+              });
             }
-          }),
-        );
-      }),
-    );
+          } catch {
+            // ignore
+          }
+        }),
+      );
 
-    const deduped = dedupeRequests([...incomingLists.flat(), ...outgoingLists.flat()]);
-    deduped.sort((a, b) => getRequestTimestamp(b) - getRequestTimestamp(a));
-    setRequestItems(deduped);
-  }, [supervisorIds]);
+      const incoming = dedupeRequests(incomingLists.flat());
+      const outgoing = dedupeRequests(outgoingStatusLists.get('pending') || []);
+      const responses = normalizedStatuses
+        .filter((status) => status !== 'pending')
+        .reduce((acc, status) => {
+          const list = outgoingStatusLists.get(status) || [];
+          acc[status] = dedupeRequests(list);
+          return acc;
+        }, createEmptyResponses());
 
-  const fetchTemporaryNotifications = useCallback(async () => {
-    if (typeof temporary?.fetchScopeEntries !== 'function') {
-      setTemporaryItems([]);
-      return;
-    }
-    const results = await Promise.all(
-      ['review', 'created'].map(async (scope) => {
-        const status = scope === 'review' ? 'pending' : 'any';
-        try {
-          const result = await temporary.fetchScopeEntries(scope, {
-            limit: TEMPORARY_FETCH_LIMIT,
-            status,
-            cursor: 0,
-            grouped: false,
-          });
-          const rows = Array.isArray(result?.rows)
-            ? result.rows
-            : Array.isArray(result)
-            ? result
-            : [];
-          return rows.map((row) => ({ ...row, __scope: scope }));
-        } catch {
-          return [];
-        }
-      }),
-    );
-    const combined = dedupeTemporaryEntries(results.flat());
-    combined.sort((a, b) => getTemporaryEntryTimestamp(b) - getTemporaryEntryTimestamp(a));
-    setTemporaryItems(combined);
-  }, [temporary]);
+      return { incoming, outgoing, responses };
+    },
+    [supervisorIds],
+  );
 
   useEffect(() => {
-    if (!open) return;
-    fetchRequestNotifications();
-    fetchTemporaryNotifications();
-    loadTransactionForms();
-  }, [fetchRequestNotifications, fetchTemporaryNotifications, loadTransactionForms, open]);
+    if (!open) return () => {};
+    let cancelled = false;
+    const incomingPending = workflows?.reportApproval?.incoming?.pending?.count || 0;
+    const outgoingPending = workflows?.reportApproval?.outgoing?.pending?.count || 0;
+    const outgoingAccepted = workflows?.reportApproval?.outgoing?.accepted?.count || 0;
+    const outgoingDeclined = workflows?.reportApproval?.outgoing?.declined?.count || 0;
+    const totalCount = incomingPending + outgoingPending + outgoingAccepted + outgoingDeclined;
+
+    if (totalCount === 0) {
+      setReportState({
+        incoming: [],
+        outgoing: [],
+        responses: createEmptyResponses(),
+        loading: false,
+        error: '',
+      });
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    setReportState((prev) => ({
+      ...prev,
+      loading: true,
+      error: '',
+      responses: prev.responses || createEmptyResponses(),
+    }));
+    fetchRequests(['report_approval'], ['pending', 'accepted', 'declined'])
+      .then((data) => {
+        if (!cancelled)
+          setReportState({
+            ...data,
+            responses: {
+              accepted: data.responses?.accepted || [],
+              declined: data.responses?.declined || [],
+            },
+            loading: false,
+            error: '',
+          });
+      })
+      .catch(() => {
+        if (!cancelled)
+          setReportState((prev) => ({
+            ...prev,
+            loading: false,
+            incoming: [],
+            outgoing: [],
+            responses: createEmptyResponses(),
+            error: 'Failed to load report approvals',
+          }));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    fetchRequests,
+    open,
+    workflows?.reportApproval?.incoming?.pending?.count,
+    workflows?.reportApproval?.outgoing?.pending?.count,
+    workflows?.reportApproval?.outgoing?.accepted?.count,
+    workflows?.reportApproval?.outgoing?.declined?.count,
+  ]);
+
+  useEffect(() => {
+    if (!open) return () => {};
+    let cancelled = false;
+    const incomingPending = workflows?.changeRequests?.incoming?.pending?.count || 0;
+    const outgoingPending = workflows?.changeRequests?.outgoing?.pending?.count || 0;
+    const outgoingAccepted = workflows?.changeRequests?.outgoing?.accepted?.count || 0;
+    const outgoingDeclined = workflows?.changeRequests?.outgoing?.declined?.count || 0;
+    const totalCount = incomingPending + outgoingPending + outgoingAccepted + outgoingDeclined;
+
+    if (totalCount === 0) {
+      setChangeState({
+        incoming: [],
+        outgoing: [],
+        responses: createEmptyResponses(),
+        loading: false,
+        error: '',
+      });
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    setChangeState((prev) => ({
+      ...prev,
+      loading: true,
+      error: '',
+      responses: prev.responses || createEmptyResponses(),
+    }));
+    fetchRequests(['edit', 'delete'], ['pending', 'accepted', 'declined'])
+      .then((data) => {
+        if (!cancelled)
+          setChangeState({
+            ...data,
+            responses: {
+              accepted: data.responses?.accepted || [],
+              declined: data.responses?.declined || [],
+            },
+            loading: false,
+            error: '',
+          });
+      })
+      .catch(() => {
+        if (!cancelled)
+          setChangeState((prev) => ({
+            ...prev,
+            loading: false,
+            incoming: [],
+            outgoing: [],
+            responses: createEmptyResponses(),
+            error: 'Failed to load change requests',
+          }));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    fetchRequests,
+    open,
+    workflows?.changeRequests?.incoming?.pending?.count,
+    workflows?.changeRequests?.outgoing?.pending?.count,
+    workflows?.changeRequests?.outgoing?.accepted?.count,
+    workflows?.changeRequests?.outgoing?.declined?.count,
+  ]);
+
+  useEffect(() => {
+    if (!open) return () => {};
+    let cancelled = false;
+    const loadTemporary = async () => {
+      setTemporaryState((prev) => ({ ...prev, loading: true, error: '' }));
+      if (typeof temporary?.fetchScopeEntries !== 'function') {
+        setTemporaryState({ review: [], created: [], loading: false, error: '' });
+        return;
+      }
+      try {
+        const [reviewResult, createdResult] = await Promise.all([
+          temporary.fetchScopeEntries('review', {
+            limit: 50,
+            status: 'pending',
+          }),
+          temporary.fetchScopeEntries('created', {
+            limit: 50,
+            status: 'any',
+          }),
+        ]);
+        if (cancelled) return;
+        setTemporaryState({
+          review: Array.isArray(reviewResult?.rows) ? reviewResult.rows : [],
+          created: Array.isArray(createdResult?.rows) ? createdResult.rows : [],
+          loading: false,
+          error: '',
+        });
+      } catch {
+        if (!cancelled) {
+          setTemporaryState({
+            review: [],
+            created: [],
+            loading: false,
+            error: 'Failed to load temporary transactions',
+          });
+        }
+      }
+    };
+    loadTemporary();
+    return () => {
+      cancelled = true;
+    };
+  }, [open, temporary?.fetchScopeEntries]);
 
   const openRequest = useCallback(
     (req, tab, statusOverride) => {
+      setOpen(false);
       const params = new URLSearchParams();
       params.set('tab', tab);
       const normalizedStatus = statusOverride
@@ -584,6 +683,7 @@ export default function TransactionNotificationDropdown() {
 
   const openTemporary = useCallback(
     (scope, entry) => {
+      setOpen(false);
       temporary?.markScopeSeen?.(scope);
       if (!entry) {
         navigate('/forms');
@@ -607,97 +707,84 @@ export default function TransactionNotificationDropdown() {
       }
       const tableName = entry?.tableName || entry?.table_name || '';
       if (tableName) params.set('temporaryTable', tableName);
-      const idValue =
-        entry?.id ?? entry?.temporary_id ?? entry?.temporaryId ?? null;
+      const idValue = entry?.id ?? entry?.temporary_id ?? entry?.temporaryId ?? null;
       if (idValue != null) params.set('temporaryId', String(idValue));
       navigate(`${path}?${params.toString()}`);
     },
-    [navigate, temporary],
+    [navigate, temporary?.markScopeSeen],
   );
 
-  const dropdownItems = useMemo(() => {
-    const transactionItems = sortedTransactionNotifications.map((item) => ({
-      id: `transaction-${item.id}`,
-      type: 'transaction',
-      item,
-      timestamp: getNotificationTimestamp(item),
-      isUnread: item?.isRead === false,
-      title: item.transactionName || 'Transaction',
-      badge: getActionMeta(item?.action),
-      preview: buildPreviewText(item),
-      onClick: () => handleNotificationClick(item),
-    }));
-
-    const requestItemsMapped = requestItems.map((req) => {
-      const typeMeta = REQUEST_TYPES.find((entry) => entry.key === req?.request_type);
-      const status = normalizeRequestStatus(req, 'pending');
-      const statusMeta = REQUEST_STATUS_META[status] || REQUEST_STATUS_META.pending;
-      const scope = req?.__scope === 'incoming' ? 'incoming' : 'outgoing';
-      const scopeLabel = scope === 'incoming' ? 'Incoming' : 'Outgoing';
-      const createdAt =
-        status === 'pending'
-          ? req?.created_at || req?.createdAt
-          : req?.responded_at || req?.respondedAt || req?.updated_at || req?.updatedAt;
-      const dateLabel = formatDateLabel(createdAt);
-      return {
-        id: `request-${req.request_id}-${scope}-${status}`,
-        type: 'request',
-        item: req,
-        timestamp: getRequestTimestamp(req),
-        isUnread: false,
-        title: typeMeta?.label || 'Request',
-        badge: statusMeta,
-        preview: [scopeLabel, dateLabel].filter(Boolean).join(' · '),
-        onClick: () => openRequest(req, scope, status),
-      };
+  const reportItems = useMemo(() => {
+    const items = [];
+    reportState.incoming.forEach((req) => {
+      items.push({ req, tab: 'incoming', status: 'pending', scope: 'incoming' });
     });
-
-    const temporaryItemsMapped = temporaryItems.map((entry) => {
-      const scope = entry?.__scope || 'review';
-      const scopeLabel = scope === 'review' ? 'Review queue' : 'My drafts';
-      const statusMeta = normalizeTemporaryStatus(entry);
-      const title =
-        entry?.transactionType ||
-        entry?.transaction_type ||
-        entry?.formLabel ||
-        entry?.formName ||
-        entry?.tableName ||
-        entry?.moduleKey ||
-        entry?.module_key ||
-        'Temporary transaction';
-      const dateLabel = formatDateLabel(
-        entry?.createdAt || entry?.created_at || entry?.updatedAt || entry?.updated_at || '',
-      );
-      return {
-        id: `temporary-${entry?.id ?? entry?.temporary_id ?? entry?.temporaryId ?? ''}-${scope}`,
-        type: 'temporary',
-        item: entry,
-        timestamp: getTemporaryEntryTimestamp(entry),
-        isUnread: false,
-        title,
-        badge: { label: statusMeta.statusLabel, accent: statusMeta.statusColor },
-        preview: [scopeLabel, dateLabel].filter(Boolean).join(' · '),
-        onClick: () => openTemporary(scope, entry),
-      };
+    reportState.outgoing.forEach((req) => {
+      items.push({
+        req,
+        tab: 'outgoing',
+        status: req?.status || 'pending',
+        scope: 'outgoing',
+      });
     });
+    reportState.responses?.accepted?.forEach((req) => {
+      items.push({ req, tab: 'outgoing', status: 'accepted', scope: 'response' });
+    });
+    reportState.responses?.declined?.forEach((req) => {
+      items.push({ req, tab: 'outgoing', status: 'declined', scope: 'response' });
+    });
+    return items;
+  }, [reportState.incoming, reportState.outgoing, reportState.responses]);
 
-    return [...transactionItems, ...requestItemsMapped, ...temporaryItemsMapped]
-      .filter((entry) => Number.isFinite(entry.timestamp))
-      .sort((a, b) => b.timestamp - a.timestamp)
-      .slice(0, MAX_DROPDOWN_ITEMS);
-  }, [
-    handleNotificationClick,
-    openRequest,
-    openTemporary,
-    requestItems,
-    sortedTransactionNotifications,
-    temporaryItems,
-  ]);
+  const changeItems = useMemo(() => {
+    const items = [];
+    changeState.incoming.forEach((req) => {
+      items.push({ req, tab: 'incoming', status: 'pending', scope: 'incoming' });
+    });
+    changeState.outgoing.forEach((req) => {
+      items.push({
+        req,
+        tab: 'outgoing',
+        status: req?.status || 'pending',
+        scope: 'outgoing',
+      });
+    });
+    changeState.responses?.accepted?.forEach((req) => {
+      items.push({ req, tab: 'outgoing', status: 'accepted', scope: 'response' });
+    });
+    changeState.responses?.declined?.forEach((req) => {
+      items.push({ req, tab: 'outgoing', status: 'declined', scope: 'response' });
+    });
+    return items;
+  }, [changeState.incoming, changeState.outgoing, changeState.responses]);
 
-  const unreadBadgeCount = useMemo(
-    () => unreadCount + totalOtherUnread,
-    [totalOtherUnread, unreadCount],
+  const temporaryItems = useMemo(
+    () => [
+      ...temporaryState.review.map((entry) => ({ entry, scope: 'review' })),
+      ...temporaryState.created.map((entry) => ({ entry, scope: 'created' })),
+    ],
+    [temporaryState.created, temporaryState.review],
   );
+
+  const handleNotificationClick = async (item) => {
+    if (!item) return;
+    setOpen(false);
+    await markRead([item.id]);
+    const groupKey = encodeURIComponent(item.transactionName || 'Transaction');
+    const tab = isPlanNotificationItem(item) || isDutyNotificationItem(item) ? 'plans' : 'activity';
+    const params = new URLSearchParams({
+      tab,
+      notifyGroup: groupKey,
+      notifyItem: item.id,
+    });
+    navigate(`/?${params.toString()}`);
+  };
+
+  const hasAnyNotifications =
+    sortedNotifications.length ||
+    reportItems.length ||
+    changeItems.length ||
+    temporaryItems.length;
 
   return (
     <div style={styles.wrapper} ref={containerRef}>
@@ -707,39 +794,139 @@ export default function TransactionNotificationDropdown() {
         onClick={() => setOpen((prev) => !prev)}
       >
         <span aria-hidden="true">🔔</span>
-        {unreadBadgeCount > 0 && <span style={styles.badge}>{unreadBadgeCount}</span>}
+        {unreadCount > 0 && <span style={styles.badge}>{unreadCount}</span>}
       </button>
       {open && (
         <div style={styles.dropdown}>
           <div style={styles.list}>
-            {dropdownItems.length === 0 && (
+            {!hasAnyNotifications && (
               <div style={styles.empty}>No notifications yet</div>
             )}
-            {dropdownItems.map((entry) => {
-              return (
-                <button
-                  key={entry.id}
-                  type="button"
-                  style={styles.notificationItem(entry.isUnread)}
-                  onClick={entry.onClick}
-                >
-                  <div style={styles.notificationTitle}>
-                    <span>{entry.title}</span>
-                    <span style={styles.actionBadge(entry.badge?.accent)}>
-                      {entry.badge?.label}
-                    </span>
-                  </div>
-                  <div style={styles.notificationPreview}>{entry.preview}</div>
-                </button>
-              );
-            })}
+            {sortedNotifications.length > 0 && (
+              <div style={styles.section}>
+                <div style={styles.sectionTitle}>Transactions</div>
+                {sortedNotifications.map((item) => {
+                  const itemMeta = getActionMeta(item?.action);
+                  return (
+                    <button
+                      key={item.id}
+                      type="button"
+                      style={styles.notificationItem(item?.isRead === false)}
+                      onClick={() => handleNotificationClick(item)}
+                    >
+                      <div style={styles.notificationTitle}>
+                        <span>{item.transactionName || 'Transaction'}</span>
+                        <span style={styles.actionBadge(itemMeta.accent)}>{itemMeta.label}</span>
+                      </div>
+                      <div style={styles.notificationPreview}>{buildPreviewText(item)}</div>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+            {reportItems.length > 0 && (
+              <div style={styles.section}>
+                <div style={styles.sectionTitle}>Report approvals</div>
+                {reportItems.map(({ req, tab, status, scope }) => {
+                  const statusMeta = getStatusMeta(status);
+                  const title = `${formatRequestType(req?.request_type)}${
+                    req?.table_name ? ` • ${req.table_name}` : ''
+                  }`;
+                  const previewLabel =
+                    scope === 'response'
+                      ? `Responded by ${getResponder(req) || 'Unknown'}`
+                      : `Requested by ${getRequester(req) || 'Unknown'}`;
+                  return (
+                    <button
+                      key={`${req?.request_id || title}-${status}-${scope}`}
+                      type="button"
+                      style={styles.notificationItem(status === 'pending')}
+                      onClick={() => openRequest(req, tab, status)}
+                    >
+                      <div style={styles.notificationTitle}>
+                        <span>{title}</span>
+                        <span style={styles.actionBadge(statusMeta.accent)}>
+                          {statusMeta.label}
+                        </span>
+                      </div>
+                      <div style={styles.notificationPreview}>{previewLabel}</div>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+            {changeItems.length > 0 && (
+              <div style={styles.section}>
+                <div style={styles.sectionTitle}>Change requests</div>
+                {changeItems.map(({ req, tab, status, scope }) => {
+                  const statusMeta = getStatusMeta(status);
+                  const title = `${formatRequestType(req?.request_type)}${
+                    req?.table_name ? ` • ${req.table_name}` : ''
+                  }`;
+                  const previewLabel =
+                    scope === 'response'
+                      ? `Responded by ${getResponder(req) || 'Unknown'}`
+                      : `Requested by ${getRequester(req) || 'Unknown'}`;
+                  return (
+                    <button
+                      key={`${req?.request_id || title}-${status}-${scope}`}
+                      type="button"
+                      style={styles.notificationItem(status === 'pending')}
+                      onClick={() => openRequest(req, tab, status)}
+                    >
+                      <div style={styles.notificationTitle}>
+                        <span>{title}</span>
+                        <span style={styles.actionBadge(statusMeta.accent)}>
+                          {statusMeta.label}
+                        </span>
+                      </div>
+                      <div style={styles.notificationPreview}>{previewLabel}</div>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+            {temporaryItems.length > 0 && (
+              <div style={styles.section}>
+                <div style={styles.sectionTitle}>Temporary transactions</div>
+                {temporaryItems.map(({ entry, scope }) => {
+                  const formName =
+                    entry?.formName ||
+                    entry?.form_name ||
+                    entry?.configName ||
+                    entry?.config_name ||
+                    entry?.moduleKey ||
+                    entry?.module_key ||
+                    'Temporary transaction';
+                  const tableName = entry?.tableName || entry?.table_name || '';
+                  const title = `${formName}${tableName ? ` • ${tableName}` : ''}`;
+                  const scopeLabel = scope === 'review' ? 'Review queue' : 'My drafts';
+                  return (
+                    <button
+                      key={`${getTemporaryEntryKey(entry) || title}-${scope}`}
+                      type="button"
+                      style={styles.notificationItem(scope === 'review')}
+                      onClick={() => openTemporary(scope, entry)}
+                    >
+                      <div style={styles.notificationTitle}>
+                        <span>{title}</span>
+                        <span style={styles.actionBadge('#7c3aed')}>{scopeLabel}</span>
+                      </div>
+                      <div style={styles.notificationPreview}>
+                        {entry?.creatorName || entry?.creator_name || entry?.created_by || ''}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
           </div>
           <button
             type="button"
             style={styles.footer}
             onClick={() => {
               setOpen(false);
-              navigate('/?tab=activity');
+              navigate('/notifications');
             }}
           >
             Open dashboard
@@ -792,8 +979,20 @@ const styles = {
     overflowY: 'auto',
     display: 'flex',
     flexDirection: 'column',
-    gap: '0.6rem',
+    gap: '1rem',
     padding: '0.75rem 1rem 1rem',
+  },
+  section: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.6rem',
+  },
+  sectionTitle: {
+    fontSize: '0.7rem',
+    fontWeight: 700,
+    color: '#475569',
+    textTransform: 'uppercase',
+    letterSpacing: '0.08em',
   },
   empty: {
     padding: '1rem',
