@@ -5203,6 +5203,9 @@ export async function listTableRows(
 ) {
   signal?.throwIfAborted();
   const columns = await getTableColumnsSafe(tableName);
+  if (!Array.isArray(columns) || columns.length === 0) {
+    return { rows: [], count: 0 };
+  }
   logDb(
     `listTableRows(${tableName}) page=${page} perPage=${perPage} ` +
       `filters=${JSON.stringify(filters)} search=${search} columns=${searchColumns} ` +
