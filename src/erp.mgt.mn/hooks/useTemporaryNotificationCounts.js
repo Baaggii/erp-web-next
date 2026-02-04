@@ -262,9 +262,11 @@ export default function useTemporaryNotificationCounts(empid) {
     setEnablePolling(false);
 
     const startFallback = () => {
+      if (!disconnectTimeoutRef.current) {
+        setEnablePolling(true);
+      }
       if (disconnectTimeoutRef.current) return;
       disconnectTimeoutRef.current = setTimeout(() => {
-        setEnablePolling(true);
         disconnectTimeoutRef.current = null;
       }, DISCONNECT_FALLBACK_MS);
     };

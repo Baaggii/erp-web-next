@@ -88,6 +88,7 @@ function scheduleTone(ctx, startTime, { type, frequency, duration, gain }, volum
 
 export async function playNotificationSound(preset = 'chime', volume = 1) {
   if (preset === 'off') return;
+  await waitForFirstInteraction();
   const ctx = getAudioContext();
   if (!ctx) return;
   const isReady = await ensureContextReady(ctx);
