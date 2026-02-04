@@ -865,6 +865,31 @@ const TableManager = forwardRef(function TableManager({
     return str.length > maxLength ? `${str.slice(0, maxLength)}…` : str;
   }, []);
 
+  const buildTxnInsertSql = useCallback((tableName, values) => {
+    if (!tableName || !values || typeof values !== 'object') return null;
+    const entries = Object.entries(values).filter(([, value]) => value !== undefined);
+    if (entries.length === 0) return null;
+    const sqlValue = (value) => {
+      if (value === null || value === undefined) return 'NULL';
+      if (typeof value === 'number' && Number.isFinite(value)) return String(value);
+      if (typeof value === 'boolean') return value ? '1' : '0';
+      const stringified =
+        typeof value === 'string'
+          ? value
+          : (() => {
+              try {
+                return JSON.stringify(value);
+              } catch {
+                return String(value);
+              }
+            })();
+      return `'${stringified.replace(/'/g, "''")}'`;
+    };
+    const columnsSql = entries.map(([key]) => `\`${key}\``).join(', ');
+    const valuesSql = entries.map(([, value]) => sqlValue(value)).join(', ');
+    return `INSERT INTO \`${tableName}\` (${columnsSql}) VALUES (${valuesSql});`;
+  }, []);
+
   function promptRequestReason() {
     return new Promise((resolve) => {
       reasonResolveRef.current = resolve;
@@ -4255,6 +4280,34 @@ const TableManager = forwardRef(function TableManager({
       const promotionNewFolder = getImageFolder(promotionValues);
       const promotionTable =
         promotionEntry?.tableName || promotionEntry?.table_name || table;
+      if (txnToastEnabled) {
+        const promoteRequestPayload = {
+          cleanedValues: promotionValues,
+          promoteAsTemporary,
+          forcePromote: shouldForcePromote,
+        };
+        addToast(
+          `Transaction toast: Promote POST request ${formatTxnToastPayload({
+            url: `${API_BASE}/transaction_temporaries/${encodeURIComponent(temporaryId)}/promote`,
+            method: 'POST',
+            table: promotionTable,
+            temporaryId,
+            submitIntent: normalizedSubmitIntent,
+            requestType,
+            payload: promoteRequestPayload,
+            canPostTransactions,
+            forceResolvePendingDrafts,
+          })}`,
+          'info',
+        );
+        const insertSql = buildTxnInsertSql(promotionTable, promotionValues);
+        if (insertSql) {
+          addToast(
+            `Transaction toast: Promote SQL insert ${formatTxnToastPayload(insertSql)}`,
+            'info',
+          );
+        }
+      }
       const ok = await promoteTemporary(temporaryId, {
         skipConfirm: true,
         silent: false,
@@ -4264,6 +4317,22 @@ const TableManager = forwardRef(function TableManager({
       });
       if (ok) {
         const promotedData = ok === true ? null : ok;
+        if (txnToastEnabled) {
+          addToast(
+            `Transaction toast: Promote response ${formatTxnToastPayload({
+              promotedData,
+              promotedRecordId:
+                promotedData?.promotedRecordId ||
+                promotedData?.promoted_record_id ||
+                promotedData?.recordId ||
+                promotedData?.record_id ||
+                promotedData?.id ||
+                null,
+              warnings: promotedData?.warnings,
+            })}`,
+            'info',
+          );
+        }
         const promotedRecordId =
           promotedData?.promotedRecordId ||
           promotedData?.promoted_record_id ||
