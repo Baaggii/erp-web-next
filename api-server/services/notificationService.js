@@ -21,9 +21,12 @@ function normalizeRecipient(recipientEmpId) {
 }
 
 function normalizeType(type) {
-  const normalized = type ? String(type).trim() : 'request';
+  const normalized = type ? String(type).trim().toLowerCase() : 'request';
   if (!normalized) {
     throw new Error('type required');
+  }
+  if (!['request', 'response'].includes(normalized)) {
+    throw new Error(`Invalid notification type: ${normalized}`);
   }
   return normalized;
 }
