@@ -42,6 +42,8 @@ const STRING_COLUMN_TYPES = new Set([
   'enum',
   'set',
 ]);
+const NUMERIC_COLUMN_PATTERN =
+  /(int|decimal|float|double|bit|year|bigint|smallint|mediumint|tinyint)/i;
 
 const LABEL_WRAPPER_KEYS = new Set([
   'value',
@@ -211,6 +213,33 @@ function attachDynamicSqlErrorDetails(err, context = {}) {
   enriched.status = err?.status || err?.statusCode || 400;
   enriched.details = details;
   return enriched;
+}
+
+function parseEnumOptions(type) {
+  if (!type) return [];
+  const match = String(type).match(/^(enum|set)\((.*)\)$/i);
+  if (!match) return [];
+  const options = [];
+  const raw = match[2] || '';
+  const re = /'((?:\\'|[^'])*)'/g;
+  let found = null;
+  while ((found = re.exec(raw))) {
+    options.push(found[1].replace(/\\'/g, "'"));
+  }
+  return options;
+}
+
+function coerceEnumValue(value, options) {
+  if (!options.length) return value;
+  if (options.includes(value)) return value;
+  const text = typeof value === 'string' ? value.trim() : '';
+  if (!text) return value;
+  const dashIndex = text.indexOf('-');
+  if (dashIndex > 0) {
+    const leading = text.slice(0, dashIndex).trim();
+    if (leading && options.includes(leading)) return leading;
+  }
+  return value;
 }
 
 function isPlainObject(value) {
@@ -468,7 +497,7 @@ export async function sanitizeCleanedValuesForInsert(tableName, values, columns)
     if (RESERVED_TEMPORARY_COLUMNS.has(lower)) continue;
     const columnInfo = lookup.get(lower);
     if (!columnInfo) continue;
-    let normalizedValue = rawValue;
+    let normalizedValue = stripLabelWrappers(rawValue);
     if (Array.isArray(normalizedValue)) {
       normalizedValue = JSON.stringify(normalizedValue);
     } else if (
@@ -484,6 +513,30 @@ export async function sanitizeCleanedValuesForInsert(tableName, values, columns)
     if (typeof normalizedValue === 'string') {
       normalizedValue = normalizedValue.trim();
       const { type, maxLength } = columnInfo;
+      if (type && NUMERIC_COLUMN_PATTERN.test(type)) {
+        if (normalizedValue === '') {
+          warnings.push({ column: columnInfo.name, type: 'emptyNumeric' });
+          continue;
+        }
+        const match = normalizedValue.match(/-?\d+(?:\.\d+)?/);
+        const numericValue = Number(match ? match[0] : normalizedValue);
+        if (!Number.isFinite(numericValue)) {
+          warnings.push({ column: columnInfo.name, type: 'invalidNumeric' });
+          continue;
+        }
+        normalizedValue = numericValue;
+      }
+      const enumOptions = type ? parseEnumOptions(type) : [];
+      if (enumOptions.length > 0) {
+        normalizedValue = coerceEnumValue(normalizedValue, enumOptions);
+        if (!enumOptions.includes(normalizedValue)) {
+          warnings.push({
+            column: columnInfo.name,
+            type: 'invalidEnum',
+          });
+          continue;
+        }
+      }
       if (
         typeof maxLength === 'number' &&
         maxLength > 0 &&
