@@ -2642,14 +2642,6 @@ const TableManager = forwardRef(function TableManager({
       }
     });
     if (hasInvalidDateFilter) return;
-    const requestKey = `${table}::${params.toString()}`;
-    const now = Date.now();
-    if (
-      dataLoadFailureRef.current.key === requestKey &&
-      now - dataLoadFailureRef.current.ts < 5000
-    ) {
-      return;
-    }
     safeRequest(`/api/tables/${encodeURIComponent(table)}?${params.toString()}`, {
       credentials: 'include',
       signal: controller.signal,
@@ -2691,7 +2683,6 @@ const TableManager = forwardRef(function TableManager({
       })
       .catch((err) => {
         if (canceled || err?.name === 'AbortError') return;
-        dataLoadFailureRef.current = { key: requestKey, ts: Date.now() };
         addToast(
           t('failed_load_table_data', 'Failed to load table data'),
           'error',
