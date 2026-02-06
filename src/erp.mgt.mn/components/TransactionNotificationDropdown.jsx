@@ -219,6 +219,34 @@ function getNotificationTimestamp(notification) {
   return Number.isFinite(ts) ? ts : 0;
 }
 
+function getRequestTimestamp(req, scope) {
+  if (!req) return 0;
+  const raw =
+    scope === 'response'
+      ? req?.responded_at ||
+        req?.respondedAt ||
+        req?.updated_at ||
+        req?.updatedAt ||
+        req?.created_at ||
+        req?.createdAt ||
+        0
+      : req?.created_at || req?.createdAt || 0;
+  const ts = new Date(raw).getTime();
+  return Number.isFinite(ts) ? ts : 0;
+}
+
+function getTemporaryTimestamp(entry) {
+  if (!entry) return 0;
+  const raw =
+    entry?.updatedAt ||
+    entry?.updated_at ||
+    entry?.createdAt ||
+    entry?.created_at ||
+    0;
+  const ts = new Date(raw).getTime();
+  return Number.isFinite(ts) ? ts : 0;
+}
+
 export default function TransactionNotificationDropdown() {
   const { notifications, unreadCount, markRead } = useTransactionNotifications();
   const {
@@ -916,7 +944,9 @@ export default function TransactionNotificationDropdown() {
     reportState.responses?.declined?.forEach((req) => {
       items.push({ req, tab: 'outgoing', status: 'declined', scope: 'response' });
     });
-    return items;
+    return items.sort(
+      (a, b) => getRequestTimestamp(b.req, b.scope) - getRequestTimestamp(a.req, a.scope),
+    );
   }, [reportState.incoming, reportState.outgoing, reportState.responses]);
 
   const changeItems = useMemo(() => {
@@ -938,16 +968,20 @@ export default function TransactionNotificationDropdown() {
     changeState.responses?.declined?.forEach((req) => {
       items.push({ req, tab: 'outgoing', status: 'declined', scope: 'response' });
     });
-    return items;
+    return items.sort(
+      (a, b) => getRequestTimestamp(b.req, b.scope) - getRequestTimestamp(a.req, a.scope),
+    );
   }, [changeState.incoming, changeState.outgoing, changeState.responses]);
 
-  const temporaryItems = useMemo(
-    () => [
+  const temporaryItems = useMemo(() => {
+    const items = [
       ...temporaryState.review.map((entry) => ({ entry, scope: 'review' })),
       ...temporaryState.created.map((entry) => ({ entry, scope: 'created' })),
-    ],
-    [temporaryState.created, temporaryState.review],
-  );
+    ];
+    return items.sort(
+      (a, b) => getTemporaryTimestamp(b.entry) - getTemporaryTimestamp(a.entry),
+    );
+  }, [temporaryState.created, temporaryState.review]);
 
   const handleNotificationClick = async (item) => {
     if (!item) return;
