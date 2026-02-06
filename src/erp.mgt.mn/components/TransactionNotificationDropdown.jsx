@@ -2,9 +2,16 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext.jsx';
 import { usePendingRequests } from '../context/PendingRequestContext.jsx';
+import { useCompanyModules } from '../hooks/useCompanyModules.js';
 import useGeneralConfig from '../hooks/useGeneralConfig.js';
 import { useTransactionNotifications } from '../context/TransactionNotificationContext.jsx';
 import formatTimestamp from '../utils/formatTimestamp.js';
+import { hasTransactionFormAccess } from '../utils/transactionFormAccess.js';
+import {
+  isModuleLicensed,
+  isModulePermissionGranted,
+} from '../utils/moduleAccess.js';
+import { resolveWorkplacePositionForContext } from '../utils/workplaceResolver.js';
 
 const TRANSACTION_NAME_KEYS = [
   'UITransTypeName',
@@ -27,6 +34,10 @@ const DEFAULT_PLAN_NOTIFICATION_FIELDS = ['is_plan', 'is_plan_completion'];
 const DEFAULT_PLAN_NOTIFICATION_VALUES = ['1'];
 const DEFAULT_DUTY_NOTIFICATION_FIELDS = [];
 const DEFAULT_DUTY_NOTIFICATION_VALUES = ['1'];
+
+function resolveModuleKey(info) {
+  return info?.moduleKey || info?.module_key || info?.module || info?.modulekey || '';
+}
 
 function normalizeText(value) {
   if (value === undefined || value === null) return '';
@@ -60,6 +71,13 @@ function parseListValue(value) {
       .filter(Boolean);
   }
   return [];
+}
+
+function normalizeDashboardTab(value) {
+  if (!value) return 'activity';
+  const normalized = String(value).trim().toLowerCase();
+  if (normalized === 'plans' || normalized === 'plan') return 'plans';
+  return 'activity';
 }
 
 function getRowValue(row, keys) {
@@ -203,10 +221,23 @@ function getNotificationTimestamp(notification) {
 
 export default function TransactionNotificationDropdown() {
   const { notifications, unreadCount, markRead } = useTransactionNotifications();
-  const { user, session } = useAuth();
+  const {
+    user,
+    session,
+    permissions: perms,
+    company,
+    branch,
+    department,
+    workplace,
+    workplacePositionMap,
+  } = useAuth();
   const { workflows, markWorkflowSeen, temporary } = usePendingRequests();
   const [open, setOpen] = useState(false);
   const [codeTransactions, setCodeTransactions] = useState([]);
+  const [allowedForms, setAllowedForms] = useState(null);
+  const allowedFormsCache = useRef(null);
+  const allowedFormsPromise = useRef(null);
+  const licensed = useCompanyModules(company);
   const [reportState, setReportState] = useState({
     incoming: [],
     outgoing: [],
@@ -230,6 +261,146 @@ export default function TransactionNotificationDropdown() {
   const containerRef = useRef(null);
   const navigate = useNavigate();
   const generalConfig = useGeneralConfig();
+
+  const loadAllowedForms = useCallback(async () => {
+    if (allowedFormsCache.current) return allowedFormsCache.current;
+    if (allowedFormsPromise.current) return allowedFormsPromise.current;
+
+    const params = new URLSearchParams();
+    if (branch != null) params.set('branchId', branch);
+    if (department != null) params.set('departmentId', department);
+    const userRightId =
+      user?.userLevel ??
+      user?.userlevel_id ??
+      user?.userlevelId ??
+      session?.user_level ??
+      session?.userlevel_id ??
+      session?.userlevelId ??
+      null;
+    const userRightName =
+      session?.user_level_name ??
+      session?.userLevelName ??
+      user?.userLevelName ??
+      user?.userlevel_name ??
+      user?.userlevelName ??
+      null;
+    const workplaceId = workplace ?? session?.workplace_id ?? session?.workplaceId ?? null;
+    const workplacePositionId =
+      resolveWorkplacePositionForContext({
+        workplaceId,
+        session,
+        workplacePositionMap,
+      })?.positionId ??
+      session?.workplace_position_id ??
+      session?.workplacePositionId ??
+      null;
+    const positionId =
+      session?.employment_position_id ??
+      session?.position_id ??
+      session?.position ??
+      user?.position ??
+      null;
+    if (userRightId != null && `${userRightId}`.trim() !== '') {
+      params.set('userRightId', userRightId);
+    }
+    if (workplaceId != null && `${workplaceId}`.trim() !== '') {
+      params.set('workplaceId', workplaceId);
+    }
+    if (positionId != null && `${positionId}`.trim() !== '') {
+      params.set('positionId', positionId);
+    }
+    if (workplacePositionId != null && `${workplacePositionId}`.trim() !== '') {
+      params.set('workplacePositionId', workplacePositionId);
+    }
+
+    const query = params.toString();
+    const request = fetch(
+      `/api/transaction_forms${query ? `?${query}` : ''}`,
+      { credentials: 'include' },
+    )
+      .then((res) => (res.ok ? res.json() : {}))
+      .then((data) => {
+        const filtered = {};
+        const branchId = branch != null ? String(branch) : null;
+        const departmentId = department != null ? String(department) : null;
+        Object.entries(data).forEach(([name, info]) => {
+          if (name === 'isDefault') return;
+          if (!info || typeof info !== 'object') return;
+          if (
+            !hasTransactionFormAccess(info, branchId, departmentId, {
+              allowTemporaryAnyScope: true,
+              userRightId,
+              userRightName,
+              workplaceId,
+              positionId,
+              workplacePositions: session?.workplace_assignments,
+              workplacePositionId,
+              workplacePositionMap,
+            })
+          )
+            return;
+          const moduleKey = resolveModuleKey(info) || 'forms';
+          if (!isModulePermissionGranted(perms, moduleKey)) return;
+          if (!isModuleLicensed(licensed, moduleKey)) return;
+          filtered[name] = info;
+        });
+        allowedFormsCache.current = filtered;
+        return filtered;
+      })
+      .catch(() => ({}))
+      .finally(() => {
+        allowedFormsPromise.current = null;
+      });
+
+    allowedFormsPromise.current = request;
+    return request;
+  }, [
+    branch,
+    department,
+    licensed,
+    perms,
+    session,
+    user,
+    workplace,
+    workplacePositionMap,
+  ]);
+
+  useEffect(() => {
+    let cancelled = false;
+    loadAllowedForms()
+      .then((forms) => {
+        if (!cancelled) setAllowedForms(forms);
+      })
+      .catch(() => {
+        if (!cancelled) setAllowedForms({});
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [loadAllowedForms]);
+
+  const resolveTransactionFormInfo = useCallback(
+    (item) => {
+      if (!item || !allowedForms) return null;
+      const normalizedName = normalizeText(item.transactionName);
+      if (normalizedName) {
+        const entry = Object.entries(allowedForms).find(
+          ([name]) => normalizeText(name) === normalizedName,
+        );
+        if (entry) return entry[1];
+      }
+      const normalizedTable = normalizeText(item.transactionTable);
+      if (normalizedTable) {
+        const entry = Object.entries(allowedForms).find(([, info]) => {
+          const table = normalizeText(info?.table ?? info?.tableName ?? info?.table_name);
+          return table && table === normalizedTable;
+        });
+        if (entry) return entry[1];
+      }
+      return null;
+    },
+    [allowedForms],
+  );
 
   const sortedNotifications = useMemo(
     () => [...notifications].sort((a, b) => getNotificationTimestamp(b) - getNotificationTimestamp(a)),
@@ -355,6 +526,18 @@ export default function TransactionNotificationDropdown() {
       return isDutyNotificationRow(row);
     },
     [findTransactionRow, isDutyNotificationRow],
+  );
+
+  const getItemDashboardTab = useCallback(
+    (item) => {
+      if (!item) return 'activity';
+      if (isPlanNotificationItem(item) || isDutyNotificationItem(item)) return 'plans';
+      const formInfo = resolveTransactionFormInfo(item);
+      const rawTab =
+        formInfo?.notificationDashboardTab ?? formInfo?.notification_dashboard_tab;
+      return normalizeDashboardTab(rawTab);
+    },
+    [isDutyNotificationItem, isPlanNotificationItem, resolveTransactionFormInfo],
   );
 
   const hasSupervisor =
@@ -771,7 +954,7 @@ export default function TransactionNotificationDropdown() {
     setOpen(false);
     await markRead([item.id]);
     const groupKey = encodeURIComponent(item.transactionName || 'Transaction');
-    const tab = isPlanNotificationItem(item) || isDutyNotificationItem(item) ? 'plans' : 'activity';
+    const tab = getItemDashboardTab(item);
     const params = new URLSearchParams({
       tab,
       notifyGroup: groupKey,

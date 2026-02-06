@@ -79,6 +79,13 @@ function parseListValue(value) {
   return [];
 }
 
+function normalizeDashboardTab(value) {
+  if (!value) return 'activity';
+  const normalized = String(value).trim().toLowerCase();
+  if (normalized === 'plans' || normalized === 'plan') return 'plans';
+  return 'activity';
+}
+
 function getRowValue(row, keys) {
   if (!row || typeof row !== 'object') return null;
   for (const key of keys) {
@@ -467,6 +474,18 @@ export default function TransactionNotificationWidget({ filterMode = 'activity' 
     [findTransactionRow, isDutyNotificationRow],
   );
 
+  const getItemDashboardTab = useCallback(
+    (item) => {
+      if (!item) return 'activity';
+      if (isPlanNotificationItem(item) || isDutyNotificationItem(item)) return 'plans';
+      const formInfo = resolveTransactionFormInfo(item);
+      const rawTab =
+        formInfo?.notificationDashboardTab ?? formInfo?.notification_dashboard_tab;
+      return normalizeDashboardTab(rawTab);
+    },
+    [isDutyNotificationItem, isPlanNotificationItem, resolveTransactionFormInfo],
+  );
+
   const groups = useMemo(() => {
     if (filterMode !== 'plan' && filterMode !== 'activity' && filterMode !== 'duty') {
       return allGroups;
@@ -474,19 +493,29 @@ export default function TransactionNotificationWidget({ filterMode = 'activity' 
     const isPlanMode = filterMode === 'plan';
     const isDutyMode = filterMode === 'duty';
     return allGroups.reduce((acc, group) => {
-      const items = group.items.filter((item) =>
-        isPlanMode
-          ? isPlanNotificationItem(item)
-          : isDutyMode
-            ? isDutyNotificationItem(item)
-            : !isPlanNotificationItem(item) && !isDutyNotificationItem(item),
-      );
+      const items = group.items.filter((item) => {
+        const dashboardTab = getItemDashboardTab(item);
+        if (isDutyMode) return isDutyNotificationItem(item);
+        if (isPlanMode) {
+          return (
+            isPlanNotificationItem(item) ||
+            (!isDutyNotificationItem(item) && dashboardTab === 'plans')
+          );
+        }
+        return dashboardTab === 'activity';
+      });
       if (items.length === 0) return acc;
       const unreadCount = items.filter((item) => !item.isRead).length;
       acc.push({ ...group, items, unreadCount });
       return acc;
     }, []);
-  }, [allGroups, filterMode, isDutyNotificationItem, isPlanNotificationItem]);
+  }, [
+    allGroups,
+    filterMode,
+    getItemDashboardTab,
+    isDutyNotificationItem,
+    isPlanNotificationItem,
+  ]);
 
   useEffect(() => {
     if (!highlightKey) return;
