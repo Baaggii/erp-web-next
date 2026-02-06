@@ -3224,6 +3224,7 @@ export default function ERPLayout() {
     setTabContent,
     cache,
     resetTabs,
+    updateTabLabels,
   } = useTabs();
   const txnModules = useTxnModules();
 
@@ -3575,6 +3576,11 @@ export default function ERPLayout() {
     const title = titleForPath(location.pathname);
     openTab({ key: location.pathname, label: title });
   }, [location.pathname, openTab]);
+
+  useEffect(() => {
+    if (!tabs.length) return;
+    updateTabLabels((key) => titleForPath(key));
+  }, [tabs.length, titleForPath, updateTabLabels]);
 
   function handleOpen(path, label, key) {
     if (txnModules && txnModules.keys.has(key)) {
