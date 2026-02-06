@@ -49,11 +49,8 @@ import {
 } from '../utils/jsonValueFormatting.js';
 import normalizeRelationKey from '../utils/normalizeRelationKey.js';
 import getRelationRowFromMap from '../utils/getRelationRowFromMap.js';
-import safeRequest from '../utils/safeRequest.js';
 
 const TEMPORARY_FILTER_CACHE_KEY = 'temporary-transaction-filter';
-
-const fetch = safeRequest;
 
 function cacheTemporaryFilter(field, value) {
   if (typeof window === 'undefined') return;

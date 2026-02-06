@@ -23,7 +23,6 @@ import { valuesEqual } from '../utils/generatedColumns.js';
 import { hasTransactionFormAccess } from '../utils/transactionFormAccess.js';
 import { resolveWorkplacePositionForContext } from '../utils/workplaceResolver.js';
 import normalizeRelationKey from '../utils/normalizeRelationKey.js';
-import safeRequest from '../utils/safeRequest.js';
 import {
   isModuleLicensed,
   isModulePermissionGranted,
@@ -43,8 +42,6 @@ import {
 
 export { syncCalcFields };
 export { preserveManualChangesAfterRecalc } from '../utils/preserveManualChanges.js';
-
-const fetch = safeRequest;
 
 function truncateValue(value, maxLength = 200) {
   if (typeof value !== 'string') return value;
