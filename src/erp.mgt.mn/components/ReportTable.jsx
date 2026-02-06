@@ -1480,6 +1480,7 @@ export default function ReportTable({
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
+            zIndex: 2000,
           }}
         >
           <div style={{ background: '#fff', padding: '1rem', maxHeight: '80vh', overflowY: 'auto' }}>

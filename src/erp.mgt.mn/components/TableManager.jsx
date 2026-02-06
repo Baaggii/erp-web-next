@@ -10082,6 +10082,7 @@ const TableManager = forwardRef(function TableManager({
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
+          zIndex: 2000,
         }}>
           <div style={{ backgroundColor: '#fff', padding: '1rem', borderRadius: '4px', maxHeight: '90vh', overflowY: 'auto' }}>
             <h3 style={{ marginTop: 0 }}>Edit Labels</h3>
