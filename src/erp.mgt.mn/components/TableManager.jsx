@@ -49,7 +49,6 @@ import {
 } from '../utils/jsonValueFormatting.js';
 import normalizeRelationKey from '../utils/normalizeRelationKey.js';
 import getRelationRowFromMap from '../utils/getRelationRowFromMap.js';
-import safeRequest from '../utils/safeRequest.js';
 
 const TEMPORARY_FILTER_CACHE_KEY = 'temporary-transaction-filter';
 
@@ -1455,7 +1454,6 @@ const TableManager = forwardRef(function TableManager({
   useEffect(() => {
     if (!table) return;
     let canceled = false;
-    const controller = new AbortController();
     setRows([]);
     setCount(0);
     setPage(1);
@@ -1466,10 +1464,8 @@ const TableManager = forwardRef(function TableManager({
     setJsonRelationLabels({});
     jsonRelationFetchCache.current = {};
     setColumnMeta([]);
-    safeRequest(`/api/tables/${encodeURIComponent(table)}/columns`, {
+    fetch(`/api/tables/${encodeURIComponent(table)}/columns`, {
       credentials: 'include',
-      skipLoader: true,
-      signal: controller.signal,
     })
       .then((res) => {
         if (!res.ok) {
@@ -1502,7 +1498,6 @@ const TableManager = forwardRef(function TableManager({
       });
     return () => {
       canceled = true;
-      controller.abort();
     };
   }, [table]);
 
@@ -1518,12 +1513,9 @@ const TableManager = forwardRef(function TableManager({
       return;
     }
     let canceled = false;
-    const controller = new AbortController();
     views.forEach((v) => {
-      safeRequest(`/api/display_fields?table=${encodeURIComponent(v)}`, {
+      fetch(`/api/display_fields?table=${encodeURIComponent(v)}`, {
         credentials: 'include',
-        skipLoader: true,
-        signal: controller.signal,
       })
         .then((res) => (res.ok ? res.json() : null))
         .then((cfg) => {
@@ -1531,10 +1523,8 @@ const TableManager = forwardRef(function TableManager({
           setViewDisplayMap((m) => ({ ...m, [v]: cfg || {} }));
         })
         .catch(() => {});
-      safeRequest(`/api/tables/${encodeURIComponent(v)}/columns`, {
+      fetch(`/api/tables/${encodeURIComponent(v)}/columns`, {
         credentials: 'include',
-        skipLoader: true,
-        signal: controller.signal,
       })
         .then((res) => (res.ok ? res.json() : []))
         .then((cols) => {
@@ -1552,18 +1542,14 @@ const TableManager = forwardRef(function TableManager({
     });
     return () => {
       canceled = true;
-      controller.abort();
     };
   }, [viewSourceMap]);
 
   useEffect(() => {
     if (!table) return;
     let canceled = false;
-    const controller = new AbortController();
-    safeRequest(`/api/proc_triggers?table=${encodeURIComponent(table)}`, {
+    fetch(`/api/proc_triggers?table=${encodeURIComponent(table)}`, {
       credentials: 'include',
-      skipLoader: true,
-      signal: controller.signal,
     })
       .then((res) => (res.ok ? res.json() : {}))
       .then((data) => {
@@ -1574,7 +1560,6 @@ const TableManager = forwardRef(function TableManager({
       });
     return () => {
       canceled = true;
-      controller.abort();
     };
   }, [table]);
 
@@ -1664,12 +1649,7 @@ const TableManager = forwardRef(function TableManager({
       return;
     }
     let canceled = false;
-    const controller = new AbortController();
-    safeRequest('/api/tables/code_transaction?perPage=500', {
-      credentials: 'include',
-      skipLoader: true,
-      signal: controller.signal,
-    })
+    fetch('/api/tables/code_transaction?perPage=500', { credentials: 'include' })
       .then((res) => {
         if (!res.ok) {
           addToast(
@@ -1709,7 +1689,6 @@ const TableManager = forwardRef(function TableManager({
       });
     return () => {
       canceled = true;
-      controller.abort();
     };
   }, [formConfig]);
 
