@@ -1244,41 +1244,6 @@ const TableManager = forwardRef(function TableManager({
     [resolveCanonicalKey],
   );
 
-  const relationFieldsKey = useMemo(
-    () =>
-      JSON.stringify({
-        visibleFields: formConfig?.visibleFields ?? [],
-        headerFields: formConfig?.headerFields ?? [],
-        mainFields: formConfig?.mainFields ?? [],
-        footerFields: formConfig?.footerFields ?? [],
-        printEmpField: formConfig?.printEmpField ?? [],
-        printCustField: formConfig?.printCustField ?? [],
-        requiredFields: formConfig?.requiredFields ?? [],
-      }),
-    [
-      formConfig?.visibleFields,
-      formConfig?.headerFields,
-      formConfig?.mainFields,
-      formConfig?.footerFields,
-      formConfig?.printEmpField,
-      formConfig?.printCustField,
-      formConfig?.requiredFields,
-    ],
-  );
-
-  const relationFieldConfig = useMemo(
-    () => ({
-      visibleFields: formConfig?.visibleFields ?? [],
-      headerFields: formConfig?.headerFields ?? [],
-      mainFields: formConfig?.mainFields ?? [],
-      footerFields: formConfig?.footerFields ?? [],
-      printEmpField: formConfig?.printEmpField ?? [],
-      printCustField: formConfig?.printCustField ?? [],
-      requiredFields: formConfig?.requiredFields ?? [],
-    }),
-    [relationFieldsKey],
-  );
-
   const hasTenantKey = useCallback(
     (tenantInfo, key, caseMap) => {
       if (!tenantInfo) return false;
@@ -1839,13 +1804,13 @@ const TableManager = forwardRef(function TableManager({
       const resolved = resolveCanonicalKey(field);
       if (resolved) set.add(resolved);
     };
-    walkEditableFieldValues(relationFieldConfig.visibleFields, addField(visibleFieldSet));
-    walkEditableFieldValues(relationFieldConfig.headerFields, addField(visibleFieldSet));
-    walkEditableFieldValues(relationFieldConfig.mainFields, addField(visibleFieldSet));
-    walkEditableFieldValues(relationFieldConfig.footerFields, addField(visibleFieldSet));
-    walkEditableFieldValues(relationFieldConfig.printEmpField, addField(visibleFieldSet));
-    walkEditableFieldValues(relationFieldConfig.printCustField, addField(visibleFieldSet));
-    walkEditableFieldValues(relationFieldConfig.requiredFields, addField(requiredFieldSet));
+    walkEditableFieldValues(formConfig?.visibleFields || [], addField(visibleFieldSet));
+    walkEditableFieldValues(formConfig?.headerFields || [], addField(visibleFieldSet));
+    walkEditableFieldValues(formConfig?.mainFields || [], addField(visibleFieldSet));
+    walkEditableFieldValues(formConfig?.footerFields || [], addField(visibleFieldSet));
+    walkEditableFieldValues(formConfig?.printEmpField || [], addField(visibleFieldSet));
+    walkEditableFieldValues(formConfig?.printCustField || [], addField(visibleFieldSet));
+    walkEditableFieldValues(formConfig?.requiredFields || [], addField(requiredFieldSet));
 
     const hasMeaningfulValue = (val) => {
       if (val === undefined || val === null || val === '') return false;
@@ -2588,7 +2553,7 @@ const TableManager = forwardRef(function TableManager({
     company,
     branch,
     department,
-    relationFieldsKey,
+    formConfig,
     resolveCanonicalKey,
     showForm,
     validCols,
