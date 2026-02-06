@@ -13,6 +13,7 @@ import useHeaderMappings from '../hooks/useHeaderMappings.js';
 import Modal from './Modal.jsx';
 import formatTimestamp from '../utils/formatTimestamp.js';
 import normalizeDateInput from '../utils/normalizeDateInput.js';
+import csrfFetch from '../utils/csrfFetch.js';
 
 function ch(n) {
   return Math.round(n * 8);
@@ -674,7 +675,7 @@ export default function ReportTable({
       });
   }
 
-  function handleSaveFieldLabels() {
+  async function handleSaveFieldLabels() {
     const existing = generalConfig.general?.procFieldLabels || {};
     const updated = { ...existing[procedure], ...labelEdits };
     const payload = {
@@ -682,18 +683,24 @@ export default function ReportTable({
         procFieldLabels: { ...existing, [procedure]: updated },
       },
     };
-    fetch('/api/general_config', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
-      body: JSON.stringify(payload),
-    })
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data) => {
-        if (data) updateCache(data);
-        setEditLabels(false);
-      })
-      .catch(() => setEditLabels(false));
+    try {
+      const res = await csrfFetch('/api/general_config', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) {
+        rowToast('Failed to save field labels', 'error');
+        return;
+      }
+      const data = await res.json();
+      if (data) updateCache(data);
+      rowToast('Field labels saved', 'success');
+      setEditLabels(false);
+    } catch {
+      rowToast('Failed to save field labels', 'error');
+    }
   }
 
   function handleEditProcLabel() {
@@ -702,7 +709,7 @@ export default function ReportTable({
     if (next === null) return;
     const existing = generalConfig.general?.procLabels || {};
     const payload = { general: { procLabels: { ...existing, [procedure]: next } } };
-    fetch('/api/general_config', {
+    csrfFetch('/api/general_config', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
@@ -1480,6 +1487,7 @@ export default function ReportTable({
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
+            zIndex: 2000,
           }}
         >
           <div style={{ background: '#fff', padding: '1rem', maxHeight: '80vh', overflowY: 'auto' }}>
@@ -1490,7 +1498,7 @@ export default function ReportTable({
                   <input
                     value={labelEdits[c] || ''}
                     onChange={(e) =>
-                      setLabelEdits({ ...labelEdits, [c]: e.target.value })
+                      setLabelEdits((prev) => ({ ...prev, [c]: e.target.value }))
                     }
                   />
                 </label>

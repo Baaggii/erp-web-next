@@ -31,6 +31,7 @@ import { useTranslation } from 'react-i18next';
 import TooltipWrapper from './TooltipWrapper.jsx';
 import AsyncSearchSelect from './AsyncSearchSelect.jsx';
 import normalizeDateInput from '../utils/normalizeDateInput.js';
+import csrfFetch from '../utils/csrfFetch.js';
 import { evaluateTransactionFormAccess } from '../utils/transactionFormAccess.js';
 import {
   applyGeneratedColumnEvaluators,
@@ -10082,6 +10083,7 @@ const TableManager = forwardRef(function TableManager({
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
+          zIndex: 2000,
         }}>
           <div style={{ backgroundColor: '#fff', padding: '1rem', borderRadius: '4px', maxHeight: '90vh', overflowY: 'auto' }}>
             <h3 style={{ marginTop: 0 }}>Edit Labels</h3>
@@ -10094,7 +10096,7 @@ const TableManager = forwardRef(function TableManager({
             <div style={{ textAlign: 'right' }}>
               <button onClick={() => setEditLabels(false)} style={{ marginRight: '0.5rem' }}>Cancel</button>
               <button onClick={async () => {
-                await fetch('/api/header_mappings', {
+                await csrfFetch('/api/header_mappings', {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
                   credentials: 'include',
