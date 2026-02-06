@@ -49,6 +49,7 @@ import {
 } from '../utils/jsonValueFormatting.js';
 import normalizeRelationKey from '../utils/normalizeRelationKey.js';
 import getRelationRowFromMap from '../utils/getRelationRowFromMap.js';
+import safeRequest from '../utils/safeRequest.js';
 
 const TEMPORARY_FILTER_CACHE_KEY = 'temporary-transaction-filter';
 
@@ -1500,6 +1501,7 @@ const TableManager = forwardRef(function TableManager({
   useEffect(() => {
     if (!table) return;
     let canceled = false;
+    const controller = new AbortController();
     setRows([]);
     setCount(0);
     setPage(1);
@@ -1510,10 +1512,12 @@ const TableManager = forwardRef(function TableManager({
     setJsonRelationLabels({});
     jsonRelationFetchCache.current = {};
     setColumnMeta([]);
-    fetch(`/api/tables/${encodeURIComponent(table)}/columns`, {
+    safeRequest(`/api/tables/${encodeURIComponent(table)}/columns`, {
       credentials: 'include',
+      signal: controller.signal,
     })
       .then((res) => {
+        if (canceled) return [];
         if (!res.ok) {
           addToast(
             t('failed_load_table_columns', 'Failed to load table columns'),
@@ -1522,10 +1526,12 @@ const TableManager = forwardRef(function TableManager({
           return [];
         }
         return res.json().catch(() => {
-          addToast(
-            t('failed_parse_table_columns', 'Failed to parse table columns'),
-            'error',
-          );
+          if (!canceled) {
+            addToast(
+              t('failed_parse_table_columns', 'Failed to parse table columns'),
+              'error',
+            );
+          }
           return [];
         });
       })
@@ -1536,7 +1542,8 @@ const TableManager = forwardRef(function TableManager({
           setAutoInc(computeAutoInc(cols));
         }
       })
-      .catch(() => {
+      .catch((err) => {
+        if (canceled || err?.name === 'AbortError') return;
         addToast(
           t('failed_load_table_columns', 'Failed to load table columns'),
           'error',
@@ -1544,6 +1551,7 @@ const TableManager = forwardRef(function TableManager({
       });
     return () => {
       canceled = true;
+      controller.abort();
     };
   }, [table]);
 
@@ -2610,6 +2618,7 @@ const TableManager = forwardRef(function TableManager({
   useEffect(() => {
     if (!table || columnMeta.length === 0) return;
     let canceled = false;
+    const controller = new AbortController();
     const params = new URLSearchParams({ page, perPage });
     if (company != null && validCols.has('company_id'))
       params.set('company_id', company);
@@ -2632,8 +2641,9 @@ const TableManager = forwardRef(function TableManager({
       }
     });
     if (hasInvalidDateFilter) return;
-    fetch(`/api/tables/${encodeURIComponent(table)}?${params.toString()}`, {
+    safeRequest(`/api/tables/${encodeURIComponent(table)}?${params.toString()}`, {
       credentials: 'include',
+      signal: controller.signal,
     })
       .then((res) => {
         if (canceled) return { rows: [], count: 0 };
@@ -2667,15 +2677,18 @@ const TableManager = forwardRef(function TableManager({
         setSelectedRows(new Set());
         logRowsMemory(rows);
       })
-      .catch(() => {
-        if (!canceled)
-          addToast(
-            t('failed_load_table_data', 'Failed to load table data'),
-            'error',
-          );
+      .catch((err) => {
+        if (canceled || err?.name === 'AbortError') return;
+        addToast(
+          t('failed_load_table_data', 'Failed to load table data'),
+          'error',
+        );
+        setRows([]);
+        setCount(0);
       });
     return () => {
       canceled = true;
+      controller.abort();
     };
   }, [
     table,
