@@ -747,6 +747,13 @@ export default function ReportTable({
     const tableHtml = tableContainerRef.current.innerHTML;
     const printWindow = window.open('', '_blank', 'width=1024,height=768');
     if (!printWindow) return;
+    let didPrint = false;
+    const triggerPrint = () => {
+      if (didPrint) return;
+      didPrint = true;
+      printWindow.focus();
+      printWindow.print();
+    };
     printWindow.document.open();
     printWindow.document.write(`<!DOCTYPE html>
       <html>
@@ -767,9 +774,11 @@ export default function ReportTable({
         </body>
       </html>`);
     printWindow.document.close();
-    printWindow.focus();
-    printWindow.print();
-    printWindow.close();
+    printWindow.addEventListener('load', triggerPrint);
+    printWindow.onafterprint = () => {
+      printWindow.close();
+    };
+    setTimeout(triggerPrint, 250);
   }, [procLabel]);
 
   return (
