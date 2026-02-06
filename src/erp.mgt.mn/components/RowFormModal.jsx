@@ -41,12 +41,6 @@ function normalizeRelationOptionKey(value) {
     if (Object.prototype.hasOwnProperty.call(value, 'id')) {
       return normalizeRelationOptionKey(value.id);
     }
-    if (Object.prototype.hasOwnProperty.call(value, 'resolved')) {
-      return normalizeRelationOptionKey(value.resolved);
-    }
-    if (Object.prototype.hasOwnProperty.call(value, 'literal')) {
-      return normalizeRelationOptionKey(value.literal);
-    }
     try {
       return JSON.stringify(value);
     } catch (err) {
@@ -4435,8 +4429,6 @@ const RowFormModal = function RowFormModal({
       'display',
       'displayName',
       'code',
-      'resolved',
-      'literal',
     ];
     const resolveLabelWrapperValue = (value) => {
       if (value === undefined || value === null) return value;
