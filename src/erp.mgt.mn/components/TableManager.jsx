@@ -99,6 +99,8 @@ function logRowsMemory(rows) {
 
 function normalizeSearchValue(value) {
   if (value && typeof value === 'object') {
+    if (value.resolved !== undefined && value.resolved !== null) return value.resolved;
+    if (value.literal !== undefined && value.literal !== null) return value.literal;
     if (value.value !== undefined && value.value !== null) return value.value;
     if (value.id !== undefined && value.id !== null) return value.id;
     if (value.Id !== undefined && value.Id !== null) return value.Id;
@@ -7092,7 +7094,17 @@ const TableManager = forwardRef(function TableManager({
       const footerCols = hasDefinedSections ? footerFields : [];
       const signatureFields = formConfig?.signatureFields || [];
       const signatureSet = new Set(signatureFields);
-      const labelKeys = ['label', 'name', 'title', 'text', 'display', 'displayName', 'code'];
+      const labelKeys = [
+        'label',
+        'name',
+        'title',
+        'text',
+        'display',
+        'displayName',
+        'code',
+        'resolved',
+        'literal',
+      ];
       const resolveLabelWrapperValue = (value) => {
         if (value === undefined || value === null) return value;
         if (Array.isArray(value)) return value.map(resolveLabelWrapperValue);
