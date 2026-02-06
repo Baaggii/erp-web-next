@@ -247,13 +247,6 @@ function getTemporaryTimestamp(entry) {
   return Number.isFinite(ts) ? ts : 0;
 }
 
-function formatNotificationTime(timestamp) {
-  if (!timestamp) return '';
-  const parsed = new Date(timestamp);
-  if (Number.isNaN(parsed.getTime())) return '';
-  return formatTimestamp(parsed);
-}
-
 export default function TransactionNotificationDropdown() {
   const { notifications, unreadCount, markRead } = useTransactionNotifications();
   const {
@@ -989,32 +982,6 @@ export default function TransactionNotificationDropdown() {
       (a, b) => getTemporaryTimestamp(b.entry) - getTemporaryTimestamp(a.entry),
     );
   }, [temporaryState.created, temporaryState.review]);
-
-  const mixedNotifications = useMemo(() => {
-    const items = [
-      ...sortedNotifications.map((item) => ({
-        kind: 'transaction',
-        item,
-        timestamp: getNotificationTimestamp(item),
-      })),
-      ...reportItems.map((entry) => ({
-        kind: 'report',
-        entry,
-        timestamp: getRequestTimestamp(entry.req, entry.scope),
-      })),
-      ...changeItems.map((entry) => ({
-        kind: 'change',
-        entry,
-        timestamp: getRequestTimestamp(entry.req, entry.scope),
-      })),
-      ...temporaryItems.map((entry) => ({
-        kind: 'temporary',
-        entry,
-        timestamp: getTemporaryTimestamp(entry.entry),
-      })),
-    ];
-    return items.sort((a, b) => b.timestamp - a.timestamp);
-  }, [changeItems, reportItems, sortedNotifications, temporaryItems]);
 
   const handleNotificationClick = async (item) => {
     if (!item) return;
