@@ -580,7 +580,6 @@ const TableManager = forwardRef(function TableManager({
     referenceParseErrorTables: new Set(),
   });
   const displayFieldConfigCache = useRef(new Map());
-  const dataLoadFailureRef = useRef({ key: '', ts: 0 });
   const [columnMeta, setColumnMeta] = useState([]);
   const [autoInc, setAutoInc] = useState(new Set());
   const [showForm, setShowForm] = useState(false);
@@ -2649,7 +2648,6 @@ const TableManager = forwardRef(function TableManager({
       .then((res) => {
         if (canceled) return { rows: [], count: 0 };
         if (!res.ok) {
-          dataLoadFailureRef.current = { key: requestKey, ts: Date.now() };
           addToast(
             t('failed_load_table_data', 'Failed to load table data'),
             'error',
@@ -2662,7 +2660,6 @@ const TableManager = forwardRef(function TableManager({
               t('failed_parse_table_data', 'Failed to parse table data'),
               'error',
             );
-          dataLoadFailureRef.current = { key: requestKey, ts: Date.now() };
           return { rows: [], count: 0 };
         });
       })
@@ -2676,7 +2673,6 @@ const TableManager = forwardRef(function TableManager({
         if (!requestStatus) {
           setCount(data.total ?? data.count ?? 0);
         }
-        dataLoadFailureRef.current = { key: '', ts: 0 };
         // clear selections when data changes
         setSelectedRows(new Set());
         logRowsMemory(rows);
