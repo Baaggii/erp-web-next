@@ -1808,8 +1808,6 @@ const TableManager = forwardRef(function TableManager({
     walkEditableFieldValues(formConfig?.headerFields || [], addField(visibleFieldSet));
     walkEditableFieldValues(formConfig?.mainFields || [], addField(visibleFieldSet));
     walkEditableFieldValues(formConfig?.footerFields || [], addField(visibleFieldSet));
-    walkEditableFieldValues(formConfig?.printEmpField || [], addField(visibleFieldSet));
-    walkEditableFieldValues(formConfig?.printCustField || [], addField(visibleFieldSet));
     walkEditableFieldValues(formConfig?.requiredFields || [], addField(requiredFieldSet));
 
     const hasMeaningfulValue = (val) => {
