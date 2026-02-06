@@ -248,7 +248,6 @@ function PrinterSettingsTab() {
 function ProfileSettingsTab() {
   const { t } = useTranslation(['translation', 'tooltip']);
   const { lang, setLang } = useContext(LangContext);
-  const { userSettings } = useAuth();
   const languageOptions = [
     { value: 'en', labelKey: 'language_option_en', defaultLabel: 'English' },
     { value: 'mn', labelKey: 'language_option_mn', defaultLabel: 'Mongolian' },
@@ -260,12 +259,6 @@ function ProfileSettingsTab() {
     { value: 'fr', labelKey: 'language_option_fr', defaultLabel: 'French' },
     { value: 'ru', labelKey: 'language_option_ru', defaultLabel: 'Russian' },
   ];
-  const selectedLang = languageOptions.some(
-    (option) => option.value === userSettings?.lang,
-  )
-    ? userSettings.lang
-    : lang;
-
   return (
     <div>
       <TooltipWrapper
@@ -276,7 +269,7 @@ function ProfileSettingsTab() {
       >
         <label>
           {t('language', 'Language')}: {' '}
-          <select value={selectedLang} onChange={(e) => setLang(e.target.value)}>
+          <select value={lang} onChange={(e) => setLang(e.target.value)}>
             {languageOptions.map(({ value, labelKey, defaultLabel }) => (
               <option key={value} value={value}>
                 {t(labelKey, defaultLabel)}
