@@ -2558,6 +2558,7 @@ const TableManager = forwardRef(function TableManager({
   useEffect(() => {
     if (!table || columnMeta.length === 0) return;
     let canceled = false;
+    const controller = new AbortController();
     const params = new URLSearchParams({ page, perPage });
     if (company != null && validCols.has('company_id'))
       params.set('company_id', company);
@@ -2582,6 +2583,7 @@ const TableManager = forwardRef(function TableManager({
     if (hasInvalidDateFilter) return;
     fetch(`/api/tables/${encodeURIComponent(table)}?${params.toString()}`, {
       credentials: 'include',
+      signal: controller.signal,
     })
       .then((res) => {
         if (canceled) return { rows: [], count: 0 };
@@ -2615,7 +2617,8 @@ const TableManager = forwardRef(function TableManager({
         setSelectedRows(new Set());
         logRowsMemory(rows);
       })
-      .catch(() => {
+      .catch((err) => {
+        if (err?.name === 'AbortError') return;
         if (!canceled)
           addToast(
             t('failed_load_table_data', 'Failed to load table data'),
@@ -2624,6 +2627,7 @@ const TableManager = forwardRef(function TableManager({
       });
     return () => {
       canceled = true;
+      controller.abort();
     };
   }, [
     table,
