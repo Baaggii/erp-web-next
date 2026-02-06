@@ -13,7 +13,6 @@ import useHeaderMappings from '../hooks/useHeaderMappings.js';
 import Modal from './Modal.jsx';
 import formatTimestamp from '../utils/formatTimestamp.js';
 import normalizeDateInput from '../utils/normalizeDateInput.js';
-import csrfFetch from '../utils/csrfFetch.js';
 
 function ch(n) {
   return Math.round(n * 8);
@@ -709,7 +708,7 @@ export default function ReportTable({
     if (next === null) return;
     const existing = generalConfig.general?.procLabels || {};
     const payload = { general: { procLabels: { ...existing, [procedure]: next } } };
-    csrfFetch('/api/general_config', {
+    fetch('/api/general_config', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
