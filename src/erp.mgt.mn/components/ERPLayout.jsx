@@ -1733,9 +1733,19 @@ export default function ERPLayout() {
         "settings_translations",
         "Edit Translations",
       );
+    modules.forEach((mod) => {
+      const path = modulePath(mod, moduleMap);
+      if (map[path]) return;
+      map[path] = t(
+        mod.module_key,
+        generalConfig.general?.procLabels?.[mod.module_key] ||
+          headerMap[mod.module_key] ||
+          mod.label,
+      );
+    });
     map['/notifications'] = t('notifications', 'Notifications');
     return map;
-  }, [moduleMap, t]);
+  }, [generalConfig.general?.procLabels, headerMap, moduleMap, modules, t]);
   const validPaths = useMemo(() => {
     const paths = new Set(["/"]);
     modules.forEach((m) => {
@@ -3214,6 +3224,7 @@ export default function ERPLayout() {
     setTabContent,
     cache,
     resetTabs,
+    updateTabLabels,
   } = useTabs();
   const txnModules = useTxnModules();
 
@@ -3565,6 +3576,11 @@ export default function ERPLayout() {
     const title = titleForPath(location.pathname);
     openTab({ key: location.pathname, label: title });
   }, [location.pathname, openTab]);
+
+  useEffect(() => {
+    if (!tabs.length) return;
+    updateTabLabels((key) => titleForPath(key));
+  }, [tabs.length, titleForPath, updateTabLabels]);
 
   function handleOpen(path, label, key) {
     if (txnModules && txnModules.keys.has(key)) {
