@@ -569,15 +569,6 @@ const TableManager = forwardRef(function TableManager({
   const jsonRelationFetchCache = useRef({});
   const relationValueSnapshotRef = useRef({});
   const hiddenRelationFetchCacheRef = useRef({ table: null, fields: new Set() });
-  const relationDataCacheRef = useRef({
-    displayConfigCache: new Map(),
-    tenantInfoCache: new Map(),
-    tableRowsCache: new Map(),
-    relationCache: {},
-    nestedLabelCache: {},
-    referenceLoadErrorTables: new Set(),
-    referenceParseErrorTables: new Set(),
-  });
   const displayFieldConfigCache = useRef(new Map());
   const [columnMeta, setColumnMeta] = useState([]);
   const [autoInc, setAutoInc] = useState(new Set());
@@ -1931,15 +1922,13 @@ const TableManager = forwardRef(function TableManager({
       return list;
     }
 
-    const {
-      displayConfigCache,
-      tenantInfoCache,
-      tableRowsCache,
-      relationCache,
-      nestedLabelCache,
-      referenceLoadErrorTables,
-      referenceParseErrorTables,
-    } = relationDataCacheRef.current;
+    const displayConfigCache = new Map();
+    const tenantInfoCache = new Map();
+    const tableRowsCache = new Map();
+    const relationCache = {};
+    const nestedLabelCache = {};
+    const referenceLoadErrorTables = new Set();
+    const referenceParseErrorTables = new Set();
 
     const buildRelationLabel = ({
       row,
@@ -2034,8 +2023,6 @@ const TableManager = forwardRef(function TableManager({
           }
           const res = await fetch(`/api/display_fields?${params.toString()}`, {
             credentials: 'include',
-            skipErrorToast: true,
-            skipLoader: true,
           });
           if (!res.ok) {
             if (!canceled) {
@@ -2170,7 +2157,7 @@ const TableManager = forwardRef(function TableManager({
           try {
             res = await fetch(
               `/api/tables/${encodeURIComponent(tableName)}?${params.toString()}`,
-              { credentials: 'include', skipErrorToast: true, skipLoader: true },
+              { credentials: 'include' },
             );
           } catch (err) {
             if (!canceled && !referenceLoadErrorTables.has(cacheKey)) {
