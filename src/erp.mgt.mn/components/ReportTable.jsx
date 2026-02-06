@@ -674,7 +674,7 @@ export default function ReportTable({
       });
   }
 
-  function handleSaveFieldLabels() {
+  async function handleSaveFieldLabels() {
     const existing = generalConfig.general?.procFieldLabels || {};
     const updated = { ...existing[procedure], ...labelEdits };
     const payload = {
@@ -682,18 +682,24 @@ export default function ReportTable({
         procFieldLabels: { ...existing, [procedure]: updated },
       },
     };
-    fetch('/api/general_config', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
-      body: JSON.stringify(payload),
-    })
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data) => {
-        if (data) updateCache(data);
-        setEditLabels(false);
-      })
-      .catch(() => setEditLabels(false));
+    try {
+      const res = await fetch('/api/general_config', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) {
+        rowToast('Failed to save field labels', 'error');
+        return;
+      }
+      const data = await res.json();
+      if (data) updateCache(data);
+      rowToast('Field labels saved', 'success');
+      setEditLabels(false);
+    } catch {
+      rowToast('Failed to save field labels', 'error');
+    }
   }
 
   function handleEditProcLabel() {
@@ -1500,7 +1506,7 @@ export default function ReportTable({
                   <input
                     value={labelEdits[c] || ''}
                     onChange={(e) =>
-                      setLabelEdits({ ...labelEdits, [c]: e.target.value })
+                      setLabelEdits((prev) => ({ ...prev, [c]: e.target.value }))
                     }
                   />
                 </label>
