@@ -2654,7 +2654,7 @@ const TableManager = forwardRef(function TableManager({
             t('failed_load_table_data', 'Failed to load table data'),
             'error',
           );
-          return { rows: [], count: 0 };
+          return { rows: [], count: 0, failed: true };
         }
         return res.json().catch(() => {
           if (!canceled)
@@ -2663,11 +2663,12 @@ const TableManager = forwardRef(function TableManager({
               'error',
             );
           dataLoadFailureRef.current = { key: requestKey, ts: Date.now() };
-          return { rows: [], count: 0 };
+          return { rows: [], count: 0, failed: true };
         });
       })
       .then((data) => {
         if (canceled) return;
+        const didFail = data?.failed;
         let rows = data.rows || [];
         if (requestStatus) {
           rows = rows.filter((r) => requestIdSet.has(String(getRowId(r))));
@@ -2676,7 +2677,9 @@ const TableManager = forwardRef(function TableManager({
         if (!requestStatus) {
           setCount(data.total ?? data.count ?? 0);
         }
-        dataLoadFailureRef.current = { key: '', ts: 0 };
+        if (!didFail) {
+          dataLoadFailureRef.current = { key: '', ts: 0 };
+        }
         // clear selections when data changes
         setSelectedRows(new Set());
         logRowsMemory(rows);
