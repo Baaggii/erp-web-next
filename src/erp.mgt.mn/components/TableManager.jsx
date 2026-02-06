@@ -42,6 +42,7 @@ import { extractRowIndex, sortRowsByIndex } from '../utils/sortRowsByIndex.js';
 import { resolveDisabledFieldState } from './tableManagerDisabledFields.js';
 import { computeTemporaryPromotionOptions } from '../utils/temporaryPromotionOptions.js';
 import NotificationDots from './NotificationDots.jsx';
+import safeRequest from '../utils/safeRequest.js';
 import {
   formatJsonItem,
   formatJsonList,
@@ -1982,8 +1983,9 @@ const TableManager = forwardRef(function TableManager({
           if (filterColumn && hasFilterValue) {
             params.set('filterValue', String(filterValue).trim());
           }
-          const res = await fetch(`/api/display_fields?${params.toString()}`, {
+          const res = await safeRequest(`/api/display_fields?${params.toString()}`, {
             credentials: 'include',
+            skipLoader: true,
           });
           if (!res.ok) {
             if (!canceled) {
@@ -2116,9 +2118,9 @@ const TableManager = forwardRef(function TableManager({
           }
           let res;
           try {
-            res = await fetch(
+            res = await safeRequest(
               `/api/tables/${encodeURIComponent(tableName)}?${params.toString()}`,
-              { credentials: 'include' },
+              { credentials: 'include', skipLoader: true },
             );
           } catch (err) {
             if (!canceled && !referenceLoadErrorTables.has(cacheKey)) {
