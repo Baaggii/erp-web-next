@@ -821,6 +821,26 @@ const TableManager = forwardRef(function TableManager({
   const posApiErrorSignatureRef = useRef('');
   const posApiAvailable = formConfig?.posApiAvailable !== false;
   const posApiEnabled = Boolean(formConfig?.posApiEnabled && posApiAvailable);
+  const promotionKeepFields = useMemo(() => {
+    const raw =
+      formConfig?.temporaryPromoteKeepFields ??
+      formConfig?.temporaryPromotionKeepFields ??
+      formConfig?.temporary_promote_keep_fields ??
+      formConfig?.temporary_promotion_keep_fields ??
+      formConfig?.promoteKeepFields ??
+      formConfig?.promote_keep_fields ??
+      [];
+    return Array.isArray(raw)
+      ? raw.map((field) => String(field).trim()).filter(Boolean)
+      : [];
+  }, [
+    formConfig?.promoteKeepFields,
+    formConfig?.promote_keep_fields,
+    formConfig?.temporaryPromoteKeepFields,
+    formConfig?.temporaryPromotionKeepFields,
+    formConfig?.temporary_promote_keep_fields,
+    formConfig?.temporary_promotion_keep_fields,
+  ]);
 
   useEffect(() => {
     if (!formConfig?.posApiEnabled) return;
@@ -4265,11 +4285,19 @@ const TableManager = forwardRef(function TableManager({
         return false;
       }
       const promotionEntry = pendingTemporaryPromotion?.entry || null;
-      const promotionValues = cleaned;
-      const promotionConfig = getImageConfigForRow(promotionValues, formConfig || {});
       const promotionEntryValues = promotionEntry
         ? buildTemporaryFormState(promotionEntry).values
         : null;
+      const promotionValues =
+        promotionEntryValues && promotionKeepFields.length > 0
+          ? promotionKeepFields.reduce((acc, field) => {
+              if (Object.prototype.hasOwnProperty.call(promotionEntryValues, field)) {
+                acc[field] = promotionEntryValues[field];
+              }
+              return acc;
+            }, { ...cleaned })
+          : cleaned;
+      const promotionConfig = getImageConfigForRow(promotionValues, formConfig || {});
       const promotionOldName = resolveImageNameWithFallback(
         promotionEntryValues,
         promotionConfig,
@@ -4311,7 +4339,7 @@ const TableManager = forwardRef(function TableManager({
       const ok = await promoteTemporary(temporaryId, {
         skipConfirm: true,
         silent: false,
-        overrideValues: cleaned,
+        overrideValues: promotionValues,
         promoteAsTemporary,
         forcePromote: shouldForcePromote,
       });
@@ -10082,6 +10110,7 @@ const TableManager = forwardRef(function TableManager({
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
+          zIndex: 2000,
         }}>
           <div style={{ backgroundColor: '#fff', padding: '1rem', borderRadius: '4px', maxHeight: '90vh', overflowY: 'auto' }}>
             <h3 style={{ marginTop: 0 }}>Edit Labels</h3>
