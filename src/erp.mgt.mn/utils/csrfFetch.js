@@ -140,3 +140,5 @@ window.fetch = async (url, options = {}, _retry) => {
     if (key) dispatchEnd(key);
   }
 };
+
+export default window.fetch;
