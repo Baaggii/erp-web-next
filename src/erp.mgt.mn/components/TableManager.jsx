@@ -1323,11 +1323,11 @@ const TableManager = forwardRef(function TableManager({
       if (displayFieldConfigCache.current.has(cacheKey)) {
         return displayFieldConfigCache.current.get(cacheKey);
       }
-      const promise = fetch(
+      const promise = safeRequest(
         `/api/display_fields?table=${encodeURIComponent(tableName)}${
           idField ? `&idField=${encodeURIComponent(idField)}` : ''
         }`,
-        { credentials: 'include' },
+        { credentials: 'include', skipLoader: true },
       )
         .then((res) => (res.ok ? res.json() : null))
         .catch(() => null);
@@ -2644,6 +2644,7 @@ const TableManager = forwardRef(function TableManager({
     if (hasInvalidDateFilter) return;
     safeRequest(`/api/tables/${encodeURIComponent(table)}?${params.toString()}`, {
       credentials: 'include',
+      skipLoader: true,
       signal: controller.signal,
     })
       .then((res) => {
@@ -3057,9 +3058,13 @@ const TableManager = forwardRef(function TableManager({
     if (!table) return [];
     if (columnMeta.length > 0) return columnMeta;
     try {
-      const res = await fetch(`/api/tables/${encodeURIComponent(table)}/columns`, {
-        credentials: 'include',
-      });
+      const res = await safeRequest(
+        `/api/tables/${encodeURIComponent(table)}/columns`,
+        {
+          credentials: 'include',
+          skipLoader: true,
+        },
+      );
       if (!res.ok) {
         addToast(
           t('failed_load_table_columns', 'Failed to load table columns'),
@@ -10194,7 +10199,10 @@ const TableManager = forwardRef(function TableManager({
                   credentials: 'include',
                   body: JSON.stringify(labelEdits),
                 });
-                const res = await fetch(`/api/tables/${encodeURIComponent(table)}/columns`, { credentials: 'include' });
+                const res = await safeRequest(
+                  `/api/tables/${encodeURIComponent(table)}/columns`,
+                  { credentials: 'include', skipLoader: true },
+                );
                 if (res.ok) {
                   const cols = await res.json();
                   setColumnMeta(cols);
