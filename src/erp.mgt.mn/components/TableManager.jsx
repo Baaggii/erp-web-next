@@ -1887,6 +1887,7 @@ const TableManager = forwardRef(function TableManager({
     const snapshotValues = relationValueSnapshotRef.current || {};
     const visibleFieldSet = new Set(relationFieldSignature.visible);
     const requiredFieldSet = new Set(relationFieldSignature.required);
+    const hasVisibleFields = visibleFieldSet.size > 0;
 
     const hasMeaningfulValue = (val) => {
       if (val === undefined || val === null || val === '') return false;
@@ -1911,11 +1912,11 @@ const TableManager = forwardRef(function TableManager({
 
     const shouldLoadRelationColumn = (field) => {
       const resolved = resolveCanonicalKey(field) || field;
-      const isVisible =
-        visibleFieldSet.size === 0 || visibleFieldSet.has(resolved);
+      const isVisible = hasVisibleFields && visibleFieldSet.has(resolved);
       const hasValue = hasMeaningfulValue(resolveFieldValue(field));
       const isRequired = requiredFieldSet.has(resolved);
-      if (!isVisible && !hasValue) return false;
+      if (!hasVisibleFields && !hasValue && !isRequired) return false;
+      if (!isVisible && !hasValue && !isRequired) return false;
       const isActive = isVisible || isRequired || hasValue;
       if (!isActive) return false;
       if (!isVisible) {
@@ -4153,7 +4154,7 @@ const TableManager = forwardRef(function TableManager({
         }),
         'info',
       );
-      fetch(url, { credentials: 'include' })
+      safeRequest(url, { credentials: 'include', skipLoader: true })
         .then((res) => (res.ok ? res.json() : null))
         .then((data) => {
           if (!data || !Array.isArray(data.rows) || data.rows.length === 0) {
