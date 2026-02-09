@@ -20,7 +20,6 @@ import useButtonPerms from '../hooks/useButtonPerms.js';
 import normalizeDateInput from '../utils/normalizeDateInput.js';
 import AutoSizingTextInput from '../components/AutoSizingTextInput.jsx';
 import { hasTransactionFormAccess } from '../utils/transactionFormAccess.js';
-import safeRequest from '../utils/safeRequest.js';
 import {
   isModuleLicensed,
   isModulePermissionGranted,
@@ -523,7 +522,7 @@ useEffect(() => {
     }
     const query = params.toString();
     const url = `/api/transaction_forms${query ? `?${query}` : ''}`;
-    safeRequest(url, { credentials: 'include', skipLoader: true })
+    fetch(url, { credentials: 'include', skipLoader: true })
       .then((res) => {
         if (canceled) return {};
         if (!res.ok) {
@@ -628,7 +627,7 @@ useEffect(() => {
       return;
     }
     let canceled = false;
-    safeRequest(
+    fetch(
       `/api/transaction_forms?table=${encodeURIComponent(table)}&name=${encodeURIComponent(name)}`,
       { credentials: 'include', skipLoader: true },
     )
@@ -808,9 +807,8 @@ useEffect(() => {
       setManualParams({});
       return;
     }
-    safeRequest(`/api/procedures/${encodeURIComponent(selectedProc)}/params`, {
+    fetch(`/api/procedures/${encodeURIComponent(selectedProc)}/params`, {
       credentials: 'include',
-      skipLoader: true,
     })
       .then((res) => (res.ok ? res.json() : { parameters: [] }))
       .then((data) => setProcParams(data.parameters || []))
