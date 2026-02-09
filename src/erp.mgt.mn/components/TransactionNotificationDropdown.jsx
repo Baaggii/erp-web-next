@@ -201,6 +201,49 @@ function getNotificationTimestamp(notification) {
   return Number.isFinite(ts) ? ts : 0;
 }
 
+function formatDisplayTimestamp(value) {
+  if (!value) return '';
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return '';
+  return formatTimestamp(parsed);
+}
+
+function getRequestTimestamp(req, scope) {
+  if (!req) return 0;
+  if (scope === 'response') {
+    const responseAt =
+      req.responded_at || req.respondedAt || req.response_at || req.responseAt || req.updated_at;
+    if (responseAt) {
+      const parsed = new Date(responseAt).getTime();
+      if (Number.isFinite(parsed)) return parsed;
+    }
+  }
+  const raw =
+    req.updated_at ||
+    req.updatedAt ||
+    req.created_at ||
+    req.createdAt ||
+    req.requested_at ||
+    req.requestedAt ||
+    0;
+  const ts = new Date(raw).getTime();
+  return Number.isFinite(ts) ? ts : 0;
+}
+
+function getTemporaryTimestamp(entry) {
+  if (!entry) return 0;
+  const raw =
+    entry.updated_at ||
+    entry.updatedAt ||
+    entry.created_at ||
+    entry.createdAt ||
+    entry.submitted_at ||
+    entry.submittedAt ||
+    0;
+  const ts = new Date(raw).getTime();
+  return Number.isFinite(ts) ? ts : 0;
+}
+
 export default function TransactionNotificationDropdown() {
   const { notifications, unreadCount, markRead } = useTransactionNotifications();
   const { user, session } = useAuth();
@@ -238,7 +281,10 @@ export default function TransactionNotificationDropdown() {
   );
 
   const sortedNotifications = useMemo(
-    () => [...notifications].sort((a, b) => getNotificationTimestamp(b) - getNotificationTimestamp(a)),
+    () =>
+      [...notifications].sort(
+        (a, b) => getNotificationTimestamp(b) - getNotificationTimestamp(a),
+      ),
     [notifications],
   );
 
@@ -846,11 +892,99 @@ export default function TransactionNotificationDropdown() {
     }
   }, [formsLoaded, loadFormConfigs, open]);
 
-  const hasAnyNotifications =
-    sortedNotifications.length ||
-    reportItems.length ||
-    changeItems.length ||
-    temporaryItems.length;
+  const combinedItems = useMemo(() => {
+    const items = [];
+    sortedNotifications.forEach((item) => {
+      const itemMeta = getActionMeta(item?.action);
+      items.push({
+        key: `transaction-${item.id}`,
+        timestamp: getNotificationTimestamp(item),
+        isUnread: item?.isRead === false,
+        title: item.transactionName || 'Transaction',
+        badge: { label: itemMeta.label, accent: itemMeta.accent },
+        preview: buildPreviewText(item),
+        dateTime: formatDisplayTimestamp(item.updatedAt || item.createdAt),
+        onClick: () => handleNotificationClick(item),
+      });
+    });
+    reportItems.forEach(({ req, tab, status, scope }) => {
+      const statusMeta = getStatusMeta(status);
+      const title = `${formatRequestType(req?.request_type)}${
+        req?.table_name ? ` • ${req.table_name}` : ''
+      }`;
+      const previewLabel =
+        scope === 'response'
+          ? `Responded by ${getResponder(req) || 'Unknown'}`
+          : `Requested by ${getRequester(req) || 'Unknown'}`;
+      const timestamp = getRequestTimestamp(req, scope);
+      items.push({
+        key: `report-${req?.request_id || title}-${status}-${scope}`,
+        timestamp,
+        isUnread: status === 'pending',
+        title,
+        badge: { label: statusMeta.label, accent: statusMeta.accent },
+        preview: previewLabel,
+        dateTime: formatDisplayTimestamp(timestamp),
+        onClick: () => openRequest(req, tab, status),
+      });
+    });
+    changeItems.forEach(({ req, tab, status, scope }) => {
+      const statusMeta = getStatusMeta(status);
+      const title = `${formatRequestType(req?.request_type)}${
+        req?.table_name ? ` • ${req.table_name}` : ''
+      }`;
+      const previewLabel =
+        scope === 'response'
+          ? `Responded by ${getResponder(req) || 'Unknown'}`
+          : `Requested by ${getRequester(req) || 'Unknown'}`;
+      const timestamp = getRequestTimestamp(req, scope);
+      items.push({
+        key: `change-${req?.request_id || title}-${status}-${scope}`,
+        timestamp,
+        isUnread: status === 'pending',
+        title,
+        badge: { label: statusMeta.label, accent: statusMeta.accent },
+        preview: previewLabel,
+        dateTime: formatDisplayTimestamp(timestamp),
+        onClick: () => openRequest(req, tab, status),
+      });
+    });
+    temporaryItems.forEach(({ entry, scope }) => {
+      const formName =
+        entry?.formName ||
+        entry?.form_name ||
+        entry?.configName ||
+        entry?.config_name ||
+        entry?.moduleKey ||
+        entry?.module_key ||
+        'Temporary transaction';
+      const tableName = entry?.tableName || entry?.table_name || '';
+      const title = `${formName}${tableName ? ` • ${tableName}` : ''}`;
+      const scopeLabel = scope === 'review' ? 'Review queue' : 'My drafts';
+      const timestamp = getTemporaryTimestamp(entry);
+      items.push({
+        key: `temporary-${getTemporaryEntryKey(entry) || title}-${scope}`,
+        timestamp,
+        isUnread: scope === 'review',
+        title,
+        badge: { label: scopeLabel, accent: '#7c3aed' },
+        preview: entry?.creatorName || entry?.creator_name || entry?.created_by || '',
+        dateTime: formatDisplayTimestamp(timestamp),
+        onClick: () => openTemporary(scope, entry),
+      });
+    });
+    return items.sort((a, b) => b.timestamp - a.timestamp);
+  }, [
+    changeItems,
+    handleNotificationClick,
+    openRequest,
+    openTemporary,
+    reportItems,
+    sortedNotifications,
+    temporaryItems,
+  ]);
+
+  const hasAnyNotifications = combinedItems.length > 0;
 
   return (
     <div style={styles.wrapper} ref={containerRef}>
@@ -868,124 +1002,25 @@ export default function TransactionNotificationDropdown() {
             {!hasAnyNotifications && (
               <div style={styles.empty}>No notifications yet</div>
             )}
-            {sortedNotifications.length > 0 && (
-              <div style={styles.section}>
-                <div style={styles.sectionTitle}>Transactions</div>
-                {sortedNotifications.map((item) => {
-                  const itemMeta = getActionMeta(item?.action);
-                  return (
-                    <button
-                      key={item.id}
-                      type="button"
-                      style={styles.notificationItem(item?.isRead === false)}
-                      onClick={() => handleNotificationClick(item)}
-                    >
-                      <div style={styles.notificationTitle}>
-                        <span>{item.transactionName || 'Transaction'}</span>
-                        <span style={styles.actionBadge(itemMeta.accent)}>{itemMeta.label}</span>
-                      </div>
-                      <div style={styles.notificationPreview}>{buildPreviewText(item)}</div>
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-            {reportItems.length > 0 && (
-              <div style={styles.section}>
-                <div style={styles.sectionTitle}>Report approvals</div>
-                {reportItems.map(({ req, tab, status, scope }) => {
-                  const statusMeta = getStatusMeta(status);
-                  const title = `${formatRequestType(req?.request_type)}${
-                    req?.table_name ? ` • ${req.table_name}` : ''
-                  }`;
-                  const previewLabel =
-                    scope === 'response'
-                      ? `Responded by ${getResponder(req) || 'Unknown'}`
-                      : `Requested by ${getRequester(req) || 'Unknown'}`;
-                  return (
-                    <button
-                      key={`${req?.request_id || title}-${status}-${scope}`}
-                      type="button"
-                      style={styles.notificationItem(status === 'pending')}
-                      onClick={() => openRequest(req, tab, status)}
-                    >
-                      <div style={styles.notificationTitle}>
-                        <span>{title}</span>
-                        <span style={styles.actionBadge(statusMeta.accent)}>
-                          {statusMeta.label}
-                        </span>
-                      </div>
-                      <div style={styles.notificationPreview}>{previewLabel}</div>
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-            {changeItems.length > 0 && (
-              <div style={styles.section}>
-                <div style={styles.sectionTitle}>Change requests</div>
-                {changeItems.map(({ req, tab, status, scope }) => {
-                  const statusMeta = getStatusMeta(status);
-                  const title = `${formatRequestType(req?.request_type)}${
-                    req?.table_name ? ` • ${req.table_name}` : ''
-                  }`;
-                  const previewLabel =
-                    scope === 'response'
-                      ? `Responded by ${getResponder(req) || 'Unknown'}`
-                      : `Requested by ${getRequester(req) || 'Unknown'}`;
-                  return (
-                    <button
-                      key={`${req?.request_id || title}-${status}-${scope}`}
-                      type="button"
-                      style={styles.notificationItem(status === 'pending')}
-                      onClick={() => openRequest(req, tab, status)}
-                    >
-                      <div style={styles.notificationTitle}>
-                        <span>{title}</span>
-                        <span style={styles.actionBadge(statusMeta.accent)}>
-                          {statusMeta.label}
-                        </span>
-                      </div>
-                      <div style={styles.notificationPreview}>{previewLabel}</div>
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-            {temporaryItems.length > 0 && (
-              <div style={styles.section}>
-                <div style={styles.sectionTitle}>Temporary transactions</div>
-                {temporaryItems.map(({ entry, scope }) => {
-                  const formName =
-                    entry?.formName ||
-                    entry?.form_name ||
-                    entry?.configName ||
-                    entry?.config_name ||
-                    entry?.moduleKey ||
-                    entry?.module_key ||
-                    'Temporary transaction';
-                  const tableName = entry?.tableName || entry?.table_name || '';
-                  const title = `${formName}${tableName ? ` • ${tableName}` : ''}`;
-                  const scopeLabel = scope === 'review' ? 'Review queue' : 'My drafts';
-                  return (
-                    <button
-                      key={`${getTemporaryEntryKey(entry) || title}-${scope}`}
-                      type="button"
-                      style={styles.notificationItem(scope === 'review')}
-                      onClick={() => openTemporary(scope, entry)}
-                    >
-                      <div style={styles.notificationTitle}>
-                        <span>{title}</span>
-                        <span style={styles.actionBadge('#7c3aed')}>{scopeLabel}</span>
-                      </div>
-                      <div style={styles.notificationPreview}>
-                        {entry?.creatorName || entry?.creator_name || entry?.created_by || ''}
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-            )}
+            {combinedItems.map((item) => (
+              <button
+                key={item.key}
+                type="button"
+                style={styles.notificationItem(item.isUnread)}
+                onClick={item.onClick}
+              >
+                <div style={styles.notificationTitle}>
+                  <span>{item.title}</span>
+                  <span style={styles.actionBadge(item.badge?.accent)}>
+                    {item.badge?.label}
+                  </span>
+                </div>
+                <div style={styles.notificationPreview}>{item.preview}</div>
+                {item.dateTime && (
+                  <div style={styles.notificationMeta}>{item.dateTime}</div>
+                )}
+              </button>
+            ))}
           </div>
           <button
             type="button"
@@ -1048,18 +1083,6 @@ const styles = {
     gap: '1rem',
     padding: '0.75rem 1rem 1rem',
   },
-  section: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '0.6rem',
-  },
-  sectionTitle: {
-    fontSize: '0.7rem',
-    fontWeight: 700,
-    color: '#475569',
-    textTransform: 'uppercase',
-    letterSpacing: '0.08em',
-  },
   empty: {
     padding: '1rem',
     color: '#64748b',
@@ -1097,6 +1120,10 @@ const styles = {
   notificationPreview: {
     fontSize: '0.8rem',
     color: '#334155',
+  },
+  notificationMeta: {
+    fontSize: '0.72rem',
+    color: '#64748b',
   },
   footer: {
     width: '100%',
