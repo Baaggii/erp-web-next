@@ -2642,7 +2642,7 @@ const TableManager = forwardRef(function TableManager({
       }
     });
     if (hasInvalidDateFilter) return;
-    fetch(`/api/tables/${encodeURIComponent(table)}?${params.toString()}`, {
+    safeRequest(`/api/tables/${encodeURIComponent(table)}?${params.toString()}`, {
       credentials: 'include',
       signal: controller.signal,
     })
