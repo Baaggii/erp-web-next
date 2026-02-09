@@ -1455,8 +1455,6 @@ const TableManager = forwardRef(function TableManager({
   useEffect(() => {
     if (!table) return;
     let canceled = false;
-    const abortController = new AbortController();
-    const { signal } = abortController;
     setRows([]);
     setCount(0);
     setPage(1);
@@ -1467,10 +1465,8 @@ const TableManager = forwardRef(function TableManager({
     setJsonRelationLabels({});
     jsonRelationFetchCache.current = {};
     setColumnMeta([]);
-    safeRequest(`/api/tables/${encodeURIComponent(table)}/columns`, {
+    fetch(`/api/tables/${encodeURIComponent(table)}/columns`, {
       credentials: 'include',
-      skipLoader: true,
-      signal,
     })
       .then((res) => {
         if (!res.ok) {
@@ -1495,8 +1491,7 @@ const TableManager = forwardRef(function TableManager({
           setAutoInc(computeAutoInc(cols));
         }
       })
-      .catch((err) => {
-        if (err?.name === 'AbortError' || canceled) return;
+      .catch(() => {
         addToast(
           t('failed_load_table_columns', 'Failed to load table columns'),
           'error',
@@ -1504,7 +1499,6 @@ const TableManager = forwardRef(function TableManager({
       });
     return () => {
       canceled = true;
-      abortController.abort();
     };
   }, [table]);
 
@@ -1520,26 +1514,18 @@ const TableManager = forwardRef(function TableManager({
       return;
     }
     let canceled = false;
-    const abortController = new AbortController();
-    const { signal } = abortController;
     views.forEach((v) => {
-      safeRequest(`/api/display_fields?table=${encodeURIComponent(v)}`, {
+      fetch(`/api/display_fields?table=${encodeURIComponent(v)}`, {
         credentials: 'include',
-        skipLoader: true,
-        signal,
       })
         .then((res) => (res.ok ? res.json() : null))
         .then((cfg) => {
           if (canceled) return;
           setViewDisplayMap((m) => ({ ...m, [v]: cfg || {} }));
         })
-        .catch((err) => {
-          if (err?.name === 'AbortError') return;
-        });
-      safeRequest(`/api/tables/${encodeURIComponent(v)}/columns`, {
+        .catch(() => {});
+      fetch(`/api/tables/${encodeURIComponent(v)}/columns`, {
         credentials: 'include',
-        skipLoader: true,
-        signal,
       })
         .then((res) => (res.ok ? res.json() : []))
         .then((cols) => {
@@ -1553,37 +1539,28 @@ const TableManager = forwardRef(function TableManager({
             : [];
           setViewColumns((m) => ({ ...m, [v]: list }));
         })
-        .catch((err) => {
-          if (err?.name === 'AbortError') return;
-        });
+        .catch(() => {});
     });
     return () => {
       canceled = true;
-      abortController.abort();
     };
   }, [viewSourceMap]);
 
   useEffect(() => {
     if (!table) return;
     let canceled = false;
-    const abortController = new AbortController();
-    const { signal } = abortController;
-    safeRequest(`/api/proc_triggers?table=${encodeURIComponent(table)}`, {
+    fetch(`/api/proc_triggers?table=${encodeURIComponent(table)}`, {
       credentials: 'include',
-      skipLoader: true,
-      signal,
     })
       .then((res) => (res.ok ? res.json() : {}))
       .then((data) => {
         if (!canceled) setProcTriggers(data || {});
       })
-      .catch((err) => {
-        if (err?.name === 'AbortError' || canceled) return;
+      .catch(() => {
         if (!canceled) setProcTriggers({});
       });
     return () => {
       canceled = true;
-      abortController.abort();
     };
   }, [table]);
 
@@ -1673,13 +1650,7 @@ const TableManager = forwardRef(function TableManager({
       return;
     }
     let canceled = false;
-    const abortController = new AbortController();
-    const { signal } = abortController;
-    safeRequest('/api/tables/code_transaction?perPage=500', {
-      credentials: 'include',
-      skipLoader: true,
-      signal,
-    })
+    fetch('/api/tables/code_transaction?perPage=500', { credentials: 'include' })
       .then((res) => {
         if (!res.ok) {
           addToast(
@@ -1708,8 +1679,7 @@ const TableManager = forwardRef(function TableManager({
         }));
         setTypeOptions(opts);
       })
-      .catch((err) => {
-        if (err?.name === 'AbortError' || canceled) return;
+      .catch(() => {
         if (!canceled) {
           addToast(
             t('failed_load_transaction_types', 'Failed to load transaction types'),
@@ -1720,7 +1690,6 @@ const TableManager = forwardRef(function TableManager({
       });
     return () => {
       canceled = true;
-      abortController.abort();
     };
   }, [formConfig]);
 
