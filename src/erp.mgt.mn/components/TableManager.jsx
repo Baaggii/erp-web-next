@@ -1393,22 +1393,14 @@ const TableManager = forwardRef(function TableManager({
     return evaluators;
   }, [columnMeta, columnCaseMap, resolveCanonicalKey]);
 
-  const viewSourceInfo = useMemo(() => {
+  const viewSourceMap = useMemo(() => {
     const map = {};
     Object.entries(formConfig?.viewSource || {}).forEach(([k, v]) => {
-      const key = resolveCanonicalKey(k) || k;
-      if (!key) return;
+      const key = resolveCanonicalKey(k);
       map[key] = v;
     });
-    const entries = Object.entries(map).sort(([a], [b]) => a.localeCompare(b));
-    const views = Array.from(new Set(entries.map(([, v]) => v))).sort();
-    return {
-      map,
-      views,
-      signature: JSON.stringify(entries),
-    };
+    return map;
   }, [formConfig?.viewSource, resolveCanonicalKey]);
-  const viewSourceMap = viewSourceInfo.map;
 
   const branchIdFields = useMemo(() => {
     if (formConfig?.branchIdFields?.length)
@@ -1521,7 +1513,7 @@ const TableManager = forwardRef(function TableManager({
   }, [refreshTemporarySummary, table, refreshId]);
 
   useEffect(() => {
-    const views = viewSourceInfo.views;
+    const views = Array.from(new Set(Object.values(viewSourceMap)));
     if (views.length === 0) {
       setViewDisplayMap({});
       setViewColumns({});
@@ -1569,7 +1561,7 @@ const TableManager = forwardRef(function TableManager({
       canceled = true;
       abortController.abort();
     };
-  }, [viewSourceInfo.signature]);
+  }, [viewSourceMap]);
 
   useEffect(() => {
     if (!table) return;
