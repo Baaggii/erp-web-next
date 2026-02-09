@@ -1605,34 +1605,6 @@ const TableManager = forwardRef(function TableManager({
     return map;
   }, [relationConfigs, resolveCanonicalKey]);
 
-  const relationFieldSignature = useMemo(() => {
-    const visible = new Set();
-    const required = new Set();
-    const addField = (set) => (field) => {
-      const resolved = resolveCanonicalKey(field);
-      if (resolved) set.add(resolved);
-    };
-    walkEditableFieldValues(formConfig?.visibleFields || [], addField(visible));
-    walkEditableFieldValues(formConfig?.headerFields || [], addField(visible));
-    walkEditableFieldValues(formConfig?.mainFields || [], addField(visible));
-    walkEditableFieldValues(formConfig?.footerFields || [], addField(visible));
-    walkEditableFieldValues(formConfig?.requiredFields || [], addField(required));
-    const visibleList = Array.from(visible).sort();
-    const requiredList = Array.from(required).sort();
-    return {
-      visible: visibleList,
-      required: requiredList,
-      signature: `${visibleList.join('|')}::${requiredList.join('|')}`,
-    };
-  }, [
-    formConfig?.visibleFields,
-    formConfig?.headerFields,
-    formConfig?.mainFields,
-    formConfig?.footerFields,
-    formConfig?.requiredFields,
-    resolveCanonicalKey,
-  ]);
-
   useEffect(() => {
     if (!formConfig) return;
     const newFilters = {};
@@ -1858,8 +1830,17 @@ const TableManager = forwardRef(function TableManager({
     }
 
     const snapshotValues = relationValueSnapshotRef.current || {};
-    const visibleFieldSet = new Set(relationFieldSignature.visible);
-    const requiredFieldSet = new Set(relationFieldSignature.required);
+    const visibleFieldSet = new Set();
+    const requiredFieldSet = new Set();
+    const addField = (set) => (field) => {
+      const resolved = resolveCanonicalKey(field);
+      if (resolved) set.add(resolved);
+    };
+    walkEditableFieldValues(formConfig?.visibleFields || [], addField(visibleFieldSet));
+    walkEditableFieldValues(formConfig?.headerFields || [], addField(visibleFieldSet));
+    walkEditableFieldValues(formConfig?.mainFields || [], addField(visibleFieldSet));
+    walkEditableFieldValues(formConfig?.footerFields || [], addField(visibleFieldSet));
+    walkEditableFieldValues(formConfig?.requiredFields || [], addField(requiredFieldSet));
 
     const hasMeaningfulValue = (val) => {
       if (val === undefined || val === null || val === '') return false;
@@ -2629,8 +2610,9 @@ const TableManager = forwardRef(function TableManager({
     company,
     branch,
     department,
-    relationFieldSignature.signature,
+    formConfig,
     resolveCanonicalKey,
+    showForm,
     validCols,
   ]);
 
