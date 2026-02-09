@@ -1393,14 +1393,22 @@ const TableManager = forwardRef(function TableManager({
     return evaluators;
   }, [columnMeta, columnCaseMap, resolveCanonicalKey]);
 
-  const viewSourceMap = useMemo(() => {
+  const viewSourceInfo = useMemo(() => {
     const map = {};
     Object.entries(formConfig?.viewSource || {}).forEach(([k, v]) => {
-      const key = resolveCanonicalKey(k);
+      const key = resolveCanonicalKey(k) || k;
+      if (!key) return;
       map[key] = v;
     });
-    return map;
+    const entries = Object.entries(map).sort(([a], [b]) => a.localeCompare(b));
+    const views = Array.from(new Set(entries.map(([, v]) => v))).sort();
+    return {
+      map,
+      views,
+      signature: JSON.stringify(entries),
+    };
   }, [formConfig?.viewSource, resolveCanonicalKey]);
+  const viewSourceMap = viewSourceInfo.map;
 
   const branchIdFields = useMemo(() => {
     if (formConfig?.branchIdFields?.length)
@@ -1513,7 +1521,7 @@ const TableManager = forwardRef(function TableManager({
   }, [refreshTemporarySummary, table, refreshId]);
 
   useEffect(() => {
-    const views = Array.from(new Set(Object.values(viewSourceMap)));
+    const views = viewSourceInfo.views;
     if (views.length === 0) {
       setViewDisplayMap({});
       setViewColumns({});
@@ -1561,7 +1569,7 @@ const TableManager = forwardRef(function TableManager({
       canceled = true;
       abortController.abort();
     };
-  }, [viewSourceMap]);
+  }, [viewSourceInfo.signature]);
 
   useEffect(() => {
     if (!table) return;
@@ -1604,6 +1612,34 @@ const TableManager = forwardRef(function TableManager({
     });
     return map;
   }, [relationConfigs, resolveCanonicalKey]);
+
+  const relationFieldSignature = useMemo(() => {
+    const visible = new Set();
+    const required = new Set();
+    const addField = (set) => (field) => {
+      const resolved = resolveCanonicalKey(field);
+      if (resolved) set.add(resolved);
+    };
+    walkEditableFieldValues(formConfig?.visibleFields || [], addField(visible));
+    walkEditableFieldValues(formConfig?.headerFields || [], addField(visible));
+    walkEditableFieldValues(formConfig?.mainFields || [], addField(visible));
+    walkEditableFieldValues(formConfig?.footerFields || [], addField(visible));
+    walkEditableFieldValues(formConfig?.requiredFields || [], addField(required));
+    const visibleList = Array.from(visible).sort();
+    const requiredList = Array.from(required).sort();
+    return {
+      visible: visibleList,
+      required: requiredList,
+      signature: `${visibleList.join('|')}::${requiredList.join('|')}`,
+    };
+  }, [
+    formConfig?.visibleFields,
+    formConfig?.headerFields,
+    formConfig?.mainFields,
+    formConfig?.footerFields,
+    formConfig?.requiredFields,
+    resolveCanonicalKey,
+  ]);
 
   useEffect(() => {
     if (!formConfig) return;
@@ -1830,17 +1866,8 @@ const TableManager = forwardRef(function TableManager({
     }
 
     const snapshotValues = relationValueSnapshotRef.current || {};
-    const visibleFieldSet = new Set();
-    const requiredFieldSet = new Set();
-    const addField = (set) => (field) => {
-      const resolved = resolveCanonicalKey(field);
-      if (resolved) set.add(resolved);
-    };
-    walkEditableFieldValues(formConfig?.visibleFields || [], addField(visibleFieldSet));
-    walkEditableFieldValues(formConfig?.headerFields || [], addField(visibleFieldSet));
-    walkEditableFieldValues(formConfig?.mainFields || [], addField(visibleFieldSet));
-    walkEditableFieldValues(formConfig?.footerFields || [], addField(visibleFieldSet));
-    walkEditableFieldValues(formConfig?.requiredFields || [], addField(requiredFieldSet));
+    const visibleFieldSet = new Set(relationFieldSignature.visible);
+    const requiredFieldSet = new Set(relationFieldSignature.required);
 
     const hasMeaningfulValue = (val) => {
       if (val === undefined || val === null || val === '') return false;
@@ -2610,9 +2637,8 @@ const TableManager = forwardRef(function TableManager({
     company,
     branch,
     department,
-    formConfig,
+    relationFieldSignature.signature,
     resolveCanonicalKey,
-    showForm,
     validCols,
   ]);
 
