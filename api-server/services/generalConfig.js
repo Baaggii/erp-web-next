@@ -52,6 +52,9 @@ const defaults = {
     notificationFields: 'is_plan,is_plan_completion',
     notificationValues: '1',
   },
+  notifications: {
+    workflowToastEnabled: false,
+  },
   images: {
     basePath: 'uploads',
     cleanupDays: 30,
@@ -124,7 +127,8 @@ async function readConfig(companyId = 0) {
       parsed.general ||
       parsed.images ||
       parsed.print ||
-      parsed.reports
+      parsed.reports ||
+      parsed.notifications
     ) {
       const { imageStorage, ...restGeneral } = parsed.general || {};
       const images = parsed.images || imageStorage || {};
@@ -138,6 +142,10 @@ async function readConfig(companyId = 0) {
         reports: {
           ...defaults.reports,
           ...(parsed.reports || {}),
+        },
+        notifications: {
+          ...defaults.notifications,
+          ...(parsed.notifications || {}),
         },
         plan: {
           ...defaults.plan,
@@ -159,6 +167,7 @@ async function readConfig(companyId = 0) {
         pos: { ...defaults.pos },
         general: { ...defaults.general },
         reports: { ...defaults.reports },
+        notifications: { ...defaults.notifications },
         plan: { ...defaults.plan },
         images: { ...defaults.images },
         print: { ...defaults.print },
@@ -167,6 +176,10 @@ async function readConfig(companyId = 0) {
     result.general.workplaceFetchToastEnabled = coerceBoolean(
       result.general.workplaceFetchToastEnabled,
       defaults.general.workplaceFetchToastEnabled,
+    );
+    result.notifications.workflowToastEnabled = coerceBoolean(
+      result.notifications.workflowToastEnabled,
+      defaults.notifications.workflowToastEnabled,
     );
     return { config: withSystemInfo(result, companyId), isDefault };
   } catch {
@@ -212,6 +225,13 @@ export async function updateGeneralConfig(updates = {}, companyId = 0) {
   if (updates.reports) {
     Object.assign(cfg.reports, updates.reports);
   }
+  if (updates.notifications) {
+    Object.assign(cfg.notifications, updates.notifications);
+  }
+  cfg.notifications.workflowToastEnabled = coerceBoolean(
+    cfg.notifications.workflowToastEnabled,
+    defaults.notifications.workflowToastEnabled,
+  );
   if (updates.plan) {
     cfg.plan = {
       ...defaults.plan,
