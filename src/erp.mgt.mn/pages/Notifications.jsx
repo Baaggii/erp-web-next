@@ -2,7 +2,9 @@ import React, { useCallback, useContext, useEffect, useMemo, useState } from 're
 import { useNavigate } from 'react-router-dom';
 import { usePendingRequests } from '../context/PendingRequestContext.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
+import { useToast } from '../context/ToastContext.jsx';
 import LangContext from '../context/I18nContext.jsx';
+import useGeneralConfig from '../hooks/useGeneralConfig.js';
 import formatTimestamp from '../utils/formatTimestamp.js';
 import NotificationDots, { DEFAULT_NOTIFICATION_COLOR } from '../components/NotificationDots.jsx';
 
@@ -90,6 +92,9 @@ export default function NotificationsPage() {
   const { user, session } = useAuth();
   const { t } = useContext(LangContext);
   const navigate = useNavigate();
+  const { addToast } = useToast();
+  const generalConfig = useGeneralConfig();
+  const workflowToastEnabled = Boolean(generalConfig?.notifications?.workflowToastEnabled);
   const [reportState, setReportState] = useState({
     incoming: [],
     outgoing: [],
@@ -116,6 +121,13 @@ export default function NotificationsPage() {
   const seniorEmpId =
     session && user?.empid && !hasSupervisor ? String(user.empid) : null;
   const seniorPlanEmpId = hasSupervisor ? session?.senior_plan_empid : null;
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (!workflowToastEnabled) {
+      window.sessionStorage.removeItem('notificationWorkflowToastEnabled');
+    }
+  }, [workflowToastEnabled]);
 
   const supervisorIds = useMemo(() => {
     const ids = [];
@@ -613,6 +625,22 @@ export default function NotificationsPage() {
 
   const openTemporary = useCallback(
     (scope, entry) => {
+      if (workflowToastEnabled) {
+        try {
+          window.sessionStorage.setItem('notificationWorkflowToastEnabled', '1');
+        } catch (err) {
+          console.warn('Failed to set notification workflow toast flag', err);
+        }
+        const scopeLabel = scope ? scope : 'temporary';
+        addToast(
+          t(
+            'notifications_workflow_toasts_enabled',
+            'Workflow toasts enabled for {{scope}} notifications.',
+            { scope: scopeLabel },
+          ),
+          'info',
+        );
+      }
       handleTemporarySeen(scope);
       if (!entry) {
         navigate('/forms');
@@ -641,7 +669,7 @@ export default function NotificationsPage() {
       if (idValue != null) params.set('temporaryId', String(idValue));
       navigate(`${path}?${params.toString()}`);
     },
-    [handleTemporarySeen, navigate],
+    [addToast, handleTemporarySeen, navigate, t, workflowToastEnabled],
   );
 
   const normalizeRequestDate = useCallback(
