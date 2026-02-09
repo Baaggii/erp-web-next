@@ -143,18 +143,6 @@ export function TabProvider({ children }) {
     });
   }, []);
 
-  const updateTabLabels = useCallback((getLabel) => {
-    if (typeof getLabel !== 'function') return;
-    trackSetState('TabProvider.setTabs');
-    setTabs((current) =>
-      current.map((tab) => {
-        const nextLabel = getLabel(tab.key, tab.label);
-        if (!nextLabel || nextLabel === tab.label) return tab;
-        return { ...tab, label: nextLabel };
-      }),
-    );
-  }, []);
-
   const resetTabs = useCallback(() => {
     trackSetState('TabProvider.setTabs');
     setTabs([]);
@@ -185,21 +173,10 @@ export function TabProvider({ children }) {
       closeTab,
       switchTab,
       setTabContent,
-      updateTabLabels,
       cache,
       resetTabs,
     }),
-    [
-      tabs,
-      activeKey,
-      openTab,
-      closeTab,
-      switchTab,
-      setTabContent,
-      updateTabLabels,
-      cache,
-      resetTabs,
-    ]
+    [tabs, activeKey, openTab, closeTab, switchTab, setTabContent, cache, resetTabs]
   );
 
   return (
