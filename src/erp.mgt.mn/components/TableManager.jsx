@@ -567,7 +567,6 @@ const TableManager = forwardRef(function TableManager({
   const [jsonRelationLabels, setJsonRelationLabels] = useState({});
   const jsonRelationFetchCache = useRef({});
   const relationValueSnapshotRef = useRef({});
-  const relationLoadSignatureRef = useRef('');
   const hiddenRelationFetchCacheRef = useRef({ table: null, fields: new Set() });
   const displayFieldConfigCache = useRef(new Map());
   const relationFetchCacheRef = useRef({
