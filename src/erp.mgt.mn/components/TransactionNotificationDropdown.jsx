@@ -997,7 +997,11 @@ export default function TransactionNotificationDropdown() {
     navigate(`/?${params.toString()}`);
   };
 
-  const hasAnyNotifications = mixedNotifications.length > 0;
+  const hasAnyNotifications =
+    sortedNotifications.length ||
+    reportItems.length ||
+    changeItems.length ||
+    temporaryItems.length;
 
   return (
     <div style={styles.wrapper} ref={containerRef}>
@@ -1015,112 +1019,124 @@ export default function TransactionNotificationDropdown() {
             {!hasAnyNotifications && (
               <div style={styles.empty}>No notifications yet</div>
             )}
-            {mixedNotifications.map((notification) => {
-              if (notification.kind === 'transaction') {
-                const item = notification.item;
-                const itemMeta = getActionMeta(item?.action);
-                const timeLabel = formatNotificationTime(notification.timestamp);
-                return (
-                  <button
-                    key={`transaction-${item.id}`}
-                    type="button"
-                    style={styles.notificationItem(item?.isRead === false)}
-                    onClick={() => handleNotificationClick(item)}
-                  >
-                    <div style={styles.notificationTitle}>
-                      <span>{item.transactionName || 'Transaction'}</span>
-                      <span style={styles.actionBadge(itemMeta.accent)}>{itemMeta.label}</span>
-                    </div>
-                    <div style={styles.notificationPreview}>{buildPreviewText(item)}</div>
-                    {timeLabel && <div style={styles.notificationTime}>{timeLabel}</div>}
-                  </button>
-                );
-              }
-              if (notification.kind === 'report') {
-                const { req, tab, status, scope } = notification.entry;
-                const statusMeta = getStatusMeta(status);
-                const timeLabel = formatNotificationTime(notification.timestamp);
-                const title = `Report approval • ${formatRequestType(req?.request_type)}${
-                  req?.table_name ? ` • ${req.table_name}` : ''
-                }`;
-                const previewLabel =
-                  scope === 'response'
-                    ? `Responded by ${getResponder(req) || 'Unknown'}`
-                    : `Requested by ${getRequester(req) || 'Unknown'}`;
-                return (
-                  <button
-                    key={`report-${req?.request_id || title}-${status}-${scope}`}
-                    type="button"
-                    style={styles.notificationItem(status === 'pending')}
-                    onClick={() => openRequest(req, tab, status)}
-                  >
-                    <div style={styles.notificationTitle}>
-                      <span>{title}</span>
-                      <span style={styles.actionBadge(statusMeta.accent)}>{statusMeta.label}</span>
-                    </div>
-                    <div style={styles.notificationPreview}>{previewLabel}</div>
-                    {timeLabel && <div style={styles.notificationTime}>{timeLabel}</div>}
-                  </button>
-                );
-              }
-              if (notification.kind === 'change') {
-                const { req, tab, status, scope } = notification.entry;
-                const statusMeta = getStatusMeta(status);
-                const timeLabel = formatNotificationTime(notification.timestamp);
-                const title = `Change request • ${formatRequestType(req?.request_type)}${
-                  req?.table_name ? ` • ${req.table_name}` : ''
-                }`;
-                const previewLabel =
-                  scope === 'response'
-                    ? `Responded by ${getResponder(req) || 'Unknown'}`
-                    : `Requested by ${getRequester(req) || 'Unknown'}`;
-                return (
-                  <button
-                    key={`change-${req?.request_id || title}-${status}-${scope}`}
-                    type="button"
-                    style={styles.notificationItem(status === 'pending')}
-                    onClick={() => openRequest(req, tab, status)}
-                  >
-                    <div style={styles.notificationTitle}>
-                      <span>{title}</span>
-                      <span style={styles.actionBadge(statusMeta.accent)}>{statusMeta.label}</span>
-                    </div>
-                    <div style={styles.notificationPreview}>{previewLabel}</div>
-                    {timeLabel && <div style={styles.notificationTime}>{timeLabel}</div>}
-                  </button>
-                );
-              }
-              const { entry, scope } = notification.entry;
-              const timeLabel = formatNotificationTime(notification.timestamp);
-              const formName =
-                entry?.formName ||
-                entry?.form_name ||
-                entry?.configName ||
-                entry?.config_name ||
-                entry?.moduleKey ||
-                entry?.module_key ||
-                'Temporary transaction';
-              const tableName = entry?.tableName || entry?.table_name || '';
-              const title = `Temporary • ${formName}${tableName ? ` • ${tableName}` : ''}`;
-              const scopeLabel = scope === 'review' ? 'Review queue' : 'My drafts';
-              return (
-                <button
-                  key={`temporary-${getTemporaryEntryKey(entry) || title}-${scope}`}
-                  type="button"
-                  style={styles.notificationItem(scope === 'review')}
-                  onClick={() => openTemporary(scope, entry)}
-                >
-                  <div style={styles.notificationTitle}>
-                    <span>{title}</span>
-                    <span style={styles.actionBadge('#7c3aed')}>{scopeLabel}</span>
-                  </div>
-                  <div style={styles.notificationPreview}>
-                    {entry?.creatorName || entry?.creator_name || entry?.created_by || ''}
-                  </div>
-                  {timeLabel && <div style={styles.notificationTime}>{timeLabel}</div>}
-                </button>
-              );
-            })}
+            {sortedNotifications.length > 0 && (
+              <div style={styles.section}>
+                <div style={styles.sectionTitle}>Transactions</div>
+                {sortedNotifications.map((item) => {
+                  const itemMeta = getActionMeta(item?.action);
+                  return (
+                    <button
+                      key={item.id}
+                      type="button"
+                      style={styles.notificationItem(item?.isRead === false)}
+                      onClick={() => handleNotificationClick(item)}
+                    >
+                      <div style={styles.notificationTitle}>
+                        <span>{item.transactionName || 'Transaction'}</span>
+                        <span style={styles.actionBadge(itemMeta.accent)}>{itemMeta.label}</span>
+                      </div>
+                      <div style={styles.notificationPreview}>{buildPreviewText(item)}</div>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+            {reportItems.length > 0 && (
+              <div style={styles.section}>
+                <div style={styles.sectionTitle}>Report approvals</div>
+                {reportItems.map(({ req, tab, status, scope }) => {
+                  const statusMeta = getStatusMeta(status);
+                  const title = `${formatRequestType(req?.request_type)}${
+                    req?.table_name ? ` • ${req.table_name}` : ''
+                  }`;
+                  const previewLabel =
+                    scope === 'response'
+                      ? `Responded by ${getResponder(req) || 'Unknown'}`
+                      : `Requested by ${getRequester(req) || 'Unknown'}`;
+                  return (
+                    <button
+                      key={`${req?.request_id || title}-${status}-${scope}`}
+                      type="button"
+                      style={styles.notificationItem(status === 'pending')}
+                      onClick={() => openRequest(req, tab, status)}
+                    >
+                      <div style={styles.notificationTitle}>
+                        <span>{title}</span>
+                        <span style={styles.actionBadge(statusMeta.accent)}>
+                          {statusMeta.label}
+                        </span>
+                      </div>
+                      <div style={styles.notificationPreview}>{previewLabel}</div>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+            {changeItems.length > 0 && (
+              <div style={styles.section}>
+                <div style={styles.sectionTitle}>Change requests</div>
+                {changeItems.map(({ req, tab, status, scope }) => {
+                  const statusMeta = getStatusMeta(status);
+                  const title = `${formatRequestType(req?.request_type)}${
+                    req?.table_name ? ` • ${req.table_name}` : ''
+                  }`;
+                  const previewLabel =
+                    scope === 'response'
+                      ? `Responded by ${getResponder(req) || 'Unknown'}`
+                      : `Requested by ${getRequester(req) || 'Unknown'}`;
+                  return (
+                    <button
+                      key={`${req?.request_id || title}-${status}-${scope}`}
+                      type="button"
+                      style={styles.notificationItem(status === 'pending')}
+                      onClick={() => openRequest(req, tab, status)}
+                    >
+                      <div style={styles.notificationTitle}>
+                        <span>{title}</span>
+                        <span style={styles.actionBadge(statusMeta.accent)}>
+                          {statusMeta.label}
+                        </span>
+                      </div>
+                      <div style={styles.notificationPreview}>{previewLabel}</div>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+            {temporaryItems.length > 0 && (
+              <div style={styles.section}>
+                <div style={styles.sectionTitle}>Temporary transactions</div>
+                {temporaryItems.map(({ entry, scope }) => {
+                  const formName =
+                    entry?.formName ||
+                    entry?.form_name ||
+                    entry?.configName ||
+                    entry?.config_name ||
+                    entry?.moduleKey ||
+                    entry?.module_key ||
+                    'Temporary transaction';
+                  const tableName = entry?.tableName || entry?.table_name || '';
+                  const title = `${formName}${tableName ? ` • ${tableName}` : ''}`;
+                  const scopeLabel = scope === 'review' ? 'Review queue' : 'My drafts';
+                  return (
+                    <button
+                      key={`${getTemporaryEntryKey(entry) || title}-${scope}`}
+                      type="button"
+                      style={styles.notificationItem(scope === 'review')}
+                      onClick={() => openTemporary(scope, entry)}
+                    >
+                      <div style={styles.notificationTitle}>
+                        <span>{title}</span>
+                        <span style={styles.actionBadge('#7c3aed')}>{scopeLabel}</span>
+                      </div>
+                      <div style={styles.notificationPreview}>
+                        {entry?.creatorName || entry?.creator_name || entry?.created_by || ''}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
           </div>
           <button
             type="button"
@@ -1232,10 +1248,6 @@ const styles = {
   notificationPreview: {
     fontSize: '0.8rem',
     color: '#334155',
-  },
-  notificationTime: {
-    fontSize: '0.72rem',
-    color: '#94a3b8',
   },
   footer: {
     width: '100%',
