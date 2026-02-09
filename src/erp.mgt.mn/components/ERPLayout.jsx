@@ -1680,62 +1680,19 @@ export default function ERPLayout() {
   const headerMap = useHeaderMappings(modules.map((m) => m.module_key));
   const titleMap = useMemo(() => {
     const map = { "/": t("dashboard", "Dashboard") };
-    if (moduleMap.forms) map[modulePath(moduleMap.forms, moduleMap)] = t("forms", "Forms");
-    if (moduleMap.reports) map[modulePath(moduleMap.reports, moduleMap)] = t("reports", "Reports");
-    if (moduleMap.settings)
-      map[modulePath(moduleMap.settings, moduleMap)] = t("settings", "Settings");
-    if (moduleMap.users)
-      map[modulePath(moduleMap.users, moduleMap)] = t("settings_users", "Users");
-    if (moduleMap.user_settings)
-      map[modulePath(moduleMap.user_settings, moduleMap)] = t(
-        "settings_user_settings",
-        "User Settings",
+    const getModuleLabel = (mod) =>
+      t(
+        mod.module_key,
+        generalConfig.general?.procLabels?.[mod.module_key] ||
+          headerMap[mod.module_key] ||
+          mod.label,
       );
-    if (moduleMap.role_permissions)
-      map[modulePath(moduleMap.role_permissions, moduleMap)] = t(
-        "settings_role_permissions",
-        "Role Permissions",
-      );
-    if (moduleMap.modules)
-      map[modulePath(moduleMap.modules, moduleMap)] = t("settings_modules", "Modules");
-    if (moduleMap.company_licenses)
-      map[modulePath(moduleMap.company_licenses, moduleMap)] = t(
-        "settings_company_licenses",
-        "Company Licenses",
-      );
-    if (moduleMap.tables_management)
-      map[modulePath(moduleMap.tables_management, moduleMap)] = t(
-        "settings_tables_management",
-        "Tables Management",
-      );
-    if (moduleMap.forms_management)
-      map[modulePath(moduleMap.forms_management, moduleMap)] = t(
-        "settings_forms_management",
-        "Forms Management",
-      );
-    if (moduleMap.report_management)
-      map[modulePath(moduleMap.report_management, moduleMap)] = t(
-        "settings_report_management",
-        "Report Management",
-      );
-    if (moduleMap.change_password)
-      map[modulePath(moduleMap.change_password, moduleMap)] = t(
-        "settings_change_password",
-        "Change Password",
-      );
-    if (moduleMap.tenant_tables_registry)
-      map[modulePath(moduleMap.tenant_tables_registry, moduleMap)] = t(
-        "settings_tenant_tables_registry",
-        "Tenant Tables Registry",
-      );
-    if (moduleMap.edit_translations)
-      map[modulePath(moduleMap.edit_translations, moduleMap)] = t(
-        "settings_translations",
-        "Edit Translations",
-      );
+    modules.forEach((mod) => {
+      map[modulePath(mod, moduleMap)] = getModuleLabel(mod);
+    });
     map['/notifications'] = t('notifications', 'Notifications');
     return map;
-  }, [moduleMap, t]);
+  }, [generalConfig, headerMap, moduleMap, modules, t]);
   const validPaths = useMemo(() => {
     const paths = new Set(["/"]);
     modules.forEach((m) => {
@@ -1761,16 +1718,17 @@ export default function ERPLayout() {
 
   function titleForPath(path) {
     if (titleMap[path]) return titleMap[path];
-    const seg = path.replace(/^\/+/, '').split('/')[0];
-    const mod = modules.find(
-      (m) => m.module_key.replace(/_/g, '-') === seg,
-    );
-    if (!mod) return t('appName', 'ERP');
-    return (
-      generalConfig.general?.procLabels?.[mod.module_key] ||
-      headerMap[mod.module_key] ||
-      mod.label
-    );
+    let bestMatch = null;
+    Object.keys(titleMap).forEach((key) => {
+      if (key === '/') return;
+      if (path === key || path.startsWith(`${key}/`)) {
+        if (!bestMatch || key.length > bestMatch.length) {
+          bestMatch = key;
+        }
+      }
+    });
+    if (bestMatch) return titleMap[bestMatch];
+    return t('appName', 'ERP');
   }
 
   const windowTitle = titleForPath(location.pathname);
@@ -3564,7 +3522,7 @@ export default function ERPLayout() {
   useEffect(() => {
     const title = titleForPath(location.pathname);
     openTab({ key: location.pathname, label: title });
-  }, [location.pathname, openTab]);
+  }, [location.pathname, openTab, titleMap]);
 
   function handleOpen(path, label, key) {
     if (txnModules && txnModules.keys.has(key)) {
