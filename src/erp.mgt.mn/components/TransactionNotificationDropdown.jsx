@@ -206,6 +206,8 @@ export default function TransactionNotificationDropdown() {
   const { user, session } = useAuth();
   const { workflows, markWorkflowSeen, temporary } = usePendingRequests();
   const [open, setOpen] = useState(false);
+  const [formEntries, setFormEntries] = useState([]);
+  const [formsLoaded, setFormsLoaded] = useState(false);
   const [codeTransactions, setCodeTransactions] = useState([]);
   const [reportState, setReportState] = useState({
     incoming: [],
@@ -230,6 +232,10 @@ export default function TransactionNotificationDropdown() {
   const containerRef = useRef(null);
   const navigate = useNavigate();
   const generalConfig = useGeneralConfig();
+  const dashboardTabs = useMemo(
+    () => new Set(['general', 'activity', 'audition', 'plans']),
+    [],
+  );
 
   const sortedNotifications = useMemo(
     () => [...notifications].sort((a, b) => getNotificationTimestamp(b) - getNotificationTimestamp(a)),
@@ -766,12 +772,47 @@ export default function TransactionNotificationDropdown() {
     [temporaryState.created, temporaryState.review],
   );
 
+  const resolveFormInfo = useCallback(
+    (item) => {
+      if (!item || formEntries.length === 0) return null;
+      const normalizedName = normalizeText(item.transactionName);
+      if (normalizedName) {
+        const found = formEntries.find(([name]) => normalizeText(name) === normalizedName);
+        if (found) return found[1];
+      }
+      const normalizedTable = normalizeText(item.transactionTable);
+      if (normalizedTable) {
+        const found = formEntries.find(([, info]) => {
+          const table = normalizeText(info?.table ?? info?.tableName ?? info?.table_name);
+          return table && table === normalizedTable;
+        });
+        if (found) return found[1];
+      }
+      return null;
+    },
+    [formEntries],
+  );
+
   const handleNotificationClick = async (item) => {
     if (!item) return;
     setOpen(false);
     await markRead([item.id]);
+    const formInfo = resolveFormInfo(item);
+    const notifyFieldsRaw =
+      formInfo?.notifyFields ?? formInfo?.notify_fields ?? [];
+    const notifyFields = Array.isArray(notifyFieldsRaw)
+      ? notifyFieldsRaw.map((field) => String(field).trim()).filter(Boolean)
+      : [];
+    const redirectTab = String(
+      formInfo?.notificationRedirectTab ?? formInfo?.notification_redirect_tab ?? '',
+    ).trim();
     const groupKey = encodeURIComponent(item.transactionName || 'Transaction');
-    const tab = isPlanNotificationItem(item) || isDutyNotificationItem(item) ? 'plans' : 'activity';
+    const defaultTab =
+      isPlanNotificationItem(item) || isDutyNotificationItem(item) ? 'plans' : 'activity';
+    const tab =
+      notifyFields.length > 0 && dashboardTabs.has(redirectTab)
+        ? redirectTab
+        : defaultTab;
     const params = new URLSearchParams({
       tab,
       notifyGroup: groupKey,
@@ -779,6 +820,28 @@ export default function TransactionNotificationDropdown() {
     });
     navigate(`/?${params.toString()}`);
   };
+
+  const loadFormConfigs = useCallback(async () => {
+    if (formsLoaded) return;
+    try {
+      const res = await fetch('/api/transaction_forms', { credentials: 'include' });
+      const data = res.ok ? await res.json() : {};
+      const entries = Object.entries(data || {}).filter(
+        ([name, info]) => name !== 'isDefault' && info && typeof info === 'object',
+      );
+      setFormEntries(entries);
+    } catch {
+      setFormEntries([]);
+    } finally {
+      setFormsLoaded(true);
+    }
+  }, [formsLoaded]);
+
+  useEffect(() => {
+    if (open && !formsLoaded) {
+      loadFormConfigs();
+    }
+  }, [formsLoaded, loadFormConfigs, open]);
 
   const hasAnyNotifications =
     sortedNotifications.length ||
