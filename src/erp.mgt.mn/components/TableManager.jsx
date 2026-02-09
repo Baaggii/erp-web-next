@@ -1323,11 +1323,11 @@ const TableManager = forwardRef(function TableManager({
       if (displayFieldConfigCache.current.has(cacheKey)) {
         return displayFieldConfigCache.current.get(cacheKey);
       }
-      const promise = safeRequest(
+      const promise = fetch(
         `/api/display_fields?table=${encodeURIComponent(tableName)}${
           idField ? `&idField=${encodeURIComponent(idField)}` : ''
         }`,
-        { credentials: 'include', skipLoader: true },
+        { credentials: 'include' },
       )
         .then((res) => (res.ok ? res.json() : null))
         .catch(() => null);
@@ -2644,7 +2644,6 @@ const TableManager = forwardRef(function TableManager({
     if (hasInvalidDateFilter) return;
     safeRequest(`/api/tables/${encodeURIComponent(table)}?${params.toString()}`, {
       credentials: 'include',
-      skipLoader: true,
       signal: controller.signal,
     })
       .then((res) => {
