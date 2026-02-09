@@ -577,7 +577,6 @@ const TableManager = forwardRef(function TableManager({
     nestedLabels: new Map(),
     referenceLoadErrorTables: new Set(),
     referenceParseErrorTables: new Set(),
-    loadSignature: '',
   });
   const [columnMeta, setColumnMeta] = useState([]);
   const [autoInc, setAutoInc] = useState(new Set());
@@ -1874,8 +1873,8 @@ const TableManager = forwardRef(function TableManager({
       department ?? '',
       relationFieldSignature.signature,
     ].join('|');
-    if (relationFetchCacheRef.current.loadSignature === loadSignature) return;
-    relationFetchCacheRef.current.loadSignature = loadSignature;
+    if (relationLoadSignatureRef.current === loadSignature) return;
+    relationLoadSignatureRef.current = loadSignature;
     let canceled = false;
     const abortController = new AbortController();
     const { signal } = abortController;
@@ -2710,8 +2709,8 @@ const TableManager = forwardRef(function TableManager({
     load();
     return () => {
       canceled = true;
-      if (relationFetchCacheRef.current.loadSignature === loadSignature) {
-        relationFetchCacheRef.current.loadSignature = '';
+      if (relationLoadSignatureRef.current === loadSignature) {
+        relationLoadSignatureRef.current = '';
       }
       abortController.abort();
     };
