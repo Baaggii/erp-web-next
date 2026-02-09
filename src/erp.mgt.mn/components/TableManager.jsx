@@ -2770,7 +2770,7 @@ const TableManager = forwardRef(function TableManager({
               formatRelationDisplay(relationRow, relationConfig, rawValue),
             );
           }
-          if (candidates.size === 0) return false;
+          if (candidates.size === 0) return true;
           return Array.from(candidates).some((candidate) => candidate.includes(query));
         });
       });
@@ -2797,7 +2797,6 @@ const TableManager = forwardRef(function TableManager({
       params.set('sort', sort.column);
       params.set('dir', sort.dir);
     }
-    let hasInvalidDateFilter = false;
     Object.entries(serverFilters).forEach(([k, v]) => {
       if (v !== '' && v !== null && v !== undefined && validCols.has(k)) {
         if (relationConfigs[k]?.table) {
@@ -2815,8 +2814,15 @@ const TableManager = forwardRef(function TableManager({
             params.set(k, `%${v}%`);
           } else if (isValidDateFilterValue(v)) {
             params.set(k, v);
+          } else if (
+            typeof v === 'string' &&
+            v.trim() !== '' &&
+            !v.includes('%') &&
+            !v.includes('_')
+          ) {
+            params.set(k, `%${v}%`);
           } else {
-            hasInvalidDateFilter = true;
+            params.set(k, v);
           }
           return;
         }
@@ -2833,13 +2839,6 @@ const TableManager = forwardRef(function TableManager({
         params.set(k, filterValue);
       }
     });
-    if (hasInvalidDateFilter) {
-      return () => {
-        canceled = true;
-        controller.abort();
-      };
-    }
-
     safeRequest(`/api/tables/${encodeURIComponent(table)}?${params.toString()}`, {
       credentials: 'include',
       skipLoader: true,
