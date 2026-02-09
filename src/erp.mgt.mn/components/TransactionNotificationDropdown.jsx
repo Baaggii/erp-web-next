@@ -824,7 +824,10 @@ export default function TransactionNotificationDropdown() {
   const loadFormConfigs = useCallback(async () => {
     if (formsLoaded) return;
     try {
-      const res = await fetch('/api/transaction_forms', { credentials: 'include' });
+      const res = await fetch('/api/transaction_forms', {
+        credentials: 'include',
+        skipLoader: true,
+      });
       const data = res.ok ? await res.json() : {};
       const entries = Object.entries(data || {}).filter(
         ([name, info]) => name !== 'isDefault' && info && typeof info === 'object',
