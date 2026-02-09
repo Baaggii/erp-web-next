@@ -569,6 +569,16 @@ const TableManager = forwardRef(function TableManager({
   const relationValueSnapshotRef = useRef({});
   const hiddenRelationFetchCacheRef = useRef({ table: null, fields: new Set() });
   const displayFieldConfigCache = useRef(new Map());
+  const relationLoadSignatureRef = useRef('');
+  const relationFetchCacheRef = useRef({
+    displayConfig: new Map(),
+    tenantInfo: new Map(),
+    tableRows: new Map(),
+    relationMap: new Map(),
+    nestedLabels: new Map(),
+    referenceLoadErrorTables: new Set(),
+    referenceParseErrorTables: new Set(),
+  });
   const [columnMeta, setColumnMeta] = useState([]);
   const [autoInc, setAutoInc] = useState(new Set());
   const [showForm, setShowForm] = useState(false);
@@ -1393,14 +1403,22 @@ const TableManager = forwardRef(function TableManager({
     return evaluators;
   }, [columnMeta, columnCaseMap, resolveCanonicalKey]);
 
-  const viewSourceMap = useMemo(() => {
+  const viewSourceInfo = useMemo(() => {
     const map = {};
     Object.entries(formConfig?.viewSource || {}).forEach(([k, v]) => {
-      const key = resolveCanonicalKey(k);
+      const key = resolveCanonicalKey(k) || k;
+      if (!key) return;
       map[key] = v;
     });
-    return map;
+    const entries = Object.entries(map).sort(([a], [b]) => a.localeCompare(b));
+    const views = Array.from(new Set(entries.map(([, v]) => v))).sort();
+    return {
+      map,
+      views,
+      signature: JSON.stringify(entries),
+    };
   }, [formConfig?.viewSource, resolveCanonicalKey]);
+  const viewSourceMap = viewSourceInfo.map;
 
   const branchIdFields = useMemo(() => {
     if (formConfig?.branchIdFields?.length)
@@ -1513,7 +1531,7 @@ const TableManager = forwardRef(function TableManager({
   }, [refreshTemporarySummary, table, refreshId]);
 
   useEffect(() => {
-    const views = Array.from(new Set(Object.values(viewSourceMap)));
+    const views = viewSourceInfo.views;
     if (views.length === 0) {
       setViewDisplayMap({});
       setViewColumns({});
@@ -1561,7 +1579,7 @@ const TableManager = forwardRef(function TableManager({
       canceled = true;
       abortController.abort();
     };
-  }, [viewSourceMap]);
+  }, [viewSourceInfo.signature]);
 
   useEffect(() => {
     if (!table) return;
@@ -1604,6 +1622,34 @@ const TableManager = forwardRef(function TableManager({
     });
     return map;
   }, [relationConfigs, resolveCanonicalKey]);
+
+  const relationFieldSignature = useMemo(() => {
+    const visible = new Set();
+    const required = new Set();
+    const addField = (set) => (field) => {
+      const resolved = resolveCanonicalKey(field);
+      if (resolved) set.add(resolved);
+    };
+    walkEditableFieldValues(formConfig?.visibleFields || [], addField(visible));
+    walkEditableFieldValues(formConfig?.headerFields || [], addField(visible));
+    walkEditableFieldValues(formConfig?.mainFields || [], addField(visible));
+    walkEditableFieldValues(formConfig?.footerFields || [], addField(visible));
+    walkEditableFieldValues(formConfig?.requiredFields || [], addField(required));
+    const visibleList = Array.from(visible).sort();
+    const requiredList = Array.from(required).sort();
+    return {
+      visible: visibleList,
+      required: requiredList,
+      signature: `${visibleList.join('|')}::${requiredList.join('|')}`,
+    };
+  }, [
+    formConfig?.visibleFields,
+    formConfig?.headerFields,
+    formConfig?.mainFields,
+    formConfig?.footerFields,
+    formConfig?.requiredFields,
+    resolveCanonicalKey,
+  ]);
 
   useEffect(() => {
     if (!formConfig) return;
@@ -1821,6 +1867,15 @@ const TableManager = forwardRef(function TableManager({
 
   useEffect(() => {
     if (!table || Object.keys(columnCaseMap).length === 0) return;
+    const loadSignature = [
+      table,
+      company ?? '',
+      branch ?? '',
+      department ?? '',
+      relationFieldSignature.signature,
+    ].join('|');
+    if (relationLoadSignatureRef.current === loadSignature) return;
+    relationLoadSignatureRef.current = loadSignature;
     let canceled = false;
     const abortController = new AbortController();
     const { signal } = abortController;
@@ -1830,17 +1885,8 @@ const TableManager = forwardRef(function TableManager({
     }
 
     const snapshotValues = relationValueSnapshotRef.current || {};
-    const visibleFieldSet = new Set();
-    const requiredFieldSet = new Set();
-    const addField = (set) => (field) => {
-      const resolved = resolveCanonicalKey(field);
-      if (resolved) set.add(resolved);
-    };
-    walkEditableFieldValues(formConfig?.visibleFields || [], addField(visibleFieldSet));
-    walkEditableFieldValues(formConfig?.headerFields || [], addField(visibleFieldSet));
-    walkEditableFieldValues(formConfig?.mainFields || [], addField(visibleFieldSet));
-    walkEditableFieldValues(formConfig?.footerFields || [], addField(visibleFieldSet));
-    walkEditableFieldValues(formConfig?.requiredFields || [], addField(requiredFieldSet));
+    const visibleFieldSet = new Set(relationFieldSignature.visible);
+    const requiredFieldSet = new Set(relationFieldSignature.required);
 
     const hasMeaningfulValue = (val) => {
       if (val === undefined || val === null || val === '') return false;
@@ -1917,13 +1963,20 @@ const TableManager = forwardRef(function TableManager({
       return list;
     }
 
-    const displayConfigCache = new Map();
-    const tenantInfoCache = new Map();
-    const tableRowsCache = new Map();
-    const relationCache = {};
-    const nestedLabelCache = {};
-    const referenceLoadErrorTables = new Set();
-    const referenceParseErrorTables = new Set();
+    const {
+      displayConfig: displayConfigCache,
+      tenantInfo: tenantInfoCache,
+      tableRows: tableRowsCache,
+      relationMap: relationCache,
+      nestedLabels: nestedLabelCache,
+      referenceLoadErrorTables,
+      referenceParseErrorTables,
+    } = relationFetchCacheRef.current;
+    const displayConfigInFlight = new Map();
+    const tenantInfoInFlight = new Map();
+    const tableRowsInFlight = new Map();
+    const relationMapInFlight = new Map();
+    const nestedLabelInFlight = new Map();
 
     const buildRelationLabel = ({
       row,
@@ -2008,7 +2061,12 @@ const TableManager = forwardRef(function TableManager({
       if (filterColumn) cacheKeyParts.push(`fc:${filterColumn}`);
       if (filterColumn && hasFilterValue) cacheKeyParts.push(`fv:${String(filterValue)}`);
       const cacheKey = cacheKeyParts.join('|');
-      if (displayConfigCache.has(cacheKey)) return displayConfigCache.get(cacheKey);
+      if (displayConfigCache.has(cacheKey)) {
+        return Promise.resolve(displayConfigCache.get(cacheKey));
+      }
+      if (displayConfigInFlight.has(cacheKey)) {
+        return displayConfigInFlight.get(cacheKey);
+      }
       const promise = (async () => {
         try {
           const params = new URLSearchParams({ table: tableName });
@@ -2058,14 +2116,26 @@ const TableManager = forwardRef(function TableManager({
           return null;
         }
       })();
-      displayConfigCache.set(cacheKey, promise);
+      displayConfigInFlight.set(cacheKey, promise);
+      promise
+        .then((result) => {
+          displayConfigCache.set(cacheKey, result);
+        })
+        .finally(() => {
+          displayConfigInFlight.delete(cacheKey);
+        });
       return promise;
     };
 
     const fetchTenantInfo = (tableName) => {
       if (!tableName) return Promise.resolve({});
       const cacheKey = tableName.toLowerCase();
-      if (tenantInfoCache.has(cacheKey)) return tenantInfoCache.get(cacheKey);
+      if (tenantInfoCache.has(cacheKey)) {
+        return Promise.resolve(tenantInfoCache.get(cacheKey));
+      }
+      if (tenantInfoInFlight.has(cacheKey)) {
+        return tenantInfoInFlight.get(cacheKey);
+      }
       const promise = (async () => {
         try {
           const res = await safeRequest(
@@ -2084,59 +2154,76 @@ const TableManager = forwardRef(function TableManager({
           return {};
         }
       })();
-      tenantInfoCache.set(cacheKey, promise);
+      tenantInfoInFlight.set(cacheKey, promise);
+      promise
+        .then((result) => {
+          tenantInfoCache.set(cacheKey, result);
+        })
+        .finally(() => {
+          tenantInfoInFlight.delete(cacheKey);
+        });
       return promise;
     };
 
     const fetchRelationMapForTable = async (tableName) => {
       if (!tableName) return {};
       const cacheKey = tableName.toLowerCase();
-      if (relationCache[cacheKey]) return relationCache[cacheKey];
-      try {
-        const relRes = await safeRequest(
-          `/api/tables/${encodeURIComponent(tableName)}/relations`,
-          {
-            credentials: 'include',
-            skipErrorToast: true,
-            skipLoader: true,
-            signal,
-          },
-        );
-        if (!relRes.ok) {
-          relationCache[cacheKey] = {};
-          return relationCache[cacheKey];
+      if (relationCache.has(cacheKey)) return relationCache.get(cacheKey);
+      if (relationMapInFlight.has(cacheKey)) return relationMapInFlight.get(cacheKey);
+      const promise = (async () => {
+        try {
+          const relRes = await safeRequest(
+            `/api/tables/${encodeURIComponent(tableName)}/relations`,
+            {
+              credentials: 'include',
+              skipErrorToast: true,
+              skipLoader: true,
+              signal,
+            },
+          );
+          if (!relRes.ok) {
+            const empty = {};
+            relationCache.set(cacheKey, empty);
+            return empty;
+          }
+          const relList = await relRes.json().catch(() => []);
+          if (canceled) return {};
+          const relMap = {};
+          relList.forEach((entry) => {
+            if (!entry?.COLUMN_NAME || !entry?.REFERENCED_TABLE_NAME) return;
+            const lower = entry.COLUMN_NAME.toLowerCase();
+            relMap[lower] = {
+              table: entry.REFERENCED_TABLE_NAME,
+              column: entry.REFERENCED_COLUMN_NAME,
+              ...(entry.idField ? { idField: entry.idField } : {}),
+              ...(Array.isArray(entry.displayFields)
+                ? { displayFields: entry.displayFields }
+                : {}),
+              ...(entry.combinationSourceColumn
+                ? { combinationSourceColumn: entry.combinationSourceColumn }
+                : {}),
+              ...(entry.combinationTargetColumn
+                ? { combinationTargetColumn: entry.combinationTargetColumn }
+                : {}),
+              ...(entry.filterColumn ? { filterColumn: entry.filterColumn } : {}),
+              ...(entry.filterValue !== undefined && entry.filterValue !== null
+                ? { filterValue: entry.filterValue }
+                : {}),
+            };
+          });
+          relationCache.set(cacheKey, relMap);
+          return relMap;
+        } catch {
+          const empty = {};
+          relationCache.set(cacheKey, empty);
+          return {};
         }
-        const relList = await relRes.json().catch(() => []);
-        if (canceled) return {};
-        const relMap = {};
-        relList.forEach((entry) => {
-          if (!entry?.COLUMN_NAME || !entry?.REFERENCED_TABLE_NAME) return;
-          const lower = entry.COLUMN_NAME.toLowerCase();
-          relMap[lower] = {
-            table: entry.REFERENCED_TABLE_NAME,
-            column: entry.REFERENCED_COLUMN_NAME,
-            ...(entry.idField ? { idField: entry.idField } : {}),
-            ...(Array.isArray(entry.displayFields)
-              ? { displayFields: entry.displayFields }
-              : {}),
-            ...(entry.combinationSourceColumn
-              ? { combinationSourceColumn: entry.combinationSourceColumn }
-              : {}),
-            ...(entry.combinationTargetColumn
-              ? { combinationTargetColumn: entry.combinationTargetColumn }
-              : {}),
-            ...(entry.filterColumn ? { filterColumn: entry.filterColumn } : {}),
-            ...(entry.filterValue !== undefined && entry.filterValue !== null
-              ? { filterValue: entry.filterValue }
-              : {}),
-          };
-        });
-        relationCache[cacheKey] = relMap;
-        return relMap;
-      } catch {
-        relationCache[cacheKey] = {};
-        return {};
-      }
+      })();
+      relationMapInFlight.set(cacheKey, promise);
+      promise.finally(() => {
+        relationMapInFlight.delete(cacheKey);
+      });
+      return promise;
     };
 
     const fetchTableRows = (tableName, tenantInfo, filter) => {
@@ -2146,7 +2233,12 @@ const TableManager = forwardRef(function TableManager({
         cacheKeyParts.push(`${filter.column}:${filter.value}`);
       }
       const cacheKey = cacheKeyParts.join('|');
-      if (tableRowsCache.has(cacheKey)) return tableRowsCache.get(cacheKey);
+      if (tableRowsCache.has(cacheKey)) {
+        return Promise.resolve(tableRowsCache.get(cacheKey));
+      }
+      if (tableRowsInFlight.has(cacheKey)) {
+        return tableRowsInFlight.get(cacheKey);
+      }
       const promise = (async () => {
         const info = tenantInfo || (await fetchTenantInfo(tableName));
         const isShared = info?.isShared ?? info?.is_shared ?? false;
@@ -2212,7 +2304,14 @@ const TableManager = forwardRef(function TableManager({
         }
         return rows;
       })();
-      tableRowsCache.set(cacheKey, promise);
+      tableRowsInFlight.set(cacheKey, promise);
+      promise
+        .then((result) => {
+          tableRowsCache.set(cacheKey, result);
+        })
+        .finally(() => {
+          tableRowsInFlight.delete(cacheKey);
+        });
       return promise;
     };
 
@@ -2227,51 +2326,59 @@ const TableManager = forwardRef(function TableManager({
         nestedRel.filterColumn || '',
         nestedRel.filterValue ?? '',
       ].join('|');
-      if (nestedLabelCache[cacheKey]) return nestedLabelCache[cacheKey];
+      if (nestedLabelCache.has(cacheKey)) return nestedLabelCache.get(cacheKey);
+      if (nestedLabelInFlight.has(cacheKey)) return nestedLabelInFlight.get(cacheKey);
 
-      const [nestedCfg, nestedTenant] = await Promise.all([
-        fetchDisplayConfig(nestedRel.table, {
-          column: nestedRel.filterColumn,
-          value: nestedRel.filterValue,
-        }),
-        fetchTenantInfo(nestedRel.table),
-      ]);
-      if (canceled) return {};
+      const promise = (async () => {
+        const [nestedCfg, nestedTenant] = await Promise.all([
+          fetchDisplayConfig(nestedRel.table, {
+            column: nestedRel.filterColumn,
+            value: nestedRel.filterValue,
+          }),
+          fetchTenantInfo(nestedRel.table),
+        ]);
+        if (canceled) return {};
 
-      const hasFilterValue =
-        nestedRel.filterValue !== undefined && nestedRel.filterValue !== null;
-      const filterConfig =
-        nestedRel.filterColumn && (hasFilterValue || nestedRel.filterValue === '')
-          ? { column: nestedRel.filterColumn, value: nestedRel.filterValue }
-          : null;
-      const rows = await fetchTableRows(nestedRel.table, nestedTenant, filterConfig);
-      if (canceled) return {};
+        const hasFilterValue =
+          nestedRel.filterValue !== undefined && nestedRel.filterValue !== null;
+        const filterConfig =
+          nestedRel.filterColumn && (hasFilterValue || nestedRel.filterValue === '')
+            ? { column: nestedRel.filterColumn, value: nestedRel.filterValue }
+            : null;
+        const rows = await fetchTableRows(nestedRel.table, nestedTenant, filterConfig);
+        if (canceled) return {};
 
-      const labelMap = {};
-      rows.forEach((row) => {
-        if (!row || typeof row !== 'object') return;
-        const keyMap = {};
-        Object.keys(row || {}).forEach((k) => {
-          keyMap[k.toLowerCase()] = k;
+        const labelMap = {};
+        rows.forEach((row) => {
+          if (!row || typeof row !== 'object') return;
+          const keyMap = {};
+          Object.keys(row || {}).forEach((k) => {
+            keyMap[k.toLowerCase()] = k;
+          });
+          const colKey = keyMap[nestedRel.column.toLowerCase()];
+          if (!colKey) return;
+          const val = row[colKey];
+          if (val === undefined || val === null || val === '') return;
+          const label = buildRelationLabel({
+            row,
+            keyMap,
+            relationColumn: nestedRel.column,
+            cfg: nestedCfg,
+            nestedLookups: {},
+          });
+          const valueKey =
+            typeof val === 'string' || typeof val === 'number' ? String(val) : val;
+          labelMap[valueKey] = label;
         });
-        const colKey = keyMap[nestedRel.column.toLowerCase()];
-        if (!colKey) return;
-        const val = row[colKey];
-        if (val === undefined || val === null || val === '') return;
-        const label = buildRelationLabel({
-          row,
-          keyMap,
-          relationColumn: nestedRel.column,
-          cfg: nestedCfg,
-          nestedLookups: {},
-        });
-        const valueKey =
-          typeof val === 'string' || typeof val === 'number' ? String(val) : val;
-        labelMap[valueKey] = label;
+
+        nestedLabelCache.set(cacheKey, labelMap);
+        return labelMap;
+      })();
+      nestedLabelInFlight.set(cacheKey, promise);
+      promise.finally(() => {
+        nestedLabelInFlight.delete(cacheKey);
       });
-
-      nestedLabelCache[cacheKey] = labelMap;
-      return labelMap;
+      return promise;
     };
 
     const loadNestedDisplayLookups = async (tableName, displayFields) => {
@@ -2603,6 +2710,9 @@ const TableManager = forwardRef(function TableManager({
     load();
     return () => {
       canceled = true;
+      if (relationLoadSignatureRef.current === loadSignature) {
+        relationLoadSignatureRef.current = '';
+      }
       abortController.abort();
     };
   }, [
@@ -2610,9 +2720,8 @@ const TableManager = forwardRef(function TableManager({
     company,
     branch,
     department,
-    formConfig,
+    relationFieldSignature.signature,
     resolveCanonicalKey,
-    showForm,
     validCols,
   ]);
 
