@@ -21,14 +21,6 @@ function normalizeFormConfig(info = {}) {
   const toObject = (value) =>
     value && typeof value === 'object' && !Array.isArray(value) ? { ...value } : {};
   const toString = (value) => (typeof value === 'string' ? value : '');
-  const promotionKeepFields = toArray(
-    info.temporaryPromoteKeepFields ??
-      info.temporaryPromotionKeepFields ??
-      info.temporary_promote_keep_fields ??
-      info.temporary_promotion_keep_fields ??
-      info.promoteKeepFields ??
-      info.promote_keep_fields,
-  );
   const temporaryFlag = Boolean(
     info.supportsTemporarySubmission ??
       info.allowTemporarySubmission ??
@@ -93,10 +85,6 @@ function normalizeFormConfig(info = {}) {
     notificationDashboardFields: toArray(info.notificationDashboardFields),
     notificationPhoneFields: toArray(info.notificationPhoneFields),
     notificationEmailFields: toArray(info.notificationEmailFields),
-    notificationDashboardTab: toString(
-      info.notificationDashboardTab ?? info.notification_dashboard_tab,
-    ),
-    temporaryPromoteKeepFields: promotionKeepFields,
     allowedBranches,
     allowedDepartments,
     allowedPositions,
@@ -1328,25 +1316,6 @@ export default function FormsManagement() {
                   <button onClick={openLabelEditor}>Edit Field Labels</button>
                 )}
               </div>
-              {config.notifyFields.length > 0 && (
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem' }}>
-                  <label style={fieldColumnStyle}>
-                    <span style={{ fontWeight: 600 }}>Notification dashboard tab</span>
-                    <select
-                      value={config.notificationDashboardTab || 'activity'}
-                      onChange={(e) =>
-                        setConfig((c) => ({
-                          ...c,
-                          notificationDashboardTab: e.target.value,
-                        }))
-                      }
-                    >
-                      <option value="activity">Activity</option>
-                      <option value="plans">Plans</option>
-                    </select>
-                  </label>
-                </div>
-              )}
               <div className="table-container overflow-x-auto" style={{ maxHeight: '70vh' }}>
                 <table style={{ borderCollapse: 'collapse', width: '100%' }}>
                   <thead className="sticky-header">
@@ -1375,9 +1344,6 @@ export default function FormsManagement() {
                 <th style={{ border: '1px solid #ccc', padding: '4px' }}>Main</th>
                 <th style={{ border: '1px solid #ccc', padding: '4px' }}>Footer</th>
                 <th style={{ border: '1px solid #ccc', padding: '4px' }}>Notify</th>
-                <th style={{ border: '1px solid #ccc', padding: '4px' }}>
-                  Keep on promote
-                </th>
                 <th style={{ border: '1px solid #ccc', padding: '4px' }}>
                   Show in notification
                 </th>
@@ -1563,13 +1529,6 @@ export default function FormsManagement() {
                       type="checkbox"
                       checked={config.notifyFields.includes(col)}
                       onChange={() => toggleFieldList(col, 'notifyFields')}
-                    />
-                  </td>
-                  <td style={{ border: '1px solid #ccc', padding: '4px', textAlign: 'center' }}>
-                    <input
-                      type="checkbox"
-                      checked={config.temporaryPromoteKeepFields.includes(col)}
-                      onChange={() => toggleFieldList(col, 'temporaryPromoteKeepFields')}
                     />
                   </td>
                   <td style={{ border: '1px solid #ccc', padding: '4px', textAlign: 'center' }}>
