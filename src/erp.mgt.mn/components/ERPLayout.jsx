@@ -1733,19 +1733,9 @@ export default function ERPLayout() {
         "settings_translations",
         "Edit Translations",
       );
-    modules.forEach((mod) => {
-      const path = modulePath(mod, moduleMap);
-      if (map[path]) return;
-      map[path] = t(
-        mod.module_key,
-        generalConfig.general?.procLabels?.[mod.module_key] ||
-          headerMap[mod.module_key] ||
-          mod.label,
-      );
-    });
     map['/notifications'] = t('notifications', 'Notifications');
     return map;
-  }, [generalConfig.general?.procLabels, headerMap, moduleMap, modules, t]);
+  }, [moduleMap, t]);
   const validPaths = useMemo(() => {
     const paths = new Set(["/"]);
     modules.forEach((m) => {
