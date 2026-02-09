@@ -1866,6 +1866,15 @@ const TableManager = forwardRef(function TableManager({
 
   useEffect(() => {
     if (!table || Object.keys(columnCaseMap).length === 0) return;
+    const loadSignature = [
+      table,
+      company ?? '',
+      branch ?? '',
+      department ?? '',
+      relationFieldSignature.signature,
+    ].join('|');
+    if (relationLoadSignatureRef.current === loadSignature) return;
+    relationLoadSignatureRef.current = loadSignature;
     let canceled = false;
     const abortController = new AbortController();
     const { signal } = abortController;
@@ -2700,6 +2709,9 @@ const TableManager = forwardRef(function TableManager({
     load();
     return () => {
       canceled = true;
+      if (relationLoadSignatureRef.current === loadSignature) {
+        relationLoadSignatureRef.current = '';
+      }
       abortController.abort();
     };
   }, [
