@@ -569,7 +569,6 @@ const TableManager = forwardRef(function TableManager({
   const relationValueSnapshotRef = useRef({});
   const hiddenRelationFetchCacheRef = useRef({ table: null, fields: new Set() });
   const displayFieldConfigCache = useRef(new Map());
-  const relationLoadSignatureRef = useRef('');
   const relationFetchCacheRef = useRef({
     displayConfig: new Map(),
     tenantInfo: new Map(),
