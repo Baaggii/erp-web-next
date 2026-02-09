@@ -49,7 +49,6 @@ import {
 } from '../utils/jsonValueFormatting.js';
 import normalizeRelationKey from '../utils/normalizeRelationKey.js';
 import getRelationRowFromMap from '../utils/getRelationRowFromMap.js';
-import safeRequest from '../utils/safeRequest.js';
 
 const TEMPORARY_FILTER_CACHE_KEY = 'temporary-transaction-filter';
 
@@ -1791,8 +1790,6 @@ const TableManager = forwardRef(function TableManager({
   useEffect(() => {
     if (!table || Object.keys(columnCaseMap).length === 0) return;
     let canceled = false;
-    const abortController = new AbortController();
-    const { signal } = abortController;
     if (hiddenRelationFetchCacheRef.current.table !== table) {
       hiddenRelationFetchCacheRef.current.table = table;
       hiddenRelationFetchCacheRef.current.fields = new Set();
@@ -1985,10 +1982,8 @@ const TableManager = forwardRef(function TableManager({
           if (filterColumn && hasFilterValue) {
             params.set('filterValue', String(filterValue).trim());
           }
-          const res = await safeRequest(`/api/display_fields?${params.toString()}`, {
+          const res = await fetch(`/api/display_fields?${params.toString()}`, {
             credentials: 'include',
-            skipLoader: true,
-            signal,
           });
           if (!res.ok) {
             if (!canceled) {
@@ -2017,7 +2012,6 @@ const TableManager = forwardRef(function TableManager({
             filters: Array.isArray(json.filters) ? json.filters : [],
           };
         } catch (err) {
-          if (err?.name === 'AbortError' || canceled) return null;
           if (!canceled) {
             addToast(
               t('failed_load_display_fields', 'Failed to load display fields'),
@@ -2037,14 +2031,9 @@ const TableManager = forwardRef(function TableManager({
       if (tenantInfoCache.has(cacheKey)) return tenantInfoCache.get(cacheKey);
       const promise = (async () => {
         try {
-          const res = await safeRequest(
+          const res = await fetch(
             `/api/tenant_tables/${encodeURIComponent(tableName)}`,
-            {
-              credentials: 'include',
-              skipErrorToast: true,
-              skipLoader: true,
-              signal,
-            },
+            { credentials: 'include', skipErrorToast: true, skipLoader: true },
           );
           if (!res.ok) return {};
           const json = await res.json().catch(() => ({}));
@@ -2062,14 +2051,9 @@ const TableManager = forwardRef(function TableManager({
       const cacheKey = tableName.toLowerCase();
       if (relationCache[cacheKey]) return relationCache[cacheKey];
       try {
-        const relRes = await safeRequest(
+        const relRes = await fetch(
           `/api/tables/${encodeURIComponent(tableName)}/relations`,
-          {
-            credentials: 'include',
-            skipErrorToast: true,
-            skipLoader: true,
-            signal,
-          },
+          { credentials: 'include', skipErrorToast: true, skipLoader: true },
         );
         if (!relRes.ok) {
           relationCache[cacheKey] = {};
@@ -2132,14 +2116,11 @@ const TableManager = forwardRef(function TableManager({
           }
           let res;
           try {
-            res = await safeRequest(
+            res = await fetch(
               `/api/tables/${encodeURIComponent(tableName)}?${params.toString()}`,
-              { credentials: 'include', skipLoader: true, signal },
+              { credentials: 'include' },
             );
           } catch (err) {
-            if (err?.name === 'AbortError' || canceled) {
-              break;
-            }
             if (!canceled && !referenceLoadErrorTables.has(cacheKey)) {
               referenceLoadErrorTables.add(cacheKey);
               addToast(
@@ -2390,14 +2371,9 @@ const TableManager = forwardRef(function TableManager({
         let relRes;
         let unauthorized = false;
         try {
-          relRes = await safeRequest(
+          relRes = await fetch(
             `/api/tables/${encodeURIComponent(table)}/relations`,
-            {
-              credentials: 'include',
-              skipErrorToast: true,
-              skipLoader: true,
-              signal,
-            },
+            { credentials: 'include', skipErrorToast: true, skipLoader: true },
           );
           unauthorized = relRes?.status === 403;
         } catch (err) {
@@ -2416,14 +2392,9 @@ const TableManager = forwardRef(function TableManager({
         } else {
           let customList = [];
           try {
-            const customRes = await safeRequest(
+            const customRes = await fetch(
               `/api/tables/${encodeURIComponent(table)}/relations/custom`,
-              {
-                credentials: 'include',
-                skipErrorToast: true,
-                skipLoader: true,
-                signal,
-              },
+              { credentials: 'include', skipErrorToast: true, skipLoader: true },
             );
             unauthorized = unauthorized || customRes?.status === 403;
             if (customRes.ok) {
@@ -2572,7 +2543,6 @@ const TableManager = forwardRef(function TableManager({
     load();
     return () => {
       canceled = true;
-      abortController.abort();
     };
   }, [
     table,
