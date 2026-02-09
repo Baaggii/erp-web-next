@@ -207,7 +207,6 @@ export default function FormsManagement() {
     permissions?.permissions?.system_settings ||
     session?.permissions?.system_settings;
   const modulePermitted = isModulePermissionGranted(permissions, 'forms_management');
-  const showTemporaryKeepColumn = Boolean(config.allowTemporarySubmission);
   const dashboardTabOptions = useMemo(
     () => [
       { value: '', label: t('notification_redirect_default', 'Default (Activity/Plans)') },
@@ -293,6 +292,7 @@ export default function FormsManagement() {
   };
 
   const [config, setConfig] = useState(() => normalizeFormConfig());
+  const showTemporaryKeepColumn = Boolean(config.allowTemporarySubmission);
   const [posApiOptionSnapshot, setPosApiOptionSnapshot] = useState({
     transactionEndpointOptions: [],
     endpointReceiptTypes: [],
