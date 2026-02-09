@@ -219,13 +219,6 @@ function getNotificationTimestamp(notification) {
   return Number.isFinite(ts) ? ts : 0;
 }
 
-function formatNotificationTime(value) {
-  if (!value) return '';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return '';
-  return formatTimestamp(date);
-}
-
 function getRequestTimestamp(req, scope) {
   if (!req) return 0;
   const raw =
