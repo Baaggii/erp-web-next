@@ -3058,13 +3058,9 @@ const TableManager = forwardRef(function TableManager({
     if (!table) return [];
     if (columnMeta.length > 0) return columnMeta;
     try {
-      const res = await safeRequest(
-        `/api/tables/${encodeURIComponent(table)}/columns`,
-        {
-          credentials: 'include',
-          skipLoader: true,
-        },
-      );
+      const res = await fetch(`/api/tables/${encodeURIComponent(table)}/columns`, {
+        credentials: 'include',
+      });
       if (!res.ok) {
         addToast(
           t('failed_load_table_columns', 'Failed to load table columns'),
@@ -10199,10 +10195,7 @@ const TableManager = forwardRef(function TableManager({
                   credentials: 'include',
                   body: JSON.stringify(labelEdits),
                 });
-                const res = await safeRequest(
-                  `/api/tables/${encodeURIComponent(table)}/columns`,
-                  { credentials: 'include', skipLoader: true },
-                );
+                const res = await fetch(`/api/tables/${encodeURIComponent(table)}/columns`, { credentials: 'include' });
                 if (res.ok) {
                   const cols = await res.json();
                   setColumnMeta(cols);
