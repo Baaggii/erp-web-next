@@ -983,35 +983,6 @@ export default function TransactionNotificationDropdown() {
     );
   }, [temporaryState.created, temporaryState.review]);
 
-  const mixedNotifications = useMemo(() => {
-    const transactionItems = sortedNotifications.map((item) => ({
-      kind: 'transaction',
-      item,
-      timestamp: getNotificationTimestamp(item),
-    }));
-    const reportNotifications = reportItems.map((entry) => ({
-      kind: 'report',
-      entry,
-      timestamp: getRequestTimestamp(entry.req, entry.scope),
-    }));
-    const changeNotifications = changeItems.map((entry) => ({
-      kind: 'change',
-      entry,
-      timestamp: getRequestTimestamp(entry.req, entry.scope),
-    }));
-    const temporaryNotifications = temporaryItems.map((entry) => ({
-      kind: 'temporary',
-      entry,
-      timestamp: getTemporaryTimestamp(entry.entry),
-    }));
-    return [
-      ...transactionItems,
-      ...reportNotifications,
-      ...changeNotifications,
-      ...temporaryNotifications,
-    ].sort((a, b) => b.timestamp - a.timestamp);
-  }, [changeItems, reportItems, sortedNotifications, temporaryItems]);
-
   const handleNotificationClick = async (item) => {
     if (!item) return;
     setOpen(false);
