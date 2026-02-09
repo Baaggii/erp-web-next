@@ -569,15 +569,6 @@ const TableManager = forwardRef(function TableManager({
   const relationValueSnapshotRef = useRef({});
   const hiddenRelationFetchCacheRef = useRef({ table: null, fields: new Set() });
   const displayFieldConfigCache = useRef(new Map());
-  const relationFetchCacheRef = useRef({
-    displayConfig: new Map(),
-    tenantInfo: new Map(),
-    tableRows: new Map(),
-    relationMap: new Map(),
-    nestedLabels: new Map(),
-    referenceLoadErrorTables: new Set(),
-    referenceParseErrorTables: new Set(),
-  });
   const [columnMeta, setColumnMeta] = useState([]);
   const [autoInc, setAutoInc] = useState(new Set());
   const [showForm, setShowForm] = useState(false);
@@ -1953,20 +1944,13 @@ const TableManager = forwardRef(function TableManager({
       return list;
     }
 
-    const {
-      displayConfig: displayConfigCache,
-      tenantInfo: tenantInfoCache,
-      tableRows: tableRowsCache,
-      relationMap: relationCache,
-      nestedLabels: nestedLabelCache,
-      referenceLoadErrorTables,
-      referenceParseErrorTables,
-    } = relationFetchCacheRef.current;
-    const displayConfigInFlight = new Map();
-    const tenantInfoInFlight = new Map();
-    const tableRowsInFlight = new Map();
-    const relationMapInFlight = new Map();
-    const nestedLabelInFlight = new Map();
+    const displayConfigCache = new Map();
+    const tenantInfoCache = new Map();
+    const tableRowsCache = new Map();
+    const relationCache = {};
+    const nestedLabelCache = {};
+    const referenceLoadErrorTables = new Set();
+    const referenceParseErrorTables = new Set();
 
     const buildRelationLabel = ({
       row,
@@ -2051,12 +2035,7 @@ const TableManager = forwardRef(function TableManager({
       if (filterColumn) cacheKeyParts.push(`fc:${filterColumn}`);
       if (filterColumn && hasFilterValue) cacheKeyParts.push(`fv:${String(filterValue)}`);
       const cacheKey = cacheKeyParts.join('|');
-      if (displayConfigCache.has(cacheKey)) {
-        return Promise.resolve(displayConfigCache.get(cacheKey));
-      }
-      if (displayConfigInFlight.has(cacheKey)) {
-        return displayConfigInFlight.get(cacheKey);
-      }
+      if (displayConfigCache.has(cacheKey)) return displayConfigCache.get(cacheKey);
       const promise = (async () => {
         try {
           const params = new URLSearchParams({ table: tableName });
@@ -2106,26 +2085,14 @@ const TableManager = forwardRef(function TableManager({
           return null;
         }
       })();
-      displayConfigInFlight.set(cacheKey, promise);
-      promise
-        .then((result) => {
-          displayConfigCache.set(cacheKey, result);
-        })
-        .finally(() => {
-          displayConfigInFlight.delete(cacheKey);
-        });
+      displayConfigCache.set(cacheKey, promise);
       return promise;
     };
 
     const fetchTenantInfo = (tableName) => {
       if (!tableName) return Promise.resolve({});
       const cacheKey = tableName.toLowerCase();
-      if (tenantInfoCache.has(cacheKey)) {
-        return Promise.resolve(tenantInfoCache.get(cacheKey));
-      }
-      if (tenantInfoInFlight.has(cacheKey)) {
-        return tenantInfoInFlight.get(cacheKey);
-      }
+      if (tenantInfoCache.has(cacheKey)) return tenantInfoCache.get(cacheKey);
       const promise = (async () => {
         try {
           const res = await safeRequest(
@@ -2144,76 +2111,59 @@ const TableManager = forwardRef(function TableManager({
           return {};
         }
       })();
-      tenantInfoInFlight.set(cacheKey, promise);
-      promise
-        .then((result) => {
-          tenantInfoCache.set(cacheKey, result);
-        })
-        .finally(() => {
-          tenantInfoInFlight.delete(cacheKey);
-        });
+      tenantInfoCache.set(cacheKey, promise);
       return promise;
     };
 
     const fetchRelationMapForTable = async (tableName) => {
       if (!tableName) return {};
       const cacheKey = tableName.toLowerCase();
-      if (relationCache.has(cacheKey)) return relationCache.get(cacheKey);
-      if (relationMapInFlight.has(cacheKey)) return relationMapInFlight.get(cacheKey);
-      const promise = (async () => {
-        try {
-          const relRes = await safeRequest(
-            `/api/tables/${encodeURIComponent(tableName)}/relations`,
-            {
-              credentials: 'include',
-              skipErrorToast: true,
-              skipLoader: true,
-              signal,
-            },
-          );
-          if (!relRes.ok) {
-            const empty = {};
-            relationCache.set(cacheKey, empty);
-            return empty;
-          }
-          const relList = await relRes.json().catch(() => []);
-          if (canceled) return {};
-          const relMap = {};
-          relList.forEach((entry) => {
-            if (!entry?.COLUMN_NAME || !entry?.REFERENCED_TABLE_NAME) return;
-            const lower = entry.COLUMN_NAME.toLowerCase();
-            relMap[lower] = {
-              table: entry.REFERENCED_TABLE_NAME,
-              column: entry.REFERENCED_COLUMN_NAME,
-              ...(entry.idField ? { idField: entry.idField } : {}),
-              ...(Array.isArray(entry.displayFields)
-                ? { displayFields: entry.displayFields }
-                : {}),
-              ...(entry.combinationSourceColumn
-                ? { combinationSourceColumn: entry.combinationSourceColumn }
-                : {}),
-              ...(entry.combinationTargetColumn
-                ? { combinationTargetColumn: entry.combinationTargetColumn }
-                : {}),
-              ...(entry.filterColumn ? { filterColumn: entry.filterColumn } : {}),
-              ...(entry.filterValue !== undefined && entry.filterValue !== null
-                ? { filterValue: entry.filterValue }
-                : {}),
-            };
-          });
-          relationCache.set(cacheKey, relMap);
-          return relMap;
-        } catch {
-          const empty = {};
-          relationCache.set(cacheKey, empty);
-          return {};
+      if (relationCache[cacheKey]) return relationCache[cacheKey];
+      try {
+        const relRes = await safeRequest(
+          `/api/tables/${encodeURIComponent(tableName)}/relations`,
+          {
+            credentials: 'include',
+            skipErrorToast: true,
+            skipLoader: true,
+            signal,
+          },
+        );
+        if (!relRes.ok) {
+          relationCache[cacheKey] = {};
+          return relationCache[cacheKey];
         }
-      })();
-      relationMapInFlight.set(cacheKey, promise);
-      promise.finally(() => {
-        relationMapInFlight.delete(cacheKey);
-      });
-      return promise;
+        const relList = await relRes.json().catch(() => []);
+        if (canceled) return {};
+        const relMap = {};
+        relList.forEach((entry) => {
+          if (!entry?.COLUMN_NAME || !entry?.REFERENCED_TABLE_NAME) return;
+          const lower = entry.COLUMN_NAME.toLowerCase();
+          relMap[lower] = {
+            table: entry.REFERENCED_TABLE_NAME,
+            column: entry.REFERENCED_COLUMN_NAME,
+            ...(entry.idField ? { idField: entry.idField } : {}),
+            ...(Array.isArray(entry.displayFields)
+              ? { displayFields: entry.displayFields }
+              : {}),
+            ...(entry.combinationSourceColumn
+              ? { combinationSourceColumn: entry.combinationSourceColumn }
+              : {}),
+            ...(entry.combinationTargetColumn
+              ? { combinationTargetColumn: entry.combinationTargetColumn }
+              : {}),
+            ...(entry.filterColumn ? { filterColumn: entry.filterColumn } : {}),
+            ...(entry.filterValue !== undefined && entry.filterValue !== null
+              ? { filterValue: entry.filterValue }
+              : {}),
+          };
+        });
+        relationCache[cacheKey] = relMap;
+        return relMap;
+      } catch {
+        relationCache[cacheKey] = {};
+        return {};
+      }
     };
 
     const fetchTableRows = (tableName, tenantInfo, filter) => {
@@ -2223,12 +2173,7 @@ const TableManager = forwardRef(function TableManager({
         cacheKeyParts.push(`${filter.column}:${filter.value}`);
       }
       const cacheKey = cacheKeyParts.join('|');
-      if (tableRowsCache.has(cacheKey)) {
-        return Promise.resolve(tableRowsCache.get(cacheKey));
-      }
-      if (tableRowsInFlight.has(cacheKey)) {
-        return tableRowsInFlight.get(cacheKey);
-      }
+      if (tableRowsCache.has(cacheKey)) return tableRowsCache.get(cacheKey);
       const promise = (async () => {
         const info = tenantInfo || (await fetchTenantInfo(tableName));
         const isShared = info?.isShared ?? info?.is_shared ?? false;
@@ -2294,14 +2239,7 @@ const TableManager = forwardRef(function TableManager({
         }
         return rows;
       })();
-      tableRowsInFlight.set(cacheKey, promise);
-      promise
-        .then((result) => {
-          tableRowsCache.set(cacheKey, result);
-        })
-        .finally(() => {
-          tableRowsInFlight.delete(cacheKey);
-        });
+      tableRowsCache.set(cacheKey, promise);
       return promise;
     };
 
@@ -2316,59 +2254,51 @@ const TableManager = forwardRef(function TableManager({
         nestedRel.filterColumn || '',
         nestedRel.filterValue ?? '',
       ].join('|');
-      if (nestedLabelCache.has(cacheKey)) return nestedLabelCache.get(cacheKey);
-      if (nestedLabelInFlight.has(cacheKey)) return nestedLabelInFlight.get(cacheKey);
+      if (nestedLabelCache[cacheKey]) return nestedLabelCache[cacheKey];
 
-      const promise = (async () => {
-        const [nestedCfg, nestedTenant] = await Promise.all([
-          fetchDisplayConfig(nestedRel.table, {
-            column: nestedRel.filterColumn,
-            value: nestedRel.filterValue,
-          }),
-          fetchTenantInfo(nestedRel.table),
-        ]);
-        if (canceled) return {};
+      const [nestedCfg, nestedTenant] = await Promise.all([
+        fetchDisplayConfig(nestedRel.table, {
+          column: nestedRel.filterColumn,
+          value: nestedRel.filterValue,
+        }),
+        fetchTenantInfo(nestedRel.table),
+      ]);
+      if (canceled) return {};
 
-        const hasFilterValue =
-          nestedRel.filterValue !== undefined && nestedRel.filterValue !== null;
-        const filterConfig =
-          nestedRel.filterColumn && (hasFilterValue || nestedRel.filterValue === '')
-            ? { column: nestedRel.filterColumn, value: nestedRel.filterValue }
-            : null;
-        const rows = await fetchTableRows(nestedRel.table, nestedTenant, filterConfig);
-        if (canceled) return {};
+      const hasFilterValue =
+        nestedRel.filterValue !== undefined && nestedRel.filterValue !== null;
+      const filterConfig =
+        nestedRel.filterColumn && (hasFilterValue || nestedRel.filterValue === '')
+          ? { column: nestedRel.filterColumn, value: nestedRel.filterValue }
+          : null;
+      const rows = await fetchTableRows(nestedRel.table, nestedTenant, filterConfig);
+      if (canceled) return {};
 
-        const labelMap = {};
-        rows.forEach((row) => {
-          if (!row || typeof row !== 'object') return;
-          const keyMap = {};
-          Object.keys(row || {}).forEach((k) => {
-            keyMap[k.toLowerCase()] = k;
-          });
-          const colKey = keyMap[nestedRel.column.toLowerCase()];
-          if (!colKey) return;
-          const val = row[colKey];
-          if (val === undefined || val === null || val === '') return;
-          const label = buildRelationLabel({
-            row,
-            keyMap,
-            relationColumn: nestedRel.column,
-            cfg: nestedCfg,
-            nestedLookups: {},
-          });
-          const valueKey =
-            typeof val === 'string' || typeof val === 'number' ? String(val) : val;
-          labelMap[valueKey] = label;
+      const labelMap = {};
+      rows.forEach((row) => {
+        if (!row || typeof row !== 'object') return;
+        const keyMap = {};
+        Object.keys(row || {}).forEach((k) => {
+          keyMap[k.toLowerCase()] = k;
         });
-
-        nestedLabelCache.set(cacheKey, labelMap);
-        return labelMap;
-      })();
-      nestedLabelInFlight.set(cacheKey, promise);
-      promise.finally(() => {
-        nestedLabelInFlight.delete(cacheKey);
+        const colKey = keyMap[nestedRel.column.toLowerCase()];
+        if (!colKey) return;
+        const val = row[colKey];
+        if (val === undefined || val === null || val === '') return;
+        const label = buildRelationLabel({
+          row,
+          keyMap,
+          relationColumn: nestedRel.column,
+          cfg: nestedCfg,
+          nestedLookups: {},
+        });
+        const valueKey =
+          typeof val === 'string' || typeof val === 'number' ? String(val) : val;
+        labelMap[valueKey] = label;
       });
-      return promise;
+
+      nestedLabelCache[cacheKey] = labelMap;
+      return labelMap;
     };
 
     const loadNestedDisplayLookups = async (tableName, displayFields) => {
