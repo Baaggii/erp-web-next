@@ -21,6 +21,7 @@ function normalizeFormConfig(info = {}) {
   const toObject = (value) =>
     value && typeof value === 'object' && !Array.isArray(value) ? { ...value } : {};
   const toString = (value) => (typeof value === 'string' ? value : '');
+  const toTabValue = (value) => (typeof value === 'string' ? value.trim() : '');
   const temporaryFlag = Boolean(
     info.supportsTemporarySubmission ??
       info.allowTemporarySubmission ??
@@ -85,6 +86,12 @@ function normalizeFormConfig(info = {}) {
     notificationDashboardFields: toArray(info.notificationDashboardFields),
     notificationPhoneFields: toArray(info.notificationPhoneFields),
     notificationEmailFields: toArray(info.notificationEmailFields),
+    notificationRedirectTab: toTabValue(
+      info.notificationRedirectTab ?? info.notification_redirect_tab,
+    ),
+    temporaryKeepFields: toArray(
+      info.temporaryKeepFields ?? info.temporary_keep_fields,
+    ),
     allowedBranches,
     allowedDepartments,
     allowedPositions,
@@ -200,6 +207,17 @@ export default function FormsManagement() {
     permissions?.permissions?.system_settings ||
     session?.permissions?.system_settings;
   const modulePermitted = isModulePermissionGranted(permissions, 'forms_management');
+  const showTemporaryKeepColumn = Boolean(config.allowTemporarySubmission);
+  const dashboardTabOptions = useMemo(
+    () => [
+      { value: '', label: t('notification_redirect_default', 'Default (Activity/Plans)') },
+      { value: 'general', label: t('general', 'General') },
+      { value: 'activity', label: t('activity', 'Activity') },
+      { value: 'audition', label: t('audition', 'Audition') },
+      { value: 'plans', label: t('plans', 'Plans') },
+    ],
+    [t],
+  );
   if (!permissions) {
     return <p>{t('loading', 'Ачааллаж байна...')}</p>;
   }
@@ -1278,6 +1296,34 @@ export default function FormsManagement() {
                     )}
                   </small>
                 </div>
+                {config.notifyFields.length > 0 && (
+                  <label style={fieldColumnStyle}>
+                    <span style={{ fontWeight: 600 }}>
+                      {t('notification_redirect_tab', 'Notification redirect tab')}
+                    </span>
+                    <select
+                      value={config.notificationRedirectTab}
+                      onChange={(e) =>
+                        setConfig((c) => ({
+                          ...c,
+                          notificationRedirectTab: e.target.value,
+                        }))
+                      }
+                    >
+                      {dashboardTabOptions.map((option) => (
+                        <option key={option.value || 'default'} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                    <small style={{ color: '#666' }}>
+                      {t(
+                        'notification_redirect_tab_hint',
+                        'Choose the dashboard tab opened when tapping transaction notifications.',
+                      )}
+                    </small>
+                  </label>
+                )}
               </div>
             </section>
 
@@ -1344,6 +1390,11 @@ export default function FormsManagement() {
                 <th style={{ border: '1px solid #ccc', padding: '4px' }}>Main</th>
                 <th style={{ border: '1px solid #ccc', padding: '4px' }}>Footer</th>
                 <th style={{ border: '1px solid #ccc', padding: '4px' }}>Notify</th>
+                {showTemporaryKeepColumn && (
+                  <th style={{ border: '1px solid #ccc', padding: '4px' }}>
+                    Keep on promote
+                  </th>
+                )}
                 <th style={{ border: '1px solid #ccc', padding: '4px' }}>
                   Show in notification
                 </th>
@@ -1531,6 +1582,17 @@ export default function FormsManagement() {
                       onChange={() => toggleFieldList(col, 'notifyFields')}
                     />
                   </td>
+                  {showTemporaryKeepColumn && (
+                    <td
+                      style={{ border: '1px solid #ccc', padding: '4px', textAlign: 'center' }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={config.temporaryKeepFields.includes(col)}
+                        onChange={() => toggleFieldList(col, 'temporaryKeepFields')}
+                      />
+                    </td>
+                  )}
                   <td style={{ border: '1px solid #ccc', padding: '4px', textAlign: 'center' }}>
                     <input
                       type="checkbox"

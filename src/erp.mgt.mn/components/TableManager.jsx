@@ -1406,6 +1406,23 @@ const TableManager = forwardRef(function TableManager({
     return defaultFields.filter(f => validCols.has(f));
   }, [formConfig, validCols]);
 
+  const temporaryKeepFields = useMemo(() => {
+    const raw =
+      formConfig?.temporaryKeepFields ??
+      formConfig?.temporary_keep_fields ??
+      [];
+    return Array.isArray(raw)
+      ? raw
+          .map((field) => String(field))
+          .filter((field) => field && (!validCols.size || validCols.has(field)))
+      : [];
+  }, [formConfig, validCols]);
+
+  const temporaryKeepFieldSet = useMemo(
+    () => new Set(temporaryKeepFields.map((field) => field.toLowerCase())),
+    [temporaryKeepFields],
+  );
+
   function computeAutoInc(meta) {
     const auto = meta
       .filter(
@@ -4139,23 +4156,39 @@ const TableManager = forwardRef(function TableManager({
       mergedSource[k] = v;
     });
     const merged = stripTemporaryLabelValue(mergedSource);
+    const shouldPreserveTemporaryValue = (field) =>
+      requestType === 'temporary-promote' &&
+      temporaryKeepFieldSet.has(String(field).toLowerCase());
 
     Object.entries(formConfig?.defaultValues || {}).forEach(([k, v]) => {
+      if (shouldPreserveTemporaryValue(k)) return;
       if (merged[k] === undefined || merged[k] === '') merged[k] = v;
     });
 
     if (isAdding && autoFillSession) {
       userIdFields.forEach((f) => {
-        if (columns.has(f)) merged[f] = user?.empid;
+        if (columns.has(f) && !shouldPreserveTemporaryValue(f)) {
+          merged[f] = user?.empid;
+        }
       });
       branchIdFields.forEach((f) => {
-        if (columns.has(f) && branch !== undefined) merged[f] = branch;
+        if (columns.has(f) && branch !== undefined && !shouldPreserveTemporaryValue(f)) {
+          merged[f] = branch;
+        }
       });
       departmentIdFields.forEach((f) => {
-        if (columns.has(f) && department !== undefined) merged[f] = department;
+        if (
+          columns.has(f) &&
+          department !== undefined &&
+          !shouldPreserveTemporaryValue(f)
+        ) {
+          merged[f] = department;
+        }
       });
       companyIdFields.forEach((f) => {
-        if (columns.has(f) && company !== undefined) merged[f] = company;
+        if (columns.has(f) && company !== undefined && !shouldPreserveTemporaryValue(f)) {
+          merged[f] = company;
+        }
       });
     }
 
