@@ -175,6 +175,19 @@ export default function GeneralConfiguration() {
             Plan
           </button>
         </TooltipWrapper>
+        <TooltipWrapper
+          title={t('tab_notifications', {
+            ns: 'tooltip',
+            defaultValue: 'Notification settings',
+          })}
+        >
+          <button
+            className={`tab-button ${tab === 'notifications' ? 'active' : ''}`}
+            onClick={() => setTab('notifications')}
+          >
+            Notifications
+          </button>
+        </TooltipWrapper>
         <TooltipWrapper title={t('tab_print', { ns: 'tooltip', defaultValue: 'Receipt print settings' })}>
           <button
             className={`tab-button ${tab === 'print' ? 'active' : ''}`}
@@ -215,6 +228,13 @@ export default function GeneralConfiguration() {
         </button>
         <button onClick={() => setTab('plan')} disabled={tab === 'plan'} style={{ marginLeft: '0.5rem' }}>
           Plan
+        </button>
+        <button
+          onClick={() => setTab('notifications')}
+          disabled={tab === 'notifications'}
+          style={{ marginLeft: '0.5rem' }}
+        >
+          Notifications
         </button>
         <button onClick={() => setTab('print')} disabled={tab === 'print'} style={{ marginLeft: '0.5rem' }}>
           Print
@@ -684,6 +704,28 @@ export default function GeneralConfiguration() {
                   name="dutyDashboardToastEnabled"
                   type="checkbox"
                   checked={active.dutyDashboardToastEnabled ?? false}
+                  onChange={handleChange}
+                />
+              </label>
+            </TooltipWrapper>
+          </div>
+        </>
+      ) : tab === 'notifications' ? (
+        <>
+          <div style={{ marginBottom: '0.5rem' }}>
+            <TooltipWrapper
+              title={t('notifications_workflow_toasts', {
+                ns: 'tooltip',
+                defaultValue:
+                  'Show workflow toasts after opening forms from the Notifications tab',
+              })}
+            >
+              <label>
+                Show Notifications Workflow Toasts{' '}
+                <input
+                  name="workflowToastEnabled"
+                  type="checkbox"
+                  checked={active.workflowToastEnabled ?? false}
                   onChange={handleChange}
                 />
               </label>
