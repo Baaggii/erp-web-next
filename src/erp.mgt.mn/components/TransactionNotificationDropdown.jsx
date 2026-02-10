@@ -993,6 +993,7 @@ export default function TransactionNotificationDropdown() {
   }, [feedState.items, markRead, navigate]);
 
   const hasAnyNotifications = combinedItems.length > 0;
+  const aggregatedUnreadCount = Number(unreadCount) || 0;
 
   return (
     <div style={styles.wrapper} ref={containerRef}>
