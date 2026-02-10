@@ -1009,8 +1009,8 @@ export default function TransactionNotificationDropdown() {
     const node = event.currentTarget;
     if (!node) return;
     if (node.scrollTop + node.clientHeight < node.scrollHeight - 48) return;
-    setVisibleCount((prev) => Math.min(prev + DROPDOWN_CHUNK_SIZE, displayItems.length));
-  }, [displayItems.length]);
+    setVisibleCount((prev) => prev + DROPDOWN_CHUNK_SIZE);
+  }, []);
 
   useEffect(() => {
     if (!open) {
@@ -1029,11 +1029,6 @@ export default function TransactionNotificationDropdown() {
 
   useEffect(() => {
     if (!open) return;
-    if (snapshotItems.length === 0 && combinedItems.length > 0) {
-      setSnapshotItems(combinedItems);
-      setDeferredCount(0);
-      return;
-    }
     if (snapshotItems.length === 0 && combinedItems.length === 0) {
       setDeferredCount(0);
       return;
@@ -1042,13 +1037,6 @@ export default function TransactionNotificationDropdown() {
     const newItems = combinedItems.filter((item) => !snapshotKeys.has(item.key));
     setDeferredCount(newItems.length);
   }, [combinedItems, open, snapshotItems]);
-
-  const applyDeferredItems = useCallback(() => {
-    if (!open || deferredCount === 0) return;
-    setSnapshotItems(combinedItems);
-    setDeferredCount(0);
-    setVisibleCount((prev) => Math.min(prev + deferredCount, combinedItems.length));
-  }, [combinedItems, deferredCount, open]);
 
   return (
     <div style={styles.wrapper} ref={containerRef}>
@@ -1067,10 +1055,10 @@ export default function TransactionNotificationDropdown() {
               <div style={styles.empty}>No notifications yet</div>
             )}
             {deferredCount > 0 && (
-              <button type="button" style={styles.newItemsHint} onClick={applyDeferredItems}>
+              <div style={styles.newItemsHint}>
                 {deferredCount} newer notification{deferredCount > 1 ? 's are' : ' is'} ready.
-                {' '}Click to load.
-              </button>
+                {' '}Close and reopen to refresh this list.
+              </div>
             )}
             {visibleItems.map((item) => (
               <button
