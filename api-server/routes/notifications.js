@@ -95,6 +95,47 @@ function buildTransactionPreview(payload) {
   return `${actionLabel} • ${formName}`;
 }
 
+function formatTemporaryAction(value) {
+  const normalized = String(value || '').trim().toLowerCase();
+  if (!normalized) return 'Updated';
+  if (normalized === 'pending') return 'Pending review';
+  if (normalized === 'promoted' || normalized === 'approved') return 'Approved';
+  if (normalized === 'rejected' || normalized === 'declined') return 'Rejected';
+  if (normalized === 'forwarded') return 'Forwarded';
+  if (normalized === 'created' || normalized === 'create') return 'Created';
+  return normalized.charAt(0).toUpperCase() + normalized.slice(1);
+}
+
+function detectTemporaryStatus(message, fallback = 'pending') {
+  const normalized = String(message || '').trim().toLowerCase();
+  if (!normalized) return fallback;
+  if (normalized.includes('forwarded')) return 'forwarded';
+  if (normalized.includes('approved') || normalized.includes('promoted')) return 'promoted';
+  if (normalized.includes('rejected') || normalized.includes('declined')) return 'rejected';
+  if (normalized.includes('pending review') || normalized.includes('pending')) return 'pending';
+  return fallback;
+}
+
+function formatTemporaryFormName(temporaryRow) {
+  if (!temporaryRow) return 'Temporary transaction';
+  return (
+    temporaryRow.form_name ||
+    temporaryRow.config_name ||
+    formatTableLabel(temporaryRow.table_name) ||
+    'Temporary transaction'
+  );
+}
+
+function buildTemporaryPreview({ temporaryRow, status, message }) {
+  const actionLabel = formatTemporaryAction(status);
+  const formName = formatTemporaryFormName(temporaryRow);
+  const summary = String(message || '').trim();
+  if (summary) {
+    return `${actionLabel} • ${formName} • ${summary}`;
+  }
+  return `${actionLabel} • ${formName}`;
+}
+
 router.get('/feed', requireAuth, feedRateLimiter, async (req, res, next) => {
   try {
     const chunkLimit = Math.min(Math.max(Number(req.query.limit) || 20, 1), 100);
@@ -169,6 +210,28 @@ router.get('/feed', requireAuth, feedRateLimiter, async (req, res, next) => {
       } catch {
         payload = null;
       }
+
+      const temporaryId = Number(row?.related_id);
+      const temporaryRow = Number.isFinite(temporaryId) ? temporaryMap.get(temporaryId) : null;
+      if (temporaryRow) {
+        const status = detectTemporaryStatus(row.message, temporaryRow.status || 'pending');
+        items.push({
+          id: `temporary-${row.notification_id}`,
+          source: 'temporary',
+          title: formatTemporaryFormName(temporaryRow),
+          preview: buildTemporaryPreview({
+            temporaryRow,
+            status,
+            message: row.message,
+          }),
+          status,
+          timestamp: temporaryRow.updated_at || row.created_at,
+          unread: Number(row.is_read) === 0,
+          action: { type: 'none' },
+        });
+        continue;
+      }
+
       const title = formatTransactionFormName(payload);
       items.push({
         id: `transaction-${row.notification_id}`,
