@@ -27,8 +27,6 @@ const DEFAULT_PLAN_NOTIFICATION_FIELDS = ['is_plan', 'is_plan_completion'];
 const DEFAULT_PLAN_NOTIFICATION_VALUES = ['1'];
 const DEFAULT_DUTY_NOTIFICATION_FIELDS = [];
 const DEFAULT_DUTY_NOTIFICATION_VALUES = ['1'];
-const INITIAL_DROPDOWN_ITEMS = 20;
-const DROPDOWN_LOAD_CHUNK = 20;
 
 function normalizeText(value) {
   if (value === undefined || value === null) return '';
@@ -285,9 +283,7 @@ export default function TransactionNotificationDropdown() {
     loading: false,
     error: '',
   });
-  const [visibleItemsCount, setVisibleItemsCount] = useState(INITIAL_DROPDOWN_ITEMS);
   const containerRef = useRef(null);
-  const listRef = useRef(null);
   const navigate = useNavigate();
   const generalConfig = useGeneralConfig();
   const dashboardTabs = useMemo(
@@ -536,7 +532,9 @@ export default function TransactionNotificationDropdown() {
     [supervisorIds],
   );
 
-  const loadReportNotifications = useCallback(async () => {
+  useEffect(() => {
+    if (!open) return () => {};
+    let cancelled = false;
     const incomingPending = workflows?.reportApproval?.incoming?.pending?.count || 0;
     const outgoingPending = workflows?.reportApproval?.outgoing?.pending?.count || 0;
     const outgoingAccepted = workflows?.reportApproval?.outgoing?.accepted?.count || 0;
@@ -544,44 +542,63 @@ export default function TransactionNotificationDropdown() {
     const totalCount = incomingPending + outgoingPending + outgoingAccepted + outgoingDeclined;
 
     if (totalCount === 0) {
-      return {
+      setReportState({
         incoming: [],
         outgoing: [],
         responses: createEmptyResponses(),
         loading: false,
         error: '',
+      });
+      return () => {
+        cancelled = true;
       };
     }
 
-    try {
-      const data = await fetchRequests(['report_approval'], ['pending', 'accepted', 'declined']);
-      return {
-        ...data,
-        responses: {
-          accepted: data.responses?.accepted || [],
-          declined: data.responses?.declined || [],
-        },
-        loading: false,
-        error: '',
-      };
-    } catch {
-      return {
-        incoming: [],
-        outgoing: [],
-        responses: createEmptyResponses(),
-        loading: false,
-        error: 'Failed to load report approvals',
-      };
-    }
+    setReportState((prev) => ({
+      ...prev,
+      loading: true,
+      error: '',
+      responses: prev.responses || createEmptyResponses(),
+    }));
+    fetchRequests(['report_approval'], ['pending', 'accepted', 'declined'])
+      .then((data) => {
+        if (!cancelled)
+          setReportState({
+            ...data,
+            responses: {
+              accepted: data.responses?.accepted || [],
+              declined: data.responses?.declined || [],
+            },
+            loading: false,
+            error: '',
+          });
+      })
+      .catch(() => {
+        if (!cancelled)
+          setReportState((prev) => ({
+            ...prev,
+            loading: false,
+            incoming: [],
+            outgoing: [],
+            responses: createEmptyResponses(),
+            error: 'Failed to load report approvals',
+          }));
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [
     fetchRequests,
+    open,
     workflows?.reportApproval?.incoming?.pending?.count,
     workflows?.reportApproval?.outgoing?.pending?.count,
     workflows?.reportApproval?.outgoing?.accepted?.count,
     workflows?.reportApproval?.outgoing?.declined?.count,
   ]);
 
-  const loadChangeNotifications = useCallback(async () => {
+  useEffect(() => {
+    if (!open) return () => {};
+    let cancelled = false;
     const incomingPending = workflows?.changeRequests?.incoming?.pending?.count || 0;
     const outgoingPending = workflows?.changeRequests?.outgoing?.pending?.count || 0;
     const outgoingAccepted = workflows?.changeRequests?.outgoing?.accepted?.count || 0;
@@ -589,101 +606,103 @@ export default function TransactionNotificationDropdown() {
     const totalCount = incomingPending + outgoingPending + outgoingAccepted + outgoingDeclined;
 
     if (totalCount === 0) {
-      return {
+      setChangeState({
         incoming: [],
         outgoing: [],
         responses: createEmptyResponses(),
         loading: false,
         error: '',
+      });
+      return () => {
+        cancelled = true;
       };
     }
 
-    try {
-      const data = await fetchRequests(['edit', 'delete'], ['pending', 'accepted', 'declined']);
-      return {
-        ...data,
-        responses: {
-          accepted: data.responses?.accepted || [],
-          declined: data.responses?.declined || [],
-        },
-        loading: false,
-        error: '',
-      };
-    } catch {
-      return {
-        incoming: [],
-        outgoing: [],
-        responses: createEmptyResponses(),
-        loading: false,
-        error: 'Failed to load change requests',
-      };
-    }
+    setChangeState((prev) => ({
+      ...prev,
+      loading: true,
+      error: '',
+      responses: prev.responses || createEmptyResponses(),
+    }));
+    fetchRequests(['edit', 'delete'], ['pending', 'accepted', 'declined'])
+      .then((data) => {
+        if (!cancelled)
+          setChangeState({
+            ...data,
+            responses: {
+              accepted: data.responses?.accepted || [],
+              declined: data.responses?.declined || [],
+            },
+            loading: false,
+            error: '',
+          });
+      })
+      .catch(() => {
+        if (!cancelled)
+          setChangeState((prev) => ({
+            ...prev,
+            loading: false,
+            incoming: [],
+            outgoing: [],
+            responses: createEmptyResponses(),
+            error: 'Failed to load change requests',
+          }));
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [
     fetchRequests,
+    open,
     workflows?.changeRequests?.incoming?.pending?.count,
     workflows?.changeRequests?.outgoing?.pending?.count,
     workflows?.changeRequests?.outgoing?.accepted?.count,
     workflows?.changeRequests?.outgoing?.declined?.count,
   ]);
 
-  const loadTemporaryNotifications = useCallback(async () => {
-    if (typeof temporary?.fetchScopeEntries !== 'function') {
-      return { review: [], created: [], loading: false, error: '' };
-    }
-    try {
-      const [reviewResult, createdResult] = await Promise.all([
-        temporary.fetchScopeEntries('review', {
-          limit: 50,
-          status: 'pending',
-        }),
-        temporary.fetchScopeEntries('created', {
-          limit: 50,
-          status: 'any',
-        }),
-      ]);
-      return {
-        review: Array.isArray(reviewResult?.rows) ? reviewResult.rows : [],
-        created: Array.isArray(createdResult?.rows) ? createdResult.rows : [],
-        loading: false,
-        error: '',
-      };
-    } catch {
-      return {
-        review: [],
-        created: [],
-        loading: false,
-        error: 'Failed to load temporary transactions',
-      };
-    }
-  }, [temporary?.fetchScopeEntries]);
-
   useEffect(() => {
     if (!open) return () => {};
     let cancelled = false;
-    setReportState((prev) => ({ ...prev, loading: true, error: '' }));
-    setChangeState((prev) => ({ ...prev, loading: true, error: '' }));
-    setTemporaryState((prev) => ({ ...prev, loading: true, error: '' }));
-
-    Promise.all([
-      loadReportNotifications(),
-      loadChangeNotifications(),
-      loadTemporaryNotifications(),
-    ]).then(([nextReportState, nextChangeState, nextTemporaryState]) => {
-      if (cancelled) return;
-      setReportState(nextReportState);
-      setChangeState(nextChangeState);
-      setTemporaryState(nextTemporaryState);
-    });
-
+    const loadTemporary = async () => {
+      setTemporaryState((prev) => ({ ...prev, loading: true, error: '' }));
+      if (typeof temporary?.fetchScopeEntries !== 'function') {
+        setTemporaryState({ review: [], created: [], loading: false, error: '' });
+        return;
+      }
+      try {
+        const [reviewResult, createdResult] = await Promise.all([
+          temporary.fetchScopeEntries('review', {
+            limit: 50,
+            status: 'pending',
+          }),
+          temporary.fetchScopeEntries('created', {
+            limit: 50,
+            status: 'any',
+          }),
+        ]);
+        if (cancelled) return;
+        setTemporaryState({
+          review: Array.isArray(reviewResult?.rows) ? reviewResult.rows : [],
+          created: Array.isArray(createdResult?.rows) ? createdResult.rows : [],
+          loading: false,
+          error: '',
+        });
+      } catch {
+        if (!cancelled) {
+          setTemporaryState({
+            review: [],
+            created: [],
+            loading: false,
+            error: 'Failed to load temporary transactions',
+          });
+        }
+      }
+    };
+    loadTemporary();
     return () => {
       cancelled = true;
     };
-  }, [
-    loadChangeNotifications,
-    loadReportNotifications,
-    loadTemporaryNotifications,
-    open,
-  ]);
+  }, [open, temporary?.fetchScopeEntries]);
 
   const openRequest = useCallback(
     (req, tab, statusOverride) => {
@@ -974,36 +993,6 @@ export default function TransactionNotificationDropdown() {
   ]);
 
   const hasAnyNotifications = combinedItems.length > 0;
-  const visibleItems = useMemo(
-    () => combinedItems.slice(0, visibleItemsCount),
-    [combinedItems, visibleItemsCount],
-  );
-  const canLoadMore = visibleItems.length < combinedItems.length;
-
-  useEffect(() => {
-    if (!open) return;
-    setVisibleItemsCount(INITIAL_DROPDOWN_ITEMS);
-  }, [open]);
-
-  useEffect(() => {
-    if (!open) return;
-    setVisibleItemsCount((prev) => {
-      const baseline = Math.min(INITIAL_DROPDOWN_ITEMS, combinedItems.length || INITIAL_DROPDOWN_ITEMS);
-      if (prev < baseline) return baseline;
-      if (prev > combinedItems.length) return combinedItems.length;
-      return prev;
-    });
-  }, [combinedItems.length, open]);
-
-  const handleListScroll = useCallback((event) => {
-    if (!canLoadMore) return;
-    const { scrollTop, scrollHeight, clientHeight } = event.currentTarget;
-    if (scrollHeight - scrollTop - clientHeight <= 48) {
-      setVisibleItemsCount((prev) =>
-        Math.min(prev + DROPDOWN_LOAD_CHUNK, combinedItems.length),
-      );
-    }
-  }, [canLoadMore, combinedItems.length]);
 
   return (
     <div style={styles.wrapper} ref={containerRef}>
@@ -1017,11 +1006,11 @@ export default function TransactionNotificationDropdown() {
       </button>
       {open && (
         <div style={styles.dropdown}>
-          <div style={styles.list} ref={listRef} onScroll={handleListScroll}>
+          <div style={styles.list}>
             {!hasAnyNotifications && (
               <div style={styles.empty}>No notifications yet</div>
             )}
-            {visibleItems.map((item) => (
+            {combinedItems.map((item) => (
               <button
                 key={item.key}
                 type="button"
@@ -1040,7 +1029,6 @@ export default function TransactionNotificationDropdown() {
                 )}
               </button>
             ))}
-            {canLoadMore && <div style={styles.moreHint}>Scroll to load more…</div>}
           </div>
           <button
             type="button"
@@ -1144,12 +1132,6 @@ const styles = {
   notificationMeta: {
     fontSize: '0.72rem',
     color: '#64748b',
-  },
-  moreHint: {
-    textAlign: 'center',
-    color: '#64748b',
-    fontSize: '0.75rem',
-    paddingBottom: '0.25rem',
   },
   footer: {
     width: '100%',
