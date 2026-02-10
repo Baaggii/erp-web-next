@@ -169,7 +169,7 @@ export default function AppLayout({ children, title }) {
             {user && (
               <div className="relative group">
                 <button className="focus:outline-none">{user.empid}</button>
-                <ul className="account-menu absolute right-0 mt-2 hidden group-focus-within:block group-hover:block">
+                <ul className="account-menu absolute right-0 mt-2 hidden min-w-max origin-top-right group-focus-within:block group-hover:block">
                   <li>
                     <button
                       onClick={handleLogout}
