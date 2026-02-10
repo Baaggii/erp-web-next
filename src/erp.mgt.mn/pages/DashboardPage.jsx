@@ -182,6 +182,10 @@ export default function DashboardPage() {
     minWidth: '140px',
   };
 
+  const tabPanelStyle = (key) => ({
+    display: active === key ? 'block' : 'none',
+  });
+
   return (
     <div style={{ padding: '1rem' }}>
       <div style={{ display: 'flex', borderBottom: '1px solid #ddd', marginBottom: '1rem' }}>
@@ -196,7 +200,7 @@ export default function DashboardPage() {
         {tabButton('plans', t('plans', 'Plans'))}
       </div>
 
-      {active === 'general' && (
+      <div style={tabPanelStyle('general')}>
         <div>
           <h2 style={{ marginTop: 0 }}>
             {t('welcome', 'Welcome')}, {user?.full_name || user?.username}
@@ -223,21 +227,15 @@ export default function DashboardPage() {
             </div>
           </div>
         </div>
-      )}
+      </div>
 
-      {active === 'activity' && (
+      <div style={tabPanelStyle('activity')}>
         <div>
           <TransactionNotificationWidget filterMode="activity" />
-          <NotificationsPage
-            embedded
-            showPageTitle={false}
-            sectionTabs={workflowSectionTabs}
-            activeDashboardTab="activity"
-          />
         </div>
-      )}
+      </div>
 
-      {active === 'audition' && (
+      <div style={tabPanelStyle('audition')}>
         <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
           <div style={{ ...cardStyle, flex: '1 1 300px' }}>
             <PendingRequestWidget />
@@ -245,39 +243,23 @@ export default function DashboardPage() {
           <div style={{ ...cardStyle, flex: '1 1 300px' }}>
             <OutgoingRequestWidget />
           </div>
-          <div style={{ flexBasis: '100%' }}>
-            <NotificationsPage
-              embedded
-              showPageTitle={false}
-              sectionTabs={workflowSectionTabs}
-              activeDashboardTab="audition"
-            />
-          </div>
         </div>
-      )}
+      </div>
 
-      {active === 'plans' && (
+      <div style={tabPanelStyle('plans')}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
           <DutyAssignmentsWidget />
           <TransactionNotificationWidget filterMode="plan" />
           <TransactionNotificationWidget filterMode="duty" />
-          <NotificationsPage
-            embedded
-            showPageTitle={false}
-            sectionTabs={workflowSectionTabs}
-            activeDashboardTab="plans"
-          />
         </div>
-      )}
+      </div>
 
-      {active === 'general' && (
-        <NotificationsPage
-          embedded
-          showPageTitle={false}
-          sectionTabs={workflowSectionTabs}
-          activeDashboardTab="general"
-        />
-      )}
+      <NotificationsPage
+        embedded
+        showPageTitle={false}
+        sectionTabs={workflowSectionTabs}
+        activeDashboardTab={active}
+      />
     </div>
   );
 }
