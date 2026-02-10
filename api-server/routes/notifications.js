@@ -22,6 +22,15 @@ function normalizeStatus(value, fallback = 'pending') {
   return normalized || fallback;
 }
 
+function formatTableLabel(tableName) {
+  if (!tableName) return 'Transaction';
+  return String(tableName)
+    .replace(/^transactions_/i, '')
+    .replace(/[_-]+/g, ' ')
+    .replace(/\b\w/g, (char) => char.toUpperCase())
+    .trim();
+}
+
 function makeRequestPath({ status, requestType, tableName, requestId, createdAt, tab }) {
   const params = new URLSearchParams();
   params.set('tab', tab || 'incoming');
@@ -49,6 +58,65 @@ function makeTransactionPath({ payload, notificationId }) {
   return `/?${params.toString()}`;
 }
 
+function makeTemporaryPath({ temporaryId, scope = 'review' }) {
+  const params = new URLSearchParams();
+  params.set('tab', 'notifications');
+  params.set('temporaryOpen', '1');
+  params.set('temporaryScope', scope);
+  params.set('temporaryId', String(temporaryId));
+  params.set('temporaryKey', String(Date.now()));
+  return `/?${params.toString()}`;
+}
+
+function formatTransactionFormName(payload) {
+  const name =
+    payload?.transactionName ||
+    payload?.transaction_name ||
+    payload?.formName ||
+    payload?.form_name;
+  if (name) return String(name).trim();
+  const tableName = payload?.transactionTable || payload?.transaction_table || '';
+  return formatTableLabel(tableName);
+}
+
+function formatTransactionAction(value) {
+  const normalized = String(value || '').trim().toLowerCase();
+  if (!normalized) return 'Updated';
+  if (normalized === 'create' || normalized === 'created' || normalized === 'new') return 'Created';
+  if (normalized === 'update' || normalized === 'updated' || normalized === 'edit' || normalized === 'edited') return 'Edited';
+  if (normalized === 'delete' || normalized === 'deleted') return 'Deleted';
+  if (normalized === 'exclude' || normalized === 'excluded') return 'Excluded';
+  if (normalized === 'include' || normalized === 'included') return 'Included';
+  return normalized.charAt(0).toUpperCase() + normalized.slice(1);
+}
+
+function buildTransactionPreview(payload) {
+  const actionLabel = formatTransactionAction(payload?.action);
+  const formName = formatTransactionFormName(payload);
+  const summary = String(payload?.summaryText || '').trim();
+  if (summary) {
+    return `${actionLabel} • ${formName} • ${summary}`;
+  }
+  return `${actionLabel} • ${formName}`;
+}
+
+function formatTemporaryAction(value) {
+  const normalized = String(value || '').trim().toLowerCase();
+  if (!normalized) return 'Pending review';
+  if (normalized === 'pending') return 'Pending review';
+  if (normalized === 'promoted') return 'Approved';
+  if (normalized === 'rejected') return 'Rejected';
+  if (normalized === 'forwarded') return 'Forwarded';
+  return normalized.charAt(0).toUpperCase() + normalized.slice(1);
+}
+
+function buildTemporaryPreview({ status, message, action }) {
+  const statusLabel = formatTemporaryAction(action || status);
+  const summary = String(message || '').trim();
+  if (summary) return `${statusLabel} • ${summary}`;
+  return statusLabel;
+}
+
 router.get('/feed', requireAuth, feedRateLimiter, async (req, res, next) => {
   try {
     const chunkLimit = Math.min(Math.max(Number(req.query.limit) || 20, 1), 100);
@@ -57,8 +125,8 @@ router.get('/feed', requireAuth, feedRateLimiter, async (req, res, next) => {
     const userEmpId = String(req.user.empid || '').trim().toUpperCase();
     const companyId = req.user.companyId;
 
-    const [txnRows] = await pool.query(
-      `SELECT notification_id, message, is_read, created_at, updated_at
+    const [notificationRows] = await pool.query(
+      `SELECT notification_id, type, related_id, message, is_read, created_at, updated_at
          FROM notifications
         WHERE recipient_empid = ?
           AND company_id = ?
@@ -90,29 +158,95 @@ router.get('/feed', requireAuth, feedRateLimiter, async (req, res, next) => {
       [userEmpId, companyId, sourceLimit],
     );
 
+    const temporaryIds = Array.from(
+      new Set(
+        (notificationRows || [])
+          .map((row) => Number(row?.related_id))
+          .filter((id) => Number.isFinite(id) && id > 0),
+      ),
+    );
+
+    let temporaryMap = new Map();
+    if (temporaryIds.length > 0) {
+      try {
+        const [temporaryRows] = await pool.query(
+          `SELECT id, table_name, form_name, config_name, status, created_by, reviewed_by, updated_at
+             FROM transaction_temporaries
+            WHERE company_id = ?
+              AND id IN (?)`,
+          [companyId, temporaryIds],
+        );
+        temporaryMap = new Map((temporaryRows || []).map((row) => [Number(row.id), row]));
+      } catch {
+        temporaryMap = new Map();
+      }
+    }
+
     const items = [];
 
-    for (const row of txnRows || []) {
+    for (const row of notificationRows || []) {
       let payload = null;
       try {
         payload = row.message ? JSON.parse(row.message) : null;
       } catch {
         payload = null;
       }
-      const title = payload?.transactionName || payload?.transaction_name || 'Transaction';
+
+      if (payload?.kind === 'transaction') {
+        const title = formatTransactionFormName(payload);
+        items.push({
+          id: `transaction-${row.notification_id}`,
+          source: 'transaction',
+          title,
+          preview: buildTransactionPreview(payload),
+          status: payload?.action || 'new',
+          timestamp: payload?.updatedAt || row.updated_at || row.created_at,
+          unread: Number(row.is_read) === 0,
+          action: {
+            type: 'navigate',
+            path: makeTransactionPath({ payload, notificationId: row.notification_id }),
+            notificationId: row.notification_id,
+          },
+        });
+        continue;
+      }
+
+      const temporary = temporaryMap.get(Number(row.related_id));
+      if (temporary) {
+        const formName =
+          temporary.form_name || temporary.config_name || formatTableLabel(temporary.table_name);
+        const status = normalizeStatus(temporary.status, 'pending');
+        const scope = status === 'pending' ? 'review' : 'created';
+        items.push({
+          id: `temporary-${row.notification_id}`,
+          source: 'temporary',
+          title: formName || 'Temporary transaction',
+          preview: buildTemporaryPreview({
+            status,
+            action: payload?.temporaryAction,
+            message: row.message,
+          }),
+          status,
+          timestamp: temporary.updated_at || row.updated_at || row.created_at,
+          unread: Number(row.is_read) === 0,
+          action: {
+            type: 'navigate',
+            path: makeTemporaryPath({ temporaryId: temporary.id, scope }),
+            notificationId: row.notification_id,
+          },
+        });
+        continue;
+      }
+
       items.push({
-        id: `transaction-${row.notification_id}`,
-        source: 'transaction',
-        title,
-        preview: payload?.summaryText || 'Transaction update',
-        status: payload?.action || 'new',
-        timestamp: payload?.updatedAt || row.created_at,
+        id: `notification-${row.notification_id}`,
+        source: 'notification',
+        title: row.type === 'response' ? 'Response' : 'Request',
+        preview: String(row.message || 'Notification').trim() || 'Notification',
+        status: normalizeStatus(row.type === 'response' ? 'accepted' : 'pending'),
+        timestamp: row.updated_at || row.created_at,
         unread: Number(row.is_read) === 0,
-        action: {
-          type: 'navigate',
-          path: makeTransactionPath({ payload, notificationId: row.notification_id }),
-          notificationId: row.notification_id,
-        },
+        action: { type: 'none' },
       });
     }
 
