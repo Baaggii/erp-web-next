@@ -656,3 +656,68 @@ await test('second pending request for same record is rejected', async () => {
     db.pool.query = origQuery;
   }
 });
+
+await test('listNotificationFeed returns merged incoming/outgoing rows ordered by sort timestamp', async () => {
+  const origQuery = db.pool.query;
+  const queries = [];
+  db.pool.query = async (sql, params) => {
+    queries.push({ sql, params });
+    if (sql.includes('COUNT(*) AS count')) {
+      return [[{ count: 2 }]];
+    }
+    return [[
+      {
+        request_id: 11,
+        request_type: 'edit',
+        status: 'accepted',
+        table_name: 'tbl_test',
+        record_id: '1',
+        emp_id: 'E1',
+        senior_empid: 'S1',
+        response_empid: 'S1',
+        created_at: '2024-01-01 09:00:00',
+        responded_at: '2024-01-01 10:00:00',
+        updated_at: '2024-01-01 10:00:00',
+        scope: 'outgoing',
+        sort_value: '2024-01-01 10:00:00',
+      },
+      {
+        request_id: 12,
+        request_type: 'report_approval',
+        status: 'pending',
+        table_name: 'tbl_test',
+        record_id: '2',
+        emp_id: 'E2',
+        senior_empid: 'S1',
+        response_empid: null,
+        created_at: '2024-01-01 08:00:00',
+        responded_at: null,
+        updated_at: '2024-01-01 08:00:00',
+        scope: 'incoming',
+        sort_value: '2024-01-01 08:00:00',
+      },
+    ]];
+  };
+  try {
+    const result = await service.listNotificationFeed(' s1 ', {
+      statuses: 'pending,accepted',
+      request_types: 'report_approval,edit',
+      page: 2,
+      per_page: 20,
+    });
+    assert.equal(result.total, 2);
+    assert.equal(result.page, 2);
+    assert.equal(result.per_page, 20);
+    assert.equal(result.rows.length, 2);
+    assert.equal(result.rows[0].scope, 'outgoing');
+    assert.equal(result.rows[1].scope, 'incoming');
+    assert.ok(queries[1].sql.includes('ORDER BY sort_value DESC'));
+    assert.deepEqual(queries[0].params, ['S1', 'S1', 'pending', 'accepted', 'report_approval', 'edit']);
+    assert.deepEqual(
+      queries[1].params,
+      ['S1', 'S1', 'S1', 'pending', 'accepted', 'report_approval', 'edit', 20, 20],
+    );
+  } finally {
+    db.pool.query = origQuery;
+  }
+});
