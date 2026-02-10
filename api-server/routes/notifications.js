@@ -148,17 +148,20 @@ function detectTemporaryStatus({ row, payload, temporaryRow }) {
 
 function formatTemporaryFormName(temporaryRow, payload) {
   if (temporaryRow) {
-    return temporaryRow.form_name || temporaryRow.config_name || 'Temporary transaction';
+    return (
+      temporaryRow.form_name ||
+      temporaryRow.config_name ||
+      formatTableLabel(temporaryRow.table_name) ||
+      'Temporary transaction'
+    );
   }
-  const payloadFormName = payload?.formName || payload?.form_name;
-  if (payloadFormName) return String(payloadFormName).trim();
-  return 'Temporary transaction';
+  return formatTransactionFormName(payload);
 }
 
-function buildTemporaryPreview({ temporaryRow, payload, status }) {
+function buildTemporaryPreview({ temporaryRow, payload, status, message }) {
   const actionLabel = formatTemporaryAction(status);
   const formName = formatTemporaryFormName(temporaryRow, payload);
-  const summary = String(payload?.summaryText || payload?.summary_text || '').trim();
+  const summary = String(payload?.summaryText || payload?.summary_text || message || '').trim();
   if (summary) return `${actionLabel} • ${formName} • ${summary}`;
   return `${actionLabel} • ${formName}`;
 }
@@ -262,7 +265,7 @@ router.get('/feed', requireAuth, feedRateLimiter, async (req, res, next) => {
           id: `temporary-${row.notification_id}`,
           source: 'temporary',
           title: formatTemporaryFormName(temporaryRow, payload),
-          preview: buildTemporaryPreview({ temporaryRow, payload, status }),
+          preview: buildTemporaryPreview({ temporaryRow, payload, status, message: row?.message }),
           status,
           timestamp:
             temporaryRow?.updated_at ||
@@ -270,16 +273,7 @@ router.get('/feed', requireAuth, feedRateLimiter, async (req, res, next) => {
             payload?.updated_at ||
             row.created_at,
           unread: Number(row.is_read) === 0,
-          action: {
-            type: 'navigate',
-            notificationId: Number(row.notification_id) || null,
-            path: makeTemporaryPath({
-              temporaryId: Number.isFinite(temporaryId) ? temporaryId : null,
-              temporaryRow,
-              payload,
-              userEmpId,
-            }),
-          },
+          action: { type: 'none', notificationId: Number(row.notification_id) || null },
         });
         continue;
       }
@@ -293,11 +287,7 @@ router.get('/feed', requireAuth, feedRateLimiter, async (req, res, next) => {
         status: payload?.action || 'new',
         timestamp: payload?.updatedAt || row.created_at,
         unread: Number(row.is_read) === 0,
-        action: {
-          type: 'navigate',
-          notificationId: Number(row.notification_id) || null,
-          path: makeTransactionPath({ payload, notificationId: row.notification_id }),
-        },
+        action: { type: 'none', notificationId: Number(row.notification_id) || null },
       });
     }
 
