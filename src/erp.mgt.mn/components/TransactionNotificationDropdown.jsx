@@ -529,6 +529,7 @@ export default function TransactionNotificationDropdown() {
           review: temporaryResult.value.review,
           created: temporaryResult.value.created,
           loading: false,
+          loaded: true,
           error: '',
         });
       } else {
@@ -547,7 +548,7 @@ export default function TransactionNotificationDropdown() {
     return () => {
       cancelled = true;
     };
-  }, [open, temporary?.fetchScopeEntries]);
+  }, [open]);
 
   const openRequest = useCallback(
     (req, tab, statusOverride) => {
@@ -743,12 +744,56 @@ export default function TransactionNotificationDropdown() {
   }, [formsLoaded]);
 
   useEffect(() => {
-    if (open && !formsLoaded) {
+    if (!UNIFIED_FEED_ENABLED && open && !formsLoaded) {
       loadFormConfigs();
     }
   }, [formsLoaded, loadFormConfigs, open]);
 
+  const handleUnifiedFeedClick = useCallback(
+    async (item) => {
+      if (!item) return;
+      setOpen(false);
+      if (item.source === 'transaction' && item.unread && Number(item.id) > 0) {
+        await markRead([Number(item.id)]);
+      }
+      if (item.action?.type === 'request') {
+        const params = new URLSearchParams();
+        params.set('tab', item.action.tab || 'outgoing');
+        if (item.action.status) params.set('status', String(item.action.status));
+        if (item.action.requestType) params.set('requestType', String(item.action.requestType));
+        if (item.action.requestId) params.set('requestId', String(item.action.requestId));
+        navigate(`/requests?${params.toString()}`);
+        return;
+      }
+      if (item.action?.type === 'dashboard') {
+        const params = new URLSearchParams({
+          tab: item.action.tab || 'activity',
+          notifyGroup: item.action.notifyGroup || encodeURIComponent(item.title || 'Transaction'),
+          notifyItem: String(item.action.notifyItem || item.id),
+        });
+        navigate(`/?${params.toString()}`);
+      }
+    },
+    [markRead, navigate],
+  );
+
   const combinedItems = useMemo(() => {
+    if (UNIFIED_FEED_ENABLED) {
+      return (Array.isArray(unifiedFeedState.items) ? unifiedFeedState.items : []).map((item) => ({
+        key: `${item.source}-${item.id}`,
+        timestamp: Number(item.timestamp) || 0,
+        isUnread: Boolean(item.unread),
+        title: item.title || 'Notification',
+        badge: {
+          label: item.status || item.source || 'update',
+          accent: item.source === 'incoming' ? '#f59e0b' : item.source === 'outgoing' ? '#2563eb' : '#059669',
+        },
+        preview: item.preview || '',
+        dateTime: formatDisplayTimestamp(Number(item.timestamp) || 0),
+        onClick: () => handleUnifiedFeedClick(item),
+      }));
+    }
+
     const items = [];
     sortedNotifications.forEach((item) => {
       const itemMeta = getActionMeta(item?.action);
@@ -830,11 +875,13 @@ export default function TransactionNotificationDropdown() {
   }, [
     changeItems,
     handleNotificationClick,
+    handleUnifiedFeedClick,
     openRequest,
     openTemporary,
     reportItems,
     sortedNotifications,
     temporaryItems,
+    unifiedFeedState.items,
   ]);
 
   const visibleItems = useMemo(
@@ -875,7 +922,7 @@ export default function TransactionNotificationDropdown() {
         onClick={() => setOpen((prev) => !prev)}
       >
         <span aria-hidden="true">🔔</span>
-        {unreadCount > 0 && <span style={styles.badge}>{unreadCount}</span>}
+        {aggregatedUnreadCount > 0 && <span style={styles.badge}>{aggregatedUnreadCount}</span>}
       </button>
       {open && (
         <div style={styles.dropdown}>
