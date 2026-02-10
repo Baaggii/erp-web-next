@@ -685,15 +685,26 @@ useEffect(() => {
     const signature = `${pendingTemporary.key}::${moduleKey}`;
     if (processed.has(signature)) return;
 
-    const normalizedTable = pendingTemporary.table
-      ? String(pendingTemporary.table).toLowerCase()
-      : '';
+    const normalizeLookupValue = (value) =>
+      String(value ?? '')
+        .trim()
+        .toLowerCase();
+
+    const normalizedTable = normalizeLookupValue(pendingTemporary.table);
 
     let targetName = '';
-    const candidateNames = [pendingTemporary.form, pendingTemporary.config].filter(Boolean);
-    for (const candidate of candidateNames) {
-      if (configs[candidate]) {
-        targetName = candidate;
+    const normalizedCandidateNames = [pendingTemporary.form, pendingTemporary.config]
+      .map(normalizeLookupValue)
+      .filter(Boolean);
+
+    const normalizedNameMap = new Map(
+      configEntries.map(([cfgName]) => [normalizeLookupValue(cfgName), cfgName]),
+    );
+
+    for (const candidate of normalizedCandidateNames) {
+      const matchedName = normalizedNameMap.get(candidate);
+      if (matchedName) {
+        targetName = matchedName;
         break;
       }
     }
@@ -705,7 +716,7 @@ useEffect(() => {
             ? cfgValue.table ?? cfgValue.tableName ?? cfgValue.table_name
             : cfgValue) || '';
         if (!candidateTable) return false;
-        return String(candidateTable).toLowerCase() === normalizedTable;
+        return normalizeLookupValue(candidateTable) === normalizedTable;
       });
       if (match) targetName = match[0];
     }

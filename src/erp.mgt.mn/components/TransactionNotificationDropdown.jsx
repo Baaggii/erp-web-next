@@ -840,10 +840,36 @@ export default function TransactionNotificationDropdown() {
         }
       }
       const fallbackName = String(item?.title || '').trim();
+      const pathFormName =
+        pathParams?.get('temporaryForm') ||
+        pathParams?.get('temporary_form') ||
+        pathParams?.get('formName') ||
+        pathParams?.get('form_name') ||
+        '';
+      const pathConfigName =
+        pathParams?.get('temporaryConfig') ||
+        pathParams?.get('temporary_config') ||
+        pathParams?.get('configName') ||
+        pathParams?.get('config_name') ||
+        '';
+      const pathTableName =
+        pathParams?.get('temporaryTable') ||
+        pathParams?.get('temporary_table') ||
+        pathParams?.get('tableName') ||
+        pathParams?.get('table_name') ||
+        pathParams?.get('table') ||
+        '';
       const normalizedName = normalizeText(
-        redirectMeta.formName || redirectMeta.configName || redirectMeta.transactionName || fallbackName,
+        redirectMeta.formName ||
+          redirectMeta.configName ||
+          pathFormName ||
+          pathConfigName ||
+          redirectMeta.transactionName ||
+          fallbackName,
       );
-      const normalizedTable = normalizeText(redirectMeta.tableName || redirectMeta.transactionTable || '');
+      const normalizedTable = normalizeText(
+        redirectMeta.tableName || redirectMeta.transactionTable || pathTableName || '',
+      );
       let resolvedFormEntry = null;
       if (normalizedName && Array.isArray(formEntries) && formEntries.length > 0) {
         resolvedFormEntry = formEntries.find(([name]) => normalizeText(name) === normalizedName) || null;
@@ -859,10 +885,18 @@ export default function TransactionNotificationDropdown() {
       const resolvedFormInfo = resolvedFormEntry?.[1] || {};
       const normalizedConfigName = String(redirectMeta.configName || resolvedFormName || '').trim();
       const normalizedFormName = String(
-        redirectMeta.formName || resolvedFormName || fallbackName || normalizedConfigName,
+        redirectMeta.formName || pathFormName || resolvedFormName || fallbackName || normalizedConfigName,
+      ).trim();
+      const mergedConfigName = String(
+        redirectMeta.configName || pathConfigName || resolvedFormName || normalizedFormName,
       ).trim();
       const resolvedTableName = String(
-        redirectMeta.tableName || redirectMeta.transactionTable || resolvedFormInfo?.tableName || resolvedFormInfo?.table || '',
+        redirectMeta.tableName ||
+          redirectMeta.transactionTable ||
+          pathTableName ||
+          resolvedFormInfo?.tableName ||
+          resolvedFormInfo?.table ||
+          '',
       ).trim();
 
       return {
@@ -886,8 +920,8 @@ export default function TransactionNotificationDropdown() {
         ).trim(),
         formName: normalizedFormName,
         form_name: normalizedFormName,
-        configName: normalizedConfigName,
-        config_name: normalizedConfigName,
+        configName: mergedConfigName || normalizedConfigName,
+        config_name: mergedConfigName || normalizedConfigName,
         tableName: resolvedTableName,
         table_name: resolvedTableName,
       };
