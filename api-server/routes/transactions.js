@@ -4,6 +4,7 @@ import { getTransactions } from '../controllers/transactionController.js';
 import {
   listTransactionNotifications,
   markTransactionNotificationsRead,
+  listUnifiedNotificationsFeed,
 } from '../controllers/transactionNotificationController.js';
 
 const router = express.Router();
@@ -15,6 +16,7 @@ const notificationsRateLimiter = rateLimit({
 
 router.get('/', getTransactions);
 router.get('/notifications', notificationsRateLimiter, listTransactionNotifications);
+router.get('/notifications/feed', notificationsRateLimiter, listUnifiedNotificationsFeed);
 router.post('/notifications/mark-read', markTransactionNotificationsRead);
 
 export default router;

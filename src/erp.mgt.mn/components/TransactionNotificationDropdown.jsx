@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext.jsx';
 import { usePendingRequests } from '../context/PendingRequestContext.jsx';
 import useGeneralConfig from '../hooks/useGeneralConfig.js';
-import { useTransactionNotifications } from '../context/TransactionNotificationContext.jsx';
+import useUnifiedNotificationFeed from '../hooks/useUnifiedNotificationFeed.js';
 import formatTimestamp from '../utils/formatTimestamp.js';
 
 const TRANSACTION_NAME_KEYS = [
@@ -256,10 +256,10 @@ function getTemporaryTimestamp(entry) {
 }
 
 export default function TransactionNotificationDropdown() {
-  const { notifications, unreadCount, markRead } = useTransactionNotifications();
   const { user, session } = useAuth();
   const { workflows, markWorkflowSeen, temporary } = usePendingRequests();
   const [open, setOpen] = useState(false);
+  const { rows: feedRows, unreadCount, hasMore, loading: feedLoading, loadMore } = useUnifiedNotificationFeed(open);
   const [formEntries, setFormEntries] = useState([]);
   const [formsLoaded, setFormsLoaded] = useState(false);
   const [codeTransactions, setCodeTransactions] = useState([]);
@@ -289,14 +289,6 @@ export default function TransactionNotificationDropdown() {
   const dashboardTabs = useMemo(
     () => new Set(['general', 'activity', 'audition', 'plans']),
     [],
-  );
-
-  const sortedNotifications = useMemo(
-    () =>
-      [...notifications].sort(
-        (a, b) => getNotificationTimestamp(b) - getNotificationTimestamp(a),
-      ),
-    [notifications],
   );
 
   useEffect(() => {
@@ -850,6 +842,26 @@ export default function TransactionNotificationDropdown() {
     [formEntries],
   );
 
+
+  const markRead = useCallback(async (ids = []) => {
+    const normalizedIds = Array.isArray(ids)
+      ? ids.map((id) => Number(id)).filter((id) => Number.isFinite(id))
+      : [];
+    if (!normalizedIds.length) return;
+    try {
+      await fetch('/api/transactions/notifications/mark-read', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        skipErrorToast: true,
+        skipLoader: true,
+        body: JSON.stringify({ ids: normalizedIds }),
+      });
+    } catch {
+      // ignore
+    }
+  }, []);
+
   const handleNotificationClick = async (item) => {
     if (!item) return;
     setOpen(false);
@@ -904,93 +916,91 @@ export default function TransactionNotificationDropdown() {
   }, [formsLoaded, loadFormConfigs, open]);
 
   const combinedItems = useMemo(() => {
-    const items = [];
-    sortedNotifications.forEach((item) => {
-      const itemMeta = getActionMeta(item?.action);
-      items.push({
-        key: `transaction-${item.id}`,
-        timestamp: getNotificationTimestamp(item),
-        isUnread: item?.isRead === false,
-        title: item.transactionName || 'Transaction',
-        badge: { label: itemMeta.label, accent: itemMeta.accent },
-        preview: buildPreviewText(item),
-        dateTime: formatDisplayTimestamp(item.updatedAt || item.createdAt),
-        onClick: () => handleNotificationClick(item),
-      });
-    });
-    reportItems.forEach(({ req, tab, status, scope }) => {
-      const statusMeta = getStatusMeta(status);
-      const title = `${formatRequestType(req?.request_type)}`;
-      const previewLabel =
-        scope === 'response'
-          ? `Responded by ${getResponder(req) || 'Unknown'}`
-          : `Requested by ${getRequester(req) || 'Unknown'}`;
-      const timestamp = getRequestTimestamp(req, scope);
-      items.push({
-        key: `report-${req?.request_id || title}-${status}-${scope}`,
-        timestamp,
-        isUnread: status === 'pending',
-        title,
-        badge: { label: statusMeta.label, accent: statusMeta.accent },
-        preview: previewLabel,
-        dateTime: formatDisplayTimestamp(timestamp),
-        onClick: () => openRequest(req, tab, status),
-      });
-    });
-    changeItems.forEach(({ req, tab, status, scope }) => {
-      const statusMeta = getStatusMeta(status);
-      const title = `${formatRequestType(req?.request_type)}`;
-      const previewLabel =
-        scope === 'response'
-          ? `Responded by ${getResponder(req) || 'Unknown'}`
-          : `Requested by ${getRequester(req) || 'Unknown'}`;
-      const timestamp = getRequestTimestamp(req, scope);
-      items.push({
-        key: `change-${req?.request_id || title}-${status}-${scope}`,
-        timestamp,
-        isUnread: status === 'pending',
-        title,
-        badge: { label: statusMeta.label, accent: statusMeta.accent },
-        preview: previewLabel,
-        dateTime: formatDisplayTimestamp(timestamp),
-        onClick: () => openRequest(req, tab, status),
-      });
-    });
-    temporaryItems.forEach(({ entry, scope }) => {
-      const formName =
-        entry?.formName ||
-        entry?.form_name ||
-        entry?.configName ||
-        entry?.config_name ||
-        entry?.moduleKey ||
-        entry?.module_key ||
-        'Temporary transaction';
-      const title = `${formName}`;
-      const statusMeta = getTemporaryStatusMeta(
-        entry?.status || entry?.review_status || (scope === 'review' ? 'pending' : ''),
-      );
-      const timestamp = getTemporaryTimestamp(entry);
-      items.push({
-        key: `temporary-${getTemporaryEntryKey(entry) || title}-${scope}`,
-        timestamp,
-        isUnread: scope === 'review',
-        title,
-        badge: { label: statusMeta.label, accent: statusMeta.accent },
-        preview: entry?.creatorName || entry?.creator_name || entry?.created_by || '',
-        dateTime: formatDisplayTimestamp(timestamp),
-        onClick: () => openTemporary(scope, entry),
-      });
-    });
-    return items.sort((a, b) => b.timestamp - a.timestamp);
-  }, [
-    changeItems,
-    handleNotificationClick,
-    openRequest,
-    openTemporary,
-    reportItems,
-    sortedNotifications,
-    temporaryItems,
-  ]);
+    return feedRows
+      .map((row) => {
+        if (!row || !row.kind) return null;
+        if (row.kind === 'transaction') {
+          let payload = row?.payload?.message;
+          if (typeof payload === 'string') {
+            try {
+              payload = JSON.parse(payload);
+            } catch {
+              payload = null;
+            }
+          }
+          const item = {
+            id: row.id,
+            transactionName: payload?.transactionName || 'Transaction',
+            transactionTable: payload?.transactionTable,
+            transactionId: payload?.transactionId,
+            action: payload?.action,
+            summaryFields: payload?.summaryFields || payload?.summary_fields || [],
+            summaryText: payload?.summaryText || payload?.summary_text || '',
+            actor: payload?.actor || payload?.createdBy || payload?.updatedBy,
+            createdAt: row?.payload?.created_at,
+            updatedAt: row?.payload?.updated_at,
+          };
+          const itemMeta = getActionMeta(item?.action);
+          return {
+            key: `transaction-${row.id}`,
+            timestamp: getNotificationTimestamp(item),
+            isUnread: row?.isUnread === true,
+            title: item.transactionName || 'Transaction',
+            badge: { label: itemMeta.label, accent: itemMeta.accent },
+            preview: buildPreviewText(item),
+            dateTime: formatDisplayTimestamp(item.updatedAt || item.createdAt),
+            onClick: () => handleNotificationClick(item),
+          };
+        }
+        if (row.kind === 'request') {
+          const req = row.payload || {};
+          const statusMeta = getStatusMeta(req.status);
+          const title = `${formatRequestType(req?.request_type)}`;
+          const previewLabel =
+            req.scope === 'response'
+              ? `Responded by ${getResponder(req) || 'Unknown'}`
+              : `Requested by ${getRequester(req) || 'Unknown'}`;
+          const timestamp = getRequestTimestamp(req, req.scope);
+          return {
+            key: `request-${req?.id || row.id}-${req?.status}-${req?.scope}`,
+            timestamp,
+            isUnread: row?.isUnread === true,
+            title,
+            badge: { label: statusMeta.label, accent: statusMeta.accent },
+            preview: previewLabel,
+            dateTime: formatDisplayTimestamp(timestamp),
+            onClick: () => openRequest(req, req.tab || 'outgoing', req.status),
+          };
+        }
+        if (row.kind === 'temporary') {
+          const entry = row.payload || {};
+          const scope = entry.scope || 'created';
+          const formName =
+            entry?.form_name ||
+            entry?.formName ||
+            entry?.config_name ||
+            entry?.configName ||
+            entry?.module_key ||
+            entry?.moduleKey ||
+            'Temporary transaction';
+          const statusMeta = getTemporaryStatusMeta(entry?.status || (scope === 'review' ? 'pending' : ''));
+          const timestamp = getTemporaryTimestamp(entry);
+          return {
+            key: `temporary-${entry?.id || row.id}-${scope}`,
+            timestamp,
+            isUnread: row?.isUnread === true,
+            title: `${formName}`,
+            badge: { label: statusMeta.label, accent: statusMeta.accent },
+            preview: entry?.created_by || '',
+            dateTime: formatDisplayTimestamp(timestamp),
+            onClick: () => openTemporary(scope, entry),
+          };
+        }
+        return null;
+      })
+      .filter(Boolean)
+      .sort((a, b) => b.timestamp - a.timestamp);
+  }, [feedRows, handleNotificationClick, openRequest, openTemporary]);
 
   const hasAnyNotifications = combinedItems.length > 0;
 
@@ -1006,7 +1016,13 @@ export default function TransactionNotificationDropdown() {
       </button>
       {open && (
         <div style={styles.dropdown}>
-          <div style={styles.list}>
+          <div style={styles.list} onScroll={(event) => {
+            const target = event.currentTarget;
+            const threshold = 40;
+            if (target.scrollTop + target.clientHeight >= target.scrollHeight - threshold) {
+              loadMore();
+            }
+          }}>
             {!hasAnyNotifications && (
               <div style={styles.empty}>No notifications yet</div>
             )}
