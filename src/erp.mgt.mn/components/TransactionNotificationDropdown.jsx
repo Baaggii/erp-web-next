@@ -868,13 +868,13 @@ export default function TransactionNotificationDropdown() {
     [temporaryState.created, temporaryState.review],
   );
 
-  const resolveFormInfo = useCallback(
+  const resolveFormEntry = useCallback(
     (item) => {
       if (!item || formEntries.length === 0) return null;
       const normalizedName = normalizeText(item.transactionName);
       if (normalizedName) {
         const found = formEntries.find(([name]) => normalizeText(name) === normalizedName);
-        if (found) return found[1];
+        if (found) return found;
       }
       const normalizedTable = normalizeText(item.transactionTable);
       if (normalizedTable) {
@@ -882,29 +882,27 @@ export default function TransactionNotificationDropdown() {
           const table = normalizeText(info?.table ?? info?.tableName ?? info?.table_name);
           return table && table === normalizedTable;
         });
-        if (found) return found[1];
+        if (found) return found;
       }
       return null;
     },
     [formEntries],
   );
 
+  const resolveFormInfo = useCallback(
+    (item) => resolveFormEntry(item)?.[1] ?? null,
+    [resolveFormEntry],
+  );
+
   const resolveNotificationTab = useCallback(
     (item) => {
       const formInfo = resolveFormInfo(item);
-      const notifyFieldsRaw =
-        formInfo?.notifyFields ?? formInfo?.notify_fields ?? [];
-      const notifyFields = Array.isArray(notifyFieldsRaw)
-        ? notifyFieldsRaw.map((field) => String(field).trim()).filter(Boolean)
-        : [];
       const redirectTab = String(
         formInfo?.notificationRedirectTab ?? formInfo?.notification_redirect_tab ?? '',
       ).trim();
       const defaultTab =
         isPlanNotificationItem(item) || isDutyNotificationItem(item) ? 'plans' : 'activity';
-      return notifyFields.length > 0 && dashboardTabs.has(redirectTab)
-        ? redirectTab
-        : defaultTab;
+      return dashboardTabs.has(redirectTab) ? redirectTab : defaultTab;
     },
     [dashboardTabs, isDutyNotificationItem, isPlanNotificationItem, resolveFormInfo],
   );
@@ -1070,6 +1068,45 @@ export default function TransactionNotificationDropdown() {
             targetPath = `/?${params.toString()}`;
           }
 
+          if (!targetPath && isTemporary) {
+            const redirectMeta = item?.action?.redirectMeta || {};
+            const scope = String(redirectMeta.scope || '').trim();
+            if (scope) params.set('temporaryScope', scope);
+            params.set('temporaryKey', String(Date.now()));
+
+            const formLookup = {
+              transactionName:
+                String(redirectMeta.formName || redirectMeta.configName || item?.title || '').trim(),
+              transactionTable: String(redirectMeta.tableName || '').trim(),
+            };
+            const resolvedFormEntry = resolveFormEntry(formLookup);
+            const resolvedFormName = resolvedFormEntry?.[0] || '';
+            const resolvedFormInfo = resolvedFormEntry?.[1] || {};
+
+            const moduleKey = String(
+              redirectMeta.moduleKey || resolvedFormInfo?.moduleKey || resolvedFormInfo?.module || '',
+            ).trim();
+            let basePath = '/forms';
+            if (moduleKey) {
+              params.set('temporaryModule', moduleKey);
+              basePath = `/forms/${moduleKey.replace(/_/g, '-')}`;
+            }
+
+            const formName = String(redirectMeta.formName || resolvedFormName || item?.title || '').trim();
+            if (formName) params.set('temporaryForm', formName);
+            const configName = String(redirectMeta.configName || '').trim();
+            if (configName) params.set('temporaryConfig', configName);
+            const tableName = String(redirectMeta.tableName || '').trim();
+            if (tableName) params.set('temporaryTable', tableName);
+            if (redirectMeta.temporaryId != null) {
+              params.set('temporaryId', String(redirectMeta.temporaryId));
+            }
+            if (moduleKey && formName) {
+              params.set(`name_${moduleKey}`, formName);
+            }
+            targetPath = `${basePath}?${params.toString()}`;
+          }
+
           if (targetPath) {
             if (typeof window !== 'undefined') {
               const nextPath = String(targetPath).split('?')[0] || '/';
@@ -1080,7 +1117,7 @@ export default function TransactionNotificationDropdown() {
         },
       };
     });
-  }, [feedState.items, markRead, navigate, openTemporary, resolveNotificationTab]);
+  }, [feedState.items, markRead, navigate, resolveFormEntry, resolveNotificationTab]);
 
   const hasAnyNotifications = combinedItems.length > 0;
   const aggregatedUnreadCount = Number(unreadCount) || 0;

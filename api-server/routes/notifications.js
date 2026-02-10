@@ -51,79 +51,34 @@ function makeRequestPath({ status, requestType, tableName, requestId, createdAt,
   return `/requests?${params.toString()}`;
 }
 
-function makeTransactionPath({ payload, notificationId }) {
+function makeTransactionPath({ payload, notificationId, redirectTab = 'activity' }) {
   const params = new URLSearchParams();
-  params.set('tab', 'activity');
+  params.set('tab', redirectTab || 'activity');
   params.set('notifyGroup', payload?.transactionName || 'Transaction');
   params.set('notifyItem', String(notificationId || ''));
   params.set('notifyKey', String(Date.now()));
   return `/?${params.toString()}`;
 }
 
-function normalizeKey(value) {
-  return String(value || '')
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]/g, '');
+function normalizeText(value) {
+  return String(value || '').trim().toLowerCase();
 }
 
-function buildTransactionFormLookup(formsMap = {}) {
-  const byName = new Map();
-  const byTable = new Map();
-  for (const [name, info] of Object.entries(formsMap || {})) {
-    if (!info || typeof info !== 'object' || name === 'isDefault') continue;
-    const normalizedName = normalizeKey(name);
-    if (normalizedName && !byName.has(normalizedName)) {
-      byName.set(normalizedName, { name, info });
-    }
-    const table = info?.table ?? info?.tableName ?? info?.table_name;
-    const normalizedTable = normalizeKey(table);
-    if (normalizedTable && !byTable.has(normalizedTable)) {
-      byTable.set(normalizedTable, { name, info });
-    }
+function resolveTransactionRedirectTab({ payload, redirectMapByName, redirectMapByTable }) {
+  const byName = normalizeText(payload?.transactionName || payload?.transaction_name);
+  if (byName && redirectMapByName.has(byName)) {
+    return redirectMapByName.get(byName) || '';
   }
-  return { byName, byTable };
+
+  const byTable = normalizeText(payload?.transactionTable || payload?.transaction_table);
+  if (byTable && redirectMapByTable.has(byTable)) {
+    return redirectMapByTable.get(byTable) || '';
+  }
+
+  return '';
 }
 
-function resolveTemporaryFormMeta({ temporaryRow, payload, formsLookup }) {
-  const nameCandidates = [
-    temporaryRow?.form_name,
-    temporaryRow?.config_name,
-    payload?.formName,
-    payload?.form_name,
-    payload?.configName,
-    payload?.config_name,
-  ];
-  for (const candidate of nameCandidates) {
-    const entry = formsLookup.byName.get(normalizeKey(candidate));
-    if (entry) {
-      return {
-        moduleKey: entry.info?.moduleKey || entry.info?.module || null,
-        formName: entry.name,
-      };
-    }
-  }
-
-  const tableCandidates = [
-    temporaryRow?.table_name,
-    payload?.tableName,
-    payload?.table_name,
-    payload?.transactionTable,
-    payload?.transaction_table,
-  ];
-  for (const candidate of tableCandidates) {
-    const entry = formsLookup.byTable.get(normalizeKey(candidate));
-    if (entry) {
-      return {
-        moduleKey: entry.info?.moduleKey || entry.info?.module || null,
-        formName: entry.name,
-      };
-    }
-  }
-  return { moduleKey: null, formName: null };
-}
-
-function makeTemporaryPath({ temporaryId, temporaryRow, payload, userEmpId, redirectMeta = {} }) {
+function makeTemporaryPath({ temporaryId, temporaryRow, payload, userEmpId }) {
   const params = new URLSearchParams();
   params.set('temporaryOpen', '1');
   const creator = String(temporaryRow?.created_by || payload?.createdBy || '').trim().toUpperCase();
@@ -263,6 +218,48 @@ router.get('/feed', requireAuth, feedRateLimiter, async (req, res, next) => {
     const sourceLimit = Math.min(Math.max(cursor + chunkLimit + 40, 80), 400);
     const userEmpId = String(req.user.empid || '').trim().toUpperCase();
     const companyId = req.user.companyId;
+    const session = req.session || {};
+
+    let redirectMapByName = new Map();
+    let redirectMapByTable = new Map();
+    try {
+      const { names } = await listTransactionNames(
+        {
+          branchId: session?.branch_id ?? session?.branchId ?? null,
+          departmentId: session?.department_id ?? session?.departmentId ?? null,
+          userRightId: session?.user_right_id ?? session?.userRightId ?? null,
+          workplaceId: session?.work_place_id ?? session?.workplaceId ?? null,
+          positionId: session?.position_id ?? session?.positionId ?? null,
+          workplacePositionId:
+            session?.workplace_position_id ?? session?.workplacePositionId ?? null,
+          workplacePositions: session?.workplace_assignments,
+        },
+        companyId,
+      );
+      const byName = new Map();
+      const byTable = new Map();
+      Object.entries(names || {}).forEach(([name, info]) => {
+        const redirectTab = String(
+          info?.notificationRedirectTab ?? info?.notification_redirect_tab ?? '',
+        ).trim();
+        if (!redirectTab) return;
+
+        const normalizedName = normalizeText(name);
+        if (normalizedName && !byName.has(normalizedName)) {
+          byName.set(normalizedName, redirectTab);
+        }
+
+        const normalizedTable = normalizeText(info?.table ?? info?.tableName ?? info?.table_name);
+        if (normalizedTable && !byTable.has(normalizedTable)) {
+          byTable.set(normalizedTable, redirectTab);
+        }
+      });
+      redirectMapByName = byName;
+      redirectMapByTable = byTable;
+    } catch {
+      redirectMapByName = new Map();
+      redirectMapByTable = new Map();
+    }
 
     const session = req.session || {};
     let formsLookup = { byName: new Map(), byTable: new Map() };
@@ -428,9 +425,15 @@ router.get('/feed', requireAuth, feedRateLimiter, async (req, res, next) => {
       }
 
       const title = formatTransactionFormName(payload);
+      const notificationRedirectTab = resolveTransactionRedirectTab({
+        payload,
+        redirectMapByName,
+        redirectMapByTable,
+      });
       const transactionRedirectMeta = {
         transactionName: payload?.transactionName || payload?.transaction_name || title,
         transactionTable: payload?.transactionTable || payload?.transaction_table || null,
+        notificationRedirectTab,
       };
       items.push({
         id: `transaction-${row.notification_id}`,
@@ -443,7 +446,11 @@ router.get('/feed', requireAuth, feedRateLimiter, async (req, res, next) => {
         action: {
           type: 'navigate',
           notificationId: Number(row.notification_id) || null,
-          path: makeTransactionPath({ payload, notificationId: row.notification_id }),
+          path: makeTransactionPath({
+            payload,
+            notificationId: row.notification_id,
+            redirectTab: notificationRedirectTab || 'activity',
+          }),
           redirectMeta: transactionRedirectMeta,
         },
       });
