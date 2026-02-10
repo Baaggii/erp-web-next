@@ -4051,9 +4051,6 @@ export function Header({
         <button style={styles.iconBtn}>🗗 {t("windows")}</button>
         <button style={styles.iconBtn}>❔ {t("help")}</button>
       </nav>
-      <div style={styles.notificationSlot}>
-        <TransactionNotificationDropdown />
-      </div>
       {hasUpdateAvailable && (
         <button type="button" style={styles.updateButton} onClick={handleRefresh}>
           🔄 {t('refresh_to_update', 'Refresh to update')}
@@ -4081,6 +4078,7 @@ export function Header({
           <option value="fr">fr</option>
           <option value="ru">ru</option>
         </select>
+        <TransactionNotificationDropdown />
         <UserMenu
           user={user}
           onLogout={onLogout}
@@ -4762,12 +4760,6 @@ const styles = {
     whiteSpace: "nowrap",
     flexGrow: 1,
     minWidth: 0,
-  },
-  notificationSlot: {
-    flexShrink: 0,
-    display: "flex",
-    alignItems: "center",
-    marginLeft: "0.5rem",
   },
   updateButton: {
     backgroundColor: "#f97316",
