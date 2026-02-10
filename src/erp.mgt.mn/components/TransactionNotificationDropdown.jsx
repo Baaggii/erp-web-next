@@ -27,6 +27,7 @@ const DEFAULT_PLAN_NOTIFICATION_FIELDS = ['is_plan', 'is_plan_completion'];
 const DEFAULT_PLAN_NOTIFICATION_VALUES = ['1'];
 const DEFAULT_DUTY_NOTIFICATION_FIELDS = [];
 const DEFAULT_DUTY_NOTIFICATION_VALUES = ['1'];
+const TEMPORARY_PREFETCH_THROTTLE_MS = 20000;
 
 function normalizeText(value) {
   if (value === undefined || value === null) return '';
@@ -142,6 +143,18 @@ function getStatusMeta(status) {
     return { label: normalized.charAt(0).toUpperCase() + normalized.slice(1), accent: '#2563eb' };
   }
   return { label: 'Pending', accent: '#f59e0b' };
+}
+
+function getTemporaryStatusMeta(entry) {
+  const raw = entry?.status ? String(entry.status).trim().toLowerCase() : '';
+  if (!raw || raw === 'pending') return { label: 'Request', accent: '#f59e0b' };
+  if (['promoted', 'approved', 'accepted'].includes(raw)) {
+    return { label: 'Approval', accent: '#16a34a' };
+  }
+  if (['rejected', 'declined', 'denied'].includes(raw)) {
+    return { label: 'Rejection', accent: '#ef4444' };
+  }
+  return { label: 'Request', accent: '#f59e0b' };
 }
 
 function dedupeRequests(list) {
@@ -272,6 +285,8 @@ export default function TransactionNotificationDropdown() {
     loading: false,
     error: '',
   });
+  const lastTemporaryFetchRef = useRef(0);
+  const temporaryFetchInFlightRef = useRef(false);
   const containerRef = useRef(null);
   const navigate = useNavigate();
   const generalConfig = useGeneralConfig();
@@ -649,15 +664,24 @@ export default function TransactionNotificationDropdown() {
     workflows?.changeRequests?.outgoing?.declined?.count,
   ]);
 
-  useEffect(() => {
-    if (!open) return () => {};
-    let cancelled = false;
-    const loadTemporary = async () => {
-      setTemporaryState((prev) => ({ ...prev, loading: true, error: '' }));
+  const loadTemporaryEntries = useCallback(
+    async ({ setLoading = false, reason = 'open' } = {}) => {
+      if (temporaryFetchInFlightRef.current) return;
       if (typeof temporary?.fetchScopeEntries !== 'function') {
         setTemporaryState({ review: [], created: [], loading: false, error: '' });
         return;
       }
+      const now = Date.now();
+      if (
+        reason === 'prefetch' &&
+        now - lastTemporaryFetchRef.current < TEMPORARY_PREFETCH_THROTTLE_MS
+      ) {
+        return;
+      }
+      if (setLoading) {
+        setTemporaryState((prev) => ({ ...prev, loading: true, error: '' }));
+      }
+      temporaryFetchInFlightRef.current = true;
       try {
         const [reviewResult, createdResult] = await Promise.all([
           temporary.fetchScopeEntries('review', {
@@ -669,7 +693,6 @@ export default function TransactionNotificationDropdown() {
             status: 'any',
           }),
         ]);
-        if (cancelled) return;
         setTemporaryState({
           review: Array.isArray(reviewResult?.rows) ? reviewResult.rows : [],
           created: Array.isArray(createdResult?.rows) ? createdResult.rows : [],
@@ -677,21 +700,41 @@ export default function TransactionNotificationDropdown() {
           error: '',
         });
       } catch {
-        if (!cancelled) {
-          setTemporaryState({
-            review: [],
-            created: [],
-            loading: false,
-            error: 'Failed to load temporary transactions',
-          });
-        }
+        setTemporaryState({
+          review: [],
+          created: [],
+          loading: false,
+          error: 'Failed to load temporary transactions',
+        });
+      } finally {
+        temporaryFetchInFlightRef.current = false;
+        lastTemporaryFetchRef.current = Date.now();
       }
+    },
+    [temporary?.fetchScopeEntries],
+  );
+
+  useEffect(() => {
+    if (!open) return () => {};
+    const loadTemporary = async () => {
+      await loadTemporaryEntries({ setLoading: true, reason: 'open' });
     };
     loadTemporary();
-    return () => {
-      cancelled = true;
-    };
-  }, [open, temporary?.fetchScopeEntries]);
+    return () => {};
+  }, [loadTemporaryEntries, open]);
+
+  const temporaryCountsTotal =
+    (temporary?.counts?.review?.count || 0) + (temporary?.counts?.created?.count || 0);
+  useEffect(() => {
+    if (!temporaryCountsTotal) return;
+    if (temporaryState.review.length || temporaryState.created.length) return;
+    loadTemporaryEntries({ setLoading: false, reason: 'prefetch' });
+  }, [
+    loadTemporaryEntries,
+    temporaryCountsTotal,
+    temporaryState.created.length,
+    temporaryState.review.length,
+  ]);
 
   const openRequest = useCallback(
     (req, tab, statusOverride) => {
@@ -961,14 +1004,18 @@ export default function TransactionNotificationDropdown() {
       const tableName = entry?.tableName || entry?.table_name || '';
       const title = `${formName}${tableName ? ` • ${tableName}` : ''}`;
       const scopeLabel = scope === 'review' ? 'Review queue' : 'My drafts';
+      const statusMeta = getTemporaryStatusMeta(entry);
+      const creator =
+        entry?.creatorName || entry?.creator_name || entry?.created_by || '';
+      const previewParts = [scopeLabel, creator].filter(Boolean);
       const timestamp = getTemporaryTimestamp(entry);
       items.push({
         key: `temporary-${getTemporaryEntryKey(entry) || title}-${scope}`,
         timestamp,
         isUnread: scope === 'review',
         title,
-        badge: { label: scopeLabel, accent: '#7c3aed' },
-        preview: entry?.creatorName || entry?.creator_name || entry?.created_by || '',
+        badge: { label: statusMeta.label, accent: statusMeta.accent },
+        preview: previewParts.join(' • '),
         dateTime: formatDisplayTimestamp(timestamp),
         onClick: () => openTemporary(scope, entry),
       });
