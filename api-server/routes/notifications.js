@@ -95,6 +95,76 @@ function buildTransactionPreview(payload) {
   return `${actionLabel} • ${formName}`;
 }
 
+function parseNotificationMessage(rawMessage) {
+  if (!rawMessage || typeof rawMessage !== 'string') return null;
+  try {
+    const parsed = JSON.parse(rawMessage);
+    return parsed && typeof parsed === 'object' ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function isTransactionPayload(payload) {
+  if (!payload || typeof payload !== 'object') return false;
+  const kind = String(payload.kind || '').trim().toLowerCase();
+  if (kind === 'transaction') return true;
+  if (payload.transactionName || payload.transaction_name) return true;
+  if (payload.transactionTable || payload.transaction_table) return true;
+  return false;
+}
+
+function isTemporaryPayload(payload) {
+  if (!payload || typeof payload !== 'object') return false;
+  const kind = String(payload.kind || '').trim().toLowerCase();
+  return kind === 'temporary' || Boolean(payload.temporarySubmission);
+}
+
+function formatTemporaryAction(value) {
+  const normalized = String(value || '').trim().toLowerCase();
+  if (!normalized) return 'Pending review';
+  if (normalized === 'pending') return 'Pending review';
+  if (normalized === 'promoted' || normalized === 'approved') return 'Approved';
+  if (normalized === 'rejected' || normalized === 'declined') return 'Rejected';
+  if (normalized === 'forwarded') return 'Forwarded';
+  if (normalized === 'created' || normalized === 'create') return 'Created';
+  return normalized.charAt(0).toUpperCase() + normalized.slice(1);
+}
+
+function detectTemporaryStatus({ row, payload, temporaryRow }) {
+  const candidates = [payload?.action, payload?.status, temporaryRow?.status, row?.status];
+  const directMatch = candidates
+    .map((value) => String(value || '').trim().toLowerCase())
+    .find(Boolean);
+  if (directMatch) return directMatch;
+
+  const text = String(row?.message || '').trim().toLowerCase();
+  if (text.includes('forwarded')) return 'forwarded';
+  if (text.includes('approved') || text.includes('promoted')) return 'promoted';
+  if (text.includes('rejected') || text.includes('declined')) return 'rejected';
+  return 'pending';
+}
+
+function formatTemporaryFormName(temporaryRow, payload) {
+  if (temporaryRow) {
+    return (
+      temporaryRow.form_name ||
+      temporaryRow.config_name ||
+      formatTableLabel(temporaryRow.table_name) ||
+      'Temporary transaction'
+    );
+  }
+  return formatTransactionFormName(payload);
+}
+
+function buildTemporaryPreview({ temporaryRow, payload, status, message }) {
+  const actionLabel = formatTemporaryAction(status);
+  const formName = formatTemporaryFormName(temporaryRow, payload);
+  const summary = String(payload?.summaryText || payload?.summary_text || message || '').trim();
+  if (summary) return `${actionLabel} • ${formName} • ${summary}`;
+  return `${actionLabel} • ${formName}`;
+}
+
 router.get('/feed', requireAuth, feedRateLimiter, async (req, res, next) => {
   try {
     const chunkLimit = Math.min(Math.max(Number(req.query.limit) || 20, 1), 100);
@@ -136,11 +206,26 @@ router.get('/feed', requireAuth, feedRateLimiter, async (req, res, next) => {
       [userEmpId, companyId, sourceLimit],
     );
 
+    const parsedNotificationRows = (notificationRows || []).map((row) => {
+      const payload = parseNotificationMessage(row?.message);
+      return {
+        row,
+        payload,
+        isTransaction: isTransactionPayload(payload),
+        isTemporary: isTemporaryPayload(payload),
+      };
+    });
+
     const temporaryIds = Array.from(
       new Set(
-        (notificationRows || [])
-          .map((row) => Number(row?.related_id))
-          .filter((id) => Number.isFinite(id) && id > 0),
+        parsedNotificationRows
+          .filter((entry) => {
+            const relatedId = Number(entry?.row?.related_id);
+            if (!Number.isFinite(relatedId) || relatedId <= 0) return false;
+            if (entry.isTransaction) return false;
+            return true;
+          })
+          .map((entry) => Number(entry?.row?.related_id)),
       ),
     );
 
@@ -162,13 +247,36 @@ router.get('/feed', requireAuth, feedRateLimiter, async (req, res, next) => {
 
     const items = [];
 
-    for (const row of notificationRows || []) {
-      let payload = null;
-      try {
-        payload = row.message ? JSON.parse(row.message) : null;
-      } catch {
-        payload = null;
+    for (const entry of parsedNotificationRows) {
+      const row = entry.row;
+      const payload = entry.payload;
+      const temporaryId = Number(row?.related_id);
+      const temporaryRow = Number.isFinite(temporaryId) ? temporaryMap.get(temporaryId) : null;
+      const messageText = String(row?.message || '').trim().toLowerCase();
+      const isTemporaryNotification =
+        entry.isTemporary ||
+        (!entry.isTransaction && Boolean(temporaryRow)) ||
+        (!entry.isTransaction && messageText.includes('temporary'));
+
+      if (isTemporaryNotification) {
+        const status = detectTemporaryStatus({ row, payload, temporaryRow });
+        items.push({
+          id: `temporary-${row.notification_id}`,
+          source: 'temporary',
+          title: formatTemporaryFormName(temporaryRow, payload),
+          preview: buildTemporaryPreview({ temporaryRow, payload, status, message: row?.message }),
+          status,
+          timestamp:
+            temporaryRow?.updated_at ||
+            payload?.updatedAt ||
+            payload?.updated_at ||
+            row.created_at,
+          unread: Number(row.is_read) === 0,
+          action: { type: 'none', notificationId: Number(row.notification_id) || null },
+        });
+        continue;
       }
+
       const title = formatTransactionFormName(payload);
       items.push({
         id: `transaction-${row.notification_id}`,
@@ -178,7 +286,7 @@ router.get('/feed', requireAuth, feedRateLimiter, async (req, res, next) => {
         status: payload?.action || 'new',
         timestamp: payload?.updatedAt || row.created_at,
         unread: Number(row.is_read) === 0,
-        action: { type: 'none' },
+        action: { type: 'none', notificationId: Number(row.notification_id) || null },
       });
     }
 
