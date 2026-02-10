@@ -286,15 +286,9 @@ export default function TransactionNotificationDropdown() {
     loading: false,
     error: '',
   });
-  const [feedItems, setFeedItems] = useState([]);
-  const [feedCursor, setFeedCursor] = useState(null);
-  const [feedLoading, setFeedLoading] = useState(false);
   const containerRef = useRef(null);
   const navigate = useNavigate();
   const generalConfig = useGeneralConfig();
-  const USE_UNIFIED_NOTIFICATION_FEED = normalizeFlagValue(
-    import.meta.env.VITE_USE_UNIFIED_NOTIFICATION_FEED ?? false,
-  );
   const dashboardTabs = useMemo(
     () => new Set(['general', 'activity', 'audition', 'plans']),
     [],
@@ -1032,32 +1026,12 @@ export default function TransactionNotificationDropdown() {
     temporaryItems,
   ]);
 
-
-  const unifiedFeedItems = useMemo(
-    () =>
-      feedItems.map((item, index) => ({
-        key: `feed-${item?.id ?? index}`,
-        timestamp: getNotificationTimestamp(item),
-        isUnread: item?.isRead === false,
-        title: item?.transactionName || item?.title || 'Notification',
-        badge: getActionMeta(item?.action),
-        preview: buildPreviewText(item),
-        dateTime: formatDisplayTimestamp(item?.updatedAt || item?.createdAt),
-        onClick: () => handleNotificationClick(item),
-      })),
-    [feedItems, handleNotificationClick],
-  );
-
-  const hasAnyNotifications =
-    USE_UNIFIED_NOTIFICATION_FEED ? feedItems.length > 0 : combinedItems.length > 0;
+  const hasAnyNotifications = combinedItems.length > 0;
   const isDropdownLoading =
-    USE_UNIFIED_NOTIFICATION_FEED
-      ? feedLoading
-      : hydratingFeed && (reportState.loading || changeState.loading || temporaryState.loading);
+    hydratingFeed && (reportState.loading || changeState.loading || temporaryState.loading);
   const visibleItems = useMemo(
-    () =>
-      (USE_UNIFIED_NOTIFICATION_FEED ? unifiedFeedItems : combinedItems).slice(0, visibleCount),
-    [USE_UNIFIED_NOTIFICATION_FEED, combinedItems, unifiedFeedItems, visibleCount],
+    () => combinedItems.slice(0, visibleCount),
+    [combinedItems, visibleCount],
   );
 
   useEffect(() => {
@@ -1089,24 +1063,12 @@ export default function TransactionNotificationDropdown() {
       if (!target) return;
       const distanceFromBottom = target.scrollHeight - target.scrollTop - target.clientHeight;
       if (distanceFromBottom > 96) return;
-      if (USE_UNIFIED_NOTIFICATION_FEED && feedCursor && !feedLoading) {
-        loadUnifiedFeed({ append: true, cursor: feedCursor });
-      }
       setVisibleCount((prev) => {
-        const currentLength = USE_UNIFIED_NOTIFICATION_FEED ? unifiedFeedItems.length : combinedItems.length;
-        if (prev >= currentLength) return prev;
-        return Math.min(prev + NOTIFICATION_PAGE_SIZE, currentLength);
+        if (prev >= combinedItems.length) return prev;
+        return Math.min(prev + NOTIFICATION_PAGE_SIZE, combinedItems.length);
       });
     },
-    [
-      USE_UNIFIED_NOTIFICATION_FEED,
-      combinedItems.length,
-      feedCursor,
-      feedLoading,
-      isDropdownLoading,
-      loadUnifiedFeed,
-      unifiedFeedItems.length,
-    ],
+    [combinedItems.length, isDropdownLoading],
   );
 
   return (
@@ -1147,8 +1109,7 @@ export default function TransactionNotificationDropdown() {
                 )}
               </button>
             ))}
-            {!isDropdownLoading &&
-              visibleCount < (USE_UNIFIED_NOTIFICATION_FEED ? unifiedFeedItems.length : combinedItems.length) && (
+            {!isDropdownLoading && visibleCount < combinedItems.length && (
               <div style={styles.loadMoreHint}>Scroll to load more…</div>
             )}
           </div>
