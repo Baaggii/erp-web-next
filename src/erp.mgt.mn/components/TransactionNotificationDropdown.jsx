@@ -189,6 +189,24 @@ function formatRequestType(value) {
     .replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
+function getTableNameFromAction(action) {
+  if (!action || typeof action !== 'object') return '';
+  const table =
+    action.table_name || action.tableName || action.table || action.transactionTable || '';
+  return String(table || '').trim();
+}
+
+function resolveNotificationTitle(item) {
+  const rawTitle = String(item?.title || '').trim();
+  if (!rawTitle) return 'Notification';
+  const normalizedTitle = normalizeText(rawTitle);
+  const actionTable = normalizeText(getTableNameFromAction(item?.action));
+  if (actionTable && normalizedTitle === actionTable) {
+    return 'Notification';
+  }
+  return rawTitle;
+}
+
 function getRequester(req) {
   return req?.emp_name || req?.empid || req?.emp_id || '';
 }
@@ -986,7 +1004,7 @@ export default function TransactionNotificationDropdown() {
         key: item?.id || `${normalizedSource}-${timestamp}`,
         timestamp,
         isUnread: item?.unread !== false,
-        title: item?.title || 'Notification',
+        title: resolveNotificationTitle(item),
         badge: { label: badgeMeta.label, accent: badgeMeta.accent },
         preview: item?.preview || '',
         dateTime: formatDisplayTimestamp(item?.timestamp),
