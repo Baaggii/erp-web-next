@@ -151,6 +151,17 @@ export function TabProvider({ children }) {
   }, []);
 
   const resetTabs = useCallback(() => {
+    const keysToReset = new Set([
+      'global',
+      activeKey,
+      window.__activeTabKey,
+      ...tabs.map((tab) => tab.key),
+    ]);
+    keysToReset.forEach((loaderKey) => {
+      if (!loaderKey) return;
+      dispatchReset(loaderKey);
+    });
+
     trackSetState('TabProvider.setTabs');
     setTabs([]);
     trackSetState('TabProvider.setActiveKey');
@@ -159,7 +170,7 @@ export function TabProvider({ children }) {
     setCache({});
     window.__activeTabKey = 'global';
     clearStoredTabs();
-  }, []);
+  }, [activeKey, tabs]);
 
   useEffect(() => {
     const handleLogout = () => resetTabs();
