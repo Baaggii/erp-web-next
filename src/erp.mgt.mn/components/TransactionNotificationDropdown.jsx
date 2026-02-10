@@ -27,6 +27,8 @@ const DEFAULT_PLAN_NOTIFICATION_FIELDS = ['is_plan', 'is_plan_completion'];
 const DEFAULT_PLAN_NOTIFICATION_VALUES = ['1'];
 const DEFAULT_DUTY_NOTIFICATION_FIELDS = [];
 const DEFAULT_DUTY_NOTIFICATION_VALUES = ['1'];
+const FEED_CHUNK_SIZE = 20;
+const USE_UNIFIED_FEED = true;
 
 function normalizeText(value) {
   if (value === undefined || value === null) return '';
@@ -283,7 +285,15 @@ export default function TransactionNotificationDropdown() {
     loading: false,
     error: '',
   });
+  const [feedState, setFeedState] = useState({
+    items: [],
+    loading: false,
+    error: '',
+    nextCursor: null,
+  });
+  const [visibleCount, setVisibleCount] = useState(FEED_CHUNK_SIZE);
   const containerRef = useRef(null);
+  const listRef = useRef(null);
   const navigate = useNavigate();
   const generalConfig = useGeneralConfig();
   const dashboardTabs = useMemo(
@@ -533,7 +543,7 @@ export default function TransactionNotificationDropdown() {
   );
 
   useEffect(() => {
-    if (!open) return () => {};
+    if (USE_UNIFIED_FEED || !open) return () => {};
     let cancelled = false;
     const incomingPending = workflows?.reportApproval?.incoming?.pending?.count || 0;
     const outgoingPending = workflows?.reportApproval?.outgoing?.pending?.count || 0;
@@ -589,6 +599,7 @@ export default function TransactionNotificationDropdown() {
     };
   }, [
     fetchRequests,
+    USE_UNIFIED_FEED,
     open,
     workflows?.reportApproval?.incoming?.pending?.count,
     workflows?.reportApproval?.outgoing?.pending?.count,
@@ -597,7 +608,7 @@ export default function TransactionNotificationDropdown() {
   ]);
 
   useEffect(() => {
-    if (!open) return () => {};
+    if (USE_UNIFIED_FEED || !open) return () => {};
     let cancelled = false;
     const incomingPending = workflows?.changeRequests?.incoming?.pending?.count || 0;
     const outgoingPending = workflows?.changeRequests?.outgoing?.pending?.count || 0;
@@ -653,6 +664,7 @@ export default function TransactionNotificationDropdown() {
     };
   }, [
     fetchRequests,
+    USE_UNIFIED_FEED,
     open,
     workflows?.changeRequests?.incoming?.pending?.count,
     workflows?.changeRequests?.outgoing?.pending?.count,
@@ -661,7 +673,7 @@ export default function TransactionNotificationDropdown() {
   ]);
 
   useEffect(() => {
-    if (!open) return () => {};
+    if (USE_UNIFIED_FEED || !open) return () => {};
     let cancelled = false;
     const loadTemporary = async () => {
       setTemporaryState((prev) => ({ ...prev, loading: true, error: '' }));
@@ -702,7 +714,7 @@ export default function TransactionNotificationDropdown() {
     return () => {
       cancelled = true;
     };
-  }, [open, temporary?.fetchScopeEntries]);
+  }, [USE_UNIFIED_FEED, open, temporary?.fetchScopeEntries]);
 
   const openRequest = useCallback(
     (req, tab, statusOverride) => {
@@ -898,99 +910,83 @@ export default function TransactionNotificationDropdown() {
   }, [formsLoaded]);
 
   useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    setVisibleCount(FEED_CHUNK_SIZE);
+    setFeedState((prev) => ({ ...prev, loading: true, error: '' }));
+    fetch(`/api/notifications/feed?limit=200`, {
+      credentials: 'include',
+      skipLoader: true,
+    })
+      .then((res) => (res.ok ? res.json() : Promise.reject(new Error('feed fetch failed'))))
+      .then((data) => {
+        if (cancelled) return;
+        const items = Array.isArray(data?.items) ? data.items : [];
+        setFeedState({
+          items,
+          loading: false,
+          error: '',
+          nextCursor: data?.nextCursor ?? null,
+        });
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setFeedState({ items: [], loading: false, error: 'Failed to load notifications', nextCursor: null });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    const node = listRef.current;
+    if (!node) return;
+    const onScroll = () => {
+      if (visibleCount >= feedState.items.length) return;
+      const remaining = node.scrollHeight - node.scrollTop - node.clientHeight;
+      if (remaining <= 40) {
+        setVisibleCount((prev) => Math.min(prev + FEED_CHUNK_SIZE, feedState.items.length));
+      }
+    };
+    node.addEventListener('scroll', onScroll);
+    return () => node.removeEventListener('scroll', onScroll);
+  }, [feedState.items.length, open, visibleCount]);
+
+  useEffect(() => {
     if (open && !formsLoaded) {
       loadFormConfigs();
     }
   }, [formsLoaded, loadFormConfigs, open]);
 
   const combinedItems = useMemo(() => {
-    const items = [];
-    sortedNotifications.forEach((item) => {
-      const itemMeta = getActionMeta(item?.action);
-      items.push({
-        key: `transaction-${item.id}`,
-        timestamp: getNotificationTimestamp(item),
-        isUnread: item?.isRead === false,
-        title: item.transactionName || 'Transaction',
-        badge: { label: itemMeta.label, accent: itemMeta.accent },
-        preview: buildPreviewText(item),
-        dateTime: formatDisplayTimestamp(item.updatedAt || item.createdAt),
-        onClick: () => handleNotificationClick(item),
-      });
-    });
-    reportItems.forEach(({ req, tab, status, scope }) => {
-      const statusMeta = getStatusMeta(status);
-      const title = `${formatRequestType(req?.request_type)}`;
-      const previewLabel =
-        scope === 'response'
-          ? `Responded by ${getResponder(req) || 'Unknown'}`
-          : `Requested by ${getRequester(req) || 'Unknown'}`;
-      const timestamp = getRequestTimestamp(req, scope);
-      items.push({
-        key: `report-${req?.request_id || title}-${status}-${scope}`,
+    return feedState.items.map((item) => {
+      const normalizedSource = String(item?.source || 'notification').toLowerCase();
+      const isTransaction = normalizedSource === 'transaction';
+      const badgeMeta = isTransaction
+        ? getActionMeta(item?.status)
+        : getStatusMeta(item?.status);
+      const timestamp = getTemporaryTimestamp({ created_at: item?.timestamp, updated_at: item?.timestamp });
+      return {
+        key: item?.id || `${normalizedSource}-${timestamp}`,
         timestamp,
-        isUnread: status === 'pending',
-        title,
-        badge: { label: statusMeta.label, accent: statusMeta.accent },
-        preview: previewLabel,
-        dateTime: formatDisplayTimestamp(timestamp),
-        onClick: () => openRequest(req, tab, status),
-      });
+        isUnread: item?.unread !== false,
+        title: item?.title || 'Notification',
+        badge: { label: badgeMeta.label, accent: badgeMeta.accent },
+        preview: item?.preview || '',
+        dateTime: formatDisplayTimestamp(item?.timestamp),
+        onClick: () => {
+          if (isTransaction && item?.action?.notificationId) {
+            markRead([item.action.notificationId]);
+          }
+          setOpen(false);
+          if (item?.action?.path) {
+            navigate(item.action.path);
+          }
+        },
+      };
     });
-    changeItems.forEach(({ req, tab, status, scope }) => {
-      const statusMeta = getStatusMeta(status);
-      const title = `${formatRequestType(req?.request_type)}`;
-      const previewLabel =
-        scope === 'response'
-          ? `Responded by ${getResponder(req) || 'Unknown'}`
-          : `Requested by ${getRequester(req) || 'Unknown'}`;
-      const timestamp = getRequestTimestamp(req, scope);
-      items.push({
-        key: `change-${req?.request_id || title}-${status}-${scope}`,
-        timestamp,
-        isUnread: status === 'pending',
-        title,
-        badge: { label: statusMeta.label, accent: statusMeta.accent },
-        preview: previewLabel,
-        dateTime: formatDisplayTimestamp(timestamp),
-        onClick: () => openRequest(req, tab, status),
-      });
-    });
-    temporaryItems.forEach(({ entry, scope }) => {
-      const formName =
-        entry?.formName ||
-        entry?.form_name ||
-        entry?.configName ||
-        entry?.config_name ||
-        entry?.moduleKey ||
-        entry?.module_key ||
-        'Temporary transaction';
-      const title = `${formName}`;
-      const statusMeta = getTemporaryStatusMeta(
-        entry?.status || entry?.review_status || (scope === 'review' ? 'pending' : ''),
-      );
-      const timestamp = getTemporaryTimestamp(entry);
-      items.push({
-        key: `temporary-${getTemporaryEntryKey(entry) || title}-${scope}`,
-        timestamp,
-        isUnread: scope === 'review',
-        title,
-        badge: { label: statusMeta.label, accent: statusMeta.accent },
-        preview: entry?.creatorName || entry?.creator_name || entry?.created_by || '',
-        dateTime: formatDisplayTimestamp(timestamp),
-        onClick: () => openTemporary(scope, entry),
-      });
-    });
-    return items.sort((a, b) => b.timestamp - a.timestamp);
-  }, [
-    changeItems,
-    handleNotificationClick,
-    openRequest,
-    openTemporary,
-    reportItems,
-    sortedNotifications,
-    temporaryItems,
-  ]);
+  }, [feedState.items, markRead, navigate]);
 
   const hasAnyNotifications = combinedItems.length > 0;
 
@@ -1006,11 +1002,12 @@ export default function TransactionNotificationDropdown() {
       </button>
       {open && (
         <div style={styles.dropdown}>
-          <div style={styles.list}>
-            {!hasAnyNotifications && (
-              <div style={styles.empty}>No notifications yet</div>
+          <div style={styles.list} ref={listRef}>
+            {feedState.loading && <div style={styles.empty}>Loading notifications...</div>}
+            {!feedState.loading && !hasAnyNotifications && (
+              <div style={styles.empty}>{feedState.error || 'No notifications yet'}</div>
             )}
-            {combinedItems.map((item) => (
+            {combinedItems.slice(0, visibleCount).map((item) => (
               <button
                 key={item.key}
                 type="button"
@@ -1029,6 +1026,9 @@ export default function TransactionNotificationDropdown() {
                 )}
               </button>
             ))}
+            {!feedState.loading && visibleCount < combinedItems.length && (
+              <div style={styles.empty}>Scroll to load more…</div>
+            )}
           </div>
           <button
             type="button"
