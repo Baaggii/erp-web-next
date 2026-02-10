@@ -868,13 +868,13 @@ export default function TransactionNotificationDropdown() {
     [temporaryState.created, temporaryState.review],
   );
 
-  const resolveFormInfo = useCallback(
+  const resolveFormEntry = useCallback(
     (item) => {
       if (!item || formEntries.length === 0) return null;
       const normalizedName = normalizeText(item.transactionName);
       if (normalizedName) {
         const found = formEntries.find(([name]) => normalizeText(name) === normalizedName);
-        if (found) return found[1];
+        if (found) return found;
       }
       const normalizedTable = normalizeText(item.transactionTable);
       if (normalizedTable) {
@@ -882,11 +882,16 @@ export default function TransactionNotificationDropdown() {
           const table = normalizeText(info?.table ?? info?.tableName ?? info?.table_name);
           return table && table === normalizedTable;
         });
-        if (found) return found[1];
+        if (found) return found;
       }
       return null;
     },
     [formEntries],
+  );
+
+  const resolveFormInfo = useCallback(
+    (item) => resolveFormEntry(item)?.[1] ?? null,
+    [resolveFormEntry],
   );
 
   const resolveNotificationTab = useCallback(
@@ -1050,24 +1055,40 @@ export default function TransactionNotificationDropdown() {
           if (!targetPath && isTemporary) {
             const redirectMeta = item?.action?.redirectMeta || {};
             const scope = String(redirectMeta.scope || '').trim();
-            const temporaryEntry = {
-              moduleKey: redirectMeta.moduleKey,
-              module_key: redirectMeta.module_key,
-              formName: redirectMeta.formName,
-              form_name: redirectMeta.form_name,
-              configName: redirectMeta.configName,
-              config_name: redirectMeta.config_name,
-              tableName: redirectMeta.tableName,
-              table_name: redirectMeta.table_name,
-              id: redirectMeta.temporaryId ?? redirectMeta.temporary_id,
-              temporaryId: redirectMeta.temporaryId ?? redirectMeta.temporary_id,
-              temporary_id: redirectMeta.temporary_id ?? redirectMeta.temporaryId,
+            if (scope) params.set('temporaryScope', scope);
+            params.set('temporaryKey', String(Date.now()));
+
+            const formLookup = {
+              transactionName:
+                String(redirectMeta.formName || redirectMeta.configName || item?.title || '').trim(),
+              transactionTable: String(redirectMeta.tableName || '').trim(),
             };
-            const hasEntryContext = Object.values(temporaryEntry).some(
-              (value) => value !== undefined && value !== null && String(value).trim() !== '',
-            );
-            openTemporary(scope, hasEntryContext ? temporaryEntry : null);
-            return;
+            const resolvedFormEntry = resolveFormEntry(formLookup);
+            const resolvedFormName = resolvedFormEntry?.[0] || '';
+            const resolvedFormInfo = resolvedFormEntry?.[1] || {};
+
+            const moduleKey = String(
+              redirectMeta.moduleKey || resolvedFormInfo?.moduleKey || resolvedFormInfo?.module || '',
+            ).trim();
+            let basePath = '/forms';
+            if (moduleKey) {
+              params.set('temporaryModule', moduleKey);
+              basePath = `/forms/${moduleKey.replace(/_/g, '-')}`;
+            }
+
+            const formName = String(redirectMeta.formName || resolvedFormName || item?.title || '').trim();
+            if (formName) params.set('temporaryForm', formName);
+            const configName = String(redirectMeta.configName || '').trim();
+            if (configName) params.set('temporaryConfig', configName);
+            const tableName = String(redirectMeta.tableName || '').trim();
+            if (tableName) params.set('temporaryTable', tableName);
+            if (redirectMeta.temporaryId != null) {
+              params.set('temporaryId', String(redirectMeta.temporaryId));
+            }
+            if (moduleKey && formName) {
+              params.set(`name_${moduleKey}`, formName);
+            }
+            targetPath = `${basePath}?${params.toString()}`;
           }
 
           if (targetPath) {
@@ -1080,7 +1101,7 @@ export default function TransactionNotificationDropdown() {
         },
       };
     });
-  }, [feedState.items, markRead, navigate, openTemporary, resolveNotificationTab]);
+  }, [feedState.items, markRead, navigate, resolveFormEntry, resolveNotificationTab]);
 
   const hasAnyNotifications = combinedItems.length > 0;
   const aggregatedUnreadCount = Number(unreadCount) || 0;
