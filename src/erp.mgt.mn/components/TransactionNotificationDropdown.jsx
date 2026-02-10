@@ -27,6 +27,7 @@ const DEFAULT_PLAN_NOTIFICATION_FIELDS = ['is_plan', 'is_plan_completion'];
 const DEFAULT_PLAN_NOTIFICATION_VALUES = ['1'];
 const DEFAULT_DUTY_NOTIFICATION_FIELDS = [];
 const DEFAULT_DUTY_NOTIFICATION_VALUES = ['1'];
+const TEMPORARY_PREFETCH_THROTTLE_MS = 20000;
 
 function normalizeText(value) {
   if (value === undefined || value === null) return '';
@@ -142,6 +143,18 @@ function getStatusMeta(status) {
     return { label: normalized.charAt(0).toUpperCase() + normalized.slice(1), accent: '#2563eb' };
   }
   return { label: 'Pending', accent: '#f59e0b' };
+}
+
+function getTemporaryStatusMeta(entry) {
+  const raw = entry?.status ? String(entry.status).trim().toLowerCase() : '';
+  if (!raw || raw === 'pending') return { label: 'Request', accent: '#f59e0b' };
+  if (['promoted', 'approved', 'accepted'].includes(raw)) {
+    return { label: 'Approval', accent: '#16a34a' };
+  }
+  if (['rejected', 'declined', 'denied'].includes(raw)) {
+    return { label: 'Rejection', accent: '#ef4444' };
+  }
+  return { label: 'Request', accent: '#f59e0b' };
 }
 
 function dedupeRequests(list) {
@@ -272,6 +285,9 @@ export default function TransactionNotificationDropdown() {
     loading: false,
     error: '',
   });
+  const [isOpening, setIsOpening] = useState(false);
+  const lastTemporaryFetchRef = useRef(0);
+  const temporaryFetchInFlightRef = useRef(false);
   const containerRef = useRef(null);
   const navigate = useNavigate();
   const generalConfig = useGeneralConfig();
@@ -523,6 +539,7 @@ export default function TransactionNotificationDropdown() {
 
   useEffect(() => {
     if (!open) return () => {};
+    setIsOpening(true);
     let cancelled = false;
     const incomingPending = workflows?.reportApproval?.incoming?.pending?.count || 0;
     const outgoingPending = workflows?.reportApproval?.outgoing?.pending?.count || 0;
@@ -587,6 +604,7 @@ export default function TransactionNotificationDropdown() {
 
   useEffect(() => {
     if (!open) return () => {};
+    setIsOpening(true);
     let cancelled = false;
     const incomingPending = workflows?.changeRequests?.incoming?.pending?.count || 0;
     const outgoingPending = workflows?.changeRequests?.outgoing?.pending?.count || 0;
@@ -649,15 +667,24 @@ export default function TransactionNotificationDropdown() {
     workflows?.changeRequests?.outgoing?.declined?.count,
   ]);
 
-  useEffect(() => {
-    if (!open) return () => {};
-    let cancelled = false;
-    const loadTemporary = async () => {
-      setTemporaryState((prev) => ({ ...prev, loading: true, error: '' }));
+  const loadTemporaryEntries = useCallback(
+    async ({ setLoading = false, reason = 'open' } = {}) => {
+      if (temporaryFetchInFlightRef.current) return;
       if (typeof temporary?.fetchScopeEntries !== 'function') {
         setTemporaryState({ review: [], created: [], loading: false, error: '' });
         return;
       }
+      const now = Date.now();
+      if (
+        reason === 'prefetch' &&
+        now - lastTemporaryFetchRef.current < TEMPORARY_PREFETCH_THROTTLE_MS
+      ) {
+        return;
+      }
+      if (setLoading) {
+        setTemporaryState((prev) => ({ ...prev, loading: true, error: '' }));
+      }
+      temporaryFetchInFlightRef.current = true;
       try {
         const [reviewResult, createdResult] = await Promise.all([
           temporary.fetchScopeEntries('review', {
@@ -669,7 +696,6 @@ export default function TransactionNotificationDropdown() {
             status: 'any',
           }),
         ]);
-        if (cancelled) return;
         setTemporaryState({
           review: Array.isArray(reviewResult?.rows) ? reviewResult.rows : [],
           created: Array.isArray(createdResult?.rows) ? createdResult.rows : [],
@@ -677,21 +703,56 @@ export default function TransactionNotificationDropdown() {
           error: '',
         });
       } catch {
-        if (!cancelled) {
-          setTemporaryState({
-            review: [],
-            created: [],
-            loading: false,
-            error: 'Failed to load temporary transactions',
-          });
-        }
+        setTemporaryState({
+          review: [],
+          created: [],
+          loading: false,
+          error: 'Failed to load temporary transactions',
+        });
+      } finally {
+        temporaryFetchInFlightRef.current = false;
+        lastTemporaryFetchRef.current = Date.now();
       }
+    },
+    [temporary?.fetchScopeEntries],
+  );
+
+  useEffect(() => {
+    if (!open) return () => {};
+    const loadTemporary = async () => {
+      setIsOpening(true);
+      await loadTemporaryEntries({ setLoading: true, reason: 'open' });
     };
     loadTemporary();
-    return () => {
-      cancelled = true;
-    };
-  }, [open, temporary?.fetchScopeEntries]);
+    return () => {};
+  }, [loadTemporaryEntries, open]);
+
+  const temporaryCountsTotal =
+    (temporary?.counts?.review?.count || 0) + (temporary?.counts?.created?.count || 0);
+  useEffect(() => {
+    if (!temporaryCountsTotal) return;
+    if (temporaryState.review.length || temporaryState.created.length) return;
+    loadTemporaryEntries({ setLoading: false, reason: 'prefetch' });
+  }, [
+    loadTemporaryEntries,
+    temporaryCountsTotal,
+    temporaryState.created.length,
+    temporaryState.review.length,
+  ]);
+
+  useEffect(() => {
+    if (!open) {
+      setIsOpening(false);
+      return;
+    }
+    if (reportState.loading || changeState.loading || temporaryState.loading) return;
+    setIsOpening(false);
+  }, [
+    changeState.loading,
+    open,
+    reportState.loading,
+    temporaryState.loading,
+  ]);
 
   const openRequest = useCallback(
     (req, tab, statusOverride) => {
@@ -909,9 +970,7 @@ export default function TransactionNotificationDropdown() {
     });
     reportItems.forEach(({ req, tab, status, scope }) => {
       const statusMeta = getStatusMeta(status);
-      const title = `${formatRequestType(req?.request_type)}${
-        req?.table_name ? ` • ${req.table_name}` : ''
-      }`;
+      const title = formatRequestType(req?.request_type);
       const previewLabel =
         scope === 'response'
           ? `Responded by ${getResponder(req) || 'Unknown'}`
@@ -930,9 +989,7 @@ export default function TransactionNotificationDropdown() {
     });
     changeItems.forEach(({ req, tab, status, scope }) => {
       const statusMeta = getStatusMeta(status);
-      const title = `${formatRequestType(req?.request_type)}${
-        req?.table_name ? ` • ${req.table_name}` : ''
-      }`;
+      const title = formatRequestType(req?.request_type);
       const previewLabel =
         scope === 'response'
           ? `Responded by ${getResponder(req) || 'Unknown'}`
@@ -958,17 +1015,20 @@ export default function TransactionNotificationDropdown() {
         entry?.moduleKey ||
         entry?.module_key ||
         'Temporary transaction';
-      const tableName = entry?.tableName || entry?.table_name || '';
-      const title = `${formName}${tableName ? ` • ${tableName}` : ''}`;
+      const title = formName;
       const scopeLabel = scope === 'review' ? 'Review queue' : 'My drafts';
+      const statusMeta = getTemporaryStatusMeta(entry);
+      const creator =
+        entry?.creatorName || entry?.creator_name || entry?.created_by || '';
+      const previewParts = [scopeLabel, creator].filter(Boolean);
       const timestamp = getTemporaryTimestamp(entry);
       items.push({
         key: `temporary-${getTemporaryEntryKey(entry) || title}-${scope}`,
         timestamp,
         isUnread: scope === 'review',
         title,
-        badge: { label: scopeLabel, accent: '#7c3aed' },
-        preview: entry?.creatorName || entry?.creator_name || entry?.created_by || '',
+        badge: { label: statusMeta.label, accent: statusMeta.accent },
+        preview: previewParts.join(' • '),
         dateTime: formatDisplayTimestamp(timestamp),
         onClick: () => openTemporary(scope, entry),
       });
@@ -985,13 +1045,26 @@ export default function TransactionNotificationDropdown() {
   ]);
 
   const hasAnyNotifications = combinedItems.length > 0;
+  const isDropdownLoading =
+    isOpening || reportState.loading || changeState.loading || temporaryState.loading;
+  const handleToggle = () => {
+    setOpen((prev) => {
+      const next = !prev;
+      if (next) {
+        setIsOpening(true);
+      } else {
+        setIsOpening(false);
+      }
+      return next;
+    });
+  };
 
   return (
     <div style={styles.wrapper} ref={containerRef}>
       <button
         type="button"
         style={styles.button}
-        onClick={() => setOpen((prev) => !prev)}
+        onClick={handleToggle}
       >
         <span aria-hidden="true">🔔</span>
         {unreadCount > 0 && <span style={styles.badge}>{unreadCount}</span>}
@@ -999,28 +1072,31 @@ export default function TransactionNotificationDropdown() {
       {open && (
         <div style={styles.dropdown}>
           <div style={styles.list}>
-            {!hasAnyNotifications && (
+            {isDropdownLoading ? (
+              <div style={styles.empty}>Loading notifications...</div>
+            ) : !hasAnyNotifications ? (
               <div style={styles.empty}>No notifications yet</div>
+            ) : (
+              combinedItems.map((item) => (
+                <button
+                  key={item.key}
+                  type="button"
+                  style={styles.notificationItem(item.isUnread)}
+                  onClick={item.onClick}
+                >
+                  <div style={styles.notificationTitle}>
+                    <span>{item.title}</span>
+                    <span style={styles.actionBadge(item.badge?.accent)}>
+                      {item.badge?.label}
+                    </span>
+                  </div>
+                  <div style={styles.notificationPreview}>{item.preview}</div>
+                  {item.dateTime && (
+                    <div style={styles.notificationMeta}>{item.dateTime}</div>
+                  )}
+                </button>
+              ))
             )}
-            {combinedItems.map((item) => (
-              <button
-                key={item.key}
-                type="button"
-                style={styles.notificationItem(item.isUnread)}
-                onClick={item.onClick}
-              >
-                <div style={styles.notificationTitle}>
-                  <span>{item.title}</span>
-                  <span style={styles.actionBadge(item.badge?.accent)}>
-                    {item.badge?.label}
-                  </span>
-                </div>
-                <div style={styles.notificationPreview}>{item.preview}</div>
-                {item.dateTime && (
-                  <div style={styles.notificationMeta}>{item.dateTime}</div>
-                )}
-              </button>
-            ))}
           </div>
           <button
             type="button"

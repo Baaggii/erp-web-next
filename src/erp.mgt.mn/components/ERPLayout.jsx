@@ -4051,15 +4051,15 @@ export function Header({
         <button style={styles.iconBtn}>🗗 {t("windows")}</button>
         <button style={styles.iconBtn}>❔ {t("help")}</button>
       </nav>
-      <div style={styles.notificationSlot}>
-        <TransactionNotificationDropdown />
-      </div>
       {hasUpdateAvailable && (
         <button type="button" style={styles.updateButton} onClick={handleRefresh}>
           🔄 {t('refresh_to_update', 'Refresh to update')}
         </button>
       )}
       <HeaderMenu onOpen={onOpen} />
+      <div style={styles.notificationSlot}>
+        <TransactionNotificationDropdown />
+      </div>
       <div style={styles.userSection}>
         <select
           value={lang}
