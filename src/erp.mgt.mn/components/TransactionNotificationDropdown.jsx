@@ -262,7 +262,6 @@ export default function TransactionNotificationDropdown() {
   const { user, session } = useAuth();
   const { workflows, markWorkflowSeen, temporary } = usePendingRequests();
   const [open, setOpen] = useState(false);
-  const [isOpening, setIsOpening] = useState(false);
   const [formEntries, setFormEntries] = useState([]);
   const [formsLoaded, setFormsLoaded] = useState(false);
   const [codeTransactions, setCodeTransactions] = useState([]);
@@ -666,16 +665,6 @@ export default function TransactionNotificationDropdown() {
     workflows?.changeRequests?.outgoing?.accepted?.count,
     workflows?.changeRequests?.outgoing?.declined?.count,
   ]);
-
-  useEffect(() => {
-    if (!open) {
-      setIsOpening(false);
-      return;
-    }
-    if (!reportState.loading && !changeState.loading && !temporaryState.loading) {
-      setIsOpening(false);
-    }
-  }, [open, reportState.loading, changeState.loading, temporaryState.loading]);
 
   const loadTemporaryEntries = useCallback(
     async ({ setLoading = false, reason = 'open' } = {}) => {
