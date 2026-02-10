@@ -719,6 +719,15 @@ function parseEntry(raw = {}) {
     notificationDashboardFields: arrify(raw.notificationDashboardFields),
     notificationPhoneFields: arrify(raw.notificationPhoneFields),
     notificationEmailFields: arrify(raw.notificationEmailFields),
+    notificationRedirectTab:
+      typeof raw.notificationRedirectTab === 'string'
+        ? raw.notificationRedirectTab.trim()
+        : typeof raw.notification_redirect_tab === 'string'
+          ? raw.notification_redirect_tab.trim()
+          : '',
+    temporaryKeepFields: arrify(
+      raw.temporaryKeepFields ?? raw.temporary_keep_fields,
+    ),
     moduleKey: typeof raw.moduleKey === 'string' ? raw.moduleKey : '',
     allowedBranches: Array.isArray(raw.allowedBranches)
       ? raw.allowedBranches.map((v) => Number(v)).filter((v) => !Number.isNaN(v))
@@ -1117,6 +1126,8 @@ export async function setFormConfig(
     notificationDashboardFields = [],
     notificationPhoneFields = [],
     notificationEmailFields = [],
+    notificationRedirectTab = '',
+    temporaryKeepFields = [],
     procedures = [],
     temporaryProcedures = [],
     allowDirectPost,
@@ -1204,6 +1215,11 @@ export async function setFormConfig(
     notificationDashboardFields: arrify(notificationDashboardFields),
     notificationPhoneFields: arrify(notificationPhoneFields),
     notificationEmailFields: arrify(notificationEmailFields),
+    notificationRedirectTab:
+      typeof notificationRedirectTab === 'string'
+        ? notificationRedirectTab.trim()
+        : '',
+    temporaryKeepFields: arrify(temporaryKeepFields),
     moduleKey: parentModuleKey,
     moduleLabel: moduleLabel || undefined,
     allowedBranches: ab,
