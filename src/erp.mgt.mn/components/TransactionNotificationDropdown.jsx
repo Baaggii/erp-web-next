@@ -897,19 +897,12 @@ export default function TransactionNotificationDropdown() {
   const resolveNotificationTab = useCallback(
     (item) => {
       const formInfo = resolveFormInfo(item);
-      const notifyFieldsRaw =
-        formInfo?.notifyFields ?? formInfo?.notify_fields ?? [];
-      const notifyFields = Array.isArray(notifyFieldsRaw)
-        ? notifyFieldsRaw.map((field) => String(field).trim()).filter(Boolean)
-        : [];
       const redirectTab = String(
         formInfo?.notificationRedirectTab ?? formInfo?.notification_redirect_tab ?? '',
       ).trim();
       const defaultTab =
         isPlanNotificationItem(item) || isDutyNotificationItem(item) ? 'plans' : 'activity';
-      return notifyFields.length > 0 && dashboardTabs.has(redirectTab)
-        ? redirectTab
-        : defaultTab;
+      return dashboardTabs.has(redirectTab) ? redirectTab : defaultTab;
     },
     [dashboardTabs, isDutyNotificationItem, isPlanNotificationItem, resolveFormInfo],
   );
