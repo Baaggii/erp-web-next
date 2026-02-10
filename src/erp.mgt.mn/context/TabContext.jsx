@@ -7,7 +7,6 @@ import React, {
   useMemo,
 } from 'react';
 import { trackSetState } from '../utils/debug.js';
-import { dispatchReset } from '../utils/loadingEvents.js';
 
 const TabContext = createContext();
 const TAB_STORAGE_KEY = 'erp.tabs.v1';
@@ -100,35 +99,29 @@ export function TabProvider({ children }) {
   const closeTab = useCallback(
     (key, onNavigate) => {
       if (key === '/') return;
-
-      const activeAtClose = window.__activeTabKey || activeKey || 'global';
-      dispatchReset(key);
-      if (activeAtClose && activeAtClose !== key) {
-        dispatchReset(activeAtClose);
-      }
-
       trackSetState('TabProvider.setTabs');
-      const remaining = tabs.filter((tab) => tab.key !== key);
-      setTabs(remaining);
-
+      setTabs((t) => t.filter((tab) => tab.key !== key));
       trackSetState('TabProvider.setCache');
       setCache((c) => {
         const n = { ...c };
         delete n[key];
         return n;
       });
-
-      let nextActiveKey = activeKey;
+      let nextActiveKey = null;
       let shouldNavigate = false;
-      if (activeKey === key) {
-        nextActiveKey = remaining[0]?.key || null;
-        shouldNavigate = true;
-      }
-
       trackSetState('TabProvider.setActiveKey');
-      setActiveKey(nextActiveKey);
+      setActiveKey((current) => {
+        if (current !== key) {
+          nextActiveKey = current;
+          return current;
+        }
+        const remaining = tabs.filter((t) => t.key !== key);
+        const fallback = remaining[0]?.key || null;
+        nextActiveKey = fallback;
+        shouldNavigate = true;
+        return fallback;
+      });
       window.__activeTabKey = nextActiveKey || 'global';
-
       if (
         shouldNavigate &&
         typeof onNavigate === 'function' &&
@@ -139,7 +132,7 @@ export function TabProvider({ children }) {
         onNavigate(nextActiveKey);
       }
     },
-    [activeKey, tabs],
+    [tabs],
   );
 
   const setTabContent = useCallback((key, content) => {
