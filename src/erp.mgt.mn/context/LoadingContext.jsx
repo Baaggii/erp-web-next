@@ -17,11 +17,18 @@ export function LoadingProvider({ children }) {
       trackSetState('LoadingProvider.setLoaders');
       setLoaders((l) => ({ ...l, [key]: Math.max(0, (l[key] || 0) - 1) }));
     }
+    function reset(e) {
+      const key = (e.detail && e.detail.key) || 'global';
+      trackSetState('LoadingProvider.setLoaders');
+      setLoaders((l) => ({ ...l, [key]: 0 }));
+    }
     window.addEventListener('loading:start', start);
     window.addEventListener('loading:end', end);
+    window.addEventListener('loading:reset', reset);
     return () => {
       window.removeEventListener('loading:start', start);
       window.removeEventListener('loading:end', end);
+      window.removeEventListener('loading:reset', reset);
     };
   }, []);
 
