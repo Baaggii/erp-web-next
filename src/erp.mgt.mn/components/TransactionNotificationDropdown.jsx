@@ -1198,7 +1198,7 @@ export default function TransactionNotificationDropdown() {
             style={styles.footer}
             onClick={() => {
               setOpen(false);
-              navigate('/notifications');
+              navigate('/');
             }}
           >
             Open dashboard

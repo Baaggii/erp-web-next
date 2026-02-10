@@ -87,7 +87,12 @@ function createEmptyTemporaryScope() {
   return { entries: [], groups: [], hasMore: false, cursor: 0, loading: false };
 }
 
-export default function NotificationsPage() {
+export default function NotificationsPage({
+  showPageTitle = true,
+  embedded = false,
+  sectionTabs = null,
+  activeDashboardTab = null,
+}) {
   const { workflows, markWorkflowSeen, temporary, notificationColors } = usePendingRequests();
   const { user, session } = useAuth();
   const { t } = useContext(LangContext);
@@ -1200,19 +1205,39 @@ export default function NotificationsPage() {
     </li>
   );
 
-  return (
-    <div style={styles.page}>
-      <h1 style={styles.pageTitle}>
-        {t('notifications', 'Notifications')}{' '}
-        <NotificationDots
-          colors={notificationTrailColors}
-          size="0.55rem"
-          gap="0.2rem"
-          marginRight={0}
-        />
-      </h1>
+  const isSectionVisible = useCallback(
+    (sectionKey) => {
+      if (!activeDashboardTab || !sectionTabs || typeof sectionTabs !== 'object') return true;
+      const configuredTab = String(sectionTabs?.[sectionKey] || 'audition').trim().toLowerCase();
+      return configuredTab === String(activeDashboardTab || '').trim().toLowerCase();
+    },
+    [activeDashboardTab, sectionTabs],
+  );
 
-      <section style={styles.section}>
+  const showReportSection = isSectionVisible('report');
+  const showChangeSection = isSectionVisible('change');
+  const showTemporarySection = isSectionVisible('temporary');
+  const hasVisibleSections = showReportSection || showChangeSection || showTemporarySection;
+
+  return (
+    <div style={{ ...styles.page, ...(embedded ? styles.pageEmbedded : null) }}>
+      {showPageTitle && (
+        <h1 style={styles.pageTitle}>
+          {t('notifications', 'Notifications')}{' '}
+          <NotificationDots
+            colors={notificationTrailColors}
+            size="0.55rem"
+            gap="0.2rem"
+            marginRight={0}
+          />
+        </h1>
+      )}
+
+      {!hasVisibleSections && (
+        <p style={styles.emptyText}>{t('notifications_none', 'No notifications')}</p>
+      )}
+
+      {showReportSection && <section style={styles.section}>
         <header style={styles.sectionHeader}>
           <div>
             <h2 style={styles.sectionTitle}>{t('notifications_report_heading', 'Report approvals')}</h2>
@@ -1279,9 +1304,9 @@ export default function NotificationsPage() {
             </div>
           </div>
         )}
-      </section>
+      </section>}
 
-      <section style={styles.section}>
+      {showChangeSection && <section style={styles.section}>
         <header style={styles.sectionHeader}>
           <div>
             <h2 style={styles.sectionTitle}>{t('notifications_change_heading', 'Change requests')}</h2>
@@ -1348,9 +1373,9 @@ export default function NotificationsPage() {
             </div>
           </div>
         )}
-      </section>
+      </section>}
 
-      <section style={styles.section}>
+      {showTemporarySection && <section style={styles.section}>
         <header style={styles.sectionHeader}>
           <div>
             <h2 style={styles.sectionTitle}>{t('notifications_temporary_heading', 'Temporary transactions')}</h2>
@@ -1468,7 +1493,7 @@ export default function NotificationsPage() {
             </div>
           </div>
         )}
-      </section>
+      </section>}
     </div>
   );
 }
@@ -1479,6 +1504,9 @@ const styles = {
     display: 'flex',
     flexDirection: 'column',
     gap: '1.5rem',
+  },
+  pageEmbedded: {
+    padding: 0,
   },
   pageTitle: {
     fontSize: '1.75rem',
