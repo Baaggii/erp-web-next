@@ -95,6 +95,74 @@ function buildTransactionPreview(payload) {
   return `${actionLabel} • ${formName}`;
 }
 
+function formatTemporaryAction(value) {
+  const normalized = String(value || '').trim().toLowerCase();
+  if (!normalized) return 'Updated';
+  if (normalized === 'pending') return 'Pending review';
+  if (normalized === 'promoted' || normalized === 'approved') return 'Approved';
+  if (normalized === 'rejected' || normalized === 'declined') return 'Rejected';
+  if (normalized === 'forwarded') return 'Forwarded';
+  if (normalized === 'created' || normalized === 'create') return 'Created';
+  return normalized.charAt(0).toUpperCase() + normalized.slice(1);
+}
+
+function detectTemporaryStatus({ row, payload, temporaryRow }) {
+  const candidates = [
+    payload?.action,
+    payload?.status,
+    temporaryRow?.status,
+    row?.status,
+  ];
+  const directMatch = candidates
+    .map((value) => String(value || '').trim().toLowerCase())
+    .find(Boolean);
+  if (directMatch) return directMatch;
+
+  const messageText = [payload?.summaryText, payload?.summary_text, row?.message]
+    .map((value) => String(value || '').trim().toLowerCase())
+    .find(Boolean);
+  if (!messageText) return 'pending';
+  if (messageText.includes('forwarded')) return 'forwarded';
+  if (messageText.includes('approved') || messageText.includes('promoted')) return 'promoted';
+  if (messageText.includes('rejected') || messageText.includes('declined')) return 'rejected';
+  if (messageText.includes('pending')) return 'pending';
+  return 'pending';
+}
+
+function formatTemporaryFormName(temporaryRow, payload) {
+  if (temporaryRow) {
+    return (
+      temporaryRow.form_name ||
+      temporaryRow.config_name ||
+      formatTableLabel(temporaryRow.table_name) ||
+      'Temporary transaction'
+    );
+  }
+  return formatTransactionFormName(payload);
+}
+
+
+function hasTemporaryMarker({ row, payload }) {
+  const payloadKind = String(payload?.kind || '').trim().toLowerCase();
+  if (payloadKind === 'temporary') return true;
+  if (payload?.temporarySubmission === true || payload?.temporary_submission === true) return true;
+  const payloadReferenceTable = String(payload?.referenceTable || payload?.reference_table || '').trim().toLowerCase();
+  if (payloadReferenceTable === 'transaction_temporaries') return true;
+  const messageText = String(row?.message || '').trim().toLowerCase();
+  if (!messageText) return false;
+  return messageText.includes('temporary submission') || messageText.includes('temporary transaction');
+}
+
+function buildTemporaryPreview({ temporaryRow, payload, status, message }) {
+  const actionLabel = formatTemporaryAction(status);
+  const formName = formatTemporaryFormName(temporaryRow, payload);
+  const summary = String(payload?.summaryText || payload?.summary_text || message || '').trim();
+  if (summary) {
+    return `${actionLabel} • ${formName} • ${summary}`;
+  }
+  return `${actionLabel} • ${formName}`;
+}
+
 router.get('/feed', requireAuth, feedRateLimiter, async (req, res, next) => {
   try {
     const chunkLimit = Math.min(Math.max(Number(req.query.limit) || 20, 1), 100);
@@ -169,6 +237,37 @@ router.get('/feed', requireAuth, feedRateLimiter, async (req, res, next) => {
       } catch {
         payload = null;
       }
+
+      const temporaryId = Number(row?.related_id);
+      const temporaryRow = Number.isFinite(temporaryId) ? temporaryMap.get(temporaryId) : null;
+      const payloadKind = String(payload?.kind || '').trim().toLowerCase();
+      const hasTemporarySignal = hasTemporaryMarker({ row, payload });
+      const isTemporaryNotification =
+        hasTemporarySignal && (Boolean(temporaryRow) || payloadKind === 'temporary');
+      if (isTemporaryNotification) {
+        const status = detectTemporaryStatus({ row, payload, temporaryRow });
+        items.push({
+          id: `temporary-${row.notification_id}`,
+          source: 'temporary',
+          title: formatTemporaryFormName(temporaryRow, payload),
+          preview: buildTemporaryPreview({
+            temporaryRow,
+            payload,
+            status,
+            message: row?.message,
+          }),
+          status,
+          timestamp:
+            temporaryRow?.updated_at ||
+            payload?.updatedAt ||
+            payload?.updated_at ||
+            row.created_at,
+          unread: Number(row.is_read) === 0,
+          action: { type: 'none' },
+        });
+        continue;
+      }
+
       const title = formatTransactionFormName(payload);
       items.push({
         id: `transaction-${row.notification_id}`,
