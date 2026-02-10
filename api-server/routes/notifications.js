@@ -53,33 +53,25 @@ function makeRequestPath({ status, requestType, tableName, requestId, createdAt,
 function makeTransactionPath({ payload, notificationId }) {
   const params = new URLSearchParams();
   params.set('tab', 'activity');
-  params.set('notifyGroup', encodeURIComponent(payload?.transactionName || 'Transaction'));
-  params.set('notifyItem', String(notificationId));
+  params.set('notifyGroup', payload?.transactionName || 'Transaction');
+  params.set('notifyItem', `transaction-${notificationId}`);
   return `/?${params.toString()}`;
 }
 
 function makeTemporaryPath({ temporaryId, temporaryRow, payload, userEmpId }) {
   const params = new URLSearchParams();
+  params.set('tab', 'activity');
   params.set('temporaryOpen', '1');
   const creator = String(temporaryRow?.created_by || payload?.createdBy || '').trim().toUpperCase();
   const scope = creator && creator === userEmpId ? 'created' : 'review';
   params.set('temporaryScope', scope);
-
-  const moduleKey = String(payload?.moduleKey || payload?.module_key || '').trim();
-  let path = '/forms';
-  if (moduleKey) {
-    params.set('temporaryModule', moduleKey);
-    path = `/forms/${moduleKey.replace(/_/g, '-')}`;
-  }
-
+  params.set('temporaryKey', String(Date.now()));
   const formName = temporaryRow?.form_name || payload?.formName || payload?.form_name;
   if (formName) params.set('temporaryForm', String(formName));
   const configName = temporaryRow?.config_name || payload?.configName || payload?.config_name;
   if (configName) params.set('temporaryConfig', String(configName));
-  const tableName = temporaryRow?.table_name || payload?.tableName || payload?.table_name;
-  if (tableName) params.set('temporaryTable', String(tableName));
   if (temporaryId != null) params.set('temporaryId', String(temporaryId));
-  return `${path}?${params.toString()}`;
+  return `/?${params.toString()}`;
 }
 
 function formatTransactionFormName(payload) {
@@ -311,12 +303,6 @@ router.get('/feed', requireAuth, feedRateLimiter, async (req, res, next) => {
               formName: temporaryRow?.form_name || payload?.formName || payload?.form_name || null,
               configName:
                 temporaryRow?.config_name || payload?.configName || payload?.config_name || null,
-              tableName: temporaryRow?.table_name || payload?.tableName || payload?.table_name || null,
-              moduleKey: payload?.moduleKey || payload?.module_key || null,
-              scope:
-                String(temporaryRow?.created_by || payload?.createdBy || '').trim().toUpperCase() === userEmpId
-                  ? 'created'
-                  : 'review',
             },
           },
         });
