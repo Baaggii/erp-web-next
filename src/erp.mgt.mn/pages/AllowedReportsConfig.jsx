@@ -57,6 +57,7 @@ export default function AllowedReportsConfig() {
   const [positions, setPositions] = useState([]);
   const [permissions, setPermissions] = useState([]);
   const [isDefault, setIsDefault] = useState(false);
+  const [reportApprovalsDashboardTab, setReportApprovalsDashboardTab] = useState('audition');
   const [procOptions, setProcOptions] = useState([]);
   const [missingProcedures, setMissingProcedures] = useState([]);
   const [branchRows, setBranchRows] = useState([]);
@@ -209,12 +210,14 @@ export default function AllowedReportsConfig() {
         setReports(data.allowedReports || {});
         setIsDefault(!!data.isDefault);
         setMissingProcedures(data.missingProcedures || []);
+        setReportApprovalsDashboardTab(data.reportApprovalsDashboardTab || 'audition');
         setIsLoading(false);
       })
       .catch(() => {
         setReports({});
         setIsDefault(true);
         setMissingProcedures([]);
+        setReportApprovalsDashboardTab('audition');
         setIsLoading(false);
       });
 
@@ -301,6 +304,7 @@ export default function AllowedReportsConfig() {
           return;
         }
         setMissingProcedures([]);
+        setReportApprovalsDashboardTab('audition');
         refreshModules();
         addToast('Removed missing procedures', 'success');
       })
@@ -559,6 +563,24 @@ export default function AllowedReportsConfig() {
       addToast('Saved', 'success');
     } catch (err) {
       addToast(err.message || 'Failed to save', 'error');
+    }
+  }
+
+
+  async function handleSaveSettings() {
+    try {
+      const res = await fetch('/api/report_access/settings', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ reportApprovalsDashboardTab }),
+      });
+      if (!res.ok) throw new Error('Failed to save settings');
+      const data = await res.json().catch(() => ({}));
+      setReportApprovalsDashboardTab(data.reportApprovalsDashboardTab || 'audition');
+      addToast('Settings saved', 'success');
+    } catch (err) {
+      addToast(err.message || 'Failed to save settings', 'error');
     }
   }
 
@@ -1032,6 +1054,24 @@ export default function AllowedReportsConfig() {
               </select>
             </label>
           </div>
+          <div>
+            <label>
+              Report approvals dashboard tab:{' '}
+              <select
+                value={reportApprovalsDashboardTab}
+                onChange={(e) => setReportApprovalsDashboardTab(e.target.value)}
+              >
+                <option value="general">General</option>
+                <option value="activity">Activity</option>
+                <option value="audition">Audition</option>
+                <option value="plans">Plans</option>
+              </select>
+            </label>
+            <button type="button" onClick={handleSaveSettings}>
+              Save tab
+            </button>
+          </div>
+
           <div>
             <label>
               Branches:{' '}

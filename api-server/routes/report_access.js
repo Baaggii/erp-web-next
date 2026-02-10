@@ -5,6 +5,7 @@ import {
   getAllowedReport,
   setAllowedReport,
   removeAllowedReport,
+  setReportApprovalsDashboardTab,
 } from '../services/reportAccessConfig.js';
 import { listReportProcedures } from '../../db/index.js';
 
@@ -22,12 +23,30 @@ router.get('/', requireAuth, async (req, res, next) => {
       const { config, isDefault } = await getAllowedReport(proc, companyId);
       res.json({ ...config, isDefault });
     } else {
-      const { config, isDefault } = await listAllowedReports(companyId);
+      const { config, isDefault, reportApprovalsDashboardTab } =
+        await listAllowedReports(companyId);
       const filtered = Object.fromEntries(
         Object.entries(config).filter(([name]) => liveProcedures.has(name)),
       );
-      res.json({ allowedReports: filtered, isDefault });
+      res.json({
+        allowedReports: filtered,
+        isDefault,
+        reportApprovalsDashboardTab,
+      });
     }
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.patch('/settings', requireAuth, async (req, res, next) => {
+  try {
+    const companyId = Number(req.query.companyId ?? req.user.companyId);
+    const reportApprovalsDashboardTab = await setReportApprovalsDashboardTab(
+      req.body?.reportApprovalsDashboardTab,
+      companyId,
+    );
+    res.json({ reportApprovalsDashboardTab });
   } catch (err) {
     next(err);
   }

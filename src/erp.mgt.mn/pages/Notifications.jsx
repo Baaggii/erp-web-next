@@ -115,6 +115,7 @@ export default function NotificationsPage() {
     review: createEmptyTemporaryScope(),
     created: createEmptyTemporaryScope(),
   });
+  const [reportApprovalsDashboardTab, setReportApprovalsDashboardTab] = useState('audition');
 
   const hasSupervisor =
     Number(session?.senior_empid) > 0 || Number(session?.senior_plan_empid) > 0;
@@ -128,6 +129,27 @@ export default function NotificationsPage() {
       window.sessionStorage.removeItem('notificationWorkflowToastEnabled');
     }
   }, [workflowToastEnabled]);
+
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/report_access', {
+      credentials: 'include',
+      skipLoader: true,
+    })
+      .then((res) => (res.ok ? res.json() : {}))
+      .then((data) => {
+        if (cancelled) return;
+        setReportApprovalsDashboardTab(data?.reportApprovalsDashboardTab || 'audition');
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setReportApprovalsDashboardTab('audition');
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const supervisorIds = useMemo(() => {
     const ids = [];
@@ -618,9 +640,20 @@ export default function NotificationsPage() {
         const scope = tab === 'incoming' ? 'incoming' : 'outgoing';
         markWorkflowSeen(workflowKey, scope, [normalizedStatus]);
       }
+      if (String(req?.request_type || '').trim().toLowerCase() === 'report_approval') {
+        const dashboardParams = new URLSearchParams({
+          tab: reportApprovalsDashboardTab || 'audition',
+          requestType: 'report_approval',
+          requestScope: tab,
+          requestStatus: normalizedStatus,
+          requestId: String(req?.request_id || ''),
+        });
+        navigate(`/?${dashboardParams.toString()}`);
+        return;
+      }
       navigate(`/requests?${params.toString()}`);
     },
-    [markWorkflowSeen, navigate],
+    [markWorkflowSeen, navigate, reportApprovalsDashboardTab],
   );
 
   const openTemporary = useCallback(

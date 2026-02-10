@@ -288,6 +288,7 @@ export default function TransactionNotificationDropdown() {
   const [open, setOpen] = useState(false);
   const [formEntries, setFormEntries] = useState([]);
   const [formsLoaded, setFormsLoaded] = useState(false);
+  const [reportApprovalsDashboardTab, setReportApprovalsDashboardTab] = useState('audition');
   const [codeTransactions, setCodeTransactions] = useState([]);
   const [reportState, setReportState] = useState({
     incoming: [],
@@ -775,9 +776,20 @@ export default function TransactionNotificationDropdown() {
         const scope = tab === 'incoming' ? 'incoming' : 'outgoing';
         markWorkflowSeen(workflowKey, scope, [normalizedStatus]);
       }
+      if (String(req?.request_type || '').trim().toLowerCase() === 'report_approval') {
+        const dashboardParams = new URLSearchParams({
+          tab: reportApprovalsDashboardTab || 'audition',
+          requestType: 'report_approval',
+          requestScope: tab,
+          requestStatus: normalizedStatus,
+          requestId: String(req?.request_id || ''),
+        });
+        navigate(`/?${dashboardParams.toString()}`);
+        return;
+      }
       navigate(`/requests?${params.toString()}`);
     },
-    [markWorkflowSeen, navigate],
+    [markWorkflowSeen, navigate, reportApprovalsDashboardTab],
   );
 
   const openTemporary = useCallback(
@@ -988,6 +1000,28 @@ export default function TransactionNotificationDropdown() {
       setFormsLoaded(true);
     }
   }, [formsLoaded]);
+
+
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    fetch('/api/report_access', {
+      credentials: 'include',
+      skipLoader: true,
+    })
+      .then((res) => (res.ok ? res.json() : {}))
+      .then((data) => {
+        if (cancelled) return;
+        setReportApprovalsDashboardTab(data?.reportApprovalsDashboardTab || 'audition');
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setReportApprovalsDashboardTab('audition');
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
