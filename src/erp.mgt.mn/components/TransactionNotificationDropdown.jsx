@@ -1013,12 +1013,56 @@ export default function TransactionNotificationDropdown() {
             markRead([item.action.notificationId]);
           }
           setOpen(false);
-          if (item?.action?.path) {
+
+          const actionPath = String(item?.action?.path || '').trim();
+          let targetPath = actionPath;
+
+          if (!targetPath && isTransaction) {
+            const groupKey = encodeURIComponent(
+              item?.action?.redirectMeta?.transactionName || item?.title || 'Transaction',
+            );
+            const itemId = String(item?.id || item?.action?.notificationId || '').trim();
+            const params = new URLSearchParams({
+              tab: 'activity',
+              notifyGroup: groupKey,
+            });
+            if (itemId) params.set('notifyItem', itemId);
+            targetPath = `/?${params.toString()}`;
+          }
+
+          if (!targetPath && isTemporary) {
+            const params = new URLSearchParams();
+            params.set('temporaryOpen', '1');
+            const redirectMeta = item?.action?.redirectMeta || {};
+            const scope = String(redirectMeta.scope || '').trim();
+            if (scope) params.set('temporaryScope', scope);
+            params.set('temporaryKey', String(Date.now()));
+
+            const moduleKey = String(redirectMeta.moduleKey || '').trim();
+            let basePath = '/forms';
+            if (moduleKey) {
+              params.set('temporaryModule', moduleKey);
+              basePath = `/forms/${moduleKey.replace(/_/g, '-')}`;
+            }
+
+            const formName = String(redirectMeta.formName || item?.title || '').trim();
+            if (formName) params.set('temporaryForm', formName);
+            const configName = String(redirectMeta.configName || '').trim();
+            if (configName) params.set('temporaryConfig', configName);
+            const tableName = String(redirectMeta.tableName || '').trim();
+            if (tableName) params.set('temporaryTable', tableName);
+            if (redirectMeta.temporaryId != null) {
+              params.set('temporaryId', String(redirectMeta.temporaryId));
+            }
+            targetPath = `${basePath}?${params.toString()}`;
+          }
+
+          if (targetPath) {
             if (typeof window !== 'undefined') {
-              const nextPath = String(item.action.path).split('?')[0] || '/';
+              const nextPath = String(targetPath).split('?')[0] || '/';
               window.__activeTabKey = nextPath;
             }
-            navigate(item.action.path);
+            navigate(targetPath);
           }
         },
       };
