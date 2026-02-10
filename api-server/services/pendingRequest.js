@@ -1245,6 +1245,96 @@ export async function listRequestsByEmp(
   });
 }
 
+export async function listNotificationFeed(
+  empId,
+  {
+    statuses = ['pending', 'accepted', 'declined'],
+    request_types = ['report_approval', 'edit', 'delete'],
+    page = 1,
+    per_page = 50,
+  } = {},
+) {
+  const normalizedEmpId = String(empId || '').trim().toUpperCase();
+  if (!normalizedEmpId) {
+    return { rows: [], total: 0, page: 1, per_page: 50 };
+  }
+
+  const normalizedStatuses = normalizeStatuses(statuses);
+  const normalizedRequestTypes = (Array.isArray(request_types)
+    ? request_types
+    : String(request_types || '').split(','))
+    .map((value) => String(value || '').trim())
+    .filter(Boolean);
+
+  const whereConditions = [
+    '(UPPER(TRIM(pr.senior_empid)) = ? OR UPPER(TRIM(pr.emp_id)) = ?)',
+  ];
+  const whereParams = [normalizedEmpId, normalizedEmpId];
+
+  if (normalizedStatuses.length) {
+    whereConditions.push(
+      `LOWER(TRIM(pr.status)) IN (${normalizedStatuses.map(() => '?').join(', ')})`,
+    );
+    whereParams.push(...normalizedStatuses);
+  }
+
+  if (normalizedRequestTypes.length) {
+    whereConditions.push(
+      `pr.request_type IN (${normalizedRequestTypes.map(() => '?').join(', ')})`,
+    );
+    whereParams.push(...normalizedRequestTypes);
+  }
+
+  const whereClause = `WHERE ${whereConditions.join(' AND ')}`;
+  const [countRows] = await pool.query(
+    `SELECT COUNT(*) AS count
+       FROM pending_request pr
+       ${whereClause}`,
+    whereParams,
+  );
+  const total = Number(countRows?.[0]?.count || 0);
+
+  const normalizedPerPage = Number(per_page) > 0 ? Number(per_page) : 50;
+  const normalizedPage = Number(page) > 0 ? Number(page) : 1;
+  const offset = (normalizedPage - 1) * normalizedPerPage;
+
+  const [rows] = await pool.query(
+    `SELECT
+        pr.request_id,
+        pr.request_type,
+        LOWER(TRIM(pr.status)) AS status,
+        pr.table_name,
+        pr.record_id,
+        pr.emp_id,
+        pr.senior_empid,
+        pr.response_empid,
+        DATE_FORMAT(pr.created_at, '%Y-%m-%d %H:%i:%s') AS created_at,
+        DATE_FORMAT(pr.responded_at, '%Y-%m-%d %H:%i:%s') AS responded_at,
+        DATE_FORMAT(pr.updated_at, '%Y-%m-%d %H:%i:%s') AS updated_at,
+        CASE
+          WHEN UPPER(TRIM(pr.senior_empid)) = ? AND LOWER(TRIM(pr.status)) = 'pending'
+            THEN 'incoming'
+          ELSE 'outgoing'
+        END AS scope,
+        CASE
+          WHEN LOWER(TRIM(pr.status)) = 'pending' THEN pr.created_at
+          ELSE COALESCE(pr.responded_at, pr.updated_at, pr.created_at)
+        END AS sort_value
+      FROM pending_request pr
+      ${whereClause}
+      ORDER BY sort_value DESC, pr.request_id DESC
+      LIMIT ? OFFSET ?`,
+    [normalizedEmpId, ...whereParams, normalizedPerPage, offset],
+  );
+
+  return {
+    rows: Array.isArray(rows) ? rows : [],
+    total,
+    page: normalizedPage,
+    per_page: normalizedPerPage,
+  };
+}
+
 export async function respondRequest(
   id,
   responseEmpid,

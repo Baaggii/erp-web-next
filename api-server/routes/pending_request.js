@@ -6,6 +6,7 @@ import {
   createBulkEditRequest,
   listRequests,
   listRequestsByEmp,
+  listNotificationFeed,
   respondRequest,
   ALLOWED_REQUEST_TYPES,
 } from '../services/pendingRequest.js';
@@ -144,6 +145,21 @@ router.get('/outgoing', requireAuth, async (req, res, next) => {
     const pageNum = Number(page) > 0 ? Number(page) : 1;
     const perPageNum = Number(per_page) > 0 ? Number(per_page) : 2;
     res.json({ rows, total, page: pageNum, per_page: perPageNum });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get('/feed', requireAuth, async (req, res, next) => {
+  try {
+    const { status, request_type, page, per_page } = req.query;
+    const data = await listNotificationFeed(req.user.empid, {
+      statuses: status,
+      request_types: request_type,
+      page,
+      per_page,
+    });
+    res.json(data);
   } catch (err) {
     next(err);
   }
