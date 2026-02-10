@@ -5537,6 +5537,7 @@ const TableManager = forwardRef(function TableManager({
         const shouldRetryWithoutStatus =
           targetScope === 'review' &&
           !options?.status &&
+          !focusId &&
           !append &&
           fetchOffset === 0 &&
           (Number(temporarySummary?.reviewPending) || 0) > 0 &&
