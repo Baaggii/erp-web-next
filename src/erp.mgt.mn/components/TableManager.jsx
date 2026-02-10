@@ -593,7 +593,6 @@ const TableManager = forwardRef(function TableManager({
   const [temporarySummary, setTemporarySummary] = useState(null);
   const [temporaryScope, setTemporaryScope] = useState('created');
   const [temporaryList, setTemporaryList] = useState([]);
-  const [temporaryVisibleCount, setTemporaryVisibleCount] = useState(50);
   const [showTemporaryModal, setShowTemporaryModal] = useState(false);
   const [queuedTemporaryTrigger, setQueuedTemporaryTrigger] = useState(null);
   const lastExternalTriggerRef = useRef(null);
@@ -658,9 +657,6 @@ const TableManager = forwardRef(function TableManager({
   const notificationDots = pendingRequests?.notificationColors || [];
   const temporaryRowRefs = useRef(new Map());
   const autoTemporaryLoadScopesRef = useRef(new Set());
-  const temporaryListRequestIdRef = useRef(0);
-  const temporaryListContainerRef = useRef(null);
-  const TEMPORARY_LIST_CHUNK_SIZE = 50;
   const promotionHydrationNeededRef = useRef(false);
   useEffect(() => {
     if (skipPrintCopiesAutoRef.current) {
@@ -5397,41 +5393,6 @@ const TableManager = forwardRef(function TableManager({
     setLocalRefresh((r) => r + 1);
   }
 
-
-  const temporaryListContextKey = useMemo(() => {
-    const temporaryFormName = formName || formConfig?.formName || formConfig?.configName || '';
-    const temporaryConfigName = formConfig?.configName || formName || '';
-    const transactionTypeField = formConfig?.transactionTypeField || '';
-    const normalizedTypeFilter =
-      typeof typeFilter === 'string' ? typeFilter.trim() : typeFilter || '';
-    return JSON.stringify({
-      table: table || '',
-      formName: temporaryFormName,
-      configName: temporaryConfigName,
-      transactionTypeField,
-      transactionTypeValue: normalizedTypeFilter,
-    });
-  }, [
-    table,
-    formName,
-    formConfig?.formName,
-    formConfig?.configName,
-    formConfig?.transactionTypeField,
-    typeFilter,
-  ]);
-
-  const visibleTemporaryList = useMemo(
-    () => temporaryList.slice(0, temporaryVisibleCount),
-    [temporaryList, temporaryVisibleCount],
-  );
-
-  const loadMoreTemporaryRows = useCallback(() => {
-    setTemporaryVisibleCount((prev) => {
-      if (prev >= temporaryList.length) return prev;
-      return Math.min(prev + TEMPORARY_LIST_CHUNK_SIZE, temporaryList.length);
-    });
-  }, [temporaryList.length]);
-
   const fetchTemporaryList = useCallback(
     async (scopeOverride, options = {}) => {
       if (!supportsTemporary || availableTemporaryScopes.length === 0) return;
@@ -5506,8 +5467,6 @@ const TableManager = forwardRef(function TableManager({
         return rows;
       };
 
-      const requestId = temporaryListRequestIdRef.current + 1;
-      temporaryListRequestIdRef.current = requestId;
       setTemporaryLoading(true);
       try {
         let rows = await runFetch(params);
@@ -5528,10 +5487,6 @@ const TableManager = forwardRef(function TableManager({
           }
         }
 
-        if (temporaryListRequestIdRef.current !== requestId) {
-          return;
-        }
-
         let nextRows = rows;
         if (focusId) {
           const idx = rows.findIndex((item) => String(item?.id) === focusId);
@@ -5550,12 +5505,6 @@ const TableManager = forwardRef(function TableManager({
             setTemporaryScope(targetScope);
           }
           setTemporaryList(nextRows);
-          setTemporaryVisibleCount(() => {
-            const minimumVisible = focusId
-              ? Math.max(TEMPORARY_LIST_CHUNK_SIZE, nextRows.findIndex((item) => String(item?.id) === focusId) + 1)
-              : TEMPORARY_LIST_CHUNK_SIZE;
-            return Math.min(minimumVisible, nextRows.length || TEMPORARY_LIST_CHUNK_SIZE);
-          });
         }
         addWorkflowToast(
           t(
@@ -5566,9 +5515,6 @@ const TableManager = forwardRef(function TableManager({
           'success',
         );
       } catch (err) {
-        if (temporaryListRequestIdRef.current !== requestId) {
-          return;
-        }
         console.error('Failed to load temporaries', err);
         if (err?.rateLimited) {
           addToast(err.message || rateLimitFallbackMessage, 'warning');
@@ -5576,15 +5522,12 @@ const TableManager = forwardRef(function TableManager({
         }
         setTemporaryFocusId(null);
         setTemporaryList([]);
-        setTemporaryVisibleCount(TEMPORARY_LIST_CHUNK_SIZE);
         addWorkflowToast(
           err?.message || t('notifications_workflow_list_failed', 'Workflow list failed to load'),
           'error',
         );
       } finally {
-        if (temporaryListRequestIdRef.current === requestId) {
-          setTemporaryLoading(false);
-        }
+        setTemporaryLoading(false);
       }
     },
     [
@@ -5752,22 +5695,6 @@ const TableManager = forwardRef(function TableManager({
     }
     setActiveTemporaryDraftId(null);
   }
-
-  useEffect(() => {
-    temporaryListRequestIdRef.current += 1;
-    setTemporaryList([]);
-    setTemporaryFocusId(null);
-    setTemporarySelection(new Set());
-    setTemporaryVisibleCount(TEMPORARY_LIST_CHUNK_SIZE);
-    autoTemporaryLoadScopesRef.current.clear();
-    if (showTemporaryModal) {
-      fetchTemporaryList(temporaryScope);
-    }
-  }, [
-    temporaryListContextKey,
-    showTemporaryModal,
-  ]);
-
 
   useEffect(() => {
     if (!supportsTemporary || availableTemporaryScopes.length === 0) return;
@@ -9350,26 +9277,7 @@ const TableManager = forwardRef(function TableManager({
             ) : temporaryList.length === 0 ? (
               <p>{t('temporary_empty', 'No temporary submissions found.')}</p>
             ) : (
-              <div
-                ref={temporaryListContainerRef}
-                onScroll={(event) => {
-                  const node = event.currentTarget;
-                  if (!node) return;
-                  const remaining = node.scrollHeight - node.scrollTop - node.clientHeight;
-                  if (remaining <= 120) {
-                    loadMoreTemporaryRows();
-                  }
-                }}
-                style={{ maxHeight: '60vh', overflowY: 'auto' }}
-              >
-                {temporaryList.length > visibleTemporaryList.length && (
-                  <div style={{ fontSize: '0.8rem', color: '#6b7280', marginBottom: '0.35rem' }}>
-                    {t('temporary_chunk_info', 'Showing {{visible}} of {{total}} items', {
-                      visible: visibleTemporaryList.length,
-                      total: temporaryList.length,
-                    })}
-                  </div>
-                )}
+              <div style={{ maxHeight: '60vh', overflowY: 'auto' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                   <thead>
                     <tr>
@@ -9431,7 +9339,7 @@ const TableManager = forwardRef(function TableManager({
                     </tr>
                   </thead>
                   <tbody>
-                    {visibleTemporaryList.map((entry, index) => {
+                    {temporaryList.map((entry, index) => {
                       const entryId = getTemporaryId(entry);
                       const rowKey = entryId ?? `row-${index}`;
                       const isFocused = temporaryFocusId && rowKey === temporaryFocusId;
