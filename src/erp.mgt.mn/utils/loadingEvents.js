@@ -7,5 +7,12 @@ export function dispatchEnd(key) {
 }
 
 export function currentLoaderKey() {
-  return window.__activeTabKey || 'global';
+  if (typeof window !== 'undefined') {
+    const path = typeof window.location?.pathname === 'string'
+      ? window.location.pathname.trim()
+      : '';
+    if (path) return path;
+    if (window.__activeTabKey) return window.__activeTabKey;
+  }
+  return 'global';
 }
