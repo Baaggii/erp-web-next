@@ -135,13 +135,24 @@ function buildPreviewText(item) {
 
 function getStatusMeta(status) {
   const normalized = typeof status === 'string' ? status.trim().toLowerCase() : '';
-  if (normalized === 'accepted') return { label: 'Accepted', accent: '#16a34a' };
-  if (normalized === 'declined') return { label: 'Declined', accent: '#ef4444' };
-  if (normalized === 'pending') return { label: 'Pending', accent: '#f59e0b' };
+  if (normalized === 'accepted') return { label: 'Approved', accent: '#16a34a' };
+  if (normalized === 'declined') return { label: 'Rejected', accent: '#ef4444' };
+  if (normalized === 'pending') return { label: 'Request', accent: '#f59e0b' };
   if (normalized) {
     return { label: normalized.charAt(0).toUpperCase() + normalized.slice(1), accent: '#2563eb' };
   }
-  return { label: 'Pending', accent: '#f59e0b' };
+  return { label: 'Request', accent: '#f59e0b' };
+}
+
+function getTemporaryStatusMeta(status) {
+  const normalized = typeof status === 'string' ? status.trim().toLowerCase() : '';
+  if (['accepted', 'approved', 'promoted'].includes(normalized)) {
+    return { label: 'Approval', accent: '#16a34a' };
+  }
+  if (['declined', 'rejected'].includes(normalized)) {
+    return { label: 'Rejection', accent: '#ef4444' };
+  }
+  return { label: 'Request', accent: '#f59e0b' };
 }
 
 function dedupeRequests(list) {
@@ -909,9 +920,7 @@ export default function TransactionNotificationDropdown() {
     });
     reportItems.forEach(({ req, tab, status, scope }) => {
       const statusMeta = getStatusMeta(status);
-      const title = `${formatRequestType(req?.request_type)}${
-        req?.table_name ? ` • ${req.table_name}` : ''
-      }`;
+      const title = `${formatRequestType(req?.request_type)}`;
       const previewLabel =
         scope === 'response'
           ? `Responded by ${getResponder(req) || 'Unknown'}`
@@ -930,9 +939,7 @@ export default function TransactionNotificationDropdown() {
     });
     changeItems.forEach(({ req, tab, status, scope }) => {
       const statusMeta = getStatusMeta(status);
-      const title = `${formatRequestType(req?.request_type)}${
-        req?.table_name ? ` • ${req.table_name}` : ''
-      }`;
+      const title = `${formatRequestType(req?.request_type)}`;
       const previewLabel =
         scope === 'response'
           ? `Responded by ${getResponder(req) || 'Unknown'}`
@@ -958,16 +965,17 @@ export default function TransactionNotificationDropdown() {
         entry?.moduleKey ||
         entry?.module_key ||
         'Temporary transaction';
-      const tableName = entry?.tableName || entry?.table_name || '';
-      const title = `${formName}${tableName ? ` • ${tableName}` : ''}`;
-      const scopeLabel = scope === 'review' ? 'Review queue' : 'My drafts';
+      const title = `${formName}`;
+      const statusMeta = getTemporaryStatusMeta(
+        entry?.status || entry?.review_status || (scope === 'review' ? 'pending' : ''),
+      );
       const timestamp = getTemporaryTimestamp(entry);
       items.push({
         key: `temporary-${getTemporaryEntryKey(entry) || title}-${scope}`,
         timestamp,
         isUnread: scope === 'review',
         title,
-        badge: { label: scopeLabel, accent: '#7c3aed' },
+        badge: { label: statusMeta.label, accent: statusMeta.accent },
         preview: entry?.creatorName || entry?.creator_name || entry?.created_by || '',
         dateTime: formatDisplayTimestamp(timestamp),
         onClick: () => openTemporary(scope, entry),
@@ -983,6 +991,7 @@ export default function TransactionNotificationDropdown() {
     sortedNotifications,
     temporaryItems,
   ]);
+
 
   const hasAnyNotifications = combinedItems.length > 0;
 
@@ -1041,7 +1050,7 @@ export default function TransactionNotificationDropdown() {
 const styles = {
   wrapper: {
     position: 'relative',
-    marginLeft: '0.75rem',
+    marginRight: '0.5rem',
   },
   button: {
     position: 'relative',
@@ -1067,13 +1076,16 @@ const styles = {
   dropdown: {
     position: 'absolute',
     right: 0,
+    left: 'auto',
     marginTop: '0.4rem',
     width: '320px',
+    maxWidth: 'calc(100vw - 1rem)',
     background: '#fff',
     borderRadius: '12px',
     boxShadow: '0 12px 30px rgba(15,23,42,0.2)',
     overflow: 'hidden',
     zIndex: 60,
+    transformOrigin: 'top right',
   },
   list: {
     maxHeight: '360px',
