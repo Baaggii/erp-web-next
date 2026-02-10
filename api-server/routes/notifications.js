@@ -2,6 +2,7 @@ import express from 'express';
 import rateLimit from 'express-rate-limit';
 import { requireAuth } from '../middlewares/auth.js';
 import { pool } from '../../db/index.js';
+import { listTransactionNames } from '../services/transactionFormConfig.js';
 
 const router = express.Router();
 
@@ -50,13 +51,31 @@ function makeRequestPath({ status, requestType, tableName, requestId, createdAt,
   return `/requests?${params.toString()}`;
 }
 
-function makeTransactionPath({ payload, notificationId }) {
+function makeTransactionPath({ payload, notificationId, redirectTab = 'activity' }) {
   const params = new URLSearchParams();
-  params.set('tab', 'activity');
+  params.set('tab', redirectTab || 'activity');
   params.set('notifyGroup', payload?.transactionName || 'Transaction');
   params.set('notifyItem', String(notificationId || ''));
   params.set('notifyKey', String(Date.now()));
   return `/?${params.toString()}`;
+}
+
+function normalizeText(value) {
+  return String(value || '').trim().toLowerCase();
+}
+
+function resolveTransactionRedirectTab({ payload, redirectMapByName, redirectMapByTable }) {
+  const byName = normalizeText(payload?.transactionName || payload?.transaction_name);
+  if (byName && redirectMapByName.has(byName)) {
+    return redirectMapByName.get(byName) || '';
+  }
+
+  const byTable = normalizeText(payload?.transactionTable || payload?.transaction_table);
+  if (byTable && redirectMapByTable.has(byTable)) {
+    return redirectMapByTable.get(byTable) || '';
+  }
+
+  return '';
 }
 
 function makeTemporaryPath({ temporaryId, temporaryRow, payload, userEmpId }) {
@@ -198,6 +217,48 @@ router.get('/feed', requireAuth, feedRateLimiter, async (req, res, next) => {
     const sourceLimit = Math.min(Math.max(cursor + chunkLimit + 40, 80), 400);
     const userEmpId = String(req.user.empid || '').trim().toUpperCase();
     const companyId = req.user.companyId;
+    const session = req.session || {};
+
+    let redirectMapByName = new Map();
+    let redirectMapByTable = new Map();
+    try {
+      const { names } = await listTransactionNames(
+        {
+          branchId: session?.branch_id ?? session?.branchId ?? null,
+          departmentId: session?.department_id ?? session?.departmentId ?? null,
+          userRightId: session?.user_right_id ?? session?.userRightId ?? null,
+          workplaceId: session?.work_place_id ?? session?.workplaceId ?? null,
+          positionId: session?.position_id ?? session?.positionId ?? null,
+          workplacePositionId:
+            session?.workplace_position_id ?? session?.workplacePositionId ?? null,
+          workplacePositions: session?.workplace_assignments,
+        },
+        companyId,
+      );
+      const byName = new Map();
+      const byTable = new Map();
+      Object.entries(names || {}).forEach(([name, info]) => {
+        const redirectTab = String(
+          info?.notificationRedirectTab ?? info?.notification_redirect_tab ?? '',
+        ).trim();
+        if (!redirectTab) return;
+
+        const normalizedName = normalizeText(name);
+        if (normalizedName && !byName.has(normalizedName)) {
+          byName.set(normalizedName, redirectTab);
+        }
+
+        const normalizedTable = normalizeText(info?.table ?? info?.tableName ?? info?.table_name);
+        if (normalizedTable && !byTable.has(normalizedTable)) {
+          byTable.set(normalizedTable, redirectTab);
+        }
+      });
+      redirectMapByName = byName;
+      redirectMapByTable = byTable;
+    } catch {
+      redirectMapByName = new Map();
+      redirectMapByTable = new Map();
+    }
 
     const [notificationRows] = await pool.query(
       `SELECT notification_id, type, related_id, message, is_read, created_at, updated_at
@@ -328,9 +389,15 @@ router.get('/feed', requireAuth, feedRateLimiter, async (req, res, next) => {
       }
 
       const title = formatTransactionFormName(payload);
+      const notificationRedirectTab = resolveTransactionRedirectTab({
+        payload,
+        redirectMapByName,
+        redirectMapByTable,
+      });
       const transactionRedirectMeta = {
         transactionName: payload?.transactionName || payload?.transaction_name || title,
         transactionTable: payload?.transactionTable || payload?.transaction_table || null,
+        notificationRedirectTab,
       };
       items.push({
         id: `transaction-${row.notification_id}`,
@@ -343,7 +410,11 @@ router.get('/feed', requireAuth, feedRateLimiter, async (req, res, next) => {
         action: {
           type: 'navigate',
           notificationId: Number(row.notification_id) || null,
-          path: makeTransactionPath({ payload, notificationId: row.notification_id }),
+          path: makeTransactionPath({
+            payload,
+            notificationId: row.notification_id,
+            redirectTab: notificationRedirectTab || 'activity',
+          }),
           redirectMeta: transactionRedirectMeta,
         },
       });
