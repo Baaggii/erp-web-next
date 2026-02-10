@@ -54,7 +54,8 @@ function makeTransactionPath({ payload, notificationId }) {
   const params = new URLSearchParams();
   params.set('tab', 'activity');
   params.set('notifyGroup', payload?.transactionName || 'Transaction');
-  params.set('notifyItem', `transaction-${notificationId}`);
+  params.set('notifyItem', String(notificationId || ''));
+  params.set('notifyKey', String(Date.now()));
   return `/?${params.toString()}`;
 }
 

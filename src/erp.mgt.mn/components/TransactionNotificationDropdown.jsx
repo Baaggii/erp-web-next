@@ -902,7 +902,7 @@ export default function TransactionNotificationDropdown() {
     const redirectTab = String(
       formInfo?.notificationRedirectTab ?? formInfo?.notification_redirect_tab ?? '',
     ).trim();
-    const groupKey = encodeURIComponent(item.transactionName || 'Transaction');
+    const groupKey = item.transactionName || 'Transaction';
     const defaultTab =
       isPlanNotificationItem(item) || isDutyNotificationItem(item) ? 'plans' : 'activity';
     const tab =
@@ -912,7 +912,8 @@ export default function TransactionNotificationDropdown() {
     const params = new URLSearchParams({
       tab,
       notifyGroup: groupKey,
-      notifyItem: item.id,
+      notifyItem: String(item.id || '').replace(/^transaction-/, ''),
+      notifyKey: String(Date.now()),
     });
     if (typeof window !== 'undefined') {
       window.__activeTabKey = '/';
@@ -1022,8 +1023,9 @@ export default function TransactionNotificationDropdown() {
               item?.action?.redirectMeta?.transactionName || item?.title || 'Transaction';
             const itemId = String(item?.id || item?.action?.notificationId || '').trim();
             const params = new URLSearchParams({
-              tab: 'activity',
+              tab,
               notifyGroup: groupKey,
+              notifyKey: String(Date.now()),
             });
             if (itemId) params.set('notifyItem', itemId);
             targetPath = `/?${params.toString()}`;
