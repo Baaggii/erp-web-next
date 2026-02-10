@@ -22,6 +22,15 @@ function normalizeStatus(value, fallback = 'pending') {
   return normalized || fallback;
 }
 
+function formatTableLabel(tableName) {
+  if (!tableName) return 'Transaction';
+  return String(tableName)
+    .replace(/^transactions_/i, '')
+    .replace(/[_-]+/g, ' ')
+    .replace(/\b\w/g, (char) => char.toUpperCase())
+    .trim();
+}
+
 function makeRequestPath({ status, requestType, tableName, requestId, createdAt, tab }) {
   const params = new URLSearchParams();
   params.set('tab', tab || 'incoming');
@@ -94,8 +103,8 @@ router.get('/feed', requireAuth, feedRateLimiter, async (req, res, next) => {
     const userEmpId = String(req.user.empid || '').trim().toUpperCase();
     const companyId = req.user.companyId;
 
-    const [txnRows] = await pool.query(
-      `SELECT notification_id, message, is_read, created_at, updated_at
+    const [notificationRows] = await pool.query(
+      `SELECT notification_id, type, related_id, message, is_read, created_at, updated_at
          FROM notifications
         WHERE recipient_empid = ?
           AND company_id = ?
@@ -127,9 +136,33 @@ router.get('/feed', requireAuth, feedRateLimiter, async (req, res, next) => {
       [userEmpId, companyId, sourceLimit],
     );
 
+    const temporaryIds = Array.from(
+      new Set(
+        (notificationRows || [])
+          .map((row) => Number(row?.related_id))
+          .filter((id) => Number.isFinite(id) && id > 0),
+      ),
+    );
+
+    let temporaryMap = new Map();
+    if (temporaryIds.length > 0) {
+      try {
+        const [temporaryRows] = await pool.query(
+          `SELECT id, table_name, form_name, config_name, status, created_by, reviewed_by, updated_at
+             FROM transaction_temporaries
+            WHERE company_id = ?
+              AND id IN (?)`,
+          [companyId, temporaryIds],
+        );
+        temporaryMap = new Map((temporaryRows || []).map((row) => [Number(row.id), row]));
+      } catch {
+        temporaryMap = new Map();
+      }
+    }
+
     const items = [];
 
-    for (const row of txnRows || []) {
+    for (const row of notificationRows || []) {
       let payload = null;
       try {
         payload = row.message ? JSON.parse(row.message) : null;
@@ -145,11 +178,7 @@ router.get('/feed', requireAuth, feedRateLimiter, async (req, res, next) => {
         status: payload?.action || 'new',
         timestamp: payload?.updatedAt || row.created_at,
         unread: Number(row.is_read) === 0,
-        action: {
-          type: 'navigate',
-          path: makeTransactionPath({ payload, notificationId: row.notification_id }),
-          notificationId: row.notification_id,
-        },
+        action: { type: 'none' },
       });
     }
 
