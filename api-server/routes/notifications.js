@@ -141,18 +141,6 @@ function formatTemporaryFormName(temporaryRow, payload) {
   return formatTransactionFormName(payload);
 }
 
-
-function hasTemporaryMarker({ row, payload }) {
-  const payloadKind = String(payload?.kind || '').trim().toLowerCase();
-  if (payloadKind === 'temporary') return true;
-  if (payload?.temporarySubmission === true || payload?.temporary_submission === true) return true;
-  const payloadReferenceTable = String(payload?.referenceTable || payload?.reference_table || '').trim().toLowerCase();
-  if (payloadReferenceTable === 'transaction_temporaries') return true;
-  const messageText = String(row?.message || '').trim().toLowerCase();
-  if (!messageText) return false;
-  return messageText.includes('temporary submission') || messageText.includes('temporary transaction');
-}
-
 function buildTemporaryPreview({ temporaryRow, payload, status, message }) {
   const actionLabel = formatTemporaryAction(status);
   const formName = formatTemporaryFormName(temporaryRow, payload);
@@ -241,9 +229,7 @@ router.get('/feed', requireAuth, feedRateLimiter, async (req, res, next) => {
       const temporaryId = Number(row?.related_id);
       const temporaryRow = Number.isFinite(temporaryId) ? temporaryMap.get(temporaryId) : null;
       const payloadKind = String(payload?.kind || '').trim().toLowerCase();
-      const hasTemporarySignal = hasTemporaryMarker({ row, payload });
-      const isTemporaryNotification =
-        hasTemporarySignal && (Boolean(temporaryRow) || payloadKind === 'temporary');
+      const isTemporaryNotification = Boolean(temporaryRow) || payloadKind === 'temporary';
       if (isTemporaryNotification) {
         const status = detectTemporaryStatus({ row, payload, temporaryRow });
         items.push({
