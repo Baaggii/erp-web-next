@@ -958,8 +958,7 @@ export default function TransactionNotificationDropdown() {
       const redirectTab = String(
         formInfo?.notificationRedirectTab ?? formInfo?.notification_redirect_tab ?? '',
       ).trim();
-      const defaultTab =
-        isPlanNotificationItem(item) || isDutyNotificationItem(item) ? 'plans' : 'activity';
+      const defaultTab = 'audition';
       return dashboardTabs.has(redirectTab) ? redirectTab : defaultTab;
     },
     [dashboardTabs, isDutyNotificationItem, isPlanNotificationItem, resolveFormInfo],

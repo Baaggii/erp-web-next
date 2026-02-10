@@ -86,9 +86,9 @@ function normalizeFormConfig(info = {}) {
     notificationDashboardFields: toArray(info.notificationDashboardFields),
     notificationPhoneFields: toArray(info.notificationPhoneFields),
     notificationEmailFields: toArray(info.notificationEmailFields),
-    notificationRedirectTab: toTabValue(
-      info.notificationRedirectTab ?? info.notification_redirect_tab,
-    ),
+    notificationRedirectTab:
+      toTabValue(info.notificationRedirectTab ?? info.notification_redirect_tab) ||
+      'audition',
     temporaryKeepFields: toArray(
       info.temporaryKeepFields ?? info.temporary_keep_fields,
     ),
@@ -209,7 +209,6 @@ export default function FormsManagement() {
   const modulePermitted = isModulePermissionGranted(permissions, 'forms_management');
   const dashboardTabOptions = useMemo(
     () => [
-      { value: '', label: t('notification_redirect_default', 'Default (Activity/Plans)') },
       { value: 'general', label: t('general', 'General') },
       { value: 'activity', label: t('activity', 'Activity') },
       { value: 'audition', label: t('audition', 'Audition') },
