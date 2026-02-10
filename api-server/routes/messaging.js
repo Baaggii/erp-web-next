@@ -1,6 +1,6 @@
 import express from 'express';
 import { requireAuth } from '../middlewares/auth.js';
-import { listMessages, createMessage, listCompanyPeople } from '../services/messagingService.js';
+import { listMessages, createMessage } from '../services/messagingService.js';
 
 const router = express.Router();
 
@@ -16,15 +16,6 @@ router.get('/', async (req, res) => {
     res.json(data);
   } catch (err) {
     res.status(err.status || 500).json({ message: err.message || 'Failed to load messages' });
-  }
-});
-
-router.get('/people', async (req, res) => {
-  try {
-    const data = await listCompanyPeople({ user: req.user, companyId: req.query.companyId });
-    res.json(data);
-  } catch (err) {
-    res.status(err.status || 500).json({ message: err.message || 'Failed to load people' });
   }
 });
 
