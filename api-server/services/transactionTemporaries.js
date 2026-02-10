@@ -1230,7 +1230,6 @@ export async function listTemporarySubmissions({
   transactionTypeValue,
   limit = DEFAULT_TEMPORARY_LIMIT,
   offset = 0,
-  cursor = null,
   includeHasMore = false,
 }) {
   await ensureTemporaryTable();
@@ -1303,30 +1302,6 @@ export async function listTemporarySubmissions({
   const requestedOffset = Number(offset);
   const normalizedOffset = Number.isFinite(requestedOffset) && requestedOffset > 0 ? requestedOffset : 0;
   const effectiveLimit = includeHasMore ? normalizedLimit + 1 : normalizedLimit;
-  let cursorPayload = null;
-  if (cursor) {
-    try {
-      const decoded = Buffer.from(String(cursor), 'base64').toString('utf8');
-      const parsed = JSON.parse(decoded);
-      const cursorUpdatedAt = parsed?.updatedAt ? new Date(parsed.updatedAt) : null;
-      const cursorId = Number(parsed?.id);
-      if (cursorUpdatedAt && !Number.isNaN(cursorUpdatedAt.getTime()) && Number.isFinite(cursorId)) {
-        cursorPayload = {
-          updatedAt: cursorUpdatedAt.toISOString().slice(0, 19).replace('T', ' '),
-          id: cursorId,
-        };
-      }
-    } catch {
-      cursorPayload = null;
-    }
-  }
-  const cursorClause = cursorPayload
-    ? 'WHERE (filtered.updated_at < ? OR (filtered.updated_at = ? AND filtered.id < ?))'
-    : '';
-  const paginationClause = cursorPayload ? 'LIMIT ?' : 'LIMIT ? OFFSET ?';
-  const paginationParams = cursorPayload
-    ? [cursorPayload.updatedAt, cursorPayload.updatedAt, cursorPayload.id, effectiveLimit]
-    : [effectiveLimit, normalizedOffset];
   const groupingQuery = `
     WITH filtered AS (${filteredQuery})
     SELECT filtered.*
@@ -1338,10 +1313,9 @@ export async function listTemporarySubmissions({
            ) latest
         ON ${chainGroupKey('filtered')} = latest.chain_group_id
        AND filtered.updated_at = latest.max_updated_at
-     ${cursorClause}
      ORDER BY filtered.updated_at DESC, filtered.created_at DESC
-     ${paginationClause}`;
-  const [rows] = await pool.query(groupingQuery, [...params, ...paginationParams]);
+     LIMIT ? OFFSET ?`;
+  const [rows] = await pool.query(groupingQuery, [...params, effectiveLimit, normalizedOffset]);
   const hasMore = includeHasMore ? rows.length > normalizedLimit : false;
   const limitedRows = includeHasMore ? rows.slice(0, normalizedLimit) : rows;
   const mapped = limitedRows.map(mapTemporaryRow);
@@ -1355,15 +1329,6 @@ export async function listTemporarySubmissions({
   return {
     rows: enriched,
     hasMore,
-    nextCursor:
-      hasMore && enriched.length > 0
-        ? Buffer.from(
-            JSON.stringify({
-              updatedAt: enriched[enriched.length - 1]?.updatedAt,
-              id: enriched[enriched.length - 1]?.id,
-            }),
-          ).toString('base64')
-        : null,
     nextOffset: hasMore ? normalizedOffset + normalizedLimit : null,
   };
 }

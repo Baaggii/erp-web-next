@@ -52,7 +52,6 @@ router.get('/', requireAuth, async (req, res, next) => {
       status,
       limit,
       offset,
-      cursor,
       transactionTypeField = null,
       transactionTypeValue = null,
     } = req.query;
@@ -74,17 +73,11 @@ router.get('/', requireAuth, async (req, res, next) => {
       status: normalizedStatus,
       limit,
       offset,
-      cursor,
       transactionTypeField,
       transactionTypeValue,
       includeHasMore: true,
     });
-    res.json({
-      rows: list.rows,
-      hasMore: list.hasMore,
-      nextOffset: list.nextOffset,
-      nextCursor: list.nextCursor,
-    });
+    res.json({ rows: list.rows, hasMore: list.hasMore, nextOffset: list.nextOffset });
   } catch (err) {
     next(err);
   }

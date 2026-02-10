@@ -666,10 +666,7 @@ export default function TransactionNotificationWidget({ filterMode = 'activity' 
         }
         const res = await fetch(
           `/api/tables/${encodeURIComponent(relation.table)}?${params.toString()}`,
-          {
-            credentials: 'include',
-            skipLoader: true,
-          },
+          { credentials: 'include' },
         );
         let row = null;
         if (res.ok) {
@@ -706,7 +703,6 @@ export default function TransactionNotificationWidget({ filterMode = 'activity' 
         }
         const res = await fetch(`/api/display_fields?${params.toString()}`, {
           credentials: 'include',
-          skipLoader: true,
         });
         const cfg = res.ok ? await res.json().catch(() => ({})) : {};
         const normalized = {
@@ -939,10 +935,7 @@ export default function TransactionNotificationWidget({ filterMode = 'activity' 
     const query = params.toString();
     const request = fetch(
       `/api/transaction_forms${query ? `?${query}` : ''}`,
-      {
-        credentials: 'include',
-        skipLoader: true,
-      },
+      { credentials: 'include' },
     )
       .then((res) => (res.ok ? res.json() : {}))
       .then((data) => {

@@ -292,8 +292,6 @@ export default function TransactionNotificationDropdown() {
     nextCursor: null,
   });
   const [visibleCount, setVisibleCount] = useState(FEED_CHUNK_SIZE);
-  const [initialFeedLoaded, setInitialFeedLoaded] = useState(false);
-  const [initialTemporaryLoaded, setInitialTemporaryLoaded] = useState(false);
   const containerRef = useRef(null);
   const listRef = useRef(null);
   const navigate = useNavigate();
@@ -675,7 +673,7 @@ export default function TransactionNotificationDropdown() {
   ]);
 
   useEffect(() => {
-    if (!open) return () => {};
+    if (USE_UNIFIED_FEED || !open) return () => {};
     let cancelled = false;
     setInitialTemporaryLoaded(false);
     const loadTemporary = async () => {
@@ -720,7 +718,7 @@ export default function TransactionNotificationDropdown() {
     return () => {
       cancelled = true;
     };
-  }, [open, temporary?.fetchScopeEntries]);
+  }, [USE_UNIFIED_FEED, open, temporary?.fetchScopeEntries]);
 
   const openRequest = useCallback(
     (req, tab, statusOverride) => {
@@ -918,7 +916,6 @@ export default function TransactionNotificationDropdown() {
   useEffect(() => {
     if (!open) return;
     let cancelled = false;
-    setInitialFeedLoaded(false);
     setVisibleCount(FEED_CHUNK_SIZE);
     setFeedState((prev) => ({ ...prev, loading: true, error: '' }));
     fetch(`/api/notifications/feed?limit=200`, {
@@ -935,12 +932,10 @@ export default function TransactionNotificationDropdown() {
           error: '',
           nextCursor: data?.nextCursor ?? null,
         });
-        setInitialFeedLoaded(true);
       })
       .catch(() => {
         if (cancelled) return;
         setFeedState({ items: [], loading: false, error: 'Failed to load notifications', nextCursor: null });
-        setInitialFeedLoaded(true);
       });
     return () => {
       cancelled = true;
@@ -952,16 +947,15 @@ export default function TransactionNotificationDropdown() {
     const node = listRef.current;
     if (!node) return;
     const onScroll = () => {
-      const totalItems = feedState.items.length + temporaryState.review.length + temporaryState.created.length;
-      if (visibleCount >= totalItems) return;
+      if (visibleCount >= feedState.items.length) return;
       const remaining = node.scrollHeight - node.scrollTop - node.clientHeight;
       if (remaining <= 40) {
-        setVisibleCount((prev) => Math.min(prev + FEED_CHUNK_SIZE, totalItems));
+        setVisibleCount((prev) => Math.min(prev + FEED_CHUNK_SIZE, feedState.items.length));
       }
     };
     node.addEventListener('scroll', onScroll);
     return () => node.removeEventListener('scroll', onScroll);
-  }, [feedState.items.length, open, temporaryState.created.length, temporaryState.review.length, visibleCount]);
+  }, [feedState.items.length, open, visibleCount]);
 
   useEffect(() => {
     if (open && !formsLoaded) {
@@ -970,7 +964,7 @@ export default function TransactionNotificationDropdown() {
   }, [formsLoaded, loadFormConfigs, open]);
 
   const combinedItems = useMemo(() => {
-    const mappedFeedItems = feedState.items.map((item) => {
+    return feedState.items.map((item) => {
       const normalizedSource = String(item?.source || 'notification').toLowerCase();
       const isTransaction = normalizedSource === 'transaction';
       const badgeMeta = isTransaction
@@ -986,13 +980,6 @@ export default function TransactionNotificationDropdown() {
         preview: item?.preview || '',
         dateTime: formatDisplayTimestamp(item?.timestamp),
         onClick: () => {
-          const isPendingRequest = normalizedSource.startsWith('pending_request');
-          if (isPendingRequest && typeof markWorkflowSeen === 'function') {
-            const scope = normalizedSource.includes('incoming') ? 'incoming' : 'outgoing';
-            const status = String(item?.status || 'pending').trim().toLowerCase();
-            markWorkflowSeen('report_approval', scope, [status]);
-            markWorkflowSeen('change_requests', scope, [status]);
-          }
           if (isTransaction && item?.action?.notificationId) {
             markRead([item.action.notificationId]);
           }
@@ -1003,44 +990,7 @@ export default function TransactionNotificationDropdown() {
         },
       };
     });
-
-    const mappedTemporaryItems = temporaryItems.map(({ entry, scope }) => {
-      const formName =
-        entry?.formName ||
-        entry?.form_name ||
-        entry?.configName ||
-        entry?.config_name ||
-        entry?.moduleKey ||
-        entry?.module_key ||
-        'Temporary transaction';
-      const statusMeta = getTemporaryStatusMeta(
-        entry?.status || entry?.review_status || (scope === 'review' ? 'pending' : ''),
-      );
-      const timestamp = getTemporaryTimestamp(entry);
-      return {
-        key: `temporary-${getTemporaryEntryKey(entry) || formName}-${scope}`,
-        timestamp,
-        isUnread: scope === 'review',
-        title: formName,
-        badge: { label: statusMeta.label, accent: statusMeta.accent },
-        preview: entry?.creatorName || entry?.creator_name || entry?.created_by || '',
-        dateTime: formatDisplayTimestamp(timestamp),
-        onClick: () => openTemporary(scope, entry),
-      };
-    });
-
-    return mappedFeedItems.concat(mappedTemporaryItems).sort((a, b) => b.timestamp - a.timestamp);
-  }, [feedState.items, markRead, navigate, openTemporary, temporaryItems]);
-
-  const aggregatedUnreadCount = useMemo(() => {
-    const workflowUnread = ['pending', 'accepted', 'declined'].reduce(
-      (sum, status) => sum + (Number(notificationStatusTotals?.[status]) || 0),
-      0,
-    );
-    return workflowUnread + (Number(unreadCount) || 0);
-  }, [notificationStatusTotals, unreadCount]);
-
-  const loadingInitialList = !initialFeedLoaded || !initialTemporaryLoaded;
+  }, [feedState.items, markRead, navigate]);
 
   const hasAnyNotifications = combinedItems.length > 0;
 
@@ -1057,11 +1007,11 @@ export default function TransactionNotificationDropdown() {
       {open && (
         <div style={styles.dropdown}>
           <div style={styles.list} ref={listRef}>
-            {loadingInitialList && <div style={styles.empty}>Loading notifications...</div>}
-            {!loadingInitialList && !hasAnyNotifications && (
+            {feedState.loading && <div style={styles.empty}>Loading notifications...</div>}
+            {!feedState.loading && !hasAnyNotifications && (
               <div style={styles.empty}>{feedState.error || 'No notifications yet'}</div>
             )}
-            {!loadingInitialList && combinedItems.slice(0, visibleCount).map((item) => (
+            {combinedItems.slice(0, visibleCount).map((item) => (
               <button
                 key={item.key}
                 type="button"
@@ -1080,7 +1030,7 @@ export default function TransactionNotificationDropdown() {
                 )}
               </button>
             ))}
-            {!loadingInitialList && visibleCount < combinedItems.length && (
+            {!feedState.loading && visibleCount < combinedItems.length && (
               <div style={styles.empty}>Scroll to load more…</div>
             )}
           </div>
