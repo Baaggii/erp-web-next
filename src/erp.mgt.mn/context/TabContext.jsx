@@ -99,31 +99,24 @@ export function TabProvider({ children }) {
   const closeTab = useCallback(
     (key, onNavigate) => {
       if (key === '/') return;
+      const remaining = tabs.filter((tab) => tab.key !== key);
+      const isClosingActive = activeKey === key;
+      const nextActiveKey = isClosingActive ? remaining[0]?.key || null : activeKey;
+
       trackSetState('TabProvider.setTabs');
-      setTabs((t) => t.filter((tab) => tab.key !== key));
+      setTabs(remaining);
       trackSetState('TabProvider.setCache');
       setCache((c) => {
         const n = { ...c };
         delete n[key];
         return n;
       });
-      let nextActiveKey = null;
-      let shouldNavigate = false;
+
       trackSetState('TabProvider.setActiveKey');
-      setActiveKey((current) => {
-        if (current !== key) {
-          nextActiveKey = current;
-          return current;
-        }
-        const remaining = tabs.filter((t) => t.key !== key);
-        const fallback = remaining[0]?.key || null;
-        nextActiveKey = fallback;
-        shouldNavigate = true;
-        return fallback;
-      });
+      setActiveKey(nextActiveKey);
       window.__activeTabKey = nextActiveKey || 'global';
       if (
-        shouldNavigate &&
+        isClosingActive &&
         typeof onNavigate === 'function' &&
         nextActiveKey &&
         typeof nextActiveKey === 'string' &&
@@ -132,7 +125,7 @@ export function TabProvider({ children }) {
         onNavigate(nextActiveKey);
       }
     },
-    [tabs],
+    [activeKey, tabs],
   );
 
   const setTabContent = useCallback((key, content) => {
