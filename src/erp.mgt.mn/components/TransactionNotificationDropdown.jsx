@@ -27,6 +27,7 @@ const DEFAULT_PLAN_NOTIFICATION_FIELDS = ['is_plan', 'is_plan_completion'];
 const DEFAULT_PLAN_NOTIFICATION_VALUES = ['1'];
 const DEFAULT_DUTY_NOTIFICATION_FIELDS = [];
 const DEFAULT_DUTY_NOTIFICATION_VALUES = ['1'];
+const NOTIFICATION_PAGE_SIZE = 20;
 
 function normalizeText(value) {
   if (value === undefined || value === null) return '';
@@ -283,7 +284,14 @@ export default function TransactionNotificationDropdown() {
     loading: false,
     error: '',
   });
+  const [stableSupplementalItems, setStableSupplementalItems] = useState({
+    report: [],
+    change: [],
+    temporary: [],
+  });
+  const [visibleCount, setVisibleCount] = useState(NOTIFICATION_PAGE_SIZE);
   const containerRef = useRef(null);
+  const listRef = useRef(null);
   const navigate = useNavigate();
   const generalConfig = useGeneralConfig();
   const dashboardTabs = useMemo(
@@ -829,6 +837,29 @@ export default function TransactionNotificationDropdown() {
     [temporaryState.created, temporaryState.review],
   );
 
+  useEffect(() => {
+    if (!open) return;
+    setStableSupplementalItems({ report: [], change: [], temporary: [] });
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    if (reportState.loading || changeState.loading || temporaryState.loading) return;
+    setStableSupplementalItems({
+      report: reportItems,
+      change: changeItems,
+      temporary: temporaryItems,
+    });
+  }, [
+    changeItems,
+    changeState.loading,
+    open,
+    reportItems,
+    reportState.loading,
+    temporaryItems,
+    temporaryState.loading,
+  ]);
+
   const resolveFormInfo = useCallback(
     (item) => {
       if (!item || formEntries.length === 0) return null;
@@ -918,7 +949,8 @@ export default function TransactionNotificationDropdown() {
         onClick: () => handleNotificationClick(item),
       });
     });
-    reportItems.forEach(({ req, tab, status, scope }) => {
+    const resolvedReportItems = open ? stableSupplementalItems.report : reportItems;
+    resolvedReportItems.forEach(({ req, tab, status, scope }) => {
       const statusMeta = getStatusMeta(status);
       const title = `${formatRequestType(req?.request_type)}`;
       const previewLabel =
@@ -937,7 +969,8 @@ export default function TransactionNotificationDropdown() {
         onClick: () => openRequest(req, tab, status),
       });
     });
-    changeItems.forEach(({ req, tab, status, scope }) => {
+    const resolvedChangeItems = open ? stableSupplementalItems.change : changeItems;
+    resolvedChangeItems.forEach(({ req, tab, status, scope }) => {
       const statusMeta = getStatusMeta(status);
       const title = `${formatRequestType(req?.request_type)}`;
       const previewLabel =
@@ -956,7 +989,8 @@ export default function TransactionNotificationDropdown() {
         onClick: () => openRequest(req, tab, status),
       });
     });
-    temporaryItems.forEach(({ entry, scope }) => {
+    const resolvedTemporaryItems = open ? stableSupplementalItems.temporary : temporaryItems;
+    resolvedTemporaryItems.forEach(({ entry, scope }) => {
       const formName =
         entry?.formName ||
         entry?.form_name ||
@@ -985,12 +1019,40 @@ export default function TransactionNotificationDropdown() {
   }, [
     changeItems,
     handleNotificationClick,
+    open,
     openRequest,
     openTemporary,
     reportItems,
     sortedNotifications,
+    stableSupplementalItems.change,
+    stableSupplementalItems.report,
+    stableSupplementalItems.temporary,
     temporaryItems,
   ]);
+
+  useEffect(() => {
+    if (!open) return;
+    setVisibleCount(NOTIFICATION_PAGE_SIZE);
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    setVisibleCount((prev) => Math.min(Math.max(prev, NOTIFICATION_PAGE_SIZE), combinedItems.length));
+  }, [combinedItems.length, open]);
+
+  const handleListScroll = useCallback((event) => {
+    const target = event.currentTarget;
+    if (!target) return;
+    const threshold = 40;
+    const nearBottom = target.scrollTop + target.clientHeight >= target.scrollHeight - threshold;
+    if (!nearBottom) return;
+    setVisibleCount((prev) => prev + NOTIFICATION_PAGE_SIZE);
+  }, []);
+
+  const visibleItems = useMemo(
+    () => combinedItems.slice(0, visibleCount),
+    [combinedItems, visibleCount],
+  );
 
   const hasAnyNotifications = combinedItems.length > 0;
 
@@ -1006,11 +1068,11 @@ export default function TransactionNotificationDropdown() {
       </button>
       {open && (
         <div style={styles.dropdown}>
-          <div style={styles.list}>
+          <div style={styles.list} onScroll={handleListScroll} ref={listRef}>
             {!hasAnyNotifications && (
               <div style={styles.empty}>No notifications yet</div>
             )}
-            {combinedItems.map((item) => (
+            {visibleItems.map((item) => (
               <button
                 key={item.key}
                 type="button"
@@ -1029,6 +1091,9 @@ export default function TransactionNotificationDropdown() {
                 )}
               </button>
             ))}
+            {visibleItems.length < combinedItems.length && (
+              <div style={styles.loadMoreHint}>Scroll to load more…</div>
+            )}
           </div>
           <button
             type="button"
@@ -1095,6 +1160,12 @@ const styles = {
     padding: '1rem',
     color: '#64748b',
     textAlign: 'center',
+  },
+  loadMoreHint: {
+    padding: '0.25rem 0.5rem 0.5rem',
+    color: '#64748b',
+    textAlign: 'center',
+    fontSize: '0.78rem',
   },
   notificationItem: (isUnread) => ({
     width: '100%',
