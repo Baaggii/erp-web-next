@@ -66,12 +66,14 @@ import posApiEndpointRoutes from "./routes/posapi_endpoints.js";
 import posApiProxyRoutes from "./routes/posapi_proxy.js";
 import posApiReferenceCodeRoutes from "./routes/posapi_reference_codes.js";
 import cncProcessingRoutes from "./routes/cnc_processing.js";
+import messagingRoutes from "./routes/messaging.js";
 import reportRoutes from "./routes/report.js";
 import { setNotificationEmitter } from "./services/transactionNotificationQueue.js";
 import {
   setNotificationEmitter as setUnifiedNotificationEmitter,
   setNotificationStore as setUnifiedNotificationStore,
 } from "./services/notificationService.js";
+import { setMessagingIo, markOnline, markOffline } from "./services/messagingService.js";
 
 // Polyfill for __dirname in ES modules
 const __filename = fileURLToPath(import.meta.url);
@@ -160,13 +162,21 @@ io.on("connection", (socket) => {
   socket.join(`emp:${user.empid}`);
   if (user.companyId) {
     socket.join(`company:${user.companyId}`);
+    markOnline(user.companyId, user.empid);
   }
+
+  socket.on("disconnect", () => {
+    if (user.companyId) {
+      markOffline(user.companyId, user.empid);
+    }
+  });
 });
 
 app.set("io", io);
 setNotificationEmitter(io);
 setUnifiedNotificationEmitter(io);
 setUnifiedNotificationStore(pool);
+setMessagingIo(io);
 
 // Serve uploaded images statically
 const { config: imgCfg } = await getGeneralConfig();
@@ -245,6 +255,7 @@ app.use("/api/posapi/endpoints", posApiEndpointRoutes);
 app.use("/api/posapi/proxy", posApiProxyRoutes);
 app.use("/api/posapi/reference-codes", posApiReferenceCodeRoutes);
 app.use("/api/cnc_processing", cncProcessingRoutes);
+app.use("/api/messaging", messagingRoutes);
 
 // Serve static React build and fallback to index.html
 const buildDir = path.resolve(__dirname, "../../../erp.mgt.mn");
