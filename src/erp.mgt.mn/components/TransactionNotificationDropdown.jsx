@@ -790,6 +790,9 @@ export default function TransactionNotificationDropdown() {
       if (tableName) params.set('temporaryTable', tableName);
       const idValue = entry?.id ?? entry?.temporary_id ?? entry?.temporaryId ?? null;
       if (idValue != null) params.set('temporaryId', String(idValue));
+      if (typeof window !== 'undefined') {
+        window.__activeTabKey = path;
+      }
       navigate(`${path}?${params.toString()}`);
     },
     [navigate, temporary?.markScopeSeen],
@@ -893,6 +896,9 @@ export default function TransactionNotificationDropdown() {
       notifyGroup: groupKey,
       notifyItem: item.id,
     });
+    if (typeof window !== 'undefined') {
+      window.__activeTabKey = '/';
+    }
     navigate(`/?${params.toString()}`);
   };
 
@@ -990,6 +996,10 @@ export default function TransactionNotificationDropdown() {
           }
           setOpen(false);
           if (item?.action?.path) {
+            if (typeof window !== 'undefined') {
+              const nextPath = String(item.action.path).split('?')[0] || '/';
+              window.__activeTabKey = nextPath;
+            }
             navigate(item.action.path);
           }
         },
