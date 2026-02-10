@@ -538,7 +538,6 @@ export default function TransactionNotificationDropdown() {
 
   useEffect(() => {
     if (!open) return () => {};
-    setIsOpening(true);
     let cancelled = false;
     const incomingPending = workflows?.reportApproval?.incoming?.pending?.count || 0;
     const outgoingPending = workflows?.reportApproval?.outgoing?.pending?.count || 0;
@@ -603,7 +602,6 @@ export default function TransactionNotificationDropdown() {
 
   useEffect(() => {
     if (!open) return () => {};
-    setIsOpening(true);
     let cancelled = false;
     const incomingPending = workflows?.changeRequests?.incoming?.pending?.count || 0;
     const outgoingPending = workflows?.changeRequests?.outgoing?.pending?.count || 0;
@@ -954,7 +952,9 @@ export default function TransactionNotificationDropdown() {
     });
     reportItems.forEach(({ req, tab, status, scope }) => {
       const statusMeta = getStatusMeta(status);
-      const title = formatRequestType(req?.request_type);
+      const title = `${formatRequestType(req?.request_type)}${
+        req?.table_name ? ` • ${req.table_name}` : ''
+      }`;
       const previewLabel =
         scope === 'response'
           ? `Responded by ${getResponder(req) || 'Unknown'}`
@@ -973,7 +973,9 @@ export default function TransactionNotificationDropdown() {
     });
     changeItems.forEach(({ req, tab, status, scope }) => {
       const statusMeta = getStatusMeta(status);
-      const title = formatRequestType(req?.request_type);
+      const title = `${formatRequestType(req?.request_type)}${
+        req?.table_name ? ` • ${req.table_name}` : ''
+      }`;
       const previewLabel =
         scope === 'response'
           ? `Responded by ${getResponder(req) || 'Unknown'}`
@@ -999,7 +1001,8 @@ export default function TransactionNotificationDropdown() {
         entry?.moduleKey ||
         entry?.module_key ||
         'Temporary transaction';
-      const title = formName;
+      const tableName = entry?.tableName || entry?.table_name || '';
+      const title = `${formName}${tableName ? ` • ${tableName}` : ''}`;
       const scopeLabel = scope === 'review' ? 'Review queue' : 'My drafts';
       const statusMeta = getTemporaryStatusMeta(entry);
       const creator =
@@ -1029,26 +1032,13 @@ export default function TransactionNotificationDropdown() {
   ]);
 
   const hasAnyNotifications = combinedItems.length > 0;
-  const isDropdownLoading =
-    isOpening || reportState.loading || changeState.loading || temporaryState.loading;
-  const handleToggle = () => {
-    setOpen((prev) => {
-      const next = !prev;
-      if (next) {
-        setIsOpening(true);
-      } else {
-        setIsOpening(false);
-      }
-      return next;
-    });
-  };
 
   return (
     <div style={styles.wrapper} ref={containerRef}>
       <button
         type="button"
         style={styles.button}
-        onClick={handleToggle}
+        onClick={() => setOpen((prev) => !prev)}
       >
         <span aria-hidden="true">🔔</span>
         {unreadCount > 0 && <span style={styles.badge}>{unreadCount}</span>}
@@ -1056,31 +1046,28 @@ export default function TransactionNotificationDropdown() {
       {open && (
         <div style={styles.dropdown}>
           <div style={styles.list}>
-            {isDropdownLoading ? (
-              <div style={styles.empty}>Loading notifications...</div>
-            ) : !hasAnyNotifications ? (
+            {!hasAnyNotifications && (
               <div style={styles.empty}>No notifications yet</div>
-            ) : (
-              combinedItems.map((item) => (
-                <button
-                  key={item.key}
-                  type="button"
-                  style={styles.notificationItem(item.isUnread)}
-                  onClick={item.onClick}
-                >
-                  <div style={styles.notificationTitle}>
-                    <span>{item.title}</span>
-                    <span style={styles.actionBadge(item.badge?.accent)}>
-                      {item.badge?.label}
-                    </span>
-                  </div>
-                  <div style={styles.notificationPreview}>{item.preview}</div>
-                  {item.dateTime && (
-                    <div style={styles.notificationMeta}>{item.dateTime}</div>
-                  )}
-                </button>
-              ))
             )}
+            {combinedItems.map((item) => (
+              <button
+                key={item.key}
+                type="button"
+                style={styles.notificationItem(item.isUnread)}
+                onClick={item.onClick}
+              >
+                <div style={styles.notificationTitle}>
+                  <span>{item.title}</span>
+                  <span style={styles.actionBadge(item.badge?.accent)}>
+                    {item.badge?.label}
+                  </span>
+                </div>
+                <div style={styles.notificationPreview}>{item.preview}</div>
+                {item.dateTime && (
+                  <div style={styles.notificationMeta}>{item.dateTime}</div>
+                )}
+              </button>
+            ))}
           </div>
           <button
             type="button"
