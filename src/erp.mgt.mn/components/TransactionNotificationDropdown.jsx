@@ -268,7 +268,9 @@ export default function TransactionNotificationDropdown() {
   const { user, session } = useAuth();
   const { workflows, markWorkflowSeen, temporary } = usePendingRequests();
   const [open, setOpen] = useState(false);
+  const [snapshotItems, setSnapshotItems] = useState([]);
   const [visibleCount, setVisibleCount] = useState(DROPDOWN_CHUNK_SIZE);
+  const [deferredCount, setDeferredCount] = useState(0);
   const [formEntries, setFormEntries] = useState([]);
   const [formsLoaded, setFormsLoaded] = useState(false);
   const [codeTransactions, setCodeTransactions] = useState([]);
@@ -294,7 +296,6 @@ export default function TransactionNotificationDropdown() {
   });
   const containerRef = useRef(null);
   const listRef = useRef(null);
-  const initializedOpenRef = useRef(false);
   const navigate = useNavigate();
   const generalConfig = useGeneralConfig();
   const dashboardTabs = useMemo(
@@ -1003,39 +1004,46 @@ export default function TransactionNotificationDropdown() {
     temporaryItems,
   ]);
 
+  const displayItems = open ? snapshotItems : combinedItems;
   const visibleItems = useMemo(
-    () => combinedItems.slice(0, visibleCount),
-    [combinedItems, visibleCount],
+    () => displayItems.slice(0, visibleCount),
+    [displayItems, visibleCount],
   );
-  const hasAnyNotifications = combinedItems.length > 0;
-  const hasMoreVisibleItems = visibleCount < combinedItems.length;
+  const hasAnyDisplayNotifications = displayItems.length > 0;
+  const hasMoreItems = visibleCount < displayItems.length;
 
   const handleListScroll = useCallback((event) => {
     const node = event.currentTarget;
     if (!node) return;
     if (node.scrollTop + node.clientHeight < node.scrollHeight - 48) return;
     setVisibleCount((prev) => prev + DROPDOWN_CHUNK_SIZE);
-    if (!hasMoreVisibleItems && hasMore && !isLoadingMore) {
-      loadMore();
-    }
-  }, [hasMore, hasMoreVisibleItems, isLoadingMore, loadMore]);
+  }, []);
 
   useEffect(() => {
     if (!open) {
-      initializedOpenRef.current = false;
+      setSnapshotItems([]);
+      setDeferredCount(0);
       setVisibleCount(DROPDOWN_CHUNK_SIZE);
       return;
     }
-    if (initializedOpenRef.current) return;
-    initializedOpenRef.current = true;
+    setSnapshotItems(combinedItems);
+    setDeferredCount(0);
     setVisibleCount(DROPDOWN_CHUNK_SIZE);
-    if (hasMore && combinedItems.length <= DROPDOWN_CHUNK_SIZE) {
-      loadMore();
-    }
     if (listRef.current) {
       listRef.current.scrollTop = 0;
     }
-  }, [combinedItems.length, hasMore, loadMore, open]);
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    if (snapshotItems.length === 0 && combinedItems.length === 0) {
+      setDeferredCount(0);
+      return;
+    }
+    const snapshotKeys = new Set(snapshotItems.map((item) => item.key));
+    const newItems = combinedItems.filter((item) => !snapshotKeys.has(item.key));
+    setDeferredCount(newItems.length);
+  }, [combinedItems, open, snapshotItems]);
 
   return (
     <div style={styles.wrapper} ref={containerRef}>
@@ -1050,8 +1058,14 @@ export default function TransactionNotificationDropdown() {
       {open && (
         <div style={styles.dropdown}>
           <div ref={listRef} style={styles.list} onScroll={handleListScroll}>
-            {!hasAnyNotifications && (
+            {!hasAnyDisplayNotifications && (
               <div style={styles.empty}>No notifications yet</div>
+            )}
+            {deferredCount > 0 && (
+              <div style={styles.newItemsHint}>
+                {deferredCount} newer notification{deferredCount > 1 ? 's are' : ' is'} ready.
+                {' '}Close and reopen to refresh this list.
+              </div>
             )}
             {visibleItems.map((item) => (
               <button
@@ -1072,11 +1086,7 @@ export default function TransactionNotificationDropdown() {
                 )}
               </button>
             ))}
-            {(hasMoreVisibleItems || hasMore || isLoadingMore) && (
-              <div style={styles.loadingMore}>
-                {isLoadingMore ? 'Loading more notifications…' : 'Scroll to load more…'}
-              </div>
-            )}
+            {hasMoreItems && <div style={styles.loadingMore}>Scroll to load more…</div>}
           </div>
           <button
             type="button"
@@ -1125,11 +1135,13 @@ const styles = {
     left: 0,
     marginTop: '0.4rem',
     width: '320px',
+    maxWidth: 'calc(100vw - 1rem)',
     background: '#fff',
     borderRadius: '12px',
     boxShadow: '0 12px 30px rgba(15,23,42,0.2)',
     overflow: 'hidden',
     zIndex: 60,
+    willChange: 'transform',
   },
   list: {
     maxHeight: '360px',
@@ -1143,6 +1155,15 @@ const styles = {
     padding: '1rem',
     color: '#64748b',
     textAlign: 'center',
+  },
+  newItemsHint: {
+    background: '#eff6ff',
+    border: '1px solid #bfdbfe',
+    color: '#1d4ed8',
+    borderRadius: '8px',
+    fontSize: '0.75rem',
+    lineHeight: 1.4,
+    padding: '0.45rem 0.55rem',
   },
   notificationItem: (isUnread) => ({
     width: '100%',
