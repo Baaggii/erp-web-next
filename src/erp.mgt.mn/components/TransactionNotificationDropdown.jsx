@@ -1021,6 +1021,29 @@ export default function TransactionNotificationDropdown() {
           const actionPath = String(item?.action?.path || '').trim();
           let targetPath = actionPath;
 
+          if (isTemporary) {
+            const redirectMeta = item?.action?.redirectMeta || {};
+            const scope = String(redirectMeta.scope || '').trim();
+            const temporaryEntry = {
+              moduleKey: redirectMeta.moduleKey,
+              module_key: redirectMeta.module_key,
+              formName: redirectMeta.formName,
+              form_name: redirectMeta.form_name,
+              configName: redirectMeta.configName,
+              config_name: redirectMeta.config_name,
+              tableName: redirectMeta.tableName,
+              table_name: redirectMeta.table_name,
+              id: redirectMeta.temporaryId ?? redirectMeta.temporary_id,
+              temporaryId: redirectMeta.temporaryId ?? redirectMeta.temporary_id,
+              temporary_id: redirectMeta.temporary_id ?? redirectMeta.temporaryId,
+            };
+            const hasEntryContext = Object.values(temporaryEntry).some(
+              (value) => value !== undefined && value !== null && String(value).trim() !== '',
+            );
+            openTemporary(scope, hasEntryContext ? temporaryEntry : null);
+            return;
+          }
+
           if (!targetPath && isTransaction) {
             const groupKey =
               item?.action?.redirectMeta?.transactionName || item?.title || 'Transaction';
