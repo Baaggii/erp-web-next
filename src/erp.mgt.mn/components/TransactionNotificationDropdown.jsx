@@ -6,6 +6,10 @@ import useGeneralConfig from '../hooks/useGeneralConfig.js';
 import { useTransactionNotifications } from '../context/TransactionNotificationContext.jsx';
 import formatTimestamp from '../utils/formatTimestamp.js';
 
+const DROPDOWN_INITIAL_CHUNK = 12;
+const DROPDOWN_CHUNK_SIZE = 12;
+const SECONDARY_INSERT_DELAY_MS = 420;
+
 const TRANSACTION_NAME_KEYS = [
   'UITransTypeName',
   'UITransTypeNameEng',
@@ -283,7 +287,11 @@ export default function TransactionNotificationDropdown() {
     loading: false,
     error: '',
   });
+  const [showSecondaryRows, setShowSecondaryRows] = useState(false);
+  const [visibleCount, setVisibleCount] = useState(DROPDOWN_INITIAL_CHUNK);
   const containerRef = useRef(null);
+  const listRef = useRef(null);
+  const secondaryInsertTimerRef = useRef(null);
   const navigate = useNavigate();
   const generalConfig = useGeneralConfig();
   const dashboardTabs = useMemo(
@@ -903,7 +911,31 @@ export default function TransactionNotificationDropdown() {
     }
   }, [formsLoaded, loadFormConfigs, open]);
 
-  const combinedItems = useMemo(() => {
+  useEffect(() => {
+    if (secondaryInsertTimerRef.current) {
+      clearTimeout(secondaryInsertTimerRef.current);
+      secondaryInsertTimerRef.current = null;
+    }
+    if (!open) {
+      setShowSecondaryRows(false);
+      setVisibleCount(DROPDOWN_INITIAL_CHUNK);
+      return;
+    }
+    setShowSecondaryRows(false);
+    setVisibleCount(DROPDOWN_INITIAL_CHUNK);
+    secondaryInsertTimerRef.current = setTimeout(() => {
+      setShowSecondaryRows(true);
+      secondaryInsertTimerRef.current = null;
+    }, SECONDARY_INSERT_DELAY_MS);
+    return () => {
+      if (secondaryInsertTimerRef.current) {
+        clearTimeout(secondaryInsertTimerRef.current);
+        secondaryInsertTimerRef.current = null;
+      }
+    };
+  }, [open]);
+
+  const primaryItems = useMemo(() => {
     const items = [];
     sortedNotifications.forEach((item) => {
       const itemMeta = getActionMeta(item?.action);
@@ -918,6 +950,11 @@ export default function TransactionNotificationDropdown() {
         onClick: () => handleNotificationClick(item),
       });
     });
+    return items;
+  }, [handleNotificationClick, sortedNotifications]);
+
+  const secondaryItems = useMemo(() => {
+    const items = [];
     reportItems.forEach(({ req, tab, status, scope }) => {
       const statusMeta = getStatusMeta(status);
       const title = `${formatRequestType(req?.request_type)}`;
@@ -981,18 +1018,48 @@ export default function TransactionNotificationDropdown() {
         onClick: () => openTemporary(scope, entry),
       });
     });
-    return items.sort((a, b) => b.timestamp - a.timestamp);
+    return items;
   }, [
-    changeItems,
-    handleNotificationClick,
     openRequest,
     openTemporary,
     reportItems,
-    sortedNotifications,
+    changeItems,
     temporaryItems,
   ]);
 
-  const hasAnyNotifications = combinedItems.length > 0;
+  const stagedItems = useMemo(() => {
+    if (!showSecondaryRows) {
+      return [...primaryItems].sort((a, b) => b.timestamp - a.timestamp);
+    }
+    return [...primaryItems, ...secondaryItems].sort((a, b) => b.timestamp - a.timestamp);
+  }, [primaryItems, secondaryItems, showSecondaryRows]);
+
+  useEffect(() => {
+    setVisibleCount((prev) => {
+      if (stagedItems.length === 0) return DROPDOWN_INITIAL_CHUNK;
+      return Math.min(Math.max(prev, DROPDOWN_INITIAL_CHUNK), stagedItems.length);
+    });
+  }, [stagedItems.length]);
+
+  const visibleItems = useMemo(
+    () => stagedItems.slice(0, visibleCount),
+    [stagedItems, visibleCount],
+  );
+
+  const hasMoreRows = visibleItems.length < stagedItems.length;
+
+  const handleListScroll = useCallback((event) => {
+    const target = event?.currentTarget;
+    if (!target) return;
+    const remaining = target.scrollHeight - target.scrollTop - target.clientHeight;
+    if (remaining > 120) return;
+    setVisibleCount((prev) => {
+      const next = prev + DROPDOWN_CHUNK_SIZE;
+      return Math.min(next, stagedItems.length);
+    });
+  }, [stagedItems.length]);
+
+  const hasAnyNotifications = stagedItems.length > 0;
 
   return (
     <div style={styles.wrapper} ref={containerRef}>
@@ -1006,11 +1073,11 @@ export default function TransactionNotificationDropdown() {
       </button>
       {open && (
         <div style={styles.dropdown}>
-          <div style={styles.list}>
+          <div style={styles.list} ref={listRef} onScroll={handleListScroll}>
             {!hasAnyNotifications && (
               <div style={styles.empty}>No notifications yet</div>
             )}
-            {combinedItems.map((item) => (
+            {visibleItems.map((item) => (
               <button
                 key={item.key}
                 type="button"
@@ -1029,6 +1096,12 @@ export default function TransactionNotificationDropdown() {
                 )}
               </button>
             ))}
+            {open && !showSecondaryRows && secondaryItems.length > 0 && (
+              <div style={styles.loader}>Loading more notifications…</div>
+            )}
+            {hasMoreRows && (
+              <div style={styles.loader}>Scroll to load more</div>
+            )}
           </div>
           <button
             type="button"
@@ -1095,6 +1168,12 @@ const styles = {
     padding: '1rem',
     color: '#64748b',
     textAlign: 'center',
+  },
+  loader: {
+    color: '#64748b',
+    fontSize: '0.78rem',
+    textAlign: 'center',
+    padding: '0.35rem 0',
   },
   notificationItem: (isUnread) => ({
     width: '100%',
