@@ -536,7 +536,7 @@ export default function TransactionNotificationDropdown() {
   );
 
   useEffect(() => {
-    if (!open) return () => {};
+    if (!open || USE_UNIFIED_NOTIFICATION_FEED) return () => {};
     let cancelled = false;
     const incomingPending = workflows?.reportApproval?.incoming?.pending?.count || 0;
     const outgoingPending = workflows?.reportApproval?.outgoing?.pending?.count || 0;
@@ -600,7 +600,7 @@ export default function TransactionNotificationDropdown() {
   ]);
 
   useEffect(() => {
-    if (!open) return () => {};
+    if (!open || USE_UNIFIED_NOTIFICATION_FEED) return () => {};
     let cancelled = false;
     const incomingPending = workflows?.changeRequests?.incoming?.pending?.count || 0;
     const outgoingPending = workflows?.changeRequests?.outgoing?.pending?.count || 0;
@@ -664,7 +664,7 @@ export default function TransactionNotificationDropdown() {
   ]);
 
   useEffect(() => {
-    if (!open) return () => {};
+    if (!open || USE_UNIFIED_NOTIFICATION_FEED) return () => {};
     let cancelled = false;
     const loadTemporary = async () => {
       setTemporaryState((prev) => ({ ...prev, loading: true, error: '' }));
@@ -905,6 +905,37 @@ export default function TransactionNotificationDropdown() {
       loadFormConfigs();
     }
   }, [formsLoaded, loadFormConfigs, open]);
+
+  const loadUnifiedFeed = useCallback(
+    async ({ append = false, cursor = null } = {}) => {
+      if (!USE_UNIFIED_NOTIFICATION_FEED) return;
+      setFeedLoading(true);
+      try {
+        const params = new URLSearchParams({ limit: String(NOTIFICATION_PAGE_SIZE) });
+        if (cursor) params.set('cursor', cursor);
+        const res = await fetch(`/api/notifications/feed?${params.toString()}`, {
+          credentials: 'include',
+          skipLoader: true,
+          skipErrorToast: true,
+        });
+        const data = res.ok ? await res.json().catch(() => ({})) : {};
+        const nextItems = Array.isArray(data?.items) ? data.items : [];
+        setFeedItems((prev) => (append ? prev.concat(nextItems) : nextItems));
+        setFeedCursor(typeof data?.nextCursor === 'string' && data.nextCursor ? data.nextCursor : null);
+      } catch {
+        if (!append) setFeedItems([]);
+        setFeedCursor(null);
+      } finally {
+        setFeedLoading(false);
+      }
+    },
+    [],
+  );
+
+  useEffect(() => {
+    if (!open || !USE_UNIFIED_NOTIFICATION_FEED) return;
+    loadUnifiedFeed({ append: false, cursor: null });
+  }, [loadUnifiedFeed, open]);
 
   const combinedItems = useMemo(() => {
     const items = [];
