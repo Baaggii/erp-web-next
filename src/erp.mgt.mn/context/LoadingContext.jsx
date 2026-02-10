@@ -17,11 +17,27 @@ export function LoadingProvider({ children }) {
       trackSetState('LoadingProvider.setLoaders');
       setLoaders((l) => ({ ...l, [key]: Math.max(0, (l[key] || 0) - 1) }));
     }
+    function clear(e) {
+      const key = e?.detail?.key;
+      trackSetState('LoadingProvider.setLoaders');
+      if (!key) {
+        setLoaders({});
+        return;
+      }
+      setLoaders((l) => {
+        if (!l[key]) return l;
+        const next = { ...l };
+        next[key] = 0;
+        return next;
+      });
+    }
     window.addEventListener('loading:start', start);
     window.addEventListener('loading:end', end);
+    window.addEventListener('loading:clear', clear);
     return () => {
       window.removeEventListener('loading:start', start);
       window.removeEventListener('loading:end', end);
+      window.removeEventListener('loading:clear', clear);
     };
   }, []);
 
