@@ -831,6 +831,14 @@ export default function TransactionNotificationDropdown() {
   const resolveTemporaryFeedEntry = useCallback(
     (item) => {
       const redirectMeta = item?.action?.redirectMeta || {};
+      const actionPath = String(item?.action?.path || '').trim();
+      let pathParams = null;
+      if (actionPath) {
+        const queryIndex = actionPath.indexOf('?');
+        if (queryIndex >= 0) {
+          pathParams = new URLSearchParams(actionPath.slice(queryIndex + 1));
+        }
+      }
       const fallbackName = String(item?.title || '').trim();
       const normalizedName = normalizeText(
         redirectMeta.formName || redirectMeta.configName || redirectMeta.transactionName || fallbackName,
@@ -858,10 +866,23 @@ export default function TransactionNotificationDropdown() {
       ).trim();
 
       return {
-        id: redirectMeta.temporaryId ?? redirectMeta.id ?? null,
-        temporary_id: redirectMeta.temporaryId ?? redirectMeta.id ?? null,
+        id:
+          redirectMeta.temporaryId ??
+          redirectMeta.id ??
+          pathParams?.get('temporaryId') ??
+          null,
+        temporary_id:
+          redirectMeta.temporaryId ??
+          redirectMeta.id ??
+          pathParams?.get('temporaryId') ??
+          null,
         moduleKey: String(
-          redirectMeta.moduleKey || redirectMeta.module || resolvedFormInfo?.moduleKey || resolvedFormInfo?.module || '',
+          redirectMeta.moduleKey ||
+            redirectMeta.module ||
+            pathParams?.get('temporaryModule') ||
+            resolvedFormInfo?.moduleKey ||
+            resolvedFormInfo?.module ||
+            '',
         ).trim(),
         formName: normalizedFormName,
         form_name: normalizedFormName,
@@ -1124,9 +1145,12 @@ export default function TransactionNotificationDropdown() {
             targetPath = `/?${params.toString()}`;
           }
 
-          if (!targetPath && isTemporary) {
+          if (isTemporary) {
             const redirectMeta = item?.action?.redirectMeta || {};
-            const scope = String(redirectMeta.scope || '').trim();
+            const scopeFromPath = targetPath
+              ? new URLSearchParams(String(targetPath).split('?')[1] || '').get('temporaryScope')
+              : '';
+            const scope = String(redirectMeta.scope || scopeFromPath || '').trim();
             openTemporary(scope, resolveTemporaryFeedEntry(item));
             return;
           }
