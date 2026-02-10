@@ -334,6 +334,16 @@ function isNonEmptyDisplayValue(value) {
   return true;
 }
 
+function normalizeNotifyGroupKey(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  try {
+    return decodeURIComponent(raw);
+  } catch {
+    return raw;
+  }
+}
+
 export default function TransactionNotificationWidget({ filterMode = 'activity' }) {
   const { groups: allGroups, markGroupRead } = useTransactionNotifications();
   const location = useLocation();
@@ -369,7 +379,7 @@ export default function TransactionNotificationWidget({ filterMode = 'activity' 
 
   const highlightKey = useMemo(() => {
     const params = new URLSearchParams(location.search || '');
-    return params.get('notifyGroup');
+    return normalizeNotifyGroupKey(params.get('notifyGroup'));
   }, [location.search]);
   const highlightItemId = useMemo(() => {
     const params = new URLSearchParams(location.search || '');

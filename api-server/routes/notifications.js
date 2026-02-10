@@ -54,24 +54,34 @@ function makeTransactionPath({ payload, notificationId }) {
   const params = new URLSearchParams();
   params.set('tab', 'activity');
   params.set('notifyGroup', payload?.transactionName || 'Transaction');
-  params.set('notifyItem', `transaction-${notificationId}`);
+  params.set('notifyItem', String(notificationId || ''));
+  params.set('notifyKey', String(Date.now()));
   return `/?${params.toString()}`;
 }
 
 function makeTemporaryPath({ temporaryId, temporaryRow, payload, userEmpId }) {
   const params = new URLSearchParams();
-  params.set('tab', 'activity');
   params.set('temporaryOpen', '1');
   const creator = String(temporaryRow?.created_by || payload?.createdBy || '').trim().toUpperCase();
   const scope = creator && creator === userEmpId ? 'created' : 'review';
   params.set('temporaryScope', scope);
   params.set('temporaryKey', String(Date.now()));
+
+  const moduleKey = String(payload?.moduleKey || payload?.module_key || '').trim();
+  let path = '/forms';
+  if (moduleKey) {
+    params.set('temporaryModule', moduleKey);
+    path = `/forms/${moduleKey.replace(/_/g, '-')}`;
+  }
+
   const formName = temporaryRow?.form_name || payload?.formName || payload?.form_name;
   if (formName) params.set('temporaryForm', String(formName));
   const configName = temporaryRow?.config_name || payload?.configName || payload?.config_name;
   if (configName) params.set('temporaryConfig', String(configName));
+  const tableName = temporaryRow?.table_name || payload?.tableName || payload?.table_name;
+  if (tableName) params.set('temporaryTable', String(tableName));
   if (temporaryId != null) params.set('temporaryId', String(temporaryId));
-  return `/?${params.toString()}`;
+  return `${path}?${params.toString()}`;
 }
 
 function formatTransactionFormName(payload) {
@@ -277,6 +287,19 @@ router.get('/feed', requireAuth, feedRateLimiter, async (req, res, next) => {
       if (isTemporaryNotification) {
         const status = detectTemporaryStatus({ row, payload, temporaryRow });
         const fallbackTemporaryId = Number.isFinite(temporaryId) ? temporaryId : null;
+        const temporaryScope =
+          String(temporaryRow?.created_by || payload?.createdBy || '').trim().toUpperCase() === userEmpId
+            ? 'created'
+            : 'review';
+        const temporaryRedirectMeta = {
+          temporaryId: fallbackTemporaryId,
+          formName: temporaryRow?.form_name || payload?.formName || payload?.form_name || null,
+          configName:
+            temporaryRow?.config_name || payload?.configName || payload?.config_name || null,
+          tableName: temporaryRow?.table_name || payload?.tableName || payload?.table_name || null,
+          moduleKey: payload?.moduleKey || payload?.module_key || null,
+          scope: temporaryScope,
+        };
         items.push({
           id: `temporary-${row.notification_id}`,
           source: 'temporary',
@@ -298,18 +321,17 @@ router.get('/feed', requireAuth, feedRateLimiter, async (req, res, next) => {
               payload,
               userEmpId,
             }),
-            redirectMeta: {
-              temporaryId: fallbackTemporaryId,
-              formName: temporaryRow?.form_name || payload?.formName || payload?.form_name || null,
-              configName:
-                temporaryRow?.config_name || payload?.configName || payload?.config_name || null,
-            },
+            redirectMeta: temporaryRedirectMeta,
           },
         });
         continue;
       }
 
       const title = formatTransactionFormName(payload);
+      const transactionRedirectMeta = {
+        transactionName: payload?.transactionName || payload?.transaction_name || title,
+        transactionTable: payload?.transactionTable || payload?.transaction_table || null,
+      };
       items.push({
         id: `transaction-${row.notification_id}`,
         source: 'transaction',
@@ -322,10 +344,7 @@ router.get('/feed', requireAuth, feedRateLimiter, async (req, res, next) => {
           type: 'navigate',
           notificationId: Number(row.notification_id) || null,
           path: makeTransactionPath({ payload, notificationId: row.notification_id }),
-          redirectMeta: {
-            transactionName: payload?.transactionName || payload?.transaction_name || title,
-            transactionTable: payload?.transactionTable || payload?.transaction_table || null,
-          },
+          redirectMeta: transactionRedirectMeta,
         },
       });
     }

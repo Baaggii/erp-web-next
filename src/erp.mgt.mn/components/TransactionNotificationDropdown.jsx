@@ -902,7 +902,7 @@ export default function TransactionNotificationDropdown() {
     const redirectTab = String(
       formInfo?.notificationRedirectTab ?? formInfo?.notification_redirect_tab ?? '',
     ).trim();
-    const groupKey = encodeURIComponent(item.transactionName || 'Transaction');
+    const groupKey = item.transactionName || 'Transaction';
     const defaultTab =
       isPlanNotificationItem(item) || isDutyNotificationItem(item) ? 'plans' : 'activity';
     const tab =
@@ -912,7 +912,8 @@ export default function TransactionNotificationDropdown() {
     const params = new URLSearchParams({
       tab,
       notifyGroup: groupKey,
-      notifyItem: item.id,
+      notifyItem: String(item.id || '').replace(/^transaction-/, ''),
+      notifyKey: String(Date.now()),
     });
     if (typeof window !== 'undefined') {
       window.__activeTabKey = '/';
@@ -1017,14 +1018,40 @@ export default function TransactionNotificationDropdown() {
           const actionPath = String(item?.action?.path || '').trim();
           let targetPath = actionPath;
 
-          if (!targetPath && isTransaction) {
-            const groupKey = encodeURIComponent(
-              item?.action?.redirectMeta?.transactionName || item?.title || 'Transaction',
-            );
-            const itemId = String(item?.id || item?.action?.notificationId || '').trim();
+          if (isTransaction) {
+            const redirectMeta = item?.action?.redirectMeta || {};
+            const formItem = {
+              transactionName:
+                redirectMeta.transactionName || item?.transactionName || item?.title || 'Transaction',
+              transactionTable: redirectMeta.transactionTable || item?.transactionTable || '',
+            };
+            const formInfo = resolveFormInfo(formItem);
+            const notifyFieldsRaw =
+              formInfo?.notifyFields ?? formInfo?.notify_fields ?? [];
+            const notifyFields = Array.isArray(notifyFieldsRaw)
+              ? notifyFieldsRaw.map((field) => String(field).trim()).filter(Boolean)
+              : [];
+            const redirectTab = String(
+              formInfo?.notificationRedirectTab ?? formInfo?.notification_redirect_tab ?? '',
+            ).trim();
+            const defaultTab =
+              isPlanNotificationItem(formItem) || isDutyNotificationItem(formItem)
+                ? 'plans'
+                : 'activity';
+            const tab =
+              notifyFields.length > 0 && dashboardTabs.has(redirectTab)
+                ? redirectTab
+                : defaultTab;
+            const groupKey = formItem.transactionName || 'Transaction';
+            const itemId = String(
+              item?.action?.notificationId || item?.id || '',
+            )
+              .trim()
+              .replace(/^transaction-/, '');
             const params = new URLSearchParams({
-              tab: 'activity',
+              tab,
               notifyGroup: groupKey,
+              notifyKey: String(Date.now()),
             });
             if (itemId) params.set('notifyItem', itemId);
             targetPath = `/?${params.toString()}`;

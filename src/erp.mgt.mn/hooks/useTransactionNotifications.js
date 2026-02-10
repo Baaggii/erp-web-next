@@ -103,7 +103,7 @@ function buildGroups(notifications) {
   notifications.forEach((notification) => {
     if (!notification) return;
     const name = notification.transactionName || 'Transaction';
-    const key = encodeURIComponent(name);
+    const key = name;
     if (!groups.has(key)) {
       groups.set(key, {
         key,
@@ -192,7 +192,7 @@ export default function useTransactionNotifications() {
     async (groupKey) => {
       if (!groupKey) return;
       const ids = notifications
-        .filter((notification) => encodeURIComponent(notification.transactionName) === groupKey)
+        .filter((notification) => (notification.transactionName || 'Transaction') === groupKey)
         .map((notification) => notification.id);
       await markRead(ids);
     },
