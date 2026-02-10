@@ -23,19 +23,12 @@ export default function useUnifiedNotificationFeed(isActive) {
         skipErrorToast: true,
         skipLoader: true,
       });
-      if (!res.ok) {
-        setHasMore(false);
-        setLoaded(true);
-        return;
-      }
+      if (!res.ok) return;
       const data = await res.json().catch(() => ({}));
       const nextRows = Array.isArray(data?.rows) ? data.rows : [];
       setRows((prev) => (reset ? nextRows : prev.concat(nextRows)));
       setCursor(data?.nextCursor || null);
       setHasMore(Boolean(data?.hasMore));
-      setLoaded(true);
-    } catch {
-      setHasMore(false);
       setLoaded(true);
     } finally {
       inFlightRef.current = false;

@@ -4,11 +4,7 @@ const FEED_MAX_LIMIT = 100;
 
 function encodeCursorToken(value) {
   try {
-    return Buffer.from(JSON.stringify(value))
-      .toString('base64')
-      .replace(/\+/g, '-')
-      .replace(/\//g, '_')
-      .replace(/=+$/g, '');
+    return Buffer.from(JSON.stringify(value)).toString('base64url');
   } catch {
     return null;
   }
@@ -17,9 +13,7 @@ function encodeCursorToken(value) {
 function decodeCursorToken(value) {
   if (!value || typeof value !== 'string') return null;
   try {
-    const normalized = value.replace(/-/g, '+').replace(/_/g, '/');
-    const padded = normalized + '='.repeat((4 - (normalized.length % 4)) % 4);
-    const parsed = JSON.parse(Buffer.from(padded, 'base64').toString('utf8'));
+    const parsed = JSON.parse(Buffer.from(value, 'base64url').toString('utf8'));
     if (!parsed || typeof parsed !== 'object') return null;
     const ts = new Date(parsed.ts).getTime();
     const id = Number(parsed.id);
@@ -162,7 +156,7 @@ export async function listUnifiedNotificationsFeed(req, res, next) {
       requestParams,
     );
 
-    const temporaryParams = [companyId, userEmpId, `"${userEmpId}"`, userEmpId];
+    const temporaryParams = [companyId, userEmpId, userEmpId];
     let temporaryCursorClause = '';
     if (cursor) {
       temporaryCursorClause =
@@ -194,7 +188,7 @@ export async function listUnifiedNotificationsFeed(req, res, next) {
           ${temporaryCursorClause}
         ORDER BY sort_at DESC, id DESC
         LIMIT ?`,
-      temporaryParams,
+      [...temporaryParams.slice(0, 3), `"${userEmpId}"`, ...temporaryParams.slice(3)],
     );
 
     const merged = [];
