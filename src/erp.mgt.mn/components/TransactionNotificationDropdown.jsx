@@ -560,47 +560,56 @@ export default function TransactionNotificationDropdown() {
       };
     }
 
-    setReportState((prev) => ({
-      ...prev,
-      loading: true,
-      error: '',
-      responses: prev.responses || createEmptyResponses(),
-    }));
-    fetchRequests(['report_approval'], ['pending', 'accepted', 'declined'])
-      .then((data) => {
-        if (!cancelled)
-          setReportState({
-            ...data,
-            responses: {
-              accepted: data.responses?.accepted || [],
-              declined: data.responses?.declined || [],
-            },
-            loading: false,
-            error: '',
-          });
-      })
-      .catch(() => {
-        if (!cancelled)
-          setReportState((prev) => ({
-            ...prev,
-            loading: false,
-            incoming: [],
-            outgoing: [],
-            responses: createEmptyResponses(),
-            error: 'Failed to load report approvals',
-          }));
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [
-    fetchRequests,
-    open,
-    workflows?.reportApproval?.incoming?.pending?.count,
-    workflows?.reportApproval?.outgoing?.pending?.count,
-    workflows?.reportApproval?.outgoing?.accepted?.count,
-    workflows?.reportApproval?.outgoing?.declined?.count,
-  ]);
+      if (totalCount === 0) {
+        setReportState({
+          incoming: [],
+          outgoing: [],
+          responses: createEmptyResponses(),
+          loading: false,
+          error: '',
+        });
+        return;
+      }
+
+      if (setLoading) {
+        setReportState((prev) => ({
+          ...prev,
+          loading: true,
+          error: '',
+          responses: prev.responses || createEmptyResponses(),
+        }));
+      }
+
+      try {
+        const data = await fetchRequests(['report_approval'], ['pending', 'accepted', 'declined']);
+        setReportState({
+          ...data,
+          responses: {
+            accepted: data.responses?.accepted || [],
+            declined: data.responses?.declined || [],
+          },
+          loading: false,
+          error: '',
+        });
+      } catch {
+        setReportState((prev) => ({
+          ...prev,
+          loading: false,
+          incoming: [],
+          outgoing: [],
+          responses: createEmptyResponses(),
+          error: 'Failed to load report approvals',
+        }));
+      }
+    },
+    [
+      fetchRequests,
+      workflows?.reportApproval?.incoming?.pending?.count,
+      workflows?.reportApproval?.outgoing?.pending?.count,
+      workflows?.reportApproval?.outgoing?.accepted?.count,
+      workflows?.reportApproval?.outgoing?.declined?.count,
+    ],
+  );
 
   useEffect(() => {
     if (!open) return () => {};
@@ -625,47 +634,64 @@ export default function TransactionNotificationDropdown() {
       };
     }
 
-    setChangeState((prev) => ({
-      ...prev,
-      loading: true,
-      error: '',
-      responses: prev.responses || createEmptyResponses(),
-    }));
-    fetchRequests(['edit', 'delete'], ['pending', 'accepted', 'declined'])
-      .then((data) => {
-        if (!cancelled)
-          setChangeState({
-            ...data,
-            responses: {
-              accepted: data.responses?.accepted || [],
-              declined: data.responses?.declined || [],
-            },
-            loading: false,
-            error: '',
-          });
-      })
-      .catch(() => {
-        if (!cancelled)
-          setChangeState((prev) => ({
-            ...prev,
-            loading: false,
-            incoming: [],
-            outgoing: [],
-            responses: createEmptyResponses(),
-            error: 'Failed to load change requests',
-          }));
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [
-    fetchRequests,
-    open,
-    workflows?.changeRequests?.incoming?.pending?.count,
-    workflows?.changeRequests?.outgoing?.pending?.count,
-    workflows?.changeRequests?.outgoing?.accepted?.count,
-    workflows?.changeRequests?.outgoing?.declined?.count,
-  ]);
+  const loadChangeNotifications = useCallback(
+    async ({ setLoading = false } = {}) => {
+      const incomingPending = workflows?.changeRequests?.incoming?.pending?.count || 0;
+      const outgoingPending = workflows?.changeRequests?.outgoing?.pending?.count || 0;
+      const outgoingAccepted = workflows?.changeRequests?.outgoing?.accepted?.count || 0;
+      const outgoingDeclined = workflows?.changeRequests?.outgoing?.declined?.count || 0;
+      const totalCount = incomingPending + outgoingPending + outgoingAccepted + outgoingDeclined;
+
+      if (totalCount === 0) {
+        setChangeState({
+          incoming: [],
+          outgoing: [],
+          responses: createEmptyResponses(),
+          loading: false,
+          error: '',
+        });
+        return;
+      }
+
+      if (setLoading) {
+        setChangeState((prev) => ({
+          ...prev,
+          loading: true,
+          error: '',
+          responses: prev.responses || createEmptyResponses(),
+        }));
+      }
+
+      try {
+        const data = await fetchRequests(['edit', 'delete'], ['pending', 'accepted', 'declined']);
+        setChangeState({
+          ...data,
+          responses: {
+            accepted: data.responses?.accepted || [],
+            declined: data.responses?.declined || [],
+          },
+          loading: false,
+          error: '',
+        });
+      } catch {
+        setChangeState((prev) => ({
+          ...prev,
+          loading: false,
+          incoming: [],
+          outgoing: [],
+          responses: createEmptyResponses(),
+          error: 'Failed to load change requests',
+        }));
+      }
+    },
+    [
+      fetchRequests,
+      workflows?.changeRequests?.incoming?.pending?.count,
+      workflows?.changeRequests?.outgoing?.pending?.count,
+      workflows?.changeRequests?.outgoing?.accepted?.count,
+      workflows?.changeRequests?.outgoing?.declined?.count,
+    ],
+  );
 
   useEffect(() => {
     if (!open) {
