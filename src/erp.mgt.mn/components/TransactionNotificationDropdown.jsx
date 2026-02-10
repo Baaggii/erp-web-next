@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useAuth } from '../context/AuthContext.jsx';
 import { usePendingRequests } from '../context/PendingRequestContext.jsx';
 import useGeneralConfig from '../hooks/useGeneralConfig.js';
 import { useTransactionNotifications } from '../context/TransactionNotificationContext.jsx';
@@ -27,6 +26,7 @@ const DEFAULT_PLAN_NOTIFICATION_FIELDS = ['is_plan', 'is_plan_completion'];
 const DEFAULT_PLAN_NOTIFICATION_VALUES = ['1'];
 const DEFAULT_DUTY_NOTIFICATION_FIELDS = [];
 const DEFAULT_DUTY_NOTIFICATION_VALUES = ['1'];
+const DROPDOWN_CHUNK_SIZE = 20;
 
 function normalizeText(value) {
   if (value === undefined || value === null) return '';
@@ -257,8 +257,7 @@ function getTemporaryTimestamp(entry) {
 
 export default function TransactionNotificationDropdown() {
   const { notifications, unreadCount, markRead } = useTransactionNotifications();
-  const { user, session } = useAuth();
-  const { workflows, markWorkflowSeen, temporary } = usePendingRequests();
+  const { markWorkflowSeen, temporary } = usePendingRequests();
   const [open, setOpen] = useState(false);
   const [formEntries, setFormEntries] = useState([]);
   const [formsLoaded, setFormsLoaded] = useState(false);
@@ -283,7 +282,10 @@ export default function TransactionNotificationDropdown() {
     loading: false,
     error: '',
   });
+  const [initialLoadComplete, setInitialLoadComplete] = useState(false);
+  const [visibleCount, setVisibleCount] = useState(DROPDOWN_CHUNK_SIZE);
   const containerRef = useRef(null);
+  const listRef = useRef(null);
   const navigate = useNavigate();
   const generalConfig = useGeneralConfig();
   const dashboardTabs = useMemo(
@@ -420,285 +422,128 @@ export default function TransactionNotificationDropdown() {
     [findTransactionRow, isDutyNotificationRow],
   );
 
-  const hasSupervisor =
-    Number(session?.senior_empid) > 0 || Number(session?.senior_plan_empid) > 0;
-  const seniorEmpId =
-    session && user?.empid && !hasSupervisor ? String(user.empid) : null;
-  const seniorPlanEmpId = hasSupervisor ? session?.senior_plan_empid : null;
-
-  const supervisorIds = useMemo(() => {
-    const ids = [];
-    if (seniorEmpId) ids.push(String(seniorEmpId).trim());
-    if (seniorPlanEmpId) ids.push(String(seniorPlanEmpId).trim());
-    return Array.from(new Set(ids.filter(Boolean)));
-  }, [seniorEmpId, seniorPlanEmpId]);
-
-  const fetchRequests = useCallback(
-    async (types, statuses = ['pending']) => {
-      const normalizedStatuses = Array.isArray(statuses)
-        ? Array.from(
-            new Set(
-              statuses
-                .map((status) => String(status || '').trim().toLowerCase())
-                .filter(Boolean),
-            ),
-          )
-        : [];
-      if (!normalizedStatuses.includes('pending')) {
-        normalizedStatuses.unshift('pending');
-      }
-
-      const incomingLists = [];
-      const outgoingStatusLists = new Map();
-      await Promise.all(
-        types.map(async (type) => {
-          if (supervisorIds.length) {
-            await Promise.all(
-              supervisorIds.map(async (id) => {
-                try {
-                  const params = new URLSearchParams({
-                    status: 'pending',
-                    request_type: type,
-                    per_page: '50',
-                    page: '1',
-                    senior_empid: id,
-                  });
-                  const res = await fetch(`/api/pending_request?${params.toString()}`, {
-                    credentials: 'include',
-                    skipLoader: true,
-                  });
-                  if (res.ok) {
-                    const data = await res.json().catch(() => ({}));
-                    const rows = Array.isArray(data?.rows) ? data.rows : [];
-                    incomingLists.push(
-                      rows.map((row) => ({ ...row, request_type: row.request_type || type })),
-                    );
-                  }
-                } catch {
-                  // ignore
-                }
-              }),
-            );
-          }
-
-          try {
-            const params = new URLSearchParams({
-              status: normalizedStatuses.join(','),
-              request_type: type,
-              per_page: '50',
-              page: '1',
-            });
-            const res = await fetch(`/api/pending_request/outgoing?${params.toString()}`, {
-              credentials: 'include',
-              skipLoader: true,
-            });
-            if (res.ok) {
-              const data = await res.json().catch(() => ({}));
-              const rows = Array.isArray(data?.rows) ? data.rows : [];
-              rows.forEach((row) => {
-                const resolvedStatus = row.status || row.response_status || 'pending';
-                const normalizedStatus = resolvedStatus
-                  ? String(resolvedStatus).trim().toLowerCase()
-                  : 'pending';
-                const prev = outgoingStatusLists.get(normalizedStatus) || [];
-                outgoingStatusLists.set(
-                  normalizedStatus,
-                  prev.concat({
-                    ...row,
-                    request_type: row.request_type || type,
-                    status: normalizedStatus,
-                  }),
-                );
-              });
-            }
-          } catch {
-            // ignore
-          }
-        }),
-      );
-
-      const incoming = dedupeRequests(incomingLists.flat());
-      const outgoing = dedupeRequests(outgoingStatusLists.get('pending') || []);
-      const responses = normalizedStatuses
-        .filter((status) => status !== 'pending')
-        .reduce((acc, status) => {
-          const list = outgoingStatusLists.get(status) || [];
-          acc[status] = dedupeRequests(list);
-          return acc;
-        }, createEmptyResponses());
-
-      return { incoming, outgoing, responses };
-    },
-    [supervisorIds],
-  );
-
   useEffect(() => {
     if (!open) return () => {};
     let cancelled = false;
-    const incomingPending = workflows?.reportApproval?.incoming?.pending?.count || 0;
-    const outgoingPending = workflows?.reportApproval?.outgoing?.pending?.count || 0;
-    const outgoingAccepted = workflows?.reportApproval?.outgoing?.accepted?.count || 0;
-    const outgoingDeclined = workflows?.reportApproval?.outgoing?.declined?.count || 0;
-    const totalCount = incomingPending + outgoingPending + outgoingAccepted + outgoingDeclined;
+    setInitialLoadComplete(false);
 
-    if (totalCount === 0) {
-      setReportState({
-        incoming: [],
-        outgoing: [],
-        responses: createEmptyResponses(),
-        loading: false,
-        error: '',
+    const buildRequestState = (rows, requestTypes) => {
+      const incoming = [];
+      const outgoing = [];
+      const accepted = [];
+      const declined = [];
+      const allowedTypes = new Set(requestTypes);
+      rows.forEach((row) => {
+        if (!allowedTypes.has(row?.request_type)) return;
+        const status = String(row?.status || 'pending').trim().toLowerCase();
+        if (row?.scope === 'incoming' && status === 'pending') {
+          incoming.push(row);
+          return;
+        }
+        if (status === 'pending') {
+          outgoing.push(row);
+          return;
+        }
+        if (status === 'accepted') {
+          accepted.push(row);
+          return;
+        }
+        if (status === 'declined') {
+          declined.push(row);
+        }
       });
-      return () => {
-        cancelled = true;
+
+      return {
+        incoming: dedupeRequests(incoming),
+        outgoing: dedupeRequests(outgoing),
+        responses: {
+          accepted: dedupeRequests(accepted),
+          declined: dedupeRequests(declined),
+        },
       };
-    }
-
-    setReportState((prev) => ({
-      ...prev,
-      loading: true,
-      error: '',
-      responses: prev.responses || createEmptyResponses(),
-    }));
-    fetchRequests(['report_approval'], ['pending', 'accepted', 'declined'])
-      .then((data) => {
-        if (!cancelled)
-          setReportState({
-            ...data,
-            responses: {
-              accepted: data.responses?.accepted || [],
-              declined: data.responses?.declined || [],
-            },
-            loading: false,
-            error: '',
-          });
-      })
-      .catch(() => {
-        if (!cancelled)
-          setReportState((prev) => ({
-            ...prev,
-            loading: false,
-            incoming: [],
-            outgoing: [],
-            responses: createEmptyResponses(),
-            error: 'Failed to load report approvals',
-          }));
-      });
-    return () => {
-      cancelled = true;
     };
-  }, [
-    fetchRequests,
-    open,
-    workflows?.reportApproval?.incoming?.pending?.count,
-    workflows?.reportApproval?.outgoing?.pending?.count,
-    workflows?.reportApproval?.outgoing?.accepted?.count,
-    workflows?.reportApproval?.outgoing?.declined?.count,
-  ]);
 
-  useEffect(() => {
-    if (!open) return () => {};
-    let cancelled = false;
-    const incomingPending = workflows?.changeRequests?.incoming?.pending?.count || 0;
-    const outgoingPending = workflows?.changeRequests?.outgoing?.pending?.count || 0;
-    const outgoingAccepted = workflows?.changeRequests?.outgoing?.accepted?.count || 0;
-    const outgoingDeclined = workflows?.changeRequests?.outgoing?.declined?.count || 0;
-    const totalCount = incomingPending + outgoingPending + outgoingAccepted + outgoingDeclined;
-
-    if (totalCount === 0) {
-      setChangeState({
-        incoming: [],
-        outgoing: [],
-        responses: createEmptyResponses(),
-        loading: false,
-        error: '',
-      });
-      return () => {
-        cancelled = true;
-      };
-    }
-
-    setChangeState((prev) => ({
-      ...prev,
-      loading: true,
-      error: '',
-      responses: prev.responses || createEmptyResponses(),
-    }));
-    fetchRequests(['edit', 'delete'], ['pending', 'accepted', 'declined'])
-      .then((data) => {
-        if (!cancelled)
-          setChangeState({
-            ...data,
-            responses: {
-              accepted: data.responses?.accepted || [],
-              declined: data.responses?.declined || [],
-            },
-            loading: false,
-            error: '',
-          });
-      })
-      .catch(() => {
-        if (!cancelled)
-          setChangeState((prev) => ({
-            ...prev,
-            loading: false,
-            incoming: [],
-            outgoing: [],
-            responses: createEmptyResponses(),
-            error: 'Failed to load change requests',
-          }));
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [
-    fetchRequests,
-    open,
-    workflows?.changeRequests?.incoming?.pending?.count,
-    workflows?.changeRequests?.outgoing?.pending?.count,
-    workflows?.changeRequests?.outgoing?.accepted?.count,
-    workflows?.changeRequests?.outgoing?.declined?.count,
-  ]);
-
-  useEffect(() => {
-    if (!open) return () => {};
-    let cancelled = false;
-    const loadTemporary = async () => {
+    const loadDropdownData = async () => {
+      setReportState((prev) => ({ ...prev, loading: true, error: '' }));
+      setChangeState((prev) => ({ ...prev, loading: true, error: '' }));
       setTemporaryState((prev) => ({ ...prev, loading: true, error: '' }));
-      if (typeof temporary?.fetchScopeEntries !== 'function') {
-        setTemporaryState({ review: [], created: [], loading: false, error: '' });
-        return;
-      }
-      try {
+
+      const feedPromise = fetch(
+        '/api/pending_request/feed?status=pending,accepted,declined&request_type=report_approval,edit,delete&per_page=300&page=1',
+        {
+          credentials: 'include',
+          skipLoader: true,
+        },
+      ).then(async (res) => {
+        if (!res.ok) throw new Error('feed_failed');
+        const data = await res.json().catch(() => ({}));
+        return Array.isArray(data?.rows) ? data.rows : [];
+      });
+
+      const temporaryPromise = (async () => {
+        if (typeof temporary?.fetchScopeEntries !== 'function') {
+          return { review: [], created: [] };
+        }
         const [reviewResult, createdResult] = await Promise.all([
-          temporary.fetchScopeEntries('review', {
-            limit: 50,
-            status: 'pending',
-          }),
-          temporary.fetchScopeEntries('created', {
-            limit: 50,
-            status: 'any',
-          }),
+          temporary.fetchScopeEntries('review', { limit: 50, status: 'pending' }),
+          temporary.fetchScopeEntries('created', { limit: 50, status: 'any' }),
         ]);
-        if (cancelled) return;
-        setTemporaryState({
+        return {
           review: Array.isArray(reviewResult?.rows) ? reviewResult.rows : [],
           created: Array.isArray(createdResult?.rows) ? createdResult.rows : [],
+        };
+      })();
+
+      const [feedResult, temporaryResult] = await Promise.allSettled([
+        feedPromise,
+        temporaryPromise,
+      ]);
+
+      if (cancelled) return;
+
+      if (feedResult.status === 'fulfilled') {
+        const rows = feedResult.value;
+        const reportData = buildRequestState(rows, ['report_approval']);
+        const changeData = buildRequestState(rows, ['edit', 'delete']);
+        setReportState({ ...reportData, loading: false, error: '' });
+        setChangeState({ ...changeData, loading: false, error: '' });
+      } else {
+        setReportState({
+          incoming: [],
+          outgoing: [],
+          responses: createEmptyResponses(),
+          loading: false,
+          error: 'Failed to load report approvals',
+        });
+        setChangeState({
+          incoming: [],
+          outgoing: [],
+          responses: createEmptyResponses(),
+          loading: false,
+          error: 'Failed to load change requests',
+        });
+      }
+
+      if (temporaryResult.status === 'fulfilled') {
+        setTemporaryState({
+          review: temporaryResult.value.review,
+          created: temporaryResult.value.created,
           loading: false,
           error: '',
         });
-      } catch {
-        if (!cancelled) {
-          setTemporaryState({
-            review: [],
-            created: [],
-            loading: false,
-            error: 'Failed to load temporary transactions',
-          });
-        }
+      } else {
+        setTemporaryState({
+          review: [],
+          created: [],
+          loading: false,
+          error: 'Failed to load temporary transactions',
+        });
       }
+
+      setInitialLoadComplete(true);
     };
-    loadTemporary();
+
+    loadDropdownData();
     return () => {
       cancelled = true;
     };
@@ -992,8 +837,35 @@ export default function TransactionNotificationDropdown() {
     temporaryItems,
   ]);
 
+  const visibleItems = useMemo(
+    () => combinedItems.slice(0, visibleCount),
+    [combinedItems, visibleCount],
+  );
   const hasAnyNotifications = combinedItems.length > 0;
-  const aggregatedUnreadCount = Number(unreadCount) || 0;
+  const isInitialLoading =
+    open &&
+    !initialLoadComplete &&
+    (reportState.loading || changeState.loading || temporaryState.loading);
+  const hasMoreItems = visibleItems.length < combinedItems.length;
+
+  const handleListScroll = useCallback((event) => {
+    const node = event?.currentTarget;
+    if (!node || isInitialLoading) return;
+    const nearBottom = node.scrollTop + node.clientHeight >= node.scrollHeight - 40;
+    if (nearBottom) {
+      setVisibleCount((prev) => Math.min(prev + DROPDOWN_CHUNK_SIZE, combinedItems.length));
+    }
+  }, [combinedItems.length, isInitialLoading]);
+
+  useEffect(() => {
+    if (!open) return;
+    setVisibleCount(DROPDOWN_CHUNK_SIZE);
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    setVisibleCount((prev) => Math.min(Math.max(prev, DROPDOWN_CHUNK_SIZE), combinedItems.length || DROPDOWN_CHUNK_SIZE));
+  }, [combinedItems.length, open]);
 
   return (
     <div style={styles.wrapper} ref={containerRef}>
@@ -1007,11 +879,12 @@ export default function TransactionNotificationDropdown() {
       </button>
       {open && (
         <div style={styles.dropdown}>
-          <div style={styles.list}>
-            {!hasAnyNotifications && (
+          <div style={styles.list} ref={listRef} onScroll={handleListScroll}>
+            {isInitialLoading && <div style={styles.empty}>Loading notifications…</div>}
+            {!isInitialLoading && !hasAnyNotifications && (
               <div style={styles.empty}>No notifications yet</div>
             )}
-            {combinedItems.map((item) => (
+            {visibleItems.map((item) => (
               <button
                 key={item.key}
                 type="button"
@@ -1030,6 +903,9 @@ export default function TransactionNotificationDropdown() {
                 )}
               </button>
             ))}
+            {hasMoreItems && !isInitialLoading && (
+              <div style={styles.moreHint}>Scroll to load more…</div>
+            )}
           </div>
           <button
             type="button"
@@ -1096,6 +972,12 @@ const styles = {
     padding: '1rem',
     color: '#64748b',
     textAlign: 'center',
+  },
+  moreHint: {
+    padding: '0.35rem 0.25rem 0',
+    color: '#64748b',
+    textAlign: 'center',
+    fontSize: '0.75rem',
   },
   notificationItem: (isUnread) => ({
     width: '100%',
