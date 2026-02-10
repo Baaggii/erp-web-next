@@ -10,6 +10,7 @@ import NotificationDots, { DEFAULT_NOTIFICATION_COLOR } from '../components/Noti
 
 const SECTION_LIMIT = 5;
 const TEMPORARY_PAGE_SIZE = 10;
+const SHOW_MORE_LIMIT = 3;
 const STATUS_COLORS = {
   pending: '#fbbf24',
   accepted: '#34d399',
@@ -121,6 +122,7 @@ export default function NotificationsPage({
     created: createEmptyTemporaryScope(),
   });
   const [reportApprovalsDashboardTab, setReportApprovalsDashboardTab] = useState('audition');
+  const [expandedLists, setExpandedLists] = useState({});
 
   const hasSupervisor =
     Number(session?.senior_empid) > 0 || Number(session?.senior_plan_empid) > 0;
@@ -1219,6 +1221,42 @@ export default function NotificationsPage({
   const showTemporarySection = isSectionVisible('temporary');
   const hasVisibleSections = showReportSection || showChangeSection || showTemporarySection;
 
+  const renderExpandableList = useCallback(
+    (key, entries, renderRow) => {
+      const list = Array.isArray(entries) ? entries : [];
+      if (list.length === 0) {
+        return <p style={styles.emptyText}>{t('notifications_none', 'No notifications')}</p>;
+      }
+      const expanded = Boolean(expandedLists[key]);
+      const visibleEntries = expanded ? list : list.slice(0, SHOW_MORE_LIMIT);
+      const hiddenCount = Math.max(0, list.length - SHOW_MORE_LIMIT);
+      return (
+        <>
+          <ul style={styles.list}>{visibleEntries.map((entry) => renderRow(entry))}</ul>
+          {list.length > SHOW_MORE_LIMIT && (
+            <button
+              type="button"
+              style={styles.showMoreButton}
+              onClick={() =>
+                setExpandedLists((prev) => ({
+                  ...prev,
+                  [key]: !expanded,
+                }))
+              }
+            >
+              {expanded
+                ? t('notifications_show_less', 'Show less')
+                : t('notifications_show_more_count', 'Show more ({{count}})', {
+                    count: hiddenCount,
+                  })}
+            </button>
+          )}
+        </>
+      );
+    },
+    [expandedLists, t],
+  );
+
   return (
     <div style={{ ...styles.page, ...(embedded ? styles.pageEmbedded : null) }}>
       {showPageTitle && (
@@ -1265,12 +1303,8 @@ export default function NotificationsPage({
           <div style={styles.columnLayout}>
             <div style={styles.column}>
               <h3 style={styles.columnTitle}>{t('notifications_incoming', 'Incoming')}</h3>
-              {reportIncomingGroups.length === 0 ? (
-                <p style={styles.emptyText}>{t('notifications_none', 'No notifications')}</p>
-              ) : (
-                <ul style={styles.list}>
-                  {reportIncomingGroups.map((group) => renderGroupedRequest(group, 'incoming'))}
-                </ul>
+              {renderExpandableList('report-incoming', reportIncomingGroups, (group) =>
+                renderGroupedRequest(group, 'incoming'),
               )}
             </div>
             <div style={styles.column}>
@@ -1279,26 +1313,16 @@ export default function NotificationsPage({
                 <h4 style={styles.subSectionTitle}>
                   {t('notifications_requests_section', 'Requests')}
                 </h4>
-                {reportOutgoingGroups.length === 0 ? (
-                  <p style={styles.emptyText}>{t('notifications_none', 'No notifications')}</p>
-                ) : (
-                  <ul style={styles.list}>
-                    {reportOutgoingGroups.map((group) =>
-                      renderGroupedRequest(group, 'outgoing'),
-                    )}
-                  </ul>
+                {renderExpandableList('report-outgoing', reportOutgoingGroups, (group) =>
+                  renderGroupedRequest(group, 'outgoing'),
                 )}
               </div>
               <div style={styles.subSection}>
                 <h4 style={styles.subSectionTitle}>
                   {t('notifications_responses_section', 'Responses')}
                 </h4>
-                {reportResponseGroups.length === 0 ? (
-                  <p style={styles.emptyText}>{t('notifications_none', 'No notifications')}</p>
-                ) : (
-                  <ul style={styles.list}>
-                    {reportResponseGroups.map((group) => renderGroupedResponse(group))}
-                  </ul>
+                {renderExpandableList('report-responses', reportResponseGroups, (group) =>
+                  renderGroupedResponse(group),
                 )}
               </div>
             </div>
@@ -1334,12 +1358,8 @@ export default function NotificationsPage({
           <div style={styles.columnLayout}>
             <div style={styles.column}>
               <h3 style={styles.columnTitle}>{t('notifications_incoming', 'Incoming')}</h3>
-              {changeIncomingGroups.length === 0 ? (
-                <p style={styles.emptyText}>{t('notifications_none', 'No notifications')}</p>
-              ) : (
-                <ul style={styles.list}>
-                  {changeIncomingGroups.map((group) => renderGroupedRequest(group, 'incoming'))}
-                </ul>
+              {renderExpandableList('change-incoming', changeIncomingGroups, (group) =>
+                renderGroupedRequest(group, 'incoming'),
               )}
             </div>
             <div style={styles.column}>
@@ -1348,26 +1368,16 @@ export default function NotificationsPage({
                 <h4 style={styles.subSectionTitle}>
                   {t('notifications_requests_section', 'Requests')}
                 </h4>
-                {changeOutgoingGroups.length === 0 ? (
-                  <p style={styles.emptyText}>{t('notifications_none', 'No notifications')}</p>
-                ) : (
-                  <ul style={styles.list}>
-                    {changeOutgoingGroups.map((group) =>
-                      renderGroupedRequest(group, 'outgoing'),
-                    )}
-                  </ul>
+                {renderExpandableList('change-outgoing', changeOutgoingGroups, (group) =>
+                  renderGroupedRequest(group, 'outgoing'),
                 )}
               </div>
               <div style={styles.subSection}>
                 <h4 style={styles.subSectionTitle}>
                   {t('notifications_responses_section', 'Responses')}
                 </h4>
-                {changeResponseGroups.length === 0 ? (
-                  <p style={styles.emptyText}>{t('notifications_none', 'No notifications')}</p>
-                ) : (
-                  <ul style={styles.list}>
-                    {changeResponseGroups.map((group) => renderGroupedResponse(group))}
-                  </ul>
+                {renderExpandableList('change-responses', changeResponseGroups, (group) =>
+                  renderGroupedResponse(group),
                 )}
               </div>
             </div>
@@ -1413,12 +1423,8 @@ export default function NotificationsPage({
           <div style={styles.columnLayout}>
             <div style={styles.column}>
               <h3 style={styles.columnTitle}>{t('notifications_review_queue', 'Review queue')}</h3>
-              {groupedTemporary.review.length === 0 ? (
-                <p style={styles.emptyText}>{t('notifications_none', 'No notifications')}</p>
-              ) : (
-                <ul style={styles.list}>
-                  {groupedTemporary.review.map((group) => renderTemporaryGroup(group, 'review'))}
-                </ul>
+              {renderExpandableList('temporary-review', groupedTemporary.review, (group) =>
+                renderTemporaryGroup(group, 'review'),
               )}
               {temporaryState.review.hasMore && (
                 <button
@@ -1453,12 +1459,8 @@ export default function NotificationsPage({
             </div>
             <div style={styles.column}>
               <h3 style={styles.columnTitle}>{t('notifications_my_drafts', 'My drafts')}</h3>
-              {groupedTemporary.created.length === 0 ? (
-                <p style={styles.emptyText}>{t('notifications_none', 'No notifications')}</p>
-              ) : (
-                <ul style={styles.list}>
-                  {groupedTemporary.created.map((group) => renderTemporaryGroup(group, 'created'))}
-                </ul>
+              {renderExpandableList('temporary-created', groupedTemporary.created, (group) =>
+                renderTemporaryGroup(group, 'created'),
               )}
               {temporaryState.created.hasMore && (
                 <button
@@ -1647,6 +1649,16 @@ const styles = {
     cursor: 'pointer',
     flexShrink: 0,
     fontSize: '0.85rem',
+  },
+  showMoreButton: {
+    alignSelf: 'flex-start',
+    backgroundColor: '#fff',
+    color: '#2563eb',
+    border: '1px solid #bfdbfe',
+    borderRadius: '0.5rem',
+    padding: '0.4rem 0.7rem',
+    cursor: 'pointer',
+    fontSize: '0.82rem',
   },
   emptyText: {
     color: '#6b7280',
