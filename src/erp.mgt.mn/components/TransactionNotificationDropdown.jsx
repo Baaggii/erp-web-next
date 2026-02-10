@@ -27,7 +27,6 @@ const DEFAULT_PLAN_NOTIFICATION_VALUES = ['1'];
 const DEFAULT_DUTY_NOTIFICATION_FIELDS = [];
 const DEFAULT_DUTY_NOTIFICATION_VALUES = ['1'];
 const DROPDOWN_CHUNK_SIZE = 20;
-const UNIFIED_FEED_ENABLED = true;
 
 function normalizeText(value) {
   if (value === undefined || value === null) return '';
@@ -283,14 +282,6 @@ export default function TransactionNotificationDropdown() {
     loading: false,
     error: '',
   });
-  const [unifiedFeedState, setUnifiedFeedState] = useState({
-    items: [],
-    nextCursor: null,
-    unreadCountBySource: { transaction: 0, incoming: 0, outgoing: 0 },
-    loading: false,
-    loaded: false,
-    error: '',
-  });
   const [initialLoadComplete, setInitialLoadComplete] = useState(false);
   const [visibleCount, setVisibleCount] = useState(DROPDOWN_CHUNK_SIZE);
   const containerRef = useRef(null);
@@ -436,57 +427,124 @@ export default function TransactionNotificationDropdown() {
     let cancelled = false;
     setInitialLoadComplete(false);
 
-    if (!UNIFIED_FEED_ENABLED) {
-      setInitialLoadComplete(true);
-      return () => {
-        cancelled = true;
-      };
-    }
+    const buildRequestState = (rows, requestTypes) => {
+      const incoming = [];
+      const outgoing = [];
+      const accepted = [];
+      const declined = [];
+      const allowedTypes = new Set(requestTypes);
+      rows.forEach((row) => {
+        if (!allowedTypes.has(row?.request_type)) return;
+        const status = String(row?.status || 'pending').trim().toLowerCase();
+        if (row?.scope === 'incoming' && status === 'pending') {
+          incoming.push(row);
+          return;
+        }
+        if (status === 'pending') {
+          outgoing.push(row);
+          return;
+        }
+        if (status === 'accepted') {
+          accepted.push(row);
+          return;
+        }
+        if (status === 'declined') {
+          declined.push(row);
+        }
+      });
 
-    const loadUnifiedFeed = async () => {
-      setUnifiedFeedState((prev) => ({ ...prev, loading: true, error: '' }));
-      try {
-        const res = await fetch('/api/notifications/feed?limit=200', {
+      return {
+        incoming: dedupeRequests(incoming),
+        outgoing: dedupeRequests(outgoing),
+        responses: {
+          accepted: dedupeRequests(accepted),
+          declined: dedupeRequests(declined),
+        },
+      };
+    };
+
+    const loadDropdownData = async () => {
+      setReportState((prev) => ({ ...prev, loading: true, error: '' }));
+      setChangeState((prev) => ({ ...prev, loading: true, error: '' }));
+      setTemporaryState((prev) => ({ ...prev, loading: true, error: '' }));
+
+      const feedPromise = fetch(
+        '/api/pending_request/feed?status=pending,accepted,declined&request_type=report_approval,edit,delete&per_page=300&page=1',
+        {
           credentials: 'include',
           skipLoader: true,
-        });
+        },
+      ).then(async (res) => {
         if (!res.ok) throw new Error('feed_failed');
         const data = await res.json().catch(() => ({}));
-        if (cancelled) return;
-        setUnifiedFeedState({
-          items: Array.isArray(data?.items) ? data.items : [],
-          nextCursor:
-            data?.nextCursor && String(data.nextCursor).trim()
-              ? String(data.nextCursor).trim()
-              : null,
-          unreadCountBySource:
-            data?.unreadCountBySource && typeof data.unreadCountBySource === 'object'
-              ? {
-                  transaction: Number(data.unreadCountBySource.transaction) || 0,
-                  incoming: Number(data.unreadCountBySource.incoming) || 0,
-                  outgoing: Number(data.unreadCountBySource.outgoing) || 0,
-                }
-              : { transaction: 0, incoming: 0, outgoing: 0 },
+        return Array.isArray(data?.rows) ? data.rows : [];
+      });
+
+      const temporaryPromise = (async () => {
+        if (typeof temporary?.fetchScopeEntries !== 'function') {
+          return { review: [], created: [] };
+        }
+        const [reviewResult, createdResult] = await Promise.all([
+          temporary.fetchScopeEntries('review', { limit: 50, status: 'pending' }),
+          temporary.fetchScopeEntries('created', { limit: 50, status: 'any' }),
+        ]);
+        return {
+          review: Array.isArray(reviewResult?.rows) ? reviewResult.rows : [],
+          created: Array.isArray(createdResult?.rows) ? createdResult.rows : [],
+        };
+      })();
+
+      const [feedResult, temporaryResult] = await Promise.allSettled([
+        feedPromise,
+        temporaryPromise,
+      ]);
+
+      if (cancelled) return;
+
+      if (feedResult.status === 'fulfilled') {
+        const rows = feedResult.value;
+        const reportData = buildRequestState(rows, ['report_approval']);
+        const changeData = buildRequestState(rows, ['edit', 'delete']);
+        setReportState({ ...reportData, loading: false, error: '' });
+        setChangeState({ ...changeData, loading: false, error: '' });
+      } else {
+        setReportState({
+          incoming: [],
+          outgoing: [],
+          responses: createEmptyResponses(),
+          loading: false,
+          error: 'Failed to load report approvals',
+        });
+        setChangeState({
+          incoming: [],
+          outgoing: [],
+          responses: createEmptyResponses(),
+          loading: false,
+          error: 'Failed to load change requests',
+        });
+      }
+
+      if (temporaryResult.status === 'fulfilled') {
+        setTemporaryState({
+          review: temporaryResult.value.review,
+          created: temporaryResult.value.created,
           loading: false,
           loaded: true,
           error: '',
         });
-      } catch {
-        if (cancelled) return;
-        setUnifiedFeedState((prev) => ({
-          ...prev,
+      } else {
+        setTemporaryState({
+          review: [],
+          created: [],
           loading: false,
-          loaded: true,
-          error: 'Failed to load notifications',
-        }));
-      } finally {
-        if (!cancelled) {
-          setInitialLoadComplete(true);
-        }
+          error: 'Failed to load temporary transactions',
+        });
       }
+
+      setInitialLoadComplete(true);
     };
 
-    loadUnifiedFeed();
+    loadDropdownData();
     return () => {
       cancelled = true;
     };
@@ -831,56 +889,20 @@ export default function TransactionNotificationDropdown() {
     [combinedItems, visibleCount],
   );
   const hasAnyNotifications = combinedItems.length > 0;
-  const isInitialLoading = open && !initialLoadComplete && unifiedFeedState.loading;
+  const isInitialLoading =
+    open &&
+    !initialLoadComplete &&
+    (reportState.loading || changeState.loading || temporaryState.loading);
   const hasMoreItems = visibleItems.length < combinedItems.length;
-
-  const loadUnifiedFeedNextPage = useCallback(async () => {
-    if (!UNIFIED_FEED_ENABLED) return;
-    if (!unifiedFeedState.nextCursor || unifiedFeedState.loading) return;
-    setUnifiedFeedState((prev) => ({ ...prev, loading: true, error: '' }));
-    try {
-      const params = new URLSearchParams({ limit: '200', cursor: unifiedFeedState.nextCursor });
-      const res = await fetch(`/api/notifications/feed?${params.toString()}`, {
-        credentials: 'include',
-        skipLoader: true,
-      });
-      if (!res.ok) throw new Error('next_feed_failed');
-      const data = await res.json().catch(() => ({}));
-      setUnifiedFeedState((prev) => ({
-        ...prev,
-        items: prev.items.concat(Array.isArray(data?.items) ? data.items : []),
-        nextCursor:
-          data?.nextCursor && String(data.nextCursor).trim()
-            ? String(data.nextCursor).trim()
-            : null,
-        unreadCountBySource:
-          data?.unreadCountBySource && typeof data.unreadCountBySource === 'object'
-            ? {
-                transaction: Number(data.unreadCountBySource.transaction) || prev.unreadCountBySource.transaction || 0,
-                incoming: Number(data.unreadCountBySource.incoming) || prev.unreadCountBySource.incoming || 0,
-                outgoing: Number(data.unreadCountBySource.outgoing) || prev.unreadCountBySource.outgoing || 0,
-              }
-            : prev.unreadCountBySource,
-        loading: false,
-      }));
-    } catch {
-      setUnifiedFeedState((prev) => ({ ...prev, loading: false }));
-    }
-  }, [unifiedFeedState.loading, unifiedFeedState.nextCursor]);
 
   const handleListScroll = useCallback((event) => {
     const node = event?.currentTarget;
     if (!node || isInitialLoading) return;
     const nearBottom = node.scrollTop + node.clientHeight >= node.scrollHeight - 40;
     if (nearBottom) {
-      const nextVisible = Math.min(visibleCount + DROPDOWN_CHUNK_SIZE, combinedItems.length);
-      if (nextVisible > visibleCount) {
-        setVisibleCount(nextVisible);
-      } else if (UNIFIED_FEED_ENABLED && unifiedFeedState.nextCursor && !unifiedFeedState.loading) {
-        loadUnifiedFeedNextPage();
-      }
+      setVisibleCount((prev) => Math.min(prev + DROPDOWN_CHUNK_SIZE, combinedItems.length));
     }
-  }, [combinedItems.length, isInitialLoading, loadUnifiedFeedNextPage, unifiedFeedState.loading, unifiedFeedState.nextCursor, visibleCount]);
+  }, [combinedItems.length, isInitialLoading]);
 
   useEffect(() => {
     if (!open) return;
@@ -891,12 +913,6 @@ export default function TransactionNotificationDropdown() {
     if (!open) return;
     setVisibleCount((prev) => Math.min(Math.max(prev, DROPDOWN_CHUNK_SIZE), combinedItems.length || DROPDOWN_CHUNK_SIZE));
   }, [combinedItems.length, open]);
-
-  const aggregatedUnreadCount = UNIFIED_FEED_ENABLED
-    ? (Number(unifiedFeedState.unreadCountBySource?.transaction) || 0) +
-      (Number(unifiedFeedState.unreadCountBySource?.incoming) || 0) +
-      (Number(unifiedFeedState.unreadCountBySource?.outgoing) || 0)
-    : Number(unreadCount) || 0;
 
   return (
     <div style={styles.wrapper} ref={containerRef}>
@@ -936,9 +952,6 @@ export default function TransactionNotificationDropdown() {
             ))}
             {hasMoreItems && !isInitialLoading && (
               <div style={styles.moreHint}>Scroll to load more…</div>
-            )}
-            {UNIFIED_FEED_ENABLED && unifiedFeedState.loading && initialLoadComplete && (
-              <div style={styles.moreHint}>Loading more…</div>
             )}
           </div>
           <button

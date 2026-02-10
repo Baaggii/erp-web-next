@@ -1123,7 +1123,12 @@ const TableManager = forwardRef(function TableManager({
         params.set('configName', temporaryConfigName);
       }
       const transactionTypeField = formConfig?.transactionTypeField || '';
-      const normalizedTypeFilter = typeof typeFilter === 'string' ? typeFilter.trim() : typeFilter;
+      const typeFilterSource =
+        formConfig?.transactionTypeValue !== undefined && formConfig?.transactionTypeValue !== null
+          ? formConfig.transactionTypeValue
+          : typeFilter;
+      const normalizedTypeFilter =
+        typeof typeFilterSource === 'string' ? typeFilterSource.trim() : typeFilterSource;
       if (transactionTypeField && normalizedTypeFilter) {
         params.set('transactionTypeField', transactionTypeField);
         params.set('transactionTypeValue', normalizedTypeFilter);
@@ -1197,6 +1202,7 @@ const TableManager = forwardRef(function TableManager({
     formConfig?.formName,
     formConfig?.configName,
     formConfig?.transactionTypeField,
+    formConfig?.transactionTypeValue,
     typeFilter,
     addToast,
     addWorkflowToast,
@@ -5413,7 +5419,12 @@ const TableManager = forwardRef(function TableManager({
         params.set('configName', temporaryConfigName);
       }
       const transactionTypeField = formConfig?.transactionTypeField || '';
-      const normalizedTypeFilter = typeof typeFilter === 'string' ? typeFilter.trim() : typeFilter;
+      const typeFilterSource =
+        formConfig?.transactionTypeValue !== undefined && formConfig?.transactionTypeValue !== null
+          ? formConfig.transactionTypeValue
+          : typeFilter;
+      const normalizedTypeFilter =
+        typeof typeFilterSource === 'string' ? typeFilterSource.trim() : typeFilterSource;
       if (transactionTypeField && normalizedTypeFilter) {
         params.set('transactionTypeField', transactionTypeField);
         params.set('transactionTypeValue', normalizedTypeFilter);
@@ -5541,6 +5552,7 @@ const TableManager = forwardRef(function TableManager({
       formConfig?.formName,
       formConfig?.configName,
       formConfig?.transactionTypeField,
+      formConfig?.transactionTypeValue,
       typeFilter,
       addToast,
       addWorkflowToast,
