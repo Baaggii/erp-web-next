@@ -815,8 +815,20 @@ const TableManager = forwardRef(function TableManager({
   const generalConfig = useGeneralConfig();
   const txnToastEnabled = generalConfig.general?.txnToastEnabled;
   const ebarimtToastEnabled = generalConfig.general?.ebarimtToastEnabled;
+  const workflowToastEnabled = useMemo(() => {
+    if (!generalConfig?.notifications?.workflowToastEnabled) return false;
+    if (typeof window === 'undefined') return false;
+    return window.sessionStorage.getItem('notificationWorkflowToastEnabled') === '1';
+  }, [generalConfig?.notifications?.workflowToastEnabled]);
   const printConfig = generalConfig.print || {};
   const { addToast } = useToast();
+  const addWorkflowToast = useCallback(
+    (message, type) => {
+      if (!workflowToastEnabled) return;
+      addToast(message, type);
+    },
+    [addToast, workflowToastEnabled],
+  );
   const canRequestStatus = isSubordinate;
   const posApiErrorSignatureRef = useRef('');
   const posApiAvailable = formConfig?.posApiAvailable !== false;
@@ -1134,6 +1146,17 @@ const TableManager = forwardRef(function TableManager({
       const data = await res.json();
       setTemporarySummary(data);
       const reviewPending = Number(data?.reviewPending) || 0;
+      addWorkflowToast(
+        t(
+          'notifications_workflow_summary_loaded',
+          'Workflow summary loaded: {{review}} review · {{created}} drafts',
+          {
+            review: reviewPending,
+            created: Number(data?.createdPending) || 0,
+          },
+        ),
+        'success',
+      );
       const preferredScope =
         availableTemporaryScopes.includes('review') && reviewPending > 0
           ? 'review'
@@ -1151,7 +1174,7 @@ const TableManager = forwardRef(function TableManager({
           return prev;
         });
       }
-    } catch {
+    } catch (err) {
       setTemporarySummary((prev) => prev || { createdPending: 0, reviewPending: 0 });
       if (!showFormRef.current) {
         setTemporaryScope((prev) =>
@@ -1160,6 +1183,10 @@ const TableManager = forwardRef(function TableManager({
             : defaultTemporaryScope,
         );
       }
+      addWorkflowToast(
+        err?.message || t('notifications_workflow_summary_failed', 'Workflow summary failed to load'),
+        'error',
+      );
     }
   }, [
     formSupportsTemporary,
@@ -1172,7 +1199,9 @@ const TableManager = forwardRef(function TableManager({
     formConfig?.transactionTypeField,
     typeFilter,
     addToast,
+    addWorkflowToast,
     getRateLimitMessage,
+    t,
   ]);
 
   const validCols = useMemo(() => new Set(columnMeta.map((c) => c.name)), [columnMeta]);
@@ -2589,6 +2618,14 @@ const TableManager = forwardRef(function TableManager({
             t('failed_load_table_data', 'Failed to load table data'),
             'error',
           );
+          addWorkflowToast(
+            t(
+              'notifications_workflow_table_failed',
+              'Workflow table load failed: {{table}}',
+              { table },
+            ),
+            'error',
+          );
           return { rows: [], count: 0 };
         }
         return res.json().catch(() => {
@@ -2597,6 +2634,14 @@ const TableManager = forwardRef(function TableManager({
               t('failed_parse_table_data', 'Failed to parse table data'),
               'error',
             );
+          addWorkflowToast(
+            t(
+              'notifications_workflow_table_parse_failed',
+              'Workflow table parse failed: {{table}}',
+              { table },
+            ),
+            'error',
+          );
           return { rows: [], count: 0 };
         });
       })
@@ -2613,6 +2658,14 @@ const TableManager = forwardRef(function TableManager({
         // clear selections when data changes
         setSelectedRows(new Set());
         logRowsMemory(rows);
+        addWorkflowToast(
+          t(
+            'notifications_workflow_table_loaded',
+            'Workflow table loaded: {{table}} ({{count}} rows)',
+            { table, count: rows.length },
+          ),
+          'success',
+        );
       })
       .catch((err) => {
         if (err?.name === 'AbortError') return;
@@ -2621,6 +2674,14 @@ const TableManager = forwardRef(function TableManager({
             t('failed_load_table_data', 'Failed to load table data'),
             'error',
           );
+        addWorkflowToast(
+          t(
+            'notifications_workflow_table_failed',
+            'Workflow table load failed: {{table}}',
+            { table },
+          ),
+          'error',
+        );
       });
     return () => {
       canceled = true;
@@ -2638,6 +2699,8 @@ const TableManager = forwardRef(function TableManager({
     validCols,
     requestStatus,
     requestIdsKey,
+    addWorkflowToast,
+    t,
   ]);
 
   useEffect(() => {
@@ -5443,6 +5506,14 @@ const TableManager = forwardRef(function TableManager({
           }
           setTemporaryList(nextRows);
         }
+        addWorkflowToast(
+          t(
+            'notifications_workflow_list_loaded',
+            'Workflow list loaded for {{scope}}: {{count}} items',
+            { scope: targetScope, count: nextRows.length },
+          ),
+          'success',
+        );
       } catch (err) {
         console.error('Failed to load temporaries', err);
         if (err?.rateLimited) {
@@ -5451,6 +5522,10 @@ const TableManager = forwardRef(function TableManager({
         }
         setTemporaryFocusId(null);
         setTemporaryList([]);
+        addWorkflowToast(
+          err?.message || t('notifications_workflow_list_failed', 'Workflow list failed to load'),
+          'error',
+        );
       } finally {
         setTemporaryLoading(false);
       }
@@ -5468,8 +5543,10 @@ const TableManager = forwardRef(function TableManager({
       formConfig?.transactionTypeField,
       typeFilter,
       addToast,
+      addWorkflowToast,
       getRateLimitMessage,
       rateLimitFallbackMessage,
+      t,
     ],
   );
 
