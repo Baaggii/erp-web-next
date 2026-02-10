@@ -149,12 +149,18 @@ function getStatusMeta(status) {
 function getTemporaryStatusMeta(status) {
   const normalized = typeof status === 'string' ? status.trim().toLowerCase() : '';
   if (['accepted', 'approved', 'promoted'].includes(normalized)) {
-    return { label: 'Approval', accent: '#16a34a' };
+    return { label: 'Approved', accent: '#16a34a' };
   }
   if (['declined', 'rejected'].includes(normalized)) {
-    return { label: 'Rejection', accent: '#ef4444' };
+    return { label: 'Rejected', accent: '#ef4444' };
   }
-  return { label: 'Request', accent: '#f59e0b' };
+  if (normalized === 'forwarded') {
+    return { label: 'Forwarded', accent: '#2563eb' };
+  }
+  if (normalized === 'pending') {
+    return { label: 'Pending', accent: '#f59e0b' };
+  }
+  return { label: 'Temporary', accent: '#64748b' };
 }
 
 function dedupeRequests(list) {
