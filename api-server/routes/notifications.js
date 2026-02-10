@@ -22,15 +22,6 @@ function normalizeStatus(value, fallback = 'pending') {
   return normalized || fallback;
 }
 
-function formatTableLabel(tableName) {
-  if (!tableName) return 'Transaction';
-  return String(tableName)
-    .replace(/^transactions_/i, '')
-    .replace(/[_-]+/g, ' ')
-    .replace(/\b\w/g, (char) => char.toUpperCase())
-    .trim();
-}
-
 function makeRequestPath({ status, requestType, tableName, requestId, createdAt, tab }) {
   const params = new URLSearchParams();
   params.set('tab', tab || 'incoming');
@@ -53,8 +44,24 @@ function makeRequestPath({ status, requestType, tableName, requestId, createdAt,
 function makeTransactionPath({ payload, notificationId }) {
   const params = new URLSearchParams();
   params.set('tab', 'activity');
-  params.set('notifyGroup', encodeURIComponent(payload?.transactionName || 'Transaction'));
+  params.set('notifyGroup', payload?.transactionName || 'Transaction');
   params.set('notifyItem', `transaction-${notificationId}`);
+  return `/?${params.toString()}`;
+}
+
+function makeTemporaryPath({ temporaryId, temporaryRow, payload, userEmpId }) {
+  const params = new URLSearchParams();
+  params.set('tab', 'activity');
+  params.set('temporaryOpen', '1');
+  const creator = String(temporaryRow?.created_by || payload?.createdBy || '').trim().toUpperCase();
+  const scope = creator && creator === userEmpId ? 'created' : 'review';
+  params.set('temporaryScope', scope);
+  params.set('temporaryKey', String(Date.now()));
+  const formName = temporaryRow?.form_name || payload?.formName || payload?.form_name;
+  if (formName) params.set('temporaryForm', String(formName));
+  const configName = temporaryRow?.config_name || payload?.configName || payload?.config_name;
+  if (configName) params.set('temporaryConfig', String(configName));
+  if (temporaryId != null) params.set('temporaryId', String(temporaryId));
   return `/?${params.toString()}`;
 }
 
@@ -65,13 +72,7 @@ function formatTransactionFormName(payload) {
     payload?.formName ||
     payload?.form_name;
   if (name) return String(name).trim();
-  const tableName = payload?.transactionTable || payload?.transaction_table || '';
-  if (!tableName) return 'Transaction';
-  return String(tableName)
-    .replace(/^transactions_/i, '')
-    .replace(/[_-]+/g, ' ')
-    .replace(/\b\w/g, (char) => char.toUpperCase())
-    .trim();
+  return 'Transaction';
 }
 
 function formatTransactionAction(value) {
