@@ -149,12 +149,18 @@ function getStatusMeta(status) {
 function getTemporaryStatusMeta(status) {
   const normalized = typeof status === 'string' ? status.trim().toLowerCase() : '';
   if (['accepted', 'approved', 'promoted'].includes(normalized)) {
-    return { label: 'Approval', accent: '#16a34a' };
+    return { label: 'Approved', accent: '#16a34a' };
   }
   if (['declined', 'rejected'].includes(normalized)) {
-    return { label: 'Rejection', accent: '#ef4444' };
+    return { label: 'Rejected', accent: '#ef4444' };
   }
-  return { label: 'Request', accent: '#f59e0b' };
+  if (normalized === 'forwarded') {
+    return { label: 'Forwarded', accent: '#2563eb' };
+  }
+  if (normalized === 'pending') {
+    return { label: 'Pending', accent: '#f59e0b' };
+  }
+  return { label: 'Temporary', accent: '#64748b' };
 }
 
 function dedupeRequests(list) {
@@ -963,9 +969,12 @@ export default function TransactionNotificationDropdown() {
     return feedState.items.map((item) => {
       const normalizedSource = String(item?.source || 'notification').toLowerCase();
       const isTransaction = normalizedSource === 'transaction';
+      const isTemporary = normalizedSource === 'temporary';
       const badgeMeta = isTransaction
         ? getActionMeta(item?.status)
-        : getStatusMeta(item?.status);
+        : isTemporary
+          ? getTemporaryStatusMeta(item?.status)
+          : getStatusMeta(item?.status);
       const timestamp = getTemporaryTimestamp({ created_at: item?.timestamp, updated_at: item?.timestamp });
       return {
         key: item?.id || `${normalizedSource}-${timestamp}`,
@@ -976,7 +985,7 @@ export default function TransactionNotificationDropdown() {
         preview: item?.preview || '',
         dateTime: formatDisplayTimestamp(item?.timestamp),
         onClick: () => {
-          if (isTransaction && item?.action?.notificationId) {
+          if ((isTransaction || isTemporary) && item?.action?.notificationId) {
             markRead([item.action.notificationId]);
           }
           setOpen(false);
