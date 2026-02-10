@@ -285,7 +285,6 @@ export default function TransactionNotificationDropdown() {
     loading: false,
     error: '',
   });
-  const [isOpening, setIsOpening] = useState(false);
   const lastTemporaryFetchRef = useRef(0);
   const temporaryFetchInFlightRef = useRef(false);
   const containerRef = useRef(null);
@@ -720,7 +719,6 @@ export default function TransactionNotificationDropdown() {
   useEffect(() => {
     if (!open) return () => {};
     const loadTemporary = async () => {
-      setIsOpening(true);
       await loadTemporaryEntries({ setLoading: true, reason: 'open' });
     };
     loadTemporary();
@@ -738,20 +736,6 @@ export default function TransactionNotificationDropdown() {
     temporaryCountsTotal,
     temporaryState.created.length,
     temporaryState.review.length,
-  ]);
-
-  useEffect(() => {
-    if (!open) {
-      setIsOpening(false);
-      return;
-    }
-    if (reportState.loading || changeState.loading || temporaryState.loading) return;
-    setIsOpening(false);
-  }, [
-    changeState.loading,
-    open,
-    reportState.loading,
-    temporaryState.loading,
   ]);
 
   const openRequest = useCallback(
