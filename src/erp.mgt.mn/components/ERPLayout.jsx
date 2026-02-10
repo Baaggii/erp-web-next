@@ -1690,7 +1690,6 @@ export default function ERPLayout() {
     modules.forEach((mod) => {
       map[modulePath(mod, moduleMap)] = getModuleLabel(mod);
     });
-    map['/notifications'] = t('notifications', 'Notifications');
     return map;
   }, [generalConfig, headerMap, moduleMap, modules, t]);
   const validPaths = useMemo(() => {
@@ -1698,7 +1697,6 @@ export default function ERPLayout() {
     modules.forEach((m) => {
       paths.add(modulePath(m, moduleMap));
     });
-    paths.add('/notifications');
     return paths;
   }, [modules, moduleMap]);
   const toastApi = useToast();
@@ -4202,21 +4200,6 @@ function Sidebar({ onOpen, open, isMobile }) {
       style={styles.sidebar(isMobile, open)}
     >
       <nav className="menu-container">
-        <button
-          key="__notifications"
-          onClick={() =>
-            onOpen('/notifications', t('notifications', 'Notifications'), 'notifications')
-          }
-          className="menu-item"
-          style={styles.menuItem({ isActive: location.pathname === '/notifications' })}
-        >
-          <NotificationDots
-            colors={sidebarNotificationColors}
-            size="0.55rem"
-            gap="0.2rem"
-          />
-          {t('notifications', 'Notifications')}
-        </button>
         {roots.map((m) =>
           m.children.length > 0 ? (
             <SidebarGroup
@@ -4412,7 +4395,6 @@ function MainWindow({ title }) {
     if (tabNotificationColors.length > 0) {
       paths.add('/');
       paths.add('/requests');
-      paths.add('/notifications');
       if (hasTemporaryNew) paths.add('/forms');
     }
     return paths;
@@ -4650,7 +4632,6 @@ function MainWindow({ title }) {
               const tabHasBadge =
                 badgePaths.has(t.key) ||
                 (t.key.startsWith('/requests') && badgePaths.has('/requests')) ||
-                (t.key.startsWith('/notifications') && badgePaths.has('/notifications')) ||
                 (t.key.startsWith('/forms') && badgePaths.has('/forms'));
               if (!tabHasBadge) return null;
               return (

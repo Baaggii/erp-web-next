@@ -47,7 +47,6 @@ import UserManualExportPage from './pages/UserManualExport.jsx';
 import ErrorBoundary from './components/ErrorBoundary.jsx';
 import UserSettingsPage from './pages/UserSettings.jsx';
 import AllowedReportsConfigPage from './pages/AllowedReportsConfig.jsx';
-import NotificationsPage from './pages/Notifications.jsx';
 import PosApiAdminPage from './pages/PosApiAdmin.jsx';
 import CncProcessingPage from './pages/CncProcessingPage.jsx';
 
@@ -198,7 +197,6 @@ function AuthedApp() {
     <ErrorBoundary>
       <Routes>
         <Route path="/" element={<ERPLayout />}>
-          <Route path="notifications" element={<NotificationsPage />} />
           <Route path="requests" element={<RequestsPage />} />
           <Route element={<RequireAdmin />}>
             <Route
