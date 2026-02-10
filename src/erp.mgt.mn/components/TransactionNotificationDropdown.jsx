@@ -537,13 +537,28 @@ export default function TransactionNotificationDropdown() {
     [supervisorIds],
   );
 
-  const loadReportNotifications = useCallback(
-    async ({ setLoading = false } = {}) => {
-      const incomingPending = workflows?.reportApproval?.incoming?.pending?.count || 0;
-      const outgoingPending = workflows?.reportApproval?.outgoing?.pending?.count || 0;
-      const outgoingAccepted = workflows?.reportApproval?.outgoing?.accepted?.count || 0;
-      const outgoingDeclined = workflows?.reportApproval?.outgoing?.declined?.count || 0;
-      const totalCount = incomingPending + outgoingPending + outgoingAccepted + outgoingDeclined;
+  useEffect(() => {
+    if (!open) return () => {};
+    setIsOpening(true);
+    let cancelled = false;
+    const incomingPending = workflows?.reportApproval?.incoming?.pending?.count || 0;
+    const outgoingPending = workflows?.reportApproval?.outgoing?.pending?.count || 0;
+    const outgoingAccepted = workflows?.reportApproval?.outgoing?.accepted?.count || 0;
+    const outgoingDeclined = workflows?.reportApproval?.outgoing?.declined?.count || 0;
+    const totalCount = incomingPending + outgoingPending + outgoingAccepted + outgoingDeclined;
+
+    if (totalCount === 0) {
+      setReportState({
+        incoming: [],
+        outgoing: [],
+        responses: createEmptyResponses(),
+        loading: false,
+        error: '',
+      });
+      return () => {
+        cancelled = true;
+      };
+    }
 
       if (totalCount === 0) {
         setReportState({
@@ -599,12 +614,25 @@ export default function TransactionNotificationDropdown() {
   useEffect(() => {
     if (!open) return () => {};
     setIsOpening(true);
-    const loadReports = async () => {
-      await loadReportNotifications({ setLoading: true });
-    };
-    loadReports();
-    return () => {};
-  }, [loadReportNotifications, open]);
+    let cancelled = false;
+    const incomingPending = workflows?.changeRequests?.incoming?.pending?.count || 0;
+    const outgoingPending = workflows?.changeRequests?.outgoing?.pending?.count || 0;
+    const outgoingAccepted = workflows?.changeRequests?.outgoing?.accepted?.count || 0;
+    const outgoingDeclined = workflows?.changeRequests?.outgoing?.declined?.count || 0;
+    const totalCount = incomingPending + outgoingPending + outgoingAccepted + outgoingDeclined;
+
+    if (totalCount === 0) {
+      setChangeState({
+        incoming: [],
+        outgoing: [],
+        responses: createEmptyResponses(),
+        loading: false,
+        error: '',
+      });
+      return () => {
+        cancelled = true;
+      };
+    }
 
   const loadChangeNotifications = useCallback(
     async ({ setLoading = false } = {}) => {
@@ -664,16 +692,6 @@ export default function TransactionNotificationDropdown() {
       workflows?.changeRequests?.outgoing?.declined?.count,
     ],
   );
-
-  useEffect(() => {
-    if (!open) return () => {};
-    setIsOpening(true);
-    const loadChanges = async () => {
-      await loadChangeNotifications({ setLoading: true });
-    };
-    loadChanges();
-    return () => {};
-  }, [loadChangeNotifications, open]);
 
   useEffect(() => {
     if (!open) {
