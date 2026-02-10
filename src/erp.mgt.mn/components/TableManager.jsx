@@ -2618,6 +2618,14 @@ const TableManager = forwardRef(function TableManager({
             t('failed_load_table_data', 'Failed to load table data'),
             'error',
           );
+          addWorkflowToast(
+            t(
+              'notifications_workflow_table_failed',
+              'Workflow table load failed: {{table}}',
+              { table },
+            ),
+            'error',
+          );
           return { rows: [], count: 0 };
         }
         return res.json().catch(() => {
@@ -2626,6 +2634,14 @@ const TableManager = forwardRef(function TableManager({
               t('failed_parse_table_data', 'Failed to parse table data'),
               'error',
             );
+          addWorkflowToast(
+            t(
+              'notifications_workflow_table_parse_failed',
+              'Workflow table parse failed: {{table}}',
+              { table },
+            ),
+            'error',
+          );
           return { rows: [], count: 0 };
         });
       })
@@ -2642,6 +2658,14 @@ const TableManager = forwardRef(function TableManager({
         // clear selections when data changes
         setSelectedRows(new Set());
         logRowsMemory(rows);
+        addWorkflowToast(
+          t(
+            'notifications_workflow_table_loaded',
+            'Workflow table loaded: {{table}} ({{count}} rows)',
+            { table, count: rows.length },
+          ),
+          'success',
+        );
       })
       .catch((err) => {
         if (err?.name === 'AbortError') return;
@@ -2650,6 +2674,14 @@ const TableManager = forwardRef(function TableManager({
             t('failed_load_table_data', 'Failed to load table data'),
             'error',
           );
+        addWorkflowToast(
+          t(
+            'notifications_workflow_table_failed',
+            'Workflow table load failed: {{table}}',
+            { table },
+          ),
+          'error',
+        );
       });
     return () => {
       canceled = true;
@@ -2667,6 +2699,8 @@ const TableManager = forwardRef(function TableManager({
     validCols,
     requestStatus,
     requestIdsKey,
+    addWorkflowToast,
+    t,
   ]);
 
   useEffect(() => {

@@ -28,7 +28,6 @@ const DEFAULT_PLAN_NOTIFICATION_VALUES = ['1'];
 const DEFAULT_DUTY_NOTIFICATION_FIELDS = [];
 const DEFAULT_DUTY_NOTIFICATION_VALUES = ['1'];
 const TEMPORARY_PREFETCH_THROTTLE_MS = 20000;
-const DROPDOWN_PREFETCH_THROTTLE_MS = 30000;
 
 function normalizeText(value) {
   if (value === undefined || value === null) return '';
@@ -263,6 +262,7 @@ export default function TransactionNotificationDropdown() {
   const { user, session } = useAuth();
   const { workflows, markWorkflowSeen, temporary } = usePendingRequests();
   const [open, setOpen] = useState(false);
+  const [isOpening, setIsOpening] = useState(false);
   const [formEntries, setFormEntries] = useState([]);
   const [formsLoaded, setFormsLoaded] = useState(false);
   const [codeTransactions, setCodeTransactions] = useState([]);
@@ -286,11 +286,8 @@ export default function TransactionNotificationDropdown() {
     loading: false,
     error: '',
   });
-  const [isOpening, setIsOpening] = useState(false);
   const lastTemporaryFetchRef = useRef(0);
   const temporaryFetchInFlightRef = useRef(false);
-  const reportPrefetchRef = useRef({ timestamp: 0, key: '' });
-  const changePrefetchRef = useRef({ timestamp: 0, key: '' });
   const containerRef = useRef(null);
   const navigate = useNavigate();
   const generalConfig = useGeneralConfig();
@@ -540,13 +537,28 @@ export default function TransactionNotificationDropdown() {
     [supervisorIds],
   );
 
-  const loadReportNotifications = useCallback(
-    async ({ setLoading = false } = {}) => {
-      const incomingPending = workflows?.reportApproval?.incoming?.pending?.count || 0;
-      const outgoingPending = workflows?.reportApproval?.outgoing?.pending?.count || 0;
-      const outgoingAccepted = workflows?.reportApproval?.outgoing?.accepted?.count || 0;
-      const outgoingDeclined = workflows?.reportApproval?.outgoing?.declined?.count || 0;
-      const totalCount = incomingPending + outgoingPending + outgoingAccepted + outgoingDeclined;
+  useEffect(() => {
+    if (!open) return () => {};
+    setIsOpening(true);
+    let cancelled = false;
+    const incomingPending = workflows?.reportApproval?.incoming?.pending?.count || 0;
+    const outgoingPending = workflows?.reportApproval?.outgoing?.pending?.count || 0;
+    const outgoingAccepted = workflows?.reportApproval?.outgoing?.accepted?.count || 0;
+    const outgoingDeclined = workflows?.reportApproval?.outgoing?.declined?.count || 0;
+    const totalCount = incomingPending + outgoingPending + outgoingAccepted + outgoingDeclined;
+
+    if (totalCount === 0) {
+      setReportState({
+        incoming: [],
+        outgoing: [],
+        responses: createEmptyResponses(),
+        loading: false,
+        error: '',
+      });
+      return () => {
+        cancelled = true;
+      };
+    }
 
       if (totalCount === 0) {
         setReportState({
@@ -602,9 +614,25 @@ export default function TransactionNotificationDropdown() {
   useEffect(() => {
     if (!open) return () => {};
     setIsOpening(true);
-    loadReportNotifications({ setLoading: true });
-    return () => {};
-  }, [loadReportNotifications, open]);
+    let cancelled = false;
+    const incomingPending = workflows?.changeRequests?.incoming?.pending?.count || 0;
+    const outgoingPending = workflows?.changeRequests?.outgoing?.pending?.count || 0;
+    const outgoingAccepted = workflows?.changeRequests?.outgoing?.accepted?.count || 0;
+    const outgoingDeclined = workflows?.changeRequests?.outgoing?.declined?.count || 0;
+    const totalCount = incomingPending + outgoingPending + outgoingAccepted + outgoingDeclined;
+
+    if (totalCount === 0) {
+      setChangeState({
+        incoming: [],
+        outgoing: [],
+        responses: createEmptyResponses(),
+        loading: false,
+        error: '',
+      });
+      return () => {
+        cancelled = true;
+      };
+    }
 
   const loadChangeNotifications = useCallback(
     async ({ setLoading = false } = {}) => {
@@ -666,11 +694,14 @@ export default function TransactionNotificationDropdown() {
   );
 
   useEffect(() => {
-    if (!open) return () => {};
-    setIsOpening(true);
-    loadChangeNotifications({ setLoading: true });
-    return () => {};
-  }, [loadChangeNotifications, open]);
+    if (!open) {
+      setIsOpening(false);
+      return;
+    }
+    if (!reportState.loading && !changeState.loading && !temporaryState.loading) {
+      setIsOpening(false);
+    }
+  }, [open, reportState.loading, changeState.loading, temporaryState.loading]);
 
   const loadTemporaryEntries = useCallback(
     async ({ setLoading = false, reason = 'open' } = {}) => {
@@ -725,7 +756,6 @@ export default function TransactionNotificationDropdown() {
   useEffect(() => {
     if (!open) return () => {};
     const loadTemporary = async () => {
-      setIsOpening(true);
       await loadTemporaryEntries({ setLoading: true, reason: 'open' });
     };
     loadTemporary();
@@ -743,76 +773,6 @@ export default function TransactionNotificationDropdown() {
     temporaryCountsTotal,
     temporaryState.created.length,
     temporaryState.review.length,
-  ]);
-
-  const reportCountKey = useMemo(() => {
-    const pendingIncoming = workflows?.reportApproval?.incoming?.pending?.count || 0;
-    const pendingOutgoing = workflows?.reportApproval?.outgoing?.pending?.count || 0;
-    const acceptedOutgoing = workflows?.reportApproval?.outgoing?.accepted?.count || 0;
-    const declinedOutgoing = workflows?.reportApproval?.outgoing?.declined?.count || 0;
-    return `${pendingIncoming}:${pendingOutgoing}:${acceptedOutgoing}:${declinedOutgoing}`;
-  }, [
-    workflows?.reportApproval?.incoming?.pending?.count,
-    workflows?.reportApproval?.outgoing?.pending?.count,
-    workflows?.reportApproval?.outgoing?.accepted?.count,
-    workflows?.reportApproval?.outgoing?.declined?.count,
-  ]);
-
-  const changeCountKey = useMemo(() => {
-    const pendingIncoming = workflows?.changeRequests?.incoming?.pending?.count || 0;
-    const pendingOutgoing = workflows?.changeRequests?.outgoing?.pending?.count || 0;
-    const acceptedOutgoing = workflows?.changeRequests?.outgoing?.accepted?.count || 0;
-    const declinedOutgoing = workflows?.changeRequests?.outgoing?.declined?.count || 0;
-    return `${pendingIncoming}:${pendingOutgoing}:${acceptedOutgoing}:${declinedOutgoing}`;
-  }, [
-    workflows?.changeRequests?.incoming?.pending?.count,
-    workflows?.changeRequests?.outgoing?.pending?.count,
-    workflows?.changeRequests?.outgoing?.accepted?.count,
-    workflows?.changeRequests?.outgoing?.declined?.count,
-  ]);
-
-  useEffect(() => {
-    if (open) return;
-    const now = Date.now();
-    if (
-      reportCountKey === reportPrefetchRef.current.key &&
-      now - reportPrefetchRef.current.timestamp < DROPDOWN_PREFETCH_THROTTLE_MS
-    ) {
-      return;
-    }
-    const hasCounts = reportCountKey.split(':').some((value) => Number(value) > 0);
-    if (!hasCounts) return;
-    reportPrefetchRef.current = { key: reportCountKey, timestamp: now };
-    loadReportNotifications({ setLoading: false });
-  }, [loadReportNotifications, open, reportCountKey]);
-
-  useEffect(() => {
-    if (open) return;
-    const now = Date.now();
-    if (
-      changeCountKey === changePrefetchRef.current.key &&
-      now - changePrefetchRef.current.timestamp < DROPDOWN_PREFETCH_THROTTLE_MS
-    ) {
-      return;
-    }
-    const hasCounts = changeCountKey.split(':').some((value) => Number(value) > 0);
-    if (!hasCounts) return;
-    changePrefetchRef.current = { key: changeCountKey, timestamp: now };
-    loadChangeNotifications({ setLoading: false });
-  }, [changeCountKey, loadChangeNotifications, open]);
-
-  useEffect(() => {
-    if (!open) {
-      setIsOpening(false);
-      return;
-    }
-    if (reportState.loading || changeState.loading || temporaryState.loading) return;
-    setIsOpening(false);
-  }, [
-    changeState.loading,
-    open,
-    reportState.loading,
-    temporaryState.loading,
   ]);
 
   const openRequest = useCallback(
