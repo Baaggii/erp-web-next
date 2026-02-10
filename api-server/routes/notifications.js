@@ -2,6 +2,7 @@ import express from 'express';
 import rateLimit from 'express-rate-limit';
 import { requireAuth } from '../middlewares/auth.js';
 import { pool } from '../../db/index.js';
+import { listTransactionNames } from '../services/transactionFormConfig.js';
 
 const router = express.Router();
 
@@ -59,7 +60,70 @@ function makeTransactionPath({ payload, notificationId }) {
   return `/?${params.toString()}`;
 }
 
-function makeTemporaryPath({ temporaryId, temporaryRow, payload, userEmpId }) {
+function normalizeKey(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, '');
+}
+
+function buildTransactionFormLookup(formsMap = {}) {
+  const byName = new Map();
+  const byTable = new Map();
+  for (const [name, info] of Object.entries(formsMap || {})) {
+    if (!info || typeof info !== 'object' || name === 'isDefault') continue;
+    const normalizedName = normalizeKey(name);
+    if (normalizedName && !byName.has(normalizedName)) {
+      byName.set(normalizedName, { name, info });
+    }
+    const table = info?.table ?? info?.tableName ?? info?.table_name;
+    const normalizedTable = normalizeKey(table);
+    if (normalizedTable && !byTable.has(normalizedTable)) {
+      byTable.set(normalizedTable, { name, info });
+    }
+  }
+  return { byName, byTable };
+}
+
+function resolveTemporaryFormMeta({ temporaryRow, payload, formsLookup }) {
+  const nameCandidates = [
+    temporaryRow?.form_name,
+    temporaryRow?.config_name,
+    payload?.formName,
+    payload?.form_name,
+    payload?.configName,
+    payload?.config_name,
+  ];
+  for (const candidate of nameCandidates) {
+    const entry = formsLookup.byName.get(normalizeKey(candidate));
+    if (entry) {
+      return {
+        moduleKey: entry.info?.moduleKey || entry.info?.module || null,
+        formName: entry.name,
+      };
+    }
+  }
+
+  const tableCandidates = [
+    temporaryRow?.table_name,
+    payload?.tableName,
+    payload?.table_name,
+    payload?.transactionTable,
+    payload?.transaction_table,
+  ];
+  for (const candidate of tableCandidates) {
+    const entry = formsLookup.byTable.get(normalizeKey(candidate));
+    if (entry) {
+      return {
+        moduleKey: entry.info?.moduleKey || entry.info?.module || null,
+        formName: entry.name,
+      };
+    }
+  }
+  return { moduleKey: null, formName: null };
+}
+
+function makeTemporaryPath({ temporaryId, temporaryRow, payload, userEmpId, redirectMeta = {} }) {
   const params = new URLSearchParams();
   params.set('temporaryOpen', '1');
   const creator = String(temporaryRow?.created_by || payload?.createdBy || '').trim().toUpperCase();
@@ -67,20 +131,21 @@ function makeTemporaryPath({ temporaryId, temporaryRow, payload, userEmpId }) {
   params.set('temporaryScope', scope);
   params.set('temporaryKey', String(Date.now()));
 
-  const moduleKey = String(payload?.moduleKey || payload?.module_key || '').trim();
+  const moduleKey = String(redirectMeta?.moduleKey || payload?.moduleKey || payload?.module_key || '').trim();
   let path = '/forms';
   if (moduleKey) {
     params.set('temporaryModule', moduleKey);
     path = `/forms/${moduleKey.replace(/_/g, '-')}`;
   }
 
-  const formName = temporaryRow?.form_name || payload?.formName || payload?.form_name;
+  const formName = redirectMeta?.formName || temporaryRow?.form_name || payload?.formName || payload?.form_name;
   if (formName) params.set('temporaryForm', String(formName));
   const configName = temporaryRow?.config_name || payload?.configName || payload?.config_name;
   if (configName) params.set('temporaryConfig', String(configName));
   const tableName = temporaryRow?.table_name || payload?.tableName || payload?.table_name;
   if (tableName) params.set('temporaryTable', String(tableName));
   if (temporaryId != null) params.set('temporaryId', String(temporaryId));
+  if (moduleKey && formName) params.set(`name_${moduleKey}`, String(formName));
   return `${path}?${params.toString()}`;
 }
 
@@ -199,6 +264,29 @@ router.get('/feed', requireAuth, feedRateLimiter, async (req, res, next) => {
     const userEmpId = String(req.user.empid || '').trim().toUpperCase();
     const companyId = req.user.companyId;
 
+    const session = req.session || {};
+    let formsLookup = { byName: new Map(), byTable: new Map() };
+    try {
+      const { names } = await listTransactionNames(
+        {
+          branchId: req.user.branch,
+          departmentId: req.user.department,
+          userRightId:
+            req.user.userLevel ?? req.user.userlevel_id ?? req.user.userlevelId ?? session?.user_level,
+          workplaceId:
+            req.user.workplace ?? session?.workplace_id ?? session?.workplaceId,
+          positionId:
+            session?.employment_position_id ?? session?.position_id ?? session?.position ?? req.user.position,
+          workplacePositionId: session?.workplace_position_id ?? session?.workplacePositionId ?? null,
+          workplacePositions: session?.workplace_assignments,
+        },
+        companyId,
+      );
+      formsLookup = buildTransactionFormLookup(names || {});
+    } catch {
+      formsLookup = { byName: new Map(), byTable: new Map() };
+    }
+
     const [notificationRows] = await pool.query(
       `SELECT notification_id, type, related_id, message, is_read, created_at, updated_at
          FROM notifications
@@ -291,13 +379,24 @@ router.get('/feed', requireAuth, feedRateLimiter, async (req, res, next) => {
           String(temporaryRow?.created_by || payload?.createdBy || '').trim().toUpperCase() === userEmpId
             ? 'created'
             : 'review';
+        const resolvedTemporaryMeta = resolveTemporaryFormMeta({
+          temporaryRow,
+          payload,
+          formsLookup,
+        });
         const temporaryRedirectMeta = {
           temporaryId: fallbackTemporaryId,
-          formName: temporaryRow?.form_name || payload?.formName || payload?.form_name || null,
+          formName:
+            resolvedTemporaryMeta.formName ||
+            temporaryRow?.form_name ||
+            payload?.formName ||
+            payload?.form_name ||
+            null,
           configName:
             temporaryRow?.config_name || payload?.configName || payload?.config_name || null,
           tableName: temporaryRow?.table_name || payload?.tableName || payload?.table_name || null,
-          moduleKey: payload?.moduleKey || payload?.module_key || null,
+          moduleKey:
+            resolvedTemporaryMeta.moduleKey || payload?.moduleKey || payload?.module_key || null,
           scope: temporaryScope,
         };
         items.push({
@@ -320,6 +419,7 @@ router.get('/feed', requireAuth, feedRateLimiter, async (req, res, next) => {
               temporaryRow,
               payload,
               userEmpId,
+              redirectMeta: temporaryRedirectMeta,
             }),
             redirectMeta: temporaryRedirectMeta,
           },
