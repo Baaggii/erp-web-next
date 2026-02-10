@@ -58,6 +58,31 @@ function makeTransactionPath({ payload, notificationId }) {
   return `/?${params.toString()}`;
 }
 
+function makeTemporaryPath({ temporaryId, temporaryRow, payload, userEmpId }) {
+  const params = new URLSearchParams();
+  params.set('temporaryOpen', '1');
+  const creator = String(temporaryRow?.created_by || payload?.createdBy || '').trim().toUpperCase();
+  const scope = creator && creator === userEmpId ? 'created' : 'review';
+  params.set('temporaryScope', scope);
+  params.set('temporaryKey', String(Date.now()));
+
+  const moduleKey = String(payload?.moduleKey || payload?.module_key || '').trim();
+  let path = '/forms';
+  if (moduleKey) {
+    params.set('temporaryModule', moduleKey);
+    path = `/forms/${moduleKey.replace(/_/g, '-')}`;
+  }
+
+  const formName = temporaryRow?.form_name || payload?.formName || payload?.form_name;
+  if (formName) params.set('temporaryForm', String(formName));
+  const configName = temporaryRow?.config_name || payload?.configName || payload?.config_name;
+  if (configName) params.set('temporaryConfig', String(configName));
+  const tableName = temporaryRow?.table_name || payload?.tableName || payload?.table_name;
+  if (tableName) params.set('temporaryTable', String(tableName));
+  if (temporaryId != null) params.set('temporaryId', String(temporaryId));
+  return `${path}?${params.toString()}`;
+}
+
 function formatTransactionFormName(payload) {
   const name =
     payload?.transactionName ||
@@ -260,6 +285,7 @@ router.get('/feed', requireAuth, feedRateLimiter, async (req, res, next) => {
 
       if (isTemporaryNotification) {
         const status = detectTemporaryStatus({ row, payload, temporaryRow });
+        const fallbackTemporaryId = Number.isFinite(temporaryId) ? temporaryId : null;
         items.push({
           id: `temporary-${row.notification_id}`,
           source: 'temporary',
@@ -272,7 +298,28 @@ router.get('/feed', requireAuth, feedRateLimiter, async (req, res, next) => {
             payload?.updated_at ||
             row.created_at,
           unread: Number(row.is_read) === 0,
-          action: { type: 'none', notificationId: Number(row.notification_id) || null },
+          action: {
+            type: 'navigate',
+            notificationId: Number(row.notification_id) || null,
+            path: makeTemporaryPath({
+              temporaryId: fallbackTemporaryId,
+              temporaryRow,
+              payload,
+              userEmpId,
+            }),
+            redirectMeta: {
+              temporaryId: fallbackTemporaryId,
+              formName: temporaryRow?.form_name || payload?.formName || payload?.form_name || null,
+              configName:
+                temporaryRow?.config_name || payload?.configName || payload?.config_name || null,
+              tableName: temporaryRow?.table_name || payload?.tableName || payload?.table_name || null,
+              moduleKey: payload?.moduleKey || payload?.module_key || null,
+              scope:
+                String(temporaryRow?.created_by || payload?.createdBy || '').trim().toUpperCase() === userEmpId
+                  ? 'created'
+                  : 'review',
+            },
+          },
         });
         continue;
       }
@@ -286,7 +333,15 @@ router.get('/feed', requireAuth, feedRateLimiter, async (req, res, next) => {
         status: payload?.action || 'new',
         timestamp: payload?.updatedAt || row.created_at,
         unread: Number(row.is_read) === 0,
-        action: { type: 'none', notificationId: Number(row.notification_id) || null },
+        action: {
+          type: 'navigate',
+          notificationId: Number(row.notification_id) || null,
+          path: makeTransactionPath({ payload, notificationId: row.notification_id }),
+          redirectMeta: {
+            transactionName: payload?.transactionName || payload?.transaction_name || title,
+            transactionTable: payload?.transactionTable || payload?.transaction_table || null,
+          },
+        },
       });
     }
 
