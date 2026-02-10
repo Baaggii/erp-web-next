@@ -1018,9 +1018,8 @@ export default function TransactionNotificationDropdown() {
           let targetPath = actionPath;
 
           if (!targetPath && isTransaction) {
-            const groupKey = encodeURIComponent(
-              item?.action?.redirectMeta?.transactionName || item?.title || 'Transaction',
-            );
+            const groupKey =
+              item?.action?.redirectMeta?.transactionName || item?.title || 'Transaction';
             const itemId = String(item?.id || item?.action?.notificationId || '').trim();
             const params = new URLSearchParams({
               tab: 'activity',
