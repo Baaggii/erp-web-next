@@ -260,7 +260,7 @@ function getTemporaryTimestamp(entry) {
 export default function TransactionNotificationDropdown() {
   const { notifications, unreadCount, markRead } = useTransactionNotifications();
   const { user, session } = useAuth();
-  const { workflows, markWorkflowSeen, temporary } = usePendingRequests();
+  const { workflows, markWorkflowSeen, temporary, notificationStatusTotals } = usePendingRequests();
   const [open, setOpen] = useState(false);
   const [formEntries, setFormEntries] = useState([]);
   const [formsLoaded, setFormsLoaded] = useState(false);
@@ -675,10 +675,12 @@ export default function TransactionNotificationDropdown() {
   useEffect(() => {
     if (USE_UNIFIED_FEED || !open) return () => {};
     let cancelled = false;
+    setInitialTemporaryLoaded(false);
     const loadTemporary = async () => {
       setTemporaryState((prev) => ({ ...prev, loading: true, error: '' }));
       if (typeof temporary?.fetchScopeEntries !== 'function') {
         setTemporaryState({ review: [], created: [], loading: false, error: '' });
+        setInitialTemporaryLoaded(true);
         return;
       }
       try {
@@ -699,6 +701,7 @@ export default function TransactionNotificationDropdown() {
           loading: false,
           error: '',
         });
+        setInitialTemporaryLoaded(true);
       } catch {
         if (!cancelled) {
           setTemporaryState({
@@ -707,6 +710,7 @@ export default function TransactionNotificationDropdown() {
             loading: false,
             error: 'Failed to load temporary transactions',
           });
+          setInitialTemporaryLoaded(true);
         }
       }
     };
@@ -998,7 +1002,7 @@ export default function TransactionNotificationDropdown() {
         onClick={() => setOpen((prev) => !prev)}
       >
         <span aria-hidden="true">🔔</span>
-        {unreadCount > 0 && <span style={styles.badge}>{unreadCount}</span>}
+        {aggregatedUnreadCount > 0 && <span style={styles.badge}>{aggregatedUnreadCount}</span>}
       </button>
       {open && (
         <div style={styles.dropdown}>
