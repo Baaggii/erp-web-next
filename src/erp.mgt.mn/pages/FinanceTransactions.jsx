@@ -807,12 +807,23 @@ useEffect(() => {
       setManualParams({});
       return;
     }
+    const controller = new AbortController();
     fetch(`/api/procedures/${encodeURIComponent(selectedProc)}/params`, {
       credentials: 'include',
+      skipLoader: true,
+      signal: controller.signal,
     })
       .then((res) => (res.ok ? res.json() : { parameters: [] }))
       .then((data) => setProcParams(data.parameters || []))
-      .catch(() => setProcParams([]));
+      .catch(() => {
+        if (!controller.signal.aborted) {
+          setProcParams([]);
+        }
+      });
+
+    return () => {
+      controller.abort();
+    };
   }, [selectedProc]);
 
   useEffect(() => {
