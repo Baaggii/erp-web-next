@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 global.document = { createElement: () => ({}) };
 
 const listeners = {};
+const dispatchedEvents = [];
 
 global.window = {
   __activeTabKey: 'global',
@@ -14,6 +15,7 @@ global.window = {
     listeners[type] = (listeners[type] || []).filter((f) => f !== fn);
   },
   dispatchEvent: (evt) => {
+    dispatchedEvents.push(evt);
     (listeners[evt.type] || []).forEach((fn) => fn(evt));
   },
 };
@@ -65,6 +67,17 @@ if (!haveReact) {
       value.openTab({ key: '/foo', label: 'Foo' });
     });
     assert.deepEqual(value.tabs.map((t) => t.key), ['/foo']);
+
+
+    act(() => {
+      value.openTab({ key: '/bar', label: 'Bar' });
+    });
+    act(() => {
+      value.closeTab('/foo');
+    });
+    const clearEvents = dispatchedEvents.filter((evt) => evt.type === 'loading:clear');
+    assert.ok(clearEvents.some((evt) => evt.detail?.key === '/foo'));
+    assert.ok(clearEvents.some((evt) => evt.detail?.key === '/bar'));
 
     act(() => {
       window.dispatchEvent({ type: 'auth:logout' });

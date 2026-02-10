@@ -809,6 +809,7 @@ useEffect(() => {
     }
     fetch(`/api/procedures/${encodeURIComponent(selectedProc)}/params`, {
       credentials: 'include',
+      skipLoader: true,
     })
       .then((res) => (res.ok ? res.json() : { parameters: [] }))
       .then((data) => setProcParams(data.parameters || []))
