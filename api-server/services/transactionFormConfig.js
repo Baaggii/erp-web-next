@@ -1117,6 +1117,8 @@ export async function setFormConfig(
     notificationDashboardFields = [],
     notificationPhoneFields = [],
     notificationEmailFields = [],
+    notificationRedirectTab = '',
+    temporaryKeepFields = [],
     procedures = [],
     temporaryProcedures = [],
     allowDirectPost,
@@ -1204,6 +1206,11 @@ export async function setFormConfig(
     notificationDashboardFields: arrify(notificationDashboardFields),
     notificationPhoneFields: arrify(notificationPhoneFields),
     notificationEmailFields: arrify(notificationEmailFields),
+    notificationRedirectTab:
+      typeof notificationRedirectTab === 'string'
+        ? notificationRedirectTab.trim()
+        : '',
+    temporaryKeepFields: arrify(temporaryKeepFields),
     moduleKey: parentModuleKey,
     moduleLabel: moduleLabel || undefined,
     allowedBranches: ab,
