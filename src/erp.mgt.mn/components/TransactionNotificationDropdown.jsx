@@ -27,6 +27,8 @@ const DEFAULT_PLAN_NOTIFICATION_FIELDS = ['is_plan', 'is_plan_completion'];
 const DEFAULT_PLAN_NOTIFICATION_VALUES = ['1'];
 const DEFAULT_DUTY_NOTIFICATION_FIELDS = [];
 const DEFAULT_DUTY_NOTIFICATION_VALUES = ['1'];
+const NOTIFICATION_PAGE_SIZE = 20;
+const USE_UNIFIED_NOTIFICATION_FEED = true;
 
 function normalizeText(value) {
   if (value === undefined || value === null) return '';
@@ -260,6 +262,11 @@ export default function TransactionNotificationDropdown() {
   const { user, session } = useAuth();
   const { workflows, markWorkflowSeen, temporary } = usePendingRequests();
   const [open, setOpen] = useState(false);
+  const [hydratingFeed, setHydratingFeed] = useState(false);
+  const [visibleCount, setVisibleCount] = useState(NOTIFICATION_PAGE_SIZE);
+  const [feedItems, setFeedItems] = useState([]);
+  const [feedCursor, setFeedCursor] = useState(null);
+  const [feedLoading, setFeedLoading] = useState(false);
   const [formEntries, setFormEntries] = useState([]);
   const [formsLoaded, setFormsLoaded] = useState(false);
   const [codeTransactions, setCodeTransactions] = useState([]);
@@ -533,7 +540,7 @@ export default function TransactionNotificationDropdown() {
   );
 
   useEffect(() => {
-    if (!open) return () => {};
+    if (!open || USE_UNIFIED_NOTIFICATION_FEED) return () => {};
     let cancelled = false;
     const incomingPending = workflows?.reportApproval?.incoming?.pending?.count || 0;
     const outgoingPending = workflows?.reportApproval?.outgoing?.pending?.count || 0;
@@ -597,7 +604,7 @@ export default function TransactionNotificationDropdown() {
   ]);
 
   useEffect(() => {
-    if (!open) return () => {};
+    if (!open || USE_UNIFIED_NOTIFICATION_FEED) return () => {};
     let cancelled = false;
     const incomingPending = workflows?.changeRequests?.incoming?.pending?.count || 0;
     const outgoingPending = workflows?.changeRequests?.outgoing?.pending?.count || 0;
@@ -661,7 +668,7 @@ export default function TransactionNotificationDropdown() {
   ]);
 
   useEffect(() => {
-    if (!open) return () => {};
+    if (!open || USE_UNIFIED_NOTIFICATION_FEED) return () => {};
     let cancelled = false;
     const loadTemporary = async () => {
       setTemporaryState((prev) => ({ ...prev, loading: true, error: '' }));
@@ -903,6 +910,37 @@ export default function TransactionNotificationDropdown() {
     }
   }, [formsLoaded, loadFormConfigs, open]);
 
+  const loadUnifiedFeed = useCallback(
+    async ({ append = false, cursor = null } = {}) => {
+      if (!USE_UNIFIED_NOTIFICATION_FEED) return;
+      setFeedLoading(true);
+      try {
+        const params = new URLSearchParams({ limit: String(NOTIFICATION_PAGE_SIZE) });
+        if (cursor) params.set('cursor', cursor);
+        const res = await fetch(`/api/notifications/feed?${params.toString()}`, {
+          credentials: 'include',
+          skipLoader: true,
+          skipErrorToast: true,
+        });
+        const data = res.ok ? await res.json().catch(() => ({})) : {};
+        const nextItems = Array.isArray(data?.items) ? data.items : [];
+        setFeedItems((prev) => (append ? prev.concat(nextItems) : nextItems));
+        setFeedCursor(typeof data?.nextCursor === 'string' && data.nextCursor ? data.nextCursor : null);
+      } catch {
+        if (!append) setFeedItems([]);
+        setFeedCursor(null);
+      } finally {
+        setFeedLoading(false);
+      }
+    },
+    [],
+  );
+
+  useEffect(() => {
+    if (!open || !USE_UNIFIED_NOTIFICATION_FEED) return;
+    loadUnifiedFeed({ append: false, cursor: null });
+  }, [loadUnifiedFeed, open]);
+
   const combinedItems = useMemo(() => {
     const items = [];
     sortedNotifications.forEach((item) => {
@@ -992,7 +1030,85 @@ export default function TransactionNotificationDropdown() {
     temporaryItems,
   ]);
 
-  const hasAnyNotifications = combinedItems.length > 0;
+  const unifiedItems = useMemo(() => {
+    if (!USE_UNIFIED_NOTIFICATION_FEED) return [];
+    return feedItems.map((item) => ({
+      key: item.id,
+      timestamp: item.timestamp || 0,
+      isUnread: Boolean(item.unread),
+      title: item.title || 'Notification',
+      badge: { label: item.status || 'Update', accent: item.badgeAccent || '#2563eb' },
+      preview: item.preview || '',
+      dateTime: formatDisplayTimestamp(item.timestamp || 0),
+      onClick: () => {
+        const action = item?.action || {};
+        if (action.type === 'transaction' && action.transaction) {
+          handleNotificationClick(action.transaction);
+          return;
+        }
+        if (action.type === 'request' && action.request) {
+          openRequest(action.request, action.tab || 'outgoing', action.status || 'pending');
+          return;
+        }
+        if (action.type === 'temporary') {
+          openTemporary(action.scope || 'created', action.entry || null);
+          return;
+        }
+      },
+    }));
+  }, [feedItems, handleNotificationClick, openRequest, openTemporary]);
+
+  const activeItems = USE_UNIFIED_NOTIFICATION_FEED ? unifiedItems : combinedItems;
+  const hasAnyNotifications = activeItems.length > 0;
+  const isDropdownLoading = USE_UNIFIED_NOTIFICATION_FEED
+    ? feedLoading
+    : hydratingFeed && (reportState.loading || changeState.loading || temporaryState.loading);
+  const visibleItems = useMemo(
+    () => activeItems.slice(0, visibleCount),
+    [activeItems, visibleCount],
+  );
+
+  useEffect(() => {
+    if (!open) {
+      setHydratingFeed(false);
+      return;
+    }
+    setHydratingFeed(true);
+    setVisibleCount(NOTIFICATION_PAGE_SIZE);
+  }, [open]);
+
+  useEffect(() => {
+    if (!open || !hydratingFeed) return;
+    if (!reportState.loading && !changeState.loading && !temporaryState.loading) {
+      setHydratingFeed(false);
+    }
+  }, [
+    changeState.loading,
+    hydratingFeed,
+    open,
+    reportState.loading,
+    temporaryState.loading,
+  ]);
+
+  const handleListScroll = useCallback(
+    (event) => {
+      if (isDropdownLoading) return;
+      const target = event.currentTarget;
+      if (!target) return;
+      const distanceFromBottom = target.scrollHeight - target.scrollTop - target.clientHeight;
+      if (distanceFromBottom > 96) return;
+      if (USE_UNIFIED_NOTIFICATION_FEED) {
+        if (feedCursor && !feedLoading) {
+          loadUnifiedFeed({ append: true, cursor: feedCursor });
+        }
+      }
+      setVisibleCount((prev) => {
+        if (prev >= activeItems.length) return prev;
+        return Math.min(prev + NOTIFICATION_PAGE_SIZE, activeItems.length);
+      });
+    },
+    [activeItems.length, feedCursor, feedLoading, isDropdownLoading, loadUnifiedFeed],
+  );
 
   return (
     <div style={styles.wrapper} ref={containerRef}>
@@ -1006,11 +1122,14 @@ export default function TransactionNotificationDropdown() {
       </button>
       {open && (
         <div style={styles.dropdown}>
-          <div style={styles.list}>
-            {!hasAnyNotifications && (
+          <div style={styles.list} onScroll={handleListScroll}>
+            {isDropdownLoading && (
+              <div style={styles.empty}>Loading notifications…</div>
+            )}
+            {!isDropdownLoading && !hasAnyNotifications && (
               <div style={styles.empty}>No notifications yet</div>
             )}
-            {combinedItems.map((item) => (
+            {!isDropdownLoading && visibleItems.map((item) => (
               <button
                 key={item.key}
                 type="button"
@@ -1029,6 +1148,9 @@ export default function TransactionNotificationDropdown() {
                 )}
               </button>
             ))}
+            {!isDropdownLoading && (visibleCount < activeItems.length || Boolean(feedCursor)) && (
+              <div style={styles.loadMoreHint}>Scroll to load more…</div>
+            )}
           </div>
           <button
             type="button"
@@ -1095,6 +1217,12 @@ const styles = {
     padding: '1rem',
     color: '#64748b',
     textAlign: 'center',
+  },
+  loadMoreHint: {
+    padding: '0.2rem 0.5rem 0',
+    color: '#64748b',
+    textAlign: 'center',
+    fontSize: '0.72rem',
   },
   notificationItem: (isUnread) => ({
     width: '100%',
