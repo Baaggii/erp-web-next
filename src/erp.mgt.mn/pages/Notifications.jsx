@@ -115,7 +115,7 @@ export default function NotificationsPage() {
     review: createEmptyTemporaryScope(),
     created: createEmptyTemporaryScope(),
   });
-  const [reportApprovalsDashboardTabByProc, setReportApprovalsDashboardTabByProc] = useState({});
+  const [reportApprovalsDashboardTab, setReportApprovalsDashboardTab] = useState('audition');
 
   const hasSupervisor =
     Number(session?.senior_empid) > 0 || Number(session?.senior_plan_empid) > 0;
@@ -140,20 +140,11 @@ export default function NotificationsPage() {
       .then((res) => (res.ok ? res.json() : {}))
       .then((data) => {
         if (cancelled) return;
-        const allowedReports = data?.allowedReports && typeof data.allowedReports === 'object'
-          ? data.allowedReports
-          : {};
-        const next = Object.fromEntries(
-          Object.entries(allowedReports).map(([proc, info]) => [
-            String(proc || '').trim().toLowerCase(),
-            String(info?.reportApprovalsDashboardTab || '').trim().toLowerCase() || 'audition',
-          ]),
-        );
-        setReportApprovalsDashboardTabByProc(next);
+        setReportApprovalsDashboardTab(data?.reportApprovalsDashboardTab || 'audition');
       })
       .catch(() => {
         if (cancelled) return;
-        setReportApprovalsDashboardTabByProc({});
+        setReportApprovalsDashboardTab('audition');
       });
     return () => {
       cancelled = true;
@@ -651,10 +642,7 @@ export default function NotificationsPage() {
       }
       if (String(req?.request_type || '').trim().toLowerCase() === 'report_approval') {
         const dashboardParams = new URLSearchParams({
-          tab:
-            reportApprovalsDashboardTabByProc[
-              String(req?.table_name || '').trim().toLowerCase()
-            ] || 'audition',
+          tab: reportApprovalsDashboardTab || 'audition',
           requestType: 'report_approval',
           requestScope: tab,
           requestStatus: normalizedStatus,
@@ -665,7 +653,7 @@ export default function NotificationsPage() {
       }
       navigate(`/requests?${params.toString()}`);
     },
-    [markWorkflowSeen, navigate, reportApprovalsDashboardTabByProc],
+    [markWorkflowSeen, navigate, reportApprovalsDashboardTab],
   );
 
   const openTemporary = useCallback(

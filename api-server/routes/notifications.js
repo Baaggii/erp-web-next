@@ -3,7 +3,7 @@ import rateLimit from 'express-rate-limit';
 import { requireAuth } from '../middlewares/auth.js';
 import { pool } from '../../db/index.js';
 import { listTransactionNames } from '../services/transactionFormConfig.js';
-import { listAllowedReports } from '../services/reportAccessConfig.js';
+import { getReportApprovalsDashboardTab } from '../services/reportAccessConfig.js';
 
 const router = express.Router();
 
@@ -233,17 +233,11 @@ router.get('/feed', requireAuth, feedRateLimiter, async (req, res, next) => {
 
     let redirectMapByName = new Map();
     let redirectMapByTable = new Map();
-    let reportApprovalTabByProc = new Map();
+    let reportApprovalsDashboardTab = 'audition';
     try {
-      const { config } = await listAllowedReports(companyId);
-      reportApprovalTabByProc = new Map(
-        Object.entries(config || {}).map(([proc, info]) => [
-          String(proc || '').trim().toLowerCase(),
-          String(info?.reportApprovalsDashboardTab || '').trim().toLowerCase() || 'audition',
-        ]),
-      );
+      reportApprovalsDashboardTab = await getReportApprovalsDashboardTab(companyId);
     } catch {
-      reportApprovalTabByProc = new Map();
+      reportApprovalsDashboardTab = 'audition';
     }
 
     try {
@@ -464,7 +458,7 @@ router.get('/feed', requireAuth, feedRateLimiter, async (req, res, next) => {
             tableName: row.table_name,
             requestId: row.request_id,
             createdAt: row.created_at,
-            reportApprovalsDashboardTab: reportApprovalTabByProc.get(String(row.table_name || '').trim().toLowerCase()) || 'audition',
+            reportApprovalsDashboardTab,
           }),
         },
       });
@@ -494,7 +488,7 @@ router.get('/feed', requireAuth, feedRateLimiter, async (req, res, next) => {
             tableName: row.table_name,
             requestId: row.request_id,
             createdAt: row.created_at,
-            reportApprovalsDashboardTab: reportApprovalTabByProc.get(String(row.table_name || '').trim().toLowerCase()) || 'audition',
+            reportApprovalsDashboardTab,
           }),
         },
       });

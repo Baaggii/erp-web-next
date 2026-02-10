@@ -2,6 +2,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import { tenantConfigPath, getConfigPath } from '../utils/configPaths.js';
 
+const REPORT_APPROVAL_DASHBOARD_TAB_KEY = '_reportApprovalDashboardTab';
 const DASHBOARD_TABS = new Set(['general', 'activity', 'audition', 'plans']);
 const DEFAULT_REPORT_APPROVAL_DASHBOARD_TAB = 'audition';
 
@@ -56,14 +57,23 @@ export async function listAllowedReports(companyId = 0) {
   const { cfg, isDefault } = await readConfig(companyId);
   const result = {};
   for (const [proc, info] of Object.entries(cfg)) {
+    if (proc === REPORT_APPROVAL_DASHBOARD_TAB_KEY) continue;
     result[proc] = parseEntry(info);
   }
-  return { config: result, isDefault };
+  return {
+    config: result,
+    isDefault,
+    reportApprovalsDashboardTab: parseDashboardTab(cfg[REPORT_APPROVAL_DASHBOARD_TAB_KEY]),
+  };
 }
 
 export async function getAllowedReport(proc, companyId = 0) {
   const { cfg, isDefault } = await readConfig(companyId);
-  return { config: parseEntry(cfg[proc]), isDefault };
+  return {
+    config: parseEntry(cfg[proc]),
+    isDefault,
+    reportApprovalsDashboardTab: parseDashboardTab(cfg[REPORT_APPROVAL_DASHBOARD_TAB_KEY]),
+  };
 }
 
 export async function setAllowedReport(proc, info, companyId = 0) {
@@ -81,3 +91,14 @@ export async function removeAllowedReport(proc, companyId = 0) {
   }
 }
 
+export async function getReportApprovalsDashboardTab(companyId = 0) {
+  const { cfg } = await readConfig(companyId);
+  return parseDashboardTab(cfg[REPORT_APPROVAL_DASHBOARD_TAB_KEY]);
+}
+
+export async function setReportApprovalsDashboardTab(tab, companyId = 0) {
+  const { cfg } = await readConfig(companyId);
+  cfg[REPORT_APPROVAL_DASHBOARD_TAB_KEY] = parseDashboardTab(tab);
+  await writeConfig(cfg, companyId);
+  return cfg[REPORT_APPROVAL_DASHBOARD_TAB_KEY];
+}

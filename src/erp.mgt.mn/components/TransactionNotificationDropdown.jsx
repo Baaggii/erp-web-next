@@ -288,7 +288,7 @@ export default function TransactionNotificationDropdown() {
   const [open, setOpen] = useState(false);
   const [formEntries, setFormEntries] = useState([]);
   const [formsLoaded, setFormsLoaded] = useState(false);
-  const [reportApprovalsDashboardTabByProc, setReportApprovalsDashboardTabByProc] = useState({});
+  const [reportApprovalsDashboardTab, setReportApprovalsDashboardTab] = useState('audition');
   const [codeTransactions, setCodeTransactions] = useState([]);
   const [reportState, setReportState] = useState({
     incoming: [],
@@ -778,10 +778,7 @@ export default function TransactionNotificationDropdown() {
       }
       if (String(req?.request_type || '').trim().toLowerCase() === 'report_approval') {
         const dashboardParams = new URLSearchParams({
-          tab:
-            reportApprovalsDashboardTabByProc[
-              String(req?.table_name || '').trim().toLowerCase()
-            ] || 'audition',
+          tab: reportApprovalsDashboardTab || 'audition',
           requestType: 'report_approval',
           requestScope: tab,
           requestStatus: normalizedStatus,
@@ -792,7 +789,7 @@ export default function TransactionNotificationDropdown() {
       }
       navigate(`/requests?${params.toString()}`);
     },
-    [markWorkflowSeen, navigate, reportApprovalsDashboardTabByProc],
+    [markWorkflowSeen, navigate, reportApprovalsDashboardTab],
   );
 
   const openTemporary = useCallback(
@@ -829,6 +826,52 @@ export default function TransactionNotificationDropdown() {
       navigate(`${path}?${params.toString()}`);
     },
     [navigate, temporary?.markScopeSeen],
+  );
+
+  const resolveTemporaryFeedEntry = useCallback(
+    (item) => {
+      const redirectMeta = item?.action?.redirectMeta || {};
+      const fallbackName = String(item?.title || '').trim();
+      const normalizedName = normalizeText(
+        redirectMeta.formName || redirectMeta.configName || redirectMeta.transactionName || fallbackName,
+      );
+      const normalizedTable = normalizeText(redirectMeta.tableName || redirectMeta.transactionTable || '');
+      let resolvedFormEntry = null;
+      if (normalizedName && Array.isArray(formEntries) && formEntries.length > 0) {
+        resolvedFormEntry = formEntries.find(([name]) => normalizeText(name) === normalizedName) || null;
+      }
+      if (!resolvedFormEntry && normalizedTable && Array.isArray(formEntries) && formEntries.length > 0) {
+        resolvedFormEntry =
+          formEntries.find(([, info]) => {
+            const table = normalizeText(info?.table ?? info?.tableName ?? info?.table_name);
+            return table && table === normalizedTable;
+          }) || null;
+      }
+      const resolvedFormName = resolvedFormEntry?.[0] || '';
+      const resolvedFormInfo = resolvedFormEntry?.[1] || {};
+      const normalizedConfigName = String(redirectMeta.configName || resolvedFormName || '').trim();
+      const normalizedFormName = String(
+        redirectMeta.formName || resolvedFormName || fallbackName || normalizedConfigName,
+      ).trim();
+      const resolvedTableName = String(
+        redirectMeta.tableName || redirectMeta.transactionTable || resolvedFormInfo?.tableName || resolvedFormInfo?.table || '',
+      ).trim();
+
+      return {
+        id: redirectMeta.temporaryId ?? redirectMeta.id ?? null,
+        temporary_id: redirectMeta.temporaryId ?? redirectMeta.id ?? null,
+        moduleKey: String(
+          redirectMeta.moduleKey || redirectMeta.module || resolvedFormInfo?.moduleKey || resolvedFormInfo?.module || '',
+        ).trim(),
+        formName: normalizedFormName,
+        form_name: normalizedFormName,
+        configName: normalizedConfigName,
+        config_name: normalizedConfigName,
+        tableName: resolvedTableName,
+        table_name: resolvedTableName,
+      };
+    },
+    [formEntries],
   );
 
   const reportItems = useMemo(() => {
@@ -969,20 +1012,11 @@ export default function TransactionNotificationDropdown() {
       .then((res) => (res.ok ? res.json() : {}))
       .then((data) => {
         if (cancelled) return;
-        const allowedReports = data?.allowedReports && typeof data.allowedReports === 'object'
-          ? data.allowedReports
-          : {};
-        const next = Object.fromEntries(
-          Object.entries(allowedReports).map(([proc, info]) => [
-            String(proc || '').trim().toLowerCase(),
-            String(info?.reportApprovalsDashboardTab || '').trim().toLowerCase() || 'audition',
-          ]),
-        );
-        setReportApprovalsDashboardTabByProc(next);
+        setReportApprovalsDashboardTab(data?.reportApprovalsDashboardTab || 'audition');
       })
       .catch(() => {
         if (cancelled) return;
-        setReportApprovalsDashboardTabByProc({});
+        setReportApprovalsDashboardTab('audition');
       });
     return () => {
       cancelled = true;
@@ -1094,40 +1128,8 @@ export default function TransactionNotificationDropdown() {
           if (!targetPath && isTemporary) {
             const redirectMeta = item?.action?.redirectMeta || {};
             const scope = String(redirectMeta.scope || '').trim();
-            if (scope) params.set('temporaryScope', scope);
-            params.set('temporaryKey', String(Date.now()));
-
-            const formLookup = {
-              transactionName:
-                String(redirectMeta.formName || redirectMeta.configName || item?.title || '').trim(),
-              transactionTable: String(redirectMeta.tableName || '').trim(),
-            };
-            const resolvedFormEntry = resolveFormEntry(formLookup);
-            const resolvedFormName = resolvedFormEntry?.[0] || '';
-            const resolvedFormInfo = resolvedFormEntry?.[1] || {};
-
-            const moduleKey = String(
-              redirectMeta.moduleKey || resolvedFormInfo?.moduleKey || resolvedFormInfo?.module || '',
-            ).trim();
-            let basePath = '/forms';
-            if (moduleKey) {
-              params.set('temporaryModule', moduleKey);
-              basePath = `/forms/${moduleKey.replace(/_/g, '-')}`;
-            }
-
-            const formName = String(redirectMeta.formName || resolvedFormName || item?.title || '').trim();
-            if (formName) params.set('temporaryForm', formName);
-            const configName = String(redirectMeta.configName || '').trim();
-            if (configName) params.set('temporaryConfig', configName);
-            const tableName = String(redirectMeta.tableName || '').trim();
-            if (tableName) params.set('temporaryTable', tableName);
-            if (redirectMeta.temporaryId != null) {
-              params.set('temporaryId', String(redirectMeta.temporaryId));
-            }
-            if (moduleKey && formName) {
-              params.set(`name_${moduleKey}`, formName);
-            }
-            targetPath = `${basePath}?${params.toString()}`;
+            openTemporary(scope, resolveTemporaryFeedEntry(item));
+            return;
           }
 
           if (targetPath) {
@@ -1140,7 +1142,14 @@ export default function TransactionNotificationDropdown() {
         },
       };
     });
-  }, [feedState.items, markRead, navigate, resolveFormEntry, resolveNotificationTab]);
+  }, [
+    feedState.items,
+    markRead,
+    navigate,
+    openTemporary,
+    resolveNotificationTab,
+    resolveTemporaryFeedEntry,
+  ]);
 
   const hasAnyNotifications = combinedItems.length > 0;
   const aggregatedUnreadCount = Number(unreadCount) || 0;

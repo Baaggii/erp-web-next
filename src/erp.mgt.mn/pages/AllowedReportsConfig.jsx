@@ -210,12 +210,14 @@ export default function AllowedReportsConfig() {
         setReports(data.allowedReports || {});
         setIsDefault(!!data.isDefault);
         setMissingProcedures(data.missingProcedures || []);
+        setReportApprovalsDashboardTab(data.reportApprovalsDashboardTab || 'audition');
         setIsLoading(false);
       })
       .catch(() => {
         setReports({});
         setIsDefault(true);
         setMissingProcedures([]);
+        setReportApprovalsDashboardTab('audition');
         setIsLoading(false);
       });
 
@@ -302,6 +304,7 @@ export default function AllowedReportsConfig() {
           return;
         }
         setMissingProcedures([]);
+        setReportApprovalsDashboardTab('audition');
         refreshModules();
         addToast('Removed missing procedures', 'success');
       })
@@ -567,6 +570,22 @@ export default function AllowedReportsConfig() {
   }
 
 
+  async function handleSaveSettings() {
+    try {
+      const res = await fetch('/api/report_access/settings', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ reportApprovalsDashboardTab }),
+      });
+      if (!res.ok) throw new Error('Failed to save settings');
+      const data = await res.json().catch(() => ({}));
+      setReportApprovalsDashboardTab(data.reportApprovalsDashboardTab || 'audition');
+      addToast('Settings saved', 'success');
+    } catch (err) {
+      addToast(err.message || 'Failed to save settings', 'error');
+    }
+  }
 
   async function handleDelete(p) {
     if (!window.confirm('Delete configuration?')) return;
@@ -1062,6 +1081,9 @@ export default function AllowedReportsConfig() {
                 <option value="plans">Plans</option>
               </select>
             </label>
+            <button type="button" onClick={handleSaveSettings}>
+              Save tab
+            </button>
           </div>
 
           <div>
