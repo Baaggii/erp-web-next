@@ -38,6 +38,7 @@ import posApiEndpointRoutes from "./routes/posapi_endpoints.js";
 import posApiProxyRoutes from "./routes/posapi_proxy.js";
 import cncProcessingRoutes from "./routes/cnc_processing.js";
 import reportRoutes from "./routes/report.js";
+import dashboardSectionRoutes from "./routes/dashboard_sections.js";
 
 // Polyfill for __dirname in ES modules
 const __filename = fileURLToPath(import.meta.url);
@@ -126,6 +127,7 @@ app.use("/api/report_snapshot_artifacts", snapshotArtifactRoutes);
 app.use("/api/posapi/endpoints", posApiEndpointRoutes);
 app.use("/api/posapi/proxy", posApiProxyRoutes);
 app.use("/api/cnc_processing", cncProcessingRoutes);
+app.use("/api/dashboard_sections", dashboardSectionRoutes);
 
 // Serve static React build and fallback to index.html
 // NOTE: adjust this path to where your SPA build actually lives.
