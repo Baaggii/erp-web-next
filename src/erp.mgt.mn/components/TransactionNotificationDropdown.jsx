@@ -27,6 +27,9 @@ const DEFAULT_PLAN_NOTIFICATION_FIELDS = ['is_plan', 'is_plan_completion'];
 const DEFAULT_PLAN_NOTIFICATION_VALUES = ['1'];
 const DEFAULT_DUTY_NOTIFICATION_FIELDS = [];
 const DEFAULT_DUTY_NOTIFICATION_VALUES = ['1'];
+const INITIAL_VISIBLE_NOTIFICATIONS = 20;
+const NOTIFICATION_CHUNK_SIZE = 20;
+const LOAD_MORE_THRESHOLD_PX = 40;
 
 function normalizeText(value) {
   if (value === undefined || value === null) return '';
@@ -283,7 +286,11 @@ export default function TransactionNotificationDropdown() {
     loading: false,
     error: '',
   });
+  const [visibleCount, setVisibleCount] = useState(INITIAL_VISIBLE_NOTIFICATIONS);
+  const [frozenItems, setFrozenItems] = useState([]);
+  const [pendingItems, setPendingItems] = useState([]);
   const containerRef = useRef(null);
+  const listRef = useRef(null);
   const navigate = useNavigate();
   const generalConfig = useGeneralConfig();
   const dashboardTabs = useMemo(
@@ -992,7 +999,83 @@ export default function TransactionNotificationDropdown() {
     temporaryItems,
   ]);
 
-  const hasAnyNotifications = combinedItems.length > 0;
+  const frozenItemKeys = useMemo(
+    () => new Set(frozenItems.map((item) => item.key)),
+    [frozenItems],
+  );
+  const pendingItemKeys = useMemo(
+    () => new Set(pendingItems.map((item) => item.key)),
+    [pendingItems],
+  );
+
+  useEffect(() => {
+    if (!open) {
+      setPendingItems([]);
+      setFrozenItems([]);
+      setVisibleCount(INITIAL_VISIBLE_NOTIFICATIONS);
+      return;
+    }
+    setFrozenItems(combinedItems);
+    setPendingItems([]);
+    setVisibleCount(Math.min(INITIAL_VISIBLE_NOTIFICATIONS, combinedItems.length));
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    if (frozenItems.length === 0 && combinedItems.length > 0) {
+      setFrozenItems(combinedItems);
+      setVisibleCount(Math.min(INITIAL_VISIBLE_NOTIFICATIONS, combinedItems.length));
+      return;
+    }
+    if (frozenItems.length === 0) return;
+    const incomingItems = combinedItems.filter(
+      (item) => !frozenItemKeys.has(item.key) && !pendingItemKeys.has(item.key),
+    );
+    if (!incomingItems.length) return;
+    setPendingItems((prev) => [...incomingItems, ...prev]);
+  }, [combinedItems, frozenItemKeys, frozenItems.length, open, pendingItemKeys]);
+
+  const renderedItems = open ? frozenItems : combinedItems;
+  const hasAnyNotifications = renderedItems.length > 0;
+  const visibleItems = useMemo(
+    () => renderedItems.slice(0, visibleCount),
+    [renderedItems, visibleCount],
+  );
+
+  const loadNextChunk = useCallback(() => {
+    setVisibleCount((prev) =>
+      Math.min(renderedItems.length, prev + NOTIFICATION_CHUNK_SIZE),
+    );
+  }, [renderedItems.length]);
+
+  const handleListScroll = useCallback(
+    (event) => {
+      const target = event.currentTarget;
+      const distanceToBottom = target.scrollHeight - target.scrollTop - target.clientHeight;
+      if (distanceToBottom <= LOAD_MORE_THRESHOLD_PX && visibleCount < renderedItems.length) {
+        loadNextChunk();
+      }
+    },
+    [loadNextChunk, renderedItems.length, visibleCount],
+  );
+
+  const applyPendingItems = useCallback(() => {
+    if (pendingItems.length === 0) return;
+    setFrozenItems((prev) => {
+      const merged = [...pendingItems, ...prev];
+      const seen = new Set();
+      return merged.filter((item) => {
+        if (seen.has(item.key)) return false;
+        seen.add(item.key);
+        return true;
+      });
+    });
+    setVisibleCount((prev) =>
+      Math.min(renderedItems.length + pendingItems.length, prev + pendingItems.length),
+    );
+    setPendingItems([]);
+    listRef.current?.scrollTo?.({ top: 0, behavior: 'smooth' });
+  }, [pendingItems, renderedItems.length]);
 
   return (
     <div style={styles.wrapper} ref={containerRef}>
@@ -1006,11 +1089,20 @@ export default function TransactionNotificationDropdown() {
       </button>
       {open && (
         <div style={styles.dropdown}>
-          <div style={styles.list}>
+          <div style={styles.list} ref={listRef} onScroll={handleListScroll}>
+            {pendingItems.length > 0 && (
+              <button
+                type="button"
+                style={styles.pendingBanner}
+                onClick={applyPendingItems}
+              >
+                {pendingItems.length} new notifications · Show latest
+              </button>
+            )}
             {!hasAnyNotifications && (
               <div style={styles.empty}>No notifications yet</div>
             )}
-            {combinedItems.map((item) => (
+            {visibleItems.map((item) => (
               <button
                 key={item.key}
                 type="button"
@@ -1029,6 +1121,15 @@ export default function TransactionNotificationDropdown() {
                 )}
               </button>
             ))}
+            {visibleCount < renderedItems.length && (
+              <button
+                type="button"
+                style={styles.loadMoreButton}
+                onClick={loadNextChunk}
+              >
+                Load more notifications
+              </button>
+            )}
           </div>
           <button
             type="button"
@@ -1096,6 +1197,16 @@ const styles = {
     color: '#64748b',
     textAlign: 'center',
   },
+  pendingBanner: {
+    width: '100%',
+    border: '1px solid #bfdbfe',
+    background: '#eff6ff',
+    color: '#1d4ed8',
+    borderRadius: '10px',
+    padding: '0.45rem 0.6rem',
+    fontWeight: 600,
+    cursor: 'pointer',
+  },
   notificationItem: (isUnread) => ({
     width: '100%',
     textAlign: 'left',
@@ -1132,6 +1243,16 @@ const styles = {
   notificationMeta: {
     fontSize: '0.72rem',
     color: '#64748b',
+  },
+  loadMoreButton: {
+    width: '100%',
+    border: '1px dashed #cbd5e1',
+    borderRadius: '10px',
+    background: '#fff',
+    color: '#334155',
+    padding: '0.5rem 0.6rem',
+    fontSize: '0.82rem',
+    cursor: 'pointer',
   },
   footer: {
     width: '100%',
