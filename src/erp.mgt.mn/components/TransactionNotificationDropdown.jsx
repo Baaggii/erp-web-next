@@ -1018,36 +1018,10 @@ export default function TransactionNotificationDropdown() {
           const actionPath = String(item?.action?.path || '').trim();
           let targetPath = actionPath;
 
-          if (isTransaction) {
-            const redirectMeta = item?.action?.redirectMeta || {};
-            const formItem = {
-              transactionName:
-                redirectMeta.transactionName || item?.transactionName || item?.title || 'Transaction',
-              transactionTable: redirectMeta.transactionTable || item?.transactionTable || '',
-            };
-            const formInfo = resolveFormInfo(formItem);
-            const notifyFieldsRaw =
-              formInfo?.notifyFields ?? formInfo?.notify_fields ?? [];
-            const notifyFields = Array.isArray(notifyFieldsRaw)
-              ? notifyFieldsRaw.map((field) => String(field).trim()).filter(Boolean)
-              : [];
-            const redirectTab = String(
-              formInfo?.notificationRedirectTab ?? formInfo?.notification_redirect_tab ?? '',
-            ).trim();
-            const defaultTab =
-              isPlanNotificationItem(formItem) || isDutyNotificationItem(formItem)
-                ? 'plans'
-                : 'activity';
-            const tab =
-              notifyFields.length > 0 && dashboardTabs.has(redirectTab)
-                ? redirectTab
-                : defaultTab;
-            const groupKey = formItem.transactionName || 'Transaction';
-            const itemId = String(
-              item?.action?.notificationId || item?.id || '',
-            )
-              .trim()
-              .replace(/^transaction-/, '');
+          if (!targetPath && isTransaction) {
+            const groupKey =
+              item?.action?.redirectMeta?.transactionName || item?.title || 'Transaction';
+            const itemId = String(item?.id || item?.action?.notificationId || '').trim();
             const params = new URLSearchParams({
               tab,
               notifyGroup: groupKey,
