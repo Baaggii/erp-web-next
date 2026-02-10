@@ -6,10 +6,6 @@ export function dispatchEnd(key) {
   window.dispatchEvent(new CustomEvent('loading:end', { detail: { key } }));
 }
 
-export function dispatchClear(key) {
-  window.dispatchEvent(new CustomEvent('loading:clear', { detail: { key } }));
-}
-
 export function currentLoaderKey() {
   return window.__activeTabKey || 'global';
 }
