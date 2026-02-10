@@ -2,6 +2,9 @@ import fs from 'fs/promises';
 import path from 'path';
 import { tenantConfigPath, getConfigPath } from '../utils/configPaths.js';
 
+const DASHBOARD_TABS = new Set(['general', 'activity', 'audition', 'plans']);
+const DEFAULT_REPORT_APPROVAL_DASHBOARD_TAB = 'audition';
+
 async function readConfig(companyId = 0) {
   const { path: filePath, isDefault } = await getConfigPath(
     'report_management/allowedReports.json',
@@ -38,7 +41,15 @@ function parseEntry(raw = {}) {
     permissions: Array.isArray(raw.permissions)
       ? raw.permissions.map((v) => Number(v)).filter((v) => !Number.isNaN(v))
       : [],
+    reportApprovalsDashboardTab: parseDashboardTab(raw.reportApprovalsDashboardTab),
   };
+}
+
+function parseDashboardTab(value) {
+  const normalized = String(value || '').trim().toLowerCase();
+  return DASHBOARD_TABS.has(normalized)
+    ? normalized
+    : DEFAULT_REPORT_APPROVAL_DASHBOARD_TAB;
 }
 
 export async function listAllowedReports(companyId = 0) {
@@ -69,3 +80,4 @@ export async function removeAllowedReport(proc, companyId = 0) {
     await writeConfig(cfg, companyId);
   }
 }
+

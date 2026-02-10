@@ -288,6 +288,7 @@ export default function TransactionNotificationDropdown() {
   const [open, setOpen] = useState(false);
   const [formEntries, setFormEntries] = useState([]);
   const [formsLoaded, setFormsLoaded] = useState(false);
+  const [reportApprovalsDashboardTabByProc, setReportApprovalsDashboardTabByProc] = useState({});
   const [codeTransactions, setCodeTransactions] = useState([]);
   const [reportState, setReportState] = useState({
     incoming: [],
@@ -775,9 +776,23 @@ export default function TransactionNotificationDropdown() {
         const scope = tab === 'incoming' ? 'incoming' : 'outgoing';
         markWorkflowSeen(workflowKey, scope, [normalizedStatus]);
       }
+      if (String(req?.request_type || '').trim().toLowerCase() === 'report_approval') {
+        const dashboardParams = new URLSearchParams({
+          tab:
+            reportApprovalsDashboardTabByProc[
+              String(req?.table_name || '').trim().toLowerCase()
+            ] || 'audition',
+          requestType: 'report_approval',
+          requestScope: tab,
+          requestStatus: normalizedStatus,
+          requestId: String(req?.request_id || ''),
+        });
+        navigate(`/?${dashboardParams.toString()}`);
+        return;
+      }
       navigate(`/requests?${params.toString()}`);
     },
-    [markWorkflowSeen, navigate],
+    [markWorkflowSeen, navigate, reportApprovalsDashboardTabByProc],
   );
 
   const openTemporary = useCallback(
@@ -942,6 +957,37 @@ export default function TransactionNotificationDropdown() {
       setFormsLoaded(true);
     }
   }, [formsLoaded]);
+
+
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    fetch('/api/report_access', {
+      credentials: 'include',
+      skipLoader: true,
+    })
+      .then((res) => (res.ok ? res.json() : {}))
+      .then((data) => {
+        if (cancelled) return;
+        const allowedReports = data?.allowedReports && typeof data.allowedReports === 'object'
+          ? data.allowedReports
+          : {};
+        const next = Object.fromEntries(
+          Object.entries(allowedReports).map(([proc, info]) => [
+            String(proc || '').trim().toLowerCase(),
+            String(info?.reportApprovalsDashboardTab || '').trim().toLowerCase() || 'audition',
+          ]),
+        );
+        setReportApprovalsDashboardTabByProc(next);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setReportApprovalsDashboardTabByProc({});
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;

@@ -57,6 +57,7 @@ export default function AllowedReportsConfig() {
   const [positions, setPositions] = useState([]);
   const [permissions, setPermissions] = useState([]);
   const [isDefault, setIsDefault] = useState(false);
+  const [reportApprovalsDashboardTab, setReportApprovalsDashboardTab] = useState('audition');
   const [procOptions, setProcOptions] = useState([]);
   const [missingProcedures, setMissingProcedures] = useState([]);
   const [branchRows, setBranchRows] = useState([]);
@@ -513,6 +514,7 @@ export default function AllowedReportsConfig() {
     setWorkplaces((info.workplaces || []).map(String));
     setPositions((info.positions || []).map(String));
     setPermissions((info.permissions || []).map(String));
+    setReportApprovalsDashboardTab(info.reportApprovalsDashboardTab || 'audition');
   }
 
   function handleNew() {
@@ -523,6 +525,7 @@ export default function AllowedReportsConfig() {
     setWorkplaces([]);
     setPositions([]);
     setPermissions([]);
+    setReportApprovalsDashboardTab('audition');
   }
 
   async function handleSave() {
@@ -540,6 +543,7 @@ export default function AllowedReportsConfig() {
         permissions: permissions
           .map((v) => Number(v))
           .filter((v) => !Number.isNaN(v)),
+        reportApprovalsDashboardTab,
       };
       const res = await fetch('/api/report_access', {
         method: 'POST',
@@ -561,6 +565,8 @@ export default function AllowedReportsConfig() {
       addToast(err.message || 'Failed to save', 'error');
     }
   }
+
+
 
   async function handleDelete(p) {
     if (!window.confirm('Delete configuration?')) return;
@@ -1002,8 +1008,19 @@ export default function AllowedReportsConfig() {
               <select
                 value={proc}
                 onChange={(e) => {
-                  setProc(e.target.value);
-                  setSelectedRule(e.target.value);
+                  const nextProc = e.target.value;
+                  if (nextProc && reports?.[nextProc]) {
+                    edit(nextProc);
+                  } else {
+                    setProc(nextProc);
+                    setSelectedRule(nextProc);
+                    setBranches([]);
+                    setDepartments([]);
+                    setWorkplaces([]);
+                    setPositions([]);
+                    setPermissions([]);
+                    setReportApprovalsDashboardTab('audition');
+                  }
                 }}
               >
                 <option value="">-- Select --</option>
@@ -1032,6 +1049,21 @@ export default function AllowedReportsConfig() {
               </select>
             </label>
           </div>
+          <div>
+            <label>
+              Report approvals dashboard tab:{' '}
+              <select
+                value={reportApprovalsDashboardTab}
+                onChange={(e) => setReportApprovalsDashboardTab(e.target.value)}
+              >
+                <option value="general">General</option>
+                <option value="activity">Activity</option>
+                <option value="audition">Audition</option>
+                <option value="plans">Plans</option>
+              </select>
+            </label>
+          </div>
+
           <div>
             <label>
               Branches:{' '}
