@@ -667,6 +667,9 @@ export default function NotificationsPage() {
       const idValue =
         entry?.id ?? entry?.temporary_id ?? entry?.temporaryId ?? null;
       if (idValue != null) params.set('temporaryId', String(idValue));
+      if (typeof window !== 'undefined') {
+        window.__activeTabKey = path;
+      }
       navigate(`${path}?${params.toString()}`);
     },
     [addToast, handleTemporarySeen, navigate, t, workflowToastEnabled],
