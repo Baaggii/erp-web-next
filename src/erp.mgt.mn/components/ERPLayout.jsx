@@ -34,6 +34,7 @@ import { buildOptionsForRows } from "../utils/buildAsyncSelectOptions.js";
 import NotificationDots, { DEFAULT_NOTIFICATION_COLOR } from "./NotificationDots.jsx";
 import TransactionNotificationDropdown from "./TransactionNotificationDropdown.jsx";
 import useTransactionNotifications from "../hooks/useTransactionNotifications.js";
+import MessagingWidget from "./MessagingWidget.jsx";
 
 export const TourContext = React.createContext({
   startTour: () => false,
@@ -3668,6 +3669,7 @@ export default function ERPLayout() {
                 <MainWindow title={windowTitle} />
               </div>
               {generalConfig.general?.aiApiEnabled && <AskAIFloat />}
+              <MessagingWidget />
             </div>
           </PendingRequestContext.Provider>
         </TransactionNotificationContext.Provider>
