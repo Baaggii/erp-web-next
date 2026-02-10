@@ -1140,7 +1140,6 @@ const styles = {
     left: 0,
     marginTop: '0.4rem',
     width: '320px',
-    maxWidth: 'calc(100vw - 1rem)',
     background: '#fff',
     borderRadius: '12px',
     boxShadow: '0 12px 30px rgba(15,23,42,0.2)',
