@@ -663,6 +663,7 @@ const TableManager = forwardRef(function TableManager({
   const temporaryRowRefs = useRef(new Map());
   const autoTemporaryLoadScopesRef = useRef(new Set());
   const temporaryFetchRequestRef = useRef(0);
+  const temporaryListCacheRef = useRef(new Map());
   const temporaryListScrollRef = useRef(null);
   const promotionHydrationNeededRef = useRef(false);
   useEffect(() => {
@@ -5455,7 +5456,6 @@ const TableManager = forwardRef(function TableManager({
       if (statusValue) {
         params.set('status', statusValue);
       }
-
       const shouldFilterByTable = (() => {
         if (options?.table !== undefined) {
           return Boolean(options.table);
@@ -5466,6 +5466,16 @@ const TableManager = forwardRef(function TableManager({
       if (shouldFilterByTable && table) {
         params.set('table', table);
       }
+
+      const cacheKey = [
+        targetScope,
+        statusValue || 'any',
+        params.get('table') || table || '',
+        params.get('formName') || '',
+        params.get('configName') || '',
+        params.get('transactionTypeField') || '',
+        params.get('transactionTypeValue') || '',
+      ].join('|');
       const focusIdRaw = options?.focusId;
       const focusId =
         focusIdRaw !== undefined &&
@@ -5476,7 +5486,7 @@ const TableManager = forwardRef(function TableManager({
       const runFetch = async (searchParams) => {
         const res = await fetch(
           `${API_BASE}/transaction_temporaries?${searchParams.toString()}`,
-          { credentials: 'include' },
+          { credentials: 'include', skipLoader: true },
         );
         const rateLimitMessage = await getRateLimitMessage(res);
         if (rateLimitMessage) {
@@ -5501,6 +5511,23 @@ const TableManager = forwardRef(function TableManager({
         setTemporaryLoadingMore(true);
         setTemporaryFetchMode('append');
       } else {
+        const shouldUseCache =
+          options?.useCache !== false &&
+          !focusId &&
+          fetchOffset === 0 &&
+          temporaryListCacheRef.current.has(cacheKey);
+        if (shouldUseCache) {
+          const cached = temporaryListCacheRef.current.get(cacheKey);
+          if (!preserveScope || targetScope === temporaryScope) {
+            if (!showFormRef.current) {
+              setTemporaryScope(targetScope);
+            }
+            setTemporaryList(Array.isArray(cached?.rows) ? cached.rows : []);
+            setTemporaryHasMore(Boolean(cached?.hasMore));
+            setTemporaryNextOffset(Number(cached?.nextOffset) || 0);
+            setTemporaryFocusId(null);
+          }
+        }
         setTemporaryLoading(true);
         setTemporaryFetchMode('initial');
       }
@@ -5555,7 +5582,15 @@ const TableManager = forwardRef(function TableManager({
           setTemporaryNextOffset(result.nextOffset);
         }
 
-        if (!append) {
+        if (!append && fetchOffset === 0) {
+          temporaryListCacheRef.current.set(cacheKey, {
+            rows: nextRows,
+            hasMore: Boolean(result.hasMore),
+            nextOffset: result.nextOffset,
+          });
+        }
+
+        if (!append && options?.silent !== true) {
           addWorkflowToast(
             t(
               'notifications_workflow_list_loaded',
@@ -5576,12 +5611,17 @@ const TableManager = forwardRef(function TableManager({
         if (!append) {
           setTemporaryList([]);
         }
+        if (!append && fetchOffset === 0) {
+          temporaryListCacheRef.current.delete(cacheKey);
+        }
         setTemporaryHasMore(false);
         setTemporaryNextOffset(0);
-        addWorkflowToast(
-          err?.message || t('notifications_workflow_list_failed', 'Workflow list failed to load'),
-          'error',
-        );
+        if (options?.silent !== true) {
+          addWorkflowToast(
+            err?.message || t('notifications_workflow_list_failed', 'Workflow list failed to load'),
+            'error',
+          );
+        }
       } finally {
         if (temporaryFetchRequestRef.current === requestId) {
           setTemporaryLoading(false);
@@ -5612,6 +5652,18 @@ const TableManager = forwardRef(function TableManager({
     ],
   );
 
+  useEffect(() => {
+    temporaryListCacheRef.current.clear();
+  }, [
+    table,
+    formName,
+    formConfig?.formName,
+    formConfig?.configName,
+    formConfig?.transactionTypeField,
+    formConfig?.transactionTypeValue,
+    typeFilter,
+    supportsTemporary,
+  ]);
   const loadMoreTemporaryRows = useCallback(() => {
     if (temporaryLoading || temporaryLoadingMore || !temporaryHasMore) return;
     fetchTemporaryList(temporaryScope, {
