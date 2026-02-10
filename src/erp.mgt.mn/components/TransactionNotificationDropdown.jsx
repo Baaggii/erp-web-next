@@ -28,7 +28,6 @@ const DEFAULT_PLAN_NOTIFICATION_VALUES = ['1'];
 const DEFAULT_DUTY_NOTIFICATION_FIELDS = [];
 const DEFAULT_DUTY_NOTIFICATION_VALUES = ['1'];
 const NOTIFICATION_PAGE_SIZE = 20;
-const USE_UNIFIED_NOTIFICATION_FEED = true;
 
 function normalizeText(value) {
   if (value === undefined || value === null) return '';
@@ -264,9 +263,6 @@ export default function TransactionNotificationDropdown() {
   const [open, setOpen] = useState(false);
   const [hydratingFeed, setHydratingFeed] = useState(false);
   const [visibleCount, setVisibleCount] = useState(NOTIFICATION_PAGE_SIZE);
-  const [feedItems, setFeedItems] = useState([]);
-  const [feedCursor, setFeedCursor] = useState(null);
-  const [feedLoading, setFeedLoading] = useState(false);
   const [formEntries, setFormEntries] = useState([]);
   const [formsLoaded, setFormsLoaded] = useState(false);
   const [codeTransactions, setCodeTransactions] = useState([]);
@@ -1030,42 +1026,12 @@ export default function TransactionNotificationDropdown() {
     temporaryItems,
   ]);
 
-  const unifiedItems = useMemo(() => {
-    if (!USE_UNIFIED_NOTIFICATION_FEED) return [];
-    return feedItems.map((item) => ({
-      key: item.id,
-      timestamp: item.timestamp || 0,
-      isUnread: Boolean(item.unread),
-      title: item.title || 'Notification',
-      badge: { label: item.status || 'Update', accent: item.badgeAccent || '#2563eb' },
-      preview: item.preview || '',
-      dateTime: formatDisplayTimestamp(item.timestamp || 0),
-      onClick: () => {
-        const action = item?.action || {};
-        if (action.type === 'transaction' && action.transaction) {
-          handleNotificationClick(action.transaction);
-          return;
-        }
-        if (action.type === 'request' && action.request) {
-          openRequest(action.request, action.tab || 'outgoing', action.status || 'pending');
-          return;
-        }
-        if (action.type === 'temporary') {
-          openTemporary(action.scope || 'created', action.entry || null);
-          return;
-        }
-      },
-    }));
-  }, [feedItems, handleNotificationClick, openRequest, openTemporary]);
-
-  const activeItems = USE_UNIFIED_NOTIFICATION_FEED ? unifiedItems : combinedItems;
-  const hasAnyNotifications = activeItems.length > 0;
-  const isDropdownLoading = USE_UNIFIED_NOTIFICATION_FEED
-    ? feedLoading
-    : hydratingFeed && (reportState.loading || changeState.loading || temporaryState.loading);
+  const hasAnyNotifications = combinedItems.length > 0;
+  const isDropdownLoading =
+    hydratingFeed && (reportState.loading || changeState.loading || temporaryState.loading);
   const visibleItems = useMemo(
-    () => activeItems.slice(0, visibleCount),
-    [activeItems, visibleCount],
+    () => combinedItems.slice(0, visibleCount),
+    [combinedItems, visibleCount],
   );
 
   useEffect(() => {
@@ -1097,17 +1063,12 @@ export default function TransactionNotificationDropdown() {
       if (!target) return;
       const distanceFromBottom = target.scrollHeight - target.scrollTop - target.clientHeight;
       if (distanceFromBottom > 96) return;
-      if (USE_UNIFIED_NOTIFICATION_FEED) {
-        if (feedCursor && !feedLoading) {
-          loadUnifiedFeed({ append: true, cursor: feedCursor });
-        }
-      }
       setVisibleCount((prev) => {
-        if (prev >= activeItems.length) return prev;
-        return Math.min(prev + NOTIFICATION_PAGE_SIZE, activeItems.length);
+        if (prev >= combinedItems.length) return prev;
+        return Math.min(prev + NOTIFICATION_PAGE_SIZE, combinedItems.length);
       });
     },
-    [activeItems.length, feedCursor, feedLoading, isDropdownLoading, loadUnifiedFeed],
+    [combinedItems.length, isDropdownLoading],
   );
 
   return (
@@ -1148,7 +1109,7 @@ export default function TransactionNotificationDropdown() {
                 )}
               </button>
             ))}
-            {!isDropdownLoading && (visibleCount < activeItems.length || Boolean(feedCursor)) && (
+            {!isDropdownLoading && visibleCount < combinedItems.length && (
               <div style={styles.loadMoreHint}>Scroll to load more…</div>
             )}
           </div>
