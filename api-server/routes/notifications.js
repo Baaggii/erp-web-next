@@ -86,21 +86,20 @@ function makeTemporaryPath({ temporaryId, temporaryRow, payload, userEmpId }) {
   params.set('temporaryScope', scope);
   params.set('temporaryKey', String(Date.now()));
 
-  const moduleKey = String(redirectMeta?.moduleKey || payload?.moduleKey || payload?.module_key || '').trim();
+  const moduleKey = String(payload?.moduleKey || payload?.module_key || '').trim();
   let path = '/forms';
   if (moduleKey) {
     params.set('temporaryModule', moduleKey);
     path = `/forms/${moduleKey.replace(/_/g, '-')}`;
   }
 
-  const formName = redirectMeta?.formName || temporaryRow?.form_name || payload?.formName || payload?.form_name;
+  const formName = temporaryRow?.form_name || payload?.formName || payload?.form_name;
   if (formName) params.set('temporaryForm', String(formName));
   const configName = temporaryRow?.config_name || payload?.configName || payload?.config_name;
   if (configName) params.set('temporaryConfig', String(configName));
   const tableName = temporaryRow?.table_name || payload?.tableName || payload?.table_name;
   if (tableName) params.set('temporaryTable', String(tableName));
   if (temporaryId != null) params.set('temporaryId', String(temporaryId));
-  if (moduleKey && formName) params.set(`name_${moduleKey}`, String(formName));
   return `${path}?${params.toString()}`;
 }
 
@@ -261,29 +260,6 @@ router.get('/feed', requireAuth, feedRateLimiter, async (req, res, next) => {
       redirectMapByTable = new Map();
     }
 
-    const session = req.session || {};
-    let formsLookup = { byName: new Map(), byTable: new Map() };
-    try {
-      const { names } = await listTransactionNames(
-        {
-          branchId: req.user.branch,
-          departmentId: req.user.department,
-          userRightId:
-            req.user.userLevel ?? req.user.userlevel_id ?? req.user.userlevelId ?? session?.user_level,
-          workplaceId:
-            req.user.workplace ?? session?.workplace_id ?? session?.workplaceId,
-          positionId:
-            session?.employment_position_id ?? session?.position_id ?? session?.position ?? req.user.position,
-          workplacePositionId: session?.workplace_position_id ?? session?.workplacePositionId ?? null,
-          workplacePositions: session?.workplace_assignments,
-        },
-        companyId,
-      );
-      formsLookup = buildTransactionFormLookup(names || {});
-    } catch {
-      formsLookup = { byName: new Map(), byTable: new Map() };
-    }
-
     const [notificationRows] = await pool.query(
       `SELECT notification_id, type, related_id, message, is_read, created_at, updated_at
          FROM notifications
@@ -376,24 +352,13 @@ router.get('/feed', requireAuth, feedRateLimiter, async (req, res, next) => {
           String(temporaryRow?.created_by || payload?.createdBy || '').trim().toUpperCase() === userEmpId
             ? 'created'
             : 'review';
-        const resolvedTemporaryMeta = resolveTemporaryFormMeta({
-          temporaryRow,
-          payload,
-          formsLookup,
-        });
         const temporaryRedirectMeta = {
           temporaryId: fallbackTemporaryId,
-          formName:
-            resolvedTemporaryMeta.formName ||
-            temporaryRow?.form_name ||
-            payload?.formName ||
-            payload?.form_name ||
-            null,
+          formName: temporaryRow?.form_name || payload?.formName || payload?.form_name || null,
           configName:
             temporaryRow?.config_name || payload?.configName || payload?.config_name || null,
           tableName: temporaryRow?.table_name || payload?.tableName || payload?.table_name || null,
-          moduleKey:
-            resolvedTemporaryMeta.moduleKey || payload?.moduleKey || payload?.module_key || null,
+          moduleKey: payload?.moduleKey || payload?.module_key || null,
           scope: temporaryScope,
         };
         items.push({
@@ -416,7 +381,6 @@ router.get('/feed', requireAuth, feedRateLimiter, async (req, res, next) => {
               temporaryRow,
               payload,
               userEmpId,
-              redirectMeta: temporaryRedirectMeta,
             }),
             redirectMeta: temporaryRedirectMeta,
           },
