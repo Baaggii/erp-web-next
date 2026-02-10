@@ -666,7 +666,11 @@ export default function TransactionNotificationWidget({ filterMode = 'activity' 
         }
         const res = await fetch(
           `/api/tables/${encodeURIComponent(relation.table)}?${params.toString()}`,
-          { credentials: 'include' },
+          {
+            credentials: 'include',
+            skipLoader: true,
+            skipErrorToast: true,
+          },
         );
         let row = null;
         if (res.ok) {
@@ -703,6 +707,8 @@ export default function TransactionNotificationWidget({ filterMode = 'activity' 
         }
         const res = await fetch(`/api/display_fields?${params.toString()}`, {
           credentials: 'include',
+          skipLoader: true,
+          skipErrorToast: true,
         });
         const cfg = res.ok ? await res.json().catch(() => ({})) : {};
         const normalized = {
