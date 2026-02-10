@@ -1074,7 +1074,7 @@ const styles = {
   },
   dropdown: {
     position: 'absolute',
-    left: 0,
+    right: 0,
     marginTop: '0.4rem',
     width: '320px',
     background: '#fff',
