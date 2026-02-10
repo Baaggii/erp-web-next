@@ -27,6 +27,7 @@ const DEFAULT_PLAN_NOTIFICATION_FIELDS = ['is_plan', 'is_plan_completion'];
 const DEFAULT_PLAN_NOTIFICATION_VALUES = ['1'];
 const DEFAULT_DUTY_NOTIFICATION_FIELDS = [];
 const DEFAULT_DUTY_NOTIFICATION_VALUES = ['1'];
+const DROPDOWN_CHUNK_SIZE = 20;
 
 function normalizeText(value) {
   if (value === undefined || value === null) return '';
@@ -256,10 +257,18 @@ function getTemporaryTimestamp(entry) {
 }
 
 export default function TransactionNotificationDropdown() {
-  const { notifications, unreadCount, markRead } = useTransactionNotifications();
+  const {
+    notifications,
+    unreadCount,
+    markRead,
+    loadMore,
+    hasMore,
+    isLoadingMore,
+  } = useTransactionNotifications();
   const { user, session } = useAuth();
   const { workflows, markWorkflowSeen, temporary } = usePendingRequests();
   const [open, setOpen] = useState(false);
+  const [visibleCount, setVisibleCount] = useState(DROPDOWN_CHUNK_SIZE);
   const [formEntries, setFormEntries] = useState([]);
   const [formsLoaded, setFormsLoaded] = useState(false);
   const [codeTransactions, setCodeTransactions] = useState([]);
@@ -284,6 +293,8 @@ export default function TransactionNotificationDropdown() {
     error: '',
   });
   const containerRef = useRef(null);
+  const listRef = useRef(null);
+  const initializedOpenRef = useRef(false);
   const navigate = useNavigate();
   const generalConfig = useGeneralConfig();
   const dashboardTabs = useMemo(
@@ -992,7 +1003,39 @@ export default function TransactionNotificationDropdown() {
     temporaryItems,
   ]);
 
+  const visibleItems = useMemo(
+    () => combinedItems.slice(0, visibleCount),
+    [combinedItems, visibleCount],
+  );
   const hasAnyNotifications = combinedItems.length > 0;
+  const hasMoreVisibleItems = visibleCount < combinedItems.length;
+
+  const handleListScroll = useCallback((event) => {
+    const node = event.currentTarget;
+    if (!node) return;
+    if (node.scrollTop + node.clientHeight < node.scrollHeight - 48) return;
+    setVisibleCount((prev) => prev + DROPDOWN_CHUNK_SIZE);
+    if (!hasMoreVisibleItems && hasMore && !isLoadingMore) {
+      loadMore();
+    }
+  }, [hasMore, hasMoreVisibleItems, isLoadingMore, loadMore]);
+
+  useEffect(() => {
+    if (!open) {
+      initializedOpenRef.current = false;
+      setVisibleCount(DROPDOWN_CHUNK_SIZE);
+      return;
+    }
+    if (initializedOpenRef.current) return;
+    initializedOpenRef.current = true;
+    setVisibleCount(DROPDOWN_CHUNK_SIZE);
+    if (hasMore && combinedItems.length <= DROPDOWN_CHUNK_SIZE) {
+      loadMore();
+    }
+    if (listRef.current) {
+      listRef.current.scrollTop = 0;
+    }
+  }, [combinedItems.length, hasMore, loadMore, open]);
 
   return (
     <div style={styles.wrapper} ref={containerRef}>
@@ -1006,11 +1049,11 @@ export default function TransactionNotificationDropdown() {
       </button>
       {open && (
         <div style={styles.dropdown}>
-          <div style={styles.list}>
+          <div ref={listRef} style={styles.list} onScroll={handleListScroll}>
             {!hasAnyNotifications && (
               <div style={styles.empty}>No notifications yet</div>
             )}
-            {combinedItems.map((item) => (
+            {visibleItems.map((item) => (
               <button
                 key={item.key}
                 type="button"
@@ -1029,6 +1072,11 @@ export default function TransactionNotificationDropdown() {
                 )}
               </button>
             ))}
+            {(hasMoreVisibleItems || hasMore || isLoadingMore) && (
+              <div style={styles.loadingMore}>
+                {isLoadingMore ? 'Loading more notifications…' : 'Scroll to load more…'}
+              </div>
+            )}
           </div>
           <button
             type="button"
@@ -1132,6 +1180,12 @@ const styles = {
   notificationMeta: {
     fontSize: '0.72rem',
     color: '#64748b',
+  },
+  loadingMore: {
+    textAlign: 'center',
+    color: '#64748b',
+    fontSize: '0.76rem',
+    padding: '0.15rem 0 0.35rem',
   },
   footer: {
     width: '100%',
