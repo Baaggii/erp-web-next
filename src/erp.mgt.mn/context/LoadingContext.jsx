@@ -17,21 +17,11 @@ export function LoadingProvider({ children }) {
       trackSetState('LoadingProvider.setLoaders');
       setLoaders((l) => ({ ...l, [key]: Math.max(0, (l[key] || 0) - 1) }));
     }
-    function clear(e) {
-      const key = (e.detail && e.detail.key) || 'global';
-      trackSetState('LoadingProvider.setLoaders');
-      setLoaders((l) => {
-        if (!l[key]) return l;
-        return { ...l, [key]: 0 };
-      });
-    }
     window.addEventListener('loading:start', start);
     window.addEventListener('loading:end', end);
-    window.addEventListener('loading:clear', clear);
     return () => {
       window.removeEventListener('loading:start', start);
       window.removeEventListener('loading:end', end);
-      window.removeEventListener('loading:clear', clear);
     };
   }, []);
 

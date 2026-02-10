@@ -11,15 +11,6 @@ import { trackSetState } from '../utils/debug.js';
 const TabContext = createContext();
 const TAB_STORAGE_KEY = 'erp.tabs.v1';
 
-const dispatchLoadingClear = (key) => {
-  if (typeof window === 'undefined' || !key) return;
-  const event =
-    typeof window.CustomEvent === 'function'
-      ? new window.CustomEvent('loading:clear', { detail: { key } })
-      : { type: 'loading:clear', detail: { key } };
-  window.dispatchEvent(event);
-};
-
 const readStoredTabs = () => {
   if (typeof window === 'undefined') {
     return { tabs: [], activeKey: null };
@@ -131,8 +122,6 @@ export function TabProvider({ children }) {
         return fallback;
       });
       window.__activeTabKey = nextActiveKey || 'global';
-      dispatchLoadingClear(key);
-      dispatchLoadingClear(nextActiveKey || 'global');
       if (
         shouldNavigate &&
         typeof onNavigate === 'function' &&
