@@ -3540,6 +3540,59 @@ const TableManager = forwardRef(function TableManager({
   function openUpload(row) {
     setUploadRow(row);
   }
+  function extractRelatedEmployeeEmpids(row) {
+    if (!row || !relationConfigs) return [];
+    const ids = new Set();
+    Object.entries(relationConfigs).forEach(([column, config]) => {
+      const table = String(config?.table || '').toLowerCase();
+      const idField = String(config?.idField || config?.column || column || '').toLowerCase();
+      if (!table.includes('employee') && !idField.includes('emp')) return;
+      const value = row[column];
+      if (Array.isArray(value)) {
+        value.forEach((entry) => {
+          const normalized = String(entry || '').trim();
+          if (normalized) ids.add(normalized);
+        });
+        return;
+      }
+      if (typeof value === 'string' && value.trim().startsWith('[')) {
+        try {
+          const parsed = JSON.parse(value);
+          if (Array.isArray(parsed)) {
+            parsed.forEach((entry) => {
+              const normalized = String(entry || '').trim();
+              if (normalized) ids.add(normalized);
+            });
+            return;
+          }
+        } catch {
+          // ignore json parse issues
+        }
+      }
+      const normalized = String(value ?? '').trim();
+      if (normalized) ids.add(normalized);
+    });
+    return Array.from(ids);
+  }
+
+  function openMessageForRow(row) {
+    const recipientEmpids = extractRelatedEmployeeEmpids(row).filter((empid) => String(empid) !== String(user?.empid));
+    const rid = getRowId(row);
+    const transaction = {
+      id: rid != null ? String(rid) : '',
+      table,
+      rowId: rid != null ? String(rid) : null,
+      label: rid != null ? `${table} #${rid}` : table,
+    };
+    const detail = {
+      topic: `Thread: ${transaction.label}`,
+      transaction,
+      recipientEmpids,
+    };
+    const event = new CustomEvent('messaging:start', { detail });
+    window.dispatchEvent(event);
+  }
+
 
   function openContextMenu(e, term) {
     e.preventDefault();
@@ -8690,6 +8743,29 @@ const TableManager = forwardRef(function TableManager({
                         style={actionBtnStyle}
                       >
                         ➕ Add Img
+                      </button>,
+                    );
+                    actionButtons.push(
+                      <button
+                        key="message"
+                        onClick={() => openMessageForRow(r)}
+                        style={actionBtnStyle}
+                        draggable
+                        onDragStart={(event) => {
+                          const rid = getRowId(r);
+                          const payload = {
+                            id: rid != null ? String(rid) : '',
+                            rowId: rid != null ? String(rid) : null,
+                            transactionId: rid != null ? String(rid) : '',
+                            transactionTable: table,
+                            table,
+                            label: rid != null ? `${table} #${rid}` : table,
+                          };
+                          event.dataTransfer.setData('application/json', JSON.stringify(payload));
+                          event.dataTransfer.setData('text/plain', payload.label);
+                        }}
+                      >
+                        💬 Message
                       </button>,
                     );
                     const explicitRequestOnlyValue =
