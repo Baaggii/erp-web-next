@@ -27,7 +27,6 @@ const DEFAULT_PLAN_NOTIFICATION_FIELDS = ['is_plan', 'is_plan_completion'];
 const DEFAULT_PLAN_NOTIFICATION_VALUES = ['1'];
 const DEFAULT_DUTY_NOTIFICATION_FIELDS = [];
 const DEFAULT_DUTY_NOTIFICATION_VALUES = ['1'];
-const NOTIFICATION_PAGE_SIZE = 20;
 
 function normalizeText(value) {
   if (value === undefined || value === null) return '';
@@ -261,8 +260,6 @@ export default function TransactionNotificationDropdown() {
   const { user, session } = useAuth();
   const { workflows, markWorkflowSeen, temporary } = usePendingRequests();
   const [open, setOpen] = useState(false);
-  const [hydratingFeed, setHydratingFeed] = useState(false);
-  const [visibleCount, setVisibleCount] = useState(NOTIFICATION_PAGE_SIZE);
   const [formEntries, setFormEntries] = useState([]);
   const [formsLoaded, setFormsLoaded] = useState(false);
   const [codeTransactions, setCodeTransactions] = useState([]);
@@ -996,49 +993,6 @@ export default function TransactionNotificationDropdown() {
   ]);
 
   const hasAnyNotifications = combinedItems.length > 0;
-  const isDropdownLoading =
-    hydratingFeed && (reportState.loading || changeState.loading || temporaryState.loading);
-  const visibleItems = useMemo(
-    () => combinedItems.slice(0, visibleCount),
-    [combinedItems, visibleCount],
-  );
-
-  useEffect(() => {
-    if (!open) {
-      setHydratingFeed(false);
-      return;
-    }
-    setHydratingFeed(true);
-    setVisibleCount(NOTIFICATION_PAGE_SIZE);
-  }, [open]);
-
-  useEffect(() => {
-    if (!open || !hydratingFeed) return;
-    if (!reportState.loading && !changeState.loading && !temporaryState.loading) {
-      setHydratingFeed(false);
-    }
-  }, [
-    changeState.loading,
-    hydratingFeed,
-    open,
-    reportState.loading,
-    temporaryState.loading,
-  ]);
-
-  const handleListScroll = useCallback(
-    (event) => {
-      if (isDropdownLoading) return;
-      const target = event.currentTarget;
-      if (!target) return;
-      const distanceFromBottom = target.scrollHeight - target.scrollTop - target.clientHeight;
-      if (distanceFromBottom > 96) return;
-      setVisibleCount((prev) => {
-        if (prev >= combinedItems.length) return prev;
-        return Math.min(prev + NOTIFICATION_PAGE_SIZE, combinedItems.length);
-      });
-    },
-    [combinedItems.length, isDropdownLoading],
-  );
 
   return (
     <div style={styles.wrapper} ref={containerRef}>
@@ -1052,14 +1006,11 @@ export default function TransactionNotificationDropdown() {
       </button>
       {open && (
         <div style={styles.dropdown}>
-          <div style={styles.list} onScroll={handleListScroll}>
-            {isDropdownLoading && (
-              <div style={styles.empty}>Loading notifications…</div>
-            )}
-            {!isDropdownLoading && !hasAnyNotifications && (
+          <div style={styles.list}>
+            {!hasAnyNotifications && (
               <div style={styles.empty}>No notifications yet</div>
             )}
-            {!isDropdownLoading && visibleItems.map((item) => (
+            {combinedItems.map((item) => (
               <button
                 key={item.key}
                 type="button"
@@ -1078,9 +1029,6 @@ export default function TransactionNotificationDropdown() {
                 )}
               </button>
             ))}
-            {!isDropdownLoading && visibleCount < combinedItems.length && (
-              <div style={styles.loadMoreHint}>Scroll to load more…</div>
-            )}
           </div>
           <button
             type="button"
@@ -1147,12 +1095,6 @@ const styles = {
     padding: '1rem',
     color: '#64748b',
     textAlign: 'center',
-  },
-  loadMoreHint: {
-    padding: '0.2rem 0.5rem 0',
-    color: '#64748b',
-    textAlign: 'center',
-    fontSize: '0.72rem',
   },
   notificationItem: (isUnread) => ({
     width: '100%',
