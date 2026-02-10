@@ -204,9 +204,10 @@ router.get('/feed', requireAuth, feedRateLimiter, async (req, res, next) => {
     const items = [];
 
     for (const row of notificationRows || []) {
+      const rawMessage = row?.message;
       let payload = null;
       try {
-        payload = row.message ? JSON.parse(row.message) : null;
+        payload = rawMessage ? JSON.parse(rawMessage) : null;
       } catch {
         payload = null;
       }
