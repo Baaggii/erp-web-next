@@ -889,26 +889,32 @@ export default function TransactionNotificationDropdown() {
     [formEntries],
   );
 
+  const resolveNotificationTab = useCallback(
+    (item) => {
+      const formInfo = resolveFormInfo(item);
+      const notifyFieldsRaw =
+        formInfo?.notifyFields ?? formInfo?.notify_fields ?? [];
+      const notifyFields = Array.isArray(notifyFieldsRaw)
+        ? notifyFieldsRaw.map((field) => String(field).trim()).filter(Boolean)
+        : [];
+      const redirectTab = String(
+        formInfo?.notificationRedirectTab ?? formInfo?.notification_redirect_tab ?? '',
+      ).trim();
+      const defaultTab =
+        isPlanNotificationItem(item) || isDutyNotificationItem(item) ? 'plans' : 'activity';
+      return notifyFields.length > 0 && dashboardTabs.has(redirectTab)
+        ? redirectTab
+        : defaultTab;
+    },
+    [dashboardTabs, isDutyNotificationItem, isPlanNotificationItem, resolveFormInfo],
+  );
+
   const handleNotificationClick = async (item) => {
     if (!item) return;
     setOpen(false);
     await markRead([item.id]);
-    const formInfo = resolveFormInfo(item);
-    const notifyFieldsRaw =
-      formInfo?.notifyFields ?? formInfo?.notify_fields ?? [];
-    const notifyFields = Array.isArray(notifyFieldsRaw)
-      ? notifyFieldsRaw.map((field) => String(field).trim()).filter(Boolean)
-      : [];
-    const redirectTab = String(
-      formInfo?.notificationRedirectTab ?? formInfo?.notification_redirect_tab ?? '',
-    ).trim();
     const groupKey = item.transactionName || 'Transaction';
-    const defaultTab =
-      isPlanNotificationItem(item) || isDutyNotificationItem(item) ? 'plans' : 'activity';
-    const tab =
-      notifyFields.length > 0 && dashboardTabs.has(redirectTab)
-        ? redirectTab
-        : defaultTab;
+    const tab = resolveNotificationTab(item);
     const params = new URLSearchParams({
       tab,
       notifyGroup: groupKey,
@@ -920,7 +926,6 @@ export default function TransactionNotificationDropdown() {
     }
     navigate(`/?${params.toString()}`);
   };
-
   const loadFormConfigs = useCallback(async () => {
     if (formsLoaded) return;
     try {
@@ -1022,6 +1027,17 @@ export default function TransactionNotificationDropdown() {
             const groupKey =
               item?.action?.redirectMeta?.transactionName || item?.title || 'Transaction';
             const itemId = String(item?.id || item?.action?.notificationId || '').trim();
+            const tab = resolveNotificationTab({
+              transactionName:
+                item?.action?.redirectMeta?.transactionName ||
+                item?.action?.redirectMeta?.formName ||
+                item?.title ||
+                '',
+              transactionTable:
+                item?.action?.redirectMeta?.tableName ||
+                item?.action?.redirectMeta?.transactionTable ||
+                '',
+            });
             const params = new URLSearchParams({
               tab,
               notifyGroup: groupKey,
@@ -1068,7 +1084,7 @@ export default function TransactionNotificationDropdown() {
         },
       };
     });
-  }, [feedState.items, markRead, navigate]);
+  }, [feedState.items, markRead, navigate, resolveNotificationTab]);
 
   const hasAnyNotifications = combinedItems.length > 0;
   const aggregatedUnreadCount = Number(unreadCount) || 0;
