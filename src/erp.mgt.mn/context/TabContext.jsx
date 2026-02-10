@@ -7,6 +7,7 @@ import React, {
   useMemo,
 } from 'react';
 import { trackSetState } from '../utils/debug.js';
+import { dispatchReset } from '../utils/loadingEvents.js';
 
 const TabContext = createContext();
 const TAB_STORAGE_KEY = 'erp.tabs.v1';
@@ -99,29 +100,41 @@ export function TabProvider({ children }) {
   const closeTab = useCallback(
     (key, onNavigate) => {
       if (key === '/') return;
+
+      const keysToReset = new Set([
+        'global',
+        key,
+        activeKey,
+        window.__activeTabKey,
+        ...tabs.map((tab) => tab.key),
+      ]);
+      keysToReset.forEach((loaderKey) => {
+        if (!loaderKey) return;
+        dispatchReset(loaderKey);
+      });
+
       trackSetState('TabProvider.setTabs');
-      setTabs((t) => t.filter((tab) => tab.key !== key));
+      const remaining = tabs.filter((tab) => tab.key !== key);
+      setTabs(remaining);
+
       trackSetState('TabProvider.setCache');
       setCache((c) => {
         const n = { ...c };
         delete n[key];
         return n;
       });
-      let nextActiveKey = null;
+
+      let nextActiveKey = activeKey;
       let shouldNavigate = false;
-      trackSetState('TabProvider.setActiveKey');
-      setActiveKey((current) => {
-        if (current !== key) {
-          nextActiveKey = current;
-          return current;
-        }
-        const remaining = tabs.filter((t) => t.key !== key);
-        const fallback = remaining[0]?.key || null;
-        nextActiveKey = fallback;
+      if (activeKey === key) {
+        nextActiveKey = remaining[0]?.key || null;
         shouldNavigate = true;
-        return fallback;
-      });
+      }
+
+      trackSetState('TabProvider.setActiveKey');
+      setActiveKey(nextActiveKey);
       window.__activeTabKey = nextActiveKey || 'global';
+
       if (
         shouldNavigate &&
         typeof onNavigate === 'function' &&
@@ -132,7 +145,7 @@ export function TabProvider({ children }) {
         onNavigate(nextActiveKey);
       }
     },
-    [tabs],
+    [activeKey, tabs],
   );
 
   const setTabContent = useCallback((key, content) => {
@@ -144,6 +157,17 @@ export function TabProvider({ children }) {
   }, []);
 
   const resetTabs = useCallback(() => {
+    const keysToReset = new Set([
+      'global',
+      activeKey,
+      window.__activeTabKey,
+      ...tabs.map((tab) => tab.key),
+    ]);
+    keysToReset.forEach((loaderKey) => {
+      if (!loaderKey) return;
+      dispatchReset(loaderKey);
+    });
+
     trackSetState('TabProvider.setTabs');
     setTabs([]);
     trackSetState('TabProvider.setActiveKey');
@@ -152,7 +176,7 @@ export function TabProvider({ children }) {
     setCache({});
     window.__activeTabKey = 'global';
     clearStoredTabs();
-  }, []);
+  }, [activeKey, tabs]);
 
   useEffect(() => {
     const handleLogout = () => resetTabs();
