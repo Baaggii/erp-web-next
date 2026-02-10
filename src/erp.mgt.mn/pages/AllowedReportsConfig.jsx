@@ -517,6 +517,7 @@ export default function AllowedReportsConfig() {
     setWorkplaces((info.workplaces || []).map(String));
     setPositions((info.positions || []).map(String));
     setPermissions((info.permissions || []).map(String));
+    setReportApprovalsDashboardTab(info.reportApprovalsDashboardTab || 'audition');
   }
 
   function handleNew() {
@@ -527,6 +528,7 @@ export default function AllowedReportsConfig() {
     setWorkplaces([]);
     setPositions([]);
     setPermissions([]);
+    setReportApprovalsDashboardTab('audition');
   }
 
   async function handleSave() {
@@ -544,6 +546,7 @@ export default function AllowedReportsConfig() {
         permissions: permissions
           .map((v) => Number(v))
           .filter((v) => !Number.isNaN(v)),
+        reportApprovalsDashboardTab,
       };
       const res = await fetch('/api/report_access', {
         method: 'POST',
@@ -1024,8 +1027,19 @@ export default function AllowedReportsConfig() {
               <select
                 value={proc}
                 onChange={(e) => {
-                  setProc(e.target.value);
-                  setSelectedRule(e.target.value);
+                  const nextProc = e.target.value;
+                  if (nextProc && reports?.[nextProc]) {
+                    edit(nextProc);
+                  } else {
+                    setProc(nextProc);
+                    setSelectedRule(nextProc);
+                    setBranches([]);
+                    setDepartments([]);
+                    setWorkplaces([]);
+                    setPositions([]);
+                    setPermissions([]);
+                    setReportApprovalsDashboardTab('audition');
+                  }
                 }}
               >
                 <option value="">-- Select --</option>

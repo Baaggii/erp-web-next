@@ -42,6 +42,7 @@ function parseEntry(raw = {}) {
     permissions: Array.isArray(raw.permissions)
       ? raw.permissions.map((v) => Number(v)).filter((v) => !Number.isNaN(v))
       : [],
+    reportApprovalsDashboardTab: parseDashboardTab(raw.reportApprovalsDashboardTab),
   };
 }
 

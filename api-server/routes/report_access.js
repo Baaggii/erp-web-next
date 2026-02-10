@@ -55,12 +55,26 @@ router.patch('/settings', requireAuth, async (req, res, next) => {
 router.post('/', requireAuth, async (req, res, next) => {
   try {
     const companyId = Number(req.query.companyId ?? req.user.companyId);
-    const { proc, branches, departments, permissions, workplaces, positions } =
-      req.body;
+    const {
+      proc,
+      branches,
+      departments,
+      permissions,
+      workplaces,
+      positions,
+      reportApprovalsDashboardTab,
+    } = req.body;
     if (!proc) return res.status(400).json({ message: 'proc is required' });
     await setAllowedReport(
       proc,
-      { branches, departments, permissions, workplaces, positions },
+      {
+        branches,
+        departments,
+        permissions,
+        workplaces,
+        positions,
+        reportApprovalsDashboardTab,
+      },
       companyId,
     );
     res.sendStatus(204);
