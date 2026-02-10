@@ -4,7 +4,6 @@ import { AuthContext } from '../context/AuthContext.jsx';
 import { connectSocket, disconnectSocket } from '../utils/socket.js';
 
 const NOTIFICATION_KIND = 'transaction';
-const NOTIFICATION_PAGE_SIZE = 30;
 
 function getNotificationTimestamp(notification) {
   if (!notification) return 0;
@@ -134,80 +133,25 @@ export default function useTransactionNotifications() {
   const { user } = useContext(AuthContext);
   const [notifications, setNotifications] = useState([]);
   const [connected, setConnected] = useState(false);
-  const [hasMore, setHasMore] = useState(true);
-  const [isLoadingMore, setIsLoadingMore] = useState(false);
-  const [isRefreshing, setIsRefreshing] = useState(false);
   const refreshTimerRef = useRef(null);
-  const nextOffsetRef = useRef(0);
-
-  const mergeNotifications = useCallback((incomingRows = [], mode = 'replace') => {
-    const parsed = incomingRows.map(parseNotificationRow).filter(Boolean);
-    setNotifications((prev) => {
-      const base = mode === 'append' ? prev : [];
-      const map = new Map();
-      base.forEach((item) => {
-        if (item?.id == null) return;
-        map.set(Number(item.id), item);
-      });
-      parsed.forEach((item) => {
-        if (item?.id == null) return;
-        map.set(Number(item.id), item);
-      });
-      return Array.from(map.values()).sort(
-        (a, b) => getNotificationTimestamp(b) - getNotificationTimestamp(a),
-      );
-    });
-  }, []);
-
-  const fetchPage = useCallback(async ({ offset = 0, mode = 'replace' } = {}) => {
-    if (!user || user === undefined) return;
-    try {
-      const res = await fetch(
-        `${API_BASE}/transactions/notifications?limit=${NOTIFICATION_PAGE_SIZE}&offset=${offset}`,
-        {
-          credentials: 'include',
-          skipErrorToast: true,
-          skipLoader: true,
-        },
-      );
-      if (!res.ok) return;
-      const data = await res.json();
-      const rows = Array.isArray(data?.rows) ? data.rows : [];
-      mergeNotifications(rows, mode);
-      const receivedCount = rows.length;
-      const pageLikelyFull = receivedCount >= NOTIFICATION_PAGE_SIZE;
-      setHasMore(pageLikelyFull);
-      if (mode === 'replace') {
-        nextOffsetRef.current = NOTIFICATION_PAGE_SIZE;
-      } else if (pageLikelyFull) {
-        nextOffsetRef.current = offset + NOTIFICATION_PAGE_SIZE;
-      }
-      return { rows, pageLikelyFull };
-    } catch (err) {
-      console.warn('Failed to load transaction notifications', err);
-      return null;
-    }
-    return null;
-  }, [mergeNotifications, user]);
 
   const refresh = useCallback(async () => {
     if (!user || user === undefined) return;
-    setIsRefreshing(true);
-    nextOffsetRef.current = 0;
-    await fetchPage({ offset: 0, mode: 'replace' });
-    setIsRefreshing(false);
-  }, [fetchPage, user]);
-
-  const loadMore = useCallback(async () => {
-    if (!user || user === undefined) return false;
-    if (isLoadingMore || !hasMore) return false;
-    setIsLoadingMore(true);
-    const offset = nextOffsetRef.current;
-    const result = await fetchPage({ offset, mode: 'append' });
-    setIsLoadingMore(false);
-    if (!result) return false;
-    return true;
-  }, [fetchPage, hasMore, isLoadingMore, user]);
+    try {
+      const res = await fetch(`${API_BASE}/transactions/notifications?limit=100`, {
+        credentials: 'include',
+        skipErrorToast: true,
+        skipLoader: true,
+      });
+      if (!res.ok) return;
+      const data = await res.json();
+      const rows = Array.isArray(data?.rows) ? data.rows : [];
+      const parsed = rows.map(parseNotificationRow).filter(Boolean);
+      setNotifications(parsed);
+    } catch (err) {
+      console.warn('Failed to load transaction notifications', err);
+    }
+  }, [user]);
 
   const scheduleRefresh = useCallback(() => {
     if (refreshTimerRef.current) return;
@@ -259,10 +203,6 @@ export default function useTransactionNotifications() {
     if (user === undefined) return;
     if (!user) {
       setNotifications([]);
-      setHasMore(true);
-      setIsLoadingMore(false);
-      setIsRefreshing(false);
-      nextOffsetRef.current = 0;
       return;
     }
     refresh();
@@ -334,9 +274,5 @@ export default function useTransactionNotifications() {
     refresh,
     markRead,
     markGroupRead,
-    loadMore,
-    hasMore,
-    isLoadingMore,
-    isRefreshing,
   };
 }
