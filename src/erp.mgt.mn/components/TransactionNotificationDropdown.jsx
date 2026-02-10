@@ -1053,8 +1053,6 @@ export default function TransactionNotificationDropdown() {
           }
 
           if (!targetPath && isTemporary) {
-            const params = new URLSearchParams();
-            params.set('temporaryOpen', '1');
             const redirectMeta = item?.action?.redirectMeta || {};
             const scope = String(redirectMeta.scope || '').trim();
             if (scope) params.set('temporaryScope', scope);
