@@ -4431,16 +4431,15 @@ function MainWindow({ title }) {
 
   useEffect(() => {
     if (!tabKeys.has(location.pathname)) return;
-    if (activeKey === location.pathname) return;
+    if (!activeKey || activeKey === location.pathname) return;
+    if (typeof activeKey !== 'string') return;
+    if (!activeKey.startsWith('/')) return;
     switchTab(location.pathname);
-  }, [location.pathname, switchTab, tabKeys]);
+  }, [activeKey, location.pathname, switchTab, tabKeys]);
 
   function handleSwitch(key) {
-    if (key.startsWith('/')) {
-      navigate(key);
-      return;
-    }
     switchTab(key);
+    if (key.startsWith('/')) navigate(key);
   }
 
   const elements = { ...cache, [location.pathname]: outlet };
