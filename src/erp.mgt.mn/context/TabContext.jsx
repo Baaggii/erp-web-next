@@ -7,7 +7,6 @@ import React, {
   useMemo,
 } from 'react';
 import { trackSetState } from '../utils/debug.js';
-import { dispatchClear } from '../utils/loadingEvents.js';
 
 const TabContext = createContext();
 const TAB_STORAGE_KEY = 'erp.tabs.v1';
@@ -100,7 +99,6 @@ export function TabProvider({ children }) {
   const closeTab = useCallback(
     (key, onNavigate) => {
       if (key === '/') return;
-      dispatchClear(key);
       trackSetState('TabProvider.setTabs');
       setTabs((t) => t.filter((tab) => tab.key !== key));
       trackSetState('TabProvider.setCache');
@@ -146,7 +144,6 @@ export function TabProvider({ children }) {
   }, []);
 
   const resetTabs = useCallback(() => {
-    dispatchClear();
     trackSetState('TabProvider.setTabs');
     setTabs([]);
     trackSetState('TabProvider.setActiveKey');
