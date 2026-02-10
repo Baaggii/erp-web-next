@@ -136,23 +136,6 @@ function buildTemporaryPreview({ temporaryRow, status, message }) {
   return `${actionLabel} • ${formName}`;
 }
 
-function isTemporaryNotificationMessage(message) {
-  const normalized = String(message || '').trim().toLowerCase();
-  if (!normalized) return false;
-  return normalized.includes('temporary submission');
-}
-
-function isTransactionPayload(payload) {
-  if (!payload || typeof payload !== 'object') return false;
-  if (String(payload.kind || '').trim().toLowerCase() === 'transaction') return true;
-  return Boolean(
-    payload.transactionName ||
-    payload.transaction_name ||
-    payload.transactionTable ||
-    payload.transaction_table,
-  );
-}
-
 router.get('/feed', requireAuth, feedRateLimiter, async (req, res, next) => {
   try {
     const chunkLimit = Math.min(Math.max(Number(req.query.limit) || 20, 1), 100);
@@ -231,9 +214,8 @@ router.get('/feed', requireAuth, feedRateLimiter, async (req, res, next) => {
 
       const temporaryId = Number(row?.related_id);
       const temporaryRow = Number.isFinite(temporaryId) ? temporaryMap.get(temporaryId) : null;
-      const isTemporary = Boolean(temporaryRow) && isTemporaryNotificationMessage(rawMessage);
-      if (isTemporary) {
-        const status = detectTemporaryStatus(rawMessage, temporaryRow.status || 'pending');
+      if (temporaryRow) {
+        const status = detectTemporaryStatus(row.message, temporaryRow.status || 'pending');
         items.push({
           id: `temporary-${row.notification_id}`,
           source: 'temporary',
@@ -241,17 +223,13 @@ router.get('/feed', requireAuth, feedRateLimiter, async (req, res, next) => {
           preview: buildTemporaryPreview({
             temporaryRow,
             status,
-            message: rawMessage,
+            message: row.message,
           }),
           status,
           timestamp: temporaryRow.updated_at || row.created_at,
           unread: Number(row.is_read) === 0,
           action: { type: 'none' },
         });
-        continue;
-      }
-
-      if (!isTransactionPayload(payload)) {
         continue;
       }
 
