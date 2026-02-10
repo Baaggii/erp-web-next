@@ -1135,7 +1135,6 @@ const TableManager = forwardRef(function TableManager({
         }`,
         {
           credentials: 'include',
-          skipLoader: true,
         },
       );
       const rateLimitMessage = await getRateLimitMessage(res);
@@ -5420,7 +5419,7 @@ const TableManager = forwardRef(function TableManager({
       const runFetch = async (searchParams) => {
         const res = await fetch(
           `${API_BASE}/transaction_temporaries?${searchParams.toString()}`,
-          { credentials: 'include', skipLoader: true },
+          { credentials: 'include' },
         );
         const rateLimitMessage = await getRateLimitMessage(res);
         if (rateLimitMessage) {
