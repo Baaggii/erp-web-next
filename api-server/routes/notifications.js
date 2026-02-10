@@ -1,8 +1,16 @@
 import express from 'express';
+import rateLimit from 'express-rate-limit';
 import { requireAuth } from '../middlewares/auth.js';
 import { pool } from '../../db/index.js';
 
 const router = express.Router();
+
+const feedRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 100,
+  standardHeaders: true,
+  legacyHeaders: false,
+});
 
 function toTimestamp(value) {
   const ts = new Date(value || 0).getTime();
@@ -22,8 +30,10 @@ function makeRequestPath({ status, requestType, tableName, requestId, createdAt,
   if (tableName) params.set('table_name', String(tableName));
   if (requestId != null) params.set('requestId', String(requestId));
   if (createdAt) {
-    const date = String(createdAt).slice(0, 10);
-    if (/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    const parsed = new Date(createdAt);
+    const ts = parsed.getTime();
+    if (Number.isFinite(ts)) {
+      const date = parsed.toISOString().slice(0, 10);
       params.set('date_from', date);
       params.set('date_to', date);
     }
@@ -31,7 +41,15 @@ function makeRequestPath({ status, requestType, tableName, requestId, createdAt,
   return `/requests?${params.toString()}`;
 }
 
-router.get('/feed', requireAuth, async (req, res, next) => {
+function makeTransactionPath({ payload, notificationId }) {
+  const params = new URLSearchParams();
+  params.set('tab', 'activity');
+  params.set('notifyGroup', encodeURIComponent(payload?.transactionName || 'Transaction'));
+  params.set('notifyItem', `transaction-${notificationId}`);
+  return `/?${params.toString()}`;
+}
+
+router.get('/feed', requireAuth, feedRateLimiter, async (req, res, next) => {
   try {
     const chunkLimit = Math.min(Math.max(Number(req.query.limit) || 20, 1), 100);
     const cursor = Math.max(Number(req.query.cursor) || 0, 0);
@@ -88,11 +106,11 @@ router.get('/feed', requireAuth, async (req, res, next) => {
         title,
         preview: payload?.summaryText || 'Transaction update',
         status: payload?.action || 'new',
-        timestamp: row.updated_at || row.created_at,
+        timestamp: payload?.updatedAt || row.created_at,
         unread: Number(row.is_read) === 0,
         action: {
           type: 'navigate',
-          path: '/?tab=activity',
+          path: makeTransactionPath({ payload, notificationId: row.notification_id }),
           notificationId: row.notification_id,
         },
       });
