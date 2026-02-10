@@ -597,9 +597,6 @@ const TableManager = forwardRef(function TableManager({
   const [queuedTemporaryTrigger, setQueuedTemporaryTrigger] = useState(null);
   const lastExternalTriggerRef = useRef(null);
   const [temporaryLoading, setTemporaryLoading] = useState(false);
-  const [temporaryLoadingMore, setTemporaryLoadingMore] = useState(false);
-  const [temporaryHasMore, setTemporaryHasMore] = useState(false);
-  const [temporaryNextOffset, setTemporaryNextOffset] = useState(0);
   const [temporaryChainModalVisible, setTemporaryChainModalVisible] =
     useState(false);
   const [temporaryChainModalData, setTemporaryChainModalData] = useState(null);
@@ -660,10 +657,7 @@ const TableManager = forwardRef(function TableManager({
   const notificationDots = pendingRequests?.notificationColors || [];
   const temporaryRowRefs = useRef(new Map());
   const autoTemporaryLoadScopesRef = useRef(new Set());
-  const temporaryFetchRequestIdRef = useRef(0);
-  const temporaryModalContextRef = useRef('');
   const promotionHydrationNeededRef = useRef(false);
-  const temporaryPageSize = 40;
   useEffect(() => {
     if (skipPrintCopiesAutoRef.current) {
       skipPrintCopiesAutoRef.current = false;
@@ -1765,26 +1759,6 @@ const TableManager = forwardRef(function TableManager({
     const normalizedTypeFilter = typeof typeFilter === 'string' ? typeFilter.trim() : typeFilter;
     cacheTemporaryFilter(formConfig.transactionTypeField, normalizedTypeFilter);
   }, [formConfig?.transactionTypeField, typeFilter]);
-
-  const temporaryModalContextKey = useMemo(() => {
-    const normalizedTypeFilter =
-      typeof typeFilter === 'string' ? typeFilter.trim() : String(typeFilter || '').trim();
-    return [
-      String(table || ''),
-      String(formName || ''),
-      String(formConfig?.formName || ''),
-      String(formConfig?.configName || ''),
-      String(formConfig?.transactionTypeField || ''),
-      normalizedTypeFilter,
-    ].join('|');
-  }, [
-    table,
-    formName,
-    formConfig?.formName,
-    formConfig?.configName,
-    formConfig?.transactionTypeField,
-    typeFilter,
-  ]);
 
   useEffect(() => {
     if (!showForm) return;
@@ -5428,13 +5402,8 @@ const TableManager = forwardRef(function TableManager({
         : defaultTemporaryScope;
       if (!availableTemporaryScopes.includes(targetScope)) return;
       const preserveScope = Boolean(options?.preserveScope);
-      const append = Boolean(options?.append);
-      const reset = Boolean(options?.reset);
-      const offset = Number.isFinite(Number(options?.offset)) ? Number(options.offset) : 0;
       const params = new URLSearchParams();
       params.set('scope', targetScope);
-      params.set('limit', String(temporaryPageSize));
-      params.set('offset', String(Math.max(0, offset)));
       const temporaryFormName = formName || formConfig?.formName || formConfig?.configName || '';
       const temporaryConfigName = formConfig?.configName || formName || '';
       if (temporaryFormName) {
@@ -5495,50 +5464,35 @@ const TableManager = forwardRef(function TableManager({
         if (!res.ok) throw new Error('Failed to load temporaries');
         const data = await res.json().catch(() => ({}));
         const rows = Array.isArray(data.rows) ? data.rows : [];
-        return {
-          rows,
-          hasMore: Boolean(data?.hasMore),
-          nextOffset:
-            data?.nextOffset != null && Number.isFinite(Number(data.nextOffset))
-              ? Number(data.nextOffset)
-              : Math.max(0, offset) + rows.length,
-        };
+        return rows;
       };
 
-      const requestId = temporaryFetchRequestIdRef.current + 1;
-      temporaryFetchRequestIdRef.current = requestId;
-      if (append) {
-        setTemporaryLoadingMore(true);
-      } else {
-        setTemporaryLoading(true);
-      }
+      setTemporaryLoading(true);
       try {
-        let result = await runFetch(params);
+        let rows = await runFetch(params);
 
         const shouldRetryWithoutStatus =
           targetScope === 'review' &&
           !options?.status &&
           (Number(temporarySummary?.reviewPending) || 0) > 0 &&
-          result.rows.length === 0;
+          rows.length === 0;
 
         if (shouldRetryWithoutStatus) {
           const retryParams = new URLSearchParams(params);
           retryParams.delete('status');
           try {
-            result = await runFetch(retryParams);
+            rows = await runFetch(retryParams);
           } catch (retryErr) {
             console.error('Retrying temporaries without status failed', retryErr);
           }
         }
 
-        if (temporaryFetchRequestIdRef.current !== requestId) return;
-
-        let nextRows = result.rows;
-        if (focusId && !append) {
-          const idx = result.rows.findIndex((item) => String(item?.id) === focusId);
+        let nextRows = rows;
+        if (focusId) {
+          const idx = rows.findIndex((item) => String(item?.id) === focusId);
           if (idx > 0) {
-            const target = result.rows[idx];
-            nextRows = [target, ...result.rows.slice(0, idx), ...result.rows.slice(idx + 1)];
+            const target = rows[idx];
+            nextRows = [target, ...rows.slice(0, idx), ...rows.slice(idx + 1)];
           }
           if (!preserveScope || targetScope === temporaryScope) {
             setTemporaryFocusId(focusId);
@@ -5546,73 +5500,34 @@ const TableManager = forwardRef(function TableManager({
         } else if (!preserveScope || targetScope === temporaryScope) {
           setTemporaryFocusId(null);
         }
-
         if (!preserveScope || targetScope === temporaryScope) {
           if (!showFormRef.current) {
             setTemporaryScope(targetScope);
           }
-          if (append) {
-            setTemporaryList((prev) => {
-              const existingIds = new Set(
-                (Array.isArray(prev) ? prev : [])
-                  .map((entry) => getTemporaryId(entry))
-                  .filter((id) => id != null)
-                  .map((id) => String(id)),
-              );
-              const merged = [...(Array.isArray(prev) ? prev : [])];
-              nextRows.forEach((entry) => {
-                const id = getTemporaryId(entry);
-                if (id == null) {
-                  merged.push(entry);
-                  return;
-                }
-                const key = String(id);
-                if (!existingIds.has(key)) {
-                  existingIds.add(key);
-                  merged.push(entry);
-                }
-              });
-              return merged;
-            });
-          } else {
-            setTemporaryList(nextRows);
-          }
-          setTemporaryHasMore(Boolean(result.hasMore));
-          setTemporaryNextOffset(
-            result.nextOffset != null ? Number(result.nextOffset) : Math.max(0, offset) + nextRows.length,
-          );
+          setTemporaryList(nextRows);
         }
-        if (!append || reset) {
-          addWorkflowToast(
-            t(
-              'notifications_workflow_list_loaded',
-              'Workflow list loaded for {{scope}}: {{count}} items',
-              { scope: targetScope, count: nextRows.length },
-            ),
-            'success',
-          );
-        }
+        addWorkflowToast(
+          t(
+            'notifications_workflow_list_loaded',
+            'Workflow list loaded for {{scope}}: {{count}} items',
+            { scope: targetScope, count: nextRows.length },
+          ),
+          'success',
+        );
       } catch (err) {
-        if (temporaryFetchRequestIdRef.current !== requestId) return;
         console.error('Failed to load temporaries', err);
         if (err?.rateLimited) {
           addToast(err.message || rateLimitFallbackMessage, 'warning');
           return;
         }
         setTemporaryFocusId(null);
-        if (!append) {
-          setTemporaryList([]);
-        }
-        setTemporaryHasMore(false);
-        setTemporaryNextOffset(0);
+        setTemporaryList([]);
         addWorkflowToast(
           err?.message || t('notifications_workflow_list_failed', 'Workflow list failed to load'),
           'error',
         );
       } finally {
-        if (temporaryFetchRequestIdRef.current !== requestId) return;
         setTemporaryLoading(false);
-        setTemporaryLoadingMore(false);
       }
     },
     [
@@ -5632,10 +5547,8 @@ const TableManager = forwardRef(function TableManager({
       getRateLimitMessage,
       rateLimitFallbackMessage,
       t,
-      temporaryPageSize,
     ],
   );
-
 
   const refreshTemporaryQueuesAfterDecision = useCallback(
     async ({ focusId = null } = {}) => {
@@ -5783,37 +5696,6 @@ const TableManager = forwardRef(function TableManager({
     setActiveTemporaryDraftId(null);
   }
 
-
-  const openTemporaryModalForScope = useCallback(
-    (scopeToOpen, options = {}) => {
-      const targetScope =
-        scopeToOpen && availableTemporaryScopes.includes(scopeToOpen)
-          ? scopeToOpen
-          : defaultTemporaryScope;
-      if (!targetScope) return;
-      setShowTemporaryModal(true);
-      setTemporaryScope(targetScope);
-      setTemporaryFocusId(null);
-      setTemporarySelection(new Set());
-      setTemporaryList([]);
-      setTemporaryHasMore(false);
-      setTemporaryNextOffset(0);
-      autoTemporaryLoadScopesRef.current.delete(targetScope);
-      temporaryModalContextRef.current = temporaryModalContextKey;
-      fetchTemporaryList(targetScope, {
-        reset: true,
-        focusId: options?.focusId ?? null,
-        offset: 0,
-      });
-    },
-    [
-      availableTemporaryScopes,
-      defaultTemporaryScope,
-      temporaryModalContextKey,
-      fetchTemporaryList,
-    ],
-  );
-
   useEffect(() => {
     if (!supportsTemporary || availableTemporaryScopes.length === 0) return;
     if (!queuedTemporaryTrigger || !queuedTemporaryTrigger.open) return;
@@ -5850,16 +5732,19 @@ const TableManager = forwardRef(function TableManager({
     }
 
     lastExternalTriggerRef.current = triggerKey;
+    setTemporaryScope(scopeToOpen);
+    setShowTemporaryModal(true);
+    autoTemporaryLoadScopesRef.current.delete(scopeToOpen);
     const focusId =
       queuedTemporaryTrigger.id != null && queuedTemporaryTrigger.id !== ''
         ? queuedTemporaryTrigger.id
         : null;
-    openTemporaryModalForScope(scopeToOpen, focusId ? { focusId } : undefined);
+    fetchTemporaryList(scopeToOpen, focusId ? { focusId } : undefined);
     if (typeof markTemporaryScopeSeen === 'function' && scopeToOpen) {
       markTemporaryScopeSeen(scopeToOpen);
     }
   }, [
-    openTemporaryModalForScope,
+    fetchTemporaryList,
     markTemporaryScopeSeen,
     queuedTemporaryTrigger,
     supportsTemporary,
@@ -5893,43 +5778,6 @@ const TableManager = forwardRef(function TableManager({
     temporaryLoading,
     temporaryList.length,
     temporaryScope,
-    fetchTemporaryList,
-  ]);
-
-
-  useEffect(() => {
-    if (!showTemporaryModal) return;
-    if (temporaryModalContextRef.current === temporaryModalContextKey) return;
-    temporaryModalContextRef.current = temporaryModalContextKey;
-    setTemporarySelection(new Set());
-    setTemporaryList([]);
-    setTemporaryHasMore(false);
-    setTemporaryNextOffset(0);
-    autoTemporaryLoadScopesRef.current.delete(temporaryScope);
-    fetchTemporaryList(temporaryScope, { reset: true, offset: 0 });
-  }, [
-    showTemporaryModal,
-    temporaryModalContextKey,
-    temporaryScope,
-    fetchTemporaryList,
-  ]);
-
-  const loadMoreTemporaries = useCallback(() => {
-    if (!showTemporaryModal || temporaryLoading || temporaryLoadingMore || !temporaryHasMore) {
-      return;
-    }
-    fetchTemporaryList(temporaryScope, {
-      append: true,
-      offset: temporaryNextOffset,
-      preserveScope: true,
-    });
-  }, [
-    showTemporaryModal,
-    temporaryLoading,
-    temporaryLoadingMore,
-    temporaryHasMore,
-    temporaryScope,
-    temporaryNextOffset,
     fetchTemporaryList,
   ]);
 
@@ -7852,9 +7700,10 @@ const TableManager = forwardRef(function TableManager({
           >
             <button
               onClick={() => {
+                setShowTemporaryModal(true);
                 const targetScope =
                   temporarySummary?.reviewPending > 0 ? 'review' : 'created';
-                openTemporaryModalForScope(targetScope, { focusId: null });
+                fetchTemporaryList(targetScope);
                 if (typeof markTemporaryScopeSeen === 'function') {
                   markTemporaryScopeSeen(targetScope);
                 }
@@ -7975,7 +7824,8 @@ const TableManager = forwardRef(function TableManager({
           <button
             type="button"
             onClick={() => {
-              openTemporaryModalForScope(temporaryNoticeScope, { focusId: null });
+              setShowTemporaryModal(true);
+              fetchTemporaryList(temporaryNoticeScope);
             }}
             style={{
               padding: '0.5rem 1rem',
@@ -9427,16 +9277,7 @@ const TableManager = forwardRef(function TableManager({
             ) : temporaryList.length === 0 ? (
               <p>{t('temporary_empty', 'No temporary submissions found.')}</p>
             ) : (
-              <div
-                style={{ maxHeight: '60vh', overflowY: 'auto' }}
-                onScroll={(e) => {
-                  const target = e.currentTarget;
-                  const remaining = target.scrollHeight - target.scrollTop - target.clientHeight;
-                  if (remaining <= 120) {
-                    loadMoreTemporaries();
-                  }
-                }}
-              >
+              <div style={{ maxHeight: '60vh', overflowY: 'auto' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                   <thead>
                     <tr>
@@ -9956,11 +9797,6 @@ const TableManager = forwardRef(function TableManager({
                     })}
                   </tbody>
                 </table>
-                {temporaryLoadingMore && (
-                  <div style={{ padding: '0.5rem', fontSize: '0.85rem', color: '#6b7280' }}>
-                    {t('loading_more', 'Loading more...')}
-                  </div>
-                )}
               </div>
             )}
           </div>
