@@ -101,17 +101,11 @@ export function TabProvider({ children }) {
     (key, onNavigate) => {
       if (key === '/') return;
 
-      const keysToReset = new Set([
-        'global',
-        key,
-        activeKey,
-        window.__activeTabKey,
-        ...tabs.map((tab) => tab.key),
-      ]);
-      keysToReset.forEach((loaderKey) => {
-        if (!loaderKey) return;
-        dispatchReset(loaderKey);
-      });
+      const activeAtClose = window.__activeTabKey || activeKey || 'global';
+      dispatchReset(key);
+      if (activeAtClose && activeAtClose !== key) {
+        dispatchReset(activeAtClose);
+      }
 
       trackSetState('TabProvider.setTabs');
       const remaining = tabs.filter((tab) => tab.key !== key);
