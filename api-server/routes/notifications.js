@@ -3,6 +3,7 @@ import rateLimit from 'express-rate-limit';
 import { requireAuth } from '../middlewares/auth.js';
 import { pool } from '../../db/index.js';
 import { listTransactionNames } from '../services/transactionFormConfig.js';
+import { getReportApprovalsDashboardTab } from '../services/reportAccessConfig.js';
 
 const router = express.Router();
 
@@ -32,7 +33,18 @@ function formatTableLabel(tableName) {
     .trim();
 }
 
-function makeRequestPath({ status, requestType, tableName, requestId, createdAt, tab }) {
+function makeRequestPath({ status, requestType, tableName, requestId, createdAt, tab, reportApprovalsDashboardTab = 'audition' }) {
+  const normalizedType = String(requestType || '').trim().toLowerCase();
+  if (normalizedType === 'report_approval') {
+    const params = new URLSearchParams();
+    params.set('tab', reportApprovalsDashboardTab || 'audition');
+    params.set('requestType', 'report_approval');
+    params.set('requestScope', tab || 'incoming');
+    params.set('requestStatus', normalizeStatus(status));
+    if (requestId != null) params.set('requestId', String(requestId));
+    return `/?${params.toString()}`;
+  }
+
   const params = new URLSearchParams();
   params.set('tab', tab || 'incoming');
   params.set('status', normalizeStatus(status));
@@ -221,6 +233,13 @@ router.get('/feed', requireAuth, feedRateLimiter, async (req, res, next) => {
 
     let redirectMapByName = new Map();
     let redirectMapByTable = new Map();
+    let reportApprovalsDashboardTab = 'audition';
+    try {
+      reportApprovalsDashboardTab = await getReportApprovalsDashboardTab(companyId);
+    } catch {
+      reportApprovalsDashboardTab = 'audition';
+    }
+
     try {
       const { names } = await listTransactionNames(
         {
@@ -439,6 +458,7 @@ router.get('/feed', requireAuth, feedRateLimiter, async (req, res, next) => {
             tableName: row.table_name,
             requestId: row.request_id,
             createdAt: row.created_at,
+            reportApprovalsDashboardTab,
           }),
         },
       });
@@ -468,6 +488,7 @@ router.get('/feed', requireAuth, feedRateLimiter, async (req, res, next) => {
             tableName: row.table_name,
             requestId: row.request_id,
             createdAt: row.created_at,
+            reportApprovalsDashboardTab,
           }),
         },
       });
