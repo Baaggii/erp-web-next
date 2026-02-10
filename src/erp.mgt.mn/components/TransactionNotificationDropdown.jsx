@@ -891,6 +891,13 @@ export default function TransactionNotificationDropdown() {
     () => combinedItems.slice(0, visibleCount),
     [combinedItems, visibleCount],
   );
+  const aggregatedUnreadCount = useMemo(() => {
+    const combinedUnread = combinedItems.reduce(
+      (total, item) => total + (item?.isUnread ? 1 : 0),
+      0,
+    );
+    return Math.max(combinedUnread, Number(unreadCount) || 0);
+  }, [combinedItems, unreadCount]);
   const hasAnyNotifications = combinedItems.length > 0;
   const isInitialLoading =
     open &&
