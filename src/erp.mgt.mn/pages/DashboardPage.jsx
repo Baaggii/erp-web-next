@@ -5,6 +5,7 @@ import PendingRequestWidget from '../components/PendingRequestWidget.jsx';
 import TransactionNotificationWidget from '../components/TransactionNotificationWidget.jsx';
 import OutgoingRequestWidget from '../components/OutgoingRequestWidget.jsx';
 import DutyAssignmentsWidget from '../components/DutyAssignmentsWidget.jsx';
+import NotificationsPage from './Notifications.jsx';
 import { usePendingRequests } from '../context/PendingRequestContext.jsx';
 import { useTransactionNotifications } from '../context/TransactionNotificationContext.jsx';
 import LangContext from '../context/I18nContext.jsx';
@@ -16,6 +17,11 @@ export default function DashboardPage() {
   const { unreadCount } = useTransactionNotifications();
   const { t } = useContext(LangContext);
   const [active, setActive] = useState('general');
+  const [workflowSectionTabs, setWorkflowSectionTabs] = useState({
+    report: 'audition',
+    change: 'audition',
+    temporary: 'audition',
+  });
   const location = useLocation();
   const navigate = useNavigate();
   useTour('dashboard');
@@ -44,6 +50,75 @@ export default function DashboardPage() {
   useEffect(() => () => {
     if (prevTab.current === 'audition') markSeen();
   }, [markSeen]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const normalizeTab = (tabValue) => {
+      const value = String(tabValue || '').trim().toLowerCase();
+      return allowedTabs.current.has(value) ? value : 'audition';
+    };
+
+    const pickTabFromForms = (forms, predicate) => {
+      const entries = Object.entries(forms || {}).filter(
+        ([name, info]) => name !== 'isDefault' && info && typeof info === 'object',
+      );
+      const matching = entries.filter(([, info]) => {
+        if (typeof predicate !== 'function') return true;
+        return predicate(info);
+      });
+      const source = matching.length > 0 ? matching : entries;
+      for (const [, info] of source) {
+        const tab = normalizeTab(info?.notificationRedirectTab ?? info?.notification_redirect_tab);
+        if (tab) return tab;
+      }
+      return 'audition';
+    };
+
+    Promise.allSettled([
+      fetch('/api/report_access', { credentials: 'include', skipLoader: true }).then((res) =>
+        res.ok ? res.json() : {},
+      ),
+      fetch('/api/transaction_forms', { credentials: 'include', skipLoader: true }).then((res) =>
+        res.ok ? res.json() : {},
+      ),
+    ]).then(([reportResult, transactionResult]) => {
+      if (cancelled) return;
+      const reportData = reportResult.status === 'fulfilled' ? reportResult.value || {} : {};
+      const transactionData =
+        transactionResult.status === 'fulfilled' ? transactionResult.value || {} : {};
+
+      const reportTab = normalizeTab(reportData?.reportApprovalsDashboardTab);
+      const changeTab = normalizeTab(
+        transactionData?.changeRequestsDashboardTab ||
+          transactionData?.change_requests_dashboard_tab ||
+          pickTabFromForms(transactionData, (info) =>
+            Array.isArray(info?.notifyFields)
+              ? info.notifyFields.length > 0
+              : Array.isArray(info?.notify_fields) && info.notify_fields.length > 0,
+          ),
+      );
+      const temporaryTab = normalizeTab(
+        transactionData?.temporaryTransactionsDashboardTab ||
+          transactionData?.temporary_transactions_dashboard_tab ||
+          pickTabFromForms(
+            transactionData,
+            (info) =>
+              Boolean(info?.allowTemporarySubmission) || Boolean(info?.supportsTemporarySubmission),
+          ),
+      );
+
+      setWorkflowSectionTabs({
+        report: reportTab,
+        change: changeTab,
+        temporary: temporaryTab,
+      });
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const dotBadgeStyle = {
     background: 'red',
@@ -153,6 +228,12 @@ export default function DashboardPage() {
       {active === 'activity' && (
         <div>
           <TransactionNotificationWidget filterMode="activity" />
+          <NotificationsPage
+            embedded
+            showPageTitle={false}
+            sectionTabs={workflowSectionTabs}
+            activeDashboardTab="activity"
+          />
         </div>
       )}
 
@@ -164,6 +245,14 @@ export default function DashboardPage() {
           <div style={{ ...cardStyle, flex: '1 1 300px' }}>
             <OutgoingRequestWidget />
           </div>
+          <div style={{ flexBasis: '100%' }}>
+            <NotificationsPage
+              embedded
+              showPageTitle={false}
+              sectionTabs={workflowSectionTabs}
+              activeDashboardTab="audition"
+            />
+          </div>
         </div>
       )}
 
@@ -172,7 +261,22 @@ export default function DashboardPage() {
           <DutyAssignmentsWidget />
           <TransactionNotificationWidget filterMode="plan" />
           <TransactionNotificationWidget filterMode="duty" />
+          <NotificationsPage
+            embedded
+            showPageTitle={false}
+            sectionTabs={workflowSectionTabs}
+            activeDashboardTab="plans"
+          />
         </div>
+      )}
+
+      {active === 'general' && (
+        <NotificationsPage
+          embedded
+          showPageTitle={false}
+          sectionTabs={workflowSectionTabs}
+          activeDashboardTab="general"
+        />
       )}
     </div>
   );
