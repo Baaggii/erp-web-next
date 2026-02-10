@@ -27,8 +27,6 @@ const DEFAULT_PLAN_NOTIFICATION_VALUES = ['1'];
 const DEFAULT_DUTY_NOTIFICATION_FIELDS = [];
 const DEFAULT_DUTY_NOTIFICATION_VALUES = ['1'];
 const DROPDOWN_CHUNK_SIZE = 20;
-const UNIFIED_FEED_ENABLED = false;
-const EMPTY_UNIFIED_FEED_ITEMS = [];
 
 function normalizeText(value) {
   if (value === undefined || value === null) return '';
@@ -260,7 +258,6 @@ function getTemporaryTimestamp(entry) {
 export default function TransactionNotificationDropdown() {
   const { notifications, unreadCount, markRead } = useTransactionNotifications();
   const { markWorkflowSeen, temporary } = usePendingRequests();
-  const unifiedFeedItems = EMPTY_UNIFIED_FEED_ITEMS;
   const [open, setOpen] = useState(false);
   const [formEntries, setFormEntries] = useState([]);
   const [formsLoaded, setFormsLoaded] = useState(false);
@@ -782,7 +779,7 @@ export default function TransactionNotificationDropdown() {
 
   const combinedItems = useMemo(() => {
     if (UNIFIED_FEED_ENABLED) {
-      return unifiedFeedItems.map((item) => ({
+      return (Array.isArray(unifiedFeedState.items) ? unifiedFeedState.items : []).map((item) => ({
         key: `${item.source}-${item.id}`,
         timestamp: Number(item.timestamp) || 0,
         isUnread: Boolean(item.unread),
@@ -884,7 +881,7 @@ export default function TransactionNotificationDropdown() {
     reportItems,
     sortedNotifications,
     temporaryItems,
-    unifiedFeedItems,
+    unifiedFeedState.items,
   ]);
 
   const visibleItems = useMemo(
