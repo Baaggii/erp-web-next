@@ -49,6 +49,43 @@ function makeTransactionPath({ payload, notificationId }) {
   return `/?${params.toString()}`;
 }
 
+function formatTransactionFormName(payload) {
+  const name =
+    payload?.transactionName ||
+    payload?.transaction_name ||
+    payload?.formName ||
+    payload?.form_name;
+  if (name) return String(name).trim();
+  const tableName = payload?.transactionTable || payload?.transaction_table || '';
+  if (!tableName) return 'Transaction';
+  return String(tableName)
+    .replace(/^transactions_/i, '')
+    .replace(/[_-]+/g, ' ')
+    .replace(/\b\w/g, (char) => char.toUpperCase())
+    .trim();
+}
+
+function formatTransactionAction(value) {
+  const normalized = String(value || '').trim().toLowerCase();
+  if (!normalized) return 'Updated';
+  if (normalized === 'create' || normalized === 'created' || normalized === 'new') return 'Created';
+  if (normalized === 'update' || normalized === 'updated' || normalized === 'edit' || normalized === 'edited') return 'Edited';
+  if (normalized === 'delete' || normalized === 'deleted') return 'Deleted';
+  if (normalized === 'exclude' || normalized === 'excluded') return 'Excluded';
+  if (normalized === 'include' || normalized === 'included') return 'Included';
+  return normalized.charAt(0).toUpperCase() + normalized.slice(1);
+}
+
+function buildTransactionPreview(payload) {
+  const actionLabel = formatTransactionAction(payload?.action);
+  const formName = formatTransactionFormName(payload);
+  const summary = String(payload?.summaryText || '').trim();
+  if (summary) {
+    return `${actionLabel} • ${formName} • ${summary}`;
+  }
+  return `${actionLabel} • ${formName}`;
+}
+
 router.get('/feed', requireAuth, feedRateLimiter, async (req, res, next) => {
   try {
     const chunkLimit = Math.min(Math.max(Number(req.query.limit) || 20, 1), 100);
@@ -99,12 +136,12 @@ router.get('/feed', requireAuth, feedRateLimiter, async (req, res, next) => {
       } catch {
         payload = null;
       }
-      const title = payload?.transactionName || payload?.transaction_name || 'Transaction';
+      const title = formatTransactionFormName(payload);
       items.push({
         id: `transaction-${row.notification_id}`,
         source: 'transaction',
         title,
-        preview: payload?.summaryText || 'Transaction update',
+        preview: buildTransactionPreview(payload),
         status: payload?.action || 'new',
         timestamp: payload?.updatedAt || row.created_at,
         unread: Number(row.is_read) === 0,
