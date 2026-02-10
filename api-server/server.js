@@ -162,12 +162,12 @@ io.on("connection", (socket) => {
   socket.join(`emp:${user.empid}`);
   if (user.companyId) {
     socket.join(`company:${user.companyId}`);
-    markOnline(user.companyId, user.empid, socket.id);
+    markOnline(user.companyId, user.empid);
   }
 
   socket.on("disconnect", () => {
     if (user.companyId) {
-      markOffline(user.companyId, user.empid, socket.id);
+      markOffline(user.companyId, user.empid);
     }
   });
 });
