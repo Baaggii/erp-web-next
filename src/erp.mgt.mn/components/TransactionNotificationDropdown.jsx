@@ -1134,6 +1134,7 @@ const styles = {
     boxShadow: '0 12px 30px rgba(15,23,42,0.2)',
     overflow: 'hidden',
     zIndex: 60,
+    willChange: 'transform',
   },
   list: {
     maxHeight: '360px',
