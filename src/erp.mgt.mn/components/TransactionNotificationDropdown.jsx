@@ -868,13 +868,13 @@ export default function TransactionNotificationDropdown() {
     [temporaryState.created, temporaryState.review],
   );
 
-  const resolveFormInfo = useCallback(
+  const resolveFormEntry = useCallback(
     (item) => {
       if (!item || formEntries.length === 0) return null;
       const normalizedName = normalizeText(item.transactionName);
       if (normalizedName) {
         const found = formEntries.find(([name]) => normalizeText(name) === normalizedName);
-        if (found) return found[1];
+        if (found) return found;
       }
       const normalizedTable = normalizeText(item.transactionTable);
       if (normalizedTable) {
@@ -882,11 +882,16 @@ export default function TransactionNotificationDropdown() {
           const table = normalizeText(info?.table ?? info?.tableName ?? info?.table_name);
           return table && table === normalizedTable;
         });
-        if (found) return found[1];
+        if (found) return found;
       }
       return null;
     },
     [formEntries],
+  );
+
+  const resolveFormInfo = useCallback(
+    (item) => resolveFormEntry(item)?.[1] ?? null,
+    [resolveFormEntry],
   );
 
   const resolveNotificationTab = useCallback(
@@ -1055,14 +1060,25 @@ export default function TransactionNotificationDropdown() {
             if (scope) params.set('temporaryScope', scope);
             params.set('temporaryKey', String(Date.now()));
 
-            const moduleKey = String(redirectMeta.moduleKey || '').trim();
+            const formLookup = {
+              transactionName:
+                String(redirectMeta.formName || redirectMeta.configName || item?.title || '').trim(),
+              transactionTable: String(redirectMeta.tableName || '').trim(),
+            };
+            const resolvedFormEntry = resolveFormEntry(formLookup);
+            const resolvedFormName = resolvedFormEntry?.[0] || '';
+            const resolvedFormInfo = resolvedFormEntry?.[1] || {};
+
+            const moduleKey = String(
+              redirectMeta.moduleKey || resolvedFormInfo?.moduleKey || resolvedFormInfo?.module || '',
+            ).trim();
             let basePath = '/forms';
             if (moduleKey) {
               params.set('temporaryModule', moduleKey);
               basePath = `/forms/${moduleKey.replace(/_/g, '-')}`;
             }
 
-            const formName = String(redirectMeta.formName || item?.title || '').trim();
+            const formName = String(redirectMeta.formName || resolvedFormName || item?.title || '').trim();
             if (formName) params.set('temporaryForm', formName);
             const configName = String(redirectMeta.configName || '').trim();
             if (configName) params.set('temporaryConfig', configName);
@@ -1070,6 +1086,9 @@ export default function TransactionNotificationDropdown() {
             if (tableName) params.set('temporaryTable', tableName);
             if (redirectMeta.temporaryId != null) {
               params.set('temporaryId', String(redirectMeta.temporaryId));
+            }
+            if (moduleKey && formName) {
+              params.set(`name_${moduleKey}`, formName);
             }
             targetPath = `${basePath}?${params.toString()}`;
           }
@@ -1084,7 +1103,7 @@ export default function TransactionNotificationDropdown() {
         },
       };
     });
-  }, [feedState.items, markRead, navigate, resolveNotificationTab]);
+  }, [feedState.items, markRead, navigate, resolveFormEntry, resolveNotificationTab]);
 
   const hasAnyNotifications = combinedItems.length > 0;
   const aggregatedUnreadCount = Number(unreadCount) || 0;
