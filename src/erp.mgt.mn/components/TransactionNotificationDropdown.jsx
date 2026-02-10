@@ -27,7 +27,6 @@ const DEFAULT_PLAN_NOTIFICATION_FIELDS = ['is_plan', 'is_plan_completion'];
 const DEFAULT_PLAN_NOTIFICATION_VALUES = ['1'];
 const DEFAULT_DUTY_NOTIFICATION_FIELDS = [];
 const DEFAULT_DUTY_NOTIFICATION_VALUES = ['1'];
-const DROPDOWN_CHUNK_SIZE = 20;
 
 function normalizeText(value) {
   if (value === undefined || value === null) return '';
@@ -261,9 +260,6 @@ export default function TransactionNotificationDropdown() {
   const { user, session } = useAuth();
   const { workflows, markWorkflowSeen, temporary } = usePendingRequests();
   const [open, setOpen] = useState(false);
-  const [snapshotItems, setSnapshotItems] = useState([]);
-  const [visibleCount, setVisibleCount] = useState(DROPDOWN_CHUNK_SIZE);
-  const [deferredCount, setDeferredCount] = useState(0);
   const [formEntries, setFormEntries] = useState([]);
   const [formsLoaded, setFormsLoaded] = useState(false);
   const [codeTransactions, setCodeTransactions] = useState([]);
@@ -288,7 +284,6 @@ export default function TransactionNotificationDropdown() {
     error: '',
   });
   const containerRef = useRef(null);
-  const listRef = useRef(null);
   const navigate = useNavigate();
   const generalConfig = useGeneralConfig();
   const dashboardTabs = useMemo(
@@ -997,46 +992,7 @@ export default function TransactionNotificationDropdown() {
     temporaryItems,
   ]);
 
-  const displayItems = open ? snapshotItems : combinedItems;
-  const visibleItems = useMemo(
-    () => displayItems.slice(0, visibleCount),
-    [displayItems, visibleCount],
-  );
-  const hasAnyDisplayNotifications = displayItems.length > 0;
-  const hasMoreItems = visibleCount < displayItems.length;
-
-  const handleListScroll = useCallback((event) => {
-    const node = event.currentTarget;
-    if (!node) return;
-    if (node.scrollTop + node.clientHeight < node.scrollHeight - 48) return;
-    setVisibleCount((prev) => prev + DROPDOWN_CHUNK_SIZE);
-  }, []);
-
-  useEffect(() => {
-    if (!open) {
-      setSnapshotItems([]);
-      setDeferredCount(0);
-      setVisibleCount(DROPDOWN_CHUNK_SIZE);
-      return;
-    }
-    setSnapshotItems(combinedItems);
-    setDeferredCount(0);
-    setVisibleCount(DROPDOWN_CHUNK_SIZE);
-    if (listRef.current) {
-      listRef.current.scrollTop = 0;
-    }
-  }, [open]);
-
-  useEffect(() => {
-    if (!open) return;
-    if (snapshotItems.length === 0 && combinedItems.length === 0) {
-      setDeferredCount(0);
-      return;
-    }
-    const snapshotKeys = new Set(snapshotItems.map((item) => item.key));
-    const newItems = combinedItems.filter((item) => !snapshotKeys.has(item.key));
-    setDeferredCount(newItems.length);
-  }, [combinedItems, open, snapshotItems]);
+  const hasAnyNotifications = combinedItems.length > 0;
 
   return (
     <div style={styles.wrapper} ref={containerRef}>
@@ -1050,17 +1006,11 @@ export default function TransactionNotificationDropdown() {
       </button>
       {open && (
         <div style={styles.dropdown}>
-          <div ref={listRef} style={styles.list} onScroll={handleListScroll}>
-            {!hasAnyDisplayNotifications && (
+          <div style={styles.list}>
+            {!hasAnyNotifications && (
               <div style={styles.empty}>No notifications yet</div>
             )}
-            {deferredCount > 0 && (
-              <div style={styles.newItemsHint}>
-                {deferredCount} newer notification{deferredCount > 1 ? 's are' : ' is'} ready.
-                {' '}Close and reopen to refresh this list.
-              </div>
-            )}
-            {visibleItems.map((item) => (
+            {combinedItems.map((item) => (
               <button
                 key={item.key}
                 type="button"
@@ -1079,7 +1029,6 @@ export default function TransactionNotificationDropdown() {
                 )}
               </button>
             ))}
-            {hasMoreItems && <div style={styles.loadingMore}>Scroll to load more…</div>}
           </div>
           <button
             type="button"
@@ -1147,15 +1096,6 @@ const styles = {
     color: '#64748b',
     textAlign: 'center',
   },
-  newItemsHint: {
-    background: '#eff6ff',
-    border: '1px solid #bfdbfe',
-    color: '#1d4ed8',
-    borderRadius: '8px',
-    fontSize: '0.75rem',
-    lineHeight: 1.4,
-    padding: '0.45rem 0.55rem',
-  },
   notificationItem: (isUnread) => ({
     width: '100%',
     textAlign: 'left',
@@ -1192,12 +1132,6 @@ const styles = {
   notificationMeta: {
     fontSize: '0.72rem',
     color: '#64748b',
-  },
-  loadingMore: {
-    textAlign: 'center',
-    color: '#64748b',
-    fontSize: '0.76rem',
-    padding: '0.15rem 0 0.35rem',
   },
   footer: {
     width: '100%',
