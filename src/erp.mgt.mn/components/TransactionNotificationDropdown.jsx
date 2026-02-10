@@ -776,10 +776,24 @@ export default function TransactionNotificationDropdown() {
         const scope = tab === 'incoming' ? 'incoming' : 'outgoing';
         markWorkflowSeen(workflowKey, scope, [normalizedStatus]);
       }
-      if (String(req?.request_type || '').trim().toLowerCase() === 'report_approval') {
+      const requestType = String(req?.request_type || '').trim().toLowerCase();
+      const resolveRequestDashboardTab = () => {
+        if (requestType === 'report_approval') return reportApprovalsDashboardTab || 'audition';
+        const normalizedTable = normalizeText(req?.table_name || req?.tableName || '');
+        if (!normalizedTable) return 'audition';
+        const formEntry = formEntries.find(([, info]) => {
+          const table = normalizeText(info?.table ?? info?.tableName ?? info?.table_name);
+          return table && table === normalizedTable;
+        });
+        const redirectTab = String(
+          formEntry?.[1]?.notificationRedirectTab ?? formEntry?.[1]?.notification_redirect_tab ?? '',
+        ).trim();
+        return dashboardTabs.has(redirectTab) ? redirectTab : 'audition';
+      };
+      if (requestType === 'report_approval' || requestType === 'change_request') {
         const dashboardParams = new URLSearchParams({
-          tab: reportApprovalsDashboardTab || 'audition',
-          requestType: 'report_approval',
+          tab: resolveRequestDashboardTab(),
+          requestType,
           requestScope: tab,
           requestStatus: normalizedStatus,
           requestId: String(req?.request_id || ''),
@@ -789,26 +803,39 @@ export default function TransactionNotificationDropdown() {
       }
       navigate(`/requests?${params.toString()}`);
     },
-    [markWorkflowSeen, navigate, reportApprovalsDashboardTab],
+    [dashboardTabs, formEntries, markWorkflowSeen, navigate, reportApprovalsDashboardTab],
   );
 
   const openTemporary = useCallback(
     (scope, entry) => {
       setOpen(false);
       temporary?.markScopeSeen?.(scope);
+      const resolveTemporaryDashboardTab = () => {
+        const normalizedTable = normalizeText(entry?.tableName || entry?.table_name || '');
+        if (!normalizedTable) return 'audition';
+        const formEntry = formEntries.find(([, info]) => {
+          const table = normalizeText(info?.table ?? info?.tableName ?? info?.table_name);
+          return table && table === normalizedTable;
+        });
+        const redirectTab = String(
+          formEntry?.[1]?.notificationRedirectTab ?? formEntry?.[1]?.notification_redirect_tab ?? '',
+        ).trim();
+        return dashboardTabs.has(redirectTab) ? redirectTab : 'audition';
+      };
       if (!entry) {
-        navigate('/forms');
+        navigate('/?tab=audition&temporaryOpen=1');
         return;
       }
       const params = new URLSearchParams();
+      params.set('tab', resolveTemporaryDashboardTab());
       params.set('temporaryOpen', '1');
       if (scope) params.set('temporaryScope', scope);
       params.set('temporaryKey', String(Date.now()));
       const moduleKey = entry?.moduleKey || entry?.module_key || '';
-      let path = '/forms';
+      let path = '/';
       if (moduleKey) {
         params.set('temporaryModule', moduleKey);
-        path = `/forms/${moduleKey.replace(/_/g, '-')}`;
+        path = '/';
       }
       const configName = entry?.configName || entry?.config_name || '';
       const formName = entry?.formName || entry?.form_name || configName;
@@ -821,11 +848,11 @@ export default function TransactionNotificationDropdown() {
       const idValue = entry?.id ?? entry?.temporary_id ?? entry?.temporaryId ?? null;
       if (idValue != null) params.set('temporaryId', String(idValue));
       if (typeof window !== 'undefined') {
-        window.__activeTabKey = path;
+        window.__activeTabKey = '/';
       }
       navigate(`${path}?${params.toString()}`);
     },
-    [navigate, temporary?.markScopeSeen],
+    [dashboardTabs, formEntries, navigate, temporary?.markScopeSeen],
   );
 
   const resolveTemporaryFeedEntry = useCallback(
