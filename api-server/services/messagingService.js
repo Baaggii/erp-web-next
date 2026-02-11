@@ -15,6 +15,7 @@ const LINKED_TYPE_ALLOWLIST = new Set(['transaction', 'plan', 'topic', 'task', '
 const VISIBILITY_SCOPES = new Set(['company', 'department', 'private']);
 
 const validatedMessagingSchemas = new WeakSet();
+const idempotencyRequestHashSupport = new WeakMap();
 let ioRef = null;
 
 const onlineByCompany = new Map();
@@ -88,6 +89,72 @@ function eventPayloadBase(ctx) {
     companyId: ctx.companyId,
     at: nowIso(),
   };
+}
+
+
+function isRequestHashColumnError(error) {
+  const message = String(error?.sqlMessage || error?.message || '').toLowerCase();
+  return message.includes('unknown column') && message.includes('request_hash');
+}
+
+async function readIdempotencyRow(db, { companyId, empid, idempotencyKey }) {
+  const mode = idempotencyRequestHashSupport.get(db);
+  if (mode !== false) {
+    try {
+      const [rows] = await db.query(
+        `SELECT message_id, request_hash, expires_at
+           FROM erp_message_idempotency
+          WHERE company_id = ? AND empid = ? AND idem_key = ?
+          LIMIT 1`,
+        [companyId, empid, idempotencyKey],
+      );
+      idempotencyRequestHashSupport.set(db, true);
+      return rows[0] || null;
+    } catch (error) {
+      if (!isRequestHashColumnError(error)) throw error;
+      idempotencyRequestHashSupport.set(db, false);
+    }
+  }
+
+  const [rows] = await db.query(
+    `SELECT message_id, expires_at
+       FROM erp_message_idempotency
+      WHERE company_id = ? AND empid = ? AND idem_key = ?
+      LIMIT 1`,
+    [companyId, empid, idempotencyKey],
+  );
+  return rows[0] ? { ...rows[0], request_hash: null } : null;
+}
+
+async function upsertIdempotencyRow(db, { companyId, empid, idempotencyKey, messageId, requestHash, expiresAt }) {
+  const mode = idempotencyRequestHashSupport.get(db);
+  if (mode !== false) {
+    try {
+      await db.query(
+        `INSERT INTO erp_message_idempotency (company_id, empid, idem_key, message_id, request_hash, expires_at)
+         VALUES (?, ?, ?, ?, ?, ?)
+         ON DUPLICATE KEY UPDATE
+           message_id = VALUES(message_id),
+           request_hash = VALUES(request_hash),
+           expires_at = VALUES(expires_at)`,
+        [companyId, empid, idempotencyKey, messageId, requestHash, expiresAt],
+      );
+      idempotencyRequestHashSupport.set(db, true);
+      return;
+    } catch (error) {
+      if (!isRequestHashColumnError(error)) throw error;
+      idempotencyRequestHashSupport.set(db, false);
+    }
+  }
+
+  await db.query(
+    `INSERT INTO erp_message_idempotency (company_id, empid, idem_key, message_id, expires_at)
+     VALUES (?, ?, ?, ?, ?)
+     ON DUPLICATE KEY UPDATE
+       message_id = VALUES(message_id),
+       expires_at = VALUES(expires_at)`,
+    [companyId, empid, idempotencyKey, messageId, expiresAt],
+  );
 }
 
 function sanitizeBody(value) {
@@ -398,15 +465,12 @@ async function createMessageInternal({ db = pool, ctx, payload, parentMessageId 
   const requestHash = computeRequestHash({ body, linkedType, linkedId, visibility, parentMessageId });
   const expiresAt = new Date(Date.now() + IDEMPOTENCY_TTL_MS);
 
-  const [existingRows] = await db.query(
-    `SELECT message_id, request_hash, expires_at
-       FROM erp_message_idempotency
-      WHERE company_id = ? AND empid = ? AND idem_key = ?
-      LIMIT 1`,
-    [ctx.companyId, ctx.user.empid, idempotencyKey],
-  );
-  if (existingRows[0]) {
-    const existing = existingRows[0];
+  const existing = await readIdempotencyRow(db, {
+    companyId: ctx.companyId,
+    empid: ctx.user.empid,
+    idempotencyKey,
+  });
+  if (existing) {
     const notExpired = !existing.expires_at || new Date(existing.expires_at).getTime() > Date.now();
     if (notExpired) {
       if (existing.request_hash && existing.request_hash !== requestHash) {
@@ -443,15 +507,14 @@ async function createMessageInternal({ db = pool, ctx, payload, parentMessageId 
     ],
   );
   const messageId = result.insertId;
-  await db.query(
-    `INSERT INTO erp_message_idempotency (company_id, empid, idem_key, message_id, request_hash, expires_at)
-     VALUES (?, ?, ?, ?, ?, ?)
-     ON DUPLICATE KEY UPDATE
-       message_id = VALUES(message_id),
-       request_hash = VALUES(request_hash),
-       expires_at = VALUES(expires_at)`,
-    [ctx.companyId, ctx.user.empid, idempotencyKey, messageId, requestHash, expiresAt],
-  );
+  await upsertIdempotencyRow(db, {
+    companyId: ctx.companyId,
+    empid: ctx.user.empid,
+    idempotencyKey,
+    messageId,
+    requestHash,
+    expiresAt,
+  });
   const message = await findMessageById(db, ctx.companyId, messageId);
 
   const viewerMessage = sanitizeForViewer(message, ctx.session, ctx.user);

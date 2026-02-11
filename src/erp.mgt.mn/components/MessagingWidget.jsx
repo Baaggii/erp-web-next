@@ -554,6 +554,7 @@ export default function MessagingWidget() {
     }
 
     const activeCompany = state.activeCompanyId || companyId;
+    const parsedCompanyId = Number(activeCompany);
     const payload = {
       idempotencyKey: createIdempotencyKey(),
       body: `[${safeTopic}] ${safeBody}`,
