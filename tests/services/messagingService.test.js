@@ -22,21 +22,23 @@ class FakeDb {
       return [messageId ? [{ message_id: messageId, request_hash: null, expires_at: null }] : []];
     }
     if (sql.startsWith('INSERT INTO erp_messages')) {
-      const [companyId, authorEmpid, parentId, linkedType, linkedId, visibilityScope, visibilityDepartmentId, visibilityEmpid, body, bodyCiphertext, bodyIv, bodyAuthTag] = params;
+      const hasLinkedFields = sql.includes('linked_type') && sql.includes('linked_id');
+      const [companyId, authorEmpid, parentId] = params;
+      const baseOffset = hasLinkedFields ? 8 : 3;
       const message = {
         id: this.nextId++,
         company_id: companyId,
         author_empid: authorEmpid,
         parent_message_id: parentId,
-        linked_type: linkedType,
-        linked_id: linkedId,
-        body,
-        body_ciphertext: bodyCiphertext,
-        body_iv: bodyIv,
-        body_auth_tag: bodyAuthTag,
-        visibility_scope: visibilityScope,
-        visibility_department_id: visibilityDepartmentId,
-        visibility_empid: visibilityEmpid,
+        linked_type: hasLinkedFields ? params[3] : null,
+        linked_id: hasLinkedFields ? params[4] : null,
+        visibility_scope: hasLinkedFields ? params[5] : 'company',
+        visibility_department_id: hasLinkedFields ? params[6] : null,
+        visibility_empid: hasLinkedFields ? params[7] : null,
+        body: params[baseOffset],
+        body_ciphertext: params[baseOffset + 1],
+        body_iv: params[baseOffset + 2],
+        body_auth_tag: params[baseOffset + 3],
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
         deleted_at: null,
@@ -171,6 +173,81 @@ test('tenant isolation: user from company B cannot edit company A message', asyn
   );
 });
 
+
+
+test('rate limiter falls back locally when redis is unavailable', async () => {
+  const db = new FakeDb();
+  const session = { permissions: { messaging: true } };
+  const originalNodeEnv = process.env.NODE_ENV;
+  process.env.NODE_ENV = 'production';
+
+  try {
+    const created = await postMessage({
+      user,
+      companyId: 1,
+      payload: { body: 'fallback redis down', linkedType: 'topic', linkedId: 'fallback', idempotencyKey: 'fallback-rl-1' },
+      correlationId: 'fallback-rl-1',
+      db,
+      getSession: async () => session,
+    });
+
+    assert.equal(created.message.body, 'fallback redis down');
+  } finally {
+    process.env.NODE_ENV = originalNodeEnv;
+  }
+});
+
+
+test('messages with same body are allowed when idempotency keys differ', async () => {
+  const db = new FakeDb();
+  const session = { permissions: { messaging: true } };
+
+  const first = await postMessage({
+    user,
+    companyId: 1,
+    payload: { body: 'same body', linkedType: 'topic', linkedId: 'dup-ok', idempotencyKey: 'dup-ok-1' },
+    correlationId: 'dup-ok-1',
+    db,
+    getSession: async () => session,
+  });
+
+  const second = await postMessage({
+    user,
+    companyId: 1,
+    payload: { body: 'same body', linkedType: 'topic', linkedId: 'dup-ok', idempotencyKey: 'dup-ok-2' },
+    correlationId: 'dup-ok-2',
+    db,
+    getSession: async () => session,
+  });
+
+  assert.notEqual(first.message.id, second.message.id);
+});
+
+test('insert falls back when linked_type columns are unavailable', async () => {
+  const db = new FakeDb();
+  const session = { permissions: { messaging: true } };
+  const originalQuery = db.query.bind(db);
+
+  db.query = async (sql, params = []) => {
+    if (sql.includes('INSERT INTO erp_messages') && sql.includes('linked_type')) {
+      const error = new Error("Unknown column 'linked_type' in 'field list'");
+      error.sqlMessage = "Unknown column 'linked_type' in 'field list'";
+      throw error;
+    }
+    return originalQuery(sql, params);
+  };
+
+  const created = await postMessage({
+    user,
+    companyId: 1,
+    payload: { body: 'legacy linked columns', linkedType: 'topic', linkedId: 'legacy-cols', idempotencyKey: 'legacy-cols-1' },
+    correlationId: 'legacy-cols-1',
+    db,
+    getSession: async () => session,
+  });
+
+  assert.equal(created.message.body, 'legacy linked columns');
+});
 test('idempotency key returns same message without duplicate insert', async () => {
   const db = new FakeDb();
   const session = { permissions: { messaging: true } };
@@ -199,6 +276,43 @@ test('idempotency key returns same message without duplicate insert', async () =
   assert.equal(db.messages.length, 1);
 });
 
+
+
+test('idempotency fallback works when expires_at column is unavailable', async () => {
+  const db = new FakeDb();
+  const session = { permissions: { messaging: true } };
+  const originalQuery = db.query.bind(db);
+
+  db.query = async (sql, params = []) => {
+    if (sql.includes('erp_message_idempotency') && sql.includes('expires_at')) {
+      const error = new Error("Unknown column 'expires_at' in 'field list'");
+      error.sqlMessage = "Unknown column 'expires_at' in 'field list'";
+      throw error;
+    }
+    return originalQuery(sql, params);
+  };
+
+  const created = await postMessage({
+    user,
+    companyId: 1,
+    payload: { body: 'legacy schema path', linkedType: 'topic', linkedId: 'legacy', idempotencyKey: 'legacy-1' },
+    correlationId: 'legacy-1',
+    db,
+    getSession: async () => session,
+  });
+
+  const replay = await postMessage({
+    user,
+    companyId: 1,
+    payload: { body: 'legacy schema path', linkedType: 'topic', linkedId: 'legacy', idempotencyKey: 'legacy-1' },
+    correlationId: 'legacy-2',
+    db,
+    getSession: async () => session,
+  });
+
+  assert.equal(created.message.id, replay.message.id);
+  assert.equal(replay.idempotentReplay, true);
+});
 test('reply beyond max depth is rejected', async () => {
   const db = new FakeDb();
   const session = { permissions: { messaging: true } };

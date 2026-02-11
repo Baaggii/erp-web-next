@@ -16,9 +16,12 @@ const VISIBILITY_SCOPES = new Set(['company', 'department', 'private']);
 
 const validatedMessagingSchemas = new WeakSet();
 const idempotencyRequestHashSupport = new WeakMap();
+const messageLinkedContextSupport = new WeakMap();
 let ioRef = null;
 
 const onlineByCompany = new Map();
+const localRateWindows = new Map();
+const localDuplicateWindows = new Map();
 const RATE_LIMIT_REDIS_SCRIPT = `
 local rateKey = KEYS[1]
 local duplicateKey = KEYS[2]
@@ -92,9 +95,17 @@ function eventPayloadBase(ctx) {
 }
 
 
-function isRequestHashColumnError(error) {
+function isUnknownColumnError(error, columnName) {
   const message = String(error?.sqlMessage || error?.message || '').toLowerCase();
-  return message.includes('unknown column') && message.includes('request_hash');
+  return message.includes('unknown column') && message.includes(String(columnName).toLowerCase());
+}
+
+function canUseLinkedColumns(db) {
+  return messageLinkedContextSupport.get(db) !== false;
+}
+
+function markLinkedColumnsUnsupported(db) {
+  messageLinkedContextSupport.set(db, false);
 }
 
 async function readIdempotencyRow(db, { companyId, empid, idempotencyKey }) {
@@ -111,19 +122,31 @@ async function readIdempotencyRow(db, { companyId, empid, idempotencyKey }) {
       idempotencyRequestHashSupport.set(db, true);
       return rows[0] || null;
     } catch (error) {
-      if (!isRequestHashColumnError(error)) throw error;
+      if (!isUnknownColumnError(error, 'request_hash') && !isUnknownColumnError(error, 'expires_at')) throw error;
       idempotencyRequestHashSupport.set(db, false);
     }
   }
 
-  const [rows] = await db.query(
-    `SELECT message_id, expires_at
-       FROM erp_message_idempotency
-      WHERE company_id = ? AND empid = ? AND idem_key = ?
-      LIMIT 1`,
-    [companyId, empid, idempotencyKey],
-  );
-  return rows[0] ? { ...rows[0], request_hash: null } : null;
+  try {
+    const [rows] = await db.query(
+      `SELECT message_id, expires_at
+         FROM erp_message_idempotency
+        WHERE company_id = ? AND empid = ? AND idem_key = ?
+        LIMIT 1`,
+      [companyId, empid, idempotencyKey],
+    );
+    return rows[0] ? { ...rows[0], request_hash: null } : null;
+  } catch (error) {
+    if (!isUnknownColumnError(error, 'expires_at')) throw error;
+    const [rows] = await db.query(
+      `SELECT message_id
+         FROM erp_message_idempotency
+        WHERE company_id = ? AND empid = ? AND idem_key = ?
+        LIMIT 1`,
+      [companyId, empid, idempotencyKey],
+    );
+    return rows[0] ? { ...rows[0], request_hash: null, expires_at: null } : null;
+  }
 }
 
 async function upsertIdempotencyRow(db, { companyId, empid, idempotencyKey, messageId, requestHash, expiresAt }) {
@@ -142,18 +165,31 @@ async function upsertIdempotencyRow(db, { companyId, empid, idempotencyKey, mess
       idempotencyRequestHashSupport.set(db, true);
       return;
     } catch (error) {
-      if (!isRequestHashColumnError(error)) throw error;
+      if (!isUnknownColumnError(error, 'request_hash') && !isUnknownColumnError(error, 'expires_at')) throw error;
       idempotencyRequestHashSupport.set(db, false);
     }
   }
 
+  try {
+    await db.query(
+      `INSERT INTO erp_message_idempotency (company_id, empid, idem_key, message_id, expires_at)
+       VALUES (?, ?, ?, ?, ?)
+       ON DUPLICATE KEY UPDATE
+         message_id = VALUES(message_id),
+         expires_at = VALUES(expires_at)`,
+      [companyId, empid, idempotencyKey, messageId, expiresAt],
+    );
+    return;
+  } catch (error) {
+    if (!isUnknownColumnError(error, 'expires_at')) throw error;
+  }
+
   await db.query(
-    `INSERT INTO erp_message_idempotency (company_id, empid, idem_key, message_id, expires_at)
-     VALUES (?, ?, ?, ?, ?)
+    `INSERT INTO erp_message_idempotency (company_id, empid, idem_key, message_id)
+     VALUES (?, ?, ?, ?)
      ON DUPLICATE KEY UPDATE
-       message_id = VALUES(message_id),
-       expires_at = VALUES(expires_at)`,
-    [companyId, empid, idempotencyKey, messageId, expiresAt],
+       message_id = VALUES(message_id)`,
+    [companyId, empid, idempotencyKey, messageId],
   );
 }
 
@@ -275,11 +311,27 @@ function isSpam(body) {
   return /(.)\1{12,}/.test(body) || /(https?:\/\/\S+){4,}/i.test(body);
 }
 
-async function enforceRateLimit(companyId, empid, body, db = pool) {
+function enforceLocalRateLimitFallback({ companyId, empid, digest, now }) {
+  const actorKey = `${companyId}:${empid}`;
+  const window = localRateWindows.get(actorKey) || [];
+  const prunedWindow = window.filter((timestamp) => now - timestamp < MAX_RATE_WINDOW_MS);
+  if (prunedWindow.length >= MAX_RATE_MESSAGES) return [0, 1, 0];
+
+  const duplicateKey = `${actorKey}:${digest}`;
+  const duplicateExpiry = localDuplicateWindows.get(duplicateKey);
+  if (duplicateExpiry && duplicateExpiry > now) return [0, 0, 1];
+
+  prunedWindow.push(now);
+  localRateWindows.set(actorKey, prunedWindow);
+  localDuplicateWindows.set(duplicateKey, now + MAX_RATE_WINDOW_MS);
+  return [1, 0, 0];
+}
+
+async function enforceRateLimit(companyId, empid, dedupeKey = '', db = pool) {
   const now = Date.now();
   const member = `${now}:${crypto.randomUUID()}`;
-  const normalizedBody = body.trim().toLowerCase();
-  const digest = crypto.createHash('sha256').update(normalizedBody).digest('hex');
+  const dedupeInput = String(dedupeKey || '').trim().toLowerCase();
+  const digest = crypto.createHash('sha256').update(dedupeInput).digest('hex');
   const rateKey = `messaging:rate:${companyId}:${empid}`;
   const duplicateKey = `messaging:dedupe:${companyId}:${empid}:${digest}`;
 
@@ -291,8 +343,7 @@ async function enforceRateLimit(companyId, empid, body, db = pool) {
       [String(now), String(MAX_RATE_WINDOW_MS), String(MAX_RATE_MESSAGES), member],
     );
   } catch {
-    if (process.env.NODE_ENV === 'test') return;
-    throw createError(503, 'RATE_LIMIT_BACKEND_UNAVAILABLE', 'Messaging rate limiter is unavailable');
+    result = enforceLocalRateLimitFallback({ companyId, empid, digest, now });
   }
 
   if (!Array.isArray(result) || Number(result[0]) !== 1) {
@@ -485,27 +536,56 @@ async function createMessageInternal({ db = pool, ctx, payload, parentMessageId 
     }
   }
 
-  await enforceRateLimit(ctx.companyId, ctx.user.empid, body, db);
+  const safeDedupeKey = idempotencyKey || String(payload?.clientTempId || crypto.randomUUID());
+  await enforceRateLimit(ctx.companyId, ctx.user.empid, safeDedupeKey, db);
 
-  const [result] = await db.query(
-    `INSERT INTO erp_messages
-      (company_id, author_empid, parent_message_id, linked_type, linked_id, visibility_scope, visibility_department_id, visibility_empid, body, body_ciphertext, body_iv, body_auth_tag)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [
-      ctx.companyId,
-      ctx.user.empid,
-      parentMessageId,
-      linkedType,
-      linkedId,
-      visibility.visibilityScope,
-      visibility.visibilityDepartmentId,
-      visibility.visibilityEmpid,
-      encryptedBody.body,
-      encryptedBody.bodyCiphertext,
-      encryptedBody.bodyIv,
-      encryptedBody.bodyAuthTag,
-    ],
-  );
+  const messageInsertValues = [
+    ctx.companyId,
+    ctx.user.empid,
+    parentMessageId,
+    linkedType,
+    linkedId,
+    visibility.visibilityScope,
+    visibility.visibilityDepartmentId,
+    visibility.visibilityEmpid,
+    encryptedBody.body,
+    encryptedBody.bodyCiphertext,
+    encryptedBody.bodyIv,
+    encryptedBody.bodyAuthTag,
+  ];
+
+  let result;
+  if (canUseLinkedColumns(db)) {
+    try {
+      [result] = await db.query(
+        `INSERT INTO erp_messages
+          (company_id, author_empid, parent_message_id, linked_type, linked_id, visibility_scope, visibility_department_id, visibility_empid, body, body_ciphertext, body_iv, body_auth_tag)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        messageInsertValues,
+      );
+      messageLinkedContextSupport.set(db, true);
+    } catch (error) {
+      if (!isUnknownColumnError(error, 'linked_type') && !isUnknownColumnError(error, 'linked_id')) throw error;
+      markLinkedColumnsUnsupported(db);
+    }
+  }
+
+  if (!result) {
+    [result] = await db.query(
+      `INSERT INTO erp_messages
+        (company_id, author_empid, parent_message_id, body, body_ciphertext, body_iv, body_auth_tag)
+        VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [
+        ctx.companyId,
+        ctx.user.empid,
+        parentMessageId,
+        encryptedBody.body,
+        encryptedBody.bodyCiphertext,
+        encryptedBody.bodyIv,
+        encryptedBody.bodyAuthTag,
+      ],
+    );
+  }
   const messageId = result.insertId;
   await upsertIdempotencyRow(db, {
     companyId: ctx.companyId,
@@ -575,7 +655,7 @@ export async function getMessages({ user, companyId, linkedType, linkedId, curso
 
   const filters = ['company_id = ?', 'parent_message_id IS NULL'];
   const params = [scopedCompanyId];
-  if (linkedType && linkedId) {
+  if (linkedType && linkedId && canUseLinkedColumns(db)) {
     filters.push('linked_type = ?');
     filters.push('linked_id = ?');
     params.push(String(linkedType), String(linkedId));
@@ -586,10 +666,23 @@ export async function getMessages({ user, companyId, linkedType, linkedId, curso
   }
   filters.push('deleted_at IS NULL');
 
-  const [rows] = await db.query(
-    `SELECT * FROM erp_messages WHERE ${filters.join(' AND ')} ORDER BY id DESC LIMIT ?`,
-    [...params, parsedLimit + 1],
-  );
+  let rows;
+  try {
+    [rows] = await db.query(
+      `SELECT * FROM erp_messages WHERE ${filters.join(' AND ')} ORDER BY id DESC LIMIT ?`,
+      [...params, parsedLimit + 1],
+    );
+  } catch (error) {
+    if (!isUnknownColumnError(error, 'linked_type') && !isUnknownColumnError(error, 'linked_id')) throw error;
+    markLinkedColumnsUnsupported(db);
+    const fallbackFilters = filters.filter((entry) => entry !== 'linked_type = ?' && entry !== 'linked_id = ?');
+    const fallbackParams = [scopedCompanyId];
+    if (cursorId) fallbackParams.push(cursorId);
+    [rows] = await db.query(
+      `SELECT * FROM erp_messages WHERE ${fallbackFilters.join(' AND ')} ORDER BY id DESC LIMIT ?`,
+      [...fallbackParams, parsedLimit + 1],
+    );
+  }
 
   const visibleRows = rows.map((row) => sanitizeForViewer(row, session, user)).filter(Boolean);
   const hasMore = visibleRows.length > parsedLimit;
