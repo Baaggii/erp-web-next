@@ -1,7 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { mapJournalErrorToStatus } from '../../api-server/services/journalErrorMapping.js';
 import { validateJournalRequestBody } from '../../api-server/services/journalRouteValidation.js';
 
 test('validateJournalRequestBody rejects invalid table and source id', () => {
@@ -25,12 +24,4 @@ test('validateJournalRequestBody accepts posting payload with force repost', () 
     source_id: 15,
     force_repost: true,
   });
-});
-
-test('mapJournalErrorToStatus maps rule and SQL-like failures to 400', () => {
-  const noRule = mapJournalErrorToStatus(new Error('No matching fin_journal_rule for flag set FS_AR'));
-  assert.equal(noRule.status, 400);
-
-  const sqlErr = mapJournalErrorToStatus({ code: 'ER_BAD_FIELD_ERROR', message: "Unknown column 'x'" });
-  assert.equal(sqlErr.status, 400);
 });

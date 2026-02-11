@@ -1226,8 +1226,7 @@ export default function TransactionNotificationDropdown() {
       }),
     }));
   }, [feedState.items, markRead]);
-  const hasFeedLoaded = !feedState.loading && !feedState.error;
-  const bellUnreadCount = hasFeedLoaded ? dropdownUnreadCount : Number(unreadCount) || 0;
+  const bellUnreadCount = Math.max(Number(unreadCount) || 0, dropdownUnreadCount);
   const visibleItems = combinedItems.slice(0, visibleCount);
   const remainingCount = Math.max(0, combinedItems.length - visibleItems.length);
 
