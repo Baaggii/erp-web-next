@@ -8,8 +8,15 @@ const MAX_RATE_WINDOW_MS = 60_000;
 const MAX_RATE_MESSAGES = 20;
 const LINKED_TYPE_ALLOWLIST = new Set(['transaction', 'plan', 'topic', 'task', 'ticket']);
 const VISIBILITY_SCOPES = new Set(['company', 'department', 'private']);
+const REQUIRED_MESSAGING_TABLES = [
+  'erp_messages',
+  'erp_message_idempotency',
+  'erp_message_receipts',
+  'erp_presence_heartbeats',
+  'erp_messaging_abuse_audit',
+];
 
-let initialized = false;
+const validatedDbConnections = new WeakSet();
 let ioRef = null;
 
 const onlineByCompany = new Map();
@@ -173,76 +180,31 @@ function enforceRateLimit(companyId, empid, body) {
   recentMessagesBySender.set(key, history);
 }
 
-async function ensureSchema(db = pool) {
-  if (initialized) return;
-  await db.query(`
-    CREATE TABLE IF NOT EXISTS erp_messages (
-      id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-      company_id BIGINT UNSIGNED NOT NULL,
-      author_empid VARCHAR(64) NOT NULL,
-      parent_message_id BIGINT UNSIGNED NULL,
-      linked_type VARCHAR(64) NULL,
-      linked_id VARCHAR(128) NULL,
-      visibility_scope VARCHAR(16) NOT NULL DEFAULT 'company',
-      visibility_department_id BIGINT UNSIGNED NULL,
-      visibility_empid VARCHAR(64) NULL,
-      body TEXT NULL,
-      body_ciphertext MEDIUMTEXT NULL,
-      body_iv VARCHAR(32) NULL,
-      body_auth_tag VARCHAR(64) NULL,
-      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-      deleted_at DATETIME NULL,
-      deleted_by_empid VARCHAR(64) NULL,
-      PRIMARY KEY (id),
-      KEY idx_messages_company_id_id (company_id, id),
-      KEY idx_messages_parent (parent_message_id),
-      KEY idx_messages_link (company_id, linked_type, linked_id),
-      KEY idx_messages_visibility (company_id, visibility_scope, visibility_department_id, visibility_empid)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-  `);
-  await db.query(`
-    CREATE TABLE IF NOT EXISTS erp_message_idempotency (
-      company_id BIGINT UNSIGNED NOT NULL,
-      empid VARCHAR(64) NOT NULL,
-      idem_key VARCHAR(128) NOT NULL,
-      message_id BIGINT UNSIGNED NOT NULL,
-      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      PRIMARY KEY (company_id, empid, idem_key),
-      KEY idx_idem_message (message_id)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-  `);
-  await db.query(`
-    CREATE TABLE IF NOT EXISTS erp_message_receipts (
-      message_id BIGINT UNSIGNED NOT NULL,
-      empid VARCHAR(64) NOT NULL,
-      read_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      PRIMARY KEY (message_id, empid)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-  `);
-  await db.query(`
-    CREATE TABLE IF NOT EXISTS erp_presence_heartbeats (
-      company_id BIGINT UNSIGNED NOT NULL,
-      empid VARCHAR(64) NOT NULL,
-      heartbeat_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      status VARCHAR(16) NOT NULL DEFAULT 'online',
-      PRIMARY KEY (company_id, empid)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-  `);
-  await db.query(`
-    CREATE TABLE IF NOT EXISTS erp_messaging_abuse_audit (
-      id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-      company_id BIGINT UNSIGNED NOT NULL,
-      empid VARCHAR(64) NOT NULL,
-      category VARCHAR(32) NOT NULL,
-      reason VARCHAR(255) NOT NULL,
-      payload JSON NULL,
-      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      PRIMARY KEY (id),
-      KEY idx_abuse_company_empid (company_id, empid)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-  `);
-  initialized = true;
+async function validateDbConnection(db = pool) {
+  if (validatedDbConnections.has(db)) return;
+  await db.query('SELECT 1');
+
+  const placeholders = REQUIRED_MESSAGING_TABLES.map(() => '?').join(', ');
+  const [rows] = await db.query(
+    `SELECT table_name
+       FROM information_schema.tables
+      WHERE table_schema = DATABASE()
+        AND table_name IN (${placeholders})`,
+    REQUIRED_MESSAGING_TABLES,
+  );
+  const existingTables = new Set(rows.map((row) => String(row.table_name || '').toLowerCase()));
+  const missingTables = REQUIRED_MESSAGING_TABLES.filter((table) => !existingTables.has(table.toLowerCase()));
+
+  if (missingTables.length) {
+    throw createError(
+      500,
+      'MESSAGING_SCHEMA_MISSING',
+      'Messaging tables are missing. Run database migrations before using messaging features.',
+      { missingTables },
+    );
+  }
+
+  validatedDbConnections.add(db);
 }
 
 async function resolveSession(user, companyId, getSession = getEmploymentSession) {
@@ -357,7 +319,7 @@ async function createMessageInternal({ db = pool, ctx, payload, parentMessageId 
 }
 
 export async function postMessage({ user, companyId, payload, correlationId, db = pool, getSession = getEmploymentSession }) {
-  await ensureSchema(db);
+  await validateDbConnection(db);
   const { scopedCompanyId, session } = await resolveSession(user, companyId, getSession);
   if (!canMessage(session)) throw createError(403, 'PERMISSION_DENIED', 'Messaging permission denied');
   const ctx = { user, companyId: scopedCompanyId, correlationId, session };
@@ -365,7 +327,7 @@ export async function postMessage({ user, companyId, payload, correlationId, db 
 }
 
 export async function postReply({ user, companyId, messageId, payload, correlationId, db = pool, getSession = getEmploymentSession }) {
-  await ensureSchema(db);
+  await validateDbConnection(db);
   const { scopedCompanyId, session } = await resolveSession(user, companyId, getSession);
   if (!canMessage(session)) throw createError(403, 'PERMISSION_DENIED', 'Messaging permission denied');
   const message = await findMessageById(db, scopedCompanyId, messageId);
@@ -382,7 +344,7 @@ export async function postReply({ user, companyId, messageId, payload, correlati
 }
 
 export async function getMessages({ user, companyId, linkedType, linkedId, cursor, limit = CURSOR_PAGE_SIZE, correlationId, db = pool, getSession = getEmploymentSession }) {
-  await ensureSchema(db);
+  await validateDbConnection(db);
   const { scopedCompanyId, session } = await resolveSession(user, companyId, getSession);
   if (!canMessage(session)) throw createError(403, 'PERMISSION_DENIED', 'Messaging permission denied');
   const parsedLimit = Math.min(Math.max(Number(limit) || CURSOR_PAGE_SIZE, 1), 100);
@@ -420,7 +382,7 @@ export async function getMessages({ user, companyId, linkedType, linkedId, curso
 }
 
 export async function getThread({ user, companyId, messageId, correlationId, db = pool, getSession = getEmploymentSession }) {
-  await ensureSchema(db);
+  await validateDbConnection(db);
   const { scopedCompanyId, session } = await resolveSession(user, companyId, getSession);
   if (!canMessage(session)) throw createError(403, 'PERMISSION_DENIED', 'Messaging permission denied');
   const root = await findMessageById(db, scopedCompanyId, messageId);
@@ -458,7 +420,7 @@ export async function getThread({ user, companyId, messageId, correlationId, db 
 }
 
 export async function patchMessage({ user, companyId, messageId, payload, correlationId, db = pool, editWindowMs = DEFAULT_EDIT_WINDOW_MS, getSession = getEmploymentSession }) {
-  await ensureSchema(db);
+  await validateDbConnection(db);
   const { scopedCompanyId, session } = await resolveSession(user, companyId, getSession);
   const message = await findMessageById(db, scopedCompanyId, messageId);
   if (!message || message.deleted_at) throw createError(404, 'MESSAGE_NOT_FOUND', 'Message not found');
@@ -483,7 +445,7 @@ export async function patchMessage({ user, companyId, messageId, payload, correl
 }
 
 export async function deleteMessage({ user, companyId, messageId, correlationId, db = pool, getSession = getEmploymentSession }) {
-  await ensureSchema(db);
+  await validateDbConnection(db);
   const { scopedCompanyId, session } = await resolveSession(user, companyId, getSession);
   const message = await findMessageById(db, scopedCompanyId, messageId);
   if (!message || message.deleted_at) throw createError(404, 'MESSAGE_NOT_FOUND', 'Message not found');
@@ -505,7 +467,7 @@ export async function deleteMessage({ user, companyId, messageId, correlationId,
 }
 
 export async function presenceHeartbeat({ user, companyId, status = 'online', correlationId, db = pool, getSession = getEmploymentSession }) {
-  await ensureSchema(db);
+  await validateDbConnection(db);
   const { scopedCompanyId } = await resolveSession(user, companyId, getSession);
   const safeStatus = ['online', 'away', 'offline'].includes(status) ? status : 'online';
   await db.query(
@@ -532,7 +494,7 @@ export async function presenceHeartbeat({ user, companyId, status = 'online', co
 }
 
 export async function getPresence({ user, companyId, userIds, db = pool, getSession = getEmploymentSession }) {
-  await ensureSchema(db);
+  await validateDbConnection(db);
   const { scopedCompanyId } = await resolveSession(user, companyId, getSession);
   const ids = Array.from(new Set(String(userIds || '').split(',').map((entry) => entry.trim()).filter(Boolean)));
   if (!ids.length) return { companyId: scopedCompanyId, users: [] };
