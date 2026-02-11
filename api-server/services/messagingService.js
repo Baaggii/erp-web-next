@@ -3,6 +3,12 @@ import { pool, getEmploymentSession } from '../../db/index.js';
 let initialized = false;
 let ioRef = null;
 const onlineByCompany = new Map();
+const recentMessagesByUser = new Map();
+
+const MAX_REPLY_DEPTH = 5;
+const MESSAGE_RATE_LIMIT_WINDOW_MS = 60_000;
+const MESSAGE_RATE_LIMIT_MAX_PER_WINDOW = 20;
+const DUPLICATE_MESSAGE_WINDOW_MS = 10_000;
 
 function toId(value) {
   const parsed = Number(value);
@@ -64,6 +70,71 @@ async function resolveContext(user, explicitCompanyId) {
 
 function listOnline(companyId) {
   return Array.from(onlineByCompany.get(companyId) || []);
+}
+
+function countLinks({ topic, transactionId, planId }) {
+  return [topic, transactionId, planId].filter(Boolean).length;
+}
+
+function enforceRootLinkConstraint({ topic, transactionId, planId, parentMessageId }) {
+  if (parentMessageId) return;
+  const links = countLinks({ topic, transactionId, planId });
+  if (links !== 1) {
+    throw Object.assign(
+      new Error('Exactly one root message link is required: topic, transactionId, or planId'),
+      { status: 400 },
+    );
+  }
+}
+
+async function resolveReplyDepth({ parentMessageId, scopedCompanyId }) {
+  if (!parentMessageId) return null;
+  const [rows] = await pool.query(
+    `WITH RECURSIVE message_chain AS (
+       SELECT id, parent_message_id, 1 AS depth
+         FROM erp_messages
+        WHERE id = ? AND company_id = ? AND deleted_at IS NULL
+       UNION ALL
+       SELECT m.id, m.parent_message_id, message_chain.depth + 1 AS depth
+         FROM erp_messages m
+         JOIN message_chain ON m.id = message_chain.parent_message_id
+        WHERE m.company_id = ? AND m.deleted_at IS NULL
+     )
+     SELECT id, parent_message_id, depth
+       FROM message_chain
+      ORDER BY depth DESC
+      LIMIT 1`,
+    [parentMessageId, scopedCompanyId, scopedCompanyId],
+  );
+  if (!rows.length) throw Object.assign(new Error('Parent message not found'), { status: 404 });
+  const maxDepthFromParent = Number(rows[0].depth) || 1;
+  if (maxDepthFromParent >= MAX_REPLY_DEPTH) {
+    throw Object.assign(new Error(`Reply depth limit reached (${MAX_REPLY_DEPTH})`), { status: 400 });
+  }
+  return rows[0];
+}
+
+function enforceRateLimit({ scopedCompanyId, empid, body }) {
+  const key = `${scopedCompanyId}:${empid}`;
+  const now = Date.now();
+  const history = recentMessagesByUser.get(key) || [];
+  const recent = history.filter((entry) => now - entry.ts <= MESSAGE_RATE_LIMIT_WINDOW_MS);
+
+  if (recent.length >= MESSAGE_RATE_LIMIT_MAX_PER_WINDOW) {
+    throw Object.assign(new Error('Rate limit exceeded for messaging'), { status: 429 });
+  }
+
+  const duplicate = recent.find(
+    (entry) => entry.body === body && now - entry.ts <= DUPLICATE_MESSAGE_WINDOW_MS,
+  );
+  if (duplicate) {
+    throw Object.assign(new Error('Duplicate message detected, please wait before sending again'), {
+      status: 429,
+    });
+  }
+
+  recent.push({ ts: now, body });
+  recentMessagesByUser.set(key, recent);
 }
 
 export async function listMessages({ user, companyId, limit = 80 }) {
@@ -137,13 +208,9 @@ export async function createMessage({ user, payload, companyId }) {
     ? Array.from(new Set(payload.recipientEmpids.map((v) => String(v || '').trim()).filter(Boolean))).slice(0, 50)
     : [];
 
-  if (parentMessageId) {
-    const [parentRows] = await pool.query(
-      `SELECT id FROM erp_messages WHERE id = ? AND company_id = ? AND deleted_at IS NULL LIMIT 1`,
-      [parentMessageId, scopedCompanyId],
-    );
-    if (!parentRows.length) throw Object.assign(new Error('Parent message not found'), { status: 404 });
-  }
+  enforceRootLinkConstraint({ topic, transactionId, planId, parentMessageId });
+  await resolveReplyDepth({ parentMessageId, scopedCompanyId });
+  enforceRateLimit({ scopedCompanyId, empid: user.empid, body });
 
   const [result] = await pool.query(
     `INSERT INTO erp_messages

@@ -6,7 +6,7 @@ This audit checks whether `docs/secure-messaging-prompt-pack.md` is implemented 
 
 **Partially implemented (early-stage implementation).**
 
-There is a working messaging feature (API + socket events + UI widget), but most enterprise/security requirements from the prompt pack are missing.
+There is a working messaging feature (API + socket events + UI widget), and some additional guardrails now exist (root-link validation, reply-depth cap, and basic anti-spam throttling), but most enterprise/security requirements from the prompt pack are still missing.
 
 ## What is implemented
 
@@ -25,8 +25,8 @@ There is a working messaging feature (API + socket events + UI widget), but most
 ### 2) Database & tenant security
 - Prompt requires PostgreSQL + Redis + RLS; current implementation uses MySQL (`mysql2`/pool usage), and messaging tables are created in app code.
 - No PostgreSQL Row-Level Security policies.
-- No strict polymorphic link constraint "exactly one of transaction|plan|topic" (all three can be null or populated together).
-- No configured max nested reply depth.
+- Root-message link validation now enforces exactly one of `transaction|plan|topic` at service level, but no DB-level CHECK constraint exists.
+- Reply depth is now capped in service logic, but not yet enforced via schema-level constraints.
 - No read receipts, attachments metadata, notification_queue table for messaging, or presence history table.
 
 ### 3) Backend API completeness
@@ -41,11 +41,11 @@ There is a working messaging feature (API + socket events + UI widget), but most
 ### 5) Frontend widget completeness
 - Widget is collapsible and shows online count.
 - Missing unread badge, conversation list, attachment picker, company switch control in widget, session persistence (open/closed + last conversation restore), accessibility hardening, content sanitization strategy.
-- A `messaging:start` event is dispatched elsewhere but widget does not consume it, so context-sensitive launch appears incomplete.
+- A `messaging:start` event is dispatched and consumed by the widget for context-sensitive launch.
 
 ### 6) Security hardening
 - Missing documented CSP/secure headers plan for messaging module, attachment AV scanning/quarantine/signed URL pipeline, abuse/audit schema, incident response playbook, compliance workflows.
-- No explicit rate limit / spam / profanity controls in messaging service.
+- Basic in-memory anti-spam controls now exist (per-user rate limiting and duplicate-message suppression), but there is still no distributed/global policy or moderation pipeline.
 
 ### 7) Performance, QA, rollout
 - Missing dedicated messaging tests (unit/integration/e2e).
