@@ -73,7 +73,12 @@ import {
   setNotificationEmitter as setUnifiedNotificationEmitter,
   setNotificationStore as setUnifiedNotificationStore,
 } from "./services/notificationService.js";
-import { setMessagingIo, markOnline, markOffline } from "./services/messagingService.js";
+import {
+  setMessagingIo,
+  markOnline,
+  markOffline,
+  getMessagingSocketAccess,
+} from "./services/messagingService.js";
 
 // Polyfill for __dirname in ES modules
 const __filename = fileURLToPath(import.meta.url);
@@ -85,6 +90,27 @@ app.set("trust proxy", 1); // behind a single reverse proxy
 app.use(express.json({ limit: "100mb" }));
 app.use(express.urlencoded({ extended: true, limit: "100mb" }));
 app.use(cookieParser());
+app.use((req, res, next) => {
+  const allowedOrigin = String(process.env.ALLOWED_ORIGIN || "").trim();
+  const connectSrc = allowedOrigin ? `'self' ${allowedOrigin}` : "'self'";
+  const csp = [
+    "default-src 'self'",
+    "script-src 'self'",
+    "style-src 'self' 'unsafe-inline'",
+    "img-src 'self' data: blob:",
+    `connect-src ${connectSrc}`,
+    "font-src 'self' data:",
+    "object-src 'none'",
+    "frame-ancestors 'none'",
+    "base-uri 'self'",
+  ].join("; ");
+
+  res.setHeader("Content-Security-Policy", csp);
+  res.setHeader("Strict-Transport-Security", "max-age=15552000; includeSubDomains; preload");
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("X-Frame-Options", "DENY");
+  next();
+});
 app.use(csrf({ cookie: true }));          // <— csurf middleware
 app.use(logger);
 app.use(activityLogger);
@@ -114,41 +140,74 @@ if (Number.isFinite(keepAliveTimeoutMs) && keepAliveTimeoutMs > 0) {
   server.keepAliveTimeout = keepAliveTimeoutMs;
 }
 const socketPath = process.env.SOCKET_IO_PATH || "/api/socket.io";
+const allowedOrigin = String(process.env.ALLOWED_ORIGIN || "").trim();
+const SOCKET_AUTH_TTL_MS = 10 * 60 * 1000;
+
+function parseCookieHeader(rawCookie = "") {
+  if (!rawCookie) return {};
+  return Object.fromEntries(
+    rawCookie
+      .split(";")
+      .map((entry) => entry.trim())
+      .filter(Boolean)
+      .map((entry) => {
+        const [k, ...v] = entry.split("=");
+        return [k, decodeURIComponent(v.join("="))];
+      }),
+  );
+}
+
+function joinSocketScopes(socket, user, session) {
+  socket.join(`user:${user.empid}`);
+  socket.join(`emp:${user.empid}`);
+  socket.join(`company:${user.companyId}`);
+  if (session?.branch_id) {
+    socket.join(`branch:${session.branch_id}`);
+  }
+  if (session?.department_id) {
+    socket.join(`department:${session.department_id}`);
+  }
+}
+
+async function authenticateSocket(socket) {
+  const cookies = parseCookieHeader(socket.request.headers.cookie || "");
+  const token = cookies[getCookieName()];
+  if (!token) throw new Error("Authentication error");
+
+  const user = jwtService.verify(token);
+  const { scopedCompanyId, session } = await getMessagingSocketAccess({
+    user,
+    companyId: user.companyId,
+    getSession: getEmploymentSession,
+  });
+
+  const scopedUser = { ...user, companyId: scopedCompanyId };
+  socket.user = scopedUser;
+  socket.messagingSession = session;
+  socket.authenticatedAt = Date.now();
+  joinSocketScopes(socket, scopedUser, session);
+}
+
 const io = new SocketIOServer(server, {
-  cors: { origin: true, credentials: true },
+  cors: {
+    origin: allowedOrigin || false,
+    credentials: true,
+  },
   path: socketPath,
+  allowRequest: (req, callback) => {
+    const origin = String(req.headers.origin || "").trim();
+    if (allowedOrigin && origin !== allowedOrigin) {
+      callback("Origin not allowed", false);
+      return;
+    }
+    callback(null, true);
+  },
 });
 
 // Authenticate sockets via JWT cookie and join per-user room
 io.use(async (socket, next) => {
   try {
-    const raw = socket.request.headers.cookie || "";
-    const cookies = Object.fromEntries(
-      raw.split(";").map((c) => {
-        const [k, ...v] = c.trim().split("=");
-        return [k, decodeURIComponent(v.join("="))];
-      })
-    );
-    const token = cookies[getCookieName()];
-    if (!token) return next(new Error("Authentication error"));
-    const user = jwtService.verify(token);
-    socket.user = user;
-    socket.join(`user:${user.empid}`);
-    socket.join(`emp:${user.empid}`);
-    if (user.companyId) {
-      socket.join(`company:${user.companyId}`);
-    }
-    try {
-      const session = await getEmploymentSession(user.empid, user.companyId);
-      if (session?.branch_id) {
-        socket.join(`branch:${session.branch_id}`);
-      }
-      if (session?.department_id) {
-        socket.join(`department:${session.department_id}`);
-      }
-    } catch (err) {
-      console.error("Failed to resolve socket scope", err);
-    }
+    await authenticateSocket(socket);
     return next();
   } catch {
     return next(new Error("Authentication error"));
@@ -158,17 +217,26 @@ io.use(async (socket, next) => {
 io.on("connection", (socket) => {
   const user = socket.user;
   if (!user) return;
-  socket.join(`user:${user.empid}`);
-  socket.join(`emp:${user.empid}`);
-  if (user.companyId) {
-    socket.join(`company:${user.companyId}`);
-    markOnline(user.companyId, user.empid);
-  }
+
+  markOnline(user.companyId, user.empid);
+
+  socket.use(async (_packet, next) => {
+    if (Date.now() - Number(socket.authenticatedAt || 0) <= SOCKET_AUTH_TTL_MS) {
+      next();
+      return;
+    }
+
+    try {
+      await authenticateSocket(socket);
+      next();
+    } catch {
+      next(new Error("Authentication expired"));
+      socket.disconnect(true);
+    }
+  });
 
   socket.on("disconnect", () => {
-    if (user.companyId) {
-      markOffline(user.companyId, user.empid);
-    }
+    markOffline(user.companyId, user.empid);
   });
 });
 
