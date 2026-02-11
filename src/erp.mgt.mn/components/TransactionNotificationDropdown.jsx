@@ -282,7 +282,7 @@ function getTemporaryTimestamp(entry) {
 }
 
 export default function TransactionNotificationDropdown() {
-  const { notifications, unreadCount, markRead } = useTransactionNotifications();
+  const { notifications, unreadCount, markRead, markAllRead } = useTransactionNotifications();
   const { user, session } = useAuth();
   const { workflows, markWorkflowSeen, temporary } = usePendingRequests();
   const [open, setOpen] = useState(false);
@@ -1175,7 +1175,11 @@ export default function TransactionNotificationDropdown() {
   ]);
 
   const hasAnyNotifications = combinedItems.length > 0;
-  const aggregatedUnreadCount = Number(unreadCount) || 0;
+  const dropdownUnreadCount = useMemo(
+    () => combinedItems.filter((item) => item.isUnread).length,
+    [combinedItems],
+  );
+  const aggregatedUnreadCount = open ? dropdownUnreadCount : Number(unreadCount) || 0;
 
   return (
     <div style={styles.wrapper} ref={containerRef}>
@@ -1185,10 +1189,24 @@ export default function TransactionNotificationDropdown() {
         onClick={() => setOpen((prev) => !prev)}
       >
         <span aria-hidden="true">🔔</span>
-        {unreadCount > 0 && <span style={styles.badge}>{unreadCount}</span>}
+        {aggregatedUnreadCount > 0 && <span style={styles.badge}>{aggregatedUnreadCount}</span>}
       </button>
       {open && (
         <div style={styles.dropdown}>
+          <div style={styles.headerActions}>
+            <span style={styles.headerUnreadLabel}>Unread: {dropdownUnreadCount}</span>
+            {dropdownUnreadCount > 0 && (
+              <button
+                type="button"
+                style={styles.markAllButton}
+                onClick={() => {
+                  markAllRead();
+                }}
+              >
+                Mark all as read
+              </button>
+            )}
+          </div>
           <div style={styles.list} ref={listRef}>
             {feedState.loading && <div style={styles.empty}>Loading notifications...</div>}
             {!feedState.loading && !hasAnyNotifications && (
@@ -1258,6 +1276,27 @@ const styles = {
     fontSize: '0.7rem',
     padding: '0 0.4rem',
     lineHeight: '1.3rem',
+  },
+  headerActions: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: '0.5rem 0.75rem',
+    borderBottom: '1px solid #e5e7eb',
+    fontSize: '0.75rem',
+  },
+  headerUnreadLabel: {
+    color: '#4b5563',
+    fontWeight: 600,
+  },
+  markAllButton: {
+    border: '1px solid #d1d5db',
+    borderRadius: '999px',
+    padding: '0.2rem 0.6rem',
+    background: '#fff',
+    cursor: 'pointer',
+    fontSize: '0.75rem',
+    color: '#1d4ed8',
   },
   dropdown: {
     position: 'absolute',

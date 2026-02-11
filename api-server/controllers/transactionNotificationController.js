@@ -15,6 +15,15 @@ export async function listTransactionNotifications(req, res, next) {
         LIMIT ? OFFSET ?`,
       [req.user.empid, req.user.companyId, limit, offset],
     );
+    const [unreadRows] = await pool.query(
+      `SELECT COUNT(*) AS unread_count
+         FROM notifications
+        WHERE recipient_empid = ?
+          AND company_id = ?
+          AND deleted_at IS NULL
+          AND is_read = 0`,
+      [req.user.empid, req.user.companyId],
+    );
     const seenTransactionIds = new Set();
     const filtered = [];
     for (const row of rows || []) {
@@ -32,7 +41,7 @@ export async function listTransactionNotifications(req, res, next) {
       }
       filtered.push(row);
     }
-    res.json({ rows: filtered });
+    res.json({ rows: filtered, unreadCount: Number(unreadRows?.[0]?.unread_count) || 0 });
   } catch (err) {
     next(err);
   }
@@ -54,6 +63,23 @@ export async function markTransactionNotificationsRead(req, res, next) {
           AND recipient_empid = ?
           AND company_id = ?`,
       [req.user.empid, normalizedIds, req.user.empid, req.user.companyId],
+    );
+    res.json({ updated: result?.affectedRows ?? 0 });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function markAllTransactionNotificationsRead(req, res, next) {
+  try {
+    const [result] = await pool.query(
+      `UPDATE notifications
+          SET is_read = 1, updated_by = ?, updated_at = NOW()
+        WHERE recipient_empid = ?
+          AND company_id = ?
+          AND deleted_at IS NULL
+          AND is_read = 0`,
+      [req.user.empid, req.user.empid, req.user.companyId],
     );
     res.json({ updated: result?.affectedRows ?? 0 });
   } catch (err) {
