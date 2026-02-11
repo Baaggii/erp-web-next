@@ -146,15 +146,103 @@ function deriveFlagsFromTransaction(transactionRow, financialFields) {
 }
 
 async function fetchTransactionById(conn, sourceTable, sourceId) {
+  return fetchTransactionByIdWithOptions(conn, sourceTable, sourceId, { forUpdate: true });
+}
+
+async function fetchTransactionByIdWithOptions(conn, sourceTable, sourceId, { forUpdate = false } = {}) {
   const safeTable = assertSafeIdentifier(sourceTable, 'source_table');
+  const lockSql = forUpdate ? ' FOR UPDATE' : '';
   const [rows] = await conn.query(
-    `SELECT * FROM \`${safeTable}\` WHERE id = ? FOR UPDATE`,
+    `SELECT * FROM \`${safeTable}\` WHERE id = ?${lockSql}`,
     [sourceId],
   );
   if (!rows.length) {
     throw new Error(`Transaction not found in ${safeTable} with id ${sourceId}`);
   }
   return rows[0];
+}
+
+async function buildJournalPreviewPayload(conn, safeTable, sourceId, { forUpdate = false } = {}) {
+  const transactionRow = await fetchTransactionByIdWithOptions(conn, safeTable, sourceId, { forUpdate });
+  const transType = pickFirstDefined(transactionRow, ['TransType', 'trans_type', 'UITransType']);
+  if (!transType) {
+    throw new Error(`Transaction ${safeTable}#${sourceId} is missing TransType`);
+  }
+
+  const flagSetCode = await resolveFlagSetCode(conn, transType);
+
+  if (flagSetCode === NON_FINANCIAL_FLAG_SET_CODE) {
+    const financialFields = {};
+    return {
+      transactionRow,
+      transType,
+      flagSetCode,
+      financialFields,
+      selectedRule: null,
+      lines: [],
+      nonFinancial: true,
+    };
+  }
+
+  const fieldMap = await loadFinancialFieldMap(conn, safeTable);
+  const financialFields = buildFinancialContext(transactionRow, fieldMap);
+  const presentFlags = deriveFlagsFromTransaction(transactionRow, financialFields);
+  const selectedRule = await selectMatchingJournalRule(conn, flagSetCode, presentFlags);
+
+  const [ruleLines] = await conn.query(
+    `SELECT *
+       FROM fin_journal_rule_line
+      WHERE fin_journal_rule_id = ?
+      ORDER BY COALESCE(line_no, 999999), id`,
+    [selectedRule.id],
+  );
+
+  if (!ruleLines.length) {
+    throw new Error(`Selected rule ${selectedRule.id} has no journal lines`);
+  }
+
+  const context = { txn: transactionRow, financialFields, fields: financialFields };
+  const lines = [];
+  let debitTotal = 0;
+  let creditTotal = 0;
+
+  for (const line of ruleLines) {
+    const direction = normalizeDrCr(pickFirstDefined(line, ['entry_type', 'dr_cr']));
+    const accountCode = await resolveAccountCode(conn, line, context);
+    const amount = Math.abs(await resolveAmount(conn, line, context));
+    if (!amount) continue;
+
+    const { dimensionTypeCode, dimensionId } = resolveDimension(line, context);
+    const debitAmount = direction === 'DEBIT' ? amount : 0;
+    const creditAmount = direction === 'CREDIT' ? amount : 0;
+    debitTotal += debitAmount;
+    creditTotal += creditAmount;
+
+    lines.push({
+      lineNo: pickFirstDefined(line, ['line_no', 'line_number']) ?? null,
+      account_code: accountCode,
+      debit_amount: debitAmount,
+      credit_amount: creditAmount,
+      dimension_type_code: dimensionTypeCode,
+      dimension_id: dimensionId,
+    });
+  }
+
+  if (Math.abs(debitTotal - creditTotal) > 0.000001) {
+    throw new Error(`Journal imbalance detected: debit=${debitTotal}, credit=${creditTotal}`);
+  }
+
+  return {
+    transactionRow,
+    transType,
+    flagSetCode,
+    financialFields,
+    selectedRule,
+    lines,
+    debitTotal,
+    creditTotal,
+    nonFinancial: false,
+  };
 }
 
 async function loadFinancialFieldMap(conn, sourceTable) {
@@ -347,9 +435,9 @@ export async function post_single_transaction({
   try {
     await conn.beginTransaction();
 
-    const transactionRow = await fetchTransactionById(conn, safeTable, sourceId);
-    const existingJournalId = transactionRow.fin_journal_id;
-    const postStatus = String(transactionRow.fin_post_status || '').toUpperCase();
+    const currentRow = await fetchTransactionById(conn, safeTable, sourceId);
+    const existingJournalId = currentRow.fin_journal_id;
+    const postStatus = String(currentRow.fin_post_status || '').toUpperCase();
 
     if (postStatus === 'POSTED' && existingJournalId && !forceRepost) {
       await insertPostingLog(conn, {
@@ -367,13 +455,9 @@ export async function post_single_transaction({
       await conn.query('DELETE FROM fin_journal_header WHERE id = ?', [existingJournalId]);
     }
 
-    const transType = pickFirstDefined(transactionRow, ['TransType', 'trans_type', 'UITransType']);
-    if (!transType) {
-      throw new Error(`Transaction ${safeTable}#${sourceId} is missing TransType`);
-    }
-
-    const flagSetCode = await resolveFlagSetCode(conn, transType);
-    if (flagSetCode === NON_FINANCIAL_FLAG_SET_CODE) {
+    const preview = await buildJournalPreviewPayload(conn, safeTable, sourceId, { forUpdate: true });
+    const { transType, flagSetCode } = preview;
+    if (preview.nonFinancial) {
       await insertPostingLog(conn, {
         sourceTable: safeTable,
         sourceId,
@@ -383,23 +467,7 @@ export async function post_single_transaction({
       await conn.commit();
       return null;
     }
-
-    const fieldMap = await loadFinancialFieldMap(conn, safeTable);
-    const financialFields = buildFinancialContext(transactionRow, fieldMap);
-    const presentFlags = deriveFlagsFromTransaction(transactionRow, financialFields);
-
-    const selectedRule = await selectMatchingJournalRule(conn, flagSetCode, presentFlags);
-
-    const [ruleLines] = await conn.query(
-      `SELECT *
-         FROM fin_journal_rule_line
-        WHERE fin_journal_rule_id = ?
-        ORDER BY COALESCE(line_no, 999999), id`,
-      [selectedRule.id],
-    );
-    if (!ruleLines.length) {
-      throw new Error(`Selected rule ${selectedRule.id} has no journal lines`);
-    }
+    const selectedRule = preview.selectedRule;
 
     const journalHeaderId = await insertRow(conn, 'fin_journal_header', {
       source_table: safeTable,
@@ -412,37 +480,17 @@ export async function post_single_transaction({
       created_at: new Date(),
     });
 
-    let debitTotal = 0;
-    let creditTotal = 0;
-    const context = { txn: transactionRow, financialFields, fields: financialFields };
-
-    for (const line of ruleLines) {
-      const direction = normalizeDrCr(pickFirstDefined(line, ['entry_type', 'dr_cr']));
-      const accountCode = await resolveAccountCode(conn, line, context);
-      const amount = Math.abs(await resolveAmount(conn, line, context));
-      if (!amount) continue;
-
-      const { dimensionTypeCode, dimensionId } = resolveDimension(line, context);
-
-      const debitAmount = direction === 'DEBIT' ? amount : 0;
-      const creditAmount = direction === 'CREDIT' ? amount : 0;
-      debitTotal += debitAmount;
-      creditTotal += creditAmount;
-
+    for (const line of preview.lines) {
       await insertRow(conn, 'fin_journal_line', {
         fin_journal_header_id: journalHeaderId,
-        line_no: pickFirstDefined(line, ['line_no', 'line_number']),
-        account_code: accountCode,
-        debit_amount: debitAmount,
-        credit_amount: creditAmount,
-        dimension_type_code: dimensionTypeCode,
-        dimension_id: dimensionId,
+        line_no: line.lineNo,
+        account_code: line.account_code,
+        debit_amount: line.debit_amount,
+        credit_amount: line.credit_amount,
+        dimension_type_code: line.dimension_type_code,
+        dimension_id: line.dimension_id,
         created_at: new Date(),
       });
-    }
-
-    if (Math.abs(debitTotal - creditTotal) > 0.000001) {
-      throw new Error(`Journal imbalance detected: debit=${debitTotal}, credit=${creditTotal}`);
     }
 
     await updateRowById(conn, safeTable, sourceId, {
@@ -477,6 +525,40 @@ export async function post_single_transaction({
     }
 
     throw error;
+  } finally {
+    conn.release();
+  }
+}
+
+export async function preview_single_transaction({
+  source_table: sourceTable,
+  source_id: sourceId,
+  dbPool = null,
+} = {}) {
+  const safeTable = assertSafeIdentifier(sourceTable, 'source_table');
+  const activePool = dbPool || (await getDefaultPool());
+  const conn = await activePool.getConnection();
+
+  try {
+    const preview = await buildJournalPreviewPayload(conn, safeTable, sourceId, { forUpdate: false });
+    return {
+      source_table: safeTable,
+      source_id: sourceId,
+      trans_type: preview.transType,
+      fin_flag_set_code: preview.flagSetCode,
+      fin_journal_rule_id: preview.selectedRule?.id ?? null,
+      non_financial: preview.nonFinancial,
+      lines: preview.lines,
+      totals: {
+        debit: preview.debitTotal || 0,
+        credit: preview.creditTotal || 0,
+      },
+      transaction: {
+        fin_post_status: preview.transactionRow?.fin_post_status || null,
+        fin_journal_id: preview.transactionRow?.fin_journal_id || null,
+        fin_posted_at: preview.transactionRow?.fin_posted_at || null,
+      },
+    };
   } finally {
     conn.release();
   }
