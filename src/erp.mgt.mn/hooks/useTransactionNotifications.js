@@ -133,6 +133,7 @@ export default function useTransactionNotifications() {
   const { user } = useContext(AuthContext);
   const [notifications, setNotifications] = useState([]);
   const [connected, setConnected] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
   const refreshTimerRef = useRef(null);
 
   const refresh = useCallback(async () => {
@@ -148,6 +149,7 @@ export default function useTransactionNotifications() {
       const rows = Array.isArray(data?.rows) ? data.rows : [];
       const parsed = rows.map(parseNotificationRow).filter(Boolean);
       setNotifications(parsed);
+      setUnreadCount(Number(data?.unreadCount) || 0);
     } catch (err) {
       console.warn('Failed to load transaction notifications', err);
     }
@@ -167,11 +169,17 @@ export default function useTransactionNotifications() {
         ? ids.map((id) => Number(id)).filter((id) => Number.isFinite(id))
         : [];
       if (!normalizedIds.length) return;
+      let newlyRead = 0;
       setNotifications((prev) =>
-        prev.map((item) =>
-          normalizedIds.includes(Number(item.id)) ? { ...item, isRead: true } : item,
-        ),
+        prev.map((item) => {
+          if (!normalizedIds.includes(Number(item.id))) return item;
+          if (!item.isRead) newlyRead += 1;
+          return { ...item, isRead: true };
+        }),
       );
+      if (newlyRead > 0) {
+        setUnreadCount((prev) => Math.max(prev - newlyRead, 0));
+      }
       try {
         await fetch(`${API_BASE}/transactions/notifications/mark-read`, {
           method: 'POST',
@@ -183,9 +191,10 @@ export default function useTransactionNotifications() {
         });
       } catch (err) {
         console.warn('Failed to mark transaction notifications read', err);
+        refresh();
       }
     },
-    [],
+    [refresh],
   );
 
   const markGroupRead = useCallback(
@@ -203,6 +212,7 @@ export default function useTransactionNotifications() {
     if (user === undefined) return;
     if (!user) {
       setNotifications([]);
+      setUnreadCount(0);
       return;
     }
     refresh();
@@ -215,6 +225,7 @@ export default function useTransactionNotifications() {
           scheduleRefresh();
           return;
         }
+        let unreadDelta = 1;
         setNotifications((prev) => {
           const existingIndex = prev.findIndex(
             (item) => Number(item.id) === Number(parsed.id),
@@ -222,6 +233,7 @@ export default function useTransactionNotifications() {
           if (existingIndex >= 0) {
             const next = [...prev];
             const existing = prev[existingIndex];
+            if (!existing.isRead) unreadDelta = 0;
             next[existingIndex] = {
               ...existing,
               ...parsed,
@@ -231,6 +243,9 @@ export default function useTransactionNotifications() {
           }
           return [{ ...parsed, isRead: false }, ...prev];
         });
+        if (unreadDelta > 0) {
+          setUnreadCount((prev) => prev + unreadDelta);
+        }
       };
       const handleConnect = () => setConnected(true);
       const handleDisconnect = () => setConnected(false);
@@ -261,18 +276,37 @@ export default function useTransactionNotifications() {
   }, []);
 
   const groups = useMemo(() => buildGroups(notifications), [notifications]);
-  const unreadCount = useMemo(
+  const localUnreadCount = useMemo(
     () => notifications.filter((notification) => !notification.isRead).length,
     [notifications],
   );
 
+  const effectiveUnreadCount = Math.max(unreadCount, localUnreadCount);
+
+  const markAllRead = useCallback(async () => {
+    setNotifications((prev) => prev.map((item) => ({ ...item, isRead: true })));
+    setUnreadCount(0);
+    try {
+      await fetch(`${API_BASE}/transactions/notifications/mark-all-read`, {
+        method: 'POST',
+        credentials: 'include',
+        skipErrorToast: true,
+        skipLoader: true,
+      });
+    } catch (err) {
+      console.warn('Failed to mark all transaction notifications read', err);
+      refresh();
+    }
+  }, [refresh]);
+
   return {
     notifications,
     groups,
-    unreadCount,
+    unreadCount: effectiveUnreadCount,
     isConnected: connected,
     refresh,
     markRead,
+    markAllRead,
     markGroupRead,
   };
 }

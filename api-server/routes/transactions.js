@@ -2,6 +2,7 @@ import express from 'express';
 import rateLimit from 'express-rate-limit';
 import { getTransactions } from '../controllers/transactionController.js';
 import {
+  markAllTransactionNotificationsRead,
   listTransactionNotifications,
   markTransactionNotificationsRead,
 } from '../controllers/transactionNotificationController.js';
@@ -16,5 +17,6 @@ const notificationsRateLimiter = rateLimit({
 router.get('/', getTransactions);
 router.get('/notifications', notificationsRateLimiter, listTransactionNotifications);
 router.post('/notifications/mark-read', markTransactionNotificationsRead);
+router.post('/notifications/mark-all-read', markAllTransactionNotificationsRead);
 
 export default router;
