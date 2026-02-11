@@ -4612,7 +4612,6 @@ const TableManager = forwardRef(function TableManager({
     try {
       const res = await fetch(url, {
         method,
-        skipErrorToast: true,
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify(cleaned),
@@ -4754,11 +4753,6 @@ const TableManager = forwardRef(function TableManager({
       }
     } catch (err) {
       console.error('Save failed', err);
-      addToast(
-        t('failedToSave', 'Хадгалахад алдаа гарлаа') +
-          (err?.message ? `: ${err.message}` : ''),
-        'error',
-      );
       return false;
     }
   }
