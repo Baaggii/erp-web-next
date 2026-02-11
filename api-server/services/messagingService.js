@@ -291,7 +291,6 @@ async function createMessageInternal({ db = pool, ctx, payload, parentMessageId 
 }
 
 export async function postMessage({ user, companyId, payload, correlationId, db = pool, getSession = getEmploymentSession }) {
-  await validateDbConnection(db);
   const { scopedCompanyId, session } = await resolveSession(user, companyId, getSession);
   if (!canMessage(session)) throw createError(403, 'PERMISSION_DENIED', 'Messaging permission denied');
   const ctx = { user, companyId: scopedCompanyId, correlationId, session };
@@ -299,7 +298,6 @@ export async function postMessage({ user, companyId, payload, correlationId, db 
 }
 
 export async function postReply({ user, companyId, messageId, payload, correlationId, db = pool, getSession = getEmploymentSession }) {
-  await validateDbConnection(db);
   const { scopedCompanyId, session } = await resolveSession(user, companyId, getSession);
   if (!canMessage(session)) throw createError(403, 'PERMISSION_DENIED', 'Messaging permission denied');
   const message = await findMessageById(db, scopedCompanyId, messageId);
@@ -316,7 +314,6 @@ export async function postReply({ user, companyId, messageId, payload, correlati
 }
 
 export async function getMessages({ user, companyId, linkedType, linkedId, cursor, limit = CURSOR_PAGE_SIZE, correlationId, db = pool, getSession = getEmploymentSession }) {
-  await validateDbConnection(db);
   const { scopedCompanyId, session } = await resolveSession(user, companyId, getSession);
   if (!canMessage(session)) throw createError(403, 'PERMISSION_DENIED', 'Messaging permission denied');
   const parsedLimit = Math.min(Math.max(Number(limit) || CURSOR_PAGE_SIZE, 1), 100);
@@ -354,7 +351,6 @@ export async function getMessages({ user, companyId, linkedType, linkedId, curso
 }
 
 export async function getThread({ user, companyId, messageId, correlationId, db = pool, getSession = getEmploymentSession }) {
-  await validateDbConnection(db);
   const { scopedCompanyId, session } = await resolveSession(user, companyId, getSession);
   if (!canMessage(session)) throw createError(403, 'PERMISSION_DENIED', 'Messaging permission denied');
   const root = await findMessageById(db, scopedCompanyId, messageId);
@@ -392,7 +388,6 @@ export async function getThread({ user, companyId, messageId, correlationId, db 
 }
 
 export async function patchMessage({ user, companyId, messageId, payload, correlationId, db = pool, editWindowMs = DEFAULT_EDIT_WINDOW_MS, getSession = getEmploymentSession }) {
-  await validateDbConnection(db);
   const { scopedCompanyId, session } = await resolveSession(user, companyId, getSession);
   const message = await findMessageById(db, scopedCompanyId, messageId);
   if (!message || message.deleted_at) throw createError(404, 'MESSAGE_NOT_FOUND', 'Message not found');
@@ -417,7 +412,6 @@ export async function patchMessage({ user, companyId, messageId, payload, correl
 }
 
 export async function deleteMessage({ user, companyId, messageId, correlationId, db = pool, getSession = getEmploymentSession }) {
-  await validateDbConnection(db);
   const { scopedCompanyId, session } = await resolveSession(user, companyId, getSession);
   const message = await findMessageById(db, scopedCompanyId, messageId);
   if (!message || message.deleted_at) throw createError(404, 'MESSAGE_NOT_FOUND', 'Message not found');
@@ -439,7 +433,6 @@ export async function deleteMessage({ user, companyId, messageId, correlationId,
 }
 
 export async function presenceHeartbeat({ user, companyId, status = 'online', correlationId, db = pool, getSession = getEmploymentSession }) {
-  await validateDbConnection(db);
   const { scopedCompanyId } = await resolveSession(user, companyId, getSession);
   const safeStatus = ['online', 'away', 'offline'].includes(status) ? status : 'online';
   await db.query(
@@ -466,7 +459,6 @@ export async function presenceHeartbeat({ user, companyId, status = 'online', co
 }
 
 export async function getPresence({ user, companyId, userIds, db = pool, getSession = getEmploymentSession }) {
-  await validateDbConnection(db);
   const { scopedCompanyId } = await resolveSession(user, companyId, getSession);
   const ids = Array.from(new Set(String(userIds || '').split(',').map((entry) => entry.trim()).filter(Boolean)));
   if (!ids.length) return { companyId: scopedCompanyId, users: [] };
