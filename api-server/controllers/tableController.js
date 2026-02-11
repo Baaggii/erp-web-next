@@ -408,10 +408,13 @@ export async function updateRow(req, res, next) {
       }
     } catch {}
     if (original) res.locals.logDetails = original;
-    const updates = { ...req.body };
+    const columns = await listTableColumns(req.params.table);
+    const allowedColumns = new Set(columns);
+    const updates = Object.fromEntries(
+      Object.entries(req.body || {}).filter(([key]) => allowedColumns.has(key)),
+    );
     delete updates.created_by;
     delete updates.created_at;
-    const columns = await listTableColumns(req.params.table);
     if (columns.includes('updated_by')) updates.updated_by = req.user.empid;
     if (columns.includes('updated_at')) {
       updates.updated_at = formatDateForDb(new Date());
@@ -455,7 +458,10 @@ export async function addRow(req, res, next) {
       return createCompanyHandler(req, res, next);
     }
     const columns = await listTableColumns(req.params.table);
-    const row = { ...req.body };
+    const allowedColumns = new Set(columns);
+    const row = Object.fromEntries(
+      Object.entries(req.body || {}).filter(([key]) => allowedColumns.has(key)),
+    );
     if (columns.includes('created_by')) row.created_by = req.user?.empid;
     if (columns.includes('created_at')) {
       row.created_at = formatDateForDb(new Date());
