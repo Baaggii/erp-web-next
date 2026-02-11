@@ -476,6 +476,28 @@ export default function MessagingWidget() {
   }, [companyId, state.activeCompanyId]);
 
   useEffect(() => {
+    const activeCompany = state.activeCompanyId || companyId;
+    if (!activeCompany || !selfEmpid) return undefined;
+
+    const sendHeartbeat = async () => {
+      try {
+        await fetch(`${API_BASE}/messaging/presence/heartbeat`, {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ companyId: activeCompany, status: PRESENCE.ONLINE }),
+        });
+      } catch {
+        // Best-effort only.
+      }
+    };
+
+    sendHeartbeat();
+    const intervalId = globalThis.setInterval(sendHeartbeat, 45_000);
+    return () => globalThis.clearInterval(intervalId);
+  }, [companyId, selfEmpid, state.activeCompanyId]);
+
+  useEffect(() => {
     const socket = connectSocket();
     const onNew = (payload) => {
       const nextMessage = payload?.message || payload;
