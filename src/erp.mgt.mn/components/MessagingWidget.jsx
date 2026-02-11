@@ -99,7 +99,7 @@ function groupConversations(messages) {
 function resolvePresence(record) {
   const status = String(record?.presence || record?.status || '').toLowerCase();
   if (status === PRESENCE.ONLINE || status === PRESENCE.AWAY || status === PRESENCE.OFFLINE) return status;
-  return record?.last_seen_at ? PRESENCE.AWAY : PRESENCE.OFFLINE;
+  return PRESENCE.OFFLINE;
 }
 
 function presenceColor(status) {
@@ -136,6 +136,10 @@ function mergeMessageList(current, incoming) {
   else next.push(incoming);
   next.sort((a, b) => new Date(a.created_at || 0).getTime() - new Date(b.created_at || 0).getTime());
   return next;
+}
+
+function attachmentFingerprint(file) {
+  return `${file?.name || 'file'}-${file?.size || 0}-${file?.lastModified || 0}`;
 }
 
 function canOpenContextLink(permissions, chipType) {
@@ -275,6 +279,9 @@ export default function MessagingWidget() {
   const [composerAnnouncement, setComposerAnnouncement] = useState('');
   const [dragOverComposer, setDragOverComposer] = useState(false);
   const [attachmentsOpen, setAttachmentsOpen] = useState(false);
+  const [uploadedAttachments, setUploadedAttachments] = useState({});
+  const [uploadQueue, setUploadQueue] = useState([]);
+  const [recipientPickerOpen, setRecipientPickerOpen] = useState(false);
   const [collapsedMessageIds, setCollapsedMessageIds] = useState(() => new Set());
   const composerRef = useRef(null);
 
@@ -397,7 +404,12 @@ export default function MessagingWidget() {
               .filter(Boolean),
           ),
         );
-        if (idsFromEmployment.length === 0) {
+        const idsFromMessages = messages.flatMap((entry) => [
+          normalizeId(entry.author_empid),
+          ...(Array.isArray(entry.read_by) ? entry.read_by.map(normalizeId) : []),
+        ]).filter(Boolean);
+        const observedEmpids = Array.from(new Set([...idsFromEmployment, ...idsFromMessages, selfEmpid].filter(Boolean)));
+        if (observedEmpids.length === 0) {
           setEmployees([]);
           return;
         }
@@ -414,34 +426,36 @@ export default function MessagingWidget() {
           },
         ]));
 
-        const missingEmpids = idsFromEmployment.filter((empid) => !sanitizeMessageText(profileMap.get(empid)?.displayName || ''));
-        if (missingEmpids.length > 0) {
-          try {
-            const usersParams = new URLSearchParams({ companyId: String(activeCompany) });
-            const usersRes = await fetch(`${API_BASE}/users?${usersParams.toString()}`, { credentials: 'include' });
-            if (usersRes.ok) {
-              const usersData = await usersRes.json();
-              const usersRows = Array.isArray(usersData?.items) ? usersData.items : Array.isArray(usersData) ? usersData : [];
-              usersRows.forEach((userRow) => {
-                const empid = normalizeId(userRow.empid || userRow.emp_id || userRow.employee_id || userRow.id);
-                if (!empid || !missingEmpids.includes(empid)) return;
-                const fallbackDisplayName = sanitizeMessageText(userRow.full_name || userRow.display_name || userRow.name || userRow.username || empid) || empid;
-                const current = profileMap.get(empid) || {};
-                profileMap.set(empid, {
-                  displayName: sanitizeMessageText(current.displayName || fallbackDisplayName) || empid,
-                  employeeCode: sanitizeMessageText(current.employeeCode || userRow.username || userRow.empid || empid) || empid,
-                });
+        const usersByEmpid = new Map();
+        try {
+          const usersParams = new URLSearchParams({ companyId: String(activeCompany), perPage: '2000' });
+          const usersRes = await fetch(`${API_BASE}/users?${usersParams.toString()}`, { credentials: 'include' });
+          if (usersRes.ok) {
+            const usersData = await usersRes.json();
+            const usersRows = Array.isArray(usersData?.items) ? usersData.items : Array.isArray(usersData) ? usersData : [];
+            usersRows.forEach((userRow) => {
+              const empid = normalizeId(userRow.empid || userRow.emp_id || userRow.employee_id || userRow.employeeId);
+              if (!empid) return;
+              usersByEmpid.set(empid, userRow);
+              const fallbackDisplayName = sanitizeMessageText(userRow.full_name || userRow.display_name || userRow.name || userRow.username || empid) || empid;
+              const current = profileMap.get(empid) || {};
+              profileMap.set(empid, {
+                displayName: sanitizeMessageText(current.displayName || fallbackDisplayName) || empid,
+                employeeCode: sanitizeMessageText(current.employeeCode || userRow.username || userRow.empid || empid) || empid,
+                userId: normalizeId(userRow.id || userRow.user_id || userRow.userId),
               });
-            }
-          } catch {
-            // Best effort only; leave existing values.
+            });
           }
+        } catch {
+          // Best effort only; leave existing values.
         }
 
-        const uniqueEmployees = Array.from(new Map(idsFromEmployment.map((empid) => {
+        const uniqueEmployees = Array.from(new Map(observedEmpids.map((empid) => {
           const profile = profileMap.get(empid) || {};
+          const userRecord = usersByEmpid.get(empid) || {};
           return [empid, {
             empid,
+            userId: normalizeId(profile.userId || userRecord.id || userRecord.user_id || userRecord.userId),
             name: sanitizeMessageText(profile.displayName || empid) || empid,
             displayName: sanitizeMessageText(profile.displayName || empid) || empid,
             employeeCode: sanitizeMessageText(profile.employeeCode || empid) || empid,
@@ -451,7 +465,7 @@ export default function MessagingWidget() {
 
         const presenceParams = new URLSearchParams({
           companyId: String(activeCompany),
-          userIds: uniqueEmployees.map((entry) => entry.empid).join(','),
+          userIds: uniqueEmployees.map((entry) => entry.userId || entry.empid).filter(Boolean).join(','),
         });
         const presenceRes = await fetch(`${API_BASE}/messaging/presence?${presenceParams.toString()}`, { credentials: 'include' });
         if (presenceRes.ok) {
@@ -473,7 +487,7 @@ export default function MessagingWidget() {
     return () => {
       disposed = true;
     };
-  }, [companyId, state.activeCompanyId]);
+  }, [companyId, state.activeCompanyId, messages, selfEmpid]);
 
   useEffect(() => {
     const socket = connectSocket();
@@ -499,14 +513,16 @@ export default function MessagingWidget() {
     const onPresence = (payload) => {
       const incoming = Array.isArray(payload?.onlineUsers)
         ? payload.onlineUsers
-        : payload?.empid
+        : (payload?.empid || payload?.userId || payload?.user_id)
           ? [payload]
           : [];
       if (incoming.length === 0) return;
+      const userToEmpid = new Map(employees.map((entry) => [normalizeId(entry.userId), entry.empid]));
       setPresence((prev) => {
         const next = new Map((prev || []).map((entry) => [normalizeId(entry.empid || entry.id), entry]));
         incoming.forEach((entry) => {
-          const empid = normalizeId(entry.empid || entry.id);
+          const userId = normalizeId(entry.userId || entry.user_id || entry.id);
+          const empid = normalizeId(entry.empid || entry.employeeId || userToEmpid.get(userId) || entry.id);
           if (!empid) return;
           next.set(empid, { ...next.get(empid), ...entry, empid });
         });
@@ -537,7 +553,7 @@ export default function MessagingWidget() {
       socket.off('message.deleted', onDeleted);
       disconnectSocket();
     };
-  }, [state.activeCompanyId, companyId]);
+  }, [state.activeCompanyId, companyId, employees]);
 
   useEffect(() => {
     const onStartMessage = (event) => {
@@ -576,6 +592,18 @@ export default function MessagingWidget() {
   useEffect(() => {
     if (state.composer.attachments.length > 0) setAttachmentsOpen(true);
   }, [state.composer.attachments.length]);
+
+  useEffect(() => {
+    const activeKeys = new Set(state.composer.attachments.map((file) => attachmentFingerprint(file)));
+    setUploadedAttachments((prev) => {
+      const next = {};
+      Object.entries(prev).forEach(([key, value]) => {
+        if (activeKeys.has(key)) next[key] = value;
+      });
+      return next;
+    });
+    setUploadQueue((prev) => prev.filter((entry) => activeKeys.has(entry.key)));
+  }, [state.composer.attachments]);
 
   const presenceMap = useMemo(
     () => new Map(presence.map((entry) => [normalizeId(entry.empid || entry.id), resolvePresence(entry)])),
@@ -663,7 +691,8 @@ export default function MessagingWidget() {
 
   const safeTopic = sanitizeMessageText(state.composer.topic || activeConversation?.title || '');
   const safeBody = sanitizeMessageText(state.composer.body);
-  const canSendMessage = Boolean(safeTopic && safeBody && state.composer.recipients.length > 0);
+  const uploadInFlight = uploadQueue.some((entry) => entry.status === 'uploading' || entry.status === 'queued');
+  const canSendMessage = Boolean(safeTopic && safeBody && state.composer.recipients.length > 0 && !uploadInFlight);
 
   const handleOpenLinkedTransaction = (transactionId) => {
     if (canViewTransaction(transactionId, normalizeId(sessionId), permissions || {})) {
@@ -730,6 +759,25 @@ export default function MessagingWidget() {
     await handleDeleteMessage(conversation.rootMessageId);
   };
 
+  const uploadAttachment = async (file, activeCompany) => {
+    const endpoints = [`${API_BASE}/messaging/attachments`, `${API_BASE}/attachments`];
+    for (const endpoint of endpoints) {
+      const form = new FormData();
+      form.append('file', file);
+      form.append('companyId', String(activeCompany));
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        credentials: 'include',
+        body: form,
+      });
+      if (!response.ok) continue;
+      const payload = await response.json().catch(() => null);
+      const attachmentId = normalizeId(payload?.attachment?.id || payload?.id || payload?.attachmentId);
+      if (attachmentId) return attachmentId;
+    }
+    throw new Error(`Failed to upload ${file.name}`);
+  };
+
   const sendMessage = async () => {
     if (!safeTopic) {
       setComposerAnnouncement('Topic is required.');
@@ -743,6 +791,10 @@ export default function MessagingWidget() {
       setComposerAnnouncement('Select at least one recipient.');
       return;
     }
+    if (uploadInFlight) {
+      setComposerAnnouncement('Please wait for attachments to finish uploading.');
+      return;
+    }
 
     const linkedType = state.composer.linkedType || activeConversation?.linkedType || null;
     const linkedId = state.composer.linkedId || activeConversation?.linkedId || null;
@@ -753,12 +805,16 @@ export default function MessagingWidget() {
 
     const activeCompany = state.activeCompanyId || companyId;
     const clientTempId = `tmp-${createIdempotencyKey()}`;
+    const attachmentIds = state.composer.attachments
+      .map((file) => uploadedAttachments[attachmentFingerprint(file)]?.id)
+      .filter(Boolean);
     const payload = {
       idempotencyKey: createIdempotencyKey(),
       clientTempId,
       body: `[${safeTopic}] ${safeBody}`,
       companyId: Number.isFinite(Number(activeCompany)) ? Number(activeCompany) : String(activeCompany),
       recipientEmpids: state.composer.recipients,
+      attachments: attachmentIds,
       ...(state.composer.recipients.length === 1
         ? { visibilityScope: 'private', visibilityEmpid: state.composer.recipients[0] }
         : { visibilityScope: 'department' }),
@@ -789,6 +845,8 @@ export default function MessagingWidget() {
         await fetchThreadMessages(threadRootId, activeCompany);
       }
       dispatch({ type: 'composer/reset' });
+      setUploadedAttachments({});
+      setUploadQueue([]);
       globalThis.localStorage?.removeItem(draftStorageKey);
       setRecipientSearch('');
       setComposerAnnouncement('Message sent.');
@@ -802,9 +860,9 @@ export default function MessagingWidget() {
 
   const addFiles = (incomingFiles) => {
     const safe = Array.from(incomingFiles || []).filter(safePreviewableFile);
-    const merged = new Map(state.composer.attachments.map((file) => [`${file.name}-${file.size}-${file.lastModified || 0}`, file]));
+    const merged = new Map(state.composer.attachments.map((file) => [attachmentFingerprint(file), file]));
     safe.forEach((file) => {
-      merged.set(`${file.name}-${file.size}-${file.lastModified || 0}`, file);
+      merged.set(attachmentFingerprint(file), file);
     });
     const nextFiles = Array.from(merged.values());
     dispatch({ type: 'composer/setAttachments', payload: nextFiles });
@@ -815,6 +873,36 @@ export default function MessagingWidget() {
     addFiles(event.target.files || []);
     event.target.value = '';
   };
+
+  useEffect(() => {
+    const activeCompany = state.activeCompanyId || companyId;
+    if (!activeCompany) return;
+    const pending = state.composer.attachments.filter((file) => {
+      const key = attachmentFingerprint(file);
+      const existing = uploadedAttachments[key];
+      return !existing;
+    });
+    if (pending.length === 0) return;
+
+    pending.forEach((file) => {
+      const key = attachmentFingerprint(file);
+      setUploadedAttachments((prev) => ({ ...prev, [key]: { status: 'uploading', id: prev[key]?.id || null, name: file.name } }));
+      setUploadQueue((prev) => {
+        const next = prev.filter((entry) => entry.key !== key);
+        return [...next, { key, name: file.name, status: 'uploading' }];
+      });
+      uploadAttachment(file, activeCompany)
+        .then((id) => {
+          setUploadedAttachments((prev) => ({ ...prev, [key]: { status: 'done', id, name: file.name } }));
+          setUploadQueue((prev) => prev.map((entry) => (entry.key === key ? { ...entry, status: 'done' } : entry)));
+        })
+        .catch(() => {
+          setUploadedAttachments((prev) => ({ ...prev, [key]: { status: 'error', id: null, name: file.name } }));
+          setUploadQueue((prev) => prev.map((entry) => (entry.key === key ? { ...entry, status: 'error' } : entry)));
+          setComposerAnnouncement(`Failed to upload ${file.name}. Remove and re-add to retry.`);
+        });
+    });
+  }, [state.composer.attachments, state.activeCompanyId, companyId, uploadedAttachments]);
 
   const onSwitchCompany = (event) => {
     const nextCompany = normalizeId(event.target.value);
@@ -858,6 +946,7 @@ export default function MessagingWidget() {
     if (!id || state.composer.recipients.includes(id)) return;
     dispatch({ type: 'composer/setRecipients', payload: [...state.composer.recipients, id] });
     setRecipientSearch('');
+    setRecipientPickerOpen(false);
   };
 
   const openNewMessage = () => {
@@ -937,12 +1026,12 @@ export default function MessagingWidget() {
         border: '1px solid #cbd5e1',
         borderRadius: 14,
         zIndex: 1200,
-        overflow: 'auto',
-        maxHeight: '58vh',
+        overflow: 'hidden',
+        height: isNarrowLayout ? '82vh' : '78vh',
       }}
       aria-label="Messaging widget"
     >
-      <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 14px', background: '#0f172a', color: '#fff' }}>
+      <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 14px', background: '#0f172a', color: '#fff', position: 'sticky', top: 0, zIndex: 10 }}>
         <div>
           <strong style={{ fontSize: 16 }}>Messaging</strong>
           <p style={{ margin: '2px 0 0', fontSize: 12, color: '#cbd5e1' }}>{unreadCount} unread across all threads</p>
@@ -957,7 +1046,7 @@ export default function MessagingWidget() {
         </button>
       </header>
 
-      <div style={{ display: 'grid', gridTemplateColumns: isNarrowLayout ? 'minmax(0, 1fr)' : '300px minmax(0,1fr)', minHeight: 0, height: '100%' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: isNarrowLayout ? 'minmax(0, 1fr)' : '300px minmax(0,1fr)', minHeight: 0, height: 'calc(100% - 60px)', overflowY: 'auto' }}>
         <aside style={{ borderRight: isNarrowLayout ? 'none' : '1px solid #e2e8f0', background: '#ffffff', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
           <div style={{ padding: 12, borderBottom: '1px solid #e2e8f0' }}>
             <label htmlFor="messaging-company-switch" style={{ fontSize: 12, fontWeight: 600, color: '#334155' }}>Company</label>
@@ -1129,48 +1218,43 @@ export default function MessagingWidget() {
             onDragLeave={() => setDragOverComposer(false)}
             onDrop={onDropComposer}
           >
-            <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) minmax(0,1fr)', gap: 8 }}>
-              <div>
-                <label htmlFor="messaging-topic" style={{ fontSize: 12, fontWeight: 600, color: '#334155' }}>Topic</label>
-                <input
-                  id="messaging-topic"
-                  value={state.composer.topic}
-                  onChange={(event) => dispatch({ type: 'composer/setTopic', payload: event.target.value })}
-                  required
-                  placeholder="Enter a topic"
-                  aria-label="Topic"
-                  style={{ width: '100%', marginTop: 6, borderRadius: 8, border: '1px solid #cbd5e1', padding: '9px 10px' }}
-                />
-              </div>
-
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <input
+                id="messaging-topic"
+                value={state.composer.topic}
+                onChange={(event) => dispatch({ type: 'composer/setTopic', payload: event.target.value })}
+                required
+                placeholder="Topic"
+                aria-label="Topic"
+                style={{ flex: 1, borderRadius: 999, border: '1px solid #cbd5e1', padding: '9px 12px' }}
+              />
               <div style={{ position: 'relative' }}>
-                <label htmlFor="messaging-add-recipient" style={{ fontSize: 12, fontWeight: 600, color: '#334155' }}>Add recipient</label>
-                <input
-                  id="messaging-add-recipient"
-                  type="search"
-                  value={recipientSearch}
-                  onChange={(event) => setRecipientSearch(event.target.value)}
-                  placeholder="Search by name or employee ID"
-                  aria-label="Add recipient"
-                  style={{ width: '100%', marginTop: 6, borderRadius: 8, border: '1px solid #cbd5e1', padding: '9px 10px' }}
-                />
-                {recipientSearch.trim() && (
-                  <div style={{ position: 'absolute', zIndex: 20, top: 62, left: 0, right: 0, border: '1px solid #cbd5e1', borderRadius: 8, background: '#fff', maxHeight: 180, overflowY: 'auto' }}>
-                    {filteredEmployees.slice(0, 8).map((entry) => (
-                      <button
-                        key={entry.id}
-                        type="button"
-                        onClick={() => onChooseRecipient(entry.id)}
-                        style={{ width: '100%', textAlign: 'left', border: 0, background: 'transparent', padding: '8px 10px', display: 'flex', alignItems: 'center', gap: 8 }}
-                      >
-                        <span style={{ width: 24, height: 24, borderRadius: 12, background: '#e2e8f0', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, color: '#334155', fontWeight: 700 }}>
-                          {initialsForLabel(entry.label)}
-                        </span>
-                        <span style={{ width: 8, height: 8, borderRadius: 999, background: presenceColor(entry.status) }} aria-hidden="true" />
-                        <span style={{ fontSize: 13, color: '#0f172a' }}>{formatEmployeeOption(entry)}</span>
-                      </button>
-                    ))}
-                    {filteredEmployees.length === 0 && <p style={{ margin: 0, padding: 10, color: '#64748b', fontSize: 12 }}>No matches</p>}
+                <button type="button" onClick={() => setRecipientPickerOpen((prev) => !prev)} style={{ borderRadius: 999, border: '1px solid #cbd5e1', background: '#fff', padding: '8px 10px' }}>
+                  Add recipient
+                </button>
+                {recipientPickerOpen && (
+                  <div style={{ position: 'absolute', right: 0, top: 40, width: 260, border: '1px solid #cbd5e1', borderRadius: 12, background: '#fff', padding: 8, zIndex: 30 }}>
+                    <input
+                      type="search"
+                      value={recipientSearch}
+                      onChange={(event) => setRecipientSearch(event.target.value)}
+                      placeholder="Search people"
+                      aria-label="Add recipient"
+                      style={{ width: '100%', borderRadius: 8, border: '1px solid #cbd5e1', padding: '7px 9px', marginBottom: 6 }}
+                    />
+                    <div style={{ maxHeight: 180, overflowY: 'auto' }}>
+                      {filteredEmployees.slice(0, 10).map((entry) => (
+                        <button
+                          key={entry.id}
+                          type="button"
+                          onClick={() => onChooseRecipient(entry.id)}
+                          style={{ width: '100%', textAlign: 'left', border: 0, background: 'transparent', padding: '8px 6px', display: 'flex', alignItems: 'center', gap: 8 }}
+                        >
+                          <span style={{ width: 8, height: 8, borderRadius: 999, background: presenceColor(entry.status) }} aria-hidden="true" />
+                          <span style={{ fontSize: 13, color: '#0f172a' }}>{formatEmployeeOption(entry)}</span>
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 )}
               </div>
@@ -1208,7 +1292,7 @@ export default function MessagingWidget() {
                   sendMessage();
                 }
               }}
-              rows={6}
+              rows={3}
               placeholder="Type a message…"
               aria-label="Message composer"
               style={{
@@ -1217,7 +1301,9 @@ export default function MessagingWidget() {
                 borderRadius: 12,
                 border: dragOverComposer ? '2px dashed #f97316' : '2px dashed #cbd5e1',
                 padding: '10px 12px',
-                fontSize: 15,
+                fontSize: 14,
+                maxHeight: 120,
+                overflowY: 'auto',
               }}
             />
 
@@ -1274,16 +1360,33 @@ export default function MessagingWidget() {
                     style={{ display: 'block', marginTop: 6 }}
                   />
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 8, marginTop: 8 }}>
-                    {state.composer.attachments.map((file) => (
-                      <div key={`${file.name}-${file.lastModified}-${file.size}`} style={{ border: '1px solid #e2e8f0', borderRadius: 8, padding: 8, background: '#f8fafc' }}>
-                        <strong style={{ display: 'block', fontSize: 12, color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis' }}>{file.name}</strong>
-                        <span style={{ fontSize: 11, color: '#64748b' }}>{Math.max(1, Math.round(file.size / 1024))} KB</span>
-                      </div>
-                    ))}
+                    {state.composer.attachments.map((file) => {
+                      const fingerprint = attachmentFingerprint(file);
+                      const status = uploadedAttachments[fingerprint]?.status || 'queued';
+                      return (
+                        <div key={`${file.name}-${file.lastModified}-${file.size}`} style={{ border: '1px solid #e2e8f0', borderRadius: 8, padding: 8, background: '#f8fafc' }}>
+                          <strong style={{ display: 'block', fontSize: 12, color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis' }}>{file.name}</strong>
+                          <span style={{ fontSize: 11, color: '#64748b' }}>{Math.max(1, Math.round(file.size / 1024))} KB · {status}</span>
+                          <button
+                            type="button"
+                            onClick={() => dispatch({ type: 'composer/setAttachments', payload: state.composer.attachments.filter((entry) => attachmentFingerprint(entry) !== fingerprint) })}
+                            style={{ border: 0, background: 'transparent', color: '#b91c1c', padding: 0, marginTop: 4, fontSize: 11 }}
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      );
+                    })}
                   </div>
                 </>
               )}
             </div>
+
+            {uploadQueue.length > 0 && (
+              <p style={{ margin: '8px 0 0', fontSize: 11, color: '#475569' }}>
+                Uploads: {uploadQueue.filter((entry) => entry.status === 'done').length}/{uploadQueue.length} complete
+              </p>
+            )}
 
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 12 }}>
               <button type="button" onClick={() => dispatch({ type: 'composer/reset' })} style={{ border: '1px solid #cbd5e1', borderRadius: 8, background: '#fff', padding: '8px 10px' }}>
