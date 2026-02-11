@@ -1450,6 +1450,14 @@ const TableManager = forwardRef(function TableManager({
     return ['department_id'].filter(f => validCols.has(f));
   }, [formConfig, validCols]);
 
+  const departmentScopeFields = useMemo(
+    () =>
+      departmentIdFields.filter(
+        (field) => !String(field).toLowerCase().startsWith('ann_'),
+      ),
+    [departmentIdFields],
+  );
+
   const companyIdFields = useMemo(() => {
     if (formConfig?.companyIdFields?.length)
       return formConfig.companyIdFields.filter(f => validCols.has(f));
@@ -1671,8 +1679,8 @@ const TableManager = forwardRef(function TableManager({
         if (validCols.has(f)) newFilters[f] = branch;
       });
     }
-    if (department !== undefined && departmentIdFields.length > 0) {
-      departmentIdFields.forEach((f) => {
+    if (department !== undefined && departmentScopeFields.length > 0) {
+      departmentScopeFields.forEach((f) => {
         if (validCols.has(f)) newFilters[f] = department;
       });
     }
@@ -1695,7 +1703,15 @@ const TableManager = forwardRef(function TableManager({
     if (Object.keys(newFilters).length > 0) {
       setFilters((f) => ({ ...f, ...newFilters }));
     }
-  }, [formConfig, validCols, user, company, branch, department]);
+  }, [
+    formConfig,
+    validCols,
+    user,
+    company,
+    branch,
+    department,
+    departmentScopeFields,
+  ]);
 
   useEffect(() => {
     if (!formConfig?.transactionTypeField) {
@@ -8213,7 +8229,11 @@ const TableManager = forwardRef(function TableManager({
         <div style={{ backgroundColor: '#eefcff', padding: '0.25rem', textAlign: 'left' }}>
           Department:{' '}
           <span style={{ marginRight: '0.5rem' }}>{department}</span>
-          {buttonPerms['Clear Department Filter'] && (
+          {(buttonPerms['Clear Department Filter'] ||
+            departmentIdFields.some((f) => {
+              const value = filters[f];
+              return value !== undefined && value !== null && `${value}`.trim() !== '';
+            })) && (
             <button
               onClick={() =>
                 departmentIdFields.forEach((f) => handleFilterChange(f, ''))
