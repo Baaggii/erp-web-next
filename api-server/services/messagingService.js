@@ -92,9 +92,9 @@ function eventPayloadBase(ctx) {
 }
 
 
-function isRequestHashColumnError(error) {
+function isUnknownColumnError(error, columnName) {
   const message = String(error?.sqlMessage || error?.message || '').toLowerCase();
-  return message.includes('unknown column') && message.includes('request_hash');
+  return message.includes('unknown column') && message.includes(String(columnName).toLowerCase());
 }
 
 async function readIdempotencyRow(db, { companyId, empid, idempotencyKey }) {
@@ -111,19 +111,31 @@ async function readIdempotencyRow(db, { companyId, empid, idempotencyKey }) {
       idempotencyRequestHashSupport.set(db, true);
       return rows[0] || null;
     } catch (error) {
-      if (!isRequestHashColumnError(error)) throw error;
+      if (!isUnknownColumnError(error, 'request_hash') && !isUnknownColumnError(error, 'expires_at')) throw error;
       idempotencyRequestHashSupport.set(db, false);
     }
   }
 
-  const [rows] = await db.query(
-    `SELECT message_id, expires_at
-       FROM erp_message_idempotency
-      WHERE company_id = ? AND empid = ? AND idem_key = ?
-      LIMIT 1`,
-    [companyId, empid, idempotencyKey],
-  );
-  return rows[0] ? { ...rows[0], request_hash: null } : null;
+  try {
+    const [rows] = await db.query(
+      `SELECT message_id, expires_at
+         FROM erp_message_idempotency
+        WHERE company_id = ? AND empid = ? AND idem_key = ?
+        LIMIT 1`,
+      [companyId, empid, idempotencyKey],
+    );
+    return rows[0] ? { ...rows[0], request_hash: null } : null;
+  } catch (error) {
+    if (!isUnknownColumnError(error, 'expires_at')) throw error;
+    const [rows] = await db.query(
+      `SELECT message_id
+         FROM erp_message_idempotency
+        WHERE company_id = ? AND empid = ? AND idem_key = ?
+        LIMIT 1`,
+      [companyId, empid, idempotencyKey],
+    );
+    return rows[0] ? { ...rows[0], request_hash: null, expires_at: null } : null;
+  }
 }
 
 async function upsertIdempotencyRow(db, { companyId, empid, idempotencyKey, messageId, requestHash, expiresAt }) {
@@ -142,18 +154,31 @@ async function upsertIdempotencyRow(db, { companyId, empid, idempotencyKey, mess
       idempotencyRequestHashSupport.set(db, true);
       return;
     } catch (error) {
-      if (!isRequestHashColumnError(error)) throw error;
+      if (!isUnknownColumnError(error, 'request_hash') && !isUnknownColumnError(error, 'expires_at')) throw error;
       idempotencyRequestHashSupport.set(db, false);
     }
   }
 
+  try {
+    await db.query(
+      `INSERT INTO erp_message_idempotency (company_id, empid, idem_key, message_id, expires_at)
+       VALUES (?, ?, ?, ?, ?)
+       ON DUPLICATE KEY UPDATE
+         message_id = VALUES(message_id),
+         expires_at = VALUES(expires_at)`,
+      [companyId, empid, idempotencyKey, messageId, expiresAt],
+    );
+    return;
+  } catch (error) {
+    if (!isUnknownColumnError(error, 'expires_at')) throw error;
+  }
+
   await db.query(
-    `INSERT INTO erp_message_idempotency (company_id, empid, idem_key, message_id, expires_at)
-     VALUES (?, ?, ?, ?, ?)
+    `INSERT INTO erp_message_idempotency (company_id, empid, idem_key, message_id)
+     VALUES (?, ?, ?, ?)
      ON DUPLICATE KEY UPDATE
-       message_id = VALUES(message_id),
-       expires_at = VALUES(expires_at)`,
-    [companyId, empid, idempotencyKey, messageId, expiresAt],
+       message_id = VALUES(message_id)`,
+    [companyId, empid, idempotencyKey, messageId],
   );
 }
 
