@@ -241,3 +241,105 @@ Include schema, APIs, websocket events, RLS policies, authorization model, front
 Also include missing enterprise requirements (retention, compliance, moderation, observability, DR, accessibility).
 Output implementation-ready artifacts and a prioritized roadmap.
 ```
+
+## Why you are getting only `.md` output
+
+Most assistants default to design/spec output unless you **explicitly require file edits, runnable code, and commit-ready diffs**. The prompts above are strong for architecture, but they do not strictly force implementation behavior.
+
+Use the execution prompts below to move from planning docs to production code.
+
+## 11) Implementation Execution Prompt (forces code changes)
+
+```text
+You are implementing in an existing repository, not writing a design doc.
+
+Execution rules:
+- Make direct code changes in the repo.
+- Create/modify real source files, migrations, tests, and configuration.
+- Do not stop at Markdown plans unless explicitly asked.
+- If any requirement is unclear, choose sensible defaults and continue.
+- After coding, run project tests/lint/typecheck and fix failures.
+- Return:
+  1) concise summary,
+  2) changed file list,
+  3) unified diffs,
+  4) test command outputs,
+  5) known follow-ups.
+
+Implement the messaging requirements already defined (entity linking, threaded replies, realtime presence, company isolation, permission-aware visibility, secure storage).
+Start now with database migrations + backend endpoints + tests.
+```
+
+## 12) Slice-by-Slice Delivery Prompt (prevents endless docs)
+
+```text
+Implement this in vertical slices. For each slice, ship code before moving on.
+
+Slice order:
+1) DB schema + RLS + migrations + seed data.
+2) Message create/list/thread/reply/delete APIs + auth middleware.
+3) Presence heartbeat + realtime events.
+4) Frontend widget skeleton wired to real APIs.
+5) Security/perf hardening.
+
+Per slice requirements:
+- Add/modify code files.
+- Add automated tests for that slice.
+- Run tests and show results.
+- Provide rollback notes for DB changes.
+- Open TODOs only when blocked by external dependency.
+
+Do not output high-level prose beyond a short implementation summary.
+```
+
+## 13) “No Markdown-Only” Guardrail Prompt
+
+```text
+Hard constraint: markdown-only output is not acceptable.
+
+Acceptance criteria for this response:
+- At least one migration file added/updated.
+- At least one backend route/service file added/updated.
+- At least one test file added/updated.
+- Evidence of executed test commands.
+
+If you cannot modify files due to environment restrictions, explain the exact blocker and provide copy-paste-ready patch hunks for each target file.
+```
+
+## 14) Repo-Aware Prompt Template (fill before use)
+
+```text
+Repository context:
+- Stack: <e.g., Next.js + Node + PostgreSQL + Redis>
+- Backend path: <path>
+- Frontend path: <path>
+- Migration path: <path>
+- Test commands: <exact commands>
+
+Task:
+Implement secure messaging requirements directly in this repo.
+
+Definition of done:
+- Code changes committed across backend/frontend/migrations.
+- Tests green for changed areas.
+- OpenAPI/event schemas updated.
+- No tenant isolation violations in tests.
+
+Output format:
+1) Summary (5-10 bullets)
+2) Changed files
+3) Diffs
+4) Test outputs
+5) Risks + next steps
+
+Do not generate standalone planning documents.
+```
+
+## 15) Optional two-agent workflow (planner + implementer)
+
+If your assistant supports roles/modes, run this pattern:
+
+1. **Planner pass (short):** architecture + task breakdown only.
+2. **Implementer pass (strict):** use Prompt 11/12/13 and forbid markdown-only completion.
+
+This keeps strategic quality while forcing tangible code output each cycle.

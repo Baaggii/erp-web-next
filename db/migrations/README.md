@@ -19,3 +19,8 @@ The current schema enforces the following constraints:
 - `code_torol`: primary key on `id` and unique constraint on (`torol_id`, `company_id`).
 
 No additional indexes are required at this time.
+
+## PostgreSQL reference migrations
+
+- `postgres/2026-02-11_multitenant_collaboration_schema.sql`: PostgreSQL-first collaboration schema with tenant RLS, polymorphic message links, audit columns, seed data, and isolation query examples.
+- `postgres/2026-02-11_thread_model_tradeoffs.md`: Design note comparing adjacency-list vs closure-table thread modeling.

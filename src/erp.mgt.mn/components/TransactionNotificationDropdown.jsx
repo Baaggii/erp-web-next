@@ -282,7 +282,7 @@ function getTemporaryTimestamp(entry) {
 }
 
 export default function TransactionNotificationDropdown() {
-  const { markRead, markAllRead } = useTransactionNotifications();
+  const { notifications, unreadCount, markRead, markAllRead } = useTransactionNotifications();
   const { user, session } = useAuth();
   const { workflows, markWorkflowSeen, temporary } = usePendingRequests();
   const [open, setOpen] = useState(false);
@@ -1179,8 +1179,11 @@ export default function TransactionNotificationDropdown() {
   ]);
 
   const hasAnyNotifications = combinedItems.length > 0;
-  const dropdownUnreadCount = Number(feedState.totalUnreadCount) || combinedItems.length;
-  const aggregatedUnreadCount = dropdownUnreadCount;
+  const dropdownUnreadCount = useMemo(
+    () => combinedItems.filter((item) => item.isUnread).length,
+    [combinedItems],
+  );
+  const aggregatedUnreadCount = open ? dropdownUnreadCount : Number(unreadCount) || 0;
 
   return (
     <div style={styles.wrapper} ref={containerRef}>
@@ -1200,9 +1203,8 @@ export default function TransactionNotificationDropdown() {
               <button
                 type="button"
                 style={styles.markAllButton}
-                onClick={async () => {
-                  await markAllRead();
-                  fetchFeedPage({ replace: true });
+                onClick={() => {
+                  markAllRead();
                 }}
               >
                 Mark all as read
