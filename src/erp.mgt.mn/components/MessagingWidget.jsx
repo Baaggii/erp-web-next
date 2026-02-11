@@ -117,6 +117,11 @@ function formatLastActivity(value) {
   return dt.toLocaleString();
 }
 
+function createIdempotencyKey() {
+  if (typeof globalThis.crypto?.randomUUID === 'function') return globalThis.crypto.randomUUID();
+  return `msg-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
 function canOpenContextLink(permissions, chipType) {
   const allow = permissions?.messaging?.linkedContext?.[chipType];
   if (typeof allow === 'boolean') return allow;
@@ -550,6 +555,7 @@ export default function MessagingWidget() {
 
     const activeCompany = state.activeCompanyId || companyId;
     const payload = {
+      idempotencyKey: createIdempotencyKey(),
       body: `[${safeTopic}] ${safeBody}`,
       companyId: Number.isFinite(Number(activeCompany)) ? Number(activeCompany) : String(activeCompany),
       recipientEmpids: state.composer.recipients,
