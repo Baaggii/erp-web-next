@@ -1046,6 +1046,20 @@ const TableManager = forwardRef(function TableManager({
     if (availableTemporaryScopes.length > 0) return availableTemporaryScopes[0];
     return 'created';
   }, [availableTemporaryScopes]);
+  const normalizeTemporaryScope = useCallback((value) => {
+    const normalized = String(value || '')
+      .trim()
+      .toLowerCase()
+      .replace(/[\s-]+/g, '_');
+    if (!normalized) return '';
+    if (['review', 'reviews', 'review_queue', 'under_review', 'incoming'].includes(normalized)) {
+      return 'review';
+    }
+    if (['created', 'create', 'draft', 'drafts', 'my_drafts', 'outgoing'].includes(normalized)) {
+      return 'created';
+    }
+    return normalized;
+  }, []);
   const pendingPromotionHasSeniorAbove = useMemo(() => {
     if (!pendingTemporaryPromotion?.entry) return false;
     const entry = pendingTemporaryPromotion.entry;
@@ -5463,7 +5477,7 @@ const TableManager = forwardRef(function TableManager({
   const fetchTemporaryList = useCallback(
     async (scopeOverride, options = {}) => {
       if (!supportsTemporary || availableTemporaryScopes.length === 0) return;
-      const requestedScope = scopeOverride || temporaryScope;
+      const requestedScope = normalizeTemporaryScope(scopeOverride || temporaryScope);
       const targetScope = availableTemporaryScopes.includes(requestedScope)
         ? requestedScope
         : defaultTemporaryScope;
@@ -5703,6 +5717,7 @@ const TableManager = forwardRef(function TableManager({
       getRateLimitMessage,
       rateLimitFallbackMessage,
       t,
+      normalizeTemporaryScope,
     ],
   );
 
@@ -5902,7 +5917,7 @@ const TableManager = forwardRef(function TableManager({
       ]);
     if (lastExternalTriggerRef.current === triggerKey) return;
 
-    const requestedScope = queuedTemporaryTrigger.scope;
+    const requestedScope = normalizeTemporaryScope(queuedTemporaryTrigger.scope);
     let scopeToOpen;
     if (requestedScope && availableTemporaryScopes.includes(requestedScope)) {
       scopeToOpen = requestedScope;
@@ -5938,6 +5953,7 @@ const TableManager = forwardRef(function TableManager({
     temporarySummary,
     availableTemporaryScopes,
     defaultTemporaryScope,
+    normalizeTemporaryScope,
   ]);
 
   useEffect(() => {
@@ -7823,7 +7839,6 @@ const TableManager = forwardRef(function TableManager({
     return Array.from(new Set(mergedColumns.filter(Boolean)));
   }, [buildTemporaryFormState, columns, temporaryList]);
 
-  let detailHeaderRendered = false;
   const forceResolveFooterContent = showForceResolvePendingToggle ? (
     <label className="inline-flex items-center space-x-2 text-sm text-gray-700">
       <input
@@ -9687,11 +9702,7 @@ const TableManager = forwardRef(function TableManager({
                         : isActiveDraft
                         ? '#e0f2fe'
                         : 'transparent';
-                      const shouldRenderDetailHeader =
-                        !detailHeaderRendered && detailColumns.length > 0;
-                      if (shouldRenderDetailHeader) {
-                        detailHeaderRendered = true;
-                      }
+                      const shouldRenderDetailHeader = detailColumns.length > 0;
                       return (
                         <tr
                           key={rowKey}
