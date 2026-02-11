@@ -22,7 +22,12 @@ The implementation is still **partial**: core messaging works (API + company sco
 ## Major gaps vs prompt-pack requirements
 
 ### 1) Architecture / design artifacts
-- Missing C4-lite architecture, ERD, STRIDE threat model, SLO/capacity docs, and migration/rollback decision log.
+- Added architecture/design artifacts for messaging:
+  - C4-lite architecture (`docs/messaging/c4-lite-architecture.md`)
+  - ERD (`docs/messaging/erd.md`)
+  - STRIDE threat model (`docs/messaging/stride-threat-model.md`)
+  - SLO/capacity baseline (`docs/messaging/slo-and-capacity.md`)
+  - Migration/rollback decision log (`docs/messaging/migration-rollback-decision-log.md`)
 
 ### 2) Database & tenant security
 - Prompt pack specifies PostgreSQL + Redis + RLS; implementation is MySQL-oriented (`mysql2` + runtime table creation in app code).
@@ -58,7 +63,7 @@ The implementation is still **partial**: core messaging works (API + company sco
 
 | Prompt-pack section | Status |
 |---|---|
-| 1. Product + Architecture Blueprint | ❌ Not implemented |
+| 1. Product + Architecture Blueprint | ✅ Implemented (baseline docs added) |
 | 2. Database Schema + Security | ⚠️ Partially implemented |
 | 3. Backend API + Realtime | ⚠️ Partially implemented |
 | 4. Permission Model | ❌ Not implemented |
