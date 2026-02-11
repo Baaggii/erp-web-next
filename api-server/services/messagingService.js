@@ -319,7 +319,7 @@ function enforceLocalRateLimitFallback({ companyId, empid, digest, now }) {
   return [1, 0, 0];
 }
 
-async function enforceRateLimit(companyId, empid, body, db = pool) {
+async function enforceRateLimit(companyId, empid, dedupeSeed, db = pool) {
   const now = Date.now();
   const member = `${now}:${crypto.randomUUID()}`;
   const dedupeInput = String(dedupeSeed || '').trim().toLowerCase();
