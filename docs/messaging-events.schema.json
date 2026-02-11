@@ -1,0 +1,104 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://erp.local/schemas/messaging-events.schema.json",
+  "title": "Messaging websocket events",
+  "type": "object",
+  "oneOf": [
+    { "$ref": "#/$defs/messageCreated" },
+    { "$ref": "#/$defs/messageUpdated" },
+    { "$ref": "#/$defs/messageDeleted" },
+    { "$ref": "#/$defs/threadReplyCreated" },
+    { "$ref": "#/$defs/presenceChanged" },
+    { "$ref": "#/$defs/receiptRead" }
+  ],
+  "$defs": {
+    "base": {
+      "type": "object",
+      "required": ["correlationId", "companyId", "at"],
+      "properties": {
+        "correlationId": { "type": "string" },
+        "companyId": { "type": "integer" },
+        "at": { "type": "string", "format": "date-time" }
+      }
+    },
+    "message": {
+      "type": "object",
+      "required": ["id", "company_id", "author_empid", "body"],
+      "properties": {
+        "id": { "type": "integer" },
+        "company_id": { "type": "integer" },
+        "author_empid": { "type": "string" },
+        "parent_message_id": { "type": ["integer", "null"] },
+        "linked_type": { "type": ["string", "null"] },
+        "linked_id": { "type": ["string", "null"] },
+        "body": { "type": "string" }
+      }
+    },
+    "messageCreated": {
+      "allOf": [
+        { "$ref": "#/$defs/base" },
+        {
+          "type": "object",
+          "required": ["message"],
+          "properties": {
+            "message": { "$ref": "#/$defs/message" },
+            "optimistic": {
+              "type": "object",
+              "properties": {
+                "tempId": { "type": ["string", "null"] },
+                "accepted": { "type": "boolean" },
+                "replay": { "type": "boolean" }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "messageUpdated": {
+      "allOf": [
+        { "$ref": "#/$defs/base" },
+        { "type": "object", "required": ["message"], "properties": { "message": { "$ref": "#/$defs/message" } } }
+      ]
+    },
+    "messageDeleted": {
+      "allOf": [
+        { "$ref": "#/$defs/base" },
+        {
+          "type": "object",
+          "required": ["messageId", "deletedByEmpid"],
+          "properties": {
+            "messageId": { "type": "integer" },
+            "deletedByEmpid": { "type": "string" }
+          }
+        }
+      ]
+    },
+    "threadReplyCreated": { "$ref": "#/$defs/messageCreated" },
+    "presenceChanged": {
+      "allOf": [
+        { "$ref": "#/$defs/base" },
+        {
+          "type": "object",
+          "required": ["empid", "status"],
+          "properties": {
+            "empid": { "type": "string" },
+            "status": { "type": "string", "enum": ["online", "away", "offline"] }
+          }
+        }
+      ]
+    },
+    "receiptRead": {
+      "allOf": [
+        { "$ref": "#/$defs/base" },
+        {
+          "type": "object",
+          "required": ["messageId", "empid"],
+          "properties": {
+            "messageId": { "type": "integer" },
+            "empid": { "type": "string" }
+          }
+        }
+      ]
+    }
+  }
+}
