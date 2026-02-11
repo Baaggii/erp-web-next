@@ -226,8 +226,7 @@ router.get('/feed', requireAuth, feedRateLimiter, async (req, res, next) => {
   try {
     const chunkLimit = Math.min(Math.max(Number(req.query.limit) || 20, 1), 100);
     const cursor = Math.max(Number(req.query.cursor) || 0, 0);
-    const unreadOnly = String(req.query.unreadOnly || '').trim().toLowerCase() === 'true';
-    const sourceLimit = Math.min(Math.max(cursor + chunkLimit + 200, 300), 10000);
+    const sourceLimit = Math.min(Math.max(cursor + chunkLimit + 40, 80), 400);
     const userEmpId = String(req.user.empid || '').trim().toUpperCase();
     const companyId = req.user.companyId;
     const session = req.session || {};
@@ -497,11 +496,8 @@ router.get('/feed', requireAuth, feedRateLimiter, async (req, res, next) => {
 
     items.sort((a, b) => toTimestamp(b.timestamp) - toTimestamp(a.timestamp));
 
-    const scopedItems = unreadOnly ? items.filter((item) => item.unread) : items;
-    const totalUnreadCount = items.reduce((acc, item) => (item.unread ? acc + 1 : acc), 0);
-
-    const pageItems = scopedItems.slice(cursor, cursor + chunkLimit);
-    const nextCursor = cursor + chunkLimit < scopedItems.length ? String(cursor + chunkLimit) : null;
+    const pageItems = items.slice(cursor, cursor + chunkLimit);
+    const nextCursor = cursor + chunkLimit < items.length ? String(cursor + chunkLimit) : null;
 
     const unreadCountBySource = pageItems.reduce((acc, item) => {
       if (!item.unread) return acc;
@@ -509,13 +505,7 @@ router.get('/feed', requireAuth, feedRateLimiter, async (req, res, next) => {
       return acc;
     }, {});
 
-    res.json({
-      items: pageItems,
-      nextCursor,
-      unreadCountBySource,
-      totalUnreadCount: unreadOnly ? scopedItems.length : totalUnreadCount,
-      isEndReached: nextCursor === null,
-    });
+    res.json({ items: pageItems, nextCursor, unreadCountBySource });
   } catch (err) {
     next(err);
   }

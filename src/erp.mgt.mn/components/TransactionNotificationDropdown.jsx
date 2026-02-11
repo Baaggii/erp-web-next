@@ -313,12 +313,10 @@ export default function TransactionNotificationDropdown() {
   const [feedState, setFeedState] = useState({
     items: [],
     loading: false,
-    loadingMore: false,
     error: '',
     nextCursor: null,
-    totalUnreadCount: 0,
-    isEndReached: false,
   });
+  const [visibleCount, setVisibleCount] = useState(FEED_CHUNK_SIZE);
   const containerRef = useRef(null);
   const listRef = useRef(null);
   const navigate = useNavigate();
@@ -328,6 +326,13 @@ export default function TransactionNotificationDropdown() {
     [],
   );
 
+  const sortedNotifications = useMemo(
+    () =>
+      [...notifications].sort(
+        (a, b) => getNotificationTimestamp(b) - getNotificationTimestamp(a),
+      ),
+    [notifications],
+  );
 
   useEffect(() => {
     const handleClick = (event) => {
@@ -1017,77 +1022,70 @@ export default function TransactionNotificationDropdown() {
   }, [formsLoaded]);
 
 
-  const fetchFeedPage = useCallback(
-    async ({ cursor = '', replace = false } = {}) => {
-      const normalizedCursor = String(cursor || '').trim();
-      if (replace) {
-        setFeedState((prev) => ({
-          ...prev,
-          loading: true,
-          loadingMore: false,
-          error: '',
-          items: [],
-          nextCursor: null,
-          totalUnreadCount: 0,
-          isEndReached: false,
-        }));
-      } else {
-        setFeedState((prev) => ({ ...prev, loadingMore: true, error: '' }));
-      }
-      try {
-        const query = new URLSearchParams({
-          limit: String(FEED_CHUNK_SIZE),
-          unreadOnly: 'true',
-        });
-        if (normalizedCursor) query.set('cursor', normalizedCursor);
-        const res = await fetch(`/api/notifications/feed?${query.toString()}`, {
-          credentials: 'include',
-          skipLoader: true,
-        });
-        if (!res.ok) throw new Error('feed fetch failed');
-        const data = await res.json();
-        const nextItems = Array.isArray(data?.items) ? data.items : [];
-        setFeedState((prev) => ({
-          items: replace ? nextItems : [...prev.items, ...nextItems],
-          loading: false,
-          loadingMore: false,
-          error: '',
-          nextCursor: data?.nextCursor ?? null,
-          totalUnreadCount: Number(data?.totalUnreadCount) || 0,
-          isEndReached: Boolean(data?.isEndReached),
-        }));
-      } catch {
-        setFeedState((prev) => ({
-          ...prev,
-          loading: false,
-          loadingMore: false,
-          error: 'Failed to load notifications',
-        }));
-      }
-    },
-    [],
-  );
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    fetch('/api/report_access', {
+      credentials: 'include',
+      skipLoader: true,
+    })
+      .then((res) => (res.ok ? res.json() : {}))
+      .then((data) => {
+        if (cancelled) return;
+        setReportApprovalsDashboardTab(data?.reportApprovalsDashboardTab || 'audition');
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setReportApprovalsDashboardTab('audition');
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
-    fetchFeedPage({ replace: true });
-  }, [fetchFeedPage, open]);
+    let cancelled = false;
+    setVisibleCount(FEED_CHUNK_SIZE);
+    setFeedState((prev) => ({ ...prev, loading: true, error: '' }));
+    fetch(`/api/notifications/feed?limit=200`, {
+      credentials: 'include',
+      skipLoader: true,
+    })
+      .then((res) => (res.ok ? res.json() : Promise.reject(new Error('feed fetch failed'))))
+      .then((data) => {
+        if (cancelled) return;
+        const items = Array.isArray(data?.items) ? data.items : [];
+        setFeedState({
+          items,
+          loading: false,
+          error: '',
+          nextCursor: data?.nextCursor ?? null,
+        });
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setFeedState({ items: [], loading: false, error: 'Failed to load notifications', nextCursor: null });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
     const node = listRef.current;
     if (!node) return;
     const onScroll = () => {
-      if (feedState.loading || feedState.loadingMore) return;
-      if (!feedState.nextCursor) return;
+      if (visibleCount >= feedState.items.length) return;
       const remaining = node.scrollHeight - node.scrollTop - node.clientHeight;
       if (remaining <= 40) {
-        fetchFeedPage({ cursor: feedState.nextCursor, replace: false });
+        setVisibleCount((prev) => Math.min(prev + FEED_CHUNK_SIZE, feedState.items.length));
       }
     };
     node.addEventListener('scroll', onScroll);
     return () => node.removeEventListener('scroll', onScroll);
-  }, [fetchFeedPage, feedState.loading, feedState.loadingMore, feedState.nextCursor, open]);
+  }, [feedState.items.length, open, visibleCount]);
 
   useEffect(() => {
     if (open && !formsLoaded) {
@@ -1096,9 +1094,7 @@ export default function TransactionNotificationDropdown() {
   }, [formsLoaded, loadFormConfigs, open]);
 
   const combinedItems = useMemo(() => {
-    return feedState.items
-      .filter((item) => item?.unread !== false)
-      .map((item) => {
+    return feedState.items.map((item) => {
       const normalizedSource = String(item?.source || 'notification').toLowerCase();
       const isTransaction = normalizedSource === 'transaction';
       const isTemporary = normalizedSource === 'temporary';
@@ -1216,7 +1212,7 @@ export default function TransactionNotificationDropdown() {
             {!feedState.loading && !hasAnyNotifications && (
               <div style={styles.empty}>{feedState.error || 'No notifications yet'}</div>
             )}
-            {combinedItems.map((item) => (
+            {combinedItems.slice(0, visibleCount).map((item) => (
               <button
                 key={item.key}
                 type="button"
@@ -1235,9 +1231,8 @@ export default function TransactionNotificationDropdown() {
                 )}
               </button>
             ))}
-            {feedState.loadingMore && <div style={styles.empty}>Loading more…</div>}
-            {!feedState.loading && !feedState.loadingMore && hasAnyNotifications && feedState.isEndReached && (
-              <div style={styles.endReached}>You have reached the end of unread notifications.</div>
+            {!feedState.loading && visibleCount < combinedItems.length && (
+              <div style={styles.empty}>Scroll to load more…</div>
             )}
           </div>
           <button
@@ -1326,13 +1321,6 @@ const styles = {
     padding: '1rem',
     color: '#64748b',
     textAlign: 'center',
-  },
-  endReached: {
-    padding: '0.75rem 1rem',
-    color: '#64748b',
-    textAlign: 'center',
-    fontSize: '0.8rem',
-    borderTop: '1px dashed #d1d5db',
   },
   notificationItem: (isUnread) => ({
     width: '100%',
