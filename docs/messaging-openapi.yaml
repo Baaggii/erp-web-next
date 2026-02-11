@@ -1,0 +1,211 @@
+openapi: 3.1.0
+info:
+  title: ERP Messaging API
+  version: 1.0.0
+  description: Messaging, thread replies, presence, and company context APIs.
+servers:
+  - url: /api
+components:
+  parameters:
+    CorrelationId:
+      name: x-correlation-id
+      in: header
+      required: false
+      schema:
+        type: string
+        format: uuid
+  schemas:
+    StructuredError:
+      type: object
+      required: [status, error]
+      properties:
+        status:
+          type: integer
+        error:
+          type: object
+          required: [code, message, correlationId]
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+            details:
+              nullable: true
+            correlationId:
+              type: string
+    Message:
+      type: object
+      required: [id, company_id, author_empid, body, created_at]
+      properties:
+        id: { type: integer }
+        company_id: { type: integer }
+        author_empid: { type: string }
+        parent_message_id: { type: integer, nullable: true }
+        linked_type: { type: string, nullable: true }
+        linked_id: { type: string, nullable: true }
+        body: { type: string }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+        deleted_at: { type: string, format: date-time, nullable: true }
+    MessageCreateRequest:
+      type: object
+      required: [companyId, body, idempotencyKey]
+      properties:
+        companyId: { type: integer }
+        body: { type: string }
+        linkedType: { type: string }
+        linkedId: { type: string }
+        clientTempId: { type: string }
+        idempotencyKey: { type: string }
+paths:
+  /messages:
+    post:
+      parameters: [{ $ref: '#/components/parameters/CorrelationId' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MessageCreateRequest' }
+      responses:
+        '201':
+          description: Created
+        '4XX':
+          description: Error
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/StructuredError' }
+    get:
+      parameters:
+        - { $ref: '#/components/parameters/CorrelationId' }
+        - name: companyId
+          in: query
+          required: true
+          schema: { type: integer }
+        - name: linkedType
+          in: query
+          schema: { type: string }
+        - name: linkedId
+          in: query
+          schema: { type: string }
+        - name: cursor
+          in: query
+          schema: { type: integer }
+      responses:
+        '200':
+          description: Cursor page of messages
+  /messages/{id}/thread:
+    get:
+      parameters:
+        - { $ref: '#/components/parameters/CorrelationId' }
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+        - name: companyId
+          in: query
+          required: true
+          schema: { type: integer }
+      responses:
+        '200':
+          description: Root message and replies
+  /messages/{id}/reply:
+    post:
+      parameters:
+        - { $ref: '#/components/parameters/CorrelationId' }
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - { $ref: '#/components/schemas/MessageCreateRequest' }
+      responses:
+        '201':
+          description: Reply created
+  /messages/{id}:
+    patch:
+      parameters:
+        - { $ref: '#/components/parameters/CorrelationId' }
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [companyId, body]
+              properties:
+                companyId: { type: integer }
+                body: { type: string }
+      responses:
+        '200': { description: Message updated }
+    delete:
+      parameters:
+        - { $ref: '#/components/parameters/CorrelationId' }
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [companyId]
+              properties:
+                companyId: { type: integer }
+      responses:
+        '200': { description: Message soft deleted }
+  /presence/heartbeat:
+    post:
+      parameters: [{ $ref: '#/components/parameters/CorrelationId' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [companyId]
+              properties:
+                companyId: { type: integer }
+                status:
+                  type: string
+                  enum: [online, away, offline]
+      responses:
+        '200': { description: Presence updated }
+  /presence:
+    get:
+      parameters:
+        - { $ref: '#/components/parameters/CorrelationId' }
+        - name: companyId
+          in: query
+          required: true
+          schema: { type: integer }
+        - name: userIds
+          in: query
+          required: true
+          schema: { type: string, description: Comma-separated empids }
+      responses:
+        '200': { description: Presence list }
+  /context/switch-company:
+    post:
+      parameters: [{ $ref: '#/components/parameters/CorrelationId' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [companyId]
+              properties:
+                companyId: { type: integer }
+      responses:
+        '200': { description: Company context validated }

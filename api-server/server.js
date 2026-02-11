@@ -255,6 +255,7 @@ app.use("/api/posapi/endpoints", posApiEndpointRoutes);
 app.use("/api/posapi/proxy", posApiProxyRoutes);
 app.use("/api/posapi/reference-codes", posApiReferenceCodeRoutes);
 app.use("/api/cnc_processing", cncProcessingRoutes);
+app.use("/api", messagingRoutes);
 app.use("/api/messaging", messagingRoutes);
 
 // Serve static React build and fallback to index.html
