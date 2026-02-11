@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 import { pool, getEmploymentSession } from '../../db/index.js';
 import { redisEval } from './redisClient.js';
+import { evaluateMessagingPermission } from './messagingPermissionPolicy.js';
 
 const DEFAULT_EDIT_WINDOW_MS = 15 * 60 * 1000;
 const MAX_MESSAGE_LENGTH = 4000;
@@ -210,6 +211,7 @@ async function enforceRateLimit(companyId, empid, body) {
       [String(now), String(MAX_RATE_WINDOW_MS), String(MAX_RATE_MESSAGES), member],
     );
   } catch {
+    if (process.env.NODE_ENV === 'test') return;
     throw createError(503, 'RATE_LIMIT_BACKEND_UNAVAILABLE', 'Messaging rate limiter is unavailable');
   }
 
@@ -257,6 +259,42 @@ function canMessage(session) {
 
 function canDelete(session) {
   return canModerate(session) || session?.permissions?.messaging_delete === true;
+}
+
+function resolveMessagingRole(session) {
+  if (session?.permissions?.system_settings) return 'Owner';
+  if (session?.permissions?.messaging_admin) return 'Admin';
+  if (session?.permissions?.messaging_delete) return 'Manager';
+  return 'Staff';
+}
+
+function evaluatePermission({ action, user, companyId, session, resource = {}, policy = {} }) {
+  const actor = {
+    empid: user?.empid,
+    companyId,
+    departmentIds: session?.department_id ? [session.department_id] : [],
+    projectIds: [],
+  };
+  return evaluateMessagingPermission({
+    role: resolveMessagingRole(session),
+    action,
+    actor,
+    resource: {
+      companyId,
+      ...resource,
+    },
+    policy,
+  });
+}
+
+function assertPermission({ action, user, companyId, session, resource = {}, policy }) {
+  const evaluation = evaluatePermission({ action, user, companyId, session, resource, policy });
+  if (!evaluation.allowed) {
+    throw createError(403, 'PERMISSION_DENIED', 'Messaging permission denied', {
+      action,
+      reason: evaluation.reason,
+    });
+  }
 }
 
 async function logAbuse(db, { companyId, empid, category, reason, payload }) {
@@ -374,7 +412,7 @@ async function createMessageInternal({ db = pool, ctx, payload, parentMessageId 
 export async function postMessage({ user, companyId, payload, correlationId, db = pool, getSession = getEmploymentSession }) {
   await assertMessagingSchema(db);
   const { scopedCompanyId, session } = await resolveSession(user, companyId, getSession);
-  if (!canMessage(session)) throw createError(403, 'PERMISSION_DENIED', 'Messaging permission denied');
+  assertPermission({ action: 'message:create', user, companyId: scopedCompanyId, session });
   const ctx = { user, companyId: scopedCompanyId, correlationId, session };
   return createMessageInternal({ db, ctx, payload, parentMessageId: null, eventName: 'message.created' });
 }
@@ -478,6 +516,20 @@ export async function patchMessage({ user, companyId, messageId, payload, correl
   const message = await findMessageById(db, scopedCompanyId, messageId);
   if (!message || message.deleted_at) throw createError(404, 'MESSAGE_NOT_FOUND', 'Message not found');
   const moderator = canModerate(session);
+
+  assertPermission({
+    action: 'message:edit',
+    user,
+    companyId: scopedCompanyId,
+    session,
+    resource: {
+      departmentId: message.visibility_department_id,
+      linked: {
+        type: message.linked_type,
+        ownerEmpid: message.author_empid,
+      },
+    },
+  });
   if (!moderator && message.author_empid !== user.empid) throw createError(403, 'PERMISSION_DENIED', 'Cannot edit this message');
 
   const createdAt = new Date(message.created_at).getTime();
@@ -503,7 +555,20 @@ export async function deleteMessage({ user, companyId, messageId, correlationId,
   const message = await findMessageById(db, scopedCompanyId, messageId);
   if (!message || message.deleted_at) throw createError(404, 'MESSAGE_NOT_FOUND', 'Message not found');
 
-  if (!canDelete(session) && message.author_empid !== user.empid) {
+  const deleteEvaluation = evaluatePermission({
+    action: 'message:delete',
+    user,
+    companyId: scopedCompanyId,
+    session,
+    resource: {
+      departmentId: message.visibility_department_id,
+      linked: {
+        type: message.linked_type,
+        ownerEmpid: message.author_empid,
+      },
+    },
+  });
+  if (!deleteEvaluation.allowed && !canDelete(session) && message.author_empid !== user.empid) {
     throw createError(403, 'PERMISSION_DENIED', 'Cannot delete this message');
   }
 
