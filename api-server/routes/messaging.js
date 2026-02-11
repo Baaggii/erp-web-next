@@ -30,6 +30,10 @@ const postMessageSchema = {
     visibilityScope: { type: 'string', enum: ['company', 'department', 'private'] },
     visibilityDepartmentId: { anyOf: [{ type: 'integer' }, { type: 'string', pattern: '^[0-9]+$' }] },
     visibilityEmpid: { type: 'string', minLength: 1, maxLength: 64 },
+    recipientEmpids: {
+      type: 'array',
+      items: { type: 'string', minLength: 1, maxLength: 64 },
+    },
     clientTempId: { type: 'string', minLength: 1, maxLength: 128 },
   },
 };
@@ -55,6 +59,13 @@ function validateSchema(schema, value) {
       if (!childSchema) return schema.additionalProperties !== false;
       return validateSchema(childSchema, value[key]);
     });
+  }
+
+  if (schema.type === 'array') {
+    if (!Array.isArray(value)) return false;
+    if (schema.minItems !== undefined && value.length < schema.minItems) return false;
+    if (schema.maxItems !== undefined && value.length > schema.maxItems) return false;
+    return value.every((item) => validateSchema(schema.items || {}, item));
   }
 
   if (schema.anyOf) {
