@@ -9,7 +9,7 @@ const MAX_RATE_MESSAGES = 20;
 const LINKED_TYPE_ALLOWLIST = new Set(['transaction', 'plan', 'topic', 'task', 'ticket']);
 const VISIBILITY_SCOPES = new Set(['company', 'department', 'private']);
 
-let initialized = false;
+const validatedDbConnections = new WeakSet();
 let ioRef = null;
 
 const onlineByCompany = new Map();
@@ -173,76 +173,10 @@ function enforceRateLimit(companyId, empid, body) {
   recentMessagesBySender.set(key, history);
 }
 
-async function ensureSchema(db = pool) {
-  if (initialized) return;
-  await db.query(`
-    CREATE TABLE IF NOT EXISTS erp_messages (
-      id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-      company_id BIGINT UNSIGNED NOT NULL,
-      author_empid VARCHAR(64) NOT NULL,
-      parent_message_id BIGINT UNSIGNED NULL,
-      linked_type VARCHAR(64) NULL,
-      linked_id VARCHAR(128) NULL,
-      visibility_scope VARCHAR(16) NOT NULL DEFAULT 'company',
-      visibility_department_id BIGINT UNSIGNED NULL,
-      visibility_empid VARCHAR(64) NULL,
-      body TEXT NULL,
-      body_ciphertext MEDIUMTEXT NULL,
-      body_iv VARCHAR(32) NULL,
-      body_auth_tag VARCHAR(64) NULL,
-      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-      deleted_at DATETIME NULL,
-      deleted_by_empid VARCHAR(64) NULL,
-      PRIMARY KEY (id),
-      KEY idx_messages_company_id_id (company_id, id),
-      KEY idx_messages_parent (parent_message_id),
-      KEY idx_messages_link (company_id, linked_type, linked_id),
-      KEY idx_messages_visibility (company_id, visibility_scope, visibility_department_id, visibility_empid)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-  `);
-  await db.query(`
-    CREATE TABLE IF NOT EXISTS erp_message_idempotency (
-      company_id BIGINT UNSIGNED NOT NULL,
-      empid VARCHAR(64) NOT NULL,
-      idem_key VARCHAR(128) NOT NULL,
-      message_id BIGINT UNSIGNED NOT NULL,
-      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      PRIMARY KEY (company_id, empid, idem_key),
-      KEY idx_idem_message (message_id)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-  `);
-  await db.query(`
-    CREATE TABLE IF NOT EXISTS erp_message_receipts (
-      message_id BIGINT UNSIGNED NOT NULL,
-      empid VARCHAR(64) NOT NULL,
-      read_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      PRIMARY KEY (message_id, empid)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-  `);
-  await db.query(`
-    CREATE TABLE IF NOT EXISTS erp_presence_heartbeats (
-      company_id BIGINT UNSIGNED NOT NULL,
-      empid VARCHAR(64) NOT NULL,
-      heartbeat_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      status VARCHAR(16) NOT NULL DEFAULT 'online',
-      PRIMARY KEY (company_id, empid)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-  `);
-  await db.query(`
-    CREATE TABLE IF NOT EXISTS erp_messaging_abuse_audit (
-      id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-      company_id BIGINT UNSIGNED NOT NULL,
-      empid VARCHAR(64) NOT NULL,
-      category VARCHAR(32) NOT NULL,
-      reason VARCHAR(255) NOT NULL,
-      payload JSON NULL,
-      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      PRIMARY KEY (id),
-      KEY idx_abuse_company_empid (company_id, empid)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-  `);
-  initialized = true;
+async function validateDbConnection(db = pool) {
+  if (validatedDbConnections.has(db)) return;
+  await db.query('SELECT 1');
+  validatedDbConnections.add(db);
 }
 
 async function resolveSession(user, companyId, getSession = getEmploymentSession) {
