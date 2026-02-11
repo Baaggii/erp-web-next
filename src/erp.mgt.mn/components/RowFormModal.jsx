@@ -159,6 +159,8 @@ const RowFormModal = function RowFormModal({
   posApiPaymentMethods = [],
   extraFooterContent = null,
   allowTemporaryOnly = false,
+  postedLockMessage = '',
+  postedAt = '',
 }) {
   const mounted = useRef(false);
   const renderCount = useRef(0);
@@ -293,8 +295,10 @@ const RowFormModal = function RowFormModal({
     () => new Set((userIdFields || []).map((f) => f.toLowerCase())),
     [userIdFields],
   );
+  const isPostedLocked = Boolean(postedLockMessage);
+  const effectiveReadOnly = Boolean(readOnly || isPostedLocked);
   const disabledSet = React.useMemo(() => {
-    if (readOnly) {
+    if (effectiveReadOnly) {
       const all = new Set();
       [columns, headerFields, mainFields, footerFields].forEach((list) => {
         (list || []).forEach((field) => {
@@ -306,7 +310,7 @@ const RowFormModal = function RowFormModal({
     }
     if (forceEditable) return new Set();
     return new Set(disabledFields.map((f) => f.toLowerCase()));
-  }, [columns, disabledFields, forceEditable, footerFields, headerFields, mainFields, readOnly]);
+  }, [columns, disabledFields, forceEditable, footerFields, headerFields, mainFields, effectiveReadOnly]);
   const disabledReasonLookup = React.useMemo(() => {
     const map = {};
     Object.entries(disabledFieldReasons || {}).forEach(([key, value]) => {
@@ -322,8 +326,8 @@ const RowFormModal = function RowFormModal({
     });
     return map;
   }, [disabledFieldReasons]);
-  const guardToastEnabled = !forceEditable && !readOnly && !!general.posGuardToastEnabled;
-  const isReadOnly = Boolean(readOnly);
+  const guardToastEnabled = !forceEditable && !effectiveReadOnly && !!general.posGuardToastEnabled;
+  const isReadOnly = effectiveReadOnly;
   const lastGuardToastRef = useRef({ field: null, ts: 0 });
   const describeGuardReasons = React.useCallback(
     (codes = []) => {
@@ -3417,6 +3421,10 @@ const RowFormModal = function RowFormModal({
     submitOptions.submitIntent = submitIntent;
     submitIntentRef.current = null;
     const shouldPromptPrint = submitIntent === 'post';
+    if (isPostedLocked) {
+      alert(postedLockMessage || 'Posted transactions are locked');
+      return;
+    }
     if (!canPost) {
       alert(
         t(
@@ -4718,7 +4726,7 @@ const RowFormModal = function RowFormModal({
     allowTemporarySave &&
     onSaveTemporary &&
     (isAdding || isEditingTemporaryDraft) &&
-    (!isReadOnly || temporarySaveLabel);
+    (!isReadOnly || temporarySaveLabel) && !isPostedLocked;
   const postButtonLabel = submitLocked ? t('posting', 'Posting...') : t('post', 'Post');
   const ebarimtButtonLabel = submitLocked
     ? t('posting', 'Posting...')
@@ -4817,6 +4825,12 @@ const RowFormModal = function RowFormModal({
                   )}
                 </div>
               )}
+            </div>
+          )}
+          {isPostedLocked && (
+            <div className="rounded border border-green-300 bg-green-50 p-3 text-sm text-green-800">
+              <div>{postedLockMessage || 'Posted transactions are locked'}</div>
+              {postedAt ? <div className="mt-1 text-xs text-green-700">Posted at {formatTimestamp(postedAt)}</div> : null}
             </div>
           )}
           {renderHeaderTable(headerCols)}
@@ -4960,7 +4974,7 @@ const RowFormModal = function RowFormModal({
                 {ebarimtButtonLabel}
               </button>
             )}
-            {canPost && (
+            {canPost && !isPostedLocked && (
               <button
                 type="submit"
                 className="px-3 py-1 bg-blue-600 text-white rounded"
