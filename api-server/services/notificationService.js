@@ -17,7 +17,7 @@ function normalizeRecipient(recipientEmpId) {
   if (!normalized) {
     throw new Error('recipientEmpId required');
   }
-  return normalized;
+  return normalized.toUpperCase();
 }
 
 function normalizeType(type) {
