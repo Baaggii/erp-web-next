@@ -4,14 +4,21 @@ import { deleteMessage, getMessages, patchMessage, postMessage, postReply, setMe
 import { resetMessagingMetrics } from '../../api-server/services/messagingMetrics.js';
 
 class FakeDb {
-  constructor() {
+  constructor({ supportsEncryptedBodyColumns = true } = {}) {
     this.messages = [];
     this.idem = new Map();
     this.nextId = 1;
     this.securityAuditEvents = [];
+    this.supportsEncryptedBodyColumns = supportsEncryptedBodyColumns;
   }
 
   async query(sql, params = []) {
+
+    if (!this.supportsEncryptedBodyColumns && sql.includes('body_ciphertext')) {
+      const error = new Error("Unknown column 'body_ciphertext' in 'field list'");
+      error.sqlMessage = "Unknown column 'body_ciphertext' in 'field list'";
+      throw error;
+    }
     if (sql.includes('CREATE TABLE IF NOT EXISTS')) return [[]];
     if (sql.includes("FROM information_schema.TABLES") && sql.includes("TABLE_NAME = 'erp_messages'")) {
       return [[{ count: 1 }]];
@@ -175,6 +182,49 @@ test('tenant isolation: user from company B cannot edit company A message', asyn
 
 
 
+
+
+test('postMessage falls back when encrypted body columns are unavailable', async () => {
+  const db = new FakeDb({ supportsEncryptedBodyColumns: false });
+  const session = { permissions: { messaging: true } };
+
+  const created = await postMessage({
+    user,
+    companyId: 1,
+    payload: { body: 'legacy schema message', linkedType: 'topic', linkedId: 'legacy', idempotencyKey: 'legacy-new-1' },
+    correlationId: 'legacy-new-1',
+    db,
+    getSession: async () => session,
+  });
+
+  assert.equal(created.message.body, 'legacy schema message');
+});
+
+test('postReply falls back when encrypted body columns are unavailable', async () => {
+  const db = new FakeDb({ supportsEncryptedBodyColumns: false });
+  const session = { permissions: { messaging: true } };
+
+  const parent = await postMessage({
+    user,
+    companyId: 1,
+    payload: { body: 'parent legacy', linkedType: 'topic', linkedId: 'legacy', idempotencyKey: 'legacy-parent-1' },
+    correlationId: 'legacy-parent-1',
+    db,
+    getSession: async () => session,
+  });
+
+  const reply = await postReply({
+    user,
+    companyId: 1,
+    messageId: parent.message.id,
+    payload: { body: 'legacy reply', idempotencyKey: 'legacy-reply-1' },
+    correlationId: 'legacy-reply-1',
+    db,
+    getSession: async () => session,
+  });
+
+  assert.equal(reply.message.body, 'legacy reply');
+});
 test('rate limiter falls back locally when redis is unavailable', async () => {
   const db = new FakeDb();
   const session = { permissions: { messaging: true } };
