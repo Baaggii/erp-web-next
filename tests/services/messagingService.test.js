@@ -22,21 +22,23 @@ class FakeDb {
       return [messageId ? [{ message_id: messageId, request_hash: null, expires_at: null }] : []];
     }
     if (sql.startsWith('INSERT INTO erp_messages')) {
-      const [companyId, authorEmpid, parentId, linkedType, linkedId, visibilityScope, visibilityDepartmentId, visibilityEmpid, body, bodyCiphertext, bodyIv, bodyAuthTag] = params;
+      const hasLinkedFields = sql.includes('linked_type') && sql.includes('linked_id');
+      const [companyId, authorEmpid, parentId] = params;
+      const baseOffset = hasLinkedFields ? 8 : 3;
       const message = {
         id: this.nextId++,
         company_id: companyId,
         author_empid: authorEmpid,
         parent_message_id: parentId,
-        linked_type: linkedType,
-        linked_id: linkedId,
-        body,
-        body_ciphertext: bodyCiphertext,
-        body_iv: bodyIv,
-        body_auth_tag: bodyAuthTag,
-        visibility_scope: visibilityScope,
-        visibility_department_id: visibilityDepartmentId,
-        visibility_empid: visibilityEmpid,
+        linked_type: hasLinkedFields ? params[3] : null,
+        linked_id: hasLinkedFields ? params[4] : null,
+        visibility_scope: hasLinkedFields ? params[5] : 'company',
+        visibility_department_id: hasLinkedFields ? params[6] : null,
+        visibility_empid: hasLinkedFields ? params[7] : null,
+        body: params[baseOffset],
+        body_ciphertext: params[baseOffset + 1],
+        body_iv: params[baseOffset + 2],
+        body_auth_tag: params[baseOffset + 3],
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
         deleted_at: null,

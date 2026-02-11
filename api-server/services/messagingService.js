@@ -16,6 +16,7 @@ const VISIBILITY_SCOPES = new Set(['company', 'department', 'private']);
 
 const validatedMessagingSchemas = new WeakSet();
 const idempotencyRequestHashSupport = new WeakMap();
+const messageLinkedContextSupport = new WeakMap();
 let ioRef = null;
 
 const onlineByCompany = new Map();
@@ -321,8 +322,8 @@ function enforceLocalRateLimitFallback({ companyId, empid, digest, now }) {
 async function enforceRateLimit(companyId, empid, body, db = pool) {
   const now = Date.now();
   const member = `${now}:${crypto.randomUUID()}`;
-  const normalizedBody = body.trim().toLowerCase();
-  const digest = crypto.createHash('sha256').update(normalizedBody).digest('hex');
+  const dedupeInput = String(dedupeSeed || '').trim().toLowerCase();
+  const digest = crypto.createHash('sha256').update(dedupeInput).digest('hex');
   const rateKey = `messaging:rate:${companyId}:${empid}`;
   const duplicateKey = `messaging:dedupe:${companyId}:${empid}:${digest}`;
 
@@ -527,27 +528,55 @@ async function createMessageInternal({ db = pool, ctx, payload, parentMessageId 
     }
   }
 
-  await enforceRateLimit(ctx.companyId, ctx.user.empid, body, db);
+  await enforceRateLimit(ctx.companyId, ctx.user.empid, idempotencyKey, db);
 
-  const [result] = await db.query(
-    `INSERT INTO erp_messages
-      (company_id, author_empid, parent_message_id, linked_type, linked_id, visibility_scope, visibility_department_id, visibility_empid, body, body_ciphertext, body_iv, body_auth_tag)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [
-      ctx.companyId,
-      ctx.user.empid,
-      parentMessageId,
-      linkedType,
-      linkedId,
-      visibility.visibilityScope,
-      visibility.visibilityDepartmentId,
-      visibility.visibilityEmpid,
-      encryptedBody.body,
-      encryptedBody.bodyCiphertext,
-      encryptedBody.bodyIv,
-      encryptedBody.bodyAuthTag,
-    ],
-  );
+  const messageInsertValues = [
+    ctx.companyId,
+    ctx.user.empid,
+    parentMessageId,
+    linkedType,
+    linkedId,
+    visibility.visibilityScope,
+    visibility.visibilityDepartmentId,
+    visibility.visibilityEmpid,
+    encryptedBody.body,
+    encryptedBody.bodyCiphertext,
+    encryptedBody.bodyIv,
+    encryptedBody.bodyAuthTag,
+  ];
+
+  let result;
+  if (canUseLinkedColumns(db)) {
+    try {
+      [result] = await db.query(
+        `INSERT INTO erp_messages
+          (company_id, author_empid, parent_message_id, linked_type, linked_id, visibility_scope, visibility_department_id, visibility_empid, body, body_ciphertext, body_iv, body_auth_tag)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        messageInsertValues,
+      );
+      messageLinkedContextSupport.set(db, true);
+    } catch (error) {
+      if (!isUnknownColumnError(error, 'linked_type') && !isUnknownColumnError(error, 'linked_id')) throw error;
+      markLinkedColumnsUnsupported(db);
+    }
+  }
+
+  if (!result) {
+    [result] = await db.query(
+      `INSERT INTO erp_messages
+        (company_id, author_empid, parent_message_id, body, body_ciphertext, body_iv, body_auth_tag)
+        VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [
+        ctx.companyId,
+        ctx.user.empid,
+        parentMessageId,
+        encryptedBody.body,
+        encryptedBody.bodyCiphertext,
+        encryptedBody.bodyIv,
+        encryptedBody.bodyAuthTag,
+      ],
+    );
+  }
   const messageId = result.insertId;
   await upsertIdempotencyRow(db, {
     companyId: ctx.companyId,
@@ -617,7 +646,7 @@ export async function getMessages({ user, companyId, linkedType, linkedId, curso
 
   const filters = ['company_id = ?', 'parent_message_id IS NULL'];
   const params = [scopedCompanyId];
-  if (linkedType && linkedId) {
+  if (linkedType && linkedId && canUseLinkedColumns(db)) {
     filters.push('linked_type = ?');
     filters.push('linked_id = ?');
     params.push(String(linkedType), String(linkedId));
@@ -628,10 +657,23 @@ export async function getMessages({ user, companyId, linkedType, linkedId, curso
   }
   filters.push('deleted_at IS NULL');
 
-  const [rows] = await db.query(
-    `SELECT * FROM erp_messages WHERE ${filters.join(' AND ')} ORDER BY id DESC LIMIT ?`,
-    [...params, parsedLimit + 1],
-  );
+  let rows;
+  try {
+    [rows] = await db.query(
+      `SELECT * FROM erp_messages WHERE ${filters.join(' AND ')} ORDER BY id DESC LIMIT ?`,
+      [...params, parsedLimit + 1],
+    );
+  } catch (error) {
+    if (!isUnknownColumnError(error, 'linked_type') && !isUnknownColumnError(error, 'linked_id')) throw error;
+    markLinkedColumnsUnsupported(db);
+    const fallbackFilters = filters.filter((entry) => entry !== 'linked_type = ?' && entry !== 'linked_id = ?');
+    const fallbackParams = [scopedCompanyId];
+    if (cursorId) fallbackParams.push(cursorId);
+    [rows] = await db.query(
+      `SELECT * FROM erp_messages WHERE ${fallbackFilters.join(' AND ')} ORDER BY id DESC LIMIT ?`,
+      [...fallbackParams, parsedLimit + 1],
+    );
+  }
 
   const visibleRows = rows.map((row) => sanitizeForViewer(row, session, user)).filter(Boolean);
   const hasMore = visibleRows.length > parsedLimit;
