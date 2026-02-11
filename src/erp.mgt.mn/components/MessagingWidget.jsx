@@ -145,7 +145,7 @@ function canOpenContextLink(permissions, chipType) {
 }
 
 function formatEmployeeOption(entry) {
-  return `${entry.label} (${entry.employeeCode || `ID #${entry.id}`})`;
+  return `${entry.label}`;
 }
 
 function canViewTransaction(transactionId, userId, permissions) {
@@ -263,7 +263,9 @@ export default function MessagingWidget() {
   const [employees, setEmployees] = useState([]);
   const [recipientSearch, setRecipientSearch] = useState('');
   const [employeeStatusFilter, setEmployeeStatusFilter] = useState('all');
-  const [presencePanelOpen, setPresencePanelOpen] = useState(true);
+  const [presencePanelOpen, setPresencePanelOpen] = useState(false);
+  const [conversationPanelOpen, setConversationPanelOpen] = useState(true);
+  const [isNarrowLayout, setIsNarrowLayout] = useState(false);
   const [highlightedIds, setHighlightedIds] = useState(() => new Set());
   const [mentionOpen, setMentionOpen] = useState(false);
   const [mentionQuery, setMentionQuery] = useState('');
@@ -345,6 +347,20 @@ export default function MessagingWidget() {
   }, [draftStorageKey, state.composer.body, state.composer.topic, state.composer.recipients]);
 
   useEffect(() => {
+    const applyResponsivePanels = () => {
+      const narrow = globalThis.innerWidth < 1180;
+      setIsNarrowLayout(narrow);
+      if (narrow) {
+        setPresencePanelOpen(false);
+        setConversationPanelOpen(false);
+      }
+    };
+    applyResponsivePanels();
+    globalThis.addEventListener('resize', applyResponsivePanels);
+    return () => globalThis.removeEventListener('resize', applyResponsivePanels);
+  }, []);
+
+  useEffect(() => {
     const activeCompany = state.activeCompanyId || companyId;
     if (!activeCompany) return;
     let disposed = false;
@@ -393,17 +409,42 @@ export default function MessagingWidget() {
         const profileMap = new Map(employeeRows.map((row) => [
           normalizeId(row.emp_id || row.empid || row.id),
           {
-            displayName: row.emp_name || row.employee_name || row.name || row.full_name || row.emp_id,
+            displayName: row.displayName || row.emp_name || row.employee_name || row.name || row.full_name || row.username || row.emp_id,
             employeeCode: row.employee_code || row.emp_code || row.emp_id,
           },
         ]));
+
+        const missingEmpids = idsFromEmployment.filter((empid) => !sanitizeMessageText(profileMap.get(empid)?.displayName || ''));
+        if (missingEmpids.length > 0) {
+          try {
+            const usersParams = new URLSearchParams({ companyId: String(activeCompany) });
+            const usersRes = await fetch(`${API_BASE}/users?${usersParams.toString()}`, { credentials: 'include' });
+            if (usersRes.ok) {
+              const usersData = await usersRes.json();
+              const usersRows = Array.isArray(usersData?.items) ? usersData.items : Array.isArray(usersData) ? usersData : [];
+              usersRows.forEach((userRow) => {
+                const empid = normalizeId(userRow.empid || userRow.emp_id || userRow.employee_id || userRow.id);
+                if (!empid || !missingEmpids.includes(empid)) return;
+                const fallbackDisplayName = sanitizeMessageText(userRow.full_name || userRow.display_name || userRow.name || userRow.username || empid) || empid;
+                const current = profileMap.get(empid) || {};
+                profileMap.set(empid, {
+                  displayName: sanitizeMessageText(current.displayName || fallbackDisplayName) || empid,
+                  employeeCode: sanitizeMessageText(current.employeeCode || userRow.username || userRow.empid || empid) || empid,
+                });
+              });
+            }
+          } catch {
+            // Best effort only; leave existing values.
+          }
+        }
 
         const uniqueEmployees = Array.from(new Map(idsFromEmployment.map((empid) => {
           const profile = profileMap.get(empid) || {};
           return [empid, {
             empid,
-            name: profile.displayName || empid,
-            employeeCode: profile.employeeCode || empid,
+            name: sanitizeMessageText(profile.displayName || empid) || empid,
+            displayName: sanitizeMessageText(profile.displayName || empid) || empid,
+            employeeCode: sanitizeMessageText(profile.employeeCode || empid) || empid,
           }];
         })).values());
         setEmployees(uniqueEmployees);
@@ -546,7 +587,7 @@ export default function MessagingWidget() {
     employees.forEach((entry) => {
       seen.set(entry.empid, {
         id: entry.empid,
-        label: sanitizeMessageText(entry.name || entry.displayName || entry.empid) || entry.empid,
+        label: sanitizeMessageText(entry.displayName || entry.name || entry.empid) || entry.empid,
         employeeCode: sanitizeMessageText(entry.employeeCode || entry.empid) || entry.empid,
         status: presenceMap.get(entry.empid) || PRESENCE.OFFLINE,
       });
@@ -568,7 +609,7 @@ export default function MessagingWidget() {
       if (!empid || seen.has(empid)) return;
       seen.set(empid, {
         id: empid,
-        label: empid,
+        label: sanitizeMessageText(msg.author_name || msg.author_display_name || msg.author_username || empid) || empid,
         employeeCode: empid,
         status: presenceMap.get(empid) || PRESENCE.OFFLINE,
       });
@@ -598,7 +639,7 @@ export default function MessagingWidget() {
     return {
       ...conversation,
       unread: conversation.messages.filter((msg) => !msg.read_by?.includes?.(selfEmpid)).length,
-      preview: sanitizeMessageText(previewMessage?.body || '').slice(0, 75) || 'No messages yet',
+      preview: sanitizeMessageText(previewMessage?.body || '').slice(0, 48) || 'No messages yet',
       groupName: conversation.linkedType && conversation.linkedId ? `${conversation.linkedType} #${conversation.linkedId}` : `Thread #${conversation.rootMessageId}`,
       lastActivity: previewMessage?.created_at || null,
     };
@@ -613,7 +654,6 @@ export default function MessagingWidget() {
     if (selfEmpid && sessionUserLabel) labels.set(selfEmpid, sessionUserLabel);
     return labels;
   }, [employeeRecords, selfEmpid, sessionUserLabel]);
-  const employeeCodeMap = useMemo(() => new Map(employeeRecords.map((entry) => [entry.id, entry.employeeCode || entry.id])), [employeeRecords]);
   const resolveEmployeeLabel = (empid) => {
     const normalizedEmpid = normalizeId(empid);
     if (!normalizedEmpid) return 'Unknown user';
@@ -677,6 +717,17 @@ export default function MessagingWidget() {
     if (Number(activeConversation?.rootMessageId) === Number(messageId)) {
       dispatch({ type: 'widget/setConversation', payload: null });
     }
+    setComposerAnnouncement('Conversation deleted.');
+  };
+
+  const handleDeleteConversationFromList = async (conversation) => {
+    if (!conversation?.rootMessageId) return;
+    const rootMessage = messages.find((entry) => Number(entry.id) === Number(conversation.rootMessageId));
+    if (!canDeleteMessage(rootMessage)) {
+      setComposerAnnouncement('You do not have permission to delete this thread.');
+      return;
+    }
+    await handleDeleteMessage(conversation.rootMessageId);
   };
 
   const sendMessage = async () => {
@@ -705,7 +756,7 @@ export default function MessagingWidget() {
     const payload = {
       idempotencyKey: createIdempotencyKey(),
       clientTempId,
-      body: safeBody,
+      body: `[${safeTopic}] ${safeBody}`,
       companyId: Number.isFinite(Number(activeCompany)) ? Number(activeCompany) : String(activeCompany),
       recipientEmpids: state.composer.recipients,
       ...(state.composer.recipients.length === 1
@@ -880,13 +931,14 @@ export default function MessagingWidget() {
         position: 'fixed',
         right: 16,
         bottom: 16,
-        width: 1080,
+        width: isNarrowLayout ? '96vw' : 940,
         maxWidth: '98vw',
         background: '#f8fafc',
         border: '1px solid #cbd5e1',
         borderRadius: 14,
         zIndex: 1200,
-        overflow: 'hidden',
+        overflow: 'auto',
+        maxHeight: '58vh',
       }}
       aria-label="Messaging widget"
     >
@@ -905,8 +957,8 @@ export default function MessagingWidget() {
         </button>
       </header>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '360px 1fr', minHeight: 560 }}>
-        <aside style={{ borderRight: '1px solid #e2e8f0', background: '#ffffff', display: 'flex', flexDirection: 'column' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: isNarrowLayout ? 'minmax(0, 1fr)' : '300px minmax(0,1fr)', minHeight: 0, height: '100%' }}>
+        <aside style={{ borderRight: isNarrowLayout ? 'none' : '1px solid #e2e8f0', background: '#ffffff', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
           <div style={{ padding: 12, borderBottom: '1px solid #e2e8f0' }}>
             <label htmlFor="messaging-company-switch" style={{ fontSize: 12, fontWeight: 600, color: '#334155' }}>Company</label>
             <input
@@ -918,14 +970,19 @@ export default function MessagingWidget() {
             />
           </div>
 
-          <div style={{ padding: 12, borderBottom: '1px solid #e2e8f0' }}>
-            <h3 style={{ margin: 0, fontSize: 14, color: '#0f172a' }}>Topics</h3>
-            <p style={{ margin: '4px 0 0', fontSize: 12, color: '#64748b' }}>Grouped by topic or linked entity.</p>
+          <div style={{ padding: 10, borderBottom: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+            <div>
+              <h3 style={{ margin: 0, fontSize: 14, color: '#0f172a' }}>Threads</h3>
+              <p style={{ margin: '3px 0 0', fontSize: 11, color: '#64748b' }}>One row per conversation.</p>
+            </div>
+            <button type="button" onClick={() => setConversationPanelOpen((prev) => !prev)} style={{ border: '1px solid #cbd5e1', borderRadius: 8, background: '#fff', padding: '4px 8px', fontSize: 12 }}>
+              {conversationPanelOpen ? 'Hide' : 'Show'}
+            </button>
           </div>
 
-          <div style={{ padding: 12, borderBottom: '1px solid #e2e8f0' }}>
-            <button type="button" onClick={() => setPresencePanelOpen((prev) => !prev)} style={{ border: 0, background: 'transparent', fontWeight: 700, color: '#0f172a', padding: 0 }}>
-              {presencePanelOpen ? '▾' : '▸'} Employee presence
+          <div style={{ padding: 10, borderBottom: '1px solid #e2e8f0' }}>
+            <button type="button" onClick={() => setPresencePanelOpen((prev) => !prev)} style={{ border: '1px solid #cbd5e1', borderRadius: 8, background: '#fff', fontWeight: 700, color: '#0f172a', padding: '4px 8px', fontSize: 12 }}>
+              {presencePanelOpen ? '● Hide presence' : '◌ Show presence'}
             </button>
             {presencePanelOpen && (
               <div style={{ marginTop: 8 }}>
@@ -973,45 +1030,53 @@ export default function MessagingWidget() {
             )}
           </div>
 
-          <div style={{ overflowY: 'auto', padding: 10, display: 'grid', gap: 8 }}>
+          {conversationPanelOpen && (
+          <div style={{ overflowY: 'auto', padding: 8, display: 'grid', gap: 6, minHeight: 0 }}>
             {conversationSummaries.length === 0 && <p style={{ color: '#64748b', fontSize: 13 }}>No conversations yet.</p>}
             {conversationSummaries.map((conversation) => (
-              <button
-                key={conversation.id}
-                type="button"
-                onClick={() => {
-                  dispatch({ type: 'widget/setConversation', payload: conversation.id });
-                  dispatch({ type: 'composer/setTopic', payload: conversation.title });
-                  if (conversation.linkedType && conversation.linkedId) {
-                    dispatch({ type: 'composer/setLinkedContext', payload: { linkedType: conversation.linkedType, linkedId: conversation.linkedId } });
-                  }
-                }}
-                style={{
-                  textAlign: 'left',
-                  borderRadius: 12,
-                  border: conversation.id === activeConversationId ? '1px solid #3b82f6' : '1px solid #e2e8f0',
-                  background: conversation.id === activeConversationId ? '#eff6ff' : '#ffffff',
-                  padding: 10,
-                }}
-              >
-                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center' }}>
-                  <strong style={{ color: '#0f172a', fontSize: 14 }}>{conversation.title}</strong>
-                  {conversation.unread > 0 && (
-                    <span style={{ minWidth: 22, textAlign: 'center', borderRadius: 999, background: '#ef4444', color: '#fff', fontSize: 12, padding: '2px 6px' }}>
-                      {conversation.unread}
-                    </span>
-                  )}
+              <div key={conversation.id} style={{ borderRadius: 12, border: conversation.id === activeConversationId ? '1px solid #3b82f6' : '1px solid #e2e8f0', background: conversation.id === activeConversationId ? '#eff6ff' : '#ffffff', padding: 8 }}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    dispatch({ type: 'widget/setConversation', payload: conversation.id });
+                    dispatch({ type: 'composer/setTopic', payload: conversation.title });
+                    if (conversation.linkedType && conversation.linkedId) {
+                      dispatch({ type: 'composer/setLinkedContext', payload: { linkedType: conversation.linkedType, linkedId: conversation.linkedId } });
+                    }
+                  }}
+                  style={{ textAlign: 'left', border: 0, background: 'transparent', width: '100%', padding: 0 }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center' }}>
+                    <strong style={{ color: '#0f172a', fontSize: 13 }}>{conversation.title}</strong>
+                    {conversation.unread > 0 && (
+                      <span style={{ minWidth: 20, textAlign: 'center', borderRadius: 999, background: '#ef4444', color: '#fff', fontSize: 11, padding: '1px 6px' }}>
+                        {conversation.unread}
+                      </span>
+                    )}
+                  </div>
+                  <p style={{ margin: '3px 0', fontSize: 11, color: '#334155', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{conversation.preview}</p>
+                  <p style={{ margin: '3px 0 0', fontSize: 10, color: '#64748b' }}>
+                    {conversation.groupName} · {formatLastActivity(conversation.lastActivity)}
+                  </p>
+                </button>
+                <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                  <button
+                    type="button"
+                    aria-label={`Delete conversation ${conversation.title}`}
+                    onClick={() => handleDeleteConversationFromList(conversation)}
+                    disabled={!canDeleteMessage(messages.find((entry) => Number(entry.id) === Number(conversation.rootMessageId)))}
+                    style={{ border: 0, background: 'transparent', color: '#b91c1c', fontSize: 12, cursor: 'pointer' }}
+                  >
+                    🗑 Delete
+                  </button>
                 </div>
-                <p style={{ margin: '4px 0', fontSize: 12, color: '#334155' }}>{conversation.preview}</p>
-                <p style={{ margin: '4px 0 0', fontSize: 11, color: '#64748b' }}>
-                  {conversation.groupName} · Last active: {formatLastActivity(conversation.lastActivity)}
-                </p>
-              </button>
+              </div>
             ))}
           </div>
+          )}
         </aside>
 
-        <section style={{ display: 'grid', gridTemplateRows: 'minmax(420px, 1fr) auto', minWidth: 0, minHeight: 0 }}>
+        <section style={{ display: 'grid', gridTemplateRows: 'minmax(0, 1fr) auto', minWidth: 0, minHeight: 0 }}>
           <main style={{ padding: '10px 14px 8px', overflowY: 'auto', minHeight: 420 }} aria-live="polite">
             <div style={{ position: 'sticky', top: 0, background: '#f8fafc', paddingBottom: 8, marginBottom: 8 }}>
               <strong style={{ fontSize: 16, color: '#0f172a' }}>{activeTopic}</strong>
@@ -1052,7 +1117,7 @@ export default function MessagingWidget() {
           </main>
 
           <form
-            style={{ borderTop: '1px solid #e2e8f0', background: '#ffffff', padding: 12, position: 'sticky', bottom: 0 }}
+            style={{ borderTop: '1px solid #e2e8f0', background: '#ffffff', padding: 10, position: 'sticky', bottom: 0, maxHeight: '34vh', overflowY: 'auto' }}
             onSubmit={(event) => {
               event.preventDefault();
               sendMessage();
@@ -1064,7 +1129,7 @@ export default function MessagingWidget() {
             onDragLeave={() => setDragOverComposer(false)}
             onDrop={onDropComposer}
           >
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) minmax(0,1fr)', gap: 8 }}>
               <div>
                 <label htmlFor="messaging-topic" style={{ fontSize: 12, fontWeight: 600, color: '#334155' }}>Topic</label>
                 <input
@@ -1115,7 +1180,6 @@ export default function MessagingWidget() {
               {state.composer.recipients.map((empid) => {
                 const found = employeeRecords.find((entry) => entry.id === empid);
                 const label = found?.label || empid;
-                const employeeCode = found?.employeeCode || employeeCodeMap.get(empid) || empid;
                 const status = found?.status || PRESENCE.OFFLINE;
                 return (
                   <span key={empid} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, border: '1px solid #cbd5e1', borderRadius: 999, padding: '4px 10px', background: '#f8fafc' }}>
@@ -1123,7 +1187,7 @@ export default function MessagingWidget() {
                       {initialsForLabel(label)}
                     </span>
                     <span style={{ width: 8, height: 8, borderRadius: 999, background: presenceColor(status) }} />
-                    <span style={{ fontSize: 12, color: '#1e293b' }}>{label} ({employeeCode})</span>
+                    <span style={{ fontSize: 12, color: '#1e293b' }}>{label}</span>
                     <button type="button" aria-label={`Remove recipient ${label}`} onClick={() => onRemoveRecipient(empid)} style={{ border: 0, background: 'transparent', color: '#64748b' }}>×</button>
                   </span>
                 );
@@ -1172,36 +1236,35 @@ export default function MessagingWidget() {
 
             <p title="Drag files to attach, or drag a transaction ID to link context." style={{ margin: '6px 0 0', fontSize: 11, color: '#64748b' }}>Tip: drag files or a transaction ID here.</p>
 
-            {state.composer.replyToId && (
-              <p style={{ margin: '8px 0 0', fontSize: 12, color: '#475569' }}>
-                Replying to #{state.composer.replyToId}
-              </p>
-            )}
-
-            {(state.composer.linkedType === 'transaction' && state.composer.linkedId) && (
-              <p style={{ margin: '8px 0 0', fontSize: 12, color: '#475569' }}>
-                Linked transaction:
-                {' '}
-                <button
-                  type="button"
-                  title={canViewTransaction(state.composer.linkedId, normalizeId(sessionId), permissions || {}) ? 'Open linked transaction' : 'You do not have permission for this transaction'}
-                  onClick={() => handleOpenLinkedTransaction(state.composer.linkedId)}
-                >
-                  #{state.composer.linkedId}
-                </button>
-              </p>
-            )}
-
-            <div style={{ marginTop: 10 }}>
+            <div style={{ marginTop: 8 }}>
               <button
                 type="button"
                 onClick={() => setAttachmentsOpen((prev) => !prev)}
                 style={{ border: 0, background: 'transparent', padding: 0, fontSize: 12, fontWeight: 600, color: '#334155' }}
               >
-                {attachmentsOpen ? '▾' : '▸'} Attachments {state.composer.attachments.length > 0 ? `(${state.composer.attachments.length})` : ''}
+                {attachmentsOpen ? '▾' : '▸'} Context & attachments {state.composer.attachments.length > 0 ? `(${state.composer.attachments.length})` : ''}
               </button>
               {attachmentsOpen && (
                 <>
+                  {state.composer.replyToId && (
+                    <p style={{ margin: '8px 0 0', fontSize: 12, color: '#475569' }}>
+                      Replying to #{state.composer.replyToId}
+                    </p>
+                  )}
+
+                  {(state.composer.linkedType === 'transaction' && state.composer.linkedId) && (
+                    <p style={{ margin: '8px 0 0', fontSize: 12, color: '#475569' }}>
+                      Linked transaction:
+                      {' '}
+                      <button
+                        type="button"
+                        title={canViewTransaction(state.composer.linkedId, normalizeId(sessionId), permissions || {}) ? 'Open linked transaction' : 'You do not have permission for this transaction'}
+                        onClick={() => handleOpenLinkedTransaction(state.composer.linkedId)}
+                      >
+                        #{state.composer.linkedId}
+                      </button>
+                    </p>
+                  )}
                   <input
                     id="messaging-attachments"
                     type="file"
