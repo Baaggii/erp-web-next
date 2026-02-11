@@ -100,8 +100,16 @@ function canUseLinkedColumns(db) {
   return messageLinkedContextSupport.get(db) !== false;
 }
 
+function canUseEncryptedBodyColumns(db) {
+  return messageEncryptionColumnSupport.get(db) !== false;
+}
+
 function markLinkedColumnsUnsupported(db) {
   messageLinkedContextSupport.set(db, false);
+}
+
+function markEncryptedBodyColumnsUnsupported(db) {
+  messageEncryptionColumnSupport.set(db, false);
 }
 
 function isUnknownColumnError(error, columnName) {
