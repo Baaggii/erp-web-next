@@ -18,6 +18,7 @@ const validatedMessagingSchemas = new WeakSet();
 const idempotencyRequestHashSupport = new WeakMap();
 const messageLinkedContextSupport = new WeakMap();
 const messageEncryptionColumnSupport = new WeakMap();
+const messageDeleteByColumnSupport = new WeakMap();
 let ioRef = null;
 
 const onlineByCompany = new Map();
@@ -199,6 +200,42 @@ async function upsertIdempotencyRow(db, { companyId, empid, idempotencyKey, mess
      ON DUPLICATE KEY UPDATE
        message_id = VALUES(message_id)`,
     [companyId, empid, idempotencyKey, messageId],
+  );
+}
+
+async function markMessageDeleted(db, { companyId, messageId, empid }) {
+  const mode = messageDeleteByColumnSupport.get(db);
+  if (mode !== 'deleted_by' && mode !== 'none') {
+    try {
+      await db.query(
+        'UPDATE erp_messages SET deleted_at = CURRENT_TIMESTAMP, deleted_by_empid = ? WHERE id = ? AND company_id = ?',
+        [empid, messageId, companyId],
+      );
+      messageDeleteByColumnSupport.set(db, 'deleted_by_empid');
+      return;
+    } catch (error) {
+      if (!isUnknownColumnError(error, 'deleted_by_empid')) throw error;
+      messageDeleteByColumnSupport.set(db, 'deleted_by');
+    }
+  }
+
+  if (mode !== 'none') {
+    try {
+      await db.query(
+        'UPDATE erp_messages SET deleted_at = CURRENT_TIMESTAMP, deleted_by = ? WHERE id = ? AND company_id = ?',
+        [empid, messageId, companyId],
+      );
+      messageDeleteByColumnSupport.set(db, 'deleted_by');
+      return;
+    } catch (error) {
+      if (!isUnknownColumnError(error, 'deleted_by')) throw error;
+      messageDeleteByColumnSupport.set(db, 'none');
+    }
+  }
+
+  await db.query(
+    'UPDATE erp_messages SET deleted_at = CURRENT_TIMESTAMP WHERE id = ? AND company_id = ?',
+    [messageId, companyId],
   );
 }
 
@@ -881,10 +918,7 @@ export async function deleteMessage({ user, companyId, messageId, correlationId,
     throwPermissionDenied({ db, user, companyId: scopedCompanyId, action: 'message:delete', reason: deleteEvaluation.reason || 'cannot_delete_message' });
   }
 
-  await db.query(
-    'UPDATE erp_messages SET deleted_at = CURRENT_TIMESTAMP, deleted_by_empid = ? WHERE id = ? AND company_id = ?',
-    [user.empid, messageId, scopedCompanyId],
-  );
+  await markMessageDeleted(db, { companyId: scopedCompanyId, messageId, empid: user.empid });
   emit(scopedCompanyId, 'message.deleted', {
     ...eventPayloadBase({ correlationId, companyId: scopedCompanyId }),
     messageId,

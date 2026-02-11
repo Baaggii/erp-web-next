@@ -4,12 +4,13 @@ import { deleteMessage, getMessages, patchMessage, postMessage, postReply, setMe
 import { resetMessagingMetrics } from '../../api-server/services/messagingMetrics.js';
 
 class FakeDb {
-  constructor({ supportsEncryptedBodyColumns = true } = {}) {
+  constructor({ supportsEncryptedBodyColumns = true, deleteByColumn = 'deleted_by_empid' } = {}) {
     this.messages = [];
     this.idem = new Map();
     this.nextId = 1;
     this.securityAuditEvents = [];
     this.supportsEncryptedBodyColumns = supportsEncryptedBodyColumns;
+    this.deleteByColumn = deleteByColumn;
   }
 
   async query(sql, params = []) {
@@ -17,6 +18,16 @@ class FakeDb {
     if (!this.supportsEncryptedBodyColumns && sql.includes('body_ciphertext')) {
       const error = new Error("Unknown column 'body_ciphertext' in 'field list'");
       error.sqlMessage = "Unknown column 'body_ciphertext' in 'field list'";
+      throw error;
+    }
+    if (sql.includes('deleted_by_empid') && this.deleteByColumn !== 'deleted_by_empid') {
+      const error = new Error("Unknown column 'deleted_by_empid' in 'field list'");
+      error.sqlMessage = "Unknown column 'deleted_by_empid' in 'field list'";
+      throw error;
+    }
+    if (sql.includes('deleted_by = ?') && this.deleteByColumn === 'none') {
+      const error = new Error("Unknown column 'deleted_by' in 'field list'");
+      error.sqlMessage = "Unknown column 'deleted_by' in 'field list'";
       throw error;
     }
     if (sql.includes('CREATE TABLE IF NOT EXISTS')) return [[]];
@@ -79,11 +90,16 @@ class FakeDb {
       return [{ affectedRows: match ? 1 : 0 }];
     }
     if (sql.startsWith('UPDATE erp_messages SET deleted_at')) {
-      const [empid, id, companyId] = params;
+      const hasDeletedBy = sql.includes('deleted_by_empid') || sql.includes('deleted_by = ?');
+      const [first, second, third] = params;
+      const empid = hasDeletedBy ? first : null;
+      const id = hasDeletedBy ? second : first;
+      const companyId = hasDeletedBy ? third : second;
       const match = this.messages.find((entry) => entry.id === id && entry.company_id === companyId);
       if (match) {
         match.deleted_at = new Date().toISOString();
-        match.deleted_by_empid = empid;
+        if (sql.includes('deleted_by_empid')) match.deleted_by_empid = empid;
+        if (sql.includes('deleted_by = ?')) match.deleted_by = empid;
       }
       return [{ affectedRows: match ? 1 : 0 }];
     }
@@ -225,6 +241,59 @@ test('postReply falls back when encrypted body columns are unavailable', async (
 
   assert.equal(reply.message.body, 'legacy reply');
 });
+
+test('deleteMessage falls back to deleted_by when deleted_by_empid is unavailable', async () => {
+  const db = new FakeDb({ deleteByColumn: 'deleted_by' });
+  const session = { permissions: { messaging: true } };
+
+  const created = await postMessage({
+    user,
+    companyId: 1,
+    payload: { body: 'delete me', linkedType: 'topic', linkedId: 'delete-legacy', idempotencyKey: 'delete-legacy-1' },
+    correlationId: 'delete-legacy-1',
+    db,
+    getSession: async () => session,
+  });
+
+  const deleted = await deleteMessage({
+    user,
+    companyId: 1,
+    messageId: created.message.id,
+    correlationId: 'delete-legacy-2',
+    db,
+    getSession: async () => session,
+  });
+
+  assert.equal(deleted.deleted, true);
+  assert.equal(db.messages[0].deleted_by, user.empid);
+});
+
+test('deleteMessage still soft-deletes when deleted_by columns are unavailable', async () => {
+  const db = new FakeDb({ deleteByColumn: 'none' });
+  const session = { permissions: { messaging: true } };
+
+  const created = await postMessage({
+    user,
+    companyId: 1,
+    payload: { body: 'delete fallback', linkedType: 'topic', linkedId: 'delete-fallback', idempotencyKey: 'delete-fallback-1' },
+    correlationId: 'delete-fallback-1',
+    db,
+    getSession: async () => session,
+  });
+
+  const deleted = await deleteMessage({
+    user,
+    companyId: 1,
+    messageId: created.message.id,
+    correlationId: 'delete-fallback-2',
+    db,
+    getSession: async () => session,
+  });
+
+  assert.equal(deleted.deleted, true);
+  assert.ok(db.messages[0].deleted_at);
+});
+
 test('rate limiter falls back locally when redis is unavailable', async () => {
   const db = new FakeDb();
   const session = { permissions: { messaging: true } };
