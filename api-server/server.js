@@ -159,7 +159,14 @@ function parseCookieHeader(rawCookie = "") {
 }
 
 function joinSocketScopes(socket, user, session) {
-  socket.join(`user:${user.empid}`);
+  const normalizedEmpId = String(user.empid || "").trim().toUpperCase();
+  if (normalizedEmpId) {
+    socket.join(`user:${normalizedEmpId}`);
+  }
+  const legacyEmpId = String(user.empid || "").trim();
+  if (legacyEmpId && legacyEmpId !== normalizedEmpId) {
+    socket.join(`user:${legacyEmpId}`);
+  }
   socket.join(`emp:${user.empid}`);
   socket.join(`company:${user.companyId}`);
   if (session?.branch_id) {
