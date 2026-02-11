@@ -117,6 +117,11 @@ function formatLastActivity(value) {
   return dt.toLocaleString();
 }
 
+function createIdempotencyKey() {
+  if (typeof globalThis.crypto?.randomUUID === 'function') return globalThis.crypto.randomUUID();
+  return `msg-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
 function canOpenContextLink(permissions, chipType) {
   const allow = permissions?.messaging?.linkedContext?.[chipType];
   if (typeof allow === 'boolean') return allow;
@@ -134,7 +139,7 @@ function canViewTransaction(transactionId, userId, permissions) {
   return canOpenContextLink(permissions, 'transaction');
 }
 
-function MessageNode({ message, depth = 0, onReply, onJumpToParent, onToggleReplies, collapsedMessageIds, parentMap, permissions, activeReplyTarget, highlightedIds, onOpenLinkedTransaction }) {
+function MessageNode({ message, depth = 0, onReply, onJumpToParent, onToggleReplies, collapsedMessageIds, parentMap, permissions, activeReplyTarget, highlightedIds, onOpenLinkedTransaction, resolveEmployeeLabel }) {
   const replyCount = countNestedReplies(message);
   const safeBody = sanitizeMessageText(message.body);
   const linked = extractContextLink(message);
@@ -143,6 +148,8 @@ function MessageNode({ message, depth = 0, onReply, onJumpToParent, onToggleRepl
   const isReplyTarget = activeReplyTarget && Number(activeReplyTarget) === Number(message.id);
   const isHighlighted = highlightedIds.has(message.id);
   const readers = Array.isArray(message.read_by) ? message.read_by.filter(Boolean) : [];
+  const authorLabel = resolveEmployeeLabel(message.author_empid);
+  const readerLabels = readers.map((empid) => resolveEmployeeLabel(empid));
 
   return (
     <article
@@ -159,7 +166,7 @@ function MessageNode({ message, depth = 0, onReply, onJumpToParent, onToggleRepl
       }}
     >
       <header style={{ fontSize: 12, color: '#475569', fontWeight: 600 }}>
-        {message.author_empid} · {new Date(message.created_at).toLocaleString()}
+        {authorLabel} · {new Date(message.created_at).toLocaleString()}
       </header>
       <p style={{ whiteSpace: 'pre-wrap', margin: '8px 0', color: '#0f172a', fontSize: 15 }}>{highlightMentions(safeBody)}</p>
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -190,7 +197,7 @@ function MessageNode({ message, depth = 0, onReply, onJumpToParent, onToggleRepl
         )}
       </div>
       <p style={{ marginTop: 6, marginBottom: 0, fontSize: 12, color: '#64748b' }}>
-        Read receipts: {readers.length > 0 ? readers.join(', ') : 'Unread'}
+        Read receipts: {readerLabels.length > 0 ? readerLabels.join(', ') : 'Unread'}
       </p>
       {!isCollapsed && message.replies.map((child) => (
         <MessageNode
@@ -206,6 +213,7 @@ function MessageNode({ message, depth = 0, onReply, onJumpToParent, onToggleRepl
           activeReplyTarget={activeReplyTarget}
           highlightedIds={highlightedIds}
           onOpenLinkedTransaction={onOpenLinkedTransaction}
+          resolveEmployeeLabel={resolveEmployeeLabel}
         />
       ))}
     </article>
@@ -488,6 +496,19 @@ export default function MessagingWidget() {
   }), [conversations, selfEmpid]);
 
   const activeTopic = state.composer.topic || activeConversation?.title || 'Untitled topic';
+  const sessionUserLabel = sanitizeMessageText(
+    user?.emp_name || user?.employee_name || user?.name || user?.full_name || user?.username || user?.empid,
+  );
+  const employeeLabelMap = useMemo(() => {
+    const labels = new Map(employeeRecords.map((entry) => [entry.id, entry.label]));
+    if (selfEmpid && sessionUserLabel) labels.set(selfEmpid, sessionUserLabel);
+    return labels;
+  }, [employeeRecords, selfEmpid, sessionUserLabel]);
+  const resolveEmployeeLabel = (empid) => {
+    const normalizedEmpid = normalizeId(empid);
+    if (!normalizedEmpid) return 'Unknown user';
+    return employeeLabelMap.get(normalizedEmpid) || normalizedEmpid;
+  };
 
 
   const safeTopic = sanitizeMessageText(state.composer.topic || activeConversation?.title || '');
@@ -533,10 +554,11 @@ export default function MessagingWidget() {
     }
 
     const activeCompany = state.activeCompanyId || companyId;
+    const parsedCompanyId = Number(activeCompany);
     const payload = {
+      idempotencyKey: createIdempotencyKey(),
       body: `[${safeTopic}] ${safeBody}`,
-      companyId: Number.isFinite(Number(activeCompany)) ? Number(activeCompany) : String(activeCompany),
-      idempotencyKey: `${Date.now()}-${Math.random().toString(36).slice(2, 12)}`,
+      ...(Number.isFinite(parsedCompanyId) && parsedCompanyId > 0 ? { companyId: parsedCompanyId } : {}),
       ...(state.composer.linkedType || activeConversation?.linkedType ? { linkedType: state.composer.linkedType || activeConversation?.linkedType } : {}),
       ...(state.composer.linkedId || activeConversation?.linkedId ? { linkedId: String(state.composer.linkedId || activeConversation?.linkedId) } : {}),
     };
@@ -848,6 +870,7 @@ export default function MessagingWidget() {
                 collapsedMessageIds={collapsedMessageIds}
                 highlightedIds={highlightedIds}
                 onOpenLinkedTransaction={handleOpenLinkedTransaction}
+                resolveEmployeeLabel={resolveEmployeeLabel}
               />
             ))}
           </main>
