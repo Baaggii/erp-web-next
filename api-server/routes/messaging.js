@@ -17,6 +17,66 @@ import {
 const router = express.Router();
 router.use(requireAuth);
 
+const postMessageSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['idempotencyKey', 'body'],
+  properties: {
+    companyId: { anyOf: [{ type: 'integer' }, { type: 'string', pattern: '^[0-9]+$' }] },
+    idempotencyKey: { type: 'string', minLength: 1, maxLength: 255 },
+    body: { type: 'string', minLength: 1, maxLength: 4000 },
+    linkedType: { type: 'string', minLength: 1, maxLength: 64 },
+    linkedId: { type: 'string', minLength: 1, maxLength: 128 },
+    visibilityScope: { type: 'string', enum: ['company', 'department', 'private'] },
+    visibilityDepartmentId: { anyOf: [{ type: 'integer' }, { type: 'string', pattern: '^[0-9]+$' }] },
+    visibilityEmpid: { type: 'string', minLength: 1, maxLength: 64 },
+    clientTempId: { type: 'string', minLength: 1, maxLength: 128 },
+  },
+};
+
+
+class Ajv {
+  compile(schema) {
+    return (value) => validateSchema(schema, value);
+  }
+}
+
+function validateSchema(schema, value) {
+  if (schema.type === 'object') {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+    const keys = Object.keys(value);
+    if (schema.additionalProperties === false) {
+      const allowed = new Set(Object.keys(schema.properties || {}));
+      if (keys.some((key) => !allowed.has(key))) return false;
+    }
+    if ((schema.required || []).some((key) => !(key in value))) return false;
+    return keys.every((key) => {
+      const childSchema = schema.properties?.[key];
+      if (!childSchema) return schema.additionalProperties !== false;
+      return validateSchema(childSchema, value[key]);
+    });
+  }
+
+  if (schema.anyOf) {
+    return schema.anyOf.some((option) => validateSchema(option, value));
+  }
+
+  if (schema.type === 'integer') {
+    return Number.isInteger(value);
+  }
+
+  if (schema.type === 'string') {
+    if (typeof value !== 'string') return false;
+    if (schema.minLength !== undefined && value.length < schema.minLength) return false;
+    if (schema.maxLength !== undefined && value.length > schema.maxLength) return false;
+    if (schema.pattern && !new RegExp(schema.pattern).test(value)) return false;
+    if (schema.enum && !schema.enum.includes(value)) return false;
+    return true;
+  }
+
+  return true;
+}
+
 function correlation(req, res, next) {
   const correlationId = req.headers['x-correlation-id'] || createCorrelationId();
   req.correlationId = correlationId;
@@ -25,6 +85,21 @@ function correlation(req, res, next) {
 }
 
 router.use(correlation);
+
+const ajv = new Ajv();
+const validatePostMessage = ajv.compile(postMessageSchema);
+
+function validatePostMessageBody(req, res, next) {
+  if (validatePostMessage(req.body)) return next();
+  return res.status(400).json({
+    status: 400,
+    error: {
+      code: 'VALIDATION_ERROR',
+      message: 'Invalid message payload',
+      correlationId: req.correlationId,
+    },
+  });
+}
 
 async function handle(res, req, work, okStatus = 200) {
   try {
@@ -36,7 +111,7 @@ async function handle(res, req, work, okStatus = 200) {
   }
 }
 
-router.post('/messages', (req, res) =>
+router.post('/messages', validatePostMessageBody, (req, res) =>
   handle(
     res,
     req,

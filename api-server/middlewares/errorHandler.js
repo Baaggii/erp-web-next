@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 import fs from 'fs';
 import { dirname } from 'path';
 import { fileURLToPath } from 'url';
@@ -14,15 +15,24 @@ export function errorHandler(err, req, res, next) {
   } catch (logErr) {
     console.error('Failed to write error log:', logErr);
   }
-  if (err.code === 'EBADCSRFTOKEN') {
-    return res.status(403).json({
-      message: 'Invalid or expired CSRF token',
-    });
-  }
-  const payload = { message: err.message || 'Internal Server Error' };
-  if (err.details !== undefined) {
-    payload.details = err.details;
-  }
-  payload.stack = err.stack;
-  res.status(err.status || 500).json(payload);
+
+  const status = err.status || (err.code === 'EBADCSRFTOKEN' ? 403 : 500);
+  const correlationId = req?.correlationId || req?.headers?.['x-correlation-id'] || crypto.randomUUID();
+  res.setHeader('x-correlation-id', correlationId);
+
+  const message =
+    err.code === 'EBADCSRFTOKEN'
+      ? 'Invalid or expired CSRF token'
+      : err.message || 'Internal Server Error';
+
+  const code = err.code === 'EBADCSRFTOKEN' ? 'CSRF_TOKEN_INVALID' : err.code || 'INTERNAL_ERROR';
+
+  return res.status(status).json({
+    status,
+    error: {
+      code,
+      message,
+      correlationId,
+    },
+  });
 }

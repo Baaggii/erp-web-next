@@ -6,6 +6,7 @@ const MAX_MESSAGE_LENGTH = 4000;
 const CURSOR_PAGE_SIZE = 50;
 const MAX_RATE_WINDOW_MS = 60_000;
 const MAX_RATE_MESSAGES = 20;
+const IDEMPOTENCY_TTL_MS = 24 * 60 * 60 * 1000;
 const LINKED_TYPE_ALLOWLIST = new Set(['transaction', 'plan', 'topic', 'task', 'ticket']);
 const VISIBILITY_SCOPES = new Set(['company', 'department', 'private']);
 
@@ -30,6 +31,19 @@ function toId(value) {
 
 function nowIso() {
   return new Date().toISOString();
+}
+
+function computeRequestHash({ body, linkedType, linkedId, visibility, parentMessageId }) {
+  const payload = {
+    body,
+    linkedType,
+    linkedId,
+    visibilityScope: visibility.visibilityScope,
+    visibilityDepartmentId: visibility.visibilityDepartmentId,
+    visibilityEmpid: visibility.visibilityEmpid,
+    parentMessageId,
+  };
+  return crypto.createHash('sha256').update(JSON.stringify(payload)).digest('hex');
 }
 
 function eventPayloadBase(ctx) {
@@ -250,14 +264,30 @@ async function createMessageInternal({ db = pool, ctx, payload, parentMessageId 
 
   const idempotencyKey = String(payload?.idempotencyKey || '').trim();
   if (!idempotencyKey) throw createError(400, 'IDEMPOTENCY_KEY_REQUIRED', 'idempotencyKey is required');
+  const requestHash = computeRequestHash({ body, linkedType, linkedId, visibility, parentMessageId });
+  const expiresAt = new Date(Date.now() + IDEMPOTENCY_TTL_MS);
 
   const [existingRows] = await db.query(
-    'SELECT message_id FROM erp_message_idempotency WHERE company_id = ? AND empid = ? AND idem_key = ? LIMIT 1',
+    `SELECT message_id, request_hash, expires_at
+       FROM erp_message_idempotency
+      WHERE company_id = ? AND empid = ? AND idem_key = ?
+      LIMIT 1`,
     [ctx.companyId, ctx.user.empid, idempotencyKey],
   );
-  if (existingRows[0]?.message_id) {
-    const existingMessage = await findMessageById(db, ctx.companyId, existingRows[0].message_id);
-    return { message: existingMessage, idempotentReplay: true };
+  if (existingRows[0]) {
+    const existing = existingRows[0];
+    const notExpired = !existing.expires_at || new Date(existing.expires_at).getTime() > Date.now();
+    if (notExpired) {
+      if (existing.request_hash && existing.request_hash !== requestHash) {
+        throw createError(409, 'IDEMPOTENCY_KEY_CONFLICT', 'idempotencyKey conflicts with a different request payload');
+      }
+      if (existing.message_id) {
+        const existingMessage = await findMessageById(db, ctx.companyId, existing.message_id);
+        if (existingMessage) {
+          return { message: existingMessage, idempotentReplay: true };
+        }
+      }
+    }
   }
 
   enforceRateLimit(ctx.companyId, ctx.user.empid, body);
@@ -283,8 +313,13 @@ async function createMessageInternal({ db = pool, ctx, payload, parentMessageId 
   );
   const messageId = result.insertId;
   await db.query(
-    'INSERT INTO erp_message_idempotency (company_id, empid, idem_key, message_id) VALUES (?, ?, ?, ?)',
-    [ctx.companyId, ctx.user.empid, idempotencyKey, messageId],
+    `INSERT INTO erp_message_idempotency (company_id, empid, idem_key, message_id, request_hash, expires_at)
+     VALUES (?, ?, ?, ?, ?, ?)
+     ON DUPLICATE KEY UPDATE
+       message_id = VALUES(message_id),
+       request_hash = VALUES(request_hash),
+       expires_at = VALUES(expires_at)`,
+    [ctx.companyId, ctx.user.empid, idempotencyKey, messageId, requestHash, expiresAt],
   );
   const message = await findMessageById(db, ctx.companyId, messageId);
 
@@ -533,7 +568,6 @@ export function toStructuredError(error, correlationId) {
     error: {
       code: error?.code || 'INTERNAL_ERROR',
       message: error?.message || 'Internal server error',
-      details: error?.details,
       correlationId,
     },
   };
