@@ -1,12 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { deleteMessage, getMessages, patchMessage, postMessage, setMessagingIo } from '../../api-server/services/messagingService.js';
+import { resetMessagingMetrics } from '../../api-server/services/messagingMetrics.js';
 
 class FakeDb {
   constructor() {
     this.messages = [];
     this.idem = new Map();
     this.nextId = 1;
+    this.securityAuditEvents = [];
   }
 
   async query(sql, params = []) {
@@ -75,6 +77,11 @@ class FakeDb {
         match.deleted_by_empid = empid;
       }
       return [{ affectedRows: match ? 1 : 0 }];
+    }
+    if (sql.startsWith('INSERT INTO security_audit_events')) {
+      const [event, userId, companyId, details] = params;
+      this.securityAuditEvents.push({ event, user_id: userId, company_id: companyId, details });
+      return [{ affectedRows: 1 }];
     }
     if (sql.startsWith('INSERT INTO erp_messaging_abuse_audit')) return [{ affectedRows: 1 }];
     if (sql.startsWith('INSERT IGNORE INTO erp_message_receipts')) return [{ affectedRows: 1 }];
@@ -280,4 +287,40 @@ test('encrypted storage stores ciphertext when key is configured', async () => {
   assert.equal(db.messages[0].body, null);
   assert.ok(db.messages[0].body_ciphertext);
   delete process.env.MESSAGING_ENCRYPTION_KEY;
+});
+
+
+test('permission denial writes to security audit events table', async () => {
+  const db = new FakeDb();
+  const allowSession = { permissions: { messaging: true }, department_id: 10 };
+
+  const created = await postMessage({
+    user,
+    companyId: 1,
+    payload: { body: 'owned message', linkedType: 'topic', linkedId: 'ops', idempotencyKey: 'owned-1' },
+    correlationId: 'owned-1',
+    db,
+    getSession: async () => allowSession,
+  });
+
+  await assert.rejects(
+    () =>
+      patchMessage({
+        user: { empid: 'e-2', companyId: 1 },
+        companyId: 1,
+        messageId: created.message.id,
+        payload: { body: 'unauthorized edit' },
+        correlationId: 'denied-1',
+        db,
+        getSession: async () => allowSession,
+      }),
+    /Messaging permission denied/,
+  );
+
+  assert.equal(db.securityAuditEvents.length, 1);
+  assert.equal(db.securityAuditEvents[0].event, 'messaging.permission_denied');
+});
+
+test.afterEach(() => {
+  resetMessagingMetrics();
 });

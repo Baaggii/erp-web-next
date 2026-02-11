@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import { pool, getEmploymentSession } from '../../db/index.js';
 import { redisEval } from './redisClient.js';
 import { evaluateMessagingPermission } from './messagingPermissionPolicy.js';
+import { incRateLimitHits, observeMessageCreateLatency } from './messagingMetrics.js';
 
 const DEFAULT_EDIT_WINDOW_MS = 15 * 60 * 1000;
 const MAX_MESSAGE_LENGTH = 4000;
@@ -45,6 +46,17 @@ function createError(status, code, message, details) {
   err.code = code;
   if (details !== undefined) err.details = details;
   return err;
+}
+
+async function insertSecurityAuditEvent(db, { event, userId, companyId, details }) {
+  try {
+    await db.query(
+      'INSERT INTO security_audit_events (event, user_id, company_id, `timestamp`, details) VALUES (?, ?, ?, CURRENT_TIMESTAMP, ?)',
+      [event, userId ? String(userId) : null, toId(companyId), JSON.stringify(details ?? null)],
+    );
+  } catch {
+    // keep request path resilient when audit table is not yet present
+  }
 }
 
 function toId(value) {
@@ -195,7 +207,7 @@ function isSpam(body) {
   return /(.)\1{12,}/.test(body) || /(https?:\/\/\S+){4,}/i.test(body);
 }
 
-async function enforceRateLimit(companyId, empid, body) {
+async function enforceRateLimit(companyId, empid, body, db = pool) {
   const now = Date.now();
   const member = `${now}:${crypto.randomUUID()}`;
   const normalizedBody = body.trim().toLowerCase();
@@ -217,8 +229,22 @@ async function enforceRateLimit(companyId, empid, body) {
 
   if (!Array.isArray(result) || Number(result[0]) !== 1) {
     if (Number(result?.[2]) === 1) {
+      incRateLimitHits({ reason: 'duplicate' });
+      await insertSecurityAuditEvent(db, {
+        event: 'messaging.rate_limit_hit',
+        userId: empid,
+        companyId,
+        details: { reason: 'duplicate_message' },
+      });
       throw createError(429, 'DUPLICATE_MESSAGE', 'Duplicate message detected');
     }
+    incRateLimitHits({ reason: 'rate_limit' });
+    await insertSecurityAuditEvent(db, {
+      event: 'messaging.rate_limit_hit',
+      userId: empid,
+      companyId,
+      details: { reason: 'rate_limited' },
+    });
     throw createError(429, 'RATE_LIMITED', 'Too many messages in a short period');
   }
 }
@@ -247,6 +273,17 @@ async function resolveSession(user, companyId, getSession = getEmploymentSession
   const session = await getSession(user.empid, scopedCompanyId);
   if (!session) throw createError(403, 'COMPANY_MEMBERSHIP_REQUIRED', 'No active membership in company');
   return { scopedCompanyId, session };
+}
+
+
+function throwPermissionDenied({ db = pool, user, companyId, action, reason = 'insufficient_permissions' }) {
+  void insertSecurityAuditEvent(db, {
+    event: 'messaging.permission_denied',
+    userId: user?.empid,
+    companyId,
+    details: { action, reason },
+  });
+  throw createError(403, 'PERMISSION_DENIED', 'Messaging permission denied', { action, reason });
 }
 
 function canModerate(session) {
@@ -287,9 +324,18 @@ function evaluatePermission({ action, user, companyId, session, resource = {}, p
   });
 }
 
-function assertPermission({ action, user, companyId, session, resource = {}, policy }) {
+function assertPermission({ action, user, companyId, session, resource = {}, policy, db = pool }) {
   const evaluation = evaluatePermission({ action, user, companyId, session, resource, policy });
   if (!evaluation.allowed) {
+    void insertSecurityAuditEvent(db, {
+      event: 'messaging.permission_denied',
+      userId: user?.empid,
+      companyId,
+      details: {
+        action,
+        reason: evaluation.reason,
+      },
+    });
     throw createError(403, 'PERMISSION_DENIED', 'Messaging permission denied', {
       action,
       reason: evaluation.reason,
@@ -318,6 +364,7 @@ function emit(companyId, eventName, payload) {
 }
 
 async function createMessageInternal({ db = pool, ctx, payload, parentMessageId = null, eventName = 'message.created' }) {
+  const startedAt = process.hrtime.bigint();
   const body = sanitizeBody(payload?.body);
   const { linkedType, linkedId } = validateLinkedContext(payload?.linkedType, payload?.linkedId);
   const visibility = normalizeVisibility(payload, ctx.session, ctx.user);
@@ -362,7 +409,7 @@ async function createMessageInternal({ db = pool, ctx, payload, parentMessageId 
     }
   }
 
-  await enforceRateLimit(ctx.companyId, ctx.user.empid, body);
+  await enforceRateLimit(ctx.companyId, ctx.user.empid, body, db);
 
   const [result] = await db.query(
     `INSERT INTO erp_messages
@@ -406,13 +453,19 @@ async function createMessageInternal({ db = pool, ctx, payload, parentMessageId 
     },
   });
 
+  const elapsedSeconds = Number(process.hrtime.bigint() - startedAt) / 1_000_000_000;
+  observeMessageCreateLatency(elapsedSeconds, {
+    companyId: String(ctx.companyId),
+    status: 'success',
+  });
+
   return { message: viewerMessage, idempotentReplay: false };
 }
 
 export async function postMessage({ user, companyId, payload, correlationId, db = pool, getSession = getEmploymentSession }) {
   await assertMessagingSchema(db);
   const { scopedCompanyId, session } = await resolveSession(user, companyId, getSession);
-  assertPermission({ action: 'message:create', user, companyId: scopedCompanyId, session });
+  assertPermission({ action: 'message:create', user, companyId: scopedCompanyId, session, db });
   const ctx = { user, companyId: scopedCompanyId, correlationId, session };
   return createMessageInternal({ db, ctx, payload, parentMessageId: null, eventName: 'message.created' });
 }
@@ -420,7 +473,7 @@ export async function postMessage({ user, companyId, payload, correlationId, db 
 export async function postReply({ user, companyId, messageId, payload, correlationId, db = pool, getSession = getEmploymentSession }) {
   await assertMessagingSchema(db);
   const { scopedCompanyId, session } = await resolveSession(user, companyId, getSession);
-  if (!canMessage(session)) throw createError(403, 'PERMISSION_DENIED', 'Messaging permission denied');
+  if (!canMessage(session)) throwPermissionDenied({ db, user, companyId: scopedCompanyId, action: 'message:reply' });
   const message = await findMessageById(db, scopedCompanyId, messageId);
   if (!message || message.deleted_at) throw createError(404, 'MESSAGE_NOT_FOUND', 'Message not found');
 
@@ -437,7 +490,7 @@ export async function postReply({ user, companyId, messageId, payload, correlati
 export async function getMessages({ user, companyId, linkedType, linkedId, cursor, limit = CURSOR_PAGE_SIZE, correlationId, db = pool, getSession = getEmploymentSession }) {
   await assertMessagingSchema(db);
   const { scopedCompanyId, session } = await resolveSession(user, companyId, getSession);
-  if (!canMessage(session)) throw createError(403, 'PERMISSION_DENIED', 'Messaging permission denied');
+  if (!canMessage(session)) throwPermissionDenied({ db, user, companyId: scopedCompanyId, action: 'message:list' });
   const parsedLimit = Math.min(Math.max(Number(limit) || CURSOR_PAGE_SIZE, 1), 100);
   const cursorId = toId(cursor);
 
@@ -475,7 +528,7 @@ export async function getMessages({ user, companyId, linkedType, linkedId, curso
 export async function getThread({ user, companyId, messageId, correlationId, db = pool, getSession = getEmploymentSession }) {
   await assertMessagingSchema(db);
   const { scopedCompanyId, session } = await resolveSession(user, companyId, getSession);
-  if (!canMessage(session)) throw createError(403, 'PERMISSION_DENIED', 'Messaging permission denied');
+  if (!canMessage(session)) throwPermissionDenied({ db, user, companyId: scopedCompanyId, action: 'message:thread' });
   const root = await findMessageById(db, scopedCompanyId, messageId);
   if (!root || root.deleted_at) throw createError(404, 'MESSAGE_NOT_FOUND', 'Message not found');
 
@@ -522,6 +575,7 @@ export async function patchMessage({ user, companyId, messageId, payload, correl
     user,
     companyId: scopedCompanyId,
     session,
+    db,
     resource: {
       departmentId: message.visibility_department_id,
       linked: {
@@ -530,7 +584,9 @@ export async function patchMessage({ user, companyId, messageId, payload, correl
       },
     },
   });
-  if (!moderator && message.author_empid !== user.empid) throw createError(403, 'PERMISSION_DENIED', 'Cannot edit this message');
+  if (!moderator && message.author_empid !== user.empid) {
+    throwPermissionDenied({ db, user, companyId: scopedCompanyId, action: 'message:edit', reason: 'cannot_edit_message' });
+  }
 
   const createdAt = new Date(message.created_at).getTime();
   if (!moderator && Date.now() - createdAt > editWindowMs) {
@@ -569,7 +625,7 @@ export async function deleteMessage({ user, companyId, messageId, correlationId,
     },
   });
   if (!deleteEvaluation.allowed && !canDelete(session) && message.author_empid !== user.empid) {
-    throw createError(403, 'PERMISSION_DENIED', 'Cannot delete this message');
+    throwPermissionDenied({ db, user, companyId: scopedCompanyId, action: 'message:delete', reason: deleteEvaluation.reason || 'cannot_delete_message' });
   }
 
   await db.query(
@@ -639,9 +695,9 @@ export async function switchCompanyContext({ user, companyId, getSession = getEm
   };
 }
 
-export async function getMessagingSocketAccess({ user, companyId, getSession = getEmploymentSession }) {
+export async function getMessagingSocketAccess({ user, companyId, db = pool, getSession = getEmploymentSession }) {
   const { scopedCompanyId, session } = await resolveSession(user, companyId, getSession);
-  if (!canMessage(session)) throw createError(403, 'PERMISSION_DENIED', 'Messaging permission denied');
+  if (!canMessage(session)) throwPermissionDenied({ db, user, companyId: scopedCompanyId, action: 'socket:connect' });
   return { scopedCompanyId, session };
 }
 
