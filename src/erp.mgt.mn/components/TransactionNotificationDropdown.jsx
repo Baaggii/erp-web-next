@@ -1179,7 +1179,10 @@ export default function TransactionNotificationDropdown() {
     () => combinedItems.filter((item) => item.isUnread).length,
     [combinedItems],
   );
-  const aggregatedUnreadCount = open ? dropdownUnreadCount : Number(unreadCount) || 0;
+  const hasFeedLoaded = !feedState.loading && !feedState.error;
+  const bellUnreadCount = hasFeedLoaded ? dropdownUnreadCount : Number(unreadCount) || 0;
+  const visibleItems = combinedItems.slice(0, visibleCount);
+  const remainingCount = Math.max(0, combinedItems.length - visibleItems.length);
 
   return (
     <div style={styles.wrapper} ref={containerRef}>
@@ -1189,7 +1192,7 @@ export default function TransactionNotificationDropdown() {
         onClick={() => setOpen((prev) => !prev)}
       >
         <span aria-hidden="true">🔔</span>
-        {aggregatedUnreadCount > 0 && <span style={styles.badge}>{aggregatedUnreadCount}</span>}
+        {bellUnreadCount > 0 && <span style={styles.badge}>{bellUnreadCount}</span>}
       </button>
       {open && (
         <div style={styles.dropdown}>
@@ -1212,7 +1215,7 @@ export default function TransactionNotificationDropdown() {
             {!feedState.loading && !hasAnyNotifications && (
               <div style={styles.empty}>{feedState.error || 'No notifications yet'}</div>
             )}
-            {combinedItems.slice(0, visibleCount).map((item) => (
+            {visibleItems.map((item) => (
               <button
                 key={item.key}
                 type="button"
@@ -1231,8 +1234,12 @@ export default function TransactionNotificationDropdown() {
                 )}
               </button>
             ))}
-            {!feedState.loading && visibleCount < combinedItems.length && (
-              <div style={styles.empty}>Scroll to load more…</div>
+            {!feedState.loading && hasAnyNotifications && (
+              <div style={styles.endLine}>
+                {remainingCount > 0
+                  ? `${remainingCount} more notification${remainingCount === 1 ? '' : 's'} left. Scroll to load more…`
+                  : 'You reached the end of notifications.'}
+              </div>
             )}
           </div>
           <button
@@ -1321,6 +1328,14 @@ const styles = {
     padding: '1rem',
     color: '#64748b',
     textAlign: 'center',
+  },
+  endLine: {
+    padding: '0.65rem 0.75rem',
+    textAlign: 'center',
+    color: '#6b7280',
+    fontSize: '0.78rem',
+    borderTop: '1px solid #f1f5f9',
+    background: '#f8fafc',
   },
   notificationItem: (isUnread) => ({
     width: '100%',
