@@ -171,6 +171,29 @@ test('tenant isolation: user from company B cannot edit company A message', asyn
   );
 });
 
+
+
+test('rate limiter falls back locally when redis is unavailable', async () => {
+  const db = new FakeDb();
+  const session = { permissions: { messaging: true } };
+  const originalNodeEnv = process.env.NODE_ENV;
+  process.env.NODE_ENV = 'production';
+
+  try {
+    const created = await postMessage({
+      user,
+      companyId: 1,
+      payload: { body: 'fallback redis down', linkedType: 'topic', linkedId: 'fallback', idempotencyKey: 'fallback-rl-1' },
+      correlationId: 'fallback-rl-1',
+      db,
+      getSession: async () => session,
+    });
+
+    assert.equal(created.message.body, 'fallback redis down');
+  } finally {
+    process.env.NODE_ENV = originalNodeEnv;
+  }
+});
 test('idempotency key returns same message without duplicate insert', async () => {
   const db = new FakeDb();
   const session = { permissions: { messaging: true } };

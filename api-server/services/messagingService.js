@@ -19,6 +19,8 @@ const idempotencyRequestHashSupport = new WeakMap();
 let ioRef = null;
 
 const onlineByCompany = new Map();
+const localRateWindows = new Map();
+const localDuplicateWindows = new Map();
 const RATE_LIMIT_REDIS_SCRIPT = `
 local rateKey = KEYS[1]
 local duplicateKey = KEYS[2]
@@ -300,6 +302,22 @@ function isSpam(body) {
   return /(.)\1{12,}/.test(body) || /(https?:\/\/\S+){4,}/i.test(body);
 }
 
+function enforceLocalRateLimitFallback({ companyId, empid, digest, now }) {
+  const actorKey = `${companyId}:${empid}`;
+  const window = localRateWindows.get(actorKey) || [];
+  const prunedWindow = window.filter((timestamp) => now - timestamp < MAX_RATE_WINDOW_MS);
+  if (prunedWindow.length >= MAX_RATE_MESSAGES) return [0, 1, 0];
+
+  const duplicateKey = `${actorKey}:${digest}`;
+  const duplicateExpiry = localDuplicateWindows.get(duplicateKey);
+  if (duplicateExpiry && duplicateExpiry > now) return [0, 0, 1];
+
+  prunedWindow.push(now);
+  localRateWindows.set(actorKey, prunedWindow);
+  localDuplicateWindows.set(duplicateKey, now + MAX_RATE_WINDOW_MS);
+  return [1, 0, 0];
+}
+
 async function enforceRateLimit(companyId, empid, body, db = pool) {
   const now = Date.now();
   const member = `${now}:${crypto.randomUUID()}`;
@@ -316,8 +334,7 @@ async function enforceRateLimit(companyId, empid, body, db = pool) {
       [String(now), String(MAX_RATE_WINDOW_MS), String(MAX_RATE_MESSAGES), member],
     );
   } catch {
-    if (process.env.NODE_ENV === 'test') return;
-    throw createError(503, 'RATE_LIMIT_BACKEND_UNAVAILABLE', 'Messaging rate limiter is unavailable');
+    result = enforceLocalRateLimitFallback({ companyId, empid, digest, now });
   }
 
   if (!Array.isArray(result) || Number(result[0]) !== 1) {
