@@ -49,6 +49,7 @@ import {
 } from '../utils/jsonValueFormatting.js';
 import normalizeRelationKey from '../utils/normalizeRelationKey.js';
 import getRelationRowFromMap from '../utils/getRelationRowFromMap.js';
+import { isNonFinancialRow, isPostedStatus, isPostingSourceTable } from '../utils/postingControls.js';
 
 const TEMPORARY_FILTER_CACHE_KEY = 'temporary-transaction-filter';
 
@@ -713,6 +714,8 @@ const TableManager = forwardRef(function TableManager({
   const [requestType, setRequestType] = useState(null);
   const [showReasonModal, setShowReasonModal] = useState(false);
   const [requestReason, setRequestReason] = useState('');
+  const [previewLines, setPreviewLines] = useState(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
   const reasonResolveRef = useRef(null);
   const [dateFilter, setDateFilter] = useState('');
   const [datePreset, setDatePreset] = useState('custom');
@@ -788,6 +791,10 @@ const TableManager = forwardRef(function TableManager({
     return Boolean(value);
   };
   const hasDirectSenior = hasSenior(session?.senior_empid);
+  const isAdminUser = Boolean(
+    session?.permissions?.system_settings ||
+    user?.permissions?.system_settings
+  );
   const temporaryReviewer =
     Boolean(temporarySummary?.isReviewer) ||
     Number(temporarySummary?.reviewPending) > 0;
@@ -3190,6 +3197,75 @@ const TableManager = forwardRef(function TableManager({
     setShowForm(true);
   }
 
+
+  function getPostingState(row) {
+    const isPostingTable = isPostingSourceTable(table);
+    const posted = isPostedStatus(row?.fin_post_status);
+    const nonFinancial = isNonFinancialRow(row);
+    return { isPostingTable, posted, nonFinancial };
+  }
+
+  async function handlePostTransaction(row, forceRepost = false) {
+    const rowId = getRowId(row);
+    if (rowId === undefined || rowId === null) return;
+    const state = getPostingState(row);
+    if (!state.isPostingTable) return;
+    if (state.nonFinancial) {
+      addToast('FS_NON_FINANCIAL transactions cannot be posted', 'error');
+      return;
+    }
+    if (state.posted && !forceRepost) {
+      addToast('Transaction is already posted', 'info');
+      return;
+    }
+
+    const confirmMessage = forceRepost
+      ? 'Force repost this transaction? Existing journal entries will be replaced.'
+      : 'Post this transaction? After posting it will be locked.';
+    if (!window.confirm(confirmMessage)) return;
+
+    const res = await fetch(`${API_BASE}/journal/post`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        source_table: table,
+        source_id: Number(rowId),
+        force_repost: forceRepost,
+      }),
+    });
+
+    const payload = await res.json().catch(() => ({}));
+    if (!res.ok || payload?.ok === false) {
+      addToast(payload?.message || 'Posting failed', 'error');
+      return;
+    }
+    addToast('Transaction posted', 'success');
+    refreshRows();
+  }
+
+  async function handlePreviewJournal(row) {
+    const rowId = getRowId(row);
+    if (rowId === undefined || rowId === null) return;
+    setPreviewLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/journal/preview`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ source_table: table, source_id: Number(rowId) }),
+      });
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok || payload?.ok === false) {
+        addToast(payload?.message || 'Preview failed', 'error');
+        return;
+      }
+      setPreviewLines(payload);
+    } finally {
+      setPreviewLoading(false);
+    }
+  }
+
   async function openEdit(row) {
     if (getRowId(row) === undefined) {
       if (txnToastEnabled) {
@@ -3202,6 +3278,11 @@ const TableManager = forwardRef(function TableManager({
         t('cannot_edit_without_pk', 'Cannot edit rows without a primary key'),
         'error',
       );
+      return;
+    }
+    const postingState = getPostingState(row);
+    if (postingState.isPostingTable && postingState.posted) {
+      addToast('Posted transactions are locked', 'info');
       return;
     }
     resetWorkflowState();
@@ -8803,6 +8884,48 @@ const TableManager = forwardRef(function TableManager({
                         💬 Message
                       </button>,
                     );
+                    const postingState = getPostingState(r);
+                    const postingStatusBadge = postingState.posted
+                      ? { label: 'POSTED', bg: '#16a34a' }
+                      : { label: 'DRAFT', bg: '#f59e0b' };
+                    if (postingState.isPostingTable) {
+                      actionButtons.push(
+                        <button
+                          key="preview-journal"
+                          onClick={() => handlePreviewJournal(r)}
+                          style={actionBtnStyle}
+                          disabled={previewLoading}
+                        >
+                          🔎 Preview Journal
+                        </button>,
+                      );
+                      if (!postingState.posted) {
+                        actionButtons.push(
+                          <button
+                            key="post-transaction"
+                            onClick={() => handlePostTransaction(r)}
+                            style={actionBtnStyle}
+                            disabled={postingState.nonFinancial}
+                            title={postingState.nonFinancial ? 'FS_NON_FINANCIAL transactions cannot be posted' : ''}
+                          >
+                            ✅ POST
+                          </button>,
+                        );
+                      }
+                      if (isAdminUser) {
+                        actionButtons.push(
+                          <button
+                            key="force-repost"
+                            onClick={() => handlePostTransaction(r, true)}
+                            style={deleteBtnStyle}
+                            disabled={postingState.nonFinancial}
+                            title="Admin only"
+                          >
+                            ⚠ Force Repost
+                          </button>,
+                        );
+                      }
+                    }
                     const explicitRequestOnlyValue =
                       coalesce(
                         lockInfo,
@@ -8819,7 +8942,7 @@ const TableManager = forwardRef(function TableManager({
                         'force_request',
                       );
                     const actionLocked =
-                      locked || isTruthyFlag(explicitRequestOnlyValue);
+                      locked || isTruthyFlag(explicitRequestOnlyValue) || (postingState.isPostingTable && postingState.posted);
                     if (!actionLocked) {
                       if (buttonPerms['Edit transaction']) {
                         actionButtons.push(
@@ -8868,6 +8991,21 @@ const TableManager = forwardRef(function TableManager({
                       );
                     }
                     const requestMeta = [];
+                    if (postingState.isPostingTable) {
+                      requestMeta.push(
+                        <div key="posting-status" style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.35rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                          <span style={{ backgroundColor: postingStatusBadge.bg, color: '#fff', borderRadius: '9999px', padding: '0.15rem 0.55rem', fontSize: '0.65rem' }}>
+                            {postingStatusBadge.label}
+                          </span>
+                          {r?.fin_journal_id ? (
+                            <span style={{ fontSize: '0.7rem', color: '#4b5563' }}>Journal #{r.fin_journal_id}</span>
+                          ) : null}
+                          {postingState.posted && r?.fin_posted_at ? (
+                            <span style={{ fontSize: '0.7rem', color: '#4b5563' }}>Posted at {formatTimestamp(r.fin_posted_at)}</span>
+                          ) : null}
+                        </div>,
+                      );
+                    }
                     if (locked && lockedBy) {
                       requestMeta.push(
                         <div
@@ -9204,7 +9342,9 @@ const TableManager = forwardRef(function TableManager({
         autoFillSession={autoFillSession}
         scope="forms"
         allowTemporarySave={temporarySaveEnabled}
-        readOnly={isTemporaryReadOnlyMode}
+        readOnly={isTemporaryReadOnlyMode || (isPostingSourceTable(table) && isPostedStatus(editing?.fin_post_status))}
+        postedLockMessage={isPostingSourceTable(table) && isPostedStatus(editing?.fin_post_status) ? 'Posted transactions are locked' : ''}
+        postedAt={editing?.fin_posted_at || ''}
         allowImageActions={isTemporaryReviewMode}
         isAdding={isAdding}
         canPost={canPostTransactions}
@@ -9278,6 +9418,42 @@ const TableManager = forwardRef(function TableManager({
           </div>
         </Modal>
       )}
+      <Modal
+        visible={Boolean(previewLines)}
+        title="Journal Preview"
+        onClose={() => setPreviewLines(null)}
+        width="720px"
+      >
+        <div className="p-3">
+          {previewLoading ? <div>Loading…</div> : null}
+          {previewLines?.non_financial ? (
+            <div className="text-sm text-gray-700">FS_NON_FINANCIAL transactions cannot be posted.</div>
+          ) : (
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr>
+                  <th style={{ border: '1px solid #d1d5db', padding: '0.35rem' }}>Account</th>
+                  <th style={{ border: '1px solid #d1d5db', padding: '0.35rem' }}>Debit</th>
+                  <th style={{ border: '1px solid #d1d5db', padding: '0.35rem' }}>Credit</th>
+                  <th style={{ border: '1px solid #d1d5db', padding: '0.35rem' }}>Dimension Type</th>
+                  <th style={{ border: '1px solid #d1d5db', padding: '0.35rem' }}>Dimension ID</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(previewLines?.lines || []).map((line, idx) => (
+                  <tr key={`preview-line-${idx}`}>
+                    <td style={{ border: '1px solid #d1d5db', padding: '0.35rem' }}>{line.account_code}</td>
+                    <td style={{ border: '1px solid #d1d5db', padding: '0.35rem' }}>{line.debit_amount}</td>
+                    <td style={{ border: '1px solid #d1d5db', padding: '0.35rem' }}>{line.credit_amount}</td>
+                    <td style={{ border: '1px solid #d1d5db', padding: '0.35rem' }}>{line.dimension_type_code || ''}</td>
+                    <td style={{ border: '1px solid #d1d5db', padding: '0.35rem' }}>{line.dimension_id || ''}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      </Modal>
       <CascadeDeleteModal
         visible={showCascade}
         references={deleteInfo?.refs || []}
