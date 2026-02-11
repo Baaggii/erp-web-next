@@ -321,6 +321,7 @@ export default function TransactionNotificationDropdown() {
     error: '',
     nextCursor: null,
   });
+  const [expandedUnreadCount, setExpandedUnreadCount] = useState(0);
   const [visibleCount, setVisibleCount] = useState(FEED_CHUNK_SIZE);
   const containerRef = useRef(null);
   const listRef = useRef(null);
@@ -1231,6 +1232,14 @@ export default function TransactionNotificationDropdown() {
   const visibleItems = combinedItems.slice(0, visibleCount);
   const remainingCount = Math.max(0, combinedItems.length - visibleItems.length);
 
+  useEffect(() => {
+    if (!open) {
+      setExpandedUnreadCount(0);
+      return;
+    }
+    setExpandedUnreadCount(dropdownUnreadCount);
+  }, [dropdownUnreadCount, open]);
+
   return (
     <div style={styles.wrapper} ref={containerRef}>
       <button
@@ -1239,12 +1248,12 @@ export default function TransactionNotificationDropdown() {
         onClick={() => setOpen((prev) => !prev)}
       >
         <span aria-hidden="true">🔔</span>
-        {bellUnreadCount > 0 && <span style={styles.badge}>{bellUnreadCount}</span>}
+        <span style={styles.badge}>{Math.max(0, bellUnreadCount)}</span>
       </button>
       {open && (
         <div style={styles.dropdown}>
           <div style={styles.headerActions}>
-            <span style={styles.headerUnreadLabel}>Unread: {dropdownUnreadCount}</span>
+            <span style={styles.headerUnreadLabel}>Unread: {expandedUnreadCount}</span>
             {hasMarkableUnreadItems && (
               <button
                 type="button"
