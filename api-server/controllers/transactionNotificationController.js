@@ -21,7 +21,9 @@ export async function listTransactionNotifications(req, res, next) {
         WHERE recipient_empid = ?
           AND company_id = ?
           AND deleted_at IS NULL
-          AND is_read = 0`,
+          AND is_read = 0
+          AND JSON_VALID(message)
+          AND LOWER(JSON_UNQUOTE(JSON_EXTRACT(message, '$.kind'))) = 'transaction'`,
       [req.user.empid, req.user.companyId],
     );
     const seenTransactionIds = new Set();
@@ -78,7 +80,9 @@ export async function markAllTransactionNotificationsRead(req, res, next) {
         WHERE recipient_empid = ?
           AND company_id = ?
           AND deleted_at IS NULL
-          AND is_read = 0`,
+          AND is_read = 0
+          AND JSON_VALID(message)
+          AND LOWER(JSON_UNQUOTE(JSON_EXTRACT(message, '$.kind'))) = 'transaction'`,
       [req.user.empid, req.user.empid, req.user.companyId],
     );
     res.json({ updated: result?.affectedRows ?? 0 });
