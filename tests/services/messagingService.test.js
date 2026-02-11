@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { deleteMessage, getMessages, patchMessage, postMessage, setMessagingIo } from '../../api-server/services/messagingService.js';
+import { deleteMessage, getMessages, patchMessage, postMessage, postReply, setMessagingIo } from '../../api-server/services/messagingService.js';
 import { resetMessagingMetrics } from '../../api-server/services/messagingMetrics.js';
 
 class FakeDb {
@@ -194,7 +194,49 @@ test('idempotency key returns same message without duplicate insert', async () =
   });
 
   assert.equal(first.message.id, second.message.id);
+  assert.equal(second.message.body, first.message.body);
   assert.equal(second.idempotentReplay, true);
+  assert.equal(db.messages.length, 1);
+});
+
+test('reply beyond max depth is rejected', async () => {
+  const db = new FakeDb();
+  const session = { permissions: { messaging: true } };
+
+  let parent = await postMessage({
+    user,
+    companyId: 1,
+    payload: { body: 'root', linkedType: 'topic', linkedId: 'depth', idempotencyKey: 'depth-root' },
+    correlationId: 'depth-root',
+    db,
+    getSession: async () => session,
+  });
+
+  for (let depth = 1; depth <= 5; depth += 1) {
+    parent = await postReply({
+      user,
+      companyId: 1,
+      messageId: parent.message.id,
+      payload: { body: `reply-${depth}`, idempotencyKey: `depth-${depth}` },
+      correlationId: `depth-${depth}`,
+      db,
+      getSession: async () => session,
+    });
+  }
+
+  await assert.rejects(
+    () =>
+      postReply({
+        user,
+        companyId: 1,
+        messageId: parent.message.id,
+        payload: { body: 'too deep', idempotencyKey: 'depth-overflow' },
+        correlationId: 'depth-overflow',
+        db,
+        getSession: async () => session,
+      }),
+    /Reply depth exceeds maximum of 5/,
+  );
 });
 
 test('realtime fanout emits message.created into company room', async () => {
