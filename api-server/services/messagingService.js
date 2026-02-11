@@ -6,6 +6,8 @@ const MAX_MESSAGE_LENGTH = 4000;
 const CURSOR_PAGE_SIZE = 50;
 const MAX_RATE_WINDOW_MS = 60_000;
 const MAX_RATE_MESSAGES = 20;
+const LINKED_TYPE_ALLOWLIST = new Set(['transaction', 'plan', 'topic', 'task', 'ticket']);
+const VISIBILITY_SCOPES = new Set(['company', 'department', 'private']);
 
 let initialized = false;
 let ioRef = null;
@@ -54,7 +56,98 @@ function validateLinkedContext(linkedType, linkedId) {
   if (!safeType || !safeId) {
     throw createError(400, 'LINKED_CONTEXT_INVALID', 'linkedType and linkedId must both be provided');
   }
+  if (!LINKED_TYPE_ALLOWLIST.has(safeType)) {
+    throw createError(400, 'LINKED_CONTEXT_TYPE_INVALID', 'Unsupported linkedType');
+  }
+  if (!/^[A-Za-z0-9:_-]{1,128}$/.test(safeId)) {
+    throw createError(400, 'LINKED_CONTEXT_ID_INVALID', 'linkedId contains unsupported characters');
+  }
   return { linkedType: safeType.slice(0, 64), linkedId: safeId.slice(0, 128) };
+}
+
+function normalizeVisibility(payload, session, user) {
+  const scope = String(payload?.visibilityScope || 'company').trim().toLowerCase();
+  if (!VISIBILITY_SCOPES.has(scope)) {
+    throw createError(400, 'VISIBILITY_SCOPE_INVALID', 'visibilityScope must be company, department, or private');
+  }
+  const visibilityDepartmentId = scope === 'department' ? toId(payload?.visibilityDepartmentId ?? session?.department_id) : null;
+  if (scope === 'department' && !visibilityDepartmentId) {
+    throw createError(400, 'VISIBILITY_DEPARTMENT_REQUIRED', 'visibilityDepartmentId is required for department scope');
+  }
+  const visibilityEmpid = scope === 'private' ? String(payload?.visibilityEmpid || '').trim() : null;
+  if (scope === 'private' && !visibilityEmpid) {
+    throw createError(400, 'VISIBILITY_EMPID_REQUIRED', 'visibilityEmpid is required for private scope');
+  }
+  if (scope === 'private' && visibilityEmpid === String(user?.empid)) {
+    throw createError(400, 'VISIBILITY_EMPID_INVALID', 'visibilityEmpid cannot be the same as author');
+  }
+  return {
+    visibilityScope: scope,
+    visibilityDepartmentId,
+    visibilityEmpid,
+  };
+}
+
+function getEncryptionKey() {
+  const keyMaterial = process.env.MESSAGING_ENCRYPTION_KEY || '';
+  if (!keyMaterial) return null;
+  return crypto.createHash('sha256').update(keyMaterial).digest();
+}
+
+function encryptBody(plainText) {
+  const key = getEncryptionKey();
+  if (!key) return { body: plainText, bodyCiphertext: null, bodyIv: null, bodyAuthTag: null, encrypted: false };
+
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
+  const encrypted = Buffer.concat([cipher.update(plainText, 'utf8'), cipher.final()]);
+  const tag = cipher.getAuthTag();
+  return {
+    body: null,
+    bodyCiphertext: encrypted.toString('base64'),
+    bodyIv: iv.toString('base64'),
+    bodyAuthTag: tag.toString('base64'),
+    encrypted: true,
+  };
+}
+
+function decryptBody(message) {
+  if (!message?.body_ciphertext || !message?.body_iv || !message?.body_auth_tag) return message?.body || '';
+  const key = getEncryptionKey();
+  if (!key) return '[encrypted-message]';
+  try {
+    const decipher = crypto.createDecipheriv('aes-256-gcm', key, Buffer.from(message.body_iv, 'base64'));
+    decipher.setAuthTag(Buffer.from(message.body_auth_tag, 'base64'));
+    const decrypted = Buffer.concat([
+      decipher.update(Buffer.from(message.body_ciphertext, 'base64')),
+      decipher.final(),
+    ]);
+    return decrypted.toString('utf8');
+  } catch {
+    return '[encrypted-message]';
+  }
+}
+
+function canViewMessage(message, session, user) {
+  if (!message || message.deleted_at) return false;
+  const scope = String(message.visibility_scope || 'company');
+  if (scope === 'company') return true;
+  if (scope === 'department') {
+    return Number(session?.department_id) > 0 && Number(session?.department_id) === Number(message.visibility_department_id);
+  }
+  if (scope === 'private') {
+    return String(message.author_empid) === String(user?.empid) || String(message.visibility_empid) === String(user?.empid);
+  }
+  return false;
+}
+
+function sanitizeForViewer(message, session, user) {
+  const viewerAllowed = canViewMessage(message, session, user);
+  if (!viewerAllowed) return null;
+  return {
+    ...message,
+    body: decryptBody(message),
+  };
 }
 
 function isProfanity(body) {
@@ -90,7 +183,13 @@ async function ensureSchema(db = pool) {
       parent_message_id BIGINT UNSIGNED NULL,
       linked_type VARCHAR(64) NULL,
       linked_id VARCHAR(128) NULL,
-      body TEXT NOT NULL,
+      visibility_scope VARCHAR(16) NOT NULL DEFAULT 'company',
+      visibility_department_id BIGINT UNSIGNED NULL,
+      visibility_empid VARCHAR(64) NULL,
+      body TEXT NULL,
+      body_ciphertext MEDIUMTEXT NULL,
+      body_iv VARCHAR(32) NULL,
+      body_auth_tag VARCHAR(64) NULL,
       created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
       deleted_at DATETIME NULL,
@@ -98,7 +197,8 @@ async function ensureSchema(db = pool) {
       PRIMARY KEY (id),
       KEY idx_messages_company_id_id (company_id, id),
       KEY idx_messages_parent (parent_message_id),
-      KEY idx_messages_link (company_id, linked_type, linked_id)
+      KEY idx_messages_link (company_id, linked_type, linked_id),
+      KEY idx_messages_visibility (company_id, visibility_scope, visibility_department_id, visibility_empid)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
   `);
   await db.query(`
@@ -188,6 +288,8 @@ function emit(companyId, eventName, payload) {
 async function createMessageInternal({ db = pool, ctx, payload, parentMessageId = null, eventName = 'message.created' }) {
   const body = sanitizeBody(payload?.body);
   const { linkedType, linkedId } = validateLinkedContext(payload?.linkedType, payload?.linkedId);
+  const visibility = normalizeVisibility(payload, ctx.session, ctx.user);
+  const encryptedBody = encryptBody(body);
 
   if (isProfanity(body) || isSpam(body)) {
     await logAbuse(db, {
@@ -216,9 +318,22 @@ async function createMessageInternal({ db = pool, ctx, payload, parentMessageId 
 
   const [result] = await db.query(
     `INSERT INTO erp_messages
-      (company_id, author_empid, parent_message_id, linked_type, linked_id, body)
-      VALUES (?, ?, ?, ?, ?, ?)`,
-    [ctx.companyId, ctx.user.empid, parentMessageId, linkedType, linkedId, body],
+      (company_id, author_empid, parent_message_id, linked_type, linked_id, visibility_scope, visibility_department_id, visibility_empid, body, body_ciphertext, body_iv, body_auth_tag)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      ctx.companyId,
+      ctx.user.empid,
+      parentMessageId,
+      linkedType,
+      linkedId,
+      visibility.visibilityScope,
+      visibility.visibilityDepartmentId,
+      visibility.visibilityEmpid,
+      encryptedBody.body,
+      encryptedBody.bodyCiphertext,
+      encryptedBody.bodyIv,
+      encryptedBody.bodyAuthTag,
+    ],
   );
   const messageId = result.insertId;
   await db.query(
@@ -227,9 +342,10 @@ async function createMessageInternal({ db = pool, ctx, payload, parentMessageId 
   );
   const message = await findMessageById(db, ctx.companyId, messageId);
 
+  const viewerMessage = sanitizeForViewer(message, ctx.session, ctx.user);
   emit(ctx.companyId, eventName, {
     ...eventPayloadBase(ctx),
-    message,
+    message: viewerMessage,
     optimistic: {
       tempId: payload?.clientTempId ?? null,
       accepted: true,
@@ -237,14 +353,14 @@ async function createMessageInternal({ db = pool, ctx, payload, parentMessageId 
     },
   });
 
-  return { message, idempotentReplay: false };
+  return { message: viewerMessage, idempotentReplay: false };
 }
 
 export async function postMessage({ user, companyId, payload, correlationId, db = pool, getSession = getEmploymentSession }) {
   await ensureSchema(db);
   const { scopedCompanyId, session } = await resolveSession(user, companyId, getSession);
   if (!canMessage(session)) throw createError(403, 'PERMISSION_DENIED', 'Messaging permission denied');
-  const ctx = { user, companyId: scopedCompanyId, correlationId };
+  const ctx = { user, companyId: scopedCompanyId, correlationId, session };
   return createMessageInternal({ db, ctx, payload, parentMessageId: null, eventName: 'message.created' });
 }
 
@@ -255,7 +371,7 @@ export async function postReply({ user, companyId, messageId, payload, correlati
   const message = await findMessageById(db, scopedCompanyId, messageId);
   if (!message || message.deleted_at) throw createError(404, 'MESSAGE_NOT_FOUND', 'Message not found');
 
-  const ctx = { user, companyId: scopedCompanyId, correlationId };
+  const ctx = { user, companyId: scopedCompanyId, correlationId, session };
   return createMessageInternal({
     db,
     ctx,
@@ -290,8 +406,9 @@ export async function getMessages({ user, companyId, linkedType, linkedId, curso
     [...params, parsedLimit + 1],
   );
 
-  const hasMore = rows.length > parsedLimit;
-  const pageRows = hasMore ? rows.slice(0, parsedLimit) : rows;
+  const visibleRows = rows.map((row) => sanitizeForViewer(row, session, user)).filter(Boolean);
+  const hasMore = visibleRows.length > parsedLimit;
+  const pageRows = hasMore ? visibleRows.slice(0, parsedLimit) : visibleRows;
   const nextCursor = hasMore ? pageRows[pageRows.length - 1].id : null;
 
   return {
@@ -334,7 +451,10 @@ export async function getThread({ user, companyId, messageId, correlationId, db 
     });
   }
 
-  return { correlationId, root, replies: rows.filter((row) => row.id !== root.id) };
+  const scopedRows = rows.map((row) => sanitizeForViewer(row, session, user)).filter(Boolean);
+  const visibleRoot = scopedRows.find((row) => row.id === root.id);
+  if (!visibleRoot) throw createError(404, 'MESSAGE_NOT_FOUND', 'Message not found');
+  return { correlationId, root: visibleRoot, replies: scopedRows.filter((row) => row.id !== root.id) };
 }
 
 export async function patchMessage({ user, companyId, messageId, payload, correlationId, db = pool, editWindowMs = DEFAULT_EDIT_WINDOW_MS, getSession = getEmploymentSession }) {
@@ -351,10 +471,15 @@ export async function patchMessage({ user, companyId, messageId, payload, correl
   }
 
   const body = sanitizeBody(payload?.body);
-  await db.query('UPDATE erp_messages SET body = ? WHERE id = ? AND company_id = ?', [body, messageId, scopedCompanyId]);
+  const encryptedBody = encryptBody(body);
+  await db.query(
+    'UPDATE erp_messages SET body = ?, body_ciphertext = ?, body_iv = ?, body_auth_tag = ? WHERE id = ? AND company_id = ?',
+    [encryptedBody.body, encryptedBody.bodyCiphertext, encryptedBody.bodyIv, encryptedBody.bodyAuthTag, messageId, scopedCompanyId],
+  );
   const updated = await findMessageById(db, scopedCompanyId, messageId);
-  emit(scopedCompanyId, 'message.updated', { ...eventPayloadBase({ correlationId, companyId: scopedCompanyId }), message: updated });
-  return { correlationId, message: updated };
+  const view = sanitizeForViewer(updated, session, user);
+  emit(scopedCompanyId, 'message.updated', { ...eventPayloadBase({ correlationId, companyId: scopedCompanyId }), message: view });
+  return { correlationId, message: view };
 }
 
 export async function deleteMessage({ user, companyId, messageId, correlationId, db = pool, getSession = getEmploymentSession }) {

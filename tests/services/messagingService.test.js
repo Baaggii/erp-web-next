@@ -17,7 +17,7 @@ class FakeDb {
       return [messageId ? [{ message_id: messageId }] : []];
     }
     if (sql.startsWith('INSERT INTO erp_messages')) {
-      const [companyId, authorEmpid, parentId, linkedType, linkedId, body] = params;
+      const [companyId, authorEmpid, parentId, linkedType, linkedId, visibilityScope, visibilityDepartmentId, visibilityEmpid, body, bodyCiphertext, bodyIv, bodyAuthTag] = params;
       const message = {
         id: this.nextId++,
         company_id: companyId,
@@ -26,6 +26,12 @@ class FakeDb {
         linked_type: linkedType,
         linked_id: linkedId,
         body,
+        body_ciphertext: bodyCiphertext,
+        body_iv: bodyIv,
+        body_auth_tag: bodyAuthTag,
+        visibility_scope: visibilityScope,
+        visibility_department_id: visibilityDepartmentId,
+        visibility_empid: visibilityEmpid,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
         deleted_at: null,
@@ -46,6 +52,17 @@ class FakeDb {
       const companyId = params[0];
       const limit = params[params.length - 1];
       return [this.messages.filter((entry) => entry.company_id === companyId && !entry.deleted_at).slice(0, limit)];
+    }
+    if (sql.startsWith('UPDATE erp_messages SET body = ?, body_ciphertext = ?, body_iv = ?, body_auth_tag = ?')) {
+      const [body, bodyCiphertext, bodyIv, bodyAuthTag, id, companyId] = params;
+      const match = this.messages.find((entry) => entry.id === id && entry.company_id === companyId);
+      if (match) {
+        match.body = body;
+        match.body_ciphertext = bodyCiphertext;
+        match.body_iv = bodyIv;
+        match.body_auth_tag = bodyAuthTag;
+      }
+      return [{ affectedRows: match ? 1 : 0 }];
     }
     if (sql.startsWith('UPDATE erp_messages SET deleted_at')) {
       const [empid, id, companyId] = params;
@@ -147,4 +164,65 @@ test('realtime fanout emits message.created into company room', async () => {
   assert.equal(emissions.length, 1);
   assert.equal(emissions[0].room, 'company:1');
   assert.equal(emissions[0].event, 'message.created');
+});
+
+
+test('private visibility hides messages from non-target users', async () => {
+  const db = new FakeDb();
+  const authorSession = { permissions: { messaging: true }, department_id: 10 };
+
+  await postMessage({
+    user,
+    companyId: 1,
+    payload: {
+      body: 'secret',
+      linkedType: 'topic',
+      linkedId: 'ops-room',
+      visibilityScope: 'private',
+      visibilityEmpid: 'e-2',
+      idempotencyKey: 'private-1',
+    },
+    correlationId: 'private-1',
+    db,
+    getSession: async () => authorSession,
+  });
+
+  const hidden = await getMessages({
+    user: { empid: 'e-3', companyId: 1 },
+    companyId: 1,
+    correlationId: 'private-2',
+    db,
+    getSession: async () => ({ permissions: { messaging: true }, department_id: 10 }),
+  });
+  assert.equal(hidden.items.length, 0);
+
+  const visible = await getMessages({
+    user: { empid: 'e-2', companyId: 1 },
+    companyId: 1,
+    correlationId: 'private-3',
+    db,
+    getSession: async () => ({ permissions: { messaging: true }, department_id: 10 }),
+  });
+  assert.equal(visible.items.length, 1);
+  assert.equal(visible.items[0].body, 'secret');
+});
+
+test('encrypted storage stores ciphertext when key is configured', async () => {
+  const db = new FakeDb();
+  const session = { permissions: { messaging: true }, department_id: 10 };
+  process.env.MESSAGING_ENCRYPTION_KEY = 'unit-test-key';
+
+  const created = await postMessage({
+    user,
+    companyId: 1,
+    payload: { body: 'encrypted hello', linkedType: 'topic', linkedId: 'ops', idempotencyKey: 'enc-1' },
+    correlationId: 'enc-1',
+    db,
+    getSession: async () => session,
+  });
+
+  assert.equal(created.message.body, 'encrypted hello');
+  assert.equal(db.messages[0].body, null);
+  assert.ok(db.messages[0].body_ciphertext);
+  delete process.env.MESSAGING_ENCRYPTION_KEY;
 });
