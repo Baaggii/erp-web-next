@@ -558,7 +558,9 @@ export default function MessagingWidget() {
     const payload = {
       idempotencyKey: createIdempotencyKey(),
       body: `[${safeTopic}] ${safeBody}`,
-      ...(Number.isFinite(parsedCompanyId) && parsedCompanyId > 0 ? { companyId: parsedCompanyId } : {}),
+      companyId: Number.isFinite(Number(activeCompany)) ? Number(activeCompany) : String(activeCompany),
+      recipientEmpids: state.composer.recipients,
+      recipients: state.composer.recipients,
       ...(state.composer.linkedType || activeConversation?.linkedType ? { linkedType: state.composer.linkedType || activeConversation?.linkedType } : {}),
       ...(state.composer.linkedId || activeConversation?.linkedId ? { linkedId: String(state.composer.linkedId || activeConversation?.linkedId) } : {}),
     };
