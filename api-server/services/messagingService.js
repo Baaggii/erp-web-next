@@ -10,6 +10,7 @@ const CURSOR_PAGE_SIZE = 50;
 const MAX_RATE_WINDOW_MS = 60_000;
 const MAX_RATE_MESSAGES = 20;
 const IDEMPOTENCY_TTL_MS = 24 * 60 * 60 * 1000;
+const MAX_REPLY_DEPTH = 5;
 const LINKED_TYPE_ALLOWLIST = new Set(['transaction', 'plan', 'topic', 'task', 'ticket']);
 const VISIBILITY_SCOPES = new Set(['company', 'department', 'private']);
 
@@ -358,6 +359,17 @@ async function findMessageById(db, companyId, id) {
   return rows[0] || null;
 }
 
+async function resolveThreadDepth(db, companyId, message) {
+  let depth = 0;
+  let cursor = message;
+  while (cursor?.parent_message_id) {
+    depth += 1;
+    if (depth > MAX_REPLY_DEPTH) return depth;
+    cursor = await findMessageById(db, companyId, cursor.parent_message_id);
+  }
+  return depth;
+}
+
 function emit(companyId, eventName, payload) {
   if (!ioRef) return;
   ioRef.to(`company:${companyId}`).emit(eventName, payload);
@@ -476,6 +488,10 @@ export async function postReply({ user, companyId, messageId, payload, correlati
   if (!canMessage(session)) throwPermissionDenied({ db, user, companyId: scopedCompanyId, action: 'message:reply' });
   const message = await findMessageById(db, scopedCompanyId, messageId);
   if (!message || message.deleted_at) throw createError(404, 'MESSAGE_NOT_FOUND', 'Message not found');
+  const depth = await resolveThreadDepth(db, scopedCompanyId, message);
+  if (depth >= MAX_REPLY_DEPTH) {
+    throw createError(400, 'THREAD_DEPTH_EXCEEDED', `Reply depth exceeds maximum of ${MAX_REPLY_DEPTH}`);
+  }
 
   const ctx = { user, companyId: scopedCompanyId, correlationId, session };
   return createMessageInternal({
