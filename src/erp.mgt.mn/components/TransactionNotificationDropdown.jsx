@@ -245,6 +245,11 @@ function formatDisplayTimestamp(value) {
   return formatTimestamp(parsed);
 }
 
+function toNotificationId(value) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 function getRequestTimestamp(req, scope) {
   if (!req) return 0;
   if (scope === 'response') {
@@ -282,7 +287,7 @@ function getTemporaryTimestamp(entry) {
 }
 
 export default function TransactionNotificationDropdown() {
-  const { notifications, unreadCount, markRead, markAllRead } = useTransactionNotifications();
+  const { notifications, unreadCount, markRead } = useTransactionNotifications();
   const { user, session } = useAuth();
   const { workflows, markWorkflowSeen, temporary } = usePendingRequests();
   const [open, setOpen] = useState(false);
@@ -1098,6 +1103,9 @@ export default function TransactionNotificationDropdown() {
       const normalizedSource = String(item?.source || 'notification').toLowerCase();
       const isTransaction = normalizedSource === 'transaction';
       const isTemporary = normalizedSource === 'temporary';
+      const notificationId =
+        toNotificationId(item?.action?.notificationId) ??
+        toNotificationId(String(item?.id || '').split('-').pop());
       const badgeMeta = isTransaction
         ? getActionMeta(item?.status)
         : isTemporary
@@ -1106,6 +1114,7 @@ export default function TransactionNotificationDropdown() {
       const timestamp = getTemporaryTimestamp({ created_at: item?.timestamp, updated_at: item?.timestamp });
       return {
         key: item?.id || `${normalizedSource}-${timestamp}`,
+        source: normalizedSource,
         timestamp,
         isUnread: item?.unread !== false,
         title: resolveNotificationTitle(item),
@@ -1113,8 +1122,14 @@ export default function TransactionNotificationDropdown() {
         preview: item?.preview || '',
         dateTime: formatDisplayTimestamp(item?.timestamp),
         onClick: () => {
-          if ((isTransaction || isTemporary) && item?.action?.notificationId) {
-            markRead([item.action.notificationId]);
+          if ((isTransaction || isTemporary) && notificationId) {
+            markRead([notificationId]);
+            setFeedState((prev) => ({
+              ...prev,
+              items: prev.items.map((feedItem) =>
+                feedItem?.id === item?.id ? { ...feedItem, unread: false } : feedItem,
+              ),
+            }));
           }
           setOpen(false);
 
@@ -1179,6 +1194,38 @@ export default function TransactionNotificationDropdown() {
     () => combinedItems.filter((item) => item.isUnread).length,
     [combinedItems],
   );
+  const hasMarkableUnreadItems = useMemo(
+    () =>
+      combinedItems.some((item) => {
+        if (!item.isUnread) return false;
+        const source = String(item?.source || '').toLowerCase();
+        return source === 'transaction' || source === 'temporary';
+      }),
+    [combinedItems],
+  );
+  const handleMarkAllRead = useCallback(async () => {
+    const ids = feedState.items
+      .filter((item) => {
+        const source = String(item?.source || '').toLowerCase();
+        return item?.unread !== false && (source === 'transaction' || source === 'temporary');
+      })
+      .map((item) =>
+        toNotificationId(item?.action?.notificationId) ??
+        toNotificationId(String(item?.id || '').split('-').pop()),
+      )
+      .filter(Boolean);
+    if (!ids.length) return;
+    await markRead(Array.from(new Set(ids)));
+    setFeedState((prev) => ({
+      ...prev,
+      items: prev.items.map((item) => {
+        const source = String(item?.source || '').toLowerCase();
+        if (item?.unread === false) return item;
+        if (source !== 'transaction' && source !== 'temporary') return item;
+        return { ...item, unread: false };
+      }),
+    }));
+  }, [feedState.items, markRead]);
   const hasFeedLoaded = !feedState.loading && !feedState.error;
   const bellUnreadCount = hasFeedLoaded ? dropdownUnreadCount : Number(unreadCount) || 0;
   const visibleItems = combinedItems.slice(0, visibleCount);
@@ -1198,13 +1245,11 @@ export default function TransactionNotificationDropdown() {
         <div style={styles.dropdown}>
           <div style={styles.headerActions}>
             <span style={styles.headerUnreadLabel}>Unread: {dropdownUnreadCount}</span>
-            {dropdownUnreadCount > 0 && (
+            {hasMarkableUnreadItems && (
               <button
                 type="button"
                 style={styles.markAllButton}
-                onClick={() => {
-                  markAllRead();
-                }}
+                onClick={handleMarkAllRead}
               >
                 Mark all as read
               </button>
