@@ -79,6 +79,7 @@ import {
   markOffline,
   getMessagingSocketAccess,
 } from "./services/messagingService.js";
+import { incWebsocketConnections, renderPrometheusMetrics } from './services/messagingMetrics.js';
 
 // Polyfill for __dirname in ES modules
 const __filename = fileURLToPath(import.meta.url);
@@ -219,6 +220,7 @@ io.on("connection", (socket) => {
   if (!user) return;
 
   markOnline(user.companyId, user.empid);
+  incWebsocketConnections({ company_id: String(user.companyId) }, 1);
 
   socket.use(async (_packet, next) => {
     if (Date.now() - Number(socket.authenticatedAt || 0) <= SOCKET_AUTH_TTL_MS) {
@@ -237,6 +239,7 @@ io.on("connection", (socket) => {
 
   socket.on("disconnect", () => {
     markOffline(user.companyId, user.empid);
+    incWebsocketConnections({ company_id: String(user.companyId) }, -1);
   });
 });
 
@@ -268,6 +271,12 @@ app.get("/api/auth/health", async (req, res, next) => {
   } catch (err) {
     next(err);
   }
+});
+
+
+app.get("/metrics", (_req, res) => {
+  res.setHeader("Content-Type", "text/plain; version=0.0.4; charset=utf-8");
+  res.send(renderPrometheusMetrics());
 });
 
 // API routes
