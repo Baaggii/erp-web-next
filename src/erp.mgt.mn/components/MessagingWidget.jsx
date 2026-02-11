@@ -123,10 +123,23 @@ function canOpenContextLink(permissions, chipType) {
   return permissions?.isAdmin === true;
 }
 
-function MessageNode({ message, onReply, onJumpToParent, parentMap, permissions, activeReplyTarget, highlightedIds }) {
+function formatEmployeeOption(entry) {
+  return `${entry.label} (ID #${entry.id})`;
+}
+
+function canViewTransaction(transactionId, userId, permissions) {
+  if (!transactionId || !userId) return false;
+  if (permissions?.isAdmin === true) return true;
+  if (permissions?.transactions?.view === true) return true;
+  return canOpenContextLink(permissions, 'transaction');
+}
+
+function MessageNode({ message, depth = 0, onReply, onJumpToParent, onToggleReplies, collapsedMessageIds, parentMap, permissions, activeReplyTarget, highlightedIds, onOpenLinkedTransaction }) {
   const replyCount = countNestedReplies(message);
   const safeBody = sanitizeMessageText(message.body);
   const linked = extractContextLink(message);
+  const hasReplies = Array.isArray(message.replies) && message.replies.length > 0;
+  const isCollapsed = collapsedMessageIds.has(message.id);
   const isReplyTarget = activeReplyTarget && Number(activeReplyTarget) === Number(message.id);
   const isHighlighted = highlightedIds.has(message.id);
   const readers = Array.isArray(message.read_by) ? message.read_by.filter(Boolean) : [];
@@ -142,6 +155,7 @@ function MessageNode({ message, onReply, onJumpToParent, parentMap, permissions,
         boxShadow: isHighlighted ? '0 0 0 2px #22d3ee inset' : 'none',
         padding: 12,
         marginBottom: 10,
+        marginLeft: depth > 0 ? Math.min(depth * 18, 72) : 0,
       }}
     >
       <header style={{ fontSize: 12, color: '#475569', fontWeight: 600 }}>
@@ -154,7 +168,7 @@ function MessageNode({ message, onReply, onJumpToParent, parentMap, permissions,
             type="button"
             disabled={!canOpenContextLink(permissions, 'transaction')}
             aria-label={`Open transaction ${linked.linkedId}`}
-            onClick={() => window.dispatchEvent(new CustomEvent('messaging:open-transaction', { detail: { id: linked.linkedId } }))}
+            onClick={() => onOpenLinkedTransaction(linked.linkedId)}
           >
             txn:{linked.linkedId}
           </button>
@@ -169,20 +183,29 @@ function MessageNode({ message, onReply, onJumpToParent, parentMap, permissions,
           </button>
         )}
         {replyCount > 0 && <span aria-label="Nested reply count" style={{ fontSize: 12, color: '#64748b' }}>{replyCount} replies</span>}
+        {hasReplies && (
+          <button type="button" onClick={() => onToggleReplies(message.id)} aria-label={isCollapsed ? 'Expand replies' : 'Collapse replies'}>
+            {isCollapsed ? `Show replies (${message.replies.length})` : 'Hide replies'}
+          </button>
+        )}
       </div>
       <p style={{ marginTop: 6, marginBottom: 0, fontSize: 12, color: '#64748b' }}>
         Read receipts: {readers.length > 0 ? readers.join(', ') : 'Unread'}
       </p>
-      {message.replies.map((child) => (
+      {!isCollapsed && message.replies.map((child) => (
         <MessageNode
           key={child.id}
           message={child}
+          depth={depth + 1}
           onReply={onReply}
           onJumpToParent={onJumpToParent}
+          onToggleReplies={onToggleReplies}
+          collapsedMessageIds={collapsedMessageIds}
           parentMap={parentMap}
           permissions={permissions}
           activeReplyTarget={activeReplyTarget}
           highlightedIds={highlightedIds}
+          onOpenLinkedTransaction={onOpenLinkedTransaction}
         />
       ))}
     </article>
@@ -220,6 +243,8 @@ export default function MessagingWidget() {
   const [error, setError] = useState('');
   const [composerAnnouncement, setComposerAnnouncement] = useState('');
   const [dragOverComposer, setDragOverComposer] = useState(false);
+  const [attachmentsOpen, setAttachmentsOpen] = useState(false);
+  const [collapsedMessageIds, setCollapsedMessageIds] = useState(() => new Set());
   const composerRef = useRef(null);
 
   const draftStorageKey = useMemo(() => {
@@ -299,17 +324,36 @@ export default function MessagingWidget() {
 
     const loadEmployees = async () => {
       try {
-        const params = new URLSearchParams({ perPage: '500', company_id: String(activeCompany) });
-        const res = await fetch(`${API_BASE}/tables/tbl_employee?${params.toString()}`, { credentials: 'include' });
-        if (!res.ok) return;
-        const data = await res.json();
-        const rows = Array.isArray(data?.rows) ? data.rows : Array.isArray(data) ? data : [];
-        setEmployees(rows
-          .map((row) => ({
-            empid: normalizeId(row.emp_id || row.empid || row.id),
-            name: row.emp_name || row.employee_name || row.name || row.full_name || row.emp_id,
-          }))
-          .filter((row) => row.empid));
+        const employmentParams = new URLSearchParams({ perPage: '1000', company_id: String(activeCompany) });
+        const employmentRes = await fetch(`${API_BASE}/tables/tbl_employment?${employmentParams.toString()}`, { credentials: 'include' });
+        if (!employmentRes.ok) return;
+        const employmentData = await employmentRes.json();
+        const employmentRows = Array.isArray(employmentData?.rows) ? employmentData.rows : Array.isArray(employmentData) ? employmentData : [];
+        const idsFromEmployment = Array.from(
+          new Set(
+            employmentRows
+              .map((row) => normalizeId(row.employment_emp_id || row.emp_id || row.empid || row.id))
+              .filter(Boolean),
+          ),
+        );
+        if (idsFromEmployment.length === 0) {
+          setEmployees([]);
+          return;
+        }
+
+        const employeeParams = new URLSearchParams({ perPage: '1000' });
+        const employeeRes = await fetch(`${API_BASE}/tables/tbl_employee?${employeeParams.toString()}`, { credentials: 'include' });
+        const employeeData = employeeRes.ok ? await employeeRes.json() : { rows: [] };
+        const employeeRows = Array.isArray(employeeData?.rows) ? employeeData.rows : Array.isArray(employeeData) ? employeeData : [];
+        const profileMap = new Map(employeeRows.map((row) => [
+          normalizeId(row.emp_id || row.empid || row.id),
+          row.emp_name || row.employee_name || row.name || row.full_name || row.emp_id,
+        ]));
+
+        setEmployees(idsFromEmployment.map((empid) => ({
+          empid,
+          name: profileMap.get(empid) || empid,
+        })));
       } catch {
         // Optional enhancement only; keep widget functional.
       }
@@ -388,6 +432,11 @@ export default function MessagingWidget() {
   const messageMap = useMemo(() => new Map(messages.map((msg) => [msg.id, msg])), [messages]);
   const unreadCount = messages.filter((msg) => !msg.read_by?.includes?.(selfEmpid)).length;
 
+
+  useEffect(() => {
+    if (state.composer.attachments.length > 0) setAttachmentsOpen(true);
+  }, [state.composer.attachments.length]);
+
   const presenceMap = useMemo(
     () => new Map(presence.map((entry) => [normalizeId(entry.empid || entry.id), resolvePresence(entry)])),
     [presence],
@@ -440,6 +489,28 @@ export default function MessagingWidget() {
 
   const activeTopic = state.composer.topic || activeConversation?.title || 'Untitled topic';
 
+
+  const safeTopic = sanitizeMessageText(state.composer.topic || activeConversation?.title || '');
+  const safeBody = sanitizeMessageText(state.composer.body);
+  const canSendMessage = Boolean(safeTopic && safeBody && state.composer.recipients.length > 0);
+
+  const handleOpenLinkedTransaction = (transactionId) => {
+    if (canViewTransaction(transactionId, normalizeId(sessionId), permissions || {})) {
+      window.dispatchEvent(new CustomEvent('messaging:open-transaction', { detail: { id: transactionId } }));
+      return;
+    }
+    setComposerAnnouncement(`You do not have permission to view transaction #${transactionId}.`);
+  };
+
+  const toggleMessageReplies = (messageId) => {
+    setCollapsedMessageIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(messageId)) next.delete(messageId);
+      else next.add(messageId);
+      return next;
+    });
+  };
+
   const mentionCandidates = useMemo(() => {
     const query = mentionQuery.trim().toLowerCase();
     return employeeRecords
@@ -448,8 +519,6 @@ export default function MessagingWidget() {
   }, [employeeRecords, mentionQuery]);
 
   const sendMessage = async () => {
-    const safeBody = sanitizeMessageText(state.composer.body);
-    const safeTopic = sanitizeMessageText(activeTopic);
     if (!safeTopic) {
       setComposerAnnouncement('Topic is required.');
       return;
@@ -458,22 +527,25 @@ export default function MessagingWidget() {
       setComposerAnnouncement('Cannot send an empty message.');
       return;
     }
+    if (state.composer.recipients.length === 0) {
+      setComposerAnnouncement('Select at least one recipient.');
+      return;
+    }
 
     const activeCompany = state.activeCompanyId || companyId;
     const payload = {
-      body: safeBody,
-      companyId: activeCompany,
-      parentMessageId: state.composer.replyToId,
-      linkedType: state.composer.linkedType || activeConversation?.linkedType || null,
-      linkedId: state.composer.linkedId || activeConversation?.linkedId || null,
-      topic: safeTopic,
-      recipientEmpids: state.composer.recipients,
-      mentions: Array.from(new Set((safeBody.match(/@[A-Za-z0-9_.-]+/g) || []).map((token) => token.slice(1)))),
+      body: `[${safeTopic}] ${safeBody}`,
+      companyId: Number.isFinite(Number(activeCompany)) ? Number(activeCompany) : String(activeCompany),
       idempotencyKey: `${Date.now()}-${Math.random().toString(36).slice(2, 12)}`,
-      attachments: state.composer.attachments.map((file) => ({ name: file.name, type: file.type, size: file.size })),
+      ...(state.composer.linkedType || activeConversation?.linkedType ? { linkedType: state.composer.linkedType || activeConversation?.linkedType } : {}),
+      ...(state.composer.linkedId || activeConversation?.linkedId ? { linkedId: String(state.composer.linkedId || activeConversation?.linkedId) } : {}),
     };
 
-    const res = await fetch(`${API_BASE}/messaging/messages`, {
+    const targetUrl = state.composer.replyToId
+      ? `${API_BASE}/messaging/messages/${state.composer.replyToId}/reply`
+      : `${API_BASE}/messaging/messages`;
+
+    const res = await fetch(targetUrl, {
       method: 'POST',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
@@ -488,7 +560,8 @@ export default function MessagingWidget() {
       composerRef.current?.focus();
     } else {
       const errorPayload = await res.json().catch(() => null);
-      setComposerAnnouncement(errorPayload?.message || 'Failed to send message.');
+      console.error('Messaging send failed', { status: res.status, errorPayload, payload });
+      setComposerAnnouncement(errorPayload?.error?.message || errorPayload?.message || 'Failed to send message.');
     }
   };
 
@@ -696,14 +769,14 @@ export default function MessagingWidget() {
                     return (
                       <button key={entry.id} type="button" onClick={() => (selected ? onRemoveRecipient(entry.id) : onChooseRecipient(entry.id))} style={{ display: 'flex', alignItems: 'center', gap: 8, border: selected ? '1px solid #2563eb' : '1px solid #e2e8f0', borderRadius: 8, background: selected ? '#eff6ff' : '#fff', padding: '6px 8px', textAlign: 'left' }}>
                         <span style={{ width: 8, height: 8, borderRadius: 999, background: presenceColor(entry.status) }} />
-                        <span style={{ fontSize: 12, color: '#0f172a' }}>{entry.label}</span>
-                        <span style={{ marginLeft: 'auto', fontSize: 11, color: '#64748b' }}>{entry.id}</span>
+                        <span style={{ fontSize: 12, color: '#0f172a' }}>{formatEmployeeOption(entry)}</span>
+                        <span style={{ marginLeft: 'auto', fontSize: 10, color: '#475569', borderRadius: 999, padding: '2px 8px', background: '#f1f5f9' }}>{entry.status}</span>
                       </button>
                     );
                   })}
                 </div>
                 <button type="button" disabled={state.composer.recipients.length === 0} onClick={openNewMessage} style={{ marginTop: 8, border: 0, borderRadius: 8, background: state.composer.recipients.length ? '#2563eb' : '#94a3b8', color: '#fff', padding: '8px 10px', width: '100%' }}>
-                  New message ({state.composer.recipients.length})
+                  New message
                 </button>
               </div>
             )}
@@ -747,8 +820,8 @@ export default function MessagingWidget() {
           </div>
         </aside>
 
-        <section style={{ display: 'grid', gridTemplateRows: '1fr auto', minWidth: 0 }}>
-          <main style={{ padding: 14, overflowY: 'auto' }} aria-live="polite">
+        <section style={{ display: 'grid', gridTemplateRows: 'minmax(420px, 1fr) auto', minWidth: 0, minHeight: 0 }}>
+          <main style={{ padding: '10px 14px 8px', overflowY: 'auto', minHeight: 420 }} aria-live="polite">
             <div style={{ position: 'sticky', top: 0, background: '#f8fafc', paddingBottom: 8, marginBottom: 8 }}>
               <strong style={{ fontSize: 16, color: '#0f172a' }}>{activeTopic}</strong>
               <p style={{ margin: '4px 0 0', fontSize: 12, color: '#64748b' }}>Ctrl/Cmd + Enter sends your message.</p>
@@ -771,13 +844,16 @@ export default function MessagingWidget() {
                   setComposerAnnouncement(`Reply target set to #${id}.`);
                 }}
                 onJumpToParent={(parentId) => document.querySelector(`[aria-label='Message ${parentId}']`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })}
+                onToggleReplies={toggleMessageReplies}
+                collapsedMessageIds={collapsedMessageIds}
                 highlightedIds={highlightedIds}
+                onOpenLinkedTransaction={handleOpenLinkedTransaction}
               />
             ))}
           </main>
 
           <form
-            style={{ borderTop: '1px solid #e2e8f0', background: '#ffffff', padding: 14 }}
+            style={{ borderTop: '1px solid #e2e8f0', background: '#ffffff', padding: 12, position: 'sticky', bottom: 0 }}
             onSubmit={(event) => {
               event.preventDefault();
               sendMessage();
@@ -827,7 +903,7 @@ export default function MessagingWidget() {
                           {initialsForLabel(entry.label)}
                         </span>
                         <span style={{ width: 8, height: 8, borderRadius: 999, background: presenceColor(entry.status) }} aria-hidden="true" />
-                        <span style={{ fontSize: 13, color: '#0f172a' }}>{entry.label} ({entry.id})</span>
+                        <span style={{ fontSize: 13, color: '#0f172a' }}>{formatEmployeeOption(entry)}</span>
                       </button>
                     ))}
                     {filteredEmployees.length === 0 && <p style={{ margin: 0, padding: 10, color: '#64748b', fontSize: 12 }}>No matches</p>}
@@ -847,7 +923,7 @@ export default function MessagingWidget() {
                       {initialsForLabel(label)}
                     </span>
                     <span style={{ width: 8, height: 8, borderRadius: 999, background: presenceColor(status) }} />
-                    <span style={{ fontSize: 12, color: '#1e293b' }}>{label}</span>
+                    <span style={{ fontSize: 12, color: '#1e293b' }}>{label} (ID #{empid})</span>
                     <button type="button" aria-label={`Remove recipient ${label}`} onClick={() => onRemoveRecipient(empid)} style={{ border: 0, background: 'transparent', color: '#64748b' }}>×</button>
                   </span>
                 );
@@ -894,7 +970,7 @@ export default function MessagingWidget() {
               </div>
             )}
 
-            <p style={{ margin: '6px 0 0', fontSize: 11, color: '#64748b' }}>Tip: drag files here to attach (multi-file supported), or drag a transaction ID to link context.</p>
+            <p title="Drag files to attach, or drag a transaction ID to link context." style={{ margin: '6px 0 0', fontSize: 11, color: '#64748b' }}>Tip: drag files or a transaction ID here.</p>
 
             {state.composer.replyToId && (
               <p style={{ margin: '8px 0 0', fontSize: 12, color: '#475569' }}>
@@ -906,35 +982,51 @@ export default function MessagingWidget() {
               <p style={{ margin: '8px 0 0', fontSize: 12, color: '#475569' }}>
                 Linked transaction:
                 {' '}
-                <button type="button" onClick={() => window.dispatchEvent(new CustomEvent('messaging:open-transaction', { detail: { id: state.composer.linkedId } }))}>#{state.composer.linkedId}</button>
+                <button
+                  type="button"
+                  title={canViewTransaction(state.composer.linkedId, normalizeId(sessionId), permissions || {}) ? 'Open linked transaction' : 'You do not have permission for this transaction'}
+                  onClick={() => handleOpenLinkedTransaction(state.composer.linkedId)}
+                >
+                  #{state.composer.linkedId}
+                </button>
               </p>
             )}
 
             <div style={{ marginTop: 10 }}>
-              <label htmlFor="messaging-attachments" style={{ fontSize: 12, fontWeight: 600, color: '#334155' }}>Attachments</label>
-              <input
-                id="messaging-attachments"
-                type="file"
-                multiple
-                onChange={onAttach}
-                aria-label="Attachment picker"
-                style={{ display: 'block', marginTop: 6 }}
-              />
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 8, marginTop: 8 }}>
-                {state.composer.attachments.map((file) => (
-                  <div key={`${file.name}-${file.lastModified}-${file.size}`} style={{ border: '1px solid #e2e8f0', borderRadius: 8, padding: 8, background: '#f8fafc' }}>
-                    <strong style={{ display: 'block', fontSize: 12, color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis' }}>{file.name}</strong>
-                    <span style={{ fontSize: 11, color: '#64748b' }}>{Math.max(1, Math.round(file.size / 1024))} KB</span>
+              <button
+                type="button"
+                onClick={() => setAttachmentsOpen((prev) => !prev)}
+                style={{ border: 0, background: 'transparent', padding: 0, fontSize: 12, fontWeight: 600, color: '#334155' }}
+              >
+                {attachmentsOpen ? '▾' : '▸'} Attachments {state.composer.attachments.length > 0 ? `(${state.composer.attachments.length})` : ''}
+              </button>
+              {attachmentsOpen && (
+                <>
+                  <input
+                    id="messaging-attachments"
+                    type="file"
+                    multiple
+                    onChange={onAttach}
+                    aria-label="Attachment picker"
+                    style={{ display: 'block', marginTop: 6 }}
+                  />
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 8, marginTop: 8 }}>
+                    {state.composer.attachments.map((file) => (
+                      <div key={`${file.name}-${file.lastModified}-${file.size}`} style={{ border: '1px solid #e2e8f0', borderRadius: 8, padding: 8, background: '#f8fafc' }}>
+                        <strong style={{ display: 'block', fontSize: 12, color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis' }}>{file.name}</strong>
+                        <span style={{ fontSize: 11, color: '#64748b' }}>{Math.max(1, Math.round(file.size / 1024))} KB</span>
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
+                </>
+              )}
             </div>
 
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 12 }}>
               <button type="button" onClick={() => dispatch({ type: 'composer/reset' })} style={{ border: '1px solid #cbd5e1', borderRadius: 8, background: '#fff', padding: '8px 10px' }}>
                 Clear draft
               </button>
-              <button type="submit" style={{ border: 0, borderRadius: 8, background: '#2563eb', color: '#fff', padding: '8px 14px', fontWeight: 600 }}>
+              <button type="submit" disabled={!canSendMessage} style={{ border: 0, borderRadius: 8, background: canSendMessage ? '#2563eb' : '#94a3b8', color: '#fff', padding: '8px 14px', fontWeight: 600, cursor: canSendMessage ? 'pointer' : 'not-allowed' }}>
                 Send
               </button>
             </div>
