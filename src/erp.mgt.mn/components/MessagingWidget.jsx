@@ -558,6 +558,8 @@ export default function MessagingWidget() {
       idempotencyKey: createIdempotencyKey(),
       body: `[${safeTopic}] ${safeBody}`,
       companyId: Number.isFinite(Number(activeCompany)) ? Number(activeCompany) : String(activeCompany),
+      recipientEmpids: state.composer.recipients,
+      recipients: state.composer.recipients,
       ...(state.composer.linkedType || activeConversation?.linkedType ? { linkedType: state.composer.linkedType || activeConversation?.linkedType } : {}),
       ...(state.composer.linkedId || activeConversation?.linkedId ? { linkedId: String(state.composer.linkedId || activeConversation?.linkedId) } : {}),
     };
