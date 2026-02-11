@@ -69,7 +69,12 @@ function groupConversations(messages) {
   messages.forEach((msg) => {
     const topic = extractMessageTopic(msg);
     const link = extractContextLink(msg);
-    const key = String(msg.conversation_id || msg.topic || `${link.linkedType || 'general'}:${link.linkedId || 'general'}`);
+    const key = String(
+      msg.conversation_id
+      || (link.linkedType && link.linkedId ? `${link.linkedType}:${link.linkedId}` : null)
+      || msg.topic
+      || 'general:general',
+    );
     if (!map.has(key)) {
       map.set(key, {
         id: key,
@@ -120,6 +125,16 @@ function formatLastActivity(value) {
 function createIdempotencyKey() {
   if (typeof globalThis.crypto?.randomUUID === 'function') return globalThis.crypto.randomUUID();
   return `msg-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function mergeMessageList(current, incoming) {
+  if (!incoming?.id) return current;
+  const next = [...(current || [])];
+  const existingIdx = next.findIndex((entry) => String(entry.id) === String(incoming.id));
+  if (existingIdx >= 0) next[existingIdx] = incoming;
+  else next.push(incoming);
+  next.sort((a, b) => new Date(a.created_at || 0).getTime() - new Date(b.created_at || 0).getTime());
+  return next;
 }
 
 function canOpenContextLink(permissions, chipType) {
@@ -381,7 +396,7 @@ export default function MessagingWidget() {
       if (normalizeId(nextMessage?.company_id || nextMessage?.companyId) !== (state.activeCompanyId || companyId)) return;
       setMessagesByCompany((prev) => {
         const key = getCompanyCacheKey(state.activeCompanyId || companyId);
-        return { ...prev, [key]: [...(prev[key] || []), nextMessage] };
+        return { ...prev, [key]: mergeMessageList(prev[key], nextMessage) };
       });
       if (nextMessage?.parent_message_id || nextMessage?.parentMessageId) {
         const id = nextMessage.id;
@@ -553,17 +568,25 @@ export default function MessagingWidget() {
       return;
     }
 
+    const linkedType = state.composer.linkedType || activeConversation?.linkedType || null;
+    const linkedId = state.composer.linkedId || activeConversation?.linkedId || null;
+    if ((linkedType && !linkedId) || (!linkedType && linkedId)) {
+      setComposerAnnouncement('Conversation context is incomplete. Provide both linked type and linked id.');
+      return;
+    }
+
     const activeCompany = state.activeCompanyId || companyId;
-    const parsedCompanyId = Number(activeCompany);
+    const clientTempId = `tmp-${createIdempotencyKey()}`;
     const payload = {
       idempotencyKey: createIdempotencyKey(),
+      clientTempId,
       body: `[${safeTopic}] ${safeBody}`,
       companyId: Number.isFinite(Number(activeCompany)) ? Number(activeCompany) : String(activeCompany),
       ...(state.composer.recipients.length === 1
         ? { visibilityScope: 'private', visibilityEmpid: state.composer.recipients[0] }
         : {}),
-      ...(state.composer.linkedType || activeConversation?.linkedType ? { linkedType: state.composer.linkedType || activeConversation?.linkedType } : {}),
-      ...(state.composer.linkedId || activeConversation?.linkedId ? { linkedId: String(state.composer.linkedId || activeConversation?.linkedId) } : {}),
+      ...(linkedType ? { linkedType } : {}),
+      ...(linkedId ? { linkedId: String(linkedId) } : {}),
     };
 
     const targetUrl = state.composer.replyToId
@@ -578,6 +601,14 @@ export default function MessagingWidget() {
     });
 
     if (res.ok) {
+      const successPayload = await res.json().catch(() => null);
+      const createdMessage = successPayload?.message || null;
+      if (createdMessage) {
+        setMessagesByCompany((prev) => {
+          const key = getCompanyCacheKey(state.activeCompanyId || companyId);
+          return { ...prev, [key]: mergeMessageList(prev[key], createdMessage) };
+        });
+      }
       dispatch({ type: 'composer/reset' });
       globalThis.localStorage?.removeItem(draftStorageKey);
       setRecipientSearch('');
