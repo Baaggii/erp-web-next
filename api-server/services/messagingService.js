@@ -100,14 +100,6 @@ function isUnknownColumnError(error, columnName) {
   return message.includes('unknown column') && message.includes(String(columnName).toLowerCase());
 }
 
-function canUseLinkedColumns(db) {
-  return messageLinkedContextSupport.get(db) !== false;
-}
-
-function markLinkedColumnsUnsupported(db) {
-  messageLinkedContextSupport.set(db, false);
-}
-
 async function readIdempotencyRow(db, { companyId, empid, idempotencyKey }) {
   const mode = idempotencyRequestHashSupport.get(db);
   if (mode !== false) {
@@ -327,7 +319,7 @@ function enforceLocalRateLimitFallback({ companyId, empid, digest, now }) {
   return [1, 0, 0];
 }
 
-async function enforceRateLimit(companyId, empid, dedupeSeed, db = pool) {
+async function enforceRateLimit(companyId, empid, body, db = pool) {
   const now = Date.now();
   const member = `${now}:${crypto.randomUUID()}`;
   const dedupeInput = String(dedupeSeed || '').trim().toLowerCase();
