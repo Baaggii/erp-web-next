@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { deleteMessage, getMessages, postMessage, setMessagingIo } from '../../api-server/services/messagingService.js';
+import { deleteMessage, getMessages, patchMessage, postMessage, setMessagingIo } from '../../api-server/services/messagingService.js';
 
 class FakeDb {
   constructor() {
@@ -11,10 +11,13 @@ class FakeDb {
 
   async query(sql, params = []) {
     if (sql.includes('CREATE TABLE IF NOT EXISTS')) return [[]];
-    if (sql.startsWith('SELECT message_id FROM erp_message_idempotency')) {
+    if (sql.includes("FROM information_schema.TABLES") && sql.includes("TABLE_NAME = 'erp_messages'")) {
+      return [[{ count: 1 }]];
+    }
+    if (sql.includes('FROM erp_message_idempotency')) {
       const [companyId, empid, key] = params;
       const messageId = this.idem.get(`${companyId}:${empid}:${key}`);
-      return [messageId ? [{ message_id: messageId }] : []];
+      return [messageId ? [{ message_id: messageId, request_hash: null, expires_at: null }] : []];
     }
     if (sql.startsWith('INSERT INTO erp_messages')) {
       const [companyId, authorEmpid, parentId, linkedType, linkedId, visibilityScope, visibilityDepartmentId, visibilityEmpid, body, bodyCiphertext, bodyIv, bodyAuthTag] = params;
@@ -102,6 +105,58 @@ test('auth + tenant isolation blocks cross-company delete (IDOR/BOLA)', async ()
         companyId: 2,
         messageId: created.message.id,
         correlationId: 'c2',
+        db,
+        getSession: async () => session,
+      }),
+    /Message not found/,
+  );
+});
+
+test('tenant isolation: user from company B cannot view company A messages', async () => {
+  const db = new FakeDb();
+  const session = { permissions: { messaging: true } };
+
+  await postMessage({
+    user,
+    companyId: 1,
+    payload: { body: 'company A only', linkedType: 'transaction', linkedId: 'tx-a', idempotencyKey: 'tenant-a1' },
+    correlationId: 'tenant-a1',
+    db,
+    getSession: async () => session,
+  });
+
+  const visibleInCompanyB = await getMessages({
+    user: { empid: 'e-2', companyId: 2 },
+    companyId: 2,
+    correlationId: 'tenant-b1',
+    db,
+    getSession: async () => session,
+  });
+
+  assert.equal(visibleInCompanyB.items.length, 0);
+});
+
+test('tenant isolation: user from company B cannot edit company A message', async () => {
+  const db = new FakeDb();
+  const session = { permissions: { messaging: true } };
+
+  const created = await postMessage({
+    user,
+    companyId: 1,
+    payload: { body: 'edit me', linkedType: 'transaction', linkedId: 'tx-a2', idempotencyKey: 'tenant-a2' },
+    correlationId: 'tenant-a2',
+    db,
+    getSession: async () => session,
+  });
+
+  await assert.rejects(
+    () =>
+      patchMessage({
+        user: { empid: 'e-2', companyId: 2 },
+        companyId: 2,
+        messageId: created.message.id,
+        payload: { body: 'cross-tenant edit attempt' },
+        correlationId: 'tenant-b2',
         db,
         getSession: async () => session,
       }),
