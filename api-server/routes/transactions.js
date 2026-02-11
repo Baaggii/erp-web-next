@@ -17,6 +17,10 @@ const notificationsRateLimiter = rateLimit({
 router.get('/', getTransactions);
 router.get('/notifications', notificationsRateLimiter, listTransactionNotifications);
 router.post('/notifications/mark-read', markTransactionNotificationsRead);
-router.post('/notifications/mark-all-read', markAllTransactionNotificationsRead);
+router.post(
+  '/notifications/mark-all-read',
+  notificationsRateLimiter,
+  markAllTransactionNotificationsRead,
+);
 
 export default router;
