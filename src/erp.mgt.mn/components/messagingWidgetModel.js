@@ -36,7 +36,11 @@ export function createInitialWidgetState({ isOpen = false, activeConversationId 
     activeCompanyId: companyId,
     composer: {
       body: '',
+      topic: '',
+      recipients: [],
       replyToId: null,
+      linkedType: null,
+      linkedId: null,
       attachments: [],
     },
   };
@@ -54,12 +58,61 @@ export function messagingWidgetReducer(state, action) {
       return { ...state, activeConversationId: action.payload || null, composer: { ...state.composer, replyToId: null } };
     case 'composer/setBody':
       return { ...state, composer: { ...state.composer, body: action.payload } };
+    case 'composer/setTopic':
+      return { ...state, composer: { ...state.composer, topic: sanitizeMessageText(action.payload).slice(0, 120) } };
+    case 'composer/setRecipients':
+      return {
+        ...state,
+        composer: {
+          ...state.composer,
+          recipients: Array.isArray(action.payload)
+            ? Array.from(new Set(action.payload.map(normalizeId).filter(Boolean)))
+            : [],
+        },
+      };
     case 'composer/setReplyTo':
       return { ...state, composer: { ...state.composer, replyToId: action.payload || null } };
+    case 'composer/setLinkedContext':
+      return {
+        ...state,
+        composer: {
+          ...state.composer,
+          linkedType: action.payload?.linkedType || null,
+          linkedId: action.payload?.linkedId || null,
+        },
+      };
     case 'composer/setAttachments':
       return { ...state, composer: { ...state.composer, attachments: action.payload || [] } };
+    case 'composer/start':
+      return {
+        ...state,
+        isOpen: true,
+        activeConversationId: action.payload?.conversationId || null,
+        composer: {
+          body: '',
+          topic: sanitizeMessageText(action.payload?.topic || '').slice(0, 120),
+          recipients: Array.isArray(action.payload?.recipients)
+            ? Array.from(new Set(action.payload.recipients.map(normalizeId).filter(Boolean)))
+            : [],
+          replyToId: null,
+          linkedType: action.payload?.linkedType || null,
+          linkedId: action.payload?.linkedId || null,
+          attachments: [],
+        },
+      };
     case 'composer/reset':
-      return { ...state, composer: { body: '', replyToId: null, attachments: [] } };
+      return {
+        ...state,
+        composer: {
+          body: '',
+          topic: state.composer.topic,
+          recipients: state.composer.recipients,
+          replyToId: null,
+          linkedType: state.composer.linkedType,
+          linkedId: state.composer.linkedId,
+          attachments: [],
+        },
+      };
     case 'company/switch':
       return {
         ...createInitialWidgetState({
