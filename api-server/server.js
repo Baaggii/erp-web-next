@@ -68,6 +68,7 @@ import posApiReferenceCodeRoutes from "./routes/posapi_reference_codes.js";
 import cncProcessingRoutes from "./routes/cnc_processing.js";
 import messagingRoutes from "./routes/messaging.js";
 import reportRoutes from "./routes/report.js";
+import journalRoutes from "./routes/journal.js";
 import { setNotificationEmitter } from "./services/transactionNotificationQueue.js";
 import {
   setNotificationEmitter as setUnifiedNotificationEmitter,
@@ -315,6 +316,7 @@ app.use("/api/procedures", requireAuth, procedureRoutes);
 app.use("/api/proc_triggers", requireAuth, procTriggerRoutes);
 app.use("/api/report_procedures", reportProcedureRoutes);
 app.use("/api/report", reportRoutes);
+app.use("/api/journal", requireAuth, journalRoutes);
 app.use("/api/report_access", reportAccessRoutes);
 app.use("/api/tours", tourRoutes);
 app.use("/api/report_builder", reportBuilderRoutes);
