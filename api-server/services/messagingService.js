@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import { pool, getEmploymentSession } from '../../db/index.js';
+import { redisEval } from './redisClient.js';
 
 const DEFAULT_EDIT_WINDOW_MS = 15 * 60 * 1000;
 const MAX_MESSAGE_LENGTH = 4000;
@@ -14,7 +15,28 @@ const validatedMessagingSchemas = new WeakSet();
 let ioRef = null;
 
 const onlineByCompany = new Map();
-const recentMessagesBySender = new Map();
+const RATE_LIMIT_REDIS_SCRIPT = `
+local rateKey = KEYS[1]
+local duplicateKey = KEYS[2]
+local now = tonumber(ARGV[1])
+local windowMs = tonumber(ARGV[2])
+local maxMessages = tonumber(ARGV[3])
+local member = ARGV[4]
+
+redis.call('ZREMRANGEBYSCORE', rateKey, '-inf', now - windowMs)
+local count = redis.call('ZCARD', rateKey)
+if count >= maxMessages then
+  return {0, 1, 0}
+end
+
+if redis.call('SET', duplicateKey, member, 'NX', 'PX', windowMs) == false then
+  return {0, 0, 1}
+end
+
+redis.call('ZADD', rateKey, now, member)
+redis.call('PEXPIRE', rateKey, windowMs)
+return {1, 0, 0}
+`;
 
 function createError(status, code, message, details) {
   const err = new Error(message);
@@ -172,19 +194,31 @@ function isSpam(body) {
   return /(.)\1{12,}/.test(body) || /(https?:\/\/\S+){4,}/i.test(body);
 }
 
-function enforceRateLimit(companyId, empid, body) {
-  const key = `${companyId}:${empid}`;
+async function enforceRateLimit(companyId, empid, body) {
   const now = Date.now();
-  const history = (recentMessagesBySender.get(key) || []).filter((entry) => now - entry.ts <= MAX_RATE_WINDOW_MS);
-  if (history.length >= MAX_RATE_MESSAGES) {
+  const member = `${now}:${crypto.randomUUID()}`;
+  const normalizedBody = body.trim().toLowerCase();
+  const digest = crypto.createHash('sha256').update(normalizedBody).digest('hex');
+  const rateKey = `messaging:rate:${companyId}:${empid}`;
+  const duplicateKey = `messaging:dedupe:${companyId}:${empid}:${digest}`;
+
+  let result;
+  try {
+    result = await redisEval(
+      RATE_LIMIT_REDIS_SCRIPT,
+      [rateKey, duplicateKey],
+      [String(now), String(MAX_RATE_WINDOW_MS), String(MAX_RATE_MESSAGES), member],
+    );
+  } catch {
+    throw createError(503, 'RATE_LIMIT_BACKEND_UNAVAILABLE', 'Messaging rate limiter is unavailable');
+  }
+
+  if (!Array.isArray(result) || Number(result[0]) !== 1) {
+    if (Number(result?.[2]) === 1) {
+      throw createError(429, 'DUPLICATE_MESSAGE', 'Duplicate message detected');
+    }
     throw createError(429, 'RATE_LIMITED', 'Too many messages in a short period');
   }
-  const duplicate = history.find((entry) => entry.body === body);
-  if (duplicate) {
-    throw createError(429, 'DUPLICATE_MESSAGE', 'Duplicate message detected');
-  }
-  history.push({ ts: now, body });
-  recentMessagesBySender.set(key, history);
 }
 
 async function assertMessagingSchema(db = pool) {
@@ -290,7 +324,7 @@ async function createMessageInternal({ db = pool, ctx, payload, parentMessageId 
     }
   }
 
-  enforceRateLimit(ctx.companyId, ctx.user.empid, body);
+  await enforceRateLimit(ctx.companyId, ctx.user.empid, body);
 
   const [result] = await db.query(
     `INSERT INTO erp_messages
@@ -538,6 +572,12 @@ export async function switchCompanyContext({ user, companyId, getSession = getEm
       departmentId: session?.department_id ?? null,
     },
   };
+}
+
+export async function getMessagingSocketAccess({ user, companyId, getSession = getEmploymentSession }) {
+  const { scopedCompanyId, session } = await resolveSession(user, companyId, getSession);
+  if (!canMessage(session)) throw createError(403, 'PERMISSION_DENIED', 'Messaging permission denied');
+  return { scopedCompanyId, session };
 }
 
 export function setMessagingIo(io) {
