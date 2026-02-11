@@ -13,6 +13,24 @@ import {
   sanitizeMessageText,
 } from './messagingWidgetModel.js';
 
+const STATUS_FILTERS = [
+  { value: 'all', label: 'All' },
+  { value: PRESENCE.ONLINE, label: 'Online' },
+  { value: PRESENCE.OFFLINE, label: 'Offline' },
+];
+
+function highlightMentions(text) {
+  const raw = sanitizeMessageText(text || '');
+  if (!raw) return [<span key="empty">Empty message</span>];
+  return raw.split(/(@[A-Za-z0-9_.-]+)/g).map((part, idx) => {
+    if (!part) return null;
+    if (part.startsWith('@')) {
+      return <mark key={`${part}-${idx}`} style={{ background: '#dbeafe', color: '#1d4ed8', borderRadius: 4, padding: '0 2px' }}>{part}</mark>;
+    }
+    return <span key={`${part}-${idx}`}>{part}</span>;
+  }).filter(Boolean);
+}
+
 function countNestedReplies(message) {
   const replies = Array.isArray(message?.replies) ? message.replies : [];
   return replies.reduce((sum, child) => sum + 1 + countNestedReplies(child), 0);
@@ -105,11 +123,12 @@ function canOpenContextLink(permissions, chipType) {
   return permissions?.isAdmin === true;
 }
 
-function MessageNode({ message, onReply, onJumpToParent, parentMap, permissions, activeReplyTarget }) {
+function MessageNode({ message, onReply, onJumpToParent, parentMap, permissions, activeReplyTarget, highlightedIds }) {
   const replyCount = countNestedReplies(message);
   const safeBody = sanitizeMessageText(message.body);
   const linked = extractContextLink(message);
   const isReplyTarget = activeReplyTarget && Number(activeReplyTarget) === Number(message.id);
+  const isHighlighted = highlightedIds.has(message.id);
   const readers = Array.isArray(message.read_by) ? message.read_by.filter(Boolean) : [];
 
   return (
@@ -119,7 +138,8 @@ function MessageNode({ message, onReply, onJumpToParent, parentMap, permissions,
         border: `1px solid ${isReplyTarget ? '#f97316' : '#e2e8f0'}`,
         borderLeftWidth: 4,
         borderRadius: 12,
-        background: isReplyTarget ? '#fff7ed' : '#ffffff',
+        background: isReplyTarget ? '#fff7ed' : isHighlighted ? '#ecfeff' : '#ffffff',
+        boxShadow: isHighlighted ? '0 0 0 2px #22d3ee inset' : 'none',
         padding: 12,
         marginBottom: 10,
       }}
@@ -127,7 +147,7 @@ function MessageNode({ message, onReply, onJumpToParent, parentMap, permissions,
       <header style={{ fontSize: 12, color: '#475569', fontWeight: 600 }}>
         {message.author_empid} · {new Date(message.created_at).toLocaleString()}
       </header>
-      <p style={{ whiteSpace: 'pre-wrap', margin: '8px 0', color: '#0f172a', fontSize: 15 }}>{safeBody || 'Empty message'}</p>
+      <p style={{ whiteSpace: 'pre-wrap', margin: '8px 0', color: '#0f172a', fontSize: 15 }}>{highlightMentions(safeBody)}</p>
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
         {linked.linkedType === 'transaction' && linked.linkedId && (
           <button
@@ -162,6 +182,7 @@ function MessageNode({ message, onReply, onJumpToParent, parentMap, permissions,
           parentMap={parentMap}
           permissions={permissions}
           activeReplyTarget={activeReplyTarget}
+          highlightedIds={highlightedIds}
         />
       ))}
     </article>
@@ -189,11 +210,22 @@ export default function MessagingWidget() {
   const [presence, setPresence] = useState([]);
   const [employees, setEmployees] = useState([]);
   const [recipientSearch, setRecipientSearch] = useState('');
+  const [employeeStatusFilter, setEmployeeStatusFilter] = useState('all');
+  const [presencePanelOpen, setPresencePanelOpen] = useState(true);
+  const [highlightedIds, setHighlightedIds] = useState(() => new Set());
+  const [mentionOpen, setMentionOpen] = useState(false);
+  const [mentionQuery, setMentionQuery] = useState('');
+  const [mentionStart, setMentionStart] = useState(-1);
   const [networkState, setNetworkState] = useState('loading');
   const [error, setError] = useState('');
   const [composerAnnouncement, setComposerAnnouncement] = useState('');
   const [dragOverComposer, setDragOverComposer] = useState(false);
   const composerRef = useRef(null);
+
+  const draftStorageKey = useMemo(() => {
+    const convKey = state.activeConversationId || 'new';
+    return `messaging-widget:draft:${normalizeId(sessionId) || 'anonymous'}:${normalizeId(state.activeCompanyId || companyId) || 'none'}:${convKey}`;
+  }, [sessionId, state.activeConversationId, state.activeCompanyId, companyId]);
 
   const cacheKey = getCompanyCacheKey(state.activeCompanyId || companyId);
   const messages = messagesByCompany[cacheKey] || [];
@@ -218,6 +250,28 @@ export default function MessagingWidget() {
     setError('');
     setNetworkState('loading');
   }, [companyId, state.activeCompanyId]);
+
+  useEffect(() => {
+    const raw = globalThis.localStorage?.getItem(draftStorageKey);
+    if (!raw) return;
+    try {
+      const parsed = JSON.parse(raw);
+      if (typeof parsed.body === 'string') dispatch({ type: 'composer/setBody', payload: parsed.body });
+      if (typeof parsed.topic === 'string') dispatch({ type: 'composer/setTopic', payload: parsed.topic });
+      if (Array.isArray(parsed.recipients)) dispatch({ type: 'composer/setRecipients', payload: parsed.recipients });
+    } catch {
+      // Ignore corrupt draft.
+    }
+  }, [draftStorageKey]);
+
+  useEffect(() => {
+    const payload = JSON.stringify({
+      body: state.composer.body,
+      topic: state.composer.topic,
+      recipients: state.composer.recipients,
+    });
+    globalThis.localStorage?.setItem(draftStorageKey, payload);
+  }, [draftStorageKey, state.composer.body, state.composer.topic, state.composer.recipients]);
 
   useEffect(() => {
     const activeCompany = state.activeCompanyId || companyId;
@@ -277,6 +331,17 @@ export default function MessagingWidget() {
         const key = getCompanyCacheKey(state.activeCompanyId || companyId);
         return { ...prev, [key]: [...(prev[key] || []), nextMessage] };
       });
+      if (nextMessage?.parent_message_id || nextMessage?.parentMessageId) {
+        const id = nextMessage.id;
+        setHighlightedIds((prev) => new Set([...prev, id]));
+        setTimeout(() => {
+          setHighlightedIds((prev) => {
+            const next = new Set(prev);
+            next.delete(id);
+            return next;
+          });
+        }, 2400);
+      }
     };
     const onPresence = (payload) => {
       setPresence(Array.isArray(payload?.onlineUsers) ? payload.onlineUsers : []);
@@ -351,6 +416,17 @@ export default function MessagingWidget() {
     return employeeRecords.filter((entry) => entry.label.toLowerCase().includes(query) || entry.id.toLowerCase().includes(query));
   }, [employeeRecords, recipientSearch]);
 
+  const presenceEmployees = useMemo(() => {
+    const query = recipientSearch.trim().toLowerCase();
+    return employeeRecords.filter((entry) => {
+      const matchesQuery = !query || entry.label.toLowerCase().includes(query) || entry.id.toLowerCase().includes(query);
+      if (!matchesQuery) return false;
+      if (employeeStatusFilter === PRESENCE.ONLINE) return entry.status === PRESENCE.ONLINE;
+      if (employeeStatusFilter === PRESENCE.OFFLINE) return entry.status === PRESENCE.OFFLINE || entry.status === PRESENCE.AWAY;
+      return true;
+    });
+  }, [employeeRecords, employeeStatusFilter, recipientSearch]);
+
   const conversationSummaries = useMemo(() => conversations.map((conversation) => {
     const previewMessage = conversation.messages.at(-1);
     return {
@@ -364,8 +440,20 @@ export default function MessagingWidget() {
 
   const activeTopic = state.composer.topic || activeConversation?.title || 'Untitled topic';
 
+  const mentionCandidates = useMemo(() => {
+    const query = mentionQuery.trim().toLowerCase();
+    return employeeRecords
+      .filter((entry) => !query || entry.label.toLowerCase().includes(query) || entry.id.toLowerCase().includes(query))
+      .slice(0, 8);
+  }, [employeeRecords, mentionQuery]);
+
   const sendMessage = async () => {
     const safeBody = sanitizeMessageText(state.composer.body);
+    const safeTopic = sanitizeMessageText(activeTopic);
+    if (!safeTopic) {
+      setComposerAnnouncement('Topic is required.');
+      return;
+    }
     if (!safeBody) {
       setComposerAnnouncement('Cannot send an empty message.');
       return;
@@ -378,7 +466,7 @@ export default function MessagingWidget() {
       parentMessageId: state.composer.replyToId,
       linkedType: state.composer.linkedType || activeConversation?.linkedType || null,
       linkedId: state.composer.linkedId || activeConversation?.linkedId || null,
-      topic: sanitizeMessageText(activeTopic),
+      topic: safeTopic,
       recipientEmpids: state.composer.recipients,
       mentions: Array.from(new Set((safeBody.match(/@[A-Za-z0-9_.-]+/g) || []).map((token) => token.slice(1)))),
       idempotencyKey: `${Date.now()}-${Math.random().toString(36).slice(2, 12)}`,
@@ -394,6 +482,7 @@ export default function MessagingWidget() {
 
     if (res.ok) {
       dispatch({ type: 'composer/reset' });
+      globalThis.localStorage?.removeItem(draftStorageKey);
       setRecipientSearch('');
       setComposerAnnouncement('Message sent.');
       composerRef.current?.focus();
@@ -463,6 +552,45 @@ export default function MessagingWidget() {
     setRecipientSearch('');
   };
 
+  const openNewMessage = () => {
+    dispatch({ type: 'composer/setTopic', payload: '' });
+    dispatch({ type: 'composer/setBody', payload: '' });
+    dispatch({ type: 'composer/setReplyTo', payload: null });
+    setComposerAnnouncement('Started a new message draft. Add a topic and message body.');
+  };
+
+  const onComposerInput = (event) => {
+    const value = event.target.value;
+    dispatch({ type: 'composer/setBody', payload: value });
+    const caret = event.target.selectionStart || value.length;
+    const left = value.slice(0, caret);
+    const mentionMatch = left.match(/(^|\s)@([A-Za-z0-9_.-]*)$/);
+    if (!mentionMatch) {
+      setMentionOpen(false);
+      setMentionQuery('');
+      setMentionStart(-1);
+      return;
+    }
+    setMentionOpen(true);
+    setMentionQuery(mentionMatch[2] || '');
+    setMentionStart(caret - mentionMatch[2].length - 1);
+  };
+
+  const insertMention = (empid) => {
+    if (mentionStart < 0) return;
+    const body = state.composer.body;
+    const cursor = composerRef.current?.selectionStart || body.length;
+    const nextBody = `${body.slice(0, mentionStart)}@${empid} ${body.slice(cursor)}`;
+    dispatch({ type: 'composer/setBody', payload: nextBody });
+    setMentionOpen(false);
+    setMentionQuery('');
+    requestAnimationFrame(() => {
+      const nextPos = mentionStart + empid.length + 2;
+      composerRef.current?.focus();
+      composerRef.current?.setSelectionRange(nextPos, nextPos);
+    });
+  };
+
   const onRemoveRecipient = (id) => {
     dispatch({ type: 'composer/setRecipients', payload: state.composer.recipients.filter((entry) => entry !== id) });
   };
@@ -513,7 +641,7 @@ export default function MessagingWidget() {
         </button>
       </header>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '320px 1fr', minHeight: 560 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '360px 1fr', minHeight: 560 }}>
         <aside style={{ borderRight: '1px solid #e2e8f0', background: '#ffffff', display: 'flex', flexDirection: 'column' }}>
           <div style={{ padding: 12, borderBottom: '1px solid #e2e8f0' }}>
             <label htmlFor="messaging-company-switch" style={{ fontSize: 12, fontWeight: 600, color: '#334155' }}>Company</label>
@@ -529,6 +657,56 @@ export default function MessagingWidget() {
           <div style={{ padding: 12, borderBottom: '1px solid #e2e8f0' }}>
             <h3 style={{ margin: 0, fontSize: 14, color: '#0f172a' }}>Topics</h3>
             <p style={{ margin: '4px 0 0', fontSize: 12, color: '#64748b' }}>Grouped by topic or linked entity.</p>
+          </div>
+
+          <div style={{ padding: 12, borderBottom: '1px solid #e2e8f0' }}>
+            <button type="button" onClick={() => setPresencePanelOpen((prev) => !prev)} style={{ border: 0, background: 'transparent', fontWeight: 700, color: '#0f172a', padding: 0 }}>
+              {presencePanelOpen ? '▾' : '▸'} Employee presence
+            </button>
+            {presencePanelOpen && (
+              <div style={{ marginTop: 8 }}>
+                <input
+                  value={recipientSearch}
+                  onChange={(event) => setRecipientSearch(event.target.value)}
+                  placeholder="Search by name or employee ID"
+                  aria-label="Search employees"
+                  style={{ width: '100%', borderRadius: 8, border: '1px solid #cbd5e1', padding: '8px 10px', marginBottom: 8 }}
+                />
+                <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
+                  {STATUS_FILTERS.map((filter) => (
+                    <button
+                      key={filter.value}
+                      type="button"
+                      onClick={() => setEmployeeStatusFilter(filter.value)}
+                      style={{
+                        borderRadius: 999,
+                        border: employeeStatusFilter === filter.value ? '1px solid #2563eb' : '1px solid #cbd5e1',
+                        background: employeeStatusFilter === filter.value ? '#eff6ff' : '#fff',
+                        padding: '4px 8px',
+                        fontSize: 11,
+                      }}
+                    >
+                      {filter.label}
+                    </button>
+                  ))}
+                </div>
+                <div style={{ maxHeight: 180, overflowY: 'auto', display: 'grid', gap: 4 }}>
+                  {presenceEmployees.slice(0, 40).map((entry) => {
+                    const selected = state.composer.recipients.includes(entry.id);
+                    return (
+                      <button key={entry.id} type="button" onClick={() => (selected ? onRemoveRecipient(entry.id) : onChooseRecipient(entry.id))} style={{ display: 'flex', alignItems: 'center', gap: 8, border: selected ? '1px solid #2563eb' : '1px solid #e2e8f0', borderRadius: 8, background: selected ? '#eff6ff' : '#fff', padding: '6px 8px', textAlign: 'left' }}>
+                        <span style={{ width: 8, height: 8, borderRadius: 999, background: presenceColor(entry.status) }} />
+                        <span style={{ fontSize: 12, color: '#0f172a' }}>{entry.label}</span>
+                        <span style={{ marginLeft: 'auto', fontSize: 11, color: '#64748b' }}>{entry.id}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+                <button type="button" disabled={state.composer.recipients.length === 0} onClick={openNewMessage} style={{ marginTop: 8, border: 0, borderRadius: 8, background: state.composer.recipients.length ? '#2563eb' : '#94a3b8', color: '#fff', padding: '8px 10px', width: '100%' }}>
+                  New message ({state.composer.recipients.length})
+                </button>
+              </div>
+            )}
           </div>
 
           <div style={{ overflowY: 'auto', padding: 10, display: 'grid', gap: 8 }}>
@@ -589,9 +767,11 @@ export default function MessagingWidget() {
                 activeReplyTarget={state.composer.replyToId}
                 onReply={(id) => {
                   dispatch({ type: 'composer/setReplyTo', payload: id });
+                  document.querySelector(`[aria-label='Message ${id}']`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
                   setComposerAnnouncement(`Reply target set to #${id}.`);
                 }}
                 onJumpToParent={(parentId) => document.querySelector(`[aria-label='Message ${parentId}']`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })}
+                highlightedIds={highlightedIds}
               />
             ))}
           </main>
@@ -616,7 +796,8 @@ export default function MessagingWidget() {
                   id="messaging-topic"
                   value={state.composer.topic}
                   onChange={(event) => dispatch({ type: 'composer/setTopic', payload: event.target.value })}
-                  placeholder="Topic"
+                  required
+                  placeholder="Enter a topic"
                   aria-label="Topic"
                   style={{ width: '100%', marginTop: 6, borderRadius: 8, border: '1px solid #cbd5e1', padding: '9px 10px' }}
                 />
@@ -680,7 +861,7 @@ export default function MessagingWidget() {
               id="messaging-composer"
               ref={composerRef}
               value={state.composer.body}
-              onChange={(event) => dispatch({ type: 'composer/setBody', payload: event.target.value })}
+              onChange={onComposerInput}
               onKeyDown={(event) => {
                 if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
                   event.preventDefault();
@@ -694,13 +875,26 @@ export default function MessagingWidget() {
                 width: '100%',
                 marginTop: 6,
                 borderRadius: 12,
-                border: dragOverComposer ? '2px dashed #f97316' : '1px solid #cbd5e1',
+                border: dragOverComposer ? '2px dashed #f97316' : '2px dashed #cbd5e1',
                 padding: '10px 12px',
                 fontSize: 15,
               }}
             />
 
-            <p style={{ margin: '6px 0 0', fontSize: 11, color: '#64748b' }}>Tip: drag files here to attach them, or drag transaction data to link context.</p>
+            {mentionOpen && (
+              <div style={{ border: '1px solid #cbd5e1', borderRadius: 10, marginTop: 6, background: '#fff', maxHeight: 180, overflowY: 'auto' }}>
+                {mentionCandidates.map((entry) => (
+                  <button key={entry.id} type="button" onClick={() => insertMention(entry.id)} style={{ width: '100%', textAlign: 'left', padding: '8px 10px', border: 0, background: 'transparent', display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ width: 8, height: 8, borderRadius: 999, background: presenceColor(entry.status) }} />
+                    <span style={{ fontSize: 13 }}>{entry.label}</span>
+                    <span style={{ marginLeft: 'auto', fontSize: 12, color: '#64748b' }}>@{entry.id}</span>
+                  </button>
+                ))}
+                {mentionCandidates.length === 0 && <p style={{ margin: 0, padding: 10, fontSize: 12, color: '#64748b' }}>No people found for mention.</p>}
+              </div>
+            )}
+
+            <p style={{ margin: '6px 0 0', fontSize: 11, color: '#64748b' }}>Tip: drag files here to attach (multi-file supported), or drag a transaction ID to link context.</p>
 
             {state.composer.replyToId && (
               <p style={{ margin: '8px 0 0', fontSize: 12, color: '#475569' }}>
