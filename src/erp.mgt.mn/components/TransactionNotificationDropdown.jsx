@@ -1239,7 +1239,7 @@ export default function TransactionNotificationDropdown() {
         onClick={() => setOpen((prev) => !prev)}
       >
         <span aria-hidden="true">🔔</span>
-        {bellUnreadCount > 0 && <span style={styles.badge}>{bellUnreadCount}</span>}
+        {open && bellUnreadCount > 0 && <span style={styles.badge}>{bellUnreadCount}</span>}
       </button>
       {open && (
         <div style={styles.dropdown}>
