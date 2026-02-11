@@ -199,6 +199,43 @@ test('idempotency key returns same message without duplicate insert', async () =
   assert.equal(db.messages.length, 1);
 });
 
+
+
+test('idempotency fallback works when expires_at column is unavailable', async () => {
+  const db = new FakeDb();
+  const session = { permissions: { messaging: true } };
+  const originalQuery = db.query.bind(db);
+
+  db.query = async (sql, params = []) => {
+    if (sql.includes('erp_message_idempotency') && sql.includes('expires_at')) {
+      const error = new Error("Unknown column 'expires_at' in 'field list'");
+      error.sqlMessage = "Unknown column 'expires_at' in 'field list'";
+      throw error;
+    }
+    return originalQuery(sql, params);
+  };
+
+  const created = await postMessage({
+    user,
+    companyId: 1,
+    payload: { body: 'legacy schema path', linkedType: 'topic', linkedId: 'legacy', idempotencyKey: 'legacy-1' },
+    correlationId: 'legacy-1',
+    db,
+    getSession: async () => session,
+  });
+
+  const replay = await postMessage({
+    user,
+    companyId: 1,
+    payload: { body: 'legacy schema path', linkedType: 'topic', linkedId: 'legacy', idempotencyKey: 'legacy-1' },
+    correlationId: 'legacy-2',
+    db,
+    getSession: async () => session,
+  });
+
+  assert.equal(created.message.id, replay.message.id);
+  assert.equal(replay.idempotentReplay, true);
+});
 test('reply beyond max depth is rejected', async () => {
   const db = new FakeDb();
   const session = { permissions: { messaging: true } };
