@@ -69,11 +69,11 @@ function groupConversations(messages) {
   messages.forEach((msg) => {
     const topic = extractMessageTopic(msg);
     const link = extractContextLink(msg);
+    const conversationId = msg.conversation_id || msg.conversationId || null;
     const key = String(
-      msg.conversation_id
+      conversationId
       || (link.linkedType && link.linkedId ? `${link.linkedType}:${link.linkedId}` : null)
-      || msg.topic
-      || 'general:general',
+      || `message:${msg.parent_message_id || msg.parentMessageId || msg.id}`,
     );
     if (!map.has(key)) {
       map.set(key, {
@@ -82,6 +82,7 @@ function groupConversations(messages) {
         messages: [],
         linkedType: link.linkedType,
         linkedId: link.linkedId,
+        rootMessageId: conversationId || msg.parent_message_id || msg.parentMessageId || msg.id,
       });
     }
     const current = map.get(key);
@@ -144,7 +145,7 @@ function canOpenContextLink(permissions, chipType) {
 }
 
 function formatEmployeeOption(entry) {
-  return `${entry.label} (ID #${entry.id})`;
+  return `${entry.label} (${entry.employeeCode || `ID #${entry.id}`})`;
 }
 
 function canViewTransaction(transactionId, userId, permissions) {
@@ -154,7 +155,7 @@ function canViewTransaction(transactionId, userId, permissions) {
   return canOpenContextLink(permissions, 'transaction');
 }
 
-function MessageNode({ message, depth = 0, onReply, onJumpToParent, onToggleReplies, collapsedMessageIds, parentMap, permissions, activeReplyTarget, highlightedIds, onOpenLinkedTransaction, resolveEmployeeLabel }) {
+function MessageNode({ message, depth = 0, onReply, onJumpToParent, onToggleReplies, collapsedMessageIds, parentMap, permissions, activeReplyTarget, highlightedIds, onOpenLinkedTransaction, resolveEmployeeLabel, canDeleteMessage, onDeleteMessage }) {
   const replyCount = countNestedReplies(message);
   const safeBody = sanitizeMessageText(message.body);
   const linked = extractContextLink(message);
@@ -199,6 +200,9 @@ function MessageNode({ message, depth = 0, onReply, onJumpToParent, onToggleRepl
       </div>
       <div style={{ display: 'flex', gap: 8, marginTop: 6, alignItems: 'center', flexWrap: 'wrap' }}>
         <button type="button" onClick={() => onReply(message.id)} aria-label={`Reply to message ${message.id}`}>Reply</button>
+        {canDeleteMessage(message) && (
+          <button type="button" onClick={() => onDeleteMessage(message.id)} aria-label={`Delete message ${message.id}`}>Delete message</button>
+        )}
         {message.parent_message_id && parentMap.has(message.parent_message_id) && (
           <button type="button" onClick={() => onJumpToParent(message.parent_message_id)} aria-label="Jump to parent message">
             Jump to parent
@@ -229,6 +233,8 @@ function MessageNode({ message, depth = 0, onReply, onJumpToParent, onToggleRepl
           highlightedIds={highlightedIds}
           onOpenLinkedTransaction={onOpenLinkedTransaction}
           resolveEmployeeLabel={resolveEmployeeLabel}
+          canDeleteMessage={canDeleteMessage}
+          onDeleteMessage={onDeleteMessage}
         />
       ))}
     </article>
@@ -277,6 +283,23 @@ export default function MessagingWidget() {
 
   const cacheKey = getCompanyCacheKey(state.activeCompanyId || companyId);
   const messages = messagesByCompany[cacheKey] || [];
+
+  const fetchThreadMessages = async (rootMessageId, activeCompany) => {
+    if (!rootMessageId || !activeCompany) return;
+    const params = new URLSearchParams({ companyId: String(activeCompany) });
+    const threadRes = await fetch(`${API_BASE}/messaging/messages/${rootMessageId}/thread?${params.toString()}`, { credentials: 'include' });
+    if (!threadRes.ok) return;
+    const threadData = await threadRes.json();
+    const threadItems = Array.isArray(threadData?.items) ? threadData.items : [];
+    if (threadItems.length === 0) return;
+    setMessagesByCompany((prev) => {
+      const key = getCompanyCacheKey(activeCompany);
+      const byId = new Map((prev[key] || []).map((entry) => [String(entry.id), entry]));
+      threadItems.forEach((entry) => byId.set(String(entry.id), entry));
+      const merged = Array.from(byId.values()).sort((a, b) => new Date(a.created_at || 0).getTime() - new Date(b.created_at || 0).getTime());
+      return { ...prev, [key]: merged };
+    });
+  };
 
   useEffect(() => {
     globalThis.sessionStorage?.setItem(sessionOpenKey, state.isOpen ? '1' : '0');
@@ -336,7 +359,6 @@ export default function MessagingWidget() {
         if (disposed) return;
         const incomingMessages = Array.isArray(data.items) ? data.items : Array.isArray(data.messages) ? data.messages : [];
         setMessagesByCompany((prev) => ({ ...prev, [getCompanyCacheKey(activeCompany)]: incomingMessages }));
-        setPresence(Array.isArray(data.onlineUsers) ? data.onlineUsers : []);
         setNetworkState('ready');
       } catch (err) {
         if (disposed) return;
@@ -370,13 +392,36 @@ export default function MessagingWidget() {
         const employeeRows = Array.isArray(employeeData?.rows) ? employeeData.rows : Array.isArray(employeeData) ? employeeData : [];
         const profileMap = new Map(employeeRows.map((row) => [
           normalizeId(row.emp_id || row.empid || row.id),
-          row.emp_name || row.employee_name || row.name || row.full_name || row.emp_id,
+          {
+            displayName: row.emp_name || row.employee_name || row.name || row.full_name || row.emp_id,
+            employeeCode: row.employee_code || row.emp_code || row.emp_id,
+          },
         ]));
 
-        setEmployees(idsFromEmployment.map((empid) => ({
-          empid,
-          name: profileMap.get(empid) || empid,
-        })));
+        const uniqueEmployees = Array.from(new Map(idsFromEmployment.map((empid) => {
+          const profile = profileMap.get(empid) || {};
+          return [empid, {
+            empid,
+            name: profile.displayName || empid,
+            employeeCode: profile.employeeCode || empid,
+          }];
+        })).values());
+        setEmployees(uniqueEmployees);
+
+        const presenceParams = new URLSearchParams({
+          companyId: String(activeCompany),
+          userIds: uniqueEmployees.map((entry) => entry.empid).join(','),
+        });
+        const presenceRes = await fetch(`${API_BASE}/messaging/presence?${presenceParams.toString()}`, { credentials: 'include' });
+        if (presenceRes.ok) {
+          const presenceData = await presenceRes.json();
+          const onlineUsers = Array.isArray(presenceData?.users) ? presenceData.users : [];
+          const deduped = Array.from(new Map(onlineUsers.map((entry) => [normalizeId(entry.empid || entry.id), {
+            ...entry,
+            empid: normalizeId(entry.empid || entry.id),
+          }])).values()).filter((entry) => entry.empid);
+          setPresence(deduped);
+        }
       } catch {
         // Optional enhancement only; keep widget functional.
       }
@@ -411,19 +456,44 @@ export default function MessagingWidget() {
       }
     };
     const onPresence = (payload) => {
-      setPresence(Array.isArray(payload?.onlineUsers) ? payload.onlineUsers : []);
+      const incoming = Array.isArray(payload?.onlineUsers)
+        ? payload.onlineUsers
+        : payload?.empid
+          ? [payload]
+          : [];
+      if (incoming.length === 0) return;
+      setPresence((prev) => {
+        const next = new Map((prev || []).map((entry) => [normalizeId(entry.empid || entry.id), entry]));
+        incoming.forEach((entry) => {
+          const empid = normalizeId(entry.empid || entry.id);
+          if (!empid) return;
+          next.set(empid, { ...next.get(empid), ...entry, empid });
+        });
+        return Array.from(next.values());
+      });
+    };
+    const onDeleted = (payload) => {
+      const messageId = Number(payload?.messageId || payload?.id);
+      if (!messageId) return;
+      setMessagesByCompany((prev) => {
+        const key = getCompanyCacheKey(state.activeCompanyId || companyId);
+        const nextMessages = (prev[key] || []).filter((entry) => Number(entry.id) !== messageId && Number(entry.parent_message_id || entry.parentMessageId) !== messageId);
+        return { ...prev, [key]: nextMessages };
+      });
     };
     socket.on('messages:new', onNew);
     socket.on('message.created', onNew);
     socket.on('thread.reply.created', onNew);
     socket.on('messages:presence', onPresence);
     socket.on('presence.changed', onPresence);
+    socket.on('message.deleted', onDeleted);
     return () => {
       socket.off('messages:new', onNew);
       socket.off('message.created', onNew);
       socket.off('thread.reply.created', onNew);
       socket.off('messages:presence', onPresence);
       socket.off('presence.changed', onPresence);
+      socket.off('message.deleted', onDeleted);
       disconnectSocket();
     };
   }, [state.activeCompanyId, companyId]);
@@ -455,6 +525,12 @@ export default function MessagingWidget() {
   const messageMap = useMemo(() => new Map(messages.map((msg) => [msg.id, msg])), [messages]);
   const unreadCount = messages.filter((msg) => !msg.read_by?.includes?.(selfEmpid)).length;
 
+  useEffect(() => {
+    if (!activeConversation?.rootMessageId) return;
+    const rootExists = messages.some((entry) => Number(entry.id) === Number(activeConversation.rootMessageId));
+    if (!rootExists) dispatch({ type: 'widget/setConversation', payload: null });
+  }, [activeConversation?.rootMessageId, messages]);
+
 
   useEffect(() => {
     if (state.composer.attachments.length > 0) setAttachmentsOpen(true);
@@ -470,17 +546,35 @@ export default function MessagingWidget() {
     employees.forEach((entry) => {
       seen.set(entry.empid, {
         id: entry.empid,
-        label: sanitizeMessageText(entry.name || entry.empid) || entry.empid,
+        label: sanitizeMessageText(entry.name || entry.displayName || entry.empid) || entry.empid,
+        employeeCode: sanitizeMessageText(entry.employeeCode || entry.empid) || entry.empid,
         status: presenceMap.get(entry.empid) || PRESENCE.OFFLINE,
+      });
+    });
+    presence.forEach((entry) => {
+      const empid = normalizeId(entry.empid || entry.id);
+      if (!empid) return;
+      const existing = seen.get(empid) || { id: empid };
+      seen.set(empid, {
+        ...existing,
+        id: empid,
+        label: sanitizeMessageText(existing.label || entry.displayName || entry.name || empid) || empid,
+        employeeCode: sanitizeMessageText(existing.employeeCode || entry.employeeCode || empid) || empid,
+        status: resolvePresence(entry),
       });
     });
     messages.forEach((msg) => {
       const empid = normalizeId(msg.author_empid);
       if (!empid || seen.has(empid)) return;
-      seen.set(empid, { id: empid, label: empid, status: presenceMap.get(empid) || PRESENCE.OFFLINE });
+      seen.set(empid, {
+        id: empid,
+        label: empid,
+        employeeCode: empid,
+        status: presenceMap.get(empid) || PRESENCE.OFFLINE,
+      });
     });
     return Array.from(seen.values()).sort((a, b) => a.label.localeCompare(b.label));
-  }, [employees, messages, presenceMap]);
+  }, [employees, messages, presence, presenceMap]);
 
   const filteredEmployees = useMemo(() => {
     if (!recipientSearch.trim()) return employeeRecords;
@@ -505,7 +599,7 @@ export default function MessagingWidget() {
       ...conversation,
       unread: conversation.messages.filter((msg) => !msg.read_by?.includes?.(selfEmpid)).length,
       preview: sanitizeMessageText(previewMessage?.body || '').slice(0, 75) || 'No messages yet',
-      groupName: conversation.linkedType && conversation.linkedId ? `${conversation.linkedType} #${conversation.linkedId}` : 'General topic',
+      groupName: conversation.linkedType && conversation.linkedId ? `${conversation.linkedType} #${conversation.linkedId}` : `Thread #${conversation.rootMessageId}`,
       lastActivity: previewMessage?.created_at || null,
     };
   }), [conversations, selfEmpid]);
@@ -519,6 +613,7 @@ export default function MessagingWidget() {
     if (selfEmpid && sessionUserLabel) labels.set(selfEmpid, sessionUserLabel);
     return labels;
   }, [employeeRecords, selfEmpid, sessionUserLabel]);
+  const employeeCodeMap = useMemo(() => new Map(employeeRecords.map((entry) => [entry.id, entry.employeeCode || entry.id])), [employeeRecords]);
   const resolveEmployeeLabel = (empid) => {
     const normalizedEmpid = normalizeId(empid);
     if (!normalizedEmpid) return 'Unknown user';
@@ -554,6 +649,36 @@ export default function MessagingWidget() {
       .slice(0, 8);
   }, [employeeRecords, mentionQuery]);
 
+  const canDeleteMessage = (message) => {
+    if (!message) return false;
+    if (normalizeId(message.author_empid) === selfEmpid) return true;
+    return Boolean(permissions?.isAdmin || permissions?.messaging_delete || permissions?.messaging?.delete);
+  };
+
+  const handleDeleteMessage = async (messageId) => {
+    const activeCompany = state.activeCompanyId || companyId;
+    const params = new URLSearchParams({ companyId: String(activeCompany) });
+    const res = await fetch(`${API_BASE}/messaging/messages/${messageId}?${params.toString()}`, {
+      method: 'DELETE',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ companyId: activeCompany }),
+    });
+    if (!res.ok) {
+      const payload = await res.json().catch(() => null);
+      setComposerAnnouncement(payload?.error?.message || payload?.message || 'Unable to delete message.');
+      return;
+    }
+    setMessagesByCompany((prev) => {
+      const key = getCompanyCacheKey(activeCompany);
+      const nextMessages = (prev[key] || []).filter((entry) => Number(entry.id) !== Number(messageId) && Number(entry.parent_message_id || entry.parentMessageId) !== Number(messageId));
+      return { ...prev, [key]: nextMessages };
+    });
+    if (Number(activeConversation?.rootMessageId) === Number(messageId)) {
+      dispatch({ type: 'widget/setConversation', payload: null });
+    }
+  };
+
   const sendMessage = async () => {
     if (!safeTopic) {
       setComposerAnnouncement('Topic is required.');
@@ -580,11 +705,12 @@ export default function MessagingWidget() {
     const payload = {
       idempotencyKey: createIdempotencyKey(),
       clientTempId,
-      body: `[${safeTopic}] ${safeBody}`,
+      body: safeBody,
       companyId: Number.isFinite(Number(activeCompany)) ? Number(activeCompany) : String(activeCompany),
+      recipientEmpids: state.composer.recipients,
       ...(state.composer.recipients.length === 1
         ? { visibilityScope: 'private', visibilityEmpid: state.composer.recipients[0] }
-        : {}),
+        : { visibilityScope: 'department' }),
       ...(linkedType ? { linkedType } : {}),
       ...(linkedId ? { linkedId: String(linkedId) } : {}),
     };
@@ -608,6 +734,8 @@ export default function MessagingWidget() {
           const key = getCompanyCacheKey(state.activeCompanyId || companyId);
           return { ...prev, [key]: mergeMessageList(prev[key], createdMessage) };
         });
+        const threadRootId = createdMessage.conversation_id || createdMessage.conversationId || createdMessage.parent_message_id || createdMessage.parentMessageId || createdMessage.id;
+        await fetchThreadMessages(threadRootId, activeCompany);
       }
       dispatch({ type: 'composer/reset' });
       globalThis.localStorage?.removeItem(draftStorageKey);
@@ -709,12 +837,13 @@ export default function MessagingWidget() {
     if (mentionStart < 0) return;
     const body = state.composer.body;
     const cursor = composerRef.current?.selectionStart || body.length;
-    const nextBody = `${body.slice(0, mentionStart)}@${empid} ${body.slice(cursor)}`;
+    const mentionLabel = resolveEmployeeLabel(empid).replace(/\s+/g, '_');
+    const nextBody = `${body.slice(0, mentionStart)}@${mentionLabel} ${body.slice(cursor)}`;
     dispatch({ type: 'composer/setBody', payload: nextBody });
     setMentionOpen(false);
     setMentionQuery('');
     requestAnimationFrame(() => {
-      const nextPos = mentionStart + empid.length + 2;
+      const nextPos = mentionStart + mentionLabel.length + 2;
       composerRef.current?.focus();
       composerRef.current?.setSelectionRange(nextPos, nextPos);
     });
@@ -723,6 +852,12 @@ export default function MessagingWidget() {
   const onRemoveRecipient = (id) => {
     dispatch({ type: 'composer/setRecipients', payload: state.composer.recipients.filter((entry) => entry !== id) });
   };
+
+  useEffect(() => {
+    const activeCompany = state.activeCompanyId || companyId;
+    if (!activeCompany || !activeConversation?.rootMessageId) return;
+    fetchThreadMessages(activeConversation.rootMessageId, activeCompany);
+  }, [activeConversation?.rootMessageId, state.activeCompanyId, companyId]);
 
   if (!state.isOpen) {
     return (
@@ -881,6 +1016,11 @@ export default function MessagingWidget() {
             <div style={{ position: 'sticky', top: 0, background: '#f8fafc', paddingBottom: 8, marginBottom: 8 }}>
               <strong style={{ fontSize: 16, color: '#0f172a' }}>{activeTopic}</strong>
               <p style={{ margin: '4px 0 0', fontSize: 12, color: '#64748b' }}>Ctrl/Cmd + Enter sends your message.</p>
+              {activeConversation?.rootMessageId && canDeleteMessage(messages.find((entry) => Number(entry.id) === Number(activeConversation.rootMessageId))) && (
+                <button type="button" onClick={() => handleDeleteMessage(activeConversation.rootMessageId)} style={{ marginTop: 6 }}>
+                  Delete thread
+                </button>
+              )}
             </div>
 
             {networkState === 'loading' && <p>Loading messages…</p>}
@@ -905,6 +1045,8 @@ export default function MessagingWidget() {
                 highlightedIds={highlightedIds}
                 onOpenLinkedTransaction={handleOpenLinkedTransaction}
                 resolveEmployeeLabel={resolveEmployeeLabel}
+                canDeleteMessage={canDeleteMessage}
+                onDeleteMessage={handleDeleteMessage}
               />
             ))}
           </main>
@@ -973,6 +1115,7 @@ export default function MessagingWidget() {
               {state.composer.recipients.map((empid) => {
                 const found = employeeRecords.find((entry) => entry.id === empid);
                 const label = found?.label || empid;
+                const employeeCode = found?.employeeCode || employeeCodeMap.get(empid) || empid;
                 const status = found?.status || PRESENCE.OFFLINE;
                 return (
                   <span key={empid} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, border: '1px solid #cbd5e1', borderRadius: 999, padding: '4px 10px', background: '#f8fafc' }}>
@@ -980,7 +1123,7 @@ export default function MessagingWidget() {
                       {initialsForLabel(label)}
                     </span>
                     <span style={{ width: 8, height: 8, borderRadius: 999, background: presenceColor(status) }} />
-                    <span style={{ fontSize: 12, color: '#1e293b' }}>{label} (ID #{empid})</span>
+                    <span style={{ fontSize: 12, color: '#1e293b' }}>{label} ({employeeCode})</span>
                     <button type="button" aria-label={`Remove recipient ${label}`} onClick={() => onRemoveRecipient(empid)} style={{ border: 0, background: 'transparent', color: '#64748b' }}>×</button>
                   </span>
                 );
