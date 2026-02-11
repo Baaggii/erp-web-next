@@ -960,33 +960,46 @@ export async function getPresence({ user, companyId, userIds, db = pool, getSess
   const ids = Array.from(new Set(String(userIds || '').split(',').map((entry) => entry.trim()).filter(Boolean)));
   if (!ids.length) return { companyId: scopedCompanyId, users: [] };
 
-  const [rows] = await db.query(
-    `SELECT p.empid,
-            p.status,
-            p.heartbeat_at,
-            COALESCE(
-              e.emp_name,
-              e.employee_name,
-              e.name,
-              e.full_name,
-              em.emp_name,
-              em.employee_name,
-              em.name,
-              em.full_name,
-              p.empid
-            ) AS displayName,
-            COALESCE(e.employee_code, e.emp_code, e.emp_id, em.employee_code, em.emp_code, em.emp_id, p.empid) AS employeeCode
-       FROM erp_presence_heartbeats p
-  LEFT JOIN tbl_employee e
-         ON e.emp_id = p.empid
-  LEFT JOIN tbl_employment em
-         ON (em.emp_id = p.empid OR em.employment_emp_id = p.empid)
-      WHERE p.company_id = ?
-        AND p.empid IN (${ids.map(() => '?').join(',')})`,
-    [scopedCompanyId, ...ids],
-  );
+  const queryArgs = [scopedCompanyId, ...ids];
+  const inClause = ids.map(() => '?').join(',');
 
-  return { companyId: scopedCompanyId, users: rows };
+  try {
+    const [rows] = await db.query(
+      `SELECT p.empid,
+              p.status,
+              p.heartbeat_at,
+              COALESCE(e.emp_name, em.emp_name, p.empid) AS displayName,
+              COALESCE(e.employee_code, e.emp_code, e.emp_id, em.employee_code, em.emp_code, em.emp_id, p.empid) AS employeeCode
+         FROM erp_presence_heartbeats p
+    LEFT JOIN tbl_employee e
+           ON e.emp_id = p.empid
+    LEFT JOIN tbl_employment em
+           ON (em.emp_id = p.empid OR em.employment_emp_id = p.empid)
+        WHERE p.company_id = ?
+          AND p.empid IN (${inClause})`,
+      queryArgs,
+    );
+
+    return { companyId: scopedCompanyId, users: rows };
+  } catch (error) {
+    if (!isUnknownColumnError(error, 'emp_name') && !isUnknownColumnError(error, 'employee_code') && !isUnknownColumnError(error, 'emp_code')) {
+      throw error;
+    }
+
+    const [rows] = await db.query(
+      `SELECT p.empid,
+              p.status,
+              p.heartbeat_at,
+              p.empid AS displayName,
+              p.empid AS employeeCode
+         FROM erp_presence_heartbeats p
+        WHERE p.company_id = ?
+          AND p.empid IN (${inClause})`,
+      queryArgs,
+    );
+
+    return { companyId: scopedCompanyId, users: rows };
+  }
 }
 
 export async function switchCompanyContext({ user, companyId, getSession = getEmploymentSession }) {
