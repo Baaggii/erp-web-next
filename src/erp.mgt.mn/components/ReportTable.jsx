@@ -747,11 +747,25 @@ export default function ReportTable({
     const tableHtml = tableContainerRef.current.innerHTML;
     const printWindow = window.open('', '_blank', 'width=1024,height=768');
     if (!printWindow) return;
+
+    const escapedTitle = String(procLabel)
+      .replaceAll('&', '&amp;')
+      .replaceAll('<', '&lt;')
+      .replaceAll('>', '&gt;');
+
+    const finishPrint = () => {
+      printWindow.focus();
+      printWindow.print();
+      printWindow.close();
+    };
+
+    printWindow.addEventListener('load', finishPrint, { once: true });
+
     printWindow.document.open();
     printWindow.document.write(`<!DOCTYPE html>
       <html>
         <head>
-          <title>${procLabel}</title>
+          <title>${escapedTitle}</title>
           <style>
             body { font-family: Arial, sans-serif; padding: 16px; color: #111827; }
             h1 { font-size: 18px; margin-bottom: 12px; }
@@ -762,14 +776,15 @@ export default function ReportTable({
           </style>
         </head>
         <body>
-          <h1>${procLabel}</h1>
+          <h1>${escapedTitle}</h1>
           ${tableHtml}
         </body>
       </html>`);
     printWindow.document.close();
-    printWindow.focus();
-    printWindow.print();
-    printWindow.close();
+
+    window.setTimeout(() => {
+      if (!printWindow.closed) finishPrint();
+    }, 500);
   }, [procLabel]);
 
   return (
