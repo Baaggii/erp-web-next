@@ -280,16 +280,49 @@ export default function useTemporaryNotificationCounts(empid) {
     };
 
     const handleNotification = (payload) => {
-      const kind = payload?.kind;
-      if (kind) {
-        if (kind !== 'temporary') return;
+      const matchesTemporaryKind = (value) => {
+        const normalized = String(value || '')
+          .trim()
+          .toLowerCase();
+        if (!normalized) return false;
+        return (
+          normalized === 'temporary' ||
+          normalized === 'temporary_transaction' ||
+          normalized === 'temporarytransaction' ||
+          normalized.includes('temporary')
+        );
+      };
+
+      const payloadKind = payload?.kind || payload?.type || payload?.source;
+      if (matchesTemporaryKind(payloadKind)) {
         refreshSummary();
         return;
       }
-      const message = payload?.message;
-      if (typeof message !== 'string') return;
-      if (!message.toLowerCase().includes('temporary')) return;
-      refreshSummary();
+
+      let message = payload?.message;
+      if (typeof message === 'string') {
+        try {
+          message = JSON.parse(message);
+        } catch {
+          if (message.toLowerCase().includes('temporary')) {
+            refreshSummary();
+          }
+          return;
+        }
+      }
+
+      if (message && typeof message === 'object') {
+        const messageKind = message.kind || message.type || message.source;
+        if (matchesTemporaryKind(messageKind)) {
+          refreshSummary();
+          return;
+        }
+      }
+
+      const fallbackText = String(payload?.title || payload?.body || '').toLowerCase();
+      if (fallbackText.includes('temporary')) {
+        refreshSummary();
+      }
     };
 
     try {
