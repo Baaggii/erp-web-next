@@ -2,55 +2,57 @@
 
 This audit checks whether `docs/secure-messaging-prompt-pack.md` is implemented in the current codebase.
 
-## Verdict
+## Final check: are **all** requirements met?
 
-**Partially implemented (early-stage implementation).**
+**No.**
 
-There is a working messaging feature (API + socket events + UI widget), and some additional guardrails now exist (root-link validation, reply-depth cap, and basic anti-spam throttling), but most enterprise/security requirements from the prompt pack are still missing.
+The implementation is still **partial**: core messaging works (API + company scoping + realtime + widget), but the majority of enterprise/security/operations requirements in the prompt pack are not implemented yet.
 
 ## What is implemented
 
-- **Authenticated messaging API exists** at `GET /api/messaging` and `POST /api/messaging`. The routes are protected by `requireAuth` and call a dedicated messaging service.
-- **Company-scoped message queries and writes** are enforced in service logic via `resolveContext()` and `getEmploymentSession(...)`.
-- **Basic threaded replies** are supported using `parent_message_id`; frontend renders nested replies recursively.
-- **Optional message linking fields** exist (`topic`, `transaction_id`, `plan_id`) and are stored.
-- **Realtime updates exist** via Socket.IO events (`messages:new`, `messages:presence`) and frontend socket listeners.
-- **Collapsible UI widget exists** and is mounted in layout.
+- **Authenticated messaging API exists** at `GET /api/messaging` and `POST /api/messaging` (`requireAuth` + service calls).
+- **Company-scoped message reads/writes** are enforced through `resolveContext()` and `getEmploymentSession(...)`.
+- **Basic threaded replies** are supported via `parent_message_id`, and rendering is recursive in the widget.
+- **Root-link validation** is enforced at service level for top-level messages (exactly one of `topic | transactionId | planId`).
+- **Reply depth cap** is enforced in service logic (`MAX_REPLY_DEPTH = 5`).
+- **Realtime updates** are emitted/listened through Socket.IO (`messages:new`, `messages:presence`).
+- **Basic anti-spam controls** exist in memory (per-user/company rate window + duplicate suppression).
+- **Collapsible widget** exists and can be launched contextually via `messaging:start` event consumption.
 
 ## Major gaps vs prompt-pack requirements
 
 ### 1) Architecture / design artifacts
-- Missing C4-lite architecture, ERD, threat model (STRIDE), SLO/capacity docs, migration/rollback decision log.
+- Missing C4-lite architecture, ERD, STRIDE threat model, SLO/capacity docs, and migration/rollback decision log.
 
 ### 2) Database & tenant security
-- Prompt requires PostgreSQL + Redis + RLS; current implementation uses MySQL (`mysql2`/pool usage), and messaging tables are created in app code.
-- No PostgreSQL Row-Level Security policies.
-- Root-message link validation now enforces exactly one of `transaction|plan|topic` at service level, but no DB-level CHECK constraint exists.
-- Reply depth is now capped in service logic, but not yet enforced via schema-level constraints.
-- No read receipts, attachments metadata, notification_queue table for messaging, or presence history table.
+- Prompt pack specifies PostgreSQL + Redis + RLS; implementation is MySQL-oriented (`mysql2` + runtime table creation in app code).
+- No PostgreSQL RLS policies.
+- Root-link rule is only app-level (no DB-level `CHECK` constraint).
+- Reply-depth limit is app-level only.
+- Missing tables/capabilities: read receipts, attachments metadata, notification queue specific to messaging, presence history.
 
 ### 3) Backend API completeness
-- Only two endpoints are implemented (`GET /messages`, `POST /messages`).
-- Missing thread endpoint, reply endpoint, edit/delete endpoints, presence heartbeat endpoint, explicit company switch endpoint, cursor pagination contract, idempotency keys, structured errors/correlation IDs.
+- Implemented endpoints are limited to `GET /api/messaging` and `POST /api/messaging`.
+- Missing thread/reply/edit/delete/presence-heartbeat/company-switch endpoints.
+- Missing cursor-pagination contract, idempotency keys, structured error envelope with correlation IDs.
 
 ### 4) Authorization depth
-- Route-level auth validates login token; service checks active-company session.
-- But no full permission matrix / RBAC presets / ABAC hooks from prompt pack.
-- No explicit anti-IDOR/BOLA framework beyond scoped query predicates.
+- Login auth + company session scope exist.
+- Missing full RBAC/ABAC permission matrix from prompt pack.
+- No explicit anti-BOLA/anti-IDOR framework beyond scoped predicates.
 
 ### 5) Frontend widget completeness
-- Widget is collapsible and shows online count.
-- Missing unread badge, conversation list, attachment picker, company switch control in widget, session persistence (open/closed + last conversation restore), accessibility hardening, content sanitization strategy.
-- A `messaging:start` event is dispatched and consumed by the widget for context-sensitive launch.
+- Collapsible widget and online presence count are present.
+- Missing: unread badge, richer conversation UX requirements from prompt pack, attachments, company switch control inside widget, persisted widget/session state, stronger accessibility and sanitization strategy.
 
 ### 6) Security hardening
-- Missing documented CSP/secure headers plan for messaging module, attachment AV scanning/quarantine/signed URL pipeline, abuse/audit schema, incident response playbook, compliance workflows.
-- Basic in-memory anti-spam controls now exist (per-user rate limiting and duplicate-message suppression), but there is still no distributed/global policy or moderation pipeline.
+- Missing explicit CSP/secure-header plan for messaging, attachment AV/quarantine/signed URL flow, abuse/audit schema, incident response/compliance workflows.
+- Anti-spam is only local in-memory; no distributed moderation/abuse controls.
 
 ### 7) Performance, QA, rollout
-- Missing dedicated messaging tests (unit/integration/e2e).
-- Missing load-test strategy, benchmark scripts, observability SLO dashboards/alerts specific to messaging.
-- Missing staged rollout/canary/runbook documentation specific to messaging.
+- No dedicated messaging unit/integration/e2e tests.
+- Missing load/perf plans and messaging-specific SLO dashboards/alerts.
+- Missing staged rollout/canary/runbook docs specific to messaging.
 
 ## Overall assessment by prompt-pack section
 
@@ -67,10 +69,9 @@ There is a working messaging feature (API + socket events + UI widget), and some
 | 9. Rollout + Operations | ❌ Not implemented |
 | 10. Fill Gaps / prioritized roadmap | ❌ Not implemented |
 
-## Suggested next step
+## Suggested implementation order
 
-Use the prompt pack as a phased implementation checklist and start by closing foundation gaps in this order:
-1. Data model + constraints + migration strategy.
-2. AuthZ matrix + endpoint completion.
-3. Security hardening + abuse controls.
-4. Test plan + rollout + observability.
+1. **Data model + constraints + migration strategy** (schema-first, DB constraints, migration/rollback docs).
+2. **AuthZ matrix + endpoint completion** (RBAC/ABAC policies + missing API surface).
+3. **Security hardening + abuse controls** (attachments pipeline, auditing, incident/compliance workflows).
+4. **Testing + observability + rollout** (unit/integration/e2e, performance validation, SLOs, canary/runbooks).
