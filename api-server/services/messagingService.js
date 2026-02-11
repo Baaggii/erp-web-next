@@ -17,6 +17,7 @@ const VISIBILITY_SCOPES = new Set(['company', 'department', 'private']);
 const validatedMessagingSchemas = new WeakSet();
 const idempotencyRequestHashSupport = new WeakMap();
 const messageLinkedContextSupport = new WeakMap();
+const messageEncryptionColumnSupport = new WeakMap();
 let ioRef = null;
 
 const onlineByCompany = new Map();
@@ -94,6 +95,23 @@ function eventPayloadBase(ctx) {
   };
 }
 
+
+function canUseLinkedColumns(db) {
+  return messageLinkedContextSupport.get(db) !== false;
+}
+
+function markLinkedColumnsUnsupported(db) {
+  messageLinkedContextSupport.set(db, false);
+}
+
+
+function canUseEncryptedBodyColumns(db) {
+  return messageEncryptionColumnSupport.get(db) !== false;
+}
+
+function markEncryptedBodyColumnsUnsupported(db) {
+  messageEncryptionColumnSupport.set(db, false);
+}
 
 function isUnknownColumnError(error, columnName) {
   const message = String(error?.sqlMessage || error?.message || '').toLowerCase();
@@ -319,7 +337,7 @@ function enforceLocalRateLimitFallback({ companyId, empid, digest, now }) {
   return [1, 0, 0];
 }
 
-async function enforceRateLimit(companyId, empid, body, db = pool) {
+async function enforceRateLimit(companyId, empid, dedupeSeed, db = pool) {
   const now = Date.now();
   const member = `${now}:${crypto.randomUUID()}`;
   const dedupeInput = String(dedupeSeed || '').trim().toLowerCase();
@@ -546,7 +564,7 @@ async function createMessageInternal({ db = pool, ctx, payload, parentMessageId 
   ];
 
   let result;
-  if (canUseLinkedColumns(db)) {
+  if (canUseLinkedColumns(db) && canUseEncryptedBodyColumns(db)) {
     try {
       [result] = await db.query(
         `INSERT INTO erp_messages
@@ -555,25 +573,75 @@ async function createMessageInternal({ db = pool, ctx, payload, parentMessageId 
         messageInsertValues,
       );
       messageLinkedContextSupport.set(db, true);
+      messageEncryptionColumnSupport.set(db, true);
+    } catch (error) {
+      const linkedUnsupported = isUnknownColumnError(error, 'linked_type') || isUnknownColumnError(error, 'linked_id');
+      const encryptionUnsupported = isUnknownColumnError(error, 'body_ciphertext') || isUnknownColumnError(error, 'body_iv') || isUnknownColumnError(error, 'body_auth_tag');
+      if (!linkedUnsupported && !encryptionUnsupported) throw error;
+      if (linkedUnsupported) markLinkedColumnsUnsupported(db);
+      if (encryptionUnsupported) markEncryptedBodyColumnsUnsupported(db);
+    }
+  }
+
+  if (!result && canUseLinkedColumns(db)) {
+    try {
+      [result] = await db.query(
+        `INSERT INTO erp_messages
+          (company_id, author_empid, parent_message_id, linked_type, linked_id, visibility_scope, visibility_department_id, visibility_empid, body)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          ctx.companyId,
+          ctx.user.empid,
+          parentMessageId,
+          linkedType,
+          linkedId,
+          visibility.visibilityScope,
+          visibility.visibilityDepartmentId,
+          visibility.visibilityEmpid,
+          body,
+        ],
+      );
+      messageLinkedContextSupport.set(db, true);
     } catch (error) {
       if (!isUnknownColumnError(error, 'linked_type') && !isUnknownColumnError(error, 'linked_id')) throw error;
       markLinkedColumnsUnsupported(db);
     }
   }
 
+  if (!result && canUseEncryptedBodyColumns(db)) {
+    try {
+      [result] = await db.query(
+        `INSERT INTO erp_messages
+          (company_id, author_empid, parent_message_id, body, body_ciphertext, body_iv, body_auth_tag)
+          VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [
+          ctx.companyId,
+          ctx.user.empid,
+          parentMessageId,
+          encryptedBody.body,
+          encryptedBody.bodyCiphertext,
+          encryptedBody.bodyIv,
+          encryptedBody.bodyAuthTag,
+        ],
+      );
+      messageEncryptionColumnSupport.set(db, true);
+    } catch (error) {
+      const encryptionUnsupported = isUnknownColumnError(error, 'body_ciphertext') || isUnknownColumnError(error, 'body_iv') || isUnknownColumnError(error, 'body_auth_tag');
+      if (!encryptionUnsupported) throw error;
+      markEncryptedBodyColumnsUnsupported(db);
+    }
+  }
+
   if (!result) {
     [result] = await db.query(
       `INSERT INTO erp_messages
-        (company_id, author_empid, parent_message_id, body, body_ciphertext, body_iv, body_auth_tag)
-        VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        (company_id, author_empid, parent_message_id, body)
+        VALUES (?, ?, ?, ?)`,
       [
         ctx.companyId,
         ctx.user.empid,
         parentMessageId,
-        encryptedBody.body,
-        encryptedBody.bodyCiphertext,
-        encryptedBody.bodyIv,
-        encryptedBody.bodyAuthTag,
+        body,
       ],
     );
   }
@@ -758,10 +826,28 @@ export async function patchMessage({ user, companyId, messageId, payload, correl
 
   const body = sanitizeBody(payload?.body);
   const encryptedBody = encryptBody(body);
-  await db.query(
-    'UPDATE erp_messages SET body = ?, body_ciphertext = ?, body_iv = ?, body_auth_tag = ? WHERE id = ? AND company_id = ?',
-    [encryptedBody.body, encryptedBody.bodyCiphertext, encryptedBody.bodyIv, encryptedBody.bodyAuthTag, messageId, scopedCompanyId],
-  );
+  if (canUseEncryptedBodyColumns(db)) {
+    try {
+      await db.query(
+        'UPDATE erp_messages SET body = ?, body_ciphertext = ?, body_iv = ?, body_auth_tag = ? WHERE id = ? AND company_id = ?',
+        [encryptedBody.body, encryptedBody.bodyCiphertext, encryptedBody.bodyIv, encryptedBody.bodyAuthTag, messageId, scopedCompanyId],
+      );
+      messageEncryptionColumnSupport.set(db, true);
+    } catch (error) {
+      const encryptionUnsupported = isUnknownColumnError(error, 'body_ciphertext') || isUnknownColumnError(error, 'body_iv') || isUnknownColumnError(error, 'body_auth_tag');
+      if (!encryptionUnsupported) throw error;
+      markEncryptedBodyColumnsUnsupported(db);
+      await db.query(
+        'UPDATE erp_messages SET body = ? WHERE id = ? AND company_id = ?',
+        [body, messageId, scopedCompanyId],
+      );
+    }
+  } else {
+    await db.query(
+      'UPDATE erp_messages SET body = ? WHERE id = ? AND company_id = ?',
+      [body, messageId, scopedCompanyId],
+    );
+  }
   const updated = await findMessageById(db, scopedCompanyId, messageId);
   const view = sanitizeForViewer(updated, session, user);
   emit(scopedCompanyId, 'message.updated', { ...eventPayloadBase({ correlationId, companyId: scopedCompanyId }), message: view });
