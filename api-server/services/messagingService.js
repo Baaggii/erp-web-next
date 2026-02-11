@@ -104,15 +104,6 @@ function markLinkedColumnsUnsupported(db) {
   messageLinkedContextSupport.set(db, false);
 }
 
-
-function canUseEncryptedBodyColumns(db) {
-  return messageEncryptionColumnSupport.get(db) !== false;
-}
-
-function markEncryptedBodyColumnsUnsupported(db) {
-  messageEncryptionColumnSupport.set(db, false);
-}
-
 function isUnknownColumnError(error, columnName) {
   const message = String(error?.sqlMessage || error?.message || '').toLowerCase();
   return message.includes('unknown column') && message.includes(String(columnName).toLowerCase());
