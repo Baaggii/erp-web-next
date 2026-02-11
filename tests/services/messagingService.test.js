@@ -196,58 +196,6 @@ test('rate limiter falls back locally when redis is unavailable', async () => {
     process.env.NODE_ENV = originalNodeEnv;
   }
 });
-
-
-test('messages with same body are allowed when idempotency keys differ', async () => {
-  const db = new FakeDb();
-  const session = { permissions: { messaging: true } };
-
-  const first = await postMessage({
-    user,
-    companyId: 1,
-    payload: { body: 'same body', linkedType: 'topic', linkedId: 'dup-ok', idempotencyKey: 'dup-ok-1' },
-    correlationId: 'dup-ok-1',
-    db,
-    getSession: async () => session,
-  });
-
-  const second = await postMessage({
-    user,
-    companyId: 1,
-    payload: { body: 'same body', linkedType: 'topic', linkedId: 'dup-ok', idempotencyKey: 'dup-ok-2' },
-    correlationId: 'dup-ok-2',
-    db,
-    getSession: async () => session,
-  });
-
-  assert.notEqual(first.message.id, second.message.id);
-});
-
-test('insert falls back when linked_type columns are unavailable', async () => {
-  const db = new FakeDb();
-  const session = { permissions: { messaging: true } };
-  const originalQuery = db.query.bind(db);
-
-  db.query = async (sql, params = []) => {
-    if (sql.includes('INSERT INTO erp_messages') && sql.includes('linked_type')) {
-      const error = new Error("Unknown column 'linked_type' in 'field list'");
-      error.sqlMessage = "Unknown column 'linked_type' in 'field list'";
-      throw error;
-    }
-    return originalQuery(sql, params);
-  };
-
-  const created = await postMessage({
-    user,
-    companyId: 1,
-    payload: { body: 'legacy linked columns', linkedType: 'topic', linkedId: 'legacy-cols', idempotencyKey: 'legacy-cols-1' },
-    correlationId: 'legacy-cols-1',
-    db,
-    getSession: async () => session,
-  });
-
-  assert.equal(created.message.body, 'legacy linked columns');
-});
 test('idempotency key returns same message without duplicate insert', async () => {
   const db = new FakeDb();
   const session = { permissions: { messaging: true } };

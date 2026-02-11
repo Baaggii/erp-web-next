@@ -100,14 +100,6 @@ function isUnknownColumnError(error, columnName) {
   return message.includes('unknown column') && message.includes(String(columnName).toLowerCase());
 }
 
-function canUseLinkedColumns(db) {
-  return messageLinkedContextSupport.get(db) !== false;
-}
-
-function markLinkedColumnsUnsupported(db) {
-  messageLinkedContextSupport.set(db, false);
-}
-
 async function readIdempotencyRow(db, { companyId, empid, idempotencyKey }) {
   const mode = idempotencyRequestHashSupport.get(db);
   if (mode !== false) {
@@ -327,10 +319,10 @@ function enforceLocalRateLimitFallback({ companyId, empid, digest, now }) {
   return [1, 0, 0];
 }
 
-async function enforceRateLimit(companyId, empid, dedupeKey = '', db = pool) {
+async function enforceRateLimit(companyId, empid, body, db = pool) {
   const now = Date.now();
   const member = `${now}:${crypto.randomUUID()}`;
-  const dedupeInput = String(dedupeKey || '').trim().toLowerCase();
+  const dedupeInput = String(dedupeSeed || '').trim().toLowerCase();
   const digest = crypto.createHash('sha256').update(dedupeInput).digest('hex');
   const rateKey = `messaging:rate:${companyId}:${empid}`;
   const duplicateKey = `messaging:dedupe:${companyId}:${empid}:${digest}`;
@@ -536,8 +528,7 @@ async function createMessageInternal({ db = pool, ctx, payload, parentMessageId 
     }
   }
 
-  const safeDedupeKey = idempotencyKey || String(payload?.clientTempId || crypto.randomUUID());
-  await enforceRateLimit(ctx.companyId, ctx.user.empid, safeDedupeKey, db);
+  await enforceRateLimit(ctx.companyId, ctx.user.empid, idempotencyKey, db);
 
   const messageInsertValues = [
     ctx.companyId,
