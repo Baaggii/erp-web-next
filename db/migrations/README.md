@@ -7,6 +7,7 @@ Legacy migrations have been moved to the `archive/` directory. New migrations sh
 - `2025-10-05_employment_plan_senior.sql`: Adds `employment_senior_plan_empid` to `tbl_employment`, indexes it, and seeds the column from `employment_senior_empid` for existing records.
 - `2025-10-16_pending_request_record_id_varchar.sql`: Converts `pending_request.record_id` and `user_activity_log.record_id` to `VARCHAR(191)` and re-applies related indexes/constraints.
 - `2025-11-02_report_transactions_test_fixture.sql`: Seeds the `transactions_test` and `transactions_test_detail` tables and adds the `dynrep_1_sp_transactions_test_report` stored procedure with expanded lock candidate metadata used by report tests.
+- `2026-02-11_messaging_thread_constraints.sql`: Tightens messaging integrity by enforcing `company_id` non-nullability on message/thread tables, requiring consistent `linked_type` + `linked_id`, and capping insert-time thread depth to 3 via trigger validation.
 
 No migrations are pending. The baseline schema now mirrors the production snapshot in `db/mgtmn_erp_db.sql` (generated 2025-10-03) so fresh databases already contain the identifier columns and audit metadata that earlier scripts added.
 
