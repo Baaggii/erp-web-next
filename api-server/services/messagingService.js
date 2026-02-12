@@ -275,8 +275,8 @@ function normalizeVisibility(payload, session, user) {
     throw createError(400, 'VISIBILITY_SCOPE_INVALID', 'visibilityScope must be company, department, or private');
   }
 
-  if (scope === 'private' && recipients.length > 1) {
-    throw createError(400, 'VISIBILITY_PRIVATE_TOO_MANY_RECIPIENTS', 'Private messages support exactly one recipient');
+  if (scope === 'private' && recipients.length === 0) {
+    throw createError(400, 'RECIPIENTS_REQUIRED', 'recipientEmpids is required for private scope');
   }
 
   const visibilityDepartmentId = scope === 'department' ? toId(payload?.visibilityDepartmentId ?? session?.department_id) : null;
@@ -294,11 +294,38 @@ function normalizeVisibility(payload, session, user) {
     throw createError(400, 'VISIBILITY_EMPID_INVALID', 'visibilityEmpid cannot be the same as author');
   }
 
+  const recipientEmpids = scope === 'private'
+    ? recipients.filter((empid) => empid !== String(user?.empid))
+    : [];
+  if (scope === 'private' && recipientEmpids.length === 0) {
+    throw createError(400, 'RECIPIENTS_REQUIRED', 'recipientEmpids must include at least one user other than the author');
+  }
+
   return {
     visibilityScope: scope,
     visibilityDepartmentId,
     visibilityEmpid,
+    recipientEmpids,
   };
+}
+
+function resolveRecipientEmpids(message) {
+  const rawRecipients = message?.recipient_empids ?? message?.recipientEmpids;
+  if (Array.isArray(rawRecipients)) {
+    return Array.from(new Set(rawRecipients.map((entry) => String(entry || '').trim()).filter(Boolean)));
+  }
+  if (typeof rawRecipients === 'string' && rawRecipients.trim()) {
+    try {
+      const parsed = JSON.parse(rawRecipients);
+      if (Array.isArray(parsed)) {
+        return Array.from(new Set(parsed.map((entry) => String(entry || '').trim()).filter(Boolean)));
+      }
+    } catch {
+      return Array.from(new Set(rawRecipients.split(',').map((entry) => String(entry || '').trim()).filter(Boolean)));
+    }
+  }
+  const fallback = String(message?.visibility_empid || '').trim();
+  return fallback ? [fallback] : [];
 }
 
 function getEncryptionKey() {
@@ -582,8 +609,9 @@ function emitMessageScoped(ctx, eventName, message, optimistic) {
 
   const scope = String(message.visibility_scope || 'company');
   if (scope === 'private') {
+    const recipientEmpids = resolveRecipientEmpids(message);
     emitToEmpid(eventName, message.author_empid, payload);
-    emitToEmpid(eventName, message.visibility_empid, payload);
+    recipientEmpids.forEach((empid) => emitToEmpid(eventName, empid, payload));
     return;
   }
   if (scope === 'department' && message.visibility_department_id) {
@@ -747,7 +775,14 @@ async function createMessageInternal({ db = pool, ctx, payload, parentMessageId 
   });
   const message = await findMessageById(db, ctx.companyId, messageId);
 
-  const viewerMessage = sanitizeForViewer(message, ctx.session, ctx.user);
+  const viewerMessage = sanitizeForViewer(
+    {
+      ...message,
+      recipient_empids: visibility.recipientEmpids,
+    },
+    ctx.session,
+    ctx.user,
+  );
   emitMessageScoped(ctx, eventName, viewerMessage, {
     tempId: payload?.clientTempId ?? null,
     accepted: true,
@@ -783,12 +818,17 @@ export async function postReply({ user, companyId, messageId, payload, correlati
     throw createError(400, 'THREAD_DEPTH_EXCEEDED', `Reply depth exceeds maximum of ${MAX_REPLY_DEPTH}`);
   }
 
-  const privateParticipants = new Set([
-    String(message.author_empid || '').trim(),
-    String(message.visibility_empid || '').trim(),
-  ].filter(Boolean));
+  const privateParticipants = message.visibility_scope === 'private'
+    ? new Set([
+      String(message.author_empid || '').trim(),
+      ...resolveRecipientEmpids(message),
+    ].filter(Boolean))
+    : new Set();
+  const replyRecipients = message.visibility_scope === 'private'
+    ? Array.from(privateParticipants).filter((empid) => empid !== String(user.empid))
+    : payload?.recipientEmpids;
   const replyVisibilityEmpid = message.visibility_scope === 'private'
-    ? Array.from(privateParticipants).find((empid) => empid !== String(user.empid)) || null
+    ? replyRecipients[0] || null
     : message.visibility_empid;
 
   const ctx = { user, companyId: scopedCompanyId, correlationId, session };
@@ -802,9 +842,7 @@ export async function postReply({ user, companyId, messageId, payload, correlati
       visibilityScope: message.visibility_scope,
       visibilityDepartmentId: message.visibility_department_id,
       visibilityEmpid: message.visibility_scope === 'private' ? replyVisibilityEmpid : message.visibility_empid,
-      recipientEmpids: message.visibility_scope === 'private' && replyVisibilityEmpid
-        ? [String(replyVisibilityEmpid)]
-        : payload?.recipientEmpids,
+      recipientEmpids: message.visibility_scope === 'private' ? replyRecipients : payload?.recipientEmpids,
     },
     parentMessageId: message.id,
     eventName: 'thread.reply.created',
