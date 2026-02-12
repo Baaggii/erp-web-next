@@ -764,7 +764,6 @@ export default function ImageManagement() {
         const folderCount = Array.isArray(sum.folders) ? sum.folders.length : sum.totalFolders || 0;
         const detectSummary = `Scanned ${sum.totalFiles || 0} file(s) in ${folderCount} folder(s), found ${sum.incompleteFound || 0} incomplete name(s), ${sum.skipped || 0} not incomplete.`;
         setReport(detectSummary);
-        setDetectReport(detectSummary);
         persistAll({
           uploads: uploadsRef.current,
           ignored: ignoredRef.current,
