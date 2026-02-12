@@ -380,22 +380,42 @@ async function resolveAccountCode(conn, line, context) {
 
 
 async function resolveAmount(conn, line, context) {
-  const amountExpressionCode = pickFirstDefined(line, ['amount_expression_code', 'fin_amount_expression_code']);
+  const amountExpressionCode = line.amount_expression_code;
   if (!amountExpressionCode) {
-    return toNumber(pickFirstDefined(line, ['amount', 'fixed_amount']));
+    return 0;
   }
 
   const [rows] = await conn.query(
     `SELECT * FROM fin_amount_expression WHERE expression_code = ? LIMIT 1`,
     [amountExpressionCode],
   );
+
   if (!rows.length) {
     throw new Error(`Amount expression not found: ${amountExpressionCode}`);
   }
 
-  const expression = pickFirstDefined(rows[0], ['expression', 'amount_expression']);
-  return toNumber(evaluateExpression(expression, context));
+  const expr = rows[0];
+
+  // COLUMN type → resolve from canonical financial fields
+  if (expr.source_type === 'COLUMN') {
+    const canonicalField = expr.source_column;  // e.g. TOTAL_AMOUNT
+    const value = context.financialFields[canonicalField];
+    return toNumber(value);
+  }
+
+  // FORMULA type → evaluate using canonical fields only
+  if (expr.source_type === 'FORMULA') {
+    return toNumber(
+      evaluateExpression(expr.formula, {
+        txn: context.financialFields,   // 🔥 only canonical
+        financialFields: context.financialFields,
+      })
+    );
+  }
+
+  return 0;
 }
+
 
 function resolveDimension(line, context) {
   const dimensionTypeCode = pickFirstDefined(line, ['dimension_type_code', 'fin_dimension_type_code']) || null;
