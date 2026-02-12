@@ -324,6 +324,7 @@ export default function TransactionNotificationDropdown() {
   const [visibleCount, setVisibleCount] = useState(FEED_CHUNK_SIZE);
   const containerRef = useRef(null);
   const listRef = useRef(null);
+  const initialFeedLoadedRef = useRef(false);
   const navigate = useNavigate();
   const generalConfig = useGeneralConfig();
   const dashboardTabs = useMemo(
@@ -1026,6 +1027,36 @@ export default function TransactionNotificationDropdown() {
     }
   }, [formsLoaded]);
 
+
+  useEffect(() => {
+    if (initialFeedLoadedRef.current) return;
+    initialFeedLoadedRef.current = true;
+    let cancelled = false;
+    fetch(`/api/notifications/feed?limit=200`, {
+      credentials: 'include',
+      skipLoader: true,
+    })
+      .then((res) => (res.ok ? res.json() : Promise.reject(new Error('feed prefetch failed'))))
+      .then((data) => {
+        if (cancelled) return;
+        const items = Array.isArray(data?.items) ? data.items : [];
+        setFeedState((prev) => {
+          if (Array.isArray(prev.items) && prev.items.length > 0) return prev;
+          return {
+            items,
+            loading: false,
+            error: '',
+            nextCursor: data?.nextCursor ?? null,
+          };
+        });
+      })
+      .catch(() => {
+        // keep silent; explicit open will retry and surface loading/error state
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     if (!open) return;
