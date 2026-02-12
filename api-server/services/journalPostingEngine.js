@@ -423,31 +423,28 @@ async function resolveAmount(conn, line, context) {
 
 
 function resolveDimension(line, context) {
-  const dimensionTypeCode = pickFirstDefined(line, ['dimension_type_code', 'fin_dimension_type_code']) || null;
+  const dimensionTypeCode = line.dimension_type_code || null;
 
-  const staticId = pickFirstDefined(line, ['dimension_id', 'dimension_fixed_id']);
-  if (staticId !== undefined && staticId !== null && staticId !== '') {
-    return { dimensionTypeCode, dimensionId: String(staticId) };
-  }
-
-  const sourceFieldCode = pickFirstDefined(line, ['dimension_source_field_code', 'dimension_field_code']);
-  if (sourceFieldCode && context.financialFields[sourceFieldCode] !== undefined) {
+  // Static dimension
+  if (line.dimension_id !== undefined && line.dimension_id !== null) {
     return {
       dimensionTypeCode,
-      dimensionId: String(context.financialFields[sourceFieldCode]),
+      dimensionId: String(line.dimension_id),
     };
   }
 
-  const dimensionExpression = pickFirstDefined(line, ['dimension_expression', 'dimension_id_expression']);
-  if (dimensionExpression) {
+  // Dynamic from canonical field
+  if (line.dimension_source_field) {
+    const value = context.financialFields[line.dimension_source_field];
     return {
       dimensionTypeCode,
-      dimensionId: String(evaluateExpression(dimensionExpression, context)),
+      dimensionId: value ? String(value) : null,
     };
   }
 
   return { dimensionTypeCode, dimensionId: null };
 }
+
 
 function normalizeDrCr(value) {
   const upper = String(value || '').toUpperCase();
