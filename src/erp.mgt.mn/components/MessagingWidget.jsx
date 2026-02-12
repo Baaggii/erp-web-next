@@ -96,10 +96,33 @@ function groupConversations(messages) {
   });
 }
 
+const ONLINE_STALE_MS = 70_000;
+const AWAY_STALE_MS = 5 * 60_000;
+
+function parsePresenceTimestamp(record) {
+  const raw = record?.last_seen_at || record?.lastSeenAt || record?.updated_at || record?.updatedAt;
+  if (!raw) return null;
+  const ts = new Date(raw).getTime();
+  return Number.isFinite(ts) ? ts : null;
+}
+
 function resolvePresence(record) {
   const status = String(record?.presence || record?.status || '').toLowerCase();
-  if (status === PRESENCE.ONLINE || status === PRESENCE.AWAY || status === PRESENCE.OFFLINE) return status;
-  return record?.last_seen_at ? PRESENCE.AWAY : PRESENCE.OFFLINE;
+  const seenAt = parsePresenceTimestamp(record);
+  const ageMs = seenAt ? Date.now() - seenAt : Number.POSITIVE_INFINITY;
+
+  if (status === PRESENCE.OFFLINE) return PRESENCE.OFFLINE;
+  if (status === PRESENCE.AWAY) return ageMs <= AWAY_STALE_MS ? PRESENCE.AWAY : PRESENCE.OFFLINE;
+  if (status === PRESENCE.ONLINE) {
+    if (ageMs <= ONLINE_STALE_MS) return PRESENCE.ONLINE;
+    if (ageMs <= AWAY_STALE_MS) return PRESENCE.AWAY;
+    return PRESENCE.OFFLINE;
+  }
+
+  if (!seenAt) return PRESENCE.OFFLINE;
+  if (ageMs <= ONLINE_STALE_MS) return PRESENCE.ONLINE;
+  if (ageMs <= AWAY_STALE_MS) return PRESENCE.AWAY;
+  return PRESENCE.OFFLINE;
 }
 
 function presenceColor(status) {
@@ -146,6 +169,33 @@ function canOpenContextLink(permissions, chipType) {
 
 function formatEmployeeOption(entry) {
   return `${entry.label}`;
+}
+
+function getRowValueCaseInsensitive(row, fieldName) {
+  if (!row || !fieldName) return undefined;
+  if (Object.prototype.hasOwnProperty.call(row, fieldName)) return row[fieldName];
+  const target = String(fieldName).toLowerCase();
+  const actualKey = Object.keys(row).find((key) => key.toLowerCase() === target);
+  return actualKey ? row[actualKey] : undefined;
+}
+
+function resolveDisplayLabelFromConfig(row, displayFields = []) {
+  if (!row || !Array.isArray(displayFields) || displayFields.length === 0) return '';
+  const parts = displayFields
+    .map((field) => sanitizeMessageText(getRowValueCaseInsensitive(row, field)))
+    .filter(Boolean);
+  return parts.join(' ').trim();
+}
+
+function collectMessageParticipantEmpids(message) {
+  const ids = [];
+  ids.push(message?.author_empid, message?.authorEmpid, message?.visibility_empid, message?.visibilityEmpid);
+  const recipientEmpids =
+    message?.recipient_empids || message?.recipientEmpids || message?.recipient_ids || message?.recipientIds;
+  if (Array.isArray(recipientEmpids)) ids.push(...recipientEmpids);
+  const readBy = Array.isArray(message?.read_by) ? message.read_by : [];
+  ids.push(...readBy);
+  return Array.from(new Set(ids.map(normalizeId).filter(Boolean)));
 }
 
 function canViewTransaction(transactionId, userId, permissions) {
@@ -261,6 +311,7 @@ export default function MessagingWidget() {
   const [messagesByCompany, setMessagesByCompany] = useState({});
   const [presence, setPresence] = useState([]);
   const [employees, setEmployees] = useState([]);
+  const [userDirectory, setUserDirectory] = useState({});
   const [recipientSearch, setRecipientSearch] = useState('');
   const [employeeStatusFilter, setEmployeeStatusFilter] = useState('all');
   const [presencePanelOpen, setPresencePanelOpen] = useState(false);
@@ -320,6 +371,7 @@ export default function MessagingWidget() {
     if (!companyId || state.activeCompanyId === companyId) return;
     dispatch({ type: 'company/switch', payload: companyId });
     setPresence([]);
+    setUserDirectory({});
     setError('');
     setNetworkState('loading');
   }, [companyId, state.activeCompanyId]);
@@ -385,6 +437,12 @@ export default function MessagingWidget() {
 
     const loadEmployees = async () => {
       try {
+        const displayFieldConfigRes = await fetch('/api/display_fields?table=tbl_employee', { credentials: 'include' });
+        const displayFieldConfig = displayFieldConfigRes.ok ? await displayFieldConfigRes.json().catch(() => ({})) : {};
+        const employeeDisplayFields = Array.isArray(displayFieldConfig?.displayFields)
+          ? displayFieldConfig.displayFields.filter((field) => typeof field === 'string' && field.trim())
+          : [];
+
         const employmentParams = new URLSearchParams({ perPage: '1000', company_id: String(activeCompany) });
         const employmentRes = await fetch(`${API_BASE}/tables/tbl_employment?${employmentParams.toString()}`, { credentials: 'include' });
         if (!employmentRes.ok) return;
@@ -409,7 +467,16 @@ export default function MessagingWidget() {
         const profileMap = new Map(employeeRows.map((row) => [
           normalizeId(row.emp_id || row.empid || row.id),
           {
-            displayName: row.displayName || row.emp_name || row.employee_name || row.name || row.full_name || row.username || row.emp_id,
+            displayName:
+              resolveDisplayLabelFromConfig(row, employeeDisplayFields)
+              || row.displayName
+              || row.emp_name
+              || row.employee_name
+              || row.emp_fname
+              || row.name
+              || row.full_name
+              || row.username
+              || row.emp_id,
             employeeCode: row.employee_code || row.emp_code || row.emp_id,
           },
         ]));
@@ -422,6 +489,17 @@ export default function MessagingWidget() {
             if (usersRes.ok) {
               const usersData = await usersRes.json();
               const usersRows = Array.isArray(usersData?.items) ? usersData.items : Array.isArray(usersData) ? usersData : [];
+              if (!disposed) {
+                setUserDirectory(() => usersRows.reduce((acc, userRow) => {
+                  const empid = normalizeId(userRow.empid || userRow.emp_id || userRow.employee_id || userRow.id);
+                  if (!empid) return acc;
+                  acc[empid] = {
+                    displayName: sanitizeMessageText(userRow.full_name || userRow.display_name || userRow.name || userRow.username || empid) || empid,
+                    employeeCode: sanitizeMessageText(userRow.username || userRow.empid || userRow.employee_code || empid) || empid,
+                  };
+                  return acc;
+                }, {}));
+              }
               usersRows.forEach((userRow) => {
                 const empid = normalizeId(userRow.empid || userRow.emp_id || userRow.employee_id || userRow.id);
                 if (!empid || !missingEmpids.includes(empid)) return;
@@ -498,6 +576,39 @@ export default function MessagingWidget() {
   }, [companyId, selfEmpid, state.activeCompanyId]);
 
   useEffect(() => {
+    const activeCompany = state.activeCompanyId || companyId;
+    if (!activeCompany) return undefined;
+
+    const refreshPresence = async () => {
+      try {
+        const knownEmpids = Array.from(new Set([
+          ...employees.map((entry) => normalizeId(entry?.empid || entry?.id)).filter(Boolean),
+          ...messages.flatMap((msg) => collectMessageParticipantEmpids(msg)),
+          ...state.composer.recipients.map((entry) => normalizeId(entry)).filter(Boolean),
+        ]));
+
+        const presenceParams = new URLSearchParams({ companyId: String(activeCompany) });
+        if (knownEmpids.length > 0) presenceParams.set('userIds', knownEmpids.join(','));
+        const presenceRes = await fetch(`${API_BASE}/messaging/presence?${presenceParams.toString()}`, { credentials: 'include' });
+        if (!presenceRes.ok) return;
+        const presenceData = await presenceRes.json();
+        const onlineUsers = Array.isArray(presenceData?.users) ? presenceData.users : [];
+        const snapshot = Array.from(new Map(onlineUsers.map((entry) => {
+          const empid = normalizeId(entry?.empid || entry?.id);
+          return [empid, { ...entry, empid }];
+        })).values()).filter((entry) => entry.empid);
+        setPresence(snapshot);
+      } catch {
+        // Keep messaging functional even when presence refresh fails.
+      }
+    };
+
+    refreshPresence();
+    const intervalId = globalThis.setInterval(refreshPresence, 60_000);
+    return () => globalThis.clearInterval(intervalId);
+  }, [companyId, employees, messages, state.activeCompanyId, state.composer.recipients]);
+
+  useEffect(() => {
     const socket = connectSocket();
     const onNew = (payload) => {
       const nextMessage = payload?.message || payload;
@@ -519,6 +630,19 @@ export default function MessagingWidget() {
       }
     };
     const onPresence = (payload) => {
+      const payloadCompanyId = normalizeId(payload?.companyId || payload?.company_id);
+      const activeCompanyId = normalizeId(state.activeCompanyId || companyId);
+      if (payloadCompanyId && activeCompanyId && payloadCompanyId !== activeCompanyId) return;
+
+      if (Array.isArray(payload?.onlineUsers)) {
+        const snapshot = Array.from(new Map(payload.onlineUsers.map((entry) => {
+          const empid = normalizeId(entry?.empid || entry?.id);
+          return [empid, { ...entry, empid }];
+        })).values()).filter((entry) => entry.empid);
+        setPresence(snapshot);
+        return;
+      }
+
       const incoming = Array.isArray(payload?.onlineUsers)
         ? payload.onlineUsers
         : payload?.empid
@@ -530,7 +654,12 @@ export default function MessagingWidget() {
         incoming.forEach((entry) => {
           const empid = normalizeId(entry.empid || entry.id);
           if (!empid) return;
-          next.set(empid, { ...next.get(empid), ...entry, empid });
+          const status = resolvePresence(entry);
+          if (status === PRESENCE.OFFLINE) {
+            next.set(empid, { ...next.get(empid), ...entry, empid, status: PRESENCE.OFFLINE, last_seen_at: entry?.last_seen_at || new Date().toISOString() });
+            return;
+          }
+          next.set(empid, { ...next.get(empid), ...entry, empid, status });
         });
         return Array.from(next.values());
       });
@@ -599,6 +728,12 @@ export default function MessagingWidget() {
     if (state.composer.attachments.length > 0) setAttachmentsOpen(true);
   }, [state.composer.attachments.length]);
 
+  useEffect(() => {
+    if (!composerRef.current) return;
+    composerRef.current.style.height = 'auto';
+    composerRef.current.style.height = `${Math.min(composerRef.current.scrollHeight, 240)}px`;
+  }, [state.composer.body]);
+
   const presenceMap = useMemo(
     () => new Map(presence.map((entry) => [normalizeId(entry.empid || entry.id), resolvePresence(entry)])),
     [presence],
@@ -606,6 +741,11 @@ export default function MessagingWidget() {
 
   const employeeRecords = useMemo(() => {
     const seen = new Map();
+    const participantIds = new Set(state.composer.recipients);
+    messages.forEach((msg) => {
+      collectMessageParticipantEmpids(msg).forEach((empid) => participantIds.add(empid));
+    });
+
     employees.forEach((entry) => {
       seen.set(entry.empid, {
         id: entry.empid,
@@ -629,15 +769,28 @@ export default function MessagingWidget() {
     messages.forEach((msg) => {
       const empid = normalizeId(msg.author_empid);
       if (!empid || seen.has(empid)) return;
+      const userProfile = userDirectory[empid] || {};
       seen.set(empid, {
         id: empid,
-        label: sanitizeMessageText(msg.author_name || msg.author_display_name || msg.author_username || empid) || empid,
-        employeeCode: empid,
+        label: sanitizeMessageText(msg.author_name || msg.author_display_name || msg.author_username || userProfile.displayName || empid) || empid,
+        employeeCode: sanitizeMessageText(userProfile.employeeCode || empid) || empid,
         status: presenceMap.get(empid) || PRESENCE.OFFLINE,
       });
     });
+
+    participantIds.forEach((empid) => {
+      if (!empid || seen.has(empid)) return;
+      const userProfile = userDirectory[empid] || {};
+      seen.set(empid, {
+        id: empid,
+        label: sanitizeMessageText(userProfile.displayName || empid) || empid,
+        employeeCode: sanitizeMessageText(userProfile.employeeCode || empid) || empid,
+        status: presenceMap.get(empid) || PRESENCE.OFFLINE,
+      });
+    });
+
     return Array.from(seen.values()).sort((a, b) => a.label.localeCompare(b.label));
-  }, [employees, messages, presence, presenceMap]);
+  }, [employees, messages, presence, presenceMap, state.composer.recipients, userDirectory]);
 
   const filteredEmployees = useMemo(() => {
     if (!recipientSearch.trim()) return employeeRecords;
@@ -892,6 +1045,8 @@ export default function MessagingWidget() {
   const onComposerInput = (event) => {
     const value = event.target.value;
     dispatch({ type: 'composer/setBody', payload: value });
+    event.target.style.height = 'auto';
+    event.target.style.height = `${Math.min(event.target.scrollHeight, 240)}px`;
     const caret = event.target.selectionStart || value.length;
     const left = value.slice(0, caret);
     const mentionMatch = left.match(/(^|\s)@([A-Za-z0-9_.-]*)$/);
@@ -1201,8 +1356,8 @@ export default function MessagingWidget() {
             <div style={{ marginTop: 8, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
               {state.composer.recipients.map((empid) => {
                 const found = employeeRecords.find((entry) => entry.id === empid);
-                const label = found?.label || empid;
-                const status = found?.status || PRESENCE.OFFLINE;
+                const label = found?.label || resolveEmployeeLabel(empid);
+                const status = found?.status || presenceMap.get(empid) || PRESENCE.OFFLINE;
                 return (
                   <span key={empid} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, border: '1px solid #cbd5e1', borderRadius: 999, padding: '4px 10px', background: '#f8fafc' }}>
                     <span style={{ width: 18, height: 18, borderRadius: 999, background: '#dbeafe', color: '#1d4ed8', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700 }}>
@@ -1230,7 +1385,7 @@ export default function MessagingWidget() {
                   sendMessage();
                 }
               }}
-              rows={6}
+              rows={3}
               placeholder="Type a message…"
               aria-label="Message composer"
               style={{
@@ -1240,6 +1395,10 @@ export default function MessagingWidget() {
                 border: dragOverComposer ? '2px dashed #f97316' : '2px dashed #cbd5e1',
                 padding: '10px 12px',
                 fontSize: 15,
+                minHeight: 72,
+                maxHeight: 240,
+                overflowY: 'auto',
+                resize: 'none',
               }}
             />
 
