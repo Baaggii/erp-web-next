@@ -259,14 +259,19 @@ async function loadFinancialFieldMap(conn, sourceTable) {
 
 function buildFinancialContext(transactionRow, fieldMappings = []) {
   const financialFields = {};
+
   for (const mapRow of fieldMappings) {
-    const sourceField = pickFirstDefined(mapRow, ['source_field', 'source_column', 'transaction_field']);
-    const targetCode = pickFirstDefined(mapRow, ['financial_field_code', 'field_code', 'target_field_code']);
+    const sourceField = mapRow.source_column;     // actual DB column
+    const targetCode = mapRow.canonical_field;    // canonical name
+
     if (!sourceField || !targetCode) continue;
+
     financialFields[targetCode] = transactionRow[sourceField];
   }
+
   return financialFields;
 }
+
 
 async function resolveFlagSetCode(conn, transType) {
   const [rows] = await conn.query(
