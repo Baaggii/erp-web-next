@@ -1012,6 +1012,11 @@ export default function MessagingWidget() {
       setComposerAnnouncement('Select at least one recipient.');
       return;
     }
+    if (state.composer.recipients.length !== 1) {
+      setComposerAnnouncement('Select exactly one recipient for private messaging.');
+      return;
+    }
+
     const linkedType = state.composer.linkedType || activeConversation?.linkedType || null;
     const linkedId = state.composer.linkedId || activeConversation?.linkedId || null;
     if ((linkedType && !linkedId) || (!linkedType && linkedId)) {
