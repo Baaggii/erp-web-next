@@ -47,18 +47,23 @@ function evaluateExpression(expression, context = {}) {
   if (!expression || typeof expression !== 'string') {
     return 0;
   }
+
   const source = expression.trim();
   if (!source) {
     return 0;
   }
 
+  // 🔥 Inject canonical financial fields into local scope
+  const scope = { ...context.financialFields };
+
   const fn = new Function(
-    'ctx',
-    `"use strict"; const { txn, fields, Math: SafeMath } = ctx; return (${source});`,
+    ...Object.keys(scope),
+    `"use strict"; return (${source});`
   );
-  const value = fn({ ...context, Math });
-  return toNumber(value);
+
+  return toNumber(fn(...Object.values(scope)));
 }
+
 
 async function getTableColumns(conn, tableName) {
   if (tableColumnCache.has(tableName)) {
@@ -220,7 +225,7 @@ async function buildJournalPreviewPayload(conn, safeTable, sourceId, { forUpdate
     creditTotal += creditAmount;
 
     lines.push({
-      lineNo: pickFirstDefined(line, ['line_no', 'line_number']) ?? null,
+      lineNo: line.line_order ?? null,
       account_code: accountCode,
       debit_amount: debitAmount,
       credit_amount: creditAmount,
@@ -259,14 +264,19 @@ async function loadFinancialFieldMap(conn, sourceTable) {
 
 function buildFinancialContext(transactionRow, fieldMappings = []) {
   const financialFields = {};
+
   for (const mapRow of fieldMappings) {
-    const sourceField = pickFirstDefined(mapRow, ['source_field', 'source_column', 'transaction_field']);
-    const targetCode = pickFirstDefined(mapRow, ['financial_field_code', 'field_code', 'target_field_code']);
+    const sourceField = mapRow.source_column;     // actual DB column
+    const targetCode = mapRow.canonical_field;    // canonical name
+
     if (!sourceField || !targetCode) continue;
+
     financialFields[targetCode] = transactionRow[sourceField];
   }
+
   return financialFields;
 }
+
 
 async function resolveFlagSetCode(conn, transType) {
   const [rows] = await conn.query(
@@ -343,15 +353,15 @@ async function resolveAccountCode(conn, line, context) {
   const resolver = rows[0];
   const resolverType = String(resolver.resolver_type || '').toUpperCase();
 
-  // STATIC account
-  if (resolverType === 'STATIC') {
+  // FIXED ACCOUNT
+  if (resolverType === 'FIXED_ACCOUNT') {
     if (!resolver.base_account_code) {
-      throw new Error(`STATIC resolver ${resolverCode} is missing base_account_code`);
+      throw new Error(`FIXED_ACCOUNT resolver ${resolverCode} missing base_account_code`);
     }
     return String(resolver.base_account_code);
   }
 
-  // BANK dynamic (virtual subaccount)
+  // BANK dynamic
   if (resolverType === 'BANK_ACCOUNT_SUFFIX') {
     const bankId = context.financialFields[resolver.source_column];
     if (!bankId) {
@@ -373,50 +383,68 @@ async function resolveAccountCode(conn, line, context) {
 }
 
 
+
 async function resolveAmount(conn, line, context) {
-  const amountExpressionCode = pickFirstDefined(line, ['amount_expression_code', 'fin_amount_expression_code']);
+  const amountExpressionCode = line.amount_expression_code;
   if (!amountExpressionCode) {
-    return toNumber(pickFirstDefined(line, ['amount', 'fixed_amount']));
+    return 0;
   }
 
   const [rows] = await conn.query(
     `SELECT * FROM fin_amount_expression WHERE expression_code = ? LIMIT 1`,
     [amountExpressionCode],
   );
+
   if (!rows.length) {
     throw new Error(`Amount expression not found: ${amountExpressionCode}`);
   }
 
-  const expression = pickFirstDefined(rows[0], ['expression', 'amount_expression']);
-  return toNumber(evaluateExpression(expression, context));
-}
+  const expr = rows[0];
 
-function resolveDimension(line, context) {
-  const dimensionTypeCode = pickFirstDefined(line, ['dimension_type_code', 'fin_dimension_type_code']) || null;
-
-  const staticId = pickFirstDefined(line, ['dimension_id', 'dimension_fixed_id']);
-  if (staticId !== undefined && staticId !== null && staticId !== '') {
-    return { dimensionTypeCode, dimensionId: String(staticId) };
+  // COLUMN type → resolve from canonical financial fields
+  if (expr.source_type === 'COLUMN') {
+    const canonicalField = expr.source_column;  // e.g. TOTAL_AMOUNT
+    const value = context.financialFields[canonicalField];
+    return toNumber(value);
   }
 
-  const sourceFieldCode = pickFirstDefined(line, ['dimension_source_field_code', 'dimension_field_code']);
-  if (sourceFieldCode && context.financialFields[sourceFieldCode] !== undefined) {
+  // FORMULA type → evaluate using canonical fields only
+  if (expr.source_type === 'FORMULA') {
+    return toNumber(
+      evaluateExpression(expr.formula, {
+        txn: context.financialFields,   // 🔥 only canonical
+        financialFields: context.financialFields,
+      })
+    );
+  }
+
+  return 0;
+}
+
+
+function resolveDimension(line, context) {
+  const dimensionTypeCode = line.dimension_type_code || null;
+
+  // Static dimension
+  if (line.dimension_id !== undefined && line.dimension_id !== null) {
     return {
       dimensionTypeCode,
-      dimensionId: String(context.financialFields[sourceFieldCode]),
+      dimensionId: String(line.dimension_id),
     };
   }
 
-  const dimensionExpression = pickFirstDefined(line, ['dimension_expression', 'dimension_id_expression']);
-  if (dimensionExpression) {
+  // Dynamic from canonical field
+  if (line.dimension_source_field) {
+    const value = context.financialFields[line.dimension_source_field];
     return {
       dimensionTypeCode,
-      dimensionId: String(evaluateExpression(dimensionExpression, context)),
+      dimensionId: value ? String(value) : null,
     };
   }
 
   return { dimensionTypeCode, dimensionId: null };
 }
+
 
 function normalizeDrCr(value) {
   const upper = String(value || '').toUpperCase();

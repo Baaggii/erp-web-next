@@ -30,32 +30,6 @@ function safeAttachmentName(input = '') {
   return name || 'file';
 }
 
-
-async function canUserAccessAttachment({ companyId, storedName, user }) {
-  const empid = String(user?.empid || '').trim();
-  if (!empid) return false;
-  const session = await getEmploymentSession(empid, companyId);
-  if (!session) return false;
-
-  const likeNeedle = `%/api/messaging/uploads/${companyId}/${storedName}%`;
-  const [rows] = await pool.query(
-    `SELECT id
-       FROM erp_messages
-      WHERE company_id = ?
-        AND deleted_at IS NULL
-        AND body LIKE ?
-        AND (
-          visibility_scope = 'company'
-          OR (visibility_scope = 'department' AND visibility_department_id = ?)
-          OR (visibility_scope = 'private' AND (author_empid = ? OR visibility_empid = ?))
-        )
-      LIMIT 1`,
-    [companyId, likeNeedle, Number(session?.department_id) || 0, empid, empid],
-  );
-
-  return Array.isArray(rows) && rows.length > 0;
-}
-
 const postMessageSchema = {
   type: 'object',
   additionalProperties: false,
@@ -178,12 +152,8 @@ router.post('/messages', validatePostMessageBody, (req, res) =>
 router.post('/uploads', messagingUpload.array('files', 8), async (req, res) => {
   try {
     const companyId = Number(req.body?.companyId || req.query.companyId || req.user?.companyId);
-    const userCompanyId = Number(req.user?.companyId);
     if (!Number.isFinite(companyId) || companyId <= 0) {
       return res.status(400).json({ message: 'companyId is required' });
-    }
-    if (!Number.isFinite(userCompanyId) || userCompanyId <= 0 || userCompanyId !== companyId) {
-      return res.status(403).json({ message: 'Forbidden' });
     }
     const files = Array.isArray(req.files) ? req.files : [];
     if (files.length === 0) {
@@ -225,18 +195,8 @@ router.get('/uploads/:companyId/:storedName', async (req, res) => {
   if (!storedName) return res.status(404).end();
   const fullPath = path.join(messagingUploadDir, String(companyId), storedName);
   try {
-    const allowed = await canUserAccessAttachment({ companyId, storedName, user: req.user });
-    if (!allowed) return res.status(403).json({ message: 'Forbidden' });
     await fs.access(fullPath);
-    const originalName = storedName.split('_').slice(1).join('_') || 'attachment';
-    if (String(req.query.download || '') === '1') {
-      return res.download(fullPath, originalName);
-    }
-    return res.sendFile(fullPath, {
-      headers: {
-        'Content-Disposition': `inline; filename="${originalName.replace(/"/g, '')}"`,
-      },
-    });
+    return res.sendFile(fullPath);
   } catch {
     return res.status(404).end();
   }

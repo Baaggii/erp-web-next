@@ -15,31 +15,24 @@ import {
 } from './messagingWidgetModel.js';
 
 
-const ATTACHMENTS_MARKER = '\n[attachments-json-v1]';
-
-function isImageAttachment(file) {
-  const type = String(file?.type || '').toLowerCase();
-  const name = String(file?.name || file?.url || '').toLowerCase();
-  return type.startsWith('image/') || /\.(png|jpe?g|gif|webp|bmp|svg)$/.test(name);
-}
+const ATTACHMENTS_MARKER = '\n[attachments-json]';
 
 function decodeMessageContent(rawBody) {
   const safe = String(rawBody || '');
-  const markerIndex = safe.lastIndexOf(ATTACHMENTS_MARKER);
+  const markerIndex = safe.indexOf(ATTACHMENTS_MARKER);
   if (markerIndex < 0) return { text: safe, attachments: [] };
   const text = safe.slice(0, markerIndex).trimEnd();
   const encoded = safe.slice(markerIndex + ATTACHMENTS_MARKER.length).trim();
   if (!encoded) return { text, attachments: [] };
   try {
-    const asciiJson = globalThis.atob(encoded);
-    const json = decodeURIComponent(asciiJson);
+    const json = globalThis.atob(encoded);
     const parsed = JSON.parse(json);
     const attachments = Array.isArray(parsed)
       ? parsed.filter((entry) => entry && typeof entry.url === 'string')
       : [];
     return { text, attachments };
   } catch {
-    return { text, attachments: [] };
+    return { text: safe, attachments: [] };
   }
 }
 
@@ -52,8 +45,7 @@ function encodeAttachmentPayload(items = []) {
       size: Number(entry?.size) || 0,
       url: String(entry?.url || '').trim(),
     })).filter((entry) => entry.url));
-    const asciiJson = encodeURIComponent(json);
-    const encoded = globalThis.btoa(asciiJson);
+    const encoded = globalThis.btoa(json);
     return `${ATTACHMENTS_MARKER}${encoded}`;
   } catch {
     return '';
@@ -267,29 +259,11 @@ function MessageNode({ message, depth = 0, onReply, onJumpToParent, onToggleRepl
       <p style={{ whiteSpace: 'pre-wrap', margin: '8px 0', color: '#0f172a', fontSize: 15 }}>{highlightMentions(safeBody)}</p>
       {decoded.attachments.length > 0 && (
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
-          {decoded.attachments.map((file) => {
-            const image = isImageAttachment(file);
-            return (
-              <div key={`${file.url}-${file.name}`} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                {image && (
-                  <button type="button" onClick={() => onPreviewAttachment(file)} style={{ border: 0, padding: 0, background: 'transparent', width: 84, cursor: 'pointer' }}>
-                    <img src={file.url} alt={file.name || 'attachment'} style={{ width: 84, height: 84, objectFit: 'cover', borderRadius: 8, border: '1px solid #cbd5e1' }} />
-                  </button>
-                )}
-                <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                  <a href={file.url} target="_blank" rel="noreferrer" style={{ fontSize: 12 }}>
-                    {image ? 'Open' : 'View'}
-                  </a>
-                  <a href={`${file.url}${file.url.includes('?') ? '&' : '?'}download=1`} download={file.name || 'attachment'} style={{ fontSize: 12 }}>
-                    Download
-                  </a>
-                </div>
-                <span style={{ fontSize: 11, color: '#475569', maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={file.name || 'attachment'}>
-                  {file.name || 'attachment'}
-                </span>
-              </div>
-            );
-          })}
+          {decoded.attachments.map((file) => (
+            <a key={`${file.url}-${file.name}`} href={file.url} target="_blank" rel="noreferrer" style={{ fontSize: 12 }}>
+              📎 {file.name || 'attachment'}
+            </a>
+          ))}
         </div>
       )}
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
