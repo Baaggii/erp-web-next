@@ -452,6 +452,69 @@ test('realtime fanout emits message.created into company room', async () => {
 });
 
 
+
+test('private thread cannot be replied by a non-included user', async () => {
+  const db = new FakeDb();
+  const session = { permissions: { messaging: true }, department_id: 10 };
+
+  const created = await postMessage({
+    user,
+    companyId: 1,
+    payload: {
+      body: 'private root',
+      linkedType: 'topic',
+      linkedId: 'ops-room',
+      visibilityScope: 'private',
+      visibilityEmpid: 'e-2',
+      idempotencyKey: 'private-reply-root',
+    },
+    correlationId: 'private-reply-root',
+    db,
+    getSession: async () => session,
+  });
+
+  await assert.rejects(
+    () =>
+      postReply({
+        user: { empid: 'e-3', companyId: 1 },
+        companyId: 1,
+        messageId: created.message.id,
+        payload: { body: 'intruder reply', idempotencyKey: 'private-reply-intruder' },
+        correlationId: 'private-reply-intruder',
+        db,
+        getSession: async () => session,
+      }),
+    /Message not found/,
+  );
+});
+
+test('only author can delete message in same company', async () => {
+  const db = new FakeDb();
+  const session = { permissions: { messaging: true }, department_id: 10 };
+
+  const created = await postMessage({
+    user,
+    companyId: 1,
+    payload: { body: 'author owned', linkedType: 'topic', linkedId: 'ops', idempotencyKey: 'author-delete-1' },
+    correlationId: 'author-delete-1',
+    db,
+    getSession: async () => session,
+  });
+
+  await assert.rejects(
+    () =>
+      deleteMessage({
+        user: { empid: 'e-2', companyId: 1 },
+        companyId: 1,
+        messageId: created.message.id,
+        correlationId: 'author-delete-2',
+        db,
+        getSession: async () => session,
+      }),
+    /Messaging permission denied/,
+  );
+});
+
 test('private visibility hides messages from non-target users', async () => {
   const db = new FakeDb();
   const authorSession = { permissions: { messaging: true }, department_id: 10 };
