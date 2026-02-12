@@ -190,12 +190,13 @@ async function buildJournalPreviewPayload(conn, safeTable, sourceId, { forUpdate
   const selectedRule = await selectMatchingJournalRule(conn, flagSetCode, presentFlags);
 
   const [ruleLines] = await conn.query(
-    `SELECT *
-       FROM fin_journal_rule_line
-      where rule_id = ?
-      ORDER BY COALESCE(line_order, 999999), id`,
-    [selectedRule.id],
-  );
+  `SELECT *
+     FROM fin_journal_rule_line
+    WHERE rule_id = ?
+    ORDER BY COALESCE(line_order, 999999), id`,
+  [selectedRule.rule_id],
+);
+
 
   if (!ruleLines.length) {
     throw new Error(`Selected rule ${selectedRule.id} has no journal lines`);
