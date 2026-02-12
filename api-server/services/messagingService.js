@@ -873,8 +873,7 @@ export async function getMessages({ user, companyId, linkedType, linkedId, curso
       fallbackParams.push(String(linkedType), String(linkedId));
     }
     if (cursorId) fallbackParams.push(cursorId);
-    if (!visibilityUnsupported) fallbackParams.push(...visibilityFilter.params);
-
+    fallbackParams.push(...visibilityFilter.params);
     [rows] = await db.query(
       `SELECT * FROM erp_messages WHERE ${fallbackFilters.join(' AND ')} ORDER BY id DESC LIMIT ?`,
       [...fallbackParams, parsedLimit + 1],
@@ -903,42 +902,22 @@ export async function getThread({ user, companyId, messageId, correlationId, db 
   if (!canViewMessage(root, session, user)) throw createError(404, 'MESSAGE_NOT_FOUND', 'Message not found');
   const visibilityFilter = buildVisibilitySqlFilter({ alias: 'm', session, user });
 
-  let rows;
-  try {
-    [rows] = await db.query(
-      `WITH RECURSIVE thread_cte AS (
-        SELECT * FROM erp_messages WHERE id = ? AND company_id = ?
-        UNION ALL
-        SELECT m.*
-        FROM erp_messages m
-        INNER JOIN thread_cte t ON m.parent_message_id = t.id
-        WHERE m.company_id = ?
-      )
-      SELECT *
-        FROM thread_cte m
-       WHERE m.deleted_at IS NULL
-         AND ${visibilityFilter.sql}
-       ORDER BY m.id ASC`,
-      [messageId, scopedCompanyId, scopedCompanyId, ...visibilityFilter.params],
-    );
-  } catch (error) {
-    if (!isUnknownVisibilityColumnError(error)) throw error;
-    [rows] = await db.query(
-      `WITH RECURSIVE thread_cte AS (
-        SELECT * FROM erp_messages WHERE id = ? AND company_id = ?
-        UNION ALL
-        SELECT m.*
-        FROM erp_messages m
-        INNER JOIN thread_cte t ON m.parent_message_id = t.id
-        WHERE m.company_id = ?
-      )
-      SELECT *
-        FROM thread_cte m
-       WHERE m.deleted_at IS NULL
-       ORDER BY m.id ASC`,
-      [messageId, scopedCompanyId, scopedCompanyId],
-    );
-  }
+  const [rows] = await db.query(
+    `WITH RECURSIVE thread_cte AS (
+      SELECT * FROM erp_messages WHERE id = ? AND company_id = ?
+      UNION ALL
+      SELECT m.*
+      FROM erp_messages m
+      INNER JOIN thread_cte t ON m.parent_message_id = t.id
+      WHERE m.company_id = ?
+    )
+    SELECT *
+      FROM thread_cte m
+     WHERE m.deleted_at IS NULL
+       AND ${visibilityFilter.sql}
+     ORDER BY m.id ASC`,
+    [messageId, scopedCompanyId, scopedCompanyId, ...visibilityFilter.params],
+  );
 
   const [receiptResult] = await db.query(
     'INSERT IGNORE INTO erp_message_receipts (message_id, empid) VALUES (?, ?)',

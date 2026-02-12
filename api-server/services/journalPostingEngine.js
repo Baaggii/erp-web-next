@@ -353,34 +353,57 @@ async function resolveAccountCode(conn, line, context) {
   const resolver = rows[0];
   const resolverType = String(resolver.resolver_type || '').toUpperCase();
 
+  let accountCode;
+
   // FIXED ACCOUNT
   if (resolverType === 'FIXED_ACCOUNT') {
     if (!resolver.base_account_code) {
       throw new Error(`FIXED_ACCOUNT resolver ${resolverCode} missing base_account_code`);
     }
-    return String(resolver.base_account_code);
+    accountCode = resolver.base_account_code;
   }
 
   // BANK dynamic
-  if (resolverType === 'BANK_ACCOUNT_SUFFIX') {
+  else if (resolverType === 'BANK_ACCOUNT_SUFFIX') {
     const bankId = context.financialFields[resolver.source_column];
     if (!bankId) {
       throw new Error(`BANK_ACCOUNT_SUFFIX resolver ${resolverCode} missing source value`);
     }
-    return String(resolver.base_account_code);
+    accountCode = resolver.base_account_code;
   }
 
   // VENDOR subaccount
-  if (resolverType === 'VENDOR_SUBACCOUNT') {
+  else if (resolverType === 'VENDOR_SUBACCOUNT') {
     const vendorId = context.financialFields[resolver.source_column];
     if (!vendorId) {
       throw new Error(`VENDOR_SUBACCOUNT resolver ${resolverCode} missing source value`);
     }
-    return String(resolver.base_account_code);
+    accountCode = resolver.base_account_code;
   }
 
-  throw new Error(`Unsupported resolver type ${resolverType}`);
+  else {
+    throw new Error(`Unsupported resolver type ${resolverType}`);
+  }
+
+  // 🔥 Now validate against COA
+  const [coaRows] = await conn.query(
+    `SELECT account_code, is_active
+       FROM fin_chart_of_accounts
+      WHERE account_code = ?`,
+    [accountCode]
+  );
+
+  if (!coaRows.length) {
+    throw new Error(`Account ${accountCode} not found in Chart of Accounts`);
+  }
+
+  if (!coaRows[0].is_active) {
+    throw new Error(`Account ${accountCode} is inactive`);
+  }
+
+  return String(accountCode);
 }
+
 
 
 
