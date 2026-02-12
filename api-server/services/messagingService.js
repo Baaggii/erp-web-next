@@ -106,12 +106,20 @@ function canUseEncryptedBodyColumns(db) {
   return messageEncryptionColumnSupport.get(db) !== false;
 }
 
+function canUseVisibilityColumns(db) {
+  return messageVisibilityColumnSupport.get(db) !== false;
+}
+
 function markLinkedColumnsUnsupported(db) {
   messageLinkedContextSupport.set(db, false);
 }
 
 function markEncryptedBodyColumnsUnsupported(db) {
   messageEncryptionColumnSupport.set(db, false);
+}
+
+function markVisibilityColumnsUnsupported(db) {
+  messageVisibilityColumnSupport.set(db, false);
 }
 
 function isUnknownColumnError(error, columnName) {
@@ -340,6 +348,8 @@ function decryptBody(message) {
 
 function canViewMessage(message, session, user) {
   if (!message || message.deleted_at) return false;
+  const participants = Array.isArray(message?.participant_empids) ? message.participant_empids : [];
+  if (participants.length > 0) return participants.includes(String(user?.empid));
   const scope = String(message.visibility_scope || 'company');
   if (scope === 'company') return true;
   if (scope === 'department') {
@@ -728,7 +738,7 @@ async function createMessageInternal({ db = pool, ctx, payload, parentMessageId 
   ];
 
   let result;
-  if (canUseLinkedColumns(db) && canUseEncryptedBodyColumns(db)) {
+  if (canUseLinkedColumns(db) && canUseEncryptedBodyColumns(db) && canUseVisibilityColumns(db)) {
     try {
       [result] = await db.query(
         `INSERT INTO erp_messages
@@ -741,13 +751,15 @@ async function createMessageInternal({ db = pool, ctx, payload, parentMessageId 
     } catch (error) {
       const linkedUnsupported = isUnknownColumnError(error, 'linked_type') || isUnknownColumnError(error, 'linked_id');
       const encryptionUnsupported = isUnknownColumnError(error, 'body_ciphertext') || isUnknownColumnError(error, 'body_iv') || isUnknownColumnError(error, 'body_auth_tag');
-      if (!linkedUnsupported && !encryptionUnsupported) throw error;
+      const visibilityUnsupported = isUnknownColumnError(error, 'visibility_scope') || isUnknownColumnError(error, 'visibility_empid') || isUnknownColumnError(error, 'visibility_department_id');
+      if (!linkedUnsupported && !encryptionUnsupported && !visibilityUnsupported) throw error;
       if (linkedUnsupported) markLinkedColumnsUnsupported(db);
       if (encryptionUnsupported) markEncryptedBodyColumnsUnsupported(db);
+      if (visibilityUnsupported) markVisibilityColumnsUnsupported(db);
     }
   }
 
-  if (!result && canUseLinkedColumns(db)) {
+  if (!result && canUseLinkedColumns(db) && canUseVisibilityColumns(db)) {
     try {
       [result] = await db.query(
         `INSERT INTO erp_messages
@@ -767,8 +779,62 @@ async function createMessageInternal({ db = pool, ctx, payload, parentMessageId 
       );
       messageLinkedContextSupport.set(db, true);
     } catch (error) {
+      const linkedUnsupported = isUnknownColumnError(error, 'linked_type') || isUnknownColumnError(error, 'linked_id');
+      const visibilityUnsupported = isUnknownColumnError(error, 'visibility_scope') || isUnknownColumnError(error, 'visibility_empid') || isUnknownColumnError(error, 'visibility_department_id');
+      if (!linkedUnsupported && !visibilityUnsupported) throw error;
+      if (linkedUnsupported) markLinkedColumnsUnsupported(db);
+      if (visibilityUnsupported) markVisibilityColumnsUnsupported(db);
+    }
+  }
+
+  if (!result && canUseLinkedColumns(db)) {
+    try {
+      [result] = await db.query(
+        `INSERT INTO erp_messages
+          (company_id, author_empid, parent_message_id, linked_type, linked_id, body)
+          VALUES (?, ?, ?, ?, ?, ?)`,
+        [
+          ctx.companyId,
+          ctx.user.empid,
+          parentMessageId,
+          linkedType,
+          linkedId,
+          body,
+        ],
+      );
+      messageLinkedContextSupport.set(db, true);
+    } catch (error) {
       if (!isUnknownColumnError(error, 'linked_type') && !isUnknownColumnError(error, 'linked_id')) throw error;
       markLinkedColumnsUnsupported(db);
+    }
+  }
+
+  if (!result && canUseEncryptedBodyColumns(db) && canUseVisibilityColumns(db)) {
+    try {
+      [result] = await db.query(
+        `INSERT INTO erp_messages
+          (company_id, author_empid, parent_message_id, visibility_scope, visibility_department_id, visibility_empid, body, body_ciphertext, body_iv, body_auth_tag)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          ctx.companyId,
+          ctx.user.empid,
+          parentMessageId,
+          visibility.visibilityScope,
+          visibility.visibilityDepartmentId,
+          visibility.visibilityEmpid,
+          encryptedBody.body,
+          encryptedBody.bodyCiphertext,
+          encryptedBody.bodyIv,
+          encryptedBody.bodyAuthTag,
+        ],
+      );
+      messageEncryptionColumnSupport.set(db, true);
+    } catch (error) {
+      const encryptionUnsupported = isUnknownColumnError(error, 'body_ciphertext') || isUnknownColumnError(error, 'body_iv') || isUnknownColumnError(error, 'body_auth_tag');
+      const visibilityUnsupported = isUnknownColumnError(error, 'visibility_scope') || isUnknownColumnError(error, 'visibility_empid') || isUnknownColumnError(error, 'visibility_department_id');
+      if (!encryptionUnsupported && !visibilityUnsupported) throw error;
+      markEncryptedBodyColumnsUnsupported(db);
+      if (visibilityUnsupported) markVisibilityColumnsUnsupported(db);
     }
   }
 
@@ -796,6 +862,29 @@ async function createMessageInternal({ db = pool, ctx, payload, parentMessageId 
       const encryptionUnsupported = isUnknownColumnError(error, 'body_ciphertext') || isUnknownColumnError(error, 'body_iv') || isUnknownColumnError(error, 'body_auth_tag');
       if (!encryptionUnsupported) throw error;
       markEncryptedBodyColumnsUnsupported(db);
+    }
+  }
+
+  if (!result && canUseVisibilityColumns(db)) {
+    try {
+      [result] = await db.query(
+        `INSERT INTO erp_messages
+          (company_id, author_empid, parent_message_id, visibility_scope, visibility_department_id, visibility_empid, body)
+          VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [
+          ctx.companyId,
+          ctx.user.empid,
+          parentMessageId,
+          visibility.visibilityScope,
+          visibility.visibilityDepartmentId,
+          visibility.visibilityEmpid,
+          body,
+        ],
+      );
+    } catch (error) {
+      const visibilityUnsupported = isUnknownColumnError(error, 'visibility_scope') || isUnknownColumnError(error, 'visibility_empid') || isUnknownColumnError(error, 'visibility_department_id');
+      if (!visibilityUnsupported) throw error;
+      markVisibilityColumnsUnsupported(db);
     }
   }
 

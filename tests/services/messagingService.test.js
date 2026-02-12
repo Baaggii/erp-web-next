@@ -4,12 +4,14 @@ import { deleteMessage, getMessages, getThread, patchMessage, postMessage, postR
 import { resetMessagingMetrics } from '../../api-server/services/messagingMetrics.js';
 
 class FakeDb {
-  constructor({ supportsEncryptedBodyColumns = true, deleteByColumn = 'deleted_by_empid' } = {}) {
+  constructor({ supportsEncryptedBodyColumns = true, supportsVisibilityColumns = true, deleteByColumn = 'deleted_by_empid' } = {}) {
     this.messages = [];
     this.idem = new Map();
+    this.participants = [];
     this.nextId = 1;
     this.securityAuditEvents = [];
     this.supportsEncryptedBodyColumns = supportsEncryptedBodyColumns;
+    this.supportsVisibilityColumns = supportsVisibilityColumns;
     this.deleteByColumn = deleteByColumn;
   }
 
@@ -18,6 +20,11 @@ class FakeDb {
     if (!this.supportsEncryptedBodyColumns && sql.includes('body_ciphertext')) {
       const error = new Error("Unknown column 'body_ciphertext' in 'field list'");
       error.sqlMessage = "Unknown column 'body_ciphertext' in 'field list'";
+      throw error;
+    }
+    if (!this.supportsVisibilityColumns && sql.includes('visibility_scope')) {
+      const error = new Error("Unknown column 'visibility_scope' in 'field list'");
+      error.sqlMessage = "Unknown column 'visibility_scope' in 'field list'";
       throw error;
     }
     if (sql.includes('deleted_by_empid') && this.deleteByColumn !== 'deleted_by_empid') {
@@ -62,9 +69,9 @@ class FakeDb {
         visibility_department_id: visibilityOffset !== null ? params[visibilityOffset + 1] : null,
         visibility_empid: visibilityOffset !== null ? params[visibilityOffset + 2] : null,
         body: params[baseOffset],
-        body_ciphertext: params[baseOffset + 1],
-        body_iv: params[baseOffset + 2],
-        body_auth_tag: params[baseOffset + 3],
+        body_ciphertext: hasEncryptedFields ? params[baseOffset + 1] : null,
+        body_iv: hasEncryptedFields ? params[baseOffset + 2] : null,
+        body_auth_tag: hasEncryptedFields ? params[baseOffset + 3] : null,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
         deleted_at: null,
@@ -617,6 +624,49 @@ test('private visibility hides messages from non-target users', async () => {
   });
   assert.equal(visible.items.length, 1);
   assert.equal(visible.items[0].body, 'secret');
+});
+
+test('private messages remain scoped when visibility columns are unavailable', async () => {
+  const db = new FakeDb({ supportsVisibilityColumns: false });
+  const authorSession = { permissions: { messaging: true }, department_id: 10 };
+
+  const created = await postMessage({
+    user,
+    companyId: 1,
+    payload: {
+      body: 'legacy private',
+      linkedType: 'topic',
+      linkedId: 'legacy-private',
+      visibilityScope: 'private',
+      recipientEmpids: ['e-2'],
+      visibilityEmpid: 'e-2',
+      idempotencyKey: 'legacy-private-1',
+    },
+    correlationId: 'legacy-private-1',
+    db,
+    getSession: async () => authorSession,
+  });
+
+  assert.equal(created.message.body, 'legacy private');
+
+  const hidden = await getMessages({
+    user: { empid: 'e-3', companyId: 1 },
+    companyId: 1,
+    correlationId: 'legacy-private-2',
+    db,
+    getSession: async () => ({ permissions: { messaging: true }, department_id: 10 }),
+  });
+  assert.equal(hidden.items.length, 0);
+
+  const visible = await getMessages({
+    user: { empid: 'e-2', companyId: 1 },
+    companyId: 1,
+    correlationId: 'legacy-private-3',
+    db,
+    getSession: async () => ({ permissions: { messaging: true }, department_id: 10 }),
+  });
+  assert.equal(visible.items.length, 1);
+  assert.equal(visible.items[0].body, 'legacy private');
 });
 
 test('encrypted storage stores ciphertext when key is configured', async () => {
