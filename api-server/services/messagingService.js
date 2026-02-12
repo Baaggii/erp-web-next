@@ -19,6 +19,7 @@ const idempotencyRequestHashSupport = new WeakMap();
 const messageLinkedContextSupport = new WeakMap();
 const messageEncryptionColumnSupport = new WeakMap();
 const messageDeleteByColumnSupport = new WeakMap();
+const messageRecipientColumnSupport = new WeakMap();
 let ioRef = null;
 
 const onlineByCompany = new Map();
@@ -111,6 +112,10 @@ function markLinkedColumnsUnsupported(db) {
 
 function markEncryptedBodyColumnsUnsupported(db) {
   messageEncryptionColumnSupport.set(db, false);
+}
+
+function canUseRecipientColumn(db) {
+  return messageRecipientColumnSupport.get(db) !== false;
 }
 
 function isUnknownColumnError(error, columnName) {
@@ -376,9 +381,103 @@ function canViewMessage(message, session, user) {
     return Number(session?.department_id) > 0 && Number(session?.department_id) === Number(message.visibility_department_id);
   }
   if (scope === 'private') {
-    return String(message.author_empid) === String(user?.empid) || String(message.visibility_empid) === String(user?.empid);
+    const viewerEmpid = String(user?.empid || '');
+    if (String(message.author_empid) === viewerEmpid || String(message.visibility_empid) === viewerEmpid) return true;
+    return resolveRecipientEmpids(message).includes(viewerEmpid);
   }
   return false;
+}
+
+async function resolveThreadRootMessage(db, companyId, message) {
+  let root = message;
+  while (root?.parent_message_id) {
+    const parent = await findMessageById(db, companyId, root.parent_message_id);
+    if (!parent) break;
+    root = parent;
+  }
+  return root;
+}
+
+async function listThreadMessages(db, companyId, rootId) {
+  try {
+    const [rows] = await db.query(
+      `WITH RECURSIVE thread_cte AS (
+        SELECT * FROM erp_messages WHERE id = ? AND company_id = ?
+        UNION ALL
+        SELECT m.*
+        FROM erp_messages m
+        INNER JOIN thread_cte t ON m.parent_message_id = t.id
+        WHERE m.company_id = ?
+      )
+      SELECT * FROM thread_cte ORDER BY id ASC`,
+      [rootId, companyId, companyId],
+    );
+    return rows;
+  } catch (error) {
+    if (!String(error?.sqlMessage || error?.message || '').toLowerCase().includes('with recursive')) throw error;
+    const [rows] = await db.query(
+      'SELECT * FROM erp_messages WHERE company_id = ? ORDER BY id ASC',
+      [companyId],
+    );
+    const byParent = new Map();
+    for (const row of rows) {
+      const key = row.parent_message_id == null ? 'root' : String(row.parent_message_id);
+      const bucket = byParent.get(key) || [];
+      bucket.push(row);
+      byParent.set(key, bucket);
+    }
+    const queue = [rootId];
+    const seen = new Set([String(rootId)]);
+    const selected = [];
+    while (queue.length > 0) {
+      const current = queue.shift();
+      const row = rows.find((entry) => Number(entry.id) === Number(current));
+      if (!row) continue;
+      selected.push(row);
+      const children = byParent.get(String(current)) || [];
+      for (const child of children) {
+        const childId = String(child.id);
+        if (seen.has(childId)) continue;
+        seen.add(childId);
+        queue.push(child.id);
+      }
+    }
+    return selected;
+  }
+}
+
+async function updateMessagePrivateVisibility(db, { companyId, messageId, visibilityEmpid, recipientEmpids }) {
+  const serializedRecipients = JSON.stringify(recipientEmpids);
+  if (canUseRecipientColumn(db)) {
+    try {
+      await db.query(
+        'UPDATE erp_messages SET visibility_empid = ?, recipient_empids = ? WHERE id = ? AND company_id = ?',
+        [visibilityEmpid, serializedRecipients, messageId, companyId],
+      );
+      messageRecipientColumnSupport.set(db, true);
+      return;
+    } catch (error) {
+      if (!isUnknownColumnError(error, 'recipient_empids')) throw error;
+      messageRecipientColumnSupport.set(db, false);
+    }
+  }
+  await db.query(
+    'UPDATE erp_messages SET visibility_empid = ? WHERE id = ? AND company_id = ?',
+    [visibilityEmpid, messageId, companyId],
+  );
+}
+
+async function updateThreadVisibilityParticipants(db, { companyId, rootId, recipientEmpids }) {
+  const visibilityEmpid = recipientEmpids[0] || null;
+  const rows = await listThreadMessages(db, companyId, rootId);
+  for (const row of rows) {
+    await updateMessagePrivateVisibility(db, {
+      companyId,
+      messageId: row.id,
+      visibilityEmpid,
+      recipientEmpids,
+    });
+  }
 }
 
 function sanitizeForViewer(message, session, user) {
@@ -765,6 +864,16 @@ async function createMessageInternal({ db = pool, ctx, payload, parentMessageId 
     );
   }
   const messageId = result.insertId;
+
+  if (visibility.visibilityScope === 'private') {
+    await updateMessagePrivateVisibility(db, {
+      companyId: ctx.companyId,
+      messageId,
+      visibilityEmpid: visibility.visibilityEmpid,
+      recipientEmpids: visibility.recipientEmpids,
+    });
+  }
+
   await upsertIdempotencyRow(db, {
     companyId: ctx.companyId,
     empid: ctx.user.empid,
@@ -821,7 +930,9 @@ export async function postReply({ user, companyId, messageId, payload, correlati
   const privateParticipants = message.visibility_scope === 'private'
     ? new Set([
       String(message.author_empid || '').trim(),
+      String(message.visibility_empid || '').trim(),
       ...resolveRecipientEmpids(message),
+      ...(Array.isArray(payload?.recipientEmpids) ? payload.recipientEmpids.map((entry) => String(entry || '').trim()) : []),
     ].filter(Boolean))
     : new Set();
   const replyRecipients = message.visibility_scope === 'private'
@@ -832,7 +943,7 @@ export async function postReply({ user, companyId, messageId, payload, correlati
     : message.visibility_empid;
 
   const ctx = { user, companyId: scopedCompanyId, correlationId, session };
-  return createMessageInternal({
+  const created = await createMessageInternal({
     db,
     ctx,
     payload: {
@@ -847,6 +958,17 @@ export async function postReply({ user, companyId, messageId, payload, correlati
     parentMessageId: message.id,
     eventName: 'thread.reply.created',
   });
+
+  if (message.visibility_scope === 'private') {
+    const root = await resolveThreadRootMessage(db, scopedCompanyId, message);
+    await updateThreadVisibilityParticipants(db, {
+      companyId: scopedCompanyId,
+      rootId: root.id,
+      recipientEmpids: replyRecipients,
+    });
+  }
+
+  return created;
 }
 
 export async function getMessages({ user, companyId, linkedType, linkedId, cursor, limit = CURSOR_PAGE_SIZE, correlationId, db = pool, getSession = getEmploymentSession }) {
