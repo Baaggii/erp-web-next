@@ -55,8 +55,19 @@ function encodeAttachmentPayload(items = []) {
 function isImageAttachment(file) {
   const type = String(file?.type || '').toLowerCase();
   if (type.startsWith('image/')) return true;
+  const name = String(file?.name || '').toLowerCase();
+  if (/\.(png|jpe?g|gif|webp|bmp|svg|heic|heif)$/.test(name)) return true;
   const url = String(file?.url || '').toLowerCase();
-  return /\.(png|jpe?g|gif|webp|bmp|svg)(\?.*)?$/.test(url);
+  return /\.(png|jpe?g|gif|webp|bmp|svg|heic|heif)(\?.*)?$/.test(url);
+}
+
+function extractMessageAttachments(message) {
+  const decoded = decodeMessageContent(message?.body);
+  if (decoded.attachments.length > 0) return decoded;
+  const fallbackAttachments = Array.isArray(message?.attachments)
+    ? message.attachments.filter((entry) => entry && typeof entry.url === 'string')
+    : [];
+  return { ...decoded, attachments: fallbackAttachments };
 }
 
 const STATUS_FILTERS = [
@@ -235,7 +246,7 @@ function canViewTransaction(transactionId, userId, permissions) {
 
 function MessageNode({ message, depth = 0, onReply, onJumpToParent, onToggleReplies, collapsedMessageIds, parentMap, permissions, activeReplyTarget, highlightedIds, onOpenLinkedTransaction, resolveEmployeeLabel, canDeleteMessage, onDeleteMessage, onPreviewAttachment }) {
   const replyCount = countNestedReplies(message);
-  const decoded = decodeMessageContent(message.body);
+  const decoded = extractMessageAttachments(message);
   const safeBody = sanitizeMessageText(decoded.text);
   const linked = extractContextLink(message);
   const hasReplies = Array.isArray(message.replies) && message.replies.length > 0;
@@ -874,10 +885,11 @@ export default function MessagingWidget() {
 
   const conversationSummaries = useMemo(() => conversations.map((conversation) => {
     const previewMessage = conversation.messages.at(-1);
+    const previewDecoded = decodeMessageContent(previewMessage?.body || '');
     return {
       ...conversation,
       unread: conversation.messages.filter((msg) => !msg.read_by?.includes?.(selfEmpid)).length,
-      preview: sanitizeMessageText(previewMessage?.body || '').slice(0, 48) || 'No messages yet',
+      preview: sanitizeMessageText(previewDecoded.text || '').slice(0, 48) || 'No messages yet',
       groupName: conversation.linkedType && conversation.linkedId ? `${conversation.linkedType} #${conversation.linkedId}` : `Thread #${conversation.rootMessageId}`,
       lastActivity: previewMessage?.created_at || null,
     };
