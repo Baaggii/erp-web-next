@@ -801,9 +801,9 @@ export async function postReply({ user, companyId, messageId, payload, correlati
       linkedId: message.linked_id,
       visibilityScope: message.visibility_scope,
       visibilityDepartmentId: message.visibility_department_id,
-      visibilityEmpid: message.visibility_empid,
-      recipientEmpids: message.visibility_scope === 'private' && message.visibility_empid
-        ? [String(message.visibility_empid)]
+      visibilityEmpid: message.visibility_scope === 'private' ? replyVisibilityEmpid : message.visibility_empid,
+      recipientEmpids: message.visibility_scope === 'private' && replyVisibilityEmpid
+        ? [String(replyVisibilityEmpid)]
         : payload?.recipientEmpids,
     },
     parentMessageId: message.id,
