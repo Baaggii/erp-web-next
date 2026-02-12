@@ -354,6 +354,30 @@ function canViewMessage(message, session, user) {
   return false;
 }
 
+function buildVisibilityFilter({ session, user }) {
+  const departmentId = toId(session?.department_id);
+  const empid = String(user?.empid || '').trim();
+  const clauses = [
+    "(COALESCE(visibility_scope, 'company') = 'company')",
+  ];
+  const params = [];
+
+  if (departmentId) {
+    clauses.push("(visibility_scope = 'department' AND visibility_department_id = ?)");
+    params.push(departmentId);
+  }
+
+  if (empid) {
+    clauses.push("(visibility_scope = 'private' AND (author_empid = ? OR visibility_empid = ?))");
+    params.push(empid, empid);
+  }
+
+  return {
+    clause: `(${clauses.join(' OR ')})`,
+    params,
+  };
+}
+
 function sanitizeForViewer(message, session, user) {
   const viewerAllowed = canViewMessage(message, session, user);
   if (!viewerAllowed) return null;
@@ -801,7 +825,7 @@ export async function postReply({ user, companyId, messageId, payload, correlati
       linkedId: message.linked_id,
       visibilityScope: message.visibility_scope,
       visibilityDepartmentId: message.visibility_department_id,
-      visibilityEmpid: message.visibility_empid,
+      visibilityEmpid: replyVisibilityEmpid,
       recipientEmpids: message.visibility_scope === 'private' && message.visibility_empid
         ? [String(message.visibility_empid)]
         : payload?.recipientEmpids,
@@ -820,6 +844,9 @@ export async function getMessages({ user, companyId, linkedType, linkedId, curso
 
   const filters = ['company_id = ?', 'parent_message_id IS NULL'];
   const params = [scopedCompanyId];
+  const visibilityFilter = buildVisibilityFilter({ session, user });
+  filters.push(visibilityFilter.clause);
+  params.push(...visibilityFilter.params);
   if (linkedType && linkedId && canUseLinkedColumns(db)) {
     filters.push('linked_type = ?');
     filters.push('linked_id = ?');
@@ -915,10 +942,21 @@ export async function getThread({ user, companyId, messageId, correlationId, db 
     }
   }
 
-  const [receiptResult] = await db.query(
-    'INSERT IGNORE INTO erp_message_receipts (message_id, empid) VALUES (?, ?)',
-    [messageId, user.empid],
-  );
+  let receiptResult = null;
+  try {
+    const [result] = await db.query(
+      'INSERT IGNORE INTO erp_message_receipts (message_id, empid) VALUES (?, ?)',
+      [messageId, user.empid],
+    );
+    receiptResult = result;
+  } catch (error) {
+    const errorMessage = String(error?.sqlMessage || error?.message || '').toLowerCase();
+    const missingReceiptTable = errorMessage.includes('erp_message_receipts') && (
+      errorMessage.includes('doesn\'t exist')
+      || errorMessage.includes('unknown table')
+    );
+    if (!missingReceiptTable) throw error;
+  }
   if (receiptResult?.affectedRows) {
     emit(scopedCompanyId, 'receipt.read', {
       ...eventPayloadBase({ correlationId, companyId: scopedCompanyId }),

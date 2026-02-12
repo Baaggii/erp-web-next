@@ -941,7 +941,7 @@ export default function MessagingWidget() {
 
   const canDeleteMessage = (message) => {
     if (!message) return false;
-    return normalizeId(message.author_empid) === selfEmpid;
+    return normalizeId(message.author_empid || message.authorEmpid) === selfEmpid;
   };
 
   const handleDeleteMessage = async (messageId) => {
@@ -1347,17 +1347,18 @@ export default function MessagingWidget() {
                     {conversation.groupName} · {formatLastActivity(conversation.lastActivity)}
                   </p>
                 </button>
-                <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-                  <button
-                    type="button"
-                    aria-label={`Delete conversation ${conversation.title}`}
-                    onClick={() => handleDeleteConversationFromList(conversation)}
-                    disabled={!canDeleteMessage(messages.find((entry) => Number(entry.id) === Number(conversation.rootMessageId)))}
-                    style={{ border: 0, background: 'transparent', color: '#b91c1c', fontSize: 12, cursor: 'pointer' }}
-                  >
-                    🗑 Delete
-                  </button>
-                </div>
+                {canDeleteMessage(messages.find((entry) => Number(entry.id) === Number(conversation.rootMessageId))) && (
+                  <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                    <button
+                      type="button"
+                      aria-label={`Delete conversation ${conversation.title}`}
+                      onClick={() => handleDeleteConversationFromList(conversation)}
+                      style={{ border: 0, background: 'transparent', color: '#b91c1c', fontSize: 12, cursor: 'pointer' }}
+                    >
+                      🗑 Delete
+                    </button>
+                  </div>
+                )}
               </div>
             ))}
           </div>
