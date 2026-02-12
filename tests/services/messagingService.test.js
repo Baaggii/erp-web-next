@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { deleteMessage, getMessages, getThread, patchMessage, postMessage, postReply, setMessagingIo } from '../../api-server/services/messagingService.js';
+import { deleteMessage, getMessages, getThread, patchMessage, postMessage, postReply, resetMessagingServiceStateForTests, setMessagingIo } from '../../api-server/services/messagingService.js';
 import { resetMessagingMetrics } from '../../api-server/services/messagingMetrics.js';
 
 class FakeDb {
@@ -39,10 +39,18 @@ class FakeDb {
       const messageId = this.idem.get(`${companyId}:${empid}:${key}`);
       return [messageId ? [{ message_id: messageId, request_hash: null, expires_at: null }] : []];
     }
+    if (sql.startsWith('SELECT message_id, empid') && sql.includes('FROM erp_message_participants')) {
+      return [[]];
+    }
+    if (sql.startsWith('INSERT IGNORE INTO erp_message_participants')) {
+      return [{ affectedRows: 1 }];
+    }
     if (sql.startsWith('INSERT INTO erp_messages')) {
       const hasLinkedFields = sql.includes('linked_type') && sql.includes('linked_id');
+      const hasVisibilityFields = sql.includes('visibility_scope') && sql.includes('visibility_empid');
       const [companyId, authorEmpid, parentId] = params;
-      const baseOffset = hasLinkedFields ? 8 : 3;
+      const visibilityOffset = hasLinkedFields ? 5 : (hasVisibilityFields ? 3 : null);
+      const baseOffset = hasLinkedFields ? 8 : (hasVisibilityFields ? 6 : 3);
       const message = {
         id: this.nextId++,
         company_id: companyId,
@@ -50,9 +58,9 @@ class FakeDb {
         parent_message_id: parentId,
         linked_type: hasLinkedFields ? params[3] : null,
         linked_id: hasLinkedFields ? params[4] : null,
-        visibility_scope: hasLinkedFields ? params[5] : 'company',
-        visibility_department_id: hasLinkedFields ? params[6] : null,
-        visibility_empid: hasLinkedFields ? params[7] : null,
+        visibility_scope: visibilityOffset !== null ? params[visibilityOffset] : 'company',
+        visibility_department_id: visibilityOffset !== null ? params[visibilityOffset + 1] : null,
+        visibility_empid: visibilityOffset !== null ? params[visibilityOffset + 2] : null,
         body: params[baseOffset],
         body_ciphertext: params[baseOffset + 1],
         body_iv: params[baseOffset + 2],
