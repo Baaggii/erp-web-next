@@ -225,7 +225,7 @@ async function buildJournalPreviewPayload(conn, safeTable, sourceId, { forUpdate
     creditTotal += creditAmount;
 
     lines.push({
-      lineNo: pickFirstDefined(line, ['line_no', 'line_number']) ?? null,
+      lineNo: line.line_order ?? null,
       account_code: accountCode,
       debit_amount: debitAmount,
       credit_amount: creditAmount,
