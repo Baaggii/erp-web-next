@@ -16,6 +16,7 @@ import {
 
 
 const ATTACHMENTS_MARKER = '\n[attachments-json]';
+const NEW_CONVERSATION_ID = '__new__';
 
 function decodeMessageContent(rawBody) {
   const safe = String(rawBody || '');
@@ -94,7 +95,12 @@ function countNestedReplies(message) {
 }
 
 function extractMessageTopic(message) {
-  return sanitizeMessageText(message?.topic || '').slice(0, 120);
+  const directTopic = sanitizeMessageText(message?.topic || '').slice(0, 120);
+  if (directTopic) return directTopic;
+  const decoded = decodeMessageContent(message?.body || '');
+  const inlineTopicMatch = decoded.text.match(/^\[([^\]]{1,120})\]\s+/);
+  if (!inlineTopicMatch) return '';
+  return sanitizeMessageText(inlineTopicMatch[1] || '').slice(0, 120);
 }
 
 function extractContextLink(message) {
@@ -412,7 +418,13 @@ export default function MessagingWidget() {
 
   const bootState = createInitialWidgetState({
     isOpen: globalThis.sessionStorage?.getItem(sessionOpenKey) === '1',
-    activeConversationId: globalThis.sessionStorage?.getItem(sessionConversationKey),
+    activeConversationId: (() => {
+      const rawConversationId = globalThis.sessionStorage?.getItem(sessionConversationKey);
+      if (!rawConversationId) return null;
+      if (rawConversationId === 'general' || rawConversationId === NEW_CONVERSATION_ID || rawConversationId.startsWith('message:')) return rawConversationId;
+      if (/^\d+$/.test(rawConversationId)) return `message:${rawConversationId}`;
+      return null;
+    })(),
     companyId: globalThis.sessionStorage?.getItem(sessionCompanyKey) || companyId,
   });
 
@@ -476,7 +488,11 @@ export default function MessagingWidget() {
   }, [state.isOpen, sessionOpenKey]);
 
   useEffect(() => {
-    if (state.activeConversationId) globalThis.sessionStorage?.setItem(sessionConversationKey, String(state.activeConversationId));
+    if (!state.activeConversationId || state.activeConversationId === NEW_CONVERSATION_ID) {
+      globalThis.sessionStorage?.removeItem(sessionConversationKey);
+      return;
+    }
+    globalThis.sessionStorage?.setItem(sessionConversationKey, String(state.activeConversationId));
   }, [state.activeConversationId, sessionConversationKey]);
 
   useEffect(() => {
@@ -825,8 +841,12 @@ export default function MessagingWidget() {
   }, []);
 
   const conversations = useMemo(() => groupConversations(messages), [messages]);
-  const activeConversationId = state.activeConversationId || conversations[0]?.id || null;
-  const activeConversation = conversations.find((conversation) => conversation.id === activeConversationId) || null;
+  const isDraftConversation = state.activeConversationId === NEW_CONVERSATION_ID;
+  const requestedConversation = isDraftConversation
+    ? null
+    : conversations.find((conversation) => conversation.id === state.activeConversationId) || null;
+  const activeConversation = isDraftConversation ? null : (requestedConversation || conversations[0] || null);
+  const activeConversationId = isDraftConversation ? NEW_CONVERSATION_ID : (activeConversation?.id || null);
   const threadMessages = useMemo(() => buildNestedThreads(activeConversation?.messages || []), [activeConversation]);
   const messageMap = useMemo(() => new Map(messages.map((msg) => [msg.id, msg])), [messages]);
   const unreadCount = messages.filter((msg) => !msg.read_by?.includes?.(selfEmpid)).length;
@@ -1130,6 +1150,7 @@ export default function MessagingWidget() {
           return { ...prev, [key]: mergeMessageList(prev[key], createdMessage) };
         });
         const threadRootId = createdMessage.conversation_id || createdMessage.conversationId || createdMessage.parent_message_id || createdMessage.parentMessageId || createdMessage.id;
+        dispatch({ type: 'widget/setConversation', payload: threadRootId ? `message:${threadRootId}` : null });
         await fetchThreadMessages(threadRootId, activeCompany);
       }
       dispatch({ type: 'composer/reset' });
@@ -1212,6 +1233,7 @@ export default function MessagingWidget() {
   };
 
   const openNewMessage = () => {
+    dispatch({ type: 'widget/setConversation', payload: NEW_CONVERSATION_ID });
     dispatch({ type: 'composer/setTopic', payload: '' });
     dispatch({ type: 'composer/setBody', payload: '' });
     dispatch({ type: 'composer/setReplyTo', payload: null });
@@ -1385,7 +1407,7 @@ export default function MessagingWidget() {
           </div>
 
           {conversationPanelOpen && (
-          <div style={{ overflowY: 'auto', padding: 8, display: 'grid', gap: 6, minHeight: 0, flex: 1 }}>
+          <div style={{ overflowY: 'auto', padding: 8, display: 'grid', gap: 6, minHeight: 0, flex: 1, alignContent: 'start', gridAutoRows: 'max-content' }}>
             {conversationSummaries.length === 0 && <p style={{ color: '#64748b', fontSize: 13 }}>No conversations yet.</p>}
             {conversationSummaries.map((conversation) => (
               <div key={conversation.id} style={{ borderRadius: 12, border: conversation.id === activeConversationId ? '1px solid #3b82f6' : '1px solid #e2e8f0', background: conversation.id === activeConversationId ? '#eff6ff' : '#ffffff', padding: 8 }}>
