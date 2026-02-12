@@ -605,3 +605,21 @@ th {
   .sm\:items-center { align-items: center; }
   .sm\:justify-between { justify-content: space-between; }
 }
+
+.messaging-widget-shell {
+  max-height: 58vh;
+  height: min(58vh, 760px);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.messaging-widget-layout {
+  flex: 1;
+  min-height: 0;
+}
+
+.messaging-widget-left-pane,
+.messaging-widget-main-pane {
+  min-height: 0;
+}

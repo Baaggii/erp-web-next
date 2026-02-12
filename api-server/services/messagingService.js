@@ -489,6 +489,29 @@ function sanitizeForViewer(message, session, user) {
   };
 }
 
+function buildViewerVisibilityFilter(session, user, { includeRecipients = true } = {}) {
+  const viewerEmpid = String(user?.empid || '').trim();
+  const viewerDepartmentId = Number(session?.department_id) > 0 ? Number(session.department_id) : null;
+  const privateConditions = ['author_empid = ?', 'visibility_empid = ?'];
+  const params = [viewerDepartmentId, viewerEmpid, viewerEmpid];
+
+  if (includeRecipients) {
+    privateConditions.push(
+      "(recipient_empids IS NOT NULL AND JSON_VALID(recipient_empids) AND JSON_SEARCH(recipient_empids, 'one', ?) IS NOT NULL)",
+    );
+    params.push(viewerEmpid);
+  }
+
+  return {
+    sql: `(
+      visibility_scope = 'company'
+      OR (visibility_scope = 'department' AND visibility_department_id = ?)
+      OR (visibility_scope = 'private' AND (${privateConditions.join(' OR ')}))
+    )`,
+    params,
+  };
+}
+
 function assertCanViewMessage(message, session, user) {
   if (!canViewMessage(message, session, user)) {
     throw createError(404, 'MESSAGE_NOT_FOUND', 'Message not found');
@@ -978,35 +1001,48 @@ export async function getMessages({ user, companyId, linkedType, linkedId, curso
   const parsedLimit = Math.min(Math.max(Number(limit) || CURSOR_PAGE_SIZE, 1), 100);
   const cursorId = toId(cursor);
 
-  const filters = ['company_id = ?', 'parent_message_id IS NULL'];
-  const params = [scopedCompanyId];
-  if (linkedType && linkedId && canUseLinkedColumns(db)) {
-    filters.push('linked_type = ?');
-    filters.push('linked_id = ?');
-    params.push(String(linkedType), String(linkedId));
-  }
-  if (cursorId) {
-    filters.push('id < ?');
-    params.push(cursorId);
-  }
-  filters.push('deleted_at IS NULL');
+  let includeRecipients = canUseRecipientColumn(db);
+  let includeLinkedColumns = linkedType && linkedId && canUseLinkedColumns(db);
 
   let rows;
-  try {
-    [rows] = await db.query(
-      `SELECT * FROM erp_messages WHERE ${filters.join(' AND ')} ORDER BY id DESC LIMIT ?`,
-      [...params, parsedLimit + 1],
-    );
-  } catch (error) {
-    if (!isUnknownColumnError(error, 'linked_type') && !isUnknownColumnError(error, 'linked_id')) throw error;
-    markLinkedColumnsUnsupported(db);
-    const fallbackFilters = filters.filter((entry) => entry !== 'linked_type = ?' && entry !== 'linked_id = ?');
-    const fallbackParams = [scopedCompanyId];
-    if (cursorId) fallbackParams.push(cursorId);
-    [rows] = await db.query(
-      `SELECT * FROM erp_messages WHERE ${fallbackFilters.join(' AND ')} ORDER BY id DESC LIMIT ?`,
-      [...fallbackParams, parsedLimit + 1],
-    );
+  // Retry once when legacy schemas are missing linked/recipient columns.
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const attemptFilters = ['company_id = ?', 'parent_message_id IS NULL'];
+    const attemptParams = [scopedCompanyId];
+    if (includeLinkedColumns) {
+      attemptFilters.push('linked_type = ?');
+      attemptFilters.push('linked_id = ?');
+      attemptParams.push(String(linkedType), String(linkedId));
+    }
+    if (cursorId) {
+      attemptFilters.push('id < ?');
+      attemptParams.push(cursorId);
+    }
+    attemptFilters.push('deleted_at IS NULL');
+    const visibilityFilter = buildViewerVisibilityFilter(session, user, { includeRecipients });
+    attemptFilters.push(visibilityFilter.sql);
+    attemptParams.push(...visibilityFilter.params);
+
+    try {
+      [rows] = await db.query(
+        `SELECT * FROM erp_messages WHERE ${attemptFilters.join(' AND ')} ORDER BY id DESC LIMIT ?`,
+        [...attemptParams, parsedLimit + 1],
+      );
+      if (includeRecipients) messageRecipientColumnSupport.set(db, true);
+      break;
+    } catch (error) {
+      if (includeLinkedColumns && (isUnknownColumnError(error, 'linked_type') || isUnknownColumnError(error, 'linked_id'))) {
+        includeLinkedColumns = false;
+        markLinkedColumnsUnsupported(db);
+        continue;
+      }
+      if (includeRecipients && isUnknownColumnError(error, 'recipient_empids')) {
+        includeRecipients = false;
+        messageRecipientColumnSupport.set(db, false);
+        continue;
+      }
+      throw error;
+    }
   }
 
   const visibleRows = rows.map((row) => sanitizeForViewer(row, session, user)).filter(Boolean);
@@ -1031,7 +1067,9 @@ export async function getThread({ user, companyId, messageId, correlationId, db 
   assertCanViewMessage(root, session, user);
 
   let rows;
+  let includeRecipients = canUseRecipientColumn(db);
   try {
+    const visibilityFilter = buildViewerVisibilityFilter(session, user, { includeRecipients });
     [rows] = await db.query(
       `WITH RECURSIVE thread_cte AS (
         SELECT * FROM erp_messages WHERE id = ? AND company_id = ?
@@ -1041,15 +1079,40 @@ export async function getThread({ user, companyId, messageId, correlationId, db 
         INNER JOIN thread_cte t ON m.parent_message_id = t.id
         WHERE m.company_id = ?
       )
-      SELECT * FROM thread_cte WHERE deleted_at IS NULL ORDER BY id ASC`,
-      [messageId, scopedCompanyId, scopedCompanyId],
+      SELECT * FROM thread_cte WHERE deleted_at IS NULL AND ${visibilityFilter.sql} ORDER BY id ASC`,
+      [messageId, scopedCompanyId, scopedCompanyId, ...visibilityFilter.params],
     );
+    if (includeRecipients) messageRecipientColumnSupport.set(db, true);
   } catch (error) {
-    if (!String(error?.sqlMessage || error?.message || '').toLowerCase().includes('with recursive')) throw error;
-    const [fallbackRows] = await db.query(
-      'SELECT * FROM erp_messages WHERE company_id = ? AND deleted_at IS NULL ORDER BY id ASC',
-      [scopedCompanyId],
-    );
+    if (includeRecipients && isUnknownColumnError(error, 'recipient_empids')) {
+      includeRecipients = false;
+      messageRecipientColumnSupport.set(db, false);
+      const visibilityFilter = buildViewerVisibilityFilter(session, user, { includeRecipients });
+      [rows] = await db.query(
+        `WITH RECURSIVE thread_cte AS (
+          SELECT * FROM erp_messages WHERE id = ? AND company_id = ?
+          UNION ALL
+          SELECT m.*
+          FROM erp_messages m
+          INNER JOIN thread_cte t ON m.parent_message_id = t.id
+          WHERE m.company_id = ?
+        )
+        SELECT * FROM thread_cte WHERE deleted_at IS NULL AND ${visibilityFilter.sql} ORDER BY id ASC`,
+        [messageId, scopedCompanyId, scopedCompanyId, ...visibilityFilter.params],
+      );
+    } else if (!String(error?.sqlMessage || error?.message || '').toLowerCase().includes('with recursive')) {
+      throw error;
+    }
+    if (!rows) {
+      const visibilityFilter = buildViewerVisibilityFilter(session, user, { includeRecipients });
+      const [fallbackRows] = await db.query(
+        `SELECT * FROM erp_messages
+         WHERE company_id = ?
+           AND deleted_at IS NULL
+           AND ${visibilityFilter.sql}
+         ORDER BY id ASC`,
+        [scopedCompanyId, ...visibilityFilter.params],
+      );
     const byParent = new Map();
     for (const row of fallbackRows) {
       const key = row.parent_message_id == null ? 'root' : String(row.parent_message_id);
@@ -1072,6 +1135,7 @@ export async function getThread({ user, companyId, messageId, correlationId, db 
         seen.add(childId);
         stack.push(child.id);
       }
+    }
     }
   }
 
