@@ -57,6 +57,7 @@ if (!haveReact) {
     });
 
     assert.ok(container.querySelector('[aria-label="Messaging widget"]'));
+    assert.match(container.textContent || '', /General/);
 
     root.unmount();
   });
