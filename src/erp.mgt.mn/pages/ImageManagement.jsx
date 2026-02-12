@@ -784,6 +784,7 @@ export default function ImageManagement() {
         setPendingSummary(null);
         setSearchedFolders([]);
         setHasMore(false);
+        addToast('Detect from host failed', 'error');
         persistAll({
           uploads: uploadsRef.current,
           ignored: ignoredRef.current,
@@ -807,6 +808,7 @@ export default function ImageManagement() {
         setPendingSummary(null);
         setSearchedFolders([]);
         setHasMore(false);
+        addToast('Detect from host failed', 'error');
         persistAll({
           uploads: uploadsRef.current,
           ignored: ignoredRef.current,
