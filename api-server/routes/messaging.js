@@ -195,15 +195,7 @@ router.get('/uploads/:companyId/:storedName', async (req, res) => {
   const fullPath = path.join(messagingUploadDir, String(companyId), storedName);
   try {
     await fs.access(fullPath);
-    const originalName = storedName.split('_').slice(1).join('_') || 'attachment';
-    if (String(req.query.download || '') === '1') {
-      return res.download(fullPath, originalName);
-    }
-    return res.sendFile(fullPath, {
-      headers: {
-        'Content-Disposition': `inline; filename="${originalName.replace(/"/g, '')}"`,
-      },
-    });
+    return res.sendFile(fullPath);
   } catch {
     return res.status(404).end();
   }
