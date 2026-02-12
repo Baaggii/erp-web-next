@@ -265,17 +265,25 @@ function validateLinkedContext(linkedType, linkedId) {
 }
 
 function normalizeVisibility(payload, session, user) {
-  const scope = String(payload?.visibilityScope || 'company').trim().toLowerCase();
+  const recipients = Array.isArray(payload?.recipientEmpids)
+    ? Array.from(new Set(payload.recipientEmpids.map((entry) => String(entry || '').trim()).filter(Boolean)))
+    : [];
+
+  const requestedScope = String(payload?.visibilityScope || '').trim().toLowerCase();
+  const scope = requestedScope || (recipients.length > 0 ? 'private' : 'company');
   if (!VISIBILITY_SCOPES.has(scope)) {
     throw createError(400, 'VISIBILITY_SCOPE_INVALID', 'visibilityScope must be company, department, or private');
   }
+
+  if (scope === 'private' && recipients.length > 1) {
+    throw createError(400, 'VISIBILITY_PRIVATE_TOO_MANY_RECIPIENTS', 'Private messages support exactly one recipient');
+  }
+
   const visibilityDepartmentId = scope === 'department' ? toId(payload?.visibilityDepartmentId ?? session?.department_id) : null;
   if (scope === 'department' && !visibilityDepartmentId) {
     throw createError(400, 'VISIBILITY_DEPARTMENT_REQUIRED', 'visibilityDepartmentId is required for department scope');
   }
-  const recipients = Array.isArray(payload?.recipientEmpids)
-    ? payload.recipientEmpids.map((entry) => String(entry || '').trim()).filter(Boolean)
-    : [];
+
   const visibilityEmpid = scope === 'private'
     ? String(payload?.visibilityEmpid || recipients[0] || '').trim()
     : null;
@@ -285,6 +293,7 @@ function normalizeVisibility(payload, session, user) {
   if (scope === 'private' && visibilityEmpid === String(user?.empid)) {
     throw createError(400, 'VISIBILITY_EMPID_INVALID', 'visibilityEmpid cannot be the same as author');
   }
+
   return {
     visibilityScope: scope,
     visibilityDepartmentId,

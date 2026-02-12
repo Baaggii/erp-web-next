@@ -226,7 +226,7 @@ function canViewTransaction(transactionId, userId, permissions) {
   return canOpenContextLink(permissions, 'transaction');
 }
 
-function MessageNode({ message, depth = 0, onReply, onJumpToParent, onToggleReplies, collapsedMessageIds, parentMap, permissions, activeReplyTarget, highlightedIds, onOpenLinkedTransaction, resolveEmployeeLabel, canDeleteMessage, onDeleteMessage }) {
+function MessageNode({ message, depth = 0, onReply, onJumpToParent, onToggleReplies, collapsedMessageIds, parentMap, permissions, activeReplyTarget, highlightedIds, onOpenLinkedTransaction, resolveEmployeeLabel, canDeleteMessage, onDeleteMessage, onPreviewAttachment }) {
   const replyCount = countNestedReplies(message);
   const decoded = decodeMessageContent(message.body);
   const safeBody = sanitizeMessageText(decoded.text);
@@ -316,6 +316,7 @@ function MessageNode({ message, depth = 0, onReply, onJumpToParent, onToggleRepl
           resolveEmployeeLabel={resolveEmployeeLabel}
           canDeleteMessage={canDeleteMessage}
           onDeleteMessage={onDeleteMessage}
+          onPreviewAttachment={onPreviewAttachment}
         />
       ))}
     </article>
@@ -358,6 +359,8 @@ export default function MessagingWidget() {
   const [dragOverComposer, setDragOverComposer] = useState(false);
   const [attachmentsOpen, setAttachmentsOpen] = useState(false);
   const [collapsedMessageIds, setCollapsedMessageIds] = useState(() => new Set());
+  const [attachmentPreviewOpen, setAttachmentPreviewOpen] = useState(false);
+  const [attachmentPreview, setAttachmentPreview] = useState(null);
   const composerRef = useRef(null);
 
   const draftStorageKey = useMemo(() => {
@@ -1044,6 +1047,13 @@ export default function MessagingWidget() {
     setComposerAnnouncement(safe.length ? `${safe.length} attachment(s) added.` : 'No safe files selected.');
   };
 
+
+  const onPreviewAttachment = (file) => {
+    if (!isImageAttachment(file)) return;
+    setAttachmentPreview(file);
+    setAttachmentPreviewOpen(true);
+  };
+
   const onAttach = (event) => {
     addFiles(event.target.files || []);
     event.target.value = '';
@@ -1347,6 +1357,7 @@ export default function MessagingWidget() {
                 resolveEmployeeLabel={resolveEmployeeLabel}
                 canDeleteMessage={canDeleteMessage}
                 onDeleteMessage={handleDeleteMessage}
+                onPreviewAttachment={onPreviewAttachment}
               />
             ))}
           </main>
@@ -1533,6 +1544,26 @@ export default function MessagingWidget() {
               </button>
             </div>
             <p aria-live="assertive" style={{ fontSize: 12, marginBottom: 0 }}>{composerAnnouncement}</p>
+
+            {attachmentPreviewOpen && attachmentPreview && (
+              <div
+                role="dialog"
+                aria-modal="true"
+                onClick={() => setAttachmentPreviewOpen(false)}
+                style={{ position: 'fixed', inset: 0, background: 'rgba(15, 23, 42, 0.72)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2000, padding: 20 }}
+              >
+                <div onClick={(event) => event.stopPropagation()} style={{ background: '#fff', borderRadius: 12, padding: 12, maxWidth: 'min(90vw, 980px)', maxHeight: '90vh', overflow: 'auto' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                    <strong style={{ fontSize: 13 }}>{attachmentPreview.name || 'Image preview'}</strong>
+                    <button type="button" onClick={() => setAttachmentPreviewOpen(false)}>Close</button>
+                  </div>
+                  <img src={attachmentPreview.url} alt={attachmentPreview.name || 'attachment preview'} style={{ maxWidth: '100%', maxHeight: '75vh', borderRadius: 8 }} />
+                  <div style={{ marginTop: 8 }}>
+                    <a href={`${attachmentPreview.url}${attachmentPreview.url.includes('?') ? '&' : '?'}download=1`} download={attachmentPreview.name || 'attachment'}>Download image</a>
+                  </div>
+                </div>
+              </div>
+            )}
           </form>
         </section>
       </div>
