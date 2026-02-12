@@ -3243,16 +3243,19 @@ const TableManager = forwardRef(function TableManager({
     if (!window.confirm(confirmMessage)) return;
 
     const sourceId = getJournalSourceId(rowId);
-    const res = await fetch(`${API_BASE}/journal/post`, {
-      method: 'POST',
-      credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        source_table: table,
-        source_id: sourceId,
-        force_repost: forceRepost,
-      }),
-    });
+    const requestPayload = {
+      source_table: table,
+      source_id: sourceId,
+      force_repost: forceRepost,
+    };
+
+    try {
+      const res = await fetch(`${API_BASE}/journal/post`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(requestPayload),
+      });
 
       const payload = await res.json().catch(() => ({}));
       logJournalActionDebug('post', requestPayload, {
