@@ -1257,6 +1257,7 @@ export default function MessagingWidget() {
 
   return (
     <section
+      className="messaging-widget-shell"
       style={{
         position: 'fixed',
         right: 16,
@@ -1267,8 +1268,6 @@ export default function MessagingWidget() {
         border: '1px solid #cbd5e1',
         borderRadius: 14,
         zIndex: 1200,
-        overflow: 'auto',
-        maxHeight: '58vh',
       }}
       aria-label="Messaging widget"
     >
@@ -1287,8 +1286,8 @@ export default function MessagingWidget() {
         </button>
       </header>
 
-      <div style={{ display: 'grid', gridTemplateColumns: isNarrowLayout ? 'minmax(0, 1fr)' : '300px minmax(0,1fr)', minHeight: 0, height: '100%' }}>
-        <aside style={{ borderRight: isNarrowLayout ? 'none' : '1px solid #e2e8f0', background: '#ffffff', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+      <div className="messaging-widget-layout" style={{ display: 'grid', gridTemplateColumns: isNarrowLayout ? 'minmax(0, 1fr)' : '300px minmax(0,1fr)' }}>
+        <aside className="messaging-widget-left-pane" style={{ borderRight: isNarrowLayout ? 'none' : '1px solid #e2e8f0', background: '#ffffff', display: 'flex', flexDirection: 'column' }}>
           <div style={{ padding: 12, borderBottom: '1px solid #e2e8f0' }}>
             <label htmlFor="messaging-company-switch" style={{ fontSize: 12, fontWeight: 600, color: '#334155' }}>Company</label>
             <input
@@ -1310,6 +1309,7 @@ export default function MessagingWidget() {
             </button>
           </div>
 
+          <div style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
           <div style={{ padding: 10, borderBottom: '1px solid #e2e8f0' }}>
             <button type="button" onClick={() => setPresencePanelOpen((prev) => !prev)} style={{ border: '1px solid #cbd5e1', borderRadius: 8, background: '#fff', fontWeight: 700, color: '#0f172a', padding: '4px 8px', fontSize: 12 }}>
               {presencePanelOpen ? '● Hide presence' : '◌ Show presence'}
@@ -1361,7 +1361,7 @@ export default function MessagingWidget() {
           </div>
 
           {conversationPanelOpen && (
-          <div style={{ overflowY: 'auto', padding: 8, display: 'grid', gap: 6, minHeight: 0 }}>
+          <div style={{ padding: 8, display: 'grid', gap: 6, minHeight: 0 }}>
             {conversationSummaries.length === 0 && <p style={{ color: '#64748b', fontSize: 13 }}>No conversations yet.</p>}
             {conversationSummaries.map((conversation) => (
               <div key={conversation.id} style={{ borderRadius: 12, border: conversation.id === activeConversationId ? '1px solid #3b82f6' : '1px solid #e2e8f0', background: conversation.id === activeConversationId ? '#eff6ff' : '#ffffff', padding: 8 }}>
@@ -1404,9 +1404,10 @@ export default function MessagingWidget() {
             ))}
           </div>
           )}
+          </div>
         </aside>
 
-        <section style={{ display: 'grid', gridTemplateRows: 'minmax(0, 1fr) auto', minWidth: 0, minHeight: 0 }}>
+        <section className="messaging-widget-main-pane" style={{ display: 'grid', gridTemplateRows: 'minmax(0, 1fr) auto', minWidth: 0, minHeight: 0 }}>
           <main style={{ padding: '10px 14px 8px', overflowY: 'auto', minHeight: 420 }} aria-live="polite">
             <div style={{ position: 'sticky', top: 0, background: '#f8fafc', paddingBottom: 8, marginBottom: 8 }}>
               <strong style={{ fontSize: 16, color: '#0f172a' }}>{activeTopic}</strong>
