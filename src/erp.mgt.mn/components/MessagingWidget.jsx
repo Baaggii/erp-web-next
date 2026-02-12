@@ -52,6 +52,13 @@ function encodeAttachmentPayload(items = []) {
   }
 }
 
+function isImageAttachment(file) {
+  const type = String(file?.type || '').toLowerCase();
+  if (type.startsWith('image/')) return true;
+  const url = String(file?.url || '').toLowerCase();
+  return /\.(png|jpe?g|gif|webp|bmp|svg)(\?.*)?$/.test(url);
+}
+
 const STATUS_FILTERS = [
   { value: 'all', label: 'All' },
   { value: PRESENCE.ONLINE, label: 'Online' },
@@ -259,11 +266,30 @@ function MessageNode({ message, depth = 0, onReply, onJumpToParent, onToggleRepl
       <p style={{ whiteSpace: 'pre-wrap', margin: '8px 0', color: '#0f172a', fontSize: 15 }}>{highlightMentions(safeBody)}</p>
       {decoded.attachments.length > 0 && (
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
-          {decoded.attachments.map((file) => (
-            <a key={`${file.url}-${file.name}`} href={file.url} target="_blank" rel="noreferrer" style={{ fontSize: 12 }}>
-              📎 {file.name || 'attachment'}
-            </a>
-          ))}
+          {decoded.attachments.map((file) => {
+            if (isImageAttachment(file)) {
+              return (
+                <button
+                  key={`${file.url}-${file.name}`}
+                  type="button"
+                  onClick={() => onPreviewAttachment(file)}
+                  style={{ border: '1px solid #cbd5e1', background: '#fff', borderRadius: 8, padding: 4, cursor: 'pointer' }}
+                  aria-label={`Preview image ${file.name || 'attachment'}`}
+                >
+                  <img
+                    src={file.url}
+                    alt={file.name || 'attachment thumbnail'}
+                    style={{ width: 88, height: 88, objectFit: 'cover', borderRadius: 6, display: 'block' }}
+                  />
+                </button>
+              );
+            }
+            return (
+              <a key={`${file.url}-${file.name}`} href={file.url} target="_blank" rel="noreferrer" style={{ fontSize: 12 }}>
+                📎 {file.name || 'attachment'}
+              </a>
+            );
+          })}
         </div>
       )}
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -373,19 +399,25 @@ export default function MessagingWidget() {
 
   const fetchThreadMessages = async (rootMessageId, activeCompany) => {
     if (!rootMessageId || !activeCompany) return;
-    const params = new URLSearchParams({ companyId: String(activeCompany) });
-    const threadRes = await fetch(`${API_BASE}/messaging/messages/${rootMessageId}/thread?${params.toString()}`, { credentials: 'include' });
-    if (!threadRes.ok) return;
-    const threadData = await threadRes.json();
-    const threadItems = Array.isArray(threadData?.items) ? threadData.items : [];
-    if (threadItems.length === 0) return;
-    setMessagesByCompany((prev) => {
-      const key = getCompanyCacheKey(activeCompany);
-      const byId = new Map((prev[key] || []).map((entry) => [String(entry.id), entry]));
-      threadItems.forEach((entry) => byId.set(String(entry.id), entry));
-      const merged = Array.from(byId.values()).sort((a, b) => new Date(a.created_at || 0).getTime() - new Date(b.created_at || 0).getTime());
-      return { ...prev, [key]: merged };
-    });
+    try {
+      const params = new URLSearchParams({ companyId: String(activeCompany) });
+      const threadRes = await fetch(`${API_BASE}/messaging/messages/${rootMessageId}/thread?${params.toString()}`, { credentials: 'include' });
+      if (!threadRes.ok) return;
+      const threadData = await threadRes.json();
+      const threadItems = Array.isArray(threadData?.items)
+        ? threadData.items
+        : [threadData?.root, ...(Array.isArray(threadData?.replies) ? threadData.replies : [])].filter(Boolean);
+      if (threadItems.length === 0) return;
+      setMessagesByCompany((prev) => {
+        const key = getCompanyCacheKey(activeCompany);
+        const byId = new Map((prev[key] || []).map((entry) => [String(entry.id), entry]));
+        threadItems.forEach((entry) => byId.set(String(entry.id), entry));
+        const merged = Array.from(byId.values()).sort((a, b) => new Date(a.created_at || 0).getTime() - new Date(b.created_at || 0).getTime());
+        return { ...prev, [key]: merged };
+      });
+    } catch {
+      // Keep widget usable when thread fetch fails.
+    }
   };
 
   useEffect(() => {
@@ -897,8 +929,7 @@ export default function MessagingWidget() {
 
   const canDeleteMessage = (message) => {
     if (!message) return false;
-    if (normalizeId(message.author_empid) === selfEmpid) return true;
-    return Boolean(permissions?.isAdmin || permissions?.messaging_delete || permissions?.messaging?.delete);
+    return normalizeId(message.author_empid) === selfEmpid;
   };
 
   const handleDeleteMessage = async (messageId) => {

@@ -363,6 +363,12 @@ function sanitizeForViewer(message, session, user) {
   };
 }
 
+function assertCanViewMessage(message, session, user) {
+  if (!canViewMessage(message, session, user)) {
+    throw createError(404, 'MESSAGE_NOT_FOUND', 'Message not found');
+  }
+}
+
 function isProfanity(body) {
   return /\b(fuck|shit|bitch|asshole)\b/i.test(body);
 }
@@ -771,6 +777,7 @@ export async function postReply({ user, companyId, messageId, payload, correlati
   if (!canMessage(session)) throwPermissionDenied({ db, user, companyId: scopedCompanyId, action: 'message:reply' });
   const message = await findMessageById(db, scopedCompanyId, messageId);
   if (!message || message.deleted_at) throw createError(404, 'MESSAGE_NOT_FOUND', 'Message not found');
+  assertCanViewMessage(message, session, user);
   const depth = await resolveThreadDepth(db, scopedCompanyId, message);
   if (depth >= MAX_REPLY_DEPTH) {
     throw createError(400, 'THREAD_DEPTH_EXCEEDED', `Reply depth exceeds maximum of ${MAX_REPLY_DEPTH}`);
@@ -780,7 +787,17 @@ export async function postReply({ user, companyId, messageId, payload, correlati
   return createMessageInternal({
     db,
     ctx,
-    payload: { ...payload, linkedType: message.linked_type, linkedId: message.linked_id },
+    payload: {
+      ...payload,
+      linkedType: message.linked_type,
+      linkedId: message.linked_id,
+      visibilityScope: message.visibility_scope,
+      visibilityDepartmentId: message.visibility_department_id,
+      visibilityEmpid: message.visibility_empid,
+      recipientEmpids: message.visibility_scope === 'private' && message.visibility_empid
+        ? [String(message.visibility_empid)]
+        : payload?.recipientEmpids,
+    },
     parentMessageId: message.id,
     eventName: 'thread.reply.created',
   });
@@ -843,19 +860,52 @@ export async function getThread({ user, companyId, messageId, correlationId, db 
   if (!canMessage(session)) throwPermissionDenied({ db, user, companyId: scopedCompanyId, action: 'message:thread' });
   const root = await findMessageById(db, scopedCompanyId, messageId);
   if (!root || root.deleted_at) throw createError(404, 'MESSAGE_NOT_FOUND', 'Message not found');
+  assertCanViewMessage(root, session, user);
 
-  const [rows] = await db.query(
-    `WITH RECURSIVE thread_cte AS (
-      SELECT * FROM erp_messages WHERE id = ? AND company_id = ?
-      UNION ALL
-      SELECT m.*
-      FROM erp_messages m
-      INNER JOIN thread_cte t ON m.parent_message_id = t.id
-      WHERE m.company_id = ?
-    )
-    SELECT * FROM thread_cte WHERE deleted_at IS NULL ORDER BY id ASC`,
-    [messageId, scopedCompanyId, scopedCompanyId],
-  );
+  let rows;
+  try {
+    [rows] = await db.query(
+      `WITH RECURSIVE thread_cte AS (
+        SELECT * FROM erp_messages WHERE id = ? AND company_id = ?
+        UNION ALL
+        SELECT m.*
+        FROM erp_messages m
+        INNER JOIN thread_cte t ON m.parent_message_id = t.id
+        WHERE m.company_id = ?
+      )
+      SELECT * FROM thread_cte WHERE deleted_at IS NULL ORDER BY id ASC`,
+      [messageId, scopedCompanyId, scopedCompanyId],
+    );
+  } catch (error) {
+    if (!String(error?.sqlMessage || error?.message || '').toLowerCase().includes('with recursive')) throw error;
+    const [fallbackRows] = await db.query(
+      'SELECT * FROM erp_messages WHERE company_id = ? AND deleted_at IS NULL ORDER BY id ASC',
+      [scopedCompanyId],
+    );
+    const byParent = new Map();
+    for (const row of fallbackRows) {
+      const key = row.parent_message_id == null ? 'root' : String(row.parent_message_id);
+      const bucket = byParent.get(key) || [];
+      bucket.push(row);
+      byParent.set(key, bucket);
+    }
+    const stack = [messageId];
+    const seen = new Set([String(messageId)]);
+    rows = [];
+    while (stack.length > 0) {
+      const id = stack.shift();
+      const row = fallbackRows.find((entry) => Number(entry.id) === Number(id));
+      if (!row) continue;
+      rows.push(row);
+      const children = byParent.get(String(id)) || [];
+      for (const child of children) {
+        const childId = String(child.id);
+        if (seen.has(childId)) continue;
+        seen.add(childId);
+        stack.push(child.id);
+      }
+    }
+  }
 
   const [receiptResult] = await db.query(
     'INSERT IGNORE INTO erp_message_receipts (message_id, empid) VALUES (?, ?)',
@@ -954,7 +1004,7 @@ export async function deleteMessage({ user, companyId, messageId, correlationId,
       },
     },
   });
-  if (!deleteEvaluation.allowed && !canDelete(session) && message.author_empid !== user.empid) {
+  if (String(message.author_empid) !== String(user.empid)) {
     throwPermissionDenied({ db, user, companyId: scopedCompanyId, action: 'message:delete', reason: deleteEvaluation.reason || 'cannot_delete_message' });
   }
 
