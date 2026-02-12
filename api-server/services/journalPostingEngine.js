@@ -341,6 +341,22 @@ async function resolveAccountCode(conn, line, context) {
     throw new Error(`No account resolver configured for journal line ${line.id}`);
   }
 
+  const [coaRows] = await conn.query(
+  `SELECT account_code, is_active
+     FROM fin_chart_of_accounts
+    WHERE account_code = ?`,
+  [accountCode]
+);
+
+if (!coaRows.length) {
+  throw new Error(`Account ${accountCode} not found in Chart of Accounts`);
+}
+
+if (!coaRows[0].is_active) {
+  throw new Error(`Account ${accountCode} is inactive`);
+}
+
+
   const [rows] = await conn.query(
     `SELECT * FROM fin_account_resolver WHERE resolver_code = ? LIMIT 1`,
     [resolverCode],
