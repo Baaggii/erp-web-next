@@ -1233,7 +1233,7 @@ export default function MessagingWidget() {
   };
 
   const openNewMessage = () => {
-    dispatch({ type: 'widget/setConversation', payload: NEW_CONVERSATION_ID });
+    dispatch({ type: 'widget/setConversation', payload: null });
     dispatch({ type: 'composer/setTopic', payload: '' });
     dispatch({ type: 'composer/setBody', payload: '' });
     dispatch({ type: 'composer/setReplyTo', payload: null });
