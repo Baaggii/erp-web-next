@@ -289,7 +289,7 @@ function getTemporaryTimestamp(entry) {
 export default function TransactionNotificationDropdown() {
   const { notifications, unreadCount, markRead } = useTransactionNotifications();
   const { user, session } = useAuth();
-  const { workflows, markWorkflowSeen, temporary } = usePendingRequests();
+  const { workflows, markWorkflowSeen, temporary, notificationStatusTotals, anyHasNew } = usePendingRequests();
   const [open, setOpen] = useState(false);
   const [formEntries, setFormEntries] = useState([]);
   const [formsLoaded, setFormsLoaded] = useState(false);
