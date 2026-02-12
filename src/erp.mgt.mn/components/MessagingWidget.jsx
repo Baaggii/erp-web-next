@@ -122,55 +122,30 @@ function buildNestedThreads(messages) {
 }
 
 function groupConversations(messages) {
-  const messageById = new Map(messages.map((msg) => [String(msg.id), msg]));
   const map = new Map();
-
-  const rootMessages = messages.filter((msg) => {
-    const parentId = msg.parent_message_id || msg.parentMessageId || null;
-    const conversationId = msg.conversation_id || msg.conversationId || null;
-    return !parentId && !conversationId;
-  });
-
-  rootMessages.forEach((msg) => {
+  messages.forEach((msg) => {
     const topic = extractMessageTopic(msg);
     const link = extractContextLink(msg);
-    const key = String(msg.id);
-    map.set(key, {
-      id: key,
-      title: topic || (link.linkedType === 'transaction' && link.linkedId ? `Transaction #${link.linkedId}` : 'General'),
-      messages: [msg],
-      linkedType: link.linkedType,
-      linkedId: link.linkedId,
-      rootMessageId: msg.id,
-    });
-  });
-
-  const resolveRootKey = (msg) => {
     const conversationId = msg.conversation_id || msg.conversationId || null;
-    if (conversationId && map.has(String(conversationId))) return String(conversationId);
-
-    let parentId = msg.parent_message_id || msg.parentMessageId || null;
-    const visited = new Set();
-    while (parentId && !visited.has(String(parentId))) {
-      visited.add(String(parentId));
-      if (map.has(String(parentId))) return String(parentId);
-      const parent = messageById.get(String(parentId));
-      parentId = parent?.parent_message_id || parent?.parentMessageId || null;
+    const key = String(
+      conversationId
+      || (link.linkedType && link.linkedId ? `${link.linkedType}:${link.linkedId}` : null)
+      || `message:${msg.parent_message_id || msg.parentMessageId || msg.id}`,
+    );
+    if (!map.has(key)) {
+      map.set(key, {
+        id: key,
+        title: topic || (link.linkedType === 'transaction' && link.linkedId ? `Transaction #${link.linkedId}` : 'General'),
+        messages: [],
+        linkedType: link.linkedType,
+        linkedId: link.linkedId,
+        rootMessageId: conversationId || msg.parent_message_id || msg.parentMessageId || msg.id,
+      });
     }
-    return null;
-  };
-
-  messages.forEach((msg) => {
-    if (map.has(String(msg.id))) return;
-    const rootKey = resolveRootKey(msg);
-    if (!rootKey) return;
-    map.get(rootKey).messages.push(msg);
+    const current = map.get(key);
+    if (!current.title && topic) current.title = topic;
+    current.messages.push(msg);
   });
-
-  map.forEach((conversation) => {
-    conversation.messages.sort((a, b) => new Date(a.created_at || 0).getTime() - new Date(b.created_at || 0).getTime());
-  });
-
   return Array.from(map.values()).sort((a, b) => {
     const aTime = new Date(a.messages.at(-1)?.created_at || 0).getTime();
     const bTime = new Date(b.messages.at(-1)?.created_at || 0).getTime();
