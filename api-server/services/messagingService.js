@@ -20,7 +20,6 @@ const messageLinkedContextSupport = new WeakMap();
 const messageEncryptionColumnSupport = new WeakMap();
 const messageDeleteByColumnSupport = new WeakMap();
 const messageRecipientColumnSupport = new WeakMap();
-const messageVisibilityEmpidColumnSupport = new WeakMap();
 let ioRef = null;
 
 const onlineByCompany = new Map();
@@ -117,14 +116,6 @@ function markEncryptedBodyColumnsUnsupported(db) {
 
 function canUseRecipientColumn(db) {
   return messageRecipientColumnSupport.get(db) !== false;
-}
-
-function canUseVisibilityEmpidColumn(db) {
-  return messageVisibilityEmpidColumnSupport.get(db) !== false;
-}
-
-function markVisibilityEmpidColumnUnsupported(db) {
-  messageVisibilityEmpidColumnSupport.set(db, false);
 }
 
 function isUnknownColumnError(error, columnName) {
@@ -461,13 +452,6 @@ async function listThreadMessages(db, companyId, rootId) {
 }
 
 async function updateMessagePrivateVisibility(db, { companyId, messageId, visibilityEmpid, recipientEmpids }) {
-  if (!canUseVisibilityEmpidColumn(db)) {
-    throw createError(
-      503,
-      'MESSAGING_SCHEMA_OUTDATED',
-      'Private messaging requires the visibility_empid column. Run messaging migrations and retry.',
-    );
-  }
   const serializedRecipients = JSON.stringify(recipientEmpids);
   if (canUseRecipientColumn(db)) {
     try {
@@ -478,32 +462,14 @@ async function updateMessagePrivateVisibility(db, { companyId, messageId, visibi
       messageRecipientColumnSupport.set(db, true);
       return;
     } catch (error) {
-      if (isUnknownColumnError(error, 'visibility_empid')) {
-        markVisibilityEmpidColumnUnsupported(db);
-        throw createError(
-          503,
-          'MESSAGING_SCHEMA_OUTDATED',
-          'Private messaging requires the visibility_empid column. Run messaging migrations and retry.',
-        );
-      }
       if (!isUnknownColumnError(error, 'recipient_empids')) throw error;
       messageRecipientColumnSupport.set(db, false);
     }
   }
-  try {
-    await db.query(
-      'UPDATE erp_messages SET visibility_empid = ? WHERE id = ? AND company_id = ?',
-      [visibilityEmpid, messageId, companyId],
-    );
-  } catch (error) {
-    if (!isUnknownColumnError(error, 'visibility_empid')) throw error;
-    markVisibilityEmpidColumnUnsupported(db);
-    throw createError(
-      503,
-      'MESSAGING_SCHEMA_OUTDATED',
-      'Private messaging requires the visibility_empid column. Run messaging migrations and retry.',
-    );
-  }
+  await db.query(
+    'UPDATE erp_messages SET visibility_empid = ? WHERE id = ? AND company_id = ?',
+    [visibilityEmpid, messageId, companyId],
+  );
 }
 
 async function updateThreadVisibilityParticipants(db, { companyId, rootId, recipientEmpids }) {
@@ -528,16 +494,11 @@ function sanitizeForViewer(message, session, user) {
   };
 }
 
-function buildViewerVisibilityFilter(session, user, { includeRecipients = true, includeVisibilityEmpid = true } = {}) {
+function buildViewerVisibilityFilter(session, user, { includeRecipients = true } = {}) {
   const viewerEmpid = String(user?.empid || '').trim();
   const viewerDepartmentId = Number(session?.department_id) > 0 ? Number(session.department_id) : null;
-  const privateConditions = ['author_empid = ?'];
-  const params = [viewerDepartmentId, viewerEmpid];
-
-  if (includeVisibilityEmpid) {
-    privateConditions.push('visibility_empid = ?');
-    params.push(viewerEmpid);
-  }
+  const privateConditions = ['author_empid = ?', 'visibility_empid = ?'];
+  const params = [viewerDepartmentId, viewerEmpid, viewerEmpid];
 
   if (includeRecipients) {
     privateConditions.push(
@@ -849,7 +810,7 @@ async function createMessageInternal({ db = pool, ctx, payload, parentMessageId 
   ];
 
   let result;
-  if (canUseLinkedColumns(db) && canUseEncryptedBodyColumns(db) && canUseVisibilityEmpidColumn(db)) {
+  if (canUseLinkedColumns(db) && canUseEncryptedBodyColumns(db)) {
     try {
       [result] = await db.query(
         `INSERT INTO erp_messages
@@ -862,15 +823,13 @@ async function createMessageInternal({ db = pool, ctx, payload, parentMessageId 
     } catch (error) {
       const linkedUnsupported = isUnknownColumnError(error, 'linked_type') || isUnknownColumnError(error, 'linked_id');
       const encryptionUnsupported = isUnknownColumnError(error, 'body_ciphertext') || isUnknownColumnError(error, 'body_iv') || isUnknownColumnError(error, 'body_auth_tag');
-      const visibilityUnsupported = isUnknownColumnError(error, 'visibility_empid');
-      if (!linkedUnsupported && !encryptionUnsupported && !visibilityUnsupported) throw error;
+      if (!linkedUnsupported && !encryptionUnsupported) throw error;
       if (linkedUnsupported) markLinkedColumnsUnsupported(db);
       if (encryptionUnsupported) markEncryptedBodyColumnsUnsupported(db);
-      if (visibilityUnsupported) markVisibilityEmpidColumnUnsupported(db);
     }
   }
 
-  if (!result && canUseLinkedColumns(db) && canUseVisibilityEmpidColumn(db)) {
+  if (!result && canUseLinkedColumns(db)) {
     try {
       [result] = await db.query(
         `INSERT INTO erp_messages
@@ -890,20 +849,9 @@ async function createMessageInternal({ db = pool, ctx, payload, parentMessageId 
       );
       messageLinkedContextSupport.set(db, true);
     } catch (error) {
-      const linkedUnsupported = isUnknownColumnError(error, 'linked_type') || isUnknownColumnError(error, 'linked_id');
-      const visibilityUnsupported = isUnknownColumnError(error, 'visibility_empid');
-      if (!linkedUnsupported && !visibilityUnsupported) throw error;
-      if (visibilityUnsupported) markVisibilityEmpidColumnUnsupported(db);
+      if (!isUnknownColumnError(error, 'linked_type') && !isUnknownColumnError(error, 'linked_id')) throw error;
       markLinkedColumnsUnsupported(db);
     }
-  }
-
-  if (!result && visibility.visibilityScope === 'private' && !canUseVisibilityEmpidColumn(db)) {
-    throw createError(
-      503,
-      'MESSAGING_SCHEMA_OUTDATED',
-      'Private messaging requires the visibility_empid column. Run messaging migrations and retry.',
-    );
   }
 
   if (!result && canUseEncryptedBodyColumns(db)) {
@@ -1060,7 +1008,6 @@ export async function getMessages({ user, companyId, linkedType, linkedId, curso
 
   let includeRecipients = canUseRecipientColumn(db);
   let includeLinkedColumns = linkedType && linkedId && canUseLinkedColumns(db);
-  let includeVisibilityEmpid = canUseVisibilityEmpidColumn(db);
 
   let rows;
   // Retry once when legacy schemas are missing linked/recipient columns.
@@ -1077,7 +1024,7 @@ export async function getMessages({ user, companyId, linkedType, linkedId, curso
       attemptParams.push(cursorId);
     }
     attemptFilters.push('deleted_at IS NULL');
-    const visibilityFilter = buildViewerVisibilityFilter(session, user, { includeRecipients, includeVisibilityEmpid });
+    const visibilityFilter = buildViewerVisibilityFilter(session, user, { includeRecipients });
     attemptFilters.push(visibilityFilter.sql);
     attemptParams.push(...visibilityFilter.params);
 
@@ -1097,11 +1044,6 @@ export async function getMessages({ user, companyId, linkedType, linkedId, curso
       if (includeRecipients && isUnknownColumnError(error, 'recipient_empids')) {
         includeRecipients = false;
         messageRecipientColumnSupport.set(db, false);
-        continue;
-      }
-      if (includeVisibilityEmpid && isUnknownColumnError(error, 'visibility_empid')) {
-        includeVisibilityEmpid = false;
-        markVisibilityEmpidColumnUnsupported(db);
         continue;
       }
       throw error;
@@ -1131,9 +1073,8 @@ export async function getThread({ user, companyId, messageId, correlationId, db 
 
   let rows;
   let includeRecipients = canUseRecipientColumn(db);
-  let includeVisibilityEmpid = canUseVisibilityEmpidColumn(db);
   try {
-    const visibilityFilter = buildViewerVisibilityFilter(session, user, { includeRecipients, includeVisibilityEmpid });
+    const visibilityFilter = buildViewerVisibilityFilter(session, user, { includeRecipients });
     [rows] = await db.query(
       `WITH RECURSIVE thread_cte AS (
         SELECT * FROM erp_messages WHERE id = ? AND company_id = ?
@@ -1151,23 +1092,7 @@ export async function getThread({ user, companyId, messageId, correlationId, db 
     if (includeRecipients && isUnknownColumnError(error, 'recipient_empids')) {
       includeRecipients = false;
       messageRecipientColumnSupport.set(db, false);
-      const visibilityFilter = buildViewerVisibilityFilter(session, user, { includeRecipients, includeVisibilityEmpid });
-      [rows] = await db.query(
-        `WITH RECURSIVE thread_cte AS (
-          SELECT * FROM erp_messages WHERE id = ? AND company_id = ?
-          UNION ALL
-          SELECT m.*
-          FROM erp_messages m
-          INNER JOIN thread_cte t ON m.parent_message_id = t.id
-          WHERE m.company_id = ?
-        )
-        SELECT * FROM thread_cte WHERE deleted_at IS NULL AND ${visibilityFilter.sql} ORDER BY id ASC`,
-        [messageId, scopedCompanyId, scopedCompanyId, ...visibilityFilter.params],
-      );
-    } else if (includeVisibilityEmpid && isUnknownColumnError(error, 'visibility_empid')) {
-      includeVisibilityEmpid = false;
-      markVisibilityEmpidColumnUnsupported(db);
-      const visibilityFilter = buildViewerVisibilityFilter(session, user, { includeRecipients, includeVisibilityEmpid });
+      const visibilityFilter = buildViewerVisibilityFilter(session, user, { includeRecipients });
       [rows] = await db.query(
         `WITH RECURSIVE thread_cte AS (
           SELECT * FROM erp_messages WHERE id = ? AND company_id = ?
@@ -1184,7 +1109,7 @@ export async function getThread({ user, companyId, messageId, correlationId, db 
       throw error;
     }
     if (!rows) {
-      const visibilityFilter = buildViewerVisibilityFilter(session, user, { includeRecipients, includeVisibilityEmpid });
+      const visibilityFilter = buildViewerVisibilityFilter(session, user, { includeRecipients });
       const [fallbackRows] = await db.query(
         `SELECT * FROM erp_messages
          WHERE company_id = ?
