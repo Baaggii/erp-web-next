@@ -4,6 +4,31 @@ export const PRESENCE = {
   OFFLINE: 'offline',
 };
 
+const ONLINE_STALE_AFTER_MS = 90_000;
+const OFFLINE_STALE_AFTER_MS = 150_000;
+
+function toTimestamp(value) {
+  if (!value) return null;
+  const ts = new Date(value).getTime();
+  return Number.isNaN(ts) ? null : ts;
+}
+
+export function resolvePresenceStatus(record, now = Date.now()) {
+  const rawStatus = String(record?.presence || record?.status || '').toLowerCase();
+  const heartbeatAt = toTimestamp(record?.heartbeat_at || record?.last_seen_at || record?.lastSeenAt);
+
+  if (rawStatus === PRESENCE.OFFLINE) return PRESENCE.OFFLINE;
+
+  if (heartbeatAt != null) {
+    const age = Math.max(0, now - heartbeatAt);
+    if (age > OFFLINE_STALE_AFTER_MS) return PRESENCE.OFFLINE;
+    if (age > ONLINE_STALE_AFTER_MS) return PRESENCE.AWAY;
+  }
+
+  if (rawStatus === PRESENCE.ONLINE || rawStatus === PRESENCE.AWAY) return rawStatus;
+  return heartbeatAt != null ? PRESENCE.AWAY : PRESENCE.OFFLINE;
+}
+
 export function normalizeId(value) {
   return String(value ?? '').trim();
 }
