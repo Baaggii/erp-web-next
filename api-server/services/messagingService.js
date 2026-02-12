@@ -1150,3 +1150,10 @@ export function toStructuredError(error, correlationId) {
     },
   };
 }
+
+
+export function resetMessagingServiceStateForTests() {
+  localRateWindows.clear();
+  localDuplicateWindows.clear();
+  onlineByCompany.clear();
+}

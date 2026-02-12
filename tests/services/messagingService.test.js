@@ -609,4 +609,6 @@ test('permission denial writes to security audit events table', async () => {
 
 test.afterEach(() => {
   resetMessagingMetrics();
+  resetMessagingServiceStateForTests();
+  setMessagingIo(null);
 });
