@@ -452,6 +452,54 @@ test('realtime fanout emits message.created into company room', async () => {
 });
 
 
+
+test('getMessages linked-column fallback preserves visibility binding parameters', async () => {
+  const db = new FakeDb();
+  const session = { permissions: { messaging: true }, department_id: 10 };
+
+  await postMessage({
+    user,
+    companyId: 1,
+    payload: {
+      body: 'secret fallback message',
+      linkedType: 'topic',
+      linkedId: 'ops-room',
+      visibilityScope: 'private',
+      visibilityEmpid: 'e-2',
+      idempotencyKey: 'fallback-1',
+    },
+    correlationId: 'fallback-1',
+    db,
+    getSession: async () => session,
+  });
+
+  const baseQuery = db.query.bind(db);
+  db.query = async (sql, params = []) => {
+    const expectedParams = (sql.match(/\?/g) || []).length;
+    if (expectedParams !== params.length) {
+      throw new Error(`placeholder mismatch: expected ${expectedParams}, got ${params.length}`);
+    }
+    if (sql.includes('SELECT * FROM erp_messages WHERE') && sql.includes('linked_type = ?')) {
+      const error = new Error("Unknown column 'linked_type' in 'where clause'");
+      error.sqlMessage = "Unknown column 'linked_type' in 'where clause'";
+      throw error;
+    }
+    return baseQuery(sql, params);
+  };
+
+  const listed = await getMessages({
+    user: { empid: 'e-3', companyId: 1 },
+    companyId: 1,
+    linkedType: 'topic',
+    linkedId: 'ops-room',
+    correlationId: 'fallback-2',
+    db,
+    getSession: async () => ({ permissions: { messaging: true }, department_id: 10 }),
+  });
+
+  assert.equal(listed.items.length, 0);
+});
+
 test('private visibility hides messages from non-target users', async () => {
   const db = new FakeDb();
   const authorSession = { permissions: { messaging: true }, department_id: 10 };
