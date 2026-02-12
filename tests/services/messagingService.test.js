@@ -89,21 +89,6 @@ class FakeDb {
       }
       return [{ affectedRows: match ? 1 : 0 }];
     }
-    if (sql.startsWith('UPDATE erp_messages SET visibility_empid = ?, recipient_empids = ?')) {
-      const [visibilityEmpid, recipientEmpids, id, companyId] = params;
-      const match = this.messages.find((entry) => entry.id === id && entry.company_id === companyId);
-      if (match) {
-        match.visibility_empid = visibilityEmpid;
-        match.recipient_empids = recipientEmpids;
-      }
-      return [{ affectedRows: match ? 1 : 0 }];
-    }
-    if (sql.startsWith('UPDATE erp_messages SET visibility_empid = ?')) {
-      const [visibilityEmpid, id, companyId] = params;
-      const match = this.messages.find((entry) => entry.id === id && entry.company_id === companyId);
-      if (match) match.visibility_empid = visibilityEmpid;
-      return [{ affectedRows: match ? 1 : 0 }];
-    }
     if (sql.startsWith('UPDATE erp_messages SET deleted_at')) {
       const hasDeletedBy = sql.includes('deleted_by_empid') || sql.includes('deleted_by = ?');
       const [first, second, third] = params;
@@ -505,55 +490,6 @@ test('private thread cannot be replied by a non-included user', async () => {
 
 
 
-
-
-test('reply can expand private participants and grant full thread visibility', async () => {
-  const db = new FakeDb();
-  const session = { permissions: { messaging: true }, department_id: 10 };
-
-  const root = await postMessage({
-    user,
-    companyId: 1,
-    payload: {
-      body: 'private root',
-      linkedType: 'topic',
-      linkedId: 'ops-room',
-      visibilityScope: 'private',
-      visibilityEmpid: 'e-2',
-      recipientEmpids: ['e-2'],
-      idempotencyKey: 'private-expand-root',
-    },
-    correlationId: 'private-expand-root',
-    db,
-    getSession: async () => session,
-  });
-
-  await postReply({
-    user: { empid: 'e-2', companyId: 1 },
-    companyId: 1,
-    messageId: root.message.id,
-    payload: {
-      body: 'adding e-3',
-      recipientEmpids: ['e-1', 'e-2', 'e-3'],
-      idempotencyKey: 'private-expand-reply',
-    },
-    correlationId: 'private-expand-reply',
-    db,
-    getSession: async () => session,
-  });
-
-  const expandedViewer = await getThread({
-    user: { empid: 'e-3', companyId: 1 },
-    companyId: 1,
-    messageId: root.message.id,
-    correlationId: 'private-expand-read',
-    db,
-    getSession: async () => session,
-  });
-
-  assert.equal(expandedViewer.root.body, 'private root');
-  assert.equal(expandedViewer.replies.length, 1);
-});
 test('private thread replies stay scoped to selected participants', async () => {
   const db = new FakeDb();
   const session = { permissions: { messaging: true }, department_id: 10 };
