@@ -387,10 +387,9 @@ async function resolveAccountCode(conn, line, context) {
 
   // 🔥 Now validate against COA
   const [coaRows] = await conn.query(
-    `SELECT account_code
-FROM fin_chart_of_accounts
-WHERE company_id = ?
-AND account_code = ?`,
+    `SELECT account_code, is_active
+       FROM fin_chart_of_accounts
+      WHERE account_code = ?`,
     [accountCode]
   );
 
