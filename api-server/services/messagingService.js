@@ -354,6 +354,29 @@ function canViewMessage(message, session, user) {
   return false;
 }
 
+function buildVisibilitySqlFilter({ alias = '', session, user }) {
+  const scopedAlias = alias ? `${alias}.` : '';
+  const empid = String(user?.empid || '').trim();
+  const departmentId = toId(session?.department_id);
+  const clauses = [`${scopedAlias}visibility_scope = 'company'`];
+  const params = [];
+
+  if (departmentId) {
+    clauses.push(`(${scopedAlias}visibility_scope = 'department' AND ${scopedAlias}visibility_department_id = ?)`);
+    params.push(departmentId);
+  }
+
+  if (empid) {
+    clauses.push(`(${scopedAlias}visibility_scope = 'private' AND (${scopedAlias}author_empid = ? OR ${scopedAlias}visibility_empid = ?))`);
+    params.push(empid, empid);
+  }
+
+  return {
+    sql: `(${clauses.join(' OR ')})`,
+    params,
+  };
+}
+
 function sanitizeForViewer(message, session, user) {
   const viewerAllowed = canViewMessage(message, session, user);
   if (!viewerAllowed) return null;
@@ -771,6 +794,9 @@ export async function postReply({ user, companyId, messageId, payload, correlati
   if (!canMessage(session)) throwPermissionDenied({ db, user, companyId: scopedCompanyId, action: 'message:reply' });
   const message = await findMessageById(db, scopedCompanyId, messageId);
   if (!message || message.deleted_at) throw createError(404, 'MESSAGE_NOT_FOUND', 'Message not found');
+  if (!canViewMessage(message, session, user)) {
+    throw createError(404, 'MESSAGE_NOT_FOUND', 'Message not found');
+  }
   const depth = await resolveThreadDepth(db, scopedCompanyId, message);
   if (depth >= MAX_REPLY_DEPTH) {
     throw createError(400, 'THREAD_DEPTH_EXCEEDED', `Reply depth exceeds maximum of ${MAX_REPLY_DEPTH}`);
@@ -780,7 +806,14 @@ export async function postReply({ user, companyId, messageId, payload, correlati
   return createMessageInternal({
     db,
     ctx,
-    payload: { ...payload, linkedType: message.linked_type, linkedId: message.linked_id },
+    payload: {
+      ...payload,
+      linkedType: message.linked_type,
+      linkedId: message.linked_id,
+      visibilityScope: message.visibility_scope,
+      visibilityDepartmentId: message.visibility_department_id,
+      visibilityEmpid: message.visibility_empid,
+    },
     parentMessageId: message.id,
     eventName: 'thread.reply.created',
   });
@@ -805,6 +838,9 @@ export async function getMessages({ user, companyId, linkedType, linkedId, curso
     params.push(cursorId);
   }
   filters.push('deleted_at IS NULL');
+  const visibilityFilter = buildVisibilitySqlFilter({ session, user });
+  filters.push(visibilityFilter.sql);
+  params.push(...visibilityFilter.params);
 
   let rows;
   try {
@@ -843,6 +879,8 @@ export async function getThread({ user, companyId, messageId, correlationId, db 
   if (!canMessage(session)) throwPermissionDenied({ db, user, companyId: scopedCompanyId, action: 'message:thread' });
   const root = await findMessageById(db, scopedCompanyId, messageId);
   if (!root || root.deleted_at) throw createError(404, 'MESSAGE_NOT_FOUND', 'Message not found');
+  if (!canViewMessage(root, session, user)) throw createError(404, 'MESSAGE_NOT_FOUND', 'Message not found');
+  const visibilityFilter = buildVisibilitySqlFilter({ alias: 'm', session, user });
 
   const [rows] = await db.query(
     `WITH RECURSIVE thread_cte AS (
@@ -853,8 +891,12 @@ export async function getThread({ user, companyId, messageId, correlationId, db 
       INNER JOIN thread_cte t ON m.parent_message_id = t.id
       WHERE m.company_id = ?
     )
-    SELECT * FROM thread_cte WHERE deleted_at IS NULL ORDER BY id ASC`,
-    [messageId, scopedCompanyId, scopedCompanyId],
+    SELECT *
+      FROM thread_cte m
+     WHERE m.deleted_at IS NULL
+       AND ${visibilityFilter.sql}
+     ORDER BY m.id ASC`,
+    [messageId, scopedCompanyId, scopedCompanyId, ...visibilityFilter.params],
   );
 
   const [receiptResult] = await db.query(
@@ -941,21 +983,8 @@ export async function deleteMessage({ user, companyId, messageId, correlationId,
   const message = await findMessageById(db, scopedCompanyId, messageId);
   if (!message || message.deleted_at) throw createError(404, 'MESSAGE_NOT_FOUND', 'Message not found');
 
-  const deleteEvaluation = evaluatePermission({
-    action: 'message:delete',
-    user,
-    companyId: scopedCompanyId,
-    session,
-    resource: {
-      departmentId: message.visibility_department_id,
-      linked: {
-        type: message.linked_type,
-        ownerEmpid: message.author_empid,
-      },
-    },
-  });
-  if (!deleteEvaluation.allowed && !canDelete(session) && message.author_empid !== user.empid) {
-    throwPermissionDenied({ db, user, companyId: scopedCompanyId, action: 'message:delete', reason: deleteEvaluation.reason || 'cannot_delete_message' });
+  if (String(message.author_empid) !== String(user.empid)) {
+    throwPermissionDenied({ db, user, companyId: scopedCompanyId, action: 'message:delete', reason: 'cannot_delete_other_user_message' });
   }
 
   await markMessageDeleted(db, { companyId: scopedCompanyId, messageId, empid: user.empid });
