@@ -1025,6 +1025,10 @@ export default function MessagingWidget() {
 
   const handleDeleteMessage = async (messageId) => {
     const activeCompany = state.activeCompanyId || companyId;
+    if (!activeCompany) {
+      setComposerAnnouncement('Select a company before deleting messages.');
+      return;
+    }
     const params = new URLSearchParams({ companyId: String(activeCompany) });
     const res = await fetch(`${API_BASE}/messaging/messages/${messageId}?${params.toString()}`, {
       method: 'DELETE',
@@ -1094,6 +1098,10 @@ export default function MessagingWidget() {
     }
 
     const activeCompany = state.activeCompanyId || companyId;
+    if (!activeCompany) {
+      setComposerAnnouncement('Select a company before sending messages.');
+      return;
+    }
     const clientTempId = `tmp-${createIdempotencyKey()}`;
     let uploadedAttachments = [];
     try {
