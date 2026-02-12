@@ -399,7 +399,6 @@ export default function MessagingWidget() {
   const [presencePanelOpen, setPresencePanelOpen] = useState(false);
   const [conversationPanelOpen, setConversationPanelOpen] = useState(true);
   const [isNewMessageMode, setIsNewMessageMode] = useState(false);
-  const [preComposeConversationId, setPreComposeConversationId] = useState(null);
   const [isNarrowLayout, setIsNarrowLayout] = useState(false);
   const [highlightedIds, setHighlightedIds] = useState(() => new Set());
   const [mentionOpen, setMentionOpen] = useState(false);
@@ -947,7 +946,7 @@ export default function MessagingWidget() {
     };
   }), [conversations, selfEmpid]);
 
-  const activeTopic = isNewMessageMode ? (sanitizeMessageText(state.composer.topic) || 'New message') : (activeConversation?.title || 'General');
+  const activeTopic = activeConversation?.title || 'General';
   const sessionUserLabel = sanitizeMessageText(
     user?.emp_name || user?.employee_name || user?.name || user?.full_name || user?.username || user?.empid,
   );
@@ -1103,6 +1102,7 @@ export default function MessagingWidget() {
       recipientEmpids: recipientsForSend,
       visibilityScope: 'private',
       visibilityEmpid: recipientsForSend[0],
+      ...(isNewMessageMode && safeTopic ? { topic: safeTopic } : {}),
       ...(linkedType ? { linkedType } : {}),
       ...(linkedId ? { linkedId: String(linkedId) } : {}),
     };
@@ -1211,7 +1211,6 @@ export default function MessagingWidget() {
   };
 
   const openNewMessage = () => {
-    setPreComposeConversationId(activeConversationId);
     setIsNewMessageMode(true);
     dispatch({ type: 'widget/setConversation', payload: null });
     dispatch({ type: 'composer/setTopic', payload: '' });
@@ -1219,18 +1218,6 @@ export default function MessagingWidget() {
     dispatch({ type: 'composer/setReplyTo', payload: null });
     dispatch({ type: 'composer/setRecipients', payload: [] });
     setComposerAnnouncement('Started a new message draft. Add recipients and your first message.');
-  };
-
-
-  const cancelNewMessage = () => {
-    setIsNewMessageMode(false);
-    dispatch({ type: 'composer/reset' });
-    dispatch({ type: 'composer/setRecipients', payload: [] });
-    dispatch({ type: 'composer/setTopic', payload: '' });
-    dispatch({ type: 'composer/setBody', payload: '' });
-    dispatch({ type: 'composer/setReplyTo', payload: null });
-    dispatch({ type: 'widget/setConversation', payload: preComposeConversationId || 'general' });
-    setComposerAnnouncement('Cancelled new message draft.');
   };
 
   const onComposerInput = (event) => {
@@ -1407,7 +1394,6 @@ export default function MessagingWidget() {
                 <button
                   type="button"
                   onClick={() => {
-                    setPreComposeConversationId(null);
                     setIsNewMessageMode(false);
                     dispatch({ type: 'widget/setConversation', payload: conversation.id });
                     dispatch({ type: 'composer/setBody', payload: '' });
@@ -1453,21 +1439,19 @@ export default function MessagingWidget() {
             <div style={{ position: 'sticky', top: 0, background: '#f8fafc', paddingBottom: 8, marginBottom: 8, borderBottom: '1px solid #e2e8f0', zIndex: 2 }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
                 <strong style={{ fontSize: 16, color: '#0f172a' }}>{activeTopic}</strong>
-                {!isNewMessageMode && isThreadCreator && activeConversation?.id !== 'general' && (
+                {isThreadCreator && activeConversation?.id !== 'general' && (
                   <button type="button" onClick={() => setEditTopicOpen((prev) => !prev)} style={{ border: '1px solid #cbd5e1', borderRadius: 999, background: '#fff', padding: '3px 10px', fontSize: 12 }}>
                     Edit topic
                   </button>
                 )}
               </div>
-              {!isNewMessageMode && (
-                <div style={{ marginTop: 6, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                  {activeThreadParticipants.map((empid) => (
+              <div style={{ marginTop: 6, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                {activeThreadParticipants.map((empid) => (
                   <span key={empid} style={{ borderRadius: 999, background: '#e2e8f0', color: '#334155', fontSize: 11, padding: '2px 8px' }}>{resolveEmployeeLabel(empid)}</span>
                 ))}
-                  {activeThreadParticipants.length === 0 && <span style={{ fontSize: 12, color: '#64748b' }}>Company-wide channel</span>}
-                </div>
-              )}
-              {!isNewMessageMode && editTopicOpen && isThreadCreator && (
+                {activeThreadParticipants.length === 0 && <span style={{ fontSize: 12, color: '#64748b' }}>Company-wide channel</span>}
+              </div>
+              {editTopicOpen && isThreadCreator && (
                 <input
                   value={state.composer.topic}
                   onChange={(event) => dispatch({ type: 'composer/setTopic', payload: event.target.value })}
