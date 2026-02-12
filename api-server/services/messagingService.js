@@ -118,13 +118,6 @@ function isUnknownColumnError(error, columnName) {
   return message.includes('unknown column') && message.includes(String(columnName).toLowerCase());
 }
 
-
-function isUnknownVisibilityColumnError(error) {
-  return isUnknownColumnError(error, 'visibility_scope')
-    || isUnknownColumnError(error, 'visibility_department_id')
-    || isUnknownColumnError(error, 'visibility_empid');
-}
-
 async function readIdempotencyRow(db, { companyId, empid, idempotencyKey }) {
   const mode = idempotencyRequestHashSupport.get(db);
   if (mode !== false) {
@@ -856,22 +849,10 @@ export async function getMessages({ user, companyId, linkedType, linkedId, curso
       [...params, parsedLimit + 1],
     );
   } catch (error) {
-    const linkedUnsupported = isUnknownColumnError(error, 'linked_type') || isUnknownColumnError(error, 'linked_id');
-    const visibilityUnsupported = isUnknownVisibilityColumnError(error);
-    if (!linkedUnsupported && !visibilityUnsupported) throw error;
-
-    if (linkedUnsupported) markLinkedColumnsUnsupported(db);
-
-    const fallbackFilters = filters.filter((entry) => {
-      if (linkedUnsupported && (entry === 'linked_type = ?' || entry === 'linked_id = ?')) return false;
-      if (visibilityUnsupported && entry === visibilityFilter.sql) return false;
-      return true;
-    });
-
+    if (!isUnknownColumnError(error, 'linked_type') && !isUnknownColumnError(error, 'linked_id')) throw error;
+    markLinkedColumnsUnsupported(db);
+    const fallbackFilters = filters.filter((entry) => entry !== 'linked_type = ?' && entry !== 'linked_id = ?');
     const fallbackParams = [scopedCompanyId];
-    if (linkedType && linkedId && canUseLinkedColumns(db) && !linkedUnsupported) {
-      fallbackParams.push(String(linkedType), String(linkedId));
-    }
     if (cursorId) fallbackParams.push(cursorId);
     fallbackParams.push(...visibilityFilter.params);
     [rows] = await db.query(

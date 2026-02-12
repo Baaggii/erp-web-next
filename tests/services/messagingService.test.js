@@ -1,27 +1,20 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { deleteMessage, getMessages, getThread, patchMessage, postMessage, postReply, setMessagingIo } from '../../api-server/services/messagingService.js';
+import { deleteMessage, getMessages, patchMessage, postMessage, postReply, setMessagingIo } from '../../api-server/services/messagingService.js';
 import { resetMessagingMetrics } from '../../api-server/services/messagingMetrics.js';
 
 class FakeDb {
-  constructor({ supportsEncryptedBodyColumns = true, deleteByColumn = 'deleted_by_empid', supportsVisibilityColumns = true } = {}) {
+  constructor({ supportsEncryptedBodyColumns = true, deleteByColumn = 'deleted_by_empid' } = {}) {
     this.messages = [];
     this.idem = new Map();
     this.nextId = 1;
     this.securityAuditEvents = [];
     this.supportsEncryptedBodyColumns = supportsEncryptedBodyColumns;
     this.deleteByColumn = deleteByColumn;
-    this.supportsVisibilityColumns = supportsVisibilityColumns;
   }
 
   async query(sql, params = []) {
 
-
-    if (!this.supportsVisibilityColumns && sql.startsWith('SELECT') && sql.includes('visibility_scope')) {
-      const error = new Error("Unknown column 'visibility_scope' in 'where clause'");
-      error.sqlMessage = "Unknown column 'visibility_scope' in 'where clause'";
-      throw error;
-    }
     if (!this.supportsEncryptedBodyColumns && sql.includes('body_ciphertext')) {
       const error = new Error("Unknown column 'body_ciphertext' in 'field list'");
       error.sqlMessage = "Unknown column 'body_ciphertext' in 'field list'";
@@ -597,75 +590,6 @@ test('permission denial writes to security audit events table', async () => {
 
   assert.equal(db.securityAuditEvents.length, 1);
   assert.equal(db.securityAuditEvents[0].event, 'messaging.permission_denied');
-});
-
-
-test('getMessages falls back when visibility columns are unavailable', async () => {
-  const db = new FakeDb({ supportsVisibilityColumns: false });
-  db.messages.push({
-    id: 1,
-    company_id: 1,
-    author_empid: 'e-1',
-    parent_message_id: null,
-    linked_type: null,
-    linked_id: null,
-    body: 'legacy visibility message',
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-    deleted_at: null,
-  });
-
-  const listed = await getMessages({
-    user,
-    companyId: 1,
-    correlationId: 'legacy-vis-1',
-    db,
-    getSession: async () => ({ permissions: { messaging: true }, department_id: 10 }),
-  });
-
-  assert.equal(listed.items.length, 1);
-  assert.equal(listed.items[0].body, 'legacy visibility message');
-});
-
-test('getThread falls back when visibility columns are unavailable', async () => {
-  const db = new FakeDb({ supportsVisibilityColumns: false });
-  db.messages.push({
-    id: 10,
-    company_id: 1,
-    author_empid: 'e-1',
-    parent_message_id: null,
-    linked_type: null,
-    linked_id: null,
-    body: 'legacy root',
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-    deleted_at: null,
-  });
-  db.messages.push({
-    id: 11,
-    company_id: 1,
-    author_empid: 'e-2',
-    parent_message_id: 10,
-    linked_type: null,
-    linked_id: null,
-    body: 'legacy reply',
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-    deleted_at: null,
-  });
-
-  const thread = await getThread({
-    user,
-    companyId: 1,
-    messageId: 10,
-    correlationId: 'legacy-vis-2',
-    db,
-    getSession: async () => ({ permissions: { messaging: true }, department_id: 10 }),
-  });
-
-  assert.equal(thread.root.id, 10);
-  assert.equal(thread.replies.length, 1);
-  assert.equal(thread.replies[0].id, 11);
 });
 
 test.afterEach(() => {
