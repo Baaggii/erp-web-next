@@ -47,6 +47,9 @@ const defaults = {
   reports: {
     showReportLineageInfo: false,
   },
+  finReporting: {
+    showJournalActionDebug: false,
+  },
   plan: {
     planIdFieldName: '',
     notificationFields: 'is_plan,is_plan_completion',
@@ -128,7 +131,8 @@ async function readConfig(companyId = 0) {
       parsed.images ||
       parsed.print ||
       parsed.reports ||
-      parsed.notifications
+      parsed.notifications ||
+      parsed.finReporting
     ) {
       const { imageStorage, ...restGeneral } = parsed.general || {};
       const images = parsed.images || imageStorage || {};
@@ -142,6 +146,10 @@ async function readConfig(companyId = 0) {
         reports: {
           ...defaults.reports,
           ...(parsed.reports || {}),
+        },
+        finReporting: {
+          ...defaults.finReporting,
+          ...(parsed.finReporting || {}),
         },
         notifications: {
           ...defaults.notifications,
@@ -167,6 +175,7 @@ async function readConfig(companyId = 0) {
         pos: { ...defaults.pos },
         general: { ...defaults.general },
         reports: { ...defaults.reports },
+        finReporting: { ...defaults.finReporting },
         notifications: { ...defaults.notifications },
         plan: { ...defaults.plan },
         images: { ...defaults.images },
@@ -227,6 +236,9 @@ export async function updateGeneralConfig(updates = {}, companyId = 0) {
   }
   if (updates.notifications) {
     Object.assign(cfg.notifications, updates.notifications);
+  }
+  if (updates.finReporting) {
+    Object.assign(cfg.finReporting, updates.finReporting);
   }
   cfg.notifications.workflowToastEnabled = coerceBoolean(
     cfg.notifications.workflowToastEnabled,
