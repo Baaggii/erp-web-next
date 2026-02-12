@@ -193,7 +193,7 @@ async function buildJournalPreviewPayload(conn, safeTable, sourceId, { forUpdate
     `SELECT *
        FROM fin_journal_rule_line
       where rule_id = ?
-      ORDER BY COALESCE(line_no, 999999), id`,
+      ORDER BY COALESCE(line_order, 999999), id`,
     [selectedRule.id],
   );
 
@@ -295,7 +295,7 @@ async function selectMatchingJournalRule(conn, flagSetCode, presentFlags) {
       `SELECT *
          FROM fin_journal_rule_condition
         where rule_id = ?`,
-      [rule.id],
+      [rule.rule_id],
     );
 
     const allSatisfied = conditions.every((condition) => {
@@ -331,7 +331,7 @@ async function resolveAccountCode(conn, line, context) {
   }
 
   const [rows] = await conn.query(
-    `SELECT * FROM fin_account_resolver WHERE code = ? LIMIT 1`,
+    `SELECT * FROM fin_account_resolver WHERE resolver_code = ? LIMIT 1`,
     [resolverCode],
   );
   if (!rows.length) {
@@ -367,7 +367,7 @@ async function resolveAmount(conn, line, context) {
   }
 
   const [rows] = await conn.query(
-    `SELECT * FROM fin_amount_expression WHERE code = ? LIMIT 1`,
+    `SELECT * FROM fin_amount_expression WHERE expression_code = ? LIMIT 1`,
     [amountExpressionCode],
   );
   if (!rows.length) {
@@ -451,8 +451,8 @@ export async function post_single_transaction({
     }
 
     if (forceRepost && existingJournalId) {
-      await conn.query('DELETE FROM fin_journal_line WHERE fin_journal_header_id = ?', [existingJournalId]);
-      await conn.query('DELETE FROM fin_journal_header WHERE id = ?', [existingJournalId]);
+      await conn.query('DELETE FROM fin_journal_line WHERE journal_id  = ?', [existingJournalId]);
+      await conn.query('DELETE FROM fin_journal_header WHERE journal_id  = ?', [existingJournalId]);
     }
 
     const preview = await buildJournalPreviewPayload(conn, safeTable, sourceId, { forUpdate: true });
@@ -469,28 +469,32 @@ export async function post_single_transaction({
     }
     const selectedRule = preview.selectedRule;
 
-    const journalHeaderId = await insertRow(conn, 'fin_journal_header', {
-      source_table: safeTable,
-      source_id: sourceId,
-      trans_type: transType,
-      fin_journal_rule_id: selectedRule.id,
-      fin_flag_set_code: flagSetCode,
-      posting_date: new Date(),
-      ledger_code: pickFirstDefined(selectedRule, ['ledger_code']) || 'PRIMARY',
-      created_at: new Date(),
-    });
+   const journalHeaderId = await insertRow(conn, 'fin_journal_header', {
+  source_table: safeTable,
+  source_id: sourceId,
+  document_date: new Date(),
+  currency: 'MNT',
+  exchange_rate: 1,
+  is_posted: 1,
+  created_at: new Date(),
+});
+
 
     for (const line of preview.lines) {
-      await insertRow(conn, 'fin_journal_line', {
-        fin_journal_header_id: journalHeaderId,
-        line_no: line.lineNo,
-        account_code: line.account_code,
-        debit_amount: line.debit_amount,
-        credit_amount: line.credit_amount,
-        dimension_type_code: line.dimension_type_code,
-        dimension_id: line.dimension_id,
-        created_at: new Date(),
-      });
+      const isDebit = Number(line.debit_amount || 0) > 0;
+
+await insertRow(conn, 'fin_journal_line', {
+  journal_id: journalHeaderId,
+  line_order: line.lineNo,
+  dr_cr: isDebit ? 'D' : 'C',
+  account_code: line.account_code,
+  amount: isDebit
+    ? Number(line.debit_amount || 0)
+    : Number(line.credit_amount || 0),
+  dimension_type_code: line.dimension_type_code || null,
+  dimension_id: line.dimension_id || null,
+});
+
     }
 
     await updateRowById(conn, safeTable, sourceId, {
