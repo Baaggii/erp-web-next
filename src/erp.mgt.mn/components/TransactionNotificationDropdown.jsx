@@ -1194,13 +1194,20 @@ export default function TransactionNotificationDropdown() {
     () => combinedItems.filter((item) => item.isUnread).length,
     [combinedItems],
   );
-  const pendingUnreadCount = useMemo(() => {
-    const totals =
-      notificationStatusTotals && typeof notificationStatusTotals === 'object'
-        ? notificationStatusTotals
-        : {};
-    return Object.values(totals).reduce((sum, value) => sum + (Number(value) || 0), 0);
-  }, [notificationStatusTotals]);
+  const workflowUnreadCount = useMemo(() => {
+    const workflowMap = workflows && typeof workflows === 'object' ? workflows : {};
+    return Object.values(workflowMap).reduce((total, workflow) => {
+      if (!workflow || typeof workflow !== 'object') return total;
+      const incomingPendingNew = Number(workflow?.incoming?.pending?.newCount) || 0;
+      const outgoingPendingNew = Number(workflow?.outgoing?.pending?.newCount) || 0;
+      return total + incomingPendingNew + outgoingPendingNew;
+    }, 0);
+  }, [workflows]);
+  const temporaryUnreadCount = useMemo(() => {
+    const reviewNew = Number(temporary?.counts?.review?.newCount) || 0;
+    const createdNew = Number(temporary?.counts?.created?.newCount) || 0;
+    return reviewNew + createdNew;
+  }, [temporary?.counts?.created?.newCount, temporary?.counts?.review?.newCount]);
   const hasMarkableUnreadItems = useMemo(
     () =>
       combinedItems.some((item) => {
@@ -1236,8 +1243,7 @@ export default function TransactionNotificationDropdown() {
   const bellUnreadCount = Math.max(
     Number(unreadCount) || 0,
     dropdownUnreadCount,
-    pendingUnreadCount,
-    anyHasNew ? 1 : 0,
+    workflowUnreadCount + temporaryUnreadCount,
   );
   const visibleItems = combinedItems.slice(0, visibleCount);
   const remainingCount = Math.max(0, combinedItems.length - visibleItems.length);
