@@ -289,7 +289,7 @@ function getTemporaryTimestamp(entry) {
 export default function TransactionNotificationDropdown() {
   const { notifications, unreadCount, markRead } = useTransactionNotifications();
   const { user, session } = useAuth();
-  const { workflows, markWorkflowSeen, temporary } = usePendingRequests();
+  const { workflows, markWorkflowSeen, temporary, notificationStatusTotals, anyHasNew } = usePendingRequests();
   const [open, setOpen] = useState(false);
   const [formEntries, setFormEntries] = useState([]);
   const [formsLoaded, setFormsLoaded] = useState(false);
@@ -1194,6 +1194,13 @@ export default function TransactionNotificationDropdown() {
     () => combinedItems.filter((item) => item.isUnread).length,
     [combinedItems],
   );
+  const pendingUnreadCount = useMemo(() => {
+    const totals =
+      notificationStatusTotals && typeof notificationStatusTotals === 'object'
+        ? notificationStatusTotals
+        : {};
+    return Object.values(totals).reduce((sum, value) => sum + (Number(value) || 0), 0);
+  }, [notificationStatusTotals]);
   const hasMarkableUnreadItems = useMemo(
     () =>
       combinedItems.some((item) => {
@@ -1226,7 +1233,12 @@ export default function TransactionNotificationDropdown() {
       }),
     }));
   }, [feedState.items, markRead]);
-  const bellUnreadCount = Math.max(Number(unreadCount) || 0, dropdownUnreadCount);
+  const bellUnreadCount = Math.max(
+    Number(unreadCount) || 0,
+    dropdownUnreadCount,
+    pendingUnreadCount,
+    anyHasNew ? 1 : 0,
+  );
   const visibleItems = combinedItems.slice(0, visibleCount);
   const remainingCount = Math.max(0, combinedItems.length - visibleItems.length);
 
