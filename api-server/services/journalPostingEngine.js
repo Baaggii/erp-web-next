@@ -286,7 +286,7 @@ async function selectMatchingJournalRule(conn, flagSetCode, presentFlags) {
     `SELECT *
        FROM fin_journal_rule
       WHERE fin_flag_set_code = ?
-      ORDER BY COALESCE(priority, 999999), id`,
+      ORDER BY COALESCE(priority, 999999), rule_id`,
     [flagSetCode],
   );
 
