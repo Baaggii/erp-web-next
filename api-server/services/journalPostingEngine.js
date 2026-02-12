@@ -353,7 +353,7 @@ async function resolveAccountCode(conn, line, context) {
 
   // BANK dynamic (virtual subaccount)
   if (resolverType === 'BANK_ACCOUNT_SUFFIX') {
-    const bankId = context.txn[resolver.source_column];
+    const bankId = context.financialFields[resolver.source_column];
     if (!bankId) {
       throw new Error(`BANK_ACCOUNT_SUFFIX resolver ${resolverCode} missing source value`);
     }
@@ -362,7 +362,7 @@ async function resolveAccountCode(conn, line, context) {
 
   // VENDOR subaccount
   if (resolverType === 'VENDOR_SUBACCOUNT') {
-    const vendorId = context.txn[resolver.source_column];
+    const vendorId = context.financialFields[resolver.source_column];
     if (!vendorId) {
       throw new Error(`VENDOR_SUBACCOUNT resolver ${resolverCode} missing source value`);
     }
