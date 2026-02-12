@@ -96,33 +96,10 @@ function groupConversations(messages) {
   });
 }
 
-const ONLINE_STALE_MS = 70_000;
-const AWAY_STALE_MS = 5 * 60_000;
-
-function parsePresenceTimestamp(record) {
-  const raw = record?.last_seen_at || record?.lastSeenAt || record?.updated_at || record?.updatedAt;
-  if (!raw) return null;
-  const ts = new Date(raw).getTime();
-  return Number.isFinite(ts) ? ts : null;
-}
-
 function resolvePresence(record) {
   const status = String(record?.presence || record?.status || '').toLowerCase();
-  const seenAt = parsePresenceTimestamp(record);
-  const ageMs = seenAt ? Date.now() - seenAt : Number.POSITIVE_INFINITY;
-
-  if (status === PRESENCE.OFFLINE) return PRESENCE.OFFLINE;
-  if (status === PRESENCE.AWAY) return ageMs <= AWAY_STALE_MS ? PRESENCE.AWAY : PRESENCE.OFFLINE;
-  if (status === PRESENCE.ONLINE) {
-    if (ageMs <= ONLINE_STALE_MS) return PRESENCE.ONLINE;
-    if (ageMs <= AWAY_STALE_MS) return PRESENCE.AWAY;
-    return PRESENCE.OFFLINE;
-  }
-
-  if (!seenAt) return PRESENCE.OFFLINE;
-  if (ageMs <= ONLINE_STALE_MS) return PRESENCE.ONLINE;
-  if (ageMs <= AWAY_STALE_MS) return PRESENCE.AWAY;
-  return PRESENCE.OFFLINE;
+  if (status === PRESENCE.ONLINE || status === PRESENCE.AWAY || status === PRESENCE.OFFLINE) return status;
+  return record?.last_seen_at ? PRESENCE.AWAY : PRESENCE.OFFLINE;
 }
 
 function presenceColor(status) {
@@ -574,39 +551,6 @@ export default function MessagingWidget() {
     const intervalId = globalThis.setInterval(sendHeartbeat, 45_000);
     return () => globalThis.clearInterval(intervalId);
   }, [companyId, selfEmpid, state.activeCompanyId]);
-
-  useEffect(() => {
-    const activeCompany = state.activeCompanyId || companyId;
-    if (!activeCompany) return undefined;
-
-    const refreshPresence = async () => {
-      try {
-        const knownEmpids = Array.from(new Set([
-          ...employees.map((entry) => normalizeId(entry?.empid || entry?.id)).filter(Boolean),
-          ...messages.flatMap((msg) => collectMessageParticipantEmpids(msg)),
-          ...state.composer.recipients.map((entry) => normalizeId(entry)).filter(Boolean),
-        ]));
-
-        const presenceParams = new URLSearchParams({ companyId: String(activeCompany) });
-        if (knownEmpids.length > 0) presenceParams.set('userIds', knownEmpids.join(','));
-        const presenceRes = await fetch(`${API_BASE}/messaging/presence?${presenceParams.toString()}`, { credentials: 'include' });
-        if (!presenceRes.ok) return;
-        const presenceData = await presenceRes.json();
-        const onlineUsers = Array.isArray(presenceData?.users) ? presenceData.users : [];
-        const snapshot = Array.from(new Map(onlineUsers.map((entry) => {
-          const empid = normalizeId(entry?.empid || entry?.id);
-          return [empid, { ...entry, empid }];
-        })).values()).filter((entry) => entry.empid);
-        setPresence(snapshot);
-      } catch {
-        // Keep messaging functional even when presence refresh fails.
-      }
-    };
-
-    refreshPresence();
-    const intervalId = globalThis.setInterval(refreshPresence, 60_000);
-    return () => globalThis.clearInterval(intervalId);
-  }, [companyId, employees, messages, state.activeCompanyId, state.composer.recipients]);
 
   useEffect(() => {
     const socket = connectSocket();
