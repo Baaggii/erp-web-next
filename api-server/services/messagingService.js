@@ -790,9 +790,6 @@ export async function postReply({ user, companyId, messageId, payload, correlati
   const replyVisibilityEmpid = message.visibility_scope === 'private'
     ? Array.from(privateParticipants).find((empid) => empid !== String(user.empid)) || null
     : message.visibility_empid;
-  if (message.visibility_scope === 'private' && !replyVisibilityEmpid) {
-    throw createError(409, 'THREAD_PARTICIPANT_INVALID', 'Private thread participant is invalid');
-  }
 
   const ctx = { user, companyId: scopedCompanyId, correlationId, session };
   return createMessageInternal({
@@ -804,9 +801,9 @@ export async function postReply({ user, companyId, messageId, payload, correlati
       linkedId: message.linked_id,
       visibilityScope: message.visibility_scope,
       visibilityDepartmentId: message.visibility_department_id,
-      visibilityEmpid: replyVisibilityEmpid,
-      recipientEmpids: message.visibility_scope === 'private' && replyVisibilityEmpid
-        ? [String(replyVisibilityEmpid)]
+      visibilityEmpid: message.visibility_empid,
+      recipientEmpids: message.visibility_scope === 'private' && message.visibility_empid
+        ? [String(message.visibility_empid)]
         : payload?.recipientEmpids,
     },
     parentMessageId: message.id,
