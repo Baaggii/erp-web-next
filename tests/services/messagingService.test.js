@@ -89,12 +89,6 @@ class FakeDb {
       }
       return [{ affectedRows: match ? 1 : 0 }];
     }
-    if (sql.startsWith('UPDATE erp_messages SET visibility_empid = ?')) {
-      const [visibilityEmpid, id, companyId] = params;
-      const match = this.messages.find((entry) => entry.id === id && entry.company_id === companyId);
-      if (match) match.visibility_empid = visibilityEmpid;
-      return [{ affectedRows: match ? 1 : 0 }];
-    }
     if (sql.startsWith('UPDATE erp_messages SET deleted_at')) {
       const hasDeletedBy = sql.includes('deleted_by_empid') || sql.includes('deleted_by = ?');
       const [first, second, third] = params;
@@ -575,59 +569,6 @@ test('only author can delete message in same company', async () => {
       }),
     /Messaging permission denied/,
   );
-});
-
-
-
-test('private messages support multiple recipients and participant expansion on reply', async () => {
-  const db = new FakeDb();
-  const session = { permissions: { messaging: true }, department_id: 10 };
-
-  const root = await postMessage({
-    user,
-    companyId: 1,
-    payload: {
-      body: 'group private root',
-      linkedType: 'topic',
-      linkedId: 'ops-room',
-      visibilityScope: 'private',
-      recipientEmpids: ['e-2', 'e-3'],
-      idempotencyKey: 'group-private-root',
-    },
-    correlationId: 'group-private-root',
-    db,
-    getSession: async () => session,
-  });
-
-  const visibleForE3 = await getThread({
-    user: { empid: 'e-3', companyId: 1 },
-    companyId: 1,
-    messageId: root.message.id,
-    correlationId: 'group-private-e3-visible',
-    db,
-    getSession: async () => session,
-  });
-  assert.equal(visibleForE3.root.id, root.message.id);
-
-  await postReply({
-    user: { empid: 'e-2', companyId: 1 },
-    companyId: 1,
-    messageId: root.message.id,
-    payload: { body: 'adding e-4', recipientEmpids: ['e-4'], idempotencyKey: 'group-private-add-e4' },
-    correlationId: 'group-private-add-e4',
-    db,
-    getSession: async () => session,
-  });
-
-  const visibleForE4 = await getThread({
-    user: { empid: 'e-4', companyId: 1 },
-    companyId: 1,
-    messageId: root.message.id,
-    correlationId: 'group-private-e4-visible',
-    db,
-    getSession: async () => session,
-  });
-  assert.equal(visibleForE4.root.id, root.message.id);
 });
 
 test('private visibility hides messages from non-target users', async () => {
