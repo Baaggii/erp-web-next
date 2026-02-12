@@ -174,6 +174,7 @@ async function buildJournalPreviewPayload(conn, safeTable, sourceId, { forUpdate
     throw new Error(`Transaction ${safeTable}#${sourceId} is missing TransType`);
   }
 
+  const companyId = transactionRow.company_id;
   const flagSetCode = await resolveFlagSetCode(conn, transType);
 
   if (flagSetCode === NON_FINANCIAL_FLAG_SET_CODE) {
@@ -294,13 +295,16 @@ async function resolveFlagSetCode(conn, transType) {
 
 async function selectMatchingJournalRule(conn, flagSetCode, presentFlags) {
   const [ruleRows] = await conn.query(
-    `SELECT *
-FROM fin_journal_rule
-WHERE fin_flag_set_code = ?
-  AND company_id IN (?, 0)
-ORDER BY company_id DESC, priority`,
-    [flagSetCode],
-  );
+  `
+  SELECT *
+  FROM fin_journal_rule
+  WHERE fin_flag_set_code = ?
+    AND (company_id = ? OR company_id = 0)
+  ORDER BY company_id DESC, COALESCE(priority, 999999), rule_id
+  `,
+  [flagSetCode, sessionCompanyId]
+);
+
 
   for (const rule of ruleRows) {
     const [conditions] = await conn.query(
@@ -346,10 +350,10 @@ async function resolveAccountCode(conn, line, context) {
     `SELECT *
 FROM fin_account_resolver
 WHERE resolver_code = ?
-  AND company_id IN (?, 0)
+  AND (company_id = ? OR company_id = 0)
 ORDER BY company_id DESC
 LIMIT 1`,
-    [resolverCode],
+    [resolverCode, sessionCompanyId],
   );
 
   if (!rows.length) {
@@ -396,10 +400,10 @@ LIMIT 1`,
     `SELECT *
 FROM fin_chart_of_accounts
 WHERE account_code = ?
-  AND company_id IN (?, 0)
+  AND (company_id = ? OR company_id = 0)
 ORDER BY company_id DESC
 LIMIT 1`,
-    [accountCode]
+    [accountCode, sessionCompanyId]
   );
 
   if (!coaRows.length) {
