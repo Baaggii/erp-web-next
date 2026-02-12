@@ -1046,6 +1046,25 @@ const TableManager = forwardRef(function TableManager({
   const canPostTransactions = permission.canPost;
   const allowTemporaryOnly = Boolean(permission.allowTemporaryOnly);
 
+  const logJournalActionDebug = useCallback(
+    (action, requestPayload, responseMeta = {}) => {
+      if (!journalActionDebugEnabled) return;
+      const payload = {
+        action,
+        request: requestPayload,
+        response: responseMeta,
+      };
+      const message = `Journal ${action} debug: ${formatTxnToastPayload(payload)}`;
+      addToast(message, responseMeta?.ok === false ? 'warning' : 'info');
+      if (responseMeta?.ok === false) {
+        console.warn('Journal action failed', payload);
+      } else {
+        console.info('Journal action', payload);
+      }
+    },
+    [addToast, formatTxnToastPayload, journalActionDebugEnabled],
+  );
+
   const availableTemporaryScopes = useMemo(() => {
     const scopes = [];
     if (canCreateTemporary) scopes.push('created');
@@ -3224,6 +3243,10 @@ const TableManager = forwardRef(function TableManager({
   }
 
   async function handlePostTransaction(row, forceRepost = false) {
+    if (!canPostTransactions) {
+      addToast('You do not have permission to post this transaction', 'error');
+      return;
+    }
     const rowId = getRowId(row);
     if (rowId === undefined || rowId === null) return;
     const state = getPostingState(row);
@@ -3257,7 +3280,15 @@ const TableManager = forwardRef(function TableManager({
         body: JSON.stringify(requestPayload),
       });
 
-      const payload = await res.json().catch(() => ({}));
+      const rawText = await res.text().catch(() => '');
+      let payload = {};
+      if (rawText) {
+        try {
+          payload = JSON.parse(rawText);
+        } catch {
+          payload = { message: rawText };
+        }
+      }
       logJournalActionDebug('post', requestPayload, {
         status: res.status,
         ok: res.ok,
@@ -3279,22 +3310,46 @@ const TableManager = forwardRef(function TableManager({
   }
 
   async function handlePreviewJournal(row) {
+    if (!canPostTransactions) {
+      addToast('You do not have permission to preview journal entries', 'error');
+      return;
+    }
     const rowId = getRowId(row);
     if (rowId === undefined || rowId === null) return;
+    const sourceId = getJournalSourceId(rowId);
+    const requestPayload = { source_table: table, source_id: sourceId };
     setPreviewLoading(true);
     try {
-      const sourceId = getJournalSourceId(rowId);
       const res = await fetch(`${API_BASE}/journal/preview`, {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ source_table: table, source_id: sourceId }),
+        body: JSON.stringify(requestPayload),
       });
-      const payload = await res.json().catch(() => ({}));
+      const rawText = await res.text().catch(() => '');
+      let payload = {};
+      if (rawText) {
+        try {
+          payload = JSON.parse(rawText);
+        } catch {
+          payload = { message: rawText };
+        }
+      }
+      logJournalActionDebug('preview', requestPayload, {
+        status: res.status,
+        ok: res.ok,
+        body: payload,
+      });
       if (!res.ok || payload?.ok === false) {
         addToast(payload?.message || 'Preview failed', 'error');
         return;
       }
+    } catch (err) {
+      logJournalActionDebug('preview', requestPayload, {
+        ok: false,
+        error: err?.message || 'Unknown error',
+      });
+      addToast(`Request failed: ${err?.message || 'Unknown error'}`, 'error');
     } finally {
       setPreviewLoading(false);
     }
@@ -8922,7 +8977,7 @@ const TableManager = forwardRef(function TableManager({
                     const postingStatusBadge = postingState.posted
                       ? { label: 'POSTED', bg: '#16a34a' }
                       : { label: 'DRAFT', bg: '#f59e0b' };
-                    if (postingState.isPostingTable) {
+                    if (postingState.isPostingTable && canPostTransactions) {
                       actionButtons.push(
                         <button
                           key="preview-journal"
