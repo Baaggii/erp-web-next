@@ -1130,6 +1130,7 @@ export default function MessagingWidget() {
           return { ...prev, [key]: mergeMessageList(prev[key], createdMessage) };
         });
         const threadRootId = createdMessage.conversation_id || createdMessage.conversationId || createdMessage.parent_message_id || createdMessage.parentMessageId || createdMessage.id;
+        dispatch({ type: 'widget/setConversation', payload: threadRootId ? `message:${threadRootId}` : null });
         await fetchThreadMessages(threadRootId, activeCompany);
       }
       dispatch({ type: 'composer/reset' });
@@ -1212,6 +1213,7 @@ export default function MessagingWidget() {
   };
 
   const openNewMessage = () => {
+    dispatch({ type: 'widget/setConversation', payload: null });
     dispatch({ type: 'composer/setTopic', payload: '' });
     dispatch({ type: 'composer/setBody', payload: '' });
     dispatch({ type: 'composer/setReplyTo', payload: null });
@@ -1385,7 +1387,7 @@ export default function MessagingWidget() {
           </div>
 
           {conversationPanelOpen && (
-          <div style={{ overflowY: 'auto', padding: 8, display: 'grid', gap: 6, minHeight: 0, flex: 1 }}>
+          <div style={{ overflowY: 'auto', padding: 8, display: 'grid', gap: 6, minHeight: 0, flex: 1, alignContent: 'start', gridAutoRows: 'max-content' }}>
             {conversationSummaries.length === 0 && <p style={{ color: '#64748b', fontSize: 13 }}>No conversations yet.</p>}
             {conversationSummaries.map((conversation) => (
               <div key={conversation.id} style={{ borderRadius: 12, border: conversation.id === activeConversationId ? '1px solid #3b82f6' : '1px solid #e2e8f0', background: conversation.id === activeConversationId ? '#eff6ff' : '#ffffff', padding: 8 }}>
