@@ -121,31 +121,16 @@ function buildNestedThreads(messages) {
   return roots;
 }
 
-function resolveRootMessageIdFromMap(message, byId) {
-  let current = message;
-  const visited = new Set();
-  while (current) {
-    const parentId = current.parent_message_id || current.parentMessageId;
-    if (!parentId) return current.id;
-    if (visited.has(parentId)) break;
-    visited.add(parentId);
-    current = byId.get(Number(parentId)) || byId.get(String(parentId)) || null;
-  }
-  return message.id;
-}
-
 function groupConversations(messages) {
   const map = new Map();
-  const byId = new Map(messages.map((msg) => [Number(msg.id), msg]));
   messages.forEach((msg) => {
     const topic = extractMessageTopic(msg);
     const link = extractContextLink(msg);
     const conversationId = msg.conversation_id || msg.conversationId || null;
-    const rootMessageId = conversationId || resolveRootMessageIdFromMap(msg, byId);
     const key = String(
       conversationId
-      || (link.linkedType && link.linkedId ? `${link.linkedType}:${link.linkedId}:root:${rootMessageId}` : null)
-      || `message:${rootMessageId}`,
+      || (link.linkedType && link.linkedId ? `${link.linkedType}:${link.linkedId}` : null)
+      || `message:${msg.parent_message_id || msg.parentMessageId || msg.id}`,
     );
     if (!map.has(key)) {
       map.set(key, {
@@ -154,7 +139,7 @@ function groupConversations(messages) {
         messages: [],
         linkedType: link.linkedType,
         linkedId: link.linkedId,
-        rootMessageId,
+        rootMessageId: conversationId || msg.parent_message_id || msg.parentMessageId || msg.id,
       });
     }
     const current = map.get(key);
@@ -243,26 +228,13 @@ function resolveDisplayLabelFromConfig(row, displayFields = []) {
 
 function collectMessageParticipantEmpids(message) {
   const ids = [];
-  ids.push(message?.author_empid, message?.authorEmpid);
-  String(message?.visibility_empid || message?.visibilityEmpid || '')
-    .split(/[;,]/g)
-    .map((entry) => entry.trim())
-    .filter(Boolean)
-    .forEach((entry) => ids.push(entry));
+  ids.push(message?.author_empid, message?.authorEmpid, message?.visibility_empid, message?.visibilityEmpid);
   const recipientEmpids =
     message?.recipient_empids || message?.recipientEmpids || message?.recipient_ids || message?.recipientIds;
   if (Array.isArray(recipientEmpids)) ids.push(...recipientEmpids);
   const readBy = Array.isArray(message?.read_by) ? message.read_by : [];
   ids.push(...readBy);
   return Array.from(new Set(ids.map(normalizeId).filter(Boolean)));
-}
-
-function collectConversationParticipants(conversation) {
-  const participants = new Set();
-  (conversation?.messages || []).forEach((message) => {
-    collectMessageParticipantEmpids(message).forEach((empid) => participants.add(empid));
-  });
-  return Array.from(participants);
 }
 
 function canViewTransaction(transactionId, userId, permissions) {
@@ -1040,6 +1012,11 @@ export default function MessagingWidget() {
       setComposerAnnouncement('Select at least one recipient.');
       return;
     }
+    if (state.composer.recipients.length !== 1) {
+      setComposerAnnouncement('Select exactly one recipient for private messaging.');
+      return;
+    }
+
     const linkedType = state.composer.linkedType || activeConversation?.linkedType || null;
     const linkedId = state.composer.linkedId || activeConversation?.linkedId || null;
     if ((linkedType && !linkedId) || (!linkedType && linkedId)) {
@@ -1063,14 +1040,13 @@ export default function MessagingWidget() {
       companyId: Number.isFinite(Number(activeCompany)) ? Number(activeCompany) : String(activeCompany),
       recipientEmpids: state.composer.recipients,
       visibilityScope: 'private',
-      visibilityEmpid: state.composer.recipients.join(','),
+      visibilityEmpid: state.composer.recipients[0],
       ...(linkedType ? { linkedType } : {}),
       ...(linkedId ? { linkedId: String(linkedId) } : {}),
     };
 
-    const replyTargetId = state.composer.replyToId || activeConversation?.rootMessageId || null;
-    const targetUrl = replyTargetId
-      ? `${API_BASE}/messaging/messages/${replyTargetId}/reply`
+    const targetUrl = state.composer.replyToId
+      ? `${API_BASE}/messaging/messages/${state.composer.replyToId}/reply`
       : `${API_BASE}/messaging/messages`;
 
     const res = await fetch(targetUrl, {
@@ -1171,12 +1147,10 @@ export default function MessagingWidget() {
   };
 
   const openNewMessage = () => {
-    dispatch({ type: 'widget/setConversation', payload: null });
     dispatch({ type: 'composer/setTopic', payload: '' });
     dispatch({ type: 'composer/setBody', payload: '' });
     dispatch({ type: 'composer/setReplyTo', payload: null });
-    dispatch({ type: 'composer/setLinkedContext', payload: { linkedType: null, linkedId: null } });
-    setComposerAnnouncement('Started a new message draft. Add recipients, topic, and message body.');
+    setComposerAnnouncement('Started a new message draft. Add a topic and message body.');
   };
 
   const onComposerInput = (event) => {
@@ -1357,7 +1331,6 @@ export default function MessagingWidget() {
                     if (conversation.linkedType && conversation.linkedId) {
                       dispatch({ type: 'composer/setLinkedContext', payload: { linkedType: conversation.linkedType, linkedId: conversation.linkedId } });
                     }
-                    dispatch({ type: 'composer/setRecipients', payload: collectConversationParticipants(conversation).filter((empid) => empid !== selfEmpid) });
                   }}
                   style={{ textAlign: 'left', border: 0, background: 'transparent', width: '100%', padding: 0 }}
                 >
