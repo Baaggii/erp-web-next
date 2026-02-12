@@ -3205,6 +3205,19 @@ const TableManager = forwardRef(function TableManager({
     return { isPostingTable, posted, nonFinancial };
   }
 
+  function getJournalSourceId(rowId) {
+    if (typeof rowId === 'number') return rowId;
+    if (typeof rowId === 'string') {
+      const trimmed = rowId.trim();
+      if (trimmed === '') return rowId;
+      const asNumber = Number(trimmed);
+      if (Number.isFinite(asNumber) && String(asNumber) === trimmed) {
+        return asNumber;
+      }
+    }
+    return rowId;
+  }
+
   async function handlePostTransaction(row, forceRepost = false) {
     const rowId = getRowId(row);
     if (rowId === undefined || rowId === null) return;
@@ -3224,13 +3237,14 @@ const TableManager = forwardRef(function TableManager({
       : 'Post this transaction? After posting it will be locked.';
     if (!window.confirm(confirmMessage)) return;
 
+    const sourceId = getJournalSourceId(rowId);
     const res = await fetch(`${API_BASE}/journal/post`, {
       method: 'POST',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         source_table: table,
-        source_id: Number(rowId),
+        source_id: sourceId,
         force_repost: forceRepost,
       }),
     });
@@ -3249,11 +3263,12 @@ const TableManager = forwardRef(function TableManager({
     if (rowId === undefined || rowId === null) return;
     setPreviewLoading(true);
     try {
+      const sourceId = getJournalSourceId(rowId);
       const res = await fetch(`${API_BASE}/journal/preview`, {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ source_table: table, source_id: Number(rowId) }),
+        body: JSON.stringify({ source_table: table, source_id: sourceId }),
       });
       const payload = await res.json().catch(() => ({}));
       if (!res.ok || payload?.ok === false) {
