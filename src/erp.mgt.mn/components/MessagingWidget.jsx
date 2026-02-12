@@ -1128,6 +1128,7 @@ export default function MessagingWidget() {
         });
         const threadRootId = createdMessage.conversation_id || createdMessage.conversationId || createdMessage.parent_message_id || createdMessage.parentMessageId || createdMessage.id;
         await fetchThreadMessages(threadRootId, activeCompany);
+        if (isNewMessageMode && threadRootId) dispatch({ type: 'widget/setConversation', payload: `message:${threadRootId}` });
       }
       dispatch({ type: 'composer/reset' });
       setIsNewMessageMode(false);
@@ -1668,10 +1669,17 @@ export default function MessagingWidget() {
               )}
             </div>
 
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 12 }}>
-              <button type="button" onClick={() => dispatch({ type: 'composer/reset' })} style={{ border: '1px solid #cbd5e1', borderRadius: 8, background: '#fff', padding: '8px 10px' }}>
-                Clear draft
-              </button>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 12, gap: 8 }}>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button type="button" onClick={() => dispatch({ type: 'composer/reset' })} style={{ border: '1px solid #cbd5e1', borderRadius: 8, background: '#fff', padding: '8px 10px' }}>
+                  Clear draft
+                </button>
+                {isNewMessageMode && (
+                  <button type="button" onClick={cancelNewMessage} style={{ border: '1px solid #cbd5e1', borderRadius: 8, background: '#fff', padding: '8px 10px' }}>
+                    Cancel
+                  </button>
+                )}
+              </div>
               <button type="submit" disabled={!canSendMessage} style={{ border: 0, borderRadius: 8, background: canSendMessage ? '#2563eb' : '#94a3b8', color: '#fff', padding: '8px 14px', fontWeight: 600, cursor: canSendMessage ? 'pointer' : 'not-allowed' }}>
                 Send
               </button>
