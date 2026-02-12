@@ -348,15 +348,15 @@ async function resolveAccountCode(conn, line, context) {
   const resolver = rows[0];
   const resolverType = String(resolver.resolver_type || '').toUpperCase();
 
-  // STATIC account
-  if (resolverType === 'STATIC') {
+  // FIXED ACCOUNT
+  if (resolverType === 'FIXED_ACCOUNT') {
     if (!resolver.base_account_code) {
-      throw new Error(`STATIC resolver ${resolverCode} is missing base_account_code`);
+      throw new Error(`FIXED_ACCOUNT resolver ${resolverCode} missing base_account_code`);
     }
     return String(resolver.base_account_code);
   }
 
-  // BANK dynamic (virtual subaccount)
+  // BANK dynamic
   if (resolverType === 'BANK_ACCOUNT_SUFFIX') {
     const bankId = context.financialFields[resolver.source_column];
     if (!bankId) {
@@ -376,6 +376,7 @@ async function resolveAccountCode(conn, line, context) {
 
   throw new Error(`Unsupported resolver type ${resolverType}`);
 }
+
 
 
 async function resolveAmount(conn, line, context) {
