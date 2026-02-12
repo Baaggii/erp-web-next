@@ -265,17 +265,25 @@ function validateLinkedContext(linkedType, linkedId) {
 }
 
 function normalizeVisibility(payload, session, user) {
-  const scope = String(payload?.visibilityScope || 'company').trim().toLowerCase();
+  const recipients = Array.isArray(payload?.recipientEmpids)
+    ? Array.from(new Set(payload.recipientEmpids.map((entry) => String(entry || '').trim()).filter(Boolean)))
+    : [];
+
+  const requestedScope = String(payload?.visibilityScope || '').trim().toLowerCase();
+  const scope = requestedScope || (recipients.length > 0 ? 'private' : 'company');
   if (!VISIBILITY_SCOPES.has(scope)) {
     throw createError(400, 'VISIBILITY_SCOPE_INVALID', 'visibilityScope must be company, department, or private');
   }
+
+  if (scope === 'private' && recipients.length > 1) {
+    throw createError(400, 'VISIBILITY_PRIVATE_TOO_MANY_RECIPIENTS', 'Private messages support exactly one recipient');
+  }
+
   const visibilityDepartmentId = scope === 'department' ? toId(payload?.visibilityDepartmentId ?? session?.department_id) : null;
   if (scope === 'department' && !visibilityDepartmentId) {
     throw createError(400, 'VISIBILITY_DEPARTMENT_REQUIRED', 'visibilityDepartmentId is required for department scope');
   }
-  const recipients = Array.isArray(payload?.recipientEmpids)
-    ? payload.recipientEmpids.map((entry) => String(entry || '').trim()).filter(Boolean)
-    : [];
+
   const visibilityEmpid = scope === 'private'
     ? String(payload?.visibilityEmpid || recipients[0] || '').trim()
     : null;
@@ -285,6 +293,7 @@ function normalizeVisibility(payload, session, user) {
   if (scope === 'private' && visibilityEmpid === String(user?.empid)) {
     throw createError(400, 'VISIBILITY_EMPID_INVALID', 'visibilityEmpid cannot be the same as author');
   }
+
   return {
     visibilityScope: scope,
     visibilityDepartmentId,
@@ -544,6 +553,41 @@ function emit(companyId, eventName, payload) {
   ioRef.to(`company:${companyId}`).emit(eventName, payload);
 }
 
+function emitToEmpid(eventName, empid, payload) {
+  if (!ioRef || !empid) return;
+  const safe = String(empid || '').trim();
+  if (!safe) return;
+  ioRef.to(`user:${safe}`).emit(eventName, payload);
+  ioRef.to(`user:${safe.toUpperCase()}`).emit(eventName, payload);
+  ioRef.to(`emp:${safe}`).emit(eventName, payload);
+}
+
+function emitMessageScoped(ctx, eventName, message, optimistic) {
+  if (!ioRef || !message) return;
+  const payload = {
+    ...eventPayloadBase(ctx),
+    message,
+    optimistic: optimistic || {
+      tempId: null,
+      accepted: true,
+      replay: false,
+    },
+  };
+
+  const scope = String(message.visibility_scope || 'company');
+  if (scope === 'private') {
+    emitToEmpid(eventName, message.author_empid, payload);
+    emitToEmpid(eventName, message.visibility_empid, payload);
+    return;
+  }
+  if (scope === 'department' && message.visibility_department_id) {
+    ioRef.to(`department:${message.visibility_department_id}`).emit(eventName, payload);
+    emitToEmpid(eventName, message.author_empid, payload);
+    return;
+  }
+  emit(ctx.companyId, eventName, payload);
+}
+
 async function createMessageInternal({ db = pool, ctx, payload, parentMessageId = null, eventName = 'message.created' }) {
   const startedAt = process.hrtime.bigint();
   const body = sanitizeBody(payload?.body);
@@ -698,14 +742,10 @@ async function createMessageInternal({ db = pool, ctx, payload, parentMessageId 
   const message = await findMessageById(db, ctx.companyId, messageId);
 
   const viewerMessage = sanitizeForViewer(message, ctx.session, ctx.user);
-  emit(ctx.companyId, eventName, {
-    ...eventPayloadBase(ctx),
-    message: viewerMessage,
-    optimistic: {
-      tempId: payload?.clientTempId ?? null,
-      accepted: true,
-      replay: false,
-    },
+  emitMessageScoped(ctx, eventName, viewerMessage, {
+    tempId: payload?.clientTempId ?? null,
+    accepted: true,
+    replay: false,
   });
 
   const elapsedSeconds = Number(process.hrtime.bigint() - startedAt) / 1_000_000_000;
