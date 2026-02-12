@@ -20,7 +20,6 @@ const messageLinkedContextSupport = new WeakMap();
 const messageEncryptionColumnSupport = new WeakMap();
 const messageDeleteByColumnSupport = new WeakMap();
 const messageParticipantsTableSupport = new WeakMap();
-const messageVisibilityColumnSupport = new WeakMap();
 let ioRef = null;
 
 const onlineByCompany = new Map();
@@ -357,6 +356,8 @@ function canViewMessage(message, session, user) {
     return Number(session?.department_id) > 0 && Number(session?.department_id) === Number(message.visibility_department_id);
   }
   if (scope === 'private') {
+    const participants = Array.isArray(message?.participant_empids) ? message.participant_empids : [];
+    if (participants.length > 0) return participants.includes(String(user?.empid));
     return String(message.author_empid) === String(user?.empid) || String(message.visibility_empid) === String(user?.empid);
   }
   return false;
@@ -661,7 +662,7 @@ function emitMessageScoped(ctx, eventName, message, optimistic) {
   };
 
   const scope = String(message.visibility_scope || 'company');
-  if (scope === 'private' || (Array.isArray(message.participant_empids) && message.participant_empids.length > 0)) {
+  if (scope === 'private') {
     const participants = Array.isArray(message.participant_empids) && message.participant_empids.length > 0
       ? message.participant_empids
       : [message.author_empid, message.visibility_empid];
@@ -841,12 +842,15 @@ async function createMessageInternal({ db = pool, ctx, payload, parentMessageId 
     try {
       [result] = await db.query(
         `INSERT INTO erp_messages
-          (company_id, author_empid, parent_message_id, body, body_ciphertext, body_iv, body_auth_tag)
-          VALUES (?, ?, ?, ?, ?, ?, ?)`,
+          (company_id, author_empid, parent_message_id, visibility_scope, visibility_department_id, visibility_empid, body, body_ciphertext, body_iv, body_auth_tag)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           ctx.companyId,
           ctx.user.empid,
           parentMessageId,
+          visibility.visibilityScope,
+          visibility.visibilityDepartmentId,
+          visibility.visibilityEmpid,
           encryptedBody.body,
           encryptedBody.bodyCiphertext,
           encryptedBody.bodyIv,
@@ -887,12 +891,15 @@ async function createMessageInternal({ db = pool, ctx, payload, parentMessageId 
   if (!result) {
     [result] = await db.query(
       `INSERT INTO erp_messages
-        (company_id, author_empid, parent_message_id, body)
-        VALUES (?, ?, ?, ?)`,
+        (company_id, author_empid, parent_message_id, visibility_scope, visibility_department_id, visibility_empid, body)
+        VALUES (?, ?, ?, ?, ?, ?, ?)`,
       [
         ctx.companyId,
         ctx.user.empid,
         parentMessageId,
+        visibility.visibilityScope,
+        visibility.visibilityDepartmentId,
+        visibility.visibilityEmpid,
         body,
       ],
     );

@@ -295,9 +295,10 @@ async function resolveFlagSetCode(conn, transType) {
 async function selectMatchingJournalRule(conn, flagSetCode, presentFlags) {
   const [ruleRows] = await conn.query(
     `SELECT *
-       FROM fin_journal_rule
-      WHERE fin_flag_set_code = ?
-      ORDER BY COALESCE(priority, 999999), rule_id`,
+FROM fin_journal_rule
+WHERE fin_flag_set_code = ?
+  AND company_id IN (?, 0)
+ORDER BY company_id DESC, priority`,
     [flagSetCode],
   );
 
@@ -342,7 +343,12 @@ async function resolveAccountCode(conn, line, context) {
   }
 
   const [rows] = await conn.query(
-    `SELECT * FROM fin_account_resolver WHERE resolver_code = ? LIMIT 1`,
+    `SELECT *
+FROM fin_account_resolver
+WHERE resolver_code = ?
+  AND company_id IN (?, 0)
+ORDER BY company_id DESC
+LIMIT 1`,
     [resolverCode],
   );
 
@@ -387,9 +393,12 @@ async function resolveAccountCode(conn, line, context) {
 
   // 🔥 Now validate against COA
   const [coaRows] = await conn.query(
-    `SELECT account_code, is_active
-       FROM fin_chart_of_accounts
-      WHERE account_code = ?`,
+    `SELECT *
+FROM fin_chart_of_accounts
+WHERE account_code = ?
+  AND company_id IN (?, 0)
+ORDER BY company_id DESC
+LIMIT 1`,
     [accountCode]
   );
 

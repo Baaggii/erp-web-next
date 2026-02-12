@@ -47,24 +47,17 @@ class FakeDb {
       return [messageId ? [{ message_id: messageId, request_hash: null, expires_at: null }] : []];
     }
     if (sql.startsWith('SELECT message_id, empid') && sql.includes('FROM erp_message_participants')) {
-      const [companyId, ...messageIds] = params;
-      return [this.participants.filter((entry) => Number(entry.company_id) === Number(companyId) && messageIds.map(Number).includes(Number(entry.message_id)))];
+      return [[]];
     }
     if (sql.startsWith('INSERT IGNORE INTO erp_message_participants')) {
-      const [messageId, companyId, empid] = params;
-      const exists = this.participants.some((entry) => Number(entry.message_id) === Number(messageId) && String(entry.empid) === String(empid));
-      if (!exists) this.participants.push({ message_id: messageId, company_id: companyId, empid });
       return [{ affectedRows: 1 }];
     }
     if (sql.startsWith('INSERT INTO erp_messages')) {
       const hasLinkedFields = sql.includes('linked_type') && sql.includes('linked_id');
       const hasVisibilityFields = sql.includes('visibility_scope') && sql.includes('visibility_empid');
-      const hasEncryptedFields = sql.includes('body_ciphertext') && sql.includes('body_auth_tag');
       const [companyId, authorEmpid, parentId] = params;
       const visibilityOffset = hasLinkedFields ? 5 : (hasVisibilityFields ? 3 : null);
-      const baseOffset = hasLinkedFields
-        ? (hasVisibilityFields ? 8 : 5)
-        : (hasVisibilityFields ? 6 : 3);
+      const baseOffset = hasLinkedFields ? 8 : (hasVisibilityFields ? 6 : 3);
       const message = {
         id: this.nextId++,
         company_id: companyId,
