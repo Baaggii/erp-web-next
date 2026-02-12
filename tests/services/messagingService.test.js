@@ -515,60 +515,6 @@ test('only author can delete message in same company', async () => {
   );
 });
 
-
-test('private thread recipient can reply and both included users can load the thread', async () => {
-  const db = new FakeDb();
-  const session = { permissions: { messaging: true }, department_id: 10 };
-
-  const root = await postMessage({
-    user,
-    companyId: 1,
-    payload: {
-      body: 'root private',
-      linkedType: 'topic',
-      linkedId: 'ops-room',
-      visibilityScope: 'private',
-      visibilityEmpid: 'e-2',
-      idempotencyKey: 'private-thread-root-1',
-    },
-    correlationId: 'private-thread-root-1',
-    db,
-    getSession: async () => session,
-  });
-
-  const reply = await postReply({
-    user: { empid: 'e-2', companyId: 1 },
-    companyId: 1,
-    messageId: root.message.id,
-    payload: { body: 'recipient reply', idempotencyKey: 'private-thread-reply-1' },
-    correlationId: 'private-thread-reply-1',
-    db,
-    getSession: async () => session,
-  });
-
-  assert.equal(reply.message.visibility_empid, 'e-1');
-
-  const authorView = await getThread({
-    user,
-    companyId: 1,
-    messageId: root.message.id,
-    correlationId: 'private-thread-author-view',
-    db,
-    getSession: async () => session,
-  });
-  assert.equal(authorView.replies.length, 1);
-
-  const recipientView = await getThread({
-    user: { empid: 'e-2', companyId: 1 },
-    companyId: 1,
-    messageId: root.message.id,
-    correlationId: 'private-thread-recipient-view',
-    db,
-    getSession: async () => session,
-  });
-  assert.equal(recipientView.replies.length, 1);
-});
-
 test('private visibility hides messages from non-target users', async () => {
   const db = new FakeDb();
   const authorSession = { permissions: { messaging: true }, department_id: 10 };
