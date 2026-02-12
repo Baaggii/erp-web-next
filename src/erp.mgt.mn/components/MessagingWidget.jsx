@@ -237,52 +237,6 @@ function collectMessageParticipantEmpids(message) {
   return Array.from(new Set(ids.map(normalizeId).filter(Boolean)));
 }
 
-function collectConversationParticipantEmpids(messages = []) {
-  const ids = new Set();
-  messages.forEach((message) => {
-    collectMessageParticipantEmpids(message).forEach((empid) => ids.add(empid));
-  });
-  return Array.from(ids);
-}
-
-function isPrivateMessage(message) {
-  const scope = String(message?.visibility_scope || message?.visibilityScope || '').toLowerCase();
-  if (scope) return scope === 'private';
-  const recipientEmpids =
-    message?.recipient_empids || message?.recipientEmpids || message?.recipient_ids || message?.recipientIds;
-  return Array.isArray(recipientEmpids) && recipientEmpids.length > 0;
-}
-
-function expandPrivateThreadVisibility(current = [], createdMessage) {
-  if (!createdMessage?.id) return current;
-  const next = current.map((entry) => ({ ...entry }));
-  const participantIds = collectMessageParticipantEmpids(createdMessage);
-  if (participantIds.length === 0) return mergeMessageList(next, createdMessage);
-  const threadId =
-    createdMessage.conversation_id
-    || createdMessage.conversationId
-    || createdMessage.parent_message_id
-    || createdMessage.parentMessageId
-    || createdMessage.id;
-
-  next.forEach((entry, idx) => {
-    const entryThreadId = entry.conversation_id || entry.conversationId || entry.parent_message_id || entry.parentMessageId || entry.id;
-    if (String(entryThreadId) !== String(threadId)) return;
-    const existing = collectMessageParticipantEmpids(entry);
-    const merged = Array.from(new Set([...existing, ...participantIds]));
-    if (merged.length === 0) return;
-    next[idx] = {
-      ...entry,
-      recipient_empids: merged,
-      recipientEmpids: merged,
-      visibility_scope: 'private',
-      visibilityScope: 'private',
-    };
-  });
-
-  return mergeMessageList(next, createdMessage);
-}
-
 function canViewTransaction(transactionId, userId, permissions) {
   if (!transactionId || !userId) return false;
   if (permissions?.isAdmin === true) return true;
@@ -942,14 +896,6 @@ export default function MessagingWidget() {
   }), [conversations, selfEmpid]);
 
   const activeTopic = state.composer.topic || activeConversation?.title || 'Untitled topic';
-  const activeConversationParticipantEmpids = useMemo(
-    () => collectConversationParticipantEmpids(activeConversation?.messages || []),
-    [activeConversation],
-  );
-  const hasLegacyCompanyWideMessages = useMemo(
-    () => (activeConversation?.messages || []).some((message) => !isPrivateMessage(message)),
-    [activeConversation],
-  );
   const sessionUserLabel = sanitizeMessageText(
     user?.emp_name || user?.employee_name || user?.name || user?.full_name || user?.username || user?.empid,
   );
@@ -963,17 +909,11 @@ export default function MessagingWidget() {
     if (!normalizedEmpid) return 'Unknown user';
     return employeeLabelMap.get(normalizedEmpid) || normalizedEmpid;
   };
-  const activeParticipantChips = useMemo(
-    () => activeConversationParticipantEmpids
-      .filter((empid) => empid !== selfEmpid)
-      .map((empid) => ({ id: empid, label: resolveEmployeeLabel(empid) })),
-    [activeConversationParticipantEmpids, selfEmpid, employeeLabelMap],
-  );
 
 
   const safeTopic = sanitizeMessageText(state.composer.topic || activeConversation?.title || '');
   const safeBody = sanitizeMessageText(state.composer.body);
-  const canSendMessage = Boolean(safeTopic && safeBody && state.composer.recipients.length === 1);
+  const canSendMessage = Boolean(safeTopic && safeBody && state.composer.recipients.length > 0);
 
   const handleOpenLinkedTransaction = (transactionId) => {
     if (canViewTransaction(transactionId, normalizeId(sessionId), permissions || {})) {
@@ -1122,7 +1062,7 @@ export default function MessagingWidget() {
       if (createdMessage) {
         setMessagesByCompany((prev) => {
           const key = getCompanyCacheKey(state.activeCompanyId || companyId);
-          return { ...prev, [key]: expandPrivateThreadVisibility(prev[key], createdMessage) };
+          return { ...prev, [key]: mergeMessageList(prev[key], createdMessage) };
         });
         const threadRootId = createdMessage.conversation_id || createdMessage.conversationId || createdMessage.parent_message_id || createdMessage.parentMessageId || createdMessage.id;
         await fetchThreadMessages(threadRootId, activeCompany);
@@ -1306,7 +1246,7 @@ export default function MessagingWidget() {
       </header>
 
       <div style={{ display: 'grid', gridTemplateColumns: isNarrowLayout ? 'minmax(0, 1fr)' : '300px minmax(0,1fr)', minHeight: 0, height: '100%' }}>
-        <aside style={{ borderRight: isNarrowLayout ? 'none' : '1px solid #e2e8f0', background: '#ffffff', display: 'flex', flexDirection: 'column', minHeight: 0, height: '100%', overflow: 'hidden' }}>
+        <aside style={{ borderRight: isNarrowLayout ? 'none' : '1px solid #e2e8f0', background: '#ffffff', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
           <div style={{ padding: 12, borderBottom: '1px solid #e2e8f0' }}>
             <label htmlFor="messaging-company-switch" style={{ fontSize: 12, fontWeight: 600, color: '#334155' }}>Company</label>
             <input
@@ -1379,7 +1319,7 @@ export default function MessagingWidget() {
           </div>
 
           {conversationPanelOpen && (
-          <div style={{ overflowY: 'auto', padding: 8, display: 'grid', gap: 6, minHeight: 0, flex: 1 }}>
+          <div style={{ overflowY: 'auto', padding: 8, display: 'grid', gap: 6, minHeight: 0 }}>
             {conversationSummaries.length === 0 && <p style={{ color: '#64748b', fontSize: 13 }}>No conversations yet.</p>}
             {conversationSummaries.map((conversation) => (
               <div key={conversation.id} style={{ borderRadius: 12, border: conversation.id === activeConversationId ? '1px solid #3b82f6' : '1px solid #e2e8f0', background: conversation.id === activeConversationId ? '#eff6ff' : '#ffffff', padding: 8 }}>
@@ -1424,26 +1364,11 @@ export default function MessagingWidget() {
           )}
         </aside>
 
-        <section style={{ display: 'grid', gridTemplateRows: 'minmax(0, 1fr) auto', minWidth: 0, minHeight: 0, height: '100%', overflow: 'hidden' }}>
+        <section style={{ display: 'grid', gridTemplateRows: 'minmax(0, 1fr) auto', minWidth: 0, minHeight: 0 }}>
           <main style={{ padding: '10px 14px 8px', overflowY: 'auto', minHeight: 420 }} aria-live="polite">
             <div style={{ position: 'sticky', top: 0, background: '#f8fafc', paddingBottom: 8, marginBottom: 8 }}>
-              <div style={{ display: 'flex', gap: 8, alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap' }}>
-                <strong style={{ fontSize: 16, color: '#0f172a' }}>{activeTopic}</strong>
-                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                  {activeParticipantChips.map((entry) => (
-                    <span key={`header-${entry.id}`} style={{ border: '1px solid #cbd5e1', borderRadius: 999, padding: '2px 8px', fontSize: 11, color: '#334155', background: '#fff' }}>
-                      {entry.label}
-                    </span>
-                  ))}
-                  {activeParticipantChips.length === 0 && <span style={{ fontSize: 12, color: '#64748b' }}>No participants selected.</span>}
-                </div>
-              </div>
+              <strong style={{ fontSize: 16, color: '#0f172a' }}>{activeTopic}</strong>
               <p style={{ margin: '4px 0 0', fontSize: 12, color: '#64748b' }}>Ctrl/Cmd + Enter sends your message.</p>
-              {hasLegacyCompanyWideMessages && (
-                <p style={{ margin: '4px 0 0', fontSize: 12, color: '#b45309' }}>
-                  This thread includes older company-wide messages. Select a recipient before replying.
-                </p>
-              )}
               {activeConversation?.rootMessageId && canDeleteMessage(messages.find((entry) => Number(entry.id) === Number(activeConversation.rootMessageId))) && (
                 <button type="button" onClick={() => handleDeleteMessage(activeConversation.rootMessageId)} style={{ marginTop: 6 }}>
                   Delete thread
@@ -1481,7 +1406,7 @@ export default function MessagingWidget() {
           </main>
 
           <form
-            style={{ borderTop: '1px solid #e2e8f0', background: '#ffffff', padding: 10, position: 'sticky', bottom: 0, maxHeight: '32vh', overflowY: 'auto' }}
+            style={{ borderTop: '1px solid #e2e8f0', background: '#ffffff', padding: 10, position: 'sticky', bottom: 0, maxHeight: '34vh', overflowY: 'auto' }}
             onSubmit={(event) => {
               event.preventDefault();
               sendMessage();
