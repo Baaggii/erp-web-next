@@ -15,18 +15,26 @@ function toTimestamp(value) {
 
 export function resolvePresenceStatus(record, now = Date.now()) {
   const rawStatus = String(record?.presence || record?.status || '').toLowerCase();
-  const heartbeatAt = toTimestamp(record?.heartbeat_at || record?.last_seen_at || record?.lastSeenAt);
+  const heartbeatAt = toTimestamp(
+    record?.heartbeat_at
+    || record?.heartbeatAt
+    || record?.last_active_at
+    || record?.lastActiveAt,
+  );
+  const lastSeenAt = toTimestamp(record?.last_seen_at || record?.lastSeenAt);
+  const activityAt = heartbeatAt ?? lastSeenAt;
 
   if (rawStatus === PRESENCE.OFFLINE) return PRESENCE.OFFLINE;
 
-  if (heartbeatAt != null) {
-    const age = Math.max(0, now - heartbeatAt);
+  if (activityAt != null) {
+    const age = Math.max(0, now - activityAt);
     if (age > OFFLINE_STALE_AFTER_MS) return PRESENCE.OFFLINE;
     if (age > ONLINE_STALE_AFTER_MS) return PRESENCE.AWAY;
   }
 
   if (rawStatus === PRESENCE.ONLINE || rawStatus === PRESENCE.AWAY) return rawStatus;
-  return heartbeatAt != null ? PRESENCE.AWAY : PRESENCE.OFFLINE;
+  if (lastSeenAt != null) return PRESENCE.OFFLINE;
+  return activityAt != null ? PRESENCE.AWAY : PRESENCE.OFFLINE;
 }
 
 export function normalizeId(value) {
