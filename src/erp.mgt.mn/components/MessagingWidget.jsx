@@ -14,6 +14,52 @@ import {
   sanitizeMessageText,
 } from './messagingWidgetModel.js';
 
+
+const ATTACHMENTS_MARKER = '\n[attachments-json-v1]';
+
+function isImageAttachment(file) {
+  const type = String(file?.type || '').toLowerCase();
+  const name = String(file?.name || file?.url || '').toLowerCase();
+  return type.startsWith('image/') || /\.(png|jpe?g|gif|webp|bmp|svg)$/.test(name);
+}
+
+function decodeMessageContent(rawBody) {
+  const safe = String(rawBody || '');
+  const markerIndex = safe.lastIndexOf(ATTACHMENTS_MARKER);
+  if (markerIndex < 0) return { text: safe, attachments: [] };
+  const text = safe.slice(0, markerIndex).trimEnd();
+  const encoded = safe.slice(markerIndex + ATTACHMENTS_MARKER.length).trim();
+  if (!encoded) return { text, attachments: [] };
+  try {
+    const asciiJson = globalThis.atob(encoded);
+    const json = decodeURIComponent(asciiJson);
+    const parsed = JSON.parse(json);
+    const attachments = Array.isArray(parsed)
+      ? parsed.filter((entry) => entry && typeof entry.url === 'string')
+      : [];
+    return { text, attachments };
+  } catch {
+    return { text, attachments: [] };
+  }
+}
+
+function encodeAttachmentPayload(items = []) {
+  if (!Array.isArray(items) || items.length === 0) return '';
+  try {
+    const json = JSON.stringify(items.map((entry) => ({
+      name: sanitizeMessageText(entry?.name || ''),
+      type: sanitizeMessageText(entry?.type || ''),
+      size: Number(entry?.size) || 0,
+      url: String(entry?.url || '').trim(),
+    })).filter((entry) => entry.url));
+    const asciiJson = encodeURIComponent(json);
+    const encoded = globalThis.btoa(asciiJson);
+    return `${ATTACHMENTS_MARKER}${encoded}`;
+  } catch {
+    return '';
+  }
+}
+
 const STATUS_FILTERS = [
   { value: 'all', label: 'All' },
   { value: PRESENCE.ONLINE, label: 'Online' },
@@ -188,9 +234,10 @@ function canViewTransaction(transactionId, userId, permissions) {
   return canOpenContextLink(permissions, 'transaction');
 }
 
-function MessageNode({ message, depth = 0, onReply, onJumpToParent, onToggleReplies, collapsedMessageIds, parentMap, permissions, activeReplyTarget, highlightedIds, onOpenLinkedTransaction, resolveEmployeeLabel, canDeleteMessage, onDeleteMessage }) {
+function MessageNode({ message, depth = 0, onReply, onJumpToParent, onToggleReplies, collapsedMessageIds, parentMap, permissions, activeReplyTarget, highlightedIds, onOpenLinkedTransaction, resolveEmployeeLabel, canDeleteMessage, onDeleteMessage, onPreviewAttachment }) {
   const replyCount = countNestedReplies(message);
-  const safeBody = sanitizeMessageText(message.body);
+  const decoded = decodeMessageContent(message.body);
+  const safeBody = sanitizeMessageText(decoded.text);
   const linked = extractContextLink(message);
   const hasReplies = Array.isArray(message.replies) && message.replies.length > 0;
   const isCollapsed = collapsedMessageIds.has(message.id);
@@ -218,6 +265,33 @@ function MessageNode({ message, depth = 0, onReply, onJumpToParent, onToggleRepl
         {authorLabel} · {new Date(message.created_at).toLocaleString()}
       </header>
       <p style={{ whiteSpace: 'pre-wrap', margin: '8px 0', color: '#0f172a', fontSize: 15 }}>{highlightMentions(safeBody)}</p>
+      {decoded.attachments.length > 0 && (
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
+          {decoded.attachments.map((file) => {
+            const image = isImageAttachment(file);
+            return (
+              <div key={`${file.url}-${file.name}`} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                {image && (
+                  <button type="button" onClick={() => onPreviewAttachment(file)} style={{ border: 0, padding: 0, background: 'transparent', width: 84, cursor: 'pointer' }}>
+                    <img src={file.url} alt={file.name || 'attachment'} style={{ width: 84, height: 84, objectFit: 'cover', borderRadius: 8, border: '1px solid #cbd5e1' }} />
+                  </button>
+                )}
+                <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                  <a href={file.url} target="_blank" rel="noreferrer" style={{ fontSize: 12 }}>
+                    {image ? 'Open' : 'View'}
+                  </a>
+                  <a href={`${file.url}${file.url.includes('?') ? '&' : '?'}download=1`} download={file.name || 'attachment'} style={{ fontSize: 12 }}>
+                    Download
+                  </a>
+                </div>
+                <span style={{ fontSize: 11, color: '#475569', maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={file.name || 'attachment'}>
+                  {file.name || 'attachment'}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      )}
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
         {linked.linkedType === 'transaction' && linked.linkedId && (
           <button
@@ -268,6 +342,7 @@ function MessageNode({ message, depth = 0, onReply, onJumpToParent, onToggleRepl
           resolveEmployeeLabel={resolveEmployeeLabel}
           canDeleteMessage={canDeleteMessage}
           onDeleteMessage={onDeleteMessage}
+          onPreviewAttachment={onPreviewAttachment}
         />
       ))}
     </article>
@@ -310,6 +385,8 @@ export default function MessagingWidget() {
   const [dragOverComposer, setDragOverComposer] = useState(false);
   const [attachmentsOpen, setAttachmentsOpen] = useState(false);
   const [collapsedMessageIds, setCollapsedMessageIds] = useState(() => new Set());
+  const [attachmentPreviewOpen, setAttachmentPreviewOpen] = useState(false);
+  const [attachmentPreview, setAttachmentPreview] = useState(null);
   const composerRef = useRef(null);
 
   const draftStorageKey = useMemo(() => {
@@ -875,6 +952,26 @@ export default function MessagingWidget() {
     setComposerAnnouncement('Conversation deleted.');
   };
 
+
+  const uploadComposerAttachments = async (activeCompany) => {
+    const files = state.composer.attachments || [];
+    if (!files.length) return [];
+    const form = new FormData();
+    form.append('companyId', String(activeCompany));
+    files.forEach((file) => form.append('files', file));
+    const uploadRes = await fetch(`${API_BASE}/messaging/uploads`, {
+      method: 'POST',
+      credentials: 'include',
+      body: form,
+    });
+    if (!uploadRes.ok) {
+      const uploadErr = await uploadRes.json().catch(() => null);
+      throw new Error(uploadErr?.message || 'Failed to upload attachments');
+    }
+    const uploadPayload = await uploadRes.json().catch(() => ({}));
+    return Array.isArray(uploadPayload?.items) ? uploadPayload.items : [];
+  };
+
   const handleDeleteConversationFromList = async (conversation) => {
     if (!conversation?.rootMessageId) return;
     const rootMessage = messages.find((entry) => Number(entry.id) === Number(conversation.rootMessageId));
@@ -898,6 +995,10 @@ export default function MessagingWidget() {
       setComposerAnnouncement('Select at least one recipient.');
       return;
     }
+    if (state.composer.recipients.length !== 1) {
+      setComposerAnnouncement('Select exactly one recipient for private messaging.');
+      return;
+    }
 
     const linkedType = state.composer.linkedType || activeConversation?.linkedType || null;
     const linkedId = state.composer.linkedId || activeConversation?.linkedId || null;
@@ -908,15 +1009,21 @@ export default function MessagingWidget() {
 
     const activeCompany = state.activeCompanyId || companyId;
     const clientTempId = `tmp-${createIdempotencyKey()}`;
+    let uploadedAttachments = [];
+    try {
+      uploadedAttachments = await uploadComposerAttachments(activeCompany);
+    } catch (err) {
+      setComposerAnnouncement(err.message || 'Attachment upload failed.');
+      return;
+    }
     const payload = {
       idempotencyKey: createIdempotencyKey(),
       clientTempId,
-      body: `[${safeTopic}] ${safeBody}`,
+      body: `[${safeTopic}] ${safeBody}${encodeAttachmentPayload(uploadedAttachments)}`,
       companyId: Number.isFinite(Number(activeCompany)) ? Number(activeCompany) : String(activeCompany),
       recipientEmpids: state.composer.recipients,
-      ...(state.composer.recipients.length === 1
-        ? { visibilityScope: 'private', visibilityEmpid: state.composer.recipients[0] }
-        : { visibilityScope: 'department' }),
+      visibilityScope: 'private',
+      visibilityEmpid: state.composer.recipients[0],
       ...(linkedType ? { linkedType } : {}),
       ...(linkedId ? { linkedId: String(linkedId) } : {}),
     };
@@ -964,6 +1071,13 @@ export default function MessagingWidget() {
     const nextFiles = Array.from(merged.values());
     dispatch({ type: 'composer/setAttachments', payload: nextFiles });
     setComposerAnnouncement(safe.length ? `${safe.length} attachment(s) added.` : 'No safe files selected.');
+  };
+
+
+  const onPreviewAttachment = (file) => {
+    if (!isImageAttachment(file)) return;
+    setAttachmentPreview(file);
+    setAttachmentPreviewOpen(true);
   };
 
   const onAttach = (event) => {
@@ -1269,6 +1383,7 @@ export default function MessagingWidget() {
                 resolveEmployeeLabel={resolveEmployeeLabel}
                 canDeleteMessage={canDeleteMessage}
                 onDeleteMessage={handleDeleteMessage}
+                onPreviewAttachment={onPreviewAttachment}
               />
             ))}
           </main>
@@ -1455,6 +1570,26 @@ export default function MessagingWidget() {
               </button>
             </div>
             <p aria-live="assertive" style={{ fontSize: 12, marginBottom: 0 }}>{composerAnnouncement}</p>
+
+            {attachmentPreviewOpen && attachmentPreview && (
+              <div
+                role="dialog"
+                aria-modal="true"
+                onClick={() => setAttachmentPreviewOpen(false)}
+                style={{ position: 'fixed', inset: 0, background: 'rgba(15, 23, 42, 0.72)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2000, padding: 20 }}
+              >
+                <div onClick={(event) => event.stopPropagation()} style={{ background: '#fff', borderRadius: 12, padding: 12, maxWidth: 'min(90vw, 980px)', maxHeight: '90vh', overflow: 'auto' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                    <strong style={{ fontSize: 13 }}>{attachmentPreview.name || 'Image preview'}</strong>
+                    <button type="button" onClick={() => setAttachmentPreviewOpen(false)}>Close</button>
+                  </div>
+                  <img src={attachmentPreview.url} alt={attachmentPreview.name || 'attachment preview'} style={{ maxWidth: '100%', maxHeight: '75vh', borderRadius: 8 }} />
+                  <div style={{ marginTop: 8 }}>
+                    <a href={`${attachmentPreview.url}${attachmentPreview.url.includes('?') ? '&' : '?'}download=1`} download={attachmentPreview.name || 'attachment'}>Download image</a>
+                  </div>
+                </div>
+              </div>
+            )}
           </form>
         </section>
       </div>

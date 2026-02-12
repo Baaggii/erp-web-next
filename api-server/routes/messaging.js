@@ -1,5 +1,10 @@
 import express from 'express';
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import crypto from 'node:crypto';
+import multer from 'multer';
 import { requireAuth } from '../middlewares/auth.js';
+import { getEmploymentSession, pool } from '../../db/index.js';
 import {
   createCorrelationId,
   deleteMessage,
@@ -16,6 +21,40 @@ import {
 
 const router = express.Router();
 router.use(requireAuth);
+
+const messagingUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024, files: 8 } });
+const messagingUploadDir = path.resolve(process.cwd(), 'uploads', 'messaging');
+
+function safeAttachmentName(input = '') {
+  const name = String(input || 'file').replace(/[^A-Za-z0-9._-]+/g, '_').slice(-120);
+  return name || 'file';
+}
+
+
+async function canUserAccessAttachment({ companyId, storedName, user }) {
+  const empid = String(user?.empid || '').trim();
+  if (!empid) return false;
+  const session = await getEmploymentSession(empid, companyId);
+  if (!session) return false;
+
+  const likeNeedle = `%/api/messaging/uploads/${companyId}/${storedName}%`;
+  const [rows] = await pool.query(
+    `SELECT id
+       FROM erp_messages
+      WHERE company_id = ?
+        AND deleted_at IS NULL
+        AND body LIKE ?
+        AND (
+          visibility_scope = 'company'
+          OR (visibility_scope = 'department' AND visibility_department_id = ?)
+          OR (visibility_scope = 'private' AND (author_empid = ? OR visibility_empid = ?))
+        )
+      LIMIT 1`,
+    [companyId, likeNeedle, Number(session?.department_id) || 0, empid, empid],
+  );
+
+  return Array.isArray(rows) && rows.length > 0;
+}
 
 const postMessageSchema = {
   type: 'object',
@@ -135,6 +174,73 @@ router.post('/messages', validatePostMessageBody, (req, res) =>
       }),
     201,
   ));
+
+router.post('/uploads', messagingUpload.array('files', 8), async (req, res) => {
+  try {
+    const companyId = Number(req.body?.companyId || req.query.companyId || req.user?.companyId);
+    const userCompanyId = Number(req.user?.companyId);
+    if (!Number.isFinite(companyId) || companyId <= 0) {
+      return res.status(400).json({ message: 'companyId is required' });
+    }
+    if (!Number.isFinite(userCompanyId) || userCompanyId <= 0 || userCompanyId !== companyId) {
+      return res.status(403).json({ message: 'Forbidden' });
+    }
+    const files = Array.isArray(req.files) ? req.files : [];
+    if (files.length === 0) {
+      return res.status(400).json({ message: 'No files uploaded' });
+    }
+
+    const companyDir = path.join(messagingUploadDir, String(companyId));
+    await fs.mkdir(companyDir, { recursive: true });
+
+    const items = [];
+    for (const file of files) {
+      const safeName = safeAttachmentName(file.originalname || 'file');
+      const token = crypto.randomUUID();
+      const storedName = `${token}_${safeName}`;
+      const fullPath = path.join(companyDir, storedName);
+      await fs.writeFile(fullPath, file.buffer);
+      items.push({
+        id: token,
+        name: safeName,
+        type: file.mimetype || 'application/octet-stream',
+        size: Number(file.size) || 0,
+        url: `/api/messaging/uploads/${encodeURIComponent(companyId)}/${encodeURIComponent(storedName)}`,
+      });
+    }
+
+    return res.status(201).json({ items });
+  } catch (error) {
+    return res.status(500).json({ message: error?.message || 'Upload failed' });
+  }
+});
+
+router.get('/uploads/:companyId/:storedName', async (req, res) => {
+  const companyId = Number(req.params.companyId);
+  const userCompanyId = Number(req.user?.companyId);
+  if (!Number.isFinite(companyId) || companyId <= 0 || companyId !== userCompanyId) {
+    return res.status(403).json({ message: 'Forbidden' });
+  }
+  const storedName = path.basename(String(req.params.storedName || ''));
+  if (!storedName) return res.status(404).end();
+  const fullPath = path.join(messagingUploadDir, String(companyId), storedName);
+  try {
+    const allowed = await canUserAccessAttachment({ companyId, storedName, user: req.user });
+    if (!allowed) return res.status(403).json({ message: 'Forbidden' });
+    await fs.access(fullPath);
+    const originalName = storedName.split('_').slice(1).join('_') || 'attachment';
+    if (String(req.query.download || '') === '1') {
+      return res.download(fullPath, originalName);
+    }
+    return res.sendFile(fullPath, {
+      headers: {
+        'Content-Disposition': `inline; filename="${originalName.replace(/"/g, '')}"`,
+      },
+    });
+  } catch {
+    return res.status(404).end();
+  }
+});
 
 router.get('/messages', (req, res) =>
   handle(res, req, () =>
