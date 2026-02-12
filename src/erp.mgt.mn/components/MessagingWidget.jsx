@@ -9,6 +9,7 @@ import {
   getCompanyCacheKey,
   messagingWidgetReducer,
   normalizeId,
+  resolvePresenceStatus,
   safePreviewableFile,
   sanitizeMessageText,
 } from './messagingWidgetModel.js';
@@ -97,9 +98,7 @@ function groupConversations(messages) {
 }
 
 function resolvePresence(record) {
-  const status = String(record?.presence || record?.status || '').toLowerCase();
-  if (status === PRESENCE.ONLINE || status === PRESENCE.AWAY || status === PRESENCE.OFFLINE) return status;
-  return record?.last_seen_at ? PRESENCE.AWAY : PRESENCE.OFFLINE;
+  return resolvePresenceStatus(record);
 }
 
 function presenceColor(status) {
