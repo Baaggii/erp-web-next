@@ -52,5 +52,8 @@
     "ignoreOnSearch": [
       "deleted_images"
     ]
+  },
+  "finReporting": {
+    "showJournalActionDebug": false
   }
 }

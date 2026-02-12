@@ -50,6 +50,7 @@ import {
 import normalizeRelationKey from '../utils/normalizeRelationKey.js';
 import getRelationRowFromMap from '../utils/getRelationRowFromMap.js';
 import { isNonFinancialRow, isPostedStatus, isPostingSourceTable } from '../utils/postingControls.js';
+import normalizeBoolean from '../utils/normalizeBoolean.js';
 
 const TEMPORARY_FILTER_CACHE_KEY = 'temporary-transaction-filter';
 
@@ -830,6 +831,10 @@ const TableManager = forwardRef(function TableManager({
   const generalConfig = useGeneralConfig();
   const txnToastEnabled = generalConfig.general?.txnToastEnabled;
   const ebarimtToastEnabled = generalConfig.general?.ebarimtToastEnabled;
+  const journalActionDebugEnabled = normalizeBoolean(
+    generalConfig.finReporting?.showJournalActionDebug,
+    false,
+  );
   const workflowToastEnabled = useMemo(() => {
     if (!generalConfig?.notifications?.workflowToastEnabled) return false;
     if (typeof window === 'undefined') return false;
@@ -3249,13 +3254,25 @@ const TableManager = forwardRef(function TableManager({
       }),
     });
 
-    const payload = await res.json().catch(() => ({}));
-    if (!res.ok || payload?.ok === false) {
-      addToast(payload?.message || 'Posting failed', 'error');
-      return;
+      const payload = await res.json().catch(() => ({}));
+      logJournalActionDebug('post', requestPayload, {
+        status: res.status,
+        ok: res.ok,
+        body: payload,
+      });
+      if (!res.ok || payload?.ok === false) {
+        addToast(payload?.message || 'Posting failed', 'error');
+        return;
+      }
+      addToast('Transaction posted', 'success');
+      refreshRows();
+    } catch (err) {
+      logJournalActionDebug('post', requestPayload, {
+        ok: false,
+        error: err?.message || 'Unknown error',
+      });
+      addToast(`Request failed: ${err?.message || 'Unknown error'}`, 'error');
     }
-    addToast('Transaction posted', 'success');
-    refreshRows();
   }
 
   async function handlePreviewJournal(row) {
@@ -3275,7 +3292,6 @@ const TableManager = forwardRef(function TableManager({
         addToast(payload?.message || 'Preview failed', 'error');
         return;
       }
-      setPreviewLines(payload);
     } finally {
       setPreviewLoading(false);
     }
