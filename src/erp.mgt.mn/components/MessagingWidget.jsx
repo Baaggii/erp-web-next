@@ -1029,8 +1029,6 @@ export default function MessagingWidget() {
     const res = await fetch(`${API_BASE}/messaging/messages/${messageId}?${params.toString()}`, {
       method: 'DELETE',
       credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ companyId: activeCompany }),
     });
     if (!res.ok) {
       const payload = await res.json().catch(() => null);
@@ -1105,6 +1103,12 @@ export default function MessagingWidget() {
       return;
     }
     const messageTopic = safeTopic || 'General';
+    const visibilityEmpid = isGeneralThread
+      ? null
+      : state.composer.recipients
+        .map(normalizeId)
+        .filter(Boolean)
+        .join(',');
     const payload = {
       idempotencyKey: createIdempotencyKey(),
       clientTempId,
@@ -1112,7 +1116,7 @@ export default function MessagingWidget() {
       companyId: Number.isFinite(Number(activeCompany)) ? Number(activeCompany) : String(activeCompany),
       recipientEmpids: state.composer.recipients,
       visibilityScope: isGeneralThread ? 'company' : 'private',
-      visibilityEmpid: isGeneralThread ? null : state.composer.recipients[0],
+      visibilityEmpid,
       ...(linkedType ? { linkedType } : {}),
       ...(linkedId ? { linkedId: String(linkedId) } : {}),
     };
@@ -1120,8 +1124,9 @@ export default function MessagingWidget() {
     const targetUrl = state.composer.replyToId
       ? `${API_BASE}/messaging/messages/${state.composer.replyToId}/reply`
       : `${API_BASE}/messaging/messages`;
+    const targetParams = new URLSearchParams({ companyId: String(activeCompany) });
 
-    const res = await fetch(targetUrl, {
+    const res = await fetch(`${targetUrl}?${targetParams.toString()}`, {
       method: 'POST',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
