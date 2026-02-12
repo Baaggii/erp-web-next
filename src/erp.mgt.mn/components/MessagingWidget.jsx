@@ -219,6 +219,28 @@ function collectMessageParticipantEmpids(message) {
   return Array.from(new Set(ids.map(normalizeId).filter(Boolean)));
 }
 
+function collectIncludedEmpids(message) {
+  const ids = [];
+  ids.push(message?.author_empid, message?.authorEmpid, message?.visibility_empid, message?.visibilityEmpid);
+  const recipientEmpids =
+    message?.recipient_empids || message?.recipientEmpids || message?.recipient_ids || message?.recipientIds;
+  if (Array.isArray(recipientEmpids)) ids.push(...recipientEmpids);
+  return Array.from(new Set(ids.map(normalizeId).filter(Boolean)));
+}
+
+function canViewMessageByInclusion(message, selfEmpid) {
+  const viewer = normalizeId(selfEmpid);
+  if (!viewer) return false;
+  const included = collectIncludedEmpids(message);
+  if (included.length === 0) return false;
+  return included.includes(viewer);
+}
+
+function isImageAttachment(file) {
+  const type = String(file?.type || file?.mimeType || '').toLowerCase();
+  return type.startsWith('image/');
+}
+
 function canViewTransaction(transactionId, userId, permissions) {
   if (!transactionId || !userId) return false;
   if (permissions?.isAdmin === true) return true;
@@ -260,9 +282,23 @@ function MessageNode({ message, depth = 0, onReply, onJumpToParent, onToggleRepl
       {decoded.attachments.length > 0 && (
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
           {decoded.attachments.map((file) => (
-            <a key={`${file.url}-${file.name}`} href={file.url} target="_blank" rel="noreferrer" style={{ fontSize: 12 }}>
-              📎 {file.name || 'attachment'}
-            </a>
+            isImageAttachment(file)
+              ? (
+                <button
+                  key={`${file.url}-${file.name}`}
+                  type="button"
+                  aria-label={`Preview image ${file.name || 'attachment'}`}
+                  onClick={() => onPreviewAttachment(file)}
+                  style={{ border: '1px solid #cbd5e1', borderRadius: 8, padding: 4, background: '#fff', cursor: 'pointer' }}
+                >
+                  <img src={file.url} alt={file.name || 'attachment'} style={{ width: 80, height: 80, objectFit: 'cover', borderRadius: 6, display: 'block' }} />
+                </button>
+              )
+              : (
+                <a key={`${file.url}-${file.name}`} href={file.url} target="_blank" rel="noreferrer" style={{ fontSize: 12 }}>
+                  📎 {file.name || 'attachment'}
+                </a>
+              )
           ))}
         </div>
       )}
@@ -370,6 +406,7 @@ export default function MessagingWidget() {
 
   const cacheKey = getCompanyCacheKey(state.activeCompanyId || companyId);
   const messages = messagesByCompany[cacheKey] || [];
+  const visibleMessages = useMemo(() => messages.filter((message) => canViewMessageByInclusion(message, selfEmpid)), [messages, selfEmpid]);
 
   const fetchThreadMessages = async (rootMessageId, activeCompany) => {
     if (!rootMessageId || !activeCompany) return;
@@ -741,18 +778,18 @@ export default function MessagingWidget() {
     return () => window.removeEventListener('messaging:start', onStartMessage);
   }, []);
 
-  const conversations = useMemo(() => groupConversations(messages), [messages]);
+  const conversations = useMemo(() => groupConversations(visibleMessages), [visibleMessages]);
   const activeConversationId = state.activeConversationId || conversations[0]?.id || null;
   const activeConversation = conversations.find((conversation) => conversation.id === activeConversationId) || null;
   const threadMessages = useMemo(() => buildNestedThreads(activeConversation?.messages || []), [activeConversation]);
-  const messageMap = useMemo(() => new Map(messages.map((msg) => [msg.id, msg])), [messages]);
-  const unreadCount = messages.filter((msg) => !msg.read_by?.includes?.(selfEmpid)).length;
+  const messageMap = useMemo(() => new Map(visibleMessages.map((msg) => [msg.id, msg])), [visibleMessages]);
+  const unreadCount = visibleMessages.filter((msg) => !msg.read_by?.includes?.(selfEmpid)).length;
 
   useEffect(() => {
     if (!activeConversation?.rootMessageId) return;
-    const rootExists = messages.some((entry) => Number(entry.id) === Number(activeConversation.rootMessageId));
+    const rootExists = visibleMessages.some((entry) => Number(entry.id) === Number(activeConversation.rootMessageId));
     if (!rootExists) dispatch({ type: 'widget/setConversation', payload: null });
-  }, [activeConversation?.rootMessageId, messages]);
+  }, [activeConversation?.rootMessageId, visibleMessages]);
 
 
   useEffect(() => {
@@ -773,7 +810,7 @@ export default function MessagingWidget() {
   const employeeRecords = useMemo(() => {
     const seen = new Map();
     const participantIds = new Set(state.composer.recipients);
-    messages.forEach((msg) => {
+    visibleMessages.forEach((msg) => {
       collectMessageParticipantEmpids(msg).forEach((empid) => participantIds.add(empid));
     });
 
@@ -797,7 +834,7 @@ export default function MessagingWidget() {
         status: resolvePresence(entry),
       });
     });
-    messages.forEach((msg) => {
+    visibleMessages.forEach((msg) => {
       const empid = normalizeId(msg.author_empid);
       if (!empid || seen.has(empid)) return;
       const userProfile = userDirectory[empid] || {};
@@ -821,7 +858,7 @@ export default function MessagingWidget() {
     });
 
     return Array.from(seen.values()).sort((a, b) => a.label.localeCompare(b.label));
-  }, [employees, messages, presence, presenceMap, state.composer.recipients, userDirectory]);
+  }, [employees, visibleMessages, presence, presenceMap, state.composer.recipients, userDirectory]);
 
   const filteredEmployees = useMemo(() => {
     if (!recipientSearch.trim()) return employeeRecords;
@@ -888,6 +925,21 @@ export default function MessagingWidget() {
     });
   };
 
+
+  const composerAttachmentPreviewItems = useMemo(
+    () => (state.composer.attachments || []).map((file) => ({
+      file,
+      previewUrl: isImageAttachment(file) ? URL.createObjectURL(file) : null,
+    })),
+    [state.composer.attachments],
+  );
+
+  useEffect(() => () => {
+    composerAttachmentPreviewItems.forEach((item) => {
+      if (item.previewUrl) URL.revokeObjectURL(item.previewUrl);
+    });
+  }, [composerAttachmentPreviewItems]);
+
   const mentionCandidates = useMemo(() => {
     const query = mentionQuery.trim().toLowerCase();
     return employeeRecords
@@ -897,8 +949,7 @@ export default function MessagingWidget() {
 
   const canDeleteMessage = (message) => {
     if (!message) return false;
-    if (normalizeId(message.author_empid) === selfEmpid) return true;
-    return Boolean(permissions?.isAdmin || permissions?.messaging_delete || permissions?.messaging?.delete);
+    return normalizeId(message.author_empid) === selfEmpid;
   };
 
   const handleDeleteMessage = async (messageId) => {
@@ -948,7 +999,7 @@ export default function MessagingWidget() {
 
   const handleDeleteConversationFromList = async (conversation) => {
     if (!conversation?.rootMessageId) return;
-    const rootMessage = messages.find((entry) => Number(entry.id) === Number(conversation.rootMessageId));
+    const rootMessage = visibleMessages.find((entry) => Number(entry.id) === Number(conversation.rootMessageId));
     if (!canDeleteMessage(rootMessage)) {
       setComposerAnnouncement('You do not have permission to delete this thread.');
       return;
@@ -1524,8 +1575,18 @@ export default function MessagingWidget() {
                     style={{ display: 'block', marginTop: 6 }}
                   />
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 8, marginTop: 8 }}>
-                    {state.composer.attachments.map((file) => (
+                    {composerAttachmentPreviewItems.map(({ file, previewUrl }) => (
                       <div key={`${file.name}-${file.lastModified}-${file.size}`} style={{ border: '1px solid #e2e8f0', borderRadius: 8, padding: 8, background: '#f8fafc' }}>
+                        {previewUrl && (
+                          <button
+                            type="button"
+                            onClick={() => onPreviewAttachment({ name: file.name, url: previewUrl, type: file.type })}
+                            style={{ border: 0, background: 'transparent', padding: 0, marginBottom: 6, cursor: 'pointer' }}
+                            aria-label={`Preview image ${file.name}`}
+                          >
+                            <img src={previewUrl} alt={file.name} style={{ width: 72, height: 72, objectFit: 'cover', borderRadius: 6, border: '1px solid #cbd5e1' }} />
+                          </button>
+                        )}
                         <strong style={{ display: 'block', fontSize: 12, color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis' }}>{file.name}</strong>
                         <span style={{ fontSize: 11, color: '#64748b' }}>{Math.max(1, Math.round(file.size / 1024))} KB</span>
                       </div>
