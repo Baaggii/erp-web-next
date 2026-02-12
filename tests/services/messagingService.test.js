@@ -488,6 +488,62 @@ test('private thread cannot be replied by a non-included user', async () => {
   );
 });
 
+
+
+test('private thread replies stay scoped to selected participants', async () => {
+  const db = new FakeDb();
+  const session = { permissions: { messaging: true }, department_id: 10 };
+
+  const root = await postMessage({
+    user,
+    companyId: 1,
+    payload: {
+      body: 'private root',
+      linkedType: 'topic',
+      linkedId: 'ops-room',
+      visibilityScope: 'private',
+      visibilityEmpid: 'e-2',
+      idempotencyKey: 'private-thread-scope-root',
+    },
+    correlationId: 'private-thread-scope-root',
+    db,
+    getSession: async () => session,
+  });
+
+  await postReply({
+    user: { empid: 'e-2', companyId: 1 },
+    companyId: 1,
+    messageId: root.message.id,
+    payload: { body: 'reply from recipient', idempotencyKey: 'private-thread-scope-reply' },
+    correlationId: 'private-thread-scope-reply',
+    db,
+    getSession: async () => session,
+  });
+
+  const authorThread = await getThread({
+    user,
+    companyId: 1,
+    messageId: root.message.id,
+    correlationId: 'private-thread-scope-author',
+    db,
+    getSession: async () => session,
+  });
+  assert.equal(authorThread.replies.length, 1);
+  assert.equal(authorThread.replies[0].author_empid, 'e-2');
+
+  await assert.rejects(
+    () =>
+      getThread({
+        user: { empid: 'e-3', companyId: 1 },
+        companyId: 1,
+        messageId: root.message.id,
+        correlationId: 'private-thread-scope-outsider',
+        db,
+        getSession: async () => session,
+      }),
+    /Message not found/,
+  );
+});
 test('only author can delete message in same company', async () => {
   const db = new FakeDb();
   const session = { permissions: { messaging: true }, department_id: 10 };
