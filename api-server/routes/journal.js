@@ -5,7 +5,7 @@ import { validateJournalRequestBody } from '../services/journalRouteValidation.j
 
 const router = express.Router();
 
-router.post('/post', requireAuth, async (req, res, next) => {
+router.post('/post', requireAuth, async (req, res) => {
   try {
     const validation = validateJournalRequestBody(req.body, { allowForceRepost: true });
     if (!validation.ok) {
@@ -24,11 +24,15 @@ router.post('/post', requireAuth, async (req, res, next) => {
 
     return res.json({ ok: true, journal_id: journalId });
   } catch (err) {
-    next(err);
+    console.error('Journal post failed:', err);
+    return res.status(500).json({
+      ok: false,
+      message: err?.message || 'Internal error',
+    });
   }
 });
 
-router.post('/preview', requireAuth, async (req, res, next) => {
+router.post('/preview', requireAuth, async (req, res) => {
   try {
     const validation = validateJournalRequestBody(req.body);
     if (!validation.ok) {
@@ -38,7 +42,11 @@ router.post('/preview', requireAuth, async (req, res, next) => {
     const preview = await preview_single_transaction(validation.value);
     return res.json({ ok: true, ...preview });
   } catch (err) {
-    next(err);
+    console.error('Journal preview failed:', err);
+    return res.status(500).json({
+      ok: false,
+      message: err?.message || 'Internal error',
+    });
   }
 });
 
