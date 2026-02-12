@@ -324,9 +324,9 @@ async function selectMatchingJournalRule(conn, flagSetCode, presentFlags) {
 }
 
 async function resolveAccountCode(conn, line, context) {
-  const resolverCode = pickFirstDefined(line, ['account_resolver_code', 'fin_account_resolver_code']);
+  const resolverCode = pickFirstDefined(line, ['account_resolver_code']);
   if (!resolverCode) {
-    const inlineAccount = pickFirstDefined(line, ['account_code', 'gl_account_code']);
+    const inlineAccount = pickFirstDefined(line, ['account_code']);
     if (inlineAccount) return String(inlineAccount);
     throw new Error(`No account resolver configured for journal line ${line.id}`);
   }
@@ -335,31 +335,43 @@ async function resolveAccountCode(conn, line, context) {
     `SELECT * FROM fin_account_resolver WHERE resolver_code = ? LIMIT 1`,
     [resolverCode],
   );
+
   if (!rows.length) {
     throw new Error(`Account resolver not found: ${resolverCode}`);
   }
+
   const resolver = rows[0];
-  const resolveMode = String(pickFirstDefined(resolver, ['resolve_mode', 'mode']) || 'STATIC').toUpperCase();
+  const resolverType = String(resolver.resolver_type || '').toUpperCase();
 
-  if (resolveMode === 'STATIC') {
-    const code = pickFirstDefined(resolver, ['account_code', 'resolved_account_code']);
-    if (!code) throw new Error(`STATIC resolver ${resolverCode} is missing account_code`);
-    return String(code);
+  // STATIC account
+  if (resolverType === 'STATIC') {
+    if (!resolver.base_account_code) {
+      throw new Error(`STATIC resolver ${resolverCode} is missing base_account_code`);
+    }
+    return String(resolver.base_account_code);
   }
 
-  if (resolveMode === 'FIELD') {
-    const sourceCode = pickFirstDefined(resolver, ['source_field_code', 'financial_field_code']);
-    if (!sourceCode) throw new Error(`FIELD resolver ${resolverCode} missing source_field_code`);
-    const value = context.financialFields[sourceCode];
-    if (!value) throw new Error(`FIELD resolver ${resolverCode} resolved empty value for ${sourceCode}`);
-    return String(value);
+  // BANK dynamic (virtual subaccount)
+  if (resolverType === 'BANK_ACCOUNT_SUFFIX') {
+    const bankId = context.txn[resolver.source_column];
+    if (!bankId) {
+      throw new Error(`BANK_ACCOUNT_SUFFIX resolver ${resolverCode} missing source value`);
+    }
+    return String(resolver.base_account_code);
   }
 
-  const expression = pickFirstDefined(resolver, ['expression', 'resolver_expression']);
-  const value = evaluateExpression(expression, context);
-  if (!value) throw new Error(`EXPRESSION resolver ${resolverCode} produced empty account`);
-  return String(value);
+  // VENDOR subaccount
+  if (resolverType === 'VENDOR_SUBACCOUNT') {
+    const vendorId = context.txn[resolver.source_column];
+    if (!vendorId) {
+      throw new Error(`VENDOR_SUBACCOUNT resolver ${resolverCode} missing source value`);
+    }
+    return String(resolver.base_account_code);
+  }
+
+  throw new Error(`Unsupported resolver type ${resolverType}`);
 }
+
 
 async function resolveAmount(conn, line, context) {
   const amountExpressionCode = pickFirstDefined(line, ['amount_expression_code', 'fin_amount_expression_code']);
