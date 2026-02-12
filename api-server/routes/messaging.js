@@ -4,6 +4,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import multer from 'multer';
 import { requireAuth } from '../middlewares/auth.js';
+import { getEmploymentSession, pool } from '../../db/index.js';
 import {
   createCorrelationId,
   deleteMessage,
