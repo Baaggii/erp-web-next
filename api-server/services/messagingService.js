@@ -783,6 +783,14 @@ export async function postReply({ user, companyId, messageId, payload, correlati
     throw createError(400, 'THREAD_DEPTH_EXCEEDED', `Reply depth exceeds maximum of ${MAX_REPLY_DEPTH}`);
   }
 
+  const privateParticipants = new Set([
+    String(message.author_empid || '').trim(),
+    String(message.visibility_empid || '').trim(),
+  ].filter(Boolean));
+  const replyVisibilityEmpid = message.visibility_scope === 'private'
+    ? Array.from(privateParticipants).find((empid) => empid !== String(user.empid)) || null
+    : message.visibility_empid;
+
   const ctx = { user, companyId: scopedCompanyId, correlationId, session };
   return createMessageInternal({
     db,
