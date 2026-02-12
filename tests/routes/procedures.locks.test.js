@@ -113,6 +113,68 @@ if (typeof mock.import !== 'function') {
     }
   });
 
+
+
+  test('procedures route forwards report variables to session vars', async () => {
+    const callStoredProcedure = mock.fn(async () => [{ id: 1 }]);
+
+    const { default: procedureRoutes } = await mock.import(
+      '../../api-server/routes/procedures.js',
+      {
+        express: {
+          default: { Router: createRouter },
+        },
+        '../middlewares/auth.js': {
+          requireAuth: (req, res, next) => {
+            req.user = { empid: 'EMP-1', companyId: 1, id: 7 };
+            next();
+          },
+        },
+        '../../db/index.js': {
+          callStoredProcedure,
+          listStoredProcedures: async () => [],
+          getProcedureParams: async () => [],
+          getProcedureRawRows: async () => ({ rows: [] }),
+          getProcedureLockCandidates: async () => [],
+          getReportLockCandidatesForRequest: async () => [],
+          pool: { query: async () => [[{ ok: 1 }]] },
+        },
+        '../utils/reportProcedures.js': {
+          listPermittedProcedures: async () => ({
+            procedures: [{ name: 'sp_report' }],
+          }),
+        },
+      },
+    );
+
+    try {
+      const handlers = procedureRoutes.routes.post.get('/');
+      assert.ok(handlers);
+
+      const req = {
+        body: {
+          name: 'sp_report',
+          params: [],
+          reportVariables: { expand_level: 2, parent_node: '1100' },
+        },
+        query: {},
+        ip: '127.0.0.1',
+      };
+      const res = createRes();
+
+      await runHandlers(handlers, req, res);
+
+      assert.equal(res.statusCode, 200);
+      assert.equal(callStoredProcedure.mock.calls.length, 1);
+      const [, , , options] = callStoredProcedure.mock.calls[0].arguments;
+      assert.deepEqual(options.session.reportVariables, {
+        expand_level: 2,
+        parent_node: '1100',
+      });
+    } finally {
+      mock.restoreAll();
+    }
+  });
   test('procedures route collects locks when requested', async () => {
     const callStoredProcedure = mock.fn(async () => [{ id: 1 }]);
 

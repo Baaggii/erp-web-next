@@ -7303,12 +7303,24 @@ export async function getReportApprovalRecord(requestId, conn = pool) {
 
 async function applyReportLockSessionVars(
   conn,
-  { collectUsedRows = false, requestId = null, empId = null } = {},
+  {
+    collectUsedRows = false,
+    requestId = null,
+    empId = null,
+    reportVariables = null,
+  } = {},
 ) {
   const collectFlag = collectUsedRows ? 1 : 0;
   await conn.query('SET @collect_used_rows = ?', [collectFlag]);
   await conn.query('SET @request_id = ?', [requestId ?? null]);
   await conn.query('SET @emp_id = ?', [empId ?? null]);
+
+  if (!reportVariables || typeof reportVariables !== 'object') return;
+  const entries = Object.entries(reportVariables);
+  for (const [key, value] of entries) {
+    if (!/^[a-zA-Z0-9_]+$/.test(key)) continue;
+    await conn.query(`SET @${key} = ?`, [value ?? null]);
+  }
 }
 
 export async function callStoredProcedure(

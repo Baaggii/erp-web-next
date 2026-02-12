@@ -158,6 +158,12 @@ router.post('/locks', requireAuth, async (req, res, next) => {
 router.post('/', requireAuth, async (req, res, next) => {
   try {
     const { name, params, aliases } = req.body || {};
+    const reportVariables =
+      req.body?.reportVariables && typeof req.body.reportVariables === 'object'
+        ? req.body.reportVariables
+        : req.body?.report_variables && typeof req.body.report_variables === 'object'
+        ? req.body.report_variables
+        : null;
     const collectLocks =
       isTruthyFlag(req.body?.collectLocks) ||
       isTruthyFlag(req.body?.collect_lock_candidates) ||
@@ -205,6 +211,7 @@ router.post('/', requireAuth, async (req, res, next) => {
             collectUsedRows: collectLocks,
             requestId: lockRequestId,
             empId: req.user?.empid ?? null,
+            reportVariables,
           },
           retainConnection: true,
         },
