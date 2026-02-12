@@ -16,6 +16,7 @@ import {
 
 
 const ATTACHMENTS_MARKER = '\n[attachments-json]';
+const NEW_CONVERSATION_ID = '__new__';
 
 function decodeMessageContent(rawBody) {
   const safe = String(rawBody || '');
@@ -94,7 +95,12 @@ function countNestedReplies(message) {
 }
 
 function extractMessageTopic(message) {
-  return sanitizeMessageText(message?.topic || '').slice(0, 120);
+  const directTopic = sanitizeMessageText(message?.topic || '').slice(0, 120);
+  if (directTopic) return directTopic;
+  const decoded = decodeMessageContent(message?.body || '');
+  const inlineTopicMatch = decoded.text.match(/^\[([^\]]{1,120})\]\s+/);
+  if (!inlineTopicMatch) return '';
+  return sanitizeMessageText(inlineTopicMatch[1] || '').slice(0, 120);
 }
 
 function extractContextLink(message) {
@@ -412,7 +418,13 @@ export default function MessagingWidget() {
 
   const bootState = createInitialWidgetState({
     isOpen: globalThis.sessionStorage?.getItem(sessionOpenKey) === '1',
-    activeConversationId: globalThis.sessionStorage?.getItem(sessionConversationKey),
+    activeConversationId: (() => {
+      const rawConversationId = globalThis.sessionStorage?.getItem(sessionConversationKey);
+      if (!rawConversationId) return null;
+      if (rawConversationId === 'general' || rawConversationId === NEW_CONVERSATION_ID || rawConversationId.startsWith('message:')) return rawConversationId;
+      if (/^\d+$/.test(rawConversationId)) return `message:${rawConversationId}`;
+      return null;
+    })(),
     companyId: globalThis.sessionStorage?.getItem(sessionCompanyKey) || companyId,
   });
 
@@ -476,7 +488,11 @@ export default function MessagingWidget() {
   }, [state.isOpen, sessionOpenKey]);
 
   useEffect(() => {
-    if (state.activeConversationId) globalThis.sessionStorage?.setItem(sessionConversationKey, String(state.activeConversationId));
+    if (!state.activeConversationId || state.activeConversationId === NEW_CONVERSATION_ID) {
+      globalThis.sessionStorage?.removeItem(sessionConversationKey);
+      return;
+    }
+    globalThis.sessionStorage?.setItem(sessionConversationKey, String(state.activeConversationId));
   }, [state.activeConversationId, sessionConversationKey]);
 
   useEffect(() => {
@@ -825,8 +841,12 @@ export default function MessagingWidget() {
   }, []);
 
   const conversations = useMemo(() => groupConversations(messages), [messages]);
-  const activeConversationId = state.activeConversationId || conversations[0]?.id || null;
-  const activeConversation = conversations.find((conversation) => conversation.id === activeConversationId) || null;
+  const isDraftConversation = state.activeConversationId === NEW_CONVERSATION_ID;
+  const requestedConversation = isDraftConversation
+    ? null
+    : conversations.find((conversation) => conversation.id === state.activeConversationId) || null;
+  const activeConversation = isDraftConversation ? null : (requestedConversation || conversations[0] || null);
+  const activeConversationId = isDraftConversation ? NEW_CONVERSATION_ID : (activeConversation?.id || null);
   const threadMessages = useMemo(() => buildNestedThreads(activeConversation?.messages || []), [activeConversation]);
   const messageMap = useMemo(() => new Map(messages.map((msg) => [msg.id, msg])), [messages]);
   const unreadCount = messages.filter((msg) => !msg.read_by?.includes?.(selfEmpid)).length;
