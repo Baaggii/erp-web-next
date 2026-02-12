@@ -408,10 +408,13 @@ function resolveDimension(line, context) {
 
 function normalizeDrCr(value) {
   const upper = String(value || '').toUpperCase();
-  if (upper === 'DR' || upper === 'DEBIT') return 'DEBIT';
-  if (upper === 'CR' || upper === 'CREDIT') return 'CREDIT';
+
+  if (upper === 'D' || upper === 'DR' || upper === 'DEBIT') return 'DEBIT';
+  if (upper === 'C' || upper === 'CR' || upper === 'CREDIT') return 'CREDIT';
+
   throw new Error(`Unsupported entry type ${value}`);
 }
+
 
 async function insertPostingLog(conn, payload) {
   await insertRow(conn, 'fin_posting_log', {
@@ -551,7 +554,7 @@ export async function preview_single_transaction({
       source_id: sourceId,
       trans_type: preview.transType,
       fin_flag_set_code: preview.flagSetCode,
-      fin_journal_rule_id: preview.selectedRule?.id ?? null,
+      fin_journal_rule_id: preview.selectedRule?.rule_id ?? null,
       non_financial: preview.nonFinancial,
       lines: preview.lines,
       totals: {
