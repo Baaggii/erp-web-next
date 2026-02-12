@@ -52,13 +52,6 @@ function encodeAttachmentPayload(items = []) {
   }
 }
 
-function isImageAttachment(file) {
-  const type = String(file?.type || '').toLowerCase();
-  if (type.startsWith('image/')) return true;
-  const name = String(file?.name || file?.url || '').toLowerCase();
-  return /\.(png|jpe?g|gif|webp|bmp|svg|avif|heic|heif)$/i.test(name);
-}
-
 const STATUS_FILTERS = [
   { value: 'all', label: 'All' },
   { value: PRESENCE.ONLINE, label: 'Online' },
@@ -267,21 +260,9 @@ function MessageNode({ message, depth = 0, onReply, onJumpToParent, onToggleRepl
       {decoded.attachments.length > 0 && (
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
           {decoded.attachments.map((file) => (
-            isImageAttachment(file) ? (
-              <button
-                key={`${file.url}-${file.name}`}
-                type="button"
-                onClick={() => onPreviewAttachment(file)}
-                style={{ border: '1px solid #cbd5e1', borderRadius: 8, background: '#fff', padding: 4, cursor: 'pointer' }}
-                title={file.name || 'Open image'}
-              >
-                <img src={file.url} alt={file.name || 'attachment'} style={{ width: 72, height: 72, objectFit: 'cover', borderRadius: 6, display: 'block' }} />
-              </button>
-            ) : (
-              <a key={`${file.url}-${file.name}`} href={file.url} target="_blank" rel="noreferrer" style={{ fontSize: 12 }}>
-                📎 {file.name || 'attachment'}
-              </a>
-            )
+            <a key={`${file.url}-${file.name}`} href={file.url} target="_blank" rel="noreferrer" style={{ fontSize: 12 }}>
+              📎 {file.name || 'attachment'}
+            </a>
           ))}
         </div>
       )}
@@ -380,7 +361,6 @@ export default function MessagingWidget() {
   const [collapsedMessageIds, setCollapsedMessageIds] = useState(() => new Set());
   const [attachmentPreviewOpen, setAttachmentPreviewOpen] = useState(false);
   const [attachmentPreview, setAttachmentPreview] = useState(null);
-  const [composerImagePreviewUrls, setComposerImagePreviewUrls] = useState({});
   const composerRef = useRef(null);
 
   const draftStorageKey = useMemo(() => {
@@ -391,33 +371,13 @@ export default function MessagingWidget() {
   const cacheKey = getCompanyCacheKey(state.activeCompanyId || companyId);
   const messages = messagesByCompany[cacheKey] || [];
 
-
-  useEffect(() => {
-    const next = {};
-    state.composer.attachments.forEach((file) => {
-      const key = `${file.name}-${file.size}-${file.lastModified || 0}`;
-      if (isImageAttachment(file)) next[key] = URL.createObjectURL(file);
-    });
-
-    setComposerImagePreviewUrls((prev) => {
-      Object.entries(prev).forEach(([key, url]) => {
-        if (!next[key]) URL.revokeObjectURL(url);
-      });
-      return next;
-    });
-
-    return () => {
-      Object.values(next).forEach((url) => URL.revokeObjectURL(url));
-    };
-  }, [state.composer.attachments]);
-
   const fetchThreadMessages = async (rootMessageId, activeCompany) => {
     if (!rootMessageId || !activeCompany) return;
     const params = new URLSearchParams({ companyId: String(activeCompany) });
     const threadRes = await fetch(`${API_BASE}/messaging/messages/${rootMessageId}/thread?${params.toString()}`, { credentials: 'include' });
     if (!threadRes.ok) return;
     const threadData = await threadRes.json();
-    const threadItems = [threadData?.root, ...(Array.isArray(threadData?.replies) ? threadData.replies : [])].filter(Boolean);
+    const threadItems = Array.isArray(threadData?.items) ? threadData.items : [];
     if (threadItems.length === 0) return;
     setMessagesByCompany((prev) => {
       const key = getCompanyCacheKey(activeCompany);
@@ -937,7 +897,8 @@ export default function MessagingWidget() {
 
   const canDeleteMessage = (message) => {
     if (!message) return false;
-    return normalizeId(message.author_empid) === selfEmpid;
+    if (normalizeId(message.author_empid) === selfEmpid) return true;
+    return Boolean(permissions?.isAdmin || permissions?.messaging_delete || permissions?.messaging?.delete);
   };
 
   const handleDeleteMessage = async (messageId) => {
@@ -1088,8 +1049,8 @@ export default function MessagingWidget() {
 
 
   const onPreviewAttachment = (file) => {
-    if (!isImageAttachment(file) || !file?.url) return;
-    setAttachmentPreview({ url: file.url, name: file.name || 'Image preview', localObjectUrl: false });
+    if (!isImageAttachment(file)) return;
+    setAttachmentPreview(file);
     setAttachmentPreviewOpen(true);
   };
 
@@ -1565,23 +1526,6 @@ export default function MessagingWidget() {
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 8, marginTop: 8 }}>
                     {state.composer.attachments.map((file) => (
                       <div key={`${file.name}-${file.lastModified}-${file.size}`} style={{ border: '1px solid #e2e8f0', borderRadius: 8, padding: 8, background: '#f8fafc' }}>
-                        {isImageAttachment(file) && composerImagePreviewUrls[`${file.name}-${file.size}-${file.lastModified || 0}`] && (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setAttachmentPreview({
-                                url: composerImagePreviewUrls[`${file.name}-${file.size}-${file.lastModified || 0}`],
-                                name: file.name || 'Image preview',
-                                localObjectUrl: false,
-                              });
-                              setAttachmentPreviewOpen(true);
-                            }}
-                            style={{ border: 0, background: 'transparent', padding: 0, cursor: 'pointer', marginBottom: 6 }}
-                            title={`Preview ${file.name}`}
-                          >
-                            <img src={composerImagePreviewUrls[`${file.name}-${file.size}-${file.lastModified || 0}`]} alt={file.name} style={{ width: 72, height: 72, objectFit: 'cover', borderRadius: 6, display: 'block' }} />
-                          </button>
-                        )}
                         <strong style={{ display: 'block', fontSize: 12, color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis' }}>{file.name}</strong>
                         <span style={{ fontSize: 11, color: '#64748b' }}>{Math.max(1, Math.round(file.size / 1024))} KB</span>
                       </div>
@@ -1605,24 +1549,13 @@ export default function MessagingWidget() {
               <div
                 role="dialog"
                 aria-modal="true"
-                onClick={() => {
-                  setAttachmentPreviewOpen(false);
-                  setAttachmentPreview(null);
-                }}
+                onClick={() => setAttachmentPreviewOpen(false)}
                 style={{ position: 'fixed', inset: 0, background: 'rgba(15, 23, 42, 0.72)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2000, padding: 20 }}
               >
                 <div onClick={(event) => event.stopPropagation()} style={{ background: '#fff', borderRadius: 12, padding: 12, maxWidth: 'min(90vw, 980px)', maxHeight: '90vh', overflow: 'auto' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
                     <strong style={{ fontSize: 13 }}>{attachmentPreview.name || 'Image preview'}</strong>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setAttachmentPreviewOpen(false);
-                        setAttachmentPreview(null);
-                      }}
-                    >
-                      Close
-                    </button>
+                    <button type="button" onClick={() => setAttachmentPreviewOpen(false)}>Close</button>
                   </div>
                   <img src={attachmentPreview.url} alt={attachmentPreview.name || 'attachment preview'} style={{ maxWidth: '100%', maxHeight: '75vh', borderRadius: 8 }} />
                   <div style={{ marginTop: 8 }}>
