@@ -47,18 +47,23 @@ function evaluateExpression(expression, context = {}) {
   if (!expression || typeof expression !== 'string') {
     return 0;
   }
+
   const source = expression.trim();
   if (!source) {
     return 0;
   }
 
+  // 🔥 Inject canonical financial fields into local scope
+  const scope = { ...context.financialFields };
+
   const fn = new Function(
-    'ctx',
-    `"use strict"; const { txn, fields, Math: SafeMath } = ctx; return (${source});`,
+    ...Object.keys(scope),
+    `"use strict"; return (${source});`
   );
-  const value = fn({ ...context, Math });
-  return toNumber(value);
+
+  return toNumber(fn(...Object.values(scope)));
 }
+
 
 async function getTableColumns(conn, tableName) {
   if (tableColumnCache.has(tableName)) {
