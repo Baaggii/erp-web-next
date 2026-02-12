@@ -3223,22 +3223,6 @@ const TableManager = forwardRef(function TableManager({
     return rowId;
   }
 
-  function logJournalActionDebug(action, payload, response = null) {
-    if (!journalActionDebugEnabled) return;
-    const requestInfo = `${action} payload: ${JSON.stringify(payload)}`;
-    addToast(requestInfo, 'info');
-    if (typeof window !== 'undefined' && window.erpDebug) {
-      console.debug(`[journal/${action}] request`, payload);
-    }
-    if (response) {
-      const responseInfo = `${action} response: ${JSON.stringify(response)}`;
-      addToast(responseInfo, response.ok ? 'info' : 'error');
-      if (typeof window !== 'undefined' && window.erpDebug) {
-        console.debug(`[journal/${action}] response`, response);
-      }
-    }
-  }
-
   async function handlePostTransaction(row, forceRepost = false) {
     const rowId = getRowId(row);
     if (rowId === undefined || rowId === null) return;
@@ -3259,19 +3243,16 @@ const TableManager = forwardRef(function TableManager({
     if (!window.confirm(confirmMessage)) return;
 
     const sourceId = getJournalSourceId(rowId);
-    const requestPayload = {
-      source_table: table,
-      source_id: sourceId,
-      force_repost: forceRepost,
-    };
-    logJournalActionDebug('post', requestPayload);
-    try {
-      const res = await fetch(`${API_BASE}/journal/post`, {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(requestPayload),
-      });
+    const res = await fetch(`${API_BASE}/journal/post`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        source_table: table,
+        source_id: sourceId,
+        force_repost: forceRepost,
+      }),
+    });
 
       const payload = await res.json().catch(() => ({}));
       logJournalActionDebug('post', requestPayload, {
@@ -3300,32 +3281,16 @@ const TableManager = forwardRef(function TableManager({
     setPreviewLoading(true);
     try {
       const sourceId = getJournalSourceId(rowId);
-      const requestPayload = { source_table: table, source_id: sourceId };
-      logJournalActionDebug('preview', requestPayload);
-      try {
-        const res = await fetch(`${API_BASE}/journal/preview`, {
-          method: 'POST',
-          credentials: 'include',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(requestPayload),
-        });
-        const payload = await res.json().catch(() => ({}));
-        logJournalActionDebug('preview', requestPayload, {
-          status: res.status,
-          ok: res.ok,
-          body: payload,
-        });
-        if (!res.ok || payload?.ok === false) {
-          addToast(payload?.message || 'Preview failed', 'error');
-          return;
-        }
-        setPreviewLines(payload);
-      } catch (err) {
-        logJournalActionDebug('preview', requestPayload, {
-          ok: false,
-          error: err?.message || 'Unknown error',
-        });
-        addToast(`Request failed: ${err?.message || 'Unknown error'}`, 'error');
+      const res = await fetch(`${API_BASE}/journal/preview`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ source_table: table, source_id: sourceId }),
+      });
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok || payload?.ok === false) {
+        addToast(payload?.message || 'Preview failed', 'error');
+        return;
       }
     } finally {
       setPreviewLoading(false);
