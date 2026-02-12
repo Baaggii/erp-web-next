@@ -43,6 +43,12 @@ function toNumber(value) {
   return Number.isFinite(n) ? n : 0;
 }
 
+function normalizeCompanyScopeId(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric <= 0) return 0;
+  return Math.trunc(numeric);
+}
+
 function evaluateExpression(expression, context = {}) {
   if (!expression || typeof expression !== 'string') {
     return 0;
@@ -174,7 +180,9 @@ async function buildJournalPreviewPayload(conn, safeTable, sourceId, { forUpdate
     throw new Error(`Transaction ${safeTable}#${sourceId} is missing TransType`);
   }
 
-  const companyId = transactionRow.company_id;
+  const companyId = normalizeCompanyScopeId(
+    pickFirstDefined(transactionRow, ['company_id', 'companyId', 'company']),
+  );
   const flagSetCode = await resolveFlagSetCode(conn, transType);
 
   if (flagSetCode === NON_FINANCIAL_FLAG_SET_CODE) {
@@ -193,7 +201,12 @@ async function buildJournalPreviewPayload(conn, safeTable, sourceId, { forUpdate
   const fieldMap = await loadFinancialFieldMap(conn, safeTable);
   const financialFields = buildFinancialContext(transactionRow, fieldMap);
   const presentFlags = deriveFlagsFromTransaction(transactionRow, financialFields);
-  const selectedRule = await selectMatchingJournalRule(conn, flagSetCode, presentFlags);
+  const selectedRule = await selectMatchingJournalRule(
+    conn,
+    flagSetCode,
+    presentFlags,
+    companyId,
+  );
 
   const [ruleLines] = await conn.query(
   `SELECT *
@@ -215,7 +228,7 @@ async function buildJournalPreviewPayload(conn, safeTable, sourceId, { forUpdate
 
   for (const line of ruleLines) {
     const direction = normalizeDrCr(pickFirstDefined(line, ['entry_type', 'dr_cr']));
-    const accountCode = await resolveAccountCode(conn, line, context);
+    const accountCode = await resolveAccountCode(conn, line, context, companyId);
     const amount = Math.abs(await resolveAmount(conn, line, context));
     if (!amount) continue;
 
@@ -293,7 +306,12 @@ async function resolveFlagSetCode(conn, transType) {
   return rows[0].fin_flag_set_code;
 }
 
-async function selectMatchingJournalRule(conn, flagSetCode, presentFlags) {
+async function selectMatchingJournalRule(
+  conn,
+  flagSetCode,
+  presentFlags,
+  companyId,
+) {
   const [ruleRows] = await conn.query(
   `
   SELECT *
@@ -302,7 +320,7 @@ async function selectMatchingJournalRule(conn, flagSetCode, presentFlags) {
     AND (company_id = ? OR company_id = 0)
   ORDER BY company_id DESC, COALESCE(priority, 999999), rule_id
   `,
-  [flagSetCode, sessionCompanyId]
+  [flagSetCode, companyId]
 );
 
 
@@ -338,7 +356,7 @@ async function selectMatchingJournalRule(conn, flagSetCode, presentFlags) {
   throw new Error(`No matching fin_journal_rule for flag set ${flagSetCode}`);
 }
 
-async function resolveAccountCode(conn, line, context) {
+async function resolveAccountCode(conn, line, context, companyId) {
   const resolverCode = pickFirstDefined(line, ['account_resolver_code']);
   if (!resolverCode) {
     const inlineAccount = pickFirstDefined(line, ['account_code']);
@@ -353,7 +371,7 @@ WHERE resolver_code = ?
   AND (company_id = ? OR company_id = 0)
 ORDER BY company_id DESC
 LIMIT 1`,
-    [resolverCode, sessionCompanyId],
+    [resolverCode, companyId],
   );
 
   if (!rows.length) {
@@ -403,7 +421,7 @@ WHERE account_code = ?
   AND (company_id = ? OR company_id = 0)
 ORDER BY company_id DESC
 LIMIT 1`,
-    [accountCode, sessionCompanyId]
+    [accountCode, companyId]
   );
 
   if (!coaRows.length) {
