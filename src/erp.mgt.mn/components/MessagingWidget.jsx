@@ -910,28 +910,6 @@ export default function MessagingWidget() {
     return employeeLabelMap.get(normalizedEmpid) || normalizedEmpid;
   };
 
-  const activeConversationParticipants = useMemo(() => {
-    const participantIds = new Set();
-    (activeConversation?.messages || []).forEach((message) => {
-      collectMessageParticipantEmpids(message).forEach((empid) => participantIds.add(empid));
-    });
-
-    return Array.from(participantIds)
-      .map((empid) => {
-        const normalizedEmpid = normalizeId(empid);
-        if (!normalizedEmpid) return null;
-        const employeeRecord = employeeRecords.find((entry) => entry.id === normalizedEmpid);
-        const resolvedStatus = employeeRecord?.status || presenceMap.get(normalizedEmpid) || PRESENCE.OFFLINE;
-        return {
-          id: normalizedEmpid,
-          label: sanitizeMessageText(employeeRecord?.label || resolveEmployeeLabel(normalizedEmpid)) || normalizedEmpid,
-          status: resolvedStatus,
-        };
-      })
-      .filter(Boolean)
-      .sort((a, b) => a.label.localeCompare(b.label));
-  }, [activeConversation, employeeRecords, presenceMap]);
-
 
   const safeTopic = sanitizeMessageText(state.composer.topic || activeConversation?.title || '');
   const safeBody = sanitizeMessageText(state.composer.body);
@@ -1386,45 +1364,6 @@ export default function MessagingWidget() {
             <div style={{ position: 'sticky', top: 0, background: '#f8fafc', paddingBottom: 8, marginBottom: 8 }}>
               <strong style={{ fontSize: 16, color: '#0f172a' }}>{activeTopic}</strong>
               <p style={{ margin: '4px 0 0', fontSize: 12, color: '#64748b' }}>Ctrl/Cmd + Enter sends your message.</p>
-              {activeConversation && (
-                <div style={{ marginTop: 8 }}>
-                  <p style={{ margin: '0 0 6px', fontSize: 11, fontWeight: 600, color: '#475569' }}>Participants</p>
-                  {activeConversationParticipants.length > 0 ? (
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                      {activeConversationParticipants.map((participant) => (
-                        <span
-                          key={participant.id}
-                          style={{
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: 6,
-                            borderRadius: 999,
-                            border: '1px solid #cbd5e1',
-                            background: '#fff',
-                            color: '#0f172a',
-                            fontSize: 12,
-                            padding: '4px 10px',
-                          }}
-                        >
-                          <span
-                            aria-hidden="true"
-                            style={{
-                              width: 8,
-                              height: 8,
-                              borderRadius: '50%',
-                              background: presenceColor(participant.status),
-                              boxShadow: `0 0 0 1px ${participant.status === PRESENCE.ONLINE ? '#166534' : '#64748b'}33`,
-                            }}
-                          />
-                          {participant.label}
-                        </span>
-                      ))}
-                    </div>
-                  ) : (
-                    <p style={{ margin: 0, fontSize: 12, color: '#64748b' }}>No participants found.</p>
-                  )}
-                </div>
-              )}
               {activeConversation?.rootMessageId && canDeleteMessage(messages.find((entry) => Number(entry.id) === Number(activeConversation.rootMessageId))) && (
                 <button type="button" onClick={() => handleDeleteMessage(activeConversation.rootMessageId)} style={{ marginTop: 6 }}>
                   Delete thread
