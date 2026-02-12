@@ -16,6 +16,7 @@ import {
 
 
 const ATTACHMENTS_MARKER = '\n[attachments-json]';
+const GENERAL_CONVERSATION_ID = 'general:company';
 
 function decodeMessageContent(rawBody) {
   const safe = String(rawBody || '');
@@ -97,6 +98,20 @@ function extractMessageTopic(message) {
   return sanitizeMessageText(message?.topic || '').slice(0, 120);
 }
 
+function extractRecipientEmpids(message) {
+  const recipientEmpids =
+    message?.recipient_empids || message?.recipientEmpids || message?.recipient_ids || message?.recipientIds;
+  return Array.isArray(recipientEmpids)
+    ? Array.from(new Set(recipientEmpids.map(normalizeId).filter(Boolean)))
+    : [];
+}
+
+function isCompanyWideMessage(message) {
+  const scope = sanitizeMessageText(message?.visibility_scope || message?.visibilityScope || '').toLowerCase();
+  if (scope === 'company' || scope === 'global') return true;
+  return extractRecipientEmpids(message).length === 0;
+}
+
 function extractContextLink(message) {
   const linkedType = message?.linked_type || message?.linkedType || null;
   const linkedId = message?.linked_id || message?.linkedId || null;
@@ -140,10 +155,12 @@ function groupConversations(messages) {
         linkedType: link.linkedType,
         linkedId: link.linkedId,
         rootMessageId: conversationId || msg.parent_message_id || msg.parentMessageId || msg.id,
+        isCompanyWide: false,
       });
     }
     const current = map.get(key);
     if (!current.title && topic) current.title = topic;
+    if (isCompanyWideMessage(msg)) current.isCompanyWide = true;
     current.messages.push(msg);
   });
   return Array.from(map.values()).sort((a, b) => {
@@ -229,9 +246,7 @@ function resolveDisplayLabelFromConfig(row, displayFields = []) {
 function collectMessageParticipantEmpids(message) {
   const ids = [];
   ids.push(message?.author_empid, message?.authorEmpid, message?.visibility_empid, message?.visibilityEmpid);
-  const recipientEmpids =
-    message?.recipient_empids || message?.recipientEmpids || message?.recipient_ids || message?.recipientIds;
-  if (Array.isArray(recipientEmpids)) ids.push(...recipientEmpids);
+  ids.push(...extractRecipientEmpids(message));
   const readBy = Array.isArray(message?.read_by) ? message.read_by : [];
   ids.push(...readBy);
   return Array.from(new Set(ids.map(normalizeId).filter(Boolean)));
@@ -398,6 +413,7 @@ export default function MessagingWidget() {
   const [collapsedMessageIds, setCollapsedMessageIds] = useState(() => new Set());
   const [attachmentPreviewOpen, setAttachmentPreviewOpen] = useState(false);
   const [attachmentPreview, setAttachmentPreview] = useState(null);
+  const [topicEditorOpen, setTopicEditorOpen] = useState(false);
   const composerRef = useRef(null);
 
   const draftStorageKey = useMemo(() => {
@@ -770,7 +786,6 @@ export default function MessagingWidget() {
       dispatch({
         type: 'composer/start',
         payload: {
-          topic: detail.topic,
           recipients: detail.recipientEmpids || [],
           linkedType: detail.transaction?.id ? 'transaction' : null,
           linkedId: detail.transaction?.id ? String(detail.transaction.id) : null,
@@ -784,9 +799,48 @@ export default function MessagingWidget() {
     return () => window.removeEventListener('messaging:start', onStartMessage);
   }, []);
 
-  const conversations = useMemo(() => groupConversations(messages), [messages]);
+  const conversations = useMemo(() => {
+    const grouped = groupConversations(messages);
+    const generalConversation = grouped.find((conversation) => conversation.id === GENERAL_CONVERSATION_ID)
+      || grouped.find((conversation) => conversation.messages.some((message) => isCompanyWideMessage(message) && !extractContextLink(message).linkedType));
+
+    const normalizedGeneral = generalConversation
+      ? {
+        ...generalConversation,
+        id: GENERAL_CONVERSATION_ID,
+        title: 'General',
+        isSyntheticGeneral: false,
+      }
+      : {
+        id: GENERAL_CONVERSATION_ID,
+        title: 'General',
+        messages: [],
+        linkedType: null,
+        linkedId: null,
+        rootMessageId: null,
+        isCompanyWide: true,
+        isSyntheticGeneral: true,
+      };
+
+    const withoutGeneral = grouped.filter((conversation) => conversation.id !== normalizedGeneral.id && conversation.id !== generalConversation?.id);
+    return [normalizedGeneral, ...withoutGeneral];
+  }, [messages]);
   const activeConversationId = state.activeConversationId || conversations[0]?.id || null;
   const activeConversation = conversations.find((conversation) => conversation.id === activeConversationId) || null;
+  const activeConversationRoot = useMemo(() => {
+    if (!activeConversation?.messages?.length) return null;
+    return activeConversation.messages.find((entry) => Number(entry.parent_message_id || entry.parentMessageId || 0) === 0)
+      || activeConversation.messages.find((entry) => String(entry.id) === String(activeConversation.rootMessageId))
+      || activeConversation.messages[0];
+  }, [activeConversation]);
+  const activeConversationParticipants = useMemo(() => {
+    if (activeConversation?.id === GENERAL_CONVERSATION_ID) {
+      return employees.map((entry) => normalizeId(entry.empid)).filter((empid) => empid && empid !== selfEmpid);
+    }
+    if (!activeConversation?.messages?.length) return [];
+    const ids = activeConversation.messages.flatMap((message) => collectMessageParticipantEmpids(message));
+    return Array.from(new Set(ids.map(normalizeId).filter(Boolean))).filter((empid) => empid !== selfEmpid);
+  }, [activeConversation, employees, selfEmpid]);
   const threadMessages = useMemo(() => buildNestedThreads(activeConversation?.messages || []), [activeConversation]);
   const messageMap = useMemo(() => new Map(messages.map((msg) => [msg.id, msg])), [messages]);
   const unreadCount = messages.filter((msg) => !msg.read_by?.includes?.(selfEmpid)).length;
@@ -886,16 +940,20 @@ export default function MessagingWidget() {
   const conversationSummaries = useMemo(() => conversations.map((conversation) => {
     const previewMessage = conversation.messages.at(-1);
     const previewDecoded = decodeMessageContent(previewMessage?.body || '');
+    const legacyCompanyWide = Boolean(previewMessage && isCompanyWideMessage(previewMessage));
     return {
       ...conversation,
       unread: conversation.messages.filter((msg) => !msg.read_by?.includes?.(selfEmpid)).length,
-      preview: sanitizeMessageText(previewDecoded.text || '').slice(0, 48) || 'No messages yet',
-      groupName: conversation.linkedType && conversation.linkedId ? `${conversation.linkedType} #${conversation.linkedId}` : `Thread #${conversation.rootMessageId}`,
+      preview: sanitizeMessageText(previewDecoded.text || '').slice(0, 48) || (conversation.id === GENERAL_CONVERSATION_ID ? 'Company announcements and updates' : 'No messages yet'),
+      groupName: conversation.id === GENERAL_CONVERSATION_ID
+        ? 'Company-wide'
+        : (legacyCompanyWide ? 'Company-wide (legacy)' : (conversation.linkedType && conversation.linkedId ? `${conversation.linkedType} #${conversation.linkedId}` : `Thread #${conversation.rootMessageId}`)),
       lastActivity: previewMessage?.created_at || null,
+      legacyCompanyWide,
     };
   }), [conversations, selfEmpid]);
 
-  const activeTopic = state.composer.topic || activeConversation?.title || 'Untitled topic';
+  const activeTopic = activeConversation?.title || 'General';
   const sessionUserLabel = sanitizeMessageText(
     user?.emp_name || user?.employee_name || user?.name || user?.full_name || user?.username || user?.empid,
   );
@@ -910,10 +968,24 @@ export default function MessagingWidget() {
     return employeeLabelMap.get(normalizedEmpid) || normalizedEmpid;
   };
 
+  const headerParticipantIds = useMemo(() => {
+    if (activeConversation?.id === GENERAL_CONVERSATION_ID) {
+      return employees.map((entry) => normalizeId(entry.empid)).filter(Boolean);
+    }
+    if (activeConversationRoot) return collectMessageParticipantEmpids(activeConversationRoot);
+    return activeConversationParticipants;
+  }, [activeConversation?.id, activeConversationParticipants, activeConversationRoot, employees]);
+  const canEditTopic = Boolean(
+    activeConversationRoot
+    && normalizeId(activeConversationRoot.author_empid || activeConversationRoot.authorEmpid) === selfEmpid,
+  );
 
-  const safeTopic = sanitizeMessageText(state.composer.topic || activeConversation?.title || '');
+  const safeTopic = sanitizeMessageText(state.composer.topic || '');
   const safeBody = sanitizeMessageText(state.composer.body);
-  const canSendMessage = Boolean(safeTopic && safeBody && state.composer.recipients.length > 0);
+  const isReplyMode = Boolean(state.composer.replyToId);
+  const requiresRecipients = !isReplyMode && activeConversation?.id !== GENERAL_CONVERSATION_ID;
+  const effectiveRecipients = isReplyMode ? activeConversationParticipants : state.composer.recipients;
+  const canSendMessage = Boolean(safeBody && (!requiresRecipients || effectiveRecipients.length > 0));
 
   const handleOpenLinkedTransaction = (transactionId) => {
     if (canViewTransaction(transactionId, normalizeId(sessionId), permissions || {})) {
@@ -1000,20 +1072,13 @@ export default function MessagingWidget() {
   };
 
   const sendMessage = async () => {
-    if (!safeTopic) {
-      setComposerAnnouncement('Topic is required.');
-      return;
-    }
     if (!safeBody) {
       setComposerAnnouncement('Cannot send an empty message.');
       return;
     }
-    if (state.composer.recipients.length === 0) {
+
+    if (requiresRecipients && effectiveRecipients.length === 0) {
       setComposerAnnouncement('Select at least one recipient.');
-      return;
-    }
-    if (state.composer.recipients.length !== 1) {
-      setComposerAnnouncement('Select exactly one recipient for private messaging.');
       return;
     }
 
@@ -1033,16 +1098,19 @@ export default function MessagingWidget() {
       setComposerAnnouncement(err.message || 'Attachment upload failed.');
       return;
     }
+
+    const isGeneralConversation = activeConversation?.id === GENERAL_CONVERSATION_ID;
     const payload = {
       idempotencyKey: createIdempotencyKey(),
       clientTempId,
-      body: `[${safeTopic}] ${safeBody}${encodeAttachmentPayload(uploadedAttachments)}`,
+      body: `${safeBody}${encodeAttachmentPayload(uploadedAttachments)}`,
       companyId: Number.isFinite(Number(activeCompany)) ? Number(activeCompany) : String(activeCompany),
-      recipientEmpids: state.composer.recipients,
-      visibilityScope: 'private',
-      visibilityEmpid: state.composer.recipients[0],
+      recipientEmpids: effectiveRecipients,
+      visibilityScope: isGeneralConversation ? 'company' : 'private',
+      ...(effectiveRecipients[0] ? { visibilityEmpid: effectiveRecipients[0] } : {}),
       ...(linkedType ? { linkedType } : {}),
       ...(linkedId ? { linkedId: String(linkedId) } : {}),
+      ...(!isReplyMode && safeTopic ? { topic: safeTopic } : {}),
     };
 
     const targetUrl = state.composer.replyToId
@@ -1147,10 +1215,12 @@ export default function MessagingWidget() {
   };
 
   const openNewMessage = () => {
+    dispatch({ type: 'widget/setConversation', payload: null });
     dispatch({ type: 'composer/setTopic', payload: '' });
     dispatch({ type: 'composer/setBody', payload: '' });
     dispatch({ type: 'composer/setReplyTo', payload: null });
-    setComposerAnnouncement('Started a new message draft. Add a topic and message body.');
+    dispatch({ type: 'composer/setLinkedContext', payload: { linkedType: null, linkedId: null } });
+    setComposerAnnouncement('Started a new private message draft. Add recipients and your first message.');
   };
 
   const onComposerInput = (event) => {
@@ -1225,7 +1295,7 @@ export default function MessagingWidget() {
         border: '1px solid #cbd5e1',
         borderRadius: 14,
         zIndex: 1200,
-        overflow: 'auto',
+        overflow: 'hidden',
         maxHeight: '58vh',
       }}
       aria-label="Messaging widget"
@@ -1327,8 +1397,7 @@ export default function MessagingWidget() {
                   type="button"
                   onClick={() => {
                     dispatch({ type: 'widget/setConversation', payload: conversation.id });
-                    dispatch({ type: 'composer/setTopic', payload: conversation.title });
-                    if (conversation.linkedType && conversation.linkedId) {
+                    if (!conversation.legacyCompanyWide && conversation.linkedType && conversation.linkedId) {
                       dispatch({ type: 'composer/setLinkedContext', payload: { linkedType: conversation.linkedType, linkedId: conversation.linkedId } });
                     }
                   }}
@@ -1366,9 +1435,32 @@ export default function MessagingWidget() {
 
         <section style={{ display: 'grid', gridTemplateRows: 'minmax(0, 1fr) auto', minWidth: 0, minHeight: 0 }}>
           <main style={{ padding: '10px 14px 8px', overflowY: 'auto', minHeight: 420 }} aria-live="polite">
-            <div style={{ position: 'sticky', top: 0, background: '#f8fafc', paddingBottom: 8, marginBottom: 8 }}>
-              <strong style={{ fontSize: 16, color: '#0f172a' }}>{activeTopic}</strong>
-              <p style={{ margin: '4px 0 0', fontSize: 12, color: '#64748b' }}>Ctrl/Cmd + Enter sends your message.</p>
+            <div style={{ position: 'sticky', top: 0, background: '#f8fafc', paddingBottom: 8, marginBottom: 8, zIndex: 5 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                <strong style={{ fontSize: 16, color: '#0f172a' }}>{activeTopic}</strong>
+                {canEditTopic && (
+                  <button type="button" onClick={() => setTopicEditorOpen((prev) => !prev)} style={{ border: '1px solid #cbd5e1', borderRadius: 999, background: '#fff', fontSize: 11, padding: '2px 8px' }}>
+                    {topicEditorOpen ? 'Close topic editor' : 'Edit topic'}
+                  </button>
+                )}
+              </div>
+              {topicEditorOpen && canEditTopic && (
+                <input
+                  value={state.composer.topic}
+                  onChange={(event) => dispatch({ type: 'composer/setTopic', payload: event.target.value })}
+                  placeholder="Optional topic"
+                  aria-label="Edit thread topic"
+                  style={{ width: '100%', marginTop: 8, borderRadius: 8, border: '1px solid #cbd5e1', padding: '8px 10px', background: '#fff' }}
+                />
+              )}
+              <div style={{ marginTop: 6, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                {headerParticipantIds.slice(0, 16).map((empid) => (
+                  <span key={empid} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, border: '1px solid #cbd5e1', borderRadius: 999, padding: '2px 8px', fontSize: 11, color: '#334155', background: '#fff' }}>
+                    {resolveEmployeeLabel(empid)}
+                  </span>
+                ))}
+              </div>
+              <p style={{ margin: '6px 0 0', fontSize: 12, color: '#64748b' }}>Ctrl/Cmd + Enter sends your message.</p>
               {activeConversation?.rootMessageId && canDeleteMessage(messages.find((entry) => Number(entry.id) === Number(activeConversation.rootMessageId))) && (
                 <button type="button" onClick={() => handleDeleteMessage(activeConversation.rootMessageId)} style={{ marginTop: 6 }}>
                   Delete thread
@@ -1418,70 +1510,65 @@ export default function MessagingWidget() {
             onDragLeave={() => setDragOverComposer(false)}
             onDrop={onDropComposer}
           >
-            <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) minmax(0,1fr)', gap: 8 }}>
-              <div>
-                <label htmlFor="messaging-topic" style={{ fontSize: 12, fontWeight: 600, color: '#334155' }}>Topic</label>
-                <input
-                  id="messaging-topic"
-                  value={state.composer.topic}
-                  onChange={(event) => dispatch({ type: 'composer/setTopic', payload: event.target.value })}
-                  required
-                  placeholder="Enter a topic"
-                  aria-label="Topic"
-                  style={{ width: '100%', marginTop: 6, borderRadius: 8, border: '1px solid #cbd5e1', padding: '9px 10px' }}
-                />
-              </div>
+            {!isReplyMode && (
+              <>
+                <div style={{ position: 'relative' }}>
+                  <label htmlFor="messaging-add-recipient" style={{ fontSize: 12, fontWeight: 600, color: '#334155' }}>Recipients</label>
+                  <input
+                    id="messaging-add-recipient"
+                    type="search"
+                    value={recipientSearch}
+                    onChange={(event) => setRecipientSearch(event.target.value)}
+                    placeholder="Search by name or employee ID"
+                    aria-label="Add recipient"
+                    style={{ width: '100%', marginTop: 6, borderRadius: 8, border: '1px solid #cbd5e1', padding: '9px 10px' }}
+                  />
+                  {recipientSearch.trim() && (
+                    <div style={{ position: 'absolute', zIndex: 20, top: 62, left: 0, right: 0, border: '1px solid #cbd5e1', borderRadius: 8, background: '#fff', maxHeight: 180, overflowY: 'auto' }}>
+                      {filteredEmployees.slice(0, 8).map((entry) => (
+                        <button
+                          key={entry.id}
+                          type="button"
+                          onClick={() => onChooseRecipient(entry.id)}
+                          style={{ width: '100%', textAlign: 'left', border: 0, background: 'transparent', padding: '8px 10px', display: 'flex', alignItems: 'center', gap: 8 }}
+                        >
+                          <span style={{ width: 24, height: 24, borderRadius: 12, background: '#e2e8f0', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, color: '#334155', fontWeight: 700 }}>
+                            {initialsForLabel(entry.label)}
+                          </span>
+                          <span style={{ width: 8, height: 8, borderRadius: 999, background: presenceColor(entry.status) }} aria-hidden="true" />
+                          <span style={{ fontSize: 13, color: '#0f172a' }}>{formatEmployeeOption(entry)}</span>
+                        </button>
+                      ))}
+                      {filteredEmployees.length === 0 && <p style={{ margin: 0, padding: 10, color: '#64748b', fontSize: 12 }}>No matches</p>}
+                    </div>
+                  )}
+                </div>
 
-              <div style={{ position: 'relative' }}>
-                <label htmlFor="messaging-add-recipient" style={{ fontSize: 12, fontWeight: 600, color: '#334155' }}>Add recipient</label>
-                <input
-                  id="messaging-add-recipient"
-                  type="search"
-                  value={recipientSearch}
-                  onChange={(event) => setRecipientSearch(event.target.value)}
-                  placeholder="Search by name or employee ID"
-                  aria-label="Add recipient"
-                  style={{ width: '100%', marginTop: 6, borderRadius: 8, border: '1px solid #cbd5e1', padding: '9px 10px' }}
-                />
-                {recipientSearch.trim() && (
-                  <div style={{ position: 'absolute', zIndex: 20, top: 62, left: 0, right: 0, border: '1px solid #cbd5e1', borderRadius: 8, background: '#fff', maxHeight: 180, overflowY: 'auto' }}>
-                    {filteredEmployees.slice(0, 8).map((entry) => (
-                      <button
-                        key={entry.id}
-                        type="button"
-                        onClick={() => onChooseRecipient(entry.id)}
-                        style={{ width: '100%', textAlign: 'left', border: 0, background: 'transparent', padding: '8px 10px', display: 'flex', alignItems: 'center', gap: 8 }}
-                      >
-                        <span style={{ width: 24, height: 24, borderRadius: 12, background: '#e2e8f0', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, color: '#334155', fontWeight: 700 }}>
-                          {initialsForLabel(entry.label)}
+                <div style={{ marginTop: 8, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                  {state.composer.recipients.map((empid) => {
+                    const found = employeeRecords.find((entry) => entry.id === empid);
+                    const label = found?.label || resolveEmployeeLabel(empid);
+                    const status = found?.status || presenceMap.get(empid) || PRESENCE.OFFLINE;
+                    return (
+                      <span key={empid} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, border: '1px solid #cbd5e1', borderRadius: 999, padding: '4px 10px', background: '#f8fafc' }}>
+                        <span style={{ width: 18, height: 18, borderRadius: 999, background: '#dbeafe', color: '#1d4ed8', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700 }}>
+                          {initialsForLabel(label)}
                         </span>
-                        <span style={{ width: 8, height: 8, borderRadius: 999, background: presenceColor(entry.status) }} aria-hidden="true" />
-                        <span style={{ fontSize: 13, color: '#0f172a' }}>{formatEmployeeOption(entry)}</span>
-                      </button>
-                    ))}
-                    {filteredEmployees.length === 0 && <p style={{ margin: 0, padding: 10, color: '#64748b', fontSize: 12 }}>No matches</p>}
-                  </div>
-                )}
-              </div>
-            </div>
+                        <span style={{ width: 8, height: 8, borderRadius: 999, background: presenceColor(status) }} />
+                        <span style={{ fontSize: 12, color: '#1e293b' }}>{label}</span>
+                        <button type="button" aria-label={`Remove recipient ${label}`} onClick={() => onRemoveRecipient(empid)} style={{ border: 0, background: 'transparent', color: '#64748b' }}>×</button>
+                      </span>
+                    );
+                  })}
+                </div>
+              </>
+            )}
 
-            <div style={{ marginTop: 8, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-              {state.composer.recipients.map((empid) => {
-                const found = employeeRecords.find((entry) => entry.id === empid);
-                const label = found?.label || resolveEmployeeLabel(empid);
-                const status = found?.status || presenceMap.get(empid) || PRESENCE.OFFLINE;
-                return (
-                  <span key={empid} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, border: '1px solid #cbd5e1', borderRadius: 999, padding: '4px 10px', background: '#f8fafc' }}>
-                    <span style={{ width: 18, height: 18, borderRadius: 999, background: '#dbeafe', color: '#1d4ed8', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700 }}>
-                      {initialsForLabel(label)}
-                    </span>
-                    <span style={{ width: 8, height: 8, borderRadius: 999, background: presenceColor(status) }} />
-                    <span style={{ fontSize: 12, color: '#1e293b' }}>{label}</span>
-                    <button type="button" aria-label={`Remove recipient ${label}`} onClick={() => onRemoveRecipient(empid)} style={{ border: 0, background: 'transparent', color: '#64748b' }}>×</button>
-                  </span>
-                );
-              })}
-            </div>
+            {isReplyMode && (
+              <p style={{ margin: '2px 0 8px', fontSize: 12, color: '#475569' }}>
+                Replying in this thread with participants: {activeConversationParticipants.map((empid) => resolveEmployeeLabel(empid)).join(', ') || 'General'}
+              </p>
+            )}
 
             <label htmlFor="messaging-composer" style={{ marginTop: 10, display: 'block', fontSize: 12, fontWeight: 600, color: '#334155' }}>
               Message
@@ -1535,10 +1622,23 @@ export default function MessagingWidget() {
                 onClick={() => setAttachmentsOpen((prev) => !prev)}
                 style={{ border: 0, background: 'transparent', padding: 0, fontSize: 12, fontWeight: 600, color: '#334155' }}
               >
-                {attachmentsOpen ? '▾' : '▸'} Context & attachments {state.composer.attachments.length > 0 ? `(${state.composer.attachments.length})` : ''}
+                {attachmentsOpen ? '▾' : '▸'} Add details {state.composer.attachments.length > 0 ? `(${state.composer.attachments.length})` : ''}
               </button>
               {attachmentsOpen && (
                 <>
+                  {!isReplyMode && (
+                    <div style={{ marginTop: 8 }}>
+                      <label htmlFor="messaging-topic-optional" style={{ fontSize: 12, fontWeight: 600, color: '#334155' }}>Topic (optional)</label>
+                      <input
+                        id="messaging-topic-optional"
+                        value={state.composer.topic}
+                        onChange={(event) => dispatch({ type: 'composer/setTopic', payload: event.target.value })}
+                        placeholder="Optional thread topic"
+                        aria-label="Optional topic"
+                        style={{ width: '100%', marginTop: 6, borderRadius: 8, border: '1px solid #cbd5e1', padding: '9px 10px' }}
+                      />
+                    </div>
+                  )}
                   {state.composer.replyToId && (
                     <p style={{ margin: '8px 0 0', fontSize: 12, color: '#475569' }}>
                       Replying to #{state.composer.replyToId}
