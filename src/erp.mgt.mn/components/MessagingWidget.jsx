@@ -9,6 +9,7 @@ import {
   getCompanyCacheKey,
   messagingWidgetReducer,
   normalizeId,
+  resolvePresenceStatus,
   safePreviewableFile,
   sanitizeMessageText,
 } from './messagingWidgetModel.js';
@@ -97,9 +98,7 @@ function groupConversations(messages) {
 }
 
 function resolvePresence(record) {
-  const status = String(record?.presence || record?.status || '').toLowerCase();
-  if (status === PRESENCE.ONLINE || status === PRESENCE.AWAY || status === PRESENCE.OFFLINE) return status;
-  return record?.last_seen_at ? PRESENCE.AWAY : PRESENCE.OFFLINE;
+  return resolvePresenceStatus(record);
 }
 
 function presenceColor(status) {
@@ -146,6 +145,13 @@ function canOpenContextLink(permissions, chipType) {
 
 function formatEmployeeOption(entry) {
   return `${entry.label}`;
+}
+
+function mergePresenceEntries(entries = []) {
+  return Array.from(new Map((entries || []).map((entry) => {
+    const empid = normalizeId(entry?.empid || entry?.id);
+    return [empid, { ...entry, empid }];
+  })).values()).filter((entry) => entry.empid);
 }
 
 function getRowValueCaseInsensitive(row, fieldName) {
@@ -512,11 +518,7 @@ export default function MessagingWidget() {
         if (presenceRes.ok) {
           const presenceData = await presenceRes.json();
           const onlineUsers = Array.isArray(presenceData?.users) ? presenceData.users : [];
-          const deduped = Array.from(new Map(onlineUsers.map((entry) => [normalizeId(entry.empid || entry.id), {
-            ...entry,
-            empid: normalizeId(entry.empid || entry.id),
-          }])).values()).filter((entry) => entry.empid);
-          setPresence(deduped);
+          setPresence(mergePresenceEntries(onlineUsers));
         }
       } catch {
         // Optional enhancement only; keep widget functional.
@@ -536,12 +538,18 @@ export default function MessagingWidget() {
 
     const sendHeartbeat = async () => {
       try {
-        await fetch(`${API_BASE}/messaging/presence/heartbeat`, {
+        const heartbeatRes = await fetch(`${API_BASE}/messaging/presence/heartbeat`, {
           method: 'POST',
           credentials: 'include',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ companyId: activeCompany, status: PRESENCE.ONLINE }),
         });
+        if (heartbeatRes.ok) {
+          setPresence((prev) => mergePresenceEntries([
+            ...(prev || []).filter((entry) => normalizeId(entry.empid || entry.id) !== selfEmpid),
+            { empid: selfEmpid, status: PRESENCE.ONLINE, heartbeat_at: new Date().toISOString() },
+          ]));
+        }
       } catch {
         // Best-effort only.
       }
@@ -551,6 +559,38 @@ export default function MessagingWidget() {
     const intervalId = globalThis.setInterval(sendHeartbeat, 45_000);
     return () => globalThis.clearInterval(intervalId);
   }, [companyId, selfEmpid, state.activeCompanyId]);
+
+
+  useEffect(() => {
+    const activeCompany = state.activeCompanyId || companyId;
+    const employeeIds = Array.from(new Set((employees || []).map((entry) => normalizeId(entry.empid)).filter(Boolean)));
+    if (!activeCompany || employeeIds.length === 0) return undefined;
+
+    let disposed = false;
+    const refreshPresence = async () => {
+      try {
+        const presenceParams = new URLSearchParams({
+          companyId: String(activeCompany),
+          userIds: employeeIds.join(','),
+        });
+        const presenceRes = await fetch(`${API_BASE}/messaging/presence?${presenceParams.toString()}`, { credentials: 'include' });
+        if (!presenceRes.ok || disposed) return;
+        const presenceData = await presenceRes.json();
+        if (disposed) return;
+        const onlineUsers = Array.isArray(presenceData?.users) ? presenceData.users : [];
+        setPresence(mergePresenceEntries(onlineUsers));
+      } catch {
+        // Polling is best effort only.
+      }
+    };
+
+    refreshPresence();
+    const intervalId = globalThis.setInterval(refreshPresence, 60_000);
+    return () => {
+      disposed = true;
+      globalThis.clearInterval(intervalId);
+    };
+  }, [companyId, employees, state.activeCompanyId]);
 
   useEffect(() => {
     const socket = connectSocket();
@@ -579,11 +619,7 @@ export default function MessagingWidget() {
       if (payloadCompanyId && activeCompanyId && payloadCompanyId !== activeCompanyId) return;
 
       if (Array.isArray(payload?.onlineUsers)) {
-        const snapshot = Array.from(new Map(payload.onlineUsers.map((entry) => {
-          const empid = normalizeId(entry?.empid || entry?.id);
-          return [empid, { ...entry, empid }];
-        })).values()).filter((entry) => entry.empid);
-        setPresence(snapshot);
+        setPresence(mergePresenceEntries(payload.onlineUsers));
         return;
       }
 

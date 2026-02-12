@@ -5,6 +5,7 @@ import {
   buildSessionStorageKey,
   createInitialWidgetState,
   messagingWidgetReducer,
+  resolvePresenceStatus,
   safePreviewableFile,
   sanitizeMessageText,
 } from '../../src/erp.mgt.mn/components/messagingWidgetModel.js';
@@ -33,4 +34,22 @@ test('messagingWidgetReducer resets state on company switch', () => {
   assert.equal(switched.activeCompanyId, 'B');
   assert.equal(switched.activeConversationId, null);
   assert.equal(switched.composer.body, '');
+});
+
+
+test('resolvePresenceStatus marks stale online users as away or offline', () => {
+  const now = new Date('2026-01-01T00:10:00.000Z').getTime();
+
+  assert.equal(
+    resolvePresenceStatus({ status: 'online', heartbeat_at: '2026-01-01T00:09:20.000Z' }, now),
+    'online',
+  );
+  assert.equal(
+    resolvePresenceStatus({ status: 'online', heartbeat_at: '2026-01-01T00:08:20.000Z' }, now),
+    'away',
+  );
+  assert.equal(
+    resolvePresenceStatus({ status: 'online', heartbeat_at: '2026-01-01T00:07:20.000Z' }, now),
+    'offline',
+  );
 });
