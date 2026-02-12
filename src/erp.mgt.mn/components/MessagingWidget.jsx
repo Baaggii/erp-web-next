@@ -16,7 +16,6 @@ import {
 
 
 const ATTACHMENTS_MARKER = '\n[attachments-json]';
-const GENERAL_CONVERSATION_ID = 'general';
 
 function decodeMessageContent(rawBody) {
   const safe = String(rawBody || '');
@@ -125,22 +124,6 @@ function buildNestedThreads(messages) {
 function groupConversations(messages) {
   const messageById = new Map(messages.map((msg) => [String(msg.id), msg]));
   const map = new Map();
-  const rootConversationByMessageId = new Map();
-  map.set(GENERAL_CONVERSATION_ID, {
-    id: GENERAL_CONVERSATION_ID,
-    title: 'General',
-    messages: [],
-    linkedType: null,
-    linkedId: null,
-    rootMessageId: null,
-    isGeneral: true,
-  });
-
-  const hasRecipients = (msg) => {
-    const recipients = msg?.recipient_empids || msg?.recipientEmpids || msg?.recipient_ids || msg?.recipientIds;
-    if (Array.isArray(recipients)) return recipients.length > 0;
-    return Boolean(String(msg?.visibility_empid || msg?.visibilityEmpid || '').trim());
-  };
 
   const rootMessages = messages.filter((msg) => {
     const parentId = msg.parent_message_id || msg.parentMessageId || null;
@@ -151,13 +134,7 @@ function groupConversations(messages) {
   rootMessages.forEach((msg) => {
     const topic = extractMessageTopic(msg);
     const link = extractContextLink(msg);
-    if (!hasRecipients(msg) && !link.linkedType && !link.linkedId) {
-      map.get(GENERAL_CONVERSATION_ID).messages.push(msg);
-      rootConversationByMessageId.set(String(msg.id), GENERAL_CONVERSATION_ID);
-      return;
-    }
     const key = String(msg.id);
-    rootConversationByMessageId.set(key, key);
     map.set(key, {
       id: key,
       title: topic || (link.linkedType === 'transaction' && link.linkedId ? `Transaction #${link.linkedId}` : 'General'),
@@ -165,7 +142,6 @@ function groupConversations(messages) {
       linkedType: link.linkedType,
       linkedId: link.linkedId,
       rootMessageId: msg.id,
-      isGeneral: false,
     });
   });
 
@@ -178,7 +154,6 @@ function groupConversations(messages) {
     while (parentId && !visited.has(String(parentId))) {
       visited.add(String(parentId));
       if (map.has(String(parentId))) return String(parentId);
-      if (rootConversationByMessageId.has(String(parentId))) return rootConversationByMessageId.get(String(parentId));
       const parent = messageById.get(String(parentId));
       parentId = parent?.parent_message_id || parent?.parentMessageId || null;
     }
@@ -197,8 +172,6 @@ function groupConversations(messages) {
   });
 
   return Array.from(map.values()).sort((a, b) => {
-    if (a.id === GENERAL_CONVERSATION_ID) return -1;
-    if (b.id === GENERAL_CONVERSATION_ID) return 1;
     const aTime = new Date(a.messages.at(-1)?.created_at || 0).getTime();
     const bTime = new Date(b.messages.at(-1)?.created_at || 0).getTime();
     return bTime - aTime;
@@ -942,11 +915,7 @@ export default function MessagingWidget() {
       ...conversation,
       unread: conversation.messages.filter((msg) => !msg.read_by?.includes?.(selfEmpid)).length,
       preview: sanitizeMessageText(previewDecoded.text || '').slice(0, 48) || 'No messages yet',
-      groupName: conversation.isGeneral
-        ? 'Company-wide'
-        : conversation.linkedType && conversation.linkedId
-          ? `${conversation.linkedType} #${conversation.linkedId}`
-          : `Thread #${conversation.rootMessageId}`,
+      groupName: conversation.linkedType && conversation.linkedId ? `${conversation.linkedType} #${conversation.linkedId}` : `Thread #${conversation.rootMessageId}`,
       lastActivity: previewMessage?.created_at || null,
     };
   }), [conversations, selfEmpid]);
@@ -991,8 +960,7 @@ export default function MessagingWidget() {
 
   const safeTopic = sanitizeMessageText(state.composer.topic || activeConversation?.title || '');
   const safeBody = sanitizeMessageText(state.composer.body);
-  const isGeneralComposer = state.composer.recipients.length === 0;
-  const canSendMessage = Boolean(safeBody && (safeTopic || isGeneralComposer));
+  const canSendMessage = Boolean(safeTopic && safeBody && state.composer.recipients.length > 0);
 
   const handleOpenLinkedTransaction = (transactionId) => {
     if (canViewTransaction(transactionId, normalizeId(sessionId), permissions || {})) {
@@ -1079,7 +1047,7 @@ export default function MessagingWidget() {
   };
 
   const sendMessage = async () => {
-    if (!safeTopic && !isGeneralComposer) {
+    if (!safeTopic) {
       setComposerAnnouncement('Topic is required.');
       return;
     }
@@ -1087,7 +1055,10 @@ export default function MessagingWidget() {
       setComposerAnnouncement('Cannot send an empty message.');
       return;
     }
-    const isGeneralThread = state.composer.recipients.length === 0;
+    if (state.composer.recipients.length === 0) {
+      setComposerAnnouncement('Select at least one recipient.');
+      return;
+    }
     const linkedType = state.composer.linkedType || activeConversation?.linkedType || null;
     const linkedId = state.composer.linkedId || activeConversation?.linkedId || null;
     if ((linkedType && !linkedId) || (!linkedType && linkedId)) {
@@ -1104,15 +1075,14 @@ export default function MessagingWidget() {
       setComposerAnnouncement(err.message || 'Attachment upload failed.');
       return;
     }
-    const messageTopic = safeTopic || 'General';
     const payload = {
       idempotencyKey: createIdempotencyKey(),
       clientTempId,
-      body: `[${messageTopic}] ${safeBody}${encodeAttachmentPayload(uploadedAttachments)}`,
+      body: `[${safeTopic}] ${safeBody}${encodeAttachmentPayload(uploadedAttachments)}`,
       companyId: Number.isFinite(Number(activeCompany)) ? Number(activeCompany) : String(activeCompany),
       recipientEmpids: state.composer.recipients,
-      visibilityScope: isGeneralThread ? 'company' : 'private',
-      visibilityEmpid: isGeneralThread ? null : state.composer.recipients[0],
+      visibilityScope: 'private',
+      visibilityEmpid: state.composer.recipients[0],
       ...(linkedType ? { linkedType } : {}),
       ...(linkedId ? { linkedId: String(linkedId) } : {}),
     };
@@ -1345,7 +1315,7 @@ export default function MessagingWidget() {
               {presencePanelOpen ? '● Hide presence' : '◌ Show presence'}
             </button>
             {presencePanelOpen && (
-              <div style={{ marginTop: 6 }}>
+              <div style={{ marginTop: 8 }}>
                 <input
                   value={recipientSearch}
                   onChange={(event) => setRecipientSearch(event.target.value)}
@@ -1400,13 +1370,9 @@ export default function MessagingWidget() {
                   onClick={() => {
                     dispatch({ type: 'widget/setConversation', payload: conversation.id });
                     dispatch({ type: 'composer/setTopic', payload: conversation.title });
-                    dispatch({ type: 'composer/setRecipients', payload: conversation.isGeneral ? [] : state.composer.recipients });
-                    dispatch({
-                      type: 'composer/setLinkedContext',
-                      payload: conversation.linkedType && conversation.linkedId
-                        ? { linkedType: conversation.linkedType, linkedId: conversation.linkedId }
-                        : { linkedType: null, linkedId: null },
-                    });
+                    if (conversation.linkedType && conversation.linkedId) {
+                      dispatch({ type: 'composer/setLinkedContext', payload: { linkedType: conversation.linkedType, linkedId: conversation.linkedId } });
+                    }
                   }}
                   style={{ textAlign: 'left', border: 0, background: 'transparent', width: '100%', padding: 0 }}
                 >
@@ -1447,7 +1413,7 @@ export default function MessagingWidget() {
               <strong style={{ fontSize: 16, color: '#0f172a' }}>{activeTopic}</strong>
               <p style={{ margin: '4px 0 0', fontSize: 12, color: '#64748b' }}>Ctrl/Cmd + Enter sends your message.</p>
               {activeConversation && (
-                <div style={{ marginTop: 6 }}>
+                <div style={{ marginTop: 8 }}>
                   <p style={{ margin: '0 0 6px', fontSize: 11, fontWeight: 600, color: '#475569' }}>Participants</p>
                   {activeConversationParticipants.length > 0 ? (
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
@@ -1522,7 +1488,7 @@ export default function MessagingWidget() {
           </main>
 
           <form
-            style={{ borderTop: '1px solid #e2e8f0', background: '#ffffff', padding: 8, position: 'sticky', bottom: 0, maxHeight: '34vh', overflowY: 'auto' }}
+            style={{ borderTop: '1px solid #e2e8f0', background: '#ffffff', padding: 10, position: 'sticky', bottom: 0, maxHeight: '34vh', overflowY: 'auto' }}
             onSubmit={(event) => {
               event.preventDefault();
               sendMessage();
@@ -1534,16 +1500,17 @@ export default function MessagingWidget() {
             onDragLeave={() => setDragOverComposer(false)}
             onDrop={onDropComposer}
           >
-            <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) minmax(0,1fr)', gap: 6 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) minmax(0,1fr)', gap: 8 }}>
               <div>
                 <label htmlFor="messaging-topic" style={{ fontSize: 12, fontWeight: 600, color: '#334155' }}>Topic</label>
                 <input
                   id="messaging-topic"
                   value={state.composer.topic}
                   onChange={(event) => dispatch({ type: 'composer/setTopic', payload: event.target.value })}
+                  required
                   placeholder="Enter a topic"
                   aria-label="Topic"
-                  style={{ width: '100%', marginTop: 4, borderRadius: 8, border: '1px solid #cbd5e1', padding: '7px 9px' }}
+                  style={{ width: '100%', marginTop: 6, borderRadius: 8, border: '1px solid #cbd5e1', padding: '9px 10px' }}
                 />
               </div>
 
@@ -1556,7 +1523,7 @@ export default function MessagingWidget() {
                   onChange={(event) => setRecipientSearch(event.target.value)}
                   placeholder="Search by name or employee ID"
                   aria-label="Add recipient"
-                  style={{ width: '100%', marginTop: 4, borderRadius: 8, border: '1px solid #cbd5e1', padding: '7px 9px' }}
+                  style={{ width: '100%', marginTop: 6, borderRadius: 8, border: '1px solid #cbd5e1', padding: '9px 10px' }}
                 />
                 {recipientSearch.trim() && (
                   <div style={{ position: 'absolute', zIndex: 20, top: 62, left: 0, right: 0, border: '1px solid #cbd5e1', borderRadius: 8, background: '#fff', maxHeight: 180, overflowY: 'auto' }}>
@@ -1580,7 +1547,7 @@ export default function MessagingWidget() {
               </div>
             </div>
 
-            <div style={{ marginTop: 6, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+            <div style={{ marginTop: 8, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
               {state.composer.recipients.map((empid) => {
                 const found = employeeRecords.find((entry) => entry.id === empid);
                 const label = found?.label || resolveEmployeeLabel(empid);
@@ -1598,7 +1565,7 @@ export default function MessagingWidget() {
               })}
             </div>
 
-            <label htmlFor="messaging-composer" style={{ marginTop: 8, display: 'block', fontSize: 12, fontWeight: 600, color: '#334155' }}>
+            <label htmlFor="messaging-composer" style={{ marginTop: 10, display: 'block', fontSize: 12, fontWeight: 600, color: '#334155' }}>
               Message
             </label>
             <textarea
@@ -1617,10 +1584,10 @@ export default function MessagingWidget() {
               aria-label="Message composer"
               style={{
                 width: '100%',
-                marginTop: 4,
+                marginTop: 6,
                 borderRadius: 12,
                 border: dragOverComposer ? '2px dashed #f97316' : '2px dashed #cbd5e1',
-                padding: '8px 10px',
+                padding: '10px 12px',
                 fontSize: 15,
                 minHeight: 72,
                 maxHeight: 240,
@@ -1642,15 +1609,15 @@ export default function MessagingWidget() {
               </div>
             )}
 
-            <p title="Drag files to attach, or drag a transaction ID to link context." style={{ margin: '4px 0 0', fontSize: 11, color: '#64748b' }}>Tip: drag files or a transaction ID here.</p>
+            <p title="Drag files to attach, or drag a transaction ID to link context." style={{ margin: '6px 0 0', fontSize: 11, color: '#64748b' }}>Tip: drag files or a transaction ID here.</p>
 
-            <div style={{ marginTop: 6 }}>
+            <div style={{ marginTop: 8 }}>
               <button
                 type="button"
                 onClick={() => setAttachmentsOpen((prev) => !prev)}
                 style={{ border: 0, background: 'transparent', padding: 0, fontSize: 12, fontWeight: 600, color: '#334155' }}
               >
-                {attachmentsOpen ? '▾' : '▸'} More {state.composer.attachments.length > 0 ? `(${state.composer.attachments.length})` : ''}
+                {attachmentsOpen ? '▾' : '▸'} Context & attachments {state.composer.attachments.length > 0 ? `(${state.composer.attachments.length})` : ''}
               </button>
               {attachmentsOpen && (
                 <>
@@ -1693,7 +1660,7 @@ export default function MessagingWidget() {
               )}
             </div>
 
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 12 }}>
               <button type="button" onClick={() => dispatch({ type: 'composer/reset' })} style={{ border: '1px solid #cbd5e1', borderRadius: 8, background: '#fff', padding: '8px 10px' }}>
                 Clear draft
               </button>
@@ -1716,7 +1683,7 @@ export default function MessagingWidget() {
                     <button type="button" onClick={() => setAttachmentPreviewOpen(false)}>Close</button>
                   </div>
                   <img src={attachmentPreview.url} alt={attachmentPreview.name || 'attachment preview'} style={{ maxWidth: '100%', maxHeight: '75vh', borderRadius: 8 }} />
-                  <div style={{ marginTop: 6 }}>
+                  <div style={{ marginTop: 8 }}>
                     <a href={`${attachmentPreview.url}${attachmentPreview.url.includes('?') ? '&' : '?'}download=1`} download={attachmentPreview.name || 'attachment'}>Download image</a>
                   </div>
                 </div>

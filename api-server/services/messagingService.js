@@ -281,12 +281,7 @@ function normalizeVisibility(payload, session, user) {
   }
 
   if (scope === 'private' && recipients.length === 0) {
-    return {
-      visibilityScope: 'company',
-      visibilityDepartmentId: null,
-      visibilityEmpid: null,
-      recipientEmpids: [],
-    };
+    throw createError(400, 'RECIPIENTS_REQUIRED', 'recipientEmpids is required for private scope');
   }
 
   const visibilityDepartmentId = scope === 'department' ? toId(payload?.visibilityDepartmentId ?? session?.department_id) : null;

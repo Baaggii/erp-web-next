@@ -215,29 +215,6 @@ test('tenant isolation: user from company B cannot edit company A message', asyn
 
 
 
-
-test('postMessage treats empty private recipients as company-wide general thread', async () => {
-  const db = new FakeDb();
-  const session = { permissions: { messaging: true } };
-
-  const created = await postMessage({
-    user,
-    companyId: 1,
-    payload: {
-      body: 'company announcement',
-      visibilityScope: 'private',
-      recipientEmpids: [],
-      idempotencyKey: 'general-thread-1',
-    },
-    correlationId: 'general-thread-1',
-    db,
-    getSession: async () => session,
-  });
-
-  assert.equal(created.message.visibility_scope, 'company');
-  assert.equal(created.message.visibility_empid, null);
-});
-
 test('postMessage falls back when encrypted body columns are unavailable', async () => {
   const db = new FakeDb({ supportsEncryptedBodyColumns: false });
   const session = { permissions: { messaging: true } };
