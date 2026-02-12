@@ -88,11 +88,7 @@ export function messagingWidgetReducer(state, action) {
     case 'widget/close':
       return { ...state, isOpen: false };
     case 'widget/setConversation':
-      return {
-        ...state,
-        activeConversationId: action.payload == null ? null : String(action.payload),
-        composer: { ...state.composer, replyToId: null },
-      };
+      return { ...state, activeConversationId: action.payload || null, composer: { ...state.composer, replyToId: null } };
     case 'composer/setBody':
       return { ...state, composer: { ...state.composer, body: action.payload } };
     case 'composer/setTopic':
