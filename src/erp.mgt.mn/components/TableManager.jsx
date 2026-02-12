@@ -3273,6 +3273,7 @@ const TableManager = forwardRef(function TableManager({
     };
 
     try {
+      addToast('Posting transaction...', 'info');
       const res = await fetch(`${API_BASE}/journal/post`, {
         method: 'POST',
         credentials: 'include',
@@ -3295,7 +3296,12 @@ const TableManager = forwardRef(function TableManager({
         body: payload,
       });
       if (!res.ok || payload?.ok === false) {
-        addToast(payload?.message || 'Posting failed', 'error');
+        const errorMessage =
+          payload?.message ||
+          payload?.error?.message ||
+          payload?.error ||
+          'Posting failed';
+        addToast(errorMessage, 'error');
         return;
       }
       addToast('Transaction posted', 'success');
