@@ -825,8 +825,7 @@ export default function MessagingWidget() {
       rootMessageId: null,
     }, ...grouped];
   }, [messages]);
-  const isNewDraftConversation = state.activeConversationId === 'new';
-  const activeConversationId = isNewDraftConversation ? null : (state.activeConversationId || GENERAL_CONVERSATION_ID);
+  const activeConversationId = state.activeConversationId || GENERAL_CONVERSATION_ID;
   const activeConversation = conversations.find((conversation) => conversation.id === activeConversationId) || null;
   const threadMessages = useMemo(() => buildNestedThreads(activeConversation?.messages || []), [activeConversation]);
   const messageMap = useMemo(() => new Map(messages.map((msg) => [msg.id, msg])), [messages]);
@@ -969,15 +968,10 @@ export default function MessagingWidget() {
   const isGeneralConversation = activeConversation?.id === GENERAL_CONVERSATION_ID;
   const isExistingThread = Boolean(activeConversation?.rootMessageId) && !isGeneralConversation;
   const recipientsForSend = isGeneralConversation
-    ? employeeRecords.map((entry) => entry.id).filter((empid) => empid !== selfEmpid)
+    ? employeeRecords.map((entry) => entry.id)
     : (isExistingThread || isReplying)
       ? activeParticipants.filter((empid) => empid !== selfEmpid)
       : state.composer.recipients;
-  const recipientDisplayLabels = isGeneralConversation
-    ? ['All users']
-    : (isExistingThread || isReplying)
-      ? activeParticipants.map((empid) => resolveEmployeeLabel(empid))
-      : recipientsForSend.map((empid) => resolveEmployeeLabel(empid));
   const canSendMessage = Boolean(safeBody && recipientsForSend.length > 0);
   const canEditTopic = Boolean(isExistingThread && normalizeId(rootMessage?.author_empid) === selfEmpid);
 
@@ -1094,10 +1088,11 @@ export default function MessagingWidget() {
     const payload = {
       idempotencyKey: createIdempotencyKey(),
       clientTempId,
-      body: `${(!state.composer.replyToId && safeTopic && !isGeneralConversation) ? `[${safeTopic}] ` : ''}${safeBody}${encodeAttachmentPayload(uploadedAttachments)}`,
+      body: `${safeBody}${encodeAttachmentPayload(uploadedAttachments)}`,
       companyId: Number.isFinite(Number(activeCompany)) ? Number(activeCompany) : String(activeCompany),
       recipientEmpids: recipientsForSend,
       visibilityScope: isGeneralConversation ? 'company' : 'private',
+      ...(safeTopic ? { topic: safeTopic } : {}),
       ...(!isGeneralConversation && recipientsForSend.length === 1 ? { visibilityEmpid: recipientsForSend[0] } : {}),
       ...(linkedType ? { linkedType } : {}),
       ...(linkedId ? { linkedId: String(linkedId) } : {}),
@@ -1205,7 +1200,7 @@ export default function MessagingWidget() {
   };
 
   const openNewMessage = () => {
-    dispatch({ type: 'widget/setConversation', payload: 'new' });
+    dispatch({ type: 'widget/setConversation', payload: null });
     dispatch({ type: 'composer/setTopic', payload: '' });
     dispatch({ type: 'composer/setBody', payload: '' });
     dispatch({ type: 'composer/setReplyTo', payload: null });
@@ -1428,9 +1423,9 @@ export default function MessagingWidget() {
             <div style={{ position: 'sticky', top: 0, background: '#f8fafc', paddingBottom: 8, marginBottom: 8 }}>
               <strong style={{ fontSize: 16, color: '#0f172a' }}>{activeTopic}</strong>
               <div style={{ marginTop: 6, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                {recipientDisplayLabels.slice(0, 16).map((label) => (
-                  <span key={`header-${label}`} style={{ borderRadius: 999, border: '1px solid #cbd5e1', padding: '2px 8px', fontSize: 11, background: '#fff' }}>
-                    {label}
+                {(activeParticipants.length > 0 ? activeParticipants : recipientsForSend).slice(0, 16).map((empid) => (
+                  <span key={`header-${empid}`} style={{ borderRadius: 999, border: '1px solid #cbd5e1', padding: '2px 8px', fontSize: 11, background: '#fff' }}>
+                    {resolveEmployeeLabel(empid)}
                   </span>
                 ))}
               </div>
@@ -1524,14 +1519,7 @@ export default function MessagingWidget() {
             )}
 
             <div style={{ marginTop: 8, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-              {isGeneralConversation ? (
-                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, border: '1px solid #cbd5e1', borderRadius: 999, padding: '4px 10px', background: '#f8fafc' }}>
-                  <span style={{ width: 18, height: 18, borderRadius: 999, background: '#dbeafe', color: '#1d4ed8', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700 }}>
-                    AU
-                  </span>
-                  <span style={{ fontSize: 12, color: '#1e293b' }}>All users</span>
-                </span>
-              ) : recipientsForSend.map((empid) => {
+              {recipientsForSend.map((empid) => {
                 const found = employeeRecords.find((entry) => entry.id === empid);
                 const label = found?.label || resolveEmployeeLabel(empid);
                 const status = found?.status || presenceMap.get(empid) || PRESENCE.OFFLINE;
