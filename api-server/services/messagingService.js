@@ -544,6 +544,41 @@ function emit(companyId, eventName, payload) {
   ioRef.to(`company:${companyId}`).emit(eventName, payload);
 }
 
+function emitToEmpid(eventName, empid, payload) {
+  if (!ioRef || !empid) return;
+  const safe = String(empid || '').trim();
+  if (!safe) return;
+  ioRef.to(`user:${safe}`).emit(eventName, payload);
+  ioRef.to(`user:${safe.toUpperCase()}`).emit(eventName, payload);
+  ioRef.to(`emp:${safe}`).emit(eventName, payload);
+}
+
+function emitMessageScoped(ctx, eventName, message, optimistic) {
+  if (!ioRef || !message) return;
+  const payload = {
+    ...eventPayloadBase(ctx),
+    message,
+    optimistic: optimistic || {
+      tempId: null,
+      accepted: true,
+      replay: false,
+    },
+  };
+
+  const scope = String(message.visibility_scope || 'company');
+  if (scope === 'private') {
+    emitToEmpid(eventName, message.author_empid, payload);
+    emitToEmpid(eventName, message.visibility_empid, payload);
+    return;
+  }
+  if (scope === 'department' && message.visibility_department_id) {
+    ioRef.to(`department:${message.visibility_department_id}`).emit(eventName, payload);
+    emitToEmpid(eventName, message.author_empid, payload);
+    return;
+  }
+  emit(ctx.companyId, eventName, payload);
+}
+
 async function createMessageInternal({ db = pool, ctx, payload, parentMessageId = null, eventName = 'message.created' }) {
   const startedAt = process.hrtime.bigint();
   const body = sanitizeBody(payload?.body);
@@ -698,14 +733,10 @@ async function createMessageInternal({ db = pool, ctx, payload, parentMessageId 
   const message = await findMessageById(db, ctx.companyId, messageId);
 
   const viewerMessage = sanitizeForViewer(message, ctx.session, ctx.user);
-  emit(ctx.companyId, eventName, {
-    ...eventPayloadBase(ctx),
-    message: viewerMessage,
-    optimistic: {
-      tempId: payload?.clientTempId ?? null,
-      accepted: true,
-      replay: false,
-    },
+  emitMessageScoped(ctx, eventName, viewerMessage, {
+    tempId: payload?.clientTempId ?? null,
+    accepted: true,
+    replay: false,
   });
 
   const elapsedSeconds = Number(process.hrtime.bigint() - startedAt) / 1_000_000_000;

@@ -14,6 +14,44 @@ import {
   sanitizeMessageText,
 } from './messagingWidgetModel.js';
 
+
+const ATTACHMENTS_MARKER = '\n[attachments-json]';
+
+function decodeMessageContent(rawBody) {
+  const safe = String(rawBody || '');
+  const markerIndex = safe.indexOf(ATTACHMENTS_MARKER);
+  if (markerIndex < 0) return { text: safe, attachments: [] };
+  const text = safe.slice(0, markerIndex).trimEnd();
+  const encoded = safe.slice(markerIndex + ATTACHMENTS_MARKER.length).trim();
+  if (!encoded) return { text, attachments: [] };
+  try {
+    const json = globalThis.atob(encoded);
+    const parsed = JSON.parse(json);
+    const attachments = Array.isArray(parsed)
+      ? parsed.filter((entry) => entry && typeof entry.url === 'string')
+      : [];
+    return { text, attachments };
+  } catch {
+    return { text: safe, attachments: [] };
+  }
+}
+
+function encodeAttachmentPayload(items = []) {
+  if (!Array.isArray(items) || items.length === 0) return '';
+  try {
+    const json = JSON.stringify(items.map((entry) => ({
+      name: sanitizeMessageText(entry?.name || ''),
+      type: sanitizeMessageText(entry?.type || ''),
+      size: Number(entry?.size) || 0,
+      url: String(entry?.url || '').trim(),
+    })).filter((entry) => entry.url));
+    const encoded = globalThis.btoa(json);
+    return `${ATTACHMENTS_MARKER}${encoded}`;
+  } catch {
+    return '';
+  }
+}
+
 const STATUS_FILTERS = [
   { value: 'all', label: 'All' },
   { value: PRESENCE.ONLINE, label: 'Online' },
@@ -190,7 +228,8 @@ function canViewTransaction(transactionId, userId, permissions) {
 
 function MessageNode({ message, depth = 0, onReply, onJumpToParent, onToggleReplies, collapsedMessageIds, parentMap, permissions, activeReplyTarget, highlightedIds, onOpenLinkedTransaction, resolveEmployeeLabel, canDeleteMessage, onDeleteMessage }) {
   const replyCount = countNestedReplies(message);
-  const safeBody = sanitizeMessageText(message.body);
+  const decoded = decodeMessageContent(message.body);
+  const safeBody = sanitizeMessageText(decoded.text);
   const linked = extractContextLink(message);
   const hasReplies = Array.isArray(message.replies) && message.replies.length > 0;
   const isCollapsed = collapsedMessageIds.has(message.id);
@@ -218,6 +257,15 @@ function MessageNode({ message, depth = 0, onReply, onJumpToParent, onToggleRepl
         {authorLabel} · {new Date(message.created_at).toLocaleString()}
       </header>
       <p style={{ whiteSpace: 'pre-wrap', margin: '8px 0', color: '#0f172a', fontSize: 15 }}>{highlightMentions(safeBody)}</p>
+      {decoded.attachments.length > 0 && (
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
+          {decoded.attachments.map((file) => (
+            <a key={`${file.url}-${file.name}`} href={file.url} target="_blank" rel="noreferrer" style={{ fontSize: 12 }}>
+              📎 {file.name || 'attachment'}
+            </a>
+          ))}
+        </div>
+      )}
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
         {linked.linkedType === 'transaction' && linked.linkedId && (
           <button
@@ -875,6 +923,26 @@ export default function MessagingWidget() {
     setComposerAnnouncement('Conversation deleted.');
   };
 
+
+  const uploadComposerAttachments = async (activeCompany) => {
+    const files = state.composer.attachments || [];
+    if (!files.length) return [];
+    const form = new FormData();
+    form.append('companyId', String(activeCompany));
+    files.forEach((file) => form.append('files', file));
+    const uploadRes = await fetch(`${API_BASE}/messaging/uploads`, {
+      method: 'POST',
+      credentials: 'include',
+      body: form,
+    });
+    if (!uploadRes.ok) {
+      const uploadErr = await uploadRes.json().catch(() => null);
+      throw new Error(uploadErr?.message || 'Failed to upload attachments');
+    }
+    const uploadPayload = await uploadRes.json().catch(() => ({}));
+    return Array.isArray(uploadPayload?.items) ? uploadPayload.items : [];
+  };
+
   const handleDeleteConversationFromList = async (conversation) => {
     if (!conversation?.rootMessageId) return;
     const rootMessage = messages.find((entry) => Number(entry.id) === Number(conversation.rootMessageId));
@@ -898,6 +966,10 @@ export default function MessagingWidget() {
       setComposerAnnouncement('Select at least one recipient.');
       return;
     }
+    if (state.composer.recipients.length !== 1) {
+      setComposerAnnouncement('Select exactly one recipient for private messaging.');
+      return;
+    }
 
     const linkedType = state.composer.linkedType || activeConversation?.linkedType || null;
     const linkedId = state.composer.linkedId || activeConversation?.linkedId || null;
@@ -908,15 +980,21 @@ export default function MessagingWidget() {
 
     const activeCompany = state.activeCompanyId || companyId;
     const clientTempId = `tmp-${createIdempotencyKey()}`;
+    let uploadedAttachments = [];
+    try {
+      uploadedAttachments = await uploadComposerAttachments(activeCompany);
+    } catch (err) {
+      setComposerAnnouncement(err.message || 'Attachment upload failed.');
+      return;
+    }
     const payload = {
       idempotencyKey: createIdempotencyKey(),
       clientTempId,
-      body: `[${safeTopic}] ${safeBody}`,
+      body: `[${safeTopic}] ${safeBody}${encodeAttachmentPayload(uploadedAttachments)}`,
       companyId: Number.isFinite(Number(activeCompany)) ? Number(activeCompany) : String(activeCompany),
       recipientEmpids: state.composer.recipients,
-      ...(state.composer.recipients.length === 1
-        ? { visibilityScope: 'private', visibilityEmpid: state.composer.recipients[0] }
-        : { visibilityScope: 'department' }),
+      visibilityScope: 'private',
+      visibilityEmpid: state.composer.recipients[0],
       ...(linkedType ? { linkedType } : {}),
       ...(linkedId ? { linkedId: String(linkedId) } : {}),
     };
