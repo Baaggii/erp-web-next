@@ -854,6 +854,7 @@ export async function getMessages({ user, companyId, linkedType, linkedId, curso
     const fallbackFilters = filters.filter((entry) => entry !== 'linked_type = ?' && entry !== 'linked_id = ?');
     const fallbackParams = [scopedCompanyId];
     if (cursorId) fallbackParams.push(cursorId);
+    fallbackParams.push(...visibilityFilter.params);
     [rows] = await db.query(
       `SELECT * FROM erp_messages WHERE ${fallbackFilters.join(' AND ')} ORDER BY id DESC LIMIT ?`,
       [...fallbackParams, parsedLimit + 1],
