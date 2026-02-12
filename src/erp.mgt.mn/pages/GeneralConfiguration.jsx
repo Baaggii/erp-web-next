@@ -167,6 +167,14 @@ export default function GeneralConfiguration() {
             Reports
           </button>
         </TooltipWrapper>
+        <TooltipWrapper title={t('tab_fin_reporting', { ns: 'tooltip', defaultValue: 'Financial reporting settings' })}>
+          <button
+            className={`tab-button ${tab === 'finReporting' ? 'active' : ''}`}
+            onClick={() => setTab('finReporting')}
+          >
+            Fin reporting
+          </button>
+        </TooltipWrapper>
         <TooltipWrapper title={t('tab_plan', { ns: 'tooltip', defaultValue: 'Plan settings' })}>
           <button
             className={`tab-button ${tab === 'plan' ? 'active' : ''}`}
@@ -225,6 +233,9 @@ export default function GeneralConfiguration() {
         </button>
         <button onClick={() => setTab('reports')} disabled={tab === 'reports'} style={{ marginLeft: '0.5rem' }}>
           Reports
+        </button>
+        <button onClick={() => setTab('finReporting')} disabled={tab === 'finReporting'} style={{ marginLeft: '0.5rem' }}>
+          Fin reporting
         </button>
         <button onClick={() => setTab('plan')} disabled={tab === 'plan'} style={{ marginLeft: '0.5rem' }}>
           Plan
@@ -558,6 +569,28 @@ export default function GeneralConfiguration() {
                   name="bulkUpdateRequiresRequest"
                   type="checkbox"
                   checked={active.bulkUpdateRequiresRequest ?? true}
+                  onChange={handleChange}
+                />
+              </label>
+            </TooltipWrapper>
+          </div>
+        </>
+      ) : tab === 'finReporting' ? (
+        <>
+          <div style={{ marginBottom: '0.5rem' }}>
+            <TooltipWrapper
+              title={t('journal_action_debug_info', {
+                ns: 'tooltip',
+                defaultValue:
+                  'Show debug info and request payloads when using Preview Journal and Post actions',
+              })}
+            >
+              <label>
+                Show journal action debug info{' '}
+                <input
+                  name="showJournalActionDebug"
+                  type="checkbox"
+                  checked={active.showJournalActionDebug ?? false}
                   onChange={handleChange}
                 />
               </label>

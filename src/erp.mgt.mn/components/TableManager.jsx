@@ -50,6 +50,7 @@ import {
 import normalizeRelationKey from '../utils/normalizeRelationKey.js';
 import getRelationRowFromMap from '../utils/getRelationRowFromMap.js';
 import { isNonFinancialRow, isPostedStatus, isPostingSourceTable } from '../utils/postingControls.js';
+import normalizeBoolean from '../utils/normalizeBoolean.js';
 
 const TEMPORARY_FILTER_CACHE_KEY = 'temporary-transaction-filter';
 
@@ -830,6 +831,10 @@ const TableManager = forwardRef(function TableManager({
   const generalConfig = useGeneralConfig();
   const txnToastEnabled = generalConfig.general?.txnToastEnabled;
   const ebarimtToastEnabled = generalConfig.general?.ebarimtToastEnabled;
+  const journalActionDebugEnabled = normalizeBoolean(
+    generalConfig.finReporting?.showJournalActionDebug,
+    false,
+  );
   const workflowToastEnabled = useMemo(() => {
     if (!generalConfig?.notifications?.workflowToastEnabled) return false;
     if (typeof window === 'undefined') return false;
@@ -3205,6 +3210,35 @@ const TableManager = forwardRef(function TableManager({
     return { isPostingTable, posted, nonFinancial };
   }
 
+  function getJournalSourceId(rowId) {
+    if (typeof rowId === 'number') return rowId;
+    if (typeof rowId === 'string') {
+      const trimmed = rowId.trim();
+      if (trimmed === '') return rowId;
+      const asNumber = Number(trimmed);
+      if (Number.isFinite(asNumber) && String(asNumber) === trimmed) {
+        return asNumber;
+      }
+    }
+    return rowId;
+  }
+
+  function logJournalActionDebug(action, payload, response = null) {
+    if (!journalActionDebugEnabled) return;
+    const requestInfo = `${action} payload: ${JSON.stringify(payload)}`;
+    addToast(requestInfo, 'info');
+    if (typeof window !== 'undefined' && window.erpDebug) {
+      console.debug(`[journal/${action}] request`, payload);
+    }
+    if (response) {
+      const responseInfo = `${action} response: ${JSON.stringify(response)}`;
+      addToast(responseInfo, response.ok ? 'info' : 'error');
+      if (typeof window !== 'undefined' && window.erpDebug) {
+        console.debug(`[journal/${action}] response`, response);
+      }
+    }
+  }
+
   async function handlePostTransaction(row, forceRepost = false) {
     const rowId = getRowId(row);
     if (rowId === undefined || rowId === null) return;
@@ -3224,24 +3258,40 @@ const TableManager = forwardRef(function TableManager({
       : 'Post this transaction? After posting it will be locked.';
     if (!window.confirm(confirmMessage)) return;
 
-    const res = await fetch(`${API_BASE}/journal/post`, {
-      method: 'POST',
-      credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        source_table: table,
-        source_id: Number(rowId),
-        force_repost: forceRepost,
-      }),
-    });
+    const sourceId = getJournalSourceId(rowId);
+    const requestPayload = {
+      source_table: table,
+      source_id: sourceId,
+      force_repost: forceRepost,
+    };
+    logJournalActionDebug('post', requestPayload);
+    try {
+      const res = await fetch(`${API_BASE}/journal/post`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(requestPayload),
+      });
 
-    const payload = await res.json().catch(() => ({}));
-    if (!res.ok || payload?.ok === false) {
-      addToast(payload?.message || 'Posting failed', 'error');
-      return;
+      const payload = await res.json().catch(() => ({}));
+      logJournalActionDebug('post', requestPayload, {
+        status: res.status,
+        ok: res.ok,
+        body: payload,
+      });
+      if (!res.ok || payload?.ok === false) {
+        addToast(payload?.message || 'Posting failed', 'error');
+        return;
+      }
+      addToast('Transaction posted', 'success');
+      refreshRows();
+    } catch (err) {
+      logJournalActionDebug('post', requestPayload, {
+        ok: false,
+        error: err?.message || 'Unknown error',
+      });
+      addToast(`Request failed: ${err?.message || 'Unknown error'}`, 'error');
     }
-    addToast('Transaction posted', 'success');
-    refreshRows();
   }
 
   async function handlePreviewJournal(row) {
@@ -3249,18 +3299,34 @@ const TableManager = forwardRef(function TableManager({
     if (rowId === undefined || rowId === null) return;
     setPreviewLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/journal/preview`, {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ source_table: table, source_id: Number(rowId) }),
-      });
-      const payload = await res.json().catch(() => ({}));
-      if (!res.ok || payload?.ok === false) {
-        addToast(payload?.message || 'Preview failed', 'error');
-        return;
+      const sourceId = getJournalSourceId(rowId);
+      const requestPayload = { source_table: table, source_id: sourceId };
+      logJournalActionDebug('preview', requestPayload);
+      try {
+        const res = await fetch(`${API_BASE}/journal/preview`, {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(requestPayload),
+        });
+        const payload = await res.json().catch(() => ({}));
+        logJournalActionDebug('preview', requestPayload, {
+          status: res.status,
+          ok: res.ok,
+          body: payload,
+        });
+        if (!res.ok || payload?.ok === false) {
+          addToast(payload?.message || 'Preview failed', 'error');
+          return;
+        }
+        setPreviewLines(payload);
+      } catch (err) {
+        logJournalActionDebug('preview', requestPayload, {
+          ok: false,
+          error: err?.message || 'Unknown error',
+        });
+        addToast(`Request failed: ${err?.message || 'Unknown error'}`, 'error');
       }
-      setPreviewLines(payload);
     } finally {
       setPreviewLoading(false);
     }
