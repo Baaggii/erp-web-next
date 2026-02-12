@@ -122,31 +122,90 @@ function buildNestedThreads(messages) {
 }
 
 function groupConversations(messages) {
-  const map = new Map();
-  messages.forEach((msg) => {
-    const topic = extractMessageTopic(msg);
-    const link = extractContextLink(msg);
-    const conversationId = msg.conversation_id || msg.conversationId || null;
-    const key = String(
-      conversationId
-      || (link.linkedType && link.linkedId ? `${link.linkedType}:${link.linkedId}` : null)
-      || `message:${msg.parent_message_id || msg.parentMessageId || msg.id}`,
-    );
-    if (!map.has(key)) {
-      map.set(key, {
-        id: key,
-        title: topic || (link.linkedType === 'transaction' && link.linkedId ? `Transaction #${link.linkedId}` : 'General'),
-        messages: [],
-        linkedType: link.linkedType,
-        linkedId: link.linkedId,
-        rootMessageId: conversationId || msg.parent_message_id || msg.parentMessageId || msg.id,
-      });
+  const allMessages = Array.isArray(messages) ? messages : [];
+  const messageById = new Map(allMessages.map((msg) => [Number(msg.id), msg]));
+  const rootMessages = allMessages.filter((msg) => !(msg.parent_message_id || msg.parentMessageId));
+  const conversationMap = new Map();
+
+  const resolveRootMessage = (message) => {
+    let current = message;
+    const visited = new Set();
+    while (current?.parent_message_id || current?.parentMessageId) {
+      const parentId = Number(current.parent_message_id || current.parentMessageId);
+      if (!parentId || visited.has(parentId)) break;
+      visited.add(parentId);
+      current = messageById.get(parentId) || null;
+      if (!current) break;
     }
-    const current = map.get(key);
-    if (!current.title && topic) current.title = topic;
-    current.messages.push(msg);
+    return current || message;
+  };
+
+  const hasRecipients = (message) => {
+    const recipientEmpids =
+      message?.recipient_empids || message?.recipientEmpids || message?.recipient_ids || message?.recipientIds;
+    return Array.isArray(recipientEmpids) && recipientEmpids.map(normalizeId).filter(Boolean).length > 0;
+  };
+
+  const buildConversation = (root) => {
+    const topic = extractMessageTopic(root);
+    const link = extractContextLink(root);
+    const conversationId = root.conversation_id || root.conversationId || null;
+    const isGeneral = !hasRecipients(root) && !link.linkedType && !link.linkedId;
+    const key = isGeneral
+      ? '__general__'
+      : String(conversationId || `message:${root.id}`);
+    return {
+      id: key,
+      title: topic || (isGeneral ? 'General' : (link.linkedType === 'transaction' && link.linkedId ? `Transaction #${link.linkedId}` : 'Untitled topic')),
+      messages: [],
+      linkedType: link.linkedType,
+      linkedId: link.linkedId,
+      rootMessageId: isGeneral ? null : root.id,
+      creatorEmpid: normalizeId(root.author_empid || root.authorEmpid),
+      isGeneral,
+      isCompanyWide: !hasRecipients(root),
+      participantEmpids: [],
+    };
+  };
+
+  rootMessages.forEach((root) => {
+    const conversation = buildConversation(root);
+    if (!conversationMap.has(conversation.id)) {
+      conversationMap.set(conversation.id, conversation);
+    }
   });
-  return Array.from(map.values()).sort((a, b) => {
+
+  if (!conversationMap.has('__general__')) {
+    conversationMap.set('__general__', {
+      id: '__general__',
+      title: 'General',
+      messages: [],
+      linkedType: null,
+      linkedId: null,
+      rootMessageId: null,
+      creatorEmpid: null,
+      isGeneral: true,
+      isCompanyWide: true,
+      participantEmpids: [],
+    });
+  }
+
+  allMessages.forEach((msg) => {
+    const root = resolveRootMessage(msg);
+    const rootConversation = buildConversation(root);
+    const key = conversationMap.has(rootConversation.id) ? rootConversation.id : `message:${root.id}`;
+    if (!conversationMap.has(key)) conversationMap.set(key, rootConversation);
+    const current = conversationMap.get(key);
+    current.messages.push(msg);
+    current.participantEmpids = Array.from(new Set([
+      ...(current.participantEmpids || []),
+      ...collectMessageParticipantEmpids(msg),
+    ]));
+  });
+
+  return Array.from(conversationMap.values()).sort((a, b) => {
+    if (a.isGeneral && !b.isGeneral) return -1;
+    if (b.isGeneral && !a.isGeneral) return 1;
     const aTime = new Date(a.messages.at(-1)?.created_at || 0).getTime();
     const bTime = new Date(b.messages.at(-1)?.created_at || 0).getTime();
     return bTime - aTime;
@@ -234,6 +293,19 @@ function collectMessageParticipantEmpids(message) {
   if (Array.isArray(recipientEmpids)) ids.push(...recipientEmpids);
   const readBy = Array.isArray(message?.read_by) ? message.read_by : [];
   ids.push(...readBy);
+  return Array.from(new Set(ids.map(normalizeId).filter(Boolean)));
+}
+
+function collectThreadRecipientEmpids(conversation) {
+  const rootMessage = Array.isArray(conversation?.messages)
+    ? conversation.messages.find((entry) => !(entry?.parent_message_id || entry?.parentMessageId))
+    : null;
+  if (!rootMessage) return [];
+  const ids = [];
+  const recipientEmpids =
+    rootMessage?.recipient_empids || rootMessage?.recipientEmpids || rootMessage?.recipient_ids || rootMessage?.recipientIds;
+  if (Array.isArray(recipientEmpids)) ids.push(...recipientEmpids);
+  ids.push(rootMessage?.author_empid, rootMessage?.authorEmpid, rootMessage?.visibility_empid, rootMessage?.visibilityEmpid);
   return Array.from(new Set(ids.map(normalizeId).filter(Boolean)));
 }
 
@@ -890,12 +962,18 @@ export default function MessagingWidget() {
       ...conversation,
       unread: conversation.messages.filter((msg) => !msg.read_by?.includes?.(selfEmpid)).length,
       preview: sanitizeMessageText(previewDecoded.text || '').slice(0, 48) || 'No messages yet',
-      groupName: conversation.linkedType && conversation.linkedId ? `${conversation.linkedType} #${conversation.linkedId}` : `Thread #${conversation.rootMessageId}`,
+      groupName: conversation.isGeneral
+        ? 'General · company-wide'
+        : conversation.isCompanyWide
+          ? 'Legacy company-wide thread'
+          : conversation.linkedType && conversation.linkedId
+            ? `${conversation.linkedType} #${conversation.linkedId}`
+            : `Thread #${conversation.rootMessageId}`,
       lastActivity: previewMessage?.created_at || null,
     };
   }), [conversations, selfEmpid]);
 
-  const activeTopic = state.composer.topic || activeConversation?.title || 'Untitled topic';
+  const activeTopic = activeConversation?.title || 'General';
   const sessionUserLabel = sanitizeMessageText(
     user?.emp_name || user?.employee_name || user?.name || user?.full_name || user?.username || user?.empid,
   );
@@ -913,7 +991,27 @@ export default function MessagingWidget() {
 
   const safeTopic = sanitizeMessageText(state.composer.topic || activeConversation?.title || '');
   const safeBody = sanitizeMessageText(state.composer.body);
-  const canSendMessage = Boolean(safeTopic && safeBody && state.composer.recipients.length > 0);
+  const isReplyMode = Boolean(state.composer.replyToId);
+  const generalRecipients = employeeRecords.map((entry) => entry.id).filter((empid) => empid && empid !== selfEmpid);
+  const activeConversationRecipients = collectThreadRecipientEmpids(activeConversation).filter((empid) => empid !== selfEmpid);
+  const effectiveRecipients = isReplyMode
+    ? activeConversationRecipients
+    : state.composer.recipients.length > 0
+      ? state.composer.recipients
+      : activeConversation?.isGeneral
+        ? generalRecipients
+        : [];
+  const canSendMessage = Boolean(safeBody && effectiveRecipients.length > 0);
+  const participantChips = (activeConversation?.participantEmpids || []).map((empid) => ({
+    id: empid,
+    label: resolveEmployeeLabel(empid),
+    status: presenceMap.get(empid) || PRESENCE.OFFLINE,
+  }));
+  const canEditTopic = Boolean(
+    activeConversation
+    && activeConversation.creatorEmpid
+    && normalizeId(activeConversation.creatorEmpid) === selfEmpid,
+  );
 
   const handleOpenLinkedTransaction = (transactionId) => {
     if (canViewTransaction(transactionId, normalizeId(sessionId), permissions || {})) {
@@ -1000,20 +1098,12 @@ export default function MessagingWidget() {
   };
 
   const sendMessage = async () => {
-    if (!safeTopic) {
-      setComposerAnnouncement('Topic is required.');
-      return;
-    }
     if (!safeBody) {
       setComposerAnnouncement('Cannot send an empty message.');
       return;
     }
-    if (state.composer.recipients.length === 0) {
+    if (effectiveRecipients.length === 0) {
       setComposerAnnouncement('Select at least one recipient.');
-      return;
-    }
-    if (state.composer.recipients.length !== 1) {
-      setComposerAnnouncement('Select exactly one recipient for private messaging.');
       return;
     }
 
@@ -1036,11 +1126,12 @@ export default function MessagingWidget() {
     const payload = {
       idempotencyKey: createIdempotencyKey(),
       clientTempId,
-      body: `[${safeTopic}] ${safeBody}${encodeAttachmentPayload(uploadedAttachments)}`,
+      body: `${safeBody}${encodeAttachmentPayload(uploadedAttachments)}`,
       companyId: Number.isFinite(Number(activeCompany)) ? Number(activeCompany) : String(activeCompany),
-      recipientEmpids: state.composer.recipients,
-      visibilityScope: 'private',
-      visibilityEmpid: state.composer.recipients[0],
+      recipientEmpids: effectiveRecipients,
+      visibilityScope: effectiveRecipients.length > 0 ? 'private' : 'company',
+      visibilityEmpid: effectiveRecipients[0] || null,
+      ...(safeTopic ? { topic: safeTopic } : {}),
       ...(linkedType ? { linkedType } : {}),
       ...(linkedId ? { linkedId: String(linkedId) } : {}),
     };
@@ -1147,10 +1238,12 @@ export default function MessagingWidget() {
   };
 
   const openNewMessage = () => {
+    dispatch({ type: 'widget/setConversation', payload: null });
     dispatch({ type: 'composer/setTopic', payload: '' });
     dispatch({ type: 'composer/setBody', payload: '' });
     dispatch({ type: 'composer/setReplyTo', payload: null });
-    setComposerAnnouncement('Started a new message draft. Add a topic and message body.');
+    dispatch({ type: 'composer/setLinkedContext', payload: { linkedType: null, linkedId: null } });
+    setComposerAnnouncement('Started a new message draft. Add recipients and your first message.');
   };
 
   const onComposerInput = (event) => {
@@ -1189,6 +1282,7 @@ export default function MessagingWidget() {
   };
 
   const onRemoveRecipient = (id) => {
+    if (isReplyMode) return;
     dispatch({ type: 'composer/setRecipients', payload: state.composer.recipients.filter((entry) => entry !== id) });
   };
 
@@ -1225,8 +1319,8 @@ export default function MessagingWidget() {
         border: '1px solid #cbd5e1',
         borderRadius: 14,
         zIndex: 1200,
-        overflow: 'auto',
-        maxHeight: '58vh',
+        overflow: 'hidden',
+        height: isNarrowLayout ? '82vh' : '78vh',
       }}
       aria-label="Messaging widget"
     >
@@ -1245,7 +1339,7 @@ export default function MessagingWidget() {
         </button>
       </header>
 
-      <div style={{ display: 'grid', gridTemplateColumns: isNarrowLayout ? 'minmax(0, 1fr)' : '300px minmax(0,1fr)', minHeight: 0, height: '100%' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: isNarrowLayout ? 'minmax(0, 1fr)' : '320px minmax(0,1fr)', minHeight: 0, height: '100%' }}>
         <aside style={{ borderRight: isNarrowLayout ? 'none' : '1px solid #e2e8f0', background: '#ffffff', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
           <div style={{ padding: 12, borderBottom: '1px solid #e2e8f0' }}>
             <label htmlFor="messaging-company-switch" style={{ fontSize: 12, fontWeight: 600, color: '#334155' }}>Company</label>
@@ -1268,12 +1362,12 @@ export default function MessagingWidget() {
             </button>
           </div>
 
-          <div style={{ padding: 10, borderBottom: '1px solid #e2e8f0' }}>
+          <div style={{ padding: 10, borderBottom: '1px solid #e2e8f0', position: 'relative' }}>
             <button type="button" onClick={() => setPresencePanelOpen((prev) => !prev)} style={{ border: '1px solid #cbd5e1', borderRadius: 8, background: '#fff', fontWeight: 700, color: '#0f172a', padding: '4px 8px', fontSize: 12 }}>
-              {presencePanelOpen ? '● Hide presence' : '◌ Show presence'}
+              {presencePanelOpen ? 'Hide people' : 'People'}
             </button>
             {presencePanelOpen && (
-              <div style={{ marginTop: 8 }}>
+              <div style={{ marginTop: 8, position: 'absolute', zIndex: 30, top: 44, left: 10, right: 10, background: '#fff', border: '1px solid #cbd5e1', borderRadius: 12, boxShadow: '0 10px 30px rgba(15,23,42,0.12)', padding: 8 }}>
                 <input
                   value={recipientSearch}
                   onChange={(event) => setRecipientSearch(event.target.value)}
@@ -1319,7 +1413,7 @@ export default function MessagingWidget() {
           </div>
 
           {conversationPanelOpen && (
-          <div style={{ overflowY: 'auto', padding: 8, display: 'grid', gap: 6, minHeight: 0 }}>
+          <div style={{ overflowY: 'auto', padding: 8, display: 'grid', gap: 6, minHeight: 0, flex: 1 }}>
             {conversationSummaries.length === 0 && <p style={{ color: '#64748b', fontSize: 13 }}>No conversations yet.</p>}
             {conversationSummaries.map((conversation) => (
               <div key={conversation.id} style={{ borderRadius: 12, border: conversation.id === activeConversationId ? '1px solid #3b82f6' : '1px solid #e2e8f0', background: conversation.id === activeConversationId ? '#eff6ff' : '#ffffff', padding: 8 }}>
@@ -1328,9 +1422,12 @@ export default function MessagingWidget() {
                   onClick={() => {
                     dispatch({ type: 'widget/setConversation', payload: conversation.id });
                     dispatch({ type: 'composer/setTopic', payload: conversation.title });
-                    if (conversation.linkedType && conversation.linkedId) {
-                      dispatch({ type: 'composer/setLinkedContext', payload: { linkedType: conversation.linkedType, linkedId: conversation.linkedId } });
-                    }
+                    dispatch({ type: 'composer/setRecipients', payload: collectThreadRecipientEmpids(conversation).filter((empid) => empid !== selfEmpid) });
+                    dispatch({ type: 'composer/setReplyTo', payload: null });
+                    dispatch({ type: 'composer/setLinkedContext', payload: {
+                      linkedType: conversation.linkedType || null,
+                      linkedId: conversation.linkedId || null,
+                    } });
                   }}
                   style={{ textAlign: 'left', border: 0, background: 'transparent', width: '100%', padding: 0 }}
                 >
@@ -1364,10 +1461,26 @@ export default function MessagingWidget() {
           )}
         </aside>
 
-        <section style={{ display: 'grid', gridTemplateRows: 'minmax(0, 1fr) auto', minWidth: 0, minHeight: 0 }}>
-          <main style={{ padding: '10px 14px 8px', overflowY: 'auto', minHeight: 420 }} aria-live="polite">
+        <section style={{ display: 'grid', gridTemplateRows: 'minmax(0, 1fr) auto', minWidth: 0, minHeight: 0, overflow: 'hidden' }}>
+          <main style={{ padding: '10px 14px 8px', overflowY: 'auto', minHeight: 0 }} aria-live="polite">
             <div style={{ position: 'sticky', top: 0, background: '#f8fafc', paddingBottom: 8, marginBottom: 8 }}>
-              <strong style={{ fontSize: 16, color: '#0f172a' }}>{activeTopic}</strong>
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center' }}>
+                <strong style={{ fontSize: 16, color: '#0f172a' }}>{activeTopic}</strong>
+                {canEditTopic && (
+                  <button type="button" onClick={() => setAttachmentsOpen((prev) => !prev)} style={{ border: '1px solid #cbd5e1', borderRadius: 8, background: '#fff', padding: '4px 8px', fontSize: 12 }}>
+                    Edit topic
+                  </button>
+                )}
+              </div>
+              <div style={{ marginTop: 6, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                {participantChips.length === 0 && <span style={{ fontSize: 12, color: '#64748b' }}>Company-wide thread</span>}
+                {participantChips.map((participant) => (
+                  <span key={participant.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, border: '1px solid #cbd5e1', background: '#fff', borderRadius: 999, padding: '2px 8px', fontSize: 12 }}>
+                    <span style={{ width: 7, height: 7, borderRadius: 999, background: presenceColor(participant.status) }} />
+                    {participant.label}
+                  </span>
+                ))}
+              </div>
               <p style={{ margin: '4px 0 0', fontSize: 12, color: '#64748b' }}>Ctrl/Cmd + Enter sends your message.</p>
               {activeConversation?.rootMessageId && canDeleteMessage(messages.find((entry) => Number(entry.id) === Number(activeConversation.rootMessageId))) && (
                 <button type="button" onClick={() => handleDeleteMessage(activeConversation.rootMessageId)} style={{ marginTop: 6 }}>
@@ -1406,7 +1519,7 @@ export default function MessagingWidget() {
           </main>
 
           <form
-            style={{ borderTop: '1px solid #e2e8f0', background: '#ffffff', padding: 10, position: 'sticky', bottom: 0, maxHeight: '34vh', overflowY: 'auto' }}
+            style={{ borderTop: '1px solid #e2e8f0', background: '#ffffff', padding: 10, position: 'sticky', bottom: 0, maxHeight: '32vh', overflowY: 'auto' }}
             onSubmit={(event) => {
               event.preventDefault();
               sendMessage();
@@ -1418,20 +1531,7 @@ export default function MessagingWidget() {
             onDragLeave={() => setDragOverComposer(false)}
             onDrop={onDropComposer}
           >
-            <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) minmax(0,1fr)', gap: 8 }}>
-              <div>
-                <label htmlFor="messaging-topic" style={{ fontSize: 12, fontWeight: 600, color: '#334155' }}>Topic</label>
-                <input
-                  id="messaging-topic"
-                  value={state.composer.topic}
-                  onChange={(event) => dispatch({ type: 'composer/setTopic', payload: event.target.value })}
-                  required
-                  placeholder="Enter a topic"
-                  aria-label="Topic"
-                  style={{ width: '100%', marginTop: 6, borderRadius: 8, border: '1px solid #cbd5e1', padding: '9px 10px' }}
-                />
-              </div>
-
+            <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr)', gap: 8 }}>
               <div style={{ position: 'relative' }}>
                 <label htmlFor="messaging-add-recipient" style={{ fontSize: 12, fontWeight: 600, color: '#334155' }}>Add recipient</label>
                 <input
@@ -1441,6 +1541,7 @@ export default function MessagingWidget() {
                   onChange={(event) => setRecipientSearch(event.target.value)}
                   placeholder="Search by name or employee ID"
                   aria-label="Add recipient"
+                  disabled={isReplyMode}
                   style={{ width: '100%', marginTop: 6, borderRadius: 8, border: '1px solid #cbd5e1', padding: '9px 10px' }}
                 />
                 {recipientSearch.trim() && (
@@ -1535,10 +1636,23 @@ export default function MessagingWidget() {
                 onClick={() => setAttachmentsOpen((prev) => !prev)}
                 style={{ border: 0, background: 'transparent', padding: 0, fontSize: 12, fontWeight: 600, color: '#334155' }}
               >
-                {attachmentsOpen ? '▾' : '▸'} Context & attachments {state.composer.attachments.length > 0 ? `(${state.composer.attachments.length})` : ''}
+                {attachmentsOpen ? '▾' : '▸'} Add details {state.composer.attachments.length > 0 ? `(${state.composer.attachments.length})` : ''}
               </button>
               {attachmentsOpen && (
                 <>
+                  {!isReplyMode && (
+                    <div style={{ marginTop: 8 }}>
+                      <label htmlFor="messaging-topic" style={{ fontSize: 12, fontWeight: 600, color: '#334155' }}>Topic (optional)</label>
+                      <input
+                        id="messaging-topic"
+                        value={state.composer.topic}
+                        onChange={(event) => dispatch({ type: 'composer/setTopic', payload: event.target.value })}
+                        placeholder="Optional topic"
+                        aria-label="Topic"
+                        style={{ width: '100%', marginTop: 6, borderRadius: 8, border: '1px solid #cbd5e1', padding: '9px 10px' }}
+                      />
+                    </div>
+                  )}
                   {state.composer.replyToId && (
                     <p style={{ margin: '8px 0 0', fontSize: 12, color: '#475569' }}>
                       Replying to #{state.composer.replyToId}
