@@ -420,7 +420,7 @@ test('reply beyond max depth is rejected', async () => {
   );
 });
 
-test('realtime fanout emits message.created to included users only', async () => {
+test('realtime fanout emits message.created into company room', async () => {
   const db = new FakeDb();
   const session = { permissions: { messaging: true } };
   const emissions = [];
@@ -438,14 +438,7 @@ test('realtime fanout emits message.created to included users only', async () =>
   await postMessage({
     user,
     companyId: 1,
-    payload: {
-      body: 'broadcast',
-      linkedType: 'topic',
-      linkedId: 'ops',
-      visibilityScope: 'private',
-      visibilityEmpid: 'e-2',
-      idempotencyKey: 'fanout-1',
-    },
+    payload: { body: 'broadcast', linkedType: 'topic', linkedId: 'ops', idempotencyKey: 'fanout-1' },
     correlationId: 'fanout-cid',
     db,
     getSession: async () => session,
@@ -453,11 +446,9 @@ test('realtime fanout emits message.created to included users only', async () =>
 
   const listed = await getMessages({ user, companyId: 1, correlationId: 'fanout-cid', db, getSession: async () => session });
   assert.equal(listed.items.length, 1);
-  assert.equal(emissions.some((entry) => entry.room === 'company:1'), false);
-  assert.equal(emissions.some((entry) => entry.room === 'user:e-1' && entry.event === 'message.created'), true);
-  assert.equal(emissions.some((entry) => entry.room === 'user:E-1' && entry.event === 'message.created'), true);
-  assert.equal(emissions.some((entry) => entry.room === 'emp:e-1' && entry.event === 'message.created'), true);
-  assert.equal(emissions.some((entry) => entry.room === 'user:e-2' && entry.event === 'message.created'), true);
+  assert.equal(emissions.length, 1);
+  assert.equal(emissions[0].room, 'company:1');
+  assert.equal(emissions[0].event, 'message.created');
 });
 
 

@@ -343,14 +343,13 @@ function decryptBody(message) {
 
 function canViewMessage(message, session, user) {
   if (!message || message.deleted_at) return false;
-  const viewerEmpid = String(user?.empid || '').trim();
-  if (!viewerEmpid) return false;
-  if (String(message.author_empid || '') === viewerEmpid) return true;
-  if (String(message.visibility_empid || '') === viewerEmpid) return true;
-
   const scope = String(message.visibility_scope || 'company');
+  if (scope === 'company') return true;
   if (scope === 'department') {
     return Number(session?.department_id) > 0 && Number(session?.department_id) === Number(message.visibility_department_id);
+  }
+  if (scope === 'private') {
+    return String(message.author_empid) === String(user?.empid) || String(message.visibility_empid) === String(user?.empid);
   }
   return false;
 }
@@ -586,8 +585,7 @@ function emitMessageScoped(ctx, eventName, message, optimistic) {
     emitToEmpid(eventName, message.author_empid, payload);
     return;
   }
-  emitToEmpid(eventName, message.author_empid, payload);
-  emitToEmpid(eventName, message.visibility_empid, payload);
+  emit(ctx.companyId, eventName, payload);
 }
 
 async function createMessageInternal({ db = pool, ctx, payload, parentMessageId = null, eventName = 'message.created' }) {
