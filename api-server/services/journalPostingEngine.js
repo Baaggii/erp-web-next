@@ -192,7 +192,7 @@ async function buildJournalPreviewPayload(conn, safeTable, sourceId, { forUpdate
   const [ruleLines] = await conn.query(
     `SELECT *
        FROM fin_journal_rule_line
-      WHERE fin_journal_rule_id = ?
+      where rule_id = ?
       ORDER BY COALESCE(line_no, 999999), id`,
     [selectedRule.id],
   );
@@ -294,7 +294,7 @@ async function selectMatchingJournalRule(conn, flagSetCode, presentFlags) {
     const [conditions] = await conn.query(
       `SELECT *
          FROM fin_journal_rule_condition
-        WHERE fin_journal_rule_id = ?`,
+        where rule_id = ?`,
       [rule.id],
     );
 
