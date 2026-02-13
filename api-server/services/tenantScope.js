@@ -121,22 +121,5 @@ export async function queryWithTenantScope(
     ? originalQuery.replaceAll('{{table}}', scope.tempTableName)
     : originalQuery.replace(sourceRegex, scope.tempTableName);
 
-  let queryError;
-  try {
-    return await connection.query(scopedQuery, params);
-  } catch (error) {
-    queryError = error;
-    throw error;
-  } finally {
-    if (!scope.scoped) {
-      return;
-    }
-    try {
-      await connection.query(`DROP TEMPORARY TABLE IF EXISTS ${scope.tempTableName}`);
-    } catch (dropError) {
-      if (!queryError) {
-        throw dropError;
-      }
-    }
-  }
+  return connection.query(scopedQuery, params);
 }

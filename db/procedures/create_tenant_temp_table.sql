@@ -10,15 +10,6 @@ BEGIN
   DECLARE v_condition TEXT;
   DECLARE v_deleted_at_exists INT DEFAULT 0;
   DECLARE v_where_clause TEXT;
-  DECLARE v_saved_mode TEXT DEFAULT NULL;
-
-  DECLARE EXIT HANDLER FOR SQLEXCEPTION
-  BEGIN
-    IF v_saved_mode IS NOT NULL THEN
-      SET SESSION sql_mode = v_saved_mode;
-    END IF;
-    RESIGNAL;
-  END;
 
   SET @drop_sql = CONCAT('DROP TEMPORARY TABLE IF EXISTS ', tmp_table_name);
   PREPARE stmt FROM @drop_sql;
@@ -49,9 +40,9 @@ BEGIN
     SET v_where_clause = CONCAT('WHERE ', v_condition);
   END IF;
 
-  SET v_saved_mode = @@SESSION.sql_mode;
+  SET @saved_mode := @@SESSION.sql_mode;
   SET SESSION sql_mode =
-    REPLACE(REPLACE(REPLACE(v_saved_mode,
+    REPLACE(REPLACE(REPLACE(@saved_mode,
       'STRICT_TRANS_TABLES',''),
       'NO_ZERO_DATE',''),
       'NO_ZERO_IN_DATE','');
@@ -64,8 +55,8 @@ BEGIN
   EXECUTE stmt;
   DEALLOCATE PREPARE stmt;
 
-  IF v_saved_mode IS NOT NULL THEN
-    SET SESSION sql_mode = v_saved_mode;
+  IF @saved_mode IS NOT NULL THEN
+    SET SESSION sql_mode = @saved_mode;
   END IF;
 END $$
 DELIMITER ;
