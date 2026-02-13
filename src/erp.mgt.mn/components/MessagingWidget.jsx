@@ -1039,7 +1039,9 @@ export default function MessagingWidget() {
 
   const safeTopic = sanitizeMessageText(state.composer.topic || activeConversation?.title || '');
   const safeBody = sanitizeMessageText(state.composer.body);
-  const canSendMessage = Boolean(safeBody && (canEditTopic ? safeTopic : true));
+  const requiresRecipient = isDraftConversation;
+  const hasRecipients = (state.composer.recipients || []).some((entry) => normalizeId(entry));
+  const canSendMessage = Boolean(safeBody && (canEditTopic ? safeTopic : true) && (!requiresRecipient || hasRecipients));
 
   const handleOpenLinkedTransaction = (transactionId) => {
     if (canViewTransaction(transactionId, normalizeId(sessionId), permissions || {})) {
@@ -1152,6 +1154,10 @@ export default function MessagingWidget() {
     }
 
     const payloadRecipients = Array.from(new Set((state.composer.recipients || []).map(normalizeId).filter(Boolean)));
+    if (isDraftConversation && payloadRecipients.length === 0) {
+      setComposerAnnouncement('Select at least one recipient before sending a new conversation.');
+      return;
+    }
     const threadParticipants = Array.from(new Set(activeConversationParticipants.filter((empid) => empid !== selfEmpid)));
     const replyRecipients = state.composer.replyToId
       ? Array.from(new Set([...threadParticipants, ...payloadRecipients]))
@@ -1171,8 +1177,11 @@ export default function MessagingWidget() {
       ...(linkedId ? { linkedId: String(linkedId) } : {}),
     };
 
-    const targetUrl = state.composer.replyToId
-      ? `${API_BASE}/messaging/messages/${state.composer.replyToId}/reply`
+    const replyTargetId = state.composer.replyToId
+      || (activeConversation?.rootMessageId && !activeConversation?.isGeneral ? activeConversation.rootMessageId : null);
+
+    const targetUrl = replyTargetId
+      ? `${API_BASE}/messaging/messages/${replyTargetId}/reply`
       : `${API_BASE}/messaging/messages`;
 
     const res = await fetch(targetUrl, {
@@ -1550,7 +1559,7 @@ export default function MessagingWidget() {
           </main>
 
           <form
-            style={{ borderTop: '1px solid #e2e8f0', background: '#ffffff', padding: '6px 10px', maxHeight: '34vh', overflowY: 'auto', flexShrink: 0 }}
+            style={{ borderTop: '1px solid #e2e8f0', background: '#ffffff', padding: '6px 10px', maxHeight: '34vh', overflow: 'hidden', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 6 }}
             onSubmit={(event) => {
               event.preventDefault();
               sendMessage();
@@ -1562,7 +1571,8 @@ export default function MessagingWidget() {
             onDragLeave={() => setDragOverComposer(false)}
             onDrop={onDropComposer}
           >
-            <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr)', gap: 4 }}>
+            <div style={{ overflowY: 'auto', minHeight: 0, paddingRight: 2 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr)', gap: 4 }}>
               {canEditTopic && (
                 <div>
                   <label htmlFor="messaging-topic" style={{ fontSize: 12, fontWeight: 600, color: '#334155' }}>Topic</label>
@@ -1577,25 +1587,25 @@ export default function MessagingWidget() {
                   />
                 </div>
               )}
-            </div>
+              </div>
 
-            <div style={{ marginTop: 6, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-              {state.composer.recipients.map((empid) => {
-                const found = employeeRecords.find((entry) => entry.id === empid);
-                const label = found?.label || resolveEmployeeLabel(empid);
-                const status = found?.status || presenceMap.get(empid) || PRESENCE.OFFLINE;
-                return (
-                  <span key={empid} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, border: '1px solid #cbd5e1', borderRadius: 999, padding: '4px 10px', background: '#f8fafc' }}>
-                    <span style={{ width: 18, height: 18, borderRadius: 999, background: '#dbeafe', color: '#1d4ed8', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700 }}>
-                      {initialsForLabel(label)}
+              <div style={{ marginTop: 6, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                {state.composer.recipients.map((empid) => {
+                  const found = employeeRecords.find((entry) => entry.id === empid);
+                  const label = found?.label || resolveEmployeeLabel(empid);
+                  const status = found?.status || presenceMap.get(empid) || PRESENCE.OFFLINE;
+                  return (
+                    <span key={empid} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, border: '1px solid #cbd5e1', borderRadius: 999, padding: '4px 10px', background: '#f8fafc' }}>
+                      <span style={{ width: 18, height: 18, borderRadius: 999, background: '#dbeafe', color: '#1d4ed8', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700 }}>
+                        {initialsForLabel(label)}
+                      </span>
+                      <span style={{ width: 8, height: 8, borderRadius: 999, background: presenceColor(status) }} />
+                      <span style={{ fontSize: 12, color: '#1e293b' }}>{label}</span>
+                      <button type="button" aria-label={`Remove recipient ${label}`} onClick={() => onRemoveRecipient(empid)} style={{ border: 0, background: 'transparent', color: '#64748b' }}>×</button>
                     </span>
-                    <span style={{ width: 8, height: 8, borderRadius: 999, background: presenceColor(status) }} />
-                    <span style={{ fontSize: 12, color: '#1e293b' }}>{label}</span>
-                    <button type="button" aria-label={`Remove recipient ${label}`} onClick={() => onRemoveRecipient(empid)} style={{ border: 0, background: 'transparent', color: '#64748b' }}>×</button>
-                  </span>
-                );
-              })}
-            </div>
+                  );
+                })}
+              </div>
 
             <label htmlFor="messaging-composer" style={{ marginTop: 6, display: 'block', fontSize: 12, fontWeight: 600, color: '#334155' }}>
               Message
@@ -1718,7 +1728,9 @@ export default function MessagingWidget() {
               )}
             </div>
 
-            <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', marginTop: 6, gap: 8, flexWrap: 'wrap' }}>
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 8, flexWrap: 'wrap', borderTop: '1px solid #e2e8f0', paddingTop: 6, background: '#ffffff', flexShrink: 0 }}>
               <button type="submit" disabled={!canSendMessage} style={{ border: 0, borderRadius: 8, background: canSendMessage ? '#2563eb' : '#94a3b8', color: '#fff', padding: '8px 14px', fontWeight: 600, cursor: canSendMessage ? 'pointer' : 'not-allowed' }}>
                 Send
               </button>
