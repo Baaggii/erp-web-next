@@ -1234,104 +1234,105 @@ export async function listTemporarySubmissions({
   includeHasMore = false,
 }) {
   await ensureTemporaryTable();
-  const normalizedEmp = normalizeEmpId(empId);
-  const conditions = [];
-  const params = [];
-  const normalizedStatus = typeof status === 'string' ? status.trim().toLowerCase() : null;
-  const enforcePendingScope = scope === 'review';
-  if (enforcePendingScope) {
-    conditions.push("status = 'pending'");
-  } else if (normalizedStatus && normalizedStatus !== 'all' && normalizedStatus !== 'any') {
-    if (normalizedStatus === 'processed') {
-      conditions.push("status <> 'pending'");
-    } else {
-      const statusParts = normalizedStatus
-        .split(',')
-        .map((part) => part.trim())
-        .filter(Boolean);
-      if (statusParts.length === 1) {
-        conditions.push('status = ?');
-        params.push(statusParts[0]);
-      } else if (statusParts.length > 1) {
-        conditions.push(`status IN (${statusParts.map(() => '?').join(', ')})`);
-        params.push(...statusParts);
+  const conn = await pool.getConnection();
+  try {
+    const normalizedEmp = normalizeEmpId(empId);
+    const conditions = [];
+    const params = [];
+    const normalizedStatus = typeof status === 'string' ? status.trim().toLowerCase() : null;
+    const enforcePendingScope = scope === 'review';
+    if (enforcePendingScope) {
+      conditions.push("status = 'pending'");
+    } else if (normalizedStatus && normalizedStatus !== 'all' && normalizedStatus !== 'any') {
+      if (normalizedStatus === 'processed') {
+        conditions.push("status <> 'pending'");
+      } else {
+        const statusParts = normalizedStatus
+          .split(',')
+          .map((part) => part.trim())
+          .filter(Boolean);
+        if (statusParts.length === 1) {
+          conditions.push('status = ?');
+          params.push(statusParts[0]);
+        } else if (statusParts.length > 1) {
+          conditions.push(`status IN (${statusParts.map(() => '?').join(', ')})`);
+          params.push(...statusParts);
+        }
       }
     }
-  }
-  if (tableName) {
-    conditions.push('table_name = ?');
-    params.push(tableName);
-  }
-  const normalizedFormName =
-    formName !== undefined && formName !== null ? String(formName).trim() : '';
-  const normalizedConfigName =
-    configName !== undefined && configName !== null ? String(configName).trim() : '';
-  const nameFilters = [];
-  if (normalizedFormName) {
-    nameFilters.push(normalizedFormName);
-  }
-  if (normalizedConfigName && normalizedConfigName !== normalizedFormName) {
-    nameFilters.push(normalizedConfigName);
-  }
-  if (nameFilters.length > 0) {
-    const placeholders = nameFilters.map(() => '?').join(', ');
-    conditions.push(`(form_name IN (${placeholders}) OR config_name IN (${placeholders}))`);
-    params.push(...nameFilters, ...nameFilters);
-  }
-  if (scope === 'review') {
-    conditions.push(
-      '((JSON_VALID(plan_senior_empid) AND JSON_CONTAINS(plan_senior_empid, ?, \"$\")) OR plan_senior_empid = ?)',
+    if (tableName) {
+      conditions.push('table_name = ?');
+      params.push(tableName);
+    }
+    const normalizedFormName =
+      formName !== undefined && formName !== null ? String(formName).trim() : '';
+    const normalizedConfigName =
+      configName !== undefined && configName !== null ? String(configName).trim() : '';
+    const nameFilters = [];
+    if (normalizedFormName) {
+      nameFilters.push(normalizedFormName);
+    }
+    if (normalizedConfigName && normalizedConfigName !== normalizedFormName) {
+      nameFilters.push(normalizedConfigName);
+    }
+    if (nameFilters.length > 0) {
+      const placeholders = nameFilters.map(() => '?').join(', ');
+      conditions.push(`(form_name IN (${placeholders}) OR config_name IN (${placeholders}))`);
+      params.push(...nameFilters, ...nameFilters);
+    }
+    if (scope === 'review') {
+      conditions.push(
+        '((JSON_VALID(plan_senior_empid) AND JSON_CONTAINS(plan_senior_empid, ?, "$")) OR plan_senior_empid = ?)',
+      );
+      params.push(`"${normalizedEmp}"`, normalizedEmp);
+    } else {
+      conditions.push('created_by = ?');
+      params.push(normalizedEmp);
+    }
+
+    const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+    const requestedLimit = Number(limit);
+    const normalizedLimit =
+      Number.isFinite(requestedLimit) && requestedLimit > 0
+        ? Math.min(requestedLimit, MAX_TEMPORARY_LIMIT)
+        : DEFAULT_TEMPORARY_LIMIT;
+    const requestedOffset = Number(offset);
+    const normalizedOffset =
+      Number.isFinite(requestedOffset) && requestedOffset > 0 ? requestedOffset : 0;
+    const effectiveLimit = includeHasMore ? normalizedLimit + 1 : normalizedLimit;
+
+    const baseQuery = `
+      SELECT *
+        FROM {{table}}
+        ${where}
+       ORDER BY updated_at DESC, created_at DESC, id DESC
+       LIMIT ? OFFSET ?`;
+    const [rows] = await queryWithTenantScope(
+      conn,
+      TEMP_TABLE,
+      companyId,
+      baseQuery,
+      [...params, effectiveLimit, normalizedOffset],
     );
-    params.push(`"${normalizedEmp}"`, normalizedEmp);
-  } else {
-    conditions.push('created_by = ?');
-    params.push(normalizedEmp);
+
+    const hasMore = includeHasMore ? rows.length > normalizedLimit : false;
+    const limitedRows = includeHasMore ? rows.slice(0, normalizedLimit) : rows;
+    const mapped = limitedRows.map(mapTemporaryRow);
+    const filtered = filterRowsByTransactionType(
+      mapped,
+      transactionTypeField,
+      transactionTypeValue,
+    );
+    const grouped = groupTemporaryRowsByChain(filtered);
+    const enriched = await enrichTemporaryMetadata(grouped, companyId);
+    return {
+      rows: enriched,
+      hasMore,
+      nextOffset: hasMore ? normalizedOffset + normalizedLimit : null,
+    };
+  } finally {
+    conn.release();
   }
-  if (companyId !== undefined && companyId !== null && String(companyId).trim() !== '') {
-    conditions.push('company_id = ?');
-    params.push(Number(companyId));
-  }
-  const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
-  const requestedLimit = Number(limit);
-  const normalizedLimit =
-    Number.isFinite(requestedLimit) && requestedLimit > 0
-      ? Math.min(requestedLimit, MAX_TEMPORARY_LIMIT)
-      : DEFAULT_TEMPORARY_LIMIT;
-  const requestedOffset = Number(offset);
-  const normalizedOffset = Number.isFinite(requestedOffset) && requestedOffset > 0 ? requestedOffset : 0;
-  const effectiveLimit = includeHasMore ? normalizedLimit + 1 : normalizedLimit;
-  const groupingQuery = `
-    WITH filtered AS (${filteredQuery}),
-    ranked AS (
-      SELECT
-        filtered.*,
-        ROW_NUMBER() OVER (
-          PARTITION BY ${chainGroupKey('filtered')}
-          ORDER BY filtered.updated_at DESC, filtered.created_at DESC, filtered.id DESC
-        ) AS chain_rank
-      FROM filtered
-    )
-    SELECT *
-      FROM ranked
-     WHERE chain_rank = 1
-     ORDER BY updated_at DESC, created_at DESC, id DESC
-     LIMIT ? OFFSET ?`;
-  const [rows] = await pool.query(groupingQuery, [...params, effectiveLimit, normalizedOffset]);
-  const hasMore = includeHasMore ? rows.length > normalizedLimit : false;
-  const limitedRows = includeHasMore ? rows.slice(0, normalizedLimit) : rows;
-  const mapped = limitedRows.map(mapTemporaryRow);
-  const filtered = filterRowsByTransactionType(
-    mapped,
-    transactionTypeField,
-    transactionTypeValue,
-  );
-  const grouped = groupTemporaryRowsByChain(filtered);
-  const enriched = await enrichTemporaryMetadata(grouped, companyId);
-  return {
-    rows: enriched,
-    hasMore,
-    nextOffset: hasMore ? normalizedOffset + normalizedLimit : null,
-  };
 }
 
 function formatTemporaryStatusLabel(status) {
