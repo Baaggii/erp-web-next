@@ -20,6 +20,7 @@ const idempotencyRequestHashSupport = new WeakMap();
 const messageLinkedContextSupport = new WeakMap();
 const messageEncryptionColumnSupport = new WeakMap();
 const messageDeleteByColumnSupport = new WeakMap();
+const messageParticipantsSupport = new WeakMap();
 let ioRef = null;
 
 const onlineByCompany = new Map();
@@ -106,6 +107,10 @@ function canUseEncryptedBodyColumns(db) {
   return messageEncryptionColumnSupport.get(db) !== false;
 }
 
+function canUseMessageParticipants(db) {
+  return messageParticipantsSupport.get(db) !== false;
+}
+
 function markLinkedColumnsUnsupported(db) {
   messageLinkedContextSupport.set(db, false);
 }
@@ -114,9 +119,93 @@ function markEncryptedBodyColumnsUnsupported(db) {
   messageEncryptionColumnSupport.set(db, false);
 }
 
+function markMessageParticipantsUnsupported(db) {
+  messageParticipantsSupport.set(db, false);
+}
+
+function normalizeEmpidList(values = []) {
+  return Array.from(new Set((values || []).map((entry) => String(entry || '').trim()).filter(Boolean)));
+}
+
 function isUnknownColumnError(error, columnName) {
   const message = String(error?.sqlMessage || error?.message || '').toLowerCase();
   return message.includes('unknown column') && message.includes(String(columnName).toLowerCase());
+}
+
+async function upsertMessageParticipants(db, { companyId, rootMessageId, participants = [], addedByEmpid }) {
+  const normalized = normalizeEmpidList(participants);
+  if (!rootMessageId || normalized.length === 0 || !canUseMessageParticipants(db)) return;
+  try {
+    for (const empid of normalized) {
+      await db.query(
+        `INSERT INTO erp_message_participants (company_id, root_message_id, empid, added_by_empid)
+         VALUES (?, ?, ?, ?)
+         ON DUPLICATE KEY UPDATE added_by_empid = COALESCE(VALUES(added_by_empid), added_by_empid)`,
+        [companyId, rootMessageId, empid, addedByEmpid || null],
+      );
+    }
+    messageParticipantsSupport.set(db, true);
+  } catch (error) {
+    if (!String(error?.sqlMessage || error?.message || '').toLowerCase().includes('erp_message_participants')) throw error;
+    markMessageParticipantsUnsupported(db);
+  }
+}
+
+async function resolveRootMessageId(db, companyId, message) {
+  let cursor = message;
+  while (cursor?.parent_message_id) {
+    const parent = await findMessageById(db, companyId, cursor.parent_message_id, { withParticipants: false });
+    if (!parent) return cursor.parent_message_id;
+    cursor = parent;
+  }
+  return cursor?.id || null;
+}
+
+async function attachParticipantsForMessages(db, companyId, messages = []) {
+  if (!Array.isArray(messages) || messages.length === 0) return messages;
+  if (!canUseMessageParticipants(db)) return messages;
+
+  const rootsByMessage = new Map();
+  const neededRootIds = new Set();
+  for (const message of messages) {
+    const rootId = await resolveRootMessageId(db, companyId, message);
+    rootsByMessage.set(String(message.id), rootId);
+    if (rootId) neededRootIds.add(Number(rootId));
+  }
+  if (neededRootIds.size === 0) return messages;
+
+  try {
+    const [rows] = await db.query(
+      `SELECT root_message_id, empid
+         FROM erp_message_participants
+        WHERE company_id = ?
+          AND root_message_id IN (${Array.from(neededRootIds).map(() => '?').join(',')})`,
+      [companyId, ...Array.from(neededRootIds)],
+    );
+    messageParticipantsSupport.set(db, true);
+    const participantsByRoot = new Map();
+    rows.forEach((row) => {
+      const key = String(row.root_message_id);
+      const bucket = participantsByRoot.get(key) || [];
+      bucket.push(row.empid);
+      participantsByRoot.set(key, bucket);
+    });
+
+    return messages.map((message) => {
+      const rootId = rootsByMessage.get(String(message.id));
+      const rootParticipants = rootId ? (participantsByRoot.get(String(rootId)) || []) : [];
+      const recipientEmpids = normalizeEmpidList([
+        ...rootParticipants,
+        message.visibility_empid,
+        ...(Array.isArray(message.recipient_empids) ? message.recipient_empids : []),
+      ]);
+      return { ...message, recipient_empids: recipientEmpids };
+    });
+  } catch (error) {
+    if (!String(error?.sqlMessage || error?.message || '').toLowerCase().includes('erp_message_participants')) throw error;
+    markMessageParticipantsUnsupported(db);
+    return messages;
+  }
 }
 
 async function readIdempotencyRow(db, { companyId, empid, idempotencyKey }) {
@@ -275,18 +364,12 @@ function validateLinkedContext(linkedType, linkedId) {
 }
 
 function normalizeVisibility(payload, session, user) {
-  const recipients = Array.isArray(payload?.recipientEmpids)
-    ? Array.from(new Set(payload.recipientEmpids.map((entry) => String(entry || '').trim()).filter(Boolean)))
-    : [];
+  const recipients = normalizeEmpidList(payload?.recipientEmpids);
 
   const requestedScope = String(payload?.visibilityScope || '').trim().toLowerCase();
   const scope = requestedScope || (recipients.length > 0 ? 'private' : 'company');
   if (!VISIBILITY_SCOPES.has(scope)) {
     throw createError(400, 'VISIBILITY_SCOPE_INVALID', 'visibilityScope must be company, department, or private');
-  }
-
-  if (scope === 'private' && recipients.length > 1) {
-    throw createError(400, 'VISIBILITY_PRIVATE_TOO_MANY_RECIPIENTS', 'Private messages support exactly one recipient');
   }
 
   const visibilityDepartmentId = scope === 'department' ? toId(payload?.visibilityDepartmentId ?? session?.department_id) : null;
@@ -359,7 +442,12 @@ function canViewMessage(message, session, user) {
     return Number(session?.department_id) > 0 && Number(session?.department_id) === Number(message.visibility_department_id);
   }
   if (scope === 'private') {
-    return String(message.author_empid) === String(user?.empid) || String(message.visibility_empid) === String(user?.empid);
+    const viewer = String(user?.empid || '').trim();
+    if (!viewer) return false;
+    if (String(message.author_empid || '').trim() === viewer) return true;
+    const participants = Array.isArray(message.recipient_empids) ? message.recipient_empids : [];
+    if (participants.some((entry) => String(entry || '').trim() === viewer)) return true;
+    return String(message.visibility_empid || '').trim() === viewer;
   }
   return false;
 }
@@ -545,7 +633,7 @@ async function logAbuse(db, { companyId, empid, category, reason, payload }) {
   );
 }
 
-async function findMessageById(db, companyId, id) {
+async function findMessageById(db, companyId, id, { withParticipants = true } = {}) {
   const [rows] = await queryWithTenantScope(
     db,
     'erp_messages',
@@ -553,7 +641,10 @@ async function findMessageById(db, companyId, id) {
     'SELECT * FROM {{table}} WHERE id = ? LIMIT 1',
     [id],
   );
-  return rows[0] || null;
+  const message = rows[0] || null;
+  if (!message || !withParticipants) return message;
+  const [attached] = await attachParticipantsForMessages(db, companyId, [message]);
+  return attached || message;
 }
 
 async function resolveThreadDepth(db, companyId, message) {
@@ -596,7 +687,11 @@ function emitMessageScoped(ctx, eventName, message, optimistic) {
   const scope = String(message.visibility_scope || 'company');
   if (scope === 'private') {
     emitToEmpid(eventName, message.author_empid, payload);
-    emitToEmpid(eventName, message.visibility_empid, payload);
+    const recipients = normalizeEmpidList([
+      ...(Array.isArray(message.recipient_empids) ? message.recipient_empids : []),
+      message.visibility_empid,
+    ]);
+    recipients.forEach((empid) => emitToEmpid(eventName, empid, payload));
     return;
   }
   if (scope === 'department' && message.visibility_department_id) {
@@ -758,7 +853,22 @@ async function createMessageInternal({ db = pool, ctx, payload, parentMessageId 
     requestHash,
     expiresAt,
   });
-  const message = await findMessageById(db, ctx.companyId, messageId);
+  let message = await findMessageById(db, ctx.companyId, messageId);
+  const rootMessageId = parentMessageId ? await resolveRootMessageId(db, ctx.companyId, message) : message?.id;
+  if (visibility.visibilityScope === 'private') {
+    const requestedParticipants = normalizeEmpidList([
+      ctx.user.empid,
+      visibility.visibilityEmpid,
+      ...(Array.isArray(payload?.recipientEmpids) ? payload.recipientEmpids : []),
+    ]);
+    await upsertMessageParticipants(db, {
+      companyId: ctx.companyId,
+      rootMessageId,
+      participants: requestedParticipants,
+      addedByEmpid: ctx.user.empid,
+    });
+    message = (await findMessageById(db, ctx.companyId, messageId)) || message;
+  }
 
   const viewerMessage = sanitizeForViewer(message, ctx.session, ctx.user);
   emitMessageScoped(ctx, eventName, viewerMessage, {
@@ -796,12 +906,16 @@ export async function postReply({ user, companyId, messageId, payload, correlati
     throw createError(400, 'THREAD_DEPTH_EXCEEDED', `Reply depth exceeds maximum of ${MAX_REPLY_DEPTH}`);
   }
 
-  const privateParticipants = new Set([
-    String(message.author_empid || '').trim(),
-    String(message.visibility_empid || '').trim(),
-  ].filter(Boolean));
+  const privateParticipants = normalizeEmpidList([
+    message.author_empid,
+    message.visibility_empid,
+    ...(Array.isArray(message.recipient_empids) ? message.recipient_empids : []),
+    user.empid,
+  ]);
+  const requestedRecipients = normalizeEmpidList(payload?.recipientEmpids);
+  const mergedParticipants = normalizeEmpidList([...privateParticipants, ...requestedRecipients]);
   const replyVisibilityEmpid = message.visibility_scope === 'private'
-    ? Array.from(privateParticipants).find((empid) => empid !== String(user.empid)) || null
+    ? mergedParticipants.find((empid) => empid !== String(user.empid)) || null
     : message.visibility_empid;
 
   const ctx = { user, companyId: scopedCompanyId, correlationId, session };
@@ -815,9 +929,7 @@ export async function postReply({ user, companyId, messageId, payload, correlati
       visibilityScope: message.visibility_scope,
       visibilityDepartmentId: message.visibility_department_id,
       visibilityEmpid: message.visibility_scope === 'private' ? replyVisibilityEmpid : message.visibility_empid,
-      recipientEmpids: message.visibility_scope === 'private' && replyVisibilityEmpid
-        ? [String(replyVisibilityEmpid)]
-        : payload?.recipientEmpids,
+      recipientEmpids: message.visibility_scope === 'private' ? mergedParticipants : payload?.recipientEmpids,
     },
     parentMessageId: message.id,
     eventName: 'thread.reply.created',
@@ -867,7 +979,8 @@ export async function getMessages({ user, companyId, linkedType, linkedId, curso
     );
   }
 
-  const visibleRows = rows.map((row) => sanitizeForViewer(row, session, user)).filter(Boolean);
+  const rowsWithParticipants = await attachParticipantsForMessages(db, scopedCompanyId, rows);
+  const visibleRows = rowsWithParticipants.map((row) => sanitizeForViewer(row, session, user)).filter(Boolean);
   const hasMore = visibleRows.length > parsedLimit;
   const pageRows = hasMore ? visibleRows.slice(0, parsedLimit) : visibleRows;
   const nextCursor = hasMore ? pageRows[pageRows.length - 1].id : null;
@@ -888,13 +1001,14 @@ export async function getThread({ user, companyId, messageId, correlationId, db 
   if (!root || root.deleted_at) throw createError(404, 'MESSAGE_NOT_FOUND', 'Message not found');
   assertCanViewMessage(root, session, user);
 
-  const [allRows] = await queryWithTenantScope(
+  const [allRowsRaw] = await queryWithTenantScope(
     db,
     'erp_messages',
     scopedCompanyId,
     'SELECT * FROM {{table}} ORDER BY id ASC',
     [],
   );
+  const allRows = await attachParticipantsForMessages(db, scopedCompanyId, allRowsRaw);
   const byParent = new Map();
   for (const row of allRows) {
     const key = row.parent_message_id == null ? 'root' : String(row.parent_message_id);
