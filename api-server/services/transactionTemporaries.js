@@ -1288,6 +1288,9 @@ export async function listTemporarySubmissions({
     params.push(normalizedEmp);
   }
   const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+  const chainGroupKey = (alias = '') =>
+    `COALESCE(${alias ? `${alias}.` : ''}chain_id, ${alias ? `${alias}.` : ''}id)`;
+  const filteredQuery = `SELECT * FROM {{table}} ${where}`;
   const requestedLimit = Number(limit);
   const normalizedLimit =
     Number.isFinite(requestedLimit) && requestedLimit > 0
@@ -1296,33 +1299,28 @@ export async function listTemporarySubmissions({
   const requestedOffset = Number(offset);
   const normalizedOffset = Number.isFinite(requestedOffset) && requestedOffset > 0 ? requestedOffset : 0;
   const effectiveLimit = includeHasMore ? normalizedLimit + 1 : normalizedLimit;
-
-  // NOTE: Avoid self-joining the same tenant temp table (MySQL ER_CANT_REOPEN_TABLE on temp aliases).
-  // Instead, fetch ordered rows once and collapse latest row per chain in JS.
+  const groupingQuery = `
+    WITH filtered AS (${filteredQuery})
+    SELECT filtered.*
+      FROM filtered
+      JOIN (
+            SELECT ${chainGroupKey('f')} AS chain_group_id, MAX(f.updated_at) AS max_updated_at
+              FROM filtered f
+             GROUP BY ${chainGroupKey('f')}
+           ) latest
+        ON ${chainGroupKey('filtered')} = latest.chain_group_id
+       AND filtered.updated_at = latest.max_updated_at
+     ORDER BY filtered.updated_at DESC, filtered.created_at DESC
+     LIMIT ? OFFSET ?`;
   const [rows] = await queryWithTenantScope(
     pool,
     TEMP_TABLE,
     companyId,
-    `SELECT *
-       FROM {{table}}
-       ${where}
-      ORDER BY updated_at DESC, created_at DESC`,
-    params,
+    groupingQuery,
+    [...params, effectiveLimit, normalizedOffset],
   );
-
-  const latestByChain = new Map();
-  for (const row of rows || []) {
-    const chainKey = String(row?.chain_id ?? row?.id ?? '');
-    if (!chainKey || latestByChain.has(chainKey)) continue;
-    latestByChain.set(chainKey, row);
-  }
-
-  const dedupedRows = Array.from(latestByChain.values());
-  const windowRows = dedupedRows.slice(normalizedOffset, normalizedOffset + effectiveLimit);
-  const hasMore = includeHasMore
-    ? dedupedRows.length > normalizedOffset + normalizedLimit
-    : false;
-  const limitedRows = includeHasMore ? windowRows.slice(0, normalizedLimit) : windowRows;
+  const hasMore = includeHasMore ? rows.length > normalizedLimit : false;
+  const limitedRows = includeHasMore ? rows.slice(0, normalizedLimit) : rows;
   const mapped = limitedRows.map(mapTemporaryRow);
   const filtered = filterRowsByTransactionType(
     mapped,

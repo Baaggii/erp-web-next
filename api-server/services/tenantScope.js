@@ -38,19 +38,6 @@ const defaultEngineConfig = {
   procedureName: 'create_tenant_temp_table',
 };
 
-
-async function withScopedConnection(connectionLike, handler) {
-  if (connectionLike && typeof connectionLike.getConnection === 'function') {
-    const scopedConn = await connectionLike.getConnection();
-    try {
-      return await handler(scopedConn);
-    } finally {
-      scopedConn.release();
-    }
-  }
-  return handler(connectionLike);
-}
-
 function normalizeIdentifier(input = '') {
   const value = String(input || '').trim();
   if (!/^[A-Za-z0-9_]+$/.test(value)) {
@@ -127,14 +114,12 @@ export async function queryWithTenantScope(
   originalQuery,
   params = [],
 ) {
-  return withScopedConnection(connection, async (scopedConn) => {
-    const scope = await createTmpBusinessTable(scopedConn, tableName, companyId);
-    const escapedSource = scope.sourceTable.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const sourceRegex = new RegExp(`\\b${escapedSource}\\b`, 'g');
-    const scopedQuery = originalQuery.includes('{{table}}')
-      ? originalQuery.replaceAll('{{table}}', scope.tempTableName)
-      : originalQuery.replace(sourceRegex, scope.tempTableName);
+  const scope = await createTmpBusinessTable(connection, tableName, companyId);
+  const escapedSource = scope.sourceTable.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const sourceRegex = new RegExp(`\\b${escapedSource}\\b`, 'g');
+  const scopedQuery = originalQuery.includes('{{table}}')
+    ? originalQuery.replaceAll('{{table}}', scope.tempTableName)
+    : originalQuery.replace(sourceRegex, scope.tempTableName);
 
-    return scopedConn.query(scopedQuery, params);
-  });
+  return connection.query(scopedQuery, params);
 }
