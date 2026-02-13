@@ -302,6 +302,7 @@ function MessageNode({ message, depth = 0, onReply, onJumpToParent, onToggleRepl
   const readers = Array.isArray(message.read_by) ? message.read_by.filter(Boolean) : [];
   const readerLabels = readers.map((empid) => resolveEmployeeLabel(empid));
   const authorLabel = resolveEmployeeLabel(message.author_empid);
+  const readStatus = readerLabels.length > 0 ? `Read (${readerLabels.length})` : 'Unread';
 
   return (
     <article
@@ -315,16 +316,49 @@ function MessageNode({ message, depth = 0, onReply, onJumpToParent, onToggleRepl
         padding: '6px 8px',
         marginBottom: 6,
         marginLeft: depth > 0 ? Math.min(depth * 12, 48) : 0,
+        width: '100%',
+        boxSizing: 'border-box',
       }}
     >
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
         <span style={{ fontSize: 11, color: '#334155', fontWeight: 700 }}>{authorLabel}</span>
         <span style={{ fontSize: 11, color: '#64748b' }}>{new Date(message.created_at).toLocaleString()}</span>
-        <span style={{ fontSize: 12, color: '#0f172a', overflowWrap: 'anywhere', whiteSpace: 'pre-wrap', flex: '1 1 260px' }}>{highlightMentions(safeBody)}</span>
-        <button type="button" onClick={() => onReply(message.id)} aria-label={`Reply to message ${message.id}`}>Reply</button>
-        <span style={{ fontSize: 11, color: '#64748b', overflowWrap: 'anywhere' }}>
-          Read receipts: {readerLabels.length > 0 ? readerLabels.join(', ') : 'Unread'}
+        <span style={{ fontSize: 11, color: readerLabels.length > 0 ? '#0f766e' : '#64748b', borderRadius: 999, background: '#f1f5f9', padding: '1px 7px' }}>
+          {readStatus}
         </span>
+        <details style={{ marginLeft: 'auto', position: 'relative' }}>
+          <summary style={{ listStyle: 'none', cursor: 'pointer', border: '1px solid #cbd5e1', borderRadius: 6, padding: '1px 8px', fontSize: 13, color: '#334155' }}>⋯</summary>
+          <div style={{ position: 'absolute', right: 0, top: 'calc(100% + 4px)', minWidth: 150, background: '#fff', border: '1px solid #cbd5e1', borderRadius: 8, boxShadow: '0 8px 16px rgba(15,23,42,0.12)', zIndex: 20, display: 'grid', padding: 4 }}>
+            <button type="button" onClick={() => onReply(message.id)} aria-label={`Reply to message ${message.id}`} style={{ border: 0, background: 'transparent', textAlign: 'left', padding: '6px 8px' }}>Reply</button>
+            {linked.linkedType === 'transaction' && linked.linkedId && (
+              <button
+                type="button"
+                disabled={!canOpenContextLink(permissions, 'transaction')}
+                aria-label={`Open transaction ${linked.linkedId}`}
+                onClick={() => onOpenLinkedTransaction(linked.linkedId)}
+                style={{ border: 0, background: 'transparent', textAlign: 'left', padding: '6px 8px' }}
+              >
+                Open txn:{linked.linkedId}
+              </button>
+            )}
+            {message.parent_message_id && parentMap.has(message.parent_message_id) && (
+              <button type="button" onClick={() => onJumpToParent(message.parent_message_id)} aria-label="Jump to parent message" style={{ border: 0, background: 'transparent', textAlign: 'left', padding: '6px 8px' }}>
+                Jump to parent
+              </button>
+            )}
+            {hasReplies && (
+              <button type="button" onClick={() => onToggleReplies(message.id)} aria-label={isCollapsed ? 'Expand replies' : 'Collapse replies'} style={{ border: 0, background: 'transparent', textAlign: 'left', padding: '6px 8px' }}>
+                {isCollapsed ? `Show replies (${message.replies.length})` : 'Hide replies'}
+              </button>
+            )}
+            {canDeleteMessage(message) && (
+              <button type="button" onClick={() => onDeleteMessage(message.id)} aria-label={`Delete message ${message.id}`} style={{ border: 0, background: 'transparent', textAlign: 'left', padding: '6px 8px', color: '#b91c1c' }}>Delete message</button>
+            )}
+          </div>
+        </details>
+      </div>
+      <div style={{ marginTop: 4, fontSize: 12, color: '#0f172a', overflowWrap: 'anywhere', whiteSpace: 'pre-wrap' }}>
+        {highlightMentions(safeBody)}
       </div>
       {decoded.attachments.length > 0 && (
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 6 }}>
@@ -355,31 +389,8 @@ function MessageNode({ message, depth = 0, onReply, onJumpToParent, onToggleRepl
         </div>
       )}
       <div style={{ display: 'flex', gap: 6, marginTop: 4, alignItems: 'center', flexWrap: 'wrap' }}>
-        {linked.linkedType === 'transaction' && linked.linkedId && (
-          <button
-            type="button"
-            disabled={!canOpenContextLink(permissions, 'transaction')}
-            aria-label={`Open transaction ${linked.linkedId}`}
-            onClick={() => onOpenLinkedTransaction(linked.linkedId)}
-          >
-            txn:{linked.linkedId}
-          </button>
-        )}
         {extractMessageTopic(message) && <span style={{ fontSize: 12, color: '#334155' }}>topic:{extractMessageTopic(message)}</span>}
-        {canDeleteMessage(message) && (
-          <button type="button" onClick={() => onDeleteMessage(message.id)} aria-label={`Delete message ${message.id}`}>Delete message</button>
-        )}
-        {message.parent_message_id && parentMap.has(message.parent_message_id) && (
-          <button type="button" onClick={() => onJumpToParent(message.parent_message_id)} aria-label="Jump to parent message">
-            Jump to parent
-          </button>
-        )}
         {replyCount > 0 && <span aria-label="Nested reply count" style={{ fontSize: 12, color: '#64748b' }}>{replyCount} replies</span>}
-        {hasReplies && (
-          <button type="button" onClick={() => onToggleReplies(message.id)} aria-label={isCollapsed ? 'Expand replies' : 'Collapse replies'}>
-            {isCollapsed ? `Show replies (${message.replies.length})` : 'Hide replies'}
-          </button>
-        )}
       </div>
       {!isCollapsed && message.replies.map((child) => (
         <MessageNode
@@ -1218,6 +1229,19 @@ export default function MessagingWidget() {
     event.target.value = '';
   };
 
+  const onRemoveAttachment = (targetFile) => {
+    const nextFiles = state.composer.attachments.filter((file) => (
+      `${file.name}-${file.size}-${file.lastModified || 0}` !== `${targetFile.name}-${targetFile.size}-${targetFile.lastModified || 0}`
+    ));
+    dispatch({ type: 'composer/setAttachments', payload: nextFiles });
+    setComposerAnnouncement('Attachment removed.');
+  };
+
+  const onClearAttachments = () => {
+    dispatch({ type: 'composer/setAttachments', payload: [] });
+    setComposerAnnouncement('All attachments removed.');
+  };
+
   const onSwitchCompany = (event) => {
     const nextCompany = normalizeId(event.target.value);
     if (!nextCompany || nextCompany === state.activeCompanyId) return;
@@ -1479,8 +1503,8 @@ export default function MessagingWidget() {
           </div>
         </aside>
 
-        <section style={{ display: 'grid', gridTemplateRows: 'minmax(0, 1fr) auto', minWidth: 0, minHeight: 0 }}>
-          <main style={{ padding: '8px 12px 6px', overflowY: 'auto', minHeight: 420 }} aria-live="polite">
+        <section style={{ display: 'flex', flexDirection: 'column', minWidth: 0, minHeight: 0, overflow: 'hidden' }}>
+          <main style={{ padding: '8px 10px 6px', overflowY: 'auto', flex: 1, minHeight: 0 }} aria-live="polite">
             <div style={{ position: 'sticky', top: 0, background: '#f8fafc', paddingBottom: 6, marginBottom: 6 }}>
               <strong style={{ display: 'block', fontSize: 15, color: '#0f172a', lineHeight: 1.25, overflowWrap: 'anywhere' }}>{activeTopic}</strong>
               <div style={{ marginTop: 3, fontSize: 12, color: '#334155', display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
@@ -1526,7 +1550,7 @@ export default function MessagingWidget() {
           </main>
 
           <form
-            style={{ borderTop: '1px solid #e2e8f0', background: '#ffffff', padding: 8, position: 'sticky', bottom: 0, maxHeight: '29vh', overflowY: 'auto' }}
+            style={{ borderTop: '1px solid #e2e8f0', background: '#ffffff', padding: '6px 10px', maxHeight: '34vh', overflowY: 'auto', flexShrink: 0 }}
             onSubmit={(event) => {
               event.preventDefault();
               sendMessage();
@@ -1538,7 +1562,7 @@ export default function MessagingWidget() {
             onDragLeave={() => setDragOverComposer(false)}
             onDrop={onDropComposer}
           >
-            <div style={{ display: 'grid', gridTemplateColumns: canEditTopic ? 'minmax(0,1fr) minmax(0,1fr)' : 'minmax(0,1fr)', gap: 6 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr)', gap: 4 }}>
               {canEditTopic && (
                 <div>
                   <label htmlFor="messaging-topic" style={{ fontSize: 12, fontWeight: 600, color: '#334155' }}>Topic</label>
@@ -1549,23 +1573,10 @@ export default function MessagingWidget() {
                     required
                     placeholder="Enter a topic"
                     aria-label="Topic"
-                    style={{ width: '100%', marginTop: 4, borderRadius: 8, border: '1px solid #cbd5e1', padding: '7px 9px' }}
+                    style={{ width: '100%', marginTop: 2, borderRadius: 8, border: '1px solid #cbd5e1', padding: '6px 8px' }}
                   />
                 </div>
               )}
-
-              <div style={{ position: 'relative' }}>
-                <label htmlFor="messaging-add-recipient" style={{ fontSize: 12, fontWeight: 600, color: '#334155' }}>Add recipient</label>
-                <input
-                  id="messaging-add-recipient"
-                  type="search"
-                  value={recipientSearch}
-                  onChange={(event) => setRecipientSearch(event.target.value)}
-                  placeholder="Search by name or employee ID"
-                  aria-label="Add recipient"
-                  style={{ width: '100%', marginTop: 4, borderRadius: 8, border: '1px solid #cbd5e1', padding: '7px 9px' }}
-                />
-              </div>
             </div>
 
             <div style={{ marginTop: 6, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
@@ -1586,7 +1597,7 @@ export default function MessagingWidget() {
               })}
             </div>
 
-            <label htmlFor="messaging-composer" style={{ marginTop: 8, display: 'block', fontSize: 12, fontWeight: 600, color: '#334155' }}>
+            <label htmlFor="messaging-composer" style={{ marginTop: 6, display: 'block', fontSize: 12, fontWeight: 600, color: '#334155' }}>
               Message
             </label>
             <textarea
@@ -1605,13 +1616,13 @@ export default function MessagingWidget() {
               aria-label="Message composer"
               style={{
                 width: '100%',
-                marginTop: 4,
-                borderRadius: 12,
+                marginTop: 2,
+                borderRadius: 10,
                 border: dragOverComposer ? '2px dashed #f97316' : '2px dashed #cbd5e1',
-                padding: '8px 10px',
-                fontSize: 14,
-                minHeight: 52,
-                maxHeight: 240,
+                padding: '7px 9px',
+                fontSize: 13,
+                minHeight: 46,
+                maxHeight: 140,
                 overflowY: 'auto',
                 resize: 'none',
               }}
@@ -1630,13 +1641,13 @@ export default function MessagingWidget() {
               </div>
             )}
 
-            <p title="Drag files to attach, or drag a transaction ID to link context." style={{ margin: '4px 0 0', fontSize: 11, color: '#64748b' }}>Tip: drag files or a transaction ID here.</p>
+            <p title="Drag files to attach, or drag a transaction ID to link context." style={{ margin: '2px 0 0', fontSize: 11, color: '#64748b' }}>Tip: drag files or a transaction ID here.</p>
 
-            <div style={{ marginTop: 6 }}>
+            <div style={{ marginTop: 4 }}>
               <button
                 type="button"
                 onClick={() => setAttachmentsOpen((prev) => !prev)}
-                style={{ border: 0, background: 'transparent', padding: 0, fontSize: 12, fontWeight: 600, color: '#334155' }}
+                style={{ border: 0, background: 'transparent', padding: 0, marginTop: 4, fontSize: 12, fontWeight: 600, color: '#334155' }}
               >
                 {attachmentsOpen ? '▾' : '▸'} Context & attachments {state.composer.attachments.length > 0 ? `(${state.composer.attachments.length})` : ''}
               </button>
@@ -1669,11 +1680,20 @@ export default function MessagingWidget() {
                     aria-label="Attachment picker"
                     style={{ display: 'block', marginTop: 6 }}
                   />
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8, gap: 8 }}>
+                    <span style={{ fontSize: 12, color: '#475569' }}>Attachments</span>
+                    <button type="button" onClick={onClearAttachments} disabled={state.composer.attachments.length === 0} style={{ border: '1px solid #cbd5e1', borderRadius: 8, background: '#fff', padding: '4px 8px', fontSize: 12 }}>
+                      Remove all
+                    </button>
+                  </div>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 8, marginTop: 8 }}>
                     {state.composer.attachments.map((file) => (
                       <div key={`${file.name}-${file.lastModified}-${file.size}`} style={{ border: '1px solid #e2e8f0', borderRadius: 8, padding: 8, background: '#f8fafc' }}>
                         <strong style={{ display: 'block', fontSize: 12, color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis' }}>{file.name}</strong>
                         <span style={{ fontSize: 11, color: '#64748b' }}>{Math.max(1, Math.round(file.size / 1024))} KB</span>
+                        <button type="button" onClick={() => onRemoveAttachment(file)} style={{ display: 'block', marginTop: 6, border: '1px solid #cbd5e1', borderRadius: 6, background: '#fff', padding: '2px 6px', fontSize: 11 }}>
+                          Remove
+                        </button>
                       </div>
                     ))}
                   </div>
@@ -1681,8 +1701,8 @@ export default function MessagingWidget() {
               )}
             </div>
 
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8, gap: 8, flexWrap: 'wrap' }}>
-              <button type="button" onClick={() => dispatch({ type: 'composer/reset' })} style={{ border: '1px solid #cbd5e1', borderRadius: 8, background: '#fff', padding: '8px 10px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 6, gap: 8, flexWrap: 'wrap' }}>
+              <button type="button" onClick={() => dispatch({ type: 'composer/reset' })} style={{ border: '1px solid #cbd5e1', borderRadius: 8, background: '#fff', padding: '6px 10px' }}>
                 Clear draft
               </button>
               <button type="submit" disabled={!canSendMessage} style={{ border: 0, borderRadius: 8, background: canSendMessage ? '#2563eb' : '#94a3b8', color: '#fff', padding: '8px 14px', fontWeight: 600, cursor: canSendMessage ? 'pointer' : 'not-allowed' }}>
