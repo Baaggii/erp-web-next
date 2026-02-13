@@ -1287,6 +1287,10 @@ export async function listTemporarySubmissions({
     conditions.push('created_by = ?');
     params.push(normalizedEmp);
   }
+  if (companyId !== undefined && companyId !== null && String(companyId).trim() !== '') {
+    conditions.push('company_id = ?');
+    params.push(Number(companyId));
+  }
   const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
   const requestedLimit = Number(limit);
   const normalizedLimit =
@@ -1296,33 +1300,25 @@ export async function listTemporarySubmissions({
   const requestedOffset = Number(offset);
   const normalizedOffset = Number.isFinite(requestedOffset) && requestedOffset > 0 ? requestedOffset : 0;
   const effectiveLimit = includeHasMore ? normalizedLimit + 1 : normalizedLimit;
-
-  // NOTE: Avoid self-joining the same tenant temp table (MySQL ER_CANT_REOPEN_TABLE on temp aliases).
-  // Instead, fetch ordered rows once and collapse latest row per chain in JS.
-  const [rows] = await queryWithTenantScope(
-    pool,
-    TEMP_TABLE,
-    companyId,
-    `SELECT *
-       FROM {{table}}
-       ${where}
-      ORDER BY updated_at DESC, created_at DESC`,
-    params,
-  );
-
-  const latestByChain = new Map();
-  for (const row of rows || []) {
-    const chainKey = String(row?.chain_id ?? row?.id ?? '');
-    if (!chainKey || latestByChain.has(chainKey)) continue;
-    latestByChain.set(chainKey, row);
-  }
-
-  const dedupedRows = Array.from(latestByChain.values());
-  const windowRows = dedupedRows.slice(normalizedOffset, normalizedOffset + effectiveLimit);
-  const hasMore = includeHasMore
-    ? dedupedRows.length > normalizedOffset + normalizedLimit
-    : false;
-  const limitedRows = includeHasMore ? windowRows.slice(0, normalizedLimit) : windowRows;
+  const groupingQuery = `
+    WITH filtered AS (${filteredQuery}),
+    ranked AS (
+      SELECT
+        filtered.*,
+        ROW_NUMBER() OVER (
+          PARTITION BY ${chainGroupKey('filtered')}
+          ORDER BY filtered.updated_at DESC, filtered.created_at DESC, filtered.id DESC
+        ) AS chain_rank
+      FROM filtered
+    )
+    SELECT *
+      FROM ranked
+     WHERE chain_rank = 1
+     ORDER BY updated_at DESC, created_at DESC, id DESC
+     LIMIT ? OFFSET ?`;
+  const [rows] = await pool.query(groupingQuery, [...params, effectiveLimit, normalizedOffset]);
+  const hasMore = includeHasMore ? rows.length > normalizedLimit : false;
+  const limitedRows = includeHasMore ? rows.slice(0, normalizedLimit) : rows;
   const mapped = limitedRows.map(mapTemporaryRow);
   const filtered = filterRowsByTransactionType(
     mapped,

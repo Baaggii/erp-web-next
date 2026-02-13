@@ -308,19 +308,19 @@ function MessageNode({ message, depth = 0, onReply, onJumpToParent, onToggleRepl
       aria-label={`Message ${message.id}`}
       style={{
         border: `1px solid ${isReplyTarget ? '#f97316' : '#e2e8f0'}`,
-        borderLeftWidth: 4,
-        borderRadius: 12,
+        borderLeftWidth: 3,
+        borderRadius: 8,
         background: isReplyTarget ? '#fff7ed' : isHighlighted ? '#ecfeff' : '#ffffff',
-        boxShadow: isHighlighted ? '0 0 0 2px #22d3ee inset' : 'none',
-        padding: 12,
-        marginBottom: 10,
-        marginLeft: depth > 0 ? Math.min(depth * 18, 72) : 0,
+        boxShadow: isHighlighted ? '0 0 0 1px #22d3ee inset' : 'none',
+        padding: '7px 8px',
+        marginBottom: 6,
+        marginLeft: depth > 0 ? Math.min(depth * 12, 48) : 0,
       }}
     >
-      <header style={{ fontSize: 12, color: '#475569', fontWeight: 600 }}>
+      <header style={{ fontSize: 11, color: '#475569', fontWeight: 600, lineHeight: 1.2 }}>
         {authorLabel} · {new Date(message.created_at).toLocaleString()}
       </header>
-      <p style={{ whiteSpace: 'pre-wrap', margin: '8px 0', color: '#0f172a', fontSize: 15 }}>{highlightMentions(safeBody)}</p>
+      <p style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', margin: '4px 0', color: '#0f172a', fontSize: 13, lineHeight: 1.35 }}>{highlightMentions(safeBody)}</p>
       {decoded.attachments.length > 0 && (
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
           {decoded.attachments.map((file) => {
@@ -362,7 +362,7 @@ function MessageNode({ message, depth = 0, onReply, onJumpToParent, onToggleRepl
         )}
         {extractMessageTopic(message) && <span style={{ fontSize: 12, color: '#334155' }}>topic:{extractMessageTopic(message)}</span>}
       </div>
-      <div style={{ display: 'flex', gap: 8, marginTop: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', gap: 6, marginTop: 4, alignItems: 'center', flexWrap: 'wrap' }}>
         <button type="button" onClick={() => onReply(message.id)} aria-label={`Reply to message ${message.id}`}>Reply</button>
         {canDeleteMessage(message) && (
           <button type="button" onClick={() => onDeleteMessage(message.id)} aria-label={`Delete message ${message.id}`}>Delete message</button>
@@ -379,7 +379,7 @@ function MessageNode({ message, depth = 0, onReply, onJumpToParent, onToggleRepl
           </button>
         )}
       </div>
-      <p style={{ marginTop: 6, marginBottom: 0, fontSize: 12, color: '#64748b' }}>
+      <p style={{ marginTop: 4, marginBottom: 0, fontSize: 11, color: '#64748b', overflowWrap: 'anywhere' }}>
         Read receipts: {readerLabels.length > 0 ? readerLabels.join(', ') : 'Unread'}
       </p>
       {!isCollapsed && message.replies.map((child) => (
@@ -433,9 +433,9 @@ export default function MessagingWidget() {
   const [presence, setPresence] = useState([]);
   const [employees, setEmployees] = useState([]);
   const [userDirectory, setUserDirectory] = useState({});
+  const [companyRecords, setCompanyRecords] = useState([]);
   const [recipientSearch, setRecipientSearch] = useState('');
   const [employeeStatusFilter, setEmployeeStatusFilter] = useState('all');
-  const [presencePanelOpen, setPresencePanelOpen] = useState(false);
   const [conversationPanelOpen, setConversationPanelOpen] = useState(true);
   const [isNarrowLayout, setIsNarrowLayout] = useState(false);
   const [highlightedIds, setHighlightedIds] = useState(() => new Set());
@@ -535,10 +535,6 @@ export default function MessagingWidget() {
     const applyResponsivePanels = () => {
       const narrow = globalThis.innerWidth < 1180;
       setIsNarrowLayout(narrow);
-      if (narrow) {
-        setPresencePanelOpen(false);
-        setConversationPanelOpen(false);
-      }
     };
     applyResponsivePanels();
     globalThis.addEventListener('resize', applyResponsivePanels);
@@ -549,6 +545,19 @@ export default function MessagingWidget() {
     const activeCompany = state.activeCompanyId || companyId;
     if (!activeCompany) return;
     let disposed = false;
+
+    const loadCompanies = async () => {
+      try {
+        const res = await fetch('/api/companies', { credentials: 'include' });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (disposed) return;
+        const companies = Array.isArray(data) ? data : Array.isArray(data?.items) ? data.items : [];
+        setCompanyRecords(companies);
+      } catch {
+        // Optional enhancement only; keep widget functional.
+      }
+    };
 
     const loadMessages = async () => {
       try {
@@ -677,6 +686,7 @@ export default function MessagingWidget() {
 
     loadMessages();
     loadEmployees();
+    loadCompanies();
     return () => {
       disposed = true;
     };
@@ -923,8 +933,10 @@ export default function MessagingWidget() {
       });
     });
 
-    return Array.from(seen.values()).sort((a, b) => a.label.localeCompare(b.label));
-  }, [employees, messages, presence, presenceMap, state.composer.recipients, userDirectory]);
+    return Array.from(seen.values())
+      .filter((entry) => entry.id !== selfEmpid)
+      .sort((a, b) => a.label.localeCompare(b.label));
+  }, [employees, messages, presence, presenceMap, selfEmpid, state.composer.recipients, userDirectory]);
 
   const filteredEmployees = useMemo(() => {
     if (!recipientSearch.trim()) return employeeRecords;
@@ -972,6 +984,25 @@ export default function MessagingWidget() {
     const normalizedEmpid = normalizeId(empid);
     if (!normalizedEmpid) return 'Unknown user';
     return employeeLabelMap.get(normalizedEmpid) || normalizedEmpid;
+  };
+
+  const sessionCompanyLabel = sanitizeMessageText(
+    session?.company_name || session?.companyName || user?.company_name || user?.companyName,
+  );
+  const companyLabelMap = useMemo(() => {
+    const labels = new Map((companyRecords || []).map((entry) => {
+      const id = normalizeId(entry?.id || entry?.company_id || entry?.companyId);
+      const label = sanitizeMessageText(entry?.name || entry?.company_name || entry?.companyName || id);
+      return [id, label || id];
+    }).filter(([id]) => Boolean(id)));
+    const activeCompanyId = normalizeId(state.activeCompanyId || companyId);
+    if (activeCompanyId && sessionCompanyLabel) labels.set(activeCompanyId, sessionCompanyLabel);
+    return labels;
+  }, [companyRecords, companyId, sessionCompanyLabel, state.activeCompanyId]);
+  const resolveCompanyLabel = (rawCompanyId) => {
+    const normalizedCompanyId = normalizeId(rawCompanyId);
+    if (!normalizedCompanyId) return 'Unknown company';
+    return companyLabelMap.get(normalizedCompanyId) || normalizedCompanyId;
   };
 
   const activeConversationParticipants = useMemo(() => {
@@ -1339,78 +1370,78 @@ export default function MessagingWidget() {
             <label htmlFor="messaging-company-switch" style={{ fontSize: 12, fontWeight: 600, color: '#334155' }}>Company</label>
             <input
               id="messaging-company-switch"
+              list="messaging-company-options"
               value={state.activeCompanyId || ''}
               onChange={onSwitchCompany}
               aria-label="Switch company context"
               style={{ width: '100%', marginTop: 6, borderRadius: 8, border: '1px solid #cbd5e1', padding: '8px 10px' }}
             />
+            <datalist id="messaging-company-options">
+              {companyRecords.map((entry) => {
+                const id = normalizeId(entry?.id || entry?.company_id || entry?.companyId);
+                if (!id) return null;
+                return <option key={id} value={id}>{resolveCompanyLabel(id)}</option>;
+              })}
+            </datalist>
+            <p style={{ margin: '6px 0 0', fontSize: 11, color: '#64748b' }}>
+              Active: {resolveCompanyLabel(state.activeCompanyId || companyId)}
+            </p>
           </div>
 
-          <div style={{ padding: 10, borderBottom: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexShrink: 0 }}>
+          <div style={{ padding: '8px 10px', borderBottom: '1px solid #e2e8f0', flexShrink: 0 }}>
             <div>
               <h3 style={{ margin: 0, fontSize: 14, color: '#0f172a' }}>Threads</h3>
-              <p style={{ margin: '3px 0 0', fontSize: 11, color: '#64748b' }}>One row per conversation.</p>
             </div>
-            <button type="button" onClick={() => setConversationPanelOpen((prev) => !prev)} style={{ border: '1px solid #cbd5e1', borderRadius: 8, background: '#fff', padding: '4px 8px', fontSize: 12 }}>
-              {conversationPanelOpen ? 'Hide' : 'Show'}
-            </button>
           </div>
 
           <div style={{ padding: 10, borderBottom: '1px solid #e2e8f0', flexShrink: 0 }}>
-            <button type="button" onClick={() => setPresencePanelOpen((prev) => !prev)} style={{ border: '1px solid #cbd5e1', borderRadius: 8, background: '#fff', fontWeight: 700, color: '#0f172a', padding: '4px 8px', fontSize: 12 }}>
-              {presencePanelOpen ? '● Hide presence' : '◌ Show presence'}
-            </button>
-            {presencePanelOpen && (
-              <div style={{ marginTop: 8 }}>
-                <input
-                  value={recipientSearch}
-                  onChange={(event) => setRecipientSearch(event.target.value)}
-                  placeholder="Search by name or employee ID"
-                  aria-label="Search employees"
-                  style={{ width: '100%', borderRadius: 8, border: '1px solid #cbd5e1', padding: '8px 10px', marginBottom: 8 }}
-                />
-                <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
-                  {STATUS_FILTERS.map((filter) => (
-                    <button
-                      key={filter.value}
-                      type="button"
-                      onClick={() => setEmployeeStatusFilter(filter.value)}
-                      style={{
-                        borderRadius: 999,
-                        border: employeeStatusFilter === filter.value ? '1px solid #2563eb' : '1px solid #cbd5e1',
-                        background: employeeStatusFilter === filter.value ? '#eff6ff' : '#fff',
-                        padding: '4px 8px',
-                        fontSize: 11,
-                      }}
-                    >
-                      {filter.label}
-                    </button>
-                  ))}
-                </div>
-                <div style={{ maxHeight: 180, overflowY: 'auto', display: 'grid', gap: 4 }}>
-                  {presenceEmployees.slice(0, 40).map((entry) => {
-                    const selected = state.composer.recipients.includes(entry.id);
-                    return (
-                      <button key={entry.id} type="button" onClick={() => (selected ? onRemoveRecipient(entry.id) : onChooseRecipient(entry.id))} style={{ display: 'flex', alignItems: 'center', gap: 8, border: selected ? '1px solid #2563eb' : '1px solid #e2e8f0', borderRadius: 8, background: selected ? '#eff6ff' : '#fff', padding: '6px 8px', textAlign: 'left' }}>
-                        <span style={{ width: 8, height: 8, borderRadius: 999, background: presenceColor(entry.status) }} />
-                        <span style={{ fontSize: 12, color: '#0f172a' }}>{formatEmployeeOption(entry)}</span>
-                        <span style={{ marginLeft: 'auto', fontSize: 10, color: '#475569', borderRadius: 999, padding: '2px 8px', background: '#f1f5f9' }}>{entry.status}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-                <button type="button" disabled={state.composer.recipients.length === 0} onClick={openNewMessage} style={{ marginTop: 8, border: 0, borderRadius: 8, background: state.composer.recipients.length ? '#2563eb' : '#94a3b8', color: '#fff', padding: '8px 10px', width: '100%' }}>
-                  New message
+            <input
+              value={recipientSearch}
+              onChange={(event) => setRecipientSearch(event.target.value)}
+              placeholder="Search by name or employee ID"
+              aria-label="Search employees"
+              style={{ width: '100%', borderRadius: 8, border: '1px solid #cbd5e1', padding: '8px 10px', marginBottom: 8 }}
+            />
+            <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
+              {STATUS_FILTERS.map((filter) => (
+                <button
+                  key={filter.value}
+                  type="button"
+                  onClick={() => setEmployeeStatusFilter(filter.value)}
+                  style={{
+                    borderRadius: 999,
+                    border: employeeStatusFilter === filter.value ? '1px solid #2563eb' : '1px solid #cbd5e1',
+                    background: employeeStatusFilter === filter.value ? '#eff6ff' : '#fff',
+                    padding: '4px 8px',
+                    fontSize: 11,
+                  }}
+                >
+                  {filter.label}
                 </button>
-              </div>
-            )}
+              ))}
+            </div>
+            <div style={{ maxHeight: 180, overflowY: 'auto', display: 'grid', gap: 4 }}>
+              {presenceEmployees.slice(0, 40).map((entry) => {
+                const selected = state.composer.recipients.includes(entry.id);
+                return (
+                  <button key={entry.id} type="button" onClick={() => (selected ? onRemoveRecipient(entry.id) : onChooseRecipient(entry.id))} style={{ display: 'flex', alignItems: 'center', gap: 8, border: selected ? '1px solid #2563eb' : '1px solid #e2e8f0', borderRadius: 8, background: selected ? '#eff6ff' : '#fff', padding: '6px 8px', textAlign: 'left' }}>
+                    <span style={{ width: 8, height: 8, borderRadius: 999, background: presenceColor(entry.status) }} />
+                    <span style={{ fontSize: 12, color: '#0f172a' }}>{formatEmployeeOption(entry)}</span>
+                    <span style={{ marginLeft: 'auto', fontSize: 10, color: '#475569', borderRadius: 999, padding: '2px 8px', background: '#f1f5f9' }}>{entry.status}</span>
+                  </button>
+                );
+              })}
+            </div>
+            <button type="button" disabled={state.composer.recipients.length === 0} onClick={openNewMessage} style={{ marginTop: 8, border: 0, borderRadius: 8, background: state.composer.recipients.length ? '#2563eb' : '#94a3b8', color: '#fff', padding: '8px 10px', width: '100%' }}>
+              New message
+            </button>
           </div>
 
-          {conversationPanelOpen && (
           <div style={{ overflowY: 'auto', padding: 8, display: 'grid', gap: 6, minHeight: 0, flex: 1, alignContent: 'start', gridAutoRows: 'max-content' }}>
-            {conversationSummaries.length === 0 && <p style={{ color: '#64748b', fontSize: 13 }}>No conversations yet.</p>}
+            <h3 style={{ margin: '0 0 2px', fontSize: 14, color: '#0f172a' }}>Conversations</h3>
+            {conversationSummaries.length === 0 && <p style={{ margin: 0, color: '#64748b', fontSize: 13 }}>No conversations yet.</p>}
             {conversationSummaries.map((conversation) => (
-              <div key={conversation.id} style={{ borderRadius: 12, border: conversation.id === activeConversationId ? '1px solid #3b82f6' : '1px solid #e2e8f0', background: conversation.id === activeConversationId ? '#eff6ff' : '#ffffff', padding: 8 }}>
+              <div key={conversation.id} style={{ borderRadius: 8, border: conversation.id === activeConversationId ? '1px solid #3b82f6' : '1px solid #e2e8f0', background: conversation.id === activeConversationId ? '#eff6ff' : '#ffffff', padding: '4px 6px', display: 'grid', gridTemplateColumns: 'minmax(0,1fr) auto', gap: 6, alignItems: 'center' }}>
                 <button
                   type="button"
                   onClick={() => {
@@ -1420,48 +1451,47 @@ export default function MessagingWidget() {
                       dispatch({ type: 'composer/setLinkedContext', payload: { linkedType: conversation.linkedType, linkedId: conversation.linkedId } });
                     }
                   }}
-                  style={{ textAlign: 'left', border: 0, background: 'transparent', width: '100%', padding: 0 }}
+                  style={{ textAlign: 'left', border: 0, background: 'transparent', width: '100%', padding: 0, minWidth: 0 }}
                 >
-                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center' }}>
-                    <strong style={{ color: '#0f172a', fontSize: 13 }}>{conversation.title}</strong>
-                    {conversation.unread > 0 && (
-                      <span style={{ minWidth: 20, textAlign: 'center', borderRadius: 999, background: '#ef4444', color: '#fff', fontSize: 11, padding: '1px 6px' }}>
-                        {conversation.unread}
-                      </span>
-                    )}
-                  </div>
-                  <p style={{ margin: '3px 0', fontSize: 11, color: '#334155', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{conversation.preview}</p>
-                  <p style={{ margin: '3px 0 0', fontSize: 10, color: '#64748b' }}>
-                    {conversation.groupName} · {formatLastActivity(conversation.lastActivity)}
-                  </p>
+                  <span style={{ display: 'block', fontSize: 12, color: '#0f172a', lineHeight: 1.3, overflowWrap: 'anywhere' }}>
+                    <strong>{conversation.title}</strong> · {conversation.preview}
+                  </span>
                 </button>
-                {!conversation.isGeneral && (
-                  <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+                  {conversation.unread > 0 && (
+                    <span style={{ minWidth: 18, textAlign: 'center', borderRadius: 999, background: '#ef4444', color: '#fff', fontSize: 10, padding: '0 5px' }}>
+                      {conversation.unread}
+                    </span>
+                  )}
+                  {!conversation.isGeneral && (
                     <button
                       type="button"
                       aria-label={`Delete conversation ${conversation.title}`}
                       onClick={() => handleDeleteConversationFromList(conversation)}
                       disabled={!canDeleteMessage(messages.find((entry) => Number(entry.id) === Number(conversation.rootMessageId)))}
-                      style={{ border: 0, background: 'transparent', color: '#b91c1c', fontSize: 12, cursor: 'pointer' }}
+                      style={{ border: 0, background: 'transparent', color: '#b91c1c', fontSize: 11, cursor: 'pointer', padding: 0 }}
                     >
-                      🗑 Delete
+                      🗑
                     </button>
-                  </div>
-                )}
+                  )}
+                </div>
               </div>
             ))}
           </div>
-          )}
         </aside>
 
         <section style={{ display: 'grid', gridTemplateRows: 'minmax(0, 1fr) auto', minWidth: 0, minHeight: 0 }}>
-          <main style={{ padding: '10px 14px 8px', overflowY: 'auto', minHeight: 420 }} aria-live="polite">
-            <div style={{ position: 'sticky', top: 0, background: '#f8fafc', paddingBottom: 8, marginBottom: 8 }}>
-              <strong style={{ fontSize: 16, color: '#0f172a' }}>{activeTopic}</strong>
-              <p style={{ margin: '4px 0 0', fontSize: 12, color: '#64748b' }}>Ctrl/Cmd + Enter sends your message.</p>
-              <p style={{ margin: '4px 0 0', fontSize: 12, color: '#334155' }}>Participants: {activeConversationParticipantLabels.length ? activeConversationParticipantLabels.join(', ') : 'Everyone in company'}</p>
+          <main style={{ padding: '8px 12px 6px', overflowY: 'auto', minHeight: 420 }} aria-live="polite">
+            <div style={{ position: 'sticky', top: 0, background: '#f8fafc', paddingBottom: 6, marginBottom: 6 }}>
+              <strong style={{ display: 'block', fontSize: 15, color: '#0f172a', lineHeight: 1.25, overflowWrap: 'anywhere' }}>{activeTopic}</strong>
+              <div style={{ marginTop: 3, fontSize: 12, color: '#334155', display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                <span style={{ color: '#64748b' }}>Ctrl/Cmd + Enter to send.</span>
+                <span style={{ overflowWrap: 'anywhere' }}>
+                  Participants: {activeConversationParticipantLabels.length ? activeConversationParticipantLabels.join(', ') : 'Everyone in company'}
+                </span>
+              </div>
               {activeConversation?.rootMessageId && canDeleteMessage(messages.find((entry) => Number(entry.id) === Number(activeConversation.rootMessageId))) && (
-                <button type="button" onClick={() => handleDeleteMessage(activeConversation.rootMessageId)} style={{ marginTop: 6 }}>
+                <button type="button" onClick={() => handleDeleteMessage(activeConversation.rootMessageId)} style={{ marginTop: 4 }}>
                   Delete thread
                 </button>
               )}
@@ -1497,7 +1527,7 @@ export default function MessagingWidget() {
           </main>
 
           <form
-            style={{ borderTop: '1px solid #e2e8f0', background: '#ffffff', padding: 10, position: 'sticky', bottom: 0, maxHeight: '34vh', overflowY: 'auto' }}
+            style={{ borderTop: '1px solid #e2e8f0', background: '#ffffff', padding: 8, position: 'sticky', bottom: 0, maxHeight: '29vh', overflowY: 'auto' }}
             onSubmit={(event) => {
               event.preventDefault();
               sendMessage();
@@ -1509,7 +1539,7 @@ export default function MessagingWidget() {
             onDragLeave={() => setDragOverComposer(false)}
             onDrop={onDropComposer}
           >
-            <div style={{ display: 'grid', gridTemplateColumns: canEditTopic ? 'minmax(0,1fr) minmax(0,1fr)' : 'minmax(0,1fr)', gap: 8 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: canEditTopic ? 'minmax(0,1fr) minmax(0,1fr)' : 'minmax(0,1fr)', gap: 6 }}>
               {canEditTopic && (
                 <div>
                   <label htmlFor="messaging-topic" style={{ fontSize: 12, fontWeight: 600, color: '#334155' }}>Topic</label>
@@ -1520,7 +1550,7 @@ export default function MessagingWidget() {
                     required
                     placeholder="Enter a topic"
                     aria-label="Topic"
-                    style={{ width: '100%', marginTop: 6, borderRadius: 8, border: '1px solid #cbd5e1', padding: '9px 10px' }}
+                    style={{ width: '100%', marginTop: 4, borderRadius: 8, border: '1px solid #cbd5e1', padding: '7px 9px' }}
                   />
                 </div>
               )}
@@ -1534,7 +1564,7 @@ export default function MessagingWidget() {
                   onChange={(event) => setRecipientSearch(event.target.value)}
                   placeholder="Search by name or employee ID"
                   aria-label="Add recipient"
-                  style={{ width: '100%', marginTop: 6, borderRadius: 8, border: '1px solid #cbd5e1', padding: '9px 10px' }}
+                  style={{ width: '100%', marginTop: 4, borderRadius: 8, border: '1px solid #cbd5e1', padding: '7px 9px' }}
                 />
                 {recipientSearch.trim() && (
                   <div style={{ position: 'absolute', zIndex: 20, top: 62, left: 0, right: 0, border: '1px solid #cbd5e1', borderRadius: 8, background: '#fff', maxHeight: 180, overflowY: 'auto' }}>
@@ -1558,7 +1588,7 @@ export default function MessagingWidget() {
               </div>
             </div>
 
-            <div style={{ marginTop: 8, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+            <div style={{ marginTop: 6, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
               {state.composer.recipients.map((empid) => {
                 const found = employeeRecords.find((entry) => entry.id === empid);
                 const label = found?.label || resolveEmployeeLabel(empid);
@@ -1576,7 +1606,7 @@ export default function MessagingWidget() {
               })}
             </div>
 
-            <label htmlFor="messaging-composer" style={{ marginTop: 10, display: 'block', fontSize: 12, fontWeight: 600, color: '#334155' }}>
+            <label htmlFor="messaging-composer" style={{ marginTop: 8, display: 'block', fontSize: 12, fontWeight: 600, color: '#334155' }}>
               Message
             </label>
             <textarea
@@ -1590,17 +1620,17 @@ export default function MessagingWidget() {
                   sendMessage();
                 }
               }}
-              rows={3}
+              rows={2}
               placeholder="Type a message…"
               aria-label="Message composer"
               style={{
                 width: '100%',
-                marginTop: 6,
+                marginTop: 4,
                 borderRadius: 12,
                 border: dragOverComposer ? '2px dashed #f97316' : '2px dashed #cbd5e1',
-                padding: '10px 12px',
-                fontSize: 15,
-                minHeight: 72,
+                padding: '8px 10px',
+                fontSize: 14,
+                minHeight: 52,
                 maxHeight: 240,
                 overflowY: 'auto',
                 resize: 'none',
@@ -1620,9 +1650,9 @@ export default function MessagingWidget() {
               </div>
             )}
 
-            <p title="Drag files to attach, or drag a transaction ID to link context." style={{ margin: '6px 0 0', fontSize: 11, color: '#64748b' }}>Tip: drag files or a transaction ID here.</p>
+            <p title="Drag files to attach, or drag a transaction ID to link context." style={{ margin: '4px 0 0', fontSize: 11, color: '#64748b' }}>Tip: drag files or a transaction ID here.</p>
 
-            <div style={{ marginTop: 8 }}>
+            <div style={{ marginTop: 6 }}>
               <button
                 type="button"
                 onClick={() => setAttachmentsOpen((prev) => !prev)}
@@ -1671,7 +1701,7 @@ export default function MessagingWidget() {
               )}
             </div>
 
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 12 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8, gap: 8, flexWrap: 'wrap' }}>
               <button type="button" onClick={() => dispatch({ type: 'composer/reset' })} style={{ border: '1px solid #cbd5e1', borderRadius: 8, background: '#fff', padding: '8px 10px' }}>
                 Clear draft
               </button>
