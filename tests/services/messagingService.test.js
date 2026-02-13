@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { deleteMessage, getMessages, getThread, patchMessage, postMessage, postReply, setMessagingIo } from '../../api-server/services/messagingService.js';
+import { deleteMessage, getMessages, getThread, patchMessage, postMessage, postReply, resetMessagingServiceStateForTests, setMessagingIo } from '../../api-server/services/messagingService.js';
 import { resetMessagingMetrics } from '../../api-server/services/messagingMetrics.js';
 
 class FakeDb {
@@ -8,6 +8,7 @@ class FakeDb {
     this.messages = [];
     this.idem = new Map();
     this.nextId = 1;
+    this.participants = new Map();
     this.securityAuditEvents = [];
     this.supportsEncryptedBodyColumns = supportsEncryptedBodyColumns;
     this.deleteByColumn = deleteByColumn;
@@ -38,6 +39,27 @@ class FakeDb {
       const [companyId, empid, key] = params;
       const messageId = this.idem.get(`${companyId}:${empid}:${key}`);
       return [messageId ? [{ message_id: messageId, request_hash: null, expires_at: null }] : []];
+    }
+    if (sql.includes('INSERT INTO erp_message_participants')) {
+      const [companyId, rootMessageId, empid, addedByEmpid] = params;
+      const key = `${companyId}:${rootMessageId}`;
+      const bucket = this.participants.get(key) || new Map();
+      bucket.set(String(empid), { empid: String(empid), added_by_empid: addedByEmpid || null });
+      this.participants.set(key, bucket);
+      return [{ affectedRows: 1 }];
+    }
+    if (sql.includes('FROM erp_message_participants')) {
+      const [companyId, ...rootIds] = params;
+      const rows = [];
+      rootIds.forEach((rootId) => {
+        const key = `${companyId}:${rootId}`;
+        const bucket = this.participants.get(key);
+        if (!bucket) return;
+        bucket.forEach((entry) => {
+          rows.push({ root_message_id: Number(rootId), empid: entry.empid });
+        });
+      });
+      return [rows];
     }
     if (sql.startsWith('INSERT INTO erp_messages')) {
       const hasLinkedFields = sql.includes('linked_type') && sql.includes('linked_id');
@@ -489,6 +511,89 @@ test('private thread cannot be replied by a non-included user', async () => {
 });
 
 
+
+
+test('new private message supports multiple explicit recipients only', async () => {
+  const db = new FakeDb();
+  const session = { permissions: { messaging: true }, department_id: 10 };
+
+  const created = await postMessage({
+    user,
+    companyId: 1,
+    payload: {
+      body: 'group private root',
+      linkedType: 'topic',
+      linkedId: 'ops-room',
+      visibilityScope: 'private',
+      visibilityEmpid: 'e-2',
+      recipientEmpids: ['e-2', 'e-3'],
+      idempotencyKey: 'private-multi-root',
+    },
+    correlationId: 'private-multi-root',
+    db,
+    getSession: async () => session,
+  });
+
+  const listForRecipient = await getMessages({
+    user: { empid: 'e-3', companyId: 1 },
+    companyId: 1,
+    correlationId: 'private-multi-list',
+    db,
+    getSession: async () => session,
+  });
+  assert.equal(listForRecipient.items.some((item) => item.id === created.message.id), true);
+
+  const listForOutsider = await getMessages({
+    user: { empid: 'e-9', companyId: 1 },
+    companyId: 1,
+    correlationId: 'private-multi-list-outsider',
+    db,
+    getSession: async () => session,
+  });
+  assert.equal(listForOutsider.items.some((item) => item.id === created.message.id), false);
+});
+
+test('reply can add private participant and grant history access', async () => {
+  const db = new FakeDb();
+  const session = { permissions: { messaging: true }, department_id: 10 };
+
+  const root = await postMessage({
+    user,
+    companyId: 1,
+    payload: {
+      body: 'root',
+      linkedType: 'topic',
+      linkedId: 'ops-room',
+      visibilityScope: 'private',
+      visibilityEmpid: 'e-2',
+      idempotencyKey: 'private-add-participant-root',
+    },
+    correlationId: 'private-add-participant-root',
+    db,
+    getSession: async () => session,
+  });
+
+  await postReply({
+    user: { empid: 'e-2', companyId: 1 },
+    companyId: 1,
+    messageId: root.message.id,
+    payload: { body: 'adding e-3', recipientEmpids: ['e-3'], idempotencyKey: 'private-add-participant-reply' },
+    correlationId: 'private-add-participant-reply',
+    db,
+    getSession: async () => session,
+  });
+
+  const thread = await getThread({
+    user: { empid: 'e-3', companyId: 1 },
+    companyId: 1,
+    messageId: root.message.id,
+    correlationId: 'private-add-participant-thread',
+    db,
+    getSession: async () => session,
+  });
+  assert.equal(thread.root.id, root.message.id);
+  assert.equal(thread.replies.length, 1);
+});
 
 test('private thread replies stay scoped to selected participants', async () => {
   const db = new FakeDb();
