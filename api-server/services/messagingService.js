@@ -888,36 +888,22 @@ export async function getThread({ user, companyId, messageId, correlationId, db 
   if (!root || root.deleted_at) throw createError(404, 'MESSAGE_NOT_FOUND', 'Message not found');
   assertCanViewMessage(root, session, user);
 
-  const [allRows] = await queryWithTenantScope(
+  const [rows] = await queryWithTenantScope(
     db,
     'erp_messages',
     scopedCompanyId,
-    'SELECT * FROM {{table}} ORDER BY id ASC',
-    [],
+    `WITH RECURSIVE thread AS (
+      SELECT *
+      FROM {{table}}
+      WHERE id = ?
+      UNION ALL
+      SELECT child.*
+      FROM {{table}} child
+      INNER JOIN thread parent ON child.parent_message_id = parent.id
+    )
+    SELECT * FROM thread ORDER BY id ASC`,
+    [messageId],
   );
-  const byParent = new Map();
-  for (const row of allRows) {
-    const key = row.parent_message_id == null ? 'root' : String(row.parent_message_id);
-    const bucket = byParent.get(key) || [];
-    bucket.push(row);
-    byParent.set(key, bucket);
-  }
-  const stack = [messageId];
-  const seen = new Set([String(messageId)]);
-  const rows = [];
-  while (stack.length > 0) {
-    const id = stack.shift();
-    const row = allRows.find((entry) => Number(entry.id) === Number(id));
-    if (!row) continue;
-    rows.push(row);
-    const children = byParent.get(String(id)) || [];
-    for (const child of children) {
-      const childId = String(child.id);
-      if (seen.has(childId)) continue;
-      seen.add(childId);
-      stack.push(child.id);
-    }
-  }
 
   const [receiptResult] = await db.query(
     'INSERT IGNORE INTO erp_message_receipts (message_id, empid) VALUES (?, ?)',
