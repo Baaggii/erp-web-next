@@ -77,16 +77,34 @@ export async function markTransactionNotificationsRead(req, res, next) {
 
 export async function markAllTransactionNotificationsRead(req, res, next) {
   try {
-    const [result] = await pool.query(
-      `UPDATE notifications
-          SET is_read = 1, updated_by = ?, updated_at = NOW()
+    const [candidateRows] = await queryWithTenantScope(
+      pool,
+      'notifications',
+      req.user.companyId,
+      `SELECT notification_id
+         FROM {{table}}
         WHERE recipient_empid = ?
-          AND company_id = ?
-          AND deleted_at IS NULL
           AND is_read = 0
           AND JSON_VALID(message)
           AND LOWER(JSON_UNQUOTE(JSON_EXTRACT(message, '$.kind'))) = 'transaction'`,
-      [req.user.empid, req.user.empid, req.user.companyId],
+      [req.user.empid],
+    );
+
+    const notificationIds = (candidateRows || [])
+      .map((row) => Number(row.notification_id))
+      .filter((id) => Number.isFinite(id));
+
+    if (!notificationIds.length) {
+      return res.json({ updated: 0 });
+    }
+
+    const [result] = await pool.query(
+      `UPDATE notifications
+          SET is_read = 1, updated_by = ?, updated_at = NOW()
+        WHERE notification_id IN (?)
+          AND recipient_empid = ?
+          AND company_id = ?`,
+      [req.user.empid, notificationIds, req.user.empid, req.user.companyId],
     );
     res.json({ updated: result?.affectedRows ?? 0 });
   } catch (err) {
