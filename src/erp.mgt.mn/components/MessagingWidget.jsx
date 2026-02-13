@@ -301,7 +301,7 @@ function MessageNode({ message, depth = 0, onReply, onJumpToParent, onToggleRepl
   const isHighlighted = highlightedIds.has(message.id);
   const readers = Array.isArray(message.read_by) ? message.read_by.filter(Boolean) : [];
   const authorLabel = resolveEmployeeLabel(message.author_empid);
-  const readerLabels = readers.map((empid) => resolveEmployeeLabel(empid));
+  const deliveryStatusLabel = readers.length > 0 ? 'Read' : 'Unread';
 
   return (
     <article
@@ -1565,27 +1565,8 @@ export default function MessagingWidget() {
                   aria-label="Add recipient"
                   style={{ width: '100%', marginTop: 4, borderRadius: 8, border: '1px solid #cbd5e1', padding: '7px 9px' }}
                 />
-                {recipientSearch.trim() && (
-                  <div style={{ position: 'absolute', zIndex: 20, top: 62, left: 0, right: 0, border: '1px solid #cbd5e1', borderRadius: 8, background: '#fff', maxHeight: 180, overflowY: 'auto' }}>
-                    {filteredEmployees.slice(0, 8).map((entry) => (
-                      <button
-                        key={entry.id}
-                        type="button"
-                        onClick={() => onChooseRecipient(entry.id)}
-                        style={{ width: '100%', textAlign: 'left', border: 0, background: 'transparent', padding: '8px 10px', display: 'flex', alignItems: 'center', gap: 8 }}
-                      >
-                        <span style={{ width: 24, height: 24, borderRadius: 12, background: '#e2e8f0', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, color: '#334155', fontWeight: 700 }}>
-                          {initialsForLabel(entry.label)}
-                        </span>
-                        <span style={{ width: 8, height: 8, borderRadius: 999, background: presenceColor(entry.status) }} aria-hidden="true" />
-                        <span style={{ fontSize: 13, color: '#0f172a' }}>{formatEmployeeOption(entry)}</span>
-                      </button>
-                    ))}
-                    {filteredEmployees.length === 0 && <p style={{ margin: 0, padding: 10, color: '#64748b', fontSize: 12 }}>No matches</p>}
-                  </div>
-                )}
               </div>
-            </div>
+            )}
 
             <div style={{ marginTop: 6, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
               {state.composer.recipients.map((empid) => {
