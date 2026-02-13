@@ -20,6 +20,7 @@ import {
   getReportTempSessionKey,
   storeReportTempSession,
 } from '../services/reportTempTableSession.js';
+import { queryWithTenantScope } from '../services/tenantScope.js';
 
 const RATE_LIMIT_WINDOW_MS = 60 * 1000;
 const RATE_LIMIT_MAX_REQUESTS = 30;
@@ -65,9 +66,12 @@ async function validateCompanyForGid(companyId, gId, res) {
     res.status(400).json({ message: 'companyId is required when supplying g_id' });
     return false;
   }
-  const [rows] = await pool.query(
-    'SELECT 1 FROM transactions_contract WHERE company_id = ? AND g_id = ? LIMIT 1',
-    [normalizedCompanyId, normalizedGid],
+  const [rows] = await queryWithTenantScope(
+    pool,
+    'transactions_contract',
+    normalizedCompanyId,
+    'SELECT 1 FROM {{table}} WHERE g_id = ? LIMIT 1',
+    [normalizedGid],
   );
   if (!rows.length) {
     res.status(400).json({ message: 'No company found for supplied g_id' });

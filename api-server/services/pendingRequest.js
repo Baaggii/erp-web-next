@@ -19,6 +19,7 @@ import {
 } from './reportApprovals.js';
 import { storeSnapshotArtifact } from './reportSnapshotArtifacts.js';
 import { notifyUser } from './notificationService.js';
+import { queryWithTenantScope } from './tenantScope.js';
 
 const SNAPSHOT_MAX_INLINE_ROWS = Number(
   process.env.REPORT_APPROVAL_MAX_INLINE_ROWS || 1000,
@@ -705,12 +706,15 @@ export async function createRequest({
       finalProposed = currentRow;
     }
     const normalizedEmp = String(empId).trim().toUpperCase();
-    const [existing] = await conn.query(
-      `SELECT request_id, proposed_data FROM pending_request
-       WHERE company_id = ? AND table_name = ? AND record_id = ? AND emp_id = ?
+    const [existing] = await queryWithTenantScope(
+      conn,
+      'pending_request',
+      companyId,
+      `SELECT request_id, proposed_data FROM {{table}}
+       WHERE table_name = ? AND record_id = ? AND emp_id = ?
          AND request_type = ? AND status = 'pending'
        LIMIT 1`,
-      [companyId, tableName, recordId, normalizedEmp, requestType],
+      [tableName, recordId, normalizedEmp, requestType],
     );
     if (existing.length) {
       const existingData = parseProposedData(existing[0].proposed_data);
@@ -911,12 +915,15 @@ export async function createBulkEditRequest({
       .update(recordIdSignature)
       .digest('hex')
       .slice(0, 32)}`;
-    const [existing] = await conn.query(
-      `SELECT request_id, proposed_data FROM pending_request
-       WHERE company_id = ? AND table_name = ? AND record_id = ? AND emp_id = ?
+    const [existing] = await queryWithTenantScope(
+      conn,
+      'pending_request',
+      companyId,
+      `SELECT request_id, proposed_data FROM {{table}}
+       WHERE table_name = ? AND record_id = ? AND emp_id = ?
          AND request_type = 'bulk_edit' AND status = 'pending'
        LIMIT 1`,
-      [companyId, tableName, recordId, normalizedEmp],
+      [tableName, recordId, normalizedEmp],
     );
     if (existing.length) {
       const existingData = parseProposedData(existing[0].proposed_data);
@@ -1006,6 +1013,7 @@ export async function listRequests(filters) {
     page = 1,
     per_page = 2,
     count_only = false,
+    company_id: companyId = null,
   } = filters || {};
 
   const countOnly =
@@ -1059,8 +1067,11 @@ export async function listRequests(filters) {
   }
 
   const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
-  const [countRows] = await pool.query(
-    `SELECT COUNT(*) as count FROM pending_request ${where}`,
+  const [countRows] = await queryWithTenantScope(
+    pool,
+    'pending_request',
+    companyId,
+    `SELECT COUNT(*) as count FROM {{table}} ${where}`,
     params,
   );
   const total = countRows[0]?.count || 0;
@@ -1072,10 +1083,13 @@ export async function listRequests(filters) {
   const limit = Number(per_page) > 0 ? Number(per_page) : 2;
   const offset = (Number(page) > 0 ? Number(page) - 1 : 0) * limit;
 
-  const [orderedIds] = await pool.query(
+  const [orderedIds] = await queryWithTenantScope(
+    pool,
+    'pending_request',
+    companyId,
     `SELECT request_id,
             ${dateColumn} AS sort_value
-       FROM pending_request
+       FROM {{table}}
        ${where}
       ORDER BY ${dateColumn} DESC, request_id DESC
       LIMIT ? OFFSET ?`,
@@ -1095,9 +1109,12 @@ export async function listRequests(filters) {
   }
 
   const placeholders = idOrder.map(() => '?').join(', ');
-  const [rowsRaw] = await pool.query(
+  const [rowsRaw] = await queryWithTenantScope(
+    pool,
+    'pending_request',
+    companyId,
     `SELECT pr.*, DATE_FORMAT(pr.created_at, '%Y-%m-%d %H:%i:%s') AS created_at_fmt, DATE_FORMAT(pr.responded_at, '%Y-%m-%d %H:%i:%s') AS responded_at_fmt
-       FROM pending_request pr
+       FROM {{table}} pr
       WHERE pr.request_id IN (${placeholders})`,
     idOrder,
   );
@@ -1229,6 +1246,7 @@ export async function listRequestsByEmp(
     page,
     per_page,
     count_only,
+    company_id: companyId = null,
   } = {},
 ) {
   return listRequests({
@@ -1242,6 +1260,7 @@ export async function listRequestsByEmp(
     page,
     per_page,
     count_only,
+    company_id: companyId,
   });
 }
 
@@ -1250,6 +1269,7 @@ export async function respondRequest(
   responseEmpid,
   status,
   notes,
+  companyId = null,
 ) {
   if (!notes || !String(notes).trim()) {
     const err = new Error('response_notes required');
@@ -1259,8 +1279,11 @@ export async function respondRequest(
   const conn = await pool.getConnection();
   try {
     await conn.query('BEGIN');
-    const [rows] = await conn.query(
-      'SELECT * FROM pending_request WHERE request_id = ?',
+    const [rows] = await queryWithTenantScope(
+      conn,
+      'pending_request',
+      companyId,
+      'SELECT * FROM {{table}} WHERE request_id = ?',
       [id],
     );
     const req = rows[0];
