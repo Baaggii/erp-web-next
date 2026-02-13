@@ -4,6 +4,7 @@ import { requireAuth } from '../middlewares/auth.js';
 import { pool } from '../../db/index.js';
 import { listTransactionNames } from '../services/transactionFormConfig.js';
 import { getReportApprovalsDashboardTab } from '../services/reportAccessConfig.js';
+import { queryWithTenantScope } from '../services/tenantScope.js';
 
 const router = express.Router();
 
@@ -279,37 +280,42 @@ router.get('/feed', requireAuth, feedRateLimiter, async (req, res, next) => {
       redirectMapByTable = new Map();
     }
 
-    const [notificationRows] = await pool.query(
+    const [notificationRows] = await queryWithTenantScope(
+      pool,
+      'notifications',
+      companyId,
       `SELECT notification_id, type, related_id, message, is_read, created_at, updated_at
-         FROM notifications
+         FROM {{table}}
         WHERE recipient_empid = ?
-          AND company_id = ?
-          AND deleted_at IS NULL
         ORDER BY created_at DESC
         LIMIT ?`,
-      [req.user.empid, companyId, sourceLimit],
+      [req.user.empid, sourceLimit],
     );
 
-    const [incomingRows] = await pool.query(
+    const [incomingRows] = await queryWithTenantScope(
+      pool,
+      'pending_request',
+      companyId,
       `SELECT request_id, request_type, table_name, emp_id, status, created_at, responded_at, response_empid
-         FROM pending_request
+         FROM {{table}}
         WHERE UPPER(TRIM(senior_empid)) = ?
-          AND company_id = ?
           AND LOWER(TRIM(status)) = 'pending'
         ORDER BY created_at DESC
         LIMIT ?`,
-      [userEmpId, companyId, sourceLimit],
+      [userEmpId, sourceLimit],
     );
 
-    const [outgoingRows] = await pool.query(
+    const [outgoingRows] = await queryWithTenantScope(
+      pool,
+      'pending_request',
+      companyId,
       `SELECT request_id, request_type, table_name, emp_id, status, created_at, responded_at, response_empid
-         FROM pending_request
+         FROM {{table}}
         WHERE UPPER(TRIM(emp_id)) = ?
-          AND company_id = ?
           AND LOWER(TRIM(status)) IN ('pending', 'accepted', 'declined')
         ORDER BY COALESCE(responded_at, created_at) DESC
         LIMIT ?`,
-      [userEmpId, companyId, sourceLimit],
+      [userEmpId, sourceLimit],
     );
 
     const parsedNotificationRows = (notificationRows || []).map((row) => {
@@ -338,12 +344,14 @@ router.get('/feed', requireAuth, feedRateLimiter, async (req, res, next) => {
     let temporaryMap = new Map();
     if (temporaryIds.length > 0) {
       try {
-        const [temporaryRows] = await pool.query(
+        const [temporaryRows] = await queryWithTenantScope(
+          pool,
+          'transaction_temporaries',
+          companyId,
           `SELECT id, table_name, form_name, config_name, status, created_by, reviewed_by, updated_at
-             FROM transaction_temporaries
-            WHERE company_id = ?
-              AND id IN (?)`,
-          [companyId, temporaryIds],
+             FROM {{table}}
+            WHERE id IN (?)`,
+          [temporaryIds],
         );
         temporaryMap = new Map((temporaryRows || []).map((row) => [Number(row.id), row]));
       } catch {

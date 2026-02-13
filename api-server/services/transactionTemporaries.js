@@ -25,6 +25,7 @@ import { getMerchantById } from './merchantService.js';
 import { renameImages, resolveImageNaming } from './transactionImageService.js';
 import formatTimestamp from '../../src/erp.mgt.mn/utils/formatTimestamp.js';
 import { sanitizeRowForTable } from '../utils/schemaSanitizer.js';
+import { queryWithTenantScope } from './tenantScope.js';
 
 const TEMP_TABLE = 'transaction_temporaries';
 const TEMP_REVIEW_HISTORY_TABLE = 'transaction_temporary_review_history';
@@ -1257,10 +1258,6 @@ export async function listTemporarySubmissions({
       }
     }
   }
-  if (companyId != null) {
-    conditions.push('(company_id = ? OR company_id IS NULL)');
-    params.push(companyId);
-  }
   if (tableName) {
     conditions.push('table_name = ?');
     params.push(tableName);
@@ -1291,9 +1288,6 @@ export async function listTemporarySubmissions({
     params.push(normalizedEmp);
   }
   const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
-  const chainGroupKey = (alias = '') =>
-    `COALESCE(${alias ? `${alias}.` : ''}chain_id, ${alias ? `${alias}.` : ''}id)`;
-  const filteredQuery = `SELECT * FROM \`${TEMP_TABLE}\` ${where}`;
   const requestedLimit = Number(limit);
   const normalizedLimit =
     Number.isFinite(requestedLimit) && requestedLimit > 0
@@ -1302,22 +1296,33 @@ export async function listTemporarySubmissions({
   const requestedOffset = Number(offset);
   const normalizedOffset = Number.isFinite(requestedOffset) && requestedOffset > 0 ? requestedOffset : 0;
   const effectiveLimit = includeHasMore ? normalizedLimit + 1 : normalizedLimit;
-  const groupingQuery = `
-    WITH filtered AS (${filteredQuery})
-    SELECT filtered.*
-      FROM filtered
-      JOIN (
-            SELECT ${chainGroupKey('f')} AS chain_group_id, MAX(f.updated_at) AS max_updated_at
-              FROM filtered f
-             GROUP BY ${chainGroupKey('f')}
-           ) latest
-        ON ${chainGroupKey('filtered')} = latest.chain_group_id
-       AND filtered.updated_at = latest.max_updated_at
-     ORDER BY filtered.updated_at DESC, filtered.created_at DESC
-     LIMIT ? OFFSET ?`;
-  const [rows] = await pool.query(groupingQuery, [...params, effectiveLimit, normalizedOffset]);
-  const hasMore = includeHasMore ? rows.length > normalizedLimit : false;
-  const limitedRows = includeHasMore ? rows.slice(0, normalizedLimit) : rows;
+
+  // NOTE: Avoid self-joining the same tenant temp table (MySQL ER_CANT_REOPEN_TABLE on temp aliases).
+  // Instead, fetch ordered rows once and collapse latest row per chain in JS.
+  const [rows] = await queryWithTenantScope(
+    pool,
+    TEMP_TABLE,
+    companyId,
+    `SELECT *
+       FROM {{table}}
+       ${where}
+      ORDER BY updated_at DESC, created_at DESC`,
+    params,
+  );
+
+  const latestByChain = new Map();
+  for (const row of rows || []) {
+    const chainKey = String(row?.chain_id ?? row?.id ?? '');
+    if (!chainKey || latestByChain.has(chainKey)) continue;
+    latestByChain.set(chainKey, row);
+  }
+
+  const dedupedRows = Array.from(latestByChain.values());
+  const windowRows = dedupedRows.slice(normalizedOffset, normalizedOffset + effectiveLimit);
+  const hasMore = includeHasMore
+    ? dedupedRows.length > normalizedOffset + normalizedLimit
+    : false;
+  const limitedRows = includeHasMore ? windowRows.slice(0, normalizedLimit) : windowRows;
   const mapped = limitedRows.map(mapTemporaryRow);
   const filtered = filterRowsByTransactionType(
     mapped,

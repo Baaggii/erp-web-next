@@ -11,6 +11,7 @@ import {
   pool,
 } from '../../db/index.js';
 import { tenantDataPath } from '../utils/dataPaths.js';
+import { queryWithTenantScope } from './tenantScope.js';
 
 const REPORT_ARCHIVE_DIR = 'report-approvals';
 
@@ -127,7 +128,16 @@ export async function loadReportApprovalArchive({ requestId, viewerEmpId }) {
     err.status = 403;
     throw err;
   }
-  const [pendingRows] = await pool.query(
+  const approvalRecord = await getReportApprovalRecord(normalizedRequestId);
+  if (!approvalRecord) {
+    const err = new Error('Report approval request not found');
+    err.status = 404;
+    throw err;
+  }
+  const [pendingRows] = await queryWithTenantScope(
+    pool,
+    'pending_request',
+    approvalRecord.companyId,
     `SELECT request_id,
             emp_id,
             response_empid,
@@ -136,7 +146,7 @@ export async function loadReportApprovalArchive({ requestId, viewerEmpId }) {
             company_id,
             status,
             request_type
-       FROM pending_request
+       FROM {{table}}
       WHERE request_id = ?
       LIMIT 1`,
     [normalizedRequestId],
@@ -157,8 +167,7 @@ export async function loadReportApprovalArchive({ requestId, viewerEmpId }) {
     err.status = 404;
     throw err;
   }
-  const approvalRecord = await getReportApprovalRecord(normalizedRequestId);
-  if (!approvalRecord || !approvalRecord.snapshotFilePath) {
+  if (!approvalRecord.snapshotFilePath) {
     const err = new Error('Archived report not found');
     err.status = 404;
     throw err;
