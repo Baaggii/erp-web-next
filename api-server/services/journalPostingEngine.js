@@ -56,6 +56,29 @@ function normalizeCompanyScopeId(value) {
   return Math.trunc(numeric);
 }
 
+function deriveTenantAuditContext(transactionRow = {}) {
+  return {
+    company_id: normalizeCompanyScopeId(
+      pickFirstDefined(transactionRow, ['company_id', 'companyId', 'company']),
+    ),
+    created_by: pickFirstDefined(transactionRow, ['created_by', 'createdBy']),
+    created_at: pickFirstDefined(transactionRow, ['created_at', 'createdAt']),
+    updated_by: pickFirstDefined(transactionRow, ['updated_by', 'updatedBy']),
+    updated_at: pickFirstDefined(transactionRow, ['updated_at', 'updatedAt']),
+  };
+}
+
+function buildAuditInsertFields(context = {}) {
+  const hasCompanyId = Number.isFinite(Number(context.company_id));
+  return {
+    company_id: hasCompanyId ? Number(context.company_id) : undefined,
+    created_by: context.created_by,
+    created_at: context.created_at,
+    updated_by: context.updated_by,
+    updated_at: context.updated_at,
+  };
+}
+
 function evaluateExpression(expression, context = {}) {
   if (!expression || typeof expression !== 'string') {
     return 0;
@@ -564,6 +587,7 @@ export async function post_single_transaction({
     await conn.beginTransaction();
 
     const currentRow = await fetchTransactionById(conn, safeTable, sourceId, companyId);
+    const tenantAuditContext = deriveTenantAuditContext(currentRow);
     const existingJournalId = currentRow.fin_journal_id;
     const postStatus = String(currentRow.fin_post_status || '').toUpperCase();
 
@@ -597,31 +621,34 @@ export async function post_single_transaction({
     }
     const selectedRule = preview.selectedRule;
 
-   const journalHeaderId = await insertRow(conn, 'fin_journal_header', {
-  source_table: safeTable,
-  source_id: sourceId,
-  document_date: new Date(),
-  currency: 'MNT',
-  exchange_rate: 1,
-  is_posted: 1,
-  created_at: new Date(),
-});
+    const auditInsertFields = buildAuditInsertFields(tenantAuditContext);
+
+    const journalHeaderId = await insertRow(conn, 'fin_journal_header', {
+      source_table: safeTable,
+      source_id: sourceId,
+      document_date: new Date(),
+      currency: 'MNT',
+      exchange_rate: 1,
+      is_posted: 1,
+      ...auditInsertFields,
+    });
 
 
     for (const line of preview.lines) {
       const isDebit = Number(line.debit_amount || 0) > 0;
 
-await insertRow(conn, 'fin_journal_line', {
-  journal_id: journalHeaderId,
-  line_order: line.lineNo,
-  dr_cr: isDebit ? 'D' : 'C',
-  account_code: line.account_code,
-  amount: isDebit
-    ? Number(line.debit_amount || 0)
-    : Number(line.credit_amount || 0),
-  dimension_type_code: line.dimension_type_code || null,
-  dimension_id: line.dimension_id || null,
-});
+      await insertRow(conn, 'fin_journal_line', {
+        journal_id: journalHeaderId,
+        line_order: line.lineNo,
+        dr_cr: isDebit ? 'D' : 'C',
+        account_code: line.account_code,
+        amount: isDebit
+          ? Number(line.debit_amount || 0)
+          : Number(line.credit_amount || 0),
+        dimension_type_code: line.dimension_type_code || null,
+        dimension_id: line.dimension_id || null,
+        ...auditInsertFields,
+      });
 
     }
 
