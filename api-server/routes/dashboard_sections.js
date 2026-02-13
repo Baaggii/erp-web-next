@@ -57,6 +57,7 @@ async function fetchRequestsForTypes({ req, requestTypes = [], statuses = ['pend
                 per_page: SECTION_LIMIT,
                 page: 1,
                 senior_empid: id,
+                company_id: req.user.companyId,
               });
               incomingLists.push(
                 (Array.isArray(rows) ? rows : []).map((row) => ({ ...row, request_type: row.request_type || requestType })),
@@ -74,6 +75,7 @@ async function fetchRequestsForTypes({ req, requestTypes = [], statuses = ['pend
           request_type: requestType,
           per_page: SECTION_LIMIT,
           page: 1,
+          company_id: req.user.companyId,
         });
         (Array.isArray(rows) ? rows : []).forEach((row) => {
           const resolvedStatus = row.status || row.response_status || 'pending';
