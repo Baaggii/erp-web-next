@@ -25,7 +25,6 @@ import { getMerchantById } from './merchantService.js';
 import { renameImages, resolveImageNaming } from './transactionImageService.js';
 import formatTimestamp from '../../src/erp.mgt.mn/utils/formatTimestamp.js';
 import { sanitizeRowForTable } from '../utils/schemaSanitizer.js';
-import { queryWithTenantScope } from './tenantScope.js';
 
 const TEMP_TABLE = 'transaction_temporaries';
 const TEMP_REVIEW_HISTORY_TABLE = 'transaction_temporary_review_history';
@@ -1287,10 +1286,14 @@ export async function listTemporarySubmissions({
     conditions.push('created_by = ?');
     params.push(normalizedEmp);
   }
+  if (companyId !== undefined && companyId !== null && String(companyId).trim() !== '') {
+    conditions.push('company_id = ?');
+    params.push(Number(companyId));
+  }
   const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
   const chainGroupKey = (alias = '') =>
     `COALESCE(${alias ? `${alias}.` : ''}chain_id, ${alias ? `${alias}.` : ''}id)`;
-  const filteredQuery = `SELECT * FROM {{table}} ${where}`;
+  const filteredQuery = `SELECT * FROM \`${TEMP_TABLE}\` ${where}`;
   const requestedLimit = Number(limit);
   const normalizedLimit =
     Number.isFinite(requestedLimit) && requestedLimit > 0
@@ -1300,25 +1303,22 @@ export async function listTemporarySubmissions({
   const normalizedOffset = Number.isFinite(requestedOffset) && requestedOffset > 0 ? requestedOffset : 0;
   const effectiveLimit = includeHasMore ? normalizedLimit + 1 : normalizedLimit;
   const groupingQuery = `
-    WITH filtered AS (${filteredQuery})
-    SELECT filtered.*
+    WITH filtered AS (${filteredQuery}),
+    ranked AS (
+      SELECT
+        filtered.*,
+        ROW_NUMBER() OVER (
+          PARTITION BY ${chainGroupKey('filtered')}
+          ORDER BY filtered.updated_at DESC, filtered.created_at DESC, filtered.id DESC
+        ) AS chain_rank
       FROM filtered
-      JOIN (
-            SELECT ${chainGroupKey('f')} AS chain_group_id, MAX(f.updated_at) AS max_updated_at
-              FROM filtered f
-             GROUP BY ${chainGroupKey('f')}
-           ) latest
-        ON ${chainGroupKey('filtered')} = latest.chain_group_id
-       AND filtered.updated_at = latest.max_updated_at
-     ORDER BY filtered.updated_at DESC, filtered.created_at DESC
+    )
+    SELECT *
+      FROM ranked
+     WHERE chain_rank = 1
+     ORDER BY updated_at DESC, created_at DESC, id DESC
      LIMIT ? OFFSET ?`;
-  const [rows] = await queryWithTenantScope(
-    pool,
-    TEMP_TABLE,
-    companyId,
-    groupingQuery,
-    [...params, effectiveLimit, normalizedOffset],
-  );
+  const [rows] = await pool.query(groupingQuery, [...params, effectiveLimit, normalizedOffset]);
   const hasMore = includeHasMore ? rows.length > normalizedLimit : false;
   const limitedRows = includeHasMore ? rows.slice(0, normalizedLimit) : rows;
   const mapped = limitedRows.map(mapTemporaryRow);
