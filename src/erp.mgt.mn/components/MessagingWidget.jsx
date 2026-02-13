@@ -766,23 +766,12 @@ export default function MessagingWidget() {
     const socket = connectSocket();
     const onNew = (payload) => {
       const nextMessage = payload?.message || payload;
-      const activeCompany = state.activeCompanyId || companyId;
-      if (normalizeId(nextMessage?.company_id || nextMessage?.companyId) !== activeCompany) return;
-      const parentId = Number(nextMessage?.parent_message_id || nextMessage?.parentMessageId);
-      const rootId = Number(nextMessage?.conversation_id || nextMessage?.conversationId || parentId || nextMessage?.id);
+      if (normalizeId(nextMessage?.company_id || nextMessage?.companyId) !== (state.activeCompanyId || companyId)) return;
       setMessagesByCompany((prev) => {
-        const key = getCompanyCacheKey(activeCompany);
-        const current = prev[key] || [];
-        if (parentId) {
-          const hasRoot = current.some((entry) => Number(entry.id) === rootId);
-          if (!hasRoot) {
-            void fetchThreadMessages(rootId, activeCompany);
-            return prev;
-          }
-        }
-        return { ...prev, [key]: mergeMessageList(current, nextMessage) };
+        const key = getCompanyCacheKey(state.activeCompanyId || companyId);
+        return { ...prev, [key]: mergeMessageList(prev[key], nextMessage) };
       });
-      if (parentId) {
+      if (nextMessage?.parent_message_id || nextMessage?.parentMessageId) {
         const id = nextMessage.id;
         setHighlightedIds((prev) => new Set([...prev, id]));
         setTimeout(() => {
@@ -1414,7 +1403,7 @@ export default function MessagingWidget() {
         </button>
       </header>
 
-      <div style={{ display: 'grid', gridTemplateColumns: isNarrowLayout ? 'minmax(0, 1fr)' : '300px minmax(0,1fr)', minHeight: 0, flex: 1, overflow: 'hidden' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: isNarrowLayout ? 'minmax(0, 1fr)' : '300px minmax(0,1fr)', minHeight: 0, flex: 1 }}>
         <aside style={{ borderRight: isNarrowLayout ? 'none' : '1px solid #e2e8f0', background: '#ffffff', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
           <div style={{ padding: 12, borderBottom: '1px solid #e2e8f0', flexShrink: 0 }}>
             <label htmlFor="messaging-company-switch" style={{ fontSize: 12, fontWeight: 600, color: '#334155' }}>Company</label>
@@ -1487,7 +1476,7 @@ export default function MessagingWidget() {
             </button>
           </div>
 
-          <div style={{ overflowY: 'auto', overflowX: 'hidden', overscrollBehavior: 'contain', padding: 8, display: 'grid', gap: 6, minHeight: 0, flex: 1, alignContent: 'start', gridAutoRows: 'max-content' }}>
+          <div style={{ overflowY: 'auto', padding: 8, display: 'grid', gap: 6, minHeight: 0, flex: 1, alignContent: 'start', gridAutoRows: 'max-content' }}>
             <h3 style={{ margin: '0 0 2px', fontSize: 14, color: '#0f172a' }}>Conversations</h3>
             {conversationSummaries.length === 0 && <p style={{ margin: 0, color: '#64748b', fontSize: 13 }}>No conversations yet.</p>}
             {conversationSummaries.map((conversation) => (
@@ -1531,7 +1520,7 @@ export default function MessagingWidget() {
         </aside>
 
         <section style={{ display: 'flex', flexDirection: 'column', minWidth: 0, minHeight: 0, overflow: 'hidden' }}>
-          <main style={{ padding: '8px 10px 6px', overflowY: 'auto', overflowX: 'hidden', overscrollBehavior: 'contain', flex: 1, minHeight: 0 }} aria-live="polite">
+          <main style={{ padding: '8px 10px 6px', overflowY: 'auto', flex: 1, minHeight: 0 }} aria-live="polite">
             <div style={{ position: 'sticky', top: 0, background: '#f8fafc', paddingBottom: 6, marginBottom: 6 }}>
               <strong style={{ display: 'block', fontSize: 15, color: '#0f172a', lineHeight: 1.25, overflowWrap: 'anywhere' }}>{activeTopic}</strong>
               <div style={{ marginTop: 3, fontSize: 12, color: '#334155', display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
