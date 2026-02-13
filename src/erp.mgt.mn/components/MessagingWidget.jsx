@@ -1566,7 +1566,7 @@ export default function MessagingWidget() {
                   style={{ width: '100%', marginTop: 4, borderRadius: 8, border: '1px solid #cbd5e1', padding: '7px 9px' }}
                 />
               </div>
-            )}
+            </div>
 
             <div style={{ marginTop: 6, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
               {state.composer.recipients.map((empid) => {
