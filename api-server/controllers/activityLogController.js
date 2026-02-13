@@ -4,6 +4,7 @@ import {
   listTableColumns,
 } from '../../db/index.js';
 import { logUserAction } from '../services/userActivityLog.js';
+import { queryWithTenantScope } from '../services/tenantScope.js';
 
 export async function listActivityLogs(req, res, next) {
   try {
@@ -18,12 +19,18 @@ export async function listActivityLogs(req, res, next) {
       where.push('record_id = ?');
       params.push(record_id);
     }
-    let sql = 'SELECT * FROM user_activity_log';
+    let sql = 'SELECT * FROM {{table}}';
     if (where.length) {
       sql += ' WHERE ' + where.join(' AND ');
     }
     sql += ' ORDER BY timestamp DESC LIMIT 200';
-    const [rows] = await pool.query(sql, params);
+    const [rows] = await queryWithTenantScope(
+      pool,
+      'user_activity_log',
+      req.user.companyId,
+      sql,
+      params,
+    );
     res.json(rows);
   } catch (err) {
     next(err);
@@ -33,16 +40,22 @@ export async function listActivityLogs(req, res, next) {
 export async function restoreLogEntry(req, res, next) {
   try {
     const { id } = req.params;
-    const [logs] = await pool.query(
-      'SELECT * FROM user_activity_log WHERE log_id = ? LIMIT 1',
+    const [logs] = await queryWithTenantScope(
+      pool,
+      'user_activity_log',
+      req.user.companyId,
+      'SELECT * FROM {{table}} WHERE log_id = ? LIMIT 1',
       [id],
     );
     const entry = logs[0];
     if (!entry) return res.sendStatus(404);
 
-    const [rows] = await pool.query(
-      'SELECT employment_senior_empid FROM tbl_employment WHERE employment_emp_id = ? AND employment_company_id = ? LIMIT 1',
-      [entry.emp_id, entry.company_id],
+    const [rows] = await queryWithTenantScope(
+      pool,
+      'tbl_employment',
+      entry.company_id,
+      'SELECT employment_senior_empid FROM {{table}} WHERE employment_emp_id = ? LIMIT 1',
+      [entry.emp_id],
     );
     const senior = rows[0]?.employment_senior_empid;
     if (senior !== req.user.empid) return res.sendStatus(403);
