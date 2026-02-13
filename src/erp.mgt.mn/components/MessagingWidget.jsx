@@ -312,17 +312,22 @@ function MessageNode({ message, depth = 0, onReply, onJumpToParent, onToggleRepl
         borderRadius: 8,
         background: isReplyTarget ? '#fff7ed' : isHighlighted ? '#ecfeff' : '#ffffff',
         boxShadow: isHighlighted ? '0 0 0 1px #22d3ee inset' : 'none',
-        padding: '7px 8px',
+        padding: '6px 8px',
         marginBottom: 6,
         marginLeft: depth > 0 ? Math.min(depth * 12, 48) : 0,
       }}
     >
-      <header style={{ fontSize: 11, color: '#475569', fontWeight: 600, lineHeight: 1.2 }}>
-        {authorLabel} · {new Date(message.created_at).toLocaleString()}
-      </header>
-      <p style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', margin: '4px 0', color: '#0f172a', fontSize: 13, lineHeight: 1.35 }}>{highlightMentions(safeBody)}</p>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+        <span style={{ fontSize: 11, color: '#334155', fontWeight: 700 }}>{authorLabel}</span>
+        <span style={{ fontSize: 11, color: '#64748b' }}>{new Date(message.created_at).toLocaleString()}</span>
+        <span style={{ fontSize: 12, color: '#0f172a', overflowWrap: 'anywhere', whiteSpace: 'pre-wrap', flex: '1 1 260px' }}>{highlightMentions(safeBody)}</span>
+        <button type="button" onClick={() => onReply(message.id)} aria-label={`Reply to message ${message.id}`}>Reply</button>
+        <span style={{ fontSize: 11, color: '#64748b', overflowWrap: 'anywhere' }}>
+          Read receipts: {readerLabels.length > 0 ? readerLabels.join(', ') : 'Unread'}
+        </span>
+      </div>
       {decoded.attachments.length > 0 && (
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 6 }}>
           {decoded.attachments.map((file) => {
             if (isImageAttachment(file)) {
               return (
@@ -349,7 +354,7 @@ function MessageNode({ message, depth = 0, onReply, onJumpToParent, onToggleRepl
           })}
         </div>
       )}
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', gap: 6, marginTop: 4, alignItems: 'center', flexWrap: 'wrap' }}>
         {linked.linkedType === 'transaction' && linked.linkedId && (
           <button
             type="button"
@@ -361,9 +366,6 @@ function MessageNode({ message, depth = 0, onReply, onJumpToParent, onToggleRepl
           </button>
         )}
         {extractMessageTopic(message) && <span style={{ fontSize: 12, color: '#334155' }}>topic:{extractMessageTopic(message)}</span>}
-      </div>
-      <div style={{ display: 'flex', gap: 6, marginTop: 4, alignItems: 'center', flexWrap: 'wrap' }}>
-        <button type="button" onClick={() => onReply(message.id)} aria-label={`Reply to message ${message.id}`}>Reply</button>
         {canDeleteMessage(message) && (
           <button type="button" onClick={() => onDeleteMessage(message.id)} aria-label={`Delete message ${message.id}`}>Delete message</button>
         )}
@@ -379,9 +381,6 @@ function MessageNode({ message, depth = 0, onReply, onJumpToParent, onToggleRepl
           </button>
         )}
       </div>
-      <p style={{ marginTop: 4, marginBottom: 0, fontSize: 11, color: '#64748b', overflowWrap: 'anywhere' }}>
-        Read receipts: {readerLabels.length > 0 ? readerLabels.join(', ') : 'Unread'}
-      </p>
       {!isCollapsed && message.replies.map((child) => (
         <MessageNode
           key={child.id}
