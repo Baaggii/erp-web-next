@@ -1257,10 +1257,6 @@ export async function listTemporarySubmissions({
       }
     }
   }
-  if (companyId != null) {
-    conditions.push('(company_id = ? OR company_id IS NULL)');
-    params.push(companyId);
-  }
   if (tableName) {
     conditions.push('table_name = ?');
     params.push(tableName);
@@ -1290,6 +1286,10 @@ export async function listTemporarySubmissions({
     conditions.push('created_by = ?');
     params.push(normalizedEmp);
   }
+  if (companyId !== undefined && companyId !== null && String(companyId).trim() !== '') {
+    conditions.push('company_id = ?');
+    params.push(Number(companyId));
+  }
   const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
   const chainGroupKey = (alias = '') =>
     `COALESCE(${alias ? `${alias}.` : ''}chain_id, ${alias ? `${alias}.` : ''}id)`;
@@ -1303,17 +1303,20 @@ export async function listTemporarySubmissions({
   const normalizedOffset = Number.isFinite(requestedOffset) && requestedOffset > 0 ? requestedOffset : 0;
   const effectiveLimit = includeHasMore ? normalizedLimit + 1 : normalizedLimit;
   const groupingQuery = `
-    WITH filtered AS (${filteredQuery})
-    SELECT filtered.*
+    WITH filtered AS (${filteredQuery}),
+    ranked AS (
+      SELECT
+        filtered.*,
+        ROW_NUMBER() OVER (
+          PARTITION BY ${chainGroupKey('filtered')}
+          ORDER BY filtered.updated_at DESC, filtered.created_at DESC, filtered.id DESC
+        ) AS chain_rank
       FROM filtered
-      JOIN (
-            SELECT ${chainGroupKey('f')} AS chain_group_id, MAX(f.updated_at) AS max_updated_at
-              FROM filtered f
-             GROUP BY ${chainGroupKey('f')}
-           ) latest
-        ON ${chainGroupKey('filtered')} = latest.chain_group_id
-       AND filtered.updated_at = latest.max_updated_at
-     ORDER BY filtered.updated_at DESC, filtered.created_at DESC
+    )
+    SELECT *
+      FROM ranked
+     WHERE chain_rank = 1
+     ORDER BY updated_at DESC, created_at DESC, id DESC
      LIMIT ? OFFSET ?`;
   const [rows] = await pool.query(groupingQuery, [...params, effectiveLimit, normalizedOffset]);
   const hasMore = includeHasMore ? rows.length > normalizedLimit : false;

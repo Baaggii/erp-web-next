@@ -436,6 +436,7 @@ export default function MessagingWidget() {
   const [companyRecords, setCompanyRecords] = useState([]);
   const [recipientSearch, setRecipientSearch] = useState('');
   const [employeeStatusFilter, setEmployeeStatusFilter] = useState('all');
+  const [conversationPanelOpen, setConversationPanelOpen] = useState(true);
   const [isNarrowLayout, setIsNarrowLayout] = useState(false);
   const [highlightedIds, setHighlightedIds] = useState(() => new Set());
   const [mentionOpen, setMentionOpen] = useState(false);
@@ -1388,6 +1389,13 @@ export default function MessagingWidget() {
           </div>
 
           <div style={{ padding: 10, borderBottom: '1px solid #e2e8f0', flexShrink: 0 }}>
+            <div>
+              <h3 style={{ margin: 0, fontSize: 14, color: '#0f172a' }}>Threads</h3>
+              <p style={{ margin: '3px 0 0', fontSize: 11, color: '#64748b' }}>One row per conversation.</p>
+            </div>
+          </div>
+
+          <div style={{ padding: 10, borderBottom: '1px solid #e2e8f0', flexShrink: 0 }}>
             <input
               value={recipientSearch}
               onChange={(event) => setRecipientSearch(event.target.value)}
@@ -1434,7 +1442,7 @@ export default function MessagingWidget() {
             <h3 style={{ margin: '0 0 2px', fontSize: 14, color: '#0f172a' }}>Conversations</h3>
             {conversationSummaries.length === 0 && <p style={{ margin: 0, color: '#64748b', fontSize: 13 }}>No conversations yet.</p>}
             {conversationSummaries.map((conversation) => (
-              <div key={conversation.id} style={{ borderRadius: 8, border: conversation.id === activeConversationId ? '1px solid #3b82f6' : '1px solid #e2e8f0', background: conversation.id === activeConversationId ? '#eff6ff' : '#ffffff', padding: '2px 6px', display: 'grid', gridTemplateColumns: 'minmax(0,1fr) auto', gap: 4, alignItems: 'center' }}>
+              <div key={conversation.id} style={{ borderRadius: 8, border: conversation.id === activeConversationId ? '1px solid #3b82f6' : '1px solid #e2e8f0', background: conversation.id === activeConversationId ? '#eff6ff' : '#ffffff', padding: '4px 6px', display: 'grid', gridTemplateColumns: 'minmax(0,1fr) auto', gap: 6, alignItems: 'center' }}>
                 <button
                   type="button"
                   onClick={() => {
@@ -1446,7 +1454,7 @@ export default function MessagingWidget() {
                   }}
                   style={{ textAlign: 'left', border: 0, background: 'transparent', width: '100%', padding: 0, minWidth: 0 }}
                 >
-                  <span style={{ display: 'block', fontSize: 11, color: '#0f172a', lineHeight: 1.25, overflowWrap: 'anywhere' }}>
+                  <span style={{ display: 'block', fontSize: 12, color: '#0f172a', lineHeight: 1.3, overflowWrap: 'anywhere' }}>
                     <strong>{conversation.title}</strong> · {conversation.preview}
                   </span>
                 </button>

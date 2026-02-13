@@ -4,6 +4,7 @@ import {
   listTableColumns,
 } from '../../db/index.js';
 import { logUserAction } from '../services/userActivityLog.js';
+import { queryWithTenantScope } from '../services/tenantScope.js';
 
 export async function listActivityLogs(req, res, next) {
   try {
@@ -40,9 +41,12 @@ export async function restoreLogEntry(req, res, next) {
     const entry = logs[0];
     if (!entry) return res.sendStatus(404);
 
-    const [rows] = await pool.query(
-      'SELECT employment_senior_empid FROM tbl_employment WHERE employment_emp_id = ? AND employment_company_id = ? LIMIT 1',
-      [entry.emp_id, entry.company_id],
+    const [rows] = await queryWithTenantScope(
+      pool,
+      'tbl_employment',
+      entry.company_id,
+      'SELECT employment_senior_empid FROM {{table}} WHERE employment_emp_id = ? LIMIT 1',
+      [entry.emp_id],
     );
     const senior = rows[0]?.employment_senior_empid;
     if (senior !== req.user.empid) return res.sendStatus(403);
