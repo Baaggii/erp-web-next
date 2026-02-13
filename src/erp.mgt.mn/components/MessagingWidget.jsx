@@ -300,8 +300,8 @@ function MessageNode({ message, depth = 0, onReply, onJumpToParent, onToggleRepl
   const isReplyTarget = activeReplyTarget && Number(activeReplyTarget) === Number(message.id);
   const isHighlighted = highlightedIds.has(message.id);
   const readers = Array.isArray(message.read_by) ? message.read_by.filter(Boolean) : [];
+  const readerLabels = readers.map((empid) => resolveEmployeeLabel(empid));
   const authorLabel = resolveEmployeeLabel(message.author_empid);
-  const deliveryStatusLabel = readers.length > 0 ? 'Read' : 'Unread';
 
   return (
     <article
@@ -1566,7 +1566,7 @@ export default function MessagingWidget() {
                   style={{ width: '100%', marginTop: 4, borderRadius: 8, border: '1px solid #cbd5e1', padding: '7px 9px' }}
                 />
               </div>
-            )}
+            </div>
 
             <div style={{ marginTop: 6, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
               {state.composer.recipients.map((empid) => {
