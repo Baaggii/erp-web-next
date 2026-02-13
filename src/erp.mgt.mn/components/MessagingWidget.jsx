@@ -1381,8 +1381,10 @@ export default function MessagingWidget() {
         borderRadius: 14,
         zIndex: 1200,
         overflow: 'hidden',
-        height: '58vh',
-        maxHeight: '58vh',
+        height: 'min(58vh, calc(100dvh - 32px))',
+        maxHeight: 'min(58vh, calc(100dvh - 32px))',
+        display: 'flex',
+        flexDirection: 'column',
       }}
       aria-label="Messaging widget"
     >
@@ -1401,7 +1403,7 @@ export default function MessagingWidget() {
         </button>
       </header>
 
-      <div style={{ display: 'grid', gridTemplateColumns: isNarrowLayout ? 'minmax(0, 1fr)' : '300px minmax(0,1fr)', minHeight: 0, height: '100%' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: isNarrowLayout ? 'minmax(0, 1fr)' : '300px minmax(0,1fr)', minHeight: 0, flex: 1 }}>
         <aside style={{ borderRight: isNarrowLayout ? 'none' : '1px solid #e2e8f0', background: '#ffffff', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
           <div style={{ padding: 12, borderBottom: '1px solid #e2e8f0', flexShrink: 0 }}>
             <label htmlFor="messaging-company-switch" style={{ fontSize: 12, fontWeight: 600, color: '#334155' }}>Company</label>
