@@ -433,6 +433,7 @@ export default function MessagingWidget() {
   const [presence, setPresence] = useState([]);
   const [employees, setEmployees] = useState([]);
   const [userDirectory, setUserDirectory] = useState({});
+  const [companyRecords, setCompanyRecords] = useState([]);
   const [recipientSearch, setRecipientSearch] = useState('');
   const [employeeStatusFilter, setEmployeeStatusFilter] = useState('all');
   const [conversationPanelOpen, setConversationPanelOpen] = useState(true);
@@ -534,10 +535,6 @@ export default function MessagingWidget() {
     const applyResponsivePanels = () => {
       const narrow = globalThis.innerWidth < 1180;
       setIsNarrowLayout(narrow);
-      if (narrow) {
-        setPresencePanelOpen(false);
-        setConversationPanelOpen(false);
-      }
     };
     applyResponsivePanels();
     globalThis.addEventListener('resize', applyResponsivePanels);
@@ -548,6 +545,19 @@ export default function MessagingWidget() {
     const activeCompany = state.activeCompanyId || companyId;
     if (!activeCompany) return;
     let disposed = false;
+
+    const loadCompanies = async () => {
+      try {
+        const res = await fetch('/api/companies', { credentials: 'include' });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (disposed) return;
+        const companies = Array.isArray(data) ? data : Array.isArray(data?.items) ? data.items : [];
+        setCompanyRecords(companies);
+      } catch {
+        // Optional enhancement only; keep widget functional.
+      }
+    };
 
     const loadMessages = async () => {
       try {
@@ -676,6 +686,7 @@ export default function MessagingWidget() {
 
     loadMessages();
     loadEmployees();
+    loadCompanies();
     return () => {
       disposed = true;
     };
@@ -973,6 +984,25 @@ export default function MessagingWidget() {
     const normalizedEmpid = normalizeId(empid);
     if (!normalizedEmpid) return 'Unknown user';
     return employeeLabelMap.get(normalizedEmpid) || normalizedEmpid;
+  };
+
+  const sessionCompanyLabel = sanitizeMessageText(
+    session?.company_name || session?.companyName || user?.company_name || user?.companyName,
+  );
+  const companyLabelMap = useMemo(() => {
+    const labels = new Map((companyRecords || []).map((entry) => {
+      const id = normalizeId(entry?.id || entry?.company_id || entry?.companyId);
+      const label = sanitizeMessageText(entry?.name || entry?.company_name || entry?.companyName || id);
+      return [id, label || id];
+    }).filter(([id]) => Boolean(id)));
+    const activeCompanyId = normalizeId(state.activeCompanyId || companyId);
+    if (activeCompanyId && sessionCompanyLabel) labels.set(activeCompanyId, sessionCompanyLabel);
+    return labels;
+  }, [companyRecords, companyId, sessionCompanyLabel, state.activeCompanyId]);
+  const resolveCompanyLabel = (rawCompanyId) => {
+    const normalizedCompanyId = normalizeId(rawCompanyId);
+    if (!normalizedCompanyId) return 'Unknown company';
+    return companyLabelMap.get(normalizedCompanyId) || normalizedCompanyId;
   };
 
   const activeConversationParticipants = useMemo(() => {
@@ -1340,21 +1370,29 @@ export default function MessagingWidget() {
             <label htmlFor="messaging-company-switch" style={{ fontSize: 12, fontWeight: 600, color: '#334155' }}>Company</label>
             <input
               id="messaging-company-switch"
+              list="messaging-company-options"
               value={state.activeCompanyId || ''}
               onChange={onSwitchCompany}
               aria-label="Switch company context"
               style={{ width: '100%', marginTop: 6, borderRadius: 8, border: '1px solid #cbd5e1', padding: '8px 10px' }}
             />
+            <datalist id="messaging-company-options">
+              {companyRecords.map((entry) => {
+                const id = normalizeId(entry?.id || entry?.company_id || entry?.companyId);
+                if (!id) return null;
+                return <option key={id} value={id}>{resolveCompanyLabel(id)}</option>;
+              })}
+            </datalist>
+            <p style={{ margin: '6px 0 0', fontSize: 11, color: '#64748b' }}>
+              Active: {resolveCompanyLabel(state.activeCompanyId || companyId)}
+            </p>
           </div>
 
-          <div style={{ padding: 10, borderBottom: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexShrink: 0 }}>
+          <div style={{ padding: 10, borderBottom: '1px solid #e2e8f0', flexShrink: 0 }}>
             <div>
               <h3 style={{ margin: 0, fontSize: 14, color: '#0f172a' }}>Threads</h3>
               <p style={{ margin: '3px 0 0', fontSize: 11, color: '#64748b' }}>One row per conversation.</p>
             </div>
-            <button type="button" onClick={() => setConversationPanelOpen((prev) => !prev)} style={{ border: '1px solid #cbd5e1', borderRadius: 8, background: '#fff', padding: '4px 8px', fontSize: 12 }}>
-              {conversationPanelOpen ? 'Hide' : 'Show'}
-            </button>
           </div>
 
           <div style={{ padding: 10, borderBottom: '1px solid #e2e8f0', flexShrink: 0 }}>
@@ -1400,7 +1438,6 @@ export default function MessagingWidget() {
             </button>
           </div>
 
-          {conversationPanelOpen && (
           <div style={{ overflowY: 'auto', padding: 8, display: 'grid', gap: 6, minHeight: 0, flex: 1, alignContent: 'start', gridAutoRows: 'max-content' }}>
             {conversationSummaries.length === 0 && <p style={{ color: '#64748b', fontSize: 13 }}>No conversations yet.</p>}
             {conversationSummaries.map((conversation) => (
@@ -1445,7 +1482,6 @@ export default function MessagingWidget() {
               </div>
             ))}
           </div>
-          )}
         </aside>
 
         <section style={{ display: 'grid', gridTemplateRows: 'minmax(0, 1fr) auto', minWidth: 0, minHeight: 0 }}>
