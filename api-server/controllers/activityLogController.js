@@ -19,12 +19,18 @@ export async function listActivityLogs(req, res, next) {
       where.push('record_id = ?');
       params.push(record_id);
     }
-    let sql = 'SELECT * FROM user_activity_log';
+    let sql = 'SELECT * FROM {{table}}';
     if (where.length) {
       sql += ' WHERE ' + where.join(' AND ');
     }
     sql += ' ORDER BY timestamp DESC LIMIT 200';
-    const [rows] = await pool.query(sql, params);
+    const [rows] = await queryWithTenantScope(
+      pool,
+      'user_activity_log',
+      req.user.companyId,
+      sql,
+      params,
+    );
     res.json(rows);
   } catch (err) {
     next(err);
@@ -34,8 +40,11 @@ export async function listActivityLogs(req, res, next) {
 export async function restoreLogEntry(req, res, next) {
   try {
     const { id } = req.params;
-    const [logs] = await pool.query(
-      'SELECT * FROM user_activity_log WHERE log_id = ? LIMIT 1',
+    const [logs] = await queryWithTenantScope(
+      pool,
+      'user_activity_log',
+      req.user.companyId,
+      'SELECT * FROM {{table}} WHERE log_id = ? LIMIT 1',
       [id],
     );
     const entry = logs[0];
