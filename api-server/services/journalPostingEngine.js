@@ -534,6 +534,9 @@ export async function post_single_transaction({
     await conn.beginTransaction();
 
     const currentRow = await fetchTransactionById(conn, safeTable, sourceId);
+    const companyId = normalizeCompanyScopeId(
+      pickFirstDefined(currentRow, ['company_id', 'companyId', 'company']),
+    );
     const existingJournalId = currentRow.fin_journal_id;
     const postStatus = String(currentRow.fin_post_status || '').toUpperCase();
 
@@ -570,6 +573,7 @@ export async function post_single_transaction({
    const journalHeaderId = await insertRow(conn, 'fin_journal_header', {
   source_table: safeTable,
   source_id: sourceId,
+  company_id: companyId,
   document_date: new Date(),
   currency: 'MNT',
   exchange_rate: 1,
@@ -583,6 +587,7 @@ export async function post_single_transaction({
 
 await insertRow(conn, 'fin_journal_line', {
   journal_id: journalHeaderId,
+  company_id: companyId,
   line_order: line.lineNo,
   dr_cr: isDebit ? 'D' : 'C',
   account_code: line.account_code,
