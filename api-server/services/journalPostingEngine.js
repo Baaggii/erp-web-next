@@ -1,3 +1,10 @@
+// Tenant visibility update:
+// - All business-table reads now go through create_tenant_temp_table via tenantScope helpers.
+// - Manual (company_id = ? OR company_id = 0) and deleted_at filtering were removed from service SQL.
+// - Query logic now reads from tenant-scoped temp tables, delegating visibility rules to DB policy engine.
+
+import { createTmpBusinessTable, queryWithTenantScope } from './tenantScope.js';
+
 const NON_FINANCIAL_FLAG_SET_CODE = 'FS_NON_FINANCIAL';
 const REQUIRED_CONDITION = 'REQUIRED';
 const NOT_ALLOWED_CONDITION = 'NOT_ALLOWED';
@@ -156,13 +163,26 @@ function deriveFlagsFromTransaction(transactionRow, financialFields) {
   return new Set([...explicit, ...fromMappedFields]);
 }
 
-async function fetchTransactionById(conn, sourceTable, sourceId) {
-  return fetchTransactionByIdWithOptions(conn, sourceTable, sourceId, { forUpdate: true });
+async function fetchTransactionById(conn, sourceTable, sourceId, companyId) {
+  return fetchTransactionByIdWithOptions(conn, sourceTable, sourceId, companyId, { forUpdate: true });
 }
 
-async function fetchTransactionByIdWithOptions(conn, sourceTable, sourceId, { forUpdate = false } = {}) {
+async function fetchTransactionByIdWithOptions(conn, sourceTable, sourceId, companyId, { forUpdate = false } = {}) {
   const safeTable = assertSafeIdentifier(sourceTable, 'source_table');
   const lockSql = forUpdate ? ' FOR UPDATE' : '';
+  if (Number(companyId) > 0) {
+    const scope = await createTmpBusinessTable(conn, safeTable, companyId);
+    const [rows] = await conn.query(
+      `SELECT * FROM \`${scope.tempTableName}\` WHERE id = ?${lockSql}`,
+      [sourceId],
+    );
+    if (!rows.length) {
+      throw new Error(`Transaction not found in ${safeTable} with id ${sourceId}`);
+    }
+    return rows[0];
+  }
+
+  // Bootstrap fallback: allow lookup by primary key to discover company scope when caller did not provide company_id.
   const [rows] = await conn.query(
     `SELECT * FROM \`${safeTable}\` WHERE id = ?${lockSql}`,
     [sourceId],
@@ -173,15 +193,15 @@ async function fetchTransactionByIdWithOptions(conn, sourceTable, sourceId, { fo
   return rows[0];
 }
 
-async function buildJournalPreviewPayload(conn, safeTable, sourceId, { forUpdate = false } = {}) {
-  const transactionRow = await fetchTransactionByIdWithOptions(conn, safeTable, sourceId, { forUpdate });
+async function buildJournalPreviewPayload(conn, safeTable, sourceId, companyId, { forUpdate = false } = {}) {
+  const transactionRow = await fetchTransactionByIdWithOptions(conn, safeTable, sourceId, companyId, { forUpdate });
   const transType = pickFirstDefined(transactionRow, ['TransType', 'trans_type', 'UITransType']);
   if (!transType) {
     throw new Error(`Transaction ${safeTable}#${sourceId} is missing TransType`);
   }
 
-  const companyId = normalizeCompanyScopeId(
-    pickFirstDefined(transactionRow, ['company_id', 'companyId', 'company']),
+  const scopedCompanyId = normalizeCompanyScopeId(
+    companyId ?? pickFirstDefined(transactionRow, ['company_id', 'companyId', 'company']),
   );
   const flagSetCode = await resolveFlagSetCode(conn, transType);
 
@@ -198,23 +218,21 @@ async function buildJournalPreviewPayload(conn, safeTable, sourceId, { forUpdate
     };
   }
 
-  const fieldMap = await loadFinancialFieldMap(conn, safeTable);
+  const fieldMap = await loadFinancialFieldMap(conn, safeTable, scopedCompanyId);
   const financialFields = buildFinancialContext(transactionRow, fieldMap);
   const presentFlags = deriveFlagsFromTransaction(transactionRow, financialFields);
-  const selectedRule = await selectMatchingJournalRule(
-    conn,
-    flagSetCode,
-    presentFlags,
-    companyId,
-  );
+  const selectedRule = await selectMatchingJournalRule(conn, flagSetCode, presentFlags, scopedCompanyId);
 
-  const [ruleLines] = await conn.query(
-  `SELECT *
-     FROM fin_journal_rule_line
-    WHERE rule_id = ?
-    ORDER BY COALESCE(line_order, 999999), id`,
-  [selectedRule.rule_id],
-);
+  const [ruleLines] = await queryWithTenantScope(
+    conn,
+    'fin_journal_rule_line',
+    scopedCompanyId,
+    `SELECT *
+       FROM {{table}}
+      WHERE rule_id = ?
+      ORDER BY COALESCE(line_order, 999999), id`,
+    [selectedRule.rule_id],
+  );
 
 
   if (!ruleLines.length) {
@@ -228,7 +246,7 @@ async function buildJournalPreviewPayload(conn, safeTable, sourceId, { forUpdate
 
   for (const line of ruleLines) {
     const direction = normalizeDrCr(pickFirstDefined(line, ['entry_type', 'dr_cr']));
-    const accountCode = await resolveAccountCode(conn, line, context, companyId);
+    const accountCode = await resolveAccountCode(conn, line, context, scopedCompanyId);
     const amount = Math.abs(await resolveAmount(conn, line, context));
     if (!amount) continue;
 
@@ -265,10 +283,13 @@ async function buildJournalPreviewPayload(conn, safeTable, sourceId, { forUpdate
   };
 }
 
-async function loadFinancialFieldMap(conn, sourceTable) {
-  const [rows] = await conn.query(
+async function loadFinancialFieldMap(conn, sourceTable, companyId) {
+  const [rows] = await queryWithTenantScope(
+    conn,
+    'fin_transaction_field_map',
+    companyId,
     `SELECT *
-       FROM fin_transaction_field_map
+       FROM {{table}}
       WHERE source_table = ?
       ORDER BY id ASC`,
     [sourceTable],
@@ -312,23 +333,26 @@ async function selectMatchingJournalRule(
   presentFlags,
   companyId,
 ) {
-  const [ruleRows] = await conn.query(
-  `
-  SELECT *
-  FROM fin_journal_rule
-  WHERE fin_flag_set_code = ?
-    AND (company_id = ? OR company_id = 0)
-  ORDER BY company_id DESC, COALESCE(priority, 999999), rule_id
-  `,
-  [flagSetCode, companyId]
-);
+  const [ruleRows] = await queryWithTenantScope(
+    conn,
+    'fin_journal_rule',
+    companyId,
+    `SELECT *
+       FROM {{table}}
+      WHERE fin_flag_set_code = ?
+      ORDER BY COALESCE(priority, 999999), rule_id`,
+    [flagSetCode],
+  );
 
 
   for (const rule of ruleRows) {
-    const [conditions] = await conn.query(
+    const [conditions] = await queryWithTenantScope(
+      conn,
+      'fin_journal_rule_condition',
+      companyId,
       `SELECT *
-         FROM fin_journal_rule_condition
-        where rule_id = ?`,
+         FROM {{table}}
+        WHERE rule_id = ?`,
       [rule.rule_id],
     );
 
@@ -364,14 +388,15 @@ async function resolveAccountCode(conn, line, context, companyId) {
     throw new Error(`No account resolver configured for journal line ${line.id}`);
   }
 
-  const [rows] = await conn.query(
+  const [rows] = await queryWithTenantScope(
+    conn,
+    'fin_account_resolver',
+    companyId,
     `SELECT *
-FROM fin_account_resolver
-WHERE resolver_code = ?
-  AND (company_id = ? OR company_id = 0)
-ORDER BY company_id DESC
-LIMIT 1`,
-    [resolverCode, companyId],
+       FROM {{table}}
+      WHERE resolver_code = ?
+      LIMIT 1`,
+    [resolverCode],
   );
 
   if (!rows.length) {
@@ -414,14 +439,15 @@ LIMIT 1`,
   }
 
   // 🔥 Now validate against COA
-  const [coaRows] = await conn.query(
+  const [coaRows] = await queryWithTenantScope(
+    conn,
+    'fin_chart_of_accounts',
+    companyId,
     `SELECT *
-FROM fin_chart_of_accounts
-WHERE account_code = ?
-  AND (company_id = ? OR company_id = 0)
-ORDER BY company_id DESC
-LIMIT 1`,
-    [accountCode, companyId]
+       FROM {{table}}
+      WHERE account_code = ?
+      LIMIT 1`,
+    [accountCode],
   );
 
   if (!coaRows.length) {
@@ -444,8 +470,11 @@ async function resolveAmount(conn, line, context) {
     return 0;
   }
 
-  const [rows] = await conn.query(
-    `SELECT * FROM fin_amount_expression WHERE expression_code = ? LIMIT 1`,
+  const [rows] = await queryWithTenantScope(
+    conn,
+    'fin_amount_expression',
+    0,
+    `SELECT * FROM {{table}} WHERE expression_code = ? LIMIT 1`,
     [amountExpressionCode],
   );
 
@@ -523,6 +552,7 @@ async function insertPostingLog(conn, payload) {
 export async function post_single_transaction({
   source_table: sourceTable,
   source_id: sourceId,
+  company_id: companyId,
   force_repost: forceRepost = false,
   dbPool = null,
 } = {}) {
@@ -533,7 +563,7 @@ export async function post_single_transaction({
   try {
     await conn.beginTransaction();
 
-    const currentRow = await fetchTransactionById(conn, safeTable, sourceId);
+    const currentRow = await fetchTransactionById(conn, safeTable, sourceId, companyId);
     const existingJournalId = currentRow.fin_journal_id;
     const postStatus = String(currentRow.fin_post_status || '').toUpperCase();
 
@@ -553,7 +583,7 @@ export async function post_single_transaction({
       await conn.query('DELETE FROM fin_journal_header WHERE journal_id  = ?', [existingJournalId]);
     }
 
-    const preview = await buildJournalPreviewPayload(conn, safeTable, sourceId, { forUpdate: true });
+    const preview = await buildJournalPreviewPayload(conn, safeTable, sourceId, companyId, { forUpdate: true });
     const { transType, flagSetCode } = preview;
     if (preview.nonFinancial) {
       await insertPostingLog(conn, {
@@ -635,6 +665,7 @@ await insertRow(conn, 'fin_journal_line', {
 export async function preview_single_transaction({
   source_table: sourceTable,
   source_id: sourceId,
+  company_id: companyId,
   dbPool = null,
 } = {}) {
   const safeTable = assertSafeIdentifier(sourceTable, 'source_table');
@@ -642,7 +673,7 @@ export async function preview_single_transaction({
   const conn = await activePool.getConnection();
 
   try {
-    const preview = await buildJournalPreviewPayload(conn, safeTable, sourceId, { forUpdate: false });
+    const preview = await buildJournalPreviewPayload(conn, safeTable, sourceId, companyId, { forUpdate: false });
     return {
       source_table: safeTable,
       source_id: sourceId,
@@ -668,6 +699,7 @@ export async function preview_single_transaction({
 
 export async function post_batch({
   source_table: sourceTable,
+  company_id: companyId,
   date_from: dateFrom,
   date_to: dateTo,
   dbPool = null,
@@ -697,9 +729,12 @@ export async function post_batch({
       params.push(dateTo);
     }
 
-    const [rows] = await conn.query(
+    const [rows] = await queryWithTenantScope(
+      conn,
+      safeTable,
+      companyId,
       `SELECT id
-         FROM \`${safeTable}\`
+         FROM {{table}}
         WHERE ${whereClauses.join(' AND ')}
         ORDER BY id`,
       params,
@@ -718,6 +753,7 @@ export async function post_batch({
         const journalId = await post_single_transaction({
           source_table: safeTable,
           source_id: row.id,
+          company_id: companyId,
           dbPool: activePool,
         });
         summary.success += 1;
