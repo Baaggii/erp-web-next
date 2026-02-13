@@ -1159,11 +1159,16 @@ export default function MessagingWidget() {
       return;
     }
     const threadParticipants = Array.from(new Set(activeConversationParticipants.filter((empid) => empid !== selfEmpid)));
+    const conversationRecipients = (!isDraftConversation && !activeConversation?.isGeneral)
+      ? threadParticipants
+      : [];
     const replyRecipients = state.composer.replyToId
       ? Array.from(new Set([...threadParticipants, ...payloadRecipients]))
       : payloadRecipients;
-    const finalRecipients = state.composer.replyToId ? replyRecipients : payloadRecipients;
-    const visibilityScope = finalRecipients.length > 0 ? 'private' : 'company';
+    const finalRecipients = state.composer.replyToId
+      ? replyRecipients
+      : (payloadRecipients.length > 0 ? payloadRecipients : conversationRecipients);
+    const visibilityScope = (finalRecipients.length > 0 || (!isDraftConversation && !activeConversation?.isGeneral)) ? 'private' : 'company';
 
     const payload = {
       idempotencyKey: createIdempotencyKey(),
@@ -1667,8 +1672,12 @@ export default function MessagingWidget() {
                     style={{ width: '100%', marginTop: 2, borderRadius: 8, border: '1px solid #cbd5e1', padding: '6px 8px' }}
                   />
                 </div>
-                <button type="button" onClick={() => dispatch({ type: 'composer/reset' })} style={{ border: '1px solid #cbd5e1', borderRadius: 8, background: '#fff', padding: '6px 10px' }}>
-                  Clear draft
+                <button
+                  type="submit"
+                  disabled={!canSendMessage}
+                  style={{ border: 0, borderRadius: 8, background: canSendMessage ? '#2563eb' : '#94a3b8', color: '#fff', padding: '6px 10px', fontWeight: 600, cursor: canSendMessage ? 'pointer' : 'not-allowed' }}
+                >
+                  Send
                 </button>
               </div>
               <button
@@ -1730,11 +1739,6 @@ export default function MessagingWidget() {
 
             </div>
 
-            <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 8, flexWrap: 'wrap', borderTop: '1px solid #e2e8f0', paddingTop: 6, background: '#ffffff', flexShrink: 0 }}>
-              <button type="submit" disabled={!canSendMessage} style={{ border: 0, borderRadius: 8, background: canSendMessage ? '#2563eb' : '#94a3b8', color: '#fff', padding: '8px 14px', fontWeight: 600, cursor: canSendMessage ? 'pointer' : 'not-allowed' }}>
-                Send
-              </button>
-            </div>
             <p aria-live="assertive" style={{ fontSize: 12, marginBottom: 0 }}>{composerAnnouncement}</p>
 
             {attachmentPreviewOpen && attachmentPreview && (
