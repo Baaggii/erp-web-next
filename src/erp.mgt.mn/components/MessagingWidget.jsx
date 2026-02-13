@@ -1480,7 +1480,7 @@ export default function MessagingWidget() {
         </aside>
 
         <section style={{ display: 'grid', gridTemplateRows: 'minmax(0, 1fr) auto', minWidth: 0, minHeight: 0 }}>
-          <main style={{ padding: '8px 12px 6px', overflowY: 'auto', minHeight: 0, height: '100%' }} aria-live="polite">
+          <main style={{ padding: '8px 12px 6px', overflowY: 'auto', minHeight: 420 }} aria-live="polite">
             <div style={{ position: 'sticky', top: 0, background: '#f8fafc', paddingBottom: 6, marginBottom: 6 }}>
               <strong style={{ display: 'block', fontSize: 15, color: '#0f172a', lineHeight: 1.25, overflowWrap: 'anywhere' }}>{activeTopic}</strong>
               <div style={{ marginTop: 3, fontSize: 12, color: '#334155', display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
@@ -1526,7 +1526,7 @@ export default function MessagingWidget() {
           </main>
 
           <form
-            style={{ borderTop: '1px solid #e2e8f0', background: '#ffffff', padding: 8, maxHeight: '29vh', overflowY: 'auto', flexShrink: 0 }}
+            style={{ borderTop: '1px solid #e2e8f0', background: '#ffffff', padding: 8, position: 'sticky', bottom: 0, maxHeight: '29vh', overflowY: 'auto' }}
             onSubmit={(event) => {
               event.preventDefault();
               sendMessage();
