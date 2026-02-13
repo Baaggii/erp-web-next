@@ -1,8 +1,13 @@
+// Tenant visibility update:
+// - Reference and employment reads now use tenant temp tables through queryWithTenantScope.
+// - Manual company_id / deleted_at filters were removed where tenant engine applies.
+
 import { pool, listTableRelationships, listTableColumns, getTableRowById } from '../../db/index.js';
 import { getAllDisplayFields } from './displayFieldConfig.js';
 import { listCustomRelations } from './tableRelationsConfig.js';
 import { getConfigsByTable } from './transactionFormConfig.js';
 import { notifyUser } from './notificationService.js';
+import { queryWithTenantScope } from './tenantScope.js';
 
 const NOTIFICATION_ROLE_SET = new Set([
   'employee',
@@ -323,15 +328,12 @@ async function fetchReferenceRow(table, idField, idValue, companyId) {
   if (!table || !idField) return null;
   const columns = await listTableColumns(table);
   if (!Array.isArray(columns) || !columns.includes(idField)) return null;
-  const params = [idValue];
-  const conditions = [`\`${idField}\` = ?`];
-  if (columns.includes('company_id') && companyId != null) {
-    conditions.push('`company_id` = ?');
-    params.push(companyId);
-  }
-  const [rows] = await pool.query(
-    `SELECT * FROM \`${table}\` WHERE ${conditions.join(' AND ')} LIMIT 1`,
-    params,
+  const [rows] = await queryWithTenantScope(
+    pool,
+    table,
+    companyId,
+    `SELECT * FROM {{table}} WHERE \`${idField}\` = ? LIMIT 1`,
+    [idValue],
   );
   return rows?.[0] ?? null;
 }
@@ -357,8 +359,8 @@ function pickDisplayConfig(entries, table, idField, referenceRow) {
 
 async function listEmpIdsByScope({ companyId, branchId, departmentId, positionId }) {
   if (!companyId) return [];
-  const params = [companyId];
-  const conditions = ['employment_company_id = ?', 'deleted_at IS NULL'];
+  const params = [];
+  const conditions = [];
   if (branchId) {
     conditions.push('employment_branch_id = ?');
     params.push(branchId);
@@ -371,10 +373,14 @@ async function listEmpIdsByScope({ companyId, branchId, departmentId, positionId
     conditions.push('(employment_position_id = ? OR workplace_position_id = ?)');
     params.push(positionId, positionId);
   }
-  const [rows] = await pool.query(
+  const whereSql = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+  const [rows] = await queryWithTenantScope(
+    pool,
+    'tbl_employment',
+    companyId,
     `SELECT employment_emp_id AS empId
-       FROM tbl_employment
-      WHERE ${conditions.join(' AND ')}
+       FROM {{table}}
+       ${whereSql}
       GROUP BY employment_emp_id`,
     params,
   );
@@ -410,15 +416,16 @@ async function updateExistingTransactionNotifications({
   summaryText,
   activeReferenceKeys,
 }) {
-  const [rows] = await pool.query(
+  const [rows] = await queryWithTenantScope(
+    pool,
+    'notifications',
+    companyId,
     `SELECT notification_id, message, recipient_empid, created_at, created_by, type, related_id
-       FROM notifications
-      WHERE company_id = ?
-        AND related_id = ?
-        AND deleted_at IS NULL
+       FROM {{table}}
+      WHERE related_id = ?
         AND message LIKE '%"kind":"transaction"%'
       ORDER BY notification_id ASC`,
-    [companyId ?? null, relatedId],
+    [relatedId],
   );
   let updated = 0;
   const payloads = [];
