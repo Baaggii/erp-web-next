@@ -17,14 +17,14 @@ export type TenantEngineConfig = {
 export function shouldTenantScopeTable(tableName: string, config?: TenantEngineConfig): boolean;
 
 export function createTmpBusinessTable(
-  connection: { query: (sql: string, params?: unknown[]) => Promise<any>; getConnection?: () => Promise<{ query: (sql: string, params?: unknown[]) => Promise<any>; release: () => void; }>; },
+  connection: { query: (sql: string, params?: unknown[]) => Promise<any> },
   tableName: string,
   companyId: number | string,
   options?: TempTableCreationOptions,
 ): Promise<TenantScopeResult>;
 
 export function queryWithTenantScope(
-  connection: { query: (sql: string, params?: unknown[]) => Promise<any>; getConnection?: () => Promise<{ query: (sql: string, params?: unknown[]) => Promise<any>; release: () => void; }>; },
+  connection: { query: (sql: string, params?: unknown[]) => Promise<any> },
   tableName: string,
   companyId: number | string,
   originalQuery: string,

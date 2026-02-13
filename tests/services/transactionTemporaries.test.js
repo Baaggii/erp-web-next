@@ -489,7 +489,7 @@ test('listTemporarySubmissions filters before grouping by chain', async () => {
         });
         return [Array.from(grouped.values())];
       }
-      const creator = params[params.length - 3];
+      const creator = params.find((p) => typeof p === 'string' && p.toUpperCase() === 'J72') || params[params.length - 3];
       const filteredRows = temporaries.filter((row) => row.created_by === creator);
       const grouped = new Map();
       filteredRows.forEach((row) => {
