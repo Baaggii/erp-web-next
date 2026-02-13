@@ -3,6 +3,7 @@ import { pool, getEmploymentSession } from '../../db/index.js';
 import { redisEval } from './redisClient.js';
 import { evaluateMessagingPermission } from './messagingPermissionPolicy.js';
 import { incRateLimitHits, observeMessageCreateLatency } from './messagingMetrics.js';
+import { queryWithTenantScope } from './tenantScope.js';
 
 const DEFAULT_EDIT_WINDOW_MS = 15 * 60 * 1000;
 const MAX_MESSAGE_LENGTH = 4000;
@@ -122,12 +123,15 @@ async function readIdempotencyRow(db, { companyId, empid, idempotencyKey }) {
   const mode = idempotencyRequestHashSupport.get(db);
   if (mode !== false) {
     try {
-      const [rows] = await db.query(
+      const [rows] = await queryWithTenantScope(
+        db,
+        'erp_message_idempotency',
+        companyId,
         `SELECT message_id, request_hash, expires_at
-           FROM erp_message_idempotency
-          WHERE company_id = ? AND empid = ? AND idem_key = ?
+           FROM {{table}}
+          WHERE empid = ? AND idem_key = ?
           LIMIT 1`,
-        [companyId, empid, idempotencyKey],
+        [empid, idempotencyKey],
       );
       idempotencyRequestHashSupport.set(db, true);
       return rows[0] || null;
@@ -138,22 +142,28 @@ async function readIdempotencyRow(db, { companyId, empid, idempotencyKey }) {
   }
 
   try {
-    const [rows] = await db.query(
+    const [rows] = await queryWithTenantScope(
+      db,
+      'erp_message_idempotency',
+      companyId,
       `SELECT message_id, expires_at
-         FROM erp_message_idempotency
-        WHERE company_id = ? AND empid = ? AND idem_key = ?
+         FROM {{table}}
+        WHERE empid = ? AND idem_key = ?
         LIMIT 1`,
-      [companyId, empid, idempotencyKey],
+      [empid, idempotencyKey],
     );
     return rows[0] ? { ...rows[0], request_hash: null } : null;
   } catch (error) {
     if (!isUnknownColumnError(error, 'expires_at')) throw error;
-    const [rows] = await db.query(
+    const [rows] = await queryWithTenantScope(
+      db,
+      'erp_message_idempotency',
+      companyId,
       `SELECT message_id
-         FROM erp_message_idempotency
-        WHERE company_id = ? AND empid = ? AND idem_key = ?
+         FROM {{table}}
+        WHERE empid = ? AND idem_key = ?
         LIMIT 1`,
-      [companyId, empid, idempotencyKey],
+      [empid, idempotencyKey],
     );
     return rows[0] ? { ...rows[0], request_hash: null, expires_at: null } : null;
   }
@@ -536,9 +546,12 @@ async function logAbuse(db, { companyId, empid, category, reason, payload }) {
 }
 
 async function findMessageById(db, companyId, id) {
-  const [rows] = await db.query(
-    'SELECT * FROM erp_messages WHERE id = ? AND company_id = ? LIMIT 1',
-    [id, companyId],
+  const [rows] = await queryWithTenantScope(
+    db,
+    'erp_messages',
+    companyId,
+    'SELECT * FROM {{table}} WHERE id = ? LIMIT 1',
+    [id],
   );
   return rows[0] || null;
 }
@@ -818,8 +831,8 @@ export async function getMessages({ user, companyId, linkedType, linkedId, curso
   const parsedLimit = Math.min(Math.max(Number(limit) || CURSOR_PAGE_SIZE, 1), 100);
   const cursorId = toId(cursor);
 
-  const filters = ['company_id = ?', 'parent_message_id IS NULL'];
-  const params = [scopedCompanyId];
+  const filters = ['parent_message_id IS NULL'];
+  const params = [];
   if (linkedType && linkedId && canUseLinkedColumns(db)) {
     filters.push('linked_type = ?');
     filters.push('linked_id = ?');
@@ -829,22 +842,27 @@ export async function getMessages({ user, companyId, linkedType, linkedId, curso
     filters.push('id < ?');
     params.push(cursorId);
   }
-  filters.push('deleted_at IS NULL');
 
   let rows;
   try {
-    [rows] = await db.query(
-      `SELECT * FROM erp_messages WHERE ${filters.join(' AND ')} ORDER BY id DESC LIMIT ?`,
+    [rows] = await queryWithTenantScope(
+      db,
+      'erp_messages',
+      scopedCompanyId,
+      `SELECT * FROM {{table}} WHERE ${filters.join(' AND ')} ORDER BY id DESC LIMIT ?`,
       [...params, parsedLimit + 1],
     );
   } catch (error) {
     if (!isUnknownColumnError(error, 'linked_type') && !isUnknownColumnError(error, 'linked_id')) throw error;
     markLinkedColumnsUnsupported(db);
     const fallbackFilters = filters.filter((entry) => entry !== 'linked_type = ?' && entry !== 'linked_id = ?');
-    const fallbackParams = [scopedCompanyId];
+    const fallbackParams = [];
     if (cursorId) fallbackParams.push(cursorId);
-    [rows] = await db.query(
-      `SELECT * FROM erp_messages WHERE ${fallbackFilters.join(' AND ')} ORDER BY id DESC LIMIT ?`,
+    [rows] = await queryWithTenantScope(
+      db,
+      'erp_messages',
+      scopedCompanyId,
+      `SELECT * FROM {{table}} WHERE ${fallbackFilters.join(' AND ')} ORDER BY id DESC LIMIT ?`,
       [...fallbackParams, parsedLimit + 1],
     );
   }
@@ -870,48 +888,34 @@ export async function getThread({ user, companyId, messageId, correlationId, db 
   if (!root || root.deleted_at) throw createError(404, 'MESSAGE_NOT_FOUND', 'Message not found');
   assertCanViewMessage(root, session, user);
 
-  let rows;
-  try {
-    [rows] = await db.query(
-      `WITH RECURSIVE thread_cte AS (
-        SELECT * FROM erp_messages WHERE id = ? AND company_id = ?
-        UNION ALL
-        SELECT m.*
-        FROM erp_messages m
-        INNER JOIN thread_cte t ON m.parent_message_id = t.id
-        WHERE m.company_id = ?
-      )
-      SELECT * FROM thread_cte WHERE deleted_at IS NULL ORDER BY id ASC`,
-      [messageId, scopedCompanyId, scopedCompanyId],
-    );
-  } catch (error) {
-    if (!String(error?.sqlMessage || error?.message || '').toLowerCase().includes('with recursive')) throw error;
-    const [fallbackRows] = await db.query(
-      'SELECT * FROM erp_messages WHERE company_id = ? AND deleted_at IS NULL ORDER BY id ASC',
-      [scopedCompanyId],
-    );
-    const byParent = new Map();
-    for (const row of fallbackRows) {
-      const key = row.parent_message_id == null ? 'root' : String(row.parent_message_id);
-      const bucket = byParent.get(key) || [];
-      bucket.push(row);
-      byParent.set(key, bucket);
-    }
-    const stack = [messageId];
-    const seen = new Set([String(messageId)]);
-    rows = [];
-    while (stack.length > 0) {
-      const id = stack.shift();
-      const row = fallbackRows.find((entry) => Number(entry.id) === Number(id));
-      if (!row) continue;
-      rows.push(row);
-      const children = byParent.get(String(id)) || [];
-      for (const child of children) {
-        const childId = String(child.id);
-        if (seen.has(childId)) continue;
-        seen.add(childId);
-        stack.push(child.id);
-      }
+  const [allRows] = await queryWithTenantScope(
+    db,
+    'erp_messages',
+    scopedCompanyId,
+    'SELECT * FROM {{table}} ORDER BY id ASC',
+    [],
+  );
+  const byParent = new Map();
+  for (const row of allRows) {
+    const key = row.parent_message_id == null ? 'root' : String(row.parent_message_id);
+    const bucket = byParent.get(key) || [];
+    bucket.push(row);
+    byParent.set(key, bucket);
+  }
+  const stack = [messageId];
+  const seen = new Set([String(messageId)]);
+  const rows = [];
+  while (stack.length > 0) {
+    const id = stack.shift();
+    const row = allRows.find((entry) => Number(entry.id) === Number(id));
+    if (!row) continue;
+    rows.push(row);
+    const children = byParent.get(String(id)) || [];
+    for (const child of children) {
+      const childId = String(child.id);
+      if (seen.has(childId)) continue;
+      seen.add(childId);
+      stack.push(child.id);
     }
   }
 
@@ -1058,24 +1062,25 @@ export async function getPresence({ user, companyId, userIds, db = pool, getSess
   const ids = Array.from(new Set(String(userIds || '').split(',').map((entry) => entry.trim()).filter(Boolean)));
   if (!ids.length) return { companyId: scopedCompanyId, users: [] };
 
-  const queryArgs = [scopedCompanyId, ...ids];
   const inClause = ids.map(() => '?').join(',');
 
   try {
-    const [rows] = await db.query(
+    const [rows] = await queryWithTenantScope(
+      db,
+      'erp_presence_heartbeats',
+      scopedCompanyId,
       `SELECT p.empid,
               p.status,
               p.heartbeat_at,
               COALESCE(e.emp_name, em.emp_name, p.empid) AS displayName,
               COALESCE(e.employee_code, e.emp_code, e.emp_id, em.employee_code, em.emp_code, em.emp_id, p.empid) AS employeeCode
-         FROM erp_presence_heartbeats p
+         FROM {{table}} p
     LEFT JOIN tbl_employee e
            ON e.emp_id = p.empid
     LEFT JOIN tbl_employment em
            ON (em.emp_id = p.empid OR em.employment_emp_id = p.empid)
-        WHERE p.company_id = ?
-          AND p.empid IN (${inClause})`,
-      queryArgs,
+        WHERE p.empid IN (${inClause})`,
+      ids,
     );
 
     return { companyId: scopedCompanyId, users: rows };
@@ -1084,16 +1089,18 @@ export async function getPresence({ user, companyId, userIds, db = pool, getSess
       throw error;
     }
 
-    const [rows] = await db.query(
+    const [rows] = await queryWithTenantScope(
+      db,
+      'erp_presence_heartbeats',
+      scopedCompanyId,
       `SELECT p.empid,
               p.status,
               p.heartbeat_at,
               p.empid AS displayName,
               p.empid AS employeeCode
-         FROM erp_presence_heartbeats p
-        WHERE p.company_id = ?
-          AND p.empid IN (${inClause})`,
-      queryArgs,
+         FROM {{table}} p
+        WHERE p.empid IN (${inClause})`,
+      ids,
     );
 
     return { companyId: scopedCompanyId, users: rows };
