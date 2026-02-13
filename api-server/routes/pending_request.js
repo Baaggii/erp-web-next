@@ -140,6 +140,7 @@ router.get('/outgoing', requireAuth, async (req, res, next) => {
       page,
       per_page,
       count_only: normalizedCountOnly,
+      company_id: req.user.companyId,
     });
     const pageNum = Number(page) > 0 ? Number(page) : 1;
     const perPageNum = Number(per_page) > 0 ? Number(per_page) : 2;
@@ -182,6 +183,7 @@ router.get('/', requireAuth, async (req, res, next) => {
       page,
       per_page,
       count_only: normalizedCountOnly,
+      company_id: req.user.companyId,
     });
     const pageNum = Number(page) > 0 ? Number(page) : 1;
     const perPageNum = Number(per_page) > 0 ? Number(per_page) : 2;
@@ -205,6 +207,7 @@ router.put('/:id/respond', requireAuth, async (req, res, next) => {
       req.user.empid,
       status,
       response_notes,
+      req.user.companyId,
     );
     res.sendStatus(204);
   } catch (err) {
