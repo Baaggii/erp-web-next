@@ -6,6 +6,7 @@ import { getGeneralConfig } from './generalConfig.js';
 import { pool } from '../../db/index.js';
 import { getConfigsByTable, getConfigsByTransTypeValue } from './transactionFormConfig.js';
 import { slugify } from '../utils/slugify.js';
+import { queryWithTenantScope } from './tenantScope.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -631,16 +632,18 @@ async function findPromotedTempMatch(
   if (!likeClauses.length) return null;
   let rows;
   try {
-    [rows] = await pool.query(
+    [rows] = await queryWithTenantScope(
+      pool,
+      'transaction_temporaries',
+      companyId,
       `SELECT table_name, promoted_record_id, payload_json, raw_values_json, cleaned_values_json
-         FROM transaction_temporaries
-        WHERE company_id = ?
-          AND status = 'promoted'
+         FROM {{table}}
+        WHERE status = 'promoted'
           AND promoted_record_id IS NOT NULL
           AND (${likeClauses.join(' OR ')})
         ORDER BY updated_at DESC
         LIMIT 20`,
-      [companyId, ...likeParams],
+      likeParams,
     );
   } catch {
     return null;
@@ -657,8 +660,11 @@ async function findPromotedTempMatch(
     const promotedRecordId = row.promoted_record_id;
     let promotedRows;
     try {
-      [promotedRows] = await pool.query(
-        `SELECT * FROM \`${row.table_name}\` WHERE id = ? LIMIT 1`,
+      [promotedRows] = await queryWithTenantScope(
+        pool,
+        row.table_name,
+        companyId,
+        'SELECT * FROM {{table}} WHERE id = ? LIMIT 1',
         [row.promoted_record_id],
       );
     } catch {
@@ -684,16 +690,18 @@ async function findPromotedTempMatch(
   if (!timestamp) return null;
   let recentRows;
   try {
-    [recentRows] = await pool.query(
+    [recentRows] = await queryWithTenantScope(
+      pool,
+      'transaction_temporaries',
+      companyId,
       `SELECT table_name, promoted_record_id, payload_json, raw_values_json, cleaned_values_json
-         FROM transaction_temporaries
-        WHERE company_id = ?
-          AND status = 'promoted'
+         FROM {{table}}
+        WHERE status = 'promoted'
           AND promoted_record_id IS NOT NULL
           AND ABS(TIMESTAMPDIFF(SECOND, FROM_UNIXTIME(?/1000), updated_at)) < 172800
         ORDER BY updated_at DESC
         LIMIT 50`,
-      [companyId, timestamp],
+      [timestamp],
     );
   } catch {
     return null;
@@ -713,8 +721,11 @@ async function findPromotedTempMatch(
     }
     let promotedRows;
     try {
-      [promotedRows] = await pool.query(
-        `SELECT * FROM \`${row.table_name}\` WHERE id = ? LIMIT 1`,
+      [promotedRows] = await queryWithTenantScope(
+        pool,
+        row.table_name,
+        companyId,
+        'SELECT * FROM {{table}} WHERE id = ? LIMIT 1',
         [row.promoted_record_id],
       );
     } catch {
