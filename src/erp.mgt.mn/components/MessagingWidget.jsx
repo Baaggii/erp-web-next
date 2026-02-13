@@ -1157,18 +1157,20 @@ export default function MessagingWidget() {
       ? Array.from(new Set([...threadParticipants, ...payloadRecipients]))
       : payloadRecipients;
     const finalRecipients = state.composer.replyToId ? replyRecipients : payloadRecipients;
-    const visibilityScope = finalRecipients.length > 0 ? 'private' : 'company';
-
     const payload = {
       idempotencyKey: createIdempotencyKey(),
       clientTempId,
       body: `${canEditTopic ? `[${safeTopic}] ` : ''}${safeBody}${encodeAttachmentPayload(uploadedAttachments)}`,
       companyId: Number.isFinite(Number(activeCompany)) ? Number(activeCompany) : String(activeCompany),
-      recipientEmpids: finalRecipients,
-      visibilityScope,
-      visibilityEmpid: finalRecipients[0] || null,
       ...(linkedType ? { linkedType } : {}),
       ...(linkedId ? { linkedId: String(linkedId) } : {}),
+      ...(finalRecipients.length > 0
+        ? {
+            recipientEmpids: finalRecipients,
+            visibilityScope: 'private',
+            visibilityEmpid: finalRecipients[0],
+          }
+        : {}),
     };
 
     const targetUrl = state.composer.replyToId
