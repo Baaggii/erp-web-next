@@ -416,15 +416,16 @@ async function updateExistingTransactionNotifications({
   summaryText,
   activeReferenceKeys,
 }) {
-  const [rows] = await pool.query(
+  const [rows] = await queryWithTenantScope(
+    pool,
+    'notifications',
+    companyId,
     `SELECT notification_id, message, recipient_empid, created_at, created_by, type, related_id
-       FROM notifications
-      WHERE company_id = ?
-        AND related_id = ?
-        AND deleted_at IS NULL
+       FROM {{table}}
+      WHERE related_id = ?
         AND message LIKE '%"kind":"transaction"%'
       ORDER BY notification_id ASC`,
-    [companyId ?? null, relatedId],
+    [relatedId],
   );
   let updated = 0;
   const payloads = [];
