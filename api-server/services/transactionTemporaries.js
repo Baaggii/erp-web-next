@@ -25,6 +25,7 @@ import { getMerchantById } from './merchantService.js';
 import { renameImages, resolveImageNaming } from './transactionImageService.js';
 import formatTimestamp from '../../src/erp.mgt.mn/utils/formatTimestamp.js';
 import { sanitizeRowForTable } from '../utils/schemaSanitizer.js';
+import { queryWithTenantScope } from './tenantScope.js';
 
 const TEMP_TABLE = 'transaction_temporaries';
 const TEMP_REVIEW_HISTORY_TABLE = 'transaction_temporary_review_history';
@@ -1257,10 +1258,6 @@ export async function listTemporarySubmissions({
       }
     }
   }
-  if (companyId != null) {
-    conditions.push('(company_id = ? OR company_id IS NULL)');
-    params.push(companyId);
-  }
   if (tableName) {
     conditions.push('table_name = ?');
     params.push(tableName);
@@ -1293,7 +1290,7 @@ export async function listTemporarySubmissions({
   const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
   const chainGroupKey = (alias = '') =>
     `COALESCE(${alias ? `${alias}.` : ''}chain_id, ${alias ? `${alias}.` : ''}id)`;
-  const filteredQuery = `SELECT * FROM \`${TEMP_TABLE}\` ${where}`;
+  const filteredQuery = `SELECT * FROM {{table}} ${where}`;
   const requestedLimit = Number(limit);
   const normalizedLimit =
     Number.isFinite(requestedLimit) && requestedLimit > 0
@@ -1315,7 +1312,13 @@ export async function listTemporarySubmissions({
        AND filtered.updated_at = latest.max_updated_at
      ORDER BY filtered.updated_at DESC, filtered.created_at DESC
      LIMIT ? OFFSET ?`;
-  const [rows] = await pool.query(groupingQuery, [...params, effectiveLimit, normalizedOffset]);
+  const [rows] = await queryWithTenantScope(
+    pool,
+    TEMP_TABLE,
+    companyId,
+    groupingQuery,
+    [...params, effectiveLimit, normalizedOffset],
+  );
   const hasMore = includeHasMore ? rows.length > normalizedLimit : false;
   const limitedRows = includeHasMore ? rows.slice(0, normalizedLimit) : rows;
   const mapped = limitedRows.map(mapTemporaryRow);
