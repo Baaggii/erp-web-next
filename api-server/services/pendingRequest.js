@@ -668,17 +668,23 @@ export async function createRequest({
       if (pkCols.length === 1) {
         const col = pkCols[0];
         const where = col === 'id' ? 'id = ?' : `\`${col}\` = ?`;
-        const [r] = await conn.query(
-          `SELECT * FROM ?? WHERE ${where} LIMIT 1`,
-          [tableName, recordId],
+        const [r] = await queryWithTenantScope(
+          conn,
+          tableName,
+          companyId,
+          `SELECT * FROM {{table}} WHERE ${where} LIMIT 1`,
+          [recordId],
         );
         currentRow = r[0] || null;
       } else if (pkCols.length > 1) {
         const parts = String(recordId).split('-');
         const where = pkCols.map((c) => `\`${c}\` = ?`).join(' AND ');
-        const [r] = await conn.query(
-          `SELECT * FROM ?? WHERE ${where} LIMIT 1`,
-          [tableName, ...parts],
+        const [r] = await queryWithTenantScope(
+          conn,
+          tableName,
+          companyId,
+          `SELECT * FROM {{table}} WHERE ${where} LIMIT 1`,
+          parts,
         );
         currentRow = r[0] || null;
       }
@@ -689,17 +695,23 @@ export async function createRequest({
       if (pkCols.length === 1) {
         const col = pkCols[0];
         const where = col === 'id' ? 'id = ?' : `\`${col}\` = ?`;
-        const [r] = await conn.query(
-          `SELECT * FROM ?? WHERE ${where} LIMIT 1`,
-          [tableName, recordId],
+        const [r] = await queryWithTenantScope(
+          conn,
+          tableName,
+          companyId,
+          `SELECT * FROM {{table}} WHERE ${where} LIMIT 1`,
+          [recordId],
         );
         currentRow = r[0] || null;
       } else if (pkCols.length > 1) {
         const parts = String(recordId).split('-');
         const where = pkCols.map((c) => `\`${c}\` = ?`).join(' AND ');
-        const [r] = await conn.query(
-          `SELECT * FROM ?? WHERE ${where} LIMIT 1`,
-          [tableName, ...parts],
+        const [r] = await queryWithTenantScope(
+          conn,
+          tableName,
+          companyId,
+          `SELECT * FROM {{table}} WHERE ${where} LIMIT 1`,
+          parts,
         );
         currentRow = r[0] || null;
       }
@@ -1131,7 +1143,10 @@ export async function listRequests(filters) {
   const approvalMap = new Map();
   if (approvalRequestIds.length) {
     const placeholders = approvalRequestIds.map(() => '?').join(', ');
-    const [approvalRows] = await pool.query(
+    const [approvalRows] = await queryWithTenantScope(
+      pool,
+      'report_approvals',
+      companyId,
       `SELECT request_id,
               approved_by,
               snapshot_file_name,
@@ -1139,7 +1154,7 @@ export async function listRequests(filters) {
               snapshot_file_size,
               snapshot_archived_at,
               snapshot_file_path
-         FROM report_approvals
+         FROM {{table}}
         WHERE request_id IN (${placeholders})`,
       approvalRequestIds,
     );
@@ -1160,9 +1175,12 @@ export async function listRequests(filters) {
           if (pkCols.length === 1) {
             const col = pkCols[0];
             const whereClause = col === 'id' ? 'id = ?' : `\`${col}\` = ?`;
-            const [r] = await pool.query(
-              `SELECT * FROM ?? WHERE ${whereClause} LIMIT 1`,
-              [row.table_name, row.record_id],
+            const [r] = await queryWithTenantScope(
+              pool,
+              row.table_name,
+              row.company_id,
+              `SELECT * FROM {{table}} WHERE ${whereClause} LIMIT 1`,
+              [row.record_id],
             );
             original = r[0] || null;
           } else if (pkCols.length > 1) {
@@ -1170,9 +1188,12 @@ export async function listRequests(filters) {
             const whereClause = pkCols
               .map((c) => `\`${c}\` = ?`)
               .join(' AND ');
-            const [r] = await pool.query(
-              `SELECT * FROM ?? WHERE ${whereClause} LIMIT 1`,
-              [row.table_name, ...parts],
+            const [r] = await queryWithTenantScope(
+              pool,
+              row.table_name,
+              row.company_id,
+              `SELECT * FROM {{table}} WHERE ${whereClause} LIMIT 1`,
+              parts,
             );
             original = r[0] || null;
           }

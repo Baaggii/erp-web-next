@@ -25,6 +25,7 @@ import { getMerchantById } from './merchantService.js';
 import { renameImages, resolveImageNaming } from './transactionImageService.js';
 import formatTimestamp from '../../src/erp.mgt.mn/utils/formatTimestamp.js';
 import { sanitizeRowForTable } from '../utils/schemaSanitizer.js';
+import { queryWithTenantScope } from './tenantScope.js';
 
 const TEMP_TABLE = 'transaction_temporaries';
 const TEMP_REVIEW_HISTORY_TABLE = 'transaction_temporary_review_history';
@@ -1291,9 +1292,6 @@ export async function listTemporarySubmissions({
     params.push(Number(companyId));
   }
   const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
-  const chainGroupKey = (alias = '') =>
-    `COALESCE(${alias ? `${alias}.` : ''}chain_id, ${alias ? `${alias}.` : ''}id)`;
-  const filteredQuery = `SELECT * FROM \`${TEMP_TABLE}\` ${where}`;
   const requestedLimit = Number(limit);
   const normalizedLimit =
     Number.isFinite(requestedLimit) && requestedLimit > 0
