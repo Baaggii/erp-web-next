@@ -1439,9 +1439,10 @@ export default function MessagingWidget() {
           </div>
 
           <div style={{ overflowY: 'auto', padding: 8, display: 'grid', gap: 6, minHeight: 0, flex: 1, alignContent: 'start', gridAutoRows: 'max-content' }}>
-            {conversationSummaries.length === 0 && <p style={{ color: '#64748b', fontSize: 13 }}>No conversations yet.</p>}
+            <h3 style={{ margin: '0 0 2px', fontSize: 14, color: '#0f172a' }}>Conversations</h3>
+            {conversationSummaries.length === 0 && <p style={{ margin: 0, color: '#64748b', fontSize: 13 }}>No conversations yet.</p>}
             {conversationSummaries.map((conversation) => (
-              <div key={conversation.id} style={{ borderRadius: 12, border: conversation.id === activeConversationId ? '1px solid #3b82f6' : '1px solid #e2e8f0', background: conversation.id === activeConversationId ? '#eff6ff' : '#ffffff', padding: 8 }}>
+              <div key={conversation.id} style={{ borderRadius: 8, border: conversation.id === activeConversationId ? '1px solid #3b82f6' : '1px solid #e2e8f0', background: conversation.id === activeConversationId ? '#eff6ff' : '#ffffff', padding: '4px 6px', display: 'grid', gridTemplateColumns: 'minmax(0,1fr) auto', gap: 6, alignItems: 'center' }}>
                 <button
                   type="button"
                   onClick={() => {
@@ -1451,34 +1452,30 @@ export default function MessagingWidget() {
                       dispatch({ type: 'composer/setLinkedContext', payload: { linkedType: conversation.linkedType, linkedId: conversation.linkedId } });
                     }
                   }}
-                  style={{ textAlign: 'left', border: 0, background: 'transparent', width: '100%', padding: 0 }}
+                  style={{ textAlign: 'left', border: 0, background: 'transparent', width: '100%', padding: 0, minWidth: 0 }}
                 >
-                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center' }}>
-                    <strong style={{ color: '#0f172a', fontSize: 13 }}>{conversation.title}</strong>
-                    {conversation.unread > 0 && (
-                      <span style={{ minWidth: 20, textAlign: 'center', borderRadius: 999, background: '#ef4444', color: '#fff', fontSize: 11, padding: '1px 6px' }}>
-                        {conversation.unread}
-                      </span>
-                    )}
-                  </div>
-                  <p style={{ margin: '3px 0', fontSize: 11, color: '#334155', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{conversation.preview}</p>
-                  <p style={{ margin: '3px 0 0', fontSize: 10, color: '#64748b' }}>
-                    {conversation.groupName} · {formatLastActivity(conversation.lastActivity)}
-                  </p>
+                  <span style={{ display: 'block', fontSize: 12, color: '#0f172a', lineHeight: 1.3, overflowWrap: 'anywhere' }}>
+                    <strong>{conversation.title}</strong> · {conversation.preview}
+                  </span>
                 </button>
-                {!conversation.isGeneral && (
-                  <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+                  {conversation.unread > 0 && (
+                    <span style={{ minWidth: 18, textAlign: 'center', borderRadius: 999, background: '#ef4444', color: '#fff', fontSize: 10, padding: '0 5px' }}>
+                      {conversation.unread}
+                    </span>
+                  )}
+                  {!conversation.isGeneral && (
                     <button
                       type="button"
                       aria-label={`Delete conversation ${conversation.title}`}
                       onClick={() => handleDeleteConversationFromList(conversation)}
                       disabled={!canDeleteMessage(messages.find((entry) => Number(entry.id) === Number(conversation.rootMessageId)))}
-                      style={{ border: 0, background: 'transparent', color: '#b91c1c', fontSize: 12, cursor: 'pointer' }}
+                      style={{ border: 0, background: 'transparent', color: '#b91c1c', fontSize: 11, cursor: 'pointer', padding: 0 }}
                     >
-                      🗑 Delete
+                      🗑
                     </button>
-                  </div>
-                )}
+                  )}
+                </div>
               </div>
             ))}
           </div>
