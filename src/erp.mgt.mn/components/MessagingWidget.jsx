@@ -436,6 +436,7 @@ export default function MessagingWidget() {
   const [companyRecords, setCompanyRecords] = useState([]);
   const [recipientSearch, setRecipientSearch] = useState('');
   const [employeeStatusFilter, setEmployeeStatusFilter] = useState('all');
+  const [conversationPanelOpen, setConversationPanelOpen] = useState(true);
   const [isNarrowLayout, setIsNarrowLayout] = useState(false);
   const [highlightedIds, setHighlightedIds] = useState(() => new Set());
   const [mentionOpen, setMentionOpen] = useState(false);
@@ -1385,6 +1386,13 @@ export default function MessagingWidget() {
             <p style={{ margin: '6px 0 0', fontSize: 11, color: '#64748b' }}>
               Active: {resolveCompanyLabel(state.activeCompanyId || companyId)}
             </p>
+          </div>
+
+          <div style={{ padding: 10, borderBottom: '1px solid #e2e8f0', flexShrink: 0 }}>
+            <div>
+              <h3 style={{ margin: 0, fontSize: 14, color: '#0f172a' }}>Threads</h3>
+              <p style={{ margin: '3px 0 0', fontSize: 11, color: '#64748b' }}>One row per conversation.</p>
+            </div>
           </div>
 
           <div style={{ padding: 10, borderBottom: '1px solid #e2e8f0', flexShrink: 0 }}>
