@@ -49,6 +49,20 @@ function normalizeCompanyScopeId(value) {
   return Math.trunc(numeric);
 }
 
+function deriveTransactionContext(transactionRow = {}) {
+  const companyId = normalizeCompanyScopeId(
+    pickFirstDefined(transactionRow, ['company_id', 'companyId', 'company']),
+  );
+
+  return {
+    companyId,
+    createdBy: pickFirstDefined(transactionRow, ['created_by', 'createdBy', 'creator', 'emp_id']) || null,
+    updatedBy: pickFirstDefined(transactionRow, ['updated_by', 'updatedBy', 'created_by', 'createdBy', 'emp_id']) || null,
+    createdAt: pickFirstDefined(transactionRow, ['created_at', 'createdAt']) || new Date(),
+    updatedAt: pickFirstDefined(transactionRow, ['updated_at', 'updatedAt', 'created_at', 'createdAt']) || new Date(),
+  };
+}
+
 function evaluateExpression(expression, context = {}) {
   if (!expression || typeof expression !== 'string') {
     return 0;
@@ -534,6 +548,7 @@ export async function post_single_transaction({
     await conn.beginTransaction();
 
     const currentRow = await fetchTransactionById(conn, safeTable, sourceId);
+    const transactionContext = deriveTransactionContext(currentRow);
     const existingJournalId = currentRow.fin_journal_id;
     const postStatus = String(currentRow.fin_post_status || '').toUpperCase();
 
@@ -573,8 +588,12 @@ export async function post_single_transaction({
   document_date: new Date(),
   currency: 'MNT',
   exchange_rate: 1,
+  company_id: transactionContext.companyId,
   is_posted: 1,
-  created_at: new Date(),
+  created_by: transactionContext.createdBy,
+  created_at: transactionContext.createdAt,
+  updated_by: transactionContext.updatedBy,
+  updated_at: transactionContext.updatedAt,
 });
 
 
@@ -589,8 +608,13 @@ await insertRow(conn, 'fin_journal_line', {
   amount: isDebit
     ? Number(line.debit_amount || 0)
     : Number(line.credit_amount || 0),
+  company_id: transactionContext.companyId,
   dimension_type_code: line.dimension_type_code || null,
   dimension_id: line.dimension_id || null,
+  created_by: transactionContext.createdBy,
+  created_at: transactionContext.createdAt,
+  updated_by: transactionContext.updatedBy,
+  updated_at: transactionContext.updatedAt,
 });
 
     }
