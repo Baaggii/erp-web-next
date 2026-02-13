@@ -1718,7 +1718,7 @@ export default function MessagingWidget() {
               )}
             </div>
 
-            <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', marginTop: 6, gap: 8, flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', marginTop: 8, paddingTop: 6, gap: 8, flexWrap: 'wrap', position: 'sticky', bottom: -6, background: '#ffffff', borderTop: '1px solid #e2e8f0' }}>
               <button type="submit" disabled={!canSendMessage} style={{ border: 0, borderRadius: 8, background: canSendMessage ? '#2563eb' : '#94a3b8', color: '#fff', padding: '8px 14px', fontWeight: 600, cursor: canSendMessage ? 'pointer' : 'not-allowed' }}>
                 Send
               </button>
