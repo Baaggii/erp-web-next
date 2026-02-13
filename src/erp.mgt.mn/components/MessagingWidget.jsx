@@ -316,6 +316,8 @@ function MessageNode({ message, depth = 0, onReply, onJumpToParent, onToggleRepl
         padding: '6px 8px',
         marginBottom: 6,
         marginLeft: depth > 0 ? Math.min(depth * 12, 48) : 0,
+        width: '100%',
+        boxSizing: 'border-box',
       }}
     >
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
@@ -1227,6 +1229,19 @@ export default function MessagingWidget() {
     event.target.value = '';
   };
 
+  const onRemoveAttachment = (targetFile) => {
+    const nextFiles = state.composer.attachments.filter((file) => (
+      `${file.name}-${file.size}-${file.lastModified || 0}` !== `${targetFile.name}-${targetFile.size}-${targetFile.lastModified || 0}`
+    ));
+    dispatch({ type: 'composer/setAttachments', payload: nextFiles });
+    setComposerAnnouncement('Attachment removed.');
+  };
+
+  const onClearAttachments = () => {
+    dispatch({ type: 'composer/setAttachments', payload: [] });
+    setComposerAnnouncement('All attachments removed.');
+  };
+
   const onSwitchCompany = (event) => {
     const nextCompany = normalizeId(event.target.value);
     if (!nextCompany || nextCompany === state.activeCompanyId) return;
@@ -1682,11 +1697,20 @@ export default function MessagingWidget() {
                     aria-label="Attachment picker"
                     style={{ display: 'block', marginTop: 6 }}
                   />
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8, gap: 8 }}>
+                    <span style={{ fontSize: 12, color: '#475569' }}>Attachments</span>
+                    <button type="button" onClick={onClearAttachments} disabled={state.composer.attachments.length === 0} style={{ border: '1px solid #cbd5e1', borderRadius: 8, background: '#fff', padding: '4px 8px', fontSize: 12 }}>
+                      Remove all
+                    </button>
+                  </div>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 8, marginTop: 8 }}>
                     {state.composer.attachments.map((file) => (
                       <div key={`${file.name}-${file.lastModified}-${file.size}`} style={{ border: '1px solid #e2e8f0', borderRadius: 8, padding: 8, background: '#f8fafc' }}>
                         <strong style={{ display: 'block', fontSize: 12, color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis' }}>{file.name}</strong>
                         <span style={{ fontSize: 11, color: '#64748b' }}>{Math.max(1, Math.round(file.size / 1024))} KB</span>
+                        <button type="button" onClick={() => onRemoveAttachment(file)} style={{ display: 'block', marginTop: 6, border: '1px solid #cbd5e1', borderRadius: 6, background: '#fff', padding: '2px 6px', fontSize: 11 }}>
+                          Remove
+                        </button>
                       </div>
                     ))}
                   </div>
