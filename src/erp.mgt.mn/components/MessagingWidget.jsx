@@ -276,12 +276,28 @@ function resolveDisplayLabelFromConfig(row, displayFields = []) {
   return parts.join(' ').trim();
 }
 
+function parseMessageRecipientEmpids(message) {
+  const rawRecipientEmpids =
+    message?.recipient_empids || message?.recipientEmpids || message?.recipient_ids || message?.recipientIds;
+  if (Array.isArray(rawRecipientEmpids)) {
+    return rawRecipientEmpids.map((entry) => normalizeId(entry)).filter(Boolean);
+  }
+  if (typeof rawRecipientEmpids === 'string') {
+    try {
+      const parsed = JSON.parse(rawRecipientEmpids);
+      if (Array.isArray(parsed)) return parsed.map((entry) => normalizeId(entry)).filter(Boolean);
+    } catch {
+      return rawRecipientEmpids.split(',').map((entry) => normalizeId(entry)).filter(Boolean);
+    }
+  }
+  return [];
+}
+
 function collectMessageParticipantEmpids(message) {
   const ids = [];
   ids.push(message?.author_empid, message?.authorEmpid, message?.visibility_empid, message?.visibilityEmpid);
-  const recipientEmpids =
-    message?.recipient_empids || message?.recipientEmpids || message?.recipient_ids || message?.recipientIds;
-  if (Array.isArray(recipientEmpids)) ids.push(...recipientEmpids);
+  const recipientEmpids = parseMessageRecipientEmpids(message);
+  if (recipientEmpids.length > 0) ids.push(...recipientEmpids);
   const readBy = Array.isArray(message?.read_by) ? message.read_by : [];
   ids.push(...readBy);
   return Array.from(new Set(ids.map(normalizeId).filter(Boolean)));
@@ -292,6 +308,21 @@ function canViewTransaction(transactionId, userId, permissions) {
   if (permissions?.isAdmin === true) return true;
   if (permissions?.transactions?.view === true) return true;
   return canOpenContextLink(permissions, 'transaction');
+}
+
+function canCurrentUserViewIncomingMessage(message, viewerEmpid) {
+  const scope = String(message?.visibility_scope || message?.visibilityScope || 'company').toLowerCase();
+  if (scope === 'company' || scope === 'department') return true;
+  if (scope !== 'private') return false;
+
+  const viewer = normalizeId(viewerEmpid);
+  if (!viewer) return false;
+  const participants = new Set([
+    normalizeId(message?.author_empid || message?.authorEmpid),
+    normalizeId(message?.visibility_empid || message?.visibilityEmpid),
+    ...parseMessageRecipientEmpids(message),
+  ].filter(Boolean));
+  return participants.has(viewer);
 }
 
 function MessageNode({ message, depth = 0, onReply, onJumpToParent, onToggleReplies, collapsedMessageIds, parentMap, permissions, activeReplyTarget, highlightedIds, onOpenLinkedTransaction, resolveEmployeeLabel, canDeleteMessage, onDeleteMessage, onPreviewAttachment, isMentionedViewer = false }) {
@@ -778,6 +809,7 @@ export default function MessagingWidget() {
     const onNew = (payload) => {
       const nextMessage = payload?.message || payload;
       if (normalizeId(nextMessage?.company_id || nextMessage?.companyId) !== (state.activeCompanyId || companyId)) return;
+      if (!canCurrentUserViewIncomingMessage(nextMessage, selfEmpid)) return;
       setMessagesByCompany((prev) => {
         const key = getCompanyCacheKey(state.activeCompanyId || companyId);
         return { ...prev, [key]: mergeMessageList(prev[key], nextMessage) };
@@ -908,10 +940,13 @@ export default function MessagingWidget() {
     || conversations.find((conversation) => !conversation.isGeneral)
     || conversations.find((conversation) => conversation.isGeneral)
     || null;
+  const hasRequestedConversation = Boolean(state.activeConversationId);
   const requestedConversation = isDraftConversation
     ? null
     : conversations.find((conversation) => conversation.id === state.activeConversationId) || null;
-  const activeConversation = isDraftConversation ? null : (requestedConversation || defaultConversation);
+  const activeConversation = isDraftConversation
+    ? null
+    : (hasRequestedConversation ? requestedConversation : defaultConversation);
   const activeConversationId = isDraftConversation ? NEW_CONVERSATION_ID : (activeConversation?.id || null);
   const threadMessages = useMemo(() => buildNestedThreads(activeConversation?.messages || []), [activeConversation]);
   const messageMap = useMemo(() => new Map(messages.map((msg) => [msg.id, msg])), [messages]);
@@ -1188,6 +1223,10 @@ export default function MessagingWidget() {
   };
 
   const sendMessage = async () => {
+    if (!isDraftConversation && state.activeConversationId && !activeConversation) {
+      setComposerAnnouncement('Selected conversation is unavailable. Choose a conversation before sending.');
+      return;
+    }
     if (canEditTopic && !safeTopic) {
       setComposerAnnouncement('Topic is required.');
       return;
