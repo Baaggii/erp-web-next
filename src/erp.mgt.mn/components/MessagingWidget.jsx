@@ -865,7 +865,7 @@ export default function MessagingWidget() {
   const requestedConversation = isDraftConversation
     ? null
     : conversations.find((conversation) => conversation.id === state.activeConversationId) || null;
-  const activeConversation = isDraftConversation ? null : (requestedConversation || conversations[0] || null);
+  const activeConversation = isDraftConversation ? null : requestedConversation;
   const activeConversationId = isDraftConversation ? NEW_CONVERSATION_ID : (activeConversation?.id || null);
   const threadMessages = useMemo(() => buildNestedThreads(activeConversation?.messages || []), [activeConversation]);
   const messageMap = useMemo(() => new Map(messages.map((msg) => [msg.id, msg])), [messages]);
@@ -965,7 +965,8 @@ export default function MessagingWidget() {
     });
   }, [employeeRecords, employeeStatusFilter, recipientSearch]);
 
-  const conversationSummaries = useMemo(() => conversations.map((conversation) => {
+  const conversationSummaries = useMemo(() => {
+    const baseSummaries = conversations.map((conversation) => {
     const previewMessage = conversation.messages.at(-1);
     const previewDecoded = decodeMessageContent(previewMessage?.body || '');
     return {
@@ -979,7 +980,22 @@ export default function MessagingWidget() {
           : `Thread #${conversation.rootMessageId}`,
       lastActivity: previewMessage?.created_at || null,
     };
-  }), [conversations, selfEmpid]);
+    });
+    if (!isDraftConversation) return baseSummaries;
+    return [
+      {
+        id: NEW_CONVERSATION_ID,
+        title: state.composer.topic || 'New message',
+        preview: sanitizeMessageText(state.composer.body || '').slice(0, 48) || 'Draft conversation',
+        unread: 0,
+        groupName: 'Draft',
+        lastActivity: null,
+        isDraft: true,
+        isGeneral: false,
+      },
+      ...baseSummaries,
+    ];
+  }, [conversations, isDraftConversation, selfEmpid, state.composer.body, state.composer.topic]);
 
   const activeTopic = state.composer.topic || activeConversation?.title || 'Untitled topic';
   const sessionUserLabel = sanitizeMessageText(
@@ -1016,12 +1032,17 @@ export default function MessagingWidget() {
   };
 
   const activeConversationParticipants = useMemo(() => {
+    if (activeConversation?.isGeneral) {
+      const everyone = new Set(employeeRecords.map((entry) => normalizeId(entry.id)).filter(Boolean));
+      if (selfEmpid) everyone.add(selfEmpid);
+      return Array.from(everyone);
+    }
     const ids = new Set();
     (activeConversation?.messages || []).forEach((msg) => {
       collectMessageParticipantEmpids(msg).forEach((empid) => ids.add(empid));
     });
     return Array.from(ids);
-  }, [activeConversation]);
+  }, [activeConversation, employeeRecords, selfEmpid]);
 
   const activeConversationParticipantLabels = useMemo(
     () => activeConversationParticipants.map((empid) => resolveEmployeeLabel(empid)),
@@ -1042,6 +1063,11 @@ export default function MessagingWidget() {
   const requiresRecipient = isDraftConversation;
   const hasRecipients = (state.composer.recipients || []).some((entry) => normalizeId(entry));
   const canSendMessage = Boolean(safeBody && (canEditTopic ? safeTopic : true) && (!requiresRecipient || hasRecipients));
+  const existingConversationParticipants = new Set(activeConversationParticipants.map(normalizeId).filter(Boolean));
+  const recipientsNotInConversation = state.composer.recipients
+    .map(normalizeId)
+    .filter((empid) => empid && !existingConversationParticipants.has(empid));
+  const shouldWarnNewParticipants = !isDraftConversation && recipientsNotInConversation.length > 0;
 
   const handleOpenLinkedTransaction = (transactionId) => {
     if (canViewTransaction(transactionId, normalizeId(sessionId), permissions || {})) {
@@ -1158,11 +1184,12 @@ export default function MessagingWidget() {
       setComposerAnnouncement('Select at least one recipient before sending a new conversation.');
       return;
     }
+    const rootVisibilityScope = String(activeRootMessage?.visibility_scope || activeRootMessage?.visibilityScope || '').toLowerCase();
     const threadParticipants = Array.from(new Set(activeConversationParticipants.filter((empid) => empid !== selfEmpid)));
     const conversationRecipients = (!isDraftConversation && !activeConversation?.isGeneral)
       ? threadParticipants
       : [];
-    const replyRecipients = state.composer.replyToId
+    const replyRecipients = (state.composer.replyToId && rootVisibilityScope !== 'private')
       ? Array.from(new Set([...threadParticipants, ...payloadRecipients]))
       : payloadRecipients;
     const finalRecipients = state.composer.replyToId
@@ -1175,9 +1202,9 @@ export default function MessagingWidget() {
       clientTempId,
       body: `${canEditTopic ? `[${safeTopic}] ` : ''}${safeBody}${encodeAttachmentPayload(uploadedAttachments)}`,
       companyId: Number.isFinite(Number(activeCompany)) ? Number(activeCompany) : String(activeCompany),
-      recipientEmpids: finalRecipients,
+      recipientEmpids: rootVisibilityScope === 'private' ? [] : finalRecipients,
       visibilityScope,
-      visibilityEmpid: finalRecipients[0] || null,
+      visibilityEmpid: rootVisibilityScope === 'private' ? null : (finalRecipients[0] || null),
       ...(linkedType ? { linkedType } : {}),
       ...(linkedId ? { linkedId: String(linkedId) } : {}),
     };
@@ -1301,10 +1328,11 @@ export default function MessagingWidget() {
   };
 
   const openNewMessage = () => {
-    dispatch({ type: 'widget/setConversation', payload: null });
+    dispatch({ type: 'widget/setConversation', payload: NEW_CONVERSATION_ID });
     dispatch({ type: 'composer/setTopic', payload: '' });
     dispatch({ type: 'composer/setBody', payload: '' });
     dispatch({ type: 'composer/setReplyTo', payload: null });
+    dispatch({ type: 'composer/setLinkedContext', payload: { linkedType: null, linkedId: null } });
     setComposerAnnouncement('Started a new message draft.');
   };
 
@@ -1471,7 +1499,7 @@ export default function MessagingWidget() {
                 );
               })}
             </div>
-            <button type="button" disabled={state.composer.recipients.length === 0} onClick={openNewMessage} style={{ marginTop: 8, border: 0, borderRadius: 8, background: state.composer.recipients.length ? '#2563eb' : '#94a3b8', color: '#fff', padding: '8px 10px', width: '100%' }}>
+            <button type="button" onClick={openNewMessage} style={{ marginTop: 8, border: 0, borderRadius: 8, background: '#2563eb', color: '#fff', padding: '8px 10px', width: '100%' }}>
               New message
             </button>
           </div>
@@ -1485,9 +1513,11 @@ export default function MessagingWidget() {
                   type="button"
                   onClick={() => {
                     dispatch({ type: 'widget/setConversation', payload: conversation.id });
-                    dispatch({ type: 'composer/setTopic', payload: conversation.title });
+                    dispatch({ type: 'composer/setTopic', payload: conversation.isDraft ? state.composer.topic : conversation.title });
                     if (conversation.linkedType && conversation.linkedId) {
                       dispatch({ type: 'composer/setLinkedContext', payload: { linkedType: conversation.linkedType, linkedId: conversation.linkedId } });
+                    } else if (!conversation.isDraft) {
+                      dispatch({ type: 'composer/setLinkedContext', payload: { linkedType: null, linkedId: null } });
                     }
                   }}
                   style={{ textAlign: 'left', border: 0, background: 'transparent', width: '100%', padding: 0, minWidth: 0 }}
@@ -1614,6 +1644,12 @@ export default function MessagingWidget() {
                 })}
               </div>
 
+              {shouldWarnNewParticipants && (
+                <p style={{ margin: '6px 0 0', fontSize: 12, color: '#92400e', background: '#fffbeb', border: '1px solid #fcd34d', borderRadius: 8, padding: '6px 8px' }}>
+                  Note: {recipientsNotInConversation.map((empid) => resolveEmployeeLabel(empid)).join(', ')} will be added to this conversation and can view prior history.
+                </p>
+              )}
+
             <label htmlFor="messaging-composer" style={{ marginTop: 6, display: 'block', fontSize: 12, fontWeight: 600, color: '#334155' }}>
               Message
             </label>
@@ -1663,7 +1699,9 @@ export default function MessagingWidget() {
             <div style={{ marginTop: 4 }}>
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-end' }}>
                 <div style={{ position: 'relative', flex: '1 1 220px' }}>
-                  <label htmlFor="messaging-add-recipient" style={{ fontSize: 12, fontWeight: 600, color: '#334155' }}>Add recipient</label>
+                  <label htmlFor="messaging-add-recipient" style={{ fontSize: 12, fontWeight: 600, color: '#334155' }}>
+                    {isDraftConversation ? 'Recipients (required for new conversation)' : 'Add recipient / mention user (optional)'}
+                  </label>
                   <input
                     id="messaging-add-recipient"
                     type="search"
