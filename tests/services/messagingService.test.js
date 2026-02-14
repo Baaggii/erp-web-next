@@ -40,23 +40,31 @@ class FakeDb {
       return [messageId ? [{ message_id: messageId, request_hash: null, expires_at: null }] : []];
     }
     if (sql.startsWith('INSERT INTO erp_messages')) {
-      const hasLinkedFields = sql.includes('linked_type') && sql.includes('linked_id');
-      const [companyId, authorEmpid, parentId] = params;
-      const baseOffset = hasLinkedFields ? 8 : 3;
+      const columnMatch = sql.match(/\(([^)]+)\)\s*VALUES/i);
+      const columns = columnMatch
+        ? columnMatch[1].split(',').map((entry) => entry.trim())
+        : [];
+      const valueByColumn = new Map(columns.map((column, idx) => [column, params[idx]]));
+
+      const companyId = valueByColumn.get('company_id');
+      const authorEmpid = valueByColumn.get('author_empid');
+      const parentId = valueByColumn.get('parent_message_id') ?? null;
+
       const message = {
         id: this.nextId++,
         company_id: companyId,
         author_empid: authorEmpid,
         parent_message_id: parentId,
-        linked_type: hasLinkedFields ? params[3] : null,
-        linked_id: hasLinkedFields ? params[4] : null,
-        visibility_scope: hasLinkedFields ? params[5] : 'company',
-        visibility_department_id: hasLinkedFields ? params[6] : null,
-        visibility_empid: hasLinkedFields ? params[7] : null,
-        body: params[baseOffset],
-        body_ciphertext: params[baseOffset + 1],
-        body_iv: params[baseOffset + 2],
-        body_auth_tag: params[baseOffset + 3],
+        linked_type: valueByColumn.get('linked_type') ?? null,
+        linked_id: valueByColumn.get('linked_id') ?? null,
+        visibility_scope: valueByColumn.get('visibility_scope') ?? 'company',
+        visibility_department_id: valueByColumn.get('visibility_department_id') ?? null,
+        visibility_empid: valueByColumn.get('visibility_empid') ?? null,
+        recipient_empids: valueByColumn.get('recipient_empids') ?? null,
+        body: valueByColumn.get('body') ?? null,
+        body_ciphertext: valueByColumn.get('body_ciphertext') ?? null,
+        body_iv: valueByColumn.get('body_iv') ?? null,
+        body_auth_tag: valueByColumn.get('body_auth_tag') ?? null,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
         deleted_at: null,
@@ -538,6 +546,94 @@ test('private thread replies stay scoped to selected participants', async () => 
         companyId: 1,
         messageId: root.message.id,
         correlationId: 'private-thread-scope-outsider',
+        db,
+        getSession: async () => session,
+      }),
+    /Message not found/,
+  );
+});
+
+test('new private conversation with multiple selected recipients is visible only to participants', async () => {
+  const db = new FakeDb();
+  const session = { permissions: { messaging: true }, department_id: 10 };
+
+  const root = await postMessage({
+    user,
+    companyId: 1,
+    payload: {
+      body: 'private room root',
+      linkedType: 'topic',
+      linkedId: 'ops-room-multi',
+      visibilityScope: 'private',
+      visibilityEmpid: 'e-2',
+      recipientEmpids: ['e-2', 'e-3'],
+      idempotencyKey: 'private-multi-root',
+    },
+    correlationId: 'private-multi-root',
+    db,
+    getSession: async () => session,
+  });
+
+  const visibleForE3 = await getMessages({
+    user: { empid: 'e-3', companyId: 1 },
+    companyId: 1,
+    correlationId: 'private-multi-visible-e3',
+    db,
+    getSession: async () => session,
+  });
+  assert.equal(visibleForE3.items.some((item) => item.id === root.message.id), true);
+
+  const hiddenForE4 = await getMessages({
+    user: { empid: 'e-4', companyId: 1 },
+    companyId: 1,
+    correlationId: 'private-multi-hidden-e4',
+    db,
+    getSession: async () => session,
+  });
+  assert.equal(hiddenForE4.items.some((item) => item.id === root.message.id), false);
+});
+
+test('participant reply in private multi-recipient thread stays in selected conversation', async () => {
+  const db = new FakeDb();
+  const session = { permissions: { messaging: true }, department_id: 10 };
+
+  const root = await postMessage({
+    user,
+    companyId: 1,
+    payload: {
+      body: 'private root for replies',
+      linkedType: 'topic',
+      linkedId: 'ops-room-reply-multi',
+      visibilityScope: 'private',
+      visibilityEmpid: 'e-2',
+      recipientEmpids: ['e-2', 'e-3'],
+      idempotencyKey: 'private-multi-reply-root',
+    },
+    correlationId: 'private-multi-reply-root',
+    db,
+    getSession: async () => session,
+  });
+
+  const reply = await postReply({
+    user: { empid: 'e-3', companyId: 1 },
+    companyId: 1,
+    messageId: root.message.id,
+    payload: { body: 'participant reply', idempotencyKey: 'private-multi-reply-child' },
+    correlationId: 'private-multi-reply-child',
+    db,
+    getSession: async () => session,
+  });
+
+  assert.equal(reply.message.parent_message_id, root.message.id);
+  assert.equal(reply.message.visibility_scope, 'private');
+
+  await assert.rejects(
+    () =>
+      getThread({
+        user: { empid: 'e-4', companyId: 1 },
+        companyId: 1,
+        messageId: root.message.id,
+        correlationId: 'private-multi-reply-outsider',
         db,
         getSession: async () => session,
       }),
