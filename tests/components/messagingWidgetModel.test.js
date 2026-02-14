@@ -8,6 +8,7 @@ import {
   resolvePresenceStatus,
   safePreviewableFile,
   sanitizeMessageText,
+  sanitizeTopicInput,
 } from '../../src/erp.mgt.mn/components/messagingWidgetModel.js';
 
 test('buildSessionStorageKey namespaces by session', () => {
@@ -17,6 +18,11 @@ test('buildSessionStorageKey namespaces by session', () => {
 
 test('sanitizeMessageText strips tags and control chars', () => {
   assert.equal(sanitizeMessageText('Hello <script>alert(1)</script>\u0001 world'), 'Hello alert(1) world');
+});
+
+test('sanitizeTopicInput preserves spaces for multi-word topics', () => {
+  assert.equal(sanitizeTopicInput('Finance planning 2026'), 'Finance planning 2026');
+  assert.equal(sanitizeTopicInput(' Topic With Trailing Space '), ' Topic With Trailing Space ');
 });
 
 test('safePreviewableFile allows image/pdf/text and blocks others', () => {
