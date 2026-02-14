@@ -1220,30 +1220,28 @@ export default function MessagingWidget() {
     }
     const threadParticipants = Array.from(new Set(activeConversationParticipants.filter((empid) => empid !== selfEmpid)));
     const conversationRecipients = (!isDraftConversation && !activeConversation?.isGeneral)
-      ? Array.from(new Set([...threadParticipants, ...payloadRecipients]))
+      ? threadParticipants
       : [];
     const finalRecipients = payloadRecipients.length > 0 ? payloadRecipients : conversationRecipients;
-    const recipientsForPayload = (!isDraftConversation && !activeConversation?.isGeneral)
-      ? conversationRecipients
-      : finalRecipients;
-    const visibilityScope = (recipientsForPayload.length > 0 || (!isDraftConversation && !activeConversation?.isGeneral)) ? 'private' : 'company';
+    const visibilityScope = (finalRecipients.length > 0 || (!isDraftConversation && !activeConversation?.isGeneral)) ? 'private' : 'company';
 
     const payload = {
       idempotencyKey: createIdempotencyKey(),
       clientTempId,
       body: `${canEditTopic ? `[${safeTopic}] ` : ''}${safeBody}${encodeAttachmentPayload(uploadedAttachments)}`,
       companyId: Number.isFinite(Number(activeCompany)) ? Number(activeCompany) : String(activeCompany),
-      recipientEmpids: recipientsForPayload,
+      recipientEmpids: finalRecipients,
       visibilityScope,
-      visibilityEmpid: recipientsForPayload[0] || null,
-      ...(!isDraftConversation && activeConversation?.rootMessageId ? { conversationId: Number(activeConversation.rootMessageId) } : {}),
+      visibilityEmpid: finalRecipients[0] || null,
       ...(linkedType ? { linkedType } : {}),
       ...(linkedId ? { linkedId: String(linkedId) } : {}),
     };
 
-    const replyTargetId = state.composer.replyToId || null;
+    const replyTargetId = activeConversation?.rootMessageId && !activeConversation?.isGeneral
+      ? activeConversation.rootMessageId
+      : null;
 
-    const targetUrl = (replyTargetId && state.composer.replyToId)
+    const targetUrl = replyTargetId
       ? `${API_BASE}/messaging/messages/${replyTargetId}/reply`
       : `${API_BASE}/messaging/messages`;
 
@@ -1269,7 +1267,6 @@ export default function MessagingWidget() {
       dispatch({ type: 'composer/reset' });
       globalThis.localStorage?.removeItem(draftStorageKey);
       setComposerRecipientSearch('');
-      setNewConversationSelections([]);
       setComposerAnnouncement('Message sent.');
       composerRef.current?.focus();
     } else {
@@ -1377,7 +1374,6 @@ export default function MessagingWidget() {
         recipients: newConversationSelections,
       },
     });
-    setNewConversationSelections([]);
     setComposerRecipientSearch('');
     setComposerAnnouncement('Started a new conversation draft.');
   };
