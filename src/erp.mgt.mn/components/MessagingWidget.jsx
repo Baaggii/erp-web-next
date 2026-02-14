@@ -279,9 +279,20 @@ function resolveDisplayLabelFromConfig(row, displayFields = []) {
 function collectMessageParticipantEmpids(message) {
   const ids = [];
   ids.push(message?.author_empid, message?.authorEmpid, message?.visibility_empid, message?.visibilityEmpid);
-  const recipientEmpids =
+  const rawRecipientEmpids =
     message?.recipient_empids || message?.recipientEmpids || message?.recipient_ids || message?.recipientIds;
-  if (Array.isArray(recipientEmpids)) ids.push(...recipientEmpids);
+  let recipientEmpids = [];
+  if (Array.isArray(rawRecipientEmpids)) {
+    recipientEmpids = rawRecipientEmpids;
+  } else if (typeof rawRecipientEmpids === 'string') {
+    try {
+      const parsed = JSON.parse(rawRecipientEmpids);
+      if (Array.isArray(parsed)) recipientEmpids = parsed;
+    } catch {
+      recipientEmpids = rawRecipientEmpids.split(',').map((entry) => entry.trim()).filter(Boolean);
+    }
+  }
+  if (recipientEmpids.length > 0) ids.push(...recipientEmpids);
   const readBy = Array.isArray(message?.read_by) ? message.read_by : [];
   ids.push(...readBy);
   return Array.from(new Set(ids.map(normalizeId).filter(Boolean)));
@@ -908,10 +919,13 @@ export default function MessagingWidget() {
     || conversations.find((conversation) => !conversation.isGeneral)
     || conversations.find((conversation) => conversation.isGeneral)
     || null;
+  const hasRequestedConversation = Boolean(state.activeConversationId);
   const requestedConversation = isDraftConversation
     ? null
     : conversations.find((conversation) => conversation.id === state.activeConversationId) || null;
-  const activeConversation = isDraftConversation ? null : (requestedConversation || defaultConversation);
+  const activeConversation = isDraftConversation
+    ? null
+    : (hasRequestedConversation ? requestedConversation : defaultConversation);
   const activeConversationId = isDraftConversation ? NEW_CONVERSATION_ID : (activeConversation?.id || null);
   const threadMessages = useMemo(() => buildNestedThreads(activeConversation?.messages || []), [activeConversation]);
   const messageMap = useMemo(() => new Map(messages.map((msg) => [msg.id, msg])), [messages]);
@@ -1188,6 +1202,10 @@ export default function MessagingWidget() {
   };
 
   const sendMessage = async () => {
+    if (!isDraftConversation && state.activeConversationId && !activeConversation) {
+      setComposerAnnouncement('Selected conversation is unavailable. Choose a conversation before sending.');
+      return;
+    }
     if (canEditTopic && !safeTopic) {
       setComposerAnnouncement('Topic is required.');
       return;
