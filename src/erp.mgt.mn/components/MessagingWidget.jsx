@@ -1242,7 +1242,6 @@ export default function MessagingWidget() {
       companyId: normalizedCompanyId,
       recipientEmpids: finalRecipients,
       visibilityScope,
-      ...(canEditTopic && safeTopic ? { topic: safeTopic } : {}),
       ...(linkedType ? { linkedType } : {}),
       ...(linkedId ? { linkedId: String(linkedId) } : {}),
     };
