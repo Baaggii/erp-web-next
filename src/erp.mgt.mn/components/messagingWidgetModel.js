@@ -52,6 +52,12 @@ export function sanitizeMessageText(value) {
     .trim();
 }
 
+function sanitizeTopicInput(value) {
+  return String(value ?? '')
+    .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, '')
+    .replace(/[<>]/g, '');
+}
+
 export function safePreviewableFile(file) {
   if (!file) return false;
   const type = String(file.type || '').toLowerCase();
@@ -92,7 +98,7 @@ export function messagingWidgetReducer(state, action) {
     case 'composer/setBody':
       return { ...state, composer: { ...state.composer, body: action.payload } };
     case 'composer/setTopic':
-      return { ...state, composer: { ...state.composer, topic: sanitizeMessageText(action.payload).slice(0, 120) } };
+      return { ...state, composer: { ...state.composer, topic: sanitizeTopicInput(action.payload).slice(0, 120) } };
     case 'composer/setRecipients':
       return {
         ...state,
@@ -123,7 +129,7 @@ export function messagingWidgetReducer(state, action) {
         activeConversationId: action.payload?.conversationId || null,
         composer: {
           body: '',
-          topic: sanitizeMessageText(action.payload?.topic || '').slice(0, 120),
+          topic: sanitizeTopicInput(action.payload?.topic || '').slice(0, 120),
           recipients: Array.isArray(action.payload?.recipients)
             ? Array.from(new Set(action.payload.recipients.map(normalizeId).filter(Boolean)))
             : [],
@@ -139,7 +145,7 @@ export function messagingWidgetReducer(state, action) {
         composer: {
           body: '',
           topic: state.composer.topic,
-          recipients: state.composer.recipients,
+          recipients: [],
           replyToId: null,
           linkedType: state.composer.linkedType,
           linkedId: state.composer.linkedId,
