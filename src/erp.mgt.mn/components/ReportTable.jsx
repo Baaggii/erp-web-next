@@ -785,6 +785,157 @@ export default function ReportTable({
     }, 500);
   }, [procLabel]);
 
+  const renderDrilldownTable = useCallback(
+    (parentRowId, nestedColumns, nestedRows) => (
+      <div style={{ overflowX: 'auto' }}>
+        <table
+          style={{
+            borderCollapse: 'collapse',
+            width: '100%',
+            minWidth: '32rem',
+          }}
+        >
+          <thead>
+            <tr style={{ background: '#e5e7eb' }}>
+              <th
+                style={{
+                  padding: '0.25rem',
+                  border: '1px solid #d1d5db',
+                  textAlign: 'center',
+                  width: '3rem',
+                }}
+              >
+                Select
+              </th>
+              {nestedColumns.map((col) => (
+                <th
+                  key={`detail-${parentRowId}-${col}`}
+                  style={{
+                    padding: '0.25rem',
+                    border: '1px solid #d1d5db',
+                    textAlign: columnAlign[col] || 'left',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  {fieldLabels[col] || columnHeaderMap[col] || col}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {nestedRows.map((nestedRow, detailIndex) => {
+              const key =
+                typeof getDrilldownRowKey === 'function'
+                  ? getDrilldownRowKey(parentRowId, detailIndex)
+                  : `${String(parentRowId)}::${String(detailIndex)}`;
+              const checked = Boolean(drilldownRowSelection?.[key]);
+              const nestedHasDrilldown = Boolean(nestedRow?.__row_ids);
+              const nestedEntry = drilldownState?.[key];
+              const nestedExpanded = canDrilldown && nestedEntry?.expanded;
+              const deeperColumns = nestedEntry?.columns || [];
+              const deeperRows = Array.isArray(nestedEntry?.rows)
+                ? nestedEntry.rows
+                : [];
+              return (
+                <React.Fragment key={key}>
+                  <tr
+                    onClick={() => {
+                      if (
+                        canDrilldown &&
+                        nestedHasDrilldown &&
+                        typeof onDrilldown === 'function'
+                      ) {
+                        onDrilldown({ row: nestedRow, rowId: key });
+                      }
+                    }}
+                    style={
+                      canDrilldown && nestedHasDrilldown
+                        ? { cursor: 'pointer' }
+                        : undefined
+                    }
+                  >
+                    <td
+                      style={{
+                        padding: '0.25rem',
+                        border: '1px solid #d1d5db',
+                        textAlign: 'center',
+                      }}
+                      onClick={(event) => event.stopPropagation()}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() =>
+                          onDrilldownRowSelectionChange?.((prev) => ({
+                            ...prev,
+                            [key]: !checked,
+                          }))
+                        }
+                      />
+                    </td>
+                    {nestedColumns.map((col) => (
+                      <td
+                        key={`${key}-${col}`}
+                        style={{
+                          padding: '0.25rem',
+                          border: '1px solid #d1d5db',
+                          textAlign: columnAlign[col] || 'left',
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
+                        {formatCellValue(nestedRow?.[col])}
+                      </td>
+                    ))}
+                  </tr>
+                  {nestedExpanded && (
+                    <tr>
+                      <td
+                        colSpan={nestedColumns.length + 1}
+                        style={{
+                          padding: '0.75rem',
+                          border: '1px solid #d1d5db',
+                          background: '#f3f4f6',
+                        }}
+                        onClick={(event) => event.stopPropagation()}
+                      >
+                        {nestedEntry?.status === 'loading' && (
+                          <div>Loading transaction details…</div>
+                        )}
+                        {nestedEntry?.status === 'error' && (
+                          <div style={{ color: 'red' }}>
+                            {nestedEntry.error ||
+                              'Failed to load drilldown transactions.'}
+                          </div>
+                        )}
+                        {nestedEntry?.status === 'loaded' &&
+                          (deeperRows.length ? (
+                            renderDrilldownTable(key, deeperColumns, deeperRows)
+                          ) : (
+                            <div>No transactions found for this row.</div>
+                          ))}
+                      </td>
+                    </tr>
+                  )}
+                </React.Fragment>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    ),
+    [
+      canDrilldown,
+      columnAlign,
+      columnHeaderMap,
+      drilldownRowSelection,
+      drilldownState,
+      fieldLabels,
+      getDrilldownRowKey,
+      onDrilldown,
+      onDrilldownRowSelectionChange,
+    ],
+  );
+
   return (
     <div style={{ marginTop: '1rem' }}>
       <h4>
