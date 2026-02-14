@@ -53,3 +53,23 @@ test('resolvePresenceStatus marks stale online users as away or offline', () => 
     'offline',
   );
 });
+
+test('composer topic accepts spaces while typing', () => {
+  const initial = createInitialWidgetState();
+  const next = messagingWidgetReducer(initial, { type: 'composer/setTopic', payload: 'Quarterly Planning Sync' });
+  assert.equal(next.composer.topic, 'Quarterly Planning Sync');
+});
+
+test('composer reset clears recipients and linked context', () => {
+  const initial = createInitialWidgetState();
+  const withRecipients = messagingWidgetReducer(initial, { type: 'composer/setRecipients', payload: ['e-2', 'e-3'] });
+  const withContext = messagingWidgetReducer(withRecipients, {
+    type: 'composer/setLinkedContext',
+    payload: { linkedType: 'transaction', linkedId: '22' },
+  });
+  const reset = messagingWidgetReducer(withContext, { type: 'composer/reset' });
+
+  assert.deepEqual(reset.composer.recipients, []);
+  assert.equal(reset.composer.linkedType, null);
+  assert.equal(reset.composer.linkedId, null);
+});
