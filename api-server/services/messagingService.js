@@ -77,7 +77,7 @@ function nowIso() {
   return new Date().toISOString();
 }
 
-function computeRequestHash({ body, linkedType, linkedId, visibility, parentMessageId }) {
+function computeRequestHash({ body, linkedType, linkedId, visibility, parentMessageId, recipientEmpids }) {
   const payload = {
     body,
     linkedType,
@@ -86,6 +86,7 @@ function computeRequestHash({ body, linkedType, linkedId, visibility, parentMess
     visibilityDepartmentId: visibility.visibilityDepartmentId,
     visibilityEmpid: visibility.visibilityEmpid,
     parentMessageId,
+    recipientEmpids: Array.isArray(recipientEmpids) ? recipientEmpids : [],
   };
   return crypto.createHash('sha256').update(JSON.stringify(payload)).digest('hex');
 }
@@ -662,7 +663,7 @@ async function createMessageInternal({ db = pool, ctx, payload, parentMessageId 
 
   const idempotencyKey = String(payload?.idempotencyKey || '').trim();
   if (!idempotencyKey) throw createError(400, 'IDEMPOTENCY_KEY_REQUIRED', 'idempotencyKey is required');
-  const requestHash = computeRequestHash({ body, linkedType, linkedId, visibility, parentMessageId });
+  const requestHash = computeRequestHash({ body, linkedType, linkedId, visibility, parentMessageId, recipientEmpids });
   const expiresAt = new Date(Date.now() + IDEMPOTENCY_TTL_MS);
 
   const existing = await readIdempotencyRow(db, {
@@ -688,6 +689,11 @@ async function createMessageInternal({ db = pool, ctx, payload, parentMessageId 
   await enforceRateLimit(ctx.companyId, ctx.user.empid, idempotencyKey, db);
 
   const recipientEmpidsPayload = JSON.stringify(recipientEmpids);
+  const assertPrivateRecipientSchemaSupport = () => {
+    if (visibility.visibilityScope === 'private' && recipientEmpids.length > 1 && !canUseRecipientEmpidsColumn(db)) {
+      throw createError(400, 'RECIPIENT_LIST_NOT_SUPPORTED', 'This environment does not support multi-recipient private conversations yet');
+    }
+  };
 
   let result;
   if (canUseLinkedColumns(db) && canUseEncryptedBodyColumns(db) && canUseRecipientEmpidsColumn(db)) {
@@ -785,6 +791,7 @@ async function createMessageInternal({ db = pool, ctx, payload, parentMessageId 
   }
 
   if (!result && canUseLinkedColumns(db) && !canUseRecipientEmpidsColumn(db)) {
+    assertPrivateRecipientSchemaSupport();
     try {
       [result] = await db.query(
         `INSERT INTO erp_messages
@@ -810,6 +817,7 @@ async function createMessageInternal({ db = pool, ctx, payload, parentMessageId 
   }
 
   if (!result && canUseEncryptedBodyColumns(db) && !canUseRecipientEmpidsColumn(db)) {
+    assertPrivateRecipientSchemaSupport();
     try {
       [result] = await db.query(
         `INSERT INTO erp_messages
@@ -854,17 +862,42 @@ async function createMessageInternal({ db = pool, ctx, payload, parentMessageId 
       );
       messageRecipientEmpidsSupport.set(db, true);
     } catch (error) {
+      const linkedUnsupported = isUnknownColumnError(error, 'linked_type') || isUnknownColumnError(error, 'linked_id');
+      const recipientsUnsupported = isUnknownColumnError(error, 'recipient_empids');
+      if (!linkedUnsupported && !recipientsUnsupported) throw error;
+      if (linkedUnsupported) markLinkedColumnsUnsupported(db);
+      if (recipientsUnsupported) markRecipientEmpidsColumnUnsupported(db);
+    }
+  }
+
+  if (!result && !canUseLinkedColumns(db) && canUseRecipientEmpidsColumn(db)) {
+    try {
+      [result] = await db.query(
+        `INSERT INTO erp_messages
+          (company_id, author_empid, parent_message_id, visibility_scope, visibility_department_id, visibility_empid, recipient_empids, body)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          ctx.companyId,
+          ctx.user.empid,
+          parentMessageId,
+          visibility.visibilityScope,
+          visibility.visibilityDepartmentId,
+          visibility.visibilityEmpid,
+          recipientEmpidsPayload,
+          body,
+        ],
+      );
+      messageRecipientEmpidsSupport.set(db, true);
+    } catch (error) {
       if (!isUnknownColumnError(error, 'recipient_empids')) throw error;
       markRecipientEmpidsColumnUnsupported(db);
     }
   }
 
   if (!result) {
+    assertPrivateRecipientSchemaSupport();
     if (visibility.visibilityScope !== 'company') {
       throw createError(400, 'VISIBILITY_SCOPE_NOT_SUPPORTED', 'This environment does not support scoped conversations with the current messaging schema');
-    }
-    if (recipientEmpids.length > 0) {
-      throw createError(400, 'RECIPIENT_LIST_NOT_SUPPORTED', 'This environment does not support recipient lists with the current messaging schema');
     }
     if (linkedType || linkedId) {
       throw createError(400, 'LINKED_CONTEXT_NOT_SUPPORTED', 'This environment does not support linked context with the current messaging schema');
