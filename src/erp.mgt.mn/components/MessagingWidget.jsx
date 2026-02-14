@@ -1220,28 +1220,30 @@ export default function MessagingWidget() {
     }
     const threadParticipants = Array.from(new Set(activeConversationParticipants.filter((empid) => empid !== selfEmpid)));
     const conversationRecipients = (!isDraftConversation && !activeConversation?.isGeneral)
-      ? threadParticipants
+      ? Array.from(new Set([...threadParticipants, ...payloadRecipients]))
       : [];
     const finalRecipients = payloadRecipients.length > 0 ? payloadRecipients : conversationRecipients;
-    const visibilityScope = (finalRecipients.length > 0 || (!isDraftConversation && !activeConversation?.isGeneral)) ? 'private' : 'company';
+    const recipientsForPayload = (!isDraftConversation && !activeConversation?.isGeneral)
+      ? conversationRecipients
+      : finalRecipients;
+    const visibilityScope = (recipientsForPayload.length > 0 || (!isDraftConversation && !activeConversation?.isGeneral)) ? 'private' : 'company';
 
     const payload = {
       idempotencyKey: createIdempotencyKey(),
       clientTempId,
       body: `${canEditTopic ? `[${safeTopic}] ` : ''}${safeBody}${encodeAttachmentPayload(uploadedAttachments)}`,
       companyId: Number.isFinite(Number(activeCompany)) ? Number(activeCompany) : String(activeCompany),
-      recipientEmpids: finalRecipients,
+      recipientEmpids: recipientsForPayload,
       visibilityScope,
-      visibilityEmpid: finalRecipients[0] || null,
+      visibilityEmpid: recipientsForPayload[0] || null,
+      ...(!isDraftConversation && activeConversation?.rootMessageId ? { conversationId: Number(activeConversation.rootMessageId) } : {}),
       ...(linkedType ? { linkedType } : {}),
       ...(linkedId ? { linkedId: String(linkedId) } : {}),
     };
 
-    const replyTargetId = activeConversation?.rootMessageId && !activeConversation?.isGeneral
-      ? activeConversation.rootMessageId
-      : null;
+    const replyTargetId = state.composer.replyToId || null;
 
-    const targetUrl = replyTargetId
+    const targetUrl = (replyTargetId && state.composer.replyToId)
       ? `${API_BASE}/messaging/messages/${replyTargetId}/reply`
       : `${API_BASE}/messaging/messages`;
 
@@ -1267,6 +1269,7 @@ export default function MessagingWidget() {
       dispatch({ type: 'composer/reset' });
       globalThis.localStorage?.removeItem(draftStorageKey);
       setComposerRecipientSearch('');
+      setNewConversationSelections([]);
       setComposerAnnouncement('Message sent.');
       composerRef.current?.focus();
     } else {
@@ -1374,6 +1377,7 @@ export default function MessagingWidget() {
         recipients: newConversationSelections,
       },
     });
+    setNewConversationSelections([]);
     setComposerRecipientSearch('');
     setComposerAnnouncement('Started a new conversation draft.');
   };
