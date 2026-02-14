@@ -7380,16 +7380,6 @@ export async function callStoredProcedure(
       if ('supportsBulkUpdate' in parsed) {
         normalized.supportsBulkUpdate = parsed.supportsBulkUpdate === true;
       }
-      if (typeof parsed.rowGranularity === 'string' && parsed.rowGranularity.trim()) {
-        normalized.rowGranularity = parsed.rowGranularity.trim();
-      }
-      if (
-        parsed.drilldown &&
-        typeof parsed.drilldown === 'object' &&
-        !Array.isArray(parsed.drilldown)
-      ) {
-        normalized.drilldown = parsed.drilldown;
-      }
       return normalized;
     };
 
