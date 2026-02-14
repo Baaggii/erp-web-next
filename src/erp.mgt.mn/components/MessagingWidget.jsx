@@ -12,7 +12,6 @@ import {
   resolvePresenceStatus,
   safePreviewableFile,
   sanitizeMessageText,
-  sanitizeTopicInput,
 } from './messagingWidgetModel.js';
 
 
@@ -283,9 +282,6 @@ function collectMessageParticipantEmpids(message) {
   const recipientEmpids =
     message?.recipient_empids || message?.recipientEmpids || message?.recipient_ids || message?.recipientIds;
   if (Array.isArray(recipientEmpids)) ids.push(...recipientEmpids);
-  if (typeof recipientEmpids === 'string') {
-    ids.push(...recipientEmpids.split(',').map((entry) => entry.trim()).filter(Boolean));
-  }
   const readBy = Array.isArray(message?.read_by) ? message.read_by : [];
   ids.push(...readBy);
   return Array.from(new Set(ids.map(normalizeId).filter(Boolean)));
@@ -1101,7 +1097,7 @@ export default function MessagingWidget() {
   const canEditTopic = !activeConversation?.isGeneral && !isReplyMode && (!activeRootMessage || normalizeId(activeRootMessage.author_empid) === selfEmpid);
 
 
-  const safeTopic = sanitizeTopicInput(state.composer.topic || activeConversation?.title || '').trim();
+  const safeTopic = sanitizeMessageText(state.composer.topic || activeConversation?.title || '');
   const safeBody = sanitizeMessageText(state.composer.body);
   const requiresRecipient = isDraftConversation;
   const hasRecipients = (state.composer.recipients || []).some((entry) => normalizeId(entry));
@@ -1223,19 +1219,11 @@ export default function MessagingWidget() {
       return;
     }
     const threadParticipants = Array.from(new Set(activeConversationParticipants.filter((empid) => empid !== selfEmpid)));
-    let finalRecipients = [];
-    let visibilityScope = 'company';
-
-    if (isDraftConversation) {
-      finalRecipients = payloadRecipients;
-      visibilityScope = 'private';
-    } else if (activeConversation?.isGeneral) {
-      finalRecipients = [];
-      visibilityScope = 'company';
-    } else {
-      finalRecipients = Array.from(new Set([...threadParticipants, ...payloadRecipients]));
-      visibilityScope = 'private';
-    }
+    const conversationRecipients = (!isDraftConversation && !activeConversation?.isGeneral)
+      ? threadParticipants
+      : [];
+    const finalRecipients = payloadRecipients.length > 0 ? payloadRecipients : conversationRecipients;
+    const visibilityScope = (finalRecipients.length > 0 || (!isDraftConversation && !activeConversation?.isGeneral)) ? 'private' : 'company';
 
     const payload = {
       idempotencyKey: createIdempotencyKey(),
@@ -1249,7 +1237,7 @@ export default function MessagingWidget() {
       ...(linkedId ? { linkedId: String(linkedId) } : {}),
     };
 
-    const replyTargetId = (!isDraftConversation && activeConversation?.rootMessageId && !activeConversation?.isGeneral)
+    const replyTargetId = activeConversation?.rootMessageId && !activeConversation?.isGeneral
       ? activeConversation.rootMessageId
       : null;
 
@@ -1277,8 +1265,6 @@ export default function MessagingWidget() {
         await fetchThreadMessages(threadRootId, activeCompany);
       }
       dispatch({ type: 'composer/reset' });
-      dispatch({ type: 'composer/setRecipients', payload: [] });
-      setNewConversationSelections([]);
       globalThis.localStorage?.removeItem(draftStorageKey);
       setComposerRecipientSearch('');
       setComposerAnnouncement('Message sent.');
@@ -1388,7 +1374,6 @@ export default function MessagingWidget() {
         recipients: newConversationSelections,
       },
     });
-    setNewConversationSelections([]);
     setComposerRecipientSearch('');
     setComposerAnnouncement('Started a new conversation draft.');
   };
