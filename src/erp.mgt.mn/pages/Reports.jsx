@@ -223,6 +223,16 @@ function normalizeReportCapabilities(value) {
   if ('supportsBulkUpdate' in value) {
     normalized.supportsBulkUpdate = value.supportsBulkUpdate === true;
   }
+  if (typeof value.rowGranularity === 'string' && value.rowGranularity.trim()) {
+    normalized.rowGranularity = value.rowGranularity.trim();
+  }
+  if (
+    value.drilldown &&
+    typeof value.drilldown === 'object' &&
+    !Array.isArray(value.drilldown)
+  ) {
+    normalized.drilldown = value.drilldown;
+  }
   return normalized;
 }
 
@@ -341,17 +351,22 @@ export default function Reports() {
   );
   const reportHeaderMap = useHeaderMappings(reportColumns);
   const reportMeta = result?.reportMeta || {};
+  const capabilityMeta = reportCapabilities || {};
   const effectiveReportMeta = useMemo(() => {
-    if (!reportMeta?.drilldown && reportMeta?.drilldownReport) {
+    const mergedMeta = {
+      ...reportMeta,
+      ...capabilityMeta,
+    };
+    if (!mergedMeta?.drilldown && mergedMeta?.drilldownReport) {
       return {
-        ...reportMeta,
+        ...mergedMeta,
         drilldown: {
-          fallbackProcedure: reportMeta.drilldownReport,
+          fallbackProcedure: mergedMeta.drilldownReport,
         },
       };
     }
-    return reportMeta;
-  }, [reportMeta]);
+    return mergedMeta;
+  }, [capabilityMeta, reportMeta]);
   const rowGranularity = effectiveReportMeta?.rowGranularity ?? 'transaction';
   const drilldownCapabilities = effectiveReportMeta?.drilldown ?? null;
   const drilldownEnabled = Boolean(drilldownCapabilities);
@@ -2425,14 +2440,21 @@ export default function Reports() {
   const fetchTempDetail = useCallback(
     async (ids) => {
       try {
+        const detailTempTable = drilldownCapabilities?.detailTempTable;
+        const table =
+          typeof detailTempTable === 'string' ? detailTempTable : detailTempTable?.table;
+        const pk = drilldownCapabilities?.detailPkColumn || 'id';
+        if (!table) {
+          return { ok: false };
+        }
         const res = await fetch('/api/report/tmp-detail', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
           skipErrorToast: true,
           body: JSON.stringify({
-            table: drilldownCapabilities?.detailTempTable,
-            pk: drilldownCapabilities?.detailPkColumn || 'id',
+            table,
+            pk,
             ids,
           }),
         });
@@ -2454,11 +2476,70 @@ export default function Reports() {
     [drilldownCapabilities?.detailPkColumn, drilldownCapabilities?.detailTempTable],
   );
 
+  const runHierarchyDrilldown = useCallback(
+    async (row, rowKey) => {
+      const levels = Array.isArray(drilldownCapabilities?.detailTempTable?.levels)
+        ? drilldownCapabilities.detailTempTable.levels
+        : [];
+      if (!levels.length || !result?.name) return false;
+      const currentLevel = Number(row?.level);
+      const nextLevel = Number.isFinite(currentLevel) ? currentLevel + 1 : 2;
+      const nextLevelExists = levels.some(
+        (entry) => Number(entry?.level) === Number(nextLevel),
+      );
+      if (!nextLevelExists) {
+        expandRow(rowKey, [], String(row?.node_code ?? row?.__row_ids ?? ''));
+        return true;
+      }
+
+      const parentNode = row?.node_code;
+      if (parentNode === undefined || parentNode === null || parentNode === '') {
+        return false;
+      }
+
+      const q = new URLSearchParams();
+      if (branch) q.set('branchId', branch);
+      if (department) q.set('departmentId', department);
+      const res = await fetch(
+        `/api/procedures${q.toString() ? `?${q.toString()}` : ''}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({
+            name: result.name,
+            params: Array.isArray(result.params) ? result.params : [],
+            reportVariables: {
+              expand_level: nextLevel,
+              parent_node: String(parentNode),
+            },
+          }),
+        },
+      );
+      if (!res.ok) {
+        const message = (await extractErrorMessage(res)) || 'Failed to load drilldown rows';
+        throw new Error(message);
+      }
+      const data = await res.json().catch(() => ({}));
+      const rows = Array.isArray(data.row) ? data.row : [];
+      expandRow(rowKey, rows, String(parentNode));
+      return true;
+    },
+    [
+      branch,
+      department,
+      drilldownCapabilities?.detailTempTable?.levels,
+      expandRow,
+      extractErrorMessage,
+      result,
+    ],
+  );
+
   const resolveDrilldown = useCallback(
     async (row, rowKey) => {
       const caps = drilldownCapabilities;
-      const rowIdsValue = String(row?.__row_ids ?? '').trim();
-      if (!caps || !rowIdsValue) return;
+      if (!caps) return;
+      const rowIdsValue = String(row?.__row_ids ?? row?.node_code ?? '').trim();
       setDrilldownDetails((prev) => ({
         ...prev,
         [rowKey]: {
@@ -2470,65 +2551,90 @@ export default function Reports() {
         },
       }));
 
-      const ids = rowIdsValue
-        .split(',')
-        .map((id) => id.trim())
-        .filter(Boolean);
+      try {
+        if (caps.mode === 'materialized' && caps?.detailTempTable?.levels) {
+          const resolved = await runHierarchyDrilldown(row, rowKey);
+          if (resolved) return;
+        }
 
-      if (caps.mode === 'materialized' && caps.detailTempTable) {
-        const res = await fetchTempDetail(ids);
-        if (res.ok) {
-          if (res.rows?.length) {
-            expandRow(rowKey, res.rows, rowIdsValue);
-            return;
-          }
-        } else if (res.error === 'REPORT_SESSION_EXPIRED') {
-          const reportName = result?.name;
-          const reportParams = result?.params;
-          if (reportName && reportParams) {
-            const rebuild = await fetch('/api/report/rebuild', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              credentials: 'include',
-              body: JSON.stringify({
-                reportName,
-                reportParams,
-              }),
-            });
-            if (rebuild.ok) {
-              addToast('Report data refreshed', 'success');
+        const ids = rowIdsValue
+          .split(',')
+          .map((id) => id.trim())
+          .filter(Boolean);
+
+        if (caps.mode === 'materialized' && caps.detailTempTable && ids.length) {
+          const res = await fetchTempDetail(ids);
+          if (res.ok) {
+            if (res.rows?.length) {
+              expandRow(rowKey, res.rows, rowIdsValue);
+              return;
             }
-            const retry = await fetchTempDetail(ids);
-            if (retry.ok) {
-              if (retry.rows?.length) {
+          } else if (res.error === 'REPORT_SESSION_EXPIRED') {
+            const reportName = result?.name;
+            const reportParams = result?.params;
+            if (reportName && reportParams) {
+              const rebuild = await fetch('/api/report/rebuild', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
+                body: JSON.stringify({
+                  reportName,
+                  reportParams,
+                }),
+              });
+              if (rebuild.ok) {
+                addToast('Report data refreshed', 'success');
+              }
+              const retry = await fetchTempDetail(ids);
+              if (retry.ok && retry.rows?.length) {
                 expandRow(rowKey, retry.rows, rowIdsValue);
                 return;
               }
             }
           }
         }
-      }
 
-      if (caps.fallbackProcedure) {
-        await runDetailProcedure(
-          caps.fallbackProcedure,
-          { row_ids: rowIdsValue },
-          rowKey,
-        );
-      } else {
+        if (caps.fallbackProcedure && rowIdsValue) {
+          await runDetailProcedure(
+            caps.fallbackProcedure,
+            { row_ids: rowIdsValue },
+            rowKey,
+          );
+          return;
+        }
+
         expandRow(rowKey, [], rowIdsValue);
+      } catch (err) {
+        setDrilldownDetails((prev) => ({
+          ...prev,
+          [rowKey]: {
+            ...(prev[rowKey] || {}),
+            status: 'error',
+            error: err?.message || 'Failed to load drilldown rows',
+            expanded: true,
+            rowIds: rowIdsValue,
+            rows: [],
+          },
+        }));
       }
     },
-    [addToast, drilldownCapabilities, expandRow, fetchTempDetail, result, runDetailProcedure],
+    [
+      addToast,
+      drilldownCapabilities,
+      expandRow,
+      fetchTempDetail,
+      result,
+      runDetailProcedure,
+      runHierarchyDrilldown,
+    ],
   );
 
   const handleDrilldown = useCallback(
     ({ row, rowId }) => {
-      const rowIds = row?.__row_ids;
-      if (!rowIds) return;
       setActiveAggregatedRow(row);
       const existing = drilldownDetailsRef.current[rowId];
       const nextExpanded = !existing?.expanded;
+      const rowIds = String(row?.__row_ids ?? row?.node_code ?? '');
       setDrilldownDetails((prev) => ({
         ...prev,
         [rowId]: {
