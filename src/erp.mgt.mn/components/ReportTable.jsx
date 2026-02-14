@@ -1133,14 +1133,34 @@ export default function ReportTable({
                                     const checked = Boolean(
                                       drilldownRowSelection?.[key],
                                     );
+                                    const detailRowHasDrilldown = Boolean(
+                                      detailRow?.__row_ids,
+                                    );
                                     return (
-                                      <tr key={key}>
+                                      <tr
+                                        key={key}
+                                        onClick={() => {
+                                          if (
+                                            canDrilldown &&
+                                            detailRowHasDrilldown &&
+                                            typeof onDrilldown === 'function'
+                                          ) {
+                                            onDrilldown({ row: detailRow, rowId: key });
+                                          }
+                                        }}
+                                        style={
+                                          canDrilldown && detailRowHasDrilldown
+                                            ? { cursor: 'pointer' }
+                                            : undefined
+                                        }
+                                      >
                                         <td
                                           style={{
                                             padding: '0.25rem',
                                             border: '1px solid #d1d5db',
                                             textAlign: 'center',
                                           }}
+                                          onClick={(event) => event.stopPropagation()}
                                         >
                                           <input
                                             type="checkbox"
