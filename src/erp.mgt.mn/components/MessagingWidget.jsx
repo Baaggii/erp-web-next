@@ -1068,16 +1068,11 @@ export default function MessagingWidget() {
 
   const activeConversationParticipants = useMemo(() => {
     const ids = new Set();
-    if (isDraftConversation) {
-      if (selfEmpid) ids.add(selfEmpid);
-      (state.composer.recipients || []).forEach((empid) => ids.add(normalizeId(empid)));
-      return Array.from(ids).filter(Boolean);
-    }
     (activeConversation?.messages || []).forEach((msg) => {
       collectMessageParticipantEmpids(msg).forEach((empid) => ids.add(empid));
     });
     return Array.from(ids);
-  }, [activeConversation, isDraftConversation, selfEmpid, state.composer.recipients]);
+  }, [activeConversation]);
 
   const activeConversationParticipantLabels = useMemo(
     () => activeConversationParticipants.map((empid) => resolveEmployeeLabel(empid)),
@@ -1102,11 +1097,7 @@ export default function MessagingWidget() {
   const canEditTopic = !activeConversation?.isGeneral && !isReplyMode && (!activeRootMessage || normalizeId(activeRootMessage.author_empid) === selfEmpid);
 
 
-  const safeTopic = String(state.composer.topic || activeConversation?.title || '')
-    .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, '')
-    .replace(/<[^>]*>/g, '')
-    .replace(/\s+/g, ' ')
-    .trim();
+  const safeTopic = sanitizeMessageText(state.composer.topic || activeConversation?.title || '');
   const safeBody = sanitizeMessageText(state.composer.body);
   const requiresRecipient = isDraftConversation;
   const hasRecipients = (state.composer.recipients || []).some((entry) => normalizeId(entry));
