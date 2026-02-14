@@ -19,7 +19,6 @@ const validatedMessagingSchemas = new WeakSet();
 const idempotencyRequestHashSupport = new WeakMap();
 const messageLinkedContextSupport = new WeakMap();
 const messageEncryptionColumnSupport = new WeakMap();
-const messageRecipientEmpidsSupport = new WeakMap();
 const messageDeleteByColumnSupport = new WeakMap();
 let ioRef = null;
 
@@ -107,37 +106,12 @@ function canUseEncryptedBodyColumns(db) {
   return messageEncryptionColumnSupport.get(db) !== false;
 }
 
-function canUseRecipientEmpidsColumn(db) {
-  return messageRecipientEmpidsSupport.get(db) !== false;
-}
-
 function markLinkedColumnsUnsupported(db) {
   messageLinkedContextSupport.set(db, false);
 }
 
 function markEncryptedBodyColumnsUnsupported(db) {
   messageEncryptionColumnSupport.set(db, false);
-}
-
-function markRecipientEmpidsColumnUnsupported(db) {
-  messageRecipientEmpidsSupport.set(db, false);
-}
-
-function parseRecipientEmpids(message) {
-  const raw = message?.recipient_empids ?? message?.recipientEmpids ?? message?.recipient_ids ?? message?.recipientIds;
-  if (Array.isArray(raw)) {
-    return Array.from(new Set(raw.map((entry) => String(entry || '').trim()).filter(Boolean)));
-  }
-  if (typeof raw === 'string') {
-    try {
-      const parsed = JSON.parse(raw);
-      if (!Array.isArray(parsed)) return [];
-      return Array.from(new Set(parsed.map((entry) => String(entry || '').trim()).filter(Boolean)));
-    } catch {
-      return [];
-    }
-  }
-  return [];
 }
 
 function isUnknownColumnError(error, columnName) {
@@ -311,6 +285,10 @@ function normalizeVisibility(payload, session, user) {
     throw createError(400, 'VISIBILITY_SCOPE_INVALID', 'visibilityScope must be company, department, or private');
   }
 
+  if (scope === 'private' && recipients.length > 1) {
+    throw createError(400, 'VISIBILITY_PRIVATE_TOO_MANY_RECIPIENTS', 'Private messages support exactly one recipient');
+  }
+
   const visibilityDepartmentId = scope === 'department' ? toId(payload?.visibilityDepartmentId ?? session?.department_id) : null;
   if (scope === 'department' && !visibilityDepartmentId) {
     throw createError(400, 'VISIBILITY_DEPARTMENT_REQUIRED', 'visibilityDepartmentId is required for department scope');
@@ -381,11 +359,7 @@ function canViewMessage(message, session, user) {
     return Number(session?.department_id) > 0 && Number(session?.department_id) === Number(message.visibility_department_id);
   }
   if (scope === 'private') {
-    const viewerEmpid = String(user?.empid || '');
-    const recipients = parseRecipientEmpids(message);
-    return String(message.author_empid) === viewerEmpid
-      || String(message.visibility_empid) === viewerEmpid
-      || recipients.includes(viewerEmpid);
+    return String(message.author_empid) === String(user?.empid) || String(message.visibility_empid) === String(user?.empid);
   }
   return false;
 }
@@ -622,11 +596,7 @@ function emitMessageScoped(ctx, eventName, message, optimistic) {
   const scope = String(message.visibility_scope || 'company');
   if (scope === 'private') {
     emitToEmpid(eventName, message.author_empid, payload);
-    const recipients = new Set([
-      ...parseRecipientEmpids(message),
-      String(message.visibility_empid || '').trim(),
-    ].filter(Boolean));
-    recipients.forEach((empid) => emitToEmpid(eventName, empid, payload));
+    emitToEmpid(eventName, message.visibility_empid, payload);
     return;
   }
   if (scope === 'department' && message.visibility_department_id) {
@@ -642,11 +612,6 @@ async function createMessageInternal({ db = pool, ctx, payload, parentMessageId 
   const body = sanitizeBody(payload?.body);
   const { linkedType, linkedId } = validateLinkedContext(payload?.linkedType, payload?.linkedId);
   const visibility = normalizeVisibility(payload, ctx.session, ctx.user);
-  const recipientEmpids = Array.from(new Set(
-    (Array.isArray(payload?.recipientEmpids) ? payload.recipientEmpids : [])
-      .map((entry) => String(entry || '').trim())
-      .filter((entry) => entry && entry !== String(ctx.user.empid)),
-  ));
   const encryptedBody = encryptBody(body);
 
   if (isProfanity(body) || isSpam(body)) {
@@ -687,104 +652,42 @@ async function createMessageInternal({ db = pool, ctx, payload, parentMessageId 
 
   await enforceRateLimit(ctx.companyId, ctx.user.empid, idempotencyKey, db);
 
-  const recipientEmpidsPayload = JSON.stringify(recipientEmpids);
+  const messageInsertValues = [
+    ctx.companyId,
+    ctx.user.empid,
+    parentMessageId,
+    linkedType,
+    linkedId,
+    visibility.visibilityScope,
+    visibility.visibilityDepartmentId,
+    visibility.visibilityEmpid,
+    encryptedBody.body,
+    encryptedBody.bodyCiphertext,
+    encryptedBody.bodyIv,
+    encryptedBody.bodyAuthTag,
+  ];
 
   let result;
-  if (canUseLinkedColumns(db) && canUseEncryptedBodyColumns(db) && canUseRecipientEmpidsColumn(db)) {
+  if (canUseLinkedColumns(db) && canUseEncryptedBodyColumns(db)) {
     try {
       [result] = await db.query(
         `INSERT INTO erp_messages
-          (company_id, author_empid, parent_message_id, linked_type, linked_id, visibility_scope, visibility_department_id, visibility_empid, recipient_empids, body, body_ciphertext, body_iv, body_auth_tag)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [
-          ctx.companyId,
-          ctx.user.empid,
-          parentMessageId,
-          linkedType,
-          linkedId,
-          visibility.visibilityScope,
-          visibility.visibilityDepartmentId,
-          visibility.visibilityEmpid,
-          recipientEmpidsPayload,
-          encryptedBody.body,
-          encryptedBody.bodyCiphertext,
-          encryptedBody.bodyIv,
-          encryptedBody.bodyAuthTag,
-        ],
+          (company_id, author_empid, parent_message_id, linked_type, linked_id, visibility_scope, visibility_department_id, visibility_empid, body, body_ciphertext, body_iv, body_auth_tag)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        messageInsertValues,
       );
       messageLinkedContextSupport.set(db, true);
       messageEncryptionColumnSupport.set(db, true);
-      messageRecipientEmpidsSupport.set(db, true);
     } catch (error) {
       const linkedUnsupported = isUnknownColumnError(error, 'linked_type') || isUnknownColumnError(error, 'linked_id');
       const encryptionUnsupported = isUnknownColumnError(error, 'body_ciphertext') || isUnknownColumnError(error, 'body_iv') || isUnknownColumnError(error, 'body_auth_tag');
-      const recipientsUnsupported = isUnknownColumnError(error, 'recipient_empids');
-      if (!linkedUnsupported && !encryptionUnsupported && !recipientsUnsupported) throw error;
+      if (!linkedUnsupported && !encryptionUnsupported) throw error;
       if (linkedUnsupported) markLinkedColumnsUnsupported(db);
       if (encryptionUnsupported) markEncryptedBodyColumnsUnsupported(db);
-      if (recipientsUnsupported) markRecipientEmpidsColumnUnsupported(db);
     }
   }
 
-  if (!result && canUseLinkedColumns(db) && canUseRecipientEmpidsColumn(db)) {
-    try {
-      [result] = await db.query(
-        `INSERT INTO erp_messages
-          (company_id, author_empid, parent_message_id, linked_type, linked_id, visibility_scope, visibility_department_id, visibility_empid, recipient_empids, body)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [
-          ctx.companyId,
-          ctx.user.empid,
-          parentMessageId,
-          linkedType,
-          linkedId,
-          visibility.visibilityScope,
-          visibility.visibilityDepartmentId,
-          visibility.visibilityEmpid,
-          recipientEmpidsPayload,
-          body,
-        ],
-      );
-      messageLinkedContextSupport.set(db, true);
-      messageRecipientEmpidsSupport.set(db, true);
-    } catch (error) {
-      const linkedUnsupported = isUnknownColumnError(error, 'linked_type') || isUnknownColumnError(error, 'linked_id');
-      const recipientsUnsupported = isUnknownColumnError(error, 'recipient_empids');
-      if (!linkedUnsupported && !recipientsUnsupported) throw error;
-      markLinkedColumnsUnsupported(db);
-      if (recipientsUnsupported) markRecipientEmpidsColumnUnsupported(db);
-    }
-  }
-
-  if (!result && canUseEncryptedBodyColumns(db) && canUseRecipientEmpidsColumn(db)) {
-    try {
-      [result] = await db.query(
-        `INSERT INTO erp_messages
-          (company_id, author_empid, parent_message_id, recipient_empids, body, body_ciphertext, body_iv, body_auth_tag)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-        [
-          ctx.companyId,
-          ctx.user.empid,
-          parentMessageId,
-          recipientEmpidsPayload,
-          encryptedBody.body,
-          encryptedBody.bodyCiphertext,
-          encryptedBody.bodyIv,
-          encryptedBody.bodyAuthTag,
-        ],
-      );
-      messageEncryptionColumnSupport.set(db, true);
-      messageRecipientEmpidsSupport.set(db, true);
-    } catch (error) {
-      const encryptionUnsupported = isUnknownColumnError(error, 'body_ciphertext') || isUnknownColumnError(error, 'body_iv') || isUnknownColumnError(error, 'body_auth_tag');
-      const recipientsUnsupported = isUnknownColumnError(error, 'recipient_empids');
-      if (!encryptionUnsupported && !recipientsUnsupported) throw error;
-      markEncryptedBodyColumnsUnsupported(db);
-      if (recipientsUnsupported) markRecipientEmpidsColumnUnsupported(db);
-    }
-  }
-
-  if (!result && canUseLinkedColumns(db) && !canUseRecipientEmpidsColumn(db)) {
+  if (!result && canUseLinkedColumns(db)) {
     try {
       [result] = await db.query(
         `INSERT INTO erp_messages
@@ -809,7 +712,7 @@ async function createMessageInternal({ db = pool, ctx, payload, parentMessageId 
     }
   }
 
-  if (!result && canUseEncryptedBodyColumns(db) && !canUseRecipientEmpidsColumn(db)) {
+  if (!result && canUseEncryptedBodyColumns(db)) {
     try {
       [result] = await db.query(
         `INSERT INTO erp_messages
@@ -833,36 +736,7 @@ async function createMessageInternal({ db = pool, ctx, payload, parentMessageId 
     }
   }
 
-  if (!result && canUseRecipientEmpidsColumn(db)) {
-    try {
-      [result] = await db.query(
-        `INSERT INTO erp_messages
-          (company_id, author_empid, parent_message_id, linked_type, linked_id, visibility_scope, visibility_department_id, visibility_empid, recipient_empids, body)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [
-          ctx.companyId,
-          ctx.user.empid,
-          parentMessageId,
-          linkedType,
-          linkedId,
-          visibility.visibilityScope,
-          visibility.visibilityDepartmentId,
-          visibility.visibilityEmpid,
-          recipientEmpidsPayload,
-          body,
-        ],
-      );
-      messageRecipientEmpidsSupport.set(db, true);
-    } catch (error) {
-      if (!isUnknownColumnError(error, 'recipient_empids')) throw error;
-      markRecipientEmpidsColumnUnsupported(db);
-    }
-  }
-
   if (!result) {
-    if (visibility.visibilityScope === 'private' && recipientEmpids.length > 1) {
-      throw createError(400, 'RECIPIENT_LIST_NOT_SUPPORTED', 'This environment does not support multi-recipient private conversations yet');
-    }
     [result] = await db.query(
       `INSERT INTO erp_messages
         (company_id, author_empid, parent_message_id, body)
@@ -925,11 +799,9 @@ export async function postReply({ user, companyId, messageId, payload, correlati
   const privateParticipants = new Set([
     String(message.author_empid || '').trim(),
     String(message.visibility_empid || '').trim(),
-    ...parseRecipientEmpids(message),
   ].filter(Boolean));
-  const replyRecipients = Array.from(privateParticipants).filter((empid) => empid !== String(user.empid));
   const replyVisibilityEmpid = message.visibility_scope === 'private'
-    ? replyRecipients[0] || null
+    ? Array.from(privateParticipants).find((empid) => empid !== String(user.empid)) || null
     : message.visibility_empid;
 
   const ctx = { user, companyId: scopedCompanyId, correlationId, session };
@@ -943,8 +815,8 @@ export async function postReply({ user, companyId, messageId, payload, correlati
       visibilityScope: message.visibility_scope,
       visibilityDepartmentId: message.visibility_department_id,
       visibilityEmpid: message.visibility_scope === 'private' ? replyVisibilityEmpid : message.visibility_empid,
-      recipientEmpids: message.visibility_scope === 'private' && replyRecipients.length > 0
-        ? replyRecipients
+      recipientEmpids: message.visibility_scope === 'private' && replyVisibilityEmpid
+        ? [String(replyVisibilityEmpid)]
         : payload?.recipientEmpids,
     },
     parentMessageId: message.id,
