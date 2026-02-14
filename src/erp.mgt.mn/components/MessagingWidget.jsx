@@ -296,7 +296,19 @@ function parseMessageRecipientEmpids(message) {
 function collectMessageParticipantEmpids(message) {
   const ids = [];
   ids.push(message?.author_empid, message?.authorEmpid, message?.visibility_empid, message?.visibilityEmpid);
-  const recipientEmpids = parseMessageRecipientEmpids(message);
+  const rawRecipientEmpids =
+    message?.recipient_empids || message?.recipientEmpids || message?.recipient_ids || message?.recipientIds;
+  let recipientEmpids = [];
+  if (Array.isArray(rawRecipientEmpids)) {
+    recipientEmpids = rawRecipientEmpids;
+  } else if (typeof rawRecipientEmpids === 'string') {
+    try {
+      const parsed = JSON.parse(rawRecipientEmpids);
+      if (Array.isArray(parsed)) recipientEmpids = parsed;
+    } catch {
+      recipientEmpids = rawRecipientEmpids.split(',').map((entry) => entry.trim()).filter(Boolean);
+    }
+  }
   if (recipientEmpids.length > 0) ids.push(...recipientEmpids);
   const readBy = Array.isArray(message?.read_by) ? message.read_by : [];
   ids.push(...readBy);
