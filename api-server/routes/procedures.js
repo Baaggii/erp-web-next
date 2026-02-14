@@ -36,6 +36,19 @@ function isTruthyFlag(value) {
   return false;
 }
 
+function hasMaterializedTempTable(reportMeta) {
+  const drilldown = reportMeta?.drilldown;
+  if (drilldown?.mode !== 'materialized') return false;
+  const source = drilldown?.detailTempTables ?? drilldown?.detailTempTable;
+  if (!source) return false;
+  if (typeof source === 'string') return source.trim().length > 0;
+  if (Array.isArray(source)) return source.some((item) => typeof item === 'string' && item.trim());
+  if (typeof source === 'object') {
+    return Object.values(source).some((item) => typeof item === 'string' && item.trim());
+  }
+  return false;
+}
+
 function resolveCompanyId(req) {
   const rawCompanyId = req.query?.companyId ?? req.user?.companyId;
   const companyId = Number(rawCompanyId);
@@ -226,9 +239,7 @@ router.post('/', requireAuth, async (req, res, next) => {
       procResult;
     registerDrilldownProcedures(req.user, companyId, reportMeta);
     const sessionKey = getReportTempSessionKey(req);
-    const useTempSession =
-      reportMeta?.drilldown?.mode === 'materialized' &&
-      Boolean(reportMeta?.drilldown?.detailTempTable);
+    const useTempSession = hasMaterializedTempTable(reportMeta);
     if (connection) {
       if (useTempSession) {
         storeReportTempSession(sessionKey, connection);
