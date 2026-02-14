@@ -911,7 +911,10 @@ export default function MessagingWidget() {
   const requestedConversation = isDraftConversation
     ? null
     : conversations.find((conversation) => conversation.id === state.activeConversationId) || null;
-  const activeConversation = isDraftConversation ? null : (requestedConversation || defaultConversation);
+  const hasExplicitConversationSelection = Boolean(state.activeConversationId);
+  const activeConversation = isDraftConversation
+    ? null
+    : (requestedConversation || (hasExplicitConversationSelection ? null : defaultConversation));
   const activeConversationId = isDraftConversation ? NEW_CONVERSATION_ID : (activeConversation?.id || null);
   const threadMessages = useMemo(() => buildNestedThreads(activeConversation?.messages || []), [activeConversation]);
   const messageMap = useMemo(() => new Map(messages.map((msg) => [msg.id, msg])), [messages]);
@@ -1219,10 +1222,13 @@ export default function MessagingWidget() {
       return;
     }
     const threadParticipants = Array.from(new Set(activeConversationParticipants.filter((empid) => empid !== selfEmpid)));
-    const conversationRecipients = (!isDraftConversation && !activeConversation?.isGeneral)
-      ? threadParticipants
+    const draftParticipants = isDraftConversation
+      ? [selfEmpid, ...payloadRecipients]
       : [];
-    const finalRecipients = payloadRecipients.length > 0 ? payloadRecipients : conversationRecipients;
+    const conversationRecipients = (!isDraftConversation && !activeConversation?.isGeneral)
+      ? [...threadParticipants, ...payloadRecipients]
+      : [];
+    const finalRecipients = Array.from(new Set((isDraftConversation ? draftParticipants : conversationRecipients).map(normalizeId).filter(Boolean)));
     const visibilityScope = (finalRecipients.length > 0 || (!isDraftConversation && !activeConversation?.isGeneral)) ? 'private' : 'company';
 
     const payload = {
@@ -1233,12 +1239,16 @@ export default function MessagingWidget() {
       recipientEmpids: finalRecipients,
       visibilityScope,
       visibilityEmpid: finalRecipients[0] || null,
+      ...(canEditTopic && safeTopic ? { topic: safeTopic } : {}),
       ...(linkedType ? { linkedType } : {}),
       ...(linkedId ? { linkedId: String(linkedId) } : {}),
     };
 
-    const replyTargetId = activeConversation?.rootMessageId && !activeConversation?.isGeneral
-      ? activeConversation.rootMessageId
+    const selectedConversation = (!isDraftConversation && state.activeConversationId)
+      ? conversations.find((conversation) => conversation.id === state.activeConversationId) || null
+      : activeConversation;
+    const replyTargetId = selectedConversation?.rootMessageId && !selectedConversation?.isGeneral
+      ? selectedConversation.rootMessageId
       : null;
 
     const targetUrl = replyTargetId
@@ -1265,6 +1275,7 @@ export default function MessagingWidget() {
         await fetchThreadMessages(threadRootId, activeCompany);
       }
       dispatch({ type: 'composer/reset' });
+      if (isDraftConversation) setNewConversationSelections([]);
       globalThis.localStorage?.removeItem(draftStorageKey);
       setComposerRecipientSearch('');
       setComposerAnnouncement('Message sent.');
