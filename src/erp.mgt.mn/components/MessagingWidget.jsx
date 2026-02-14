@@ -1207,7 +1207,11 @@ export default function MessagingWidget() {
     }
 
     const activeCompany = state.activeCompanyId || companyId;
-    const clientTempId = `tmp-${createIdempotencyKey()}`;
+    const normalizedCompanyId = Number(activeCompany);
+    if (!Number.isFinite(normalizedCompanyId)) {
+      setComposerAnnouncement('Invalid company context. Refresh and try again.');
+      return;
+    }
     let uploadedAttachments = [];
     try {
       uploadedAttachments = await uploadComposerAttachments(activeCompany);
@@ -1233,12 +1237,10 @@ export default function MessagingWidget() {
 
     const payload = {
       idempotencyKey: createIdempotencyKey(),
-      clientTempId,
       body: `${canEditTopic ? `[${safeTopic}] ` : ''}${safeBody}${encodeAttachmentPayload(uploadedAttachments)}`,
-      companyId: Number.isFinite(Number(activeCompany)) ? Number(activeCompany) : String(activeCompany),
+      companyId: normalizedCompanyId,
       recipientEmpids: finalRecipients,
       visibilityScope,
-      visibilityEmpid: finalRecipients[0] || null,
       ...(canEditTopic && safeTopic ? { topic: safeTopic } : {}),
       ...(linkedType ? { linkedType } : {}),
       ...(linkedId ? { linkedId: String(linkedId) } : {}),
