@@ -1228,7 +1228,7 @@ export default function MessagingWidget() {
     }
     const threadParticipants = Array.from(new Set(activeConversationParticipants.filter((empid) => empid !== selfEmpid)));
     const draftParticipants = isDraftConversation
-      ? [selfEmpid, ...payloadRecipients]
+      ? [...payloadRecipients]
       : [];
     const conversationRecipients = (!isDraftConversation && !activeConversation?.isGeneral)
       ? [...threadParticipants, ...payloadRecipients]
