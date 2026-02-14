@@ -860,8 +860,14 @@ async function createMessageInternal({ db = pool, ctx, payload, parentMessageId 
   }
 
   if (!result) {
-    if (visibility.visibilityScope === 'private' && recipientEmpids.length > 1) {
-      throw createError(400, 'RECIPIENT_LIST_NOT_SUPPORTED', 'This environment does not support multi-recipient private conversations yet');
+    if (visibility.visibilityScope !== 'company') {
+      throw createError(400, 'VISIBILITY_SCOPE_NOT_SUPPORTED', 'This environment does not support scoped conversations with the current messaging schema');
+    }
+    if (recipientEmpids.length > 0) {
+      throw createError(400, 'RECIPIENT_LIST_NOT_SUPPORTED', 'This environment does not support recipient lists with the current messaging schema');
+    }
+    if (linkedType || linkedId) {
+      throw createError(400, 'LINKED_CONTEXT_NOT_SUPPORTED', 'This environment does not support linked context with the current messaging schema');
     }
     [result] = await db.query(
       `INSERT INTO erp_messages

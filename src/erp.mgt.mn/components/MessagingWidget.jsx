@@ -1272,11 +1272,18 @@ export default function MessagingWidget() {
       return;
     }
     const threadParticipants = Array.from(new Set(activeConversationParticipants.filter((empid) => empid !== selfEmpid)));
-    const conversationRecipients = (!isDraftConversation && !activeConversation?.isGeneral)
-      ? threadParticipants
-      : [];
-    const finalRecipients = payloadRecipients.length > 0 ? payloadRecipients : conversationRecipients;
-    const visibilityScope = (finalRecipients.length > 0 || (!isDraftConversation && !activeConversation?.isGeneral)) ? 'private' : 'company';
+    const isExistingPrivateConversation = !isDraftConversation && !activeConversation?.isGeneral;
+    const finalRecipients = isDraftConversation
+      ? payloadRecipients
+      : isExistingPrivateConversation
+        ? threadParticipants
+        : [];
+    const inheritedScope = String(activeRootMessage?.visibility_scope || activeRootMessage?.visibilityScope || '').toLowerCase();
+    const visibilityScope = isDraftConversation
+      ? (finalRecipients.length > 0 ? 'private' : 'company')
+      : isExistingPrivateConversation
+        ? (inheritedScope === 'department' ? 'department' : 'private')
+        : 'company';
 
     const payload = {
       idempotencyKey: createIdempotencyKey(),
@@ -1293,6 +1300,11 @@ export default function MessagingWidget() {
     const replyTargetId = activeConversation?.rootMessageId && !activeConversation?.isGeneral
       ? activeConversation.rootMessageId
       : null;
+
+    if (isExistingPrivateConversation && !replyTargetId) {
+      setComposerAnnouncement('Selected conversation is unavailable. Choose a conversation before sending.');
+      return;
+    }
 
     const targetUrl = replyTargetId
       ? `${API_BASE}/messaging/messages/${replyTargetId}/reply`
