@@ -1032,9 +1032,6 @@ export default function MessagingWidget() {
     () => messages.find((entry) => Number(entry.id) === Number(activeConversation?.rootMessageId)) || null,
     [messages, activeConversation?.rootMessageId],
   );
-  const activeConversationScope = String(
-    activeRootMessage?.visibility_scope || activeRootMessage?.visibilityScope || (activeConversation?.isGeneral ? 'company' : ''),
-  ).toLowerCase() || 'company';
 
   const isReplyMode = Boolean(state.composer.replyToId);
   const canEditTopic = !activeConversation?.isGeneral && !isReplyMode && (!activeRootMessage || normalizeId(activeRootMessage.author_empid) === selfEmpid);
@@ -1044,13 +1041,6 @@ export default function MessagingWidget() {
   const safeBody = sanitizeMessageText(state.composer.body);
   const requiresRecipient = isDraftConversation;
   const hasRecipients = (state.composer.recipients || []).some((entry) => normalizeId(entry));
-  const recipientsNotInConversation = useMemo(() => {
-    if (isDraftConversation || !activeConversation) return [];
-    const participants = new Set(activeConversationParticipants.map((entry) => normalizeId(entry)).filter(Boolean));
-    return (state.composer.recipients || [])
-      .map((entry) => normalizeId(entry))
-      .filter((entry) => entry && entry !== selfEmpid && !participants.has(entry));
-  }, [activeConversation, activeConversationParticipants, isDraftConversation, selfEmpid, state.composer.recipients]);
   const canSendMessage = Boolean(safeBody && (canEditTopic ? safeTopic : true) && (!requiresRecipient || hasRecipients));
 
   const handleOpenLinkedTransaction = (transactionId) => {
@@ -1168,13 +1158,17 @@ export default function MessagingWidget() {
       setComposerAnnouncement('Select at least one recipient before sending a new conversation.');
       return;
     }
-    if (isDraftConversation && payloadRecipients.length > 1) {
-      setComposerAnnouncement('New private conversations currently support one recipient.');
-      return;
-    }
-    const isExistingConversation = !isDraftConversation && Boolean(activeConversation);
-    const finalRecipients = isExistingConversation ? payloadRecipients : payloadRecipients.slice(0, 1);
-    const visibilityScope = isExistingConversation ? activeConversationScope : 'private';
+    const threadParticipants = Array.from(new Set(activeConversationParticipants.filter((empid) => empid !== selfEmpid)));
+    const conversationRecipients = (!isDraftConversation && !activeConversation?.isGeneral)
+      ? threadParticipants
+      : [];
+    const replyRecipients = state.composer.replyToId
+      ? Array.from(new Set([...threadParticipants, ...payloadRecipients]))
+      : payloadRecipients;
+    const finalRecipients = state.composer.replyToId
+      ? replyRecipients
+      : (payloadRecipients.length > 0 ? payloadRecipients : conversationRecipients);
+    const visibilityScope = (finalRecipients.length > 0 || (!isDraftConversation && !activeConversation?.isGeneral)) ? 'private' : 'company';
 
     const payload = {
       idempotencyKey: createIdempotencyKey(),
@@ -1183,12 +1177,7 @@ export default function MessagingWidget() {
       companyId: Number.isFinite(Number(activeCompany)) ? Number(activeCompany) : String(activeCompany),
       recipientEmpids: finalRecipients,
       visibilityScope,
-      visibilityEmpid: visibilityScope === 'private'
-        ? (activeRootMessage?.visibility_empid || activeRootMessage?.visibilityEmpid || finalRecipients[0] || null)
-        : null,
-      visibilityDepartmentId: visibilityScope === 'department'
-        ? (activeRootMessage?.visibility_department_id || activeRootMessage?.visibilityDepartmentId || null)
-        : null,
+      visibilityEmpid: finalRecipients[0] || null,
       ...(linkedType ? { linkedType } : {}),
       ...(linkedId ? { linkedId: String(linkedId) } : {}),
     };
@@ -1308,9 +1297,6 @@ export default function MessagingWidget() {
   const onChooseRecipient = (id) => {
     if (!id || state.composer.recipients.includes(id)) return;
     dispatch({ type: 'composer/setRecipients', payload: [...state.composer.recipients, id] });
-    if (!isDraftConversation && activeConversationParticipants.length > 0 && !activeConversationParticipants.includes(id)) {
-      setComposerAnnouncement(`${resolveEmployeeLabel(id)} will be added to this conversation and will be able to see earlier messages.`);
-    }
     setRecipientSearch('');
   };
 
@@ -1500,8 +1486,6 @@ export default function MessagingWidget() {
                   onClick={() => {
                     dispatch({ type: 'widget/setConversation', payload: conversation.id });
                     dispatch({ type: 'composer/setTopic', payload: conversation.title });
-                    dispatch({ type: 'composer/setRecipients', payload: [] });
-                    dispatch({ type: 'composer/setReplyTo', payload: null });
                     if (conversation.linkedType && conversation.linkedId) {
                       dispatch({ type: 'composer/setLinkedContext', payload: { linkedType: conversation.linkedType, linkedId: conversation.linkedId } });
                     }
@@ -1629,11 +1613,6 @@ export default function MessagingWidget() {
                   );
                 })}
               </div>
-              {recipientsNotInConversation.length > 0 && (
-                <p style={{ margin: '4px 0 0', fontSize: 12, color: '#b45309' }}>
-                  Selected recipient(s) will be added to this conversation and can view the conversation history.
-                </p>
-              )}
 
             <label htmlFor="messaging-composer" style={{ marginTop: 6, display: 'block', fontSize: 12, fontWeight: 600, color: '#334155' }}>
               Message
