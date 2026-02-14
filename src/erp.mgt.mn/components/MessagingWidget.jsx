@@ -1103,8 +1103,9 @@ export default function MessagingWidget() {
   const safeTopic = sanitizeMessageText(state.composer.topic || activeConversation?.title || '');
   const safeBody = sanitizeMessageText(state.composer.body);
   const requiresRecipient = isDraftConversation;
+  const requiresTopic = canEditTopic && !isDraftConversation;
   const hasRecipients = (state.composer.recipients || []).some((entry) => normalizeId(entry));
-  const canSendMessage = Boolean(safeBody && (canEditTopic ? safeTopic : true) && (!requiresRecipient || hasRecipients));
+  const canSendMessage = Boolean(safeBody && (!requiresTopic || safeTopic) && (!requiresRecipient || hasRecipients));
 
   const handleOpenLinkedTransaction = (transactionId) => {
     if (canViewTransaction(transactionId, normalizeId(sessionId), permissions || {})) {
@@ -1191,7 +1192,7 @@ export default function MessagingWidget() {
   };
 
   const sendMessage = async () => {
-    if (canEditTopic && !safeTopic) {
+    if (canEditTopic && !isDraftConversation && !safeTopic) {
       setComposerAnnouncement('Topic is required.');
       return;
     }
