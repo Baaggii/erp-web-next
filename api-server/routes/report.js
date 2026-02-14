@@ -121,13 +121,8 @@ router.post('/tmp-detail', tmpDetailLimiter, requireAuth, async (req, res, next)
       const [tableRows] = await connection.query(sql, normalizedIds);
       if (Array.isArray(tableRows) && tableRows.length) {
         tableRows.forEach((tableRow) => {
-          const rawPk = tableRow?.[pk];
-          const rowPk = String(rawPk ?? '').trim();
-          if (!rowPk) {
-            rows.push(tableRow);
-            return;
-          }
-          if (!seenIds.has(rowPk)) {
+          const rowPk = String(tableRow?.[pk] ?? '').trim();
+          if (rowPk && !seenIds.has(rowPk)) {
             seenIds.add(rowPk);
             rows.push(tableRow);
           }
