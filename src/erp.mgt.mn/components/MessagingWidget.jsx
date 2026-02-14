@@ -1275,9 +1275,7 @@ export default function MessagingWidget() {
       }
       dispatch({ type: 'composer/reset' });
       globalThis.localStorage?.removeItem(draftStorageKey);
-      if (!isDraftConversation) dispatch({ type: 'composer/setRecipients', payload: [] });
       setComposerRecipientSearch('');
-      setNewConversationSelections([]);
       setComposerAnnouncement('Message sent.');
       composerRef.current?.focus();
     } else {
@@ -1386,7 +1384,6 @@ export default function MessagingWidget() {
       },
     });
     setComposerRecipientSearch('');
-    setNewConversationSelections([]);
     setComposerAnnouncement('Started a new conversation draft.');
   };
 
@@ -1569,10 +1566,9 @@ export default function MessagingWidget() {
                     dispatch({ type: 'widget/setConversation', payload: conversation.id });
                     dispatch({ type: 'composer/setTopic', payload: conversation.title });
                     dispatch({ type: 'composer/setRecipients', payload: [] });
-                    dispatch({
-                      type: 'composer/setLinkedContext',
-                      payload: { linkedType: conversation.linkedType || null, linkedId: conversation.linkedId || null },
-                    });
+                    if (conversation.linkedType && conversation.linkedId) {
+                      dispatch({ type: 'composer/setLinkedContext', payload: { linkedType: conversation.linkedType, linkedId: conversation.linkedId } });
+                    }
                   }}
                   style={{ textAlign: 'left', border: 0, background: 'transparent', width: '100%', padding: 0, minWidth: 0 }}
                 >
