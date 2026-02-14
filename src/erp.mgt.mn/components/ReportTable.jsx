@@ -496,8 +496,6 @@ export default function ReportTable({
       if (!canDrilldown || typeof onDrilldown !== 'function') {
         return;
       }
-      const rowIds = row?.__row_ids;
-      if (!rowIds) return;
       onDrilldown({
         row,
         rowId,

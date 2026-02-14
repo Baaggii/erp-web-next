@@ -2563,8 +2563,14 @@ export default function Reports() {
 
   const handleDrilldown = useCallback(
     ({ row, rowId }) => {
-      const rowIds = row?.__row_ids;
-      if (!rowIds) return;
+      const rowIds = String(row?.__row_ids ?? '').trim();
+      if (!rowIds) {
+        addToast(
+          'Drilldown row is missing __row_ids. Return child IDs in __row_ids (and optional __drilldown_level).',
+          'warning',
+        );
+        return;
+      }
       setActiveAggregatedRow(row);
       const existing = drilldownDetailsRef.current[rowId];
       const nextExpanded = !existing?.expanded;
@@ -2582,7 +2588,7 @@ export default function Reports() {
         resolveDrilldown(row, rowId);
       }
     },
-    [drilldownCapabilities, resolveDrilldown],
+    [addToast, drilldownCapabilities, resolveDrilldown],
   );
 
   const handleDrilldownRowSelectionChange = useCallback((updater) => {
