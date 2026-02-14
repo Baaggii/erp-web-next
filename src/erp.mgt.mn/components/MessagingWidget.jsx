@@ -1213,9 +1213,7 @@ export default function MessagingWidget() {
       return;
     }
 
-    const payloadRecipients = Array.from(new Set((state.composer.recipients || [])
-      .map(normalizeId)
-      .filter((empid) => empid && empid !== selfEmpid)));
+    const payloadRecipients = Array.from(new Set((state.composer.recipients || []).map(normalizeId).filter(Boolean)));
     if (isDraftConversation && payloadRecipients.length === 0) {
       setComposerAnnouncement('Select at least one recipient before sending a new conversation.');
       return;
@@ -1267,7 +1265,6 @@ export default function MessagingWidget() {
         await fetchThreadMessages(threadRootId, activeCompany);
       }
       dispatch({ type: 'composer/reset' });
-      if (isDraftConversation) setNewConversationSelections([]);
       globalThis.localStorage?.removeItem(draftStorageKey);
       setComposerRecipientSearch('');
       setComposerAnnouncement('Message sent.');
@@ -1377,7 +1374,6 @@ export default function MessagingWidget() {
         recipients: newConversationSelections,
       },
     });
-    setNewConversationSelections([]);
     setComposerRecipientSearch('');
     setComposerAnnouncement('Started a new conversation draft.');
   };
