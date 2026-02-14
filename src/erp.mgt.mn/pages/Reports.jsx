@@ -40,12 +40,45 @@ const INTERNAL_COLS = new Set([
   '__row_count',
   '__row_granularity',
   '__drilldown_report',
+  '__drilldown_level',
   '__bulk_table',
   '__bulk_pk',
   '__bulk_field',
   '__bulk_value',
   '__bulk_allowed',
 ]);
+
+function parseDrilldownLevel(value) {
+  const level = Number.parseInt(value, 10);
+  return Number.isFinite(level) && level >= 0 ? level : 0;
+}
+
+function resolveTempTableByLevel(drilldownCapabilities, level = 0) {
+  const direct = drilldownCapabilities?.detailTempTable;
+  const grouped = drilldownCapabilities?.detailTempTables;
+  const source = grouped ?? direct;
+  if (!source) return '';
+
+  if (typeof source === 'string') {
+    return source.trim();
+  }
+
+  if (Array.isArray(source)) {
+    if (!source.length) return '';
+    const normalizedLevel = Math.max(0, level);
+    const candidate = source[normalizedLevel] ?? source[source.length - 1];
+    return typeof candidate === 'string' ? candidate.trim() : '';
+  }
+
+  if (typeof source === 'object') {
+    const key = String(Math.max(0, level));
+    const fallback = source.default ?? source['*'] ?? source[0] ?? source['0'];
+    const candidate = source[key] ?? fallback;
+    return typeof candidate === 'string' ? candidate.trim() : '';
+  }
+
+  return '';
+}
 
 function normalizeParamName(name) {
   return String(name || '')
@@ -2423,15 +2456,19 @@ export default function Reports() {
   );
 
   const fetchTempDetail = useCallback(
-    async (ids) => {
+    async (ids, level = 0) => {
       try {
+        const detailTempTable = resolveTempTableByLevel(drilldownCapabilities, level);
+        if (!detailTempTable) {
+          return { ok: false };
+        }
         const res = await fetch('/api/report/tmp-detail', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
           skipErrorToast: true,
           body: JSON.stringify({
-            table: drilldownCapabilities?.detailTempTable,
+            table: detailTempTable,
             pk: drilldownCapabilities?.detailPkColumn || 'id',
             ids,
           }),
@@ -2451,7 +2488,7 @@ export default function Reports() {
         return { ok: false };
       }
     },
-    [drilldownCapabilities?.detailPkColumn, drilldownCapabilities?.detailTempTable],
+    [drilldownCapabilities],
   );
 
   const resolveDrilldown = useCallback(
@@ -2474,9 +2511,11 @@ export default function Reports() {
         .split(',')
         .map((id) => id.trim())
         .filter(Boolean);
+      const drilldownLevel = parseDrilldownLevel(row?.__drilldown_level);
+      const detailTempTable = resolveTempTableByLevel(caps, drilldownLevel);
 
-      if (caps.mode === 'materialized' && caps.detailTempTable) {
-        const res = await fetchTempDetail(ids);
+      if (caps.mode === 'materialized' && detailTempTable) {
+        const res = await fetchTempDetail(ids, drilldownLevel);
         if (res.ok) {
           if (res.rows?.length) {
             expandRow(rowKey, res.rows, rowIdsValue);
@@ -2498,7 +2537,7 @@ export default function Reports() {
             if (rebuild.ok) {
               addToast('Report data refreshed', 'success');
             }
-            const retry = await fetchTempDetail(ids);
+            const retry = await fetchTempDetail(ids, drilldownLevel);
             if (retry.ok) {
               if (retry.rows?.length) {
                 expandRow(rowKey, retry.rows, rowIdsValue);
