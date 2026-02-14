@@ -31,44 +31,6 @@ function isReportSessionExpiredError(err) {
   );
 }
 
-function normalizeDetailTempTables(tableConfig) {
-  if (typeof tableConfig === 'string') {
-    const raw = tableConfig.trim();
-    if (!raw) return [];
-    if (raw.startsWith('{') || raw.startsWith('[')) {
-      try {
-        return normalizeDetailTempTables(JSON.parse(raw));
-      } catch {
-        return [raw];
-      }
-    }
-    return [raw];
-  }
-
-  if (Array.isArray(tableConfig)) {
-    return tableConfig
-      .map((entry) => {
-        if (typeof entry === 'string') return entry.trim();
-        if (entry && typeof entry === 'object' && typeof entry.table === 'string') {
-          return entry.table.trim();
-        }
-        return '';
-      })
-      .filter(Boolean);
-  }
-
-  if (tableConfig && typeof tableConfig === 'object') {
-    const levels = Array.isArray(tableConfig.levels) ? tableConfig.levels : [];
-    return levels
-      .slice()
-      .sort((a, b) => Number(a?.level ?? 0) - Number(b?.level ?? 0))
-      .map((entry) => (typeof entry?.table === 'string' ? entry.table.trim() : ''))
-      .filter(Boolean);
-  }
-
-  return [];
-}
-
 const tmpDetailLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 100,
@@ -85,14 +47,14 @@ const rebuildLimiter = rateLimit({
 
 router.post('/tmp-detail', tmpDetailLimiter, requireAuth, async (req, res, next) => {
   try {
-    const tables = normalizeDetailTempTables(req.body?.table);
+    const table = typeof req.body?.table === 'string' ? req.body.table.trim() : '';
     const pk = typeof req.body?.pk === 'string' ? req.body.pk.trim() : 'id';
     const ids = Array.isArray(req.body?.ids) ? req.body.ids : [];
 
-    if (!tables.length) {
+    if (!table) {
       return res.status(400).json({ message: 'table required' });
     }
-    if (tables.some((table) => !/^tmp_[a-zA-Z0-9_]+$/.test(table))) {
+    if (!/^tmp_[a-zA-Z0-9_]+$/.test(table)) {
       return res.status(400).json({ message: 'Invalid table name' });
     }
     if (!pk || !/^[a-zA-Z0-9_]+$/.test(pk)) {
@@ -113,23 +75,8 @@ router.post('/tmp-detail', tmpDetailLimiter, requireAuth, async (req, res, next)
     }
 
     const placeholders = normalizedIds.map(() => '?').join(', ');
-    const rows = [];
-    const seenIds = new Set();
-
-    for (const table of tables) {
-      const sql = `SELECT * FROM \`${table}\` WHERE \`${pk}\` IN (${placeholders})`;
-      const [tableRows] = await connection.query(sql, normalizedIds);
-      if (Array.isArray(tableRows) && tableRows.length) {
-        tableRows.forEach((tableRow) => {
-          const rowPk = String(tableRow?.[pk] ?? '').trim();
-          if (rowPk && !seenIds.has(rowPk)) {
-            seenIds.add(rowPk);
-            rows.push(tableRow);
-          }
-        });
-      }
-    }
-
+    const sql = `SELECT * FROM \`${table}\` WHERE \`${pk}\` IN (${placeholders})`;
+    const [rows] = await connection.query(sql, normalizedIds);
     return res.json(rows);
   } catch (err) {
     if (isReportSessionExpiredError(err)) {
