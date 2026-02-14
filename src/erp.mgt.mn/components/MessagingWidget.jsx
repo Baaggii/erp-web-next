@@ -893,7 +893,7 @@ export default function MessagingWidget() {
       socket.off('message.deleted', onDeleted);
       disconnectSocket();
     };
-  }, [state.activeCompanyId, companyId, selfEmpid]);
+  }, [state.activeCompanyId, companyId]);
 
   useEffect(() => {
     const onStartMessage = (event) => {
