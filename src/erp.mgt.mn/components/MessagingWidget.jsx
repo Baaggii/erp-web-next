@@ -276,23 +276,6 @@ function resolveDisplayLabelFromConfig(row, displayFields = []) {
   return parts.join(' ').trim();
 }
 
-function parseMessageRecipientEmpids(message) {
-  const rawRecipientEmpids =
-    message?.recipient_empids || message?.recipientEmpids || message?.recipient_ids || message?.recipientIds;
-  if (Array.isArray(rawRecipientEmpids)) {
-    return rawRecipientEmpids.map((entry) => normalizeId(entry)).filter(Boolean);
-  }
-  if (typeof rawRecipientEmpids === 'string') {
-    try {
-      const parsed = JSON.parse(rawRecipientEmpids);
-      if (Array.isArray(parsed)) return parsed.map((entry) => normalizeId(entry)).filter(Boolean);
-    } catch {
-      return rawRecipientEmpids.split(',').map((entry) => normalizeId(entry)).filter(Boolean);
-    }
-  }
-  return [];
-}
-
 function collectMessageParticipantEmpids(message) {
   const ids = [];
   ids.push(message?.author_empid, message?.authorEmpid, message?.visibility_empid, message?.visibilityEmpid);
@@ -320,21 +303,6 @@ function canViewTransaction(transactionId, userId, permissions) {
   if (permissions?.isAdmin === true) return true;
   if (permissions?.transactions?.view === true) return true;
   return canOpenContextLink(permissions, 'transaction');
-}
-
-function canCurrentUserViewIncomingMessage(message, viewerEmpid) {
-  const scope = String(message?.visibility_scope || message?.visibilityScope || 'company').toLowerCase();
-  if (scope === 'company' || scope === 'department') return true;
-  if (scope !== 'private') return false;
-
-  const viewer = normalizeId(viewerEmpid);
-  if (!viewer) return false;
-  const participants = new Set([
-    normalizeId(message?.author_empid || message?.authorEmpid),
-    normalizeId(message?.visibility_empid || message?.visibilityEmpid),
-    ...parseMessageRecipientEmpids(message),
-  ].filter(Boolean));
-  return participants.has(viewer);
 }
 
 function MessageNode({ message, depth = 0, onReply, onJumpToParent, onToggleReplies, collapsedMessageIds, parentMap, permissions, activeReplyTarget, highlightedIds, onOpenLinkedTransaction, resolveEmployeeLabel, canDeleteMessage, onDeleteMessage, onPreviewAttachment, isMentionedViewer = false }) {
@@ -821,7 +789,6 @@ export default function MessagingWidget() {
     const onNew = (payload) => {
       const nextMessage = payload?.message || payload;
       if (normalizeId(nextMessage?.company_id || nextMessage?.companyId) !== (state.activeCompanyId || companyId)) return;
-      if (!canCurrentUserViewIncomingMessage(nextMessage, selfEmpid)) return;
       setMessagesByCompany((prev) => {
         const key = getCompanyCacheKey(state.activeCompanyId || companyId);
         return { ...prev, [key]: mergeMessageList(prev[key], nextMessage) };
