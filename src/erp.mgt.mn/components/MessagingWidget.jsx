@@ -1265,7 +1265,7 @@ export default function MessagingWidget() {
       ? 'private'
       : (finalRecipients.length > 0 ? 'private' : 'company');
 
-    if (!isDraftConversation && finalRecipients.length === 0) {
+    if (!isDraftConversation && !selectedConversation?.isGeneral && finalRecipients.length === 0) {
       setComposerAnnouncement('Unable to resolve conversation participants. Re-open the conversation and try again.');
       return;
     }
@@ -1280,13 +1280,13 @@ export default function MessagingWidget() {
       ...(linkedId ? { linkedId: String(linkedId) } : {}),
     };
 
-    const replyTargetId = !isDraftConversation
+    const replyTargetId = selectedConversation?.rootMessageId && !selectedConversation?.isGeneral
       ? selectedConversation.rootMessageId
       : null;
 
-    const targetUrl = isDraftConversation
-      ? `${API_BASE}/messaging/messages`
-      : `${API_BASE}/messaging/messages/${replyTargetId}/reply`;
+    const targetUrl = replyTargetId
+      ? `${API_BASE}/messaging/messages/${replyTargetId}/reply`
+      : `${API_BASE}/messaging/messages`;
 
     const res = await fetch(targetUrl, {
       method: 'POST',
