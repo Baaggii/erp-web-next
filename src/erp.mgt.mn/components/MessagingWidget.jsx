@@ -280,10 +280,19 @@ function resolveDisplayLabelFromConfig(row, displayFields = []) {
 
 function collectMessageParticipantEmpids(message) {
   const ids = [];
-  ids.push(message?.author_empid, message?.authorEmpid, message?.visibility_empid, message?.visibilityEmpid);
+  ids.push(message?.author_empid, message?.authorEmpid);
+
+  const visibilityEmpids = [message?.visibility_empid, message?.visibilityEmpid]
+    .flatMap((value) => String(value || '').split(','))
+    .map(normalizeId)
+    .filter(Boolean);
+  ids.push(...visibilityEmpids);
+
   const recipientEmpids =
     message?.recipient_empids || message?.recipientEmpids || message?.recipient_ids || message?.recipientIds;
   if (Array.isArray(recipientEmpids)) ids.push(...recipientEmpids);
+  else if (typeof recipientEmpids === 'string') ids.push(...recipientEmpids.split(','));
+
   const readBy = Array.isArray(message?.read_by) ? message.read_by : [];
   ids.push(...readBy);
   return Array.from(new Set(ids.map(normalizeId).filter(Boolean)));
