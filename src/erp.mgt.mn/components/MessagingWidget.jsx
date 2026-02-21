@@ -150,6 +150,8 @@ function groupConversations(messages) {
   };
 
   messages.forEach((msg) => {
+    const parentId = msg.parent_message_id || msg.parentMessageId;
+    if (parentId) return;
     const link = extractContextLink(msg);
     const scope = String(msg.visibility_scope || msg.visibilityScope || 'company').toLowerCase();
     const hasTopic = Boolean(extractMessageTopic(msg));
@@ -778,20 +780,28 @@ export default function MessagingWidget() {
     const onNew = (payload) => {
       const nextMessage = payload?.message || payload;
       if (normalizeId(nextMessage?.company_id || nextMessage?.companyId) !== (state.activeCompanyId || companyId)) return;
-      setMessagesByCompany((prev) => {
-        const key = getCompanyCacheKey(state.activeCompanyId || companyId);
-        return { ...prev, [key]: mergeMessageList(prev[key], nextMessage) };
-      });
-      if (nextMessage?.parent_message_id || nextMessage?.parentMessageId) {
-        const id = nextMessage.id;
-        setHighlightedIds((prev) => new Set([...prev, id]));
-        setTimeout(() => {
-          setHighlightedIds((prev) => {
-            const next = new Set(prev);
-            next.delete(id);
-            return next;
-          });
-        }, 2400);
+      const parentId = nextMessage?.parent_message_id || nextMessage?.parentMessageId;
+      if (!parentId) {
+        setMessagesByCompany((prev) => {
+          const key = getCompanyCacheKey(state.activeCompanyId || companyId);
+          return { ...prev, [key]: mergeMessageList(prev[key], nextMessage) };
+        });
+        return;
+      }
+
+      const id = nextMessage.id;
+      setHighlightedIds((prev) => new Set([...prev, id]));
+      setTimeout(() => {
+        setHighlightedIds((prev) => {
+          const next = new Set(prev);
+          next.delete(id);
+          return next;
+        });
+      }, 2400);
+
+      const rootId = nextMessage?.conversation_id || nextMessage?.conversationId || parentId;
+      if (rootId && Number(activeConversation?.rootMessageId) === Number(rootId)) {
+        fetchThreadMessages(rootId, state.activeCompanyId || companyId);
       }
     };
     const onPresence = (payload) => {
@@ -849,7 +859,7 @@ export default function MessagingWidget() {
       socket.off('message.deleted', onDeleted);
       disconnectSocket();
     };
-  }, [state.activeCompanyId, companyId]);
+  }, [state.activeCompanyId, companyId, activeConversation?.rootMessageId]);
 
   useEffect(() => {
     const onStartMessage = (event) => {
@@ -1268,11 +1278,13 @@ export default function MessagingWidget() {
       const successPayload = await res.json().catch(() => null);
       const createdMessage = successPayload?.message || null;
       if (createdMessage) {
-        setMessagesByCompany((prev) => {
-          const key = getCompanyCacheKey(state.activeCompanyId || companyId);
-          return { ...prev, [key]: mergeMessageList(prev[key], createdMessage) };
-        });
         const threadRootId = createdMessage.conversation_id || createdMessage.conversationId || createdMessage.parent_message_id || createdMessage.parentMessageId || createdMessage.id;
+        if (!(createdMessage.parent_message_id || createdMessage.parentMessageId)) {
+          setMessagesByCompany((prev) => {
+            const key = getCompanyCacheKey(state.activeCompanyId || companyId);
+            return { ...prev, [key]: mergeMessageList(prev[key], createdMessage) };
+          });
+        }
         dispatch({ type: 'widget/setConversation', payload: threadRootId ? `message:${threadRootId}` : null });
         await fetchThreadMessages(threadRootId, activeCompany);
       }
@@ -1559,7 +1571,7 @@ export default function MessagingWidget() {
             </button>
           </div>
 
-          <div style={{ overflowY: 'auto', padding: 8, display: 'grid', gap: 6, minHeight: 0, flex: 1, alignContent: 'start', gridAutoRows: 'max-content' }}>
+          <div style={{ overflowY: 'auto', overscrollBehavior: 'contain', padding: 8, display: 'grid', gap: 6, minHeight: 0, flex: 1, alignContent: 'start', gridAutoRows: 'max-content' }}>
             <h3 style={{ margin: '0 0 2px', fontSize: 14, color: '#0f172a' }}>Conversations</h3>
             {conversationSummaries.length === 0 && <p style={{ margin: 0, color: '#64748b', fontSize: 13 }}>No conversations yet.</p>}
             {conversationSummaries.map((conversation) => (
@@ -1604,7 +1616,7 @@ export default function MessagingWidget() {
         </aside>
 
         <section style={{ display: 'flex', flexDirection: 'column', minWidth: 0, minHeight: 0, overflow: 'hidden' }}>
-          <main style={{ padding: '8px 10px 6px', overflowY: 'auto', flex: 1, minHeight: 0 }} aria-live="polite">
+          <main style={{ padding: '8px 10px 6px', overflowY: 'auto', overscrollBehavior: 'contain', flex: 1, minHeight: 0 }} aria-live="polite">
             <div style={{ position: 'sticky', top: 0, background: '#f8fafc', paddingBottom: 6, marginBottom: 6 }}>
               <strong style={{ display: 'block', fontSize: 15, color: '#0f172a', lineHeight: 1.25, overflowWrap: 'anywhere' }}>{activeTopic}</strong>
               <div style={{ marginTop: 3, fontSize: 12, color: '#334155', display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
