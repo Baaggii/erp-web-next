@@ -1251,16 +1251,9 @@ export default function MessagingWidget() {
       ? [...payloadRecipients]
       : [];
     const conversationRecipients = (!isDraftConversation && !selectedConversation?.isGeneral)
-      ? [...threadParticipants]
+      ? [...threadParticipants, ...payloadRecipients]
       : [];
     const finalRecipients = Array.from(new Set((isDraftConversation ? draftParticipants : conversationRecipients).map(normalizeId).filter(Boolean)));
-    if (!isDraftConversation && !selectedConversation?.isGeneral && payloadRecipients.length > 0) {
-      const outOfConversationRecipients = payloadRecipients.filter((empid) => !finalRecipients.includes(empid));
-      if (outOfConversationRecipients.length > 0) {
-        setComposerAnnouncement('You can only send to participants of the selected conversation.');
-        return;
-      }
-    }
     const visibilityScope = (isDraftConversation || (!isDraftConversation && !selectedConversation?.isGeneral))
       ? 'private'
       : (finalRecipients.length > 0 ? 'private' : 'company');
@@ -1398,9 +1391,10 @@ export default function MessagingWidget() {
 
   const onChooseRecipient = (id) => {
     if (!id || state.composer.recipients.includes(id)) return;
-    if (!isDraftConversation) {
-      setComposerAnnouncement('Recipients are locked to the selected conversation participants.');
-      return;
+    if (!isDraftConversation && activeConversation && !activeConversation.isGeneral && !conversationParticipantIds.has(id)) {
+      const label = resolveEmployeeLabel(id);
+      const confirmed = globalThis.confirm(`Add ${label} to this conversation? They will be able to see existing conversation history.`);
+      if (!confirmed) return;
     }
     dispatch({ type: 'composer/setRecipients', payload: [...state.composer.recipients, id] });
     setComposerRecipientSearch('');
@@ -1459,10 +1453,6 @@ export default function MessagingWidget() {
   };
 
   const onRemoveRecipient = (id) => {
-    if (!isDraftConversation) {
-      setComposerAnnouncement('Recipients are locked to the selected conversation participants.');
-      return;
-    }
     dispatch({ type: 'composer/setRecipients', payload: state.composer.recipients.filter((entry) => entry !== id) });
   };
 
