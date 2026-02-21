@@ -289,6 +289,54 @@ function collectMessageParticipantEmpids(message) {
   return Array.from(new Set(ids.map(normalizeId).filter(Boolean)));
 }
 
+function resolveMessageVisibilityScope(message) {
+  return String(message?.visibility_scope || message?.visibilityScope || 'company').toLowerCase();
+}
+
+function canViewerAccessMessage(message, viewerEmpid) {
+  if (!message) return false;
+  if (resolveMessageVisibilityScope(message) !== 'private') return true;
+  const normalizedViewer = normalizeId(viewerEmpid);
+  if (!normalizedViewer) return false;
+  return collectMessageParticipantEmpids(message).includes(normalizedViewer);
+}
+
+function filterVisibleMessages(messages = [], viewerEmpid) {
+  if (!viewerEmpid) return [];
+  const byId = new Map(messages.map((entry) => [String(entry.id), entry]));
+  const memo = new Map();
+
+  const canAccessWithHierarchy = (message) => {
+    if (!message) return false;
+    const key = String(message.id);
+    if (memo.has(key)) return memo.get(key);
+
+    if (canViewerAccessMessage(message, viewerEmpid)) {
+      memo.set(key, true);
+      return true;
+    }
+
+    const parentId = normalizeId(message.parent_message_id || message.parentMessageId);
+    if (parentId) {
+      const canAccessParent = canAccessWithHierarchy(byId.get(parentId));
+      memo.set(key, canAccessParent);
+      return canAccessParent;
+    }
+
+    const rootConversationId = normalizeId(message.conversation_id || message.conversationId);
+    if (rootConversationId) {
+      const canAccessConversation = canAccessWithHierarchy(byId.get(rootConversationId));
+      memo.set(key, canAccessConversation);
+      return canAccessConversation;
+    }
+
+    memo.set(key, false);
+    return false;
+  };
+
+  return messages.filter((entry) => canAccessWithHierarchy(entry));
+}
+
 function canViewTransaction(transactionId, userId, permissions) {
   if (!transactionId || !userId) return false;
   if (permissions?.isAdmin === true) return true;
@@ -498,7 +546,10 @@ export default function MessagingWidget() {
         const key = getCompanyCacheKey(activeCompany);
         const byId = new Map((prev[key] || []).map((entry) => [String(entry.id), entry]));
         threadItems.forEach((entry) => byId.set(String(entry.id), entry));
-        const merged = Array.from(byId.values()).sort((a, b) => new Date(a.created_at || 0).getTime() - new Date(b.created_at || 0).getTime());
+        const merged = filterVisibleMessages(
+          Array.from(byId.values()).sort((a, b) => new Date(a.created_at || 0).getTime() - new Date(b.created_at || 0).getTime()),
+          selfEmpid,
+        );
         return { ...prev, [key]: merged };
       });
     } catch {
@@ -530,7 +581,7 @@ export default function MessagingWidget() {
     setUserDirectory({});
     setError('');
     setNetworkState('loading');
-  }, [companyId, state.activeCompanyId]);
+  }, [companyId, selfEmpid, state.activeCompanyId]);
 
   useEffect(() => {
     const raw = globalThis.localStorage?.getItem(draftStorageKey);
@@ -591,7 +642,10 @@ export default function MessagingWidget() {
         const data = await res.json();
         if (disposed) return;
         const incomingMessages = Array.isArray(data.items) ? data.items : Array.isArray(data.messages) ? data.messages : [];
-        setMessagesByCompany((prev) => ({ ...prev, [getCompanyCacheKey(activeCompany)]: incomingMessages }));
+        setMessagesByCompany((prev) => ({
+          ...prev,
+          [getCompanyCacheKey(activeCompany)]: filterVisibleMessages(incomingMessages, selfEmpid),
+        }));
         setNetworkState('ready');
       } catch (err) {
         if (disposed) return;
@@ -781,7 +835,9 @@ export default function MessagingWidget() {
       const nextMessage = payload?.message || payload;
       if (normalizeId(nextMessage?.company_id || nextMessage?.companyId) !== (state.activeCompanyId || companyId)) return;
       const parentId = nextMessage?.parent_message_id || nextMessage?.parentMessageId;
+      const rootConversationId = normalizeId(nextMessage?.conversation_id || nextMessage?.conversationId);
       if (!parentId) {
+        if (!canViewerAccessMessage(nextMessage, selfEmpid)) return;
         setMessagesByCompany((prev) => {
           const key = getCompanyCacheKey(state.activeCompanyId || companyId);
           return { ...prev, [key]: mergeMessageList(prev[key], nextMessage) };
@@ -800,6 +856,16 @@ export default function MessagingWidget() {
       }, 2400);
 
       const rootId = nextMessage?.conversation_id || nextMessage?.conversationId || parentId;
+      setMessagesByCompany((prev) => {
+        const key = getCompanyCacheKey(state.activeCompanyId || companyId);
+        const current = prev[key] || [];
+        const byId = new Map(current.map((entry) => [normalizeId(entry.id), entry]));
+        const isParticipantMessage = canViewerAccessMessage(nextMessage, selfEmpid);
+        const canAccessFromParent = Boolean(parentId && byId.has(normalizeId(parentId)));
+        const canAccessFromConversation = Boolean(rootConversationId && byId.has(rootConversationId));
+        if (!isParticipantMessage && !canAccessFromParent && !canAccessFromConversation) return prev;
+        return { ...prev, [key]: mergeMessageList(current, nextMessage) };
+      });
       if (rootId && Number(state.activeConversationId) === Number(rootId)) {
         fetchThreadMessages(rootId, state.activeCompanyId || companyId);
       }
@@ -859,7 +925,7 @@ export default function MessagingWidget() {
       socket.off('message.deleted', onDeleted);
       disconnectSocket();
     };
-  }, [state.activeCompanyId, state.activeConversationId, companyId]);
+  }, [state.activeCompanyId, state.activeConversationId, companyId, selfEmpid]);
 
   useEffect(() => {
     const onStartMessage = (event) => {
@@ -1276,7 +1342,14 @@ export default function MessagingWidget() {
 
     if (res.ok) {
       const successPayload = await res.json().catch(() => null);
-      const createdMessage = successPayload?.message || null;
+      const createdMessage = successPayload?.message
+        ? {
+          ...successPayload.message,
+          recipient_empids: Array.isArray(successPayload?.message?.recipient_empids)
+            ? successPayload.message.recipient_empids
+            : finalRecipients,
+        }
+        : null;
       if (createdMessage) {
         const threadRootId = createdMessage.conversation_id || createdMessage.conversationId || createdMessage.parent_message_id || createdMessage.parentMessageId || createdMessage.id;
         if (!(createdMessage.parent_message_id || createdMessage.parentMessageId)) {
