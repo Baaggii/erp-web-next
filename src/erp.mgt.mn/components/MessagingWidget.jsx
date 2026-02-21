@@ -276,14 +276,16 @@ function resolveDisplayLabelFromConfig(row, displayFields = []) {
   return parts.join(' ').trim();
 }
 
-function collectMessageParticipantEmpids(message) {
+function collectMessageParticipantEmpids(message, { includeReadBy = false } = {}) {
   const ids = [];
   ids.push(message?.author_empid, message?.authorEmpid, message?.visibility_empid, message?.visibilityEmpid);
   const recipientEmpids =
     message?.recipient_empids || message?.recipientEmpids || message?.recipient_ids || message?.recipientIds;
   if (Array.isArray(recipientEmpids)) ids.push(...recipientEmpids);
-  const readBy = Array.isArray(message?.read_by) ? message.read_by : [];
-  ids.push(...readBy);
+  if (includeReadBy) {
+    const readBy = Array.isArray(message?.read_by) ? message.read_by : [];
+    ids.push(...readBy);
+  }
   return Array.from(new Set(ids.map(normalizeId).filter(Boolean)));
 }
 
@@ -1234,15 +1236,32 @@ export default function MessagingWidget() {
       setComposerAnnouncement('Select at least one recipient before sending a new conversation.');
       return;
     }
-    const threadParticipants = Array.from(new Set(activeConversationParticipants.filter((empid) => empid !== selfEmpid)));
+
+    const selectedConversation = (!isDraftConversation && state.activeConversationId)
+      ? conversations.find((conversation) => conversation.id === state.activeConversationId) || null
+      : activeConversation;
+    const selectedConversationParticipants = Array.from(new Set(
+      (selectedConversation?.messages || [])
+        .flatMap((msg) => collectMessageParticipantEmpids(msg))
+        .filter((empid) => empid && empid !== selfEmpid),
+    ));
+
+    const threadParticipants = Array.from(new Set(selectedConversationParticipants));
     const draftParticipants = isDraftConversation
       ? [...payloadRecipients]
       : [];
-    const conversationRecipients = (!isDraftConversation && !activeConversation?.isGeneral)
+    const conversationRecipients = (!isDraftConversation && !selectedConversation?.isGeneral)
       ? [...threadParticipants, ...payloadRecipients]
       : [];
     const finalRecipients = Array.from(new Set((isDraftConversation ? draftParticipants : conversationRecipients).map(normalizeId).filter(Boolean)));
-    const visibilityScope = (finalRecipients.length > 0 || (!isDraftConversation && !activeConversation?.isGeneral)) ? 'private' : 'company';
+    const visibilityScope = (isDraftConversation || (!isDraftConversation && !selectedConversation?.isGeneral))
+      ? 'private'
+      : (finalRecipients.length > 0 ? 'private' : 'company');
+
+    if (!isDraftConversation && !selectedConversation?.isGeneral && finalRecipients.length === 0) {
+      setComposerAnnouncement('Unable to resolve conversation participants. Re-open the conversation and try again.');
+      return;
+    }
 
     const payload = {
       idempotencyKey: createIdempotencyKey(),
@@ -1254,9 +1273,6 @@ export default function MessagingWidget() {
       ...(linkedId ? { linkedId: String(linkedId) } : {}),
     };
 
-    const selectedConversation = (!isDraftConversation && state.activeConversationId)
-      ? conversations.find((conversation) => conversation.id === state.activeConversationId) || null
-      : activeConversation;
     const replyTargetId = selectedConversation?.rootMessageId && !selectedConversation?.isGeneral
       ? selectedConversation.rootMessageId
       : null;
