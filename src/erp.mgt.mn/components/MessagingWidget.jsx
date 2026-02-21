@@ -150,6 +150,8 @@ function groupConversations(messages) {
   };
 
   messages.forEach((msg) => {
+    const parentId = msg.parent_message_id || msg.parentMessageId;
+    if (parentId) return;
     const link = extractContextLink(msg);
     const scope = String(msg.visibility_scope || msg.visibilityScope || 'company').toLowerCase();
     const hasTopic = Boolean(extractMessageTopic(msg));

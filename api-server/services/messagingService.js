@@ -807,50 +807,9 @@ export async function postReply({ user, companyId, messageId, payload, correlati
     throw createError(400, 'THREAD_DEPTH_EXCEEDED', `Reply depth exceeds maximum of ${MAX_REPLY_DEPTH}`);
   }
 
-  const privateParticipants = new Set();
-  const privateThreadMessageIds = [];
-  if (message.visibility_scope === 'private') {
-    const rootId = Number(message.conversation_id || message.id);
-    const [allRows] = await queryWithTenantScope(
-      db,
-      'erp_messages',
-      scopedCompanyId,
-      'SELECT id, parent_message_id, visibility_empid, author_empid FROM {{table}} ORDER BY id ASC',
-      [],
-    );
-    const byParent = new Map();
-    const byId = new Map();
-    for (const row of allRows) {
-      byId.set(String(row.id), row);
-      const key = row.parent_message_id == null ? 'root' : String(row.parent_message_id);
-      const bucket = byParent.get(key) || [];
-      bucket.push(row);
-      byParent.set(key, bucket);
-    }
-
-    const stack = [rootId];
-    const seen = new Set([String(rootId)]);
-    while (stack.length > 0) {
-      const id = stack.shift();
-      const row = byId.get(String(id));
-      if (row) {
-        privateThreadMessageIds.push(Number(row.id));
-        parsePrivateParticipants(row.visibility_empid).forEach((empid) => privateParticipants.add(empid));
-        if (row.author_empid) privateParticipants.add(String(row.author_empid));
-      }
-
-      const children = byParent.get(String(id)) || [];
-      for (const child of children) {
-        const childId = String(child.id);
-        if (seen.has(childId)) continue;
-        seen.add(childId);
-        stack.push(child.id);
-      }
-    }
-    parsePrivateParticipants(message.visibility_empid).forEach((empid) => privateParticipants.add(empid));
-    if (user?.empid) privateParticipants.add(String(user.empid));
-  }
-
+  const privateParticipants = message.visibility_scope === 'private'
+    ? new Set(parsePrivateParticipants(message.visibility_empid))
+    : new Set();
   const requestedParticipants = Array.isArray(payload?.recipientEmpids)
     ? payload.recipientEmpids.map((entry) => String(entry || '').trim()).filter(Boolean)
     : [];
@@ -875,8 +834,33 @@ export async function postReply({ user, companyId, messageId, payload, correlati
 
   if (message.visibility_scope === 'private' && requestedParticipants.length > 0) {
     const participantList = Array.from(privateParticipants).join(',');
-    for (const threadMessageId of privateThreadMessageIds) {
-      await db.query('UPDATE erp_messages SET visibility_empid = ? WHERE id = ? AND company_id = ? AND visibility_scope = ?', [participantList, threadMessageId, scopedCompanyId, 'private']);
+    const [allRows] = await queryWithTenantScope(
+      db,
+      'erp_messages',
+      scopedCompanyId,
+      'SELECT id, parent_message_id FROM {{table}} ORDER BY id ASC',
+      [],
+    );
+    const byParent = new Map();
+    for (const row of allRows) {
+      const key = row.parent_message_id == null ? 'root' : String(row.parent_message_id);
+      const bucket = byParent.get(key) || [];
+      bucket.push(row);
+      byParent.set(key, bucket);
+    }
+    const rootId = Number(message.conversation_id || message.id);
+    const stack = [rootId];
+    const seen = new Set([String(rootId)]);
+    while (stack.length > 0) {
+      const id = stack.shift();
+      await db.query('UPDATE erp_messages SET visibility_empid = ? WHERE id = ? AND company_id = ? AND visibility_scope = ?', [participantList, id, scopedCompanyId, 'private']);
+      const children = byParent.get(String(id)) || [];
+      for (const child of children) {
+        const childId = String(child.id);
+        if (seen.has(childId)) continue;
+        seen.add(childId);
+        stack.push(child.id);
+      }
     }
   }
 
