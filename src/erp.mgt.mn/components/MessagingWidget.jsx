@@ -1254,23 +1254,16 @@ export default function MessagingWidget() {
       ? [...threadParticipants]
       : [];
     const finalRecipients = Array.from(new Set((isDraftConversation ? draftParticipants : conversationRecipients).map(normalizeId).filter(Boolean)));
-    if (!isDraftConversation && payloadRecipients.length > 0) {
+    if (!isDraftConversation && !selectedConversation?.isGeneral && payloadRecipients.length > 0) {
       const outOfConversationRecipients = payloadRecipients.filter((empid) => !finalRecipients.includes(empid));
       if (outOfConversationRecipients.length > 0) {
         setComposerAnnouncement('You can only send to participants of the selected conversation.');
         return;
       }
     }
-    if (!isDraftConversation && selectedConversation?.isGeneral) {
-      setComposerAnnouncement('Select a private conversation or start a new one. Sending to general conversation is disabled.');
-      return;
-    }
-    if (!isDraftConversation && !selectedConversation?.rootMessageId) {
-      setComposerAnnouncement('Select a valid conversation before sending.');
-      return;
-    }
-
-    const visibilityScope = 'private';
+    const visibilityScope = (isDraftConversation || (!isDraftConversation && !selectedConversation?.isGeneral))
+      ? 'private'
+      : (finalRecipients.length > 0 ? 'private' : 'company');
 
     if (!isDraftConversation && finalRecipients.length === 0) {
       setComposerAnnouncement('Unable to resolve conversation participants. Re-open the conversation and try again.');
