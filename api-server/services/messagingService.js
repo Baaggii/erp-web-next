@@ -285,23 +285,26 @@ function normalizeVisibility(payload, session, user) {
     throw createError(400, 'VISIBILITY_SCOPE_INVALID', 'visibilityScope must be company, department, or private');
   }
 
-  if (scope === 'private' && recipients.length > 1) {
-    throw createError(400, 'VISIBILITY_PRIVATE_TOO_MANY_RECIPIENTS', 'Private messages support exactly one recipient');
-  }
-
   const visibilityDepartmentId = scope === 'department' ? toId(payload?.visibilityDepartmentId ?? session?.department_id) : null;
   if (scope === 'department' && !visibilityDepartmentId) {
     throw createError(400, 'VISIBILITY_DEPARTMENT_REQUIRED', 'visibilityDepartmentId is required for department scope');
   }
 
+  const privateParticipants = scope === 'private'
+    ? Array.from(new Set([
+      ...recipients,
+      ...parsePrivateParticipants(payload?.visibilityEmpid),
+      String(user?.empid || '').trim(),
+    ].filter(Boolean)))
+    : [];
   const visibilityEmpid = scope === 'private'
-    ? String(payload?.visibilityEmpid || recipients[0] || '').trim()
+    ? privateParticipants.join(',')
     : null;
   if (scope === 'private' && !visibilityEmpid) {
     throw createError(400, 'VISIBILITY_EMPID_REQUIRED', 'visibilityEmpid is required for private scope');
   }
-  if (scope === 'private' && visibilityEmpid === String(user?.empid)) {
-    throw createError(400, 'VISIBILITY_EMPID_INVALID', 'visibilityEmpid cannot be the same as author');
+  if (scope === 'private' && privateParticipants.length < 2) {
+    throw createError(400, 'VISIBILITY_EMPID_INVALID', 'Select at least one recipient other than author');
   }
 
   return {
@@ -309,6 +312,14 @@ function normalizeVisibility(payload, session, user) {
     visibilityDepartmentId,
     visibilityEmpid,
   };
+}
+
+function parsePrivateParticipants(value) {
+  if (!value) return [];
+  return Array.from(new Set(String(value)
+    .split(',')
+    .map((entry) => String(entry || '').trim())
+    .filter(Boolean)));
 }
 
 function getEncryptionKey() {
@@ -359,7 +370,7 @@ function canViewMessage(message, session, user) {
     return Number(session?.department_id) > 0 && Number(session?.department_id) === Number(message.visibility_department_id);
   }
   if (scope === 'private') {
-    return String(message.author_empid) === String(user?.empid) || String(message.visibility_empid) === String(user?.empid);
+    return parsePrivateParticipants(message.visibility_empid).includes(String(user?.empid));
   }
   return false;
 }
@@ -595,8 +606,8 @@ function emitMessageScoped(ctx, eventName, message, optimistic) {
 
   const scope = String(message.visibility_scope || 'company');
   if (scope === 'private') {
-    emitToEmpid(eventName, message.author_empid, payload);
-    emitToEmpid(eventName, message.visibility_empid, payload);
+    const participants = parsePrivateParticipants(message.visibility_empid);
+    participants.forEach((empid) => emitToEmpid(eventName, empid, payload));
     return;
   }
   if (scope === 'department' && message.visibility_department_id) {
@@ -796,16 +807,16 @@ export async function postReply({ user, companyId, messageId, payload, correlati
     throw createError(400, 'THREAD_DEPTH_EXCEEDED', `Reply depth exceeds maximum of ${MAX_REPLY_DEPTH}`);
   }
 
-  const privateParticipants = new Set([
-    String(message.author_empid || '').trim(),
-    String(message.visibility_empid || '').trim(),
-  ].filter(Boolean));
-  const replyVisibilityEmpid = message.visibility_scope === 'private'
-    ? Array.from(privateParticipants).find((empid) => empid !== String(user.empid)) || null
-    : message.visibility_empid;
+  const privateParticipants = message.visibility_scope === 'private'
+    ? new Set(parsePrivateParticipants(message.visibility_empid))
+    : new Set();
+  const requestedParticipants = Array.isArray(payload?.recipientEmpids)
+    ? payload.recipientEmpids.map((entry) => String(entry || '').trim()).filter(Boolean)
+    : [];
+  requestedParticipants.forEach((empid) => privateParticipants.add(empid));
 
   const ctx = { user, companyId: scopedCompanyId, correlationId, session };
-  return createMessageInternal({
+  const created = await createMessageInternal({
     db,
     ctx,
     payload: {
@@ -814,14 +825,46 @@ export async function postReply({ user, companyId, messageId, payload, correlati
       linkedId: message.linked_id,
       visibilityScope: message.visibility_scope,
       visibilityDepartmentId: message.visibility_department_id,
-      visibilityEmpid: message.visibility_scope === 'private' ? replyVisibilityEmpid : message.visibility_empid,
-      recipientEmpids: message.visibility_scope === 'private' && replyVisibilityEmpid
-        ? [String(replyVisibilityEmpid)]
-        : payload?.recipientEmpids,
+      visibilityEmpid: message.visibility_scope === 'private' ? Array.from(privateParticipants).join(',') : message.visibility_empid,
+      recipientEmpids: message.visibility_scope === 'private' ? Array.from(privateParticipants) : payload?.recipientEmpids,
     },
     parentMessageId: message.id,
     eventName: 'thread.reply.created',
   });
+
+  if (message.visibility_scope === 'private' && requestedParticipants.length > 0) {
+    const participantList = Array.from(privateParticipants).join(',');
+    const [allRows] = await queryWithTenantScope(
+      db,
+      'erp_messages',
+      scopedCompanyId,
+      'SELECT id, parent_message_id FROM {{table}} ORDER BY id ASC',
+      [],
+    );
+    const byParent = new Map();
+    for (const row of allRows) {
+      const key = row.parent_message_id == null ? 'root' : String(row.parent_message_id);
+      const bucket = byParent.get(key) || [];
+      bucket.push(row);
+      byParent.set(key, bucket);
+    }
+    const rootId = Number(message.conversation_id || message.id);
+    const stack = [rootId];
+    const seen = new Set([String(rootId)]);
+    while (stack.length > 0) {
+      const id = stack.shift();
+      await db.query('UPDATE erp_messages SET visibility_empid = ? WHERE id = ? AND company_id = ? AND visibility_scope = ?', [participantList, id, scopedCompanyId, 'private']);
+      const children = byParent.get(String(id)) || [];
+      for (const child of children) {
+        const childId = String(child.id);
+        if (seen.has(childId)) continue;
+        seen.add(childId);
+        stack.push(child.id);
+      }
+    }
+  }
+
+  return created;
 }
 
 export async function getMessages({ user, companyId, linkedType, linkedId, cursor, limit = CURSOR_PAGE_SIZE, correlationId, db = pool, getSession = getEmploymentSession }) {
