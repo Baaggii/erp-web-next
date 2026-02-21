@@ -311,7 +311,7 @@ function canViewerAccessMessage(message, viewerEmpid) {
 }
 
 function filterVisibleMessages(messages = [], viewerEmpid) {
-  if (!viewerEmpid) return [];
+  if (!viewerEmpid) return messages;
   const byId = new Map(messages.map((entry) => [String(entry.id), entry]));
   const memo = new Map();
 
@@ -776,7 +776,7 @@ export default function MessagingWidget() {
     return () => {
       disposed = true;
     };
-  }, [companyId, state.activeCompanyId]);
+  }, [companyId, selfEmpid, state.activeCompanyId]);
 
   useEffect(() => {
     const activeCompany = state.activeCompanyId || companyId;
