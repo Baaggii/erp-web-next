@@ -865,11 +865,6 @@ export default function MessagingWidget() {
       }, 2400);
 
       const rootId = nextMessage?.conversation_id || nextMessage?.conversationId || parentId;
-      const activeConversationRootId = normalizeId(
-        String(state.activeConversationId || '').startsWith('message:')
-          ? String(state.activeConversationId || '').slice('message:'.length)
-          : state.activeConversationId,
-      );
       setMessagesByCompany((prev) => {
         const key = getCompanyCacheKey(state.activeCompanyId || companyId);
         const current = prev[key] || [];
@@ -880,7 +875,7 @@ export default function MessagingWidget() {
         if (!isParticipantMessage && !canAccessFromParent && !canAccessFromConversation) return prev;
         return { ...prev, [key]: mergeMessageList(current, nextMessage) };
       });
-      if (rootId && activeConversationRootId && Number(activeConversationRootId) === Number(rootId)) {
+      if (rootId && Number(state.activeConversationId) === Number(rootId)) {
         fetchThreadMessages(rootId, state.activeCompanyId || companyId);
       }
     };
