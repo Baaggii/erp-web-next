@@ -370,12 +370,7 @@ function canViewMessage(message, session, user) {
     return Number(session?.department_id) > 0 && Number(session?.department_id) === Number(message.visibility_department_id);
   }
   if (scope === 'private') {
-    const viewer = String(user?.empid || '').trim();
-    const participants = new Set([
-      String(message.author_empid || '').trim(),
-      ...parsePrivateParticipants(message.visibility_empid),
-    ].filter(Boolean));
-    return participants.has(viewer);
+    return parsePrivateParticipants(message.visibility_empid).includes(String(user?.empid));
   }
   return false;
 }
@@ -611,10 +606,7 @@ function emitMessageScoped(ctx, eventName, message, optimistic) {
 
   const scope = String(message.visibility_scope || 'company');
   if (scope === 'private') {
-    const participants = new Set([
-      String(message.author_empid || '').trim(),
-      ...parsePrivateParticipants(message.visibility_empid),
-    ].filter(Boolean));
+    const participants = parsePrivateParticipants(message.visibility_empid);
     participants.forEach((empid) => emitToEmpid(eventName, empid, payload));
     return;
   }
@@ -856,18 +848,7 @@ export async function postReply({ user, companyId, messageId, payload, correlati
       bucket.push(row);
       byParent.set(key, bucket);
     }
-    let rootId = Number(message.conversation_id || 0);
-    if (!rootId) {
-      let cursor = message;
-      const visited = new Set();
-      while (cursor?.parent_message_id && !visited.has(String(cursor.parent_message_id))) {
-        visited.add(String(cursor.parent_message_id));
-        const parent = await findMessageById(db, scopedCompanyId, cursor.parent_message_id);
-        if (!parent) break;
-        cursor = parent;
-      }
-      rootId = Number(cursor?.id || message.id);
-    }
+    const rootId = Number(message.conversation_id || message.id);
     const stack = [rootId];
     const seen = new Set([String(rootId)]);
     while (stack.length > 0) {

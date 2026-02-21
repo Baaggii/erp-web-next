@@ -800,7 +800,7 @@ export default function MessagingWidget() {
       }, 2400);
 
       const rootId = nextMessage?.conversation_id || nextMessage?.conversationId || parentId;
-      if (rootId && Number(activeConversation?.rootMessageId) === Number(rootId)) {
+      if (rootId && Number(state.activeConversationId) === Number(rootId)) {
         fetchThreadMessages(rootId, state.activeCompanyId || companyId);
       }
     };
@@ -859,7 +859,7 @@ export default function MessagingWidget() {
       socket.off('message.deleted', onDeleted);
       disconnectSocket();
     };
-  }, [state.activeCompanyId, companyId, activeConversation?.rootMessageId]);
+  }, [state.activeCompanyId, state.activeConversationId, companyId]);
 
   useEffect(() => {
     const onStartMessage = (event) => {
