@@ -417,7 +417,18 @@ function MessageNode({ message, depth = 0, onReply, onJumpToParent, onToggleRepl
         <details style={{ marginLeft: 'auto', position: 'relative' }}>
           <summary style={{ listStyle: 'none', cursor: 'pointer', border: '1px solid #cbd5e1', borderRadius: 6, padding: '1px 8px', fontSize: 13, color: '#334155' }}>⋯</summary>
           <div style={{ position: 'absolute', right: 0, top: 'calc(100% + 4px)', minWidth: 150, background: '#fff', border: '1px solid #cbd5e1', borderRadius: 8, boxShadow: '0 8px 16px rgba(15,23,42,0.12)', zIndex: 20, display: 'grid', padding: 4 }}>
-            <button type="button" onClick={() => onReply(message.id)} aria-label={`Reply to message ${message.id}`} style={{ border: 0, background: 'transparent', textAlign: 'left', padding: '6px 8px' }}>Reply</button>
+            <button
+              type="button"
+              onClick={(event) => {
+                const dropdown = event.currentTarget.closest('details');
+                if (dropdown) dropdown.open = false;
+                onReply(message.id);
+              }}
+              aria-label={`Reply to message ${message.id}`}
+              style={{ border: 0, background: 'transparent', textAlign: 'left', padding: '6px 8px' }}
+            >
+              Reply
+            </button>
             {linked.linkedType === 'transaction' && linked.linkedId && (
               <button
                 type="button"
