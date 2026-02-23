@@ -152,13 +152,13 @@ function groupConversations(messages) {
   };
 
   messages.forEach((msg) => {
-    const resolvedRootMessageId = resolveRootMessageId(msg);
-    const rootMessage = resolvedRootMessageId ? byId.get(String(resolvedRootMessageId)) : null;
-    const rootForScope = rootMessage || msg;
-    const link = extractContextLink(rootForScope);
-    const scope = String(rootForScope.visibility_scope || rootForScope.visibilityScope || 'company').toLowerCase();
-    const hasTopic = Boolean(extractMessageTopic(rootForScope));
-    const isGeneralMessage = !link.linkedType && !link.linkedId && scope === 'company' && !hasTopic;
+    const link = extractContextLink(msg);
+    const scope = String(msg.visibility_scope || msg.visibilityScope || 'company').toLowerCase();
+    const hasTopic = Boolean(extractMessageTopic(msg));
+    const hasThreadPointer = Boolean(
+      normalizeId(msg.conversation_id || msg.conversationId || msg.parent_message_id || msg.parentMessageId),
+    );
+    const isGeneralMessage = !hasThreadPointer && !link.linkedType && !link.linkedId && scope === 'company' && !hasTopic;
 
     if (isGeneralMessage) {
       generalMessages.push(msg);
@@ -166,7 +166,7 @@ function groupConversations(messages) {
       return;
     }
 
-    if (!resolvedRootMessageId) return;
+    if (!rootMessageId) return;
     const topic = extractMessageTopic(rootMessage || msg) || extractMessageTopic(msg);
     const rootLink = extractContextLink(rootMessage || msg);
     const key = `message:${resolvedRootMessageId}`;
@@ -1377,8 +1377,7 @@ export default function MessagingWidget() {
       || Boolean(selectedRootIdFromState)
     );
     const explicitReplyTargetId = normalizeId(state.composer.replyToId);
-    const selectedConversationRootMessageId = normalizeId(selectedConversation?.rootMessageId);
-    const fallbackRootReplyTargetId = selectedConversationRootMessageId || normalizeId(selectedRootIdFromState);
+    const fallbackRootReplyTargetId = normalizeId(selectedConversation?.rootMessageId || selectedRootIdFromState);
     const replyTargetId = explicitReplyTargetId || (hasThreadContext ? fallbackRootReplyTargetId : null);
     if (hasThreadContext && !replyTargetId) {
       setComposerAnnouncement('This conversation is missing its thread root. Refresh and try again.');
