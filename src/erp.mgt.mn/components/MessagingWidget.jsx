@@ -875,7 +875,7 @@ export default function MessagingWidget() {
         });
       }, 2400);
 
-      const rootId = nextMessage?.conversation_id || nextMessage?.conversationId || parentId;
+      let resolvedRootId = normalizeId(nextMessage?.conversation_id || nextMessage?.conversationId || parentId);
       setMessagesByCompany((prev) => {
         const key = getCompanyCacheKey(state.activeCompanyId || companyId);
         const current = prev[key] || [];
@@ -890,6 +890,7 @@ export default function MessagingWidget() {
           || parentMessage?.id
           || null,
         );
+        if (inferredConversationId) resolvedRootId = inferredConversationId;
         const normalizedMessage = inferredConversationId
           ? { ...nextMessage, conversation_id: nextMessage?.conversation_id || nextMessage?.conversationId || inferredConversationId }
           : nextMessage;
@@ -899,8 +900,8 @@ export default function MessagingWidget() {
         if (!isParticipantMessage && !canAccessFromParent && !canAccessFromConversation) return prev;
         return { ...prev, [key]: mergeMessageList(current, normalizedMessage) };
       });
-      if (rootId && Number(state.activeConversationId) === Number(rootId)) {
-        fetchThreadMessages(rootId, state.activeCompanyId || companyId);
+      if (resolvedRootId && Number(state.activeConversationId) === Number(resolvedRootId)) {
+        fetchThreadMessages(resolvedRootId, state.activeCompanyId || companyId);
       }
     };
     const onPresence = (payload) => {
@@ -1344,19 +1345,26 @@ export default function MessagingWidget() {
     const isGeneralChannel = !isDraftConversation && activeConversation?.isGeneral;
     const finalRecipients = isDraftConversation
       ? Array.from(new Set([selfEmpid, ...payloadRecipients].map(normalizeId).filter(Boolean)))
-      : Array.from(new Set(existingThreadParticipants.map(normalizeId).filter(Boolean)));
+      : Array.from(new Set([...existingThreadParticipants, ...payloadRecipients].map(normalizeId).filter(Boolean)));
     const visibilityScope = isGeneralChannel ? 'company' : 'private';
-    const visibilityEmpid = visibilityScope === 'private'
-      ? (finalRecipients[0] || selfEmpid || null)
-      : null;
+    const allParticipants = Array.from(new Set([selfEmpid, ...finalRecipients].map(normalizeId).filter(Boolean)));
+    if (visibilityScope === 'private' && allParticipants.length < 2) {
+      setComposerAnnouncement('Select at least one recipient before sending a private message.');
+      return;
+    }
     const clientTempId = `tmp-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 
     const selectedConversation = (!isDraftConversation && state.activeConversationId)
       ? conversations.find((conversation) => conversation.id === state.activeConversationId) || null
       : activeConversation;
-    const replyTargetId = !isDraftConversation && !selectedConversation?.isGeneral
-      ? (state.composer.replyToId || selectedConversation?.rootMessageId)
+    const isPrivateConversationSelected = !isDraftConversation && selectedConversation && !selectedConversation.isGeneral;
+    const replyTargetId = isPrivateConversationSelected
+      ? normalizeId(selectedConversation.rootMessageId)
       : null;
+    if (isPrivateConversationSelected && !replyTargetId) {
+      setComposerAnnouncement('This conversation is missing its thread root. Refresh and try again.');
+      return;
+    }
 
     const payload = {
       idempotencyKey: createIdempotencyKey(),
@@ -1364,7 +1372,7 @@ export default function MessagingWidget() {
       body: `${canEditTopic ? `[${safeTopic}] ` : ''}${safeBody}${encodeAttachmentPayload(uploadedAttachments)}`,
       companyId: normalizedCompanyId,
       visibilityScope,
-      ...(visibilityScope === 'private' ? { recipientEmpids: finalRecipients, visibilityEmpid } : {}),
+      ...(visibilityScope === 'private' ? { recipientEmpids: allParticipants } : {}),
       ...(linkedType ? { linkedType } : {}),
       ...(linkedId ? { linkedId: String(linkedId) } : {}),
       ...(replyTargetId ? { parentMessageId: replyTargetId } : {}),
