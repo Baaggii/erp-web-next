@@ -155,7 +155,10 @@ function groupConversations(messages) {
     const link = extractContextLink(msg);
     const scope = String(msg.visibility_scope || msg.visibilityScope || 'company').toLowerCase();
     const hasTopic = Boolean(extractMessageTopic(msg));
-    const isGeneralMessage = !link.linkedType && !link.linkedId && scope === 'company' && !hasTopic;
+    const hasThreadPointer = Boolean(
+      normalizeId(msg.conversation_id || msg.conversationId || msg.parent_message_id || msg.parentMessageId),
+    );
+    const isGeneralMessage = !hasThreadPointer && !link.linkedType && !link.linkedId && scope === 'company' && !hasTopic;
 
     if (isGeneralMessage) {
       generalMessages.push(msg);
@@ -1018,6 +1021,7 @@ export default function MessagingWidget() {
       linkedId: state.composer.linkedId,
       rootMessageId: null,
       messages: [],
+      participants: Array.from(new Set([selfEmpid, ...(state.composer.recipients || [])].map(normalizeId).filter(Boolean))),
       isDraft: true,
     }
     : null;
