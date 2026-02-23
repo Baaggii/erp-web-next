@@ -169,6 +169,12 @@ function groupConversations(messages) {
     const resolvedRootMessageId = resolveRootMessageId(msg);
     if (!resolvedRootMessageId) return;
     const rootMessage = byId.get(String(resolvedRootMessageId));
+    const hasAnyThreadPointer = Boolean(
+      normalizeId(msg.conversation_id || msg.conversationId || msg.parent_message_id || msg.parentMessageId),
+    );
+    if (!rootMessage && hasAnyThreadPointer) {
+      return;
+    }
     const topic = extractMessageTopic(rootMessage || msg) || extractMessageTopic(msg);
     const rootLink = extractContextLink(rootMessage || msg);
     const key = `message:${resolvedRootMessageId}`;
@@ -1373,7 +1379,11 @@ export default function MessagingWidget() {
         .map(normalizeId)
         .filter(Boolean),
     ));
-    const isGeneralChannel = !isDraftConversation && activeConversation?.isGeneral;
+    const selectedConversation = (!isDraftConversation && state.activeConversationId)
+      ? conversations.find((conversation) => conversation.id === state.activeConversationId) || null
+      : activeConversation;
+    const selectedIsGeneral = Boolean(selectedConversation?.isGeneral || state.activeConversationId === 'general');
+    const isGeneralChannel = !isDraftConversation && selectedIsGeneral;
     const finalRecipients = isDraftConversation
       ? Array.from(new Set([selfEmpid, ...payloadRecipients].map(normalizeId).filter(Boolean)))
       : Array.from(new Set([...existingThreadParticipants, ...payloadRecipients].map(normalizeId).filter(Boolean)));
@@ -1385,31 +1395,27 @@ export default function MessagingWidget() {
     }
     const clientTempId = `tmp-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 
-    const selectedConversation = (!isDraftConversation && state.activeConversationId)
-      ? conversations.find((conversation) => conversation.id === state.activeConversationId) || null
-      : activeConversation;
-    const selectedIsGeneral = Boolean(selectedConversation?.isGeneral);
     if (!isDraftConversation && state.activeConversationId && !selectedIsGeneral && !selectedRootIdFromState) {
       setComposerAnnouncement('The selected conversation is unavailable. Refresh and try again.');
       return;
     }
-    const hasThreadContext = !isDraftConversation && !selectedIsGeneral && (
-      Boolean(selectedConversation)
-      || Boolean(selectedRootIdFromState)
-    );
+    const hasThreadContext = !isDraftConversation && !selectedIsGeneral && Boolean(selectedRootIdFromState);
+    if (!hasThreadContext && !state.activeConversationId && !isDraftConversation) {
+      setComposerAnnouncement('Start a new conversation from the New conversation button.');
+      return;
+    }
     const explicitReplyTargetId = normalizeId(state.composer.replyToId);
     const fallbackRootReplyTargetId = normalizeId(selectedConversation?.rootMessageId || selectedRootIdFromState);
-    const participantExpansionIds = payloadRecipients.filter((empid) => !existingThreadParticipants.includes(empid));
-    const isParticipantExpansionReply = !isDraftConversation
-      && !selectedIsGeneral
-      && participantExpansionIds.length > 0;
-    const replyTargetId = explicitReplyTargetId || (isParticipantExpansionReply ? fallbackRootReplyTargetId : null);
-    if ((explicitReplyTargetId || isParticipantExpansionReply || hasThreadContext) && !fallbackRootReplyTargetId && !explicitReplyTargetId) {
+    if ((isReplyMode || hasThreadContext) && !fallbackRootReplyTargetId && !explicitReplyTargetId) {
       setComposerAnnouncement('This conversation is missing its thread root. Refresh and try again.');
       return;
     }
     if (explicitReplyTargetId && !hasThreadContext && !selectedIsGeneral) {
       setComposerAnnouncement('Select a conversation before sending a reply.');
+      return;
+    }
+    if (!isDraftConversation && !selectedIsGeneral && !isReplyMode && !fallbackRootReplyTargetId) {
+      setComposerAnnouncement('Unable to create a conversation here. Use New conversation.');
       return;
     }
 
@@ -1424,12 +1430,12 @@ export default function MessagingWidget() {
       ...(visibilityScope === 'private' ? { recipientEmpids: allParticipants } : {}),
       ...(linkedType ? { linkedType } : {}),
       ...(linkedId ? { linkedId: String(linkedId) } : {}),
-      ...(hasThreadContext ? { conversationId: fallbackRootReplyTargetId } : {}),
-      ...(explicitReplyTargetId ? { parentMessageId: explicitReplyTargetId } : {}),
+      ...(!isDraftConversation && !isReplyMode && fallbackRootReplyTargetId ? { conversationId: fallbackRootReplyTargetId } : {}),
+      ...(!isDraftConversation && isReplyMode && explicitReplyTargetId ? { parentMessageId: explicitReplyTargetId } : {}),
     };
 
-    const targetUrl = (explicitReplyTargetId || isParticipantExpansionReply)
-      ? `${API_BASE}/messaging/messages/${replyTargetId}/reply`
+    const targetUrl = (!isDraftConversation && isReplyMode && explicitReplyTargetId)
+      ? `${API_BASE}/messaging/messages/${explicitReplyTargetId}/reply`
       : `${API_BASE}/messaging/messages`;
 
     const res = await fetch(targetUrl, {
@@ -1468,7 +1474,7 @@ export default function MessagingWidget() {
         }
       }
       if (!threadRootIdToRefresh) {
-        threadRootIdToRefresh = replyTargetId || activeConversation?.rootMessageId || null;
+        threadRootIdToRefresh = explicitReplyTargetId || fallbackRootReplyTargetId || activeConversation?.rootMessageId || null;
       }
       if (threadRootIdToRefresh) await fetchThreadMessages(threadRootIdToRefresh, activeCompany);
       dispatch({ type: 'composer/reset' });
@@ -1560,7 +1566,9 @@ export default function MessagingWidget() {
 
   const onChooseRecipient = (id) => {
     if (!id || state.composer.recipients.includes(id)) return;
-    if (!isDraftConversation && activeConversation && !activeConversation.isGeneral && !conversationParticipantIds.has(id)) {
+    const selectedRootId = conversationRootIdFromSelection(state.activeConversationId);
+    const isExistingPrivateConversation = !isDraftConversation && state.activeConversationId !== 'general' && Boolean(selectedRootId);
+    if (isExistingPrivateConversation && !conversationParticipantIds.has(id)) {
       const label = resolveEmployeeLabel(id);
       const confirmed = globalThis.confirm(`Add ${label} to this conversation? They will be able to see existing conversation history.`);
       if (!confirmed) return;
