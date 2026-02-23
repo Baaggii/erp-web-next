@@ -36,6 +36,19 @@ test('messagingWidgetReducer resets state on company switch', () => {
   assert.equal(switched.composer.body, '');
 });
 
+test('composer start and reset clear reply target state', () => {
+  const initial = createInitialWidgetState({ activeConversationId: 'message:101', companyId: 'A' });
+  const withReplyTo = messagingWidgetReducer(initial, { type: 'composer/setReplyTo', payload: '88' });
+  const started = messagingWidgetReducer(withReplyTo, { type: 'composer/start', payload: { conversationId: '__new__' } });
+
+  assert.equal(started.activeConversationId, '__new__');
+  assert.equal(started.composer.replyToId, null);
+
+  const withReplyAgain = messagingWidgetReducer(started, { type: 'composer/setReplyTo', payload: '42' });
+  const reset = messagingWidgetReducer(withReplyAgain, { type: 'composer/reset' });
+  assert.equal(reset.composer.replyToId, null);
+});
+
 
 test('resolvePresenceStatus marks stale online users as away or offline', () => {
   const now = new Date('2026-01-01T00:10:00.000Z').getTime();

@@ -238,6 +238,16 @@ function createIdempotencyKey() {
   return `msg-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
+function conversationRootIdFromSelection(conversationId) {
+  const raw = normalizeId(conversationId);
+  if (!raw || raw === 'general' || raw === NEW_CONVERSATION_ID) return null;
+  if (raw.startsWith('message:')) {
+    const candidate = raw.slice('message:'.length);
+    return /^\d+$/.test(candidate) ? candidate : null;
+  }
+  return /^\d+$/.test(raw) ? raw : null;
+}
+
 
 function escapeRegexValue(value) {
   return String(value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -900,7 +910,8 @@ export default function MessagingWidget() {
         if (!isParticipantMessage && !canAccessFromParent && !canAccessFromConversation) return prev;
         return { ...prev, [key]: mergeMessageList(current, normalizedMessage) };
       });
-      if (resolvedRootId && Number(state.activeConversationId) === Number(resolvedRootId)) {
+      const selectedRootId = conversationRootIdFromSelection(state.activeConversationId);
+      if (resolvedRootId && selectedRootId && Number(selectedRootId) === Number(resolvedRootId)) {
         fetchThreadMessages(resolvedRootId, state.activeCompanyId || companyId);
       }
     };
@@ -1357,9 +1368,13 @@ export default function MessagingWidget() {
     const selectedConversation = (!isDraftConversation && state.activeConversationId)
       ? conversations.find((conversation) => conversation.id === state.activeConversationId) || null
       : activeConversation;
-    const isPrivateConversationSelected = !isDraftConversation && selectedConversation && !selectedConversation.isGeneral;
+    const selectedRootIdFromState = conversationRootIdFromSelection(state.activeConversationId);
+    const isPrivateConversationSelected = !isDraftConversation && (
+      (selectedConversation && !selectedConversation.isGeneral)
+      || Boolean(selectedRootIdFromState)
+    );
     const replyTargetId = isPrivateConversationSelected
-      ? normalizeId(selectedConversation.rootMessageId)
+      ? normalizeId(selectedConversation?.rootMessageId || selectedRootIdFromState)
       : null;
     if (isPrivateConversationSelected && !replyTargetId) {
       setComposerAnnouncement('This conversation is missing its thread root. Refresh and try again.');
