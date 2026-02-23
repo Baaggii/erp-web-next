@@ -166,7 +166,9 @@ function groupConversations(messages) {
       return;
     }
 
-    if (!rootMessageId) return;
+    const resolvedRootMessageId = resolveRootMessageId(msg);
+    if (!resolvedRootMessageId) return;
+    const rootMessage = byId.get(String(resolvedRootMessageId));
     const topic = extractMessageTopic(rootMessage || msg) || extractMessageTopic(msg);
     const rootLink = extractContextLink(rootMessage || msg);
     const key = `message:${resolvedRootMessageId}`;
