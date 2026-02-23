@@ -365,15 +365,37 @@ function filterVisibleMessages(messages = [], viewerEmpid) {
     }
 
     const parentId = normalizeId(message.parent_message_id || message.parentMessageId);
-    if (parentId) {
-      const canAccessParent = canAccessWithHierarchy(byId.get(parentId));
+    const parentMessage = parentId ? byId.get(parentId) : null;
+    const rootConversationId = normalizeId(message.conversation_id || message.conversationId);
+    const rootMessage = rootConversationId ? byId.get(rootConversationId) : null;
+
+    if (isPrivateMessage) {
+      const canInheritParentAccess = Boolean(
+        parentMessage
+        && resolveMessageVisibilityScope(parentMessage) === 'private'
+        && canAccessWithHierarchy(parentMessage),
+      );
+      if (canInheritParentAccess) {
+        memo.set(key, true);
+        return true;
+      }
+      const canInheritRootAccess = Boolean(
+        rootMessage
+        && resolveMessageVisibilityScope(rootMessage) === 'private'
+        && canAccessWithHierarchy(rootMessage),
+      );
+      memo.set(key, canInheritRootAccess);
+      return canInheritRootAccess;
+    }
+
+    if (parentMessage) {
+      const canAccessParent = canAccessWithHierarchy(parentMessage);
       memo.set(key, canAccessParent);
       return canAccessParent;
     }
 
-    const rootConversationId = normalizeId(message.conversation_id || message.conversationId);
-    if (rootConversationId) {
-      const canAccessConversation = canAccessWithHierarchy(byId.get(rootConversationId));
+    if (rootMessage) {
+      const canAccessConversation = canAccessWithHierarchy(rootMessage);
       memo.set(key, canAccessConversation);
       return canAccessConversation;
     }
