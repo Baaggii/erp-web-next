@@ -882,30 +882,17 @@ export default function MessagingWidget() {
         const current = prev[key] || [];
         const byId = new Map(current.map((entry) => [normalizeId(entry.id), entry]));
         const normalizedParentId = normalizeId(parentId);
-        const resolveRootConversationId = (message) => {
-          let cursor = message;
-          const visited = new Set();
-          while (cursor) {
-            const explicitConversationId = normalizeId(cursor?.conversation_id || cursor?.conversationId);
-            if (explicitConversationId) return explicitConversationId;
-
-            const cursorId = normalizeId(cursor?.id);
-            const parentCursorId = normalizeId(cursor?.parent_message_id || cursor?.parentMessageId);
-            if (!parentCursorId) return cursorId || null;
-            if (visited.has(parentCursorId)) return null;
-            visited.add(parentCursorId);
-            const parentCursor = byId.get(parentCursorId);
-            if (!parentCursor) return null;
-            cursor = parentCursor;
-          }
-          return null;
-        };
-        const inferredConversationId = resolveRootConversationId(nextMessage);
+        const parentMessage = normalizedParentId ? byId.get(normalizedParentId) : null;
+        const inferredConversationId = normalizeId(
+          nextMessage?.conversation_id
+          || nextMessage?.conversationId
+          || parentMessage?.conversation_id
+          || parentMessage?.conversationId
+          || parentMessage?.id
+          || null,
+        );
         const normalizedMessage = inferredConversationId
-          ? {
-            ...nextMessage,
-            conversation_id: nextMessage?.conversation_id || nextMessage?.conversationId || inferredConversationId,
-          }
+          ? { ...nextMessage, conversation_id: nextMessage?.conversation_id || nextMessage?.conversationId || inferredConversationId }
           : nextMessage;
         const isParticipantMessage = canViewerAccessMessage(normalizedMessage, selfEmpid);
         const canAccessFromParent = Boolean(normalizedParentId && byId.has(normalizedParentId));
@@ -1358,15 +1345,12 @@ export default function MessagingWidget() {
     const isGeneralChannel = !isDraftConversation && activeConversation?.isGeneral;
     const finalRecipients = isDraftConversation
       ? Array.from(new Set([selfEmpid, ...payloadRecipients].map(normalizeId).filter(Boolean)))
-      : Array.from(new Set([selfEmpid, ...existingThreadParticipants].map(normalizeId).filter(Boolean)));
+      : Array.from(new Set(existingThreadParticipants.map(normalizeId).filter(Boolean)));
     const visibilityScope = isGeneralChannel ? 'company' : 'private';
     const visibilityEmpid = visibilityScope === 'private'
       ? (finalRecipients[0] || selfEmpid || null)
       : null;
     const clientTempId = `tmp-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
-    const replyTargetId = !isDraftConversation && !activeConversation?.isGeneral
-      ? (state.composer.replyToId || activeConversation?.rootMessageId)
-      : null;
 
     const payload = {
       idempotencyKey: createIdempotencyKey(),
@@ -1379,6 +1363,13 @@ export default function MessagingWidget() {
       ...(linkedId ? { linkedId: String(linkedId) } : {}),
       ...(replyTargetId ? { parentMessageId: replyTargetId } : {}),
     };
+
+    const selectedConversation = (!isDraftConversation && state.activeConversationId)
+      ? conversations.find((conversation) => conversation.id === state.activeConversationId) || null
+      : activeConversation;
+    const replyTargetId = !isDraftConversation && !selectedConversation?.isGeneral
+      ? (state.composer.replyToId || selectedConversation?.rootMessageId)
+      : null;
 
     const targetUrl = replyTargetId
       ? `${API_BASE}/messaging/messages/${replyTargetId}/reply`
