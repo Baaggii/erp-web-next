@@ -1419,8 +1419,12 @@ export default function MessagingWidget() {
         : null;
       let threadRootIdToRefresh = null;
       if (createdMessage) {
-        const threadRootId = createdMessage.conversation_id || createdMessage.conversationId || createdMessage.parent_message_id || createdMessage.parentMessageId || createdMessage.id;
-        threadRootIdToRefresh = threadRootId;
+        const createdRootMessageId = createdMessage.conversation_id
+          || createdMessage.conversationId
+          || createdMessage.parent_message_id
+          || createdMessage.parentMessageId
+          || createdMessage.id;
+        threadRootIdToRefresh = createdRootMessageId;
         if (isDraftConversation && !(createdMessage.parent_message_id || createdMessage.parentMessageId)) {
           setMessagesByCompany((prev) => {
             const key = getCompanyCacheKey(state.activeCompanyId || companyId);
@@ -1428,7 +1432,7 @@ export default function MessagingWidget() {
           });
         }
         if (isDraftConversation) {
-          dispatch({ type: 'widget/setConversation', payload: threadRootId ? `message:${threadRootId}` : null });
+          dispatch({ type: 'widget/setConversation', payload: createdRootMessageId ? `message:${createdRootMessageId}` : null });
         }
       }
       if (!threadRootIdToRefresh) {
