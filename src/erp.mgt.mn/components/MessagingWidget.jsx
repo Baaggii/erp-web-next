@@ -1635,7 +1635,7 @@ export default function MessagingWidget() {
 
       <div style={{ display: 'grid', gridTemplateColumns: isNarrowLayout ? 'minmax(0, 1fr)' : '300px minmax(0,1fr)', minHeight: 0, flex: 1 }}>
         <aside style={{ borderRight: isNarrowLayout ? 'none' : '1px solid #e2e8f0', background: '#ffffff', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
-          <div style={{ padding: 10, borderBottom: '1px solid #e2e8f0', minHeight: 0, display: 'flex', flexDirection: 'column', flex: '1 1 50%' }}>
+          <div style={{ padding: 10, borderBottom: '1px solid #e2e8f0', minHeight: 0, display: 'flex', flexDirection: 'column', flex: '1 1 45%' }}>
             <h3 style={{ margin: '0 0 8px', fontSize: 14, color: '#0f172a' }}>Users</h3>
             <input
               value={employeeSearch}
@@ -1679,7 +1679,7 @@ export default function MessagingWidget() {
             </button>
           </div>
 
-          <div style={{ overflowY: 'auto', overscrollBehavior: 'contain', padding: 8, display: 'grid', gap: 6, minHeight: 0, flex: '1 1 50%', alignContent: 'start', gridAutoRows: 'max-content' }}>
+          <div style={{ overflowY: 'auto', overscrollBehavior: 'contain', padding: 8, display: 'grid', gap: 6, minHeight: 0, flex: '1 1 55%', alignContent: 'start', gridAutoRows: 'max-content' }}>
             <h3 style={{ margin: '0 0 2px', fontSize: 14, color: '#0f172a' }}>Conversations</h3>
             {conversationSummaries.length === 0 && <p style={{ margin: 0, color: '#64748b', fontSize: 13 }}>No conversations yet.</p>}
             {conversationSummaries.map((conversation) => (
