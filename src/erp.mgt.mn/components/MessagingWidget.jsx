@@ -882,11 +882,24 @@ export default function MessagingWidget() {
         const key = getCompanyCacheKey(state.activeCompanyId || companyId);
         const current = prev[key] || [];
         const byId = new Map(current.map((entry) => [normalizeId(entry.id), entry]));
-        const isParticipantMessage = canViewerAccessMessage(nextMessage, selfEmpid);
-        const canAccessFromParent = Boolean(parentId && byId.has(normalizeId(parentId)));
-        const canAccessFromConversation = Boolean(rootConversationId && byId.has(rootConversationId));
+        const normalizedParentId = normalizeId(parentId);
+        const parentMessage = normalizedParentId ? byId.get(normalizedParentId) : null;
+        const inferredConversationId = normalizeId(
+          nextMessage?.conversation_id
+          || nextMessage?.conversationId
+          || parentMessage?.conversation_id
+          || parentMessage?.conversationId
+          || parentMessage?.id
+          || null,
+        );
+        const normalizedMessage = inferredConversationId
+          ? { ...nextMessage, conversation_id: nextMessage?.conversation_id || nextMessage?.conversationId || inferredConversationId }
+          : nextMessage;
+        const isParticipantMessage = canViewerAccessMessage(normalizedMessage, selfEmpid);
+        const canAccessFromParent = Boolean(normalizedParentId && byId.has(normalizedParentId));
+        const canAccessFromConversation = Boolean(inferredConversationId && byId.has(inferredConversationId));
         if (!isParticipantMessage && !canAccessFromParent && !canAccessFromConversation) return prev;
-        return { ...prev, [key]: mergeMessageList(current, nextMessage) };
+        return { ...prev, [key]: mergeMessageList(current, normalizedMessage) };
       });
       if (rootId && Number(state.activeConversationId) === Number(rootId)) {
         fetchThreadMessages(rootId, state.activeCompanyId || companyId);
@@ -1349,6 +1362,7 @@ export default function MessagingWidget() {
       ...(visibilityScope === 'private' ? { recipientEmpids: finalRecipients, visibilityEmpid } : {}),
       ...(linkedType ? { linkedType } : {}),
       ...(linkedId ? { linkedId: String(linkedId) } : {}),
+      ...(replyTargetId ? { parentMessageId: replyTargetId } : {}),
     };
 
     const selectedConversation = (!isDraftConversation && state.activeConversationId)
