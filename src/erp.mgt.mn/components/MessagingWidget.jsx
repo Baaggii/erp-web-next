@@ -345,13 +345,21 @@ function filterVisibleMessages(messages = [], viewerEmpid) {
   if (!viewerEmpid) return messages;
   const byId = new Map(messages.map((entry) => [String(entry.id), entry]));
   const memo = new Map();
+  const normalizedViewer = normalizeId(viewerEmpid);
 
   const canAccessWithHierarchy = (message) => {
     if (!message) return false;
     const key = String(message.id);
     if (memo.has(key)) return memo.get(key);
 
-    if (canViewerAccessMessage(message, viewerEmpid)) {
+    const isPrivateMessage = resolveMessageVisibilityScope(message) === 'private';
+    const canDirectlyAccess = canViewerAccessMessage(message, normalizedViewer);
+    if (isPrivateMessage) {
+      memo.set(key, canDirectlyAccess);
+      return canDirectlyAccess;
+    }
+
+    if (canDirectlyAccess) {
       memo.set(key, true);
       return true;
     }
@@ -1003,6 +1011,7 @@ export default function MessagingWidget() {
       dispatch({
         type: 'composer/start',
         payload: {
+          conversationId: null,
           topic: detail.topic,
           recipients: detail.recipientEmpids || [],
           linkedType: detail.transaction?.id ? 'transaction' : null,
@@ -1017,7 +1026,13 @@ export default function MessagingWidget() {
     return () => window.removeEventListener('messaging:start', onStartMessage);
   }, []);
 
-  const conversations = useMemo(() => groupConversations(messages, selfEmpid), [messages, selfEmpid]);
+  const groupedConversations = useMemo(() => groupConversations(messages, selfEmpid), [messages, selfEmpid]);
+  const conversations = useMemo(() => {
+    if (!selfEmpid) return groupedConversations;
+    return groupedConversations.filter((conversation) => (
+      conversation.isGeneral || conversation.participants.includes(selfEmpid)
+    ));
+  }, [groupedConversations, selfEmpid]);
   const lastUserConversationId = useMemo(() => {
     if (!selfEmpid) return null;
     const latestByConversation = conversations
@@ -1047,9 +1062,10 @@ export default function MessagingWidget() {
       isDraft: true,
     }
     : null;
-  const conversationSummariesSource = draftConversationSummary
-    ? [draftConversationSummary, ...conversations]
-    : conversations;
+  const conversationSummariesSource = useMemo(() => {
+    const base = draftConversationSummary ? [draftConversationSummary, ...conversations] : conversations;
+    return base.filter((conversation) => conversation.isDraft || conversation.messages.length > 0);
+  }, [conversations, draftConversationSummary]);
   const isDraftConversation = state.activeConversationId === NEW_CONVERSATION_ID;
   const defaultConversation = conversations.find((conversation) => conversation.id === lastUserConversationId)
     || conversations.find((conversation) => !conversation.isGeneral)
@@ -1078,6 +1094,16 @@ export default function MessagingWidget() {
     const exists = conversations.some((conversation) => conversation.id === state.activeConversationId);
     if (!exists) dispatch({ type: 'widget/setConversation', payload: null });
   }, [conversations, state.activeConversationId]);
+
+  useEffect(() => {
+    if (!state.activeConversationId || state.activeConversationId === NEW_CONVERSATION_ID) return;
+    if (state.activeConversationId === 'general' || !selfEmpid) return;
+    const selectedConversation = conversations.find((conversation) => conversation.id === state.activeConversationId);
+    if (!selectedConversation) return;
+    if (!selectedConversation.participants.includes(selfEmpid)) {
+      dispatch({ type: 'widget/setConversation', payload: null });
+    }
+  }, [conversations, selfEmpid, state.activeConversationId]);
 
 
   useEffect(() => {
@@ -1351,7 +1377,7 @@ export default function MessagingWidget() {
       return;
     }
     const selectedRootIdFromState = conversationRootIdFromSelection(state.activeConversationId);
-    if (!isDraftConversation && !state.activeConversationId) {
+    if (!state.activeConversationId && !isDraftConversation) {
       setComposerAnnouncement('Select an existing conversation or click New conversation before sending.');
       return;
     }
