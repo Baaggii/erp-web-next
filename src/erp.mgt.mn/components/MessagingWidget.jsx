@@ -166,9 +166,7 @@ function groupConversations(messages) {
       return;
     }
 
-    const rootMessageId = resolveRootMessageId(msg);
     if (!rootMessageId) return;
-    const rootMessage = byId.get(String(rootMessageId));
     const topic = extractMessageTopic(rootMessage || msg) || extractMessageTopic(msg);
     const rootLink = extractContextLink(rootMessage || msg);
     const key = `message:${rootMessageId}`;
@@ -1373,14 +1371,15 @@ export default function MessagingWidget() {
       ? conversations.find((conversation) => conversation.id === state.activeConversationId) || null
       : activeConversation;
     const selectedRootIdFromState = conversationRootIdFromSelection(state.activeConversationId);
-    const isPrivateConversationSelected = !isDraftConversation && (
-      (selectedConversation && !selectedConversation.isGeneral)
+    const selectedIsGeneral = Boolean(selectedConversation?.isGeneral);
+    const hasThreadContext = !isDraftConversation && !selectedIsGeneral && (
+      Boolean(selectedConversation)
       || Boolean(selectedRootIdFromState)
     );
-    const replyTargetId = isPrivateConversationSelected
-      ? normalizeId(selectedConversation?.rootMessageId || selectedRootIdFromState)
-      : null;
-    if (isPrivateConversationSelected && !replyTargetId) {
+    const explicitReplyTargetId = normalizeId(state.composer.replyToId);
+    const fallbackRootReplyTargetId = normalizeId(selectedConversation?.rootMessageId || selectedRootIdFromState);
+    const replyTargetId = explicitReplyTargetId || (hasThreadContext ? fallbackRootReplyTargetId : null);
+    if (hasThreadContext && !replyTargetId) {
       setComposerAnnouncement('This conversation is missing its thread root. Refresh and try again.');
       return;
     }
