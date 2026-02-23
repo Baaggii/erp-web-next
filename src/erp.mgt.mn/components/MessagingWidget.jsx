@@ -152,9 +152,12 @@ function groupConversations(messages) {
   };
 
   messages.forEach((msg) => {
-    const link = extractContextLink(msg);
-    const scope = String(msg.visibility_scope || msg.visibilityScope || 'company').toLowerCase();
-    const hasTopic = Boolean(extractMessageTopic(msg));
+    const rootMessageId = resolveRootMessageId(msg);
+    const rootMessage = rootMessageId ? byId.get(String(rootMessageId)) : null;
+    const rootForScope = rootMessage || msg;
+    const link = extractContextLink(rootForScope);
+    const scope = String(rootForScope.visibility_scope || rootForScope.visibilityScope || 'company').toLowerCase();
+    const hasTopic = Boolean(extractMessageTopic(rootForScope));
     const isGeneralMessage = !link.linkedType && !link.linkedId && scope === 'company' && !hasTopic;
 
     if (isGeneralMessage) {
@@ -163,9 +166,7 @@ function groupConversations(messages) {
       return;
     }
 
-    const rootMessageId = resolveRootMessageId(msg);
     if (!rootMessageId) return;
-    const rootMessage = byId.get(String(rootMessageId));
     const topic = extractMessageTopic(rootMessage || msg) || extractMessageTopic(msg);
     const rootLink = extractContextLink(rootMessage || msg);
     const key = `message:${rootMessageId}`;
@@ -1018,6 +1019,7 @@ export default function MessagingWidget() {
       linkedId: state.composer.linkedId,
       rootMessageId: null,
       messages: [],
+      participants: Array.from(new Set([selfEmpid, ...(state.composer.recipients || [])].map(normalizeId).filter(Boolean))),
       isDraft: true,
     }
     : null;
@@ -1369,14 +1371,15 @@ export default function MessagingWidget() {
       ? conversations.find((conversation) => conversation.id === state.activeConversationId) || null
       : activeConversation;
     const selectedRootIdFromState = conversationRootIdFromSelection(state.activeConversationId);
-    const isPrivateConversationSelected = !isDraftConversation && (
-      (selectedConversation && !selectedConversation.isGeneral)
+    const selectedIsGeneral = Boolean(selectedConversation?.isGeneral);
+    const hasThreadContext = !isDraftConversation && !selectedIsGeneral && (
+      Boolean(selectedConversation)
       || Boolean(selectedRootIdFromState)
     );
-    const replyTargetId = isPrivateConversationSelected
-      ? normalizeId(selectedConversation?.rootMessageId || selectedRootIdFromState)
-      : null;
-    if (isPrivateConversationSelected && !replyTargetId) {
+    const explicitReplyTargetId = normalizeId(state.composer.replyToId);
+    const fallbackRootReplyTargetId = normalizeId(selectedConversation?.rootMessageId || selectedRootIdFromState);
+    const replyTargetId = explicitReplyTargetId || (hasThreadContext ? fallbackRootReplyTargetId : null);
+    if (hasThreadContext && !replyTargetId) {
       setComposerAnnouncement('This conversation is missing its thread root. Refresh and try again.');
       return;
     }
