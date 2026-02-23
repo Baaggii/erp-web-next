@@ -3,6 +3,15 @@ import { AuthContext } from '../context/AuthContext.jsx';
 import { API_BASE } from '../utils/apiBase.js';
 import { connectSocket, disconnectSocket } from '../utils/socket.js';
 import {
+  GENERAL_VISIBILITY_SCOPE,
+  NEW_CONVERSATION_ID,
+  canViewerAccessMessage,
+  collectMessageParticipantEmpids,
+  filterVisibleMessages,
+  groupConversations,
+  shouldWarnOnAddRecipient,
+} from './messagingConversationUtils.js';
+import {
   PRESENCE,
   buildSessionStorageKey,
   createInitialWidgetState,
@@ -16,7 +25,7 @@ import {
 
 
 const ATTACHMENTS_MARKER = '\n[attachments-json]';
-const NEW_CONVERSATION_ID = '__new__';
+
 
 function decodeMessageContent(rawBody) {
   const safe = String(rawBody || '');
@@ -128,88 +137,6 @@ function buildNestedThreads(messages) {
   return roots;
 }
 
-function groupConversations(messages) {
-  const map = new Map();
-  const generalMessages = [];
-  const generalParticipants = new Set();
-  const byId = new Map(messages.map((msg) => [String(msg.id), msg]));
-
-  const resolveRootMessageId = (message) => {
-    if (!message) return null;
-    const conversationId = message.conversation_id || message.conversationId;
-    if (conversationId) return Number(conversationId);
-    let current = message;
-    const visited = new Set();
-    while (current) {
-      const parentId = current.parent_message_id || current.parentMessageId;
-      if (!parentId) return Number(current.id);
-      if (visited.has(String(parentId))) return Number(parentId);
-      visited.add(String(parentId));
-      current = byId.get(String(parentId));
-      if (!current) return Number(parentId);
-    }
-    return null;
-  };
-
-  messages.forEach((msg) => {
-    const link = extractContextLink(msg);
-    const scope = String(msg.visibility_scope || msg.visibilityScope || 'company').toLowerCase();
-    const hasTopic = Boolean(extractMessageTopic(msg));
-    const hasThreadPointer = Boolean(
-      normalizeId(msg.conversation_id || msg.conversationId || msg.parent_message_id || msg.parentMessageId),
-    );
-    const isGeneralMessage = !hasThreadPointer && !link.linkedType && !link.linkedId && scope === 'company' && !hasTopic;
-
-    if (isGeneralMessage) {
-      generalMessages.push(msg);
-      collectMessageParticipantEmpids(msg).forEach((empid) => generalParticipants.add(empid));
-      return;
-    }
-
-    const resolvedRootMessageId = resolveRootMessageId(msg);
-    if (!resolvedRootMessageId) return;
-    const rootMessage = byId.get(String(resolvedRootMessageId));
-    const topic = extractMessageTopic(rootMessage || msg) || extractMessageTopic(msg);
-    const rootLink = extractContextLink(rootMessage || msg);
-    const key = `message:${resolvedRootMessageId}`;
-    if (!map.has(key)) {
-      map.set(key, {
-        id: key,
-        title: topic || (rootLink.linkedType === 'transaction' && rootLink.linkedId ? `Transaction #${rootLink.linkedId}` : 'Untitled topic'),
-        messages: [],
-        linkedType: rootLink.linkedType,
-        linkedId: rootLink.linkedId,
-        rootMessageId: resolvedRootMessageId,
-        participants: [],
-      });
-    }
-    const bucket = map.get(key);
-    bucket.messages.push(msg);
-    collectMessageParticipantEmpids(msg).forEach((empid) => {
-      if (!bucket.participants.includes(empid)) bucket.participants.push(empid);
-    });
-  });
-
-  map.set('general', {
-    id: 'general',
-    title: 'General',
-    messages: generalMessages,
-    linkedType: null,
-    linkedId: null,
-    rootMessageId: null,
-    isGeneral: true,
-    participants: Array.from(generalParticipants),
-  });
-
-  const sorted = Array.from(map.values()).sort((a, b) => {
-    if (a.isGeneral) return -1;
-    if (b.isGeneral) return 1;
-    const aTime = new Date(a.messages.at(-1)?.created_at || 0).getTime();
-    const bTime = new Date(b.messages.at(-1)?.created_at || 0).getTime();
-    return bTime - aTime;
-  });
-  return sorted;
-}
 
 function resolvePresence(record) {
   return resolvePresenceStatus(record);
@@ -298,73 +225,6 @@ function resolveDisplayLabelFromConfig(row, displayFields = []) {
   return parts.join(' ').trim();
 }
 
-function collectMessageParticipantEmpids(message) {
-  const ids = [];
-  ids.push(message?.author_empid, message?.authorEmpid);
-
-  const visibilityEmpids = [message?.visibility_empid, message?.visibilityEmpid]
-    .flatMap((value) => String(value || '').split(','))
-    .map(normalizeId)
-    .filter(Boolean);
-  ids.push(...visibilityEmpids);
-
-  const recipientEmpids =
-    message?.recipient_empids || message?.recipientEmpids || message?.recipient_ids || message?.recipientIds;
-  if (Array.isArray(recipientEmpids)) ids.push(...recipientEmpids);
-  else if (typeof recipientEmpids === 'string') ids.push(...recipientEmpids.split(','));
-
-  const readBy = Array.isArray(message?.read_by) ? message.read_by : [];
-  ids.push(...readBy);
-  return Array.from(new Set(ids.map(normalizeId).filter(Boolean)));
-}
-
-function resolveMessageVisibilityScope(message) {
-  return String(message?.visibility_scope || message?.visibilityScope || 'company').toLowerCase();
-}
-
-function canViewerAccessMessage(message, viewerEmpid) {
-  if (!message) return false;
-  if (resolveMessageVisibilityScope(message) !== 'private') return true;
-  const normalizedViewer = normalizeId(viewerEmpid);
-  if (!normalizedViewer) return false;
-  return collectMessageParticipantEmpids(message).includes(normalizedViewer);
-}
-
-function filterVisibleMessages(messages = [], viewerEmpid) {
-  if (!viewerEmpid) return messages;
-  const byId = new Map(messages.map((entry) => [String(entry.id), entry]));
-  const memo = new Map();
-
-  const canAccessWithHierarchy = (message) => {
-    if (!message) return false;
-    const key = String(message.id);
-    if (memo.has(key)) return memo.get(key);
-
-    if (canViewerAccessMessage(message, viewerEmpid)) {
-      memo.set(key, true);
-      return true;
-    }
-
-    const parentId = normalizeId(message.parent_message_id || message.parentMessageId);
-    if (parentId) {
-      const canAccessParent = canAccessWithHierarchy(byId.get(parentId));
-      memo.set(key, canAccessParent);
-      return canAccessParent;
-    }
-
-    const rootConversationId = normalizeId(message.conversation_id || message.conversationId);
-    if (rootConversationId) {
-      const canAccessConversation = canAccessWithHierarchy(byId.get(rootConversationId));
-      memo.set(key, canAccessConversation);
-      return canAccessConversation;
-    }
-
-    memo.set(key, false);
-    return false;
-  };
-
-  return messages.filter((entry) => canAccessWithHierarchy(entry));
-}
 
 function canViewTransaction(transactionId, userId, permissions) {
   if (!transactionId || !userId) return false;
@@ -566,6 +426,7 @@ export default function MessagingWidget() {
   const [collapsedMessageIds, setCollapsedMessageIds] = useState(() => new Set());
   const [attachmentPreviewOpen, setAttachmentPreviewOpen] = useState(false);
   const [attachmentPreview, setAttachmentPreview] = useState(null);
+  const [participantOverridesByConversation, setParticipantOverridesByConversation] = useState(() => new Map());
   const composerRef = useRef(null);
 
   const draftStorageKey = useMemo(() => {
@@ -1006,7 +867,10 @@ export default function MessagingWidget() {
     return () => window.removeEventListener('messaging:start', onStartMessage);
   }, []);
 
-  const conversations = useMemo(() => groupConversations(messages), [messages]);
+  const conversations = useMemo(
+    () => groupConversations(messages, selfEmpid, participantOverridesByConversation),
+    [messages, participantOverridesByConversation, selfEmpid],
+  );
   const lastUserConversationId = useMemo(() => {
     if (!selfEmpid) return null;
     const latestByConversation = conversations
@@ -1032,8 +896,10 @@ export default function MessagingWidget() {
       linkedId: state.composer.linkedId,
       rootMessageId: null,
       messages: [],
-      participants: Array.from(new Set([selfEmpid, ...(state.composer.recipients || [])].map(normalizeId).filter(Boolean))),
+      participantEmpids: Array.from(new Set([selfEmpid, ...(state.composer.recipients || [])].map(normalizeId).filter(Boolean))),
       isDraft: true,
+      visibilityScope: 'private',
+      lastMessageAt: null,
     }
     : null;
   const conversationSummariesSource = draftConversationSummary
@@ -1206,8 +1072,8 @@ export default function MessagingWidget() {
   };
 
   const activeConversationParticipants = useMemo(
-    () => Array.isArray(activeConversation?.participants) ? activeConversation.participants : [],
-    [activeConversation?.participants],
+    () => Array.isArray(activeConversation?.participantEmpids) ? activeConversation.participantEmpids : [],
+    [activeConversation?.participantEmpids],
   );
 
   const activeConversationParticipantLabels = useMemo(() => {
@@ -1315,7 +1181,7 @@ export default function MessagingWidget() {
   };
 
   const handleDeleteConversationFromList = async (conversation) => {
-    if (!conversation?.rootMessageId) return;
+    if (!conversation?.rootMessageId || conversation?.isGeneral) return;
     const rootMessage = messages.find((entry) => Number(entry.id) === Number(conversation.rootMessageId));
     if (!canDeleteMessage(rootMessage)) {
       setComposerAnnouncement('You do not have permission to delete this thread.');
@@ -1364,7 +1230,7 @@ export default function MessagingWidget() {
       return;
     }
     const existingThreadParticipants = Array.from(new Set(
-      (activeConversation?.participants || activeConversationParticipants || [])
+      (activeConversation?.participantEmpids || activeConversationParticipants || [])
         .map(normalizeId)
         .filter(Boolean),
     ));
@@ -1372,7 +1238,7 @@ export default function MessagingWidget() {
     const finalRecipients = isDraftConversation
       ? Array.from(new Set([selfEmpid, ...payloadRecipients].map(normalizeId).filter(Boolean)))
       : Array.from(new Set([...existingThreadParticipants, ...payloadRecipients].map(normalizeId).filter(Boolean)));
-    const visibilityScope = isGeneralChannel ? 'company' : 'private';
+    const visibilityScope = isGeneralChannel ? GENERAL_VISIBILITY_SCOPE : 'private';
     const allParticipants = Array.from(new Set([selfEmpid, ...finalRecipients].map(normalizeId).filter(Boolean)));
     if (visibilityScope === 'private' && allParticipants.length < 2) {
       setComposerAnnouncement('Select at least one recipient before sending a private message.');
@@ -1380,22 +1246,9 @@ export default function MessagingWidget() {
     }
     const clientTempId = `tmp-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 
-    const selectedConversation = (!isDraftConversation && state.activeConversationId)
-      ? conversations.find((conversation) => conversation.id === state.activeConversationId) || null
-      : activeConversation;
-    const selectedRootIdFromState = conversationRootIdFromSelection(state.activeConversationId);
-    const selectedIsGeneral = Boolean(selectedConversation?.isGeneral);
-    const hasThreadContext = !isDraftConversation && !selectedIsGeneral && (
-      Boolean(selectedConversation)
-      || Boolean(selectedRootIdFromState)
-    );
     const explicitReplyTargetId = normalizeId(state.composer.replyToId);
-    const fallbackRootReplyTargetId = normalizeId(selectedConversation?.rootMessageId || selectedRootIdFromState);
-    const replyTargetId = explicitReplyTargetId || (hasThreadContext ? fallbackRootReplyTargetId : null);
-    if (hasThreadContext && !replyTargetId) {
-      setComposerAnnouncement('This conversation is missing its thread root. Refresh and try again.');
-      return;
-    }
+    const replyTargetId = explicitReplyTargetId || null;
+    const selectedConversationId = !isDraftConversation ? normalizeId(activeConversation?.id || state.activeConversationId) : null;
 
     const payload = {
       idempotencyKey: createIdempotencyKey(),
@@ -1403,15 +1256,14 @@ export default function MessagingWidget() {
       body: `${canEditTopic ? `[${safeTopic}] ` : ''}${safeBody}${encodeAttachmentPayload(uploadedAttachments)}`,
       companyId: normalizedCompanyId,
       visibilityScope,
+      ...(selectedConversationId ? { conversationId: selectedConversationId } : {}),
       ...(visibilityScope === 'private' ? { recipientEmpids: allParticipants } : {}),
       ...(linkedType ? { linkedType } : {}),
       ...(linkedId ? { linkedId: String(linkedId) } : {}),
       ...(replyTargetId ? { parentMessageId: replyTargetId } : {}),
     };
 
-    const targetUrl = replyTargetId
-      ? `${API_BASE}/messaging/messages/${replyTargetId}/reply`
-      : `${API_BASE}/messaging/messages`;
+    const targetUrl = `${API_BASE}/messaging/messages`;
 
     const res = await fetch(targetUrl, {
       method: 'POST',
@@ -1434,8 +1286,6 @@ export default function MessagingWidget() {
       if (createdMessage) {
         const createdRootMessageId = createdMessage.conversation_id
           || createdMessage.conversationId
-          || createdMessage.parent_message_id
-          || createdMessage.parentMessageId
           || createdMessage.id;
         threadRootIdToRefresh = createdRootMessageId;
         if (isDraftConversation && !(createdMessage.parent_message_id || createdMessage.parentMessageId)) {
@@ -1445,7 +1295,11 @@ export default function MessagingWidget() {
           });
         }
         if (isDraftConversation) {
-          dispatch({ type: 'widget/setConversation', payload: createdRootMessageId ? `message:${createdRootMessageId}` : null });
+          const createdConversationEntityId = normalizeId(createdMessage.conversation_entity_id || createdMessage.conversationEntityId);
+          dispatch({
+            type: 'widget/setConversation',
+            payload: createdConversationEntityId || (createdRootMessageId ? `message:${createdRootMessageId}` : null),
+          });
         }
       }
       if (!threadRootIdToRefresh) {
@@ -1539,13 +1393,71 @@ export default function MessagingWidget() {
     setComposerAnnouncement(`Linked transaction #${transactionId} to this message.`);
   };
 
-  const onChooseRecipient = (id) => {
-    if (!id || state.composer.recipients.includes(id)) return;
-    if (!isDraftConversation && activeConversation && !activeConversation.isGeneral && !conversationParticipantIds.has(id)) {
-      const label = resolveEmployeeLabel(id);
-      const confirmed = globalThis.confirm(`Add ${label} to this conversation? They will be able to see existing conversation history.`);
-      if (!confirmed) return;
+  const confirmAddParticipants = (recipientIds) => {
+    const ids = Array.isArray(recipientIds) ? recipientIds.map(normalizeId).filter(Boolean) : [normalizeId(recipientIds)].filter(Boolean);
+    if (ids.length === 0) return false;
+    const labels = ids.map((id) => resolveEmployeeLabel(id)).join(', ');
+    return globalThis.confirm(`Add ${labels} to this conversation? They will be able to see existing conversation history.`);
+  };
+
+  const addParticipantsToConversation = async (conversationId, newParticipantIds) => {
+    const ids = Array.from(new Set((newParticipantIds || []).map(normalizeId).filter(Boolean)));
+    if (!conversationId || ids.length === 0) return null;
+    const activeCompany = state.activeCompanyId || companyId;
+    const res = await fetch(`${API_BASE}/messaging/conversations/${conversationId}/participants`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ companyId: activeCompany, participantEmpids: ids }),
+    });
+    if (!res.ok) {
+      const payload = await res.json().catch(() => null);
+      throw new Error(payload?.error?.message || payload?.message || 'Unable to add participants to conversation.');
     }
+    return res.json().catch(() => ({}));
+  };
+
+  const onChooseRecipient = async (id) => {
+    if (!id || state.composer.recipients.includes(id)) return;
+    if (shouldWarnOnAddRecipient({
+      isDraftConversation,
+      activeConversation,
+      conversationParticipantIds,
+      recipientId: id,
+    })) {
+      const confirmed = confirmAddParticipants([id]);
+      if (!confirmed) return;
+
+      const optimisticParticipants = Array.from(new Set([...activeConversationParticipants, id].map(normalizeId).filter(Boolean)));
+      setParticipantOverridesByConversation((prev) => {
+        const next = new Map(prev);
+        next.set(activeConversation.id, new Set(optimisticParticipants));
+        return next;
+      });
+
+      try {
+        const payload = await addParticipantsToConversation(activeConversation.id, [id]);
+        const serverParticipantEmpids = Array.isArray(payload?.participantEmpids)
+          ? payload.participantEmpids
+          : Array.isArray(payload?.conversation?.participantEmpids)
+            ? payload.conversation.participantEmpids
+            : optimisticParticipants;
+        setParticipantOverridesByConversation((prev) => {
+          const next = new Map(prev);
+          next.set(activeConversation.id, new Set(serverParticipantEmpids.map(normalizeId).filter(Boolean)));
+          return next;
+        });
+      } catch (err) {
+        setParticipantOverridesByConversation((prev) => {
+          const next = new Map(prev);
+          next.delete(activeConversation.id);
+          return next;
+        });
+        setComposerAnnouncement(err.message || 'Unable to add participant to this conversation.');
+        return;
+      }
+    }
+
     dispatch({ type: 'composer/setRecipients', payload: [...state.composer.recipients, id] });
     setComposerRecipientSearch('');
   };
@@ -1780,7 +1692,7 @@ export default function MessagingWidget() {
               <div style={{ marginTop: 3, fontSize: 12, color: '#334155', display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
                 <span style={{ color: '#64748b' }}>Ctrl/Cmd + Enter to send.</span>
               </div>
-              {activeConversation?.rootMessageId && canDeleteMessage(messages.find((entry) => Number(entry.id) === Number(activeConversation.rootMessageId))) && (
+              {!activeConversation?.isGeneral && activeConversation?.rootMessageId && canDeleteMessage(messages.find((entry) => Number(entry.id) === Number(activeConversation.rootMessageId))) && (
                 <button type="button" onClick={() => handleDeleteMessage(activeConversation.rootMessageId)} style={{ marginTop: 4 }}>
                   Delete thread
                 </button>
