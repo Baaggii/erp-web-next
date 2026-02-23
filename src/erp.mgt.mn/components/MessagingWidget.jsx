@@ -529,7 +529,6 @@ export default function MessagingWidget() {
   const [composerRecipientSearch, setComposerRecipientSearch] = useState('');
   const [newConversationSelections, setNewConversationSelections] = useState([]);
   const [employeeStatusFilter, setEmployeeStatusFilter] = useState('all');
-  const [conversationPanelOpen, setConversationPanelOpen] = useState(true);
   const [isNarrowLayout, setIsNarrowLayout] = useState(false);
   const [highlightedIds, setHighlightedIds] = useState(() => new Set());
   const [mentionOpen, setMentionOpen] = useState(false);
@@ -1118,7 +1117,7 @@ export default function MessagingWidget() {
     return employeeRecords.filter((entry) => {
       const matchesQuery = !query || entry.label.toLowerCase().includes(query) || entry.id.toLowerCase().includes(query);
       if (!matchesQuery) return false;
-      if (employeeStatusFilter === PRESENCE.ONLINE) return entry.status === PRESENCE.ONLINE;
+      if (employeeStatusFilter === PRESENCE.ONLINE) return entry.status === PRESENCE.ONLINE || entry.status === PRESENCE.AWAY;
       if (employeeStatusFilter === PRESENCE.OFFLINE) return entry.status === PRESENCE.OFFLINE || entry.status === PRESENCE.AWAY;
       return true;
     });
@@ -1352,6 +1351,13 @@ export default function MessagingWidget() {
       : null;
     const clientTempId = `tmp-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 
+    const selectedConversation = (!isDraftConversation && state.activeConversationId)
+      ? conversations.find((conversation) => conversation.id === state.activeConversationId) || null
+      : activeConversation;
+    const replyTargetId = !isDraftConversation && !selectedConversation?.isGeneral
+      ? (state.composer.replyToId || selectedConversation?.rootMessageId)
+      : null;
+
     const payload = {
       idempotencyKey: createIdempotencyKey(),
       clientTempId,
@@ -1363,13 +1369,6 @@ export default function MessagingWidget() {
       ...(linkedId ? { linkedId: String(linkedId) } : {}),
       ...(replyTargetId ? { parentMessageId: replyTargetId } : {}),
     };
-
-    const selectedConversation = (!isDraftConversation && state.activeConversationId)
-      ? conversations.find((conversation) => conversation.id === state.activeConversationId) || null
-      : activeConversation;
-    const replyTargetId = !isDraftConversation && !selectedConversation?.isGeneral
-      ? (state.composer.replyToId || selectedConversation?.rootMessageId)
-      : null;
 
     const targetUrl = replyTargetId
       ? `${API_BASE}/messaging/messages/${replyTargetId}/reply`
@@ -1600,52 +1599,44 @@ export default function MessagingWidget() {
       }}
       aria-label="Messaging widget"
     >
-      <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 14px', background: '#0f172a', color: '#fff' }}>
+      <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, padding: '10px 14px', background: '#0f172a', color: '#fff' }}>
         <div>
           <strong style={{ fontSize: 16 }}>Messaging</strong>
           <p style={{ margin: '2px 0 0', fontSize: 12, color: '#cbd5e1' }}>{unreadCount} unread across all threads</p>
         </div>
-        <button
-          type="button"
-          onClick={() => dispatch({ type: 'widget/close' })}
-          aria-label="Collapse messaging widget"
-          style={{ border: '1px solid rgba(148, 163, 184, 0.7)', borderRadius: 8, background: 'transparent', color: '#e2e8f0', padding: '6px 10px', fontSize: 12 }}
-        >
-          Collapse
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+          <label htmlFor="messaging-company-switch" style={{ fontSize: 12, fontWeight: 600, color: '#cbd5e1' }}>Company</label>
+          <input
+            id="messaging-company-switch"
+            list="messaging-company-options"
+            value={state.activeCompanyId || ''}
+            onChange={onSwitchCompany}
+            aria-label="Switch company context"
+            style={{ minWidth: 170, borderRadius: 8, border: '1px solid #475569', background: '#0b1220', color: '#e2e8f0', padding: '6px 8px' }}
+          />
+          <datalist id="messaging-company-options">
+            {companyRecords.map((entry) => {
+              const id = normalizeId(entry?.id || entry?.company_id || entry?.companyId);
+              if (!id) return null;
+              return <option key={id} value={id}>{resolveCompanyLabel(id)}</option>;
+            })}
+          </datalist>
+          <span style={{ fontSize: 11, color: '#cbd5e1' }}>Active: {resolveCompanyLabel(state.activeCompanyId || companyId)}</span>
+          <button
+            type="button"
+            onClick={() => dispatch({ type: 'widget/close' })}
+            aria-label="Collapse messaging widget"
+            style={{ border: '1px solid rgba(148, 163, 184, 0.7)', borderRadius: 8, background: 'transparent', color: '#e2e8f0', padding: '6px 10px', fontSize: 12 }}
+          >
+            Collapse
+          </button>
+        </div>
       </header>
 
       <div style={{ display: 'grid', gridTemplateColumns: isNarrowLayout ? 'minmax(0, 1fr)' : '300px minmax(0,1fr)', minHeight: 0, flex: 1 }}>
         <aside style={{ borderRight: isNarrowLayout ? 'none' : '1px solid #e2e8f0', background: '#ffffff', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
-          <div style={{ padding: 12, borderBottom: '1px solid #e2e8f0', flexShrink: 0 }}>
-            <label htmlFor="messaging-company-switch" style={{ fontSize: 12, fontWeight: 600, color: '#334155' }}>Company</label>
-            <input
-              id="messaging-company-switch"
-              list="messaging-company-options"
-              value={state.activeCompanyId || ''}
-              onChange={onSwitchCompany}
-              aria-label="Switch company context"
-              style={{ width: '100%', marginTop: 6, borderRadius: 8, border: '1px solid #cbd5e1', padding: '8px 10px' }}
-            />
-            <datalist id="messaging-company-options">
-              {companyRecords.map((entry) => {
-                const id = normalizeId(entry?.id || entry?.company_id || entry?.companyId);
-                if (!id) return null;
-                return <option key={id} value={id}>{resolveCompanyLabel(id)}</option>;
-              })}
-            </datalist>
-            <p style={{ margin: '6px 0 0', fontSize: 11, color: '#64748b' }}>
-              Active: {resolveCompanyLabel(state.activeCompanyId || companyId)}
-            </p>
-          </div>
-
-          <div style={{ padding: '8px 10px', borderBottom: '1px solid #e2e8f0', flexShrink: 0 }}>
-            <div>
-              <h3 style={{ margin: 0, fontSize: 14, color: '#0f172a' }}>Threads</h3>
-            </div>
-          </div>
-
-          <div style={{ padding: 10, borderBottom: '1px solid #e2e8f0', flexShrink: 0 }}>
+          <div style={{ padding: 10, borderBottom: '1px solid #e2e8f0', minHeight: 0, display: 'flex', flexDirection: 'column', flex: '1 1 50%' }}>
+            <h3 style={{ margin: '0 0 8px', fontSize: 14, color: '#0f172a' }}>Users</h3>
             <input
               value={employeeSearch}
               onChange={(event) => setEmployeeSearch(event.target.value)}
@@ -1671,7 +1662,7 @@ export default function MessagingWidget() {
                 </button>
               ))}
             </div>
-            <div style={{ maxHeight: 180, overflowY: 'auto', display: 'grid', gap: 4 }}>
+            <div style={{ overflowY: 'auto', display: 'grid', gap: 4, minHeight: 0, flex: 1 }}>
               {presenceEmployees.slice(0, 40).map((entry) => {
                 const selected = newConversationSelections.includes(entry.id);
                 return (
@@ -1684,11 +1675,11 @@ export default function MessagingWidget() {
               })}
             </div>
             <button type="button" disabled={newConversationSelections.length === 0} onClick={openNewMessage} style={{ marginTop: 8, border: 0, borderRadius: 8, background: newConversationSelections.length ? '#2563eb' : '#94a3b8', color: '#fff', padding: '8px 10px', width: '100%' }}>
-              New message
+              New conversation
             </button>
           </div>
 
-          <div style={{ overflowY: 'auto', overscrollBehavior: 'contain', padding: 8, display: 'grid', gap: 6, minHeight: 0, flex: 1, alignContent: 'start', gridAutoRows: 'max-content' }}>
+          <div style={{ overflowY: 'auto', overscrollBehavior: 'contain', padding: 8, display: 'grid', gap: 6, minHeight: 0, flex: '1 1 50%', alignContent: 'start', gridAutoRows: 'max-content' }}>
             <h3 style={{ margin: '0 0 2px', fontSize: 14, color: '#0f172a' }}>Conversations</h3>
             {conversationSummaries.length === 0 && <p style={{ margin: 0, color: '#64748b', fontSize: 13 }}>No conversations yet.</p>}
             {conversationSummaries.map((conversation) => (
@@ -1761,6 +1752,7 @@ export default function MessagingWidget() {
                 activeReplyTarget={state.composer.replyToId}
                 onReply={(id) => {
                   dispatch({ type: 'composer/setReplyTo', payload: id });
+                  composerRef.current?.focus();
                   document.querySelector(`[aria-label='Message ${id}']`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
                   setComposerAnnouncement(`Reply target set to #${id}.`);
                 }}
