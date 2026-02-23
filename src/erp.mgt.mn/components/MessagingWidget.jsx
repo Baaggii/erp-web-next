@@ -354,6 +354,11 @@ function filterVisibleMessages(messages = [], viewerEmpid) {
 
     const isPrivateMessage = resolveMessageVisibilityScope(message) === 'private';
     const canDirectlyAccess = canViewerAccessMessage(message, normalizedViewer);
+    if (isPrivateMessage) {
+      memo.set(key, canDirectlyAccess);
+      return canDirectlyAccess;
+    }
+
     if (canDirectlyAccess) {
       memo.set(key, true);
       return true;
@@ -1081,7 +1086,7 @@ export default function MessagingWidget() {
     : null;
   const conversationSummariesSource = useMemo(() => {
     const base = draftConversationSummary ? [draftConversationSummary, ...conversations] : conversations;
-    return base.filter((conversation) => conversation.isDraft || conversation.isGeneral || conversation.messages.length > 0);
+    return base.filter((conversation) => conversation.isDraft || conversation.messages.length > 0);
   }, [conversations, draftConversationSummary]);
   const isDraftConversation = state.activeConversationId === NEW_CONVERSATION_ID;
   const defaultConversation = conversations.find((conversation) => conversation.id === lastUserConversationId)
