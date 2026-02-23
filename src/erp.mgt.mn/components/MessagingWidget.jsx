@@ -128,7 +128,7 @@ function buildNestedThreads(messages) {
   return roots;
 }
 
-function groupConversations(messages) {
+function groupConversations(messages, viewerEmpid = null) {
   const map = new Map();
   const generalMessages = [];
   const generalParticipants = new Set();
@@ -207,7 +207,15 @@ function groupConversations(messages) {
     participants: Array.from(generalParticipants),
   });
 
-  const sorted = Array.from(map.values()).sort((a, b) => {
+  const visibleConversations = Array.from(map.values()).filter((conversation) => {
+    if (conversation.isGeneral) return true;
+    const normalizedViewer = normalizeId(viewerEmpid);
+    if (!normalizedViewer) return true;
+    if (!conversation.participants.includes(normalizedViewer)) return false;
+    return conversation.messages.every((message) => canViewerAccessMessage(message, normalizedViewer));
+  });
+
+  const sorted = visibleConversations.sort((a, b) => {
     if (a.isGeneral) return -1;
     if (b.isGeneral) return 1;
     const aTime = new Date(a.messages.at(-1)?.created_at || 0).getTime();
@@ -1009,7 +1017,7 @@ export default function MessagingWidget() {
     return () => window.removeEventListener('messaging:start', onStartMessage);
   }, []);
 
-  const conversations = useMemo(() => groupConversations(messages), [messages]);
+  const conversations = useMemo(() => groupConversations(messages, selfEmpid), [messages, selfEmpid]);
   const lastUserConversationId = useMemo(() => {
     if (!selfEmpid) return null;
     const latestByConversation = conversations
@@ -1064,6 +1072,12 @@ export default function MessagingWidget() {
     const rootExists = messages.some((entry) => Number(entry.id) === Number(activeConversation.rootMessageId));
     if (!rootExists) dispatch({ type: 'widget/setConversation', payload: null });
   }, [activeConversation?.rootMessageId, messages]);
+
+  useEffect(() => {
+    if (!state.activeConversationId || state.activeConversationId === NEW_CONVERSATION_ID) return;
+    const exists = conversations.some((conversation) => conversation.id === state.activeConversationId);
+    if (!exists) dispatch({ type: 'widget/setConversation', payload: null });
+  }, [conversations, state.activeConversationId]);
 
 
   useEffect(() => {
@@ -1337,6 +1351,10 @@ export default function MessagingWidget() {
       return;
     }
     const selectedRootIdFromState = conversationRootIdFromSelection(state.activeConversationId);
+    if (!isDraftConversation && !state.activeConversationId) {
+      setComposerAnnouncement('Select an existing conversation or click New conversation before sending.');
+      return;
+    }
     const hasSelectedConversation = Boolean(
       isDraftConversation
       || activeConversation
