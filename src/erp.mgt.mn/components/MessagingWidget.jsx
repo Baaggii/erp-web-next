@@ -1346,15 +1346,12 @@ export default function MessagingWidget() {
     const isGeneralChannel = !isDraftConversation && activeConversation?.isGeneral;
     const finalRecipients = isDraftConversation
       ? Array.from(new Set([selfEmpid, ...payloadRecipients].map(normalizeId).filter(Boolean)))
-      : Array.from(new Set([selfEmpid, ...existingThreadParticipants].map(normalizeId).filter(Boolean)));
+      : Array.from(new Set(existingThreadParticipants.map(normalizeId).filter(Boolean)));
     const visibilityScope = isGeneralChannel ? 'company' : 'private';
     const visibilityEmpid = visibilityScope === 'private'
       ? (finalRecipients[0] || selfEmpid || null)
       : null;
     const clientTempId = `tmp-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
-    const replyTargetId = !isDraftConversation && !activeConversation?.isGeneral
-      ? (state.composer.replyToId || activeConversation?.rootMessageId)
-      : null;
 
     const payload = {
       idempotencyKey: createIdempotencyKey(),
@@ -1367,6 +1364,13 @@ export default function MessagingWidget() {
       ...(linkedId ? { linkedId: String(linkedId) } : {}),
       ...(replyTargetId ? { parentMessageId: replyTargetId } : {}),
     };
+
+    const selectedConversation = (!isDraftConversation && state.activeConversationId)
+      ? conversations.find((conversation) => conversation.id === state.activeConversationId) || null
+      : activeConversation;
+    const replyTargetId = !isDraftConversation && !selectedConversation?.isGeneral
+      ? (state.composer.replyToId || selectedConversation?.rootMessageId)
+      : null;
 
     const targetUrl = replyTargetId
       ? `${API_BASE}/messaging/messages/${replyTargetId}/reply`
