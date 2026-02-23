@@ -1399,8 +1399,10 @@ export default function MessagingWidget() {
             : finalRecipients,
         }
         : null;
+      let threadRootIdToRefresh = null;
       if (createdMessage) {
         const threadRootId = createdMessage.conversation_id || createdMessage.conversationId || createdMessage.parent_message_id || createdMessage.parentMessageId || createdMessage.id;
+        threadRootIdToRefresh = threadRootId;
         if (isDraftConversation && !(createdMessage.parent_message_id || createdMessage.parentMessageId)) {
           setMessagesByCompany((prev) => {
             const key = getCompanyCacheKey(state.activeCompanyId || companyId);
@@ -1410,8 +1412,11 @@ export default function MessagingWidget() {
         if (isDraftConversation) {
           dispatch({ type: 'widget/setConversation', payload: threadRootId ? `message:${threadRootId}` : null });
         }
-        await fetchThreadMessages(threadRootId, activeCompany);
       }
+      if (!threadRootIdToRefresh) {
+        threadRootIdToRefresh = replyTargetId || activeConversation?.rootMessageId || null;
+      }
+      if (threadRootIdToRefresh) await fetchThreadMessages(threadRootIdToRefresh, activeCompany);
       dispatch({ type: 'composer/reset' });
       if (isDraftConversation) setNewConversationSelections([]);
       globalThis.localStorage?.removeItem(draftStorageKey);
