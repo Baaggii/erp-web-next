@@ -169,7 +169,7 @@ function groupConversations(messages) {
     if (!rootMessageId) return;
     const topic = extractMessageTopic(rootMessage || msg) || extractMessageTopic(msg);
     const rootLink = extractContextLink(rootMessage || msg);
-    const key = `message:${rootMessageId}`;
+    const key = `message:${resolvedRootMessageId}`;
     if (!map.has(key)) {
       map.set(key, {
         id: key,
@@ -177,7 +177,7 @@ function groupConversations(messages) {
         messages: [],
         linkedType: rootLink.linkedType,
         linkedId: rootLink.linkedId,
-        rootMessageId,
+        rootMessageId: resolvedRootMessageId,
         participants: [],
       });
     }
