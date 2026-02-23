@@ -857,7 +857,6 @@ export default function MessagingWidget() {
       const nextMessage = payload?.message || payload;
       if (normalizeId(nextMessage?.company_id || nextMessage?.companyId) !== (state.activeCompanyId || companyId)) return;
       const parentId = nextMessage?.parent_message_id || nextMessage?.parentMessageId;
-      const rootConversationId = normalizeId(nextMessage?.conversation_id || nextMessage?.conversationId);
       if (!parentId) {
         if (!canViewerAccessMessage(nextMessage, selfEmpid)) return;
         setMessagesByCompany((prev) => {
