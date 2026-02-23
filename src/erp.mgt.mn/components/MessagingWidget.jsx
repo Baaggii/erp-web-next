@@ -312,9 +312,6 @@ function collectMessageParticipantEmpids(message) {
     message?.recipient_empids || message?.recipientEmpids || message?.recipient_ids || message?.recipientIds;
   if (Array.isArray(recipientEmpids)) ids.push(...recipientEmpids);
   else if (typeof recipientEmpids === 'string') ids.push(...recipientEmpids.split(','));
-
-  const readBy = Array.isArray(message?.read_by) ? message.read_by : [];
-  ids.push(...readBy);
   return Array.from(new Set(ids.map(normalizeId).filter(Boolean)));
 }
 
@@ -1333,7 +1330,15 @@ export default function MessagingWidget() {
       setComposerAnnouncement('Cannot send an empty message.');
       return;
     }
-    if (!isDraftConversation && !activeConversation) {
+    const selectedRootIdFromState = conversationRootIdFromSelection(state.activeConversationId);
+    const hasSelectedConversation = Boolean(
+      isDraftConversation
+      || activeConversation
+      || selectedRootIdFromState
+      || state.activeConversationId === 'general',
+    );
+
+    if (!hasSelectedConversation) {
       setComposerAnnouncement('Select a conversation before sending a reply.');
       return;
     }
@@ -1383,19 +1388,32 @@ export default function MessagingWidget() {
     const selectedConversation = (!isDraftConversation && state.activeConversationId)
       ? conversations.find((conversation) => conversation.id === state.activeConversationId) || null
       : activeConversation;
-    const selectedRootIdFromState = conversationRootIdFromSelection(state.activeConversationId);
     const selectedIsGeneral = Boolean(selectedConversation?.isGeneral);
+    if (!isDraftConversation && state.activeConversationId && !selectedIsGeneral && !selectedRootIdFromState) {
+      setComposerAnnouncement('The selected conversation is unavailable. Refresh and try again.');
+      return;
+    }
     const hasThreadContext = !isDraftConversation && !selectedIsGeneral && (
       Boolean(selectedConversation)
       || Boolean(selectedRootIdFromState)
     );
     const explicitReplyTargetId = normalizeId(state.composer.replyToId);
     const fallbackRootReplyTargetId = normalizeId(selectedConversation?.rootMessageId || selectedRootIdFromState);
-    const replyTargetId = explicitReplyTargetId || (hasThreadContext ? fallbackRootReplyTargetId : null);
-    if (hasThreadContext && !replyTargetId) {
+    const participantExpansionIds = payloadRecipients.filter((empid) => !existingThreadParticipants.includes(empid));
+    const isParticipantExpansionReply = !isDraftConversation
+      && !selectedIsGeneral
+      && participantExpansionIds.length > 0;
+    const replyTargetId = explicitReplyTargetId || (isParticipantExpansionReply ? fallbackRootReplyTargetId : null);
+    if ((explicitReplyTargetId || isParticipantExpansionReply || hasThreadContext) && !fallbackRootReplyTargetId && !explicitReplyTargetId) {
       setComposerAnnouncement('This conversation is missing its thread root. Refresh and try again.');
       return;
     }
+    if (explicitReplyTargetId && !hasThreadContext && !selectedIsGeneral) {
+      setComposerAnnouncement('Select a conversation before sending a reply.');
+      return;
+    }
+
+    dispatch({ type: 'composer/setReplyTo', payload: null });
 
     const payload = {
       idempotencyKey: createIdempotencyKey(),
@@ -1406,10 +1424,11 @@ export default function MessagingWidget() {
       ...(visibilityScope === 'private' ? { recipientEmpids: allParticipants } : {}),
       ...(linkedType ? { linkedType } : {}),
       ...(linkedId ? { linkedId: String(linkedId) } : {}),
-      ...(replyTargetId ? { parentMessageId: replyTargetId } : {}),
+      ...(hasThreadContext ? { conversationId: fallbackRootReplyTargetId } : {}),
+      ...(explicitReplyTargetId ? { parentMessageId: explicitReplyTargetId } : {}),
     };
 
-    const targetUrl = replyTargetId
+    const targetUrl = (explicitReplyTargetId || isParticipantExpansionReply)
       ? `${API_BASE}/messaging/messages/${replyTargetId}/reply`
       : `${API_BASE}/messaging/messages`;
 
