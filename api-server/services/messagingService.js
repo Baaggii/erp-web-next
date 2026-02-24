@@ -737,12 +737,15 @@ async function createMessageInternal({ db = pool, ctx, payload, parentMessageId 
     try {
       [result] = await db.query(
         `INSERT INTO erp_messages
-          (company_id, author_empid, parent_message_id, body, body_ciphertext, body_iv, body_auth_tag)
-          VALUES (?, ?, ?, ?, ?, ?, ?)`,
+          (company_id, author_empid, parent_message_id, visibility_scope, visibility_department_id, visibility_empid, body, body_ciphertext, body_iv, body_auth_tag)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           ctx.companyId,
           ctx.user.empid,
           parentMessageId,
+          visibility.visibilityScope,
+          visibility.visibilityDepartmentId,
+          visibility.visibilityEmpid,
           encryptedBody.body,
           encryptedBody.bodyCiphertext,
           encryptedBody.bodyIv,
@@ -751,9 +754,36 @@ async function createMessageInternal({ db = pool, ctx, payload, parentMessageId 
       );
       messageEncryptionColumnSupport.set(db, true);
     } catch (error) {
+      const visibilityUnsupported = isUnknownColumnError(error, 'visibility_scope')
+        || isUnknownColumnError(error, 'visibility_department_id')
+        || isUnknownColumnError(error, 'visibility_empid');
       const encryptionUnsupported = isUnknownColumnError(error, 'body_ciphertext') || isUnknownColumnError(error, 'body_iv') || isUnknownColumnError(error, 'body_auth_tag');
-      if (!encryptionUnsupported) throw error;
-      markEncryptedBodyColumnsUnsupported(db);
+      if (!visibilityUnsupported && !encryptionUnsupported) throw error;
+      if (encryptionUnsupported) markEncryptedBodyColumnsUnsupported(db);
+    }
+  }
+
+  if (!result) {
+    try {
+      [result] = await db.query(
+        `INSERT INTO erp_messages
+          (company_id, author_empid, parent_message_id, visibility_scope, visibility_department_id, visibility_empid, body)
+          VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [
+          ctx.companyId,
+          ctx.user.empid,
+          parentMessageId,
+          visibility.visibilityScope,
+          visibility.visibilityDepartmentId,
+          visibility.visibilityEmpid,
+          body,
+        ],
+      );
+    } catch (error) {
+      const visibilityUnsupported = isUnknownColumnError(error, 'visibility_scope')
+        || isUnknownColumnError(error, 'visibility_department_id')
+        || isUnknownColumnError(error, 'visibility_empid');
+      if (!visibilityUnsupported) throw error;
     }
   }
 

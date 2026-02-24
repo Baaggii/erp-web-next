@@ -326,7 +326,7 @@ app.use("/api/proc_triggers", requireAuth, procTriggerRoutes);
 app.use("/api/report_procedures", reportProcedureRoutes);
 app.use("/api/report", reportRoutes);
 app.use("/api/journal", requireAuth, journalRoutes);
-app.use("/api/period-control", periodControlRateLimiter, requireAuth, periodControlRoutes);
+app.use("/api/period-control", requireAuth, periodControlRoutes);
 app.use("/api/report_access", reportAccessRoutes);
 app.use("/api/tours", tourRoutes);
 app.use("/api/report_builder", reportBuilderRoutes);

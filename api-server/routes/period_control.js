@@ -10,7 +10,7 @@ const router = express.Router();
 
 router.get('/status', requireAuth, async (req, res) => {
   try {
-    const companyId = Number(req.user.companyId);
+    const companyId = Number(req.query.company_id || req.user.companyId);
     const fiscalYear = Number(req.query.fiscal_year || new Date().getFullYear());
     const status = await getCurrentPeriodStatus({ companyId, fiscalYear });
     return res.json({ ok: true, period: status });
@@ -24,12 +24,12 @@ router.post('/close', requireAuth, async (req, res) => {
     const { allowed } = await requirePeriodClosePermission(req);
     if (!allowed) return res.sendStatus(403);
 
-    const companyId = Number(req.user.companyId);
+    const companyId = Number(req.body.company_id || req.user.companyId);
     const fiscalYear = Number(req.body.fiscal_year || new Date().getFullYear());
     const reportProcedures = Array.isArray(req.body.report_procedures) ? req.body.report_procedures : [];
 
     if (!Number.isFinite(companyId) || companyId <= 0) {
-      return res.status(400).json({ ok: false, message: 'Authenticated company scope is required' });
+      return res.status(400).json({ ok: false, message: 'company_id is required' });
     }
     if (!Number.isFinite(fiscalYear) || fiscalYear < 1900 || fiscalYear > 3000) {
       return res.status(400).json({ ok: false, message: 'fiscal_year is invalid' });

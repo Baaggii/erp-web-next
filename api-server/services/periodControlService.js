@@ -18,6 +18,20 @@ function formatDateOnly(date) {
   return date.toISOString().slice(0, 10);
 }
 
+async function ensurePeriodControlTable(conn) {
+  await conn.query(`
+    CREATE TABLE IF NOT EXISTS fin_period_control (
+      company_id INT NOT NULL,
+      fiscal_year INT NOT NULL,
+      period_from DATE NOT NULL,
+      period_to DATE NOT NULL,
+      is_closed TINYINT DEFAULT 0,
+      closed_at DATETIME,
+      closed_by VARCHAR(50),
+      PRIMARY KEY (company_id, fiscal_year)
+    )
+  `);
+}
 
 export async function requirePeriodClosePermission(req) {
   const session =
@@ -33,6 +47,7 @@ export async function requirePeriodClosePermission(req) {
 }
 
 export async function getOrCreateFiscalPeriod(conn, companyId, fiscalYear) {
+  await ensurePeriodControlTable(conn);
   const [rows] = await conn.query(
     `SELECT company_id, fiscal_year, period_from, period_to, is_closed, closed_at, closed_by
        FROM fin_period_control
@@ -191,6 +206,7 @@ export async function getCurrentPeriodStatus({ companyId, fiscalYear }) {
 }
 
 export async function assertDateInOpenPeriod(conn, { companyId, postingDate }) {
+  await ensurePeriodControlTable(conn);
   const targetDate = normalizeDate(postingDate) || new Date();
   const y = targetDate.getUTCFullYear();
   const [rows] = await conn.query(
