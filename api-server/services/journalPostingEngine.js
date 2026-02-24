@@ -4,6 +4,7 @@
 // - Query logic now reads from tenant-scoped temp tables, delegating visibility rules to DB policy engine.
 
 import { createTmpBusinessTable, queryWithTenantScope } from './tenantScope.js';
+import { assertDateInOpenPeriod } from './periodControlService.js';
 
 const NON_FINANCIAL_FLAG_SET_CODE = 'FS_NON_FINANCIAL';
 const REQUIRED_CONDITION = 'REQUIRED';
@@ -608,6 +609,17 @@ export async function post_single_transaction({
     }
 
     const preview = await buildJournalPreviewPayload(conn, safeTable, sourceId, companyId, { forUpdate: true });
+
+    const postingDate = pickFirstDefined(preview.transactionRow, [
+      'transaction_date',
+      'document_date',
+      'created_at',
+    ]) || new Date();
+
+    await assertDateInOpenPeriod(conn, {
+      companyId: normalizeCompanyScopeId(companyId || preview.transactionRow?.company_id),
+      postingDate,
+    });
     const { transType, flagSetCode } = preview;
     if (preview.nonFinancial) {
       await insertPostingLog(conn, {
