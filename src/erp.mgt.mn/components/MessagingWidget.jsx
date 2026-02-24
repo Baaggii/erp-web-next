@@ -113,15 +113,19 @@ function extractContextLink(message) {
 }
 
 function inferPrivateScopeFromParticipants(message) {
-  const visibilityEmpids = [message?.visibility_empid, message?.visibilityEmpid]
-    .flatMap((value) => String(value || '').split(','))
-    .map(normalizeId)
-    .filter(Boolean);
-  const recipientEmpids = message?.recipient_empids || message?.recipientEmpids || message?.recipient_ids || message?.recipientIds;
-  const hasRecipientList = Array.isArray(recipientEmpids)
-    ? recipientEmpids.some((entry) => normalizeId(entry))
-    : String(recipientEmpids || '').split(',').map(normalizeId).some(Boolean);
-  return visibilityEmpids.length > 1 || hasRecipientList;
+  const explicitPrivateFlag = [
+    message?.is_private,
+    message?.isPrivate,
+    message?.private_only,
+    message?.privateOnly,
+  ].some((value) => value === true || value === 1 || value === '1' || String(value).toLowerCase() === 'true');
+  if (explicitPrivateFlag) return true;
+
+  const explicitScope = String(message?.visibility_scope || message?.visibilityScope || '').toLowerCase();
+  if (explicitScope === 'private') return true;
+
+  const participants = collectMessageParticipantEmpids(message);
+  return participants.length > 1;
 }
 
 function buildNestedThreads(messages) {
@@ -214,7 +218,7 @@ export function groupConversations(messages, viewerEmpid = null) {
     }
     const bucket = map.get(key);
     bucket.messages.push(msg);
-    const messageScope = String(msg.visibility_scope || msg.visibilityScope || 'company').toLowerCase();
+    const messageScope = resolveMessageVisibilityScope(msg);
     bucket.isPrivateOnly = bucket.isPrivateOnly && messageScope === 'private';
     collectMessageParticipantEmpids(msg).forEach((empid) => {
       if (!bucket.participants.includes(empid)) bucket.participants.push(empid);
@@ -339,19 +343,45 @@ function resolveDisplayLabelFromConfig(row, displayFields = []) {
 }
 
 function collectMessageParticipantEmpids(message) {
-  const ids = [];
-  ids.push(message?.author_empid, message?.authorEmpid);
+  const ids = [message?.author_empid, message?.authorEmpid, message?.created_by_empid, message?.createdByEmpid];
 
-  const visibilityEmpids = [message?.visibility_empid, message?.visibilityEmpid]
-    .flatMap((value) => String(value || '').split(','))
-    .map(normalizeId)
-    .filter(Boolean);
-  ids.push(...visibilityEmpids);
+  const pushEmpids = (value) => {
+    if (!value) return;
+    if (Array.isArray(value)) {
+      value.forEach((entry) => pushEmpids(entry));
+      return;
+    }
+    if (typeof value === 'object') {
+      ids.push(value?.empid, value?.emp_id, value?.empId, value?.id, value?.user_id, value?.userId);
+      return;
+    }
+    if (typeof value === 'string') {
+      value.split(',').forEach((entry) => ids.push(entry));
+      return;
+    }
+    ids.push(value);
+  };
 
-  const recipientEmpids =
-    message?.recipient_empids || message?.recipientEmpids || message?.recipient_ids || message?.recipientIds;
-  if (Array.isArray(recipientEmpids)) ids.push(...recipientEmpids);
-  else if (typeof recipientEmpids === 'string') ids.push(...recipientEmpids.split(','));
+  [
+    message?.visibility_empid,
+    message?.visibilityEmpid,
+    message?.visibility_empids,
+    message?.visibilityEmpids,
+    message?.recipient_empids,
+    message?.recipientEmpids,
+    message?.recipient_ids,
+    message?.recipientIds,
+    message?.participant_empids,
+    message?.participantEmpids,
+    message?.participants,
+    message?.participant_ids,
+    message?.participantIds,
+    message?.conversation_participants,
+    message?.conversationParticipants,
+    message?.conversation_participant_empids,
+    message?.conversationParticipantEmpids,
+  ].forEach((value) => pushEmpids(value));
+
   return Array.from(new Set(ids.map(normalizeId).filter(Boolean)));
 }
 
