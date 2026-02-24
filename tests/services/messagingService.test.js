@@ -4,12 +4,13 @@ import { deleteMessage, getMessages, getThread, patchMessage, postMessage, postR
 import { resetMessagingMetrics } from '../../api-server/services/messagingMetrics.js';
 
 class FakeDb {
-  constructor({ supportsEncryptedBodyColumns = true, deleteByColumn = 'deleted_by_empid' } = {}) {
+  constructor({ supportsEncryptedBodyColumns = true, supportsLinkedFields = true, deleteByColumn = 'deleted_by_empid' } = {}) {
     this.messages = [];
     this.idem = new Map();
     this.nextId = 1;
     this.securityAuditEvents = [];
     this.supportsEncryptedBodyColumns = supportsEncryptedBodyColumns;
+    this.supportsLinkedFields = supportsLinkedFields;
     this.deleteByColumn = deleteByColumn;
   }
 
@@ -18,6 +19,11 @@ class FakeDb {
     if (!this.supportsEncryptedBodyColumns && sql.includes('body_ciphertext')) {
       const error = new Error("Unknown column 'body_ciphertext' in 'field list'");
       error.sqlMessage = "Unknown column 'body_ciphertext' in 'field list'";
+      throw error;
+    }
+    if (!this.supportsLinkedFields && sql.includes('linked_type')) {
+      const error = new Error("Unknown column 'linked_type' in 'field list'");
+      error.sqlMessage = "Unknown column 'linked_type' in 'field list'";
       throw error;
     }
     if (sql.includes('deleted_by_empid') && this.deleteByColumn !== 'deleted_by_empid') {
@@ -449,6 +455,44 @@ test('realtime fanout emits message.created into company room', async () => {
   assert.equal(emissions.length, 1);
   assert.equal(emissions[0].room, 'company:1');
   assert.equal(emissions[0].event, 'message.created');
+});
+
+test('realtime fanout keeps private messages scoped to participants when linked columns are unavailable', async () => {
+  const db = new FakeDb({ supportsLinkedFields: false });
+  const session = { permissions: { messaging: true } };
+  const emissions = [];
+
+  setMessagingIo({
+    to(room) {
+      return {
+        emit(event, payload) {
+          emissions.push({ room, event, payload });
+        },
+      };
+    },
+  });
+
+  await postMessage({
+    user,
+    companyId: 1,
+    payload: {
+      body: 'private fallback',
+      visibilityScope: 'private',
+      recipientEmpids: ['e-2'],
+      idempotencyKey: 'fanout-private-fallback-1',
+    },
+    correlationId: 'fanout-private-fallback-cid',
+    db,
+    getSession: async () => session,
+  });
+
+  assert.deepEqual(
+    emissions.map((entry) => entry.room).sort(),
+    ['emp:e-1', 'emp:e-2', 'user:E-1', 'user:E-2', 'user:e-1', 'user:e-2'],
+  );
+  assert.ok(emissions.every((entry) => entry.event === 'message.created'));
+  assert.ok(emissions.every((entry) => entry.payload?.message?.visibility_scope === 'private'));
+  assert.ok(!emissions.some((entry) => entry.room === 'company:1'));
 });
 
 
