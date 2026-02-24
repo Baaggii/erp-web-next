@@ -811,9 +811,26 @@ export default function MessagingWidget() {
         const data = await res.json();
         if (disposed) return;
         const incomingMessages = Array.isArray(data.items) ? data.items : Array.isArray(data.messages) ? data.messages : [];
+        const visibleMessages = filterVisibleMessages(incomingMessages, selfEmpid);
+        const visibleConversationIds = new Set(
+          groupConversations(visibleMessages, selfEmpid)
+            .filter((conversation) => conversation.isGeneral || !selfEmpid || conversation.participants.includes(selfEmpid))
+            .map((conversation) => conversation.id),
+        );
+        const rawStoredConversationId = globalThis.sessionStorage?.getItem(sessionConversationKey);
+        const storedConversationId = (() => {
+          if (!rawStoredConversationId) return null;
+          if (rawStoredConversationId === 'general' || rawStoredConversationId.startsWith('message:')) return rawStoredConversationId;
+          if (/^\d+$/.test(rawStoredConversationId)) return `message:${rawStoredConversationId}`;
+          return null;
+        })();
+        if (storedConversationId && storedConversationId !== NEW_CONVERSATION_ID && !visibleConversationIds.has(storedConversationId)) {
+          dispatch({ type: 'widget/setConversation', payload: null });
+          globalThis.sessionStorage?.removeItem(sessionConversationKey);
+        }
         setMessagesByCompany((prev) => ({
           ...prev,
-          [getCompanyCacheKey(activeCompany)]: filterVisibleMessages(incomingMessages, selfEmpid),
+          [getCompanyCacheKey(activeCompany)]: visibleMessages,
         }));
         setNetworkState('ready');
       } catch (err) {
@@ -936,7 +953,7 @@ export default function MessagingWidget() {
     return () => {
       disposed = true;
     };
-  }, [companyId, selfEmpid, state.activeCompanyId]);
+  }, [companyId, selfEmpid, sessionConversationKey, state.activeCompanyId]);
 
   useEffect(() => {
     const activeCompany = state.activeCompanyId || companyId;
@@ -1163,9 +1180,7 @@ export default function MessagingWidget() {
   const groupedConversations = useMemo(() => groupConversations(messages, selfEmpid), [messages, selfEmpid]);
   const conversations = useMemo(() => {
     if (!selfEmpid) return groupedConversations;
-    return groupedConversations.filter((conversation) => (
-      conversation.isGeneral || !conversation.isPrivateOnly || conversation.participants.includes(selfEmpid)
-    ));
+    return groupedConversations.filter((conversation) => conversation.isGeneral || conversation.participants.includes(selfEmpid));
   }, [groupedConversations, selfEmpid]);
   const lastUserConversationId = useMemo(() => {
     if (!selfEmpid) return null;
@@ -1198,7 +1213,7 @@ export default function MessagingWidget() {
     : null;
   const conversationSummariesSource = useMemo(() => {
     const base = draftConversationSummary ? [draftConversationSummary, ...conversations] : conversations;
-    return base.filter((conversation) => conversation.isDraft || conversation.isGeneral || conversation.messages.length > 0);
+    return base.filter((conversation) => !conversation.isGeneral && (conversation.isDraft || conversation.messages.length > 0));
   }, [conversations, draftConversationSummary]);
   const isDraftConversation = state.activeConversationId === NEW_CONVERSATION_ID;
   const defaultConversation = conversations.find((conversation) => conversation.id === lastUserConversationId)
