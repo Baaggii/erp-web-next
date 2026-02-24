@@ -6,6 +6,7 @@ import http from "http";
 import express from "express";
 import cookieParser from "cookie-parser";
 import csrf from "csurf";
+import rateLimit from "express-rate-limit";
 import { Server as SocketIOServer } from "socket.io";
 import * as jwtService from "./services/jwtService.js";
 import { getCookieName } from "./utils/cookieNames.js";
@@ -117,6 +118,13 @@ app.use((req, res, next) => {
 app.use(csrf({ cookie: true }));          // <— csurf middleware
 app.use(logger);
 app.use(activityLogger);
+
+const periodControlRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 100,
+  standardHeaders: true,
+  legacyHeaders: false,
+});
 
 // CSRF token endpoint
 app.get("/api/csrf-token", (req, res) => {
