@@ -727,15 +727,12 @@ async function createMessageInternal({ db = pool, ctx, payload, parentMessageId 
     try {
       [result] = await db.query(
         `INSERT INTO erp_messages
-          (company_id, author_empid, parent_message_id, visibility_scope, visibility_department_id, visibility_empid, body, body_ciphertext, body_iv, body_auth_tag)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          (company_id, author_empid, parent_message_id, body, body_ciphertext, body_iv, body_auth_tag)
+          VALUES (?, ?, ?, ?, ?, ?, ?)`,
         [
           ctx.companyId,
           ctx.user.empid,
           parentMessageId,
-          visibility.visibilityScope,
-          visibility.visibilityDepartmentId,
-          visibility.visibilityEmpid,
           encryptedBody.body,
           encryptedBody.bodyCiphertext,
           encryptedBody.bodyIv,
@@ -747,30 +744,6 @@ async function createMessageInternal({ db = pool, ctx, payload, parentMessageId 
       const encryptionUnsupported = isUnknownColumnError(error, 'body_ciphertext') || isUnknownColumnError(error, 'body_iv') || isUnknownColumnError(error, 'body_auth_tag');
       if (!encryptionUnsupported) throw error;
       markEncryptedBodyColumnsUnsupported(db);
-    }
-  }
-
-  if (!result) {
-    try {
-      [result] = await db.query(
-        `INSERT INTO erp_messages
-          (company_id, author_empid, parent_message_id, visibility_scope, visibility_department_id, visibility_empid, body)
-          VALUES (?, ?, ?, ?, ?, ?, ?)`,
-        [
-          ctx.companyId,
-          ctx.user.empid,
-          parentMessageId,
-          visibility.visibilityScope,
-          visibility.visibilityDepartmentId,
-          visibility.visibilityEmpid,
-          body,
-        ],
-      );
-    } catch (error) {
-      const missingVisibilityScope = isUnknownColumnError(error, 'visibility_scope');
-      const missingVisibilityDepartment = isUnknownColumnError(error, 'visibility_department_id');
-      const missingVisibilityEmpid = isUnknownColumnError(error, 'visibility_empid');
-      if (!missingVisibilityScope && !missingVisibilityDepartment && !missingVisibilityEmpid) throw error;
     }
   }
 
