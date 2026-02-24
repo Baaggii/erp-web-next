@@ -141,7 +141,7 @@ function buildNestedThreads(messages) {
   return roots;
 }
 
-function groupConversations(messages, viewerEmpid = null) {
+export function groupConversations(messages, viewerEmpid = null) {
   const map = new Map();
   const generalMessages = [];
   const generalParticipants = new Set();
@@ -164,14 +164,18 @@ function groupConversations(messages, viewerEmpid = null) {
     return null;
   };
 
+  const isGeneralConversationMessage = (message) => {
+    const link = extractContextLink(message);
+    const scope = resolveMessageVisibilityScope(message);
+    const hasTopic = Boolean(extractMessageTopic(message));
+    return !link.linkedType && !link.linkedId && scope === 'company' && !hasTopic;
+  };
+
   messages.forEach((msg) => {
-    const link = extractContextLink(msg);
-    const scope = resolveMessageVisibilityScope(msg);
-    const hasTopic = Boolean(extractMessageTopic(msg));
     const hasThreadPointer = Boolean(
       normalizeId(msg.conversation_id || msg.conversationId || msg.parent_message_id || msg.parentMessageId),
     );
-    const isGeneralMessage = !hasThreadPointer && !link.linkedType && !link.linkedId && scope === 'company' && !hasTopic;
+    const isGeneralMessage = !hasThreadPointer && isGeneralConversationMessage(msg);
 
     if (isGeneralMessage) {
       generalMessages.push(msg);
@@ -182,6 +186,11 @@ function groupConversations(messages, viewerEmpid = null) {
     const resolvedRootMessageId = resolveRootMessageId(msg);
     if (!resolvedRootMessageId) return;
     const rootMessage = byId.get(String(resolvedRootMessageId));
+    if (rootMessage && isGeneralConversationMessage(rootMessage)) {
+      generalMessages.push(msg);
+      collectMessageParticipantEmpids(msg).forEach((empid) => generalParticipants.add(empid));
+      return;
+    }
     const hasAnyThreadPointer = Boolean(
       normalizeId(msg.conversation_id || msg.conversationId || msg.parent_message_id || msg.parentMessageId),
     );
