@@ -187,10 +187,13 @@ function groupConversations(messages, viewerEmpid = null) {
         linkedId: rootLink.linkedId,
         rootMessageId: resolvedRootMessageId,
         participants: [],
+        isPrivateOnly: true,
       });
     }
     const bucket = map.get(key);
     bucket.messages.push(msg);
+    const messageScope = String(msg.visibility_scope || msg.visibilityScope || 'company').toLowerCase();
+    bucket.isPrivateOnly = bucket.isPrivateOnly && messageScope === 'private';
     collectMessageParticipantEmpids(msg).forEach((empid) => {
       if (!bucket.participants.includes(empid)) bucket.participants.push(empid);
     });
@@ -204,6 +207,7 @@ function groupConversations(messages, viewerEmpid = null) {
     linkedId: null,
     rootMessageId: null,
     isGeneral: true,
+    isPrivateOnly: false,
     participants: Array.from(generalParticipants),
   });
 
@@ -211,7 +215,7 @@ function groupConversations(messages, viewerEmpid = null) {
     if (conversation.isGeneral) return true;
     const normalizedViewer = normalizeId(viewerEmpid);
     if (!normalizedViewer) return true;
-    if (!conversation.participants.includes(normalizedViewer)) return false;
+    if (conversation.isPrivateOnly && !conversation.participants.includes(normalizedViewer)) return false;
     return conversation.messages.every((message) => canViewerAccessMessage(message, normalizedViewer));
   });
 
@@ -1052,7 +1056,7 @@ export default function MessagingWidget() {
   const conversations = useMemo(() => {
     if (!selfEmpid) return groupedConversations;
     return groupedConversations.filter((conversation) => (
-      conversation.isGeneral || conversation.participants.includes(selfEmpid)
+      conversation.isGeneral || !conversation.isPrivateOnly || conversation.participants.includes(selfEmpid)
     ));
   }, [groupedConversations, selfEmpid]);
   const lastUserConversationId = useMemo(() => {
