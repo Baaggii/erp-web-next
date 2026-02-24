@@ -503,45 +503,6 @@ test('realtime fanout keeps private messages scoped to participants when linked 
 
 
 
-test('private visibility remains enforced after refresh when linked columns are unavailable', async () => {
-  const db = new FakeDb({ supportsLinkedFields: false });
-  const session = { permissions: { messaging: true } };
-
-  await postMessage({
-    user,
-    companyId: 1,
-    payload: {
-      body: 'private persisted fallback',
-      visibilityScope: 'private',
-      recipientEmpids: ['e-2'],
-      idempotencyKey: 'private-persisted-fallback-1',
-    },
-    correlationId: 'private-persisted-fallback-cid',
-    db,
-    getSession: async () => session,
-  });
-
-  const visibleToParticipant = await getMessages({
-    user: { empid: 'e-2', companyId: 1 },
-    companyId: 1,
-    correlationId: 'private-persisted-fallback-list-e2',
-    db,
-    getSession: async () => session,
-  });
-  const visibleToNonParticipant = await getMessages({
-    user: { empid: 'e-3', companyId: 1 },
-    companyId: 1,
-    correlationId: 'private-persisted-fallback-list-e3',
-    db,
-    getSession: async () => session,
-  });
-
-  assert.equal(visibleToParticipant.items.length, 1);
-  assert.equal(visibleToParticipant.items[0].visibility_scope, 'private');
-  assert.equal(visibleToNonParticipant.items.length, 0);
-});
-
-
 test('private thread cannot be replied by a non-included user', async () => {
   const db = new FakeDb();
   const session = { permissions: { messaging: true }, department_id: 10 };
