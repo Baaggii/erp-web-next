@@ -1002,7 +1002,9 @@ export default function MessagingWidget() {
     const socket = connectSocket();
     const onNew = (payload) => {
       const nextMessage = payload?.message || payload;
-      if (normalizeId(nextMessage?.company_id || nextMessage?.companyId) !== (state.activeCompanyId || companyId)) return;
+      const payloadCompanyId = normalizeId(nextMessage?.company_id || nextMessage?.companyId);
+      const activeCompanyId = normalizeId(state.activeCompanyId || companyId);
+      if (payloadCompanyId && activeCompanyId && payloadCompanyId !== activeCompanyId) return;
       const parentId = nextMessage?.parent_message_id || nextMessage?.parentMessageId;
       if (!parentId) {
         if (!canViewerAccessMessage(nextMessage, selfEmpid)) return;
