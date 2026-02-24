@@ -759,25 +759,7 @@ async function createMessageInternal({ db = pool, ctx, payload, parentMessageId 
         || isUnknownColumnError(error, 'visibility_empid');
       const encryptionUnsupported = isUnknownColumnError(error, 'body_ciphertext') || isUnknownColumnError(error, 'body_iv') || isUnknownColumnError(error, 'body_auth_tag');
       if (!visibilityUnsupported && !encryptionUnsupported) throw error;
-      if (encryptionUnsupported) {
-        markEncryptedBodyColumnsUnsupported(db);
-      } else if (visibilityUnsupported) {
-        [result] = await db.query(
-          `INSERT INTO erp_messages
-            (company_id, author_empid, parent_message_id, body, body_ciphertext, body_iv, body_auth_tag)
-            VALUES (?, ?, ?, ?, ?, ?, ?)`,
-          [
-            ctx.companyId,
-            ctx.user.empid,
-            parentMessageId,
-            encryptedBody.body,
-            encryptedBody.bodyCiphertext,
-            encryptedBody.bodyIv,
-            encryptedBody.bodyAuthTag,
-          ],
-        );
-        messageEncryptionColumnSupport.set(db, true);
-      }
+      if (encryptionUnsupported) markEncryptedBodyColumnsUnsupported(db);
     }
   }
 
