@@ -40,6 +40,7 @@ import cncProcessingRoutes from "./routes/cnc_processing.js";
 import reportRoutes from "./routes/report.js";
 import dashboardSectionRoutes from "./routes/dashboard_sections.js";
 import journalRoutes from "./routes/journal.js";
+import periodControlRoutes from "./routes/period_control.js";
 
 // Polyfill for __dirname in ES modules
 const __filename = fileURLToPath(import.meta.url);
@@ -130,6 +131,7 @@ app.use("/api/posapi/proxy", posApiProxyRoutes);
 app.use("/api/cnc_processing", cncProcessingRoutes);
 app.use("/api/dashboard_sections", dashboardSectionRoutes);
 app.use("/api/journal", journalRoutes);
+app.use("/api/period-control", periodControlRoutes);
 
 // Serve static React build and fallback to index.html
 // NOTE: adjust this path to where your SPA build actually lives.
