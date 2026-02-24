@@ -727,15 +727,12 @@ async function createMessageInternal({ db = pool, ctx, payload, parentMessageId 
     try {
       [result] = await db.query(
         `INSERT INTO erp_messages
-          (company_id, author_empid, parent_message_id, visibility_scope, visibility_department_id, visibility_empid, body, body_ciphertext, body_iv, body_auth_tag)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          (company_id, author_empid, parent_message_id, body, body_ciphertext, body_iv, body_auth_tag)
+          VALUES (?, ?, ?, ?, ?, ?, ?)`,
         [
           ctx.companyId,
           ctx.user.empid,
           parentMessageId,
-          visibility.visibilityScope,
-          visibility.visibilityDepartmentId,
-          visibility.visibilityEmpid,
           encryptedBody.body,
           encryptedBody.bodyCiphertext,
           encryptedBody.bodyIv,
@@ -753,15 +750,12 @@ async function createMessageInternal({ db = pool, ctx, payload, parentMessageId 
   if (!result) {
     [result] = await db.query(
       `INSERT INTO erp_messages
-        (company_id, author_empid, parent_message_id, visibility_scope, visibility_department_id, visibility_empid, body)
-        VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        (company_id, author_empid, parent_message_id, body)
+        VALUES (?, ?, ?, ?)`,
       [
         ctx.companyId,
         ctx.user.empid,
         parentMessageId,
-        visibility.visibilityScope,
-        visibility.visibilityDepartmentId,
-        visibility.visibilityEmpid,
         body,
       ],
     );
