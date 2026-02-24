@@ -4143,6 +4143,17 @@ function Sidebar({ onOpen, open, isMobile }) {
     map[m.module_key] = { ...m, label, children: [] };
   });
 
+  const canClosePeriods = Boolean(perms['period.close'] || perms.finance_period_close || perms.system_settings);
+  if (canClosePeriods && !map.accounting_periods) {
+    map.accounting_periods = {
+      module_key: 'accounting_periods',
+      parent_key: null,
+      label: t('accounting_periods', 'Accounting Periods'),
+      show_in_sidebar: 1,
+      children: [],
+    };
+  }
+
   // Ensure parents exist for permitted modules so children don't become
   // "orphans" when the parent itself is not accessible. This allows modules
   // like the Developer group to appear if any child is shown.
