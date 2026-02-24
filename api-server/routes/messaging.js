@@ -47,6 +47,8 @@ const postMessageSchema = {
       items: { type: 'string', minLength: 1, maxLength: 64 },
     },
     clientTempId: { type: 'string', minLength: 1, maxLength: 128 },
+    conversationId: { anyOf: [{ type: 'integer' }, { type: 'string', pattern: '^[0-9]+$' }] },
+    parentMessageId: { anyOf: [{ type: 'integer' }, { type: 'string', pattern: '^[0-9]+$' }] },
   },
 };
 
