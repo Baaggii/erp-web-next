@@ -1,15 +1,16 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { deleteMessage, getMessages, getThread, patchMessage, postMessage, postReply, setMessagingIo } from '../../api-server/services/messagingService.js';
+import { deleteMessage, getMessages, getThread, patchMessage, postMessage, postReply, resetMessagingServiceStateForTests, setMessagingIo } from '../../api-server/services/messagingService.js';
 import { resetMessagingMetrics } from '../../api-server/services/messagingMetrics.js';
 
 class FakeDb {
-  constructor({ supportsEncryptedBodyColumns = true, deleteByColumn = 'deleted_by_empid' } = {}) {
+  constructor({ supportsEncryptedBodyColumns = true, supportsLinkedFields = true, deleteByColumn = 'deleted_by_empid' } = {}) {
     this.messages = [];
     this.idem = new Map();
     this.nextId = 1;
     this.securityAuditEvents = [];
     this.supportsEncryptedBodyColumns = supportsEncryptedBodyColumns;
+    this.supportsLinkedFields = supportsLinkedFields;
     this.deleteByColumn = deleteByColumn;
   }
 
@@ -18,6 +19,11 @@ class FakeDb {
     if (!this.supportsEncryptedBodyColumns && sql.includes('body_ciphertext')) {
       const error = new Error("Unknown column 'body_ciphertext' in 'field list'");
       error.sqlMessage = "Unknown column 'body_ciphertext' in 'field list'";
+      throw error;
+    }
+    if (!this.supportsLinkedFields && sql.includes('linked_type')) {
+      const error = new Error("Unknown column 'linked_type' in 'field list'");
+      error.sqlMessage = "Unknown column 'linked_type' in 'field list'";
       throw error;
     }
     if (sql.includes('deleted_by_empid') && this.deleteByColumn !== 'deleted_by_empid') {
@@ -41,8 +47,14 @@ class FakeDb {
     }
     if (sql.startsWith('INSERT INTO erp_messages')) {
       const hasLinkedFields = sql.includes('linked_type') && sql.includes('linked_id');
+      const hasVisibilityFields = sql.includes('visibility_scope') && sql.includes('visibility_empid');
       const [companyId, authorEmpid, parentId] = params;
-      const baseOffset = hasLinkedFields ? 8 : 3;
+      const visibilityOffset = hasLinkedFields ? 5 : 3;
+      const baseOffset = hasLinkedFields
+        ? 8
+        : hasVisibilityFields
+          ? 6
+          : 3;
       const message = {
         id: this.nextId++,
         company_id: companyId,
@@ -50,9 +62,9 @@ class FakeDb {
         parent_message_id: parentId,
         linked_type: hasLinkedFields ? params[3] : null,
         linked_id: hasLinkedFields ? params[4] : null,
-        visibility_scope: hasLinkedFields ? params[5] : 'company',
-        visibility_department_id: hasLinkedFields ? params[6] : null,
-        visibility_empid: hasLinkedFields ? params[7] : null,
+        visibility_scope: hasVisibilityFields ? params[visibilityOffset] : 'company',
+        visibility_department_id: hasVisibilityFields ? params[visibilityOffset + 1] : null,
+        visibility_empid: hasVisibilityFields ? params[visibilityOffset + 2] : null,
         body: params[baseOffset],
         body_ciphertext: params[baseOffset + 1],
         body_iv: params[baseOffset + 2],
@@ -451,6 +463,83 @@ test('realtime fanout emits message.created into company room', async () => {
   assert.equal(emissions[0].event, 'message.created');
 });
 
+test('realtime fanout keeps private messages scoped to participants when linked columns are unavailable', async () => {
+  const db = new FakeDb({ supportsLinkedFields: false });
+  const session = { permissions: { messaging: true } };
+  const emissions = [];
+
+  setMessagingIo({
+    to(room) {
+      return {
+        emit(event, payload) {
+          emissions.push({ room, event, payload });
+        },
+      };
+    },
+  });
+
+  await postMessage({
+    user,
+    companyId: 1,
+    payload: {
+      body: 'private fallback',
+      visibilityScope: 'private',
+      recipientEmpids: ['e-2'],
+      idempotencyKey: 'fanout-private-fallback-1',
+    },
+    correlationId: 'fanout-private-fallback-cid',
+    db,
+    getSession: async () => session,
+  });
+
+  assert.deepEqual(
+    emissions.map((entry) => entry.room).sort(),
+    ['emp:e-1', 'emp:e-2', 'user:E-1', 'user:E-2', 'user:e-1', 'user:e-2'],
+  );
+  assert.ok(emissions.every((entry) => entry.event === 'message.created'));
+  assert.ok(emissions.every((entry) => entry.payload?.message?.visibility_scope === 'private'));
+  assert.ok(!emissions.some((entry) => entry.room === 'company:1'));
+});
+
+
+
+test('private visibility remains enforced after refresh when linked columns are unavailable', async () => {
+  const db = new FakeDb({ supportsLinkedFields: false });
+  const session = { permissions: { messaging: true } };
+
+  await postMessage({
+    user,
+    companyId: 1,
+    payload: {
+      body: 'private persisted fallback',
+      visibilityScope: 'private',
+      recipientEmpids: ['e-2'],
+      idempotencyKey: 'private-persisted-fallback-1',
+    },
+    correlationId: 'private-persisted-fallback-cid',
+    db,
+    getSession: async () => session,
+  });
+
+  const visibleToParticipant = await getMessages({
+    user: { empid: 'e-2', companyId: 1 },
+    companyId: 1,
+    correlationId: 'private-persisted-fallback-list-e2',
+    db,
+    getSession: async () => session,
+  });
+  const visibleToNonParticipant = await getMessages({
+    user: { empid: 'e-3', companyId: 1 },
+    companyId: 1,
+    correlationId: 'private-persisted-fallback-list-e3',
+    db,
+    getSession: async () => session,
+  });
+
+  assert.equal(visibleToParticipant.items.length, 1);
+  assert.equal(visibleToParticipant.items[0].visibility_scope, 'private');
+  assert.equal(visibleToNonParticipant.items.length, 0);
+});
 
 
 test('private thread cannot be replied by a non-included user', async () => {
