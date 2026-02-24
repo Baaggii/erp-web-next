@@ -1214,8 +1214,7 @@ export default function MessagingWidget() {
     : null;
   const conversationSummariesSource = useMemo(() => {
     const base = draftConversationSummary ? [draftConversationSummary, ...conversations] : conversations;
-    return excludeGeneralConversationSummaries(base)
-      .filter((conversation) => conversation.isDraft || conversation.messages.length > 0);
+    return base.filter((conversation) => !conversation.isGeneral && (conversation.isDraft || conversation.messages.length > 0));
   }, [conversations, draftConversationSummary]);
   const isDraftConversation = state.activeConversationId === NEW_CONVERSATION_ID;
   const defaultConversation = conversations.find((conversation) => conversation.id === lastUserConversationId)
