@@ -1038,9 +1038,35 @@ export default function MessagingWidget() {
         return { ...prev, [key]: nextMessages };
       });
     };
+    const onUpdated = (payload) => {
+      const nextMessage = payload?.message || payload;
+      const activeCompanyId = normalizeId(state.activeCompanyId || companyId);
+      const payloadCompanyId = normalizeId(nextMessage?.company_id || nextMessage?.companyId);
+      if (payloadCompanyId && activeCompanyId && payloadCompanyId !== activeCompanyId) return;
+      if (!canViewerAccessMessage(nextMessage, selfEmpid)) return;
+
+      const resolvedRootId = normalizeId(
+        nextMessage?.conversation_id
+        || nextMessage?.conversationId
+        || nextMessage?.parent_message_id
+        || nextMessage?.parentMessageId
+        || nextMessage?.id,
+      );
+
+      setMessagesByCompany((prev) => {
+        const key = getCompanyCacheKey(state.activeCompanyId || companyId);
+        return { ...prev, [key]: mergeMessageList(prev[key], nextMessage) };
+      });
+
+      const selectedRootId = conversationRootIdFromSelection(state.activeConversationId);
+      if (resolvedRootId && selectedRootId && Number(selectedRootId) === Number(resolvedRootId)) {
+        fetchThreadMessages(resolvedRootId, state.activeCompanyId || companyId);
+      }
+    };
     socket.on('messages:new', onNew);
     socket.on('message.created', onNew);
     socket.on('thread.reply.created', onNew);
+    socket.on('message.updated', onUpdated);
     socket.on('messages:presence', onPresence);
     socket.on('presence.changed', onPresence);
     socket.on('message.deleted', onDeleted);
@@ -1048,6 +1074,7 @@ export default function MessagingWidget() {
       socket.off('messages:new', onNew);
       socket.off('message.created', onNew);
       socket.off('thread.reply.created', onNew);
+      socket.off('message.updated', onUpdated);
       socket.off('messages:presence', onPresence);
       socket.off('presence.changed', onPresence);
       socket.off('message.deleted', onDeleted);
