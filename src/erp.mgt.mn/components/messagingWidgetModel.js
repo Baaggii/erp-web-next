@@ -79,6 +79,21 @@ export function createInitialWidgetState({ isOpen = false, activeConversationId 
   };
 }
 
+export function resolveThreadRefreshRootId({
+  isReplyMode = false,
+  fallbackRootReplyTargetId = null,
+  createdMessage = null,
+} = {}) {
+  const createdRootMessageId = createdMessage?.conversation_id
+    || createdMessage?.conversationId
+    || createdMessage?.parent_message_id
+    || createdMessage?.parentMessageId
+    || createdMessage?.id
+    || null;
+  if (isReplyMode) return normalizeId(fallbackRootReplyTargetId || createdRootMessageId) || null;
+  return normalizeId(createdRootMessageId) || null;
+}
+
 export function messagingWidgetReducer(state, action) {
   switch (action.type) {
     case 'widget/toggle':

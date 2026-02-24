@@ -10,6 +10,7 @@ import {
   messagingWidgetReducer,
   normalizeId,
   resolvePresenceStatus,
+  resolveThreadRefreshRootId,
   safePreviewableFile,
   sanitizeMessageText,
 } from './messagingWidgetModel.js';
@@ -140,7 +141,7 @@ function buildNestedThreads(messages) {
   return roots;
 }
 
-function groupConversations(messages, viewerEmpid = null) {
+export function groupConversations(messages, viewerEmpid = null) {
   const map = new Map();
   const generalMessages = [];
   const generalParticipants = new Set();
@@ -163,14 +164,18 @@ function groupConversations(messages, viewerEmpid = null) {
     return null;
   };
 
+  const isGeneralConversationMessage = (message) => {
+    const link = extractContextLink(message);
+    const scope = resolveMessageVisibilityScope(message);
+    const hasTopic = Boolean(extractMessageTopic(message));
+    return !link.linkedType && !link.linkedId && scope === 'company' && !hasTopic;
+  };
+
   messages.forEach((msg) => {
-    const link = extractContextLink(msg);
-    const scope = resolveMessageVisibilityScope(msg);
-    const hasTopic = Boolean(extractMessageTopic(msg));
     const hasThreadPointer = Boolean(
       normalizeId(msg.conversation_id || msg.conversationId || msg.parent_message_id || msg.parentMessageId),
     );
-    const isGeneralMessage = !hasThreadPointer && !link.linkedType && !link.linkedId && scope === 'company' && !hasTopic;
+    const isGeneralMessage = !hasThreadPointer && isGeneralConversationMessage(msg);
 
     if (isGeneralMessage) {
       generalMessages.push(msg);
@@ -181,6 +186,11 @@ function groupConversations(messages, viewerEmpid = null) {
     const resolvedRootMessageId = resolveRootMessageId(msg);
     if (!resolvedRootMessageId) return;
     const rootMessage = byId.get(String(resolvedRootMessageId));
+    if (rootMessage && isGeneralConversationMessage(rootMessage)) {
+      generalMessages.push(msg);
+      collectMessageParticipantEmpids(msg).forEach((empid) => generalParticipants.add(empid));
+      return;
+    }
     const hasAnyThreadPointer = Boolean(
       normalizeId(msg.conversation_id || msg.conversationId || msg.parent_message_id || msg.parentMessageId),
     );
@@ -1028,9 +1038,35 @@ export default function MessagingWidget() {
         return { ...prev, [key]: nextMessages };
       });
     };
+    const onUpdated = (payload) => {
+      const nextMessage = payload?.message || payload;
+      const activeCompanyId = normalizeId(state.activeCompanyId || companyId);
+      const payloadCompanyId = normalizeId(nextMessage?.company_id || nextMessage?.companyId);
+      if (payloadCompanyId && activeCompanyId && payloadCompanyId !== activeCompanyId) return;
+      if (!canViewerAccessMessage(nextMessage, selfEmpid)) return;
+
+      const resolvedRootId = normalizeId(
+        nextMessage?.conversation_id
+        || nextMessage?.conversationId
+        || nextMessage?.parent_message_id
+        || nextMessage?.parentMessageId
+        || nextMessage?.id,
+      );
+
+      setMessagesByCompany((prev) => {
+        const key = getCompanyCacheKey(state.activeCompanyId || companyId);
+        return { ...prev, [key]: mergeMessageList(prev[key], nextMessage) };
+      });
+
+      const selectedRootId = conversationRootIdFromSelection(state.activeConversationId);
+      if (resolvedRootId && selectedRootId && Number(selectedRootId) === Number(resolvedRootId)) {
+        fetchThreadMessages(resolvedRootId, state.activeCompanyId || companyId);
+      }
+    };
     socket.on('messages:new', onNew);
     socket.on('message.created', onNew);
     socket.on('thread.reply.created', onNew);
+    socket.on('message.updated', onUpdated);
     socket.on('messages:presence', onPresence);
     socket.on('presence.changed', onPresence);
     socket.on('message.deleted', onDeleted);
@@ -1038,6 +1074,7 @@ export default function MessagingWidget() {
       socket.off('messages:new', onNew);
       socket.off('message.created', onNew);
       socket.off('thread.reply.created', onNew);
+      socket.off('message.updated', onUpdated);
       socket.off('messages:presence', onPresence);
       socket.off('presence.changed', onPresence);
       socket.off('message.deleted', onDeleted);
@@ -1515,6 +1552,9 @@ export default function MessagingWidget() {
       ...(linkedType ? { linkedType } : {}),
       ...(linkedId ? { linkedId: String(linkedId) } : {}),
       ...(!isDraftConversation && !isReplyMode && fallbackRootReplyTargetId ? { conversationId: fallbackRootReplyTargetId } : {}),
+      ...(!isDraftConversation && isReplyMode && explicitReplyTargetId && fallbackRootReplyTargetId
+        ? { conversationId: fallbackRootReplyTargetId }
+        : {}),
       ...(!isDraftConversation && isReplyMode && explicitReplyTargetId ? { parentMessageId: explicitReplyTargetId } : {}),
     };
 
@@ -1541,12 +1581,12 @@ export default function MessagingWidget() {
         : null;
       let threadRootIdToRefresh = null;
       if (createdMessage) {
-        const createdRootMessageId = createdMessage.conversation_id
-          || createdMessage.conversationId
-          || createdMessage.parent_message_id
-          || createdMessage.parentMessageId
-          || createdMessage.id;
-        threadRootIdToRefresh = createdRootMessageId;
+        const createdRootMessageId = resolveThreadRefreshRootId({ createdMessage });
+        threadRootIdToRefresh = resolveThreadRefreshRootId({
+          isReplyMode,
+          fallbackRootReplyTargetId,
+          createdMessage,
+        });
         if (isDraftConversation && !(createdMessage.parent_message_id || createdMessage.parentMessageId)) {
           setMessagesByCompany((prev) => {
             const key = getCompanyCacheKey(state.activeCompanyId || companyId);
