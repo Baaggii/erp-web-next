@@ -204,7 +204,7 @@ function groupConversations(messages, viewerEmpid = null) {
     }
     const bucket = map.get(key);
     bucket.messages.push(msg);
-    const messageScope = resolveMessageVisibilityScope(msg);
+    const messageScope = String(msg.visibility_scope || msg.visibilityScope || 'company').toLowerCase();
     bucket.isPrivateOnly = bucket.isPrivateOnly && messageScope === 'private';
     collectMessageParticipantEmpids(msg).forEach((empid) => {
       if (!bucket.participants.includes(empid)) bucket.participants.push(empid);
