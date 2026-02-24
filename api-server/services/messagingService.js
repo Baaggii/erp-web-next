@@ -384,6 +384,16 @@ function sanitizeForViewer(message, session, user) {
   };
 }
 
+function withVisibilityFallback(message, visibility) {
+  if (!message) return message;
+  return {
+    ...message,
+    visibility_scope: message.visibility_scope || visibility.visibilityScope,
+    visibility_department_id: message.visibility_department_id || visibility.visibilityDepartmentId,
+    visibility_empid: message.visibility_empid || visibility.visibilityEmpid,
+  };
+}
+
 function assertCanViewMessage(message, session, user) {
   if (!canViewMessage(message, session, user)) {
     throw createError(404, 'MESSAGE_NOT_FOUND', 'Message not found');
@@ -727,12 +737,15 @@ async function createMessageInternal({ db = pool, ctx, payload, parentMessageId 
     try {
       [result] = await db.query(
         `INSERT INTO erp_messages
-          (company_id, author_empid, parent_message_id, body, body_ciphertext, body_iv, body_auth_tag)
-          VALUES (?, ?, ?, ?, ?, ?, ?)`,
+          (company_id, author_empid, parent_message_id, visibility_scope, visibility_department_id, visibility_empid, body, body_ciphertext, body_iv, body_auth_tag)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           ctx.companyId,
           ctx.user.empid,
           parentMessageId,
+          visibility.visibilityScope,
+          visibility.visibilityDepartmentId,
+          visibility.visibilityEmpid,
           encryptedBody.body,
           encryptedBody.bodyCiphertext,
           encryptedBody.bodyIv,
@@ -741,9 +754,54 @@ async function createMessageInternal({ db = pool, ctx, payload, parentMessageId 
       );
       messageEncryptionColumnSupport.set(db, true);
     } catch (error) {
+      const visibilityUnsupported = isUnknownColumnError(error, 'visibility_scope')
+        || isUnknownColumnError(error, 'visibility_department_id')
+        || isUnknownColumnError(error, 'visibility_empid');
       const encryptionUnsupported = isUnknownColumnError(error, 'body_ciphertext') || isUnknownColumnError(error, 'body_iv') || isUnknownColumnError(error, 'body_auth_tag');
-      if (!encryptionUnsupported) throw error;
-      markEncryptedBodyColumnsUnsupported(db);
+      if (!visibilityUnsupported && !encryptionUnsupported) throw error;
+      if (encryptionUnsupported) {
+        markEncryptedBodyColumnsUnsupported(db);
+      } else if (visibilityUnsupported) {
+        [result] = await db.query(
+          `INSERT INTO erp_messages
+            (company_id, author_empid, parent_message_id, body, body_ciphertext, body_iv, body_auth_tag)
+            VALUES (?, ?, ?, ?, ?, ?, ?)`,
+          [
+            ctx.companyId,
+            ctx.user.empid,
+            parentMessageId,
+            encryptedBody.body,
+            encryptedBody.bodyCiphertext,
+            encryptedBody.bodyIv,
+            encryptedBody.bodyAuthTag,
+          ],
+        );
+        messageEncryptionColumnSupport.set(db, true);
+      }
+    }
+  }
+
+  if (!result) {
+    try {
+      [result] = await db.query(
+        `INSERT INTO erp_messages
+          (company_id, author_empid, parent_message_id, visibility_scope, visibility_department_id, visibility_empid, body)
+          VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [
+          ctx.companyId,
+          ctx.user.empid,
+          parentMessageId,
+          visibility.visibilityScope,
+          visibility.visibilityDepartmentId,
+          visibility.visibilityEmpid,
+          body,
+        ],
+      );
+    } catch (error) {
+      const visibilityUnsupported = isUnknownColumnError(error, 'visibility_scope')
+        || isUnknownColumnError(error, 'visibility_department_id')
+        || isUnknownColumnError(error, 'visibility_empid');
+      if (!visibilityUnsupported) throw error;
     }
   }
 
@@ -769,7 +827,8 @@ async function createMessageInternal({ db = pool, ctx, payload, parentMessageId 
     requestHash,
     expiresAt,
   });
-  const message = await findMessageById(db, ctx.companyId, messageId);
+  const persistedMessage = await findMessageById(db, ctx.companyId, messageId);
+  const message = withVisibilityFallback(persistedMessage, visibility);
 
   const viewerMessage = sanitizeForViewer(message, ctx.session, ctx.user);
   emitMessageScoped(ctx, eventName, viewerMessage, {
