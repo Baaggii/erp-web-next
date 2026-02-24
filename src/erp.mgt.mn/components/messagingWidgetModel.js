@@ -62,6 +62,13 @@ export function getCompanyCacheKey(companyId) {
   return `company:${normalizeId(companyId) || 'none'}`;
 }
 
+
+export function excludeGeneralConversationSummaries(conversations = []) {
+  return Array.isArray(conversations)
+    ? conversations.filter((conversation) => !conversation?.isGeneral)
+    : [];
+}
+
 export function createInitialWidgetState({ isOpen = false, activeConversationId = null, companyId = null } = {}) {
   return {
     isOpen,

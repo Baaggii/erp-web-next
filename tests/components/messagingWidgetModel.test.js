@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import {
   buildSessionStorageKey,
   createInitialWidgetState,
+  excludeGeneralConversationSummaries,
   messagingWidgetReducer,
   resolvePresenceStatus,
   resolveThreadRefreshRootId,
@@ -88,4 +89,15 @@ test('resolveThreadRefreshRootId keeps replies inside the active thread root', (
     }),
     '30',
   );
+});
+
+
+test('excludeGeneralConversationSummaries hides general channel entries', () => {
+  const filtered = excludeGeneralConversationSummaries([
+    { id: 'general', isGeneral: true },
+    { id: 'message:1', isGeneral: false },
+    { id: '__new__', isDraft: true, isGeneral: false },
+  ]);
+
+  assert.deepEqual(filtered.map((entry) => entry.id), ['message:1', '__new__']);
 });
