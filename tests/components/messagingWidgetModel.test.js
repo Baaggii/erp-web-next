@@ -6,6 +6,7 @@ import {
   createInitialWidgetState,
   messagingWidgetReducer,
   resolvePresenceStatus,
+  resolveThreadRefreshRootId,
   safePreviewableFile,
   sanitizeMessageText,
 } from '../../src/erp.mgt.mn/components/messagingWidgetModel.js';
@@ -64,5 +65,27 @@ test('resolvePresenceStatus marks stale online users as away or offline', () => 
   assert.equal(
     resolvePresenceStatus({ status: 'online', heartbeat_at: '2026-01-01T00:07:20.000Z' }, now),
     'offline',
+  );
+});
+
+
+test('resolveThreadRefreshRootId keeps replies inside the active thread root', () => {
+  const createdNestedReply = { id: 22, parent_message_id: 15 };
+  assert.equal(
+    resolveThreadRefreshRootId({
+      isReplyMode: true,
+      fallbackRootReplyTargetId: '8',
+      createdMessage: createdNestedReply,
+    }),
+    '8',
+  );
+
+  assert.equal(
+    resolveThreadRefreshRootId({
+      isReplyMode: false,
+      fallbackRootReplyTargetId: '8',
+      createdMessage: { id: 30 },
+    }),
+    '30',
   );
 });
