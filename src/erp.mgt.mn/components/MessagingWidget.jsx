@@ -111,6 +111,18 @@ function extractContextLink(message) {
   return { linkedType: null, linkedId: null };
 }
 
+function inferPrivateScopeFromParticipants(message) {
+  const visibilityEmpids = [message?.visibility_empid, message?.visibilityEmpid]
+    .flatMap((value) => String(value || '').split(','))
+    .map(normalizeId)
+    .filter(Boolean);
+  const recipientEmpids = message?.recipient_empids || message?.recipientEmpids || message?.recipient_ids || message?.recipientIds;
+  const hasRecipientList = Array.isArray(recipientEmpids)
+    ? recipientEmpids.some((entry) => normalizeId(entry))
+    : String(recipientEmpids || '').split(',').map(normalizeId).some(Boolean);
+  return visibilityEmpids.length > 1 || hasRecipientList;
+}
+
 function buildNestedThreads(messages) {
   const map = new Map(messages.map((msg) => [normalizeId(msg.id), { ...msg, replies: [] }]));
   const roots = [];
@@ -153,7 +165,7 @@ function groupConversations(messages, viewerEmpid = null) {
 
   messages.forEach((msg) => {
     const link = extractContextLink(msg);
-    const scope = String(msg.visibility_scope || msg.visibilityScope || 'company').toLowerCase();
+    const scope = resolveMessageVisibilityScope(msg);
     const hasTopic = Boolean(extractMessageTopic(msg));
     const hasThreadPointer = Boolean(
       normalizeId(msg.conversation_id || msg.conversationId || msg.parent_message_id || msg.parentMessageId),
@@ -334,7 +346,9 @@ function collectMessageParticipantEmpids(message) {
 }
 
 function resolveMessageVisibilityScope(message) {
-  return String(message?.visibility_scope || message?.visibilityScope || 'company').toLowerCase();
+  const explicitScope = String(message?.visibility_scope || message?.visibilityScope || '').toLowerCase();
+  if (explicitScope) return explicitScope;
+  return inferPrivateScopeFromParticipants(message) ? 'private' : 'company';
 }
 
 function canViewerAccessMessage(message, viewerEmpid) {
