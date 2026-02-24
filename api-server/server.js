@@ -6,6 +6,7 @@ import http from "http";
 import express from "express";
 import cookieParser from "cookie-parser";
 import csrf from "csurf";
+import rateLimit from "express-rate-limit";
 import { Server as SocketIOServer } from "socket.io";
 import * as jwtService from "./services/jwtService.js";
 import { getCookieName } from "./utils/cookieNames.js";
@@ -69,6 +70,7 @@ import cncProcessingRoutes from "./routes/cnc_processing.js";
 import messagingRoutes from "./routes/messaging.js";
 import reportRoutes from "./routes/report.js";
 import journalRoutes from "./routes/journal.js";
+import periodControlRoutes from "./routes/period_control.js";
 import { setNotificationEmitter } from "./services/transactionNotificationQueue.js";
 import {
   setNotificationEmitter as setUnifiedNotificationEmitter,
@@ -116,6 +118,13 @@ app.use((req, res, next) => {
 app.use(csrf({ cookie: true }));          // <— csurf middleware
 app.use(logger);
 app.use(activityLogger);
+
+const periodControlRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 100,
+  standardHeaders: true,
+  legacyHeaders: false,
+});
 
 // CSRF token endpoint
 app.get("/api/csrf-token", (req, res) => {
@@ -317,6 +326,7 @@ app.use("/api/proc_triggers", requireAuth, procTriggerRoutes);
 app.use("/api/report_procedures", reportProcedureRoutes);
 app.use("/api/report", reportRoutes);
 app.use("/api/journal", requireAuth, journalRoutes);
+app.use("/api/period-control", periodControlRateLimiter, requireAuth, periodControlRoutes);
 app.use("/api/report_access", reportAccessRoutes);
 app.use("/api/tours", tourRoutes);
 app.use("/api/report_builder", reportBuilderRoutes);
