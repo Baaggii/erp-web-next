@@ -355,6 +355,32 @@ function collectMessageParticipantEmpids(message) {
   return Array.from(new Set(ids.map(normalizeId).filter(Boolean)));
 }
 
+function mergeMessageParticipantFields(existingMessage, incomingMessage) {
+  if (!existingMessage) return incomingMessage;
+  if (!incomingMessage) return existingMessage;
+  const incomingParticipantIds = collectMessageParticipantEmpids(incomingMessage);
+  if (incomingParticipantIds.length > 1) return incomingMessage;
+
+  const existingParticipantIds = collectMessageParticipantEmpids(existingMessage);
+  if (existingParticipantIds.length <= incomingParticipantIds.length) return incomingMessage;
+
+  return {
+    ...incomingMessage,
+    recipient_empids:
+      incomingMessage?.recipient_empids
+      ?? incomingMessage?.recipientEmpids
+      ?? existingMessage?.recipient_empids
+      ?? existingMessage?.recipientEmpids
+      ?? null,
+    visibility_empid:
+      incomingMessage?.visibility_empid
+      ?? incomingMessage?.visibilityEmpid
+      ?? existingMessage?.visibility_empid
+      ?? existingMessage?.visibilityEmpid
+      ?? null,
+  };
+}
+
 function resolveMessageVisibilityScope(message) {
   const explicitScope = String(message?.visibility_scope || message?.visibilityScope || '').toLowerCase();
   if (explicitScope) return explicitScope;
@@ -659,7 +685,10 @@ export default function MessagingWidget() {
       setMessagesByCompany((prev) => {
         const key = getCompanyCacheKey(activeCompany);
         const byId = new Map((prev[key] || []).map((entry) => [String(entry.id), entry]));
-        threadItems.forEach((entry) => byId.set(String(entry.id), entry));
+        threadItems.forEach((entry) => {
+          const existing = byId.get(String(entry.id));
+          byId.set(String(entry.id), mergeMessageParticipantFields(existing, entry));
+        });
         const merged = filterVisibleMessages(
           Array.from(byId.values()).sort((a, b) => new Date(a.created_at || 0).getTime() - new Date(b.created_at || 0).getTime()),
           selfEmpid,
