@@ -1515,15 +1515,30 @@ export default function MessagingWidget() {
     const idempotencyKey = createIdempotencyKey();
     const payload = {
       idempotencyKey,
+      idempotency_key: idempotencyKey,
       clientTempId,
+      client_temp_id: clientTempId,
       body: `${canEditTopic ? `[${safeTopic}] ` : ''}${safeBody}${encodeAttachmentPayload(uploadedAttachments)}`,
       companyId: normalizedCompanyId,
+      company_id: normalizedCompanyId,
       visibilityScope,
-      ...(visibilityScope === 'private' ? { recipientEmpids: allParticipants } : {}),
+      visibility_scope: visibilityScope,
+      ...(visibilityScope === 'private'
+        ? {
+          recipientEmpids: allParticipants,
+          recipient_empids: allParticipants,
+          visibilityEmpid: privateAudienceCsv,
+          visibility_empid: privateAudienceCsv,
+        }
+        : {}),
       ...(linkedType ? { linkedType } : {}),
+      ...(linkedType ? { linked_type: linkedType } : {}),
       ...(linkedId ? { linkedId: String(linkedId) } : {}),
+      ...(linkedId ? { linked_id: String(linkedId) } : {}),
       ...(!isDraftConversation && !isReplyMode && fallbackRootReplyTargetId ? { conversationId: fallbackRootReplyTargetId } : {}),
+      ...(!isDraftConversation && !isReplyMode && fallbackRootReplyTargetId ? { conversation_id: fallbackRootReplyTargetId } : {}),
       ...(!isDraftConversation && isReplyMode && explicitReplyTargetId ? { parentMessageId: explicitReplyTargetId } : {}),
+      ...(!isDraftConversation && isReplyMode && explicitReplyTargetId ? { parent_message_id: explicitReplyTargetId } : {}),
     };
 
     const targetUrl = (!isDraftConversation && isReplyMode && explicitReplyTargetId)
