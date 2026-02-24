@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../context/AuthContext.jsx';
-import { API_BASE } from '../utils/apiBase.js';
 
 const DEFAULT_REPORT_PROCS = [
   'dynrep_1_sp_trial_balance_expandable',
@@ -18,37 +17,15 @@ export default function AccountingPeriodsPage() {
   const [message, setMessage] = useState('');
   const [reportProcedures, setReportProcedures] = useState(DEFAULT_REPORT_PROCS.join(', '));
 
-  const parseApiResponse = async (res) => {
-    const text = await res.text();
-    let payload = null;
-
-    try {
-      payload = text ? JSON.parse(text) : {};
-    } catch {
-      if (!res.ok) {
-        throw new Error(`Request failed (${res.status}). Received non-JSON response.`);
-      }
-      throw new Error('Server returned a non-JSON response.');
-    }
-
-    if (!res.ok || !payload?.ok) {
-      throw new Error(payload?.message || `Request failed (${res.status})`);
-    }
-
-    return payload;
-  };
-
   const loadStatus = useCallback(async () => {
     if (!companyId) return;
     setLoading(true);
     setMessage('');
     try {
-      const res = await fetch(
-        `${API_BASE}/period-control/status?company_id=${companyId}&fiscal_year=${fiscalYear}`,
-        { credentials: 'include' },
-      );
-      const json = await parseApiResponse(res);
-      setPeriod(json?.period || null);
+      const res = await fetch(`/api/period-control/status?company_id=${companyId}&fiscal_year=${fiscalYear}`);
+      const json = await res.json();
+      if (!res.ok || !json?.ok) throw new Error(json?.message || 'Failed to load period');
+      setPeriod(json.period);
     } catch (err) {
       setMessage(String(err?.message || err));
     } finally {
@@ -74,9 +51,8 @@ export default function AccountingPeriodsPage() {
     setClosing(true);
     setMessage('');
     try {
-      const res = await fetch(`${API_BASE}/period-control/close`, {
+      const res = await fetch('/api/period-control/close', {
         method: 'POST',
-        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           company_id: companyId,
@@ -84,7 +60,8 @@ export default function AccountingPeriodsPage() {
           report_procedures: parsedProcedures,
         }),
       });
-      const json = await parseApiResponse(res);
+      const json = await res.json();
+      if (!res.ok || !json?.ok) throw new Error(json?.message || 'Failed to close period');
       setMessage(`Period closed. Opening journal #${json.openingJournalId || 'N/A'} created for ${json.nextFiscalYear}.`);
       await loadStatus();
     } catch (err) {

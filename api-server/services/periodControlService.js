@@ -18,6 +18,20 @@ function formatDateOnly(date) {
   return date.toISOString().slice(0, 10);
 }
 
+async function ensurePeriodControlTable(conn) {
+  await conn.query(`
+    CREATE TABLE IF NOT EXISTS fin_period_control (
+      company_id INT NOT NULL,
+      fiscal_year INT NOT NULL,
+      period_from DATE NOT NULL,
+      period_to DATE NOT NULL,
+      is_closed TINYINT DEFAULT 0,
+      closed_at DATETIME,
+      closed_by VARCHAR(50),
+      PRIMARY KEY (company_id, fiscal_year)
+    )
+  `);
+}
 
 export async function requirePeriodClosePermission(req) {
   const session =
@@ -33,6 +47,7 @@ export async function requirePeriodClosePermission(req) {
 }
 
 export async function getOrCreateFiscalPeriod(conn, companyId, fiscalYear) {
+  await ensurePeriodControlTable(conn);
   const [rows] = await conn.query(
     `SELECT company_id, fiscal_year, period_from, period_to, is_closed, closed_at, closed_by
        FROM fin_period_control
@@ -79,41 +94,14 @@ export async function closeFiscalPeriod({ companyId, fiscalYear, userId, reportP
     await conn.beginTransaction();
 
     const period = await getOrCreateFiscalPeriod(conn, companyId, fiscalYear);
-
-    const [lockedRows] = await conn.query(
-      `SELECT period_from, period_to, is_closed
-         FROM fin_period_control
-        WHERE company_id = ? AND fiscal_year = ?
-        FOR UPDATE`,
-      [companyId, fiscalYear],
-    );
-
-    if (!lockedRows.length) {
-      throw new Error(`Fiscal year ${fiscalYear} period record not found.`);
-    }
-
-    const lockedPeriod = lockedRows[0];
-    if (Number(lockedPeriod.is_closed) === 1) {
+    if (Number(period.is_closed) === 1) {
       throw new Error(`Fiscal year ${fiscalYear} is already closed.`);
     }
 
-    const fromDate = normalizeDate(lockedPeriod.period_from);
-    const toDate = normalizeDate(lockedPeriod.period_to);
+    const fromDate = normalizeDate(period.period_from);
+    const toDate = normalizeDate(period.period_to);
     if (!fromDate || !toDate || fromDate > toDate) {
       throw new Error('Invalid period range in fin_period_control.');
-    }
-
-    const [closeResult] = await conn.query(
-      `UPDATE fin_period_control
-          SET is_closed = 1,
-              closed_at = NOW(),
-              closed_by = ?
-        WHERE company_id = ? AND fiscal_year = ? AND is_closed = 0`,
-      [String(userId || 'system'), companyId, fiscalYear],
-    );
-
-    if (Number(closeResult?.affectedRows || 0) !== 1) {
-      throw new Error(`Fiscal year ${fiscalYear} is already closed.`);
     }
 
     const [balanceRows] = await conn.query(
@@ -136,7 +124,7 @@ export async function closeFiscalPeriod({ companyId, fiscalYear, userId, reportP
       totalsByKey.set(key, current + computeLineAmount(row));
     }
 
-    const nextYear = deriveFiscalYear(lockedPeriod) + 1;
+    const nextYear = deriveFiscalYear(period) + 1;
     const nextPeriodStart = `${nextYear}-01-01`;
 
     let openingJournalId = null;
@@ -174,6 +162,15 @@ export async function closeFiscalPeriod({ companyId, fiscalYear, userId, reportP
     }
 
     await conn.query(
+      `UPDATE fin_period_control
+          SET is_closed = 1,
+              closed_at = NOW(),
+              closed_by = ?
+        WHERE company_id = ? AND fiscal_year = ? AND is_closed = 0`,
+      [String(userId || 'system'), companyId, fiscalYear],
+    );
+
+    await conn.query(
       `INSERT INTO fin_period_control (company_id, fiscal_year, period_from, period_to, is_closed)
        VALUES (?, ?, ?, ?, 0)
        ON DUPLICATE KEY UPDATE period_from = VALUES(period_from), period_to = VALUES(period_to)`,
@@ -209,6 +206,7 @@ export async function getCurrentPeriodStatus({ companyId, fiscalYear }) {
 }
 
 export async function assertDateInOpenPeriod(conn, { companyId, postingDate }) {
+  await ensurePeriodControlTable(conn);
   const targetDate = normalizeDate(postingDate) || new Date();
   const y = targetDate.getUTCFullYear();
   const [rows] = await conn.query(

@@ -602,17 +602,30 @@ function emitToEmpid(eventName, empid, payload) {
   ioRef.to(`emp:${safe}`).emit(eventName, payload);
 }
 
-function emitMessageScoped(ctx, eventName, message, optimistic) {
+function emitMessageScoped(ctx, eventName, message, options = {}) {
   if (!ioRef || !message) return;
   const payload = {
     ...eventPayloadBase(ctx),
     message,
-    optimistic: optimistic || {
+    optimistic: options.optimistic || {
       tempId: null,
       accepted: true,
       replay: false,
     },
   };
+
+  const isNewConversation = eventName === 'message.created' && message.parent_message_id == null;
+  if (isNewConversation) {
+    const participants = Array.from(new Set([
+      ...parsePrivateParticipants(message.visibility_empid),
+      ...(Array.isArray(options.participantEmpids) ? options.participantEmpids : []),
+      String(message.author_empid || ctx?.user?.empid || '').trim(),
+    ].map((entry) => String(entry || '').trim()).filter(Boolean)));
+    if (participants.length > 0) {
+      participants.forEach((empid) => emitToEmpid(eventName, empid, payload));
+      return;
+    }
+  }
 
   const scope = String(message.visibility_scope || 'company');
   if (scope === 'private') {
@@ -737,12 +750,15 @@ async function createMessageInternal({ db = pool, ctx, payload, parentMessageId 
     try {
       [result] = await db.query(
         `INSERT INTO erp_messages
-          (company_id, author_empid, parent_message_id, body, body_ciphertext, body_iv, body_auth_tag)
-          VALUES (?, ?, ?, ?, ?, ?, ?)`,
+          (company_id, author_empid, parent_message_id, visibility_scope, visibility_department_id, visibility_empid, body, body_ciphertext, body_iv, body_auth_tag)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           ctx.companyId,
           ctx.user.empid,
           parentMessageId,
+          visibility.visibilityScope,
+          visibility.visibilityDepartmentId,
+          visibility.visibilityEmpid,
           encryptedBody.body,
           encryptedBody.bodyCiphertext,
           encryptedBody.bodyIv,
@@ -751,9 +767,36 @@ async function createMessageInternal({ db = pool, ctx, payload, parentMessageId 
       );
       messageEncryptionColumnSupport.set(db, true);
     } catch (error) {
+      const visibilityUnsupported = isUnknownColumnError(error, 'visibility_scope')
+        || isUnknownColumnError(error, 'visibility_department_id')
+        || isUnknownColumnError(error, 'visibility_empid');
       const encryptionUnsupported = isUnknownColumnError(error, 'body_ciphertext') || isUnknownColumnError(error, 'body_iv') || isUnknownColumnError(error, 'body_auth_tag');
-      if (!encryptionUnsupported) throw error;
-      markEncryptedBodyColumnsUnsupported(db);
+      if (!visibilityUnsupported && !encryptionUnsupported) throw error;
+      if (encryptionUnsupported) markEncryptedBodyColumnsUnsupported(db);
+    }
+  }
+
+  if (!result) {
+    try {
+      [result] = await db.query(
+        `INSERT INTO erp_messages
+          (company_id, author_empid, parent_message_id, visibility_scope, visibility_department_id, visibility_empid, body)
+          VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [
+          ctx.companyId,
+          ctx.user.empid,
+          parentMessageId,
+          visibility.visibilityScope,
+          visibility.visibilityDepartmentId,
+          visibility.visibilityEmpid,
+          body,
+        ],
+      );
+    } catch (error) {
+      const visibilityUnsupported = isUnknownColumnError(error, 'visibility_scope')
+        || isUnknownColumnError(error, 'visibility_department_id')
+        || isUnknownColumnError(error, 'visibility_empid');
+      if (!visibilityUnsupported) throw error;
     }
   }
 
@@ -784,9 +827,14 @@ async function createMessageInternal({ db = pool, ctx, payload, parentMessageId 
 
   const viewerMessage = sanitizeForViewer(message, ctx.session, ctx.user);
   emitMessageScoped(ctx, eventName, viewerMessage, {
-    tempId: payload?.clientTempId ?? null,
-    accepted: true,
-    replay: false,
+    optimistic: {
+      tempId: payload?.clientTempId ?? null,
+      accepted: true,
+      replay: false,
+    },
+    participantEmpids: Array.isArray(payload?.recipientEmpids)
+      ? payload.recipientEmpids.map((entry) => String(entry || '').trim()).filter(Boolean)
+      : [],
   });
 
   const elapsedSeconds = Number(process.hrtime.bigint() - startedAt) / 1_000_000_000;
