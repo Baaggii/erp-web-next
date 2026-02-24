@@ -384,6 +384,16 @@ function sanitizeForViewer(message, session, user) {
   };
 }
 
+function withVisibilityFallback(message, visibility) {
+  if (!message) return message;
+  return {
+    ...message,
+    visibility_scope: message.visibility_scope || visibility.visibilityScope,
+    visibility_department_id: message.visibility_department_id || visibility.visibilityDepartmentId,
+    visibility_empid: message.visibility_empid || visibility.visibilityEmpid,
+  };
+}
+
 function assertCanViewMessage(message, session, user) {
   if (!canViewMessage(message, session, user)) {
     throw createError(404, 'MESSAGE_NOT_FOUND', 'Message not found');
@@ -769,7 +779,8 @@ async function createMessageInternal({ db = pool, ctx, payload, parentMessageId 
     requestHash,
     expiresAt,
   });
-  const message = await findMessageById(db, ctx.companyId, messageId);
+  const persistedMessage = await findMessageById(db, ctx.companyId, messageId);
+  const message = withVisibilityFallback(persistedMessage, visibility);
 
   const viewerMessage = sanitizeForViewer(message, ctx.session, ctx.user);
   emitMessageScoped(ctx, eventName, viewerMessage, {
