@@ -1164,7 +1164,7 @@ export default function MessagingWidget() {
   const conversations = useMemo(() => {
     if (!selfEmpid) return groupedConversations;
     return groupedConversations.filter((conversation) => (
-      conversation.isGeneral || !conversation.isPrivateOnly || conversation.participants.includes(selfEmpid)
+      conversation.isGeneral || conversation.participants.includes(selfEmpid)
     ));
   }, [groupedConversations, selfEmpid]);
   const lastUserConversationId = useMemo(() => {
@@ -1198,7 +1198,7 @@ export default function MessagingWidget() {
     : null;
   const conversationSummariesSource = useMemo(() => {
     const base = draftConversationSummary ? [draftConversationSummary, ...conversations] : conversations;
-    return base.filter((conversation) => conversation.isDraft || conversation.isGeneral || conversation.messages.length > 0);
+    return base.filter((conversation) => conversation.isDraft || (!conversation.isGeneral && conversation.messages.length > 0));
   }, [conversations, draftConversationSummary]);
   const isDraftConversation = state.activeConversationId === NEW_CONVERSATION_ID;
   const defaultConversation = conversations.find((conversation) => conversation.id === lastUserConversationId)
@@ -1208,10 +1208,9 @@ export default function MessagingWidget() {
   const requestedConversation = isDraftConversation
     ? null
     : conversations.find((conversation) => conversation.id === state.activeConversationId) || null;
-  const hasExplicitConversationSelection = Boolean(state.activeConversationId);
   const activeConversation = isDraftConversation
     ? null
-    : (requestedConversation || (hasExplicitConversationSelection ? null : defaultConversation));
+    : (requestedConversation || defaultConversation);
   const activeConversationId = isDraftConversation ? NEW_CONVERSATION_ID : (activeConversation?.id || null);
   const threadMessages = useMemo(() => buildNestedThreads(activeConversation?.messages || []), [activeConversation]);
   const messageMap = useMemo(() => new Map(messages.map((msg) => [normalizeId(msg.id), msg])), [messages]);
@@ -1233,12 +1232,10 @@ export default function MessagingWidget() {
     if (!state.activeConversationId || state.activeConversationId === NEW_CONVERSATION_ID) return;
     if (state.activeConversationId === 'general' || !selfEmpid) return;
     const selectedConversation = conversations.find((conversation) => conversation.id === state.activeConversationId);
-    if (!selectedConversation) return;
-    if (!selectedConversation.participants.includes(selfEmpid)) {
-      dispatch({ type: 'widget/setConversation', payload: null });
+    if (!selectedConversation) {
+      globalThis.sessionStorage?.removeItem(sessionConversationKey);
     }
-  }, [conversations, selfEmpid, state.activeConversationId]);
-
+  }, [conversations, selfEmpid, sessionConversationKey, state.activeConversationId]);
 
   useEffect(() => {
     if (state.composer.attachments.length > 0) setAttachmentsOpen(true);
