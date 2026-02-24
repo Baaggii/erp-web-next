@@ -10,6 +10,7 @@ import {
   messagingWidgetReducer,
   normalizeId,
   resolvePresenceStatus,
+  resolveThreadRefreshRootId,
   safePreviewableFile,
   sanitizeMessageText,
 } from './messagingWidgetModel.js';
@@ -1515,6 +1516,9 @@ export default function MessagingWidget() {
       ...(linkedType ? { linkedType } : {}),
       ...(linkedId ? { linkedId: String(linkedId) } : {}),
       ...(!isDraftConversation && !isReplyMode && fallbackRootReplyTargetId ? { conversationId: fallbackRootReplyTargetId } : {}),
+      ...(!isDraftConversation && isReplyMode && explicitReplyTargetId && fallbackRootReplyTargetId
+        ? { conversationId: fallbackRootReplyTargetId }
+        : {}),
       ...(!isDraftConversation && isReplyMode && explicitReplyTargetId ? { parentMessageId: explicitReplyTargetId } : {}),
     };
 
@@ -1541,12 +1545,12 @@ export default function MessagingWidget() {
         : null;
       let threadRootIdToRefresh = null;
       if (createdMessage) {
-        const createdRootMessageId = createdMessage.conversation_id
-          || createdMessage.conversationId
-          || createdMessage.parent_message_id
-          || createdMessage.parentMessageId
-          || createdMessage.id;
-        threadRootIdToRefresh = createdRootMessageId;
+        const createdRootMessageId = resolveThreadRefreshRootId({ createdMessage });
+        threadRootIdToRefresh = resolveThreadRefreshRootId({
+          isReplyMode,
+          fallbackRootReplyTargetId,
+          createdMessage,
+        });
         if (isDraftConversation && !(createdMessage.parent_message_id || createdMessage.parentMessageId)) {
           setMessagesByCompany((prev) => {
             const key = getCompanyCacheKey(state.activeCompanyId || companyId);
