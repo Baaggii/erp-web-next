@@ -4,12 +4,13 @@ import { deleteMessage, getMessages, getThread, patchMessage, postMessage, postR
 import { resetMessagingMetrics } from '../../api-server/services/messagingMetrics.js';
 
 class FakeDb {
-  constructor({ supportsEncryptedBodyColumns = true, deleteByColumn = 'deleted_by_empid' } = {}) {
+  constructor({ supportsEncryptedBodyColumns = true, supportsLinkedColumns = true, deleteByColumn = 'deleted_by_empid' } = {}) {
     this.messages = [];
     this.idem = new Map();
     this.nextId = 1;
     this.securityAuditEvents = [];
     this.supportsEncryptedBodyColumns = supportsEncryptedBodyColumns;
+    this.supportsLinkedColumns = supportsLinkedColumns;
     this.deleteByColumn = deleteByColumn;
   }
 
@@ -18,6 +19,11 @@ class FakeDb {
     if (!this.supportsEncryptedBodyColumns && sql.includes('body_ciphertext')) {
       const error = new Error("Unknown column 'body_ciphertext' in 'field list'");
       error.sqlMessage = "Unknown column 'body_ciphertext' in 'field list'";
+      throw error;
+    }
+    if (!this.supportsLinkedColumns && sql.includes('linked_type')) {
+      const error = new Error("Unknown column 'linked_type' in 'field list'");
+      error.sqlMessage = "Unknown column 'linked_type' in 'field list'";
       throw error;
     }
     if (sql.includes('deleted_by_empid') && this.deleteByColumn !== 'deleted_by_empid') {
@@ -40,23 +46,23 @@ class FakeDb {
       return [messageId ? [{ message_id: messageId, request_hash: null, expires_at: null }] : []];
     }
     if (sql.startsWith('INSERT INTO erp_messages')) {
-      const hasLinkedFields = sql.includes('linked_type') && sql.includes('linked_id');
-      const [companyId, authorEmpid, parentId] = params;
-      const baseOffset = hasLinkedFields ? 8 : 3;
+      const columnsMatch = sql.match(/INSERT INTO erp_messages\s*\(([^)]+)\)/m);
+      const columns = (columnsMatch?.[1] || '').split(',').map((entry) => entry.trim()).filter(Boolean);
+      const values = Object.fromEntries(columns.map((column, idx) => [column, params[idx]]));
       const message = {
         id: this.nextId++,
-        company_id: companyId,
-        author_empid: authorEmpid,
-        parent_message_id: parentId,
-        linked_type: hasLinkedFields ? params[3] : null,
-        linked_id: hasLinkedFields ? params[4] : null,
-        visibility_scope: hasLinkedFields ? params[5] : 'company',
-        visibility_department_id: hasLinkedFields ? params[6] : null,
-        visibility_empid: hasLinkedFields ? params[7] : null,
-        body: params[baseOffset],
-        body_ciphertext: params[baseOffset + 1],
-        body_iv: params[baseOffset + 2],
-        body_auth_tag: params[baseOffset + 3],
+        company_id: values.company_id,
+        author_empid: values.author_empid,
+        parent_message_id: values.parent_message_id ?? null,
+        linked_type: values.linked_type ?? null,
+        linked_id: values.linked_id ?? null,
+        visibility_scope: values.visibility_scope ?? 'company',
+        visibility_department_id: values.visibility_department_id ?? null,
+        visibility_empid: values.visibility_empid ?? null,
+        body: values.body ?? null,
+        body_ciphertext: values.body_ciphertext ?? null,
+        body_iv: values.body_iv ?? null,
+        body_auth_tag: values.body_auth_tag ?? null,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
         deleted_at: null,
@@ -240,6 +246,46 @@ test('postReply falls back when encrypted body columns are unavailable', async (
   });
 
   assert.equal(reply.message.body, 'legacy reply');
+});
+
+test('postMessage preserves private visibility when linked columns are unavailable', async () => {
+  const db = new FakeDb({ supportsLinkedColumns: false });
+  const session = { permissions: { messaging: true }, department_id: 10 };
+
+  await postMessage({
+    user,
+    companyId: 1,
+    payload: {
+      body: 'private with legacy linked columns',
+      linkedType: 'topic',
+      linkedId: 'legacy-private',
+      visibilityScope: 'private',
+      recipientEmpids: ['e-2'],
+      idempotencyKey: 'legacy-private-linked-1',
+    },
+    correlationId: 'legacy-private-linked-1',
+    db,
+    getSession: async () => session,
+  });
+
+  const outsiderVisible = await getMessages({
+    user: { empid: 'e-3', companyId: 1 },
+    companyId: 1,
+    correlationId: 'legacy-private-linked-2',
+    db,
+    getSession: async () => session,
+  });
+  assert.equal(outsiderVisible.items.length, 0);
+
+  const recipientVisible = await getMessages({
+    user: { empid: 'e-2', companyId: 1 },
+    companyId: 1,
+    correlationId: 'legacy-private-linked-3',
+    db,
+    getSession: async () => session,
+  });
+  assert.equal(recipientVisible.items.length, 1);
+  assert.equal(recipientVisible.items[0].visibility_scope, 'private');
 });
 
 test('deleteMessage falls back to deleted_by when deleted_by_empid is unavailable', async () => {
