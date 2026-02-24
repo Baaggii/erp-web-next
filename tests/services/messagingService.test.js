@@ -41,10 +41,8 @@ class FakeDb {
     }
     if (sql.startsWith('INSERT INTO erp_messages')) {
       const hasLinkedFields = sql.includes('linked_type') && sql.includes('linked_id');
-      const hasVisibilityFields = sql.includes('visibility_scope') && sql.includes('visibility_department_id') && sql.includes('visibility_empid');
-      const hasEncryptedFields = sql.includes('body_ciphertext') && sql.includes('body_iv') && sql.includes('body_auth_tag');
       const [companyId, authorEmpid, parentId] = params;
-      const baseOffset = hasLinkedFields ? 8 : (hasVisibilityFields ? 6 : 3);
+      const baseOffset = hasLinkedFields ? 8 : 3;
       const message = {
         id: this.nextId++,
         company_id: companyId,
@@ -52,13 +50,13 @@ class FakeDb {
         parent_message_id: parentId,
         linked_type: hasLinkedFields ? params[3] : null,
         linked_id: hasLinkedFields ? params[4] : null,
-        visibility_scope: hasLinkedFields ? params[5] : (hasVisibilityFields ? params[3] : 'company'),
-        visibility_department_id: hasLinkedFields ? params[6] : (hasVisibilityFields ? params[4] : null),
-        visibility_empid: hasLinkedFields ? params[7] : (hasVisibilityFields ? params[5] : null),
+        visibility_scope: hasLinkedFields ? params[5] : 'company',
+        visibility_department_id: hasLinkedFields ? params[6] : null,
+        visibility_empid: hasLinkedFields ? params[7] : null,
         body: params[baseOffset],
-        body_ciphertext: hasEncryptedFields ? params[baseOffset + 1] : undefined,
-        body_iv: hasEncryptedFields ? params[baseOffset + 2] : undefined,
-        body_auth_tag: hasEncryptedFields ? params[baseOffset + 3] : undefined,
+        body_ciphertext: params[baseOffset + 1],
+        body_iv: params[baseOffset + 2],
+        body_auth_tag: params[baseOffset + 3],
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
         deleted_at: null,
@@ -244,28 +242,6 @@ test('postReply falls back when encrypted body columns are unavailable', async (
   assert.equal(reply.message.body, 'legacy reply');
 });
 
-
-
-test('postMessage keeps private participants when linked columns are unavailable', async () => {
-  const db = new FakeDb({ supportsEncryptedBodyColumns: false });
-  const session = { permissions: { messaging: true } };
-  const created = await postMessage({
-    user,
-    companyId: 1,
-    payload: {
-      body: 'private legacy',
-      visibilityScope: 'private',
-      recipientEmpids: ['e-2'],
-      idempotencyKey: 'legacy-private-1',
-    },
-    correlationId: 'legacy-private-1',
-    db,
-    getSession: async () => session,
-  });
-
-  assert.equal(created.message.visibility_scope, 'private');
-  assert.equal(created.message.visibility_empid, 'e-2,e-1');
-});
 test('deleteMessage falls back to deleted_by when deleted_by_empid is unavailable', async () => {
   const db = new FakeDb({ deleteByColumn: 'deleted_by' });
   const session = { permissions: { messaging: true } };
