@@ -1,4 +1,6 @@
 export default [
+  { moduleKey: 'accounting_finance', label: 'Accounting & Finance', parentKey: null, showInSidebar: true, showInHeader: false },
+  { moduleKey: 'accounting_periods', label: 'Accounting Periods', parentKey: 'accounting_finance', showInSidebar: true, showInHeader: false },
   { moduleKey: 'action_permissions', label: 'Action Permissions', parentKey: 'developer', showInSidebar: true, showInHeader: false },
   { moduleKey: 'ai_inventory', label: 'AI Inventory Review', parentKey: null, showInSidebar: true, showInHeader: false },
   { moduleKey: 'ai-inventory', label: 'ai-inventory', parentKey: null, showInSidebar: true, showInHeader: false },

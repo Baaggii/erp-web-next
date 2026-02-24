@@ -49,6 +49,7 @@ import UserSettingsPage from './pages/UserSettings.jsx';
 import AllowedReportsConfigPage from './pages/AllowedReportsConfig.jsx';
 import PosApiAdminPage from './pages/PosApiAdmin.jsx';
 import CncProcessingPage from './pages/CncProcessingPage.jsx';
+import AccountingPeriodsPage from './pages/AccountingPeriods.jsx';
 
 export default function App() {
   useEffect(() => {
@@ -139,6 +140,7 @@ function AuthedApp() {
       user_manual_export: <UserManualExportPage />,
       report_access: <AllowedReportsConfigPage />,
       cnc_processing: <CncProcessingPage />,
+      accounting_periods: <AccountingPeriodsPage />,
     };
 
     modules.forEach((m) => {
