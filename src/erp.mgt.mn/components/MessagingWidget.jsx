@@ -376,10 +376,6 @@ function collectMessageParticipantEmpids(message) {
     message?.participants,
     message?.participant_ids,
     message?.participantIds,
-    message?.conversation_participants,
-    message?.conversationParticipants,
-    message?.conversation_participant_empids,
-    message?.conversationParticipantEmpids,
   ].forEach((value) => pushEmpids(value));
 
   return Array.from(new Set(ids.map(normalizeId).filter(Boolean)));
