@@ -6,6 +6,7 @@ import {
   PRESENCE,
   buildSessionStorageKey,
   createInitialWidgetState,
+  excludeGeneralConversationSummaries,
   getCompanyCacheKey,
   messagingWidgetReducer,
   normalizeId,
