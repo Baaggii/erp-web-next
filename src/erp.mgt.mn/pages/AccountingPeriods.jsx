@@ -8,7 +8,7 @@ const DEFAULT_REPORT_PROCS = [
 ];
 
 export default function AccountingPeriodsPage() {
-  const { user, session, company } = useAuth();
+  const { user, session, company, permissions } = useAuth();
   const companyId = Number(user?.companyId || user?.company_id || session?.company_id || company?.id || company || 0);
   const [fiscalYear, setFiscalYear] = useState(new Date().getFullYear());
   const [period, setPeriod] = useState(null);
@@ -17,12 +17,21 @@ export default function AccountingPeriodsPage() {
   const [message, setMessage] = useState('');
   const [reportProcedures, setReportProcedures] = useState(DEFAULT_REPORT_PROCS.join(', '));
 
+  const canClosePeriod = Boolean(
+    permissions?.['period.close'] ||
+    permissions?.finance_period_close ||
+    permissions?.system_settings ||
+    session?.permissions?.['period.close'] ||
+    session?.permissions?.finance_period_close ||
+    session?.permissions?.system_settings,
+  );
+
   const loadStatus = useCallback(async () => {
     if (!companyId) return;
     setLoading(true);
     setMessage('');
     try {
-      const res = await fetch(`/api/period-control/status?company_id=${companyId}&fiscal_year=${fiscalYear}`);
+      const res = await fetch(`/api/period-control/status?company_id=${companyId}&fiscal_year=${fiscalYear}`, { credentials: 'include' });
       const json = await res.json();
       if (!res.ok || !json?.ok) throw new Error(json?.message || 'Failed to load period');
       setPeriod(json.period);
@@ -52,6 +61,7 @@ export default function AccountingPeriodsPage() {
     setMessage('');
     try {
       const res = await fetch('/api/period-control/close', {
+        credentials: 'include',
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -74,6 +84,7 @@ export default function AccountingPeriodsPage() {
   return (
     <div style={{ padding: 16, maxWidth: 860 }}>
       <h2>Accounting Periods</h2>
+      {!canClosePeriod ? <p style={{ color: '#b45309' }}>You do not have permission to close accounting periods.</p> : null}
       <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 12 }}>
         <label htmlFor="fiscal-year">Fiscal Year</label>
         <input id="fiscal-year" type="number" value={fiscalYear} onChange={(e) => setFiscalYear(Number(e.target.value || 0))} />
@@ -98,7 +109,7 @@ export default function AccountingPeriodsPage() {
         />
       </div>
 
-      <button type="button" disabled={closing || Number(period?.is_closed) === 1} onClick={handleClosePeriod}>
+      <button type="button" disabled={!canClosePeriod || closing || Number(period?.is_closed) === 1} onClick={handleClosePeriod}>
         {closing ? 'Closing period…' : 'Close Period'}
       </button>
 

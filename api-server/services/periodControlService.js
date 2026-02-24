@@ -18,7 +18,7 @@ function formatDateOnly(date) {
   return date.toISOString().slice(0, 10);
 }
 
-async function ensurePeriodControlTable(conn) {
+export async function ensurePeriodControlTable(conn) {
   await conn.query(`
     CREATE TABLE IF NOT EXISTS fin_period_control (
       company_id INT NOT NULL,
@@ -31,6 +31,26 @@ async function ensurePeriodControlTable(conn) {
       PRIMARY KEY (company_id, fiscal_year)
     )
   `);
+
+  const alterStatements = [
+    'ALTER TABLE fin_period_control ADD INDEX idx_fin_period_control_company_closed (company_id, is_closed)',
+    'ALTER TABLE fin_period_control ADD INDEX idx_fin_period_control_range (company_id, period_from, period_to)',
+    `ALTER TABLE fin_period_control
+      ADD CONSTRAINT fk_fin_period_control_company
+      FOREIGN KEY (company_id) REFERENCES companies(company_id)
+      ON UPDATE CASCADE
+      ON DELETE CASCADE`,
+  ];
+
+  for (const statement of alterStatements) {
+    try {
+      await conn.query(statement);
+    } catch (error) {
+      if (!/duplicate|exists|errno\s*121|already/i.test(String(error?.message || ''))) {
+        throw error;
+      }
+    }
+  }
 }
 
 export async function requirePeriodClosePermission(req) {
@@ -41,6 +61,7 @@ export async function requirePeriodClosePermission(req) {
       company_id: req.user.companyId,
     };
   const allowed =
+    (await hasAction(session, 'period.close')) ||
     (await hasAction(session, 'finance_period_close')) ||
     (await hasAction(session, 'system_settings'));
   return { allowed, session };
@@ -88,8 +109,8 @@ function computeLineAmount(row) {
   return -amount;
 }
 
-export async function closeFiscalPeriod({ companyId, fiscalYear, userId, reportProcedures = [] }) {
-  const conn = await pool.getConnection();
+export async function closeFiscalPeriod({ companyId, fiscalYear, userId, reportProcedures = [], dbPool = pool }) {
+  const conn = await dbPool.getConnection();
   try {
     await conn.beginTransaction();
 
@@ -102,6 +123,14 @@ export async function closeFiscalPeriod({ companyId, fiscalYear, userId, reportP
     const toDate = normalizeDate(period.period_to);
     if (!fromDate || !toDate || fromDate > toDate) {
       throw new Error('Invalid period range in fin_period_control.');
+    }
+
+    for (const procedureName of reportProcedures) {
+      const proc = String(procedureName || '').trim();
+      if (!/^[A-Za-z0-9_]+$/.test(proc)) {
+        throw new Error(`Invalid report procedure: ${procedureName}`);
+      }
+      await conn.query(`CALL \`${proc}\`(?, ?)`, [companyId, fiscalYear]);
     }
 
     const [balanceRows] = await conn.query(
@@ -164,10 +193,12 @@ export async function closeFiscalPeriod({ companyId, fiscalYear, userId, reportP
     await conn.query(
       `UPDATE fin_period_control
           SET is_closed = 1,
+              period_from = ?,
+              period_to = ?,
               closed_at = NOW(),
               closed_by = ?
         WHERE company_id = ? AND fiscal_year = ? AND is_closed = 0`,
-      [String(userId || 'system'), companyId, fiscalYear],
+      [`${fiscalYear}-01-01`, `${fiscalYear}-12-31`, String(userId || 'system'), companyId, fiscalYear],
     );
 
     await conn.query(
@@ -176,14 +207,6 @@ export async function closeFiscalPeriod({ companyId, fiscalYear, userId, reportP
        ON DUPLICATE KEY UPDATE period_from = VALUES(period_from), period_to = VALUES(period_to)`,
       [companyId, nextYear, `${nextYear}-01-01`, `${nextYear}-12-31`],
     );
-
-    for (const procedureName of reportProcedures) {
-      const proc = String(procedureName || '').trim();
-      if (!/^[A-Za-z0-9_]+$/.test(proc)) {
-        throw new Error(`Invalid report procedure: ${procedureName}`);
-      }
-      await conn.query(`CALL \`${proc}\`(?, ?, ?)`, [companyId, formatDateOnly(fromDate), formatDateOnly(toDate)]);
-    }
 
     await conn.commit();
     return { ok: true, openingJournalId, nextFiscalYear: nextYear };
@@ -203,6 +226,10 @@ export async function getCurrentPeriodStatus({ companyId, fiscalYear }) {
   } finally {
     conn.release();
   }
+}
+
+export async function getPeriodStatus(companyId, fiscalYear) {
+  return getCurrentPeriodStatus({ companyId, fiscalYear });
 }
 
 export async function assertDateInOpenPeriod(conn, { companyId, postingDate }) {

@@ -206,6 +206,7 @@ function AuthedApp() {
               element={<PosApiAdminPage />}
             />
           </Route>
+          <Route path="accounting-periods" element={<AccountingPeriodsPage />} />
           {roots.map(renderRoute)}
         </Route>
         <Route
