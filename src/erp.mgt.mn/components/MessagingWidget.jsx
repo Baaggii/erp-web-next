@@ -345,12 +345,6 @@ function collectMessageParticipantEmpids(message) {
   return Array.from(new Set(ids.map(normalizeId).filter(Boolean)));
 }
 
-function normalizeRecipientEmpids(value) {
-  if (Array.isArray(value)) return value.map(normalizeId).filter(Boolean);
-  if (typeof value === 'string') return value.split(',').map(normalizeId).filter(Boolean);
-  return [];
-}
-
 function resolveMessageVisibilityScope(message) {
   const explicitScope = String(message?.visibility_scope || message?.visibilityScope || '').toLowerCase();
   if (explicitScope) return explicitScope;
@@ -1110,7 +1104,7 @@ export default function MessagingWidget() {
     : null;
   const conversationSummariesSource = useMemo(() => {
     const base = draftConversationSummary ? [draftConversationSummary, ...conversations] : conversations;
-    return base.filter((conversation) => conversation.isGeneral || conversation.isDraft || conversation.messages.length > 0);
+    return base.filter((conversation) => conversation.isDraft || conversation.messages.length > 0);
   }, [conversations, draftConversationSummary]);
   const isDraftConversation = state.activeConversationId === NEW_CONVERSATION_ID;
   const defaultConversation = conversations.find((conversation) => conversation.id === lastUserConversationId)
@@ -1511,34 +1505,17 @@ export default function MessagingWidget() {
 
     dispatch({ type: 'composer/setReplyTo', payload: null });
 
-    const privateAudienceCsv = allParticipants.join(',');
-    const idempotencyKey = createIdempotencyKey();
     const payload = {
-      idempotencyKey,
-      idempotency_key: idempotencyKey,
+      idempotencyKey: createIdempotencyKey(),
       clientTempId,
-      client_temp_id: clientTempId,
       body: `${canEditTopic ? `[${safeTopic}] ` : ''}${safeBody}${encodeAttachmentPayload(uploadedAttachments)}`,
       companyId: normalizedCompanyId,
-      company_id: normalizedCompanyId,
       visibilityScope,
-      visibility_scope: visibilityScope,
-      ...(visibilityScope === 'private'
-        ? {
-          recipientEmpids: allParticipants,
-          recipient_empids: allParticipants,
-          visibilityEmpid: privateAudienceCsv,
-          visibility_empid: privateAudienceCsv,
-        }
-        : {}),
+      ...(visibilityScope === 'private' ? { recipientEmpids: allParticipants } : {}),
       ...(linkedType ? { linkedType } : {}),
-      ...(linkedType ? { linked_type: linkedType } : {}),
       ...(linkedId ? { linkedId: String(linkedId) } : {}),
-      ...(linkedId ? { linked_id: String(linkedId) } : {}),
       ...(!isDraftConversation && !isReplyMode && fallbackRootReplyTargetId ? { conversationId: fallbackRootReplyTargetId } : {}),
-      ...(!isDraftConversation && !isReplyMode && fallbackRootReplyTargetId ? { conversation_id: fallbackRootReplyTargetId } : {}),
       ...(!isDraftConversation && isReplyMode && explicitReplyTargetId ? { parentMessageId: explicitReplyTargetId } : {}),
-      ...(!isDraftConversation && isReplyMode && explicitReplyTargetId ? { parent_message_id: explicitReplyTargetId } : {}),
     };
 
     const targetUrl = (!isDraftConversation && isReplyMode && explicitReplyTargetId)
@@ -1557,23 +1534,9 @@ export default function MessagingWidget() {
       const createdMessage = successPayload?.message
         ? {
           ...successPayload.message,
-          visibility_scope: successPayload?.message?.visibility_scope || successPayload?.message?.visibilityScope || visibilityScope,
-          recipient_empids: normalizeRecipientEmpids(
-            successPayload?.message?.recipient_empids
-            || successPayload?.message?.recipientEmpids
-            || successPayload?.message?.recipient_ids
-            || successPayload?.message?.recipientIds,
-          ).length > 0
-            ? normalizeRecipientEmpids(
-              successPayload?.message?.recipient_empids
-              || successPayload?.message?.recipientEmpids
-              || successPayload?.message?.recipient_ids
-              || successPayload?.message?.recipientIds,
-            )
+          recipient_empids: Array.isArray(successPayload?.message?.recipient_empids)
+            ? successPayload.message.recipient_empids
             : finalRecipients,
-          visibility_empid: successPayload?.message?.visibility_empid
-            || successPayload?.message?.visibilityEmpid
-            || (visibilityScope === 'private' ? privateAudienceCsv : successPayload?.message?.visibility_empid),
         }
         : null;
       let threadRootIdToRefresh = null;
