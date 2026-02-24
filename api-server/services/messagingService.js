@@ -886,6 +886,17 @@ export async function getMessages({ user, companyId, linkedType, linkedId, curso
     params.push(cursorId);
   }
 
+  const buildFallbackParams = (activeFilters) => {
+    const next = [];
+    if (activeFilters.includes('linked_type = ?') && activeFilters.includes('linked_id = ?')) {
+      next.push(String(linkedType), String(linkedId));
+    }
+    if (activeFilters.includes('id < ?') && cursorId) {
+      next.push(cursorId);
+    }
+    return next;
+  };
+
   let rows;
   try {
     [rows] = await queryWithTenantScope(
@@ -896,11 +907,17 @@ export async function getMessages({ user, companyId, linkedType, linkedId, curso
       [...params, parsedLimit + 1],
     );
   } catch (error) {
-    if (!isUnknownColumnError(error, 'linked_type') && !isUnknownColumnError(error, 'linked_id')) throw error;
-    markLinkedColumnsUnsupported(db);
-    const fallbackFilters = filters.filter((entry) => entry !== 'linked_type = ?' && entry !== 'linked_id = ?');
-    const fallbackParams = [];
-    if (cursorId) fallbackParams.push(cursorId);
+    const missingLinkedColumns = isUnknownColumnError(error, 'linked_type') || isUnknownColumnError(error, 'linked_id');
+    const missingParentColumn = isUnknownColumnError(error, 'parent_message_id');
+    if (!missingLinkedColumns && !missingParentColumn) throw error;
+    if (missingLinkedColumns) markLinkedColumnsUnsupported(db);
+
+    const fallbackFilters = filters.filter((entry) => {
+      if (missingLinkedColumns && (entry === 'linked_type = ?' || entry === 'linked_id = ?')) return false;
+      if (missingParentColumn && entry === 'parent_message_id IS NULL') return false;
+      return true;
+    });
+    const fallbackParams = buildFallbackParams(fallbackFilters);
     [rows] = await queryWithTenantScope(
       db,
       'erp_messages',
@@ -910,7 +927,9 @@ export async function getMessages({ user, companyId, linkedType, linkedId, curso
     );
   }
 
-  const visibleRows = rows.map((row) => sanitizeForViewer(row, session, user)).filter(Boolean);
+  const rootRows = rows.filter((row) => row.parent_message_id == null);
+  const sourceRows = rootRows.length > 0 ? rootRows : rows;
+  const visibleRows = sourceRows.map((row) => sanitizeForViewer(row, session, user)).filter(Boolean);
   const hasMore = visibleRows.length > parsedLimit;
   const pageRows = hasMore ? visibleRows.slice(0, parsedLimit) : visibleRows;
   const nextCursor = hasMore ? pageRows[pageRows.length - 1].id : null;

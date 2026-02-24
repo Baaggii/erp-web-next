@@ -111,6 +111,18 @@ function extractContextLink(message) {
   return { linkedType: null, linkedId: null };
 }
 
+function inferPrivateScopeFromParticipants(message) {
+  const visibilityEmpids = [message?.visibility_empid, message?.visibilityEmpid]
+    .flatMap((value) => String(value || '').split(','))
+    .map(normalizeId)
+    .filter(Boolean);
+  const recipientEmpids = message?.recipient_empids || message?.recipientEmpids || message?.recipient_ids || message?.recipientIds;
+  const hasRecipientList = Array.isArray(recipientEmpids)
+    ? recipientEmpids.some((entry) => normalizeId(entry))
+    : String(recipientEmpids || '').split(',').map(normalizeId).some(Boolean);
+  return visibilityEmpids.length > 1 || hasRecipientList;
+}
+
 function buildNestedThreads(messages) {
   const map = new Map(messages.map((msg) => [normalizeId(msg.id), { ...msg, replies: [] }]));
   const roots = [];
@@ -153,7 +165,7 @@ function groupConversations(messages, viewerEmpid = null) {
 
   messages.forEach((msg) => {
     const link = extractContextLink(msg);
-    const scope = String(msg.visibility_scope || msg.visibilityScope || 'company').toLowerCase();
+    const scope = resolveMessageVisibilityScope(msg);
     const hasTopic = Boolean(extractMessageTopic(msg));
     const hasThreadPointer = Boolean(
       normalizeId(msg.conversation_id || msg.conversationId || msg.parent_message_id || msg.parentMessageId),
@@ -187,10 +199,13 @@ function groupConversations(messages, viewerEmpid = null) {
         linkedId: rootLink.linkedId,
         rootMessageId: resolvedRootMessageId,
         participants: [],
+        isPrivateOnly: true,
       });
     }
     const bucket = map.get(key);
     bucket.messages.push(msg);
+    const messageScope = resolveMessageVisibilityScope(msg);
+    bucket.isPrivateOnly = bucket.isPrivateOnly && messageScope === 'private';
     collectMessageParticipantEmpids(msg).forEach((empid) => {
       if (!bucket.participants.includes(empid)) bucket.participants.push(empid);
     });
@@ -204,6 +219,7 @@ function groupConversations(messages, viewerEmpid = null) {
     linkedId: null,
     rootMessageId: null,
     isGeneral: true,
+    isPrivateOnly: false,
     participants: Array.from(generalParticipants),
   });
 
@@ -211,7 +227,7 @@ function groupConversations(messages, viewerEmpid = null) {
     if (conversation.isGeneral) return true;
     const normalizedViewer = normalizeId(viewerEmpid);
     if (!normalizedViewer) return true;
-    if (!conversation.participants.includes(normalizedViewer)) return false;
+    if (conversation.isPrivateOnly && !conversation.participants.includes(normalizedViewer)) return false;
     return conversation.messages.every((message) => canViewerAccessMessage(message, normalizedViewer));
   });
 
@@ -330,7 +346,9 @@ function collectMessageParticipantEmpids(message) {
 }
 
 function resolveMessageVisibilityScope(message) {
-  return String(message?.visibility_scope || message?.visibilityScope || 'company').toLowerCase();
+  const explicitScope = String(message?.visibility_scope || message?.visibilityScope || '').toLowerCase();
+  if (explicitScope) return explicitScope;
+  return inferPrivateScopeFromParticipants(message) ? 'private' : 'company';
 }
 
 function canViewerAccessMessage(message, viewerEmpid) {
@@ -1052,7 +1070,7 @@ export default function MessagingWidget() {
   const conversations = useMemo(() => {
     if (!selfEmpid) return groupedConversations;
     return groupedConversations.filter((conversation) => (
-      conversation.isGeneral || conversation.participants.includes(selfEmpid)
+      conversation.isGeneral || !conversation.isPrivateOnly || conversation.participants.includes(selfEmpid)
     ));
   }, [groupedConversations, selfEmpid]);
   const lastUserConversationId = useMemo(() => {
