@@ -432,7 +432,7 @@ test('reply beyond max depth is rejected', async () => {
   );
 });
 
-test('realtime fanout emits message.created into company room', async () => {
+test('realtime fanout emits new conversation only to participants', async () => {
   const db = new FakeDb();
   const session = { permissions: { messaging: true } };
   const emissions = [];
@@ -458,9 +458,12 @@ test('realtime fanout emits message.created into company room', async () => {
 
   const listed = await getMessages({ user, companyId: 1, correlationId: 'fanout-cid', db, getSession: async () => session });
   assert.equal(listed.items.length, 1);
-  assert.equal(emissions.length, 1);
-  assert.equal(emissions[0].room, 'company:1');
-  assert.equal(emissions[0].event, 'message.created');
+  assert.deepEqual(
+    emissions.map((entry) => entry.room).sort(),
+    ['emp:e-1', 'user:E-1', 'user:e-1'],
+  );
+  assert.ok(emissions.every((entry) => entry.event === 'message.created'));
+  assert.ok(!emissions.some((entry) => entry.room === 'company:1'));
 });
 
 test('realtime fanout keeps private messages scoped to participants when linked columns are unavailable', async () => {
