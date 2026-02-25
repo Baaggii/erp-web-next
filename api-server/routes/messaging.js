@@ -48,6 +48,7 @@ const postMessageSchema = {
     },
     clientTempId: { type: 'string', minLength: 1, maxLength: 128 },
     conversationId: { anyOf: [{ type: 'integer' }, { type: 'string', pattern: '^[0-9]+$' }] },
+    conversation_id: { anyOf: [{ type: 'integer' }, { type: 'string', pattern: '^[0-9]+$' }] },
     parentMessageId: { anyOf: [{ type: 'integer' }, { type: 'string', pattern: '^[0-9]+$' }] },
   },
 };
@@ -114,6 +115,20 @@ router.use(correlation);
 const ajv = new Ajv();
 const validatePostMessage = ajv.compile(postMessageSchema);
 
+
+function normalizeConversationPayload(req, _res, next) {
+  if (req?.body && typeof req.body === 'object') {
+    if (req.body.conversation_id != null && req.body.conversationId == null) {
+      req.body.conversationId = req.body.conversation_id;
+    }
+    if (req.body.conversationId != null && req.body.conversation_id == null) {
+      req.body.conversation_id = req.body.conversationId;
+    }
+  }
+  next();
+}
+
+
 function validatePostMessageBody(req, res, next) {
   if (validatePostMessage(req.body)) return next();
   return res.status(400).json({
@@ -136,7 +151,7 @@ async function handle(res, req, work, okStatus = 200) {
   }
 }
 
-router.post('/messages', validatePostMessageBody, (req, res) =>
+router.post('/messages', normalizeConversationPayload, validatePostMessageBody, (req, res) =>
   handle(
     res,
     req,
@@ -224,7 +239,7 @@ router.get('/messages/:id/thread', (req, res) =>
       correlationId: req.correlationId,
     })));
 
-router.post('/messages/:id/reply', (req, res) =>
+router.post('/messages/:id/reply', normalizeConversationPayload, (req, res) =>
   handle(
     res,
     req,

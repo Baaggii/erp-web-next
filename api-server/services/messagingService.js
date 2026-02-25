@@ -20,6 +20,7 @@ const idempotencyRequestHashSupport = new WeakMap();
 const messageLinkedContextSupport = new WeakMap();
 const messageEncryptionColumnSupport = new WeakMap();
 const messageDeleteByColumnSupport = new WeakMap();
+const messageConversationColumnSupport = new WeakMap();
 let ioRef = null;
 
 const onlineByCompany = new Map();
@@ -72,6 +73,10 @@ function toId(value) {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
 }
 
+function readConversationId(payload) {
+  return toId(payload?.conversation_id ?? payload?.conversationId);
+}
+
 function nowIso() {
   return new Date().toISOString();
 }
@@ -107,12 +112,20 @@ function canUseEncryptedBodyColumns(db) {
   return messageEncryptionColumnSupport.get(db) !== false;
 }
 
+function canUseConversationColumn(db) {
+  return messageConversationColumnSupport.get(db) !== false;
+}
+
 function markLinkedColumnsUnsupported(db) {
   messageLinkedContextSupport.set(db, false);
 }
 
 function markEncryptedBodyColumnsUnsupported(db) {
   messageEncryptionColumnSupport.set(db, false);
+}
+
+function markConversationColumnUnsupported(db) {
+  messageConversationColumnSupport.set(db, false);
 }
 
 function isUnknownColumnError(error, columnName) {
@@ -247,6 +260,42 @@ async function markMessageDeleted(db, { companyId, messageId, empid }) {
   await db.query(
     'UPDATE erp_messages SET deleted_at = CURRENT_TIMESTAMP WHERE id = ? AND company_id = ?',
     [messageId, companyId],
+  );
+}
+
+async function markConversationDeleted(db, { companyId, conversationId, empid }) {
+  const mode = messageDeleteByColumnSupport.get(db);
+  if (mode !== 'deleted_by' && mode !== 'none') {
+    try {
+      await db.query(
+        'UPDATE erp_messages SET deleted_at = CURRENT_TIMESTAMP, deleted_by_empid = ? WHERE company_id = ? AND conversation_id = ?',
+        [empid, companyId, conversationId],
+      );
+      messageDeleteByColumnSupport.set(db, 'deleted_by_empid');
+      return;
+    } catch (error) {
+      if (!isUnknownColumnError(error, 'deleted_by_empid')) throw error;
+      messageDeleteByColumnSupport.set(db, 'deleted_by');
+    }
+  }
+
+  if (mode !== 'none') {
+    try {
+      await db.query(
+        'UPDATE erp_messages SET deleted_at = CURRENT_TIMESTAMP, deleted_by = ? WHERE company_id = ? AND conversation_id = ?',
+        [empid, companyId, conversationId],
+      );
+      messageDeleteByColumnSupport.set(db, 'deleted_by');
+      return;
+    } catch (error) {
+      if (!isUnknownColumnError(error, 'deleted_by')) throw error;
+      messageDeleteByColumnSupport.set(db, 'none');
+    }
+  }
+
+  await db.query(
+    'UPDATE erp_messages SET deleted_at = CURRENT_TIMESTAMP WHERE company_id = ? AND conversation_id = ?',
+    [companyId, conversationId],
   );
 }
 
@@ -701,10 +750,12 @@ async function createMessageInternal({
 
   await enforceRateLimit(ctx.companyId, ctx.user.empid, idempotencyKey, db);
 
+  const canonicalConversationId = toId(conversationId);
   const messageInsertValues = [
     ctx.companyId,
     ctx.user.empid,
     parentMessageId,
+    canonicalConversationId,
     linkedType,
     linkedId,
     visibility.visibilityScope,
@@ -717,35 +768,38 @@ async function createMessageInternal({
   ];
 
   let result;
-  if (canUseLinkedColumns(db) && canUseEncryptedBodyColumns(db)) {
+  if (canUseLinkedColumns(db) && canUseEncryptedBodyColumns(db) && canUseConversationColumn(db)) {
     try {
       [result] = await db.query(
         `INSERT INTO erp_messages
-          (company_id, author_empid, parent_message_id, linked_type, linked_id, visibility_scope, visibility_department_id, visibility_empid, body, body_ciphertext, body_iv, body_auth_tag)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          (company_id, author_empid, parent_message_id, conversation_id, linked_type, linked_id, visibility_scope, visibility_department_id, visibility_empid, body, body_ciphertext, body_iv, body_auth_tag)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         messageInsertValues,
       );
       messageLinkedContextSupport.set(db, true);
       messageEncryptionColumnSupport.set(db, true);
     } catch (error) {
       const linkedUnsupported = isUnknownColumnError(error, 'linked_type') || isUnknownColumnError(error, 'linked_id');
+      const conversationUnsupported = isUnknownColumnError(error, 'conversation_id');
       const encryptionUnsupported = isUnknownColumnError(error, 'body_ciphertext') || isUnknownColumnError(error, 'body_iv') || isUnknownColumnError(error, 'body_auth_tag');
-      if (!linkedUnsupported && !encryptionUnsupported) throw error;
+      if (!linkedUnsupported && !encryptionUnsupported && !conversationUnsupported) throw error;
       if (linkedUnsupported) markLinkedColumnsUnsupported(db);
       if (encryptionUnsupported) markEncryptedBodyColumnsUnsupported(db);
+      if (conversationUnsupported) markConversationColumnUnsupported(db);
     }
   }
 
-  if (!result && canUseLinkedColumns(db)) {
+  if (!result && canUseLinkedColumns(db) && canUseConversationColumn(db)) {
     try {
       [result] = await db.query(
         `INSERT INTO erp_messages
-          (company_id, author_empid, parent_message_id, linked_type, linked_id, visibility_scope, visibility_department_id, visibility_empid, body)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          (company_id, author_empid, parent_message_id, conversation_id, linked_type, linked_id, visibility_scope, visibility_department_id, visibility_empid, body)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           ctx.companyId,
           ctx.user.empid,
           parentMessageId,
+          canonicalConversationId,
           linkedType,
           linkedId,
           visibility.visibilityScope,
@@ -756,21 +810,23 @@ async function createMessageInternal({
       );
       messageLinkedContextSupport.set(db, true);
     } catch (error) {
-      if (!isUnknownColumnError(error, 'linked_type') && !isUnknownColumnError(error, 'linked_id')) throw error;
+      if (!isUnknownColumnError(error, 'linked_type') && !isUnknownColumnError(error, 'linked_id') && !isUnknownColumnError(error, 'conversation_id')) throw error;
       markLinkedColumnsUnsupported(db);
+      if (isUnknownColumnError(error, 'conversation_id')) markConversationColumnUnsupported(db);
     }
   }
 
-  if (!result && canUseEncryptedBodyColumns(db)) {
+  if (!result && canUseEncryptedBodyColumns(db) && canUseConversationColumn(db)) {
     try {
       [result] = await db.query(
         `INSERT INTO erp_messages
-          (company_id, author_empid, parent_message_id, visibility_scope, visibility_department_id, visibility_empid, body, body_ciphertext, body_iv, body_auth_tag)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          (company_id, author_empid, parent_message_id, conversation_id, visibility_scope, visibility_department_id, visibility_empid, body, body_ciphertext, body_iv, body_auth_tag)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           ctx.companyId,
           ctx.user.empid,
           parentMessageId,
+          canonicalConversationId,
           visibility.visibilityScope,
           visibility.visibilityDepartmentId,
           visibility.visibilityEmpid,
@@ -785,22 +841,25 @@ async function createMessageInternal({
       const visibilityUnsupported = isUnknownColumnError(error, 'visibility_scope')
         || isUnknownColumnError(error, 'visibility_department_id')
         || isUnknownColumnError(error, 'visibility_empid');
+      const conversationUnsupported = isUnknownColumnError(error, 'conversation_id');
       const encryptionUnsupported = isUnknownColumnError(error, 'body_ciphertext') || isUnknownColumnError(error, 'body_iv') || isUnknownColumnError(error, 'body_auth_tag');
-      if (!visibilityUnsupported && !encryptionUnsupported) throw error;
+      if (!visibilityUnsupported && !encryptionUnsupported && !conversationUnsupported) throw error;
       if (encryptionUnsupported) markEncryptedBodyColumnsUnsupported(db);
+      if (conversationUnsupported) markConversationColumnUnsupported(db);
     }
   }
 
-  if (!result) {
+  if (!result && canUseConversationColumn(db)) {
     try {
       [result] = await db.query(
         `INSERT INTO erp_messages
-          (company_id, author_empid, parent_message_id, visibility_scope, visibility_department_id, visibility_empid, body)
-          VALUES (?, ?, ?, ?, ?, ?, ?)`,
+          (company_id, author_empid, parent_message_id, conversation_id, visibility_scope, visibility_department_id, visibility_empid, body)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           ctx.companyId,
           ctx.user.empid,
           parentMessageId,
+          canonicalConversationId,
           visibility.visibilityScope,
           visibility.visibilityDepartmentId,
           visibility.visibilityEmpid,
@@ -811,7 +870,9 @@ async function createMessageInternal({
       const visibilityUnsupported = isUnknownColumnError(error, 'visibility_scope')
         || isUnknownColumnError(error, 'visibility_department_id')
         || isUnknownColumnError(error, 'visibility_empid');
-      if (!visibilityUnsupported) throw error;
+      const conversationUnsupported = isUnknownColumnError(error, 'conversation_id');
+      if (!visibilityUnsupported && !conversationUnsupported) throw error;
+      if (conversationUnsupported) markConversationColumnUnsupported(db);
     }
   }
 
@@ -837,11 +898,11 @@ async function createMessageInternal({
     requestHash,
     expiresAt,
   });
-  if (conversationId) {
+  if (canonicalConversationId || !parentMessageId) {
     try {
       await db.query(
         'UPDATE erp_messages SET conversation_id = ? WHERE id = ? AND company_id = ?',
-        [String(conversationId), messageId, ctx.companyId],
+        [String(canonicalConversationId || messageId), messageId, ctx.companyId],
       );
     } catch (error) {
       if (!isUnknownColumnError(error, 'conversation_id')) throw error;
@@ -881,14 +942,15 @@ export async function postMessage({ user, companyId, payload, correlationId, db 
   let parentMessageId = null;
   let conversationId = null;
   let normalizedPayload = payload;
-  const requestedConversationId = toId(payload?.conversationId);
+  const requestedConversationId = readConversationId(payload);
   if (requestedConversationId) {
     const rootMessage = await findMessageById(db, scopedCompanyId, requestedConversationId);
     if (!rootMessage || rootMessage.deleted_at) {
       throw createError(404, 'CONVERSATION_NOT_FOUND', 'Conversation not found');
     }
     assertCanViewMessage(rootMessage, session, user);
-    conversationId = String(rootMessage.conversation_id || rootMessage.id);
+    conversationId = toId(rootMessage.conversation_id || rootMessage.id);
+    parentMessageId = toId(rootMessage.id);
 
     const privateParticipants = rootMessage.visibility_scope === 'private'
       ? new Set(parsePrivateParticipants(rootMessage.visibility_empid))
@@ -942,6 +1004,12 @@ export async function postReply({ user, companyId, messageId, payload, correlati
     throw createError(400, 'THREAD_DEPTH_EXCEEDED', `Reply depth exceeds maximum of ${MAX_REPLY_DEPTH}`);
   }
 
+  const parentConversationId = toId(message.conversation_id || message.id);
+  const requestedConversationId = readConversationId(payload);
+  if (requestedConversationId && requestedConversationId !== parentConversationId) {
+    throw createError(409, 'CONVERSATION_MISMATCH', 'Reply conversation_id does not match parent thread conversation_id');
+  }
+
   const privateParticipants = message.visibility_scope === 'private'
     ? new Set(parsePrivateParticipants(message.visibility_empid))
     : new Set();
@@ -964,6 +1032,7 @@ export async function postReply({ user, companyId, messageId, payload, correlati
       recipientEmpids: message.visibility_scope === 'private' ? Array.from(privateParticipants) : payload?.recipientEmpids,
     },
     parentMessageId: message.id,
+    conversationId: parentConversationId,
     eventName: 'thread.reply.created',
   });
 
@@ -1081,7 +1150,9 @@ export async function getThread({ user, companyId, messageId, correlationId, db 
   await assertMessagingSchema(db);
   const { scopedCompanyId, session } = await resolveSession(user, companyId, getSession);
   if (!canMessage(session)) throwPermissionDenied({ db, user, companyId: scopedCompanyId, action: 'message:thread' });
-  const root = await findMessageById(db, scopedCompanyId, messageId);
+  const entry = await findMessageById(db, scopedCompanyId, messageId);
+  const rootId = toId(entry?.conversation_id || entry?.id || messageId);
+  const root = await findMessageById(db, scopedCompanyId, rootId);
   if (!root || root.deleted_at) throw createError(404, 'MESSAGE_NOT_FOUND', 'Message not found');
   assertCanViewMessage(root, session, user);
 
@@ -1099,8 +1170,8 @@ export async function getThread({ user, companyId, messageId, correlationId, db 
     bucket.push(row);
     byParent.set(key, bucket);
   }
-  const stack = [messageId];
-  const seen = new Set([String(messageId)]);
+  const stack = [root.id];
+  const seen = new Set([String(root.id)]);
   const rows = [];
   while (stack.length > 0) {
     const id = stack.shift();
@@ -1118,12 +1189,12 @@ export async function getThread({ user, companyId, messageId, correlationId, db 
 
   const [receiptResult] = await db.query(
     'INSERT IGNORE INTO erp_message_receipts (message_id, empid) VALUES (?, ?)',
-    [messageId, user.empid],
+    [root.id, user.empid],
   );
   if (receiptResult?.affectedRows) {
     emit(scopedCompanyId, 'receipt.read', {
       ...eventPayloadBase({ correlationId, companyId: scopedCompanyId }),
-      messageId,
+      messageId: root.id,
       empid: user.empid,
     });
   }
@@ -1217,7 +1288,18 @@ export async function deleteMessage({ user, companyId, messageId, correlationId,
     throwPermissionDenied({ db, user, companyId: scopedCompanyId, action: 'message:delete', reason: deleteEvaluation.reason || 'cannot_delete_message' });
   }
 
-  await markMessageDeleted(db, { companyId: scopedCompanyId, messageId, empid: user.empid });
+  const conversationId = toId(message.conversation_id || message.id);
+  const isRootDelete = Number(message.id) === Number(conversationId);
+  if (isRootDelete) {
+    await markConversationDeleted(db, { companyId: scopedCompanyId, conversationId, empid: user.empid });
+    emit(scopedCompanyId, 'conversation.deleted', {
+      ...eventPayloadBase({ correlationId, companyId: scopedCompanyId }),
+      conversation_id: conversationId,
+      deletedByEmpid: user.empid,
+    });
+  } else {
+    await markMessageDeleted(db, { companyId: scopedCompanyId, messageId, empid: user.empid });
+  }
   emit(scopedCompanyId, 'message.deleted', {
     ...eventPayloadBase({ correlationId, companyId: scopedCompanyId }),
     messageId,

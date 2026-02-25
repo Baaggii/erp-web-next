@@ -63,6 +63,11 @@ export function getCompanyCacheKey(companyId) {
 }
 
 
+export function canonicalConversationId(message) {
+  return normalizeId(message?.conversation_id || message?.conversationId || message?.id || null) || null;
+}
+
+
 export function excludeGeneralConversationSummaries(conversations = []) {
   return Array.isArray(conversations)
     ? conversations.filter((conversation) => !conversation?.isGeneral)
@@ -106,8 +111,7 @@ export function resolveThreadRefreshRootId({
   fallbackRootReplyTargetId = null,
   createdMessage = null,
 } = {}) {
-  const createdRootMessageId = createdMessage?.conversation_id
-    || createdMessage?.conversationId
+  const createdRootMessageId = canonicalConversationId(createdMessage)
     || createdMessage?.parent_message_id
     || createdMessage?.parentMessageId
     || createdMessage?.id
