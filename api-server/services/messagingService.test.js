@@ -82,11 +82,6 @@ class MockDb {
 
     if (text.includes('INSERT INTO erp_messages')) {
       const [companyId, empid, parentMessageId, conversationId] = params;
-      if (text.includes('conversation_id') && (conversationId === null || conversationId === undefined || conversationId === '')) {
-        const error = new Error("Field 'conversation_id' doesn't have a default value");
-        error.code = 'ER_NO_DEFAULT_FOR_FIELD';
-        throw error;
-      }
       const parent = parentMessageId ? this.messages.find((entry) => Number(entry.id) === Number(parentMessageId)) : null;
       const id = this.nextId++;
       this.messages.push({
