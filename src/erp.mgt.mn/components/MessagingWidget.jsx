@@ -1325,21 +1325,25 @@ export default function MessagingWidget() {
     [conversations, draftConversationSummary],
   );
   const isDraftConversation = state.activeConversationId === NEW_CONVERSATION_ID;
-  const defaultConversation = conversations.find((conversation) => conversation.id === lastUserConversationId)
-    || conversations.find((conversation) => !conversation.isGeneral)
-    || conversations.find((conversation) => conversation.isGeneral)
-    || null;
   const requestedConversation = isDraftConversation
     ? null
     : conversations.find((conversation) => conversation.id === state.activeConversationId) || null;
-  const hasExplicitConversationSelection = Boolean(state.activeConversationId);
-  const activeConversation = isDraftConversation
-    ? null
-    : (requestedConversation || (hasExplicitConversationSelection ? null : defaultConversation));
+  const activeConversation = isDraftConversation ? null : requestedConversation;
   const activeConversationId = isDraftConversation ? NEW_CONVERSATION_ID : (activeConversation?.id || null);
   const threadMessages = useMemo(() => buildNestedThreads(activeConversation?.messages || []), [activeConversation]);
   const messageMap = useMemo(() => new Map(messages.map((msg) => [normalizeId(msg.id), msg])), [messages]);
   const unreadCount = messages.filter((msg) => !msg.read_by?.includes?.(selfEmpid)).length;
+
+  useEffect(() => {
+    if (state.activeConversationId) return;
+    if (conversations.length === 0) return;
+    const preferredConversationId = lastUserConversationId
+      || (conversations.some((conversation) => conversation.id === 'general') ? 'general' : null)
+      || conversations[0]?.id
+      || null;
+    if (!preferredConversationId) return;
+    dispatch({ type: 'widget/setConversation', payload: preferredConversationId });
+  }, [conversations, lastUserConversationId, state.activeConversationId]);
 
   useEffect(() => {
     if (!activeConversation?.rootMessageId) return;
