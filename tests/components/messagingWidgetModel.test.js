@@ -6,6 +6,7 @@ import {
   createInitialWidgetState,
   excludeGeneralConversationSummaries,
   messagingWidgetReducer,
+  prioritizeConversationSummaries,
   resolvePresenceStatus,
   resolveThreadRefreshRootId,
   safePreviewableFile,
@@ -100,4 +101,19 @@ test('excludeGeneralConversationSummaries hides general channel entries', () => 
   ]);
 
   assert.deepEqual(filtered.map((entry) => entry.id), ['message:1', '__new__']);
+});
+
+
+test('prioritizeConversationSummaries keeps general channel first and includes it without messages', () => {
+  const summaries = prioritizeConversationSummaries(
+    [
+      { id: 'message:2', isGeneral: false, messages: [{ id: 2 }] },
+      { id: 'general', isGeneral: true, messages: [] },
+      { id: 'message:1', isGeneral: false, messages: [{ id: 1 }] },
+      { id: 'message:empty', isGeneral: false, messages: [] },
+    ],
+    { id: '__new__', isDraft: true, isGeneral: false, messages: [] },
+  );
+
+  assert.deepEqual(summaries.map((entry) => entry.id), ['general', '__new__', 'message:2', 'message:1']);
 });

@@ -6,8 +6,8 @@ import {
   PRESENCE,
   buildSessionStorageKey,
   createInitialWidgetState,
-  excludeGeneralConversationSummaries,
   getCompanyCacheKey,
+  prioritizeConversationSummaries,
   messagingWidgetReducer,
   normalizeId,
   resolvePresenceStatus,
@@ -1212,10 +1212,10 @@ export default function MessagingWidget() {
       isDraft: true,
     }
     : null;
-  const conversationSummariesSource = useMemo(() => {
-    const base = draftConversationSummary ? [draftConversationSummary, ...conversations] : conversations;
-    return base.filter((conversation) => !conversation.isGeneral && (conversation.isDraft || conversation.messages.length > 0));
-  }, [conversations, draftConversationSummary]);
+  const conversationSummariesSource = useMemo(
+    () => prioritizeConversationSummaries(conversations, draftConversationSummary),
+    [conversations, draftConversationSummary],
+  );
   const isDraftConversation = state.activeConversationId === NEW_CONVERSATION_ID;
   const defaultConversation = conversations.find((conversation) => conversation.id === lastUserConversationId)
     || conversations.find((conversation) => !conversation.isGeneral)

@@ -69,6 +69,21 @@ export function excludeGeneralConversationSummaries(conversations = []) {
     : [];
 }
 
+
+export function prioritizeConversationSummaries(conversations = [], draftConversationSummary = null) {
+  const generalConversation = Array.isArray(conversations)
+    ? conversations.find((conversation) => conversation?.isGeneral)
+    : null;
+  const nonGeneralConversations = Array.isArray(conversations)
+    ? conversations.filter((conversation) => !conversation?.isGeneral && Array.isArray(conversation?.messages) && conversation.messages.length > 0)
+    : [];
+  const summaries = [];
+  if (generalConversation) summaries.push(generalConversation);
+  if (draftConversationSummary) summaries.push(draftConversationSummary);
+  summaries.push(...nonGeneralConversations);
+  return summaries;
+}
+
 export function createInitialWidgetState({ isOpen = false, activeConversationId = null, companyId = null } = {}) {
   return {
     isOpen,
