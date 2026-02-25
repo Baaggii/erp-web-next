@@ -6,32 +6,7 @@ let refs = 0;
 let wired = false;
 const listeners = new Set();
 const socketPath = import.meta.env.VITE_SOCKET_PATH || '/api/socket.io';
-const disableWebsocketByDefault = import.meta.env.VITE_SOCKET_DISABLE_WEBSOCKET === 'true';
 let warnedMissingSocketUrl = false;
-let forcedPollingMode = disableWebsocketByDefault;
-
-function getSocketOptions() {
-  const usePollingOnly = forcedPollingMode;
-  return {
-    withCredentials: true,
-    path: socketPath,
-    autoConnect: true,
-    transports: usePollingOnly ? ['polling'] : ['polling', 'websocket'],
-    upgrade: !usePollingOnly,
-  };
-}
-
-function enablePollingFallback(reason) {
-  if (forcedPollingMode || !socket) return;
-  forcedPollingMode = true;
-  console.warn(`Socket.IO websocket transport failed (${reason}); falling back to polling.`);
-  socket.io.opts.transports = ['polling'];
-  socket.io.opts.upgrade = false;
-  if (socket.connected) {
-    socket.disconnect();
-  }
-  socket.connect();
-}
 
 function resolveSocketUrl() {
   if (import.meta.env.VITE_SOCKET_URL) {
@@ -72,15 +47,7 @@ function wireSocketEvents() {
   socket.on('disconnect', () => notifyListeners(false));
   socket.on('connect_error', (err) => {
     console.error('Socket connection error', err);
-    if (typeof err?.message === 'string' && err.message.toLowerCase().includes('websocket')) {
-      enablePollingFallback(err.message);
-    }
     notifyListeners(false);
-  });
-  socket.io.on('error', (err) => {
-    if (typeof err?.message === 'string' && err.message.toLowerCase().includes('websocket')) {
-      enablePollingFallback(err.message);
-    }
   });
   wired = true;
   notifyListeners(socket.connected);
@@ -89,7 +56,7 @@ function wireSocketEvents() {
 export function connectSocket() {
   if (!socket) {
     const url = resolveSocketUrl();
-    socket = io(url, getSocketOptions());
+    socket = io(url, { withCredentials: true, path: socketPath, autoConnect: true });
   }
   wireSocketEvents();
   if (!socket.connected) {
