@@ -109,79 +109,17 @@ function computeLineAmount(row) {
   return -amount;
 }
 
-function isSignatureError(message) {
-  return /Incorrect number of arguments/i.test(message);
-}
-
-function isLikelyParameterOrderError(message) {
-  return /(Incorrect date value.*p_date_(from|to)|Incorrect integer value.*p_fiscal_year)/i.test(message);
-}
-
-function pickProcedureArgValue(parameterName, values) {
-  const key = String(parameterName || '').toLowerCase();
-  if (/(company|comp)_?id$/.test(key) || /(^|_)p?_?company(_id)?$/.test(key)) return values.companyId;
-  if (/fiscal(_|)year|year_id|^p?_?year$/.test(key)) return values.fiscalYear;
-  if (/date(_|)from|from(_|)date|start(_|)date/.test(key)) return values.dateFrom;
-  if (/date(_|)to|to(_|)date|end(_|)date/.test(key)) return values.dateTo;
-  return undefined;
-}
-
-async function getProcedureParameterNames(conn, procedureName) {
-  const [rows] = await conn.query(
-    `SELECT parameter_name
-       FROM information_schema.parameters
-      WHERE specific_schema = DATABASE()
-        AND specific_name = ?
-        AND parameter_mode = 'IN'
-      ORDER BY ordinal_position`,
-    [procedureName],
-  );
-  return rows.map((row) => row.parameter_name).filter(Boolean);
-}
-
 async function runReportProcedure(conn, procedureName, { companyId, fiscalYear, fromDate, toDate }) {
-  const dateFrom = formatDateOnly(fromDate);
-  const dateTo = formatDateOnly(toDate);
-  const values = { companyId, fiscalYear, dateFrom, dateTo };
+  const fourArgSql = `CALL \`${procedureName}\`(?, ?, ?, ?)`;
   const twoArgSql = `CALL \`${procedureName}\`(?, ?)`;
+  const fourArgParams = [companyId, fiscalYear, formatDateOnly(fromDate), formatDateOnly(toDate)];
   const twoArgParams = [companyId, fiscalYear];
 
   try {
-    const parameterNames = await getProcedureParameterNames(conn, procedureName);
-    if (parameterNames.length) {
-      const orderedParams = parameterNames.map((name) => pickProcedureArgValue(name, values));
-      if (orderedParams.every((value) => value !== undefined)) {
-        const placeholders = orderedParams.map(() => '?').join(', ');
-        await conn.query(`CALL \`${procedureName}\`(${placeholders})`, orderedParams);
-        return;
-      }
-    }
+    await conn.query(fourArgSql, fourArgParams);
   } catch (error) {
     const message = String(error?.message || '');
-    if (!/information_schema\.parameters|access denied|denied/i.test(message)) throw error;
-  }
-
-  const fourArgSql = `CALL \`${procedureName}\`(?, ?, ?, ?)`;
-  const fourArgDateRangeFirstParams = [companyId, dateFrom, dateTo, fiscalYear];
-  const fourArgFiscalYearFirstParams = [companyId, fiscalYear, dateFrom, dateTo];
-
-  try {
-    await conn.query(fourArgSql, fourArgDateRangeFirstParams);
-    return;
-  } catch (error) {
-    const message = String(error?.message || '');
-    if (isSignatureError(message)) {
-      await conn.query(twoArgSql, twoArgParams);
-      return;
-    }
-    if (!isLikelyParameterOrderError(message)) throw error;
-  }
-
-  try {
-    await conn.query(fourArgSql, fourArgFiscalYearFirstParams);
-  } catch (error) {
-    const message = String(error?.message || '');
-    if (!isSignatureError(message)) throw error;
+    if (!/Incorrect number of arguments/i.test(message)) throw error;
     await conn.query(twoArgSql, twoArgParams);
   }
 }

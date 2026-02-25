@@ -43,36 +43,6 @@ test('closeFiscalPeriod rejects already closed periods', async () => {
 });
 
 
-test('closeFiscalPeriod uses information_schema parameter order when available', async () => {
-  const { conn, calls } = createMockConnection({ balanceRows: [] });
-  const originalQuery = conn.query;
-  conn.query = async (sql, params = []) => {
-    if (sql.includes('FROM information_schema.parameters')) {
-      return [[
-        { parameter_name: 'p_company_id' },
-        { parameter_name: 'p_fiscal_year' },
-        { parameter_name: 'p_date_from' },
-        { parameter_name: 'p_date_to' },
-      ]];
-    }
-    return originalQuery(sql, params);
-  };
-
-  const result = await closeFiscalPeriod({
-    companyId: 1,
-    fiscalYear: 2025,
-    userId: 'tester',
-    reportProcedures: ['dynrep_1_sp_trial_balance_expandable'],
-    dbPool: asPool(conn),
-  });
-
-  assert.equal(result.ok, true);
-  const dynamicCall = calls.find((c) => c.type === 'query' && c.sql.includes('CALL `dynrep_1_sp_trial_balance_expandable`(?, ?, ?, ?)'));
-  assert.ok(dynamicCall);
-  assert.deepEqual(dynamicCall.params, [1, 2025, '2025-01-01', '2025-12-31']);
-});
-
-
 test('closeFiscalPeriod retries 4-arg procedure with fiscalYear-first order when date-range-first fails', async () => {
   let procedureAttempt = 0;
   const attemptedParams = [];
