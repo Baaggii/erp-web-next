@@ -183,12 +183,6 @@ export function groupConversations(messages, viewerEmpid = null) {
   const generalParticipants = new Set();
   const byId = new Map(messages.map((msg) => [String(msg.id), msg]));
 
-  const buildParticipantBucketKey = (message) => {
-    const participants = Array.from(new Set(collectMessageParticipantEmpids(message).map(normalizeId).filter(Boolean))).sort();
-    if (participants.length === 0) return null;
-    return participants.join(',');
-  };
-
   const resolveRootMessageId = (message) => {
     if (!message) return null;
     const conversationId = message.conversation_id || message.conversationId;
@@ -214,7 +208,10 @@ export function groupConversations(messages, viewerEmpid = null) {
   };
 
   messages.forEach((msg) => {
-    const isGeneralMessage = isGeneralConversationMessage(msg);
+    const hasThreadPointer = Boolean(
+      normalizeId(msg.conversation_id || msg.conversationId || msg.parent_message_id || msg.parentMessageId),
+    );
+    const isGeneralMessage = !hasThreadPointer && isGeneralConversationMessage(msg);
 
     if (isGeneralMessage) {
       generalMessages.push(msg);
@@ -238,22 +235,11 @@ export function groupConversations(messages, viewerEmpid = null) {
     }
     const topic = extractMessageTopic(rootMessage || msg) || extractMessageTopic(msg);
     const rootLink = extractContextLink(rootMessage || msg);
-    const messageScope = resolveMessageVisibilityScope(msg);
-    const participantKey = buildParticipantBucketKey(rootMessage || msg) || buildParticipantBucketKey(msg);
-    const key = rootLink.linkedType && rootLink.linkedId
-      ? `context:${rootLink.linkedType}:${rootLink.linkedId}:${messageScope}`
-      : messageScope === 'private' && participantKey
-        ? `private:${participantKey}`
-        : `message:${resolvedRootMessageId}`;
+    const key = `message:${resolvedRootMessageId}`;
     if (!map.has(key)) {
-      const fallbackTitle = rootLink.linkedType === 'transaction' && rootLink.linkedId
-        ? `Transaction #${rootLink.linkedId}`
-        : messageScope === 'private'
-          ? 'Private chat'
-          : 'Untitled topic';
       map.set(key, {
         id: key,
-        title: topic || fallbackTitle,
+        title: topic || (rootLink.linkedType === 'transaction' && rootLink.linkedId ? `Transaction #${rootLink.linkedId}` : 'Untitled topic'),
         messages: [],
         linkedType: rootLink.linkedType,
         linkedId: rootLink.linkedId,
@@ -264,6 +250,7 @@ export function groupConversations(messages, viewerEmpid = null) {
     }
     const bucket = map.get(key);
     bucket.messages.push(msg);
+    const messageScope = resolveMessageVisibilityScope(msg);
     bucket.isPrivateOnly = bucket.isPrivateOnly && messageScope === 'private';
     collectMessageParticipantEmpids(msg).forEach((empid) => {
       if (!bucket.participants.includes(empid)) bucket.participants.push(empid);
@@ -333,7 +320,6 @@ function createIdempotencyKey() {
 function conversationRootIdFromSelection(conversationId) {
   const raw = normalizeId(conversationId);
   if (!raw || raw === 'general' || raw === NEW_CONVERSATION_ID) return null;
-  if (raw.startsWith('private:') || raw.startsWith('context:')) return null;
   if (raw.startsWith('message:')) {
     const candidate = raw.slice('message:'.length);
     return /^\d+$/.test(candidate) ? candidate : null;
@@ -726,13 +712,7 @@ export default function MessagingWidget() {
     activeConversationId: (() => {
       const rawConversationId = globalThis.sessionStorage?.getItem(sessionConversationKey);
       if (!rawConversationId) return null;
-      if (
-        rawConversationId === 'general'
-        || rawConversationId === NEW_CONVERSATION_ID
-        || rawConversationId.startsWith('message:')
-        || rawConversationId.startsWith('private:')
-        || rawConversationId.startsWith('context:')
-      ) return rawConversationId;
+      if (rawConversationId === 'general' || rawConversationId === NEW_CONVERSATION_ID || rawConversationId.startsWith('message:')) return rawConversationId;
       if (/^\d+$/.test(rawConversationId)) return `message:${rawConversationId}`;
       return null;
     })(),
@@ -763,7 +743,6 @@ export default function MessagingWidget() {
   const [attachmentPreviewOpen, setAttachmentPreviewOpen] = useState(false);
   const [attachmentPreview, setAttachmentPreview] = useState(null);
   const composerRef = useRef(null);
-  const hasAppliedInitialConversationRef = useRef(false);
 
   const draftStorageKey = useMemo(() => {
     const convKey = state.activeConversationId || 'new';
@@ -935,12 +914,7 @@ export default function MessagingWidget() {
         const rawStoredConversationId = globalThis.sessionStorage?.getItem(sessionConversationKey);
         const storedConversationId = (() => {
           if (!rawStoredConversationId) return null;
-          if (
-            rawStoredConversationId === 'general'
-            || rawStoredConversationId.startsWith('message:')
-            || rawStoredConversationId.startsWith('private:')
-            || rawStoredConversationId.startsWith('context:')
-          ) return rawStoredConversationId;
+          if (rawStoredConversationId === 'general' || rawStoredConversationId.startsWith('message:')) return rawStoredConversationId;
           if (/^\d+$/.test(rawStoredConversationId)) return `message:${rawStoredConversationId}`;
           return null;
         })();
@@ -1361,15 +1335,8 @@ export default function MessagingWidget() {
   const unreadCount = messages.filter((msg) => !msg.read_by?.includes?.(selfEmpid)).length;
 
   useEffect(() => {
-    if (conversations.length === 0) return;
-    if (!hasAppliedInitialConversationRef.current && lastUserConversationId) {
-      hasAppliedInitialConversationRef.current = true;
-      if (state.activeConversationId !== lastUserConversationId) {
-        dispatch({ type: 'widget/setConversation', payload: lastUserConversationId });
-      }
-      return;
-    }
     if (state.activeConversationId) return;
+    if (conversations.length === 0) return;
     const preferredConversationId = lastUserConversationId
       || (conversations.some((conversation) => conversation.id === 'general') ? 'general' : null)
       || conversations[0]?.id
@@ -1754,7 +1721,6 @@ export default function MessagingWidget() {
       return;
     }
     const hasThreadContext = !isDraftConversation && !selectedIsGeneral && Boolean(selectedRootIdFromState);
-    const canStartRootInExistingConversation = !isDraftConversation && !selectedIsGeneral && Boolean(selectedConversation);
     if (!hasThreadContext && !state.activeConversationId && !isDraftConversation) {
       setComposerAnnouncement('Start a new conversation from the New conversation button.');
       return;
@@ -1769,8 +1735,8 @@ export default function MessagingWidget() {
       setComposerAnnouncement('Select a conversation before sending a reply.');
       return;
     }
-    if (!isDraftConversation && !selectedIsGeneral && !isReplyMode && !canStartRootInExistingConversation) {
-      setComposerAnnouncement('Unable to send in this conversation. Select a conversation or click New conversation.');
+    if (!isDraftConversation && !selectedIsGeneral && !isReplyMode && !fallbackRootReplyTargetId) {
+      setComposerAnnouncement('Unable to create a conversation here. Use New conversation.');
       return;
     }
 
@@ -1785,9 +1751,7 @@ export default function MessagingWidget() {
       ...(visibilityScope === 'private' ? { recipientEmpids: allParticipants } : {}),
       ...(linkedType ? { linkedType } : {}),
       ...(linkedId ? { linkedId: String(linkedId) } : {}),
-      ...(!isDraftConversation && !isReplyMode && fallbackRootReplyTargetId && !canStartRootInExistingConversation
-        ? { conversationId: fallbackRootReplyTargetId }
-        : {}),
+      ...(!isDraftConversation && !isReplyMode && fallbackRootReplyTargetId ? { conversationId: fallbackRootReplyTargetId } : {}),
       ...(!isDraftConversation && isReplyMode && explicitReplyTargetId && fallbackRootReplyTargetId
         ? { conversationId: fallbackRootReplyTargetId }
         : {}),
@@ -1798,9 +1762,7 @@ export default function MessagingWidget() {
       ? `${API_BASE}/messaging/messages/${explicitReplyTargetId}/reply`
       : `${API_BASE}/messaging/messages`;
 
-    const optimisticConversationId = (!isDraftConversation && !isReplyMode && canStartRootInExistingConversation)
-      ? null
-      : (fallbackRootReplyTargetId || explicitReplyTargetId || null);
+    const optimisticConversationId = fallbackRootReplyTargetId || explicitReplyTargetId || null;
     const optimisticParentMessageId = (!isDraftConversation && isReplyMode && explicitReplyTargetId)
       ? explicitReplyTargetId
       : null;
