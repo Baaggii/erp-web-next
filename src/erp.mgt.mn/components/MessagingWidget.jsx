@@ -1751,7 +1751,12 @@ export default function MessagingWidget() {
       setComposerAnnouncement('Start a new conversation from the New conversation button.');
       return;
     }
-    const explicitReplyTargetId = normalizeId(state.composer.replyToId);
+    const parseThreadMessageId = (value) => {
+      const candidate = normalizeId(value);
+      return /^\d+$/.test(candidate) ? candidate : null;
+    };
+
+    const explicitReplyTargetId = parseThreadMessageId(state.composer.replyToId);
     const generalConversationRootId = selectedIsGeneral
       ? normalizeId(
         selectedConversation?.messages
@@ -1759,12 +1764,13 @@ export default function MessagingWidget() {
           ?.id,
       )
       : null;
-    const fallbackRootReplyTargetId = normalizeId(
+    const fallbackRootReplyTargetId = parseThreadMessageId(
       selectedConversation?.rootMessageId
       || selectedRootIdFromState
       || generalConversationRootId,
     );
-    if ((isReplyMode || hasThreadContext) && !fallbackRootReplyTargetId && !explicitReplyTargetId) {
+    const shouldSendReply = !isDraftConversation && Boolean(explicitReplyTargetId);
+    if ((shouldSendReply || hasThreadContext) && !fallbackRootReplyTargetId && !explicitReplyTargetId) {
       setComposerAnnouncement('This conversation is missing its thread root. Refresh and try again.');
       return;
     }
@@ -1772,7 +1778,7 @@ export default function MessagingWidget() {
       setComposerAnnouncement('Select a conversation before sending a reply.');
       return;
     }
-    if (!isDraftConversation && !selectedIsGeneral && !isReplyMode && !fallbackRootReplyTargetId) {
+    if (!isDraftConversation && !selectedIsGeneral && !shouldSendReply && !fallbackRootReplyTargetId) {
       setComposerAnnouncement('Unable to create a conversation here. Use New conversation.');
       return;
     }
@@ -1788,19 +1794,19 @@ export default function MessagingWidget() {
       ...(visibilityScope === 'private' ? { recipientEmpids: allParticipants } : {}),
       ...(linkedType ? { linkedType } : {}),
       ...(linkedId ? { linkedId: String(linkedId) } : {}),
-      ...(!isDraftConversation && !isReplyMode && fallbackRootReplyTargetId ? { conversationId: fallbackRootReplyTargetId } : {}),
-      ...(!isDraftConversation && isReplyMode && explicitReplyTargetId && fallbackRootReplyTargetId
+      ...(!isDraftConversation && !shouldSendReply && fallbackRootReplyTargetId ? { conversationId: fallbackRootReplyTargetId } : {}),
+      ...(!isDraftConversation && shouldSendReply && explicitReplyTargetId && fallbackRootReplyTargetId
         ? { conversationId: fallbackRootReplyTargetId }
         : {}),
-      ...(!isDraftConversation && isReplyMode && explicitReplyTargetId ? { parentMessageId: explicitReplyTargetId } : {}),
+      ...(!isDraftConversation && shouldSendReply && explicitReplyTargetId ? { parentMessageId: explicitReplyTargetId } : {}),
     };
 
-    const targetUrl = (!isDraftConversation && isReplyMode && explicitReplyTargetId)
+    const targetUrl = (!isDraftConversation && shouldSendReply && explicitReplyTargetId)
       ? `${API_BASE}/messaging/messages/${explicitReplyTargetId}/reply`
       : `${API_BASE}/messaging/messages`;
 
     const optimisticConversationId = fallbackRootReplyTargetId || explicitReplyTargetId || null;
-    const optimisticParentMessageId = (!isDraftConversation && isReplyMode && explicitReplyTargetId)
+    const optimisticParentMessageId = (!isDraftConversation && shouldSendReply && explicitReplyTargetId)
       ? explicitReplyTargetId
       : null;
     const optimisticMessage = {
@@ -1855,7 +1861,7 @@ export default function MessagingWidget() {
       if (createdMessage) {
         const createdRootMessageId = resolveThreadRefreshRootId({ createdMessage });
         threadRootIdToRefresh = resolveThreadRefreshRootId({
-          isReplyMode,
+          isReplyMode: shouldSendReply,
           fallbackRootReplyTargetId,
           createdMessage,
         });
