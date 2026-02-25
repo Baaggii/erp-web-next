@@ -63,10 +63,3 @@ Even after user clicks a conversation, the widget still validates/re-resolves se
 - Before sending, the widget resolves current selected summary and root id (`conversationRootIdFromSelection`) and blocks send if that context is no longer valid.
 
 So this is not trying to "guess" user intent; it is ensuring the selected conversation still exists and is sendable at the exact send moment, avoiding wrong-thread or orphan sends.
-
-
-## Current limitation: one root message per conversation
-
-Today, conversation identity is rooted in the first message. Follow-up sends in an existing conversation pass `conversationId = <rootId>` and backend maps that to `parent_message_id = root.id`.
-
-That means multiple independent root messages inside the same conversation are **not** a first-class data model today. Supporting true multi-root conversations would require a schema/API redesign (for example, explicit `conversation` entity id separate from `parent_message_id`, where only explicit reply actions set `parent_message_id`).
