@@ -239,7 +239,9 @@ export function groupConversations(messages, viewerEmpid = null) {
     if (!map.has(key)) {
       map.set(key, {
         id: key,
-        title: topic || (rootLink.linkedType === 'transaction' && rootLink.linkedId ? `Transaction #${rootLink.linkedId}` : 'Untitled topic'),
+        title: topic || (rootLink.linkedType === 'transaction' && rootLink.linkedId
+          ? `Transaction #${rootLink.linkedId}`
+          : sanitizeMessageText(decodeMessageContent((rootMessage || msg)?.body || '').text).slice(0, 72) || 'Conversation'),
         messages: [],
         linkedType: rootLink.linkedType,
         linkedId: rootLink.linkedId,
@@ -743,6 +745,7 @@ export default function MessagingWidget() {
   const [attachmentPreviewOpen, setAttachmentPreviewOpen] = useState(false);
   const [attachmentPreview, setAttachmentPreview] = useState(null);
   const composerRef = useRef(null);
+  const hasInitializedPreferredConversationRef = useRef(false);
 
   const draftStorageKey = useMemo(() => {
     const convKey = state.activeConversationId || 'new';
@@ -821,6 +824,7 @@ export default function MessagingWidget() {
     setUserDirectory({});
     setError('');
     setNetworkState('loading');
+    hasInitializedPreferredConversationRef.current = false;
   }, [companyId, selfEmpid, state.activeCompanyId]);
 
   useEffect(() => {
@@ -1335,14 +1339,27 @@ export default function MessagingWidget() {
   const unreadCount = messages.filter((msg) => !msg.read_by?.includes?.(selfEmpid)).length;
 
   useEffect(() => {
-    if (state.activeConversationId) return;
     if (conversations.length === 0) return;
-    const preferredConversationId = lastUserConversationId
+
+    if (!hasInitializedPreferredConversationRef.current) {
+      hasInitializedPreferredConversationRef.current = true;
+      const preferredConversationId = lastUserConversationId
+        || (conversations.some((conversation) => conversation.id === 'general') ? 'general' : null)
+        || conversations[0]?.id
+        || null;
+      if (preferredConversationId && state.activeConversationId !== preferredConversationId) {
+        dispatch({ type: 'widget/setConversation', payload: preferredConversationId });
+      }
+      return;
+    }
+
+    if (state.activeConversationId) return;
+    const fallbackConversationId = lastUserConversationId
       || (conversations.some((conversation) => conversation.id === 'general') ? 'general' : null)
       || conversations[0]?.id
       || null;
-    if (!preferredConversationId) return;
-    dispatch({ type: 'widget/setConversation', payload: preferredConversationId });
+    if (!fallbackConversationId) return;
+    dispatch({ type: 'widget/setConversation', payload: fallbackConversationId });
   }, [conversations, lastUserConversationId, state.activeConversationId]);
 
   useEffect(() => {
@@ -1541,9 +1558,10 @@ export default function MessagingWidget() {
   const safeTopic = sanitizeMessageText(state.composer.topic || activeConversation?.title || '');
   const safeBody = sanitizeMessageText(state.composer.body);
   const requiresRecipient = isDraftConversation;
-  const requiresTopic = canEditTopic && !isDraftConversation;
+  const requiresTopic = canEditTopic;
   const hasRecipients = (state.composer.recipients || []).some((entry) => normalizeId(entry));
-  const canSendMessage = Boolean(safeBody && (!requiresTopic || safeTopic) && (!requiresRecipient || hasRecipients));
+  const hasConversationTarget = Boolean(isDraftConversation || activeConversationId || state.activeConversationId);
+  const canSendMessage = Boolean(safeBody && (!requiresTopic || safeTopic) && (!requiresRecipient || hasRecipients) && hasConversationTarget);
 
   const handleOpenLinkedTransaction = (transactionId) => {
     if (canViewTransaction(transactionId, normalizeId(sessionId), permissions || {})) {
@@ -1641,7 +1659,7 @@ export default function MessagingWidget() {
   };
 
   const sendMessage = async () => {
-    if (canEditTopic && !isDraftConversation && !safeTopic) {
+    if (canEditTopic && !safeTopic) {
       setComposerAnnouncement('Topic is required.');
       return;
     }

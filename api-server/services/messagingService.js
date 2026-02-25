@@ -76,7 +76,7 @@ function nowIso() {
   return new Date().toISOString();
 }
 
-function computeRequestHash({ body, linkedType, linkedId, visibility, parentMessageId }) {
+function computeRequestHash({ body, linkedType, linkedId, visibility, parentMessageId, conversationId }) {
   const payload = {
     body,
     linkedType,
@@ -85,6 +85,7 @@ function computeRequestHash({ body, linkedType, linkedId, visibility, parentMess
     visibilityDepartmentId: visibility.visibilityDepartmentId,
     visibilityEmpid: visibility.visibilityEmpid,
     parentMessageId,
+    conversationId,
   };
   return crypto.createHash('sha256').update(JSON.stringify(payload)).digest('hex');
 }
@@ -648,7 +649,14 @@ function emitMessageScoped(ctx, eventName, message, options = {}) {
   emit(ctx.companyId, eventName, payload);
 }
 
-async function createMessageInternal({ db = pool, ctx, payload, parentMessageId = null, eventName = 'message.created' }) {
+async function createMessageInternal({
+  db = pool,
+  ctx,
+  payload,
+  parentMessageId = null,
+  conversationId = null,
+  eventName = 'message.created',
+}) {
   const startedAt = process.hrtime.bigint();
   const body = sanitizeBody(payload?.body);
   const { linkedType, linkedId } = validateLinkedContext(payload?.linkedType, payload?.linkedId);
@@ -668,7 +676,7 @@ async function createMessageInternal({ db = pool, ctx, payload, parentMessageId 
 
   const idempotencyKey = String(payload?.idempotencyKey || '').trim();
   if (!idempotencyKey) throw createError(400, 'IDEMPOTENCY_KEY_REQUIRED', 'idempotencyKey is required');
-  const requestHash = computeRequestHash({ body, linkedType, linkedId, visibility, parentMessageId });
+  const requestHash = computeRequestHash({ body, linkedType, linkedId, visibility, parentMessageId, conversationId });
   const expiresAt = new Date(Date.now() + IDEMPOTENCY_TTL_MS);
 
   const existing = await readIdempotencyRow(db, {
@@ -829,6 +837,17 @@ async function createMessageInternal({ db = pool, ctx, payload, parentMessageId 
     requestHash,
     expiresAt,
   });
+  if (conversationId) {
+    try {
+      await db.query(
+        'UPDATE erp_messages SET conversation_id = ? WHERE id = ? AND company_id = ?',
+        [String(conversationId), messageId, ctx.companyId],
+      );
+    } catch (error) {
+      if (!isUnknownColumnError(error, 'conversation_id')) throw error;
+    }
+  }
+
   const persistedMessage = await findMessageById(db, ctx.companyId, messageId);
   const message = withVisibilityFallback(persistedMessage, visibility);
 
@@ -860,6 +879,7 @@ export async function postMessage({ user, companyId, payload, correlationId, db 
   const ctx = { user, companyId: scopedCompanyId, correlationId, session };
 
   let parentMessageId = null;
+  let conversationId = null;
   let normalizedPayload = payload;
   const requestedConversationId = toId(payload?.conversationId);
   if (requestedConversationId) {
@@ -868,7 +888,7 @@ export async function postMessage({ user, companyId, payload, correlationId, db 
       throw createError(404, 'CONVERSATION_NOT_FOUND', 'Conversation not found');
     }
     assertCanViewMessage(rootMessage, session, user);
-    parentMessageId = rootMessage.id;
+    conversationId = String(rootMessage.conversation_id || rootMessage.id);
 
     const privateParticipants = rootMessage.visibility_scope === 'private'
       ? new Set(parsePrivateParticipants(rootMessage.visibility_empid))
@@ -900,7 +920,14 @@ export async function postMessage({ user, companyId, payload, correlationId, db 
     }
   }
 
-  return createMessageInternal({ db, ctx, payload: normalizedPayload, parentMessageId, eventName: 'message.created' });
+  return createMessageInternal({
+    db,
+    ctx,
+    payload: normalizedPayload,
+    parentMessageId,
+    conversationId,
+    eventName: 'message.created',
+  });
 }
 
 export async function postReply({ user, companyId, messageId, payload, correlationId, db = pool, getSession = getEmploymentSession }) {
