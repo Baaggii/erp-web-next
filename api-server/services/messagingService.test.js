@@ -228,33 +228,6 @@ test('deleting root message deletes only that conversation scope', async () => {
   assert.equal(db.messages.find((m) => m.id === 50)?.deleted_at, null);
 });
 
-test('deleting root message falls back when deleted_by_empid column is unavailable', async () => {
-  const db = new MockDb();
-  const originalQuery = db.query.bind(db);
-  db.query = async (sql, params = []) => {
-    const text = String(sql);
-    if (text.startsWith('UPDATE erp_messages SET deleted_at = CURRENT_TIMESTAMP, deleted_by_empid = ? WHERE company_id = ? AND conversation_id = ?')) {
-      const error = new Error("Unknown column 'deleted_by_empid'");
-      error.sqlMessage = "Unknown column 'deleted_by_empid'";
-      throw error;
-    }
-    if (text.startsWith('UPDATE erp_messages SET deleted_at = CURRENT_TIMESTAMP, deleted_by = ? WHERE company_id = ? AND conversation_id = ?')) {
-      const [, companyId, conversationId] = params;
-      db.messages.forEach((row) => {
-        if (Number(row.company_id) === Number(companyId) && Number(row.conversation_id) === Number(conversationId)) {
-          row.deleted_at = new Date().toISOString();
-        }
-      });
-      return [{ affectedRows: 2 }, undefined];
-    }
-    return originalQuery(sql, params);
-  };
-
-  await deleteMessage({ user: baseUser, companyId: 1, messageId: 11, correlationId: 'corr-del-fallback', db, getSession });
-  assert.ok(db.messages.find((m) => m.id === 11)?.deleted_at);
-  assert.ok(db.messages.find((m) => m.id === 12)?.deleted_at);
-});
-
 test('thread loading resolves root by conversation_id and includes descendants', async () => {
   const db = new MockDb();
   const thread = await getThread({ user: baseUser, companyId: 1, messageId: 12, correlationId: 'corr-thread', db, getSession });

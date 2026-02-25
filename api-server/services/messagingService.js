@@ -1291,7 +1291,10 @@ export async function deleteMessage({ user, companyId, messageId, correlationId,
   const conversationId = toId(message.conversation_id || message.id);
   const isRootDelete = Number(message.id) === Number(conversationId);
   if (isRootDelete) {
-    await markConversationDeleted(db, { companyId: scopedCompanyId, conversationId, empid: user.empid });
+    await db.query(
+      'UPDATE erp_messages SET deleted_at = CURRENT_TIMESTAMP, deleted_by_empid = ? WHERE company_id = ? AND conversation_id = ?',
+      [user.empid, scopedCompanyId, conversationId],
+    );
     emit(scopedCompanyId, 'conversation.deleted', {
       ...eventPayloadBase({ correlationId, companyId: scopedCompanyId }),
       conversation_id: conversationId,
