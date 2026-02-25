@@ -202,14 +202,6 @@ export function groupConversations(messages, viewerEmpid = null) {
     return null;
   };
 
-  const resolveConversationId = (message) => {
-    if (!message) return null;
-    const explicitConversationId = normalizeId(message.conversation_id || message.conversationId);
-    if (explicitConversationId) return explicitConversationId;
-    const resolvedRootId = resolveRootMessageId(message);
-    return resolvedRootId ? String(resolvedRootId) : null;
-  };
-
   const isGeneralConversationMessage = (message) => {
     const link = extractContextLink(message);
     const scope = resolveMessageVisibilityScope(message);
@@ -245,9 +237,7 @@ export function groupConversations(messages, viewerEmpid = null) {
     }
     const topic = extractMessageTopic(rootMessage || msg) || extractMessageTopic(msg);
     const rootLink = extractContextLink(rootMessage || msg);
-    const resolvedConversationId = resolveConversationId(msg);
-    if (!resolvedConversationId) return;
-    const key = `conversation:${resolvedConversationId}`;
+    const key = `message:${resolvedRootMessageId}`;
     if (!map.has(key)) {
       map.set(key, {
         id: key,
@@ -257,7 +247,6 @@ export function groupConversations(messages, viewerEmpid = null) {
         messages: [],
         linkedType: rootLink.linkedType,
         linkedId: rootLink.linkedId,
-        conversationId: resolvedConversationId,
         rootMessageId: resolvedRootMessageId,
         participants: [],
         isPrivateOnly: true,
@@ -339,52 +328,7 @@ function conversationRootIdFromSelection(conversationId) {
     const candidate = raw.slice('message:'.length);
     return /^\d+$/.test(candidate) ? candidate : null;
   }
-  if (raw.startsWith('conversation:')) {
-    const candidate = raw.slice('conversation:'.length);
-    return /^\d+$/.test(candidate) ? candidate : null;
-  }
   return /^\d+$/.test(raw) ? raw : null;
-}
-
-function conversationIdFromSelection(conversationId) {
-  const raw = normalizeId(conversationId);
-  if (!raw || raw === 'general' || raw === NEW_CONVERSATION_ID) return null;
-  if (raw.startsWith('conversation:')) {
-    const candidate = raw.slice('conversation:'.length);
-    return /^\d+$/.test(candidate) ? candidate : null;
-  }
-  if (raw.startsWith('message:')) {
-    const candidate = raw.slice('message:'.length);
-    return /^\d+$/.test(candidate) ? candidate : null;
-  }
-  return /^\d+$/.test(raw) ? raw : null;
-}
-
-function collectDescendantMessageIds(messages = [], rootMessageId) {
-  const normalizedRootId = normalizeId(rootMessageId);
-  if (!normalizedRootId) return new Set();
-
-  const childrenByParent = new Map();
-  (messages || []).forEach((entry) => {
-    const parentId = normalizeId(entry.parent_message_id || entry.parentMessageId);
-    if (!parentId) return;
-    const bucket = childrenByParent.get(parentId) || [];
-    bucket.push(normalizeId(entry.id));
-    childrenByParent.set(parentId, bucket);
-  });
-
-  const ids = new Set([normalizedRootId]);
-  const queue = [normalizedRootId];
-  while (queue.length > 0) {
-    const current = queue.shift();
-    const children = childrenByParent.get(current) || [];
-    children.forEach((childId) => {
-      if (!childId || ids.has(childId)) return;
-      ids.add(childId);
-      queue.push(childId);
-    });
-  }
-  return ids;
 }
 
 
@@ -976,12 +920,8 @@ export default function MessagingWidget() {
         const rawStoredConversationId = globalThis.sessionStorage?.getItem(sessionConversationKey);
         const storedConversationId = (() => {
           if (!rawStoredConversationId) return null;
-          if (
-            rawStoredConversationId === 'general'
-            || rawStoredConversationId.startsWith('message:')
-            || rawStoredConversationId.startsWith('conversation:')
-          ) return rawStoredConversationId;
-          if (/^\d+$/.test(rawStoredConversationId)) return `conversation:${rawStoredConversationId}`;
+          if (rawStoredConversationId === 'general' || rawStoredConversationId.startsWith('message:')) return rawStoredConversationId;
+          if (/^\d+$/.test(rawStoredConversationId)) return `message:${rawStoredConversationId}`;
           return null;
         })();
         if (storedConversationId && storedConversationId !== NEW_CONVERSATION_ID && !visibleConversationIds.has(storedConversationId)) {
@@ -1283,9 +1223,7 @@ export default function MessagingWidget() {
       if (!messageId) return;
       setMessagesByCompany((prev) => {
         const key = getCompanyCacheKey(state.activeCompanyId || companyId);
-        const current = prev[key] || [];
-        const idsToDrop = collectDescendantMessageIds(current, messageId);
-        const nextMessages = current.filter((entry) => !idsToDrop.has(normalizeId(entry.id)));
+        const nextMessages = (prev[key] || []).filter((entry) => Number(entry.id) !== messageId && Number(entry.parent_message_id || entry.parentMessageId) !== messageId);
         return { ...prev, [key]: nextMessages };
       });
     };
@@ -1672,9 +1610,7 @@ export default function MessagingWidget() {
     }
     setMessagesByCompany((prev) => {
       const key = getCompanyCacheKey(activeCompany);
-      const current = prev[key] || [];
-      const idsToDrop = collectDescendantMessageIds(current, messageId);
-      const nextMessages = current.filter((entry) => !idsToDrop.has(normalizeId(entry.id)));
+      const nextMessages = (prev[key] || []).filter((entry) => Number(entry.id) !== Number(messageId) && Number(entry.parent_message_id || entry.parentMessageId) !== Number(messageId));
       return { ...prev, [key]: nextMessages };
     });
     if (Number(activeConversation?.rootMessageId) === Number(messageId)) {
@@ -1733,7 +1669,6 @@ export default function MessagingWidget() {
       setComposerAnnouncement('Cannot send an empty message.');
       return;
     }
-    const selectedConversationIdFromState = conversationIdFromSelection(state.activeConversationId);
     const selectedRootIdFromState = conversationRootIdFromSelection(state.activeConversationId);
     if (!state.activeConversationId && !isDraftConversation) {
       setComposerAnnouncement('Select an existing conversation or click New conversation before sending.');
@@ -1801,33 +1736,26 @@ export default function MessagingWidget() {
     }
     const clientTempId = `tmp-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 
-    const explicitReplyTargetId = normalizeId(state.composer.replyToId);
-    const fallbackConversationId = normalizeId(
-      selectedConversation?.conversationId
-      || selectedConversationIdFromState
-      || selectedConversation?.rootMessageId
-      || selectedRootIdFromState,
-    );
-    const fallbackRootReplyTargetId = normalizeId(selectedConversation?.rootMessageId || selectedRootIdFromState || fallbackConversationId);
-
-    if (!isDraftConversation && state.activeConversationId && !selectedIsGeneral && !fallbackConversationId) {
+    if (!isDraftConversation && state.activeConversationId && !selectedIsGeneral && !selectedRootIdFromState) {
       setComposerAnnouncement('The selected conversation is unavailable. Refresh and try again.');
       return;
     }
-    const hasConversationContext = !isDraftConversation && !selectedIsGeneral && Boolean(fallbackConversationId);
-    if (!hasConversationContext && !state.activeConversationId && !isDraftConversation) {
+    const hasThreadContext = !isDraftConversation && !selectedIsGeneral && Boolean(selectedRootIdFromState);
+    if (!hasThreadContext && !state.activeConversationId && !isDraftConversation) {
       setComposerAnnouncement('Start a new conversation from the New conversation button.');
       return;
     }
-    if (isReplyMode && !explicitReplyTargetId) {
-      setComposerAnnouncement('Select a message to reply to.');
+    const explicitReplyTargetId = normalizeId(state.composer.replyToId);
+    const fallbackRootReplyTargetId = normalizeId(selectedConversation?.rootMessageId || selectedRootIdFromState);
+    if ((isReplyMode || hasThreadContext) && !fallbackRootReplyTargetId && !explicitReplyTargetId) {
+      setComposerAnnouncement('This conversation is missing its thread root. Refresh and try again.');
       return;
     }
-    if (explicitReplyTargetId && !hasConversationContext && !selectedIsGeneral) {
+    if (explicitReplyTargetId && !hasThreadContext && !selectedIsGeneral) {
       setComposerAnnouncement('Select a conversation before sending a reply.');
       return;
     }
-    if (!isDraftConversation && !selectedIsGeneral && !isReplyMode && !fallbackConversationId) {
+    if (!isDraftConversation && !selectedIsGeneral && !isReplyMode && !fallbackRootReplyTargetId) {
       setComposerAnnouncement('Unable to create a conversation here. Use New conversation.');
       return;
     }
@@ -1843,9 +1771,9 @@ export default function MessagingWidget() {
       ...(visibilityScope === 'private' ? { recipientEmpids: allParticipants } : {}),
       ...(linkedType ? { linkedType } : {}),
       ...(linkedId ? { linkedId: String(linkedId) } : {}),
-      ...(!isDraftConversation && !isReplyMode && fallbackConversationId ? { conversationId: fallbackConversationId } : {}),
-      ...(!isDraftConversation && isReplyMode && explicitReplyTargetId && fallbackConversationId
-        ? { conversationId: fallbackConversationId }
+      ...(!isDraftConversation && !isReplyMode && fallbackRootReplyTargetId ? { conversationId: fallbackRootReplyTargetId } : {}),
+      ...(!isDraftConversation && isReplyMode && explicitReplyTargetId && fallbackRootReplyTargetId
+        ? { conversationId: fallbackRootReplyTargetId }
         : {}),
       ...(!isDraftConversation && isReplyMode && explicitReplyTargetId ? { parentMessageId: explicitReplyTargetId } : {}),
     };
@@ -1854,7 +1782,7 @@ export default function MessagingWidget() {
       ? `${API_BASE}/messaging/messages/${explicitReplyTargetId}/reply`
       : `${API_BASE}/messaging/messages`;
 
-    const optimisticConversationId = fallbackConversationId || fallbackRootReplyTargetId || explicitReplyTargetId || null;
+    const optimisticConversationId = fallbackRootReplyTargetId || explicitReplyTargetId || null;
     const optimisticParentMessageId = (!isDraftConversation && isReplyMode && explicitReplyTargetId)
       ? explicitReplyTargetId
       : null;
@@ -1898,8 +1826,8 @@ export default function MessagingWidget() {
       const createdMessage = successPayload?.message
         ? {
           ...successPayload.message,
-          ...(!isDraftConversation && !selectedIsGeneral && fallbackConversationId
-            ? { conversation_id: fallbackConversationId }
+          ...(!isDraftConversation && !selectedIsGeneral && fallbackRootReplyTargetId
+            ? { conversation_id: fallbackRootReplyTargetId }
             : {}),
           recipient_empids: Array.isArray(successPayload?.message?.recipient_empids)
             ? successPayload.message.recipient_empids
@@ -1908,9 +1836,6 @@ export default function MessagingWidget() {
         : null;
       let threadRootIdToRefresh = null;
       if (createdMessage) {
-        const createdConversationId = normalizeId(
-          createdMessage?.conversation_id || createdMessage?.conversationId || createdMessage?.id,
-        );
         const createdRootMessageId = resolveThreadRefreshRootId({ createdMessage });
         threadRootIdToRefresh = resolveThreadRefreshRootId({
           isReplyMode,
@@ -1927,12 +1852,7 @@ export default function MessagingWidget() {
           });
         }
         if (isDraftConversation) {
-          dispatch({
-            type: 'widget/setConversation',
-            payload: createdConversationId
-              ? `conversation:${createdConversationId}`
-              : (createdRootMessageId ? `message:${createdRootMessageId}` : null),
-          });
+          dispatch({ type: 'widget/setConversation', payload: createdRootMessageId ? `message:${createdRootMessageId}` : null });
         }
       }
       if (!threadRootIdToRefresh) {
