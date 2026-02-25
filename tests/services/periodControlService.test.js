@@ -34,7 +34,7 @@ test('closeFiscalPeriod closes an open period and creates opening journal', asyn
   assert.equal(result.ok, true);
   assert.equal(result.nextFiscalYear, 2026);
   assert.equal(result.openingJournalId, 555);
-  assert.ok(calls.some((c) => c.type === 'query' && c.sql.includes('CALL `dynrep_1_sp_trial_balance_expandable`(?, ?)')));
+  assert.ok(calls.some((c) => c.type === 'query' && c.sql.includes('CALL `dynrep_1_sp_trial_balance_expandable`(?, ?, ?, ?)')));
 });
 
 test('closeFiscalPeriod rejects already closed periods', async () => {
