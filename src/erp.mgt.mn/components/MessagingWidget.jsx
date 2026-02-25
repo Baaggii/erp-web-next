@@ -1095,7 +1095,14 @@ export default function MessagingWidget() {
       if (payloadCompanyId && activeCompanyId && payloadCompanyId !== activeCompanyId) return;
       const parentId = nextMessage?.parent_message_id || nextMessage?.parentMessageId;
       if (!parentId) {
-        if (!canViewerAccessMessage(nextMessage, selfEmpid)) return;
+        const hasDirectAccess = canViewerAccessMessage(nextMessage, selfEmpid);
+        if (!hasDirectAccess) {
+          const rootMessageId = normalizeId(nextMessage?.id || nextMessage?.conversation_id || nextMessage?.conversationId);
+          if (rootMessageId) {
+            fetchThreadMessages(rootMessageId, state.activeCompanyId || companyId);
+          }
+          return;
+        }
         setMessagesByCompany((prev) => {
           const key = getCompanyCacheKey(state.activeCompanyId || companyId);
           return { ...prev, [key]: mergeMessageList(prev[key], nextMessage) };
@@ -1114,6 +1121,7 @@ export default function MessagingWidget() {
       }, 2400);
 
       let resolvedRootId = normalizeId(nextMessage?.conversation_id || nextMessage?.conversationId || parentId);
+      let fallbackThreadRefreshId = null;
       setMessagesByCompany((prev) => {
         const key = getCompanyCacheKey(state.activeCompanyId || companyId);
         const current = prev[key] || [];
@@ -1135,9 +1143,16 @@ export default function MessagingWidget() {
         const isParticipantMessage = canViewerAccessMessage(normalizedMessage, selfEmpid);
         const canAccessFromParent = Boolean(normalizedParentId && byId.has(normalizedParentId));
         const canAccessFromConversation = Boolean(inferredConversationId && byId.has(inferredConversationId));
-        if (!isParticipantMessage && !canAccessFromParent && !canAccessFromConversation) return prev;
+        if (!isParticipantMessage && !canAccessFromParent && !canAccessFromConversation) {
+          fallbackThreadRefreshId = inferredConversationId;
+          return prev;
+        }
         return { ...prev, [key]: mergeMessageList(current, normalizedMessage) };
       });
+      if (fallbackThreadRefreshId) {
+        fetchThreadMessages(fallbackThreadRefreshId, state.activeCompanyId || companyId);
+        return;
+      }
 
       const selectedRootId = conversationRootIdFromSelection(state.activeConversationId);
       if (!resolvedRootId || !selectedRootId || Number(selectedRootId) !== Number(resolvedRootId)) return;
