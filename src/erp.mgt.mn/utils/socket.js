@@ -53,7 +53,7 @@ export function connectSocket() {
     socket = io(baseUrl, {
       path,
       withCredentials: true,
-      transports: ['websocket', 'polling'],
+      transports: ['websocket'],
       autoConnect: true,
     });
   }
