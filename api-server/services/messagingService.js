@@ -858,7 +858,49 @@ export async function postMessage({ user, companyId, payload, correlationId, db 
   const { scopedCompanyId, session } = await resolveSession(user, companyId, getSession);
   assertPermission({ action: 'message:create', user, companyId: scopedCompanyId, session, db });
   const ctx = { user, companyId: scopedCompanyId, correlationId, session };
-  return createMessageInternal({ db, ctx, payload, parentMessageId: null, eventName: 'message.created' });
+
+  let parentMessageId = null;
+  let normalizedPayload = payload;
+  const requestedConversationId = toId(payload?.conversationId);
+  if (requestedConversationId) {
+    const rootMessage = await findMessageById(db, scopedCompanyId, requestedConversationId);
+    if (!rootMessage || rootMessage.deleted_at) {
+      throw createError(404, 'CONVERSATION_NOT_FOUND', 'Conversation not found');
+    }
+    assertCanViewMessage(rootMessage, session, user);
+    parentMessageId = rootMessage.id;
+
+    const privateParticipants = rootMessage.visibility_scope === 'private'
+      ? new Set(parsePrivateParticipants(rootMessage.visibility_empid))
+      : null;
+    if (privateParticipants) {
+      const requestedParticipants = Array.isArray(payload?.recipientEmpids)
+        ? payload.recipientEmpids.map((entry) => String(entry || '').trim()).filter(Boolean)
+        : [];
+      requestedParticipants.forEach((empid) => privateParticipants.add(empid));
+      privateParticipants.add(String(user?.empid || '').trim());
+      normalizedPayload = {
+        ...payload,
+        linkedType: rootMessage.linked_type,
+        linkedId: rootMessage.linked_id,
+        visibilityScope: rootMessage.visibility_scope,
+        visibilityDepartmentId: rootMessage.visibility_department_id,
+        visibilityEmpid: Array.from(privateParticipants).join(','),
+        recipientEmpids: Array.from(privateParticipants),
+      };
+    } else {
+      normalizedPayload = {
+        ...payload,
+        linkedType: rootMessage.linked_type,
+        linkedId: rootMessage.linked_id,
+        visibilityScope: rootMessage.visibility_scope,
+        visibilityDepartmentId: rootMessage.visibility_department_id,
+        visibilityEmpid: rootMessage.visibility_empid,
+      };
+    }
+  }
+
+  return createMessageInternal({ db, ctx, payload: normalizedPayload, parentMessageId, eventName: 'message.created' });
 }
 
 export async function postReply({ user, companyId, messageId, payload, correlationId, db = pool, getSession = getEmploymentSession }) {
