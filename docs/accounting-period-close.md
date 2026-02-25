@@ -8,7 +8,7 @@
 - `period_from`, `period_to`
 - `is_closed`, `closed_at`, `closed_by`
 
-Migration: `db/migrations/2026-02-24_fin_period_control_constraints.sql` adds indexes and `companies(company_id)` foreign key.
+Migration: `db/migrations/2026-02-24_fin_period_control_constraints.sql` adds indexes and `companies(id)` foreign key.
 
 ## API
 
