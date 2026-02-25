@@ -1732,12 +1732,6 @@ export default function MessagingWidget() {
       return;
     }
 
-    const implicitReplyTargetId = (!isDraftConversation && !selectedIsGeneral && !isReplyMode)
-      ? fallbackRootReplyTargetId
-      : null;
-    const resolvedReplyTargetId = explicitReplyTargetId || implicitReplyTargetId;
-    const shouldUseReplyEndpoint = Boolean(resolvedReplyTargetId);
-
     dispatch({ type: 'composer/setReplyTo', payload: null });
 
     const payload = {
@@ -1749,22 +1743,20 @@ export default function MessagingWidget() {
       ...(visibilityScope === 'private' ? { recipientEmpids: allParticipants } : {}),
       ...(linkedType ? { linkedType } : {}),
       ...(linkedId ? { linkedId: String(linkedId) } : {}),
-      ...(!isDraftConversation && !shouldUseReplyEndpoint && fallbackRootReplyTargetId ? { conversationId: fallbackRootReplyTargetId } : {}),
-      ...(!isDraftConversation && shouldUseReplyEndpoint && fallbackRootReplyTargetId
+      ...(!isDraftConversation && !isReplyMode && fallbackRootReplyTargetId ? { conversationId: fallbackRootReplyTargetId } : {}),
+      ...(!isDraftConversation && isReplyMode && explicitReplyTargetId && fallbackRootReplyTargetId
         ? { conversationId: fallbackRootReplyTargetId }
         : {}),
-      ...(!isDraftConversation && shouldUseReplyEndpoint && resolvedReplyTargetId
-        ? { parentMessageId: resolvedReplyTargetId }
-        : {}),
+      ...(!isDraftConversation && isReplyMode && explicitReplyTargetId ? { parentMessageId: explicitReplyTargetId } : {}),
     };
 
-    const targetUrl = (!isDraftConversation && shouldUseReplyEndpoint && resolvedReplyTargetId)
-      ? `${API_BASE}/messaging/messages/${resolvedReplyTargetId}/reply`
+    const targetUrl = (!isDraftConversation && isReplyMode && explicitReplyTargetId)
+      ? `${API_BASE}/messaging/messages/${explicitReplyTargetId}/reply`
       : `${API_BASE}/messaging/messages`;
 
     const optimisticConversationId = fallbackRootReplyTargetId || explicitReplyTargetId || null;
-    const optimisticParentMessageId = (!isDraftConversation && shouldUseReplyEndpoint && resolvedReplyTargetId)
-      ? resolvedReplyTargetId
+    const optimisticParentMessageId = (!isDraftConversation && isReplyMode && explicitReplyTargetId)
+      ? explicitReplyTargetId
       : null;
     const optimisticMessage = {
       id: clientTempId,
@@ -1815,7 +1807,7 @@ export default function MessagingWidget() {
       if (createdMessage) {
         const createdRootMessageId = resolveThreadRefreshRootId({ createdMessage });
         threadRootIdToRefresh = resolveThreadRefreshRootId({
-          isReplyMode: shouldUseReplyEndpoint,
+          isReplyMode,
           fallbackRootReplyTargetId,
           createdMessage,
         });
