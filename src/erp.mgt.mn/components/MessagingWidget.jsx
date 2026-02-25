@@ -5,6 +5,7 @@ import { connectSocket, disconnectSocket } from '../utils/socket.js';
 import {
   PRESENCE,
   buildSessionStorageKey,
+  canonicalConversationId,
   createInitialWidgetState,
   getCompanyCacheKey,
   prioritizeConversationSummaries,
@@ -185,7 +186,7 @@ export function groupConversations(messages, viewerEmpid = null) {
 
   const resolveRootMessageId = (message) => {
     if (!message) return null;
-    const conversationId = message.conversation_id || message.conversationId;
+    const conversationId = canonicalConversationId(message);
     const seedId = conversationId || message.id;
     if (!seedId) return null;
 
@@ -211,7 +212,7 @@ export function groupConversations(messages, viewerEmpid = null) {
 
   messages.forEach((msg) => {
     const hasThreadPointer = Boolean(
-      normalizeId(msg.conversation_id || msg.conversationId || msg.parent_message_id || msg.parentMessageId),
+      normalizeId(canonicalConversationId(msg) || msg.parent_message_id || msg.parentMessageId),
     );
     const isGeneralMessage = !hasThreadPointer && isGeneralConversationMessage(msg);
 
@@ -230,7 +231,7 @@ export function groupConversations(messages, viewerEmpid = null) {
       return;
     }
     const hasAnyThreadPointer = Boolean(
-      normalizeId(msg.conversation_id || msg.conversationId || msg.parent_message_id || msg.parentMessageId),
+      normalizeId(canonicalConversationId(msg) || msg.parent_message_id || msg.parentMessageId),
     );
     if (!rootMessage && hasAnyThreadPointer) {
       return;
@@ -341,8 +342,8 @@ function mergeMessageList(current, incoming) {
   const existingIdx = next.findIndex((entry) => String(entry.id) === String(incoming.id));
   if (existingIdx >= 0) {
     const existing = next[existingIdx] || {};
-    const incomingConversationId = normalizeId(incoming.conversation_id || incoming.conversationId);
-    const existingConversationId = normalizeId(existing.conversation_id || existing.conversationId);
+    const incomingConversationId = normalizeId(canonicalConversationId(incoming));
+    const existingConversationId = normalizeId(canonicalConversationId(existing));
     const incomingParentId = normalizeId(incoming.parent_message_id || incoming.parentMessageId);
     const existingParentId = normalizeId(existing.parent_message_id || existing.parentMessageId);
 
@@ -350,7 +351,7 @@ function mergeMessageList(current, incoming) {
       ...existing,
       ...incoming,
       ...(incomingConversationId ? {} : {
-        conversation_id: existing.conversation_id || existing.conversationId || null,
+        conversation_id: canonicalConversationId(existing) || null,
       }),
       ...(incomingParentId ? {} : {
         parent_message_id: existing.parent_message_id || existing.parentMessageId || null,
@@ -505,7 +506,7 @@ function filterVisibleMessages(messages = [], viewerEmpid) {
 
     const parentId = normalizeId(message.parent_message_id || message.parentMessageId);
     const parentMessage = parentId ? byId.get(parentId) : null;
-    const rootConversationId = normalizeId(message.conversation_id || message.conversationId);
+    const rootConversationId = normalizeId(canonicalConversationId(message));
     const rootMessage = rootConversationId ? byId.get(rootConversationId) : null;
 
     if (isPrivateMessage) {
@@ -1126,7 +1127,7 @@ export default function MessagingWidget() {
       if (!parentId) {
         const hasDirectAccess = canViewerAccessMessage(nextMessage, selfEmpid);
         if (!hasDirectAccess) {
-          const rootMessageId = normalizeId(nextMessage?.id || nextMessage?.conversation_id || nextMessage?.conversationId);
+          const rootMessageId = normalizeId(nextMessage?.id || canonicalConversationId(nextMessage));
           if (rootMessageId) {
             fetchThreadMessages(rootMessageId, state.activeCompanyId || companyId);
           }
@@ -1149,7 +1150,7 @@ export default function MessagingWidget() {
         });
       }, 2400);
 
-      let resolvedRootId = normalizeId(nextMessage?.conversation_id || nextMessage?.conversationId || parentId);
+      let resolvedRootId = normalizeId(canonicalConversationId(nextMessage) || parentId);
       let fallbackThreadRefreshId = null;
       setMessagesByCompany((prev) => {
         const key = getCompanyCacheKey(state.activeCompanyId || companyId);
@@ -1160,14 +1161,13 @@ export default function MessagingWidget() {
         const inferredConversationId = normalizeId(
           nextMessage?.conversation_id
           || nextMessage?.conversationId
-          || parentMessage?.conversation_id
-          || parentMessage?.conversationId
+          || canonicalConversationId(parentMessage)
           || parentMessage?.id
           || null,
         );
         if (inferredConversationId) resolvedRootId = inferredConversationId;
         const normalizedMessage = inferredConversationId
-          ? { ...nextMessage, conversation_id: nextMessage?.conversation_id || nextMessage?.conversationId || inferredConversationId }
+          ? { ...nextMessage, conversation_id: canonicalConversationId(nextMessage) || inferredConversationId }
           : nextMessage;
         const isParticipantMessage = canViewerAccessMessage(normalizedMessage, selfEmpid);
         const canAccessFromParent = Boolean(normalizedParentId && byId.has(normalizedParentId));
