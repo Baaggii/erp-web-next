@@ -6,6 +6,10 @@ let refs = 0;
 let wired = false;
 const listeners = new Set();
 const socketPath = import.meta.env.VITE_SOCKET_PATH || '/api/socket.io';
+// Some deployments block WebSocket upgrades at the proxy layer; default to long-polling
+// unless VITE_SOCKET_UPGRADE=true is explicitly enabled.
+const socketUpgradeEnabled =
+  String(import.meta.env.VITE_SOCKET_UPGRADE ?? 'false').toLowerCase() === 'true';
 let warnedMissingSocketUrl = false;
 
 function resolveSocketUrl() {
@@ -56,7 +60,12 @@ function wireSocketEvents() {
 export function connectSocket() {
   if (!socket) {
     const url = resolveSocketUrl();
-    socket = io(url, { withCredentials: true, path: socketPath, autoConnect: true });
+    socket = io(url, {
+      withCredentials: true,
+      path: socketPath,
+      autoConnect: true,
+      upgrade: socketUpgradeEnabled,
+    });
   }
   wireSocketEvents();
   if (!socket.connected) {
