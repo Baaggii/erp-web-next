@@ -109,6 +109,44 @@ function computeLineAmount(row) {
   return -amount;
 }
 
+function isSignatureError(message) {
+  return /Incorrect number of arguments/i.test(message);
+}
+
+function isLikelyParameterOrderError(message) {
+  return /(Incorrect date value.*p_date_(from|to)|Incorrect integer value.*p_fiscal_year)/i.test(message);
+}
+
+async function runReportProcedure(conn, procedureName, { companyId, fiscalYear, fromDate, toDate }) {
+  const fourArgSql = `CALL \`${procedureName}\`(?, ?, ?, ?)`;
+  const twoArgSql = `CALL \`${procedureName}\`(?, ?)`;
+  const dateFrom = formatDateOnly(fromDate);
+  const dateTo = formatDateOnly(toDate);
+  const fourArgDateRangeFirstParams = [companyId, dateFrom, dateTo, fiscalYear];
+  const fourArgFiscalYearFirstParams = [companyId, fiscalYear, dateFrom, dateTo];
+  const twoArgParams = [companyId, fiscalYear];
+
+  try {
+    await conn.query(fourArgSql, fourArgDateRangeFirstParams);
+    return;
+  } catch (error) {
+    const message = String(error?.message || '');
+    if (isSignatureError(message)) {
+      await conn.query(twoArgSql, twoArgParams);
+      return;
+    }
+    if (!isLikelyParameterOrderError(message)) throw error;
+  }
+
+  try {
+    await conn.query(fourArgSql, fourArgFiscalYearFirstParams);
+  } catch (error) {
+    const message = String(error?.message || '');
+    if (!isSignatureError(message)) throw error;
+    await conn.query(twoArgSql, twoArgParams);
+  }
+}
+
 export async function closeFiscalPeriod({ companyId, fiscalYear, userId, reportProcedures = [], dbPool = pool }) {
   const conn = await dbPool.getConnection();
   try {
@@ -130,7 +168,7 @@ export async function closeFiscalPeriod({ companyId, fiscalYear, userId, reportP
       if (!/^[A-Za-z0-9_]+$/.test(proc)) {
         throw new Error(`Invalid report procedure: ${procedureName}`);
       }
-      await conn.query(`CALL \`${proc}\`(?, ?)`, [companyId, fiscalYear]);
+      await runReportProcedure(conn, proc, { companyId, fiscalYear, fromDate, toDate });
     }
 
     const [balanceRows] = await conn.query(
