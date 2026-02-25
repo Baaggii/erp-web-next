@@ -7,6 +7,15 @@ const DEFAULT_REPORT_PROCS = [
   'dynrep_1_sp_balance_sheet_expandable',
 ];
 
+function mapPreviewParam(name, { companyId, fiscalYear, period }) {
+  const key = String(name || '').toLowerCase();
+  if (['company_id', 'p_company_id', 'comp_id', 'p_comp_id'].includes(key)) return companyId;
+  if (['fiscal_year', 'p_fiscal_year', 'year', 'p_year'].includes(key)) return fiscalYear;
+  if (['date_from', 'p_date_from', 'period_from', 'p_period_from'].includes(key)) return period?.period_from || `${fiscalYear}-01-01`;
+  if (['date_to', 'p_date_to', 'period_to', 'p_period_to'].includes(key)) return period?.period_to || `${fiscalYear}-12-31`;
+  return null;
+}
+
 export default function AccountingPeriodsPage() {
   const { user, session, company, permissions } = useAuth();
   const companyId = Number(user?.companyId || user?.company_id || session?.company_id || company?.id || company || 0);
@@ -14,6 +23,8 @@ export default function AccountingPeriodsPage() {
   const [period, setPeriod] = useState(null);
   const [loading, setLoading] = useState(false);
   const [closing, setClosing] = useState(false);
+  const [previewing, setPreviewing] = useState(false);
+  const [previewResults, setPreviewResults] = useState([]);
   const [message, setMessage] = useState('');
   const [reportProcedures, setReportProcedures] = useState(DEFAULT_REPORT_PROCS.join(', '));
 
@@ -51,7 +62,61 @@ export default function AccountingPeriodsPage() {
     [reportProcedures],
   );
 
+  const handlePreviewReports = async () => {
+    if (!companyId || parsedProcedures.length === 0) return;
+    setPreviewing(true);
+    setMessage('');
+    const ctx = { companyId, fiscalYear, period };
+    try {
+      const results = [];
+      for (const procName of parsedProcedures) {
+        try {
+          const paramsRes = await fetch(`/api/procedures/${encodeURIComponent(procName)}/params?companyId=${companyId}`, {
+            credentials: 'include',
+          });
+          if (!paramsRes.ok) {
+            const errJson = await paramsRes.json().catch(() => ({}));
+            throw new Error(errJson?.message || `Failed to load params (${paramsRes.status})`);
+          }
+          const paramsJson = await paramsRes.json();
+          const aliases = Array.isArray(paramsJson?.parameters) ? paramsJson.parameters : [];
+          const params = aliases.map((paramName) => mapPreviewParam(paramName, ctx));
+
+          const runRes = await fetch(`/api/procedures?companyId=${companyId}`, {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name: procName, params, aliases }),
+          });
+          if (!runRes.ok) {
+            const errJson = await runRes.json().catch(() => ({}));
+            throw new Error(errJson?.message || `Report failed (${runRes.status})`);
+          }
+          const runJson = await runRes.json();
+          const rowCount = Array.isArray(runJson?.row) ? runJson.row.length : 0;
+          results.push({ name: procName, ok: true, rowCount });
+        } catch (err) {
+          results.push({ name: procName, ok: false, error: String(err?.message || err) });
+        }
+      }
+      setPreviewResults(results);
+      if (results.some((item) => !item.ok)) {
+        setMessage('Some reports failed. Review errors before closing period.');
+      } else {
+        setMessage('Reports generated successfully. Review results below before closing period.');
+      }
+    } finally {
+      setPreviewing(false);
+    }
+  };
+
   const handleClosePeriod = async () => {
+    const hasSuccessfulPreview = previewResults.some((result) => result.ok);
+    if (!hasSuccessfulPreview) {
+      setMessage('Please run report preview before closing the fiscal period.');
+      return;
+    }
+
     const ok = window.confirm(
       `Close fiscal year ${fiscalYear}? This action finalizes balances and creates opening balances for ${fiscalYear + 1}.`,
     );
@@ -88,7 +153,7 @@ export default function AccountingPeriodsPage() {
       <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 12 }}>
         <label htmlFor="fiscal-year">Fiscal Year</label>
         <input id="fiscal-year" type="number" value={fiscalYear} onChange={(e) => setFiscalYear(Number(e.target.value || 0))} />
-        <button type="button" onClick={loadStatus} disabled={loading || closing}>{loading ? 'Loading…' : 'Refresh'}</button>
+        <button type="button" onClick={loadStatus} disabled={loading || closing || previewing}>{loading ? 'Loading…' : 'Refresh'}</button>
       </div>
 
       <div style={{ border: '1px solid #ddd', borderRadius: 8, padding: 12, marginBottom: 12 }}>
@@ -99,7 +164,7 @@ export default function AccountingPeriodsPage() {
       </div>
 
       <div style={{ marginBottom: 12 }}>
-        <label htmlFor="report-procedures">Report procedures to execute after closing (comma-separated)</label>
+        <label htmlFor="report-procedures">Reports to review before closing (comma-separated procedure names)</label>
         <textarea
           id="report-procedures"
           rows={3}
@@ -109,9 +174,27 @@ export default function AccountingPeriodsPage() {
         />
       </div>
 
-      <button type="button" disabled={!canClosePeriod || closing || Number(period?.is_closed) === 1} onClick={handleClosePeriod}>
-        {closing ? 'Closing period…' : 'Close Period'}
-      </button>
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 10 }}>
+        <button type="button" onClick={handlePreviewReports} disabled={!canClosePeriod || previewing || parsedProcedures.length === 0 || Number(period?.is_closed) === 1}>
+          {previewing ? 'Generating reports…' : 'Show Reports'}
+        </button>
+        <button type="button" disabled={!canClosePeriod || closing || Number(period?.is_closed) === 1} onClick={handleClosePeriod}>
+          {closing ? 'Closing period…' : 'Close Period'}
+        </button>
+      </div>
+
+      {previewResults.length > 0 ? (
+        <div style={{ border: '1px solid #ddd', borderRadius: 8, padding: 12, marginTop: 10 }}>
+          <strong>Report preview</strong>
+          <ul style={{ marginTop: 8, marginBottom: 0 }}>
+            {previewResults.map((result) => (
+              <li key={result.name} style={{ color: result.ok ? '#166534' : '#b91c1c' }}>
+                {result.name}: {result.ok ? `OK (${result.rowCount} rows)` : `Failed (${result.error})`}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
 
       {message ? <p style={{ marginTop: 10 }}>{message}</p> : null}
     </div>
