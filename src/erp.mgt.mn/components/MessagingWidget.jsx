@@ -211,12 +211,7 @@ export function groupConversations(messages, viewerEmpid = null) {
   };
 
   messages.forEach((msg) => {
-    const hasThreadPointer = Boolean(
-      normalizeId(canonicalConversationId(msg) || msg.parent_message_id || msg.parentMessageId),
-    );
-    const isGeneralMessage = !hasThreadPointer && isGeneralConversationMessage(msg);
-
-    if (isGeneralMessage) {
+    if (isGeneralConversationMessage(msg)) {
       generalMessages.push(msg);
       collectMessageParticipantEmpids(msg).forEach((empid) => generalParticipants.add(empid));
       return;
