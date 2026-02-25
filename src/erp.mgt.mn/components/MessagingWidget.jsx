@@ -341,6 +341,28 @@ function mergeMessageList(current, incoming) {
   return next;
 }
 
+function excludeMessageThread(messages = [], messageId) {
+  const targetId = normalizeId(messageId);
+  if (!targetId) return Array.isArray(messages) ? messages : [];
+  const input = Array.isArray(messages) ? messages : [];
+  if (input.length === 0) return input;
+
+  const descendants = new Set([targetId]);
+  let grew = true;
+  while (grew) {
+    grew = false;
+    input.forEach((entry) => {
+      const parentId = normalizeId(entry?.parent_message_id || entry?.parentMessageId);
+      const entryId = normalizeId(entry?.id);
+      if (!entryId || !parentId || !descendants.has(parentId) || descendants.has(entryId)) return;
+      descendants.add(entryId);
+      grew = true;
+    });
+  }
+
+  return input.filter((entry) => !descendants.has(normalizeId(entry?.id)));
+}
+
 function canOpenContextLink(permissions, chipType) {
   const allow = permissions?.messaging?.linkedContext?.[chipType];
   if (typeof allow === 'boolean') return allow;
@@ -1194,7 +1216,7 @@ export default function MessagingWidget() {
       if (!messageId) return;
       setMessagesByCompany((prev) => {
         const key = getCompanyCacheKey(state.activeCompanyId || companyId);
-        const nextMessages = (prev[key] || []).filter((entry) => Number(entry.id) !== messageId && Number(entry.parent_message_id || entry.parentMessageId) !== messageId);
+        const nextMessages = excludeMessageThread(prev[key], messageId);
         return { ...prev, [key]: nextMessages };
       });
     };
@@ -1563,7 +1585,7 @@ export default function MessagingWidget() {
     }
     setMessagesByCompany((prev) => {
       const key = getCompanyCacheKey(activeCompany);
-      const nextMessages = (prev[key] || []).filter((entry) => Number(entry.id) !== Number(messageId) && Number(entry.parent_message_id || entry.parentMessageId) !== Number(messageId));
+      const nextMessages = excludeMessageThread(prev[key], messageId);
       return { ...prev, [key]: nextMessages };
     });
     if (Number(activeConversation?.rootMessageId) === Number(messageId)) {
@@ -1788,12 +1810,10 @@ export default function MessagingWidget() {
           fallbackRootReplyTargetId,
           createdMessage,
         });
-        if (isDraftConversation && !(createdMessage.parent_message_id || createdMessage.parentMessageId)) {
-          setMessagesByCompany((prev) => {
-            const key = getCompanyCacheKey(state.activeCompanyId || companyId);
-            return { ...prev, [key]: mergeMessageList(prev[key], createdMessage) };
-          });
-        }
+        setMessagesByCompany((prev) => {
+          const key = getCompanyCacheKey(state.activeCompanyId || companyId);
+          return { ...prev, [key]: mergeMessageList(prev[key], createdMessage) };
+        });
         if (isDraftConversation) {
           dispatch({ type: 'widget/setConversation', payload: createdRootMessageId ? `message:${createdRootMessageId}` : null });
         }
