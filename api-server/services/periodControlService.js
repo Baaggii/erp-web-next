@@ -37,7 +37,7 @@ export async function ensurePeriodControlTable(conn) {
     'ALTER TABLE fin_period_control ADD INDEX idx_fin_period_control_range (company_id, period_from, period_to)',
     `ALTER TABLE fin_period_control
       ADD CONSTRAINT fk_fin_period_control_company
-      FOREIGN KEY (company_id) REFERENCES companies(company_id)
+      FOREIGN KEY (company_id) REFERENCES companies(id)
       ON UPDATE CASCADE
       ON DELETE CASCADE`,
   ];

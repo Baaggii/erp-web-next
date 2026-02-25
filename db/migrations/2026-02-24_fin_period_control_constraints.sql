@@ -17,6 +17,6 @@ ALTER TABLE fin_period_control
 
 ALTER TABLE fin_period_control
   ADD CONSTRAINT fk_fin_period_control_company
-  FOREIGN KEY (company_id) REFERENCES companies(company_id)
+  FOREIGN KEY (company_id) REFERENCES companies(id)
   ON UPDATE CASCADE
   ON DELETE CASCADE;
