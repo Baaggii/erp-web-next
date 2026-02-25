@@ -186,8 +186,10 @@ export function groupConversations(messages, viewerEmpid = null) {
   const resolveRootMessageId = (message) => {
     if (!message) return null;
     const conversationId = message.conversation_id || message.conversationId;
-    if (conversationId) return Number(conversationId);
-    let current = message;
+    const seedId = conversationId || message.id;
+    if (!seedId) return null;
+
+    let current = byId.get(String(seedId)) || message;
     const visited = new Set();
     while (current) {
       const parentId = current.parent_message_id || current.parentMessageId;
@@ -1725,7 +1727,7 @@ export default function MessagingWidget() {
     const isGeneralChannel = !isDraftConversation && selectedIsGeneral;
     const finalRecipients = isDraftConversation
       ? Array.from(new Set([selfEmpid, ...payloadRecipients].map(normalizeId).filter(Boolean)))
-      : Array.from(new Set([...existingThreadParticipants, ...payloadRecipients].map(normalizeId).filter(Boolean)));
+      : Array.from(new Set([selfEmpid, ...existingThreadParticipants].map(normalizeId).filter(Boolean)));
     const visibilityScope = isGeneralChannel ? 'company' : 'private';
     const allParticipants = Array.from(new Set([selfEmpid, ...finalRecipients].map(normalizeId).filter(Boolean)));
     if (visibilityScope === 'private' && allParticipants.length < 2) {
@@ -1824,6 +1826,9 @@ export default function MessagingWidget() {
       const createdMessage = successPayload?.message
         ? {
           ...successPayload.message,
+          ...(!isDraftConversation && !selectedIsGeneral && fallbackRootReplyTargetId
+            ? { conversation_id: fallbackRootReplyTargetId }
+            : {}),
           recipient_empids: Array.isArray(successPayload?.message?.recipient_empids)
             ? successPayload.message.recipient_empids
             : finalRecipients,
@@ -1946,6 +1951,10 @@ export default function MessagingWidget() {
   };
 
   const onChooseRecipient = (id) => {
+    if (!isDraftConversation) {
+      setComposerAnnouncement('Recipients can only be changed when creating a new conversation.');
+      return;
+    }
     if (!id || state.composer.recipients.includes(id)) return;
     const selectedRootId = conversationRootIdFromSelection(state.activeConversationId);
     const isExistingPrivateConversation = !isDraftConversation && state.activeConversationId !== 'general' && Boolean(selectedRootId);
@@ -2011,6 +2020,10 @@ export default function MessagingWidget() {
   };
 
   const onRemoveRecipient = (id) => {
+    if (!isDraftConversation) {
+      setComposerAnnouncement('Recipients can only be changed when creating a new conversation.');
+      return;
+    }
     dispatch({ type: 'composer/setRecipients', payload: state.composer.recipients.filter((entry) => entry !== id) });
   };
 
