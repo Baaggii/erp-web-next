@@ -1088,41 +1088,6 @@ export default function MessagingWidget() {
 
   useEffect(() => {
     const socket = connectSocket();
-    let fallbackPollTimer = null;
-
-    const syncMessagesFromHttp = async () => {
-      const activeCompanyId = state.activeCompanyId || companyId;
-      if (!activeCompanyId) return;
-      try {
-        const params = new URLSearchParams({ companyId: String(activeCompanyId), limit: '100' });
-        const res = await fetch(`${API_BASE}/messaging/messages?${params.toString()}`, { credentials: 'include' });
-        if (!res.ok) return;
-        const data = await res.json();
-        const incomingMessages = Array.isArray(data.items) ? data.items : Array.isArray(data.messages) ? data.messages : [];
-        const visibleMessages = filterVisibleMessages(incomingMessages, selfEmpid);
-        setMessagesByCompany((prev) => {
-          const key = getCompanyCacheKey(activeCompanyId);
-          const merged = visibleMessages.reduce((acc, message) => mergeMessageList(acc, message), prev[key] || []);
-          return { ...prev, [key]: merged };
-        });
-      } catch {
-        // Best effort fallback while socket transport is unavailable.
-      }
-    };
-
-    const stopFallbackPolling = () => {
-      if (fallbackPollTimer) {
-        globalThis.clearInterval(fallbackPollTimer);
-        fallbackPollTimer = null;
-      }
-    };
-
-    const startFallbackPolling = () => {
-      if (fallbackPollTimer) return;
-      syncMessagesFromHttp();
-      fallbackPollTimer = globalThis.setInterval(syncMessagesFromHttp, 10_000);
-    };
-
     const onNew = (payload) => {
       const nextMessage = payload?.message || payload;
       const payloadCompanyId = normalizeId(nextMessage?.company_id || nextMessage?.companyId);
@@ -1243,12 +1208,6 @@ export default function MessagingWidget() {
         fetchThreadMessages(resolvedRootId, state.activeCompanyId || companyId);
       }
     };
-    const onConnect = () => {
-      stopFallbackPolling();
-    };
-    const onTransportIssue = () => {
-      startFallbackPolling();
-    };
     socket.on('messages:new', onNew);
     socket.on('message.created', onNew);
     socket.on('thread.reply.created', onNew);
@@ -1256,11 +1215,7 @@ export default function MessagingWidget() {
     socket.on('messages:presence', onPresence);
     socket.on('presence.changed', onPresence);
     socket.on('message.deleted', onDeleted);
-    socket.on('connect', onConnect);
-    socket.on('disconnect', onTransportIssue);
-    socket.on('connect_error', onTransportIssue);
     return () => {
-      stopFallbackPolling();
       socket.off('messages:new', onNew);
       socket.off('message.created', onNew);
       socket.off('thread.reply.created', onNew);
@@ -1268,9 +1223,6 @@ export default function MessagingWidget() {
       socket.off('messages:presence', onPresence);
       socket.off('presence.changed', onPresence);
       socket.off('message.deleted', onDeleted);
-      socket.off('connect', onConnect);
-      socket.off('disconnect', onTransportIssue);
-      socket.off('connect_error', onTransportIssue);
       disconnectSocket();
     };
   }, [state.activeCompanyId, state.activeConversationId, companyId, selfEmpid]);
