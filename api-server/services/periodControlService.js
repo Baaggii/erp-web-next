@@ -109,6 +109,21 @@ function computeLineAmount(row) {
   return -amount;
 }
 
+async function runReportProcedure(conn, procedureName, { companyId, fiscalYear, fromDate, toDate }) {
+  const fourArgSql = `CALL \`${procedureName}\`(?, ?, ?, ?)`;
+  const twoArgSql = `CALL \`${procedureName}\`(?, ?)`;
+  const fourArgParams = [companyId, fiscalYear, formatDateOnly(fromDate), formatDateOnly(toDate)];
+  const twoArgParams = [companyId, fiscalYear];
+
+  try {
+    await conn.query(fourArgSql, fourArgParams);
+  } catch (error) {
+    const message = String(error?.message || '');
+    if (!/Incorrect number of arguments/i.test(message)) throw error;
+    await conn.query(twoArgSql, twoArgParams);
+  }
+}
+
 export async function closeFiscalPeriod({ companyId, fiscalYear, userId, reportProcedures = [], dbPool = pool }) {
   const conn = await dbPool.getConnection();
   try {
@@ -130,7 +145,7 @@ export async function closeFiscalPeriod({ companyId, fiscalYear, userId, reportP
       if (!/^[A-Za-z0-9_]+$/.test(proc)) {
         throw new Error(`Invalid report procedure: ${procedureName}`);
       }
-      await conn.query(`CALL \`${proc}\`(?, ?)`, [companyId, fiscalYear]);
+      await runReportProcedure(conn, proc, { companyId, fiscalYear, fromDate, toDate });
     }
 
     const [balanceRows] = await conn.query(
