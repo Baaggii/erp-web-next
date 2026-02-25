@@ -186,13 +186,9 @@ export function groupConversations(messages, viewerEmpid = null) {
 
   const resolveRootMessageId = (message) => {
     if (!message) return null;
-    const conversationId = normalizeId(canonicalConversationId(message));
-    const seedId = conversationId || normalizeId(message.id);
+    const conversationId = canonicalConversationId(message);
+    const seedId = conversationId || message.id;
     if (!seedId) return null;
-
-    if (conversationId) {
-      return Number(conversationId);
-    }
 
     let current = byId.get(String(seedId)) || message;
     const visited = new Set();
@@ -211,10 +207,7 @@ export function groupConversations(messages, viewerEmpid = null) {
     const link = extractContextLink(message);
     const scope = resolveMessageVisibilityScope(message);
     const hasTopic = Boolean(extractMessageTopic(message));
-    const hasThreadPointer = Boolean(
-      normalizeId(message?.conversation_id || message?.conversationId || message?.parent_message_id || message?.parentMessageId),
-    );
-    return !hasThreadPointer && !link.linkedType && !link.linkedId && scope === 'company' && !hasTopic;
+    return !link.linkedType && !link.linkedId && scope === 'company' && !hasTopic;
   };
 
   messages.forEach((msg) => {
@@ -1795,9 +1788,7 @@ export default function MessagingWidget() {
       ...(visibilityScope === 'private' ? { recipientEmpids: allParticipants } : {}),
       ...(linkedType ? { linkedType } : {}),
       ...(linkedId ? { linkedId: String(linkedId) } : {}),
-      ...(!isDraftConversation && !selectedIsGeneral && !isReplyMode && fallbackRootReplyTargetId
-        ? { conversationId: fallbackRootReplyTargetId }
-        : {}),
+      ...(!isDraftConversation && !isReplyMode && fallbackRootReplyTargetId ? { conversationId: fallbackRootReplyTargetId } : {}),
       ...(!isDraftConversation && isReplyMode && explicitReplyTargetId && fallbackRootReplyTargetId
         ? { conversationId: fallbackRootReplyTargetId }
         : {}),
@@ -1808,9 +1799,7 @@ export default function MessagingWidget() {
       ? `${API_BASE}/messaging/messages/${explicitReplyTargetId}/reply`
       : `${API_BASE}/messaging/messages`;
 
-    const optimisticConversationId = (!selectedIsGeneral || isReplyMode)
-      ? (fallbackRootReplyTargetId || explicitReplyTargetId || null)
-      : null;
+    const optimisticConversationId = fallbackRootReplyTargetId || explicitReplyTargetId || null;
     const optimisticParentMessageId = (!isDraftConversation && isReplyMode && explicitReplyTargetId)
       ? explicitReplyTargetId
       : null;
