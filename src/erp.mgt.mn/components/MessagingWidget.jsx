@@ -335,7 +335,30 @@ function mergeMessageList(current, incoming) {
   if (!incoming?.id) return current;
   const next = [...(current || [])];
   const existingIdx = next.findIndex((entry) => String(entry.id) === String(incoming.id));
-  if (existingIdx >= 0) next[existingIdx] = incoming;
+  if (existingIdx >= 0) {
+    const existing = next[existingIdx] || {};
+    const incomingConversationId = normalizeId(incoming.conversation_id || incoming.conversationId);
+    const existingConversationId = normalizeId(existing.conversation_id || existing.conversationId);
+    const incomingParentId = normalizeId(incoming.parent_message_id || incoming.parentMessageId);
+    const existingParentId = normalizeId(existing.parent_message_id || existing.parentMessageId);
+
+    next[existingIdx] = {
+      ...existing,
+      ...incoming,
+      ...(incomingConversationId ? {} : {
+        conversation_id: existing.conversation_id || existing.conversationId || null,
+      }),
+      ...(incomingParentId ? {} : {
+        parent_message_id: existing.parent_message_id || existing.parentMessageId || null,
+      }),
+      ...(incomingConversationId || existingConversationId ? {} : {
+        conversation_id: null,
+      }),
+      ...(incomingParentId || existingParentId ? {} : {
+        parent_message_id: null,
+      }),
+    };
+  }
   else next.push(incoming);
   next.sort((a, b) => new Date(a.created_at || 0).getTime() - new Date(b.created_at || 0).getTime());
   return next;
