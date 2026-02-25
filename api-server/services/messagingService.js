@@ -263,6 +263,42 @@ async function markMessageDeleted(db, { companyId, messageId, empid }) {
   );
 }
 
+async function markConversationDeleted(db, { companyId, conversationId, empid }) {
+  const mode = messageDeleteByColumnSupport.get(db);
+  if (mode !== 'deleted_by' && mode !== 'none') {
+    try {
+      await db.query(
+        'UPDATE erp_messages SET deleted_at = CURRENT_TIMESTAMP, deleted_by_empid = ? WHERE company_id = ? AND conversation_id = ?',
+        [empid, companyId, conversationId],
+      );
+      messageDeleteByColumnSupport.set(db, 'deleted_by_empid');
+      return;
+    } catch (error) {
+      if (!isUnknownColumnError(error, 'deleted_by_empid')) throw error;
+      messageDeleteByColumnSupport.set(db, 'deleted_by');
+    }
+  }
+
+  if (mode !== 'none') {
+    try {
+      await db.query(
+        'UPDATE erp_messages SET deleted_at = CURRENT_TIMESTAMP, deleted_by = ? WHERE company_id = ? AND conversation_id = ?',
+        [empid, companyId, conversationId],
+      );
+      messageDeleteByColumnSupport.set(db, 'deleted_by');
+      return;
+    } catch (error) {
+      if (!isUnknownColumnError(error, 'deleted_by')) throw error;
+      messageDeleteByColumnSupport.set(db, 'none');
+    }
+  }
+
+  await db.query(
+    'UPDATE erp_messages SET deleted_at = CURRENT_TIMESTAMP WHERE company_id = ? AND conversation_id = ?',
+    [companyId, conversationId],
+  );
+}
+
 function sanitizeBody(value) {
   const body = String(value ?? '').trim();
   if (!body) throw createError(400, 'MESSAGE_BODY_REQUIRED', 'Message body is required');

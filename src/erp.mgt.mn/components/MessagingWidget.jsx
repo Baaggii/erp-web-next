@@ -1227,6 +1227,15 @@ export default function MessagingWidget() {
         return { ...prev, [key]: nextMessages };
       });
     };
+    const onConversationDeleted = (payload) => {
+      const conversationId = Number(payload?.conversation_id || payload?.conversationId || payload?.id);
+      if (!conversationId) return;
+      setMessagesByCompany((prev) => {
+        const key = getCompanyCacheKey(state.activeCompanyId || companyId);
+        const nextMessages = (prev[key] || []).filter((entry) => Number(entry.conversation_id || entry.conversationId || entry.id) !== conversationId);
+        return { ...prev, [key]: nextMessages };
+      });
+    };
     const onUpdated = (payload) => {
       const nextMessage = payload?.message || payload;
       const activeCompanyId = normalizeId(state.activeCompanyId || companyId);
@@ -1259,6 +1268,7 @@ export default function MessagingWidget() {
     socket.on('messages:presence', onPresence);
     socket.on('presence.changed', onPresence);
     socket.on('message.deleted', onDeleted);
+    socket.on('conversation.deleted', onConversationDeleted);
     return () => {
       socket.off('messages:new', onNew);
       socket.off('message.created', onNew);
@@ -1267,6 +1277,7 @@ export default function MessagingWidget() {
       socket.off('messages:presence', onPresence);
       socket.off('presence.changed', onPresence);
       socket.off('message.deleted', onDeleted);
+      socket.off('conversation.deleted', onConversationDeleted);
       disconnectSocket();
     };
   }, [state.activeCompanyId, state.activeConversationId, companyId, selfEmpid]);
@@ -1746,7 +1757,18 @@ export default function MessagingWidget() {
       return;
     }
     const explicitReplyTargetId = normalizeId(state.composer.replyToId);
-    const fallbackRootReplyTargetId = normalizeId(selectedConversation?.rootMessageId || selectedRootIdFromState);
+    const generalConversationRootId = selectedIsGeneral
+      ? normalizeId(
+        selectedConversation?.messages
+          ?.find((entry) => !normalizeId(entry?.parent_message_id || entry?.parentMessageId))
+          ?.id,
+      )
+      : null;
+    const fallbackRootReplyTargetId = normalizeId(
+      selectedConversation?.rootMessageId
+      || selectedRootIdFromState
+      || generalConversationRootId,
+    );
     if ((isReplyMode || hasThreadContext) && !fallbackRootReplyTargetId && !explicitReplyTargetId) {
       setComposerAnnouncement('This conversation is missing its thread root. Refresh and try again.');
       return;
