@@ -1661,8 +1661,15 @@ export default function MessagingWidget() {
       setComposerAnnouncement('Select a conversation before sending a reply.');
       return;
     }
-    const linkedType = state.composer.linkedType || activeConversation?.linkedType || null;
-    const linkedId = state.composer.linkedId || activeConversation?.linkedId || null;
+    const selectedConversation = (!isDraftConversation && state.activeConversationId)
+      ? conversations.find((conversation) => conversation.id === state.activeConversationId) || null
+      : activeConversation;
+    const linkedType = isDraftConversation
+      ? (state.composer.linkedType || null)
+      : (selectedConversation?.linkedType || activeConversation?.linkedType || null);
+    const linkedId = isDraftConversation
+      ? (state.composer.linkedId || null)
+      : (selectedConversation?.linkedId || activeConversation?.linkedId || null);
     if ((linkedType && !linkedId) || (!linkedType && linkedId)) {
       setComposerAnnouncement('Conversation context is incomplete. Provide both linked type and linked id.');
       return;
@@ -1692,9 +1699,6 @@ export default function MessagingWidget() {
         .map(normalizeId)
         .filter(Boolean),
     ));
-    const selectedConversation = (!isDraftConversation && state.activeConversationId)
-      ? conversations.find((conversation) => conversation.id === state.activeConversationId) || null
-      : activeConversation;
     const selectedIsGeneral = Boolean(selectedConversation?.isGeneral || state.activeConversationId === 'general');
     const isGeneralChannel = !isDraftConversation && selectedIsGeneral;
     const finalRecipients = isDraftConversation
@@ -2120,9 +2124,13 @@ export default function MessagingWidget() {
                     dispatch({ type: 'widget/setConversation', payload: conversation.id });
                     dispatch({ type: 'composer/setTopic', payload: conversation.title });
                     dispatch({ type: 'composer/setRecipients', payload: [] });
-                    if (conversation.linkedType && conversation.linkedId) {
-                      dispatch({ type: 'composer/setLinkedContext', payload: { linkedType: conversation.linkedType, linkedId: conversation.linkedId } });
-                    }
+                    dispatch({
+                      type: 'composer/setLinkedContext',
+                      payload: {
+                        linkedType: conversation.linkedType || null,
+                        linkedId: conversation.linkedId || null,
+                      },
+                    });
                   }}
                   style={{ textAlign: 'left', border: 0, background: 'transparent', width: '100%', padding: 0, minWidth: 0 }}
                 >
