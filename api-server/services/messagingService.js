@@ -751,11 +751,12 @@ async function createMessageInternal({
   await enforceRateLimit(ctx.companyId, ctx.user.empid, idempotencyKey, db);
 
   const canonicalConversationId = toId(conversationId);
+  const insertConversationId = canonicalConversationId || (parentMessageId ? null : 0);
   const messageInsertValues = [
     ctx.companyId,
     ctx.user.empid,
     parentMessageId,
-    canonicalConversationId,
+    insertConversationId,
     linkedType,
     linkedId,
     visibility.visibilityScope,
@@ -799,7 +800,7 @@ async function createMessageInternal({
           ctx.companyId,
           ctx.user.empid,
           parentMessageId,
-          canonicalConversationId,
+          insertConversationId,
           linkedType,
           linkedId,
           visibility.visibilityScope,
@@ -826,7 +827,7 @@ async function createMessageInternal({
           ctx.companyId,
           ctx.user.empid,
           parentMessageId,
-          canonicalConversationId,
+          insertConversationId,
           visibility.visibilityScope,
           visibility.visibilityDepartmentId,
           visibility.visibilityEmpid,
@@ -859,7 +860,7 @@ async function createMessageInternal({
           ctx.companyId,
           ctx.user.empid,
           parentMessageId,
-          canonicalConversationId,
+          insertConversationId,
           visibility.visibilityScope,
           visibility.visibilityDepartmentId,
           visibility.visibilityEmpid,
@@ -1291,10 +1292,7 @@ export async function deleteMessage({ user, companyId, messageId, correlationId,
   const conversationId = toId(message.conversation_id || message.id);
   const isRootDelete = Number(message.id) === Number(conversationId);
   if (isRootDelete) {
-    await db.query(
-      'UPDATE erp_messages SET deleted_at = CURRENT_TIMESTAMP, deleted_by_empid = ? WHERE company_id = ? AND conversation_id = ?',
-      [user.empid, scopedCompanyId, conversationId],
-    );
+    await markConversationDeleted(db, { companyId: scopedCompanyId, conversationId, empid: user.empid });
     emit(scopedCompanyId, 'conversation.deleted', {
       ...eventPayloadBase({ correlationId, companyId: scopedCompanyId }),
       conversation_id: conversationId,
