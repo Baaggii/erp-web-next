@@ -615,12 +615,15 @@ function emitMessageScoped(ctx, eventName, message, options = {}) {
   };
 
   const isNewConversation = eventName === 'message.created' && message.parent_message_id == null;
+  const scope = String(message.visibility_scope || 'company');
   if (isNewConversation) {
-    const participants = Array.from(new Set([
-      ...parsePrivateParticipants(message.visibility_empid),
-      ...(Array.isArray(options.participantEmpids) ? options.participantEmpids : []),
-      String(message.author_empid || ctx?.user?.empid || '').trim(),
-    ].map((entry) => String(entry || '').trim()).filter(Boolean)));
+    const participants = scope === 'private'
+      ? Array.from(new Set([
+        ...parsePrivateParticipants(message.visibility_empid),
+        ...(Array.isArray(options.participantEmpids) ? options.participantEmpids : []),
+        String(message.author_empid || ctx?.user?.empid || '').trim(),
+      ].map((entry) => String(entry || '').trim()).filter(Boolean)))
+      : [];
     if (participants.length > 0) {
       participants.forEach((empid) => {
         const safeEmpid = String(empid || '').trim();
@@ -632,7 +635,6 @@ function emitMessageScoped(ctx, eventName, message, options = {}) {
     }
   }
 
-  const scope = String(message.visibility_scope || 'company');
   if (scope === 'private') {
     const participants = parsePrivateParticipants(message.visibility_empid);
     participants.forEach((empid) => emitToEmpid(eventName, empid, payload));
