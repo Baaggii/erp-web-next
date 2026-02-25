@@ -751,12 +751,11 @@ async function createMessageInternal({
   await enforceRateLimit(ctx.companyId, ctx.user.empid, idempotencyKey, db);
 
   const canonicalConversationId = toId(conversationId);
-  const insertConversationId = canonicalConversationId || (parentMessageId ? null : 0);
   const messageInsertValues = [
     ctx.companyId,
     ctx.user.empid,
     parentMessageId,
-    insertConversationId,
+    canonicalConversationId,
     linkedType,
     linkedId,
     visibility.visibilityScope,
@@ -800,7 +799,7 @@ async function createMessageInternal({
           ctx.companyId,
           ctx.user.empid,
           parentMessageId,
-          insertConversationId,
+          canonicalConversationId,
           linkedType,
           linkedId,
           visibility.visibilityScope,
@@ -827,7 +826,7 @@ async function createMessageInternal({
           ctx.companyId,
           ctx.user.empid,
           parentMessageId,
-          insertConversationId,
+          canonicalConversationId,
           visibility.visibilityScope,
           visibility.visibilityDepartmentId,
           visibility.visibilityEmpid,
@@ -860,7 +859,7 @@ async function createMessageInternal({
           ctx.companyId,
           ctx.user.empid,
           parentMessageId,
-          insertConversationId,
+          canonicalConversationId,
           visibility.visibilityScope,
           visibility.visibilityDepartmentId,
           visibility.visibilityEmpid,
