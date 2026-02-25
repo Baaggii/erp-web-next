@@ -224,14 +224,16 @@ export async function login(req, res, next) {
 
     res.cookie(getCookieName(), token, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
+      secure: true,
+      sameSite: 'none',
+      path: '/',
       maxAge: jwtService.getExpiryMillis(),
     });
     res.cookie(getRefreshCookieName(), refreshToken, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
+      secure: true,
+      sameSite: 'none',
+      path: '/',
       maxAge: jwtService.getRefreshExpiryMillis(),
     });
     try {
@@ -291,8 +293,9 @@ export async function login(req, res, next) {
 export async function logout(req, res) {
   const opts = {
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'lax',
+    secure: true,
+    sameSite: 'none',
+    path: '/',
   };
   res.clearCookie(getCookieName(), opts);
   res.clearCookie(getRefreshCookieName(), opts);
@@ -497,14 +500,16 @@ export async function refresh(req, res) {
     const newRefresh = jwtService.signRefresh(newPayload);
     res.cookie(getCookieName(), newAccess, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
+      secure: true,
+      sameSite: 'none',
+      path: '/',
       maxAge: jwtService.getExpiryMillis(),
     });
     res.cookie(getRefreshCookieName(), newRefresh, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
+      secure: true,
+      sameSite: 'none',
+      path: '/',
       maxAge: jwtService.getRefreshExpiryMillis(),
     });
     res.json({
@@ -534,8 +539,9 @@ export async function refresh(req, res) {
   } catch (err) {
     const opts = {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
+      secure: true,
+      sameSite: 'none',
+      path: '/',
     };
     res.clearCookie(getCookieName(), opts);
     res.clearCookie(getRefreshCookieName(), opts);
