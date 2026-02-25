@@ -4,7 +4,13 @@ import { deleteMessage, getMessages, getThread, patchMessage, postMessage, postR
 import { resetMessagingMetrics } from '../../api-server/services/messagingMetrics.js';
 
 class FakeDb {
-  constructor({ supportsEncryptedBodyColumns = true, supportsLinkedFields = true, deleteByColumn = 'deleted_by_empid' } = {}) {
+  constructor({
+    supportsEncryptedBodyColumns = true,
+    supportsLinkedFields = true,
+    deleteByColumn = 'deleted_by_empid',
+    conversationUnsupportedCompanies = [],
+    conversationRequiredCompanies = [],
+  } = {}) {
     this.messages = [];
     this.idem = new Map();
     this.nextId = 1;
@@ -12,6 +18,8 @@ class FakeDb {
     this.supportsEncryptedBodyColumns = supportsEncryptedBodyColumns;
     this.supportsLinkedFields = supportsLinkedFields;
     this.deleteByColumn = deleteByColumn;
+    this.conversationUnsupportedCompanies = new Set(conversationUnsupportedCompanies.map((entry) => Number(entry)));
+    this.conversationRequiredCompanies = new Set(conversationRequiredCompanies.map((entry) => Number(entry)));
   }
 
   async query(sql, params = []) {
@@ -46,29 +54,53 @@ class FakeDb {
       return [messageId ? [{ message_id: messageId, request_hash: null, expires_at: null }] : []];
     }
     if (sql.startsWith('INSERT INTO erp_messages')) {
+      const companyId = Number(params[0]);
+      const hasConversationField = sql.includes('conversation_id');
+      if (hasConversationField && this.conversationUnsupportedCompanies.has(companyId)) {
+        const error = new Error("Unknown column 'conversation_id' in 'field list'");
+        error.sqlMessage = "Unknown column 'conversation_id' in 'field list'";
+        throw error;
+      }
+      if (!hasConversationField && this.conversationRequiredCompanies.has(companyId)) {
+        const error = new Error("Field 'conversation_id' doesn't have a default value");
+        error.code = 'ER_NO_DEFAULT_FOR_FIELD';
+        error.sqlMessage = "Field 'conversation_id' doesn't have a default value";
+        throw error;
+      }
+
       const hasLinkedFields = sql.includes('linked_type') && sql.includes('linked_id');
       const hasVisibilityFields = sql.includes('visibility_scope') && sql.includes('visibility_empid');
-      const [companyId, authorEmpid, parentId] = params;
-      const visibilityOffset = hasLinkedFields ? 5 : 3;
-      const baseOffset = hasLinkedFields
-        ? 8
+      const hasEncryptedBody = sql.includes('body_ciphertext') && sql.includes('body_iv') && sql.includes('body_auth_tag');
+      const [, authorEmpid, parentId] = params;
+      const conversationOffset = hasConversationField ? 3 : null;
+      const linkedOffset = hasLinkedFields ? 4 : null;
+      const visibilityOffset = hasLinkedFields
+        ? 6
         : hasVisibilityFields
-          ? 6
-          : 3;
+          ? 4
+          : null;
+      const bodyOffset = hasLinkedFields
+        ? 9
+        : hasVisibilityFields
+          ? 7
+          : hasConversationField
+            ? 4
+            : 3;
       const message = {
         id: this.nextId++,
         company_id: companyId,
         author_empid: authorEmpid,
         parent_message_id: parentId,
-        linked_type: hasLinkedFields ? params[3] : null,
-        linked_id: hasLinkedFields ? params[4] : null,
+        conversation_id: hasConversationField ? params[conversationOffset] : null,
+        linked_type: hasLinkedFields ? params[linkedOffset] : null,
+        linked_id: hasLinkedFields ? params[linkedOffset + 1] : null,
         visibility_scope: hasVisibilityFields ? params[visibilityOffset] : 'company',
         visibility_department_id: hasVisibilityFields ? params[visibilityOffset + 1] : null,
         visibility_empid: hasVisibilityFields ? params[visibilityOffset + 2] : null,
-        body: params[baseOffset],
-        body_ciphertext: params[baseOffset + 1],
-        body_iv: params[baseOffset + 2],
-        body_auth_tag: params[baseOffset + 3],
+        body: params[bodyOffset],
+        body_ciphertext: hasEncryptedBody ? params[bodyOffset + 1] : null,
+        body_iv: hasEncryptedBody ? params[bodyOffset + 2] : null,
+        body_auth_tag: hasEncryptedBody ? params[bodyOffset + 3] : null,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
         deleted_at: null,
@@ -252,6 +284,36 @@ test('postReply falls back when encrypted body columns are unavailable', async (
   });
 
   assert.equal(reply.message.body, 'legacy reply');
+});
+
+test('postMessage retries with conversation_id when fallback insert requires it', async () => {
+  const db = new FakeDb({
+    conversationUnsupportedCompanies: [1],
+    conversationRequiredCompanies: [2],
+  });
+  const session = { permissions: { messaging: true } };
+
+  await postMessage({
+    user,
+    companyId: 1,
+    payload: { body: 'legacy tenant', linkedType: 'topic', linkedId: 'legacy', idempotencyKey: 'legacy-convo-1' },
+    correlationId: 'legacy-convo-1',
+    db,
+    getSession: async () => session,
+  });
+
+  await postMessage({
+    user,
+    companyId: 2,
+    payload: { body: 'strict tenant', linkedType: 'topic', linkedId: 'strict', idempotencyKey: 'strict-convo-1' },
+    correlationId: 'strict-convo-1',
+    db,
+    getSession: async () => session,
+  });
+
+  assert.equal(db.messages.filter((entry) => entry.company_id === 1).length, 1);
+  assert.equal(db.messages.filter((entry) => entry.company_id === 2).length, 1);
+  assert.notEqual(db.messages.find((entry) => entry.company_id === 2)?.conversation_id, null);
 });
 
 test('deleteMessage falls back to deleted_by when deleted_by_empid is unavailable', async () => {

@@ -133,6 +133,12 @@ function isUnknownColumnError(error, columnName) {
   return message.includes('unknown column') && message.includes(String(columnName).toLowerCase());
 }
 
+function isMissingDefaultForFieldError(error, columnName) {
+  if (String(error?.code || '').toUpperCase() !== 'ER_NO_DEFAULT_FOR_FIELD') return false;
+  const message = String(error?.sqlMessage || error?.message || '').toLowerCase();
+  return message.includes(String(columnName).toLowerCase());
+}
+
 async function readIdempotencyRow(db, { companyId, empid, idempotencyKey }) {
   const mode = idempotencyRequestHashSupport.get(db);
   if (mode !== false) {
@@ -877,17 +883,34 @@ async function createMessageInternal({
   }
 
   if (!result) {
-    [result] = await db.query(
-      `INSERT INTO erp_messages
-        (company_id, author_empid, parent_message_id, body)
-        VALUES (?, ?, ?, ?)`,
-      [
-        ctx.companyId,
-        ctx.user.empid,
-        parentMessageId,
-        body,
-      ],
-    );
+    try {
+      [result] = await db.query(
+        `INSERT INTO erp_messages
+          (company_id, author_empid, parent_message_id, body)
+          VALUES (?, ?, ?, ?)`,
+        [
+          ctx.companyId,
+          ctx.user.empid,
+          parentMessageId,
+          body,
+        ],
+      );
+    } catch (error) {
+      if (!isMissingDefaultForFieldError(error, 'conversation_id')) throw error;
+      [result] = await db.query(
+        `INSERT INTO erp_messages
+          (company_id, author_empid, parent_message_id, conversation_id, body)
+          VALUES (?, ?, ?, ?, ?)`,
+        [
+          ctx.companyId,
+          ctx.user.empid,
+          parentMessageId,
+          canonicalConversationId || parentMessageId || 0,
+          body,
+        ],
+      );
+      messageConversationColumnSupport.set(db, true);
+    }
   }
   const messageId = result.insertId;
   await upsertIdempotencyRow(db, {
