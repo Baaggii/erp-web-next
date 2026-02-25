@@ -615,7 +615,8 @@ function emitMessageScoped(ctx, eventName, message, options = {}) {
   };
 
   const isNewConversation = eventName === 'message.created' && message.parent_message_id == null;
-  if (isNewConversation) {
+  const scope = String(message.visibility_scope || 'company');
+  if (isNewConversation && scope === 'private') {
     const participants = Array.from(new Set([
       ...parsePrivateParticipants(message.visibility_empid),
       ...(Array.isArray(options.participantEmpids) ? options.participantEmpids : []),
@@ -632,7 +633,6 @@ function emitMessageScoped(ctx, eventName, message, options = {}) {
     }
   }
 
-  const scope = String(message.visibility_scope || 'company');
   if (scope === 'private') {
     const participants = parsePrivateParticipants(message.visibility_empid);
     participants.forEach((empid) => emitToEmpid(eventName, empid, payload));
