@@ -622,7 +622,12 @@ function emitMessageScoped(ctx, eventName, message, options = {}) {
       String(message.author_empid || ctx?.user?.empid || '').trim(),
     ].map((entry) => String(entry || '').trim()).filter(Boolean)));
     if (participants.length > 0) {
-      participants.forEach((empid) => emitToEmpid(eventName, empid, payload));
+      participants.forEach((empid) => {
+        const safeEmpid = String(empid || '').trim();
+        if (!safeEmpid) return;
+        ioRef.to(`user:${safeEmpid}`).emit(eventName, payload);
+        emitToEmpid(eventName, safeEmpid, payload);
+      });
       return;
     }
   }

@@ -150,7 +150,6 @@ const keepAliveTimeoutMs = Number(process.env.SERVER_KEEP_ALIVE_TIMEOUT_MS || 12
 if (Number.isFinite(keepAliveTimeoutMs) && keepAliveTimeoutMs > 0) {
   server.keepAliveTimeout = keepAliveTimeoutMs;
 }
-const socketPath = process.env.SOCKET_IO_PATH || "/api/socket.io";
 const allowedOrigin = String(process.env.ALLOWED_ORIGIN || "").trim();
 const SOCKET_AUTH_TTL_MS = 10 * 60 * 1000;
 
@@ -208,10 +207,10 @@ async function authenticateSocket(socket) {
 
 const io = new SocketIOServer(server, {
   cors: {
-    origin: allowedOrigin || false,
+    origin: process.env.ALLOWED_ORIGIN,
     credentials: true,
   },
-  path: socketPath,
+  path: process.env.SOCKET_IO_PATH || '/api/socket.io',
   allowRequest: (req, callback) => {
     const origin = String(req.headers.origin || "").trim();
     if (allowedOrigin && origin !== allowedOrigin) {
@@ -235,6 +234,12 @@ io.use(async (socket, next) => {
 io.on("connection", (socket) => {
   const user = socket.user;
   if (!user) return;
+
+  const empid = String(user.empid || '').trim();
+  if (empid) {
+    socket.join(`user:${empid}`);
+    socket.join(`emp:${empid}`);
+  }
 
   markOnline(user.companyId, user.empid);
   incWebsocketConnections({ company_id: String(user.companyId) }, 1);
