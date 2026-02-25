@@ -20,6 +20,37 @@ import {
 const ATTACHMENTS_MARKER = '\n[attachments-json]';
 const NEW_CONVERSATION_ID = '__new__';
 
+function buildParticipantCacheKey(sessionId, companyId) {
+  return `messaging-widget:participants:${normalizeId(sessionId) || 'anonymous'}:${normalizeId(companyId) || 'none'}`;
+}
+
+function readParticipantCache(cacheKey) {
+  if (!cacheKey) return {};
+  try {
+    const raw = globalThis.localStorage?.getItem(cacheKey);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+    return Object.entries(parsed).reduce((acc, [rootId, participants]) => {
+      const normalizedRootId = normalizeId(rootId);
+      if (!normalizedRootId || !Array.isArray(participants)) return acc;
+      const nextParticipants = Array.from(new Set(participants.map(normalizeId).filter(Boolean)));
+      if (nextParticipants.length > 0) acc[normalizedRootId] = nextParticipants;
+      return acc;
+    }, {});
+  } catch {
+    return {};
+  }
+}
+
+function writeParticipantCache(cacheKey, updater) {
+  if (!cacheKey || typeof updater !== 'function') return;
+  const current = readParticipantCache(cacheKey);
+  const next = updater(current);
+  if (!next || typeof next !== 'object') return;
+  globalThis.localStorage?.setItem(cacheKey, JSON.stringify(next));
+}
+
 function decodeMessageContent(rawBody) {
   const safe = String(rawBody || '');
   const markerIndex = safe.indexOf(ATTACHMENTS_MARKER);
@@ -694,9 +725,23 @@ export default function MessagingWidget() {
     const convKey = state.activeConversationId || 'new';
     return `messaging-widget:draft:${normalizeId(sessionId) || 'anonymous'}:${normalizeId(state.activeCompanyId || companyId) || 'none'}:${convKey}`;
   }, [sessionId, state.activeConversationId, state.activeCompanyId, companyId]);
+  const participantCacheKey = useMemo(
+    () => buildParticipantCacheKey(sessionId, state.activeCompanyId || companyId),
+    [sessionId, state.activeCompanyId, companyId],
+  );
 
   const cacheKey = getCompanyCacheKey(state.activeCompanyId || companyId);
   const messages = messagesByCompany[cacheKey] || [];
+
+  const rememberConversationParticipants = (rootMessageId, participantIds) => {
+    const normalizedRootId = normalizeId(rootMessageId);
+    const normalizedParticipants = Array.from(new Set((participantIds || []).map(normalizeId).filter(Boolean)));
+    if (!normalizedRootId || normalizedParticipants.length < 2) return;
+    writeParticipantCache(participantCacheKey, (existing) => ({
+      ...existing,
+      [normalizedRootId]: normalizedParticipants,
+    }));
+  };
 
   const fetchThreadMessages = async (rootMessageId, activeCompany) => {
     if (!rootMessageId || !activeCompany) return;
@@ -709,6 +754,8 @@ export default function MessagingWidget() {
         ? threadData.items
         : [threadData?.root, ...(Array.isArray(threadData?.replies) ? threadData.replies : [])].filter(Boolean);
       if (threadItems.length === 0) return;
+      const rememberedThreadParticipants = Array.from(new Set(threadItems.flatMap((entry) => collectMessageParticipantEmpids(entry))));
+      rememberConversationParticipants(rootMessageId, rememberedThreadParticipants);
       setMessagesByCompany((prev) => {
         const key = getCompanyCacheKey(activeCompany);
         const byId = new Map((prev[key] || []).map((entry) => [String(entry.id), entry]));
@@ -812,7 +859,30 @@ export default function MessagingWidget() {
         const data = await res.json();
         if (disposed) return;
         const incomingMessages = Array.isArray(data.items) ? data.items : Array.isArray(data.messages) ? data.messages : [];
-        const visibleMessages = filterVisibleMessages(incomingMessages, selfEmpid);
+        const participantCache = readParticipantCache(participantCacheKey);
+        const hydratedMessages = incomingMessages.map((message) => {
+          const rootMessageId = normalizeId(
+            message?.conversation_id
+            || message?.conversationId
+            || message?.parent_message_id
+            || message?.parentMessageId
+            || message?.id,
+          );
+          const rememberedParticipants = participantCache[rootMessageId];
+          if (!rememberedParticipants?.length) return message;
+          const detectedParticipants = collectMessageParticipantEmpids(message);
+          if (detectedParticipants.length > 1) return message;
+          return {
+            ...message,
+            recipient_empids: message?.recipient_empids ?? message?.recipientEmpids ?? rememberedParticipants,
+            visibility_scope: message?.visibility_scope || message?.visibilityScope || 'private',
+          };
+        });
+        const visibleMessages = filterVisibleMessages(hydratedMessages, selfEmpid);
+        groupConversations(visibleMessages, selfEmpid).forEach((conversation) => {
+          if (conversation?.isGeneral || !conversation?.rootMessageId) return;
+          rememberConversationParticipants(conversation.rootMessageId, conversation.participants || []);
+        });
         const visibleConversationIds = new Set(
           groupConversations(visibleMessages, selfEmpid)
             .filter((conversation) => conversation.isGeneral || !selfEmpid || conversation.participants.includes(selfEmpid))
@@ -1674,6 +1744,9 @@ export default function MessagingWidget() {
         threadRootIdToRefresh = explicitReplyTargetId || fallbackRootReplyTargetId || activeConversation?.rootMessageId || null;
       }
       if (threadRootIdToRefresh) await fetchThreadMessages(threadRootIdToRefresh, activeCompany);
+      if (visibilityScope === 'private') {
+        rememberConversationParticipants(threadRootIdToRefresh || createdMessage?.id, allParticipants);
+      }
       dispatch({ type: 'composer/reset' });
       if (isDraftConversation) setNewConversationSelections([]);
       globalThis.localStorage?.removeItem(draftStorageKey);
