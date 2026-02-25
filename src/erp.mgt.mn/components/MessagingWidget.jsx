@@ -1788,7 +1788,10 @@ export default function MessagingWidget() {
           fallbackRootReplyTargetId,
           createdMessage,
         });
-        if (isDraftConversation && !(createdMessage.parent_message_id || createdMessage.parentMessageId)) {
+        const shouldMergeIntoActiveCache = isDraftConversation
+          || selectedIsGeneral
+          || (!threadRootIdToRefresh && !(createdMessage.parent_message_id || createdMessage.parentMessageId));
+        if (shouldMergeIntoActiveCache) {
           setMessagesByCompany((prev) => {
             const key = getCompanyCacheKey(state.activeCompanyId || companyId);
             return { ...prev, [key]: mergeMessageList(prev[key], createdMessage) };
