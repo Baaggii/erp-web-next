@@ -10,8 +10,9 @@ export function requireAuth(req, res, next) {
   function clearCookies() {
     const opts = {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
+      secure: true,
+      sameSite: 'none',
+      path: '/',
     };
     res.clearCookie(getCookieName(), opts);
     res.clearCookie(getRefreshCookieName(), opts);
@@ -30,14 +31,16 @@ export function requireAuth(req, res, next) {
     const newRefresh = jwtService.signRefresh(base);
     res.cookie(getCookieName(), newAccess, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
+      secure: true,
+      sameSite: 'none',
+      path: '/',
       maxAge: jwtService.getExpiryMillis(),
     });
     res.cookie(getRefreshCookieName(), newRefresh, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
+      secure: true,
+      sameSite: 'none',
+      path: '/',
       maxAge: jwtService.getRefreshExpiryMillis(),
     });
     req.user = jwtService.verify(newAccess);
