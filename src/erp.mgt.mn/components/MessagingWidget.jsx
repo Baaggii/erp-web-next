@@ -1105,7 +1105,7 @@ export default function MessagingWidget() {
 
       const id = nextMessage.id;
       setHighlightedIds((prev) => new Set([...prev, id]));
-      globalThis.setTimeout(() => {
+      setTimeout(() => {
         setHighlightedIds((prev) => {
           const next = new Set(prev);
           next.delete(id);
@@ -1138,10 +1138,10 @@ export default function MessagingWidget() {
         if (!isParticipantMessage && !canAccessFromParent && !canAccessFromConversation) return prev;
         return { ...prev, [key]: mergeMessageList(current, normalizedMessage) };
       });
-
       const selectedRootId = conversationRootIdFromSelection(state.activeConversationId);
-      if (!resolvedRootId || !selectedRootId || Number(selectedRootId) !== Number(resolvedRootId)) return;
-      fetchThreadMessages(resolvedRootId, state.activeCompanyId || companyId);
+      if (resolvedRootId && selectedRootId && Number(selectedRootId) === Number(resolvedRootId)) {
+        fetchThreadMessages(resolvedRootId, state.activeCompanyId || companyId);
+      }
     };
     const onPresence = (payload) => {
       const payloadCompanyId = normalizeId(payload?.companyId || payload?.company_id);
@@ -1587,17 +1587,6 @@ export default function MessagingWidget() {
     await handleDeleteMessage(conversation.rootMessageId);
   };
 
-  const dropTemporaryComposerMessage = (activeCompany, clientTempId) => {
-    if (!activeCompany || !clientTempId) return;
-    setMessagesByCompany((prev) => {
-      const key = getCompanyCacheKey(activeCompany);
-      const current = prev[key] || [];
-      const nextMessages = current.filter((entry) => String(entry.id) !== String(clientTempId));
-      if (nextMessages.length === current.length) return prev;
-      return { ...prev, [key]: nextMessages };
-    });
-  };
-
   const sendMessage = async () => {
     if (canEditTopic && !isDraftConversation && !safeTopic) {
       setComposerAnnouncement('Topic is required.');
@@ -1716,46 +1705,14 @@ export default function MessagingWidget() {
       ? `${API_BASE}/messaging/messages/${explicitReplyTargetId}/reply`
       : `${API_BASE}/messaging/messages`;
 
-    const optimisticConversationId = fallbackRootReplyTargetId || explicitReplyTargetId || null;
-    const optimisticParentMessageId = (!isDraftConversation && isReplyMode && explicitReplyTargetId)
-      ? explicitReplyTargetId
-      : null;
-    const optimisticMessage = {
-      id: clientTempId,
-      company_id: normalizedCompanyId,
-      body: payload.body,
-      author_empid: selfEmpid,
-      recipient_empids: visibilityScope === 'private' ? allParticipants : null,
-      visibility_scope: visibilityScope,
-      linked_type: linkedType,
-      linked_id: linkedId,
-      conversation_id: optimisticConversationId,
-      parent_message_id: optimisticParentMessageId,
-      created_at: new Date().toISOString(),
-      _optimistic: true,
-    };
-
-    setMessagesByCompany((prev) => {
-      const key = getCompanyCacheKey(activeCompany);
-      return { ...prev, [key]: mergeMessageList(prev[key], optimisticMessage) };
+    const res = await fetch(targetUrl, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
     });
 
-    let res;
-    try {
-      res = await fetch(targetUrl, {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-    } catch {
-      dropTemporaryComposerMessage(activeCompany, clientTempId);
-      setComposerAnnouncement('Failed to send message.');
-      return;
-    }
-
     if (res.ok) {
-      dropTemporaryComposerMessage(activeCompany, clientTempId);
       const successPayload = await res.json().catch(() => null);
       const createdMessage = successPayload?.message
         ? {
@@ -1797,7 +1754,6 @@ export default function MessagingWidget() {
       setComposerAnnouncement('Message sent.');
       composerRef.current?.focus();
     } else {
-      dropTemporaryComposerMessage(activeCompany, clientTempId);
       const errorPayload = await res.json().catch(() => null);
       console.error('Messaging send failed', { status: res.status, errorPayload, payload });
       setComposerAnnouncement(errorPayload?.error?.message || errorPayload?.message || 'Failed to send message.');

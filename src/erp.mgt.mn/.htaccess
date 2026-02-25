@@ -4,10 +4,10 @@
   # 1) Proxy Socket.IO WebSocket upgrades
   RewriteCond %{HTTP:Upgrade} websocket [NC]
   RewriteCond %{HTTP:Connection} upgrade [NC]
-  RewriteRule ^/?api/socket\.io(/.*)?$ ws://127.0.0.1:3002/socket.io$1 [P,L]
+  RewriteRule ^/?socket\.io(/.*)?$ ws://127.0.0.1:3002/socket.io$1 [P,L]
 
   # 2) Proxy Socket.IO long‑polling and other HTTP calls
-  RewriteRule ^/?api/socket\.io(/.*)?$ http://127.0.0.1:3002/socket.io$1 [P,L]
+  RewriteRule ^/?socket\.io(/.*)?$ http://127.0.0.1:3002/socket.io$1 [P,L]
 
   # 3) Proxy API calls to the backend
   RewriteRule ^api/(.*)$ http://127.0.0.1:3002/api/$1 [P,L]
