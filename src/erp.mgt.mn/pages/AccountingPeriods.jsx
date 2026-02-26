@@ -361,29 +361,22 @@ export default function AccountingPeriodsPage() {
         rowIds: rowIdsValue,
         drilldownLevel,
       });
-      if (!tempResult.ok && tempResult.error === 'REPORT_SESSION_EXPIRED' && previewResult?.name) {
-        const rebuildParams =
-          previewResult?.params ||
-          previewResult?.reportParams ||
-          previewResult?.request?.params ||
-          null;
-        if (rebuildParams) {
-          const rebuildRes = await fetch('/api/report/rebuild', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'include',
-            body: JSON.stringify({
-              reportName: previewResult.name,
-              reportParams: rebuildParams,
-            }),
+      if (!tempResult.ok && tempResult.error === 'REPORT_SESSION_EXPIRED' && previewResult?.name && previewResult?.params) {
+        const rebuildRes = await fetch('/api/report/rebuild', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({
+            reportName: previewResult.name,
+            reportParams: previewResult.params,
+          }),
+        });
+        if (rebuildRes.ok) {
+          tempResult = await fetchTempDetailRows({
+            drilldownCapabilities: drilldownConfig,
+            rowIds: rowIdsValue,
+            drilldownLevel,
           });
-          if (rebuildRes.ok) {
-            tempResult = await fetchTempDetailRows({
-              drilldownCapabilities: drilldownConfig,
-              rowIds: rowIdsValue,
-              drilldownLevel,
-            });
-          }
         }
       }
       if (tempResult.ok) {
