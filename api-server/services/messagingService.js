@@ -21,7 +21,6 @@ const messageLinkedContextSupport = new WeakMap();
 const messageEncryptionColumnSupport = new WeakMap();
 const messageDeleteByColumnSupport = new WeakMap();
 const messageConversationColumnSupport = new WeakMap();
-const conversationTableSupport = new WeakMap();
 let ioRef = null;
 
 const onlineByCompany = new Map();
@@ -537,43 +536,7 @@ async function assertMessagingSchema(db = pool) {
       'Messaging tables are missing. Run messaging migrations before using this service.',
     );
   }
-  await ensureConversationTable(db);
   validatedMessagingSchemas.add(db);
-}
-
-async function ensureConversationTable(db = pool) {
-  if (conversationTableSupport.get(db) === true) return;
-  const [rows] = await db.query(
-    `SELECT COUNT(*) AS count
-       FROM information_schema.TABLES
-      WHERE TABLE_SCHEMA = DATABASE()
-        AND TABLE_NAME = 'erp_conversations'`,
-  );
-  if (Number(rows?.[0]?.count) > 0) {
-    conversationTableSupport.set(db, true);
-    return;
-  }
-
-  await db.query(
-    `CREATE TABLE IF NOT EXISTS erp_conversations (
-      id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-      company_id BIGINT UNSIGNED NOT NULL,
-      linked_type VARCHAR(64) NULL,
-      linked_id VARCHAR(128) NULL,
-      visibility_scope VARCHAR(32) NULL,
-      visibility_department_id BIGINT UNSIGNED NULL,
-      visibility_empid VARCHAR(255) NULL,
-      created_by_empid VARCHAR(64) NOT NULL,
-      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      last_message_id BIGINT UNSIGNED NULL,
-      last_message_at DATETIME NULL,
-      deleted_at DATETIME NULL,
-      deleted_by_empid VARCHAR(64) NULL,
-      PRIMARY KEY (id),
-      KEY idx_erp_conversations_company_last_activity (company_id, last_message_at DESC, id DESC)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
-  );
-  conversationTableSupport.set(db, true);
 }
 
 async function resolveSession(user, companyId, getSession = getEmploymentSession) {
