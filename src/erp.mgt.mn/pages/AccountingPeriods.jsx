@@ -42,12 +42,6 @@ function renderCell(value) {
   return String(value);
 }
 
-function normalizeParamName(name) {
-  return String(name || '')
-    .toLowerCase()
-    .replace(/[^a-z0-9]/g, '');
-}
-
 export default function AccountingPeriodsPage() {
   const { user, session, company, permissions } = useAuth();
   const companyId = Number(user?.companyId || user?.company_id || session?.company_id || company?.id || company || 0);
@@ -222,23 +216,12 @@ export default function AccountingPeriodsPage() {
     const paramNames = await fetchDrilldownParams(reportName);
     if (!paramNames.length) return [rowIdsValue];
     return paramNames.map((paramName) => {
-      const normalized = normalizeParamName(paramName);
+      const normalized = String(paramName || '').toLowerCase().replace(/^@+/, '');
       if (normalized.includes('rowid')) return rowIdsValue;
       if (normalized.includes('company')) return companyId || null;
       return null;
     });
   }, [companyId, fetchDrilldownParams]);
-
-  const resolveDrilldownProcedure = useCallback(({ reportMeta, row }) => {
-    const normalizedMeta = normalizeReportMeta(reportMeta);
-    const drilldownConfig = normalizedMeta?.drilldown;
-    return String(
-      row?.__drilldown_report
-      || row?.__detail_report
-      || drilldownConfig?.fallbackProcedure
-      || '',
-    ).trim();
-  }, [normalizeReportMeta]);
 
   const handlePreviewDrilldown = useCallback(async ({ reportName, reportMeta, row, rowId }) => {
     const rowIds = String(row?.__row_ids || '').trim();
@@ -290,7 +273,11 @@ export default function AccountingPeriodsPage() {
       },
     }));
 
-    const detailProcedure = resolveDrilldownProcedure({ reportMeta, row });
+    const normalizedMeta = normalizeReportMeta(reportMeta);
+    const drilldownConfig = normalizedMeta?.drilldown;
+    const detailProcedure = String(
+      drilldownConfig?.fallbackProcedure || row?.__drilldown_report || row?.__detail_report || reportName || '',
+    ).trim();
     if (!detailProcedure) {
       setPreviewDrilldownState((prev) => ({
         ...prev,
@@ -355,7 +342,7 @@ export default function AccountingPeriodsPage() {
         },
       }));
     }
-  }, [buildDrilldownParams, previewDrilldownState, resolveDrilldownProcedure]);
+  }, [buildDrilldownParams, normalizeReportMeta, previewDrilldownState]);
 
   const handlePreviewDrilldownSelectionChange = useCallback((reportName, updater) => {
     setPreviewDrilldownSelection((prev) => {
@@ -369,6 +356,7 @@ export default function AccountingPeriodsPage() {
   }, []);
 
   const handleSnapshotDrilldown = useCallback(async ({ row, rowId }) => {
+    const reportName = String(selectedSnapshot?.procedure_name || '').trim();
     const rowIds = String(row?.__row_ids || '').trim();
     if (!rowIds) {
       setSnapshotDrilldownState((prev) => ({
@@ -408,10 +396,9 @@ export default function AccountingPeriodsPage() {
       },
     }));
 
-    const detailProcedure = resolveDrilldownProcedure({
-      reportMeta: selectedSnapshot?.artifact?.reportMeta,
-      row,
-    });
+    const detailProcedure = String(
+      row?.__drilldown_report || row?.__detail_report || reportName || '',
+    ).trim();
     if (!detailProcedure) {
       setSnapshotDrilldownState((prev) => ({
         ...prev,
@@ -467,7 +454,7 @@ export default function AccountingPeriodsPage() {
         },
       }));
     }
-  }, [buildDrilldownParams, resolveDrilldownProcedure, selectedSnapshot?.artifact?.reportMeta, snapshotDrilldownState]);
+  }, [buildDrilldownParams, selectedSnapshot?.procedure_name, snapshotDrilldownState]);
 
   const handleSnapshotDrilldownSelectionChange = useCallback((updater) => {
     setSnapshotDrilldownSelection((prev) => (
