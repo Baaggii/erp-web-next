@@ -64,7 +64,7 @@ export function getCompanyCacheKey(companyId) {
 
 
 export function canonicalConversationId(message) {
-  return normalizeId(message?.conversation_id || message?.conversationId) || null;
+  return normalizeId(message?.conversation_id || message?.conversationId || message?.id) || null;
 }
 
 

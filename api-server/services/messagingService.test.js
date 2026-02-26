@@ -23,7 +23,16 @@ class MockDb {
   constructor() {
     this.nextId = 100;
     this.idempotency = new Map();
-    this.conversations = [{ id: 11, company_id: 1, deleted_at: null, last_message_id: 12, last_message_at: new Date().toISOString() }];
+    this.conversations = [{
+      id: 11,
+      company_id: 1,
+      deleted_at: null,
+      visibility_scope: 'private',
+      visibility_department_id: null,
+      visibility_empid: 'E100,E200',
+      last_message_id: 12,
+      last_message_at: new Date().toISOString(),
+    }];
     this.messages = [
       {
         id: 11,
@@ -77,10 +86,26 @@ class MockDb {
       return [[row].filter(Boolean), undefined];
     }
 
+    if (text.includes('SELECT id, last_message_at FROM') && text.includes('erp_conversations') && text.includes('WHERE id = ?')) {
+      const id = Number(params[0]);
+      const row = this.conversations.find((entry) => Number(entry.id) === id && !entry.deleted_at) || null;
+      return [[row ? { id: row.id, last_message_at: row.last_message_at } : null].filter(Boolean), undefined];
+    }
+
     if (text.includes('SELECT * FROM') && text.includes('erp_conversations') && text.includes('ORDER BY last_message_at DESC')) {
       const limit = Number(params[params.length - 1]) || 100;
+      const hasActivityCursor = text.includes('last_message_at < ? OR (last_message_at = ? AND id < ?)');
+      const cursorTime = hasActivityCursor ? params[0] : null;
+      const cursorId = hasActivityCursor ? params[2] : null;
       const rows = this.conversations
         .filter((entry) => !entry.deleted_at)
+        .filter((entry) => {
+          if (!cursorTime) return true;
+          const entryTime = new Date(entry.last_message_at).getTime();
+          const boundaryTime = new Date(cursorTime).getTime();
+          if (entryTime < boundaryTime) return true;
+          return entryTime === boundaryTime && Number(entry.id) < Number(cursorId);
+        })
         .sort((a, b) => (new Date(b.last_message_at).getTime() - new Date(a.last_message_at).getTime()) || (b.id - a.id))
         .slice(0, limit);
       return [rows, undefined];
@@ -89,7 +114,16 @@ class MockDb {
     if (text.includes('INSERT INTO erp_conversations')) {
       const [companyId] = params;
       const id = this.nextId++;
-      this.conversations.push({ id, company_id: Number(companyId), deleted_at: null, last_message_id: null, last_message_at: new Date().toISOString() });
+      this.conversations.push({
+        id,
+        company_id: Number(companyId),
+        deleted_at: null,
+        visibility_scope: 'company',
+        visibility_department_id: null,
+        visibility_empid: null,
+        last_message_id: null,
+        last_message_at: new Date().toISOString(),
+      });
       return [{ insertId: id }, undefined];
     }
 
@@ -366,4 +400,53 @@ test('postConversationMessage rejects non-root conversationId values', async () 
     }),
     (error) => error?.code === 'CONVERSATION_NOT_FOUND',
   );
+});
+
+test('postMessage rejects writes to conversations outside viewer scope', async () => {
+  const db = new MockDb();
+  const blockedUser = { empid: 'E999', companyId: 1 };
+  await assert.rejects(
+    () => postMessage({
+      user: blockedUser,
+      companyId: 1,
+      payload: { idempotencyKey: 'forbidden-conversation', body: 'Cannot post', conversationId: 11 },
+      correlationId: 'corr-forbidden-conversation',
+      db,
+      getSession,
+    }),
+    (error) => error?.code === 'CONVERSATION_NOT_FOUND',
+  );
+});
+
+test('listConversations hides private conversations and paginates with activity cursor', async () => {
+  const db = new MockDb();
+  db.conversations = [
+    { id: 21, company_id: 1, deleted_at: null, visibility_scope: 'private', visibility_empid: 'E100,E200', last_message_at: '2026-01-10T10:00:00.000Z' },
+    { id: 80, company_id: 1, deleted_at: null, visibility_scope: 'company', visibility_empid: null, last_message_at: '2026-01-09T10:00:00.000Z' },
+    { id: 19, company_id: 1, deleted_at: null, visibility_scope: 'company', visibility_empid: null, last_message_at: '2026-01-08T10:00:00.000Z' },
+  ];
+
+  const outsider = await listConversations({
+    user: { empid: 'E999', companyId: 1 },
+    companyId: 1,
+    correlationId: 'corr-outsider-list',
+    db,
+    getSession,
+  });
+  assert.deepEqual(outsider.items.map((item) => Number(item.id)), [80, 19]);
+
+  const page1 = await listConversations({ user: baseUser, companyId: 1, limit: 1, correlationId: 'corr-page-1', db, getSession });
+  assert.equal(Number(page1.items[0].id), 21);
+  assert.equal(Boolean(page1.pageInfo.hasMore), true);
+
+  const page2 = await listConversations({
+    user: baseUser,
+    companyId: 1,
+    limit: 2,
+    cursor: page1.pageInfo.nextCursor,
+    correlationId: 'corr-page-2',
+    db,
+    getSession,
+  });
+  assert.deepEqual(page2.items.map((item) => Number(item.id)), [80, 19]);
 });
