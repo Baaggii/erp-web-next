@@ -1786,12 +1786,11 @@ export default function MessagingWidget() {
           ?.id,
       )
       : null;
-    const selectedConversationId = [
-      selectedRootIdFromState,
-      selectedConversation?.rootMessageId,
-      selectedConversation?.id,
-      generalConversationRootId,
-    ].map(parseThreadMessageId).find(Boolean) || null;
+    const selectedConversationId = parseThreadMessageId(
+      selectedConversation?.id
+      || selectedRootIdFromState
+      || generalConversationRootId,
+    );
     const shouldSendReply = !isDraftConversation && Boolean(explicitReplyTargetId);
     if ((shouldSendReply || hasThreadContext) && !selectedConversationId && !explicitReplyTargetId) {
       setComposerAnnouncement('This conversation is missing its thread root. Refresh and try again.');
@@ -1817,8 +1816,6 @@ export default function MessagingWidget() {
       ...(visibilityScope === 'private' ? { recipientEmpids: allParticipants } : {}),
       ...(linkedType ? { linkedType } : {}),
       ...(linkedId ? { linkedId: String(linkedId) } : {}),
-      ...(canEditTopic && safeTopic ? { topic: safeTopic } : {}),
-      ...(isDraftConversation ? { messageClass: 'general' } : {}),
       ...(!isDraftConversation && !selectedIsGeneral && !shouldSendReply && selectedConversationId ? { conversationId: selectedConversationId } : {}),
       ...(!isDraftConversation && shouldSendReply && explicitReplyTargetId && selectedConversationId
         ? { conversationId: selectedConversationId }
