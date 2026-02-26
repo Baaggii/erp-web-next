@@ -317,7 +317,7 @@ test('conversation-centric service helpers preserve canonical thread identity', 
 
   assert.equal(Number(nested.message.conversation_id), conversationId);
   const list = await listConversations({ user: baseUser, companyId: 1, correlationId: 'corr-list', db, getSession });
-  assert.ok(list.items.some((item) => Number(item.id) === conversationId));
+  assert.ok(list.items.some((item) => Number(item.conversation_id) === conversationId));
 
   const thread = await getConversationMessages({
     user: baseUser,
