@@ -889,7 +889,7 @@ export default function AccountingPeriodsPage() {
                           buildPreviewDrilldownKey(result.name, parentRowId, detailIndex)}
                         excludeColumns={INTERNAL_COLS}
                         maxHeight={260}
-                        showTotalRowCount={false}
+                        showTotalRowCount
                       />
                     ) : <p style={{ margin: 0 }}>No rows returned.</p>}
                   </div>
@@ -947,7 +947,7 @@ export default function AccountingPeriodsPage() {
               onDrilldownRowSelectionChange={handleSnapshotDrilldownSelectionChange}
               excludeColumns={INTERNAL_COLS}
               maxHeight={320}
-              showTotalRowCount={false}
+              showTotalRowCount
             />
           ) : (
             <p style={{ marginTop: 8 }}>No snapshot rows found.</p>
