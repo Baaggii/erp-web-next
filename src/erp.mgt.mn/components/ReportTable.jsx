@@ -1,31 +1,18 @@
 import React, {
   useCallback,
-  useContext,
   useEffect,
   useMemo,
   useRef,
   useState,
 } from 'react';
 import { getCoreRowModel, useReactTable } from '@tanstack/react-table';
-import { AuthContext } from '../context/AuthContext.jsx';
 import useGeneralConfig, { updateCache } from '../hooks/useGeneralConfig.js';
 import useHeaderMappings from '../hooks/useHeaderMappings.js';
-import Modal from './Modal.jsx';
 import formatTimestamp from '../utils/formatTimestamp.js';
 import normalizeDateInput from '../utils/normalizeDateInput.js';
 
 function ch(n) {
   return Math.round(n * 8);
-}
-
-function getAverageLength(columnKey, data) {
-  const values = data
-    .slice(0, 20)
-    .map((r) => (r[columnKey] ?? '').toString());
-  if (values.length === 0) return 0;
-  return Math.round(
-    values.reduce((sum, val) => sum + val.length, 0) / values.length,
-  );
 }
 
 const MAX_WIDTH = ch(40);
@@ -64,11 +51,6 @@ function formatCellValue(val, placeholder) {
   return str;
 }
 
-function isCountColumn(name) {
-  const f = String(name).toLowerCase();
-  return f === 'count' || f === 'count()' || f.startsWith('count(');
-}
-
 function escapeHtml(value) {
   return String(value)
     .replace(/&/g, '&amp;')
@@ -101,7 +83,6 @@ export default function ReportTable({
   onRowSelectionChange,
   getRowId: getRowIdProp,
 }) {
-  const { user, company } = useContext(AuthContext);
   const generalConfig = useGeneralConfig();
   const [page, setPage] = useState(1);
   const [perPage, setPerPage] = useState(10);
@@ -109,7 +90,6 @@ export default function ReportTable({
   const [search, setSearch] = useState('');
   const [editLabels, setEditLabels] = useState(false);
   const [labelEdits, setLabelEdits] = useState({});
-  const [txnInfo, setTxnInfo] = useState(null);
   const [columnFilters, setColumnFilters] = useState({});
   const [frozenColumns, setFrozenColumns] = useState(0);
   const [internalRowSelection, setInternalRowSelection] = useState({});
@@ -393,58 +373,6 @@ export default function ReportTable({
     return sums;
   }, [numericColumns, sorted, resolveCell]);
 
-  const modalColumns = useMemo(() => {
-    if (!txnInfo || !txnInfo.data || txnInfo.data.length === 0) return [];
-    const all = Object.keys(txnInfo.data[0]);
-    if (Array.isArray(txnInfo.displayFields) && txnInfo.displayFields.length > 0) {
-      const ordered = txnInfo.displayFields.filter((f) => all.includes(f));
-      const rest = all.filter((f) => !ordered.includes(f));
-      return [...ordered, ...rest];
-    }
-    return all;
-  }, [txnInfo]);
-
-  const modalHeaderMap = useHeaderMappings(modalColumns);
-
-  const modalPlaceholders = useMemo(() => {
-    const map = {};
-    modalColumns.forEach((c) => {
-      const typ = fieldTypeMap[c];
-      if (typ === 'time') {
-        map[c] = 'HH:MM:SS';
-      } else if (typ === 'date' || typ === 'datetime') {
-        map[c] = 'YYYY-MM-DD';
-      }
-    });
-    return map;
-  }, [modalColumns, fieldTypeMap]);
-
-  const modalAlign = useMemo(() => {
-    const map = {};
-    if (!txnInfo || !txnInfo.data) return map;
-    modalColumns.forEach((c) => {
-      const sample = txnInfo.data.find((r) => r[c] !== null && r[c] !== undefined);
-      map[c] = typeof sample?.[c] === 'number' ? 'right' : 'left';
-    });
-    return map;
-  }, [modalColumns, txnInfo]);
-
-  const modalWidths = useMemo(() => {
-    const map = {};
-    if (!txnInfo || !txnInfo.data) return map;
-    modalColumns.forEach((c) => {
-      const avg = getAverageLength(c, txnInfo.data);
-      let w;
-      if (avg <= 4) w = ch(Math.max(avg + 1, 5));
-      else if (modalPlaceholders[c] && modalPlaceholders[c].includes('YYYY-MM-DD'))
-        w = ch(12);
-      else if (avg <= 10) w = ch(12);
-      else w = ch(20);
-      map[c] = Math.min(w, MAX_WIDTH);
-    });
-    return map;
-  }, [modalColumns, txnInfo, modalPlaceholders]);
-
   useEffect(() => {
     if (procedure) {
       rowToast(`Selected procedure: ${procedure}`, 'info');
@@ -503,174 +431,6 @@ export default function ReportTable({
     },
     [canDrilldown, onDrilldown],
   );
-
-  function handleCellClick(col, value, row) {
-    if (canDrilldown) return;
-    const num = Number(String(value).replace(',', '.'));
-    if (!procedure || Number.isNaN(num) || num <= 0) return;
-    rowToast(`Procedure: ${procedure}`, 'info');
-    let displayValue = value;
-    if (placeholders[col]) {
-      displayValue = formatCellValue(value, placeholders[col]);
-    } else if (numericColumns.includes(col)) {
-      const parsed = Number(String(value).replace(',', '.'));
-      if (!Number.isNaN(parsed)) displayValue = parsed;
-    }
-    const firstField = columns[0];
-
-    let idx = 0;
-    let groupField = columns[idx];
-    let groupValue = row[groupField];
-
-    while (
-      idx < columns.length - 1 &&
-      (groupField.toLowerCase() === 'modal' ||
-        String(groupValue).toLowerCase() === 'modal' ||
-        isCountColumn(groupField))
-    ) {
-      idx += 1;
-      groupField = columns[idx];
-      groupValue = row[groupField];
-    }
-
-    if (placeholders[groupField]) {
-      groupValue = formatCellValue(groupValue, placeholders[groupField]);
-    } else if (numericColumns.includes(groupField)) {
-      const parsed = Number(String(groupValue).replace(',', '.'));
-      if (!Number.isNaN(parsed)) groupValue = parsed;
-    }
-
-    const allConditions = [];
-    for (let i = 0; i < columns.length; i++) {
-      const field = columns[i];
-      const val = row[field];
-      if (
-        !field ||
-        val === undefined ||
-        val === null ||
-        val === '' ||
-        isCountColumn(field) ||
-        (i !== 0 &&
-          (field.toLowerCase() === 'modal' ||
-            String(val).toLowerCase() === 'modal'))
-      ) {
-        continue;
-      }
-      let outVal = val;
-      if (placeholders[field]) {
-        outVal = formatCellValue(val, placeholders[field]);
-      } else if (numericColumns.includes(field)) {
-        const numVal = Number(String(val).replace(',', '.'));
-        if (!Number.isNaN(numVal)) outVal = numVal;
-      }
-      allConditions.push({ field, value: outVal });
-    }
-    const extraConditions = allConditions.filter(
-      (c) => c.field !== groupField && c.field !== col && c.field !== firstField,
-    );
-    let firstVal = row[firstField];
-    if (placeholders[firstField]) {
-      firstVal = formatCellValue(firstVal, placeholders[firstField]);
-    } else if (numericColumns.includes(firstField)) {
-      const num = Number(String(firstVal).replace(',', '.'));
-      if (!Number.isNaN(num)) firstVal = num;
-    }
-    if (
-      firstField &&
-      firstVal !== undefined &&
-      firstVal !== null &&
-      firstVal !== '' &&
-      !extraConditions.some((c) => c.field === firstField)
-    ) {
-      extraConditions.unshift({ field: firstField, value: firstVal });
-    }
-    const payload = {
-      name: procedure,
-      column: col,
-      params,
-      groupField,
-      groupValue,
-      extraConditions,
-      session: {
-        empid: user?.empid,
-        company_id: company,
-      },
-    };
-    setTxnInfo({ loading: true, col, value, data: [], sql: '', displayFields: [] });
-    fetch('/api/procedures/raw', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
-      body: JSON.stringify(payload),
-    })
-      .then(async (res) => {
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok) throw data;
-        return data;
-      })
-      .then((data) => {
-        let outRows = (data.rows || []).map((r) => {
-          const entries = Object.entries(r).filter(([k]) => !isCountColumn(k));
-          return Object.fromEntries(entries);
-        });
-        if (idx > 0 && firstField && !isCountColumn(firstField)) {
-          const replaceVal =
-            firstField.toLowerCase() === 'modal' ? groupValue : displayValue;
-          outRows = outRows.map((r) => ({ ...r, [firstField]: replaceVal }));
-        }
-        setTxnInfo({
-          loading: false,
-          col,
-          value,
-          data: outRows,
-          sql: data.sql || '',
-          displayFields: Array.isArray(data.displayFields)
-            ? data.displayFields
-            : [],
-        });
-        if (data.original) {
-          const preview =
-            data.original.length > 200
-              ? `${data.original.slice(0, 200)}…`
-              : data.original;
-          rowToast(
-            `Procedure SQL saved to ${data.file || ''}: ${preview}`,
-            'info',
-          );
-        } else {
-          rowToast('Procedure SQL not found', 'error');
-        }
-        if (data.sql && data.sql !== data.original) {
-          const preview =
-            data.sql.length > 200 ? `${data.sql.slice(0, 200)}…` : data.sql;
-          rowToast(
-            `Transformed SQL saved to ${data.file || ''}: ${preview}`,
-            'info',
-          );
-        } else {
-          rowToast('SQL transformation failed', 'error');
-        }
-        rowToast(
-          `Rows fetched: ${data.rows ? data.rows.length : 0}`,
-          data.rows && data.rows.length ? 'success' : 'error',
-        );
-      })
-      .catch((err) => {
-        const sql = err && typeof err === 'object' ? err.sql || '' : '';
-        const file = err && typeof err === 'object' ? err.file || '' : '';
-        setTxnInfo({ loading: false, col, value, data: [], sql, displayFields: [] });
-        if (sql) {
-          const preview = sql.length > 200 ? `${sql.slice(0, 200)}…` : sql;
-          rowToast(`SQL saved to ${file}: ${preview}`, 'info');
-        } else {
-          rowToast('No SQL generated', 'error');
-        }
-        rowToast(
-          err && err.message ? err.message : 'Row fetch failed',
-          'error',
-        );
-      });
-  }
 
   function handleSaveFieldLabels() {
     const existing = generalConfig.general?.procFieldLabels || {};
@@ -1203,11 +963,7 @@ export default function ReportTable({
                       return (
                         <td
                           key={col}
-                          style={{
-                            ...style,
-                            cursor: row[col] ? 'pointer' : 'default',
-                          }}
-                          onClick={() => handleCellClick(col, row[col], row)}
+                          style={style}
                         >
                           {numericColumns.includes(col) && numericValue
                             ? formatNumber(value)
@@ -1440,95 +1196,6 @@ export default function ReportTable({
             </table>
           </div>
         </div>
-      )}
-      {txnInfo && (
-        <Modal
-          visible
-          title={`Transactions for ${txnInfo.col} = ${txnInfo.value}`}
-          onClose={() => setTxnInfo(null)}
-          width="80%"
-        >
-          {txnInfo.loading ? (
-            <div>Loading...</div>
-          ) : txnInfo.data.length > 0 ? (
-            <div className="table-container overflow-x-auto">
-              <table
-                className="table-manager"
-                style={{ borderCollapse: 'collapse', tableLayout: 'fixed', width: '100%' }}
-              >
-                <thead className="table-manager sticky-header">
-                  <tr>
-                    {modalColumns.map((c) => (
-                      <th
-                        key={c}
-                        style={{
-                          padding: '0.25rem',
-                          border: '1px solid #d1d5db',
-                          textAlign: modalAlign[c],
-                          width: modalWidths[c],
-                          minWidth: modalWidths[c],
-                          maxWidth: MAX_WIDTH,
-                          overflow: 'hidden',
-                          textOverflow: 'ellipsis',
-                          whiteSpace: 'nowrap',
-                        }}
-                      >
-                        {fieldLabels[c] || modalHeaderMap[c] || c}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody className="table-manager">
-                  {txnInfo.data.map((r, idx) => (
-                    <tr key={idx}>
-                      {modalColumns.map((c) => (
-                        <td
-                          key={c}
-                          style={{
-                            padding: '0.25rem',
-                            border: '1px solid #d1d5db',
-                            textAlign: modalAlign[c],
-                            width: modalWidths[c],
-                            minWidth: modalWidths[c],
-                            maxWidth: MAX_WIDTH,
-                            whiteSpace: 'nowrap',
-                            overflow: 'hidden',
-                            textOverflow: 'ellipsis',
-                          }}
-                        >
-                          {typeof r[c] === 'number'
-                            ? formatNumber(r[c])
-                            : formatCellValue(r[c], modalPlaceholders[c])}
-                        </td>
-                      ))}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          ) : (
-            <div>
-              No transactions
-              {txnInfo.sql ? (
-                <pre
-                  style={{
-                    marginTop: '0.5rem',
-                    whiteSpace: 'pre-wrap',
-                    maxHeight: '200px',
-                    overflow: 'auto',
-                    background: '#f9fafb',
-                    padding: '0.5rem',
-                    border: '1px solid #d1d5db',
-                  }}
-                >
-                  {txnInfo.sql}
-                </pre>
-              ) : (
-                <div style={{ marginTop: '0.5rem' }}>SQL not generated</div>
-              )}
-            </div>
-          )}
-        </Modal>
       )}
       {buttonPerms['Edit Field Labels'] && generalConfig.general?.editLabelsEnabled && (
         <button

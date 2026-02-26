@@ -4,7 +4,6 @@ import {
   callStoredProcedure,
   listStoredProcedures,
   getProcedureParams,
-  getProcedureRawRows,
   getProcedureLockCandidates,
   getReportLockCandidatesForRequest,
   pool,
@@ -258,56 +257,6 @@ router.post('/', requireAuth, async (req, res, next) => {
       lockCandidates,
       fieldLineage,
     });
-  } catch (err) {
-    next(err);
-  }
-});
-
-router.post('/raw', requireAuth, async (req, res, next) => {
-  try {
-    const {
-      name,
-      params,
-      aliases,
-      column,
-      groupField,
-      groupValue,
-      extraConditions,
-      session,
-    } = req.body || {};
-    if (!name || !column)
-      return res.status(400).json({ message: 'name and column required' });
-    const { branchId, departmentId } = req.query;
-    const companyId = resolveCompanyId(req);
-    if (!companyId) return res.status(400).json({ message: 'companyId required' });
-    const { procedures } = await listPermittedProcedures(
-      { branchId, departmentId },
-      companyId,
-      req.user,
-    );
-    const allowed = new Set(procedures.map((p) => p.name));
-    if (!allowed.has(name) && !isDrilldownAllowed(req.user, companyId, name))
-      return res.status(403).json({ message: 'Procedure not allowed' });
-    const rateKey = req.user?.id ?? req.user?.empid ?? req.ip;
-    if (isRateLimited(rateKey))
-      return res.status(429).json({ message: 'Too many procedure requests. Please slow down.' });
-    const aliasGid =
-      Array.isArray(params) && Array.isArray(aliases)
-        ? params[aliases.findIndex((a) => a === 'g_id')]
-        : undefined;
-    const rawGid = req.body?.g_id ?? req.query?.g_id ?? aliasGid;
-    const validCompany = await validateCompanyForGid(companyId, rawGid, res);
-    if (!validCompany) return;
-    const { rows, sql, original, file, displayFields } = await getProcedureRawRows(
-      name,
-      params || {},
-      column,
-      groupField,
-      groupValue,
-      Array.isArray(extraConditions) ? extraConditions : [],
-      { ...(session || {}), empid: req.user?.empid },
-    );
-    res.json({ rows, sql, original, file, displayFields });
   } catch (err) {
     next(err);
   }
