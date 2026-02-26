@@ -81,6 +81,16 @@ class MockDb {
       return [[row].filter(Boolean), undefined];
     }
 
+
+    if (text.includes('SELECT * FROM') && text.includes('conversation_id = ?') && text.includes('ORDER BY id DESC LIMIT ?')) {
+      const conversationId = Number(params[0]);
+      const limit = Number(params[params.length - 1]) || 100;
+      const rows = this.messages
+        .filter((entry) => Number(entry.conversation_id) === conversationId && entry.deleted_at == null)
+        .sort((a, b) => b.id - a.id)
+        .slice(0, limit);
+      return [rows, undefined];
+    }
     if (text.includes('SELECT * FROM') && text.includes('parent_message_id IS NULL') && text.includes('ORDER BY id DESC LIMIT ?')) {
       const limit = Number(params[0]) || 100;
       const rows = this.messages
@@ -90,6 +100,20 @@ class MockDb {
       return [rows, undefined];
     }
 
+
+    if (text.includes('SELECT conversation_id AS id') && text.includes('GROUP BY conversation_id')) {
+      const limit = Number(params[params.length - 1]) || 100;
+      const grouped = new Map();
+      this.messages.filter((entry) => entry.deleted_at == null).forEach((entry) => {
+        const key = Number(entry.conversation_id);
+        const existing = grouped.get(key);
+        if (!existing || Number(entry.id) > Number(existing.last_message_id)) {
+          grouped.set(key, { id: key, last_message_id: Number(entry.id), last_message_at: entry.created_at });
+        }
+      });
+      const rows = Array.from(grouped.values()).sort((a, b) => b.id - a.id).slice(0, limit);
+      return [rows, undefined];
+    }
     if (text.includes('SELECT * FROM') && text.includes('erp_messages') && text.includes('ORDER BY id ASC')) {
       return [[...this.messages].sort((a, b) => a.id - b.id), undefined];
     }
@@ -303,8 +327,8 @@ test('conversation-centric service helpers preserve canonical thread identity', 
     db,
     getSession,
   });
-  assert.equal(Number(thread.root.id), conversationId);
-  assert.ok(thread.replies.some((item) => Number(item.id) === Number(nested.message.id)));
+  assert.ok(Array.isArray(thread.items));
+  assert.ok(thread.items.some((item) => Number(item.id) === Number(nested.message.id)));
 });
 
 test('postConversationMessage rejects non-root conversationId values', async () => {
