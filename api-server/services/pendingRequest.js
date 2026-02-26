@@ -1285,6 +1285,74 @@ export async function listRequestsByEmp(
   });
 }
 
+export async function deleteSavedReportSnapshot(
+  id,
+  requesterEmpid,
+  companyId = null,
+) {
+  const normalizedRequester = String(requesterEmpid || '')
+    .trim()
+    .toUpperCase();
+  if (!normalizedRequester) {
+    const err = new Error('Forbidden');
+    err.status = 403;
+    throw err;
+  }
+  const conn = await pool.getConnection();
+  try {
+    await conn.query('BEGIN');
+    const [rows] = await queryWithTenantScope(
+      conn,
+      'pending_request',
+      companyId,
+      'SELECT request_id, emp_id, request_type, status, proposed_data FROM {{table}} WHERE request_id = ?',
+      [id],
+    );
+    const req = rows?.[0] || null;
+    if (!req) {
+      const err = new Error('Request not found');
+      err.status = 404;
+      throw err;
+    }
+    if (String(req.emp_id || '').trim().toUpperCase() !== normalizedRequester) {
+      const err = new Error('Forbidden');
+      err.status = 403;
+      throw err;
+    }
+    if (req.request_type !== 'report_approval') {
+      const err = new Error('Only report approval snapshots can be deleted');
+      err.status = 409;
+      throw err;
+    }
+    const parsed = parseProposedData(req.proposed_data);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      await conn.query('COMMIT');
+      return { requestId: req.request_id, snapshotDeleted: false };
+    }
+    const nextPayload = { ...parsed };
+    if (!('snapshot' in nextPayload) || nextPayload.snapshot == null) {
+      await conn.query('COMMIT');
+      return { requestId: req.request_id, snapshotDeleted: false };
+    }
+    nextPayload.snapshot = null;
+
+    await queryWithTenantScope(
+      conn,
+      'pending_request',
+      companyId,
+      'UPDATE {{table}} SET proposed_data = ?, updated_by = ?, updated_at = NOW() WHERE request_id = ?',
+      [JSON.stringify(nextPayload), normalizedRequester, id],
+    );
+    await conn.query('COMMIT');
+    return { requestId: req.request_id, snapshotDeleted: true };
+  } catch (err) {
+    await conn.query('ROLLBACK');
+    throw err;
+  } finally {
+    conn.release();
+  }
+}
+
 export async function respondRequest(
   id,
   responseEmpid,

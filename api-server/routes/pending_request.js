@@ -7,6 +7,7 @@ import {
   listRequests,
   listRequestsByEmp,
   respondRequest,
+  deleteSavedReportSnapshot,
   ALLOWED_REQUEST_TYPES,
 } from '../services/pendingRequest.js';
 
@@ -217,6 +218,28 @@ router.put('/:id/respond', requireAuth, async (req, res, next) => {
     }
     if (err.status === 423) {
       return res.status(423).json({ message: err.message });
+    }
+    next(err);
+  }
+});
+
+router.delete('/:id/snapshot', requireAuth, async (req, res, next) => {
+  try {
+    await deleteSavedReportSnapshot(
+      req.params.id,
+      req.user.empid,
+      req.user.companyId,
+    );
+    res.sendStatus(204);
+  } catch (err) {
+    if (err?.status === 403) {
+      return res.status(403).json({ message: err.message || 'Forbidden' });
+    }
+    if (err?.status === 404) {
+      return res.status(404).json({ message: err.message || 'Not found' });
+    }
+    if (err?.status === 409) {
+      return res.status(409).json({ message: err.message || 'Conflict' });
     }
     next(err);
   }
