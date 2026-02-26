@@ -42,16 +42,6 @@ function renderCell(value) {
   return String(value);
 }
 
-function buildFullReportPreviewUrl({ procedure, fiscalYear, periodFrom, periodTo }) {
-  const params = new URLSearchParams();
-  params.set('procedure', procedure);
-  params.set('fiscal_year', String(fiscalYear));
-  if (periodFrom) params.set('period_from', periodFrom);
-  if (periodTo) params.set('period_to', periodTo);
-  params.set('autorun', '1');
-  return `/reports?${params.toString()}`;
-}
-
 export default function AccountingPeriodsPage() {
   const { user, session, company, permissions } = useAuth();
   const companyId = Number(user?.companyId || user?.company_id || session?.company_id || company?.id || company || 0);
@@ -639,21 +629,6 @@ export default function AccountingPeriodsPage() {
                       style={{ marginBottom: 8 }}
                     >
                       {savingSnapshots[result.name] ? 'Saving snapshot…' : 'Save Snapshot'}
-                    </button>
-                    <button
-                      type="button"
-                      style={{ marginBottom: 8, marginLeft: 8 }}
-                      onClick={() => {
-                        const url = buildFullReportPreviewUrl({
-                          procedure: result.name,
-                          fiscalYear,
-                          periodFrom: period?.period_from,
-                          periodTo: period?.period_to,
-                        });
-                        window.open(url, '_blank', 'noopener,noreferrer');
-                      }}
-                    >
-                      Open in Full Report Module
                     </button>
                     {rows.length > 0 ? (
                       <ReportTable
