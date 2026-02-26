@@ -31,6 +31,7 @@ export function storeSnapshotArtifact({
   fieldTypeMap = {},
   procedure = null,
   params = {},
+  reportMeta = {},
 } = {}) {
   ensureDir();
   const sanitizedRows = sanitizeRows(rows);
@@ -50,6 +51,10 @@ export function storeSnapshotArtifact({
               ([key, value]) => typeof key === 'string' && typeof value === 'string',
             ),
           )
+        : {},
+    reportMeta:
+      reportMeta && typeof reportMeta === 'object' && !Array.isArray(reportMeta)
+        ? reportMeta
         : {},
     rows: sanitizedRows,
   };
@@ -107,6 +112,10 @@ export function loadSnapshotArtifactPage(artifactId, page = 1, perPage = 200) {
     createdAt: parsed.createdAt || null,
     procedure: parsed.procedure || null,
     params: parsed.params || {},
+    reportMeta:
+      parsed.reportMeta && typeof parsed.reportMeta === 'object'
+        ? parsed.reportMeta
+        : {},
   };
 }
 

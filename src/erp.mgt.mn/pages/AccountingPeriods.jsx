@@ -710,6 +710,8 @@ export default function AccountingPeriodsPage() {
           fiscal_year: fiscalYear,
           procedure_name: name,
           rows,
+          report_meta: result?.reportMeta && typeof result.reportMeta === 'object' ? result.reportMeta : {},
+          report_params: result?.params && typeof result.params === 'object' ? result.params : {},
         }),
       });
       const json = await parseJsonResponse(res);
