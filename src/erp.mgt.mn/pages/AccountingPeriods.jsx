@@ -98,6 +98,7 @@ export default function AccountingPeriodsPage() {
   const [snapshotDrilldownState, setSnapshotDrilldownState] = useState({});
   const [snapshotDrilldownSelection, setSnapshotDrilldownSelection] = useState({});
   const drilldownParamCacheRef = useRef(new Map());
+  const materializedDrilldownAvailabilityRef = useRef(new Map());
   const buildPreviewDrilldownKey = useCallback((reportName, rowId) => `${reportName}::${rowId}`, []);
 
   const canClosePeriod = Boolean(
@@ -153,6 +154,7 @@ export default function AccountingPeriodsPage() {
     setSnapshotDrilldownState({});
     setSnapshotDrilldownSelection({});
     setLoadingSnapshotId(null);
+    materializedDrilldownAvailabilityRef.current.clear();
   }, [companyId, fiscalYear]);
 
   useEffect(() => {
