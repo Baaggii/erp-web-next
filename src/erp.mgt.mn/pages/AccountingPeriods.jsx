@@ -1,5 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../context/AuthContext.jsx';
+import ReportTable from '../components/ReportTable.jsx';
+import ReportSnapshotViewer from '../components/ReportSnapshotViewer.jsx';
 
 const DEFAULT_REPORT_PROCS = [
   'dynrep_1_sp_trial_balance_expandable',
@@ -258,7 +260,6 @@ export default function AccountingPeriodsPage() {
           <strong>Report preview</strong>
           {previewResults.map((result) => {
             const rows = Array.isArray(result.rows) ? result.rows : [];
-            const columns = rows.length > 0 ? Object.keys(rows[0]) : [];
             return (
               <div key={result.name} style={{ marginTop: 10, borderTop: '1px solid #eee', paddingTop: 10 }}>
                 <div style={{ color: result.ok ? '#166534' : '#b91c1c', fontWeight: 600 }}>
@@ -275,28 +276,12 @@ export default function AccountingPeriodsPage() {
                       {savingSnapshots[result.name] ? 'Saving snapshot…' : 'Save Snapshot'}
                     </button>
                     {rows.length > 0 ? (
-                      <div style={{ overflowX: 'auto', maxHeight: 260, border: '1px solid #eee' }}>
-                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
-                          <thead>
-                            <tr>
-                              {columns.map((col) => (
-                                <th key={col} style={{ textAlign: 'left', borderBottom: '1px solid #ddd', padding: 6 }}>{col}</th>
-                              ))}
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {rows.slice(0, 100).map((row, idx) => (
-                              <tr key={`${result.name}-${idx}`}>
-                                {columns.map((col) => (
-                                  <td key={`${result.name}-${idx}-${col}`} style={{ borderBottom: '1px solid #f0f0f0', padding: 6 }}>
-                                    {renderCell(row[col])}
-                                  </td>
-                                ))}
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
+                      <ReportTable
+                        procedure={result.name}
+                        rows={rows}
+                        maxHeight={260}
+                        showTotalRowCount={false}
+                      />
                     ) : <p style={{ margin: 0 }}>No rows returned.</p>}
                   </div>
                 ) : null}
@@ -333,29 +318,11 @@ export default function AccountingPeriodsPage() {
       {selectedSnapshot?.artifact ? (
         <div style={{ border: '1px solid #ddd', borderRadius: 8, padding: 12, marginTop: 14 }}>
           <strong>Snapshot view: {selectedSnapshot.procedure_name}</strong>
-          <div style={{ marginTop: 6, marginBottom: 6 }}>Rows: {selectedSnapshot.artifact.rowCount}</div>
-          <div style={{ overflowX: 'auto', maxHeight: 340, border: '1px solid #eee' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
-              <thead>
-                <tr>
-                  {(selectedSnapshot.artifact.columns || []).map((col) => (
-                    <th key={col} style={{ textAlign: 'left', borderBottom: '1px solid #ddd', padding: 6 }}>{col}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {(selectedSnapshot.artifact.rows || []).map((row, idx) => (
-                  <tr key={`snap-${selectedSnapshot.snapshot_id}-${idx}`}>
-                    {(selectedSnapshot.artifact.columns || []).map((col) => (
-                      <td key={`snap-${selectedSnapshot.snapshot_id}-${idx}-${col}`} style={{ borderBottom: '1px solid #f0f0f0', padding: 6 }}>
-                        {renderCell(row[col])}
-                      </td>
-                    ))}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <ReportSnapshotViewer
+            snapshot={selectedSnapshot.artifact}
+            emptyMessage="No snapshot rows found."
+            style={{ marginTop: 8 }}
+          />
         </div>
       ) : null}
 
