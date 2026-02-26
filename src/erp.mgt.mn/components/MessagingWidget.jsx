@@ -159,15 +159,6 @@ function extractMessageTopic(message) {
   return sanitizeMessageText(inlineTopicMatch[1] || '').slice(0, 120);
 }
 
-function buildMessageBodyWithTopic(body, topic, includeTopic = false) {
-  const safeBody = sanitizeMessageText(body || '');
-  if (!includeTopic) return safeBody;
-  const safeTopic = sanitizeMessageText(topic || '').slice(0, 120);
-  if (!safeTopic) return safeBody;
-  if (!safeBody) return `[${safeTopic}]`;
-  return `[${safeTopic}] ${safeBody}`;
-}
-
 function extractContextLink(message) {
   const linkedType = message?.linked_type || message?.linkedType || null;
   const linkedId = message?.linked_id || message?.linkedId || null;
@@ -1816,25 +1807,18 @@ export default function MessagingWidget() {
 
     dispatch({ type: 'composer/setReplyTo', payload: null });
 
-    const isNewConversation = Boolean(isDraftConversation);
-    const messageBodyWithTopic = buildMessageBodyWithTopic(safeBody, safeTopic, canEditTopic);
     const payload = {
       idempotencyKey: createIdempotencyKey(),
       clientTempId,
-      body: `${messageBodyWithTopic}${encodeAttachmentPayload(uploadedAttachments)}`,
+      body: `${safeBody}${encodeAttachmentPayload(uploadedAttachments)}`,
       companyId: normalizedCompanyId,
-      topic: canEditTopic && safeTopic ? safeTopic : null,
-      messageClass: isNewConversation ? 'general' : null,
-      message_class: isNewConversation ? 'general' : null,
       visibilityScope,
       ...(visibilityScope === 'private' ? { recipientEmpids: allParticipants } : {}),
       ...(linkedType ? { linkedType } : {}),
       ...(linkedId ? { linkedId: String(linkedId) } : {}),
-      ...(!isDraftConversation && !selectedIsGeneral && !shouldSendReply && selectedConversationId
-        ? { conversationId: selectedConversationId, conversation_id: selectedConversationId }
-        : {}),
+      ...(!isDraftConversation && !selectedIsGeneral && !shouldSendReply && selectedConversationId ? { conversationId: selectedConversationId } : {}),
       ...(!isDraftConversation && shouldSendReply && explicitReplyTargetId && selectedConversationId
-        ? { conversationId: selectedConversationId, conversation_id: selectedConversationId }
+        ? { conversationId: selectedConversationId }
         : {}),
       ...(!isDraftConversation && shouldSendReply && explicitReplyTargetId ? { parentMessageId: explicitReplyTargetId } : {}),
     };
@@ -1860,7 +1844,7 @@ export default function MessagingWidget() {
       linked_type: linkedType,
       linked_id: linkedId,
       topic: canEditTopic && safeTopic ? safeTopic : null,
-      message_class: isNewConversation ? 'general' : null,
+      message_class: isDraftConversation ? 'general' : null,
       conversation_id: optimisticConversationId,
       parent_message_id: optimisticParentMessageId,
       created_at: new Date().toISOString(),
