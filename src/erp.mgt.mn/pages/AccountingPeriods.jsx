@@ -362,6 +362,15 @@ export default function AccountingPeriodsPage() {
     });
   }, [companyId, fetchDrilldownParams]);
 
+  const hasPreviewRowDrilldownTarget = useCallback((row) => {
+    const rowIds = String(row?.__row_ids || '').trim();
+    if (!rowIds) return false;
+    const detailProcedure = String(
+      row?.__drilldown_report || row?.__detail_report || '',
+    ).trim();
+    return Boolean(detailProcedure);
+  }, []);
+
   const handlePreviewDrilldown = useCallback(async ({ reportName, row, rowId }) => {
     const rowIds = String(row?.__row_ids || '').trim();
     if (!rowIds) {
@@ -796,7 +805,10 @@ export default function AccountingPeriodsPage() {
                         rows={rows}
                         rowGranularity={previewMeta?.rowGranularity || 'transaction'}
                         drilldownEnabled={Boolean(previewMeta?.drilldown || previewMeta?.drilldownReport)}
-                        onDrilldown={({ row, rowId }) => handlePreviewDrilldown({ reportName: result.name, row, rowId })}
+                        onDrilldown={({ row, rowId }) => {
+                          if (!hasPreviewRowDrilldownTarget(row)) return;
+                          handlePreviewDrilldown({ reportName: result.name, row, rowId });
+                        }}
                         drilldownState={previewDrilldownState[result.name] || {}}
                         drilldownRowSelection={previewDrilldownSelection[result.name] || {}}
                         onDrilldownRowSelectionChange={(updater) =>
