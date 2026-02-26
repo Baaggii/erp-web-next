@@ -187,7 +187,7 @@ export function groupConversations(messages, viewerEmpid = null) {
   const resolveRootMessageId = (message) => {
     if (!message) return null;
     const conversationId = canonicalConversationId(message);
-    const seedId = conversationId || message.parent_message_id || message.parentMessageId || message.id;
+    const seedId = conversationId || null;
     if (!seedId) return null;
 
     let current = byId.get(String(seedId)) || message;
@@ -226,7 +226,7 @@ export function groupConversations(messages, viewerEmpid = null) {
       return;
     }
     const hasAnyThreadPointer = Boolean(
-      normalizeId(canonicalConversationId(msg) || msg.parent_message_id || msg.parentMessageId),
+      normalizeId(canonicalConversationId(msg)),
     );
     if (!rootMessage && hasAnyThreadPointer) {
       return;
@@ -889,7 +889,6 @@ export default function MessagingWidget() {
           const rootMessageId = normalizeId(
             message?.conversation_id
             || message?.conversationId
-            || message?.parent_message_id
             || message?.parentMessageId
             || message?.id,
           );
@@ -1241,7 +1240,6 @@ export default function MessagingWidget() {
       const resolvedRootId = normalizeId(
         nextMessage?.conversation_id
         || nextMessage?.conversationId
-        || nextMessage?.parent_message_id
         || nextMessage?.parentMessageId
         || nextMessage?.id,
       );
@@ -1870,7 +1868,7 @@ export default function MessagingWidget() {
         });
         const shouldMergeIntoActiveCache = isDraftConversation
           || selectedIsGeneral
-          || (!threadRootIdToRefresh && !(createdMessage.parent_message_id || createdMessage.parentMessageId));
+          || !threadRootIdToRefresh;
         if (shouldMergeIntoActiveCache) {
           setMessagesByCompany((prev) => {
             const key = getCompanyCacheKey(state.activeCompanyId || companyId);

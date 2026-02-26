@@ -95,9 +95,9 @@ test('resolveThreadRefreshRootId keeps replies inside the active thread root', (
     resolveThreadRefreshRootId({
       isReplyMode: false,
       fallbackRootReplyTargetId: '8',
-      createdMessage: { id: 30 },
+      createdMessage: { id: 30, conversation_id: 9 },
     }),
-    '30',
+    '9',
   );
 });
 
