@@ -206,8 +206,7 @@ export function groupConversations(messages, viewerEmpid = null) {
   const isGeneralConversationMessage = (message) => {
     const link = extractContextLink(message);
     const scope = resolveMessageVisibilityScope(message);
-    const hasTopic = Boolean(extractMessageTopic(message));
-    return !link.linkedType && !link.linkedId && scope === 'company' && !hasTopic;
+    return !link.linkedType && !link.linkedId && scope === 'company';
   };
 
   messages.forEach((msg) => {
@@ -885,22 +884,35 @@ export default function MessagingWidget() {
         if (disposed) return;
         const incomingMessages = Array.isArray(data.items) ? data.items : Array.isArray(data.messages) ? data.messages : [];
         const participantCache = readParticipantCache(participantCacheKey);
+        const byId = new Map(incomingMessages.map((entry) => [normalizeId(entry?.id), entry]));
+        const resolveRootMessageId = (message) => {
+          const conversationId = normalizeId(canonicalConversationId(message));
+          if (conversationId) return conversationId;
+          let cursor = message;
+          const visited = new Set();
+          while (cursor) {
+            const cursorId = normalizeId(cursor?.id);
+            if (cursorId && visited.has(cursorId)) break;
+            if (cursorId) visited.add(cursorId);
+            const parentId = normalizeId(cursor?.parent_message_id || cursor?.parentMessageId);
+            if (!parentId) return cursorId || null;
+            cursor = byId.get(parentId) || null;
+            if (!cursor) return parentId;
+          }
+          return normalizeId(message?.id) || null;
+        };
         const hydratedMessages = incomingMessages.map((message) => {
-          const rootMessageId = normalizeId(
-            message?.conversation_id
-            || message?.conversationId
-            || message?.parent_message_id
-            || message?.parentMessageId
-            || message?.id,
-          );
+          const rootMessageId = resolveRootMessageId(message);
           const rememberedParticipants = participantCache[rootMessageId];
           if (!rememberedParticipants?.length) return message;
+          const explicitScope = String(message?.visibility_scope || message?.visibilityScope || '').toLowerCase();
+          if (explicitScope === 'company') return message;
           const detectedParticipants = collectMessageParticipantEmpids(message);
           if (detectedParticipants.length > 1) return message;
           return {
             ...message,
             recipient_empids: message?.recipient_empids ?? message?.recipientEmpids ?? rememberedParticipants,
-            visibility_scope: message?.visibility_scope || message?.visibilityScope || 'private',
+            visibility_scope: explicitScope || 'private',
           };
         });
         const visibleMessages = filterVisibleMessages(hydratedMessages, selfEmpid);
@@ -1794,10 +1806,7 @@ export default function MessagingWidget() {
       ...(visibilityScope === 'private' ? { recipientEmpids: allParticipants } : {}),
       ...(linkedType ? { linkedType } : {}),
       ...(linkedId ? { linkedId: String(linkedId) } : {}),
-      ...(!isDraftConversation && !selectedIsGeneral && !shouldSendReply && fallbackRootReplyTargetId ? { conversationId: fallbackRootReplyTargetId } : {}),
-      ...(!isDraftConversation && shouldSendReply && explicitReplyTargetId && fallbackRootReplyTargetId
-        ? { conversationId: fallbackRootReplyTargetId }
-        : {}),
+      ...(!isDraftConversation && fallbackRootReplyTargetId ? { conversationId: fallbackRootReplyTargetId } : {}),
       ...(!isDraftConversation && shouldSendReply && explicitReplyTargetId ? { parentMessageId: explicitReplyTargetId } : {}),
     };
 
