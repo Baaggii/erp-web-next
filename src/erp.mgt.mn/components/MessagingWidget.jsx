@@ -381,55 +381,6 @@ function mergePresenceEntries(entries = []) {
   })).values()).filter((entry) => entry.empid);
 }
 
-function isLikelyMessageRecord(entry) {
-  if (!entry || typeof entry !== 'object') return false;
-  if (!normalizeId(entry.id)) return false;
-  return [
-    entry.body,
-    entry.author_empid,
-    entry.authorEmpid,
-    entry.parent_message_id,
-    entry.parentMessageId,
-    entry.conversation_id,
-    entry.conversationId,
-    entry.created_at,
-  ].some((value) => value != null && String(value).trim() !== '');
-}
-
-function extractMessagesFromConversationPayload(data) {
-  const candidates = [
-    ...(Array.isArray(data) ? data : []),
-    ...(Array.isArray(data?.items) ? data.items : []),
-    ...(Array.isArray(data?.messages) ? data.messages : []),
-    ...(Array.isArray(data?.conversations) ? data.conversations : []),
-  ];
-
-  return candidates.flatMap((entry) => {
-    if (isLikelyMessageRecord(entry)) return [entry];
-    const nestedMessages = Array.isArray(entry?.messages)
-      ? entry.messages
-      : Array.isArray(entry?.items)
-        ? entry.items
-        : [];
-    if (!nestedMessages.length) return [];
-
-    const conversationId = normalizeId(
-      entry?.conversation_id
-      || entry?.conversationId
-      || entry?.root_message_id
-      || entry?.rootMessageId
-      || entry?.id,
-    );
-
-    return nestedMessages
-      .filter((message) => message && typeof message === 'object')
-      .map((message) => ({
-        ...message,
-        conversation_id: message?.conversation_id || message?.conversationId || conversationId || null,
-      }));
-  });
-}
-
 function getRowValueCaseInsensitive(row, fieldName) {
   if (!row || !fieldName) return undefined;
   if (Object.prototype.hasOwnProperty.call(row, fieldName)) return row[fieldName];
@@ -932,7 +883,7 @@ export default function MessagingWidget() {
         if (!res.ok) throw new Error(`Failed to fetch (${res.status})`);
         const data = await res.json();
         if (disposed) return;
-        const incomingMessages = extractMessagesFromConversationPayload(data);
+        const incomingMessages = Array.isArray(data.items) ? data.items : Array.isArray(data.messages) ? data.messages : [];
         const participantCache = readParticipantCache(participantCacheKey);
         const hydratedMessages = incomingMessages.map((message) => {
           const rootMessageId = normalizeId(
