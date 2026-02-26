@@ -495,7 +495,7 @@ export default function AccountingPeriodsPage() {
   }, []);
 
   const handleSnapshotDrilldown = useCallback(async ({ row, rowId }) => {
-    const reportName = String(selectedSnapshot?.procedure_name || '').trim();
+    const reportName = String(selectedSnapshot?.procedure_name || selectedSnapshot?.procedureName || '').trim();
     const rowIds = String(row?.__row_ids || '').trim();
     if (!rowIds) {
       setSnapshotDrilldownState((prev) => ({
@@ -535,8 +535,14 @@ export default function AccountingPeriodsPage() {
       },
     }));
 
+    const snapshotMeta = normalizeReportMeta(
+      selectedSnapshot?.artifact?.reportMeta || selectedSnapshot?.reportMeta || null,
+    );
+    const fallbackProcedure = String(
+      snapshotMeta?.drilldown?.fallbackProcedure || snapshotMeta?.drilldownReport || reportName || '',
+    ).trim();
     const detailProcedure = String(
-      row?.__drilldown_report || row?.__detail_report || reportName || '',
+      row?.__drilldown_report || row?.__detail_report || fallbackProcedure || '',
     ).trim();
     if (!detailProcedure) {
       setSnapshotDrilldownState((prev) => ({
@@ -593,7 +599,15 @@ export default function AccountingPeriodsPage() {
         },
       }));
     }
-  }, [buildDrilldownParams, selectedSnapshot?.procedure_name, snapshotDrilldownState]);
+  }, [
+    buildDrilldownParams,
+    normalizeReportMeta,
+    selectedSnapshot?.artifact?.reportMeta,
+    selectedSnapshot?.procedure_name,
+    selectedSnapshot?.procedureName,
+    selectedSnapshot?.reportMeta,
+    snapshotDrilldownState,
+  ]);
 
   const handleSnapshotDrilldownSelectionChange = useCallback((updater) => {
     setSnapshotDrilldownSelection((prev) => (
