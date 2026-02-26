@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext.jsx';
 import ReportTable from '../components/ReportTable.jsx';
 
@@ -43,6 +44,7 @@ function renderCell(value) {
 }
 
 export default function AccountingPeriodsPage() {
+  const navigate = useNavigate();
   const { user, session, company, permissions } = useAuth();
   const companyId = Number(user?.companyId || user?.company_id || session?.company_id || company?.id || company || 0);
   const [fiscalYear, setFiscalYear] = useState(new Date().getFullYear());
@@ -178,6 +180,22 @@ export default function AccountingPeriodsPage() {
       setPreviewing(false);
     }
   };
+
+  const openInReportModule = useCallback((procedureName) => {
+    const procedure = String(procedureName || '').trim();
+    if (!procedure || !companyId || !fiscalYear) return;
+    const params = new URLSearchParams({
+      procedure,
+      company_id: String(companyId),
+      fiscal_year: String(fiscalYear),
+      autorun: '1',
+    });
+    const periodFrom = String(period?.period_from || '').trim();
+    const periodTo = String(period?.period_to || '').trim();
+    if (periodFrom) params.set('period_from', periodFrom);
+    if (periodTo) params.set('period_to', periodTo);
+    navigate(`/reports?${params.toString()}`);
+  }, [companyId, fiscalYear, navigate, period?.period_from, period?.period_to]);
 
 
   const normalizeReportMeta = useCallback((meta) => {
@@ -622,6 +640,13 @@ export default function AccountingPeriodsPage() {
                 </div>
                 {result.ok ? (
                   <div style={{ marginTop: 8 }}>
+                    <button
+                      type="button"
+                      onClick={() => openInReportModule(result.name)}
+                      style={{ marginBottom: 8, marginRight: 8 }}
+                    >
+                      Open in Reports module
+                    </button>
                     <button
                       type="button"
                       onClick={() => handleSaveSnapshot(result)}

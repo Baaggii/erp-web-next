@@ -7,6 +7,7 @@ import React, {
   useRef,
   useState,
 } from 'react';
+import { useLocation } from 'react-router-dom';
 import { AuthContext } from '../context/AuthContext.jsx';
 import { useToast } from '../context/ToastContext.jsx';
 import formatTimestamp from '../utils/formatTimestamp.js';
@@ -265,6 +266,7 @@ function isCountColumn(name) {
 }
 
 export default function Reports() {
+  const location = useLocation();
   const { company, branch, department, position, workplace, user, session } =
     useContext(AuthContext);
   const buttonPerms = useButtonPerms();
@@ -302,6 +304,7 @@ export default function Reports() {
   const [lockFetchPending, setLockFetchPending] = useState(false);
   const [lockFetchError, setLockFetchError] = useState('');
   const [populateLockCandidates, setPopulateLockCandidates] = useState(false);
+  const autoRunContextRef = useRef({ key: '', triggered: false });
   const [lockAcknowledged, setLockAcknowledged] = useState(false);
   const [lockRequestSubmitted, setLockRequestSubmitted] = useState(false);
   const [approvalReason, setApprovalReason] = useState('');
@@ -318,6 +321,24 @@ export default function Reports() {
   const [drilldownRowSelection, setDrilldownRowSelection] = useState({});
   const [workplaceAssignmentsForPeriod, setWorkplaceAssignmentsForPeriod] =
     useState(null);
+
+  const autoRunConfig = useMemo(() => {
+    const search = new URLSearchParams(location.search || '');
+    const procedure = String(search.get('procedure') || '').trim();
+    if (!procedure) return null;
+    const autoRun = search.get('autorun') === '1';
+    if (!autoRun) return null;
+    const periodFrom = normalizeDateInput(search.get('period_from') || '', 'YYYY-MM-DD');
+    const periodTo = normalizeDateInput(search.get('period_to') || '', 'YYYY-MM-DD');
+    return {
+      key: [procedure, periodFrom, periodTo, search.get('fiscal_year') || '', search.get('company_id') || ''].join('|'),
+      procedure,
+      fiscalYear: String(search.get('fiscal_year') || '').trim(),
+      companyId: String(search.get('company_id') || '').trim(),
+      periodFrom,
+      periodTo,
+    };
+  }, [location.search]);
   const workplaceFetchDiagnosticsEnabled = normalizeBoolean(
     generalConfig?.general?.workplaceFetchToastEnabled,
     true,
@@ -1336,6 +1357,16 @@ export default function Reports() {
   }, [selectedProc, branch, department]);
 
   useEffect(() => {
+    if (!autoRunConfig?.procedure) return;
+    if (selectedProc === autoRunConfig.procedure) return;
+    const exists = procedures.some((item) => item?.name === autoRunConfig.procedure);
+    if (!exists) return;
+    setSelectedProc(autoRunConfig.procedure);
+    setDatePreset('custom');
+    setResult(null);
+  }, [autoRunConfig, procedures, selectedProc]);
+
+  useEffect(() => {
     setResult(null);
     setManualParams({});
     setApprovalReason('');
@@ -1704,6 +1735,57 @@ export default function Reports() {
     [finalParams],
   );
 
+  useEffect(() => {
+    if (!autoRunConfig?.procedure || autoRunConfig.procedure !== selectedProc) return;
+    const resolveValueByParam = (paramName) => {
+      const key = normalizeParamName(paramName);
+      if (!key) return null;
+      if ([
+        'companyid', 'pcompanyid', 'compid', 'pcompid',
+      ].includes(key)) {
+        return autoRunConfig.companyId || null;
+      }
+      if (['fiscalyear', 'pfiscalyear', 'year', 'pyear', 'fyear', 'pfyear'].includes(key)) {
+        return autoRunConfig.fiscalYear || null;
+      }
+      if (['datefrom', 'pdatefrom', 'periodfrom', 'pperiodfrom', 'fromdate', 'pfromdate'].includes(key)) {
+        return autoRunConfig.periodFrom || null;
+      }
+      if (['dateto', 'pdateto', 'periodto', 'pperiodto', 'todate', 'ptodate'].includes(key)) {
+        return autoRunConfig.periodTo || null;
+      }
+      return null;
+    };
+
+    const patch = {};
+    let hasPatch = false;
+    procParams.forEach((paramName) => {
+      const mappedValue = resolveValueByParam(paramName);
+      if (mappedValue === null) return;
+      patch[paramName] = mappedValue;
+      hasPatch = true;
+    });
+    if (hasPatch) {
+      setManualParams((prev) => ({ ...prev, ...patch }));
+    }
+    if (autoRunConfig.periodFrom && hasStartParam) {
+      setStartDate(autoRunConfig.periodFrom);
+    }
+    if (autoRunConfig.periodTo && hasEndParam) {
+      setEndDate(autoRunConfig.periodTo);
+    }
+    autoRunContextRef.current = {
+      key: autoRunConfig.key,
+      triggered: false,
+    };
+  }, [
+    autoRunConfig,
+    procParams,
+    selectedProc,
+    hasStartParam,
+    hasEndParam,
+  ]);
+
   function handleParameterKeyDown(event, currentRef, paramName) {
     if (event.key !== 'Enter') return;
     const currentIndex = activeControlRefs.findIndex((ref) => ref === currentRef);
@@ -1852,6 +1934,15 @@ export default function Reports() {
       );
     }
   }
+
+  useEffect(() => {
+    if (!autoRunConfig?.procedure || autoRunConfig.procedure !== selectedProc) return;
+    if (!allParamsProvided) return;
+    const current = autoRunContextRef.current;
+    if (!current || current.key !== autoRunConfig.key || current.triggered) return;
+    current.triggered = true;
+    runReport();
+  }, [autoRunConfig, selectedProc, allParamsProvided, finalParams]);
 
   const fetchPrimaryKeyColumns = useCallback(async (tableName) => {
     if (!tableName) return [];
