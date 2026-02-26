@@ -22,6 +22,19 @@ async function parseJsonResponse(response) {
   }
 }
 
+function renderCell(value) {
+  if (value == null) return '-';
+  if (typeof value === 'boolean') return value ? 'true' : 'false';
+  if (value instanceof Date) return value.toISOString();
+  if (typeof value === 'object') {
+    try {
+      return JSON.stringify(value);
+    } catch (error) {
+      return String(value);
+    }
+  }
+  return String(value);
+}
 
 export default function AccountingPeriodsPage() {
   const { user, session, company, permissions } = useAuth();
@@ -356,15 +369,6 @@ export default function AccountingPeriodsPage() {
                         rows={rows}
                         maxHeight={260}
                         showTotalRowCount={false}
-                        rowGranularity="aggregated"
-                        drilldownEnabled
-                        onDrilldown={({ row, rowId }) => handlePreviewDrilldown({ reportName: result.name, row, rowId })}
-                        drilldownState={Object.fromEntries(Object.entries(previewDrilldownState)
-                          .filter(([key]) => key.startsWith(`${result.name}::`))
-                          .map(([key, value]) => [key.slice(result.name.length + 2), value]))}
-                        drilldownRowSelection={previewDrilldownSelection}
-                        onDrilldownRowSelectionChange={handlePreviewDrilldownSelectionChange}
-                        getRowId={(row, idx) => String(row?.__row_ids || row?.id || idx)}
                       />
                     ) : <p style={{ margin: 0 }}>No rows returned.</p>}
                   </div>
