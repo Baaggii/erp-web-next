@@ -1,5 +1,6 @@
 import { pool, getEmploymentSession } from '../../db/index.js';
 import { hasAction } from '../utils/hasAction.js';
+import { loadSnapshotArtifactPage, storeSnapshotArtifact } from './reportSnapshotArtifacts.js';
 
 function normalizeDate(value) {
   if (!value) return null;
@@ -51,6 +52,24 @@ export async function ensurePeriodControlTable(conn) {
       }
     }
   }
+}
+
+
+export async function ensurePeriodReportSnapshotTable(conn) {
+  await conn.query(`
+    CREATE TABLE IF NOT EXISTS fin_period_report_snapshot (
+      snapshot_id BIGINT NOT NULL AUTO_INCREMENT,
+      company_id INT NOT NULL,
+      fiscal_year INT NOT NULL,
+      procedure_name VARCHAR(191) NOT NULL,
+      artifact_id VARCHAR(191) NOT NULL,
+      row_count INT NOT NULL DEFAULT 0,
+      created_by VARCHAR(100),
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (snapshot_id),
+      INDEX idx_fin_period_report_snapshot_lookup (company_id, fiscal_year, created_at)
+    )
+  `);
 }
 
 export async function requirePeriodClosePermission(req) {
@@ -336,6 +355,81 @@ export async function closeFiscalPeriod({ companyId, fiscalYear, userId, reportP
   } catch (error) {
     await conn.rollback();
     throw error;
+  } finally {
+    conn.release();
+  }
+}
+
+
+export async function saveFiscalPeriodReportSnapshot({
+  companyId,
+  fiscalYear,
+  procedureName,
+  rows = [],
+  createdBy,
+  dbPool = pool,
+}) {
+  const conn = await dbPool.getConnection();
+  try {
+    await ensurePeriodReportSnapshotTable(conn);
+    const normalizedRows = Array.isArray(rows) ? rows.filter((row) => row && typeof row === 'object') : [];
+    const columns = normalizedRows.length ? Object.keys(normalizedRows[0]) : [];
+    const artifact = storeSnapshotArtifact({
+      rows: normalizedRows,
+      columns,
+      procedure: procedureName,
+      params: { companyId, fiscalYear },
+    });
+
+    const [result] = await conn.query(
+      `INSERT INTO fin_period_report_snapshot
+       (company_id, fiscal_year, procedure_name, artifact_id, row_count, created_by)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [companyId, fiscalYear, procedureName, artifact.id, normalizedRows.length, String(createdBy || 'system')],
+    );
+    return {
+      snapshotId: result.insertId,
+      artifactId: artifact.id,
+      rowCount: normalizedRows.length,
+      createdAt: artifact.createdAt,
+    };
+  } finally {
+    conn.release();
+  }
+}
+
+export async function listFiscalPeriodReportSnapshots({ companyId, fiscalYear, dbPool = pool }) {
+  const conn = await dbPool.getConnection();
+  try {
+    await ensurePeriodReportSnapshotTable(conn);
+    const [rows] = await conn.query(
+      `SELECT snapshot_id, company_id, fiscal_year, procedure_name, artifact_id, row_count, created_by, created_at
+         FROM fin_period_report_snapshot
+        WHERE company_id = ? AND fiscal_year = ?
+        ORDER BY created_at DESC, snapshot_id DESC`,
+      [companyId, fiscalYear],
+    );
+    return Array.isArray(rows) ? rows : [];
+  } finally {
+    conn.release();
+  }
+}
+
+export async function getFiscalPeriodReportSnapshot({ snapshotId, companyId, page = 1, perPage = 200, dbPool = pool }) {
+  const conn = await dbPool.getConnection();
+  try {
+    await ensurePeriodReportSnapshotTable(conn);
+    const [rows] = await conn.query(
+      `SELECT snapshot_id, company_id, fiscal_year, procedure_name, artifact_id, row_count, created_by, created_at
+         FROM fin_period_report_snapshot
+        WHERE snapshot_id = ? AND company_id = ?
+        LIMIT 1`,
+      [snapshotId, companyId],
+    );
+    const meta = Array.isArray(rows) && rows[0] ? rows[0] : null;
+    if (!meta) return null;
+    const artifact = loadSnapshotArtifactPage(meta.artifact_id, page, perPage);
+    return { ...meta, artifact };
   } finally {
     conn.release();
   }

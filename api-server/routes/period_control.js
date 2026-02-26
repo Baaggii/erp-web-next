@@ -5,6 +5,9 @@ import {
   getPeriodStatus,
   previewFiscalPeriodReports,
   requirePeriodClosePermission,
+  saveFiscalPeriodReportSnapshot,
+  listFiscalPeriodReportSnapshots,
+  getFiscalPeriodReportSnapshot,
 } from '../services/periodControlService.js';
 
 function validateStatusQuery(req) {
@@ -46,6 +49,9 @@ export function createPeriodControlRouter(deps = {}) {
   const closePeriod = deps.closeFiscalPeriod || closeFiscalPeriod;
   const previewReports = deps.previewFiscalPeriodReports || previewFiscalPeriodReports;
   const permissionCheck = deps.requirePeriodClosePermission || requirePeriodClosePermission;
+  const saveSnapshot = deps.saveFiscalPeriodReportSnapshot || saveFiscalPeriodReportSnapshot;
+  const listSnapshots = deps.listFiscalPeriodReportSnapshots || listFiscalPeriodReportSnapshots;
+  const getSnapshot = deps.getFiscalPeriodReportSnapshot || getFiscalPeriodReportSnapshot;
 
   router.get('/status', authMiddleware, async (req, res) => {
     const validationMessage = validateStatusQuery(req);
