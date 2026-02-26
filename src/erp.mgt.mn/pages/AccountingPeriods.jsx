@@ -421,10 +421,9 @@ export default function AccountingPeriodsPage() {
       },
     }));
 
-    // Preview drilldown must follow the row-provided next procedure to keep multi-level expansion accurate.
-    // Do not fall back to report-level drilldown procedures here: those often point to final-detail selectors.
+    // Prefer row-level next procedures for multi-level expansion; if absent, fall back to report-level drilldown.
     const detailProcedure = String(
-      row?.__drilldown_report || row?.__detail_report || '',
+      row?.__drilldown_report || row?.__detail_report || fallbackProcedure || '',
     ).trim();
     if (!detailProcedure) {
       setPreviewDrilldownState((prev) => ({
