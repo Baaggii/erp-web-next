@@ -637,8 +637,8 @@ export default function AccountingPeriodsPage() {
                       <ReportTable
                         procedure={result.name}
                         rows={rows}
-                        rowGranularity={previewRowGranularity}
-                        drilldownEnabled={Boolean(previewHasDrilldown || previewMeta?.drilldown || previewMeta?.drilldownReport)}
+                        rowGranularity={previewMeta?.rowGranularity || 'transaction'}
+                        drilldownEnabled={Boolean(previewMeta?.drilldown || previewMeta?.drilldownReport)}
                         onDrilldown={({ row, rowId }) => handlePreviewDrilldown({ reportName: result.name, reportMeta: previewMeta, row, rowId })}
                         drilldownState={previewDrilldownState[result.name] || {}}
                         drilldownRowSelection={previewDrilldownSelection[result.name] || {}}
