@@ -16,24 +16,6 @@ const INTERNAL_COLS = new Set([
   '__detail_report',
 ]);
 
-function inferPreviewReportMeta(result) {
-  const rawMeta = result?.reportMeta && typeof result.reportMeta === 'object'
-    ? result.reportMeta
-    : {};
-  const rows = Array.isArray(result?.rows) ? result.rows : [];
-  const hasRowIds = rows.some((row) => String(row?.__row_ids || '').trim());
-  const normalized = rawMeta.drilldown || rawMeta.drilldownReport
-    ? {
-      ...rawMeta,
-      drilldown: rawMeta.drilldown || (rawMeta.drilldownReport ? { fallbackProcedure: rawMeta.drilldownReport } : undefined),
-    }
-    : { ...rawMeta };
-  if (!normalized.rowGranularity && hasRowIds) {
-    normalized.rowGranularity = 'aggregated';
-  }
-  return normalized;
-}
-
 
 async function parseJsonResponse(response) {
   const text = await response.text();
@@ -77,9 +59,10 @@ export default function AccountingPeriodsPage() {
   const [loadingSnapshots, setLoadingSnapshots] = useState(false);
   const [selectedSnapshot, setSelectedSnapshot] = useState(null);
   const [loadingSnapshotId, setLoadingSnapshotId] = useState(null);
-  const [previewDrilldownStateByReport, setPreviewDrilldownStateByReport] = useState({});
-  const [previewDrilldownSelectionByReport, setPreviewDrilldownSelectionByReport] = useState({});
+  const [previewDrilldownState, setPreviewDrilldownState] = useState({});
+  const [previewDrilldownSelection, setPreviewDrilldownSelection] = useState({});
   const drilldownParamCacheRef = useRef(new Map());
+  const buildPreviewDrilldownKey = useCallback((reportName, rowId) => `${reportName}::${rowId}`, []);
 
   const canClosePeriod = Boolean(
     permissions?.['period.close'] ||
@@ -228,7 +211,7 @@ export default function AccountingPeriodsPage() {
       return;
     }
 
-    const reportState = previewDrilldownStateByReport[reportName] || {};
+    const reportState = previewDrilldownState[reportName] || {};
     const existing = reportState[rowId];
     const nextExpanded = !existing?.expanded;
     setPreviewDrilldownStateByReport((prev) => ({
@@ -328,10 +311,10 @@ export default function AccountingPeriodsPage() {
         },
       }));
     }
-  }, [buildDrilldownParams, normalizeReportMeta, previewDrilldownStateByReport]);
+  }, [buildDrilldownParams, normalizeReportMeta, previewDrilldownState]);
 
   const handlePreviewDrilldownSelectionChange = useCallback((reportName, updater) => {
-    setPreviewDrilldownSelectionByReport((prev) => {
+    setPreviewDrilldownSelection((prev) => {
       const current = prev[reportName] || {};
       const next = typeof updater === 'function' ? updater(current) : updater || {};
       return {
@@ -487,12 +470,13 @@ export default function AccountingPeriodsPage() {
                       <ReportTable
                         procedure={result.name}
                         rows={rows}
-                        rowGranularity={previewMeta?.rowGranularity || 'transaction'}
-                        drilldownEnabled={previewDrilldownEnabled}
-                        onDrilldown={({ row, rowId }) => handlePreviewDrilldown({ reportName: result.name, reportMeta: previewMeta, row, rowId })}
-                        drilldownState={previewDrilldownStateByReport[result.name] || {}}
-                        drilldownRowSelection={previewDrilldownSelectionByReport[result.name] || {}}
-                        onDrilldownRowSelectionChange={(updater) => handlePreviewDrilldownSelectionChange(result.name, updater)}
+                        rowGranularity={result?.reportMeta?.rowGranularity || 'transaction'}
+                        drilldownEnabled={Boolean(result?.reportMeta?.drilldown || result?.reportMeta?.drilldownReport)}
+                        onDrilldown={({ row, rowId }) => handlePreviewDrilldown({ reportName: result.name, row, rowId })}
+                        drilldownState={previewDrilldownState}
+                        drilldownRowSelection={previewDrilldownSelection}
+                        onDrilldownRowSelectionChange={handlePreviewDrilldownSelectionChange}
+                        getDrilldownRowKey={(rowId) => buildPreviewDrilldownKey(result.name, rowId)}
                         excludeColumns={INTERNAL_COLS}
                         maxHeight={260}
                         showTotalRowCount={false}
