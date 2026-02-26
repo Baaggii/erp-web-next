@@ -272,28 +272,20 @@ export default function AccountingPeriodsPage() {
     return meta;
   }, []);
 
-  const selectedSnapshotMeta = useMemo(() => {
-    const directMeta =
-      selectedSnapshot?.artifact?.reportMeta || selectedSnapshot?.reportMeta || null;
-    if (directMeta) return normalizeReportMeta(directMeta);
-
-    const procedureName = String(
-      selectedSnapshot?.procedure_name || selectedSnapshot?.procedureName || '',
-    ).trim();
-    if (!procedureName) return {};
-    const fromPreview = previewResults.find((item) => item?.name === procedureName)?.reportMeta;
-    return normalizeReportMeta(fromPreview || null);
-  }, [
-    normalizeReportMeta,
-    previewResults,
-    selectedSnapshot?.artifact?.reportMeta,
-    selectedSnapshot?.procedure_name,
-    selectedSnapshot?.procedureName,
-    selectedSnapshot?.reportMeta,
-  ]);
+  const selectedSnapshotMeta = useMemo(
+    () =>
+      normalizeReportMeta(
+        selectedSnapshot?.artifact?.reportMeta || selectedSnapshot?.reportMeta || null,
+      ),
+    [
+      normalizeReportMeta,
+      selectedSnapshot?.artifact?.reportMeta,
+      selectedSnapshot?.reportMeta,
+    ],
+  );
 
   const selectedSnapshotHasDrilldown = useMemo(
-    () => selectedSnapshotMeta?.drilldown?.mode === 'materialized',
+    () => Boolean(selectedSnapshotMeta?.drilldown),
     [selectedSnapshotMeta],
   );
 
@@ -911,7 +903,7 @@ export default function AccountingPeriodsPage() {
                         getDrilldownRowKey={(parentRowId, detailIndex) =>
                           buildPreviewDrilldownKey(result.name, parentRowId, detailIndex)}
                         excludeColumns={INTERNAL_COLS}
-                        maxHeight={expandedPreviewReports[result.name] ? 620 : 260}
+                        maxHeight={260}
                         showTotalRowCount
                       />
                     ) : <p style={{ margin: 0 }}>No rows returned.</p>}

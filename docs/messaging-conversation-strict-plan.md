@@ -224,3 +224,10 @@ Short answer: **No** (as identity).
 
 4. **Load conversations by latest and load older on scroll up (notification-dropdown style)?**
    - Yes. Cursor-paginate conversation list by `last_message_at`, and paginate conversation messages by message cursor with upward infinite scroll.
+
+## Rollback plan (short)
+
+1. Disable tenant strict-mode flag to route tenants back to legacy read-only endpoints.
+2. Keep `erp_conversations` and `erp_messages.conversation_id` data intact; do not drop columns during rollback.
+3. Re-enable legacy route handlers only as temporary compatibility shim while repairing tenant-specific anomalies listed in `erp_message_conversation_repair_report`.
+4. Replay failed writes from idempotency logs after strict mode is re-enabled.
