@@ -20,18 +20,16 @@ async function parseJsonResponse(response) {
   }
 }
 
-
 function renderCell(value) {
-  if (value === null || value === undefined || value === '') return '-';
+  if (value == null) return '-';
+  if (typeof value === 'boolean') return value ? 'true' : 'false';
+  if (value instanceof Date) return value.toISOString();
   if (typeof value === 'object') {
-    const serialized = JSON.stringify(value, null, 2);
-    const label = Array.isArray(value) ? `Array (${value.length})` : 'Object';
-    return (
-      <details>
-        <summary>{label}</summary>
-        <pre style={{ margin: '6px 0 0', whiteSpace: 'pre-wrap' }}>{serialized}</pre>
-      </details>
-    );
+    try {
+      return JSON.stringify(value);
+    } catch (error) {
+      return String(value);
+    }
   }
   return String(value);
 }
