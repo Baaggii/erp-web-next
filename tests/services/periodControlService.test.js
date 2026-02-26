@@ -145,6 +145,8 @@ test('previewFiscalPeriodReports returns per-report results and keeps failures n
 
   assert.equal(results.length, 2);
   assert.equal(results[0].ok, true);
+  assert.equal(results[0].rowCount, 0);
+  assert.ok(Array.isArray(results[0].rows));
   assert.equal(results[1].ok, false);
   assert.match(String(results[1].error), /Report failed/i);
 });
