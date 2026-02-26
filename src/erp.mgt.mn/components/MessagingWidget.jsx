@@ -771,7 +771,7 @@ export default function MessagingWidget() {
     if (!rootMessageId || !activeCompany) return;
     try {
       const params = new URLSearchParams({ companyId: String(activeCompany) });
-      const threadRes = await fetch(`${API_BASE}/messaging/messages/${rootMessageId}/thread?${params.toString()}`, { credentials: 'include' });
+      const threadRes = await fetch(`${API_BASE}/messaging/conversations/${rootMessageId}/messages?${params.toString()}`, { credentials: 'include' });
       if (!threadRes.ok) return;
       const threadData = await threadRes.json();
       const threadItems = Array.isArray(threadData?.items)
@@ -879,7 +879,7 @@ export default function MessagingWidget() {
       try {
         setNetworkState('loading');
         const params = new URLSearchParams({ companyId: activeCompany, limit: '100' });
-        const res = await fetch(`${API_BASE}/messaging/messages?${params.toString()}`, { credentials: 'include' });
+        const res = await fetch(`${API_BASE}/messaging/conversations?${params.toString()}`, { credentials: 'include' });
         if (!res.ok) throw new Error(`Failed to fetch (${res.status})`);
         const data = await res.json();
         if (disposed) return;
@@ -1794,16 +1794,22 @@ export default function MessagingWidget() {
       ...(visibilityScope === 'private' ? { recipientEmpids: allParticipants } : {}),
       ...(linkedType ? { linkedType } : {}),
       ...(linkedId ? { linkedId: String(linkedId) } : {}),
-      ...(!isDraftConversation && !shouldSendReply && fallbackRootReplyTargetId ? { conversationId: fallbackRootReplyTargetId } : {}),
+      ...(!isDraftConversation && !selectedIsGeneral && !shouldSendReply && fallbackRootReplyTargetId ? { conversationId: fallbackRootReplyTargetId } : {}),
       ...(!isDraftConversation && shouldSendReply && explicitReplyTargetId && fallbackRootReplyTargetId
         ? { conversationId: fallbackRootReplyTargetId }
         : {}),
       ...(!isDraftConversation && shouldSendReply && explicitReplyTargetId ? { parentMessageId: explicitReplyTargetId } : {}),
     };
 
-    const targetUrl = (!isDraftConversation && shouldSendReply && explicitReplyTargetId)
-      ? `${API_BASE}/messaging/messages/${explicitReplyTargetId}/reply`
-      : `${API_BASE}/messaging/messages`;
+    const targetUrl = (() => {
+      if (isDraftConversation) return `${API_BASE}/messaging/conversations`;
+      if (shouldSendReply && explicitReplyTargetId && fallbackRootReplyTargetId) {
+        return `${API_BASE}/messaging/conversations/${fallbackRootReplyTargetId}/messages`;
+      }
+      if (selectedIsGeneral) return `${API_BASE}/messaging/conversations`;
+      if (!fallbackRootReplyTargetId) return `${API_BASE}/messaging/conversations`;
+      return `${API_BASE}/messaging/conversations/${fallbackRootReplyTargetId}/messages`;
+    })();
 
     const optimisticConversationId = fallbackRootReplyTargetId || explicitReplyTargetId || null;
     const optimisticParentMessageId = (!isDraftConversation && shouldSendReply && explicitReplyTargetId)
