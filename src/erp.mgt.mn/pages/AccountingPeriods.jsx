@@ -1,11 +1,47 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../context/AuthContext.jsx';
+import ReportTable from '../components/ReportTable.jsx';
+import ReportSnapshotViewer from '../components/ReportSnapshotViewer.jsx';
 
 const DEFAULT_REPORT_PROCS = [
   'dynrep_1_sp_trial_balance_expandable',
   'dynrep_1_sp_income_statement_expandable',
   'dynrep_1_sp_balance_sheet_expandable',
 ];
+
+function resolveTempTableByLevel(drilldownCapabilities, level = 0) {
+  const direct = drilldownCapabilities?.detailTempTable;
+  const grouped = drilldownCapabilities?.detailTempTables;
+  if (typeof grouped === 'string' && grouped.trim()) return grouped.trim();
+  if (Array.isArray(grouped)) {
+    const value = grouped[level] ?? grouped[0];
+    return typeof value === 'string' ? value.trim() : '';
+  }
+  if (grouped && typeof grouped === 'object') {
+    const byLevel = grouped[level] ?? grouped[String(level)] ?? grouped.default ?? grouped[0];
+    return typeof byLevel === 'string' ? byLevel.trim() : '';
+  }
+  return typeof direct === 'string' ? direct.trim() : '';
+}
+
+function parseDrilldownLevel(value) {
+  const level = Number(value);
+  return Number.isFinite(level) && level >= 0 ? level : 0;
+}
+
+
+async function parseJsonResponse(response) {
+  const text = await response.text();
+  if (!text) return {};
+  try {
+    return JSON.parse(text);
+  } catch (error) {
+    const status = `${response.status} ${response.statusText}`.trim();
+    const snippet = text.slice(0, 160).replace(/\s+/g, ' ').trim();
+    throw new Error(`Expected JSON response (${status}). Received: ${snippet || '<empty>'}`);
+  }
+}
+
 
 export default function AccountingPeriodsPage() {
   const { user, session, company, permissions } = useAuth();
@@ -23,6 +59,8 @@ export default function AccountingPeriodsPage() {
   const [loadingSnapshots, setLoadingSnapshots] = useState(false);
   const [selectedSnapshot, setSelectedSnapshot] = useState(null);
   const [loadingSnapshotId, setLoadingSnapshotId] = useState(null);
+  const [previewDrilldownState, setPreviewDrilldownState] = useState({});
+  const [previewDrilldownSelection, setPreviewDrilldownSelection] = useState({});
 
   const canClosePeriod = Boolean(
     permissions?.['period.close'] ||
@@ -54,7 +92,7 @@ export default function AccountingPeriodsPage() {
     setLoadingSnapshots(true);
     try {
       const res = await fetch(`/api/period-control/snapshots?company_id=${companyId}&fiscal_year=${fiscalYear}`, { credentials: 'include' });
-      const json = await res.json();
+      const json = await parseJsonResponse(res);
       if (!res.ok || !json?.ok) throw new Error(json?.message || 'Failed to load snapshots');
       setSnapshots(Array.isArray(json.snapshots) ? json.snapshots : []);
     } catch (err) {
@@ -89,10 +127,12 @@ export default function AccountingPeriodsPage() {
           report_procedures: parsedProcedures,
         }),
       });
-      const json = await res.json();
+      const json = await parseJsonResponse(res);
       if (!res.ok || !json?.ok) throw new Error(json?.message || 'Failed to preview reports');
       const results = Array.isArray(json.results) ? json.results : [];
       setPreviewResults(results);
+      setPreviewDrilldownState({});
+      setPreviewDrilldownSelection({});
       if (results.some((item) => !item.ok)) {
         setMessage('Some reports failed. Review errors before closing period.');
       } else {
@@ -105,6 +145,147 @@ export default function AccountingPeriodsPage() {
       setPreviewing(false);
     }
   };
+
+
+  const buildPreviewDrilldownKey = useCallback((reportName, rowId) => `${reportName}::${rowId}`, []);
+
+  const handlePreviewDrilldown = useCallback(async ({ reportName, row, rowId }) => {
+    const rowIds = String(row?.__row_ids || '').trim();
+    const key = buildPreviewDrilldownKey(reportName, rowId);
+    if (!rowIds) {
+      setPreviewDrilldownState((prev) => ({
+        ...prev,
+        [key]: { ...(prev[key] || {}), expanded: true, status: 'error', error: 'Missing __row_ids for drilldown.', rows: [] },
+      }));
+      return;
+    }
+
+    const existing = previewDrilldownState[key];
+    const nextExpanded = !existing?.expanded;
+    setPreviewDrilldownState((prev) => ({
+      ...prev,
+      [key]: { ...(prev[key] || {}), expanded: nextExpanded, rowIds },
+    }));
+    if (!nextExpanded) return;
+    if (existing?.status === 'loaded' && existing?.rowIds === rowIds) return;
+
+    setPreviewDrilldownState((prev) => ({
+      ...prev,
+      [key]: { ...(prev[key] || {}), expanded: true, status: 'loading', error: '', rowIds },
+    }));
+
+    const reportEntry = previewResults.find((entry) => entry?.name === reportName);
+    const reportMeta = reportEntry?.reportMeta || {};
+    const effectiveReportMeta = reportMeta?.drilldown || reportMeta?.drilldownReport
+      ? {
+        ...reportMeta,
+        drilldown: reportMeta?.drilldown || { fallbackProcedure: reportMeta?.drilldownReport },
+      }
+      : reportMeta;
+    const drilldownCapabilities = effectiveReportMeta?.drilldown || null;
+    const drilldownLevel = parseDrilldownLevel(row?.__drilldown_level);
+
+    if (drilldownCapabilities?.mode === 'materialized') {
+      const ids = rowIds.split(',').map((id) => id.trim()).filter(Boolean);
+      const detailTempTable = resolveTempTableByLevel(drilldownCapabilities, drilldownLevel);
+      if (detailTempTable && ids.length > 0) {
+        try {
+          const tempRes = await fetch('/api/report/tmp-detail', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({
+              table: detailTempTable,
+              pk: drilldownCapabilities?.detailPkColumn || 'id',
+              ids,
+            }),
+          });
+          const tempJson = await parseJsonResponse(tempRes);
+          if (tempRes.ok) {
+            const tempRows = Array.isArray(tempJson) ? tempJson : [];
+            const tempColumns = tempRows.length > 0
+              ? Object.keys(tempRows[0]).filter((col) => !col.startsWith('__'))
+              : [];
+            setPreviewDrilldownState((prev) => ({
+              ...prev,
+              [key]: {
+                ...(prev[key] || {}),
+                expanded: true,
+                status: 'loaded',
+                error: '',
+                rowIds,
+                rows: tempRows,
+                columns: tempColumns,
+                fieldLineage: {},
+                fieldTypeMap: {},
+              },
+            }));
+            return;
+          }
+        } catch {
+          // fallback to procedure below
+        }
+      }
+    }
+
+    const detailProcedure = String(
+      row?.__drilldown_report ||
+      row?.__detail_report ||
+      drilldownCapabilities?.fallbackProcedure ||
+      drilldownCapabilities?.procedure ||
+      drilldownCapabilities?.detailProcedure ||
+      drilldownCapabilities?.report ||
+      reportMeta?.drilldownReport ||
+      reportName ||
+      '',
+    ).trim();
+
+    try {
+      const res = await fetch('/api/procedures', {
+        credentials: 'include',
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: detailProcedure,
+          params: [rowIds],
+        }),
+      });
+      const json = await parseJsonResponse(res);
+      if (!res.ok) throw new Error(json?.message || json?.error || 'Failed to load drilldown rows');
+      const detailRows = Array.isArray(json?.row) ? json.row : [];
+      const detailColumns = detailRows.length > 0 ? Object.keys(detailRows[0]).filter((col) => !col.startsWith('__')) : [];
+      setPreviewDrilldownState((prev) => ({
+        ...prev,
+        [key]: {
+          ...(prev[key] || {}),
+          expanded: true,
+          status: 'loaded',
+          error: '',
+          rowIds,
+          rows: detailRows,
+          columns: detailColumns,
+          fieldLineage: json?.fieldLineage || {},
+          fieldTypeMap: json?.fieldTypeMap || {},
+        },
+      }));
+    } catch (err) {
+      setPreviewDrilldownState((prev) => ({
+        ...prev,
+        [key]: {
+          ...(prev[key] || {}),
+          expanded: true,
+          status: 'error',
+          error: String(err?.message || err || 'Failed to load drilldown rows'),
+          rowIds,
+          rows: [],
+        },
+      }));
+    }
+  }, [buildPreviewDrilldownKey, previewDrilldownState, previewResults]);
+
+  const handlePreviewDrilldownSelectionChange = useCallback((updater) => {
+    setPreviewDrilldownSelection((prev) => (typeof updater === 'function' ? updater(prev) : updater || {}));
+  }, []);
 
   const handleSaveSnapshot = async (result) => {
     const name = result?.name;
@@ -124,7 +305,7 @@ export default function AccountingPeriodsPage() {
           rows,
         }),
       });
-      const json = await res.json();
+      const json = await parseJsonResponse(res);
       if (!res.ok || !json?.ok) throw new Error(json?.message || 'Failed to save snapshot');
       setMessage(`Snapshot saved for ${name}.`);
       await loadSnapshots();
@@ -143,7 +324,7 @@ export default function AccountingPeriodsPage() {
       const res = await fetch(`/api/period-control/snapshots/${snapshotId}?company_id=${companyId}&page=1&per_page=500`, {
         credentials: 'include',
       });
-      const json = await res.json();
+      const json = await parseJsonResponse(res);
       if (!res.ok || !json?.ok) throw new Error(json?.message || 'Failed to load snapshot');
       setSelectedSnapshot(json.snapshot || null);
     } catch (err) {
@@ -231,7 +412,15 @@ export default function AccountingPeriodsPage() {
           <strong>Report preview</strong>
           {previewResults.map((result) => {
             const rows = Array.isArray(result.rows) ? result.rows : [];
-            const columns = rows.length > 0 ? Object.keys(rows[0]) : [];
+            const reportMeta = result?.reportMeta || {};
+            const effectiveReportMeta = reportMeta?.drilldown || reportMeta?.drilldownReport
+              ? {
+                ...reportMeta,
+                drilldown: reportMeta?.drilldown || { fallbackProcedure: reportMeta?.drilldownReport },
+              }
+              : reportMeta;
+            const rowGranularity = effectiveReportMeta?.rowGranularity || 'transaction';
+            const drilldownEnabled = Boolean(effectiveReportMeta?.drilldown);
             return (
               <div key={result.name} style={{ marginTop: 10, borderTop: '1px solid #eee', paddingTop: 10 }}>
                 <div style={{ color: result.ok ? '#166534' : '#b91c1c', fontWeight: 600 }}>
@@ -248,28 +437,21 @@ export default function AccountingPeriodsPage() {
                       {savingSnapshots[result.name] ? 'Saving snapshot…' : 'Save Snapshot'}
                     </button>
                     {rows.length > 0 ? (
-                      <div style={{ overflowX: 'auto', maxHeight: 260, border: '1px solid #eee' }}>
-                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
-                          <thead>
-                            <tr>
-                              {columns.map((col) => (
-                                <th key={col} style={{ textAlign: 'left', borderBottom: '1px solid #ddd', padding: 6 }}>{col}</th>
-                              ))}
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {rows.slice(0, 100).map((row, idx) => (
-                              <tr key={`${result.name}-${idx}`}>
-                                {columns.map((col) => (
-                                  <td key={`${result.name}-${idx}-${col}`} style={{ borderBottom: '1px solid #f0f0f0', padding: 6 }}>
-                                    {renderCell(row[col])}
-                                  </td>
-                                ))}
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
+                      <ReportTable
+                        procedure={result.name}
+                        rows={rows}
+                        maxHeight={260}
+                        showTotalRowCount={false}
+                        rowGranularity={rowGranularity}
+                        drilldownEnabled={drilldownEnabled}
+                        onDrilldown={({ row, rowId }) => handlePreviewDrilldown({ reportName: result.name, row, rowId })}
+                        drilldownState={Object.fromEntries(Object.entries(previewDrilldownState)
+                          .filter(([key]) => key.startsWith(`${result.name}::`))
+                          .map(([key, value]) => [key.slice(result.name.length + 2), value]))}
+                        drilldownRowSelection={previewDrilldownSelection}
+                        onDrilldownRowSelectionChange={handlePreviewDrilldownSelectionChange}
+                        getRowId={(row, idx) => String(row?.__row_ids || row?.id || idx)}
+                      />
                     ) : <p style={{ margin: 0 }}>No rows returned.</p>}
                   </div>
                 ) : null}
@@ -306,29 +488,11 @@ export default function AccountingPeriodsPage() {
       {selectedSnapshot?.artifact ? (
         <div style={{ border: '1px solid #ddd', borderRadius: 8, padding: 12, marginTop: 14 }}>
           <strong>Snapshot view: {selectedSnapshot.procedure_name}</strong>
-          <div style={{ marginTop: 6, marginBottom: 6 }}>Rows: {selectedSnapshot.artifact.rowCount}</div>
-          <div style={{ overflowX: 'auto', maxHeight: 340, border: '1px solid #eee' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
-              <thead>
-                <tr>
-                  {(selectedSnapshot.artifact.columns || []).map((col) => (
-                    <th key={col} style={{ textAlign: 'left', borderBottom: '1px solid #ddd', padding: 6 }}>{col}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {(selectedSnapshot.artifact.rows || []).map((row, idx) => (
-                  <tr key={`snap-${selectedSnapshot.snapshot_id}-${idx}`}>
-                    {(selectedSnapshot.artifact.columns || []).map((col) => (
-                      <td key={`snap-${selectedSnapshot.snapshot_id}-${idx}-${col}`} style={{ borderBottom: '1px solid #f0f0f0', padding: 6 }}>
-                        {renderCell(row[col])}
-                      </td>
-                    ))}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <ReportSnapshotViewer
+            snapshot={selectedSnapshot.artifact}
+            emptyMessage="No snapshot rows found."
+            style={{ marginTop: 8 }}
+          />
         </div>
       ) : null}
 

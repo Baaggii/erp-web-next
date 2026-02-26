@@ -15,6 +15,9 @@ function createMockConnection({ periodClosed = 0, balanceRows = [] } = {}) {
     release() { calls.push({ type: 'release' }); },
     async query(sql, params = []) {
       calls.push({ type: 'query', sql, params });
+      if (sql.includes('SELECT @report_capabilities AS report_capabilities')) {
+        return [[{ report_capabilities: JSON.stringify({ rowGranularity: 'aggregated', drilldown: { fallbackProcedure: 'detail_proc' } }) }]];
+      }
       if (sql.includes('FROM fin_period_control') && sql.includes('WHERE company_id = ? AND fiscal_year = ?')) {
         return [[{ company_id: 1, fiscal_year: 2025, period_from: '2025-01-01', period_to: '2025-12-31', is_closed: periodClosed, closed_at: null, closed_by: null }]];
       }
@@ -145,6 +148,10 @@ test('previewFiscalPeriodReports returns per-report results and keeps failures n
 
   assert.equal(results.length, 2);
   assert.equal(results[0].ok, true);
+  assert.equal(results[0].rowCount, 0);
+  assert.ok(Array.isArray(results[0].rows));
+  assert.equal(results[0].reportCapabilities.showTotalRowCount, true);
+  assert.equal(results[0].reportMeta.rowGranularity, 'aggregated');
   assert.equal(results[1].ok, false);
   assert.match(String(results[1].error), /Report failed/i);
 });

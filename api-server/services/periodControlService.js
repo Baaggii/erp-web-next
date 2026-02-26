@@ -189,6 +189,68 @@ function resolveProcedureParameterValue(parameterName, { companyId, fiscalYear, 
 }
 
 async function runReportProcedure(conn, procedureName, { companyId, fiscalYear, fromDate, toDate }) {
+  const defaultReportCapabilities = {
+    showTotalRowCount: true,
+    supportsApproval: true,
+    supportsSnapshot: true,
+    supportsBulkUpdate: false,
+  };
+
+  const normalizeReportCapabilities = (value) => {
+    if (!value) return { ...defaultReportCapabilities };
+    let parsed = value;
+    if (typeof value === 'string') {
+      try {
+        parsed = JSON.parse(value);
+      } catch {
+        return { ...defaultReportCapabilities };
+      }
+    }
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      return { ...defaultReportCapabilities };
+    }
+    const normalized = { ...defaultReportCapabilities };
+    if ('showTotalRowCount' in parsed) {
+      normalized.showTotalRowCount = parsed.showTotalRowCount === false ? false : true;
+    }
+    if ('supportsApproval' in parsed) {
+      normalized.supportsApproval = parsed.supportsApproval === false ? false : true;
+    }
+    if ('supportsSnapshot' in parsed) {
+      normalized.supportsSnapshot = parsed.supportsSnapshot === false ? false : true;
+    }
+    if ('supportsBulkUpdate' in parsed) {
+      normalized.supportsBulkUpdate = parsed.supportsBulkUpdate === true;
+    }
+    return normalized;
+  };
+
+  const loadCapabilities = async () => {
+    const [capRows] = await conn.query('SELECT @report_capabilities AS report_capabilities');
+    const rawCaps = Array.isArray(capRows) ? capRows[0]?.report_capabilities : null;
+    const reportCapabilities = normalizeReportCapabilities(rawCaps);
+    let reportMeta = {};
+    if (rawCaps) {
+      try {
+        const parsed = typeof rawCaps === 'string' ? JSON.parse(rawCaps) : rawCaps;
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+          reportMeta = parsed;
+        }
+      } catch {
+        // ignore invalid JSON
+      }
+    }
+    return { reportCapabilities, reportMeta };
+  };
+
+  const buildProcedureResult = (rows) => {
+    const resultRows = Array.isArray(rows) && Array.isArray(rows[0]) ? rows[0] : [];
+    return {
+      rows: resultRows,
+      rowCount: resultRows.length,
+    };
+  };
+
   const parameterNames = await getProcedureInParameterNames(conn, procedureName);
   if (parameterNames.length > 0) {
     const args = parameterNames.map((name) =>
@@ -196,7 +258,8 @@ async function runReportProcedure(conn, procedureName, { companyId, fiscalYear, 
     );
     const dynamicSql = `CALL \`${procedureName}\`(${args.map(() => '?').join(', ')})`;
     const [rows] = await conn.query(dynamicSql, args);
-    return Array.isArray(rows) && Array.isArray(rows[0]) ? rows[0].length : 0;
+    const result = buildProcedureResult(rows);
+    return { ...result, ...(await loadCapabilities()) };
   }
 
   const fourArgSql = `CALL \`${procedureName}\`(?, ?, ?, ?)`;
@@ -207,17 +270,20 @@ async function runReportProcedure(conn, procedureName, { companyId, fiscalYear, 
 
   try {
     const [rows] = await conn.query(fourArgSql, fiscalYearFirstParams);
-    return Array.isArray(rows) && Array.isArray(rows[0]) ? rows[0].length : 0;
+    const result = buildProcedureResult(rows);
+    return { ...result, ...(await loadCapabilities()) };
   } catch (error) {
     const message = String(error?.message || '');
     if (/Incorrect number of arguments/i.test(message)) {
       const [rows] = await conn.query(twoArgSql, twoArgParams);
-      return Array.isArray(rows) && Array.isArray(rows[0]) ? rows[0].length : 0;
+      const result = buildProcedureResult(rows);
+      return { ...result, ...(await loadCapabilities()) };
     }
-    if (!/Incorrect integer value/i.test(message)) throw error;
+    if (!/Incorrect integer value|Incorrect date value/i.test(message)) throw error;
 
     const [rows] = await conn.query(fourArgSql, dateRangeFirstParams);
-    return Array.isArray(rows) && Array.isArray(rows[0]) ? rows[0].length : 0;
+    const result = buildProcedureResult(rows);
+    return { ...result, ...(await loadCapabilities()) };
   }
 }
 
@@ -239,8 +305,15 @@ export async function previewFiscalPeriodReports({ companyId, fiscalYear, report
         continue;
       }
       try {
-        const rowCount = await runReportProcedure(conn, proc, { companyId, fiscalYear, fromDate, toDate });
-        results.push({ name: proc, ok: true, rowCount });
+        const reportResult = await runReportProcedure(conn, proc, { companyId, fiscalYear, fromDate, toDate });
+        results.push({
+          name: proc,
+          ok: true,
+          rowCount: reportResult.rowCount,
+          rows: reportResult.rows,
+          reportCapabilities: reportResult.reportCapabilities,
+          reportMeta: reportResult.reportMeta,
+        });
       } catch (error) {
         results.push({ name: proc, ok: false, error: error?.message || 'Report failed' });
       }
