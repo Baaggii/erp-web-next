@@ -61,9 +61,7 @@ class MockDb {
     const text = String(sql);
 
     if (text.includes('information_schema.TABLES') && text.includes("TABLE_NAME = 'erp_messages'")) return [[{ count: 1 }], undefined];
-    if (text.includes('information_schema.TABLES') && text.includes("TABLE_NAME = 'erp_conversations'")) return [[{ count: 1 }], undefined];
     if (text.startsWith('CALL create_tenant_temp_table')) return [[], undefined];
-    if (text.includes('CREATE TABLE IF NOT EXISTS erp_conversations')) return [{ affectedRows: 0 }, undefined];
 
     if (text.includes('FROM') && text.includes('erp_message_idempotency') && text.includes('SELECT')) {
       const key = `${params[0]}:${params[1]}`;
