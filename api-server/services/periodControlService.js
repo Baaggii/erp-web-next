@@ -125,12 +125,7 @@ async function runReportProcedure(conn, procedureName, { companyId, fiscalYear, 
       const [rows] = await conn.query(twoArgSql, twoArgParams);
       return Array.isArray(rows) && Array.isArray(rows[0]) ? rows[0].length : 0;
     }
-
-    const likelyParameterOrderMismatch =
-      /Incorrect integer value/i.test(message) ||
-      /Incorrect date value/i.test(message);
-
-    if (!likelyParameterOrderMismatch) throw error;
+    if (!/Incorrect integer value/i.test(message)) throw error;
 
     const [rows] = await conn.query(fourArgSql, dateRangeFirstParams);
     return Array.isArray(rows) && Array.isArray(rows[0]) ? rows[0].length : 0;
