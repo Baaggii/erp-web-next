@@ -15,6 +15,9 @@ function createMockConnection({ periodClosed = 0, balanceRows = [] } = {}) {
     release() { calls.push({ type: 'release' }); },
     async query(sql, params = []) {
       calls.push({ type: 'query', sql, params });
+      if (sql.includes('SELECT @report_capabilities AS report_capabilities')) {
+        return [[{ report_capabilities: JSON.stringify({ rowGranularity: 'aggregated', drilldown: { fallbackProcedure: 'detail_proc' } }) }]];
+      }
       if (sql.includes('FROM fin_period_control') && sql.includes('WHERE company_id = ? AND fiscal_year = ?')) {
         return [[{ company_id: 1, fiscal_year: 2025, period_from: '2025-01-01', period_to: '2025-12-31', is_closed: periodClosed, closed_at: null, closed_by: null }]];
       }
