@@ -414,9 +414,8 @@ export default function AccountingPeriodsPage() {
 
     const normalizedMeta = normalizeReportMeta(reportMeta);
     const drilldownConfig = normalizedMeta?.drilldown;
-    // Prefer row-level drilldown procedure first so nested levels do not collapse to fallback detail output.
     const detailProcedure = String(
-      row?.__drilldown_report || row?.__detail_report || drilldownConfig?.fallbackProcedure || reportName || '',
+      drilldownConfig?.fallbackProcedure || row?.__drilldown_report || row?.__detail_report || reportName || '',
     ).trim();
     if (!detailProcedure) {
       setPreviewDrilldownState((prev) => ({
