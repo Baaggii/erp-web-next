@@ -449,8 +449,7 @@ export default function AccountingPeriodsPage() {
           <strong>Report preview</strong>
           {previewResults.map((result) => {
             const rows = Array.isArray(result.rows) ? result.rows : [];
-            const previewMeta = inferPreviewReportMeta(result);
-            const previewDrilldownEnabled = Boolean(previewMeta?.drilldown) && previewMeta?.rowGranularity === 'aggregated';
+            const previewMeta = normalizeReportMeta(result?.reportMeta);
             return (
               <div key={result.name} style={{ marginTop: 10, borderTop: '1px solid #eee', paddingTop: 10 }}>
                 <div style={{ color: result.ok ? '#166534' : '#b91c1c', fontWeight: 600 }}>
@@ -470,8 +469,8 @@ export default function AccountingPeriodsPage() {
                       <ReportTable
                         procedure={result.name}
                         rows={rows}
-                        rowGranularity={result?.reportMeta?.rowGranularity || 'transaction'}
-                        drilldownEnabled={Boolean(result?.reportMeta?.drilldown || result?.reportMeta?.drilldownReport)}
+                        rowGranularity={previewMeta?.rowGranularity || 'transaction'}
+                        drilldownEnabled={Boolean(previewMeta?.drilldown || previewMeta?.drilldownReport)}
                         onDrilldown={({ row, rowId }) => handlePreviewDrilldown({ reportName: result.name, row, rowId })}
                         drilldownState={previewDrilldownState}
                         drilldownRowSelection={previewDrilldownSelection}
