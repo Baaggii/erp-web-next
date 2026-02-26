@@ -8,6 +8,7 @@ import {
   saveFiscalPeriodReportSnapshot,
   listFiscalPeriodReportSnapshots,
   getFiscalPeriodReportSnapshot,
+  deleteFiscalPeriodReportSnapshot,
 } from '../services/periodControlService.js';
 
 function validateStatusQuery(req) {
@@ -72,6 +73,13 @@ function validateSnapshotGetQuery(req) {
   return null;
 }
 
+function validateSnapshotDeleteQuery(req) {
+  if (req.query.company_id === undefined) return 'company_id is required';
+  const companyId = Number(req.query.company_id);
+  if (!Number.isInteger(companyId) || companyId <= 0) return 'company_id must be a positive integer';
+  return null;
+}
+
 export function createPeriodControlRouter(deps = {}) {
   const router = express.Router();
   const authMiddleware = deps.requireAuth || requireAuth;
@@ -82,6 +90,7 @@ export function createPeriodControlRouter(deps = {}) {
   const saveSnapshot = deps.saveFiscalPeriodReportSnapshot || saveFiscalPeriodReportSnapshot;
   const listSnapshots = deps.listFiscalPeriodReportSnapshots || listFiscalPeriodReportSnapshots;
   const getSnapshot = deps.getFiscalPeriodReportSnapshot || getFiscalPeriodReportSnapshot;
+  const deleteSnapshot = deps.deleteFiscalPeriodReportSnapshot || deleteFiscalPeriodReportSnapshot;
 
   router.get('/status', authMiddleware, async (req, res) => {
     const validationMessage = validateStatusQuery(req);
@@ -198,6 +207,30 @@ export function createPeriodControlRouter(deps = {}) {
       return res.json({ ok: true, snapshot });
     } catch (error) {
       return res.status(500).json({ ok: false, message: error?.message || 'Failed to load snapshot' });
+    }
+  });
+
+  router.delete('/snapshots/:snapshotId', authMiddleware, async (req, res) => {
+    const validationMessage = validateSnapshotDeleteQuery(req);
+    if (validationMessage) return res.status(400).json({ ok: false, message: validationMessage });
+
+    const snapshotId = Number(req.params.snapshotId);
+    if (!Number.isInteger(snapshotId) || snapshotId <= 0) {
+      return res.status(400).json({ ok: false, message: 'snapshotId is invalid' });
+    }
+
+    try {
+      const { allowed } = await permissionCheck(req);
+      if (!allowed) return res.sendStatus(403);
+
+      const result = await deleteSnapshot({
+        snapshotId,
+        companyId: Number(req.query.company_id),
+      });
+      if (!result?.deleted) return res.status(404).json({ ok: false, message: 'Snapshot not found' });
+      return res.json({ ok: true });
+    } catch (error) {
+      return res.status(500).json({ ok: false, message: error?.message || 'Failed to delete snapshot' });
     }
   });
 

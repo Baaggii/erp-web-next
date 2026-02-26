@@ -92,3 +92,31 @@ test('POST /preview validates payload and returns preview results', async () => 
     assert.equal(invalid.status, 400);
   });
 });
+
+
+test('DELETE /snapshots/:snapshotId validates and deletes snapshot', async () => {
+  const router = createPeriodControlRouter({
+    requireAuth: auth,
+    requirePeriodClosePermission: async () => ({ allowed: true }),
+    deleteFiscalPeriodReportSnapshot: async ({ snapshotId }) => ({ deleted: snapshotId === 5 }),
+  });
+
+  await withServer(router, async (baseUrl) => {
+    const res = await fetch(`${baseUrl}/api/period-control/snapshots/5?company_id=1`, {
+      method: 'DELETE',
+    });
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.deepEqual(body, { ok: true });
+
+    const missing = await fetch(`${baseUrl}/api/period-control/snapshots/7?company_id=1`, {
+      method: 'DELETE',
+    });
+    assert.equal(missing.status, 404);
+
+    const invalid = await fetch(`${baseUrl}/api/period-control/snapshots/not-a-number?company_id=1`, {
+      method: 'DELETE',
+    });
+    assert.equal(invalid.status, 400);
+  });
+});
