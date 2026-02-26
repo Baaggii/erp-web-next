@@ -1,11 +1,27 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../context/AuthContext.jsx';
+import ReportTable from '../components/ReportTable.jsx';
+import ReportSnapshotViewer from '../components/ReportSnapshotViewer.jsx';
 
 const DEFAULT_REPORT_PROCS = [
   'dynrep_1_sp_trial_balance_expandable',
   'dynrep_1_sp_income_statement_expandable',
   'dynrep_1_sp_balance_sheet_expandable',
 ];
+
+
+async function parseJsonResponse(response) {
+  const text = await response.text();
+  if (!text) return {};
+  try {
+    return JSON.parse(text);
+  } catch (error) {
+    const status = `${response.status} ${response.statusText}`.trim();
+    const snippet = text.slice(0, 160).replace(/\s+/g, ' ').trim();
+    throw new Error(`Expected JSON response (${status}). Received: ${snippet || '<empty>'}`);
+  }
+}
+
 
 export default function AccountingPeriodsPage() {
   const { user, session, company, permissions } = useAuth();
@@ -54,7 +70,7 @@ export default function AccountingPeriodsPage() {
     setLoadingSnapshots(true);
     try {
       const res = await fetch(`/api/period-control/snapshots?company_id=${companyId}&fiscal_year=${fiscalYear}`, { credentials: 'include' });
-      const json = await res.json();
+      const json = await parseJsonResponse(res);
       if (!res.ok || !json?.ok) throw new Error(json?.message || 'Failed to load snapshots');
       setSnapshots(Array.isArray(json.snapshots) ? json.snapshots : []);
     } catch (err) {
@@ -89,7 +105,7 @@ export default function AccountingPeriodsPage() {
           report_procedures: parsedProcedures,
         }),
       });
-      const json = await res.json();
+      const json = await parseJsonResponse(res);
       if (!res.ok || !json?.ok) throw new Error(json?.message || 'Failed to preview reports');
       const results = Array.isArray(json.results) ? json.results : [];
       setPreviewResults(results);
@@ -124,7 +140,7 @@ export default function AccountingPeriodsPage() {
           rows,
         }),
       });
-      const json = await res.json();
+      const json = await parseJsonResponse(res);
       if (!res.ok || !json?.ok) throw new Error(json?.message || 'Failed to save snapshot');
       setMessage(`Snapshot saved for ${name}.`);
       await loadSnapshots();
@@ -143,7 +159,7 @@ export default function AccountingPeriodsPage() {
       const res = await fetch(`/api/period-control/snapshots/${snapshotId}?company_id=${companyId}&page=1&per_page=500`, {
         credentials: 'include',
       });
-      const json = await res.json();
+      const json = await parseJsonResponse(res);
       if (!res.ok || !json?.ok) throw new Error(json?.message || 'Failed to load snapshot');
       setSelectedSnapshot(json.snapshot || null);
     } catch (err) {
@@ -231,7 +247,6 @@ export default function AccountingPeriodsPage() {
           <strong>Report preview</strong>
           {previewResults.map((result) => {
             const rows = Array.isArray(result.rows) ? result.rows : [];
-            const columns = rows.length > 0 ? Object.keys(rows[0]) : [];
             return (
               <div key={result.name} style={{ marginTop: 10, borderTop: '1px solid #eee', paddingTop: 10 }}>
                 <div style={{ color: result.ok ? '#166534' : '#b91c1c', fontWeight: 600 }}>
@@ -248,28 +263,12 @@ export default function AccountingPeriodsPage() {
                       {savingSnapshots[result.name] ? 'Saving snapshot…' : 'Save Snapshot'}
                     </button>
                     {rows.length > 0 ? (
-                      <div style={{ overflowX: 'auto', maxHeight: 260, border: '1px solid #eee' }}>
-                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
-                          <thead>
-                            <tr>
-                              {columns.map((col) => (
-                                <th key={col} style={{ textAlign: 'left', borderBottom: '1px solid #ddd', padding: 6 }}>{col}</th>
-                              ))}
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {rows.slice(0, 100).map((row, idx) => (
-                              <tr key={`${result.name}-${idx}`}>
-                                {columns.map((col) => (
-                                  <td key={`${result.name}-${idx}-${col}`} style={{ borderBottom: '1px solid #f0f0f0', padding: 6 }}>
-                                    {renderCell(row[col])}
-                                  </td>
-                                ))}
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
+                      <ReportTable
+                        procedure={result.name}
+                        rows={rows}
+                        maxHeight={260}
+                        showTotalRowCount={false}
+                      />
                     ) : <p style={{ margin: 0 }}>No rows returned.</p>}
                   </div>
                 ) : null}
@@ -306,29 +305,11 @@ export default function AccountingPeriodsPage() {
       {selectedSnapshot?.artifact ? (
         <div style={{ border: '1px solid #ddd', borderRadius: 8, padding: 12, marginTop: 14 }}>
           <strong>Snapshot view: {selectedSnapshot.procedure_name}</strong>
-          <div style={{ marginTop: 6, marginBottom: 6 }}>Rows: {selectedSnapshot.artifact.rowCount}</div>
-          <div style={{ overflowX: 'auto', maxHeight: 340, border: '1px solid #eee' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
-              <thead>
-                <tr>
-                  {(selectedSnapshot.artifact.columns || []).map((col) => (
-                    <th key={col} style={{ textAlign: 'left', borderBottom: '1px solid #ddd', padding: 6 }}>{col}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {(selectedSnapshot.artifact.rows || []).map((row, idx) => (
-                  <tr key={`snap-${selectedSnapshot.snapshot_id}-${idx}`}>
-                    {(selectedSnapshot.artifact.columns || []).map((col) => (
-                      <td key={`snap-${selectedSnapshot.snapshot_id}-${idx}-${col}`} style={{ borderBottom: '1px solid #f0f0f0', padding: 6 }}>
-                        {renderCell(row[col])}
-                      </td>
-                    ))}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <ReportSnapshotViewer
+            snapshot={selectedSnapshot.artifact}
+            emptyMessage="No snapshot rows found."
+            style={{ marginTop: 8 }}
+          />
         </div>
       ) : null}
 
