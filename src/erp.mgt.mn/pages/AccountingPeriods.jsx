@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from '../context/AuthContext.jsx';
 import ReportTable from '../components/ReportTable.jsx';
 import ReportSnapshotViewer from '../components/ReportSnapshotViewer.jsx';
@@ -61,6 +61,7 @@ export default function AccountingPeriodsPage() {
   const [loadingSnapshotId, setLoadingSnapshotId] = useState(null);
   const [previewDrilldownState, setPreviewDrilldownState] = useState({});
   const [previewDrilldownSelection, setPreviewDrilldownSelection] = useState({});
+  const drilldownParamCacheRef = useRef(new Map());
 
   const canClosePeriod = Boolean(
     permissions?.['period.close'] ||
@@ -149,7 +150,50 @@ export default function AccountingPeriodsPage() {
 
   const buildPreviewDrilldownKey = useCallback((reportName, rowId) => `${reportName}::${rowId}`, []);
 
-  const handlePreviewDrilldown = useCallback(async ({ reportName, row, rowId }) => {
+  const normalizeReportMeta = useCallback((meta) => {
+    if (!meta || typeof meta !== 'object') return {};
+    if (!meta.drilldown && meta.drilldownReport) {
+      return {
+        ...meta,
+        drilldown: {
+          fallbackProcedure: meta.drilldownReport,
+        },
+      };
+    }
+    return meta;
+  }, []);
+
+  const fetchDrilldownParams = useCallback(async (reportName) => {
+    if (!reportName) return [];
+    const cached = drilldownParamCacheRef.current.get(reportName);
+    if (cached) return cached;
+    try {
+      const res = await fetch(`/api/procedures/${encodeURIComponent(reportName)}/params`, {
+        credentials: 'include',
+      });
+      const data = res.ok ? await res.json().catch(() => ({})) : {};
+      const list = Array.isArray(data.parameters) ? data.parameters : [];
+      drilldownParamCacheRef.current.set(reportName, list);
+      return list;
+    } catch {
+      return [];
+    }
+  }, []);
+
+  const buildDrilldownParams = useCallback(async (reportName, rowIds) => {
+    const rowIdsValue = String(rowIds ?? '').trim();
+    if (!rowIdsValue) return [];
+    const paramNames = await fetchDrilldownParams(reportName);
+    if (!paramNames.length) return [rowIdsValue];
+    return paramNames.map((paramName) => {
+      const normalized = String(paramName || '').toLowerCase().replace(/^@+/, '');
+      if (normalized.includes('rowid')) return rowIdsValue;
+      if (normalized.includes('company')) return companyId || null;
+      return null;
+    });
+  }, [companyId, fetchDrilldownParams]);
+
+  const handlePreviewDrilldown = useCallback(async ({ reportName, reportMeta, row, rowId }) => {
     const rowIds = String(row?.__row_ids || '').trim();
     const key = buildPreviewDrilldownKey(reportName, rowId);
     if (!rowIds) {
@@ -174,7 +218,11 @@ export default function AccountingPeriodsPage() {
       [key]: { ...(prev[key] || {}), expanded: true, status: 'loading', error: '', rowIds },
     }));
 
-    const detailProcedure = String(row?.__drilldown_report || row?.__detail_report || reportName || '').trim();
+    const normalizedMeta = normalizeReportMeta(reportMeta);
+    const drilldownConfig = normalizedMeta?.drilldown;
+    const detailProcedure = String(
+      drilldownConfig?.fallbackProcedure || row?.__drilldown_report || row?.__detail_report || reportName || '',
+    ).trim();
     if (!detailProcedure) {
       setPreviewDrilldownState((prev) => ({
         ...prev,
@@ -184,13 +232,14 @@ export default function AccountingPeriodsPage() {
     }
 
     try {
+      const detailParams = await buildDrilldownParams(detailProcedure, rowIds);
       const res = await fetch('/api/procedures', {
         credentials: 'include',
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: detailProcedure,
-          params: [rowIds],
+          params: detailParams,
         }),
       });
       const json = await parseJsonResponse(res);
@@ -224,7 +273,7 @@ export default function AccountingPeriodsPage() {
         },
       }));
     }
-  }, [buildPreviewDrilldownKey, previewDrilldownState]);
+  }, [buildDrilldownParams, buildPreviewDrilldownKey, normalizeReportMeta, previewDrilldownState]);
 
   const handlePreviewDrilldownSelectionChange = useCallback((updater) => {
     setPreviewDrilldownSelection((prev) => (typeof updater === 'function' ? updater(prev) : updater || {}));
