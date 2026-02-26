@@ -962,10 +962,13 @@ export async function postMessage({ user, companyId, payload, correlationId, db 
   assertPermission({ action: 'message:create', user, companyId: scopedCompanyId, session, db });
   const ctx = { user, companyId: scopedCompanyId, correlationId, session };
 
-  let parentMessageId = null;
+  let parentMessageId = toId(payload?.parentMessageId ?? payload?.parent_message_id);
   let conversationId = null;
   let normalizedPayload = payload;
   const requestedConversationId = readConversationId(payload);
+  if (parentMessageId && !requestedConversationId) {
+    throw createError(400, 'CONVERSATION_REQUIRED', 'conversationId is required when parentMessageId is provided');
+  }
   if (requestedConversationId) {
     const rootMessage = await findMessageById(db, scopedCompanyId, requestedConversationId);
     if (!rootMessage || rootMessage.deleted_at) {
@@ -973,7 +976,24 @@ export async function postMessage({ user, companyId, payload, correlationId, db 
     }
     assertCanViewMessage(rootMessage, session, user);
     conversationId = toId(rootMessage.conversation_id || rootMessage.id);
-    parentMessageId = toId(rootMessage.id);
+
+    if (parentMessageId) {
+      const parentMessage = await findMessageById(db, scopedCompanyId, parentMessageId);
+      if (!parentMessage || parentMessage.deleted_at) {
+        throw createError(404, 'PARENT_MESSAGE_NOT_FOUND', 'Reply parent message not found');
+      }
+      const parentConversationId = toId(parentMessage.conversation_id || parentMessage.id);
+      if (parentConversationId !== conversationId) {
+        throw createError(409, 'CONVERSATION_MISMATCH', 'parentMessageId must belong to the selected conversation');
+      }
+      assertCanViewMessage(parentMessage, session, user);
+      const depth = await resolveThreadDepth(db, scopedCompanyId, parentMessage);
+      if (depth >= MAX_REPLY_DEPTH) {
+        throw createError(400, 'THREAD_DEPTH_EXCEEDED', `Reply depth exceeds maximum of ${MAX_REPLY_DEPTH}`);
+      }
+    } else {
+      parentMessageId = toId(rootMessage.id);
+    }
 
     const privateParticipants = rootMessage.visibility_scope === 'private'
       ? new Set(parsePrivateParticipants(rootMessage.visibility_empid))
@@ -1013,6 +1033,48 @@ export async function postMessage({ user, companyId, payload, correlationId, db 
     conversationId,
     eventName: 'message.created',
   });
+}
+
+export async function createConversationRoot(args) {
+  const nextPayload = {
+    ...(args?.payload || {}),
+    parentMessageId: null,
+    parent_message_id: null,
+    conversationId: null,
+    conversation_id: null,
+  };
+  return postMessage({ ...args, payload: nextPayload });
+}
+
+export async function postConversationMessage({ conversationId, payload, ...rest }) {
+  const normalizedConversationId = toId(conversationId ?? readConversationId(payload));
+  if (!normalizedConversationId) {
+    throw createError(400, 'CONVERSATION_REQUIRED', 'conversationId is required when posting to an existing conversation');
+  }
+  return postMessage({
+    ...rest,
+    payload: {
+      ...(payload || {}),
+      conversationId: normalizedConversationId,
+      conversation_id: normalizedConversationId,
+    },
+  });
+}
+
+export async function listConversations(args) {
+  const result = await getMessages(args);
+  return {
+    ...result,
+    items: result.items || [],
+  };
+}
+
+export async function getConversationMessages({ conversationId, ...rest }) {
+  const normalizedConversationId = toId(conversationId);
+  if (!normalizedConversationId) {
+    throw createError(400, 'CONVERSATION_REQUIRED', 'conversationId is required');
+  }
+  return getThread({ ...rest, messageId: normalizedConversationId });
 }
 
 export async function postReply({ user, companyId, messageId, payload, correlationId, db = pool, getSession = getEmploymentSession }) {
